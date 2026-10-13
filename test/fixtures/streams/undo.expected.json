@@ -1,0 +1,38 @@
+{
+  "v": 1,
+  "seq": 7,
+  "cards": {
+    "c1": {
+      "id": "c1",
+      "key": "claude:host-a:sess-5",
+      "title": "Fix flaky test",
+      "workspace": "work",
+      "tags": [],
+      "attention": [],
+      "links": [],
+      "sourceRefs": [],
+      "column": "workers_on_it",
+      "revision": 7,
+      "createdSeq": 1,
+      "updatedSeq": 7,
+      "updatedAt": "2026-10-13T14:07:00Z"
+    }
+  },
+  "keys": {
+    "claude:host-a:sess-5": "c1"
+  },
+  "eventIds": {
+    "evt_1": 1,
+    "evt_2": 2,
+    "evt_3": 3,
+    "evt_4": 4,
+    "evt_5": 5,
+    "evt_6": 6,
+    "evt_7": 7
+  },
+  "undone": {
+    "evt_2": "evt_3",
+    "evt_4": "evt_5",
+    "evt_6": "evt_7"
+  }
+}

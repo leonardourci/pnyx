@@ -1,0 +1,95 @@
+{
+  "v": 1,
+  "seq": 8,
+  "cards": {
+    "c1": {
+      "id": "c1",
+      "key": "claude:host-a:sess-1",
+      "title": "Ship login page",
+      "workspace": "work",
+      "tags": [
+        "auth"
+      ],
+      "attention": [],
+      "links": [
+        {
+          "kind": "github_pr",
+          "url": "https://github.com/example/app/pull/41",
+          "number": 41,
+          "title": "Add login page",
+          "state": "merged",
+          "checkedAt": "2026-10-13T10:05:00Z"
+        },
+        {
+          "kind": "github_pr",
+          "url": "https://github.com/example/app/pull/42",
+          "number": 42,
+          "state": "merged",
+          "checkedAt": "2026-10-13T10:06:00Z"
+        },
+        {
+          "kind": "linear",
+          "url": "https://linear.app/example/issue/APP-7"
+        }
+      ],
+      "sourceRefs": [
+        {
+          "adapter": "claude",
+          "objectId": "sess-1",
+          "instanceId": "host-a",
+          "generation": 1,
+          "observedAt": "2026-10-13T10:00:00Z"
+        }
+      ],
+      "column": "done",
+      "revision": 6,
+      "createdSeq": 1,
+      "updatedSeq": 8,
+      "updatedAt": "2026-10-13T10:08:00Z",
+      "activity": "working"
+    },
+    "c2": {
+      "id": "c2",
+      "key": "claude:host-a:sess-1/agent-2",
+      "title": "Write login tests",
+      "workspace": "work",
+      "tags": [],
+      "attention": [],
+      "links": [],
+      "sourceRefs": [
+        {
+          "adapter": "claude",
+          "objectId": "sess-1/agent-2",
+          "instanceId": "host-a",
+          "generation": 1,
+          "observedAt": "2026-10-13T10:01:00Z"
+        }
+      ],
+      "column": "done",
+      "revision": 2,
+      "createdSeq": 2,
+      "updatedSeq": 7,
+      "updatedAt": "2026-10-13T10:07:00Z",
+      "parentId": "c1",
+      "outcome": {
+        "state": "done",
+        "note": "tests added"
+      }
+    }
+  },
+  "keys": {
+    "claude:host-a:sess-1": "c1",
+    "claude:host-a:sess-1/agent-2": "c2"
+  },
+  "eventIds": {
+    "evt_1": 1,
+    "evt_2": 2,
+    "evt_3": 3,
+    "evt_4": 4,
+    "evt_5": 5,
+    "evt_6": 6,
+    "evt_7": 7,
+    "evt_8": 8
+  },
+  "undone": {}
+}

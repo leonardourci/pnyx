@@ -17,8 +17,8 @@ test("no arguments prints an empty board summary", () => {
   const out = run();
   assert.match(out, /^board: default$/m);
   assert.match(out, /^ {2}needs_you: 0$/m);
-  assert.match(out, /^cards: "none: no sources are connected yet"$/m);
-  assert.match(out, /pnyx-axi --help/);
+  assert.match(out, /^cards: "none: no cards yet"$/m);
+  assert.match(out, /pnyx-axi push --key/);
 });
 
 test("--help prints concise help", () => {

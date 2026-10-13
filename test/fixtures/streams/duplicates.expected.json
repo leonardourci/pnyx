@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "seq": 9,
+  "cards": {
+    "c1": {
+      "id": "c1",
+      "key": "codex:thread-9",
+      "title": "Refactor store layer",
+      "workspace": "personal",
+      "tags": [],
+      "attention": [],
+      "links": [
+        {
+          "kind": "github_pr",
+          "url": "https://github.com/example/app/pull/50",
+          "number": 50,
+          "state": "merged",
+          "checkedAt": "2026-10-13T11:07:00Z"
+        }
+      ],
+      "sourceRefs": [
+        {
+          "adapter": "codex",
+          "objectId": "thread-9",
+          "generation": 2,
+          "observedAt": "2026-10-13T11:20:00Z"
+        }
+      ],
+      "column": "done",
+      "revision": 4,
+      "createdSeq": 1,
+      "updatedSeq": 9,
+      "updatedAt": "2026-10-13T11:09:00Z",
+      "activity": "working"
+    }
+  },
+  "keys": {
+    "codex:thread-9": "c1"
+  },
+  "eventIds": {
+    "hook-0001": 1,
+    "hook-0002": 2,
+    "hook-0003": 5,
+    "hook-0004": 6,
+    "evt_7": 7,
+    "evt_8": 8,
+    "hook-0005": 9
+  },
+  "undone": {}
+}

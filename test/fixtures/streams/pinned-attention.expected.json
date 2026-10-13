@@ -1,0 +1,39 @@
+{
+  "v": 1,
+  "seq": 3,
+  "cards": {
+    "c1": {
+      "id": "c1",
+      "key": "fm:task-17",
+      "title": "Migrate config",
+      "workspace": "work",
+      "tags": [],
+      "attention": [
+        {
+          "kind": "permission_needed",
+          "key": "perm-1",
+          "blocking": true,
+          "text": "Allow writing config?"
+        }
+      ],
+      "links": [],
+      "sourceRefs": [],
+      "column": "review",
+      "revision": 3,
+      "createdSeq": 1,
+      "updatedSeq": 3,
+      "updatedAt": "2026-10-13T13:03:00Z",
+      "activity": "working",
+      "manualColumn": "review"
+    }
+  },
+  "keys": {
+    "fm:task-17": "c1"
+  },
+  "eventIds": {
+    "evt_1": 1,
+    "evt_2": 2,
+    "evt_3": 3
+  },
+  "undone": {}
+}

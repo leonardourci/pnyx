@@ -1,0 +1,436 @@
+// pnyx-axi board commands. Every write goes through `commit`, which holds the
+// board's writer lock, ingests the hook spool, then appends at most one event.
+import { readFileSync, renameSync, rmSync } from "node:fs";
+import { parseArgs, type ParseArgsConfig } from "node:util";
+import { AxiError } from "axi-sdk-js";
+import {
+  decideLink,
+  decideMove,
+  decideOutcome,
+  decidePush,
+  decideUndo,
+  findCard,
+  parseLink,
+  type Decision,
+  type Meta,
+} from "../core/decide.ts";
+import {
+  BoardError,
+  COLUMNS,
+  EVENT_TYPES,
+  OUTCOME_STATES,
+  type BoardEvent,
+  type BoardState,
+  type Card,
+  type EventType,
+  type Column,
+  type OutcomeState,
+} from "../core/model.ts";
+import { emptyBoard, replay } from "../core/reducer.ts";
+import { loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from "../store/board-store.ts";
+
+const DEFAULT_BOARD = "default";
+const HISTORY_LIMIT = 20;
+const HISTORY_MAX = 100;
+const HOME_LIMIT = 50;
+
+type Output = Record<string, unknown>;
+type Options = NonNullable<ParseArgsConfig["options"]>;
+
+const COMMON: Options = { board: { type: "string" } };
+const WRITE: Options = {
+  ...COMMON,
+  actor: { type: "string" },
+  reason: { type: "string" },
+  "event-id": { type: "string" },
+  "if-revision": { type: "string" },
+};
+
+function parse(args: string[], options: Options, positionals: number) {
+  let parsed;
+  try {
+    parsed = parseArgs({ args, options, allowPositionals: true, strict: true });
+  } catch (error) {
+    throw new AxiError((error as Error).message, "VALIDATION_ERROR", ["Run the command with --help"]);
+  }
+  if (parsed.positionals.length > positionals) {
+    throw new AxiError(`unexpected argument: ${parsed.positionals[positionals]}`, "VALIDATION_ERROR", [
+      "Run the command with --help",
+    ]);
+  }
+  const values = parsed.values as Record<string, string | boolean | undefined>;
+  return { values, positionals: parsed.positionals, board: (values.board as string | undefined) ?? DEFAULT_BOARD };
+}
+
+function required(value: string | undefined, what: string): string {
+  if (!value) throw new AxiError(`missing ${what}`, "VALIDATION_ERROR", ["Run the command with --help"]);
+  return value;
+}
+
+function integer(value: string | boolean | undefined, flag: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw new AxiError(`${flag} must be a non-negative integer`, "VALIDATION_ERROR");
+  }
+  return Number(value);
+}
+
+function meta(values: Record<string, string | boolean | undefined>): Meta {
+  const m: Meta = { at: new Date().toISOString(), actor: (values.actor as string | undefined) ?? "cli" };
+  if (typeof values.reason === "string") m.reason = values.reason;
+  if (typeof values["event-id"] === "string") m.id = values["event-id"];
+  const ifRevision = integer(values["if-revision"], "--if-revision");
+  if (ifRevision !== undefined) m.ifRevision = ifRevision;
+  return m;
+}
+
+// Folds spooled hook events into the log, oldest first. Each is recorded as a source
+// observation, so it can never be undone. A file that cannot be read as a push is
+// renamed to *.rejected so it is not retried forever.
+function drainSpool(writer: Writer): { ingested: number; rejected: number } {
+  let ingested = 0;
+  let rejected = 0;
+  for (const file of spoolFiles(writer.dir)) {
+    let decision: Decision;
+    try {
+      const entry = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+      if (typeof entry.id !== "string" || typeof entry.key !== "string" || typeof entry.at !== "string") {
+        throw new BoardError("spool entry needs id, key and at", "VALIDATION_ERROR");
+      }
+      const actor = typeof entry.actor === "string" ? entry.actor : "hook";
+      const card = (entry.card ?? {}) as Record<string, unknown>;
+      const source = card.source ?? { adapter: actor, objectId: entry.key, observedAt: entry.at };
+      decision = decidePush(writer.state, entry.key, { ...card, source }, { id: entry.id, at: entry.at, actor });
+    } catch (error) {
+      if (!(error instanceof BoardError || error instanceof SyntaxError)) throw error;
+      renameSync(file, `${file}.rejected`);
+      rejected += 1;
+      continue;
+    }
+    if ("event" in decision) writer.append(decision.event);
+    rmSync(file);
+    ingested += 1;
+  }
+  return { ingested, rejected };
+}
+
+function receipt(state: BoardState, event: BoardEvent): Output {
+  const card = state.cards[event.cardId]!;
+  return {
+    event: { seq: event.seq, id: event.id, type: event.type },
+    card: { id: card.id, column: card.column, revision: card.revision },
+  };
+}
+
+// What a write is about: its event type and the card's id or key.
+interface Intent {
+  type: EventType;
+  card: string;
+}
+
+// The receipt the event with this id got when it was appended. An id already used
+// for another card or event type is a conflict, not a retry.
+function originalReceipt(board: string, state: BoardState, id: string, seq: number, intent: Intent): Output {
+  const events = readEvents(board);
+  const index = events.findIndex((e) => e.id === id && e.seq === seq);
+  const original = events[index]!;
+  if (original.type !== intent.type || (original.cardId !== intent.card && state.keys[intent.card] !== original.cardId)) {
+    throw new AxiError(`event id ${id} was already used by ${original.type} on card ${original.cardId}`, "IDEMPOTENCY_CONFLICT", [
+      "Retry with a new --event-id",
+    ]);
+  }
+  return { ...receipt(replay(emptyBoard(), events.slice(0, index + 1)), original), duplicate: "event id already applied; nothing appended" };
+}
+
+// A repeated --event-id answers with the original receipt before any other check,
+// so a retry of a write that already landed never reports a conflict.
+function commit(board: string, meta: Meta, intent: Intent, decide: (state: BoardState) => Decision): Output {
+  return withWriter(board, (writer) => {
+    const spool = drainSpool(writer);
+    const seq = meta.id === undefined ? undefined : writer.state.eventIds[meta.id];
+    let out: Output;
+    if (seq !== undefined) {
+      out = originalReceipt(board, writer.state, meta.id!, seq, intent);
+    } else {
+      const decision = decide(writer.state);
+      if ("event" in decision) writer.append(decision.event);
+      out = "event" in decision ? receipt(writer.state, decision.event) : { event: `none: ${decision.skipped}` };
+    }
+    if (spool.ingested || spool.rejected) out.spool = spool;
+    return out;
+  });
+}
+
+// Maps core and store errors onto AXI's structured errors.
+function guard(handler: (args: string[]) => Output) {
+  return (args: string[]): Output => {
+    try {
+      return handler(args);
+    } catch (error) {
+      if (error instanceof BoardError) throw new AxiError(error.message, error.code, error.help);
+      throw error;
+    }
+  };
+}
+
+function column(value: string): Column {
+  const c = value.replace(/-/g, "_");
+  if (!(COLUMNS as readonly string[]).includes(c)) {
+    throw new AxiError(`unknown column: ${value}`, "VALIDATION_ERROR", [`Use one of ${COLUMNS.join(", ")}`]);
+  }
+  return c as Column;
+}
+
+function cardRow(card: Card) {
+  return {
+    id: card.id,
+    title: card.title,
+    column: card.column,
+    attention: card.attention.map((a) => a.kind).join(" ") || "none",
+  };
+}
+
+function cardDetail(card: Card): Output {
+  const detail: Output = {
+    id: card.id,
+    key: card.key,
+    title: card.title,
+    workspace: card.workspace,
+    column: card.column,
+    placement: card.manualColumn ? "manual" : "auto",
+    tags: card.tags.length ? card.tags : "none",
+  };
+  if (card.parentId) detail.parent = card.parentId;
+  if (card.activity) detail.activity = card.activity;
+  detail.attention = card.attention.length ? card.attention : "none";
+  detail.links = card.links.length
+    ? card.links.map((l) => ({ kind: l.kind, number: l.number ?? "", title: l.title ?? "", state: l.state ?? "unknown", url: l.url }))
+    : "none";
+  if (card.outcome) detail.outcome = card.outcome;
+  detail.revision = card.revision;
+  detail.updated = card.updatedAt;
+  return detail;
+}
+
+export function home(): Output {
+  const { state, tornBytes } = loadBoard(DEFAULT_BOARD);
+  const cards = Object.values(state.cards);
+  const columns = Object.fromEntries(COLUMNS.map((c) => [c, cards.filter((card) => card.column === c).length]));
+  const out: Output = { board: DEFAULT_BOARD, columns };
+  if (tornBytes > 0) out.warning = "events.jsonl has a torn tail; run `pnyx-axi repair`";
+  if (cards.length === 0) {
+    out.cards = "none: no cards yet";
+    out.help = ["Run `pnyx-axi push --key <key> --file card.json` to add a card"];
+    return out;
+  }
+  const order = (c: Card) => COLUMNS.indexOf(c.column);
+  const sorted = cards.sort((a, b) => order(a) - order(b) || b.updatedSeq - a.updatedSeq);
+  out.cards = sorted.slice(0, HOME_LIMIT).map(cardRow);
+  out.help = ["Run `pnyx-axi card <id>` for details", "Run `pnyx-axi history` for recent events"];
+  if (sorted.length > HOME_LIMIT) out.more = `${sorted.length - HOME_LIMIT} more cards not shown`;
+  return out;
+}
+
+const push = guard((args) => {
+  const { values, board } = parse(args, { ...WRITE, key: { type: "string" }, file: { type: "string" } }, 0);
+  const m = meta(values);
+  const key = required(values.key as string | undefined, "--key");
+  const file = required(values.file as string | undefined, "--file");
+  let input: unknown;
+  try {
+    input = JSON.parse(readFileSync(file === "-" ? 0 : file, "utf8"));
+  } catch (error) {
+    throw new AxiError(`cannot read card JSON from ${file}: ${(error as Error).message}`, "VALIDATION_ERROR");
+  }
+  return commit(board, m, { type: "card.pushed", card: key }, (state) => decidePush(state, key, input, m));
+});
+
+const card = guard((args) => {
+  const { positionals, board } = parse(args, COMMON, 1);
+  const found = findCard(loadBoard(board).state, required(positionals[0], "card id"));
+  return {
+    card: cardDetail(found),
+    help: [`Run \`pnyx-axi history --card ${found.id}\` for its events`],
+  };
+});
+
+const move = guard((args) => {
+  const { values, positionals, board } = parse(args, { ...WRITE, auto: { type: "boolean" } }, 2);
+  const m = meta(values);
+  const ref = required(positionals[0], "card id");
+  if (Boolean(values.auto) === (positionals[1] !== undefined)) {
+    throw new AxiError("give either a column or --auto", "VALIDATION_ERROR", [`Columns: ${COLUMNS.join(", ")}`]);
+  }
+  const target = values.auto ? null : column(positionals[1]!);
+  return commit(board, m, { type: "card.moved", card: ref }, (state) => decideMove(state, ref, target, m));
+});
+
+const link = guard((args) => {
+  const options: Options = {
+    ...WRITE,
+    url: { type: "string" },
+    kind: { type: "string" },
+    number: { type: "string" },
+    title: { type: "string" },
+    state: { type: "string" },
+    remove: { type: "boolean" },
+  };
+  const { values, positionals, board } = parse(args, options, 1);
+  const m = meta(values);
+  const ref = required(positionals[0], "card id");
+  const url = required(values.url as string | undefined, "--url");
+  const s = (name: string) => values[name] as string | undefined;
+  const parsed = values.remove
+    ? null
+    : parseLink({ url, kind: s("kind"), number: s("number"), title: s("title"), state: s("state"), checkedAt: s("state") && new Date().toISOString() });
+  return commit(board, m, { type: "card.linked", card: ref }, (state) => decideLink(state, ref, url, parsed, m));
+});
+
+const outcome = guard((args) => {
+  const { values, positionals, board } = parse(args, { ...WRITE, note: { type: "string" }, clear: { type: "boolean" } }, 2);
+  const m = meta(values);
+  const ref = required(positionals[0], "card id");
+  const state = positionals[1];
+  if (Boolean(values.clear) === (state !== undefined)) {
+    throw new AxiError("give either an outcome or --clear", "VALIDATION_ERROR", [`Outcomes: ${OUTCOME_STATES.join(", ")}`]);
+  }
+  if (state !== undefined && !(OUTCOME_STATES as readonly string[]).includes(state)) {
+    throw new AxiError(`unknown outcome: ${state}`, "VALIDATION_ERROR", [`Use one of ${OUTCOME_STATES.join(", ")}`]);
+  }
+  const note = values.note as string | undefined;
+  const result = state === undefined ? null : { state: state as OutcomeState, ...(note ? { note } : {}) };
+  return commit(board, m, { type: "card.outcome", card: ref }, (s) => decideOutcome(s, ref, result, m));
+});
+
+function summarize(event: BoardEvent): string {
+  const undo = event.undoes ? `undo ${event.undoes}: ` : "";
+  switch (event.type) {
+    case "card.pushed":
+      return `${undo}${Object.keys(event.data).filter((k) => k !== "key" && k !== "before").join(" ") || "no fields"}`;
+    case "card.moved":
+      return `${undo}${event.data.before ?? "auto"} -> ${event.data.after ?? "auto"}`;
+    case "card.linked": {
+      const l = event.data.after ?? event.data.before;
+      const label = l ? `${l.kind}${l.number ? ` #${l.number}` : ""}` : event.data.url;
+      return `${undo}${event.data.after ? `${label} ${event.data.after.state ?? "unknown"}` : `removed ${label}`}`;
+    }
+    case "card.outcome":
+      return `${undo}${event.data.after ? `${event.data.after.state}${event.data.after.note ? `: ${event.data.after.note}` : ""}` : "cleared"}`;
+  }
+}
+
+const history = guard((args) => {
+  const options: Options = {
+    ...COMMON,
+    card: { type: "string" },
+    kind: { type: "string" },
+    workspace: { type: "string" },
+    before: { type: "string" },
+    limit: { type: "string" },
+  };
+  const { values, board } = parse(args, options, 0);
+  const limit = Math.min(integer(values.limit, "--limit") ?? HISTORY_LIMIT, HISTORY_MAX);
+  const before = integer(values.before, "--before");
+  const kind = values.kind as string | undefined;
+  const type = kind && (kind.startsWith("card.") ? kind : `card.${kind}`);
+  if (type && !(EVENT_TYPES as readonly string[]).includes(type)) {
+    throw new AxiError(`unknown kind: ${kind}`, "VALIDATION_ERROR", ["Use one of pushed, moved, linked, outcome"]);
+  }
+  const { state } = loadBoard(board);
+  const cardId = values.card ? findCard(state, values.card as string).id : undefined;
+  const workspace = values.workspace as string | undefined;
+  // An outcome keeps the workspace it was recorded under; other events use the card's current one.
+  const inWorkspace = (e: BoardEvent) =>
+    (e.type === "card.outcome" ? e.data.card.workspace : state.cards[e.cardId]?.workspace) === workspace;
+
+  const matches = readEvents(board)
+    .filter((e) => (before === undefined || e.seq < before) && (!cardId || e.cardId === cardId))
+    .filter((e) => (!type || e.type === type) && (!workspace || inWorkspace(e)))
+    .reverse();
+  const page = matches.slice(0, limit);
+  if (page.length === 0) return { events: "none: no matching events" };
+  const out: Output = {
+    events: page.map((e) => ({ seq: e.seq, id: e.id, at: e.at, type: e.type, card: e.cardId, actor: e.actor, summary: summarize(e) })),
+  };
+  if (matches.length > limit) {
+    const flags = ["card", "kind", "workspace", "limit", "board"].flatMap((f) => (values[f] ? [`--${f}`, String(values[f])] : []));
+    out.help = [`Run \`pnyx-axi history ${[...flags, "--before", String(page.at(-1)!.seq)].join(" ")}\` for older events`];
+  }
+  return out;
+});
+
+const undo = guard((args) => {
+  const { values, positionals, board } = parse(args, WRITE, 1);
+  const m = meta(values);
+  const id = required(positionals[0], "event id");
+  const target = readEvents(board).find((e) => e.id === id);
+  if (!target) throw new AxiError(`event not found: ${id}`, "NOT_FOUND", ["Run `pnyx-axi history` to find event ids"]);
+  return commit(board, m, { type: target.type, card: target.cardId }, (state) => decideUndo(state, target, m));
+});
+
+const repair = guard((args) => {
+  const { board } = parse(args, COMMON, 0);
+  const result = repairBoard(board);
+  return {
+    repair: result.tornBytes > 0 ? `set aside ${result.tornBytes} torn bytes` : "none: log ends cleanly",
+    ...(result.preserved ? { preserved: result.preserved } : {}),
+    snapshot: `rebuilt through seq ${result.seq}`,
+  };
+});
+
+export const commands = { push, card, move, link, outcome, history, undo, repair };
+
+export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
+description: Deterministic board of every agent and its work
+commands:
+  pnyx-axi                                   Show the board summary
+  push --key <key> --file <card.json|->      Create or update the card with this key
+  card <id|key>                              Show one card
+  move <id> <column> | --auto                Pin a card to a column, or return it to automatic placement
+  link <id> --url <url> [--state open]       Add, update or --remove a link
+  outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
+  history [--card <id>] [--before <seq>]     Page through past events, newest first
+  undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
+  repair                                     Set aside a torn log tail and rebuild the snapshot
+flags:
+  --board <name>     Board to use (default: default)
+  --event-id <id>    On writes: idempotency key; a repeat returns the original receipt
+  --if-revision <n>  On writes: expected card revision (0 for a new card)
+  --help             Show help for a command
+  --version          Show the version
+`;
+
+const COMMAND_HELP: Record<string, string> = {
+  push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
+Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
+card.json fields (all optional): title, workspace, tags[], parent (card id or key, null to clear), activity,
+  attention[] {kind, key, blocking, text}, source {adapter, objectId, instanceId, generation, cursor, observedAt}
+An observation older than the card's latest one from the same source is ignored.
+`,
+  card: `usage: pnyx-axi card <id|key> [--board <name>]
+`,
+  move: `usage: pnyx-axi move <id> <needs_you|workers_on_it|review|done> | --auto [--event-id <id>] [--if-revision <n>] [--reason <text>]
+A manual move pins the card until \`move <id> --auto\`. Attention on a pinned card stays visible.
+`,
+  link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove] [--event-id <id>] [--if-revision <n>]
+GitHub pull request URLs get kind and number filled in. An open pull request puts the card in review;
+all linked pull requests merged puts it in done.
+`,
+  outcome: `usage: pnyx-axi outcome <id> done|failed|cancelled [--note <text>] | --clear [--event-id <id>] [--if-revision <n>]
+`,
+  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome] [--workspace <name>] [--before <seq>] [--limit <n>]
+Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
+`,
+  undo: `usage: pnyx-axi undo <event-id> [--event-id <id>] [--if-revision <n>]
+Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
+Source observations, card creation and merges cannot be undone.
+`,
+  repair: `usage: pnyx-axi repair [--board <name>]
+A crash mid-append can leave a torn last line; writes refuse until it is repaired.
+Repair copies the torn bytes to a side file and appends a marker so readers skip them; the log is never cut.
+`,
+};
+
+export function commandHelp(command: string): string | undefined {
+  return COMMAND_HELP[command];
+}

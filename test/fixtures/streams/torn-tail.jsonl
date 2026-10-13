@@ -1,0 +1,4 @@
+{"v":1,"seq":1,"id":"evt_1","at":"2026-10-13T15:01:00Z","actor":"cli","cardId":"c1","type":"card.pushed","data":{"key":"claude:host-b:sess-3","title":"Index history","workspace":"work"}}
+{"v":1,"seq":2,"id":"evt_2","at":"2026-10-13T15:02:00Z","actor":"cli","cardId":"c1","type":"card.moved","data":{"before":null,"after":"review"}}
+{"v":1,"seq":3,"id":"evt_3","at":"2026-10-13T15:03:00Z","actor":"cli","cardId":"c1","type":"card.linked","data":{"url":"https://github.com/example/app/pull/70","before":null,"after":{"kind":"github_pr","url":"https://github.com/example/app/pull/70","number":70,"state":"open","checkedAt":"2026-10-13T15:03:00Z"}}}
+{"v":1,"seq":4,"id":"evt_4","at":"2026-10-13T15:03:00Z","actor":"cli","cardId":"c1","type":"card.linked","data":{"url":"https://github.com/example/app/pull/70","before":{"kind":"github_pr","url":"https://github.com/examp
