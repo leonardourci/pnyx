@@ -1,0 +1,39 @@
+{
+  "v": 1,
+  "seq": 3,
+  "cards": {
+    "c1": {
+      "id": "c1",
+      "key": "claude:host-b:sess-3",
+      "title": "Index history",
+      "workspace": "work",
+      "tags": [],
+      "attention": [],
+      "links": [
+        {
+          "kind": "github_pr",
+          "url": "https://github.com/example/app/pull/70",
+          "number": 70,
+          "state": "open",
+          "checkedAt": "2026-10-13T15:03:00Z"
+        }
+      ],
+      "sourceRefs": [],
+      "column": "review",
+      "revision": 3,
+      "createdSeq": 1,
+      "updatedSeq": 3,
+      "updatedAt": "2026-10-13T15:03:00Z",
+      "manualColumn": "review"
+    }
+  },
+  "keys": {
+    "claude:host-b:sess-3": "c1"
+  },
+  "eventIds": {
+    "evt_1": 1,
+    "evt_2": 2,
+    "evt_3": 3
+  },
+  "undone": {}
+}
