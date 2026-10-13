@@ -28,6 +28,8 @@ import {
 } from "../core/model.ts";
 import { emptyBoard, replay } from "../core/reducer.ts";
 import { readServer } from "../server/state.ts";
+import { detectedHarnesses, setupHooks } from "../integrations/hooks/install.ts";
+import { HARNESSES, isHookEnvelope, observe, type Harness, type HookEnvelope } from "../integrations/hooks/observe.ts";
 import { loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from "../store/board-store.ts";
 
 const DEFAULT_BOARD = "default";
@@ -85,30 +87,48 @@ function meta(values: Record<string, string | boolean | undefined>): Meta {
   return m;
 }
 
-// Folds spooled hook events into the log, oldest first. Each is recorded as a source
-// observation, so it can never be undone. A file that cannot be read as a push is
+// Appends what one spool entry reports: a raw harness hook payload becomes card
+// observations, anything else is a push with an explicit key.
+function ingest(writer: Writer, entry: Record<string, unknown>): void {
+  if (typeof entry?.id !== "string" || typeof entry.at !== "string") {
+    throw new BoardError("spool entry needs id and at", "VALIDATION_ERROR");
+  }
+  const apply = (decision: Decision) => {
+    if ("event" in decision) writer.append(decision.event);
+  };
+  if (!isHookEnvelope(entry)) {
+    if (typeof entry.key !== "string") throw new BoardError("spool entry needs id, key and at", "VALIDATION_ERROR");
+    const actor = typeof entry.actor === "string" ? entry.actor : "hook";
+    const card = (entry.card ?? {}) as Record<string, unknown>;
+    const source = card.source ?? { adapter: actor, objectId: entry.key, observedAt: entry.at };
+    return apply(decidePush(writer.state, entry.key, { ...card, source }, { id: entry.id, at: entry.at, actor }));
+  }
+  if (!(HARNESSES as readonly string[]).includes(entry.harness as string) || typeof entry.event !== "string") {
+    throw new BoardError("hook entry needs a known harness and an event", "VALIDATION_ERROR");
+  }
+  for (const o of observe(entry as unknown as HookEnvelope)) {
+    if (o.ifMissing && o.key in writer.state.keys) continue;
+    const m: Meta = { id: o.id ? `${entry.id}:${o.id}` : entry.id, at: entry.at, actor: `hook:${entry.harness}` };
+    apply(decidePush(writer.state, o.key, o.card, m));
+    if (o.link) apply(decideLink(writer.state, o.key, o.link, parseLink({ url: o.link }), { ...m, id: `${m.id}:link` }));
+  }
+}
+
+// Folds spooled hook events into the log, oldest first. Each push is recorded as a
+// source observation, so it can never be undone. A file that cannot be read is
 // renamed to *.rejected so it is not retried forever.
 function drainSpool(writer: Writer): { ingested: number; rejected: number } {
   let ingested = 0;
   let rejected = 0;
   for (const file of spoolFiles(writer.dir)) {
-    let decision: Decision;
     try {
-      const entry = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
-      if (typeof entry.id !== "string" || typeof entry.key !== "string" || typeof entry.at !== "string") {
-        throw new BoardError("spool entry needs id, key and at", "VALIDATION_ERROR");
-      }
-      const actor = typeof entry.actor === "string" ? entry.actor : "hook";
-      const card = (entry.card ?? {}) as Record<string, unknown>;
-      const source = card.source ?? { adapter: actor, objectId: entry.key, observedAt: entry.at };
-      decision = decidePush(writer.state, entry.key, { ...card, source }, { id: entry.id, at: entry.at, actor });
+      ingest(writer, JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>);
     } catch (error) {
       if (!(error instanceof BoardError || error instanceof SyntaxError)) throw error;
       renameSync(file, `${file}.rejected`);
       rejected += 1;
       continue;
     }
-    if ("event" in decision) writer.append(decision.event);
     rmSync(file);
     ingested += 1;
   }
@@ -208,6 +228,7 @@ function cardDetail(card: Card): Output {
   };
   if (card.parentId) detail.parent = card.parentId;
   if (card.activity) detail.activity = card.activity;
+  if (card.agent) detail.agent = card.agent;
   detail.attention = card.attention.length ? card.attention : "none";
   detail.links = card.links.length
     ? card.links.map((l) => ({ kind: l.kind, number: l.number ?? "", title: l.title ?? "", state: l.state ?? "unknown", url: l.url }))
@@ -219,7 +240,7 @@ function cardDetail(card: Card): Output {
 }
 
 export async function home(): Promise<Output> {
-  const { state, tornBytes } = loadBoard(DEFAULT_BOARD);
+  const { dir, state, tornBytes } = loadBoard(DEFAULT_BOARD);
   const cards = Object.values(state.cards);
   const columns = Object.fromEntries(COLUMNS.map((c) => [c, cards.filter((card) => card.column === c).length]));
   // Reports the server; never starts it.
@@ -227,6 +248,8 @@ export async function home(): Promise<Output> {
   const out: Output = { board: DEFAULT_BOARD, server: server ? `running at ${server.url}` : "not running", columns };
   if (tornBytes > 0) out.warning = "events.jsonl has a torn tail; run `pnyx-axi repair`";
   const serveHint = server ? [] : ["Run `pnyx-axi serve` to start the board server"];
+  const spooled = spoolFiles(dir).length;
+  if (spooled > 0) out.spool = `${spooled} hook events waiting; the next write ingests them`;
   if (cards.length === 0) {
     out.cards = "none: no cards yet";
     out.help = ["Run `pnyx-axi push --key <key> --file card.json` to add a card", ...serveHint];
@@ -387,7 +410,33 @@ const repair = guard((args) => {
   };
 });
 
-export const commands = { push, card, move, link, outcome, history, undo, repair };
+const setup = guard((args) => {
+  const options: Options = { harness: { type: "string" }, remove: { type: "boolean" }, preview: { type: "boolean" } };
+  const { values, positionals } = parse(args, options, 1);
+  if (positionals[0] !== "hooks") {
+    throw new AxiError(`unknown setup target: ${positionals[0] ?? "(none)"}`, "VALIDATION_ERROR", ["Run `pnyx-axi setup hooks`"]);
+  }
+  const harness = values.harness as string | undefined;
+  if (harness !== undefined && !(HARNESSES as readonly string[]).includes(harness)) {
+    throw new AxiError(`unknown harness: ${harness}`, "VALIDATION_ERROR", [`Use one of ${HARNESSES.join(", ")}`]);
+  }
+  const targets = harness ? [harness as Harness] : detectedHarnesses();
+  if (targets.length === 0) {
+    throw new AxiError("no Claude Code or Codex config folder found", "NOT_FOUND", ["Run `pnyx-axi setup hooks --harness claude|codex`"]);
+  }
+  const remove = Boolean(values.remove);
+  const preview = Boolean(values.preview);
+  const hooks = targets.map((h) => setupHooks(h, { remove, preview }));
+  const out: Output = { hooks };
+  if (preview) out.preview = "nothing written; rerun without --preview to apply";
+  const help: string[] = [];
+  if (!remove && !preview && targets.includes("codex")) help.push("Codex asks you to review and trust new hooks: run `/hooks` in Codex");
+  help.push(remove ? "Run `pnyx-axi setup hooks` to install them again" : "New sessions appear on the board; run `pnyx-axi` to see it");
+  out.help = help;
+  return out;
+});
+
+export const commands = { push, card, move, link, outcome, history, undo, repair, setup };
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Deterministic board of every agent and its work
@@ -403,6 +452,7 @@ commands:
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the board server in the foreground until stopped
   stop                                       Stop the board's running server
+  setup hooks [--harness claude|codex]       Install the silent reporting hooks (--remove, --preview)
 flags:
   --board <name>     Board to use (default: default)
   --event-id <id>    On writes: idempotency key; a repeat returns the original receipt
@@ -415,7 +465,8 @@ const COMMAND_HELP: Record<string, string> = {
   push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
 card.json fields (all optional): title, workspace, tags[], parent (card id or key, null to clear), activity,
-  attention[] {kind, key, blocking, text}, source {adapter, objectId, instanceId, generation, cursor, observedAt}
+  agent {provider, sessionId, agentId, agentType, cwd, transcriptPath}, attention[] {kind, key, blocking, text},
+  source {adapter, objectId, instanceId, generation, cursor, observedAt}
 An observation older than the card's latest one from the same source is ignored.
 `,
   card: `usage: pnyx-axi card <id|key> [--board <name>]
@@ -435,6 +486,13 @@ Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
   undo: `usage: pnyx-axi undo <event-id> [--event-id <id>] [--if-revision <n>]
 Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
 Source observations, card creation and merges cannot be undone.
+`,
+  setup: `usage: pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
+Adds Pnyx's reporting hook to the user-level Claude Code settings.json or Codex hooks.json, keeping
+every other hook. Without --harness it sets up each harness whose config folder exists. Rerunning
+changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,
+so they never add to the agent's context: no session-start board summary is installed.
+Hook events go to the default board.
 `,
   repair: `usage: pnyx-axi repair [--board <name>]
 A crash mid-append can leave a torn last line; writes refuse until it is repaired.

@@ -6,6 +6,7 @@ import {
   EVENT_VERSION,
   LINK_KINDS,
   LINK_STATES,
+  type AgentRef,
   type Attention,
   type BoardEvent,
   type BoardState,
@@ -144,12 +145,24 @@ function parseSource(value: unknown): SourceRef {
   return source;
 }
 
+function parseAgent(value: unknown): AgentRef {
+  if (!isRecord(value)) throw invalid("agent must be an object");
+  const fields = ["agentId", "agentType", "cwd", "transcriptPath"] as const;
+  onlyKeys(value, ["provider", "sessionId", ...fields], "agent");
+  const agent: AgentRef = { provider: text(value.provider, "agent.provider"), sessionId: text(value.sessionId, "agent.sessionId") };
+  for (const field of fields) {
+    const v = optionalText(value[field], `agent.${field}`);
+    if (v) agent[field] = v;
+  }
+  return agent;
+}
+
 // Upserts the card with this key. `input` is the untrusted card JSON; `parent`
 // names the parent card by id or key, and null clears it.
 export function decidePush(state: BoardState, key: string, input: unknown, meta: Meta): Decision {
   text(key, "key");
   if (!isRecord(input)) throw invalid("card must be a JSON object");
-  onlyKeys(input, ["title", "workspace", "tags", "parent", "activity", "attention", "source"], "card");
+  onlyKeys(input, ["title", "workspace", "tags", "parent", "activity", "agent", "attention", "source"], "card");
 
   const cardId = state.keys[key] ?? `c${state.seq + 1}`;
   const fields: PushFields = {};
@@ -163,6 +176,7 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
     if (!Array.isArray(input.tags)) throw invalid("tags must be a list of strings");
     fields.tags = [...new Set(input.tags.map((t, i) => text(t, `tags[${i}]`)))];
   }
+  if (input.agent !== undefined) fields.agent = parseAgent(input.agent);
   if (input.attention !== undefined) fields.attention = parseAttention(input.attention);
   if (input.parent === null) {
     fields.parentId = null;

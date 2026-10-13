@@ -1,0 +1,1 @@
+{"session_id":"019a0000-0000-7000-8000-000000000001","transcript_path":null,"cwd":"/work/other","hook_event_name":"PostToolUse","model":"gpt-6","permission_mode":"default","turn_id":"turn-2","tool_name":"Bash","tool_use_id":"call-1","tool_input":{"command":["bash","-lc","pnpm run deploy"]},"tool_response":"ok"}
