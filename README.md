@@ -6,7 +6,7 @@ Pnyx shows your coding agents as cards on one board (Needs you, Workers on it, R
 
 ## Status
 
-Pre-v1. This repository holds the project template and a first CLI slice: `pnyx-axi` prints an empty board and `pnyx-axi --help` prints help. The event log, sources and web board land next. See [docs/design.md](docs/design.md).
+Pre-v1. `pnyx-axi` keeps each board as an append-only event log with a rebuildable snapshot; cards come from `pnyx-axi push` and are edited with `move`, `link`, `outcome` and `undo` (run `pnyx-axi --help`). The hook, Firstmate and GitHub sources and the web board land next. See [docs/design.md](docs/design.md).
 
 ## Try it
 
