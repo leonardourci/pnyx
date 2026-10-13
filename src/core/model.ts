@@ -14,6 +14,11 @@ export type LinkState = (typeof LINK_STATES)[number];
 export const OUTCOME_STATES = ["done", "failed", "cancelled"] as const;
 export type OutcomeState = (typeof OUTCOME_STATES)[number];
 
+// queued: recorded before the send. delivery_unknown: the route could not confirm
+// the send either way, so it is never resent blindly.
+export const REPLY_STATES = ["queued", "delivered", "delivery_unknown", "failed"] as const;
+export type ReplyState = (typeof REPLY_STATES)[number];
+
 // Where an observation came from. generation and observedAt order observations of
 // the same source object so a late, older observation cannot overwrite a newer one.
 export interface SourceRef {
@@ -48,6 +53,12 @@ export interface Outcome {
   note?: string;
 }
 
+// A reply's latest receipt. The text stays in the log, on its queued event.
+export interface Reply {
+  id: string;
+  state: ReplyState;
+}
+
 export interface Card {
   id: string;
   key: string;
@@ -60,6 +71,7 @@ export interface Card {
   links: Link[];
   sourceRefs: SourceRef[];
   outcome?: Outcome;
+  replies?: Reply[];
   // Set by a manual move and kept until `move --auto`.
   manualColumn?: Column;
   column: Column;
@@ -116,9 +128,16 @@ export type OutcomeEvent = EventBase & {
   };
 };
 
-export type BoardEvent = PushedEvent | MovedEvent | LinkedEvent | OutcomeEvent;
+// One receipt of a reply sent through a source's route. The queued event carries
+// the literal text; later receipts of the same reply carry only the outcome.
+export type RepliedEvent = EventBase & {
+  type: "card.replied";
+  data: { reply: string; state: ReplyState; route: string; text?: string; resolveKey?: string; detail?: string };
+};
+
+export type BoardEvent = PushedEvent | MovedEvent | LinkedEvent | OutcomeEvent | RepliedEvent;
 export type EventType = BoardEvent["type"];
-export const EVENT_TYPES: readonly EventType[] = ["card.pushed", "card.moved", "card.linked", "card.outcome"];
+export const EVENT_TYPES: readonly EventType[] = ["card.pushed", "card.moved", "card.linked", "card.outcome", "card.replied"];
 
 export interface BoardState {
   v: typeof EVENT_VERSION;

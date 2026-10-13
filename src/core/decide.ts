@@ -14,6 +14,7 @@ import {
   type Link,
   type Outcome,
   type PushFields,
+  type RepliedEvent,
   type SourceRef,
 } from "./model.ts";
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from "./reducer.ts";
@@ -257,6 +258,13 @@ export function decideOutcome(state: BoardState, ref: string, outcome: Outcome |
   });
 }
 
+// Records one receipt of a reply. A receipt that repeats the reply's current state
+// appends nothing.
+export function decideReply(state: BoardState, ref: string, data: RepliedEvent["data"], meta: Meta): Decision {
+  const card = findCard(state, ref);
+  return decided(state, meta, { ...base(state, meta, card.id), type: "card.replied", data });
+}
+
 function currentValue(card: Card, target: BoardEvent): unknown {
   if (target.type === "card.pushed") {
     return Object.fromEntries(Object.keys(target.data.before ?? {}).map((field) => [field, pushedValue(card, field)]));
@@ -267,6 +275,7 @@ function currentValue(card: Card, target: BoardEvent): unknown {
 }
 
 function afterValue(target: BoardEvent): unknown {
+  if (target.type === "card.replied") return null;
   if (target.type !== "card.pushed") return target.data.after;
   const after = target.data as unknown as Record<string, unknown>;
   return Object.fromEntries(Object.keys(target.data.before ?? {}).map((field) => [field, after[field] ?? null]));
@@ -276,8 +285,11 @@ function afterValue(target: BoardEvent): unknown {
 // undo never silently overwrites a later edit. Source observations, card creation
 // and merges are facts, not edits, and cannot be undone. Only a source makes a push
 // an observation: --actor is attribution, so a direct CLI or UI write stays undoable
-// whether a person or an agent made it.
+// whether a person or an agent made it. A sent reply cannot be unsent.
 export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): Decision {
+  if (target.type === "card.replied") {
+    throw notUndoable(`${target.id} records a reply, which cannot be unsent`);
+  }
   if (target.type === "card.pushed" && target.data.source) {
     throw notUndoable(`${target.id} records a source observation and cannot be undone`);
   }
