@@ -274,7 +274,9 @@ function afterValue(target: BoardEvent): unknown {
 
 // Appends the reverse of `target`. Refuses when the field has changed since, so an
 // undo never silently overwrites a later edit. Source observations, card creation
-// and merges are facts, not edits, and cannot be undone.
+// and merges are facts, not edits, and cannot be undone. Only a source makes a push
+// an observation: --actor is attribution, so a direct CLI or UI write stays undoable
+// whether a person or an agent made it.
 export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): Decision {
   if (target.type === "card.pushed" && target.data.source) {
     throw notUndoable(`${target.id} records a source observation and cannot be undone`);
