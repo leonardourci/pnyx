@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decideLink, decideMove, decidePush, decideUndo, parseLink, type Decision, type Meta } from "../src/core/decide.ts";
+import { decideLink, decideMove, decideOutcome, decidePush, decideUndo, parseLink, type Decision, type Meta } from "../src/core/decide.ts";
 import { BoardError, type BoardEvent, type BoardState } from "../src/core/model.ts";
 import { emptyBoard, reduce } from "../src/core/reducer.ts";
 
@@ -76,24 +76,78 @@ test("undo reverses a move unless the card changed since", () => {
 
   const later = reduce(state, eventOf(decideMove(state, "c1", "done", meta)));
   rejects(() => decideUndo(later, move, meta), "CONFLICT");
-  rejects(() => decideUndo(state, move, meta, 99), "CONFLICT");
+  rejects(() => decideUndo(state, move, { ...meta, ifRevision: 99 }), "REVISION_CONFLICT");
   const undone = reduce(state, undo);
   rejects(() => decideUndo(undone, move, meta), "CONFLICT");
 });
 
-test("undo reverses a link update to its earlier value", () => {
+test("undo reverses a link update but never a merge", () => {
   let state = apply(emptyBoard(), decidePush(emptyBoard(), "k1", {}, meta));
   const url = "https://github.com/o/r/pull/3";
-  state = apply(state, decideLink(state, "c1", url, parseLink({ url, state: "open" }), meta));
+  const open = eventOf(decideLink(state, "c1", url, parseLink({ url, state: "open" }), meta));
+  state = reduce(state, open);
+  assert.equal(state.cards.c1!.column, "review");
+  const reverted = reduce(state, eventOf(decideUndo(state, open, meta)));
+  assert.deepEqual(reverted.cards.c1!.links, []);
+
   const merged = eventOf(decideLink(state, "c1", url, { kind: "github_pr", url, state: "merged" }, meta));
   state = reduce(state, merged);
   assert.equal(state.cards.c1!.column, "done");
-  state = reduce(state, eventOf(decideUndo(state, merged, meta)));
-  assert.equal(state.cards.c1!.links[0]!.state, "open");
-  assert.equal(state.cards.c1!.column, "review");
+  rejects(() => decideUndo(state, merged, meta), "NOT_UNDOABLE");
 });
 
-test("pushes cannot be undone", () => {
-  const push = eventOf(decidePush(emptyBoard(), "k1", {}, meta));
-  rejects(() => decideUndo(reduce(emptyBoard(), push), push, meta), "VALIDATION_ERROR");
+test("undo reverses a manual push edit, but not creation or source observations", () => {
+  const created = eventOf(decidePush(emptyBoard(), "k1", { title: "One" }, meta));
+  let state = reduce(emptyBoard(), created);
+  rejects(() => decideUndo(state, created, meta), "NOT_UNDOABLE");
+
+  const edit = eventOf(decidePush(state, "k1", { title: "Two", activity: "busy", tags: ["a"] }, meta));
+  assert.deepEqual(edit.type === "card.pushed" && edit.data.before, { title: "One", activity: null, tags: [] });
+  state = reduce(state, edit);
+  const undo = eventOf(decideUndo(state, edit, meta));
+  const undone = reduce(state, undo);
+  assert.equal(undone.cards.c1!.title, "One");
+  assert.equal(undone.cards.c1!.activity, undefined);
+  assert.deepEqual(undone.cards.c1!.tags, []);
+  // Undoing the undo redoes the edit.
+  assert.equal(reduce(undone, eventOf(decideUndo(undone, undo, meta))).cards.c1!.title, "Two");
+
+  const observed = eventOf(decidePush(state, "k1", { activity: "idle", source: source("2026-10-13T10:00:00Z") }, meta));
+  rejects(() => decideUndo(reduce(state, observed), observed, meta), "NOT_UNDOABLE");
+});
+
+test("an undone undo points at the latest event in the chain", () => {
+  let state = apply(emptyBoard(), decidePush(emptyBoard(), "k1", {}, meta));
+  const move = eventOf(decideMove(state, "c1", "done", meta));
+  state = reduce(state, move);
+  const undo = eventOf(decideUndo(state, move, meta));
+  state = reduce(state, undo);
+  const redo = eventOf(decideUndo(state, undo, meta));
+  state = reduce(state, redo);
+  assert.equal(state.cards.c1!.manualColumn, "done");
+  assert.throws(
+    () => decideUndo(state, move, meta),
+    (error: unknown) => error instanceof BoardError && error.code === "CONFLICT" && error.help[0]!.includes(`undo ${redo.id}`),
+  );
+});
+
+test("every write checks the expected revision; a repeated event id wins over it", () => {
+  const created = eventOf(decidePush(emptyBoard(), "k1", {}, { ...meta, ifRevision: 0 }));
+  const state = reduce(emptyBoard(), created);
+  const stale = { ...meta, ifRevision: 0 };
+  rejects(() => decidePush(state, "k1", { title: "x" }, stale), "REVISION_CONFLICT");
+  rejects(() => decideMove(state, "c1", "done", stale), "REVISION_CONFLICT");
+  rejects(() => decideLink(state, "c1", "https://example.com", parseLink({ url: "https://example.com" }), stale), "REVISION_CONFLICT");
+  rejects(() => decideOutcome(state, "c1", { state: "done" }, stale), "REVISION_CONFLICT");
+  assert.ok("event" in decideOutcome(state, "c1", { state: "done" }, { ...meta, ifRevision: 1 }));
+  assert.deepEqual(decidePush(state, "k1", { title: "x" }, { ...stale, id: created.id }), { skipped: "duplicate" });
+});
+
+test("generated event ids never collide with caller-chosen ones", () => {
+  let state = apply(emptyBoard(), decidePush(emptyBoard(), "a", {}, { ...meta, id: "evt_3" }));
+  state = apply(state, decidePush(state, "b", {}, meta));
+  const third = eventOf(decidePush(state, "c", {}, meta));
+  assert.equal(third.seq, 3);
+  assert.notEqual(third.id, "evt_3");
+  assert.ok(reduce(state, third).cards[third.cardId]);
 });

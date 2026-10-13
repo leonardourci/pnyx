@@ -65,6 +65,7 @@ function apply(state: BoardState, event: BoardEvent): boolean {
   let card = state.cards[event.cardId];
   if (event.type === "card.pushed") {
     const { key, source, ...fields } = event.data;
+    delete fields.before;
     if (!card) {
       if (key in state.keys) return false;
       card = {
@@ -89,8 +90,10 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       if (isStaleSource(card, source)) return false;
       card.sourceRefs = [...card.sourceRefs.filter((r) => !sameSource(r, source)), source];
     }
-    const { parentId, ...rest } = fields;
+    const { parentId, activity, ...rest } = fields;
     Object.assign(card, rest);
+    if (activity === null) delete card.activity;
+    else if (activity !== undefined) card.activity = activity;
     if (parentId === null) delete card.parentId;
     else if (parentId !== undefined && !wouldCycle(state.cards, card.id, parentId)) card.parentId = parentId;
   } else {

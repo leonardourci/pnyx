@@ -25,6 +25,7 @@ import {
   type Column,
   type OutcomeState,
 } from "../core/model.ts";
+import { emptyBoard, replay } from "../core/reducer.ts";
 import { loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from "../store/board-store.ts";
 
 const DEFAULT_BOARD = "default";
@@ -36,7 +37,13 @@ type Output = Record<string, unknown>;
 type Options = NonNullable<ParseArgsConfig["options"]>;
 
 const COMMON: Options = { board: { type: "string" } };
-const WRITE: Options = { ...COMMON, actor: { type: "string" }, reason: { type: "string" } };
+const WRITE: Options = {
+  ...COMMON,
+  actor: { type: "string" },
+  reason: { type: "string" },
+  "event-id": { type: "string" },
+  "if-revision": { type: "string" },
+};
 
 function parse(args: string[], options: Options, positionals: number) {
   let parsed;
@@ -71,6 +78,8 @@ function meta(values: Record<string, string | boolean | undefined>): Meta {
   const m: Meta = { at: new Date().toISOString(), actor: (values.actor as string | undefined) ?? "cli" };
   if (typeof values.reason === "string") m.reason = values.reason;
   if (typeof values["event-id"] === "string") m.id = values["event-id"];
+  const ifRevision = integer(values["if-revision"], "--if-revision");
+  if (ifRevision !== undefined) m.ifRevision = ifRevision;
   return m;
 }
 
@@ -101,18 +110,34 @@ function drainSpool(writer: Writer): { ingested: number; rejected: number } {
   return { ingested, rejected };
 }
 
-function commit(board: string, decide: (state: BoardState) => Decision): Output {
+function receipt(state: BoardState, event: BoardEvent): Output {
+  const card = state.cards[event.cardId]!;
+  return {
+    event: { seq: event.seq, id: event.id, type: event.type },
+    card: { id: card.id, column: card.column, revision: card.revision },
+  };
+}
+
+// The receipt the event with this id got when it was appended.
+function originalReceipt(board: string, id: string, seq: number): Output {
+  const events = readEvents(board);
+  const index = events.findIndex((e) => e.id === id && e.seq === seq);
+  return { ...receipt(replay(emptyBoard(), events.slice(0, index + 1)), events[index]!), duplicate: "event id already applied; nothing appended" };
+}
+
+// A repeated --event-id answers with the original receipt before any other check,
+// so a retry of a write that already landed never reports a conflict.
+function commit(board: string, meta: Meta, decide: (state: BoardState) => Decision): Output {
   return withWriter(board, (writer) => {
     const spool = drainSpool(writer);
-    const decision = decide(writer.state);
-    if ("event" in decision) writer.append(decision.event);
-    const out: Output = {};
-    if ("event" in decision) {
-      const card = writer.state.cards[decision.event.cardId]!;
-      out.event = { seq: decision.event.seq, id: decision.event.id, type: decision.event.type };
-      out.card = { id: card.id, column: card.column, revision: card.revision };
+    const seq = meta.id === undefined ? undefined : writer.state.eventIds[meta.id];
+    let out: Output;
+    if (seq !== undefined) {
+      out = originalReceipt(board, meta.id!, seq);
     } else {
-      out.event = `none: ${decision.skipped}`;
+      const decision = decide(writer.state);
+      if ("event" in decision) writer.append(decision.event);
+      out = "event" in decision ? receipt(writer.state, decision.event) : { event: `none: ${decision.skipped}` };
     }
     if (spool.ingested || spool.rejected) out.spool = spool;
     return out;
@@ -190,7 +215,8 @@ export function home(): Output {
 }
 
 const push = guard((args) => {
-  const { values, board } = parse(args, { ...WRITE, key: { type: "string" }, file: { type: "string" }, "event-id": { type: "string" } }, 0);
+  const { values, board } = parse(args, { ...WRITE, key: { type: "string" }, file: { type: "string" } }, 0);
+  const m = meta(values);
   const key = required(values.key as string | undefined, "--key");
   const file = required(values.file as string | undefined, "--file");
   let input: unknown;
@@ -199,7 +225,7 @@ const push = guard((args) => {
   } catch (error) {
     throw new AxiError(`cannot read card JSON from ${file}: ${(error as Error).message}`, "VALIDATION_ERROR");
   }
-  return commit(board, (state) => decidePush(state, key, input, meta(values)));
+  return commit(board, m, (state) => decidePush(state, key, input, m));
 });
 
 const card = guard((args) => {
@@ -212,14 +238,14 @@ const card = guard((args) => {
 });
 
 const move = guard((args) => {
-  const { values, positionals, board } = parse(args, { ...WRITE, auto: { type: "boolean" }, "if-revision": { type: "string" } }, 2);
+  const { values, positionals, board } = parse(args, { ...WRITE, auto: { type: "boolean" } }, 2);
+  const m = meta(values);
   const ref = required(positionals[0], "card id");
   if (Boolean(values.auto) === (positionals[1] !== undefined)) {
     throw new AxiError("give either a column or --auto", "VALIDATION_ERROR", [`Columns: ${COLUMNS.join(", ")}`]);
   }
   const target = values.auto ? null : column(positionals[1]!);
-  const ifRevision = integer(values["if-revision"], "--if-revision");
-  return commit(board, (state) => decideMove(state, ref, target, meta(values), ifRevision));
+  return commit(board, m, (state) => decideMove(state, ref, target, m));
 });
 
 const link = guard((args) => {
@@ -233,17 +259,19 @@ const link = guard((args) => {
     remove: { type: "boolean" },
   };
   const { values, positionals, board } = parse(args, options, 1);
+  const m = meta(values);
   const ref = required(positionals[0], "card id");
   const url = required(values.url as string | undefined, "--url");
   const s = (name: string) => values[name] as string | undefined;
   const parsed = values.remove
     ? null
     : parseLink({ url, kind: s("kind"), number: s("number"), title: s("title"), state: s("state"), checkedAt: s("state") && new Date().toISOString() });
-  return commit(board, (state) => decideLink(state, ref, url, parsed, meta(values)));
+  return commit(board, m, (state) => decideLink(state, ref, url, parsed, m));
 });
 
 const outcome = guard((args) => {
   const { values, positionals, board } = parse(args, { ...WRITE, note: { type: "string" }, clear: { type: "boolean" } }, 2);
+  const m = meta(values);
   const ref = required(positionals[0], "card id");
   const state = positionals[1];
   if (Boolean(values.clear) === (state !== undefined)) {
@@ -254,14 +282,14 @@ const outcome = guard((args) => {
   }
   const note = values.note as string | undefined;
   const result = state === undefined ? null : { state: state as OutcomeState, ...(note ? { note } : {}) };
-  return commit(board, (s) => decideOutcome(s, ref, result, meta(values)));
+  return commit(board, m, (s) => decideOutcome(s, ref, result, m));
 });
 
 function summarize(event: BoardEvent): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : "";
   switch (event.type) {
     case "card.pushed":
-      return `${undo}${Object.keys(event.data).filter((k) => k !== "key").join(" ") || "no fields"}`;
+      return `${undo}${Object.keys(event.data).filter((k) => k !== "key" && k !== "before").join(" ") || "no fields"}`;
     case "card.moved":
       return `${undo}${event.data.before ?? "auto"} -> ${event.data.after ?? "auto"}`;
     case "card.linked": {
@@ -315,12 +343,12 @@ const history = guard((args) => {
 });
 
 const undo = guard((args) => {
-  const { values, positionals, board } = parse(args, { ...WRITE, "if-revision": { type: "string" } }, 1);
+  const { values, positionals, board } = parse(args, WRITE, 1);
+  const m = meta(values);
   const id = required(positionals[0], "event id");
   const target = readEvents(board).find((e) => e.id === id);
   if (!target) throw new AxiError(`event not found: ${id}`, "NOT_FOUND", ["Run `pnyx-axi history` to find event ids"]);
-  const ifRevision = integer(values["if-revision"], "--if-revision");
-  return commit(board, (state) => decideUndo(state, target, meta(values), ifRevision));
+  return commit(board, m, (state) => decideUndo(state, target, m));
 });
 
 const repair = guard((args) => {
@@ -345,16 +373,18 @@ commands:
   link <id> --url <url> [--state open]       Add, update or --remove a link
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
-  undo <event-id>                            Append the reverse of a move, link or outcome
+  undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   repair                                     Set aside a torn log tail and rebuild the snapshot
 flags:
-  --board <name>  Board to use (default: default)
-  --help          Show help for a command
-  --version       Show the version
+  --board <name>     Board to use (default: default)
+  --event-id <id>    On writes: idempotency key; a repeat returns the original receipt
+  --if-revision <n>  On writes: expected card revision (0 for a new card)
+  --help             Show help for a command
+  --version          Show the version
 `;
 
 const COMMAND_HELP: Record<string, string> = {
-  push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--actor <who>] [--reason <text>]
+  push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
 card.json fields (all optional): title, workspace, tags[], parent (card id or key, null to clear), activity,
   attention[] {kind, key, blocking, text}, source {adapter, objectId, instanceId, generation, cursor, observedAt}
@@ -362,23 +392,25 @@ An observation older than the card's latest one from the same source is ignored.
 `,
   card: `usage: pnyx-axi card <id|key> [--board <name>]
 `,
-  move: `usage: pnyx-axi move <id> <needs_you|workers_on_it|review|done> | --auto [--if-revision <n>] [--reason <text>]
+  move: `usage: pnyx-axi move <id> <needs_you|workers_on_it|review|done> | --auto [--event-id <id>] [--if-revision <n>] [--reason <text>]
 A manual move pins the card until \`move <id> --auto\`. Attention on a pinned card stays visible.
 `,
-  link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove]
+  link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove] [--event-id <id>] [--if-revision <n>]
 GitHub pull request URLs get kind and number filled in. An open pull request puts the card in review;
 all linked pull requests merged puts it in done.
 `,
-  outcome: `usage: pnyx-axi outcome <id> done|failed|cancelled [--note <text>] | --clear
+  outcome: `usage: pnyx-axi outcome <id> done|failed|cancelled [--note <text>] | --clear [--event-id <id>] [--if-revision <n>]
 `,
   history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome] [--workspace <name>] [--before <seq>] [--limit <n>]
 Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
 `,
-  undo: `usage: pnyx-axi undo <event-id> [--if-revision <n>]
-Appends an event that reverses a move, link or outcome. Refused when the card changed since.
+  undo: `usage: pnyx-axi undo <event-id> [--event-id <id>] [--if-revision <n>]
+Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
+Source observations, card creation and merges cannot be undone.
 `,
   repair: `usage: pnyx-axi repair [--board <name>]
 A crash mid-append can leave a torn last line; writes refuse until it is repaired.
+Repair copies the torn bytes to a side file and appends a marker so readers skip them; the log is never cut.
 `,
 };
 

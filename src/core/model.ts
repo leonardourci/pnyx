@@ -75,7 +75,7 @@ export interface PushFields {
   workspace?: string;
   tags?: string[];
   parentId?: string | null;
-  activity?: string;
+  activity?: string | null;
   attention?: Attention[];
 }
 
@@ -91,9 +91,11 @@ interface EventBase {
   undoes?: string;
 }
 
+// before holds the earlier value of each field the push changed (null when it was
+// absent), so a manual edit can be undone. A push that created the card has none.
 export type PushedEvent = EventBase & {
   type: "card.pushed";
-  data: PushFields & { key: string; source?: SourceRef };
+  data: PushFields & { key: string; source?: SourceRef; before?: PushFields };
 };
 export type MovedEvent = EventBase & {
   type: "card.moved";

@@ -1,3 +1,3 @@
 {"v":1,"seq":1,"id":"evt_1","at":"2026-10-13T13:01:00Z","actor":"cli","cardId":"c1","type":"card.pushed","data":{"key":"fm:task-17","title":"Migrate config","workspace":"work","activity":"working"}}
 {"v":1,"seq":2,"id":"evt_2","at":"2026-10-13T13:02:00Z","actor":"cli","cardId":"c1","reason":"keep in review while I check","type":"card.moved","data":{"before":null,"after":"review"}}
-{"v":1,"seq":3,"id":"evt_3","at":"2026-10-13T13:03:00Z","actor":"cli","cardId":"c1","type":"card.pushed","data":{"key":"fm:task-17","attention":[{"kind":"permission_needed","key":"perm-1","blocking":true,"text":"Allow writing config?"}]}}
+{"v":1,"seq":3,"id":"evt_3","at":"2026-10-13T13:03:00Z","actor":"cli","cardId":"c1","type":"card.pushed","data":{"key":"fm:task-17","attention":[{"kind":"permission_needed","key":"perm-1","blocking":true,"text":"Allow writing config?"}],"before":{"attention":[]}}}

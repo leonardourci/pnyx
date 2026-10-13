@@ -77,13 +77,36 @@ test("a torn tail is skipped on read, blocks writes and is set aside by repair",
   const result = repairBoard("default");
   assert.equal(result.tornBytes, loaded.tornBytes);
   assert.deepEqual(readFileSync(result.preserved!), original.subarray(clean.length));
-  assert.deepEqual(readFileSync(join(dir, "events.jsonl")), clean);
+  // The log is only appended to: the torn bytes stay, closed by a repair marker.
+  const repaired = readFileSync(join(dir, "events.jsonl"));
+  assert.deepEqual(repaired.subarray(0, original.length), original);
+  const marker = JSON.parse(repaired.subarray(original.length + 1).toString("utf8"));
+  assert.deepEqual(marker.data, { offset: clean.length, length: original.length - clean.length });
   assert.equal(loadBoard("default").tornBytes, 0);
 
   const [first] = readStream("torn-tail");
   appendAll([{ ...first!, seq: 4, id: "evt_4", type: "card.moved", data: { before: "review", after: null } }]);
   assert.equal(loadBoard("default").state.cards.c1!.column, "review");
+  rmSync(join(dir, "snapshot.json"));
+  assert.equal(loadBoard("default").state.seq, 4);
   assert.equal(repairBoard("default").tornBytes, 0);
+});
+
+test("repair skips a torn line even when it parses as an event", () => {
+  const dir = seedLog("lifecycle");
+  const events = readStream("lifecycle");
+  const unacknowledged = JSON.stringify({ ...events[0]!, seq: 9, id: "evt_9", data: { key: "ghost" } });
+  writeFileSync(join(dir, "events.jsonl"), readFileSync(join(dir, "events.jsonl")).toString() + unacknowledged);
+  repairBoard("default");
+  rmSync(join(dir, "snapshot.json"));
+  assert.deepEqual(loadBoard("default").state, replay(emptyBoard(), events));
+});
+
+test("a repair marker that names the wrong line is corruption", () => {
+  const dir = seedLog("lifecycle");
+  const marker = { v: 1, type: "log.repaired", at: "2026-10-13T00:00:00Z", data: { offset: 0, length: 1 } };
+  writeFileSync(join(dir, "events.jsonl"), `${readFileSync(join(dir, "events.jsonl"))}${JSON.stringify(marker)}\n`);
+  rejects(() => loadBoard("default"), "LOG_CORRUPT");
 });
 
 test("corruption inside the log is rejected, not skipped", () => {

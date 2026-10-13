@@ -35,7 +35,9 @@ test("push is an idempotent upsert by key", () => {
   assert.match(run("push", "--key", "claude:s1", "--file", file), /^ {2}id: c1$/m);
   assert.match(run("push", "--key", "claude:s1", "--file", file), /^event: "none: unchanged"$/m);
   assert.match(run("push", "--key", "claude:s1", "--file", card({ title: "x" }), "--event-id", "e1"), /^ {2}seq: 2$/m);
-  assert.match(run("push", "--key", "claude:s1", "--file", card({ title: "y" }), "--event-id", "e1"), /none: duplicate/);
+  const retry = run("push", "--key", "claude:s1", "--file", card({ title: "y" }), "--event-id", "e1");
+  assert.match(retry, /^ {2}seq: 2$/m);
+  assert.match(retry, /^duplicate: /m);
   const out = run();
   assert.match(out, /^ {2}workers_on_it: 1$/m);
   assert.match(out, /^ {2}c1,x,workers_on_it,none$/m);
@@ -75,6 +77,35 @@ test("undo appends a reversing event and refuses a second undo", () => {
   assert.match(run("undo", "evt_2"), /^ {2}seq: 3$/m);
   assert.match(run("card", "c1"), /^ {2}placement: auto$/m);
   assert.match(run("history", "--limit", "1"), /undo evt_2: done -> auto/);
+});
+
+test("every write takes --event-id and --if-revision", () => {
+  const { run, fails, card } = board();
+  run("push", "--key", "k", "--file", card({}), "--if-revision", "0");
+  fails(["push", "--key", "k", "--file", card({ title: "x" }), "--if-revision", "0"], 1, "REVISION_CONFLICT");
+  const url = "https://github.com/o/r/pull/7";
+  assert.match(run("link", "c1", "--url", url, "--state", "open", "--event-id", "l1", "--if-revision", "1"), /^ {2}revision: 2$/m);
+  run("outcome", "c1", "done", "--event-id", "o1");
+  // A retried link reports what it got the first time, not a conflict.
+  const retry = run("link", "c1", "--url", url, "--state", "open", "--event-id", "l1", "--if-revision", "1");
+  assert.match(retry, /^ {2}seq: 2$/m);
+  assert.match(retry, /^ {2}revision: 2$/m);
+  assert.match(retry, /^duplicate: /m);
+  fails(["outcome", "c1", "failed", "--if-revision", "1"], 1, "REVISION_CONFLICT");
+  fails(["move", "c1", "done", "--if-revision", "1"], 1, "REVISION_CONFLICT");
+  fails(["undo", "o1", "--if-revision", "1"], 1, "REVISION_CONFLICT");
+});
+
+test("undo reverses a manual push edit and refuses a merge", () => {
+  const { run, fails, card } = board();
+  run("push", "--key", "k", "--file", card({ title: "Before" }));
+  run("push", "--key", "k", "--file", card({ title: "After" }));
+  run("undo", "evt_2");
+  assert.match(run("card", "c1"), /^ {2}title: Before$/m);
+  fails(["undo", "evt_1"], 1, "NOT_UNDOABLE");
+  run("link", "c1", "--url", "https://github.com/o/r/pull/7", "--state", "merged");
+  fails(["undo", "evt_4"], 1, "NOT_UNDOABLE");
+  assert.match(run("card", "c1"), /^ {2}column: done$/m);
 });
 
 test("errors are structured", () => {

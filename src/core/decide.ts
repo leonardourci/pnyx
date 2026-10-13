@@ -23,6 +23,8 @@ export interface Meta {
   actor: string;
   // Caller-chosen event id; repeating it is a no-op.
   id?: string;
+  // Expected card revision; 0 for a card that does not exist yet.
+  ifRevision?: number;
   reason?: string;
 }
 
@@ -34,12 +36,19 @@ export function findCard(state: BoardState, ref: string): Card {
   return card;
 }
 
+// Generated ids share a namespace with caller-chosen ones, so skip any already used.
+function freeId(state: BoardState, seq: number): string {
+  let id = `evt_${seq}`;
+  for (let n = 2; id in state.eventIds; n++) id = `evt_${seq}_${n}`;
+  return id;
+}
+
 function base(state: BoardState, meta: Meta, cardId: string) {
   const seq = state.seq + 1;
   return {
     v: EVENT_VERSION,
     seq,
-    id: meta.id ?? `evt_${seq}`,
+    id: meta.id ?? freeId(state, seq),
     at: meta.at,
     actor: meta.actor,
     cardId,
@@ -57,18 +66,24 @@ function strip(card: Card | undefined) {
 }
 
 function decided(state: BoardState, meta: Meta, event: BoardEvent): Decision {
-  if (meta.id !== undefined && meta.id in state.eventIds) return { skipped: "duplicate" };
+  if (event.id in state.eventIds) return { skipped: "duplicate" };
+  checkRevision(state.cards[event.cardId], meta.ifRevision);
   const before = strip(state.cards[event.cardId]);
   const after = strip(reduce(state, event).cards[event.cardId]);
   return before && isDeepStrictEqual(before, after) ? { skipped: "unchanged" } : { event };
 }
 
-function checkRevision(card: Card, ifRevision: number | undefined): void {
-  if (ifRevision !== undefined && card.revision !== ifRevision) {
-    throw new BoardError(`card ${card.id} is at revision ${card.revision}, not ${ifRevision}`, "CONFLICT", [
-      `Run \`pnyx-axi card ${card.id}\` and retry with the current revision`,
+function checkRevision(card: Card | undefined, ifRevision: number | undefined): void {
+  const revision = card?.revision ?? 0;
+  if (ifRevision !== undefined && revision !== ifRevision) {
+    throw new BoardError(`card ${card?.id ?? "(new)"} is at revision ${revision}, not ${ifRevision}`, "REVISION_CONFLICT", [
+      card ? `Run \`pnyx-axi card ${card.id}\` and retry with the current revision` : "Use --if-revision 0 for a new card",
     ]);
   }
+}
+
+function notUndoable(message: string): BoardError {
+  return new BoardError(message, "NOT_UNDOABLE", ["Run `pnyx-axi history` to find an undoable edit"]);
 }
 
 function invalid(message: string): BoardError {
@@ -157,25 +172,29 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
     fields.parentId = parent.id;
   }
   const source = input.source === undefined ? undefined : parseSource(input.source);
-  if (source && isStaleSource(state.cards[cardId], source)) return { skipped: "stale" };
+  const card = state.cards[cardId];
+  if (source && isStaleSource(card, source)) return { skipped: "stale" };
 
+  let before: PushFields | undefined;
+  if (card) {
+    const changed = Object.entries(fields).filter(([field, value]) => !isDeepStrictEqual(pushedValue(card, field), value));
+    before = Object.fromEntries(changed.map(([field]) => [field, pushedValue(card, field)])) as PushFields;
+  }
   return decided(state, meta, {
     ...base(state, meta, cardId),
     type: "card.pushed",
-    data: { key, ...fields, ...(source ? { source } : {}) },
+    data: { key, ...fields, ...(source ? { source } : {}), ...(before ? { before } : {}) },
   });
 }
 
+// The card's value for a push field, null when absent.
+function pushedValue(card: Card, field: string): unknown {
+  return (card as unknown as Record<string, unknown>)[field] ?? null;
+}
+
 // column null returns the card to automatic placement.
-export function decideMove(
-  state: BoardState,
-  ref: string,
-  column: Column | null,
-  meta: Meta,
-  ifRevision?: number,
-): Decision {
+export function decideMove(state: BoardState, ref: string, column: Column | null, meta: Meta): Decision {
   const card = findCard(state, ref);
-  checkRevision(card, ifRevision);
   return decided(state, meta, {
     ...base(state, meta, card.id),
     type: "card.moved",
@@ -239,29 +258,56 @@ export function decideOutcome(state: BoardState, ref: string, outcome: Outcome |
 }
 
 function currentValue(card: Card, target: BoardEvent): unknown {
+  if (target.type === "card.pushed") {
+    return Object.fromEntries(Object.keys(target.data.before ?? {}).map((field) => [field, pushedValue(card, field)]));
+  }
   if (target.type === "card.moved") return card.manualColumn ?? null;
   if (target.type === "card.linked") return card.links.find((l) => l.url === target.data.url) ?? null;
   return card.outcome ?? null;
 }
 
+function afterValue(target: BoardEvent): unknown {
+  if (target.type !== "card.pushed") return target.data.after;
+  const after = target.data as unknown as Record<string, unknown>;
+  return Object.fromEntries(Object.keys(target.data.before ?? {}).map((field) => [field, after[field] ?? null]));
+}
+
 // Appends the reverse of `target`. Refuses when the field has changed since, so an
-// undo never silently overwrites a later edit.
-export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta, ifRevision?: number): Decision {
-  if (target.type === "card.pushed") {
-    throw invalid(`${target.type} cannot be undone; only moves, links and outcomes can`);
+// undo never silently overwrites a later edit. Source observations, card creation
+// and merges are facts, not edits, and cannot be undone.
+export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): Decision {
+  if (target.type === "card.pushed" && target.data.source) {
+    throw notUndoable(`${target.id} records a source observation and cannot be undone`);
   }
-  const by = state.undone[target.id];
-  if (by) {
-    throw new BoardError(`${target.id} was already undone by ${by}`, "CONFLICT", [`Run \`pnyx-axi undo ${by}\` to redo it`]);
+  if (target.type === "card.pushed" && !target.data.before) {
+    throw notUndoable(`${target.id} created card ${target.cardId} and cannot be undone`);
+  }
+  if (target.type === "card.linked" && target.data.after?.state === "merged") {
+    throw notUndoable(`${target.id} records a merge, which cannot be undone`);
+  }
+  // Each undo can itself be undone, so follow the chain to the latest one.
+  const chain: string[] = [];
+  for (let by = state.undone[target.id]; by; by = state.undone[by]) chain.push(by);
+  const latest = chain.at(-1);
+  if (latest) {
+    const redone = chain.length % 2 === 0;
+    throw new BoardError(`${target.id} was already ${redone ? "redone" : "undone"} by ${latest}`, "CONFLICT", [
+      `Run \`pnyx-axi undo ${latest}\` to ${redone ? "undo it again" : "redo it"}`,
+    ]);
   }
   const card = findCard(state, target.cardId);
-  checkRevision(card, ifRevision);
-  if (!isDeepStrictEqual(currentValue(card, target), target.data.after)) {
+  checkRevision(card, meta.ifRevision);
+  if (!isDeepStrictEqual(currentValue(card, target), afterValue(target))) {
     throw new BoardError(`${target.id} no longer matches card ${card.id}: it changed since`, "CONFLICT", [
       `Run \`pnyx-axi history --card ${card.id}\` to see the later change`,
     ]);
   }
   const head = { ...base(state, meta, card.id), undoes: target.id };
+  if (target.type === "card.pushed") {
+    const before = target.data.before!;
+    const data = { key: card.key, ...before, before: afterValue(target) as PushFields };
+    return decided(state, meta, { ...head, type: "card.pushed", data });
+  }
   if (target.type === "card.moved") {
     return decided(state, meta, { ...head, type: "card.moved", data: { before: target.data.after, after: target.data.before } });
   }

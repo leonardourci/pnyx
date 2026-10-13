@@ -13,7 +13,6 @@ import {
   renameSync,
   rmSync,
   statSync,
-  truncateSync,
   writeFileSync,
   writeSync,
 } from "node:fs";
@@ -49,13 +48,35 @@ interface LogRead {
   size: number;
 }
 
-function parseEvent(line: string, offset: number): BoardEvent {
-  let event: unknown;
+// Appended by repair after it closes a torn line with a newline. Readers skip the
+// line it names; it is not a board event and takes no sequence number.
+interface RepairMarker {
+  v: typeof EVENT_VERSION;
+  type: "log.repaired";
+  at: string;
+  data: { offset: number; length: number };
+}
+
+function parseLine(line: string): unknown {
   try {
-    event = JSON.parse(line);
+    return JSON.parse(line);
   } catch {
-    event = undefined;
+    return undefined;
   }
+}
+
+function isRepairMarker(value: unknown): value is RepairMarker {
+  const m = value as Partial<RepairMarker> | undefined;
+  return m?.type === "log.repaired" && Number.isInteger(m.data?.offset) && Number.isInteger(m.data?.length);
+}
+
+function corrupt(offset: number): BoardError {
+  return new BoardError(`events.jsonl is corrupt at byte ${offset}`, "LOG_CORRUPT", [
+    "The log is never rewritten automatically; inspect that line by hand",
+  ]);
+}
+
+function toEvent(event: unknown, offset: number): BoardEvent {
   const e = event as Partial<BoardEvent> | undefined;
   if (
     typeof e !== "object" ||
@@ -65,9 +86,7 @@ function parseEvent(line: string, offset: number): BoardEvent {
     typeof e.cardId !== "string" ||
     !EVENT_TYPES.includes(e.type as BoardEvent["type"])
   ) {
-    throw new BoardError(`events.jsonl is corrupt at byte ${offset}`, "LOG_CORRUPT", [
-      "The log is never rewritten automatically; inspect that line by hand",
-    ]);
+    throw corrupt(offset);
   }
   if (e.v !== EVENT_VERSION) {
     throw new BoardError(`event at byte ${offset} has schema v${e.v}; this pnyx-axi reads v${EVENT_VERSION}`, "UNSUPPORTED_VERSION");
@@ -77,6 +96,7 @@ function parseEvent(line: string, offset: number): BoardEvent {
 
 // Reads complete lines from `from`. Bytes after the last newline are a torn tail
 // left by a crash mid-append: they are reported through `end` < `size`, never parsed.
+// A line named by the repair marker right after it is skipped, whatever it holds.
 function readLog(dir: string, from = 0): LogRead | null {
   const path = logPath(dir);
   if (!existsSync(path)) return from === 0 ? { events: [], end: 0, size: 0 } : null;
@@ -88,11 +108,31 @@ function readLog(dir: string, from = 0): LogRead | null {
     readSync(fd, buf, 0, buf.length, from);
     const complete = buf.lastIndexOf(10) + 1;
     const events: BoardEvent[] = [];
-    let offset = from;
-    for (const line of buf.subarray(0, complete).toString("utf8").split("\n")) {
-      if (line.trim() !== "") events.push(parseEvent(line, offset));
-      offset += Buffer.byteLength(line) + 1;
+    let previous: { offset: number; length: number; event?: BoardEvent; error?: BoardError } | undefined;
+    for (let start = 0; start < complete; ) {
+      const end = buf.indexOf(10, start);
+      const offset = from + start;
+      const line = buf.toString("utf8", start, end);
+      const length = end - start;
+      start = end + 1;
+      if (line.trim() === "") continue;
+      const value = parseLine(line);
+      if (isRepairMarker(value)) {
+        if (previous?.offset !== value.data.offset || previous.length !== value.data.length) throw corrupt(offset);
+        if (previous.event) events.pop();
+        previous = undefined;
+        continue;
+      }
+      if (previous?.error) throw previous.error;
+      previous = { offset, length };
+      try {
+        previous.event = toEvent(value, offset);
+        events.push(previous.event);
+      } catch (error) {
+        previous.error = error as BoardError;
+      }
     }
+    if (previous?.error) throw previous.error;
     return { events, end: from + complete, size };
   } finally {
     closeSync(fd);
@@ -118,15 +158,20 @@ function readSnapshot(dir: string): Snapshot | null {
   }
 }
 
-function writeSnapshot(dir: string, state: BoardState, offset: number): void {
-  const tmp = `${snapshotPath(dir)}.tmp-${process.pid}`;
-  const fd = openSync(tmp, "w");
+// Writes and flushes to disk before returning. flag "a" appends, "w" replaces.
+function writeDurably(path: string, data: string | Buffer, flag: "a" | "w"): void {
+  const fd = openSync(path, flag);
   try {
-    writeSync(fd, JSON.stringify({ v: EVENT_VERSION, offset, state } satisfies Snapshot));
+    writeSync(fd, typeof data === "string" ? Buffer.from(data) : data);
     fsyncSync(fd);
   } finally {
     closeSync(fd);
   }
+}
+
+function writeSnapshot(dir: string, state: BoardState, offset: number): void {
+  const tmp = `${snapshotPath(dir)}.tmp-${process.pid}`;
+  writeDurably(tmp, JSON.stringify({ v: EVENT_VERSION, offset, state } satisfies Snapshot), "w");
   renameSync(tmp, snapshotPath(dir));
 }
 
@@ -215,13 +260,7 @@ export function withWriter<T>(board: string, fn: (writer: Writer) => T): T {
         append(event) {
           if (event.seq !== state.seq + 1) throw new Error(`append out of sequence: ${event.seq} after ${state.seq}`);
           const line = `${JSON.stringify(event)}\n`;
-          const fd = openSync(logPath(dir), "a");
-          try {
-            writeSync(fd, line);
-            fsyncSync(fd);
-          } finally {
-            closeSync(fd);
-          }
+          writeDurably(logPath(dir), line, "a");
           offset += Buffer.byteLength(line);
           state = reduce(state, event);
           dirty = true;
@@ -251,21 +290,29 @@ export interface Repair {
   seq: number;
 }
 
-// Moves a torn tail into a side file, cuts the log back to its last complete line
-// and rebuilds the snapshot from the full log. A torn tail was never acknowledged
-// as written, so no accepted event is lost; its bytes stay on disk for inspection.
+// Copies a torn tail to a side file, then closes it with a newline and a repair
+// marker so readers skip that line; the log itself is never cut. A torn tail was
+// never acknowledged as written, so no accepted event is lost.
+// ponytail: a crash while appending the marker leaves a corrupt interior line; inspect it by hand.
 export function repairBoard(board: string): Repair {
   const dir = boardDir(board);
   mkdirSync(dir, { recursive: true });
   const release = acquireLock(dir);
   try {
-    const log = readLog(dir) as LogRead;
+    let log = readLog(dir) as LogRead;
     const tornBytes = log.size - log.end;
     let preserved: string | undefined;
     if (tornBytes > 0) {
       preserved = `${logPath(dir)}.torn-${log.end}`;
-      writeFileSync(preserved, readFileSync(logPath(dir)).subarray(log.end));
-      truncateSync(logPath(dir), log.end);
+      writeDurably(preserved, readFileSync(logPath(dir)).subarray(log.end), "w");
+      const marker: RepairMarker = {
+        v: EVENT_VERSION,
+        type: "log.repaired",
+        at: new Date().toISOString(),
+        data: { offset: log.end, length: tornBytes },
+      };
+      writeDurably(logPath(dir), `\n${JSON.stringify(marker)}\n`, "a");
+      log = readLog(dir) as LogRead;
     }
     const state = replay(emptyBoard(), log.events);
     writeSnapshot(dir, state, log.end);
