@@ -96,27 +96,31 @@ test("hook stays silent and exits 0 on bad arguments, bad input and unwritable s
   assert.equal(stdout + stderr, "");
 });
 
-test("hook sends the line to the service socket instead of the spool when one listens", async () => {
+test("hook sends the line to the board's server socket instead of the spool when one listens", async () => {
   const { script, home, spooled } = sandbox();
-  const lines: string[] = [];
+  const board = join(home, "boards", "default");
+  mkdirSync(board, { recursive: true });
+  const received: string[] = [];
+  // Like the server: reads until the hook closes its side, then closes.
   const server = createServer((socket) => {
     let data = "";
-    socket.on("data", (chunk) => {
-      data += chunk;
-      if (data.includes("\n")) {
-        lines.push(data);
-        socket.end();
-      }
+    socket.on("data", (chunk) => (data += chunk));
+    socket.on("end", () => {
+      received.push(data);
+      socket.end();
     });
   });
-  await new Promise<void>((resolve) => server.listen(join(home, "pnyx.sock"), resolve));
+  await new Promise<void>((resolve) => server.listen(join(board, "server.sock"), resolve));
   try {
+    const started = Date.now();
     await hook(script, ["claude", "Stop"], fixture("claude-stop"));
+    assert.ok(Date.now() - started < 900, "the hook does not wait out nc's timeout");
   } finally {
     server.close();
   }
-  assert.equal(lines.length, 1);
-  assert.equal(JSON.parse(lines[0]!).event, "Stop");
+  assert.equal(received.length, 1);
+  assert.equal(received[0]!.split("\n").length, 2, "one line and a newline");
+  assert.equal(JSON.parse(received[0]!).event, "Stop");
   assert.equal(spooled().length, 0);
 });
 
