@@ -5,4 +5,4 @@ description: Use when reading or updating the Pnyx agent board with the pnyx-axi
 
 # Pnyx
 
-Run `pnyx-axi` for the board summary and `pnyx-axi --help` for commands. Pnyx is pre-v1: cards come from `pnyx-axi push` until the hook and Firstmate sources land.
+Run `pnyx-axi` for the board summary and `pnyx-axi --help` for commands. Pnyx is pre-v1: cards come from `pnyx-axi push` and `pnyx-axi firstmate sync --home <path>` until the hook source lands.
