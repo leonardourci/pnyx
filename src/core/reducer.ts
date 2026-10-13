@@ -107,6 +107,10 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       if (after && !event.undoes && isStaleLink(current, after)) return false;
       const others = card.links.filter((l) => l.url !== url);
       card.links = after ? (current ? card.links.map((l) => (l.url === url ? after : l)) : [...others, after]) : others;
+    } else if (event.type === "card.replied") {
+      const reply = { id: event.data.reply, state: event.data.state };
+      const replies = card.replies ?? [];
+      card.replies = replies.some((r) => r.id === reply.id) ? replies.map((r) => (r.id === reply.id ? reply : r)) : [...replies, reply];
     } else {
       if (event.data.after) card.outcome = event.data.after;
       else delete card.outcome;
