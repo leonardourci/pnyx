@@ -25,6 +25,16 @@ export interface SourceRef {
   observedAt?: string;
 }
 
+// The harness session behind a card: a hook-reported session or one of its subagents.
+export interface AgentRef {
+  provider: string;
+  sessionId: string;
+  agentId?: string;
+  agentType?: string;
+  cwd?: string;
+  transcriptPath?: string;
+}
+
 export interface Link {
   kind: LinkKind;
   url: string;
@@ -56,6 +66,7 @@ export interface Card {
   tags: string[];
   parentId?: string;
   activity?: string;
+  agent?: AgentRef;
   attention: Attention[];
   links: Link[];
   sourceRefs: SourceRef[];
@@ -76,6 +87,7 @@ export interface PushFields {
   tags?: string[];
   parentId?: string | null;
   activity?: string | null;
+  agent?: AgentRef;
   attention?: Attention[];
 }
 

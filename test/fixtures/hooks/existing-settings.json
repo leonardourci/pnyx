@@ -1,0 +1,12 @@
+{
+  "model": "opus",
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "~/hooks/guard.sh" }] }
+    ],
+    "SessionStart": [
+      { "matcher": "startup|resume", "hooks": [{ "type": "command", "command": "echo ready" }] }
+    ],
+    "PreCompact": [{ "matcher": "manual", "hooks": [{ "type": "command", "command": "~/hooks/compact.sh" }] }]
+  }
+}
