@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { decideLink, decideMove, decideOutcome, decidePush, decideUndo, parseLink, type Decision, type Meta } from "../src/core/decide.ts";
 import { BoardError, type BoardEvent, type BoardState } from "../src/core/model.ts";
-import { emptyBoard, reduce } from "../src/core/reducer.ts";
+import { emptyBoard, reduce, replay } from "../src/core/reducer.ts";
+import { readStream } from "./streams.ts";
 
 const meta: Meta = { at: "2026-10-13T12:00:00Z", actor: "test" };
 
@@ -150,4 +151,12 @@ test("generated event ids never collide with caller-chosen ones", () => {
   assert.equal(third.seq, 3);
   assert.notEqual(third.id, "evt_3");
   assert.ok(reduce(state, third).cards[third.cardId]);
+});
+
+test("hook observations from the recorded spool stream cannot be undone", () => {
+  const events = readStream("duplicates");
+  const state = replay(emptyBoard(), events);
+  for (const id of ["hook-0001", "hook-0002", "hook-0005"]) {
+    rejects(() => decideUndo(state, events.find((e) => e.id === id)!, meta), "NOT_UNDOABLE");
+  }
 });

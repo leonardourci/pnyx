@@ -143,6 +143,26 @@ test("spooled hook events are ingested once, in order, by the next write", () =>
   assert.match(run("history"), /^events\[2\]/m);
 });
 
+test("a spooled hook push is an observation, so undo refuses it", () => {
+  const { env, run, fails, card } = board();
+  process.env.PNYX_HOME = env.PNYX_HOME;
+  run("push", "--key", "codex:t1", "--file", card({ title: "Manual" }));
+  spoolWrite("default", { id: "hook-7", key: "codex:t1", at: "2026-10-13T10:00:00Z", card: { activity: "idle" } });
+  run("push", "--key", "other", "--file", card({}));
+  assert.match(run("card", "codex:t1"), /^ {2}activity: idle$/m);
+  fails(["undo", "hook-7"], 1, "NOT_UNDOABLE");
+});
+
+test("an event id reused for another card or type is an idempotency conflict", () => {
+  const { run, fails, card } = board();
+  run("push", "--key", "a", "--file", card({}));
+  run("push", "--key", "b", "--file", card({}), "--event-id", "x1");
+  fails(["push", "--key", "a", "--file", card({ title: "t" }), "--event-id", "x1"], 1, "IDEMPOTENCY_CONFLICT");
+  fails(["move", "b", "done", "--event-id", "x1"], 1, "IDEMPOTENCY_CONFLICT");
+  fails(["move", "c1", "done", "--event-id", "evt_1"], 1, "IDEMPOTENCY_CONFLICT");
+  assert.match(run("push", "--key", "b", "--file", card({ title: "t" }), "--event-id", "x1"), /^duplicate: /m);
+});
+
 test("concurrent writers get one contiguous sequence", async () => {
   const { env, run, card } = board();
   const exec = promisify(execFile);

@@ -22,6 +22,7 @@ import {
   type BoardEvent,
   type BoardState,
   type Card,
+  type EventType,
   type Column,
   type OutcomeState,
 } from "../core/model.ts";
@@ -83,8 +84,9 @@ function meta(values: Record<string, string | boolean | undefined>): Meta {
   return m;
 }
 
-// Folds spooled hook events into the log, oldest first. A file that cannot be
-// read as a push is renamed to *.rejected so it is not retried forever.
+// Folds spooled hook events into the log, oldest first. Each is recorded as a source
+// observation, so it can never be undone. A file that cannot be read as a push is
+// renamed to *.rejected so it is not retried forever.
 function drainSpool(writer: Writer): { ingested: number; rejected: number } {
   let ingested = 0;
   let rejected = 0;
@@ -96,7 +98,9 @@ function drainSpool(writer: Writer): { ingested: number; rejected: number } {
         throw new BoardError("spool entry needs id, key and at", "VALIDATION_ERROR");
       }
       const actor = typeof entry.actor === "string" ? entry.actor : "hook";
-      decision = decidePush(writer.state, entry.key, entry.card ?? {}, { id: entry.id, at: entry.at, actor });
+      const card = (entry.card ?? {}) as Record<string, unknown>;
+      const source = card.source ?? { adapter: actor, objectId: entry.key, observedAt: entry.at };
+      decision = decidePush(writer.state, entry.key, { ...card, source }, { id: entry.id, at: entry.at, actor });
     } catch (error) {
       if (!(error instanceof BoardError || error instanceof SyntaxError)) throw error;
       renameSync(file, `${file}.rejected`);
@@ -118,22 +122,35 @@ function receipt(state: BoardState, event: BoardEvent): Output {
   };
 }
 
-// The receipt the event with this id got when it was appended.
-function originalReceipt(board: string, id: string, seq: number): Output {
+// What a write is about: its event type and the card's id or key.
+interface Intent {
+  type: EventType;
+  card: string;
+}
+
+// The receipt the event with this id got when it was appended. An id already used
+// for another card or event type is a conflict, not a retry.
+function originalReceipt(board: string, state: BoardState, id: string, seq: number, intent: Intent): Output {
   const events = readEvents(board);
   const index = events.findIndex((e) => e.id === id && e.seq === seq);
-  return { ...receipt(replay(emptyBoard(), events.slice(0, index + 1)), events[index]!), duplicate: "event id already applied; nothing appended" };
+  const original = events[index]!;
+  if (original.type !== intent.type || (original.cardId !== intent.card && state.keys[intent.card] !== original.cardId)) {
+    throw new AxiError(`event id ${id} was already used by ${original.type} on card ${original.cardId}`, "IDEMPOTENCY_CONFLICT", [
+      "Retry with a new --event-id",
+    ]);
+  }
+  return { ...receipt(replay(emptyBoard(), events.slice(0, index + 1)), original), duplicate: "event id already applied; nothing appended" };
 }
 
 // A repeated --event-id answers with the original receipt before any other check,
 // so a retry of a write that already landed never reports a conflict.
-function commit(board: string, meta: Meta, decide: (state: BoardState) => Decision): Output {
+function commit(board: string, meta: Meta, intent: Intent, decide: (state: BoardState) => Decision): Output {
   return withWriter(board, (writer) => {
     const spool = drainSpool(writer);
     const seq = meta.id === undefined ? undefined : writer.state.eventIds[meta.id];
     let out: Output;
     if (seq !== undefined) {
-      out = originalReceipt(board, meta.id!, seq);
+      out = originalReceipt(board, writer.state, meta.id!, seq, intent);
     } else {
       const decision = decide(writer.state);
       if ("event" in decision) writer.append(decision.event);
@@ -225,7 +242,7 @@ const push = guard((args) => {
   } catch (error) {
     throw new AxiError(`cannot read card JSON from ${file}: ${(error as Error).message}`, "VALIDATION_ERROR");
   }
-  return commit(board, m, (state) => decidePush(state, key, input, m));
+  return commit(board, m, { type: "card.pushed", card: key }, (state) => decidePush(state, key, input, m));
 });
 
 const card = guard((args) => {
@@ -245,7 +262,7 @@ const move = guard((args) => {
     throw new AxiError("give either a column or --auto", "VALIDATION_ERROR", [`Columns: ${COLUMNS.join(", ")}`]);
   }
   const target = values.auto ? null : column(positionals[1]!);
-  return commit(board, m, (state) => decideMove(state, ref, target, m));
+  return commit(board, m, { type: "card.moved", card: ref }, (state) => decideMove(state, ref, target, m));
 });
 
 const link = guard((args) => {
@@ -266,7 +283,7 @@ const link = guard((args) => {
   const parsed = values.remove
     ? null
     : parseLink({ url, kind: s("kind"), number: s("number"), title: s("title"), state: s("state"), checkedAt: s("state") && new Date().toISOString() });
-  return commit(board, m, (state) => decideLink(state, ref, url, parsed, m));
+  return commit(board, m, { type: "card.linked", card: ref }, (state) => decideLink(state, ref, url, parsed, m));
 });
 
 const outcome = guard((args) => {
@@ -282,7 +299,7 @@ const outcome = guard((args) => {
   }
   const note = values.note as string | undefined;
   const result = state === undefined ? null : { state: state as OutcomeState, ...(note ? { note } : {}) };
-  return commit(board, m, (s) => decideOutcome(s, ref, result, m));
+  return commit(board, m, { type: "card.outcome", card: ref }, (s) => decideOutcome(s, ref, result, m));
 });
 
 function summarize(event: BoardEvent): string {
@@ -348,7 +365,7 @@ const undo = guard((args) => {
   const id = required(positionals[0], "event id");
   const target = readEvents(board).find((e) => e.id === id);
   if (!target) throw new AxiError(`event not found: ${id}`, "NOT_FOUND", ["Run `pnyx-axi history` to find event ids"]);
-  return commit(board, m, (state) => decideUndo(state, target, m));
+  return commit(board, m, { type: target.type, card: target.cardId }, (state) => decideUndo(state, target, m));
 });
 
 const repair = guard((args) => {
