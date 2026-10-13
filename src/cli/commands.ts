@@ -27,6 +27,7 @@ import {
   type OutcomeState,
 } from "../core/model.ts";
 import { emptyBoard, replay } from "../core/reducer.ts";
+import { readServer } from "../server/state.ts";
 import { loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from "../store/board-store.ts";
 
 const DEFAULT_BOARD = "default";
@@ -112,6 +113,11 @@ function drainSpool(writer: Writer): { ingested: number; rejected: number } {
     ingested += 1;
   }
   return { ingested, rejected };
+}
+
+// The server's way into the same writer: drain the spool under the writer lock.
+export function ingestSpool(board: string): { ingested: number; rejected: number } {
+  return withWriter(board, drainSpool);
 }
 
 function receipt(state: BoardState, event: BoardEvent): Output {
@@ -216,17 +222,20 @@ export function home(): Output {
   const { state, tornBytes } = loadBoard(DEFAULT_BOARD);
   const cards = Object.values(state.cards);
   const columns = Object.fromEntries(COLUMNS.map((c) => [c, cards.filter((card) => card.column === c).length]));
-  const out: Output = { board: DEFAULT_BOARD, columns };
+  // Reports the server; never starts it.
+  const server = readServer(DEFAULT_BOARD);
+  const out: Output = { board: DEFAULT_BOARD, server: server ? `running at ${server.url}` : "not running", columns };
   if (tornBytes > 0) out.warning = "events.jsonl has a torn tail; run `pnyx-axi repair`";
+  const serveHint = server ? [] : ["Run `pnyx-axi serve` to start the board server"];
   if (cards.length === 0) {
     out.cards = "none: no cards yet";
-    out.help = ["Run `pnyx-axi push --key <key> --file card.json` to add a card"];
+    out.help = ["Run `pnyx-axi push --key <key> --file card.json` to add a card", ...serveHint];
     return out;
   }
   const order = (c: Card) => COLUMNS.indexOf(c.column);
   const sorted = cards.sort((a, b) => order(a) - order(b) || b.updatedSeq - a.updatedSeq);
   out.cards = sorted.slice(0, HOME_LIMIT).map(cardRow);
-  out.help = ["Run `pnyx-axi card <id>` for details", "Run `pnyx-axi history` for recent events"];
+  out.help = ["Run `pnyx-axi card <id>` for details", "Run `pnyx-axi history` for recent events", ...serveHint];
   if (sorted.length > HOME_LIMIT) out.more = `${sorted.length - HOME_LIMIT} more cards not shown`;
   return out;
 }
@@ -392,6 +401,8 @@ commands:
   history [--card <id>] [--before <seq>]     Page through past events, newest first
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   repair                                     Set aside a torn log tail and rebuild the snapshot
+  serve [--port <n>]                         Run the board server in the foreground until stopped
+  stop                                       Stop the board's running server
 flags:
   --board <name>     Board to use (default: default)
   --event-id <id>    On writes: idempotency key; a repeat returns the original receipt
@@ -428,6 +439,15 @@ Source observations, card creation and merges cannot be undone.
   repair: `usage: pnyx-axi repair [--board <name>]
 A crash mid-append can leave a torn last line; writes refuse until it is repaired.
 Repair copies the torn bytes to a side file and appends a marker so readers skip them; the log is never cut.
+`,
+  serve: `usage: pnyx-axi serve [--port <n>] [--board <name>]
+Serves the board on 127.0.0.1 (a random port unless --port is given) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
+Hook events arrive on the board's server.sock or through its spool. Browsers get one WebSocket at /ws:
+a snapshot on connect, then events by sequence; /ws?after=<seq> resumes, a gap gets a fresh snapshot.
+Writes are POST /api/commands/<move|link|outcome|undo> {"args":[...]} with the token in $PNYX_HOME/token
+as \`Authorization: Bearer <token>\`.
+`,
+  stop: `usage: pnyx-axi stop [--board <name>]
 `,
 };
 
