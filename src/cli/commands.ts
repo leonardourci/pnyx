@@ -34,10 +34,10 @@ const HISTORY_LIMIT = 20;
 const HISTORY_MAX = 100;
 const HOME_LIMIT = 50;
 
-type Output = Record<string, unknown>;
-type Options = NonNullable<ParseArgsConfig["options"]>;
+export type Output = Record<string, unknown>;
+export type Options = NonNullable<ParseArgsConfig["options"]>;
 
-const COMMON: Options = { board: { type: "string" } };
+export const COMMON: Options = { board: { type: "string" } };
 const WRITE: Options = {
   ...COMMON,
   actor: { type: "string" },
@@ -46,7 +46,7 @@ const WRITE: Options = {
   "if-revision": { type: "string" },
 };
 
-function parse(args: string[], options: Options, positionals: number) {
+export function parse(args: string[], options: Options, positionals: number) {
   let parsed;
   try {
     parsed = parseArgs({ args, options, allowPositionals: true, strict: true });
@@ -62,7 +62,7 @@ function parse(args: string[], options: Options, positionals: number) {
   return { values, positionals: parsed.positionals, board: (values.board as string | undefined) ?? DEFAULT_BOARD };
 }
 
-function required(value: string | undefined, what: string): string {
+export function required(value: string | undefined, what: string): string {
   if (!value) throw new AxiError(`missing ${what}`, "VALIDATION_ERROR", ["Run the command with --help"]);
   return value;
 }
@@ -75,7 +75,7 @@ function integer(value: string | boolean | undefined, flag: string): number | un
   return Number(value);
 }
 
-function meta(values: Record<string, string | boolean | undefined>): Meta {
+export function meta(values: Record<string, string | boolean | undefined>): Meta {
   const m: Meta = { at: new Date().toISOString(), actor: (values.actor as string | undefined) ?? "cli" };
   if (typeof values.reason === "string") m.reason = values.reason;
   if (typeof values["event-id"] === "string") m.id = values["event-id"];
@@ -162,8 +162,8 @@ function commit(board: string, meta: Meta, intent: Intent, decide: (state: Board
 }
 
 // Maps core and store errors onto AXI's structured errors.
-function guard(handler: (args: string[]) => Output) {
-  return (args: string[]): Output => {
+export function guard<T = Output>(handler: (args: string[]) => T) {
+  return (args: string[]): T => {
     try {
       return handler(args);
     } catch (error) {
@@ -207,6 +207,7 @@ function cardDetail(card: Card): Output {
     ? card.links.map((l) => ({ kind: l.kind, number: l.number ?? "", title: l.title ?? "", state: l.state ?? "unknown", url: l.url }))
     : "none";
   if (card.outcome) detail.outcome = card.outcome;
+  if (card.replies?.length) detail.replies = card.replies;
   detail.revision = card.revision;
   detail.updated = card.updatedAt;
   return detail;
@@ -316,6 +317,8 @@ function summarize(event: BoardEvent): string {
     }
     case "card.outcome":
       return `${undo}${event.data.after ? `${event.data.after.state}${event.data.after.note ? `: ${event.data.after.note}` : ""}` : "cleared"}`;
+    case "card.replied":
+      return `reply ${event.data.reply} ${event.data.state}${event.data.detail ? `: ${event.data.detail}` : ""}`;
   }
 }
 
@@ -334,7 +337,7 @@ const history = guard((args) => {
   const kind = values.kind as string | undefined;
   const type = kind && (kind.startsWith("card.") ? kind : `card.${kind}`);
   if (type && !(EVENT_TYPES as readonly string[]).includes(type)) {
-    throw new AxiError(`unknown kind: ${kind}`, "VALIDATION_ERROR", ["Use one of pushed, moved, linked, outcome"]);
+    throw new AxiError(`unknown kind: ${kind}`, "VALIDATION_ERROR", ["Use one of pushed, moved, linked, outcome, replied"]);
   }
   const { state } = loadBoard(board);
   const cardId = values.card ? findCard(state, values.card as string).id : undefined;
@@ -392,6 +395,8 @@ commands:
   history [--card <id>] [--before <seq>]     Page through past events, newest first
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   repair                                     Set aside a torn log tail and rebuild the snapshot
+  reply <id> --text <text> --home <path>     Send a reply or decision answer through the card's Firstmate home
+  firstmate sync|watch --home <path>         Fold a Firstmate home's tasks into the board, once or on every change
 flags:
   --board <name>     Board to use (default: default)
   --event-id <id>    On writes: idempotency key; a repeat returns the original receipt
@@ -418,7 +423,7 @@ all linked pull requests merged puts it in done.
 `,
   outcome: `usage: pnyx-axi outcome <id> done|failed|cancelled [--note <text>] | --clear [--event-id <id>] [--if-revision <n>]
 `,
-  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome] [--workspace <name>] [--before <seq>] [--limit <n>]
+  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome|replied] [--workspace <name>] [--before <seq>] [--limit <n>]
 Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
 `,
   undo: `usage: pnyx-axi undo <event-id> [--event-id <id>] [--if-revision <n>]
