@@ -1,0 +1,5 @@
+working [at=1791900000]: setup done
+needs-decision [key=api-shape] [at=1791900100]: REST or RPC for the v2 endpoints?
+blocked [at=10:30]: [key=ci-token] CI needs a token
+needs-decision [key=bad slug]: malformed keys move nothing
+working [at=1791900200]: PR https://github.com/example/app/pull/41 opened

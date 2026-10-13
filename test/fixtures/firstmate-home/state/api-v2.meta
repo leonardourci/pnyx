@@ -1,0 +1,5 @@
+task=api-v2
+kind=ship
+branch=fm/api-v2
+worktree=/tmp/fixture-worktree/api-v2
+window=fixture:1
