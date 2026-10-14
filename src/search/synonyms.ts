@@ -10,4 +10,6 @@ export const SYNONYMS: readonly (readonly string[])[] = [
 ]
 
 // Each word or phrase, lowercased, to its whole group.
-export const synonymGroup = new Map(SYNONYMS.flatMap(group => group.map(term => [term, group] as const)))
+export const synonymGroup = new Map(
+  SYNONYMS.flatMap(group => group.map(term => [term, group] as const)),
+)

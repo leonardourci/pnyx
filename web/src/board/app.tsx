@@ -14,7 +14,23 @@ import { columnsFor, filterCards } from './view.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { KeyboardFooter, KeyboardLayers, KeyboardToolbar, useBoardKeyboard } from '../keyboard/board.tsx'
 
-function Column({ id, title, description, cards, view, save, children }: { id: string; title: string; description: string; cards: Card[]; view: ViewPreferences; save(patch: unknown): Promise<boolean>; children: ReactNode }) {
+function Column({
+  id,
+  title,
+  description,
+  cards,
+  view,
+  save,
+  children,
+}: {
+  id: string
+  title: string
+  description: string
+  cards: Card[]
+  view: ViewPreferences
+  save(patch: unknown): Promise<boolean>
+  children: ReactNode
+}) {
   const [width, setWidth] = useState<number | null>(null)
 
   return (
@@ -22,7 +38,10 @@ function Column({ id, title, description, cards, view, save, children }: { id: s
       data-column={id}
       className={`column column-${id}`}
       aria-label={title}
-      style={{ width: width ?? view.columnWidths[id] ?? 290, flexBasis: width ?? view.columnWidths[id] ?? 290 }}
+      style={{
+        width: width ?? view.columnWidths[id] ?? 290,
+        flexBasis: width ?? view.columnWidths[id] ?? 290,
+      }}
     >
       <header className="column-header">
         <div className="row between">
@@ -65,8 +84,12 @@ export function App() {
   const [page, setPage] = useState('board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(null), [drafts, setDrafts] = useState<Record<string,string>>({}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const notify = useCallback((text: string) => setNotice(text), [])
-  const view = viewFor(state), columns = columnsFor(state), cards = filterCards(state, workspace, tag, query), card = selected ? state.cards[selected] : undefined
-  const workspaces = [...new Set(Object.values(state.cards).map(c => c.workspace))].sort(), tags = [...new Set(Object.values(state.cards).flatMap(c => c.tags))].sort()
+  const view = viewFor(state)
+  const columns = columnsFor(state)
+  const cards = filterCards(state, workspace, tag, query)
+  const card = selected ? state.cards[selected] : undefined
+  const workspaces = [...new Set(Object.values(state.cards).map(c => c.workspace))].sort()
+  const tags = [...new Set(Object.values(state.cards).flatMap(c => c.tags))].sort()
   const save = useCallback((patch: unknown) => command('view', ['set', '--json', JSON.stringify(patch), '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()]).then(() => {
     notify('Preferences saved')
 
@@ -112,7 +135,23 @@ export function App() {
     const target = cards.find(c => c.id === selected) ?? cards.find(c => c.column === card?.column) ?? cards[0]; setSelected(null); requestAnimationFrame(() => focusElement(target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-empty-column="${CSS.escape(card?.column ?? 'needs_you')}"]`))
   }
 
-  const keyboard = useBoardKeyboard({ state, groups: columns.map(c => ({ id: c.id, cards: cards.filter(card => card.column === c.id).map(card => card.id) })), page, setPage, selected, open, close, command, connected, notify, newColumn: newColumn !== null, cancelColumn: () => setNewColumn(null) })
+  const keyboard = useBoardKeyboard({
+    state,
+    groups: columns.map(c => ({
+      id: c.id,
+      cards: cards.filter(card => card.column === c.id).map(card => card.id),
+    })),
+    page,
+    setPage,
+    selected,
+    open,
+    close,
+    command,
+    connected,
+    notify,
+    newColumn: newColumn !== null,
+    cancelColumn: () => setNewColumn(null),
+  })
   const detail = card && (
     <Detail
       key={card.id}
@@ -256,7 +295,11 @@ export function App() {
                                 view={view}
                                 open={open}
                                 save={save}
-                                tabIndex={(items.some(i => i.id === keyboard.remembered[c.id]) ? keyboard.remembered[c.id] : items[0]?.id) === item.id ? 0 : -1}
+                                tabIndex={
+                                  (items.some(i => i.id === keyboard.remembered[c.id])
+                                    ? keyboard.remembered[c.id]
+                                    : items[0]?.id) === item.id ? 0 : -1
+                                }
                               />
                               {selected === item.id && view.panelPlacement === 'inline' && detail}
                             </Fragment>

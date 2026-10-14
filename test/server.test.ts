@@ -98,7 +98,11 @@ async function tab(query = '') {
 }
 
 function http(method: string, path: string, headers: Record<string, string> = {}) {
-  return new Promise<{ status: number; headers: Record<string, unknown>; text: string }>((resolve, reject) => {
+  return new Promise<{
+    status: number
+    headers: Record<string, unknown>
+    text: string
+  }>((resolve, reject) => {
     const req = request({ host: '127.0.0.1', port: server!.port, method, path, headers }, res => {
       let text = ''
       res.on('data', chunk => (text += chunk))
@@ -109,7 +113,10 @@ function http(method: string, path: string, headers: Record<string, string> = {}
   })
 }
 
-async function handshakeStatus(query: string, headers: Record<string, string> = {}): Promise<number> {
+async function handshakeStatus(
+  query: string,
+  headers: Record<string, string> = {},
+): Promise<number> {
   const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/ws${query}`, { headers })
   const [, response] = await once(ws, 'unexpected-response')
 
@@ -402,7 +409,9 @@ test("overlapping catalog requests share or queue the socket's read and answer e
 
   for (const [id, card] of requests) {
     const reply = replies.get(id)!; assert.equal(reply.type, 'receipt', `${id}: ${JSON.stringify(reply)}`)
-    const commands = (reply as unknown as { catalog: { suggestions: { command: string }[] } }).catalog.suggestions.map(s => s.command)
+    const commands = (
+      reply as unknown as { catalog: { suggestions: { command: string }[] } }
+    ).catalog.suggestions.map(s => s.command)
     assert.deepEqual(commands, [card === one ? '/skill-one' : '/skill-two'])
   }
 

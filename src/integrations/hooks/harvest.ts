@@ -33,7 +33,12 @@ function writeCursors(dir: string, cursors: Cursors): void {
 }
 
 // Appends one harvested note to a card; returns 1 when it was new.
-export function appendNote(writer: Writer, cardId: string, { ref, ...note }: SourceNote, at: string): number {
+export function appendNote(
+  writer: Writer,
+  cardId: string,
+  { ref, ...note }: SourceNote,
+  at: string,
+): number {
   const card = writer.state.cards[cardId]!
   const decision = decideNote(writer.state, card.id, note, { at, actor: 'harvest', id: noteId(card.key, ref) })
 

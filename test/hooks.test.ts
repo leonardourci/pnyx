@@ -36,7 +36,13 @@ function sandbox() {
   const home = join(root, 'pnyx')
   const claude = join(root, 'claude')
   const codex = join(root, 'codex')
-  const env = { ...process.env, HOME: root, PNYX_HOME: home, CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex }
+  const env = {
+    ...process.env,
+    HOME: root,
+    PNYX_HOME: home,
+    CLAUDE_CONFIG_DIR: claude,
+    CODEX_HOME: codex,
+  }
   const run = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
   const spool = join(home, 'boards', 'default', 'spool')
   const spooled = () => (existsSync(spool) ? readdirSync(spool).filter(f => f.endsWith('.json') && !f.startsWith('.')) : [])

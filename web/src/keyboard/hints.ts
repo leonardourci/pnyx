@@ -21,7 +21,10 @@ export function visibleTargets(): Omit<Hint, 'label'>[] {
     }
 
     const rect = element.getBoundingClientRect()
-    let left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right), top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom)
+    let left = Math.max(0, rect.left)
+    let right = Math.min(innerWidth, rect.right)
+    let top = Math.max(0, rect.top)
+    let bottom = Math.min(innerHeight, rect.bottom)
 
     for (let parent = element.parentElement; parent; parent = parent.parentElement) {
       const style = getComputedStyle(parent), box = parent.getBoundingClientRect()

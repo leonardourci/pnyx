@@ -177,7 +177,14 @@ export type OutcomeEvent = EventBase & {
 // the literal text; later receipts of the same reply carry only the outcome.
 export type RepliedEvent = EventBase & {
   type: 'card.replied'
-  data: { reply: string; state: ReplyState; route: string; text?: string; resolveKey?: string; detail?: string }
+  data: {
+    reply: string
+    state: ReplyState
+    route: string
+    text?: string
+    resolveKey?: string
+    detail?: string
+  }
 }
 
 export interface ViewPreferences {
@@ -205,7 +212,14 @@ export type ViewEvent = EventBase & {
 // same record again appends nothing.
 export type NotedEvent = EventBase & { type: 'card.noted'; data: Note }
 
-export type BoardEvent = PushedEvent | MovedEvent | LinkedEvent | OutcomeEvent | RepliedEvent | NotedEvent | ViewEvent
+export type BoardEvent =
+  | PushedEvent
+  | MovedEvent
+  | LinkedEvent
+  | OutcomeEvent
+  | RepliedEvent
+  | NotedEvent
+  | ViewEvent
 export type EventType = BoardEvent['type']
 export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view']
 

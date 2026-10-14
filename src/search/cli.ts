@@ -74,7 +74,9 @@ const searchCommand = guard(args => {
     throw new AxiError('--limit must be a positive integer', 'VALIDATION_ERROR')
   }
 
-  const card = values.card === undefined ? undefined : findCard(loadBoard(board).state, values.card as string).id
+  const card = values.card === undefined
+    ? undefined
+    : findCard(loadBoard(board).state, values.card as string).id
   updateIndex(board)
   const { hits, total, match } = search(board, {
     text,

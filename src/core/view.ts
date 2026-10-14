@@ -16,7 +16,10 @@ export const DEFAULT_VIEW: ViewPreferences = {
   cardTraceOverrides: {},
   customColumns: [],
 }
-export const viewFor = (state: BoardState): ViewPreferences => ({ ...structuredClone(DEFAULT_VIEW), ...state.view })
+export const viewFor = (state: BoardState): ViewPreferences => ({
+  ...structuredClone(DEFAULT_VIEW),
+  ...state.view,
+})
 
 const invalid = (key: string): never => {
   throw new BoardError(`invalid view preference: ${key}`, 'VALIDATION_ERROR')

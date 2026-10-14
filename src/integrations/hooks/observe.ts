@@ -138,9 +138,17 @@ export function observe(envelope: HookEnvelope): Observation[] {
   const provider = PROVIDER[envelope.harness]
   const agentId = str(p.agent_id)
   const parentKey = `${envelope.harness}:${sessionId}`
-  const source = (objectId: string) => ({ adapter: 'hooks', instanceId: envelope.harness, objectId, observedAt: envelope.at })
+  const source = (objectId: string) => ({
+    adapter: 'hooks',
+    instanceId: envelope.harness,
+    objectId,
+    observedAt: envelope.at,
+  })
   const agent = (extra: Record<string, unknown>) =>
-    Object.fromEntries(Object.entries({ provider, sessionId, ...extra, cwd: str(p.cwd) }).filter(([, v]) => v !== undefined))
+    Object.fromEntries(
+      Object.entries({ provider, sessionId, ...extra, cwd: str(p.cwd) })
+        .filter(([, v]) => v !== undefined),
+    )
 
   const session = {
     source: source(sessionId),
@@ -155,7 +163,11 @@ export function observe(envelope: HookEnvelope): Observation[] {
     key = `${parentKey}/${agentId}`
     card = {
       source: source(`${sessionId}/${agentId}`),
-      agent: agent({ agentId, agentType: str(p.agent_type), transcriptPath: str(p.agent_transcript_path) }),
+      agent: agent({
+        agentId,
+        agentType: str(p.agent_type),
+        transcriptPath: str(p.agent_transcript_path),
+      }),
       parent: parentKey,
       activity: doing,
     }

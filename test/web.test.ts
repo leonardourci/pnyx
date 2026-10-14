@@ -19,7 +19,8 @@ const event = (d: Decision): BoardEvent => {
   return d.event
 }
 
-const push = (state: BoardState, key: string, fields: unknown) => reduce(state, event(decidePush(state, key, fields, meta)))
+const push = (state: BoardState, key: string, fields: unknown) =>
+  reduce(state, event(decidePush(state, key, fields, meta)))
 
 test('preferences replay deterministically, guard revisions, and undo removes map overrides', () => {
   const initial = push(emptyBoard(), 'a', { title: 'A' })

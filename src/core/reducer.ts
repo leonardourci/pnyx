@@ -69,11 +69,15 @@ export function isStaleSource(card: Card | undefined, source: SourceRef): boolea
   }
 
   // ISO-8601 UTC timestamps compare correctly as strings.
-  return known.observedAt !== undefined && source.observedAt !== undefined && source.observedAt < known.observedAt
+  return known.observedAt !== undefined
+    && source.observedAt !== undefined
+    && source.observedAt < known.observedAt
 }
 
 export function isStaleLink(current: Link | undefined, next: Link): boolean {
-  return current?.checkedAt !== undefined && next.checkedAt !== undefined && next.checkedAt < current.checkedAt
+  return current?.checkedAt !== undefined
+    && next.checkedAt !== undefined
+    && next.checkedAt < current.checkedAt
 }
 
 export function wouldCycle(cards: Record<string, Card>, cardId: string, parentId: string): boolean {
@@ -183,11 +187,15 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       }
 
       const others = card.links.filter(l => l.url !== url)
-      card.links = after ? (current ? card.links.map(l => (l.url === url ? after : l)) : [...others, after]) : others
+      card.links = after
+        ? (current ? card.links.map(l => (l.url === url ? after : l)) : [...others, after])
+        : others
     } else if (event.type === 'card.replied') {
       const reply = { id: event.data.reply, state: event.data.state }
       const replies = card.replies ?? []
-      card.replies = replies.some(r => r.id === reply.id) ? replies.map(r => (r.id === reply.id ? reply : r)) : [...replies, reply]
+      card.replies = replies.some(r => r.id === reply.id)
+        ? replies.map(r => (r.id === reply.id ? reply : r))
+        : [...replies, reply]
     } else if (event.type === 'card.noted') {
       const { kind, source, at } = event.data
       card.notes = [...(card.notes ?? []), { id: event.id, kind, source, ...(at ? { at } : {}) }]

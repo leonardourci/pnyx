@@ -3,7 +3,17 @@ import { Button, NumberField, Select, Switch } from '../components/ui/controls.t
 import { KeyboardSettings } from '../keyboard/settings.tsx'
 import { columnsFor } from './view.ts'
 
-export function Settings({ state, view, save, close }: { state: BoardState; view: ViewPreferences; save(patch: unknown): Promise<boolean>; close(): void }) {
+export function Settings({
+  state,
+  view,
+  save,
+  close,
+}: {
+  state: BoardState
+  view: ViewPreferences
+  save(patch: unknown): Promise<boolean>
+  close(): void
+}) {
   return (
     <section className="settings" aria-label="Settings">
       <div className="row between">
@@ -85,7 +95,9 @@ export function Settings({ state, view, save, close }: { state: BoardState; view
             <dt>View revision</dt>
             <dd>{state.viewRevision ?? 0}</dd>
             <dt>Keyboard</dt>
-            <dd>Use Commands to discover actions and Keyboard shortcuts below to change bindings.</dd>
+            <dd>
+              Use Commands to discover actions and Keyboard shortcuts below to change bindings.
+            </dd>
           </dl>
         </section>
       </div>

@@ -288,8 +288,11 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
   let before: PushFields | undefined
 
   if (card) {
-    const changed = Object.entries(fields).filter(([field, value]) => !isDeepStrictEqual(pushedValue(card, field), value))
-    before = Object.fromEntries(changed.map(([field]) => [field, pushedValue(card, field)])) as PushFields
+    const changed = Object.entries(fields)
+      .filter(([field, value]) => !isDeepStrictEqual(pushedValue(card, field), value))
+    before = Object.fromEntries(
+      changed.map(([field]) => [field, pushedValue(card, field)]),
+    ) as PushFields
   }
 
   return decided(state, meta, {
@@ -311,7 +314,12 @@ function checkColumn(state: BoardState, column: Column | null): void {
 }
 
 // column null returns the card to automatic placement.
-export function decideMove(state: BoardState, ref: string, column: Column | null, meta: Meta): Decision {
+export function decideMove(
+  state: BoardState,
+  ref: string,
+  column: Column | null,
+  meta: Meta,
+): Decision {
   const card = findCard(state, ref)
   checkColumn(state, column)
 
@@ -324,7 +332,14 @@ export function decideMove(state: BoardState, ref: string, column: Column | null
 
 // Builds a link from CLI-style input, filling kind and number from a GitHub pull
 // request URL when they are not given.
-export function parseLink(input: { url: string; kind?: string; number?: string; title?: string; state?: string; checkedAt?: string }): Link {
+export function parseLink(input: {
+  url: string
+  kind?: string
+  number?: string
+  title?: string
+  state?: string
+  checkedAt?: string
+}): Link {
   let url: URL
 
   try {
@@ -378,7 +393,13 @@ export function parseLink(input: { url: string; kind?: string; number?: string; 
 
 // Adds or updates a link (merged over the existing one with the same URL), or
 // removes it when link is null.
-export function decideLink(state: BoardState, ref: string, url: string, link: Link | null, meta: Meta): Decision {
+export function decideLink(
+  state: BoardState,
+  ref: string,
+  url: string,
+  link: Link | null,
+  meta: Meta,
+): Decision {
   const card = findCard(state, ref)
   const current = card.links.find(l => l.url === url)
 
@@ -401,7 +422,13 @@ export function decideLink(state: BoardState, ref: string, url: string, link: Li
 
 // source: the adapter observing this outcome. An observed outcome changes or
 // clears only through the same source.
-export function decideOutcome(state: BoardState, ref: string, outcome: Outcome | null, meta: Meta, source?: string): Decision {
+export function decideOutcome(
+  state: BoardState,
+  ref: string,
+  outcome: Outcome | null,
+  meta: Meta,
+  source?: string,
+): Decision {
   const card = findCard(state, ref)
   const observed = card.outcome?.source
 
@@ -440,7 +467,12 @@ export function noteId(cardKey: string, ref: string): string {
 
 // Records one harvested note. meta.id is the note's stable id, so the same source
 // record harvested again is a duplicate and appends nothing.
-export function decideNote(state: BoardState, ref: string, note: Note, meta: Meta & { id: string }): Decision {
+export function decideNote(
+  state: BoardState,
+  ref: string,
+  note: Note,
+  meta: Meta & { id: string },
+): Decision {
   const card = findCard(state, ref)
 
   if (!(NOTE_KINDS as readonly string[]).includes(note.kind)) {
@@ -458,7 +490,9 @@ export function decideNote(state: BoardState, ref: string, note: Note, meta: Met
 
 function currentValue(card: Card, target: Exclude<BoardEvent, { type: 'board.view' }>): unknown {
   if (target.type === 'card.pushed') {
-    return Object.fromEntries(Object.keys(target.data.before ?? {}).map(field => [field, pushedValue(card, field)]))
+    return Object.fromEntries(
+      Object.keys(target.data.before ?? {}).map(field => [field, pushedValue(card, field)]),
+    )
   }
 
   if (target.type === 'card.moved') {
@@ -483,7 +517,9 @@ function afterValue(target: BoardEvent): unknown {
 
   const after = target.data as unknown as Record<string, unknown>
 
-  return Object.fromEntries(Object.keys(target.data.before ?? {}).map(field => [field, after[field] ?? null]))
+  return Object.fromEntries(
+    Object.keys(target.data.before ?? {}).map(field => [field, after[field] ?? null]),
+  )
 }
 
 // Appends the reverse of `target`. Refuses when the field has changed since, so an
@@ -494,7 +530,10 @@ function afterValue(target: BoardEvent): unknown {
 // harvested note is a source observation.
 export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): Decision {
   if (target.type === 'board.view') {
-    if (state.undone[target.id] || !isDeepStrictEqual(viewFor(state), viewFor({ ...state, view: target.data.after }))) {
+    if (
+      state.undone[target.id]
+      || !isDeepStrictEqual(viewFor(state), viewFor({ ...state, view: target.data.after }))
+    ) {
       throw new BoardError('preferences changed since this event', 'CONFLICT')
     }
 

@@ -58,7 +58,17 @@ export interface RunningServer {
   close(): Promise<void>
 }
 
-export async function startServer({ board, port = 0, homes = [], catalogLocations }: { board: string; port?: number; homes?: string[]; catalogLocations?: CatalogLocations }): Promise<RunningServer> {
+export async function startServer({
+  board,
+  port = 0,
+  homes = [],
+  catalogLocations,
+}: {
+  board: string
+  port?: number
+  homes?: string[]
+  catalogLocations?: CatalogLocations
+}): Promise<RunningServer> {
   if (await readServer(board)) {
     throw new BoardError(`a server is already running for board ${board}`, 'ALREADY_RUNNING', ['Run `pnyx-axi` to see its address'])
   }
@@ -249,7 +259,10 @@ export async function startServer({ board, port = 0, homes = [], catalogLocation
 
           if (entry?.card !== card.id) {
             const previous = entry?.read.catch(() => undefined)
-            const next = { card: card.id, read: Promise.resolve(previous).then(() => readCatalog(card, catalogLocations)) }
+            const next = {
+              card: card.id,
+              read: Promise.resolve(previous).then(() => readCatalog(card, catalogLocations)),
+            }
             catalogReads.set(ws, entry = next)
             void next.read.catch(() => undefined).finally(() => {
               if (catalogReads.get(ws) === next) {
@@ -462,7 +475,12 @@ export async function startServer({ board, port = 0, homes = [], catalogLocation
 
   const watchers: FSWatcher[] = [watch(dir, kick), watch(spoolDir(dir), kick)]
   const url = `http://127.0.0.1:${bound}`
-  const info: ServerInfo = { pid: process.pid, port: bound, url, socket: ingest && socketPath(board) }
+  const info: ServerInfo = {
+    pid: process.pid,
+    port: bound,
+    url,
+    socket: ingest && socketPath(board),
+  }
   const tmp = `${infoPath(board)}.tmp-${process.pid}`
   writeFileSync(tmp, JSON.stringify(info))
   renameSync(tmp, infoPath(board))
@@ -484,7 +502,10 @@ export async function startServer({ board, port = 0, homes = [], catalogLocation
 
       wss.close()
       http.closeAllConnections()
-      await Promise.all([new Promise(r => http.close(r)), ingest && new Promise(r => ingest.close(r))])
+      await Promise.all([
+        new Promise(r => http.close(r)),
+        ingest && new Promise(r => ingest.close(r)),
+      ])
       rmSync(infoPath(board), { force: true })
 
       if (ingest) {
@@ -496,7 +517,10 @@ export async function startServer({ board, port = 0, homes = [], catalogLocation
 
 // Hook events, one JSON object per line. Null when the socket cannot be bound
 // (a path too long for a Unix socket, say); hooks then spool and the watcher drains it.
-async function listenIngest(board: string, onLine: (line: string) => void): Promise<SocketServer | null> {
+async function listenIngest(
+  board: string,
+  onLine: (line: string) => void,
+): Promise<SocketServer | null> {
   const path = socketPath(board)
   // Left by a server that did not stop cleanly; startServer already checked none is running.
   rmSync(path, { force: true })
@@ -605,7 +629,11 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   let server: RunningServer
 
   try {
-    server = await startServer({ board, port: values.port === undefined ? 0 : Number(values.port), homes: values.home })
+    server = await startServer({
+      board,
+      port: values.port === undefined ? 0 : Number(values.port),
+      homes: values.home,
+    })
   } catch (error) {
     if (error instanceof BoardError) {
       throw new AxiError(error.message, error.code, error.help)

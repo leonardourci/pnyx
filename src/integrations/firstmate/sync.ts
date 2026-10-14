@@ -2,18 +2,38 @@
 // them current with fs.watch. Every write goes through the board's single writer.
 import { watch, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
-import { decideLink, decideNote, decideOutcome, decidePush, noteId, parseLink, type Decision, type Meta } from '../../core/decide.ts'
+import {
+  decideLink,
+  decideNote,
+  decideOutcome,
+  decidePush,
+  noteId,
+  parseLink,
+  type Decision,
+  type Meta,
+} from '../../core/decide.ts'
 import type { Attention, BoardState, Card, SourceRef } from '../../core/model.ts'
 import { drainSpool } from '../../cli/commands.ts'
 import { withWriter, type Writer } from '../../store/board-store.ts'
-import { ADAPTER, HOME_OBJECT, STATUS_KEY, readHome, type HomeObservation, type TaskObservation } from './home.ts'
+import {
+  ADAPTER,
+  HOME_OBJECT,
+  STATUS_KEY,
+  readHome,
+  type HomeObservation,
+  type TaskObservation,
+} from './home.ts'
 
 export interface SyncResult {
   tasks: number
   appended: number
 }
 
-const source = (home: string, objectId: string): SourceRef => ({ adapter: ADAPTER, instanceId: home, objectId })
+const source = (home: string, objectId: string): SourceRef => ({
+  adapter: ADAPTER,
+  instanceId: home,
+  objectId,
+})
 
 // The Firstmate source ref of a card, if it has one.
 export function firstmateRef(card: Card): SourceRef | undefined {
@@ -24,14 +44,20 @@ export function firstmateRef(card: Card): SourceRef | undefined {
 // blocked and no open decision carries it. A task closed in the backlog drops the
 // latest line's attention, even when it is an open decision.
 function attention(task: TaskObservation): Attention[] {
-  const open = task.decisions.map(d => ({ kind: d.verb, key: d.key, blocking: true, ...(d.note ? { text: d.note } : {}) }))
+  const open = task.decisions.map(d => ({
+    kind: d.verb,
+    key: d.key,
+    blocking: true,
+    ...(d.note ? { text: d.note } : {}),
+  }))
   const stalled = task.stalled
 
   if (!stalled) {
     return open
   }
 
-  const carries = (a: Attention) => a.kind === stalled.verb && a.text === (stalled.note || undefined)
+  const carries = (a: Attention) =>
+    a.kind === stalled.verb && a.text === (stalled.note || undefined)
 
   if (task.done) {
     return open.filter(a => !carries(a))
@@ -41,7 +67,15 @@ function attention(task: TaskObservation): Attention[] {
     return open
   }
 
-  return [...open, { kind: stalled.verb, key: STATUS_KEY, blocking: true, ...(stalled.note ? { text: stalled.note } : {}) }]
+  return [
+    ...open,
+    {
+      kind: stalled.verb,
+      key: STATUS_KEY,
+      blocking: true,
+      ...(stalled.note ? { text: stalled.note } : {}),
+    },
+  ]
 }
 
 function taskCard(home: HomeObservation, task: TaskObservation): Record<string, unknown> {
@@ -91,7 +125,12 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
 
   return withWriter(board, writer => {
     drainSpool(writer)
-    let appended = apply(writer, decidePush(writer.state, observed.key, { title: observed.title, tags: [ADAPTER], source: source(home, HOME_OBJECT) }, meta))
+    let appended = apply(writer, decidePush(
+      writer.state,
+      observed.key,
+      { title: observed.title, tags: [ADAPTER], source: source(home, HOME_OBJECT) },
+      meta,
+    ))
 
     for (const task of observed.tasks) {
       const key = `${observed.key}:${task.task}`
@@ -108,12 +147,19 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
       const current = writer.state.cards[writer.state.keys[key]!]!.outcome
 
       if (current ? current.source === ADAPTER : task.done) {
-        const outcome = !task.done ? null : task.stalled?.verb === 'failed' ? { state: 'failed' as const, note: 'closed after failure', closed: true } : { state: 'done' as const }
+        const outcome = !task.done
+          ? null
+          : task.stalled?.verb === 'failed'
+            ? { state: 'failed' as const, note: 'closed after failure', closed: true }
+            : { state: 'done' as const }
         appended += apply(writer, decideOutcome(writer.state, key, outcome, meta, ADAPTER))
       }
 
       for (const { ref, ...note } of task.notes) {
-        appended += apply(writer, decideNote(writer.state, key, note, { ...meta, id: noteId(key, ref) }))
+        appended += apply(
+          writer,
+          decideNote(writer.state, key, note, { ...meta, id: noteId(key, ref) }),
+        )
       }
     }
 
@@ -122,7 +168,12 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
     for (const card of Object.values(writer.state.cards)) {
       const ref = firstmateRef(card)
 
-      if (!ref || ref.instanceId !== home || ref.objectId === HOME_OBJECT || live.has(ref.objectId)) {
+      if (
+        !ref
+        || ref.instanceId !== home
+        || ref.objectId === HOME_OBJECT
+        || live.has(ref.objectId)
+      ) {
         continue
       }
 
@@ -130,7 +181,10 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
         continue
       }
 
-      appended += apply(writer, decidePush(writer.state, card.key, { attention: [], source: ref }, meta))
+      appended += apply(
+        writer,
+        decidePush(writer.state, card.key, { attention: [], source: ref }, meta),
+      )
     }
 
     return { tasks: observed.tasks.length, appended }
@@ -150,7 +204,11 @@ const RETRY_MS = 1000
 // Syncs once, then again after each relevant change under state/ and data/.
 // Bursts coalesce into one sync. A watcher error re-creates the watchers and
 // resyncs, so a dropped event cannot leave the board behind. No polling.
-export function watchHome(board: string, home: string, onSync: (result: SyncResult | Error) => void): HomeWatch {
+export function watchHome(
+  board: string,
+  home: string,
+  onSync: (result: SyncResult | Error) => void,
+): HomeWatch {
   let watchers: FSWatcher[] = []
   let timer: NodeJS.Timeout | undefined
   let closed = false

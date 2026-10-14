@@ -10,8 +10,14 @@ export type Command = (name: string, args: string[]) => Promise<Receipt>
 export function useBoard() {
   const [state, setState] = useState<BoardState>(emptyBoard), [connected, setConnected] = useState(false), [error, setError] = useState('')
   const [thread, setThread] = useState<ThreadPage | null>(null)
-  const stateRef = useRef(state), socket = useRef<WebSocket | null>(null), hasSnapshot = useRef(false)
-  const pending = useRef(new Map<string, { resolve(r: Receipt): void; reject(e: Error): void; timer: ReturnType<typeof setTimeout> }>())
+  const stateRef = useRef(state)
+  const socket = useRef<WebSocket | null>(null)
+  const hasSnapshot = useRef(false)
+  const pending = useRef(new Map<string, {
+    resolve(r: Receipt): void
+    reject(e: Error): void
+    timer: ReturnType<typeof setTimeout>
+  }>())
   const rejectPending = useCallback(() => {
     for (const p of pending.current.values()) {
       clearTimeout(p.timer); p.reject(new Error('Connection lost. Check receipts before retrying; draft retained.'))

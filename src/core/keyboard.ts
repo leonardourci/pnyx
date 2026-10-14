@@ -3,7 +3,13 @@ import { matchKeybindingPress, parseKeybinding, type KeybindingPress } from 'tin
 export type KeyScope = 'board' | 'thread' | 'navigation' | 'composer' | 'overlay' | 'hints'
 export type KeyPlatform = 'mac' | 'other'
 const navigation: KeyScope[] = ['board', 'thread', 'navigation']
-const action = (id: string, label: string, keys: string[], scopes: KeyScope[], repeat = false) => ({ id, label, keys, scopes, repeat })
+const action = (
+  id: string,
+  label: string,
+  keys: string[],
+  scopes: KeyScope[],
+  repeat = false,
+) => ({ id, label, keys, scopes, repeat })
 export const KEY_ACTIONS = [
   action('board.up', 'Previous card', ['ArrowUp', 'k'], ['board'], true),
   action('board.down', 'Next card', ['ArrowDown', 'j'], ['board'], true),
@@ -28,9 +34,13 @@ export const KEY_ACTIONS = [
   action('hints', 'Show target hints', ['f'], navigation),
   action('settings', 'Open settings', ['Mod+,'], navigation),
 ]
-export interface KeyboardPreferences { characterShortcuts: boolean; bindings: Record<string, string[]> }
+export interface KeyboardPreferences {
+  characterShortcuts: boolean
+  bindings: Record<string, string[]>
+}
 export const DEFAULT_KEYBOARD: KeyboardPreferences = { characterShortcuts: true, bindings: {} }
-export const bindingsFor = (prefs: KeyboardPreferences, id: string) => prefs.bindings[id] ?? KEY_ACTIONS.find(a => a.id === id)?.keys ?? []
+export const bindingsFor = (prefs: KeyboardPreferences, id: string) =>
+  prefs.bindings[id] ?? KEY_ACTIONS.find(a => a.id === id)?.keys ?? []
 const namedKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Enter', 'Escape', 'Backspace', 'Delete', ...Array.from({ length: 12 }, (_, i) => 'F' + (i + 1))])
 const modifiers = ['Control', 'Meta', 'Alt', 'Shift']
 
@@ -44,15 +54,19 @@ export function parseBinding(binding: string, platform: KeyPlatform): Keybinding
   })
 }
 
-const printable = (p: KeybindingPress) => typeof p[2] === 'string' && p[2].length === 1 && !p[0].some(m => ['Control', 'Meta', 'Alt'].includes(m))
-export const characterBinding = (binding: string, platform: KeyPlatform) => parseBinding(binding, platform).some(printable)
+const printable = (p: KeybindingPress) =>
+  typeof p[2] === 'string' && p[2].length === 1 && !p[0].some(m => ['Control', 'Meta', 'Alt'].includes(m))
+export const characterBinding = (binding: string, platform: KeyPlatform) =>
+  parseBinding(binding, platform).some(printable)
 
 const samePress = (a: KeybindingPress, b: KeybindingPress) => {
   if (String(a[2]).toLowerCase() !== String(b[2]).toLowerCase()) {
     return false
   }
 
-  return modifiers.every(m => !(a[0].includes(m) && !b[0].includes(m) && !b[1].includes(m)) && !(b[0].includes(m) && !a[0].includes(m) && !a[1].includes(m)))
+  return modifiers.every(m =>
+    !(a[0].includes(m) && !b[0].includes(m) && !b[1].includes(m))
+    && !(b[0].includes(m) && !a[0].includes(m) && !a[1].includes(m)))
 }
 
 export function keyboardError(prefs: KeyboardPreferences): string | undefined {
@@ -110,7 +124,12 @@ export function keyboardError(prefs: KeyboardPreferences): string | undefined {
         }
 
         for (const prior of all) {
-          if (a.scopes.some(s => prior.scopes.includes(s)) && strokes.slice(0, Math.min(strokes.length, prior.strokes.length)).every((s, i) => samePress(s, prior.strokes[i]))) {
+          if (
+            a.scopes.some(s => prior.scopes.includes(s))
+            && strokes
+              .slice(0, Math.min(strokes.length, prior.strokes.length))
+              .every((s, i) => samePress(s, prior.strokes[i]))
+          ) {
             return 'Shortcut conflicts with ' + KEY_ACTIONS.find(x => x.id === prior.id)!.label + ': ' + binding
           }
         }
@@ -133,8 +152,18 @@ export interface KeyInput {
   defaultPrevented?: boolean
   altGraph?: boolean
 }
-export interface KeyContext { scope: KeyScope; editing?: boolean; characterShortcuts: boolean; platform: KeyPlatform; now: number }
-export interface KeyProgress { candidates: { action: string; binding: string; next: number }[]; scope: KeyScope; until: number }
+export interface KeyContext {
+  scope: KeyScope
+  editing?: boolean
+  characterShortcuts: boolean
+  platform: KeyPlatform
+  now: number
+}
+export interface KeyProgress {
+  candidates: { action: string; binding: string; next: number }[]
+  scope: KeyScope
+  until: number
+}
 export const emptyProgress = (): KeyProgress => ({ candidates: [], scope: 'navigation', until: 0 })
 
 export function matchesPress(event: KeyInput, stroke: KeybindingPress): boolean {
@@ -143,7 +172,12 @@ export function matchesPress(event: KeyInput, stroke: KeybindingPress): boolean 
   return matchKeybindingPress(wrapped as KeyboardEvent, stroke)
 }
 
-export function resolveKey(event: KeyInput, context: KeyContext, prefs: KeyboardPreferences, progress = emptyProgress()): { action?: string; consume: boolean; progress: KeyProgress } {
+export function resolveKey(
+  event: KeyInput,
+  context: KeyContext,
+  prefs: KeyboardPreferences,
+  progress = emptyProgress(),
+): { action?: string; consume: boolean; progress: KeyProgress } {
   const empty = { consume: false, progress: emptyProgress() }
 
   if (event.defaultPrevented || event.isComposing || event.altGraph || ['Process', 'Dead', 'Unidentified'].includes(event.key)) {
@@ -154,8 +188,12 @@ export function resolveKey(event: KeyInput, context: KeyContext, prefs: Keyboard
     return { consume: false, progress }
   }
 
-  const available = KEY_ACTIONS.filter(a => a.scopes.includes(context.scope) && (!context.editing || a.id === 'send' || (a.id === 'cancel' && context.scope !== 'navigation')))
-  const candidates = progress.scope === context.scope && context.now <= progress.until ? progress.candidates : []
+  const available = KEY_ACTIONS.filter(a =>
+    a.scopes.includes(context.scope)
+    && (!context.editing || a.id === 'send' || (a.id === 'cancel' && context.scope !== 'navigation')))
+  const candidates = progress.scope === context.scope && context.now <= progress.until
+    ? progress.candidates
+    : []
   const pending: KeyProgress['candidates'] = []
 
   for (const a of available) {
@@ -184,7 +222,10 @@ export function resolveKey(event: KeyInput, context: KeyContext, prefs: Keyboard
     }
   }
 
-  return { consume: pending.length > 0, progress: { candidates: pending, scope: context.scope, until: context.now + 1500 } }
+  return {
+    consume: pending.length > 0,
+    progress: { candidates: pending, scope: context.scope, until: context.now + 1500 },
+  }
 }
 
 export function keyLabel(keys: string[], platform: KeyPlatform): string {

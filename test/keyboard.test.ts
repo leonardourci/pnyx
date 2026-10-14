@@ -9,7 +9,11 @@ import { navigate, restoreAnchor } from '../web/src/keyboard/navigation.ts'
 import { hintLabels } from '../web/src/keyboard/hints.ts'
 
 const context: KeyContext = { scope: 'board', platform: 'mac', characterShortcuts: true, now: 10 }
-const resolve = (event: KeyInput, change: Partial<KeyContext> = {}, prefs = DEFAULT_KEYBOARD) => resolveKey(event, { ...context, ...change }, prefs)
+const resolve = (
+  event: KeyInput,
+  change: Partial<KeyContext> = {},
+  prefs = DEFAULT_KEYBOARD,
+) => resolveKey(event, { ...context, ...change }, prefs)
 
 const event = (d: Decision): BoardEvent => {
   assert.ok('event' in d)
@@ -95,8 +99,14 @@ test('keyboard events replay, undo, merge and reset with revision checks and leg
   assert.deepEqual(viewFor(state).keyboard, { characterShortcuts: false, bindings: { settings: ['g s'] } })
   assert.deepEqual(reduce(initial, edit), state)
   assert.throws(() => decideView(state, { keyboard: { bindings: { help: [] } } }, { ...meta, id: 'another' }), /changed/)
-  assert.deepEqual(patchView(state, { keyboard: { bindings: { help: [] } } }).keyboard.bindings, { settings: ['g s'], help: [] })
-  assert.deepEqual(patchView(state, { keyboard: { bindings: { settings: null } } }).keyboard.bindings, {})
+  assert.deepEqual(
+    patchView(state, { keyboard: { bindings: { help: [] } } }).keyboard.bindings,
+    { settings: ['g s'], help: [] },
+  )
+  assert.deepEqual(
+    patchView(state, { keyboard: { bindings: { settings: null } } }).keyboard.bindings,
+    {},
+  )
   assert.deepEqual(patchView(state, { keyboard: { bindings: null } }).keyboard.bindings, {})
   assert.throws(() => patchView(state, { keyboard: { bindings: { reply: ['m'] } } }), /conflicts/)
   assert.throws(() => patchView(state, JSON.parse('{"keyboard":{"bindings":{"__proto__":[]}}}')), /invalid/)

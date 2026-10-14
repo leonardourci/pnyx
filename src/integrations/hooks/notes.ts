@@ -38,7 +38,11 @@ function contentText(content: unknown): string {
 
 // The user's answers to one AskUserQuestion call, one decision per answered question.
 function answers(r: Rec, at: string | undefined): SourceNote[] {
-  const result = r.toolUseResult as { questions?: unknown; answers?: unknown; annotations?: unknown } | undefined
+  const result = r.toolUseResult as {
+    questions?: unknown
+    answers?: unknown
+    annotations?: unknown
+  } | undefined
 
   if (typeof result !== 'object' || result === null || !Array.isArray(result.questions)) {
     return []
@@ -50,7 +54,9 @@ function answers(r: Rec, at: string | undefined): SourceNote[] {
     return []
   }
 
-  const call = Array.isArray(r.message?.content) ? (r.message.content as { tool_use_id?: unknown }[]).find(b => str(b?.tool_use_id)) : undefined
+  const call = Array.isArray(r.message?.content)
+    ? (r.message.content as { tool_use_id?: unknown }[]).find(b => str(b?.tool_use_id))
+    : undefined
   const id = str(call?.tool_use_id) ?? str(r.uuid)
 
   if (!id) {

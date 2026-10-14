@@ -177,7 +177,9 @@ export async function readCatalog(card: Card, locations: CatalogLocations = {
     return { suggestions: [], unavailable: 'The session working folder is unavailable. Commands stay literal.' }
   }
 
-  const reader = new Reader(), folders = await projectFolders(cwd), suggestions = new Map<string, Suggestion>()
+  const reader = new Reader()
+  const folders = await projectFolders(cwd)
+  const suggestions = new Map<string, Suggestion>()
 
   const add = (command: string, meta: Record<string, unknown>, source: string) => {
     if (meta['user-invocable'] === false || suggestions.has(command)) {
@@ -193,7 +195,12 @@ export async function readCatalog(card: Card, locations: CatalogLocations = {
     suggestions.set(command, { command, source, description: typeof meta.description === 'string' ? meta.description.slice(0, 240) : 'Local harness command' })
   }
 
-  const skills = async (root: string, source: string, prefix: string, disabled: Record<string, unknown> = {}) => {
+  const skills = async (
+    root: string,
+    source: string,
+    prefix: string,
+    disabled: Record<string, unknown> = {},
+  ) => {
     for (const entry of await reader.list(root)) {
       if (entry.startsWith('.')) {
         continue
@@ -213,7 +220,14 @@ export async function readCatalog(card: Card, locations: CatalogLocations = {
     }
   }
 
-  const commands = async (root: string, source: string, prefix: string, recursive: boolean, depth = 0, seen = new Set<string>()) => {
+  const commands = async (
+    root: string,
+    source: string,
+    prefix: string,
+    recursive: boolean,
+    depth = 0,
+    seen = new Set<string>(),
+  ) => {
     if (depth > 6) {
       reader.partial = true
 
@@ -273,8 +287,14 @@ export async function readCatalog(card: Card, locations: CatalogLocations = {
       }
     }
 
-    const enabled = Object.assign({}, ...settings.map(s => object(s.enabledPlugins))) as Record<string, unknown>
-    const overrides = Object.assign({}, ...settings.map(s => object(s.skillOverrides))) as Record<string, unknown>
+    const enabled = Object.assign(
+      {},
+      ...settings.map(s => object(s.enabledPlugins)),
+    ) as Record<string, unknown>
+    const overrides = Object.assign(
+      {},
+      ...settings.map(s => object(s.skillOverrides)),
+    ) as Record<string, unknown>
     await skills(join(locations.claude, 'skills'), 'Personal skill', '/', overrides)
 
     for (const folder of folders) {
@@ -288,7 +308,9 @@ export async function readCatalog(card: Card, locations: CatalogLocations = {
     await commands(join(locations.claude, 'commands'), 'Personal command', '/', true)
     const installed = await reader.json(join(locations.claude, 'plugins/installed_plugins.json'))
 
-    for (const [id, raw] of Object.entries(object(installed.plugins)).sort(([a], [b]) => sort(a, b))) {
+    const plugins = Object.entries(object(installed.plugins)).sort(([a], [b]) => sort(a, b))
+
+    for (const [id, raw] of plugins) {
       if (enabled[id] !== true || !Array.isArray(raw)) {
         continue
       }

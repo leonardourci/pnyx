@@ -190,14 +190,23 @@ const TEXT_BLOCKS = ['text', 'input_text', 'output_text']
 // developer messages and injected text are left out, and so is a compaction
 // summary, which is harvested as a note instead.
 export function transcriptMessages(record: unknown): Message[] {
-  type Record = { type?: unknown; isMeta?: unknown; isCompactSummary?: unknown; timestamp?: unknown; message?: { content?: unknown }; payload?: { type?: unknown; role?: unknown; content?: unknown } }
+  type Record = {
+    type?: unknown
+    isMeta?: unknown
+    isCompactSummary?: unknown
+    timestamp?: unknown
+    message?: { content?: unknown }
+    payload?: { type?: unknown; role?: unknown; content?: unknown }
+  }
   const r = record as Record | null
 
   if (typeof r !== 'object' || r === null || r.isMeta === true || r.isCompactSummary === true) {
     return []
   }
 
-  const codex = r.type === 'response_item' && r.payload?.type === 'message' && (r.payload.role === 'user' || r.payload.role === 'assistant')
+  const codex = r.type === 'response_item'
+    && r.payload?.type === 'message'
+    && (r.payload.role === 'user' || r.payload.role === 'assistant')
 
   if (!codex && r.type !== 'user' && r.type !== 'assistant') {
     return []

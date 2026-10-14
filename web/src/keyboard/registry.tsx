@@ -3,7 +3,12 @@ import { bindingsFor, characterBinding, emptyProgress, keyLabel, resolveKey, typ
 
 export interface ActionContext { scope: KeyScope; target: HTMLElement }
 type Handler = (context: ActionContext) => boolean
-interface KeyboardContext { prefs: KeyboardPreferences; platform: KeyPlatform; label(id: string): string; handlers: Map<string, Handler> }
+interface KeyboardContext {
+  prefs: KeyboardPreferences
+  platform: KeyPlatform
+  label(id: string): string
+  handlers: Map<string, Handler>
+}
 const Context = createContext<KeyboardContext | null>(null)
 export const isEditing = (target: HTMLElement) => !!target.closest('input,textarea,[contenteditable]:not([contenteditable=false])')
 
@@ -12,9 +17,24 @@ export function focusElement(selector: string) {
   element?.focus({ preventScroll: true }); element?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 }
 
-export function KeyboardProvider({ prefs, onAction, leaveField, hints, hintKey, children }: { prefs: KeyboardPreferences; onAction(id: string, context: ActionContext): boolean; leaveField(): void; hints: boolean; hintKey(event: KeyboardEvent): boolean; children: ReactNode }) {
+export function KeyboardProvider({
+  prefs,
+  onAction,
+  leaveField,
+  hints,
+  hintKey,
+  children,
+}: {
+  prefs: KeyboardPreferences
+  onAction(id: string, context: ActionContext): boolean
+  leaveField(): void
+  hints: boolean
+  hintKey(event: KeyboardEvent): boolean
+  children: ReactNode
+}) {
   const platform: KeyPlatform = /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other'
-  const handlers = useRef(new Map<string, Handler>()), current = useRef({ prefs, onAction, leaveField, hints, hintKey })
+  const handlers = useRef(new Map<string, Handler>())
+  const current = useRef({ prefs, onAction, leaveField, hints, hintKey })
   current.current = { prefs, onAction, leaveField, hints, hintKey }
   useEffect(() => {
     let progress = emptyProgress()
@@ -76,7 +96,23 @@ export function KeyboardProvider({ prefs, onAction, leaveField, hints, hintKey, 
     }
   }, [platform])
 
-  return <Context value={{ prefs, platform, handlers: handlers.current, label: id => keyLabel(bindingsFor(prefs, id).filter(binding => prefs.characterShortcuts || !characterBinding(binding, platform)), platform) }}>{children}</Context>
+  return (
+    <Context
+      value={{
+        prefs,
+        platform,
+        handlers: handlers.current,
+        label: id => keyLabel(
+          bindingsFor(prefs, id).filter(
+            binding => prefs.characterShortcuts || !characterBinding(binding, platform),
+          ),
+          platform,
+        ),
+      }}
+    >
+      {children}
+    </Context>
+  )
 }
 
 export function useKeyboard() {

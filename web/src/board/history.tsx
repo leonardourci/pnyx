@@ -3,9 +3,26 @@ import type { Command } from './connection.ts'
 import type { Hit } from '../../../src/search/index.ts'
 import { Button, Input, Select } from '../components/ui/controls.tsx'
 
-interface EventRow { seq: number; id: string; at: string; card: string; summary: string; type: string }
+interface EventRow {
+  seq: number
+  id: string
+  at: string
+  card: string
+  summary: string
+  type: string
+}
 
-export function History({ command, workspace, open, notify }: { command: Command; workspace: string; open(id: string): void; notify(text: string): void }) {
+export function History({
+  command,
+  workspace,
+  open,
+  notify,
+}: {
+  command: Command
+  workspace: string
+  open(id: string): void
+  notify(text: string): void
+}) {
   const [query, setQuery] = useState(''), [kind, setKind] = useState(''), [hits, setHits] = useState<Hit[]>([]), [events, setEvents] = useState<EventRow[]>([]), [loading, setLoading] = useState(false), [before, setBefore] = useState<number | null>(null)
   const generation = useRef(0)
   useEffect(() => {
@@ -18,7 +35,8 @@ export function History({ command, workspace, open, notify }: { command: Command
           return
         }
 
-        setHits(Array.isArray(r.hits) ? r.hits : []); setEvents(Array.isArray(r.events) ? r.events : [])
+        setHits(Array.isArray(r.hits) ? r.hits : [])
+        setEvents(Array.isArray(r.events) ? r.events : [])
       })
         .catch(e => {
           if (gen === generation.current) {
@@ -96,7 +114,12 @@ export function History({ command, workspace, open, notify }: { command: Command
       {!query.trim() && (
         <div className="row">
           <Button disabled={!before} onClick={() => setBefore(null)}>Latest</Button>
-          <Button disabled={events.length < 50} onClick={() => setBefore(events.at(-1)!.seq)}>Older events</Button>
+          <Button
+            disabled={events.length < 50}
+            onClick={() => setBefore(events.at(-1)!.seq)}
+          >
+            Older events
+          </Button>
         </div>
       )}
     </section>

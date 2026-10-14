@@ -71,7 +71,11 @@ export function parse(args: string[], options: Options, positionals: number) {
 
   const values = parsed.values as Record<string, string | boolean | undefined>
 
-  return { values, positionals: parsed.positionals, board: (values.board as string | undefined) ?? DEFAULT_BOARD }
+  return {
+    values,
+    positionals: parsed.positionals,
+    board: (values.board as string | undefined) ?? DEFAULT_BOARD,
+  }
 }
 
 export function required(value: string | undefined, what: string): string {
@@ -139,7 +143,12 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
     const actor = typeof entry.actor === 'string' ? entry.actor : 'hook'
     const card = (entry.card ?? {}) as Record<string, unknown>
     const source = card.source ?? { adapter: actor, objectId: entry.key, observedAt: entry.at }
-    apply(decidePush(writer.state, entry.key, { ...card, source }, { id: entry.id, at: entry.at, actor }))
+    apply(decidePush(
+      writer.state,
+      entry.key,
+      { ...card, source },
+      { id: entry.id, at: entry.at, actor },
+    ))
 
     return []
   }
@@ -210,7 +219,10 @@ export function ingestSpool(board: string): { ingested: number; rejected: number
 
 function receipt(state: BoardState, event: BoardEvent): Output {
   if (event.type === 'board.view') {
-    return { event: { seq: event.seq, id: event.id, type: event.type }, viewRevision: state.viewRevision }
+    return {
+      event: { seq: event.seq, id: event.id, type: event.type },
+      viewRevision: state.viewRevision,
+    }
   }
 
   const card = state.cards[event.cardId]!
@@ -229,23 +241,40 @@ interface Intent {
 
 // The receipt the event with this id got when it was appended. An id already used
 // for another card or event type is a conflict, not a retry.
-function originalReceipt(board: string, state: BoardState, id: string, seq: number, intent: Intent): Output {
+function originalReceipt(
+  board: string,
+  state: BoardState,
+  id: string,
+  seq: number,
+  intent: Intent,
+): Output {
   const events = readEvents(board)
   const index = events.findIndex(e => e.id === id && e.seq === seq)
   const original = events[index]!
 
-  if (original.type !== intent.type || (original.cardId !== intent.card && state.keys[intent.card] !== original.cardId)) {
+  if (
+    original.type !== intent.type
+    || (original.cardId !== intent.card && state.keys[intent.card] !== original.cardId)
+  ) {
     throw new AxiError(`event id ${id} was already used by ${original.type} on card ${original.cardId}`, 'IDEMPOTENCY_CONFLICT', [
       'Retry with a new --event-id',
     ])
   }
 
-  return { ...receipt(replay(emptyBoard(), events.slice(0, index + 1)), original), duplicate: 'event id already applied; nothing appended' }
+  return {
+    ...receipt(replay(emptyBoard(), events.slice(0, index + 1)), original),
+    duplicate: 'event id already applied; nothing appended',
+  }
 }
 
 // A repeated --event-id answers with the original receipt before any other check,
 // so a retry of a write that already landed never reports a conflict.
-function commit(board: string, meta: Meta, intent: Intent, decide: (state: BoardState) => Decision): Output {
+function commit(
+  board: string,
+  meta: Meta,
+  intent: Intent,
+  decide: (state: BoardState) => Decision,
+): Output {
   return withWriter(board, writer => {
     const spool = drainSpool(writer)
     const seq = meta.id === undefined ? undefined : writer.state.eventIds[meta.id]
@@ -350,7 +379,9 @@ function cardDetail(card: Card): Output {
 export async function home(): Promise<Output> {
   const { dir, state, tornBytes } = loadBoard(DEFAULT_BOARD)
   const cards = Object.values(state.cards)
-  const columns = Object.fromEntries(COLUMNS.map(c => [c, cards.filter(card => card.column === c).length]))
+  const columns = Object.fromEntries(
+    COLUMNS.map(c => [c, cards.filter(card => card.column === c).length]),
+  )
   // Reports the server; never starts it.
   const server = await readServer(DEFAULT_BOARD)
   const out: Output = { board: DEFAULT_BOARD, server: server ? `running at ${server.url}` : 'not running', columns }
@@ -415,7 +446,9 @@ function cardNotes(board: string, card: Card, full: boolean): { notes: Output; c
   const notes: Output = {}
 
   for (const [kind, section] of Object.entries(NOTE_SECTIONS)) {
-    const all = events.filter(e => e.data.kind === kind).map(e => ({ at: e.data.at ?? e.at, source: e.data.source, text: e.data.text }))
+    const all = events
+      .filter(e => e.data.kind === kind)
+      .map(e => ({ at: e.data.at ?? e.at, source: e.data.source, text: e.data.text }))
     all.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
     const shown = full ? all : all.slice(0, NOTES_SHOWN).map(n => (n.text.length > NOTE_CUT ? { ...n, text: `${n.text.slice(0, NOTE_CUT)}…` } : n))
 
@@ -542,7 +575,9 @@ const outcome = guard(args => {
   }
 
   const note = values.note as string | undefined
-  const result = state === undefined ? null : { state: state as OutcomeState, ...(note ? { note } : {}) }
+  const result = state === undefined
+    ? null
+    : { state: state as OutcomeState, ...(note ? { note } : {}) }
 
   return commit(board, m, { type: 'card.outcome', card: ref }, s => decideOutcome(s, ref, result, m))
 })
@@ -609,7 +644,15 @@ const history = guard(args => {
   }
 
   const out: Output = {
-    events: page.map(e => ({ seq: e.seq, id: e.id, at: e.at, type: e.type, card: e.cardId, actor: e.actor, summary: summarize(e) })),
+    events: page.map(e => ({
+      seq: e.seq,
+      id: e.id,
+      at: e.at,
+      type: e.type,
+      card: e.cardId,
+      actor: e.actor,
+      summary: summarize(e),
+    })),
   }
 
   if (matches.length > limit) {
@@ -630,7 +673,12 @@ const undo = guard(args => {
     throw new AxiError(`event not found: ${id}`, 'NOT_FOUND', ['Run `pnyx-axi history` to find event ids'])
   }
 
-  return commit(board, m, { type: target.type, card: target.cardId }, state => decideUndo(state, target, m))
+  return commit(
+    board,
+    m,
+    { type: target.type, card: target.cardId },
+    state => decideUndo(state, target, m),
+  )
 })
 
 const repair = guard(args => {
@@ -716,7 +764,19 @@ const view = guard(args => {
   return commit(board, m, { type: 'board.view', card: '$board' }, s => decideView(s, patch, m))
 })
 
-export const commands = { view, push, card, harvest, move, link, outcome, history, undo, repair, setup }
+export const commands = {
+  view,
+  push,
+  card,
+  harvest,
+  move,
+  link,
+  outcome,
+  history,
+  undo,
+  repair,
+  setup,
+}
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Deterministic board of every agent and its work

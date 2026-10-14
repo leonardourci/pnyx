@@ -32,7 +32,23 @@ export function Tags({ tags }: { tags: string[] }) {
   return <div className="tags">{tags.map(t => <span key={t} className={`tag tone-${[...t].reduce((n,c) => n + c.charCodeAt(0), 0) % 4}`}>{t}</span>)}</div>
 }
 
-export function BoardCard({ card, visible, selected, view, open, save, tabIndex }: { card: CardData; visible: CardData[]; selected: boolean; view: ViewPreferences; open(id: string): void; save(patch: unknown): Promise<boolean>; tabIndex: number }) {
+export function BoardCard({
+  card,
+  visible,
+  selected,
+  view,
+  open,
+  save,
+  tabIndex,
+}: {
+  card: CardData
+  visible: CardData[]
+  selected: boolean
+  view: ViewPreferences
+  open(id: string): void
+  save(patch: unknown): Promise<boolean>
+  tabIndex: number
+}) {
   const [height, setHeight] = useState<number | null>(null), parent = visibleParent(card, visible)
 
   return (

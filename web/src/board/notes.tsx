@@ -6,7 +6,15 @@ interface Note { at: string; source: string; text: string }
 const SECTIONS = [['summary', 'Summary'], ['decisions', 'Decisions'], ['context', 'Context']] as const
 
 // The card's harvested notes, in full, as `pnyx-axi card --full` reports them.
-export function Notes({ card, command, notify }: { card: Card; command: Command; notify(text: string): void }) {
+export function Notes({
+  card,
+  command,
+  notify,
+}: {
+  card: Card
+  command: Command
+  notify(text: string): void
+}) {
   const [notes, setNotes] = useState<Record<string, Note[]> | null>(null)
   useEffect(() => {
     let cancelled = false

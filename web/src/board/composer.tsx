@@ -8,9 +8,37 @@ import { slashMatches, slashPrefix } from './view.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 
-export function Composer({ card, title, draft, setDraft, thread, height, command, save, connected, notify }: { card: string; title: string; draft: string; setDraft(text: string): void; thread: ThreadPage | null; height: number; command: Command; save(patch: unknown): Promise<boolean>; connected: boolean; notify(text: string): void }) {
-  const [preview, setPreview] = useState<number | null>(null), [sending, setSending] = useState(false), [prefix, setPrefix] = useState<string | null>(null), [active, setActive] = useState(-1)
-  const input = useRef<HTMLTextAreaElement>(null), attempt = useRef<{ text: string; id: string } | null>(null), currentDraft = useRef(draft); currentDraft.current = draft
+export function Composer({
+  card,
+  title,
+  draft,
+  setDraft,
+  thread,
+  height,
+  command,
+  save,
+  connected,
+  notify,
+}: {
+  card: string
+  title: string
+  draft: string
+  setDraft(text: string): void
+  thread: ThreadPage | null
+  height: number
+  command: Command
+  save(patch: unknown): Promise<boolean>
+  connected: boolean
+  notify(text: string): void
+}) {
+  const [preview, setPreview] = useState<number | null>(null)
+  const [sending, setSending] = useState(false)
+  const [prefix, setPrefix] = useState<string | null>(null)
+  const [active, setActive] = useState(-1)
+  const input = useRef<HTMLTextAreaElement>(null)
+  const attempt = useRef<{ text: string; id: string } | null>(null)
+  const currentDraft = useRef(draft)
+  currentDraft.current = draft
   const { label } = useKeyboard(), [catalog, setCatalog] = useState<Catalog | null>(null)
   const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches(s.command, prefix ?? ''))
   const catalogOpen = prefix !== null
@@ -148,7 +176,9 @@ export function Composer({ card, title, draft, setDraft, thread, height, command
           aria-controls={catalogOpen ? `suggestions-${card}` : undefined}
           aria-activedescendant={active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
           onChange={e => {
-            setDraft(e.target.value); setPrefix(slashPrefix(e.target.value, e.target.selectionStart)); setActive(-1)
+            setDraft(e.target.value)
+            setPrefix(slashPrefix(e.target.value, e.target.selectionStart))
+            setActive(-1)
           }}
           onKeyDown={e => {
             if (e.nativeEvent.isComposing || e.key === 'Process') {

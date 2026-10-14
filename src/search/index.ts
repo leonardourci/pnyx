@@ -126,7 +126,11 @@ function openWriter(board: string, fresh = false): DatabaseSync {
     removeIndex(path)
   }
 
-  withWriter(board, writer => harvestTranscripts(writer, Object.keys(writer.state.cards), new Date().toISOString()))
+  withWriter(board, writer => harvestTranscripts(
+    writer,
+    Object.keys(writer.state.cards),
+    new Date().toISOString(),
+  ))
   const db = new DatabaseSync(path)
   // Transcript text is as private as the transcripts.
   chmodSync(path, 0o600)
@@ -192,7 +196,15 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
 
   let docs = 0
 
-  const add = (card: string, kind: Kind, source: string, pos: number, at: string, text: string, firstPart = 0): number => {
+  const add = (
+    card: string,
+    kind: Kind,
+    source: string,
+    pos: number,
+    at: string,
+    text: string,
+    firstPart = 0,
+  ): number => {
     let part = firstPart
 
     for (const body of chunk(redact(text))) {
@@ -454,7 +466,11 @@ function queryTerms(text: string): Term[] {
     }
 
     const group = pair ?? synonymGroup.get(bare(token).toLowerCase())
-    terms.push(group ? { alts: group, prefix: false, typo: false } : { alts: [token], prefix: false, typo: true })
+    terms.push(
+      group
+        ? { alts: group, prefix: false, typo: false }
+        : { alts: [token], prefix: false, typo: true },
+    )
   }
 
   return terms
@@ -472,7 +488,8 @@ function termExpr(term: Term): string {
 export const ftsQuery = (text: string): string => queryTerms(text).map(termExpr)
   .join(' AND ')
 
-const trigrams = (word: string) => Array.from({ length: Math.max(word.length - 2, 0) }, (_, i) => word.slice(i, i + 3))
+const trigrams = (word: string) =>
+  Array.from({ length: Math.max(word.length - 2, 0) }, (_, i) => word.slice(i, i + 3))
 
 // Trigram similarity of two words, padded so their first and last letters weigh in.
 function similarity(a: string, b: string): number {
@@ -500,7 +517,10 @@ function nearest(db: DatabaseSync, word: string): string[] {
       .join(' OR ')) as { term: string }[]
 
   return candidates
-    .map(({ term }) => ({ term, score: term.includes(w) && w.length >= 4 ? 1 : similarity(w, term) }))
+    .map(({ term }) => ({
+      term,
+      score: term.includes(w) && w.length >= 4 ? 1 : similarity(w, term),
+    }))
     .filter(c => c.term !== w && c.score >= SIMILAR)
     .sort((a, b) => b.score - a.score || a.term.localeCompare(b.term))
     .slice(0, NEAREST)
@@ -542,14 +562,18 @@ export function search(board: string, query: Query): { hits: Hit[]; total: numbe
 
   try {
     db.exec('PRAGMA busy_timeout = 5000')
-    const terms = typed.map(t => (t.prefix ? { ...t, alts: [...t.alts, ...prefixed(db, t.alts[0]!)] } : t))
+    const terms = typed.map(t => (
+      t.prefix ? { ...t, alts: [...t.alts, ...prefixed(db, t.alts[0]!)] } : t
+    ))
     const lexical = run(db, query, terms, 'lexical')
 
     if (lexical.hits.length) {
       return lexical
     }
 
-    const fuzzy = terms.map(t => (t.typo ? { ...t, alts: [...t.alts, ...nearest(db, t.alts[0]!)] } : t))
+    const fuzzy = terms.map(t => (
+      t.typo ? { ...t, alts: [...t.alts, ...nearest(db, t.alts[0]!)] } : t
+    ))
 
     return fuzzy.some((t, i) => t.alts.length !== terms[i]!.alts.length) ? run(db, query, fuzzy, 'fuzzy') : lexical
   } finally {
@@ -557,7 +581,12 @@ export function search(board: string, query: Query): { hits: Hit[]; total: numbe
   }
 }
 
-function run(db: DatabaseSync, query: Query, terms: Term[], mode: Match): { hits: Hit[]; total: number; match: Match } {
+function run(
+  db: DatabaseSync,
+  query: Query,
+  terms: Term[],
+  mode: Match,
+): { hits: Hit[]; total: number; match: Match } {
   const exprs = terms.map(termExpr)
   const match = exprs.join(' AND ')
   const filters = { match, workspace: query.workspace ?? null }
@@ -594,7 +623,12 @@ function run(db: DatabaseSync, query: Query, terms: Term[], mode: Match): { hits
     title: r.title,
     match: mode,
     snippets: (
-      top.all({ match: snippetMatch, card: r.card, kind: query.kind ?? null, n: query.card ? query.limit : SNIPPETS }) as { kind: Kind; at: string; s: string }[]
+      top.all({
+        match: snippetMatch,
+        card: r.card,
+        kind: query.kind ?? null,
+        n: query.card ? query.limit : SNIPPETS,
+      }) as { kind: Kind; at: string; s: string }[]
     ).map(t => ({ kind: t.kind, at: t.at || 'unknown', snippet: t.s.replace(/\s+/g, ' ') })),
   }))
 
@@ -625,7 +659,13 @@ export function indexStatus(board: string): IndexStatus | null {
     const bytes = statSync(path).size
 
     if (!isCurrent(db)) {
-      return { builtThrough: 0, docs: { event: 0, note: 0, transcript: 0 }, transcripts: { tracked: 0, missing: 0 }, bytes, current: false }
+      return {
+        builtThrough: 0,
+        docs: { event: 0, note: 0, transcript: 0 },
+        transcripts: { tracked: 0, missing: 0 },
+        bytes,
+        current: false,
+      }
     }
 
     const count = (kind: Kind) => (db.prepare('SELECT count(*) AS n FROM docs WHERE kind = ?').get(kind) as { n: number }).n
@@ -635,7 +675,10 @@ export function indexStatus(board: string): IndexStatus | null {
     return {
       builtThrough: cursors.find(c => c.source === EVENTS)?.seq ?? 0,
       docs: { event: count('event'), note: count('note'), transcript: count('transcript') },
-      transcripts: { tracked: transcripts.length, missing: transcripts.filter(c => !existsSync(c.source)).length },
+      transcripts: {
+        tracked: transcripts.length,
+        missing: transcripts.filter(c => !existsSync(c.source)).length,
+      },
       bytes,
       current: true,
     }

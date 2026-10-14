@@ -44,7 +44,11 @@ interface Route {
 
 // fm-send's exit contract as read here: 0 delivered; 1 and 3 may have landed (a
 // remote send that lost its transport exits 1); any other status nothing delivered.
-function send(route: Route, text: string, resolveKey: string | undefined): { state: ReplyState; detail?: string } {
+function send(
+  route: Route,
+  text: string,
+  resolveKey: string | undefined,
+): { state: ReplyState; detail?: string } {
   const args = [route.task, ...(resolveKey ? ['--resolve-key', resolveKey] : []), text]
   const result = spawnSync(join(route.home, 'bin', 'fm-send.sh'), args, {
     env: { ...process.env, FM_HOME: route.home },
@@ -116,7 +120,10 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
       return { card: card.id, reply, state: known.state, route, resend: false }
     }
 
-    if (resolveKey !== undefined && (resolveKey === STATUS_KEY || !card.attention.some(a => a.key === resolveKey))) {
+    if (
+      resolveKey !== undefined
+      && (resolveKey === STATUS_KEY || !card.attention.some(a => a.key === resolveKey))
+    ) {
       throw invalid(`card ${card.id} has no open decision with key ${resolveKey}`, [`Run \`pnyx-axi card ${card.id}\` to see its attention keys`])
     }
 

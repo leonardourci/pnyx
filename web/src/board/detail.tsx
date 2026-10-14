@@ -16,11 +16,44 @@ const merge = (a: ThreadEntry[], b: ThreadEntry[]) => {
   return [...a.filter(e => !ids.has(e.id)), ...b]
 }
 
-export function Detail({ card, state, view, thread, command, connected, close, save, draft, setDraft, outside, notify }: { card: Card; state: BoardState; view: ViewPreferences; thread: ThreadPage | null; command: Command; connected: boolean; close(): void; save(patch: unknown): Promise<boolean>; draft: string; setDraft(text: string): void; outside: boolean; notify(text: string): void }) {
+export function Detail({
+  card,
+  state,
+  view,
+  thread,
+  command,
+  connected,
+  close,
+  save,
+  draft,
+  setDraft,
+  outside,
+  notify,
+}: {
+  card: Card
+  state: BoardState
+  view: ViewPreferences
+  thread: ThreadPage | null
+  command: Command
+  connected: boolean
+  close(): void
+  save(patch: unknown): Promise<boolean>
+  draft: string
+  setDraft(text: string): void
+  outside: boolean
+  notify(text: string): void
+}) {
   const [width, setWidth] = useState<number | null>(null), [tab, setTab] = useState('thread'), [older, setOlder] = useState<ThreadPage | null>(null), [kept, setKept] = useState<ThreadEntry[]>([]), [latest, setLatest] = useState(false)
   const scroller = useRef<HTMLDivElement>(null), atBottom = useRef(true)
-  const [history, setHistory] = useState<{ seq: number; id: string; at: string; summary: string }[]>([])
-  const overrides = view.cardTraceOverrides[card.id], tools = overrides?.tools ?? view.toolDetails, thinking = overrides?.thinking ?? view.thinkingDetails
+  const [history, setHistory] = useState<{
+    seq: number
+    id: string
+    at: string
+    summary: string
+  }[]>([])
+  const overrides = view.cardTraceOverrides[card.id]
+  const tools = overrides?.tools ?? view.toolDetails
+  const thinking = overrides?.thinking ?? view.thinkingDetails
   const page = thread?.card === card.id ? thread : null
   const olderCursor = older ? older.older : page?.older
   useEffect(() => {
@@ -100,7 +133,12 @@ export function Detail({ card, state, view, thread, command, connected, close, s
             </div>
             <div className="row between small muted">
               <span>{overrides ? 'This card has overrides' : 'Following board defaults'}</span>
-              <Button disabled={!overrides} onClick={() => save({ cardTraceOverrides: { [card.id]: null } })}>Use defaults</Button>
+              <Button
+                disabled={!overrides}
+                onClick={() => save({ cardTraceOverrides: { [card.id]: null } })}
+              >
+                Use defaults
+              </Button>
             </div>
           </div>
           <div
@@ -111,7 +149,8 @@ export function Detail({ card, state, view, thread, command, connected, close, s
             tabIndex={0}
             ref={scroller}
             onScroll={e => {
-              const el = e.currentTarget; atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+              const el = e.currentTarget
+              atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
 
               if (atBottom.current) {
                 setLatest(false)
@@ -168,7 +207,9 @@ export function Detail({ card, state, view, thread, command, connected, close, s
           )}
           <div className="watch-banner">
             <strong>Not watching · presence unverified</strong>
-            <p>The source has no listener signal. Activity alone does not confirm it is watching.</p>
+            <p>
+              The source has no listener signal. Activity alone does not confirm it is watching.
+            </p>
           </div>
           <Composer
             card={card.id}
@@ -224,7 +265,9 @@ export function Detail({ card, state, view, thread, command, connected, close, s
           >
             Undo last placement
           </Button>
-          <Button onClick={() => save({ cardHeights: { [card.id]: null } })}>Use default card height</Button>
+          <Button onClick={() => save({ cardHeights: { [card.id]: null } })}>
+            Use default card height
+          </Button>
         </div>
       )}
     </aside>

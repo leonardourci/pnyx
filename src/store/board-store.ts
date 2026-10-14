@@ -122,7 +122,12 @@ function readLog(dir: string, from = 0): LogRead | null {
     readSync(fd, buf, 0, buf.length, from)
     const complete = buf.lastIndexOf(10) + 1
     const events: BoardEvent[] = []
-    let previous: { offset: number; length: number; event?: BoardEvent; error?: BoardError } | undefined
+    let previous: {
+      offset: number
+      length: number
+      event?: BoardEvent
+      error?: BoardError
+    } | undefined
 
     for (let start = 0; start < complete; ) {
       const end = buf.indexOf(10, start)
@@ -180,7 +185,10 @@ export function readEvents(board: string): BoardEvent[] {
 
 // Complete events at or after byte `offset`, and the offset just past them.
 // Null when the log is now shorter than `offset`, so the reader must start over.
-export function readEventsFrom(board: string, offset: number): { events: BoardEvent[]; end: number } | null {
+export function readEventsFrom(
+  board: string,
+  offset: number,
+): { events: BoardEvent[]; end: number } | null {
   const log = readLog(boardDir(board), offset)
 
   return log && { events: log.events, end: log.end }
@@ -196,7 +204,11 @@ function readSnapshot(dir: string): Snapshot | null {
   try {
     const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8')) as Snapshot
 
-    return snap.v === EVENT_VERSION && Number.isInteger(snap.offset) && snap.state?.v === EVENT_VERSION ? snap : null
+    return snap.v === EVENT_VERSION
+      && Number.isInteger(snap.offset)
+      && snap.state?.v === EVENT_VERSION
+      ? snap
+      : null
   } catch {
     return null
   }

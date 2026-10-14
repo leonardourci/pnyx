@@ -3,7 +3,13 @@ import { KEY_ACTIONS, bindingsFor, keyboardError, keyLabel, type KeyboardPrefere
 import { Button, Input, Switch, Textarea, useBusy } from '../components/ui/controls.tsx'
 import { useKeyAction, useKeyboard } from './registry.tsx'
 
-export function KeyboardSettings({ prefs, save }: { prefs: KeyboardPreferences; save(patch: unknown): Promise<boolean> }) {
+export function KeyboardSettings({
+  prefs,
+  save,
+}: {
+  prefs: KeyboardPreferences
+  save(patch: unknown): Promise<boolean>
+}) {
   const { platform } = useKeyboard(), [filter, setFilter] = useState(''), [editing, setEditing] = useState<string | null>(null), [draft, setDraft] = useState(''), [error, setError] = useState(''), [busy, run] = useBusy()
   useKeyAction('cancel', ({ scope }) => {
     if (scope !== 'navigation' || !editing || busy) {
@@ -107,7 +113,12 @@ export function KeyboardSettings({ prefs, save }: { prefs: KeyboardPreferences; 
                 <p className="muted">Use Mod+Enter, ArrowDown, or a sequence like g s. Up to four alternatives. Leave empty to unbind. Mod means ⌘ on Mac and Ctrl elsewhere.</p>
                 <div className="row wrap">
                   <Button type="submit" variant="primary" disabled={busy}>Save binding</Button>
-                  <Button disabled={busy} onClick={() => persist({ [a.id]: null })}>Reset action</Button>
+                  <Button
+                    disabled={busy}
+                    onClick={() => persist({ [a.id]: null })}
+                  >
+                    Reset action
+                  </Button>
                   <Button
                     disabled={busy}
                     onClick={() => {

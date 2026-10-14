@@ -27,7 +27,15 @@ export function useBusy(): [boolean, (save: () => unknown) => void] {
   }]
 }
 
-export function Switch({ label, checked, onChange }: { label: string; checked: boolean; onChange(value: boolean): unknown }) {
+export function Switch({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string
+  checked: boolean
+  onChange(value: boolean): unknown
+}) {
   const [busy, run] = useBusy()
 
   return (
@@ -46,7 +54,19 @@ export function Switch({ label, checked, onChange }: { label: string; checked: b
 
 export interface Option { value: string; label: string }
 
-export function Select({ label, value, options, onChange, disabled = false }: { label: string; value: string; options: Option[]; onChange(value: string): void; disabled?: boolean }) {
+export function Select({
+  label,
+  value,
+  options,
+  onChange,
+  disabled = false,
+}: {
+  label: string
+  value: string
+  options: Option[]
+  onChange(value: string): void
+  disabled?: boolean
+}) {
   const [open, setOpen] = useState(false), [active, setActive] = useState(0)
   const root = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), id = useId()
   useEffect(() => {
@@ -131,7 +151,21 @@ export function Select({ label, value, options, onChange, disabled = false }: { 
   )
 }
 
-export function NumberField({ label, value, min, max, step = 8, onChange: save }: { label: string; value: number; min: number; max: number; step?: number; onChange(value: number): unknown }) {
+export function NumberField({
+  label,
+  value,
+  min,
+  max,
+  step = 8,
+  onChange: save,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step?: number
+  onChange(value: number): unknown
+}) {
   const id = useId(), [busy, run] = useBusy()
   const onChange = (n: number) => run(() => save(n))
   const [draft, setDraft] = useState(String(value))

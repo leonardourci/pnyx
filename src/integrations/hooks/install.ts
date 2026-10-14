@@ -150,7 +150,10 @@ export interface SetupResult {
 
 // Applies the change unless previewing. The config is replaced atomically and only
 // when its content changes; a symlinked config is written through the link.
-export function setupHooks(harness: Harness, opts: { remove: boolean; preview: boolean }): SetupResult {
+export function setupHooks(
+  harness: Harness,
+  opts: { remove: boolean; preview: boolean },
+): SetupResult {
   const path = configPath(harness)
   const config = readConfig(path)
   const next = merged(config, harness, opts.remove)

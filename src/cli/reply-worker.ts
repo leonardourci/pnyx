@@ -6,7 +6,9 @@ try {
   process.stdout.write(JSON.stringify(firstmateCommands.reply(process.argv.slice(2))))
 } catch (error) {
   if (error instanceof AxiError) {
-    process.stdout.write(JSON.stringify({ error: { message: error.message, code: error.code, help: error.suggestions } }))
+    process.stdout.write(JSON.stringify({
+      error: { message: error.message, code: error.code, help: error.suggestions },
+    }))
   }
 
   process.exitCode = 1

@@ -11,13 +11,44 @@ import { hintLabels, visibleTargets, type Hint } from './hints.ts'
 
 interface Overlay { kind: 'palette' | 'help' | 'move'; context: ActionContext; card?: string; revision?: number }
 const anchorElement = (anchor: BoardAnchor) => anchor.card ? `[data-card="${CSS.escape(anchor.card)}"]` : `[data-empty-column="${CSS.escape(anchor.column)}"]`
-const readAnchor = (target: HTMLElement): BoardAnchor | undefined => target.dataset.card ? { card: target.dataset.card, column: target.closest<HTMLElement>('[data-column]')!.dataset.column! } : target.dataset.emptyColumn ? { column: target.dataset.emptyColumn } : undefined
+const readAnchor = (target: HTMLElement): BoardAnchor | undefined => target.dataset.card
+  ? { card: target.dataset.card, column: target.closest<HTMLElement>('[data-column]')!.dataset.column! }
+  : target.dataset.emptyColumn
+    ? { column: target.dataset.emptyColumn }
+    : undefined
 
-export function useBoardKeyboard({ state, groups, page, setPage, selected, open, close, command, connected, notify, newColumn, cancelColumn }: {
-  state: BoardState; groups: ColumnCards[]; page: string; setPage(page: string): void; selected: string | null; open(id: string): void; close(): void; command: Command; connected: boolean; notify(text: string): void; newColumn: boolean; cancelColumn(): void
+export function useBoardKeyboard({
+  state,
+  groups,
+  page,
+  setPage,
+  selected,
+  open,
+  close,
+  command,
+  connected,
+  notify,
+  newColumn,
+  cancelColumn,
+}: {
+  state: BoardState
+  groups: ColumnCards[]
+  page: string
+  setPage(page: string): void
+  selected: string | null
+  open(id: string): void
+  close(): void
+  command: Command
+  connected: boolean
+  notify(text: string): void
+  newColumn: boolean
+  cancelColumn(): void
 }) {
   const [remembered, setRemembered] = useState<Record<string, string>>({}), [overlay, setOverlay] = useState<Overlay | null>(null), [hints, setHints] = useState<Hint[]>([]), [hintPrefix, setHintPrefix] = useState('')
-  const focus = useRef<{ anchor?: BoardAnchor; owned: boolean }>({ owned: false }), previous = useRef(groups), returnFocus = useRef<HTMLElement | null>(null), restoring = useRef(0)
+  const focus = useRef<{ anchor?: BoardAnchor; owned: boolean }>({ owned: false })
+  const previous = useRef(groups)
+  const returnFocus = useRef<HTMLElement | null>(null)
+  const restoring = useRef(0)
   const signature = JSON.stringify(groups)
   useEffect(() => {
     const track = (e: FocusEvent) => {
@@ -28,7 +59,9 @@ export function useBoardKeyboard({ state, groups, page, setPage, selected, open,
         focus.current.anchor = anchor
 
         if (anchor.card) {
-          setRemembered(r => r[anchor.column] === anchor.card ? r : { ...r, [anchor.column]: anchor.card! })
+          setRemembered(
+            r => r[anchor.column] === anchor.card ? r : { ...r, [anchor.column]: anchor.card! },
+          )
         }
       }
     }
@@ -93,7 +126,9 @@ export function useBoardKeyboard({ state, groups, page, setPage, selected, open,
   }
 
   const onAction = (id: string, context: ActionContext): boolean => {
-    const anchor = readAnchor(context.target) ?? focus.current.anchor ?? (groups[0] ? { column: groups[0].id, card: groups[0].cards[0] } : undefined)
+    const anchor = readAnchor(context.target)
+      ?? focus.current.anchor
+      ?? (groups[0] ? { column: groups[0].id, card: groups[0].cards[0] } : undefined)
     const cardId = context.scope === 'board' ? anchor?.card : selected ?? undefined
 
     if (id === 'cancel') {
@@ -169,7 +204,8 @@ export function useBoardKeyboard({ state, groups, page, setPage, selected, open,
   }
 
   const leaveField = () => {
-    const anchor = focus.current.anchor ?? (groups[0] ? { column: groups[0].id, card: groups[0].cards[0] } : undefined)
+    const anchor = focus.current.anchor
+      ?? (groups[0] ? { column: groups[0].id, card: groups[0].cards[0] } : undefined)
 
     if (page === 'board' && anchor) {
       focusElement(anchorElement(restoreAnchor(groups, previous.current, anchor)))
@@ -197,7 +233,8 @@ export function useBoardKeyboard({ state, groups, page, setPage, selected, open,
       return false
     }
 
-    const prefix = hintPrefix + event.key.toLowerCase(), matching = hints.filter(h => h.label.startsWith(prefix))
+    const prefix = hintPrefix + event.key.toLowerCase()
+    const matching = hints.filter(h => h.label.startsWith(prefix))
 
     if (!matching.length) {
       setHintPrefix(''); notify('No target matches. Type a visible hint label.')
@@ -235,10 +272,24 @@ export function useBoardKeyboard({ state, groups, page, setPage, selected, open,
       .catch(e => notify(e.message))
   }
 
-  return { remembered, onAction, leaveField, hintKey, hints, hintPrefix, overlay, closeOverlay, move }
+  return {
+    remembered,
+    onAction,
+    leaveField,
+    hintKey,
+    hints,
+    hintPrefix,
+    overlay,
+    closeOverlay,
+    move,
+  }
 }
 
-export function KeyboardToolbar({ action }: { action(id: string, context: ActionContext): boolean }) {
+export function KeyboardToolbar({
+  action,
+}: {
+  action(id: string, context: ActionContext): boolean
+}) {
   const { label } = useKeyboard()
 
   return (
@@ -279,8 +330,17 @@ export function KeyboardFooter() {
   )
 }
 
-export function KeyboardLayers({ keyboard, state, connected }: { keyboard: ReturnType<typeof useBoardKeyboard>; state: BoardState; connected: boolean }) {
-  const { label, prefs } = useKeyboard(), { overlay, closeOverlay, onAction, move, hints, hintPrefix } = keyboard
+export function KeyboardLayers({
+  keyboard,
+  state,
+  connected,
+}: {
+  keyboard: ReturnType<typeof useBoardKeyboard>
+  state: BoardState
+  connected: boolean
+}) {
+  const { label, prefs } = useKeyboard()
+  const { overlay, closeOverlay, onAction, move, hints, hintPrefix } = keyboard
   let items: MenuItem[] = []
 
   if (overlay) {

@@ -1,9 +1,26 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button, Input } from './controls.tsx'
 
-export interface MenuItem { id: string; label: string; detail?: string; keyLabel?: string; disabled?: boolean; run(): void }
+export interface MenuItem {
+  id: string
+  label: string
+  detail?: string
+  keyLabel?: string
+  disabled?: boolean
+  run(): void
+}
 
-export function CommandMenu({ title, description, items, close }: { title: string; description: string; items: MenuItem[]; close(): void }) {
+export function CommandMenu({
+  title,
+  description,
+  items,
+  close,
+}: {
+  title: string
+  description: string
+  items: MenuItem[]
+  close(): void
+}) {
   const [query, setQuery] = useState(''), [active, setActive] = useState(0), root = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null), id = useId()
   const visible = items.filter(i => `${i.label} ${i.detail ?? ''}`.toLowerCase().includes(query.toLowerCase()))
   const index = Math.min(active, Math.max(0, visible.length - 1))

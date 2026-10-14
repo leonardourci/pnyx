@@ -94,8 +94,21 @@ function repliedEvents(board: string): RepliedEvent[] {
   return log.events
 }
 
-export function readThread(board: string, state: BoardState, card: Card, homes: string[], before?: string): ThreadPage {
-  const result: ThreadPage = { card: card.id, entries: [], route: card.sourceRefs.some(r => r.adapter === 'firstmate' && homes.includes(r.instanceId ?? '')), watching: 'unknown' }
+export function readThread(
+  board: string,
+  state: BoardState,
+  card: Card,
+  homes: string[],
+  before?: string,
+): ThreadPage {
+  const result: ThreadPage = {
+    card: card.id,
+    entries: [],
+    route: card.sourceRefs.some(
+      r => r.adapter === 'firstmate' && homes.includes(r.instanceId ?? ''),
+    ),
+    watching: 'unknown',
+  }
   const match = before === undefined ? null : THREAD_CURSOR.exec(before)
   const nativeCursor = match?.[1], replyCursor = match?.[2]
   const candidates: { item: ThreadEntry; native?: string; reply?: string }[] = []
@@ -114,7 +127,8 @@ export function readThread(board: string, state: BoardState, card: Card, homes: 
       }
 
       const [offsetText, itemText] = (nativeCursor ?? `${stat.size}`).split(':')
-      const beforeOffset = Number(offsetText), beforeItem = itemText === undefined ? undefined : Number(itemText)
+      const beforeOffset = Number(offsetText)
+      const beforeItem = itemText === undefined ? undefined : Number(itemText)
       let end = Math.min(beforeOffset, stat.size)
 
       // Include the record containing a chunk cursor, then exclude chunks at or
@@ -144,8 +158,13 @@ export function readThread(board: string, state: BoardState, card: Card, homes: 
 
           try {
             const offset = start + cursor
-            recordEntries(JSON.parse(buf.subarray(cursor, newline).toString()), offset).forEach((item, index) => {
-              if (beforeItem === undefined || offset < beforeOffset || (offset === beforeOffset && index < beforeItem)) {
+            const parsed = JSON.parse(buf.subarray(cursor, newline).toString())
+            recordEntries(parsed, offset).forEach((item, index) => {
+              if (
+                beforeItem === undefined
+                || offset < beforeOffset
+                || (offset === beforeOffset && index < beforeItem)
+              ) {
                 candidates.push({ native: `${offset}:${index}`, item })
               }
             })
