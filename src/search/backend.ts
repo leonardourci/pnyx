@@ -1,12 +1,13 @@
 // What semantic search runs a text through: the pinned models through
 // node-llama-cpp, on the GPU where it has a backend (Metal, CUDA, Vulkan) and the
 // CPU otherwise, or, under PNYX_SEMANTIC_STUB=1 for tests, hash vectors and word
-// overlap that never touch a model file. Only the worker process loads models.
+// overlap that never touch a model file. The worker process loads models;
+// `search setup` also loads them once to run their golden check.
 import { createHash } from 'node:crypto'
-import { realpathSync } from 'node:fs'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
 import { BoardError } from '../core/model.ts'
 import { EMBEDDERS, PROBES, RERANKER, RERANK_PROBE, modelPath, type EmbedderId, type ModelFile } from './models.ts'
+import { runtimeRequire } from './runtime.ts'
 import { stubbed } from './settings.ts'
 
 export interface Backend {
@@ -56,10 +57,24 @@ function unit(vector: ArrayLike<number>): Float32Array {
   return out
 }
 
-// node-llama-cpp, imported from its real path. In the worker process Node resolved
-// the bare name to pnpm's symlink without following it, so the package's own
-// dependencies (next to its real folder) could not be found.
-const llamaCpp = () => import(pathToFileURL(realpathSync(fileURLToPath(import.meta.resolve('node-llama-cpp')))).href) as Promise<typeof import('node-llama-cpp')>
+type Embedding = { getEmbeddingFor(tokens: number[]): Promise<{ vector: readonly number[] }> }
+type Ranking = { rankAll(query: string, docs: string[], options: { onOverflow: 'maxChunk' }): Promise<number[]> }
+
+// The part of node-llama-cpp this file uses; the package lives in the runtime folder, not in pnyx-axi's dependencies.
+interface LlamaCpp {
+  LlamaLogLevel: { error: unknown }
+  getLlama(options: { gpu: 'auto'; build: 'never'; logLevel: unknown }): Promise<{
+    gpu: string | false
+    loadModel(options: { modelPath: string }): Promise<{
+      tokenize(text: string): number[]
+      createEmbeddingContext(o: { contextSize: number; batchSize: number }): Promise<Embedding>
+      createRankingContext(options: { contextSize: number }): Promise<Ranking>
+    }>
+    dispose(): Promise<void>
+  }>
+}
+
+const llamaCpp = () => import(pathToFileURL(runtimeRequire().resolve('node-llama-cpp')).href) as Promise<LlamaCpp>
 
 // The detected mode without loading a model: what `search setup` picks models by.
 export async function detectMode(): Promise<string> {
@@ -111,7 +126,7 @@ async function realBackend(id: EmbedderId): Promise<Backend> {
     throw new SemanticError(`${id} failed its golden check (drift ${drift.toFixed(4)}); the model file or runtime is broken`, spec)
   }
 
-  let ranking: Promise<{ rankAll(query: string, docs: string[], options: { onOverflow: 'maxChunk' }): Promise<number[]> }> | undefined
+  let ranking: Promise<Ranking> | undefined
 
   const loadRanking = async () => {
     const reranker = await llama.loadModel({ modelPath: modelPath(RERANKER) })

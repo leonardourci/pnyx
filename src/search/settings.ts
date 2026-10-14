@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { BoardError } from '../core/model.ts'
 import { pnyxHome } from '../store/board-store.ts'
 import { EMBEDDERS, EMBEDDER_IDS, RERANKER, isInstalled, type EmbedderId } from './models.ts'
+import { RUNTIME_LABEL, runtimeInstalled } from './runtime.ts'
 
 export interface SearchSettings {
   // Off until `pnyx-axi search setup --semantic`; when off, search is lexical only.
@@ -46,10 +47,10 @@ export function settingEntries(s: SearchSettings): Record<SettingKey, string> {
   return { 'search.semantic': s.semantic ? 'on' : 'off', 'search.rerank': s.rerank ? 'on' : 'off', 'search.model': s.model }
 }
 
-const SETUP = 'Run `pnyx-axi search setup --semantic` to download the models'
+const SETUP = 'Run `pnyx-axi search setup --semantic` to install the runtime and download the models'
 
-// Validates and saves one setting. Turning on what needs a model file that is not
-// installed is refused, so an on setting always has its model.
+// Validates and saves one setting. Turning on what needs a model file or the
+// runtime when it is not installed is refused, so an on setting always has them.
 export function writeSetting(key: string, value: string): SearchSettings {
   const next = readSettings()
 
@@ -76,6 +77,10 @@ export function writeSetting(key: string, value: string): SearchSettings {
   }
 
   if (!stubbed()) {
+    if (next.semantic && !runtimeInstalled()) {
+      throw new BoardError(`the semantic search runtime (${RUNTIME_LABEL}) is not installed`, 'VALIDATION_ERROR', [SETUP])
+    }
+
     if (next.semantic && !isInstalled(EMBEDDERS[next.model])) {
       throw new BoardError(`${next.model} is not downloaded`, 'VALIDATION_ERROR', [`${SETUP}, or add --model ${next.model}`])
     }

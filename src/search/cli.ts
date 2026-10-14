@@ -219,8 +219,8 @@ Each search first indexes what the log and transcripts gained. The index, search
 folder, is a derived cache: \`search rebuild\` deletes and rebuilds it from the log and transcripts,
 after harvesting every card's transcript.
 Tool calls and output, thinking and injected text are not indexed; secret-shaped strings are redacted.
-Semantic search is off until \`search setup --semantic\`, which downloads pinned, Apache-2.0 models into
-the Pnyx home's models/ folder (checked by SHA-256 and golden vectors) and turns it on: with a GPU
+Semantic search is off until \`search setup --semantic\`, which installs node-llama-cpp and sqlite-vec with
+npm into the Pnyx home's runtime/ folder, downloads pinned, Apache-2.0 models into its models/ folder (checked by SHA-256 and golden vectors) and turns it on: with a GPU
 (Metal, CUDA or Vulkan) granite-embedding-311m and the Qwen3-Reranker-0.6B reranker, about 1 GB;
 on CPU only, granite-embedding-97m without the reranker, about 115 MB. Then searches also find cards
 by meaning, in any language (match: semantic, or both), fused with the word matches; --lexical skips
@@ -236,5 +236,5 @@ This machine's search settings, in the Pnyx home's settings.json, shared by ever
   search.semantic on|off   Find cards by meaning as well as by words (needs \`search setup --semantic\`)
   search.rerank on|off     Re-score the top results with the reranker (about 0.4 s a search on a GPU)
   search.model ${EMBEDDER_IDS.join('|')}  The embedding model; granite-97m suits a CPU-only machine
-Turning on a setting whose model is not downloaded is refused.
+Turning on a setting whose model or runtime is not installed is refused.
 `

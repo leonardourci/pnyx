@@ -4,10 +4,8 @@
 // the vectors; vectors from any other are dropped and made again.
 import { existsSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
-import { createRequire } from 'node:module'
 import { sqlite, searchPath, type Kind } from './index.ts'
-
-const require = createRequire(import.meta.url)
+import { runtimeRequire } from './runtime.ts'
 
 const VECTORS = 'CREATE TABLE IF NOT EXISTS vectors (hash TEXT PRIMARY KEY, embedding BLOB NOT NULL) WITHOUT ROWID'
 // Below this cosine between a probe's stored and fresh vector, the runtime has
@@ -141,7 +139,7 @@ export function nearestCards(
       return { nearest: [], ...counts }
     }
 
-    db.loadExtension((require('sqlite-vec') as { getLoadablePath(): string }).getLoadablePath())
+    db.loadExtension((runtimeRequire()('sqlite-vec') as { getLoadablePath(): string }).getLoadablePath())
     db.enableLoadExtension(false)
     const rows = db
       .prepare(

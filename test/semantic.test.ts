@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,9 +15,16 @@ const run$ = promisify(execFile)
 const cards = (out: string) => [...out.matchAll(/^ {2}- card: (\S+)$/gm)].map(m => m[1])
 
 // A board in a temporary home. With stub, the worker embeds with hash vectors and
-// reranks by word overlap, so no model is ever downloaded or loaded.
+// reranks by word overlap, so no model is ever downloaded or loaded, and the
+// runtime folder holds only a link to the repository's sqlite-vec, so nothing is installed.
 function board(stub = true) {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-sem-'))
+
+  if (stub) {
+    mkdirSync(join(home, 'runtime', 'node_modules'), { recursive: true })
+    symlinkSync(join(import.meta.dirname, '..', 'node_modules', 'sqlite-vec'), join(home, 'runtime', 'node_modules', 'sqlite-vec'), 'junction')
+  }
+
   const env = { ...process.env, PNYX_HOME: home, PNYX_SEMANTIC_STUB: stub ? '1' : '' }
   const run = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   const fails = (args: string[], code: string, message?: RegExp) =>
@@ -78,13 +85,50 @@ test('semantic search is off by default and search stays lexical', async () => {
 
 test('turning semantic search on needs the models; bad settings are refused', () => {
   const { fails } = board(false)
-  fails(['settings', 'set', 'search.semantic', 'on'], 'VALIDATION_ERROR', /granite-311m is not downloaded/)
+  fails(['settings', 'set', 'search.semantic', 'on'], 'VALIDATION_ERROR', /runtime \(node-llama-cpp@3\.22\.1 sqlite-vec@0\.1\.9\) is not installed/)
   fails(['settings', 'set', 'search.rerank', 'on'], 'VALIDATION_ERROR', /reranker is not downloaded/)
   fails(['settings', 'set', 'search.semantic', 'maybe'], 'VALIDATION_ERROR')
   fails(['settings', 'set', 'search.model', 'huge'], 'VALIDATION_ERROR')
   fails(['settings', 'set', 'nope', 'on'], 'VALIDATION_ERROR')
   fails(['search', 'setup'], 'VALIDATION_ERROR')
   fails(['search', 'setup', '--semantic', '--model', 'huge'], 'VALIDATION_ERROR')
+})
+
+test('with semantic search on but no runtime installed, search says so and stays full-text', () => {
+  const { run, home } = board(false)
+  const before = run('search', 'orders')
+  writeFileSync(join(home, 'settings.json'), JSON.stringify({ 'search.semantic': 'on', 'search.rerank': 'off', 'search.model': 'granite-97m' }))
+  const out = run('search', 'orders')
+  assert.match(out, /^semantic: "unavailable: the semantic search runtime \(node-llama-cpp@3\.22\.1 sqlite-vec@0\.1\.9\) is not installed"$/m)
+  assert.equal(out.replace(/^semantic: .*\n/m, ''), before)
+  assert.match(run('search', 'status'), /^semantic: "unavailable: the semantic search runtime .* is not installed"$/m)
+  assert.ok(!existsSync(join(home, 'semantic.log')), 'no worker is started without the runtime')
+})
+
+test('the worker socket sits in a folder only this user can use', { skip: process.platform === 'win32' }, async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pnyx-sock-'))
+  const saved = { TMPDIR: process.env.TMPDIR, PNYX_HOME: process.env.PNYX_HOME }
+  process.env.TMPDIR = tmp
+  process.env.PNYX_HOME = join(tmp, 'x'.repeat(200))
+
+  try {
+    const { workerSocket } = await import('../src/search/semantic.ts')
+    const dir = join(tmp, `pnyx-${process.getuid!()}`)
+    const socket = workerSocket()
+    // The long home is hashed into the name, so the path's length depends only on the temp folder.
+    assert.match(socket, new RegExp(`^${dir}/semantic-[0-9a-f]{16}\\.sock$`))
+    assert.equal(statSync(dir).mode & 0o777, 0o700)
+    chmodSync(dir, 0o777)
+    assert.throws(() => workerSocket(), /must be a folder only this user can use/)
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) {
+        delete process.env[k]
+      } else {
+        process.env[k] = v
+      }
+    }
+  }
 })
 
 test('setup turns semantic search on; hybrid search finds cards by meaning and by words', async () => {

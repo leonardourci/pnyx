@@ -8,14 +8,16 @@
 // when nothing matched strongly.
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { closeSync, existsSync, mkdirSync, openSync, rmSync } from 'node:fs'
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, rmSync } from 'node:fs'
 import { createConnection } from 'node:net'
 import { constants, setPriority, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pnyxHome } from '../store/board-store.ts'
+import { localToken } from '../server/state.ts'
 import { SemanticError, detectMode, loadBackend } from './backend.ts'
 import { search, updateIndex, type Hit, type Match, type Query } from './index.ts'
 import { EMBEDDERS, RERANKER, download, modelPath, type EmbedderId, type ModelFile } from './models.ts'
+import { RUNTIME_LABEL, installRuntime, runtimeBytes, runtimeInstalled } from './runtime.ts'
 import { readSettings, saveSettings, stubbed, type SearchSettings } from './settings.ts'
 import { nearestCards, vectorCounts, type Nearest, type VectorRead } from './vectors.ts'
 import type { Request } from './worker.ts'
@@ -36,14 +38,29 @@ const STATUS_TIMEOUT_MS = 30_000
 const INDEX_TIMEOUT_MS = 10_000
 const RESPAWN_MS = 1_000
 
-// One per Pnyx home. Named after a hash of the home, in the temp folder, so a
-// long home path cannot push it past the 104-byte socket path limit.
-export function workerSocket(): string {
-  const name = `pnyx-semantic-${createHash('sha256').update(pnyxHome())
-    .digest('hex')
-    .slice(0, 16)}`
+const hash = (text: string) => createHash('sha256').update(text)
+  .digest('hex')
+  .slice(0, 16)
 
-  return process.platform === 'win32' ? `\\\\.\\pipe\\${name}` : join(tmpdir(), `${name}.sock`)
+// One per Pnyx home, named after a hash of the home so a long home path cannot
+// push it past the 104-byte socket path limit. It sits in a folder in the temp
+// folder that only this user can use, so another user cannot listen in its place.
+// A Windows pipe cannot live in a folder; its name also hashes the private write token.
+export function workerSocket(): string {
+  if (process.platform === 'win32') {
+    return `\\\\.\\pipe\\pnyx-semantic-${hash(`${pnyxHome()}\n${localToken()}`)}`
+  }
+
+  const uid = process.getuid!()
+  const dir = join(tmpdir(), `pnyx-${uid}`)
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  const s = lstatSync(dir)
+
+  if (!s.isDirectory() || s.uid !== uid || (s.mode & 0o077) !== 0) {
+    throw new SemanticError(`${dir} must be a folder only this user can use; remove it`)
+  }
+
+  return join(dir, `semantic-${hash(pnyxHome())}.sock`)
 }
 
 const workerPath = join(import.meta.dirname, import.meta.url.endsWith('.ts') ? 'worker.ts' : 'worker.js')
@@ -137,6 +154,10 @@ async function request(req: Request, timeoutMs: number): Promise<Reply> {
 }
 
 async function ask(req: Request, timeoutMs: number): Promise<Reply> {
+  if (!stubbed() && !runtimeInstalled()) {
+    throw new SemanticError(`the semantic search runtime (${RUNTIME_LABEL}) is not installed`)
+  }
+
   const reply = await request(req, timeoutMs)
 
   if (reply.error) {
@@ -294,10 +315,10 @@ export async function semanticStatus(board: string): Promise<SemanticStatus> {
 export interface SetupFile {
   file: string
   bytes: number
-  status: 'present' | 'downloaded' | 'stub'
+  status: 'present' | 'downloaded' | 'installed' | 'stub'
 }
 
-// Detects the mode, downloads what it needs (the 311m embedder and the reranker
+// Installs the runtime, detects the mode, downloads what it needs (the 311m embedder and the reranker
 // with a GPU, the 97m embedder alone on CPU, unless overridden), checks each model
 // against its golden values, then turns semantic search on and starts embedding the board.
 export async function setupSemantic(
@@ -305,11 +326,20 @@ export async function setupSemantic(
   options: { model?: EmbedderId; rerank?: boolean },
   progress: (line: string) => void,
 ): Promise<{ mode: string; settings: SearchSettings; files: SetupFile[] }> {
+  const files: SetupFile[] = []
+
+  if (stubbed()) {
+    files.push({ file: RUNTIME_LABEL, bytes: 0, status: 'stub' })
+  } else {
+    progress(`${RUNTIME_LABEL}: installing with npm`)
+    const status = installRuntime()
+    files.push({ file: RUNTIME_LABEL, bytes: runtimeBytes(), status })
+  }
+
   const mode = await detectMode()
   const model = options.model ?? (mode === 'cpu' ? 'granite-97m' : 'granite-311m')
   const rerank = options.rerank ?? mode !== 'cpu'
   const wanted: ModelFile[] = [EMBEDDERS[model], ...(rerank ? [RERANKER] : [])]
-  const files: SetupFile[] = []
 
   for (const m of wanted) {
     if (stubbed()) {
