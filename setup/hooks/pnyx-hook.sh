@@ -55,7 +55,6 @@ SessionStart | UserPromptSubmit)
   fact paseoHome "${PASEO_HOME:-}"
   fact herdrSession "${HERDR_SESSION:-}"
   fact herdrPane "${HERDR_PANE_ID:-}"
-  fact itermSession "${ITERM_SESSION_ID:-}"
   ;;
 esac
 [ -z "$terminal" ] || terminal="\"terminal\":{$terminal},"

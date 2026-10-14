@@ -63,7 +63,6 @@ export interface TerminalFacts {
   paseoHome?: string
   herdrSession?: string
   herdrPane?: string
-  itermSession?: string
 }
 
 export interface Link {

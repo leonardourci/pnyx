@@ -5,6 +5,7 @@
 // Captain's intent.
 import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { canonical } from '../../cli/commands.ts'
 import { basename, join } from 'node:path'
 import { BoardError, type SourceNote } from '../../core/model.ts'
 import { latestActivity, latestLine, openDecisions, statusNotes, type OpenDecision } from './status.ts'
@@ -75,14 +76,6 @@ export function homeKey(home: string): string {
   return `${ADAPTER}:${createHash('sha256').update(home)
     .digest('hex')
     .slice(0, 8)}`
-}
-
-function canonicalPath(path: string): string {
-  try {
-    return realpathSync(path)
-  } catch {
-    return path
-  }
 }
 
 function isDir(path: string): boolean {
@@ -210,7 +203,7 @@ export function readHome(home: string): HomeObservation {
     const pr = meta.pr
     const activity = latestActivity(log)
     const last = latestLine(log)
-    const worktree = meta.worktree?.startsWith('/') ? canonicalPath(meta.worktree) : undefined
+    const worktree = canonical(meta.worktree)
     tasks.push({
       task,
       title: row?.title ?? task,

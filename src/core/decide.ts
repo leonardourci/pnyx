@@ -267,14 +267,25 @@ function parseTerminal(value: unknown): TerminalFacts {
   return value as TerminalFacts
 }
 
-// The key a hook session's observation goes to: its own once it has a card, else
-// the one card whose source assigned the session's working folder, such as the
-// Firstmate task running there. Several such cards stay ambiguous, so the session
-// keeps its own card.
-// ponytail: matches the folder on every event until the session has its own card,
-// so a second session in the same folder joins too; record join aliases if that bites.
+// The key a hook session's observation (key `<harness>:<session>`) goes to: its own
+// once it has a card, else the card it already joined, else the one card whose
+// source assigned the session's working folder, such as the Firstmate task running
+// there. Several such cards stay ambiguous, so the session keeps its own card.
+// ponytail: a second session in the same folder joins too; record join aliases if that bites.
 export function joinedKey(state: BoardState, key: string, folder: string | undefined): string {
-  if (key in state.keys || !folder) {
+  if (key in state.keys) {
+    return key
+  }
+
+  const colon = key.indexOf(':')
+  const joined = Object.values(state.cards).find(c => c.sourceRefs.some(r =>
+    r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === key.slice(colon + 1)))
+
+  if (joined) {
+    return joined.key
+  }
+
+  if (!folder) {
     return key
   }
 

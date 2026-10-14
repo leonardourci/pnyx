@@ -465,7 +465,11 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   writeFileSync(backlog, [...rows, row!.replace('[ ]', '[x]')].join('\n'))
   syncHome('default', home)
   assert.equal(cardOf(home, 'api-v2').folder, undefined)
+  // The joined session's later events still reach the task card, not a card of its own.
+  hook('h2b', 'SubagentStop', { session_id: 'fm-s', agent_id: 'a1', cwd: worktree })
+  hook('h2c', 'SessionEnd', { session_id: 'fm-s', cwd: worktree })
   hook('h3', 'SessionStart', { session_id: 'next', cwd: worktree })
   syncHome('default', home)
+  assert.equal(loadBoard('default').state.keys['claude:fm-s'], undefined)
   assert.ok(loadBoard('default').state.keys['claude:next'])
 })

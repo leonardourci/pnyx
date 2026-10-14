@@ -89,13 +89,12 @@ const reason = (c: Card) => {
 
 test('the innermost recorded host is the route', () => {
   const base = { tty: TTY, pid: '9' }
-  assert.equal(reason(card({ terminal: { ...base, program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3', paseoTerminal: 'p1', itermSession: 'w0t0p0:x' } })), 'tmux')
+  assert.equal(reason(card({ terminal: { ...base, program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3', paseoTerminal: 'p1' } })), 'tmux')
   assert.equal(reason(card({ terminal: { ...base, program: 'kitty', paseoTerminal: 'p1', herdrSession: 'h', herdrPane: 'p2' } })), 'herdr')
   assert.equal(reason(card({ terminal: { ...base, program: 'kitty', paseoTerminal: 'p1' } })), 'paseo')
-  assert.equal(reason(card({ terminal: { ...base, program: 'iTerm.app', itermSession: 'w0t0p0:x' } })), 'iterm2')
+  assert.equal(reason(card({ terminal: { ...base, program: 'iTerm.app' } })), 'iterm2')
   assert.equal(reason(card({ terminal: { ...base, program: 'Apple_Terminal' } })), 'terminal-app')
-  // An iTerm2 session id inherited by a program in another emulator is not iTerm2.
-  assert.match(reason(card({ terminal: { ...base, program: 'vscode', itermSession: 'w0t0p0:x' } })), /cannot type into vscode/)
+  assert.match(reason(card({ terminal: { ...base, program: 'vscode' } })), /cannot type into vscode/)
   assert.match(reason(card({ terminal: { program: 'tmux', tmux: '/tmp/s', tmuxPane: '%1' } })), /TTY was not found/)
   assert.match(reason(card({})), /No terminal is recorded/)
   assert.match(reason(card({ activity: 'ended', terminal: { ...base, program: 'Apple_Terminal' } })), /session ended/)
@@ -173,7 +172,7 @@ test('a Herdr reply names its session and pane', () => {
 
 test('iTerm2 and Terminal get the text and TTY as AppleScript arguments', () => {
   const { run, calls, set, session } = hosts()
-  session('s1', { program: 'iTerm.app', itermSession: 'w0t0p0:abc' })
+  session('s1', { program: 'iTerm.app' })
   session('s2', { program: 'Apple_Terminal' })
   assert.match(run('reply', 's1', '--text', 'say "hi"'), /state: delivered/)
   const iterm = calls()[1]!
@@ -217,7 +216,6 @@ test('the hook records the terminal the session runs in, past wrapper shells', a
     TMUX_PANE: '%5',
     PASEO_TERMINAL_ID: 'term-1',
     PASEO_ACTIVITY_TOKEN: 'secret',
-    ITERM_SESSION_ID: 'w0t0p0:"quoted"',
   }
   const child = execFileAsync('/bin/sh', [script, 'claude', 'SessionStart'], { encoding: 'utf8', env: hostEnv })
   child.child.stdin!.end('{"session_id":"s1","cwd":"/work"}')
