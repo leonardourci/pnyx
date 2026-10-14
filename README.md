@@ -6,7 +6,7 @@ Pnyx shows your coding agents as cards on one board (Needs you, Workers on it, R
 
 ## Status
 
-Pre-v1. `pnyx-axi` keeps each board as an append-only event log with a rebuildable snapshot; cards come from `pnyx-axi push` and are edited with `move`, `link`, `outcome` and `undo` (run `pnyx-axi --help`). `pnyx-axi serve` runs the local server that takes hook events and pushes board changes to browsers over a WebSocket. The hook, Firstmate and GitHub sources and the web board land next. See [docs/design.md](docs/design.md).
+Pre-v1. `pnyx-axi` keeps each board as an append-only event log with a rebuildable snapshot; cards come from `pnyx-axi push` or from Claude Code and Codex hooks (`pnyx-axi setup hooks`), and are edited with `move`, `link`, `outcome` and `undo` (run `pnyx-axi --help`). `pnyx-axi serve` runs the local server that takes hook events and pushes board changes to browsers over a WebSocket. The Firstmate and GitHub sources and the web board land next. See [docs/design.md](docs/design.md).
 
 ## Try it
 
