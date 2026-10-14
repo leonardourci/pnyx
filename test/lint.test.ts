@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { ESLint } from 'eslint'
+import { createElement, type FunctionComponent } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import ts from 'typescript'
 
 const fix = async (code: string) => {
   const eslint = new ESLint({ cwd: process.cwd(), fix: true })
@@ -9,12 +12,23 @@ const fix = async (code: string) => {
   return result.output ?? code
 }
 
-test('lint:fix keeps the space between JSX text and an expression', async () => {
-  const code = 'export const Label = ({ title }: { title: string }) => <label>Reply to {title}</label>\n'
-  assert.equal(await fix(code), code)
-})
+const render = (code: string) => {
+  const { outputText } = ts.transpileModule(code, {
+    compilerOptions: { jsx: ts.JsxEmit.React, module: ts.ModuleKind.CommonJS },
+  })
+  const exports: { View?: FunctionComponent<{ a: string; title: string }> } = {}
+  new Function('exports', 'React', outputText)(exports, { createElement })
 
-test('lint:fix still puts each JSX element child on its own line', async () => {
-  const code = 'export const Hint = () => <span>Help <kbd>?</kbd></span>\n'
-  assert.notEqual(await fix(code), code)
-})
+  return renderToStaticMarkup(createElement(exports.View!, { a: 'A', title: 'Title' }))
+}
+
+for (const jsx of [
+  '<span>Help <kbd>?</kbd></span>',
+  '<p>Hi <b>x</b> and {a} done</p>',
+  '<label>Reply to {title}</label>',
+]) {
+  test(`lint:fix keeps the rendered text of ${jsx}`, async () => {
+    const code = `export const View = ({ a, title }: { a: string; title: string }) => ${jsx}\n`
+    assert.equal(render(await fix(code)), render(code))
+  })
+}
