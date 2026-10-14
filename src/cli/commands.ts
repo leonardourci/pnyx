@@ -2,7 +2,7 @@
 // board's writer lock, ingests the hook spool, then appends at most one event.
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
 import { randomUUID } from 'node:crypto'
-import { findSession, liveTask } from '../core/tasks.ts'
+import { cardSessionId, findSession, liveTask } from '../core/tasks.ts'
 import { readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { boardConfig, declareTask, hydraEvent, HYDRA_CARD, validateColumns } from '../core/hydra.ts'
@@ -281,6 +281,14 @@ export function drainSpool({ writer }: {
 
     rmSync(file)
     ingested += 1
+  }
+
+  const hydra = writer.state.board?.hydra.session
+
+  const turned = [...harvest].flatMap(id => writer.state.cards[id] ?? [])
+
+  if (hydra && turned.some(card => cardSessionId({ card }) === hydra)) {
+    harvest.add(HYDRA_CARD)
   }
 
   const notes = harvest.size ? harvestTranscripts({

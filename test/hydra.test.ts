@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, chmodSync, cpSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -197,6 +197,35 @@ test('task messages remain in history and chat after the worker transcript is re
     assert.match(f.run({ args: ['task', 'chat', 'context', '--session', 'claude-code:context-worker'] }), /canary gate/)
     f.run({ args: ['search', 'rebuild'] })
     assert.match(f.run({ args: ['search', 'canary', '--kind', 'transcript'] }), /canary/)
+  } finally {
+    rmSync(f.root, { recursive: true, force: true })
+  }
+})
+
+test('Hydra chat drained from turn-end hooks stays in history after its transcript is removed', () => {
+  const f = fixture()
+
+  try {
+    const transcript = join(f.root, 'hydra.jsonl')
+    writeFileSync(transcript, '')
+    f.run({ args: ['board', 'create', 'default'] })
+    f.push({ key: 'claude:hydra-s', input: { agent: { provider: 'claude-code', sessionId: 'hydra-s', transcriptPath: transcript }, terminal: { tty: '/dev/ttys123', pid: '123' }, source: { adapter: 'hooks', instanceId: 'claude', objectId: 'hydra-s' } } })
+    f.run({ args: ['board', 'set', '--session', 'claude-code:hydra-s'] })
+    writeFileSync(transcript, `${JSON.stringify({ type: 'assistant', timestamp: '2026-10-14T19:00:00Z', message: { content: 'Hydra queued the migration audit.' } })}\n`)
+    const spool = join(f.root, 'boards', 'default', 'spool')
+    mkdirSync(spool, { recursive: true })
+    const stop = { v: 1, id: 'hook-1-1', at: '2026-10-14T19:00:01Z', harness: 'claude', event: 'Stop', payload: { session_id: 'hydra-s', transcript_path: transcript, cwd: '/work/repo' } }
+    writeFileSync(join(spool, '000000000000001-1-a.json'), JSON.stringify(stop))
+    writeFileSync(join(f.root, 'probe.json'), '{}')
+    f.run({ args: ['push', '--key', 'probe', '--file', join(f.root, 'probe.json')] })
+    const chat = f.events().filter(e => e.type === 'chat.message')
+    assert.equal(chat.length, 1)
+    assert.equal(chat[0]?.cardId, '$hydra')
+    rmSync(transcript)
+    assert.match(f.run({ args: ['history', '--kind', 'chat.message', '--full'] }), /migration audit/)
+    f.run({ args: ['search', 'rebuild'] })
+    assert.match(f.run({ args: ['search', 'migration', '--kind', 'transcript'] }), /migration/)
+    assert.equal(f.events().filter(e => e.type === 'chat.message').length, 1)
   } finally {
     rmSync(f.root, { recursive: true, force: true })
   }
