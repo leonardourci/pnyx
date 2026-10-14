@@ -138,6 +138,24 @@ test("a failed task closed in the backlog lands in Done as a closed failure", ()
   assert.equal(hotfix.column, "done");
 });
 
+test("a blocked task closed in the backlog leaves Needs you", () => {
+  const { home } = copyFixture();
+  writeFileSync(join(home, "state", "hotfix-2.status"), "working: reproducing\nblocked: waiting for CI token\n");
+  syncHome("default", home);
+  assert.deepEqual(cardOf(home, "hotfix-2").attention.map((a) => [a.kind, a.key]), [["blocked", "default"]]);
+  assert.equal(cardOf(home, "hotfix-2").column, "needs_you");
+  const backlog = join(home, "data", "backlog.md");
+  const rows = readFileSync(backlog, "utf8").split("\n");
+  const [row] = rows.splice(rows.findIndex((l) => l.startsWith("- [ ] hotfix-2")), 1);
+  rows.splice(rows.indexOf("## Done") + 1, 0, row!.replace("[ ]", "[x]"));
+  writeFileSync(backlog, rows.join("\n"));
+  syncHome("default", home);
+  const hotfix = cardOf(home, "hotfix-2");
+  assert.deepEqual(hotfix.attention, []);
+  assert.deepEqual(hotfix.outcome, { state: "done" });
+  assert.equal(hotfix.column, "done");
+});
+
 test("a done: status line alone is not completion", () => {
   const { home } = copyFixture();
   const backlog = join(home, "data", "backlog.md");

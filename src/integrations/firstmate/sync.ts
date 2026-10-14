@@ -20,11 +20,15 @@ export function firstmateRef(card: Card): SourceRef | undefined {
 }
 
 // Open decisions, plus the latest status line when it says the task failed or is
-// blocked, the task is not closed in the backlog, and no open decision carries it.
+// blocked and no open decision carries it. A task closed in the backlog drops the
+// latest line's attention, even when it is an open decision.
 function attention(task: TaskObservation): Attention[] {
   const open = task.decisions.map((d) => ({ kind: d.verb, key: d.key, blocking: true, ...(d.note ? { text: d.note } : {}) }));
   const stalled = task.stalled;
-  if (!stalled || task.done || open.some((a) => a.kind === stalled.verb && a.text === (stalled.note || undefined))) return open;
+  if (!stalled) return open;
+  const carries = (a: Attention) => a.kind === stalled.verb && a.text === (stalled.note || undefined);
+  if (task.done) return open.filter((a) => !carries(a));
+  if (open.some(carries)) return open;
   return [...open, { kind: stalled.verb, key: STATUS_KEY, blocking: true, ...(stalled.note ? { text: stalled.note } : {}) }];
 }
 
