@@ -1,0 +1,8 @@
+[
+  {"key":"workshop","title":"Build the next release","workspace":"Studio","tags":["orchestrator"],"activity":"working"},
+  {"key":"layout","title":"Shape the first working board","workspace":"Studio","tags":["pnyx","design"],"parent":"workshop","activity":"idle","attention":[{"kind":"question","key":"layout","blocking":true,"text":"Review the conversation layout before the next pass."}]},
+  {"key":"coverage","title":"Check the empty-state experience","workspace":"Work","tags":["platform"],"activity":"idle","attention":[{"kind":"permission","key":"test","blocking":true,"text":"Permission needed to run the fixture checks."}]},
+  {"key":"reader","title":"Follow the recorded conversation","workspace":"Studio","tags":["pnyx"],"parent":"workshop","activity":"working"},
+  {"key":"review","title":"Verify reconnect and replay","workspace":"Work","tags":["platform","tests"],"activity":"working"},
+  {"key":"docs","title":"Document the reply receipts","workspace":"Work","tags":["docs"],"activity":"idle"}
+]

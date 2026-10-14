@@ -1,7 +1,8 @@
+import { seedWebFixture } from "./web-fixture.ts";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -197,23 +198,23 @@ test("a tab resumes from its cursor, gets CLI writes, and resyncs with a snapsho
   assert.equal(moved.type === "event" && moved.event.type, "card.moved");
 });
 
-test("a tab writes over its WebSocket and gets a receipt with its request id, recorded as web", async () => {
+test("a tab gets its write's event before the receipt with its request id, recorded as web", async () => {
   const cardId = await boardWithCard();
   const t = await tab("?after=1");
 
   t.command("req-1", "move", [cardId, "review"]);
+  const pushed = await t.next();
+  assert.equal(pushed.type === "event" && pushed.event.type, "card.moved");
+  assert.equal(pushed.type === "event" && pushed.event.actor, "web");
   const receipt = await t.next();
   assert.equal(receipt.type, "receipt");
   assert.equal(receipt.type === "receipt" && receipt.id, "req-1");
   assert.deepEqual(receipt.type === "receipt" && receipt.card, { id: cardId, column: "review", revision: 2 });
-  const pushed = await t.next();
-  assert.equal(pushed.type === "event" && pushed.event.type, "card.moved");
-  assert.equal(pushed.type === "event" && pushed.event.actor, "web");
 
   t.command("req-2", "outcome", [cardId, "done", "--actor", "leo"]);
-  assert.equal((await t.next()).type, "receipt");
   const outcome = await t.next();
   assert.equal(outcome.type === "event" && outcome.event.actor, "leo");
+  assert.equal((await t.next()).type, "receipt");
 });
 
 test("a bad command gets an error carrying its request id and writes nothing", async () => {
@@ -243,6 +244,7 @@ test("writes through the server always land on the server's own board", async ()
   const cardId = await boardWithCard("work");
   const t = await tab("?after=1");
   t.command("req-1", "move", [cardId, "review"]);
+  assert.equal((await t.next()).type, "event");
   assert.equal((await t.next()).type, "receipt");
   await seqIs(2, "work");
   assert.equal(loadBoard("work").state.cards[cardId]!.column, "review");
@@ -305,4 +307,53 @@ test("a server.json left by a dead server is not trusted, even when its pid was 
   } finally {
     other.kill();
   }
+});
+
+test("web preferences, custom moves and read queries share the authenticated socket", async () => {
+  const card = await boardWithCard();
+  const t = await tab(); await t.next();
+  t.command("view-1", "view", ["set", "--json", JSON.stringify({ customColumns: [{ id: "custom:later", title: "Later" }], panelWidth: 500 }), "--if-revision", "0", "--event-id", "web-view"]);
+  const update = await t.next(); assert.equal(update.type, "event");
+  const receipt = await t.next(); assert.equal(receipt.type, "receipt");
+  assert.equal(loadBoard("default").state.view?.panelWidth, 500);
+  t.command("move-1", "move", [card, "custom:later", "--if-revision", "1"]);
+  assert.equal((await t.next()).type, "event"); assert.equal((await t.next()).type, "receipt");
+  assert.equal(loadBoard("default").state.cards[card]?.column, "custom:later");
+  t.command("view-stale", "view", ["set", "--json", "{\"fontSize\":18}", "--if-revision", "0"]);
+  const stale = await t.next(); assert.equal(stale.type, "error"); if (stale.type === "error") assert.equal(stale.code, "REVISION_CONFLICT");
+  t.command("thread-1", "thread", [card]);
+  const thread = await t.next(); assert.equal(thread.type, "receipt");
+  if (thread.type === "receipt") assert.equal((thread.thread as { route: boolean }).route, false);
+  t.command("reply-1", "reply", [card, "test", "id"]);
+  const reply = await t.next(); assert.equal(reply.type, "error"); if (reply.type === "error") assert.equal(reply.code, "NO_ROUTE");
+  t.command("history-1", "history", ["--card", card]); assert.equal((await t.next()).type, "receipt");
+  t.command("escape-board", "history", ["--board", "other"]); assert.equal((await t.next()).type, "error");
+  t.ws.close();
+});
+
+
+test("browser reply delivery uses only configured fixture homes and never resends an unknown result", async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!);
+  server = await startServer({ board: "default", homes: [fixture.nativeHome] });
+  const t = await tab(); await t.next();
+  const card = fixture.state.keys.layout!;
+  writeFileSync(join(fixture.nativeHome, "send-exit"), "3");
+  const receipt = async (id: string) => {
+    for (;;) { const m = await t.next(); if ((m.type === "receipt" || m.type === "error") && m.id === id) return m; }
+  };
+  t.command("send-1", "reply", [card, "A literal fixture reply", "unknown-reply"]);
+  const first = await receipt("send-1"); assert.equal(first.type, "receipt");
+  if (first.type === "receipt") assert.equal((first.reply as { state: string }).state, "delivery_unknown");
+  t.command("send-2", "reply", [card, "A literal fixture reply", "unknown-reply"]);
+  const second = await receipt("send-2"); assert.equal(second.type, "receipt");
+  if (second.type === "receipt") assert.equal((second.reply as { sent: boolean }).sent, false);
+  assert.equal(readFileSync(join(fixture.nativeHome, "sent.log"), "utf8").match(/A literal fixture reply/g)?.length, 1);
+  t.command("send-3", "reply", [card, "   ", "blank-reply"]);
+  const invalid = await receipt("send-3"); assert.equal(invalid.type, "error");
+  if (invalid.type === "error") assert.equal(invalid.code, "VALIDATION_ERROR");
+  assert.equal(loadBoard("default").state.cards[card]?.attention.length, 1);
+  t.command("search-1", "search", ["conversation readable"]);
+  const found = await receipt("search-1"); assert.equal(found.type, "receipt");
+  if (found.type === "receipt") assert.equal((found.hits as { card: string }[])[0]?.card, card);
+  t.ws.close();
 });

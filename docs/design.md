@@ -52,7 +52,7 @@ Folder equality is a fallback match, not proof that every process in a repositor
 
 Each card has exactly one coarse workspace, free tags, an optional parent ID, and explicit workspace mappings with `unassigned` for gaps. Parents may cross workspaces; filters do not expose an excluded parent's details. Parent cycles are rejected. Titles are literal source or backlog titles, or ID fallbacks, never model-generated. Hooks never infer task completion from idle, turn end or terminal exit.
 
-The board has four columns: Needs you, Workers on it, Review, Done. An open linked change moves a card to Review; a confirmed merge moves it to Done. Precedence: sticky manual pin, blocking source request, linked-change facts, other explicit attention or completion, then ongoing work. With several tracked links, any open one means Review, and all must be confirmed merged for automatic Done. Closed-unmerged needs attention; a stale refresh keeps the last known facts. Moving or merging a card does not resolve a source decision. Manual placement is sticky by default, with an alternate policy that expires it on the next distinct accepted observation and a per-card return-to-auto command.
+The board has four automatic columns: Needs you, Workers on it, Review, Done. An open linked change moves a card to Review; a confirmed merge moves it to Done. Precedence: sticky manual pin, blocking source request, linked-change facts, other explicit attention or completion, then ongoing work. With several tracked links, any open one means Review, and all must be confirmed merged for automatic Done. Closed-unmerged needs attention; a stale refresh keeps the last known facts. Moving or merging a card does not resolve a source decision. Users may create named custom columns inline; these accept manual placement only. Manual placement is sticky by default, with an alternate policy that expires it on the next distinct accepted observation and a per-card return-to-auto command.
 
 ## Events, snapshot, replay and undo
 
@@ -107,8 +107,8 @@ pnyx-axi search "<words>" [--workspace <w>] [--kind event|transcript] [--card <i
 pnyx-axi search status | rebuild
 pnyx-axi replay --at <seq>
 pnyx-axi undo <event-id> --if-revision <revision>
-pnyx-axi view set --font-size 16 --panel right
-pnyx-axi view set --column-width needs=320 --card-height 250
+pnyx-axi view set --json '{"fontSize":16,"panelPlacement":"right"}'
+pnyx-axi view set --json '{"columnWidths":{"needs_you":320},"cardHeight":250}'
 pnyx-axi view show | schema
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
 pnyx-axi settings set sessionStartSummary true

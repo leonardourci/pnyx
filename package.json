@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",
     "lint": "pnpm run typecheck && eslint .",
     "test": "pnpm run build && node --test \"test/**/*.test.ts\"",
-    "web:dev": "vite --config web/vite.config.ts"
+    "web:dev": "vite --config web/vite.config.ts",
+    "test:web": "pnpm run build && node test/web-smoke.ts"
   },
   "dependencies": {
     "axi-sdk-js": "^0.1.13",

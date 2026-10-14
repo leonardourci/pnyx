@@ -18,6 +18,7 @@ import {
   type RepliedEvent,
   type SourceRef,
 } from "./model.ts";
+import { DEFAULT_VIEW, patchView, viewFor } from "./view.ts";
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from "./reducer.ts";
 
 export interface Meta {
@@ -207,9 +208,14 @@ function pushedValue(card: Card, field: string): unknown {
   return (card as unknown as Record<string, unknown>)[field] ?? null;
 }
 
+function checkColumn(state: BoardState, column: Column | null): void {
+  if (column?.startsWith("custom:") && !viewFor(state).customColumns.some(c => c.id === column)) throw invalid("unknown custom column");
+}
+
 // column null returns the card to automatic placement.
 export function decideMove(state: BoardState, ref: string, column: Column | null, meta: Meta): Decision {
   const card = findCard(state, ref);
+  checkColumn(state, column);
   return decided(state, meta, {
     ...base(state, meta, card.id),
     type: "card.moved",
@@ -287,7 +293,7 @@ export function decideReply(state: BoardState, ref: string, data: RepliedEvent["
   return decided(state, meta, { ...base(state, meta, card.id), type: "card.replied", data });
 }
 
-function currentValue(card: Card, target: BoardEvent): unknown {
+function currentValue(card: Card, target: Exclude<BoardEvent, { type: "board.view" }>): unknown {
   if (target.type === "card.pushed") {
     return Object.fromEntries(Object.keys(target.data.before ?? {}).map((field) => [field, pushedValue(card, field)]));
   }
@@ -309,6 +315,12 @@ function afterValue(target: BoardEvent): unknown {
 // an observation: --actor is attribution, so a direct CLI or UI write stays undoable
 // whether a person or an agent made it. A sent reply cannot be unsent.
 export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): Decision {
+  if (target.type === "board.view") {
+    if (state.undone[target.id] || !isDeepStrictEqual(viewFor(state), target.data.after)) throw new BoardError("preferences changed since this event", "CONFLICT");
+    if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) throw new BoardError("view preferences changed", "REVISION_CONFLICT");
+    const after = patchView({ ...state, view: DEFAULT_VIEW }, target.data.before);
+    return { event: { ...base(state, meta, "$board"), type: "board.view", undoes: target.id, data: { before: viewFor(state), after } } };
+  }
   if (target.type === "card.replied") {
     throw notUndoable(`${target.id} records a reply, which cannot be unsent`);
   }
@@ -349,6 +361,7 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
     return decided(state, meta, { ...head, type: "card.pushed", data });
   }
   if (target.type === "card.moved") {
+    checkColumn(state, target.data.before);
     return decided(state, meta, { ...head, type: "card.moved", data: { before: target.data.after, after: target.data.before } });
   }
   if (target.type === "card.linked") {
@@ -364,4 +377,12 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
       card: { title: card.title, workspace: card.workspace, tags: card.tags, links: card.links },
     },
   });
+}
+
+export function decideView(state: BoardState, patch: unknown, meta: Meta): Decision {
+  if (meta.id && meta.id in state.eventIds) return { skipped: "duplicate" };
+  if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) throw new BoardError("view preferences changed; reload and retry", "REVISION_CONFLICT");
+  const before = viewFor(state), after = patchView(state, patch);
+  if (isDeepStrictEqual(before, after)) return { skipped: "unchanged" };
+  return { event: { ...base(state, meta, "$board"), type: "board.view", data: { before, after } } };
 }

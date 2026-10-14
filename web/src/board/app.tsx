@@ -1,0 +1,39 @@
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
+import type { Card, ViewPreferences } from "../../../src/core/model.ts";
+import { viewFor } from "../../../src/core/view.ts";
+import type { ThreadPage } from "../../../src/thread/read.ts";
+import { Button, Input, Select } from "../components/ui/controls.tsx";
+import { Icon } from "../components/ui/icon.tsx";
+import { Resize } from "../components/ui/resize.tsx";
+import { useBoard } from "./connection.ts";
+import { BoardCard } from "./card.tsx";
+import { Detail } from "./detail.tsx";
+import { Settings } from "./settings.tsx";
+import { History } from "./history.tsx";
+import { columnsFor, filterCards } from "./view.ts";
+function Column({ id, title, description, cards, view, save, children }: { id: string; title: string; description: string; cards: Card[]; view: ViewPreferences; save(patch: unknown): Promise<boolean>; children: ReactNode }) {
+  const [width, setWidth] = useState<number | null>(null);
+  return <section className={`column column-${id}`} aria-label={title} style={{ width: width ?? view.columnWidths[id] ?? 290, flexBasis: width ?? view.columnWidths[id] ?? 290 }}><header className="column-header"><div className="row between"><h2><Icon name={id} size={15} />{title}</h2><span className="count">{String(cards.length).padStart(2,"0")}</span></div><p>{description}</p></header><div className="column-cards">{children}{cards.length === 0 && <p className="empty" tabIndex={0}>No cards here</p>}</div><Resize label={`Resize ${title} column`} value={view.columnWidths[id] ?? 290} min={240} max={640} onPreview={setWidth} onCommit={n => save({ columnWidths: { [id]: n } })} /></section>;
+}
+export function App() {
+  const { state, command, connected, error, thread, setThread } = useBoard();
+  const [page, setPage] = useState("board"), [workspace, setWorkspace] = useState(""), [tag, setTag] = useState(""), [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<string | null>(null), [drafts, setDrafts] = useState<Record<string,string>>({}), [notice, setNotice] = useState(""), [newColumn, setNewColumn] = useState<string | null>(null);
+  const notify = useCallback((text: string) => setNotice(text), []);
+  const view = viewFor(state), columns = columnsFor(state), cards = filterCards(state, workspace, tag, query), card = selected ? state.cards[selected] : undefined;
+  const workspaces = [...new Set(Object.values(state.cards).map(c => c.workspace))].sort(), tags = [...new Set(Object.values(state.cards).flatMap(c => c.tags))].sort();
+  const save = useCallback((patch: unknown) => command("view", ["set", "--json", JSON.stringify(patch), "--event-id", crypto.randomUUID()]).then(() => { notify("Preferences saved"); return true; }, e => { notify(e.message); return false; }), [command, notify]);
+  useEffect(() => { if (!connected) return; let cancelled = false; setThread(null); void command("thread", [selected ?? ""]).then(r => { if (!cancelled && r.thread) setThread(r.thread as ThreadPage); }).catch(e => { if (!cancelled) notify(e.message); }); return () => { cancelled = true; }; }, [selected, connected, command, setThread, notify]);
+  useEffect(() => {
+    if (page === "board" && selected && view.panelPlacement === "inline") requestAnimationFrame(() => document.querySelector(".column-cards > .detail")?.scrollIntoView({ block: "nearest", inline: "nearest" }));
+  }, [page, selected, view.panelPlacement]);
+  const open = (id: string) => { if (state.cards[id]) { setSelected(id); setPage("board"); } };
+  const close = () => { setSelected(null); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-card="${selected}"]`)?.focus()); };
+  const detail = card && <Detail key={card.id} card={card} state={state} view={view} thread={thread} command={command} connected={connected} close={close} save={save} draft={drafts[card.id] ?? ""} setDraft={text => setDrafts(d => ({ ...d, [card.id]: text }))} outside={!cards.some(c => c.id === card.id)} notify={notify} />;
+  return <div className="app" style={{ fontSize: view.fontSize }}><header className="topbar"><div className="brand"><span className="mark">π</span><span>pnyx</span></div><nav aria-label="Main pages">{[["board", "Board"], ["history", "History"], ["settings", "Settings"]].map(([id,label]) => <Button key={id} aria-pressed={page === id} onClick={() => setPage(id)}><Icon name={id} size={14} />{label}</Button>)}</nav><span className={`connection ${connected ? "online" : ""}`}><i />{connected ? "Connected" : "Offline"}</span></header>
+    <main className="shell">{error && <div role="alert" className="error-banner">{error}</div>}{page === "settings" ? <Settings state={state} view={view} save={save} close={() => setPage("board")} /> : page === "history" ? <History command={command} workspace={workspace} open={open} notify={notify} /> : <>
+      <div className="hero"><div><span className="eyebrow">YOUR WORK, AT A GLANCE</span><h1>The working board</h1><p>Follow the work. Keep the conversation in view.</p></div><div className="hero-stats"><strong>{Object.values(state.cards).filter(c => c.column === "needs_you").length}</strong> need your attention<p>{Object.keys(state.cards).length} sessions · {state.seq} recorded events</p></div></div>
+      <div className="toolbar"><div className="row wrap"><Select label="Workspace" value={workspace} options={[{ value: "", label: "All workspaces" }, ...workspaces.map(w => ({ value: w, label: w }))]} onChange={setWorkspace} /><Select label="Filter by tag" value={tag} options={[{ value: "", label: "All tags" }, ...tags.map(t => ({ value: t, label: t }))]} onChange={setTag} />{(workspace || tag) && <Button onClick={() => { setWorkspace(""); setTag(""); }}>Clear filters</Button>}</div><div className="row"><Icon name="search" /><Input aria-label="Find a card" type="search" placeholder="Find a card…" value={query} onChange={e => setQuery(e.target.value)} /></div></div>
+      <div className={`work-area ${view.panelPlacement}`}><div className="board-space"><div className="kanban" aria-label="Work columns">{columns.map(c => { const items = cards.filter(card => card.column === c.id); return <Column key={c.id} {...c} cards={items} view={view} save={save}>{items.map(item => <Fragment key={item.id}><BoardCard card={item} visible={cards} selected={selected === item.id} view={view} open={open} save={save} />{selected === item.id && view.panelPlacement === "inline" && detail}</Fragment>)}</Column>; })}<div className="add-column">{newColumn === null ? <Button onClick={() => setNewColumn("")} disabled={!connected}>+ Add column</Button> : <form onSubmit={e => { e.preventDefault(); if (!newColumn.trim()) return; const patch = { customColumns: [...view.customColumns, { id: `custom:${crypto.randomUUID()}`, title: newColumn.trim() }] }; void command("view", ["set", "--json", JSON.stringify(patch), "--if-revision", String(state.viewRevision ?? 0), "--event-id", crypto.randomUUID()]).then(() => setNewColumn(null)).catch(e => notify(e.message)); }}><Input autoFocus aria-label="New column name" value={newColumn} maxLength={60} placeholder="Column name" onChange={e => setNewColumn(e.target.value)} onKeyDown={e => { if (e.key === "Escape") setNewColumn(null); }} /><div className="row"><Button type="submit" variant="primary">Create column</Button><Button onClick={() => setNewColumn(null)}>Cancel</Button></div></form>}</div></div><footer className="board-footer"><span>{cards.length} visible sessions</span><span>Event {state.seq} · deterministic</span></footer></div>{(view.panelPlacement === "right" || (card && !cards.some(c => c.id === card.id))) && detail}</div>
+    </>}</main>{notice && <div role="status" className="notice"><span>{notice}</span><Button aria-label="Dismiss notification" onClick={() => setNotice("")}><Icon name="close" size={14} /></Button></div>}</div>;
+}

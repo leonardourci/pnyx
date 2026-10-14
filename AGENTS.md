@@ -26,6 +26,7 @@ One folder per feature. Code for a feature lives in its folder; a folder without
 | `src/store/` | `events.jsonl`, `snapshot.json`, the writer lock and the hook spool |
 | `src/search/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
 | `src/server/` | the local daemon and its WebSocket |
+| `src/thread/` | the transcript and reply thread reader |
 | `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`); each keeps both its reading side and its reply delivery |
 | `web/` | the React + Vite + Tailwind board; its own UI primitives in `web/src/components/ui/` |
 | `setup/` | hook templates per harness |
