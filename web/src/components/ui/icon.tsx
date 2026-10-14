@@ -9,6 +9,7 @@ const paths: Record<string, string> = {
   review: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
   done: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M7 12l3 3 7-7',
   agent: 'M4 6h16v14H4zM12 2v4M8 11v2m8-2v2m-7 4h6',
+  typing: 'M3 6h18v13H3zM6 10h1m3 0h1m3 0h1m3 0h1M6 13h1m3 0h1m3 0h1m3 0h1M7 16h10',
   tool: 'm8 5-6 7 6 7m8-14 6 7-6 7m-3-17-2 20',
   thinking: 'M9 18v3h6v-3M9 17c0-3-4-3-4-8a7 7 0 0 1 14 0c0 5-4 5-4 8z',
   send: 'm3 3 18 9-18 9 3-9zM6 12h15',

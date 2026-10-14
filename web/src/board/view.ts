@@ -1,4 +1,4 @@
-import type { BoardState, Card, Column, Link } from '../../../src/core/model.ts'
+import type { BoardState, Card, Column, Link, ViewPreferences } from '../../../src/core/model.ts'
 import { viewFor } from '../../../src/core/view.ts'
 
 export const BUILTIN_COLUMNS: { id: Column; title: string; description: string }[] = [
@@ -100,3 +100,19 @@ export const slashMatches = ({ command, prefix }: { command: string; prefix: str
 // A page without a build (the Vite dev server) or a server without one never reloads.
 export const shouldReload = ({ loaded, server }: { loaded: string | undefined; server: string }) =>
   Boolean(loaded && server && loaded !== server)
+
+// Focus shows only prompts and agent messages: on while a card shows neither tool
+// calls nor thinking, by its own override or the board default.
+export function traces({ view, card }: { view: ViewPreferences; card: string }) {
+  const overrides = view.cardTraceOverrides[card]
+  const tools = overrides?.tools ?? view.toolDetails
+  const thinking = overrides?.thinking ?? view.thinkingDetails
+
+  return { tools, thinking, focus: !tools && !thinking, overrides }
+}
+
+// Hook activity names the tool an agent runs ("running git status"). Under Focus a
+// card only says the agent is working.
+const TOOL_ACTIVITY = /^(?:running|ran) /
+export const focusedActivity = ({ activity, focus }: { activity?: string; focus: boolean }) =>
+  focus && TOOL_ACTIVITY.test(activity ?? '') ? 'working' : activity

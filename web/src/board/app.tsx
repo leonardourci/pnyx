@@ -10,6 +10,7 @@ import { Resize } from '../components/ui/resize.tsx'
 import { useBoard } from './connection.ts'
 import { BoardCard } from './card.tsx'
 import { Detail } from './detail.tsx'
+import type { ChatComment } from './chat.ts'
 import { Settings } from './settings.tsx'
 import { History } from './history.tsx'
 import { columnsFor, findBoxCards, pageTitle } from './view.ts'
@@ -24,6 +25,7 @@ type Restore = {
   selected?: string | null
   page?: string
   drafts?: Record<string, string>
+  comments?: Record<string, ChatComment[]>
   scroll?: Record<string, [number, number]>
 }
 const restored: Restore = (() => {
@@ -123,6 +125,7 @@ export function App() {
   const { state, command, connected, error, thread, setThread, latest } = useBoard()
   const [page, setPage] = useState(restored.page ?? 'board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
+  const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
   // The deletion a notice can undo; any later notice replaces it.
   const [undoColumn, setUndoColumn] = useState<string | null>(null)
   const notify = useCallback(({ text }: { text: string }) => {
@@ -187,14 +190,16 @@ export function App() {
       try {
         const scroll = Object.fromEntries(scrollers()
           .map(([key, el]) => [key, [el.scrollLeft, el.scrollTop]]))
-        sessionStorage.setItem(RESTORE_KEY, JSON.stringify({ selected, page, drafts, scroll }))
+        sessionStorage.setItem(RESTORE_KEY, JSON.stringify({
+          selected, page, drafts, comments, scroll,
+        }))
       } catch { /* Storage full or blocked: the reload starts fresh. */ }
     }
 
     addEventListener('pagehide', keep)
 
     return () => removeEventListener('pagehide', keep)
-  }, [selected, page, drafts])
+  }, [selected, page, drafts, comments])
   useEffect(() => {
     const scroll = pendingScroll.current
 
@@ -215,7 +220,9 @@ export function App() {
 
   const open = ({ id }: { id: string }) => {
     if (state.cards[id]) {
+      // The conversation opens at its reply input, the end of the thread.
       setSelected(id); setPage('board')
+      requestAnimationFrame(() => requestAnimationFrame(() => focusElement('.composer textarea')))
     }
   }
 
@@ -269,6 +276,8 @@ export function App() {
       save={save}
       draft={drafts[card.id] ?? ''}
       setDraft={({ text }) => setDrafts(d => ({ ...d, [card.id]: text }))}
+      comments={comments[card.id] ?? []}
+      setComments={({ items }) => setComments(c => ({ ...c, [card.id]: items }))}
       outside={!cards.some(c => c.id === card.id)}
       notify={notify}
     />

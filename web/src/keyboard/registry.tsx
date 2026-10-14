@@ -63,10 +63,14 @@ export function KeyboardProvider({
       }
 
       const overlay = target.closest('[data-key-scope=overlay]')
-      const scope = hints ? 'hints' : overlay ? 'overlay' : (target.dataset.keyScope ?? 'navigation') as KeyScope
+      // Message blocks, comments and buttons inside the conversation share its scope.
+      const scope = hints ? 'hints' : overlay ? 'overlay' : (target.closest<HTMLElement>('[data-key-scope]')?.dataset.keyScope ?? 'navigation') as KeyScope
+      // These controls own their standard navigation and selection keys; buttons and
+      // links in the conversation keep Enter.
+      const owned = target.closest('[role=combobox],[role=listbox],[role=separator]')
+        || (scope === 'thread' && event.key === 'Enter' && target.closest('button,a'))
 
-      // These controls own their standard navigation and selection keys.
-      if (!hints && !event.ctrlKey && !event.metaKey && !event.altKey && target.closest('[role=combobox],[role=listbox],[role=separator]') && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', ' '].includes(event.key)) {
+      if (!hints && !event.ctrlKey && !event.metaKey && !event.altKey && owned && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', ' '].includes(event.key)) {
         return
       }
 
