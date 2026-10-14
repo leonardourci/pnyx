@@ -39,9 +39,12 @@ test("custom columns accept manual placement and cannot strand existing cards", 
   assert.equal(state.cards.c1!.column, "custom:later");
   assert.throws(() => patchView(state, { customColumns: [] }), /contains cards/);
   assert.throws(() => decideMove(state, "a", "custom:missing", meta), /unknown/);
-  state = reduce(state, event(decideMove(state, "a", null, meta)));
+  const toAuto = event(decideMove(state, "a", null, meta));
+  state = reduce(state, toAuto);
   assert.equal(state.cards.c1!.column, "needs_you");
   assert.equal(state.cards.c1!.attention.length, 1);
+  state = reduce(state, event(decideView(state, { customColumns: [] }, meta)));
+  assert.throws(() => decideUndo(state, toAuto, meta), /unknown custom column/);
 });
 
 test("filters do not expose excluded parent details, and links/slashes stay literal", () => {
@@ -94,4 +97,6 @@ test("long transcript messages and reply history page without losing text or dup
   assert.equal(new Set(entries.map(e => e.id)).size, entries.length);
   assert.equal(entries.filter(e => e.role.startsWith("assistant")).map(e => e.text).join(""), longText);
   assert.equal(entries.filter(e => e.role === "You").length, 90);
+  const later = withWriter("default", w => { w.append(event(decideReply(w.state, "a", { reply: "r90", state: "queued", route: "fixture", text: "reply 90" }, meta))); return w.state; });
+  assert.equal(readThread("default", later, later.cards.c1!, []).entries.at(-1)?.text, "reply 90");
 });

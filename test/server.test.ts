@@ -347,6 +347,9 @@ test("browser reply delivery uses only configured fixture homes and never resend
   const second = await receipt("send-2"); assert.equal(second.type, "receipt");
   if (second.type === "receipt") assert.equal((second.reply as { sent: boolean }).sent, false);
   assert.equal(readFileSync(join(fixture.nativeHome, "sent.log"), "utf8").match(/A literal fixture reply/g)?.length, 1);
+  t.command("send-3", "reply", [card, "   ", "blank-reply"]);
+  const invalid = await receipt("send-3"); assert.equal(invalid.type, "error");
+  if (invalid.type === "error") assert.equal(invalid.code, "VALIDATION_ERROR");
   assert.equal(loadBoard("default").state.cards[card]?.attention.length, 1);
   t.command("search-1", "search", ["conversation readable"]);
   const found = await receipt("search-1"); assert.equal(found.type, "receipt");

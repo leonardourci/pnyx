@@ -189,7 +189,12 @@ export async function startServer({ board, port = 0, homes = [] }: { board: stri
           execFile(process.execPath, [join(import.meta.dirname, "..", "cli", import.meta.url.endsWith(".ts") ? "reply-worker.ts" : "reply-worker.js"), card.id, "--text", args[1], "--idempotency-key", args[2], "--board", board, "--actor", "web", ...homes.flatMap(h => ["--home", h])], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {
             kick();
             if (ws.readyState !== ws.OPEN) return;
-            if (error) fail("Reply could not be confirmed; check receipts before sending again", "DELIVERY_UNKNOWN");
+            if (error) {
+              let known: { message?: unknown; code?: unknown; help?: string[] } | undefined;
+              try { known = JSON.parse(stdout).error; } catch { known = undefined; }
+              if (typeof known?.message === "string" && typeof known.code === "string") fail(known.message, known.code, known.help);
+              else fail("Reply could not be confirmed; check receipts before sending again", "DELIVERY_UNKNOWN");
+            }
             else { try { send(ws, { type: "receipt", id, ...JSON.parse(stdout) }); } catch { fail("Reply receipt unavailable; check history", "DELIVERY_UNKNOWN"); } }
           });
         }

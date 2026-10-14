@@ -208,10 +208,14 @@ function pushedValue(card: Card, field: string): unknown {
   return (card as unknown as Record<string, unknown>)[field] ?? null;
 }
 
+function checkColumn(state: BoardState, column: Column | null): void {
+  if (column?.startsWith("custom:") && !viewFor(state).customColumns.some(c => c.id === column)) throw invalid("unknown custom column");
+}
+
 // column null returns the card to automatic placement.
 export function decideMove(state: BoardState, ref: string, column: Column | null, meta: Meta): Decision {
   const card = findCard(state, ref);
-  if (column?.startsWith("custom:") && !viewFor(state).customColumns.some(c => c.id === column)) throw invalid("unknown custom column");
+  checkColumn(state, column);
   return decided(state, meta, {
     ...base(state, meta, card.id),
     type: "card.moved",
@@ -357,6 +361,7 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
     return decided(state, meta, { ...head, type: "card.pushed", data });
   }
   if (target.type === "card.moved") {
+    checkColumn(state, target.data.before);
     return decided(state, meta, { ...head, type: "card.moved", data: { before: target.data.after, after: target.data.before } });
   }
   if (target.type === "card.linked") {

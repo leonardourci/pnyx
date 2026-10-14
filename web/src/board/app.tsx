@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Card, ViewPreferences } from "../../../src/core/model.ts";
 import { viewFor } from "../../../src/core/view.ts";
 import type { ThreadPage } from "../../../src/thread/read.ts";
@@ -19,10 +19,10 @@ export function App() {
   const { state, command, connected, error, thread, setThread } = useBoard();
   const [page, setPage] = useState("board"), [workspace, setWorkspace] = useState(""), [tag, setTag] = useState(""), [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null), [drafts, setDrafts] = useState<Record<string,string>>({}), [notice, setNotice] = useState(""), [newColumn, setNewColumn] = useState<string | null>(null);
-  const notify = useCallback((text: string) => setNotice(text), []), stateRef = useRef(state); stateRef.current = state;
+  const notify = useCallback((text: string) => setNotice(text), []);
   const view = viewFor(state), columns = columnsFor(state), cards = filterCards(state, workspace, tag, query), card = selected ? state.cards[selected] : undefined;
   const workspaces = [...new Set(Object.values(state.cards).map(c => c.workspace))].sort(), tags = [...new Set(Object.values(state.cards).flatMap(c => c.tags))].sort();
-  const save = useCallback((patch: unknown) => { void command("view", ["set", "--json", JSON.stringify(patch), "--if-revision", String(stateRef.current.viewRevision ?? 0), "--event-id", crypto.randomUUID()]).then(() => notify("Preferences saved")).catch(e => notify(e.message)); }, [command, notify]);
+  const save = useCallback((patch: unknown) => { void command("view", ["set", "--json", JSON.stringify(patch), "--event-id", crypto.randomUUID()]).then(() => notify("Preferences saved")).catch(e => notify(e.message)); }, [command, notify]);
   useEffect(() => { if (!connected) return; let cancelled = false; setThread(null); void command("thread", [selected ?? ""]).then(r => { if (!cancelled && r.thread) setThread(r.thread as ThreadPage); }).catch(e => { if (!cancelled) notify(e.message); }); return () => { cancelled = true; }; }, [selected, connected, command, setThread, notify]);
   useEffect(() => {
     if (page === "board" && selected && view.panelPlacement === "inline") requestAnimationFrame(() => document.querySelector(".column-cards > .detail")?.scrollIntoView({ block: "nearest", inline: "nearest" }));

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { BoardState, Card, ViewPreferences } from "../../../src/core/model.ts";
-import type { ThreadPage } from "../../../src/thread/read.ts";
+import type { ThreadEntry, ThreadPage } from "../../../src/thread/read.ts";
 import { Button, Select, Switch } from "../components/ui/controls.tsx";
 import { Icon } from "../components/ui/icon.tsx";
 import { Resize } from "../components/ui/resize.tsx";
@@ -8,17 +8,19 @@ import { Links, Tags } from "./card.tsx";
 import { Composer } from "./composer.tsx";
 import { columnsFor, receiptLabel } from "./view.ts";
 import type { Command } from "./connection.ts";
+const merge = (a: ThreadEntry[], b: ThreadEntry[]) => { const ids = new Set(b.map(e => e.id)); return [...a.filter(e => !ids.has(e.id)), ...b]; };
 export function Detail({ card, state, view, thread, command, connected, close, save, draft, setDraft, outside, notify }: { card: Card; state: BoardState; view: ViewPreferences; thread: ThreadPage | null; command: Command; connected: boolean; close(): void; save(patch: unknown): void; draft: string; setDraft(text: string): void; outside: boolean; notify(text: string): void }) {
-  const [width, setWidth] = useState<number | null>(null), [tab, setTab] = useState("thread"), [older, setOlder] = useState<ThreadPage | null>(null), [latest, setLatest] = useState(false);
+  const [width, setWidth] = useState<number | null>(null), [tab, setTab] = useState("thread"), [older, setOlder] = useState<ThreadPage | null>(null), [kept, setKept] = useState<ThreadEntry[]>([]), [latest, setLatest] = useState(false);
   const scroller = useRef<HTMLDivElement>(null), atBottom = useRef(true);
   const [history, setHistory] = useState<{ seq: number; id: string; at: string; summary: string }[]>([]);
   const overrides = view.cardTraceOverrides[card.id], tools = overrides?.tools ?? view.toolDetails, thinking = overrides?.thinking ?? view.thinkingDetails;
   const page = thread?.card === card.id ? thread : null;
   const olderCursor = older ? older.older : page?.older;
+  useEffect(() => { if (page) setKept(k => merge(k, page.entries)); }, [page]);
   useEffect(() => { if (atBottom.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight; else setLatest(true); }, [page]);
   useEffect(() => { if (tab === "history") void command("history", ["--card", card.id, "--limit", "50"]).then(r => setHistory(Array.isArray(r.events) ? r.events : [])).catch(e => notify(e.message)); }, [tab, card.id, card.revision, command, notify]);
   const move = (to: string) => { void command("move", [card.id, ...(to === "auto" ? ["--auto"] : [to]), "--if-revision", String(card.revision), "--event-id", crypto.randomUUID()]).then(() => notify("Placement updated. Source requests are unchanged.")).catch(e => notify(e.message)); };
-  const entries = [...(older?.entries ?? []), ...(page?.entries ?? [])].filter((e,i,a) => a.findIndex(x => x.id === e.id) === i);
+  const entries = merge(kept, page?.entries ?? []);
   return <aside aria-label={`Details for ${card.title}`} className={`detail ${view.panelPlacement}`} style={{ width: width ?? view.panelWidth, flexBasis: width ?? view.panelWidth }}>
     {view.panelPlacement === "right" && <Resize label="Resize conversation panel" reverse value={view.panelWidth} min={320} max={720} onPreview={setWidth} onCommit={n => save({ panelWidth: n })} />}
     <header className="detail-header"><div className="row between"><span className="eyebrow">{card.workspace} · {card.agent?.provider ?? "Agent session"}</span><Button aria-label="Close detail" onClick={close}><Icon name="close" /></Button></div><h2>{card.title}</h2><Tags tags={card.tags} /><Links links={card.links} />{outside && <p className="small gold">Outside current filters</p>}{card.attention.map(a => <p className="request" key={a.key}>{a.text ?? a.kind}</p>)}</header>
@@ -26,7 +28,7 @@ export function Detail({ card, state, view, thread, command, connected, close, s
     {tab === "thread" ? <>
       <div className="thread-controls"><div className="row wrap"><Switch label="Tool details" checked={tools} onChange={tools => save({ cardTraceOverrides: { [card.id]: { tools } } })} /><Switch label="Thinking" checked={thinking} onChange={thinking => save({ cardTraceOverrides: { [card.id]: { thinking } } })} /></div><div className="row between small muted"><span>{overrides ? "This card has overrides" : "Following board defaults"}</span><Button disabled={!overrides} onClick={() => save({ cardTraceOverrides: { [card.id]: null } })}>Use defaults</Button></div></div>
       <div className="thread" role="region" aria-label="Agent conversation" tabIndex={0} ref={scroller} onScroll={e => { const el = e.currentTarget; atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; if (atBottom.current) setLatest(false); }}>
-        {olderCursor !== undefined && <Button onClick={() => { void command("thread", [card.id, String(olderCursor)]).then(r => { const p = r.thread as ThreadPage; setOlder(old => ({ ...p, entries: [...p.entries, ...(old?.entries ?? [])] })); }).catch(e => notify(e.message)); }}>Load older messages</Button>}
+        {olderCursor !== undefined && <Button onClick={() => { void command("thread", [card.id, String(olderCursor)]).then(r => { const p = r.thread as ThreadPage; setOlder(p); setKept(k => merge(p.entries, k)); }).catch(e => notify(e.message)); }}>Load older messages</Button>}
         {page?.unavailable && <p className="empty">{page.unavailable}</p>}{!page && <p className="empty">{connected ? "Loading conversation…" : "Reconnect to load conversation."}</p>}
         {entries.map(e => { const expanded = e.kind === "message" || (e.kind === "tool" ? tools : thinking); return <article key={e.id} className={`message ${e.kind}`}><div className="message-head"><strong><Icon name={e.kind === "message" ? "agent" : e.kind} size={14} />{e.role === "assistant" ? "Agent" : e.role === "user" ? "You" : e.role}</strong><time>{e.at ? new Date(e.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</time>{!expanded && <Button onClick={() => save({ cardTraceOverrides: { [card.id]: { [e.kind === "tool" ? "tools" : "thinking"]: true } } })}>Show</Button>}</div>{expanded && <p>{e.text}</p>}{e.receipt && <span className={`receipt receipt-${e.receipt}`}>{receiptLabel(e.receipt)}</span>}</article>; })}
         {page && entries.length === 0 && !page.unavailable && <p className="empty">No recorded messages yet.</p>}
