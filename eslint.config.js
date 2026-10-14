@@ -1,4 +1,5 @@
 import js from '@eslint/js'
+import objectParams from './eslint/object-params.js'
 import stylistic from '@stylistic/eslint-plugin'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
@@ -16,9 +17,10 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
-    plugins: { '@stylistic': stylistic },
+    plugins: { '@stylistic': stylistic, pnyx: { rules: { 'object-params': objectParams } } },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
+      'pnyx/object-params': 'error',
       'curly': ['error', 'all'],
 
       // Formatting. Every rule here is auto-fixable except max-len: run `pnpm lint:fix`.
