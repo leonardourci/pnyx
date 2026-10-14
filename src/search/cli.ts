@@ -83,18 +83,21 @@ const searchCommand = guard((args) => {
 
 export const searchCommands = { search: searchCommand };
 
-export const SEARCH_HELP = `usage: pnyx-axi search "<words>" [--kind event|transcript] [--card <id>] [--workspace <name>] [--limit <n>]
+export const SEARCH_HELP = `usage: pnyx-axi search "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--limit <n>]
        pnyx-axi search status | rebuild [--board <name>]
-Full-text search over card titles, links, event text and the session transcripts hooks recorded.
-Every word must match somewhere on one card: its title, link titles or any entry. With --card or
---kind, every word must match in one entry of that card or kind. Words match by stem, ignoring case
-and accents ("deploying" finds "deploy", "migracao" finds "migração"), and with their synonyms:
+Full-text search over card titles, links, event text, harvested notes and the session transcripts
+hooks recorded. Every word must match somewhere on one card: its title, link titles or any entry.
+With --card or --kind, every word must match in one entry of that card or kind. Words match by
+stem, ignoring case and accents ("deploying" finds "deploy", "migracao" finds "migração"), and with
+their synonyms:
 ${SYNONYMS.map((g) => g.join(" / ")).join(", ")}. When nothing matches, words also match the
 indexed words nearest them, so typos and partial words still find results (mode: fuzzy).
 End a word with * to match a prefix; \`search -- status\` searches for that word.
 Results are ranked by BM25, best first, one per card with its ${SNIPPETS} best-matching entries as
 snippets (with --card, its matching entries up to --limit); ${LIMIT} cards by default (max ${MAX}).
+A harvested note (a summary, decision or context; see \`pnyx-axi harvest\`) counts double.
 Each search first indexes what the log and transcripts gained. The index, search.db in the board's
-folder, is a derived cache: \`search rebuild\` deletes and rebuilds it from the log and transcripts.
+folder, is a derived cache: \`search rebuild\` deletes and rebuilds it from the log and transcripts,
+after harvesting every card's transcript.
 Tool calls and output, thinking and injected text are not indexed; secret-shaped strings are redacted.
 `;

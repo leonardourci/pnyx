@@ -1,0 +1,4 @@
+{"timestamp":"2026-10-12T10:00:00.000Z","type":"session_meta","payload":{"id":"x2","cwd":"/work"}}
+{"timestamp":"2026-10-12T10:00:03.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Find why the ledger sync drifts."}]}}
+{"timestamp":"2026-10-12T11:00:00.000Z","type":"compacted","payload":{"message":"The ledger sync drifts because rounding happens before currency conversion.","replacement_history":[]}}
+{"timestamp":"2026-10-12T12:00:00.000Z","type":"compacted","payload":{"message":"","replacement_history":[{"type":"compaction","encrypted_content":"opaque"}]}}

@@ -15,6 +15,15 @@ export interface StatusLine {
   colon: boolean;
 }
 
+// A status line kept as a card note: the decision asked or answered, or the report
+// of finished work. line is the raw line, which names the note.
+export interface StatusNote {
+  kind: "decision" | "summary";
+  text: string;
+  at?: string;
+  line: string;
+}
+
 export interface OpenDecision {
   verb: string;
   key: string;
@@ -110,4 +119,22 @@ export function latestLine(log: string): StatusLine | undefined {
 export function latestActivity(log: string): string | undefined {
   const line = latestLine(log);
   return line && (line.note ? `${line.verb}: ${line.note}` : line.verb);
+}
+
+const NOTE_VERBS: Record<string, StatusNote["kind"]> = { "needs-decision": "decision", resolved: "decision", done: "summary" };
+
+// needs-decision, resolved and done lines with their text, oldest first. A
+// numeric [at=<epoch>] stamp gives the note its time.
+export function statusNotes(log: string): StatusNote[] {
+  const notes: StatusNote[] = [];
+  for (const raw of log.split("\n")) {
+    const line = parseStatusLine(raw);
+    const kind = NOTE_VERBS[line.verb];
+    // A malformed key moves nothing in Firstmate's fold, so it records nothing here.
+    if (!kind || !line.colon || line.key === null || !line.note.trim()) continue;
+    const key = line.key && line.key !== "default" ? ` [${line.key}]` : "";
+    const epoch = /\[at=(\d+)\]/.exec(raw)?.[1];
+    notes.push({ kind, text: `${line.verb}${key}: ${line.note.trim()}`, line: raw, ...(epoch ? { at: new Date(Number(epoch) * 1000).toISOString() } : {}) });
+  }
+  return notes;
 }

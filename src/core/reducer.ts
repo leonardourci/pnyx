@@ -118,6 +118,9 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       const reply = { id: event.data.reply, state: event.data.state };
       const replies = card.replies ?? [];
       card.replies = replies.some((r) => r.id === reply.id) ? replies.map((r) => (r.id === reply.id ? reply : r)) : [...replies, reply];
+    } else if (event.type === "card.noted") {
+      const { kind, source, at } = event.data;
+      card.notes = [...(card.notes ?? []), { id: event.id, kind, source, ...(at ? { at } : {}) }];
     } else {
       if (event.data.after) card.outcome = event.data.after;
       else delete card.outcome;
@@ -127,6 +130,7 @@ function apply(state: BoardState, event: BoardEvent): boolean {
   if (event.undoes) state.undone[event.undoes] = event.id;
   card.column = columnFor(card);
   card.revision += 1;
+  if (event.type === "card.noted") return true;
   card.updatedSeq = event.seq;
   card.updatedAt = event.at;
   return true;

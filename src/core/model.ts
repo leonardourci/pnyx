@@ -19,6 +19,11 @@ export type OutcomeState = (typeof OUTCOME_STATES)[number];
 export const REPLY_STATES = ["queued", "delivered", "delivery_unknown", "failed"] as const;
 export type ReplyState = (typeof REPLY_STATES)[number];
 
+// What a harvested note records: a summary of the work, a decision with its
+// question and answer, or context such as a session title or a brief's intent.
+export const NOTE_KINDS = ["summary", "decision", "context"] as const;
+export type NoteKind = (typeof NOTE_KINDS)[number];
+
 // Where an observation came from. generation and observedAt order observations of
 // the same source object so a late, older observation cannot overwrite a newer one.
 export interface SourceRef {
@@ -73,6 +78,29 @@ export interface Reply {
   state: ReplyState;
 }
 
+// A note a source already recorded, harvested as it was written: never generated.
+// source names where it came from, such as claude-code, codex, firstmate or github.
+export interface Note {
+  kind: NoteKind;
+  source: string;
+  text: string;
+  at?: string;
+}
+
+// A note as a source reader finds it; ref names the source record, so reading the
+// same record again gives the same note id.
+export interface SourceNote extends Note {
+  ref: string;
+}
+
+// A note on the card. The text stays in the log, on its noted event.
+export interface NoteRef {
+  id: string;
+  kind: NoteKind;
+  source: string;
+  at?: string;
+}
+
 export interface Card {
   id: string;
   key: string;
@@ -87,6 +115,7 @@ export interface Card {
   sourceRefs: SourceRef[];
   outcome?: Outcome;
   replies?: Reply[];
+  notes?: NoteRef[];
   // Set by a manual move and kept until `move --auto`.
   manualColumn?: Column;
   column: Column;
@@ -171,9 +200,13 @@ export type ViewEvent = EventBase & {
   data: { before: ViewPreferences; after: ViewPreferences };
 };
 
-export type BoardEvent = PushedEvent | MovedEvent | LinkedEvent | OutcomeEvent | RepliedEvent | ViewEvent;
+// One harvested note. Its id is derived from the source record, so harvesting the
+// same record again appends nothing.
+export type NotedEvent = EventBase & { type: "card.noted"; data: Note };
+
+export type BoardEvent = PushedEvent | MovedEvent | LinkedEvent | OutcomeEvent | RepliedEvent | NotedEvent | ViewEvent;
 export type EventType = BoardEvent["type"];
-export const EVENT_TYPES: readonly EventType[] = ["card.pushed", "card.moved", "card.linked", "card.outcome", "card.replied", "board.view"];
+export const EVENT_TYPES: readonly EventType[] = ["card.pushed", "card.moved", "card.linked", "card.outcome", "card.replied", "card.noted", "board.view"];
 
 export interface BoardState {
   view?: ViewPreferences;

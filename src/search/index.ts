@@ -1,27 +1,34 @@
-// search.db: a derived full-text index over a board's event log and the
-// transcripts its hooks recorded. It is a deletable cache, never board state;
-// the indexer below is its only writer and rebuilds it from the sources.
+// search.db: a derived full-text index over a board's event log, the notes
+// harvested into it and the transcripts its hooks recorded. It is a deletable
+// cache, never board state; the indexer below is its only writer and rebuilds it
+// from the sources.
 import { createHash } from "node:crypto";
 import { chmodSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { BoardError } from "../core/model.ts";
-import { boardDir, loadBoard, readEventsFrom } from "../store/board-store.ts";
+import { harvestTranscripts } from "../integrations/hooks/harvest.ts";
+import { boardDir, loadBoard, readEventsFrom, withWriter } from "../store/board-store.ts";
 import { synonymGroup } from "./synonyms.ts";
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from "./text.ts";
 
 // Bump when the tables change; the index rebuilds on mismatch.
-export const SCHEMA_VERSION = 4;
-export const KINDS = ["event", "transcript"] as const;
+export const SCHEMA_VERSION = 5;
+export const KINDS = ["event", "note", "transcript"] as const;
 export type Kind = (typeof KINDS)[number];
 
 const EVENTS = "events";
+// A harvested note (a summary, decision or context a source recorded) ranks as if
+// it matched this many times more than raw transcript or event text.
+const NOTE_WEIGHT = 2;
+// A chunk's BM25 rank, lower is better, with notes weighted up.
+const RANK = `bm25(docs_fts) * CASE d.kind WHEN 'note' THEN ${NOTE_WEIGHT} ELSE 1 END`;
 
 // pos is the event seq for an event, or the byte offset of the JSONL line for a
 // transcript; part numbers the chunks taken from it. Vectors can later key on docs.id.
-// card_fts holds one row per card, keyed by cards.n: its title and link titles, and
-// all its chunks, so the words of one query can match anywhere on a card. Both
+// card_fts holds one row per card, keyed by cards.n: its title and link titles, its
+// notes and all its other chunks, so the words of one query can match anywhere on a card. Both
 // stem words (Porter) and fold case and accents, so "deploying" finds "deploy".
 // terms holds every distinct word indexed, unstemmed and folded; terms_tri splits
 // them into trigrams so a query word with a typo or cut short finds the real word.
@@ -48,7 +55,7 @@ CREATE TRIGGER IF NOT EXISTS docs_ad AFTER DELETE ON docs BEGIN
   INSERT INTO docs_fts (docs_fts, rowid, body) VALUES ('delete', old.id, old.body);
 END;
 CREATE TABLE IF NOT EXISTS cards (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, workspace TEXT NOT NULL, context TEXT NOT NULL);
-CREATE VIRTUAL TABLE IF NOT EXISTS card_fts USING fts5 (context, body, content='', contentless_delete=1, tokenize='porter unicode61 remove_diacritics 2');
+CREATE VIRTUAL TABLE IF NOT EXISTS card_fts USING fts5 (context, notes, body, content='', contentless_delete=1, tokenize='porter unicode61 remove_diacritics 2');
 CREATE TABLE IF NOT EXISTS terms (term TEXT PRIMARY KEY) WITHOUT ROWID;
 CREATE VIRTUAL TABLE IF NOT EXISTS terms_tri USING fts5 (term, tokenize='trigram');
 CREATE TRIGGER IF NOT EXISTS terms_ai AFTER INSERT ON terms BEGIN
@@ -91,7 +98,8 @@ function isCurrent(db: DatabaseSync): boolean {
 }
 
 // Opens the index for writing, creating it, or deleting and recreating it when it
-// was built by another schema or chunker version.
+// was built by another schema or chunker version. A new index first harvests every
+// card's transcript, so what a transcript holds as a note is a note before it is indexed.
 // ponytail: a rebuild deletes the file under any concurrent reader; it reopens on its next query.
 function openWriter(board: string, fresh = false): DatabaseSync {
   const { DatabaseSync } = sqlite();
@@ -105,6 +113,7 @@ function openWriter(board: string, fresh = false): DatabaseSync {
     db.close();
     removeIndex(path);
   }
+  withWriter(board, (writer) => harvestTranscripts(writer, Object.keys(writer.state.cards), new Date().toISOString()));
   const db = new DatabaseSync(path);
   // Transcript text is as private as the transcripts.
   chmodSync(path, 0o600);
@@ -192,7 +201,9 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
       read = readEventsFrom(board, 0)!;
     }
     for (const event of read.events) {
-      add(event.cardId, "event", EVENTS, event.seq, event.at, eventText(event));
+      // A note carries the time its source recorded it, when known.
+      if (event.type === "card.noted") add(event.cardId, "note", EVENTS, event.seq, event.data.at ?? event.at, eventText(event));
+      else add(event.cardId, "event", EVENTS, event.seq, event.at, eventText(event));
       const path = event.type === "card.pushed" ? event.data.agent?.transcriptPath : undefined;
       if (path && isAbsolute(path) && path.endsWith(".jsonl")) track.run(path, event.cardId);
     }
@@ -227,20 +238,23 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
     }
     // ponytail: a changed card's row is rebuilt from all its chunks; append-only rows if long sessions make that slow.
     const getCard = db.prepare("SELECT n, context FROM cards WHERE id = ?");
-    const cardBody = db.prepare("SELECT coalesce(group_concat(body, char(10)), '') AS body FROM (SELECT body FROM docs WHERE card = ? ORDER BY id)");
+    const cardBody = db.prepare(
+      "SELECT coalesce(group_concat(body, char(10)), '') AS body FROM (SELECT body FROM docs WHERE card = ? AND (kind = 'note') = ? ORDER BY id)",
+    );
     const dropCard = db.prepare("DELETE FROM card_fts WHERE rowid = ?");
-    const putCardText = db.prepare("INSERT INTO card_fts (rowid, context, body) VALUES (?, ?, ?)");
+    const putCardText = db.prepare("INSERT INTO card_fts (rowid, context, notes, body) VALUES (?, ?, ?, ?)");
     for (const id of dirty) {
       const card = getCard.get(id) as { n: number; context: string } | undefined;
       if (!card) continue;
       dropCard.run(BigInt(card.n));
-      putCardText.run(BigInt(card.n), card.context, (cardBody.get(id) as { body: string }).body);
+      const text = (notes: boolean) => (cardBody.get(id, notes ? 1 : 0) as { body: string }).body;
+      putCardText.run(BigInt(card.n), card.context, text(true), text(false));
     }
     return { events: read.events.length, transcripts, docs };
   });
 }
 
-interface TranscriptRead {
+export interface TranscriptRead {
   identity: string;
   // The cursor no longer fits the file: drop what was indexed from it and read it again.
   reset: boolean;
@@ -252,7 +266,7 @@ interface TranscriptRead {
 // inode) or one shorter than the cursor is read again from the start. Null when
 // the file is missing or unreadable, so the cursor waits for it.
 // ponytail: reads the unread tail in one buffer; stream it if transcripts grow past memory.
-function readTranscript(cursor: Cursor): TranscriptRead | null {
+export function readTranscript(cursor: Pick<Cursor, "source" | "identity" | "pos">): TranscriptRead | null {
   let fd: number;
   try {
     fd = openSync(cursor.source, "r");
@@ -420,9 +434,9 @@ function prefixed(db: DatabaseSync, prefix: string): string[] {
 }
 
 // One hit per card, best first by BM25. Without --card or --kind every word must
-// match somewhere on the card: its title, link titles or any chunk, the title and
-// link titles weighing half; the snippets are its chunks matching the most words.
-// With --card or --kind every word must match in one chunk of that card or kind.
+// match somewhere on the card: its title, link titles, notes or any chunk, the
+// title and link titles weighing half and the notes double; the snippets are its
+// chunks matching the most words. With --card or --kind every word must match in one chunk of that card or kind.
 // Words match stemmed, case and accent folded, and with their synonyms; when that
 // finds nothing, words also match the indexed words nearest them.
 export function search(board: string, query: Query): { hits: Hit[]; total: number; match: Match } {
@@ -446,7 +460,7 @@ function run(db: DatabaseSync, query: Query, terms: Term[], mode: Match): { hits
   const exprs = terms.map(termExpr);
   const match = exprs.join(" AND ");
   const filters = { match, workspace: query.workspace ?? null };
-  const chunks = `SELECT d.id, d.card, bm25(docs_fts) AS rank FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid JOIN cards c ON c.id = d.card
+  const chunks = `SELECT d.id, d.card, ${RANK} AS rank FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid JOIN cards c ON c.id = d.card
     WHERE docs_fts MATCH :match AND (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace)`;
   type Row = { card: string; title: string; total: number };
   const cards = (
@@ -463,7 +477,7 @@ function run(db: DatabaseSync, query: Query, terms: Term[], mode: Match): { hits
             .all({ ...filters, kind: query.kind, limit: query.limit })
         : db
             .prepare(
-              `WITH h AS MATERIALIZED (SELECT rowid AS n, bm25(card_fts, 0.5, 1.0) AS rank FROM card_fts WHERE card_fts MATCH :match)
+              `WITH h AS MATERIALIZED (SELECT rowid AS n, bm25(card_fts, 0.5, ${NOTE_WEIGHT}, 1.0) AS rank FROM card_fts WHERE card_fts MATCH :match)
                SELECT c.id AS card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.n = h.n
                WHERE :workspace IS NULL OR c.workspace = :workspace ORDER BY h.rank, c.n LIMIT :limit`,
             )
@@ -471,7 +485,7 @@ function run(db: DatabaseSync, query: Query, terms: Term[], mode: Match): { hits
   ) as Row[];
   const top = db.prepare(
     `SELECT d.kind, d.at, snippet(docs_fts, 0, '[', ']', '…', 16) AS s FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid
-     WHERE docs_fts MATCH :match AND d.card = :card AND (:kind IS NULL OR d.kind = :kind) ORDER BY bm25(docs_fts), d.id LIMIT :n`,
+     WHERE docs_fts MATCH :match AND d.card = :card AND (:kind IS NULL OR d.kind = :kind) ORDER BY ${RANK}, d.id LIMIT :n`,
   );
   const snippetMatch = query.card || query.kind ? match : exprs.join(" OR ");
   const hits = cards.map((r) => ({
@@ -502,13 +516,13 @@ export function indexStatus(board: string): IndexStatus | null {
   try {
     db.exec("PRAGMA busy_timeout = 5000");
     const bytes = statSync(path).size;
-    if (!isCurrent(db)) return { builtThrough: 0, docs: { event: 0, transcript: 0 }, transcripts: { tracked: 0, missing: 0 }, bytes, current: false };
+    if (!isCurrent(db)) return { builtThrough: 0, docs: { event: 0, note: 0, transcript: 0 }, transcripts: { tracked: 0, missing: 0 }, bytes, current: false };
     const count = (kind: Kind) => (db.prepare("SELECT count(*) AS n FROM docs WHERE kind = ?").get(kind) as { n: number }).n;
     const cursors = db.prepare("SELECT * FROM cursors").all() as unknown as Cursor[];
     const transcripts = cursors.filter((c) => c.source !== EVENTS);
     return {
       builtThrough: cursors.find((c) => c.source === EVENTS)?.seq ?? 0,
-      docs: { event: count("event"), transcript: count("transcript") },
+      docs: { event: count("event"), note: count("note"), transcript: count("transcript") },
       transcripts: { tracked: transcripts.length, missing: transcripts.filter((c) => !existsSync(c.source)).length },
       bytes,
       current: true,

@@ -7,8 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { loadBoard, readEvents, spoolWrite } from "../src/store/board-store.ts";
-import { homeKey, parseBacklog, resolveHome } from "../src/integrations/firstmate/home.ts";
-import { latestActivity, openDecisions, parseStatusLine } from "../src/integrations/firstmate/status.ts";
+import { captainsIntent, homeKey, parseBacklog, resolveHome } from "../src/integrations/firstmate/home.ts";
+import { latestActivity, openDecisions, parseStatusLine, statusNotes } from "../src/integrations/firstmate/status.ts";
 import { syncHome, watchHome, type SyncResult } from "../src/integrations/firstmate/sync.ts";
 
 const FIXTURE = join(import.meta.dirname, "fixtures", "firstmate-home");
@@ -64,6 +64,30 @@ test("the decision fold opens, closes and clears keys like Firstmate", () => {
   assert.equal(openDecisions(`${log}\ndone: other work`, "secondmate").length, 3);
   assert.deepEqual(openDecisions("needs-decision [key=k]: x\ncaptain-held [key=k]: moved to captain", "ship"), []);
   assert.equal(latestActivity("working: a\ncontinuation prose\n"), "working: a");
+});
+
+test("decisions, answers and reports in a status log become notes", () => {
+  const log = [
+    "working [at=1791900000]: setup done",
+    "needs-decision [key=api] [at=1791900100]: REST or RPC?",
+    "resolved [key=api] [at=1791900200]: REST, the captain said keep it boring",
+    "needs-decision: which docs first?",
+    "done [at=1791900300]: PR https://github.com/example/app/pull/41 checks green",
+    "done:",
+    "needs-decision [key=bad slug]: malformed keys move nothing",
+  ].join("\n");
+  assert.deepEqual(
+    statusNotes(log).map(({ kind, text, at }) => ({ kind, text, at })),
+    [
+      { kind: "decision", text: "needs-decision [api]: REST or RPC?", at: "2026-10-13T14:01:40.000Z" },
+      { kind: "decision", text: "resolved [api]: REST, the captain said keep it boring", at: "2026-10-13T14:03:20.000Z" },
+      { kind: "decision", text: "needs-decision: which docs first?", at: undefined },
+      { kind: "summary", text: "done: PR https://github.com/example/app/pull/41 checks green", at: "2026-10-13T14:05:00.000Z" },
+    ],
+  );
+  const brief = readFileSync(join(FIXTURE, "data", "api-v2", "brief.md"), "utf8");
+  assert.equal(captainsIntent(brief), "Ship the v2 API so partners can page through invoices.\nKeep v1 working until every partner moves.");
+  assert.equal(captainsIntent("# Task\nno intent here"), undefined);
 });
 
 test("backlog rows give titles, repo tags and merged state", () => {
@@ -227,7 +251,7 @@ function cli(env: NodeJS.ProcessEnv) {
 test("firstmate sync through the CLI", () => {
   const { home, env } = copyFixture();
   const { run, fails } = cli(env);
-  assert.match(run("firstmate", "sync", "--home", home), /home,4,8$/m);
+  assert.match(run("firstmate", "sync", "--home", home), /home,4,13$/m);
   assert.match(run(), /needs_you: 2/);
   fails(["firstmate", "sync"], "VALIDATION_ERROR");
   fails(["firstmate", "sync", "--home", join(home, "data")], "VALIDATION_ERROR");
@@ -246,6 +270,23 @@ test("a Firstmate outcome is a source observation: undo and clear refuse it", ()
   run("firstmate", "sync", "--home", home);
   assert.deepEqual(cardOf(home, "docs-scout").outcome, { state: "done", source: "firstmate" });
   assert.equal(cardOf(home, "docs-scout").column, "needs_you");
+});
+
+test("a task's decisions, reports and Captain's intent show on its card", () => {
+  const { home, env } = copyFixture();
+  const { run, fails } = cli(env);
+  run("firstmate", "sync", "--home", home);
+  const api = run("card", cardOf(home, "api-v2").id);
+  assert.match(api, /^ {2}decisions\[1\]\{at,source,text\}:\n {4}"2026-10-13T14:01:40.000Z",firstmate,"needs-decision \[api-shape\]: REST or RPC for the v2 endpoints\?"$/m);
+  assert.match(api, /^ {2}context\[1\]\{at,source,text\}:\n {4}"[^"]+",firstmate,"Captain's intent:\\nShip the v2 API so partners can page through invoices\.\\nKeep v1 working until every partner moves\."$/m);
+  assert.doesNotMatch(api, /Firstmate spec|Setup text/);
+  assert.match(run("card", cardOf(home, "release-1").id), /^ {2}summary\[1\]\{at,source,text\}:\n {4}"2026-10-13T14:06:40.000Z",firstmate,"done: PR https:\/\/github.com\/example\/app\/pull\/40 checks green"$/m);
+  // New lines add notes; a re-sync adds nothing twice.
+  appendFileSync(join(home, "state", "api-v2.status"), "resolved [key=api-shape] [at=1791900700]: REST\n");
+  assert.match(run("firstmate", "sync", "--home", home), /home,4,2$/m);
+  assert.match(run("firstmate", "sync", "--home", home), /home,4,0$/m);
+  assert.match(run("search", "partners", "page"), /^ {6}note,"[^"]+","…Ship the v2 API so \[partners\] can \[page\]/m);
+  fails(["undo", readEvents("default").find((e) => e.type === "card.noted")!.id], "NOT_UNDOABLE");
 });
 
 test("a Firstmate outcome follows the backlog on every sync", () => {
