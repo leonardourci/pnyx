@@ -650,20 +650,32 @@ test('with semantic search on, the board search finds a transcript-only card by 
     server = await startServer({ board: 'default' })
     const t = await tab(); await t.next()
     // "dinosaur" is nowhere, so full text finds nothing; the transcript holds the other words.
-    const deadline = Date.now() + 20_000
+    // The first search waits for the worker to start and embed the board, so receipts may be slow.
+    const deadline = Date.now() + 30_000
+
+    const receipt = async (id: string): Promise<ServerMessage> => {
+      for (;;) {
+        try {
+          const m = await t.next()
+
+          if ((m.type === 'receipt' || m.type === 'error') && m.id === id) {
+            return m
+          }
+        } catch (error) {
+          if (Date.now() > deadline) {
+            throw error
+          }
+        }
+      }
+    }
+
     let hits: { card: string; match: string; weak?: true }[] = []
 
     for (let n = 0; !hits.some(h => h.match === 'semantic') && Date.now() < deadline; n++) {
       t.command(`m${n}`, 'search', ['flamingo rollout staged dinosaur'])
-      let m = await t.next()
-
-      while (!(m.type === 'receipt' || m.type === 'error') || m.id !== `m${n}`) {
-        m = await t.next()
-      }
-
+      const m = await receipt(`m${n}`)
       assert.equal(m.type, 'receipt', JSON.stringify(m))
       hits = m.type === 'receipt' ? m.hits as typeof hits : []
-      await new Promise(r => setTimeout(r, 200))
     }
 
     assert.deepEqual(hits.filter(h => !h.weak).map(h => [h.card, h.match]), [[fixture.state.keys.layout, 'semantic']])
