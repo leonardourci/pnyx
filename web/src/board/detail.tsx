@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { BoardState, Card, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
-import type { ThreadPage } from '../../../src/thread/read.ts'
+import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Select } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
@@ -45,6 +45,8 @@ export function Detail({
   notify(text: string): void
 }) {
   const [width, setWidth] = useState<number | null>(null), [tab, setTab] = useState('thread')
+  // Every loaded conversation entry, older pages included, so the brief skips notes any of them repeat.
+  const [kept, setKept] = useState<ThreadEntry[]>([])
   const [history, setHistory] = useState<{
     seq: number
     id: string
@@ -101,7 +103,7 @@ export function Detail({
         <h2>{card.title}</h2>
         <ConversationBrief
           card={card}
-          entries={thread?.card === card.id ? thread.entries : []}
+          entries={kept}
           command={command}
           notify={notify}
         />
@@ -128,6 +130,8 @@ export function Detail({
           card={card}
           view={view}
           thread={thread}
+          kept={kept}
+          setKept={setKept}
           command={command}
           connected={connected}
           save={save}

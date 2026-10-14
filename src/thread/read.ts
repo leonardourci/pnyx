@@ -223,7 +223,7 @@ export function readThread(
   }
   const match = before === undefined ? null : THREAD_CURSOR.exec(before)
   const nativeCursor = match?.[1], replyCursor = match?.[2]
-  const candidates: { item: ThreadEntry; native?: string; reply?: string }[] = []
+  let candidates: { item: ThreadEntry; native?: string; reply?: string }[] = []
   let earlierNative = false, emptyNativeCursor: string | undefined
   const path = threadPath(card)
   const { tools, thinking } = traces({ view: viewFor({ state }), card: card.id })
@@ -253,14 +253,16 @@ export function readThread(
         end += newline < 0 ? tail.length : newline + 1
       }
 
-      let start = end
+      let start = end, parsed = end
 
+      // Each doubling parses only the bytes before the lines already parsed.
       for (let size = 64 * 1024; ; size *= 2) {
-        candidates.length = 0
         start = Math.max(0, end - Math.min(size, MAX_BYTES))
-        const buf = Buffer.alloc(end - start)
+        const buf = Buffer.alloc(parsed - start)
         readSync(fd, buf, 0, buf.length, start)
-        let cursor = start ? buf.indexOf(10) + 1 : 0
+        const first = start ? buf.indexOf(10) + 1 : 0
+        const found: typeof candidates = []
+        let cursor = first
 
         while (cursor >= 0 && cursor < buf.length) {
           const newline = buf.indexOf(10, cursor)
@@ -271,8 +273,8 @@ export function readThread(
 
           try {
             const offset = start + cursor
-            const parsed = JSON.parse(buf.subarray(cursor, newline).toString())
-            recordEntries(parsed, offset).forEach((item, index) => {
+            const record = JSON.parse(buf.subarray(cursor, newline).toString())
+            recordEntries(record, offset).forEach((item, index) => {
               // Hidden traces must not use up the conversation page.
               if ((item.kind === 'tool' && !tools) || (item.kind === 'thinking' && !thinking)) {
                 return
@@ -283,12 +285,18 @@ export function readThread(
                 || offset < beforeOffset
                 || (offset === beforeOffset && index < beforeItem)
               ) {
-                candidates.push({ native: `${offset}:${index}`, item })
+                found.push({ native: `${offset}:${index}`, item })
               }
             })
           } catch { /* Unsupported or incomplete records are not messages. */ }
 
           cursor = newline + 1
+        }
+
+        candidates = found.concat(candidates)
+
+        if (first || !start) {
+          parsed = start + first
         }
 
         if (!start || candidates.length >= PAGE || size >= MAX_BYTES) {
