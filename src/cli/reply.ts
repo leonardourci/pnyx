@@ -311,8 +311,8 @@ function agentSummary({ board, ref, homes }: {
   const card = findCard({ state: loadBoard({ board }).state, ref })
   const provider = card.agent?.provider
   const found = replyRoute({ card, homes: homes.map(path => resolveHome({ path })) })
-  const harness = harnessControls({ provider })
   const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
+  const harness = harnessControls({ provider, firstmate: !!firstmate })
   const controls = (harness?.controls ?? []).map(c => {
     const unavailable = 'reason' in found
       ? found.reason
@@ -379,15 +379,15 @@ export const agent = guard({
     const [, setting, value] = positionals as [string, string, string]
     const card = findCard({ state: loadBoard({ board }).state, ref })
     const provider = card.agent?.provider
-    const picked = findOption({ provider, setting, value })
+    const found = replyRoute({ card, homes: homes.map(path => resolveHome({ path })) })
+    const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
+    const picked = findOption({ provider, setting, value, firstmate: !!firstmate })
 
     if (!picked) {
       throw new AxiError(`card ${card.id} offers no ${setting} ${value}`, 'VALIDATION_ERROR', [`Run \`pnyx-axi agent ${card.id}\` to list its settings and values`])
     }
 
     const { control, option } = picked
-    const found = replyRoute({ card, homes: homes.map(path => resolveHome({ path })) })
-    const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
 
     // What the session reported before, with everything it has recorded folded in,
     // so the readback compares like with like.
@@ -464,12 +464,14 @@ route (receipts as for reply), then reads the setting back from the transcript:
   Claude Code: model opus|sonnet|haiku|fable (/model), effort low|medium|high|xhigh|max (/effort),
     fast on|off (/fast), mode next (Shift+Tab). Claude Code saves a typed model, effort or fast
     mode as the default for new sessions; one more Enter answers its confirmation, if shown.
-  Codex: effort lower|raise (Shift+Down, Shift+Up), fast toggle (/fast), collaboration toggle
+  Direct Codex sessions: effort lower|raise (Shift+Down, Shift+Up), fast toggle (/fast), collaboration toggle
     (Shift+Tab, Plan or Default). Codex picks model and approval mode only in its own pickers.
 Terminal and Herdr press only Enter and refuse the keys. Nothing is typed while the session
 waits on a permission prompt or question.
 A Firstmate task's worker is never typed into: every change goes to its orchestrator as a request
-note through the home's bin/fm-inbox.sh note --request-id <id> (a retry with the same
+note. Codex task cards also offer model gpt-6.1-sol|gpt-6-astra|gpt-6-sol|gpt-6-luna and
+approval untrusted|on-request|never as request-only settings, without any typed input. Notes go
+through the home's bin/fm-inbox.sh note --request-id <id> (a retry with the same
 --idempotency-key replays that note), and the summary lists the card's notes as queued, handled
 or replied from fm-inbox.sh receipts.
 A setting the session has not reported yet is confirmed by its next hook or turn.
