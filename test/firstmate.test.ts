@@ -623,7 +623,7 @@ test('a joined session outside Paseo keeps its terminal facts across syncs', () 
   assert.equal(syncHome({ board: 'default', home }).appended, 0)
 })
 
-test('settings change through fm-send on a joined task card; a key goes to Firstmate as a request', () => {
+test("a task card's setting changes go to the orchestrator as request notes, never into the worker", () => {
   const { home, env } = copyFixture()
   const worktree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
   const meta = join(home, 'state', 'api-v2.meta')
@@ -632,47 +632,55 @@ test('settings change through fm-send on a joined task card; a key goes to First
   spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-14T00:00:00Z', harness: 'claude', event: 'SessionStart', payload: { session_id: 'fm-s', cwd: worktree, model: 'claude-sonnet-5-5' } } })
   syncHome({ board: 'default', home })
   const api = cardOf(home, 'api-v2')
-  const { run, fails } = cli(env)
+  const { run } = cli(env)
+  const notes = () => readFileSync(join(home, 'inbox.log'), 'utf8').split('---\n')
+    .filter(n => n.includes('arg=note'))
+  const note = (id: string, text: string) =>
+    `FM_HOME=${home}\narg=note\narg=--request-id\narg=pnyx:default:${api.id}:${id}\narg=--json\narg=--\narg=${text}\n`
 
-  assert.match(run('agent', api.id, '--home', home), /harness: claude-code\n {2}route: firstmate[\s\S]*mode,unknown,next,yes/)
-  assert.match(run('agent', api.id, 'model', 'opus', '--home', home), /sent: delivered/)
-  // The command is typed through Firstmate, then one Enter answers a confirmation.
-  assert.equal(readFileSync(join(home, 'sent.log'), 'utf8'), `FM_HOME=${home}\narg=api-v2\narg=/model opus\n---\nFM_HOME=${home}\narg=api-v2\narg=--key\narg=Enter\n---\n`)
-  // fm-send presses no Shift+Tab, so Firstmate gets a plain request: no slash, no key,
-  // no confirming Enter. It stays pending until the session reports its new mode.
-  const log = () => readFileSync(join(home, 'sent.log'), 'utf8').split('---\n')
-  const request = 'Please switch the worker on api-v2 to the next permission mode (Shift+Tab in its session).'
-  assert.match(run('agent', api.id, 'mode', 'next', '--home', home), /sent: delivered[\s\S]*confirmed: false[\s\S]*has not reported its new mode yet/)
-  assert.deepEqual(log().slice(-2), [`FM_HOME=${home}\narg=api-v2\narg=${request}\n`, ''])
-  assert.equal(cardOf(home, 'api-v2').replies?.at(-1)?.state, 'delivered')
-  spoolWrite({ board: 'default', entry: { v: 1, id: 'h2', at: '2026-10-14T00:01:00Z', harness: 'claude', event: 'UserPromptSubmit', payload: { session_id: 'fm-s', cwd: worktree, prompt: 'x', permission_mode: 'acceptEdits' } } })
+  assert.match(run('agent', api.id, '--home', home), /route: "firstmate:inbox"[\s\S]*mode,unknown,next,yes[\s\S]*requests: \[\]/)
+  assert.match(run('agent', api.id, 'model', 'opus', '--home', home, '--idempotency-key', 'm1'), /sent: delivered[\s\S]*confirmed: false[\s\S]*Firstmate note n1 asks/)
+  assert.deepEqual(notes(), [note('m1', 'Pnyx: please switch the worker on task api-v2 (Claude Code) to model opus.')])
+  // A retry of the same change sends nothing again.
+  run('agent', api.id, 'model', 'opus', '--home', home, '--idempotency-key', 'm1')
+  assert.equal(notes().length, 1)
+
+  // A key change is a request too, even while the worker waits on its own prompt:
+  // nothing reaches the worker's session, so fm-send never runs.
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h2', at: '2026-10-14T00:01:00Z', harness: 'claude', event: 'PermissionRequest', payload: { session_id: 'fm-s', cwd: worktree, tool_name: 'Bash', tool_input: { command: 'ls' } } } })
+  assert.match(run('agent', api.id, 'mode', 'next', '--home', home, '--idempotency-key', 'm2'), /sent: delivered/)
+  assert.equal(notes().at(-1), note('m2', 'Pnyx: please switch the worker on task api-v2 (Claude Code) to the next permission mode.'))
+  assert.equal(existsSync(join(home, 'sent.log')), false)
+
+  // The summary shows each note's state from fm-inbox's receipts, and the worker's
+  // own report confirms the setting.
+  writeFileSync(join(home, 'inbox-handled'), 'n1\n')
+  assert.match(run('agent', api.id, '--home', home), /requests\[2\]\{note,state,asked\}:\n {2}n2,queued,[^\n]*next permission mode[^\n]*\n {2}n1,handled,[^\n]*model opus/)
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h3', at: '2026-10-14T00:02:00Z', harness: 'claude', event: 'UserPromptSubmit', payload: { session_id: 'fm-s', cwd: worktree, prompt: 'x', permission_mode: 'acceptEdits' } } })
   syncHome({ board: 'default', home })
   assert.match(run('agent', api.id, '--home', home), /mode,acceptEdits,next,yes/)
 
-  // A Codex worker's effort steps the same way.
+  // A note saved but not announced may still reach the orchestrator; one not saved fails.
+  writeFileSync(join(home, 'inbox-exit'), '3')
+  assert.match(run('agent', api.id, 'effort', 'high', '--home', home, '--idempotency-key', 'm3'), /sent: delivery_unknown[\s\S]*fm-inbox.sh announce n3/)
+  writeFileSync(join(home, 'inbox-exit'), '1')
+  assert.match(run('agent', api.id, 'fast', 'on', '--home', home, '--idempotency-key', 'm4'), /sent: failed[\s\S]*Nothing was changed: fm-inbox: fake note failed/)
+  writeFileSync(join(home, 'inbox-exit'), '0')
+
+  // A secondmate and a remote task take requests the same way, since nothing is typed.
+  writeFileSync(meta, `${readFileSync(meta, 'utf8').replace(/^kind=.*$/m, 'kind=secondmate')}remote_host=box\n`)
+  assert.match(run('agent', api.id, 'effort', 'low', '--home', home, '--idempotency-key', 'm5'), /sent: delivered/)
+
+  // A Codex worker's changes are requests as well.
   const fix = join(home, 'state', 'hotfix-2.meta')
   const codexTree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
   writeFileSync(fix, `${readFileSync(fix, 'utf8')}worktree=${codexTree}\n`)
   syncHome({ board: 'default', home })
-  spoolWrite({ board: 'default', entry: { v: 1, id: 'h3', at: '2026-10-14T00:00:00Z', harness: 'codex', event: 'SessionStart', payload: { session_id: 'cx-s', cwd: codexTree } } })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h4', at: '2026-10-14T00:00:00Z', harness: 'codex', event: 'SessionStart', payload: { session_id: 'cx-s', cwd: codexTree } } })
   syncHome({ board: 'default', home })
   const hotfix = cardOf(home, 'hotfix-2')
   assert.equal(hotfix.agent?.provider, 'codex')
-  assert.match(run('agent', hotfix.id, 'effort', 'raise', '--home', home), /sent: delivered[\s\S]*confirmed: false/)
-  assert.deepEqual(log().slice(-2), [`FM_HOME=${home}\narg=hotfix-2\narg=Please raise the reasoning effort of the worker on hotfix-2 by one step (Shift+Up in its Codex session).\n`, ''])
-  // A failed send changes nothing.
-  writeFileSync(join(home, 'send-exit'), '2')
-  assert.match(run('agent', api.id, 'fast', 'on', '--home', home), /sent: failed[\s\S]*Nothing was changed/)
-  writeFileSync(join(home, 'send-exit'), '0')
-
-  // fm-send marks a secondmate's input as a message, and a remote task takes only
-  // inbox records, so neither gets a command.
-  const sends = () => readFileSync(join(home, 'sent.log'), 'utf8').split('---').length
-  const count = sends()
-  writeFileSync(meta, readFileSync(meta, 'utf8').replace(/^kind=.*$/m, 'kind=secondmate'))
-  fails(['agent', api.id, 'model', 'opus', '--home', home], 'NO_ROUTE')
-  assert.match(run('agent', api.id, '--home', home), /model,claude-sonnet-5-5,opus sonnet haiku fable,"Firstmate's send marks a secondmate's input/)
-  writeFileSync(meta, `${readFileSync(meta, 'utf8').replace(/^kind=.*$/m, 'kind=ship')}remote_host=box\n`)
-  fails(['agent', api.id, 'model', 'opus', '--home', home], 'NO_ROUTE')
-  assert.equal(sends(), count)
+  assert.match(run('agent', hotfix.id, 'effort', 'raise', '--home', home), /sent: delivered/)
+  assert.match(notes().at(-1)!, /arg=Pnyx: please raise the reasoning effort of the worker on task hotfix-2 \(Codex\) by one step\.\n$/)
+  assert.equal(existsSync(join(home, 'sent.log')), false)
 })

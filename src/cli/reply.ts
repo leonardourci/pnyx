@@ -1,15 +1,16 @@
 // `pnyx-axi reply`: sends text to a card's agent through the route its sources
-// recorded (core/route.ts): a Firstmate task through the home's fm-send, any other
-// session by typing into its terminal. Each step is a receipt on the card: queued
+// recorded (core/route.ts): a Firstmate task through the home's fm-send (a setting
+// change as a request note to its orchestrator), any other session by typing into
+// its terminal. Each step is a receipt on the card: queued
 // before the send, then delivered, delivery_unknown or failed.
 import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
 import { decideReply, findCard, type Meta } from '../core/decide.ts'
 import { BoardError, type Card, type ReplyState } from '../core/model.ts'
-import { KEY_LABEL, confirms, findOption, harnessControls, inputReason, keyRequest, type Key } from '../core/control.ts'
+import { KEY_LABEL, confirms, findOption, harnessControls, inputReason, settingRequest, type Key } from '../core/control.ts'
 import { replyRoute, type ReplyRoute } from '../core/route.ts'
-import { STATUS_KEY, TASK_ID, resolveHome, typingReason } from '../integrations/firstmate/home.ts'
-import { fmEnter, fmSend } from '../integrations/firstmate/reply.ts'
+import { STATUS_KEY, TASK_ID, resolveHome } from '../integrations/firstmate/home.ts'
+import { fmNote, fmReceipts, fmSend } from '../integrations/firstmate/reply.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { HOOK } from '../integrations/hooks/observe.ts'
 import { pressKey, typeInto, type Delivery } from '../integrations/hooks/terminal.ts'
@@ -24,7 +25,8 @@ export interface ReplyRequest {
   key?: Key
   // One more Enter after the text, for a command the harness may ask to confirm.
   confirm?: boolean
-  // A setting change, refused while the session waits on an open request.
+  // A setting change: a request note to a Firstmate task's orchestrator, and
+  // elsewhere refused while the session waits on an open request.
   control?: boolean
   // Idempotency key: a retry with the same id never sends twice unless the
   // earlier send failed outright.
@@ -51,9 +53,13 @@ function invalid({ message, help = [] }: { message: string; help?: string[] }): 
 }
 
 // The route name kept on each receipt.
-function routeName({ route }: { route: ReplyRoute }): string {
-  return route.kind === 'firstmate' ? 'firstmate' : `terminal:${route.kind}`
+function routeName({ route, control }: { route: ReplyRoute; control?: boolean }): string {
+  return route.kind === 'firstmate' ? (control ? 'firstmate:inbox' : 'firstmate') : `terminal:${route.kind}`
 }
+
+// The request id of a setting change's note: per board, card and change, so a retry
+// of the same change replays its note and the card's notes can be found again.
+const notePrefix = ({ board, card }: { board: string; card: string }) => `pnyx:${board}:${card}:`
 
 // Time for Claude Code to show its confirmation after a model or effort command.
 const CONFIRM_SETTLE_MS = 1500
@@ -64,16 +70,22 @@ function waiting({ card }: { card: Card | undefined }): boolean {
   return card?.attention.some(a => a.blocking && a.key.startsWith(HOOK)) ?? false
 }
 
-function deliver({ board, card, route, request }: {
+function deliver({ board, card, reply, route, request }: {
   board: string
   card: string
+  reply: string
   route: ReplyRoute
   request: ReplyRequest
 }): Delivery {
   const { text, key, confirm, resolveKey } = request
-  const sent = route.kind === 'firstmate'
-    ? fmSend({ route, text, resolveKey })
-    : key ? pressKey({ route, key }) : typeInto({ route, text })
+
+  if (route.kind === 'firstmate') {
+    return request.control
+      ? fmNote({ home: route.home, requestId: `${notePrefix({ board, card })}${reply}`, text })
+      : fmSend({ route, text, resolveKey })
+  }
+
+  const sent = key ? pressKey({ route, key }) : typeInto({ route, text })
 
   if (!confirm || sent.state !== 'delivered') {
     return sent
@@ -95,7 +107,7 @@ function deliver({ board, card, route, request }: {
     return { state: 'delivery_unknown', detail: 'the command was sent, then the session opened a request, so Pnyx pressed nothing more; answer it and any confirmation in the session' }
   }
 
-  const answered = route.kind === 'firstmate' ? fmEnter({ route }) : pressKey({ route, key: 'enter' })
+  const answered = pressKey({ route, key: 'enter' })
 
   return answered.state === 'delivered'
     ? sent
@@ -146,7 +158,7 @@ export function sendReply({ board, request }: {
         throw new BoardError({ message: `card ${card.id} cannot take ${KEY_LABEL[key!]}: ${unpressable}`, code: 'NO_ROUTE' })
       }
 
-      if (request.control && waiting({ card })) {
+      if (request.control && route.kind !== 'firstmate' && waiting({ card })) {
         throw new BoardError({ message: `card ${card.id} is waiting on a request; answer it in the session before changing settings`, code: 'SESSION_WAITING' })
       }
 
@@ -182,7 +194,7 @@ export function sendReply({ board, request }: {
       }
 
       // A retry after a failed send queues again, so every attempt has its own receipts.
-      const data = { reply, state: 'queued' as const, route: routeName({ route }), text, ...(resolveKey ? { resolveKey } : {}) }
+      const data = { reply, state: 'queued' as const, route: routeName({ route, control: request.control }), text, ...(resolveKey ? { resolveKey } : {}) }
       const decision = decideReply({ state: writer.state, ref: card.id, data, meta: meta() })
 
       if ('event' in decision) {
@@ -198,16 +210,17 @@ export function sendReply({ board, request }: {
   }
 
   // Sent outside the writer lock: a send can take a while and must not block other writers.
-  const outcome = deliver({ board, card: queued.card, route: queued.route, request })
-  const receipt = { card: queued.card, reply: queued.reply, sent: true, ...outcome }
+  const { card, reply, route } = queued
+  const outcome = deliver({ board, card, reply, route, request })
+  const receipt = { card, reply, sent: true, ...outcome }
 
   try {
     withWriter({
       board,
       fn: ({ writer }) => {
         drainSpool({ writer })
-        const data = { reply: queued.reply, route: routeName({ route: queued.route }), ...outcome }
-        const decision = decideReply({ state: writer.state, ref: queued.card, data, meta: meta() })
+        const data = { reply, route: routeName({ route, control: request.control }), ...outcome }
+        const decision = decideReply({ state: writer.state, ref: card, data, meta: meta() })
 
         if ('event' in decision) {
           writer.append({ event: decision.event })
@@ -288,7 +301,8 @@ export const reply = guard({
 const READBACK_MS = 1000
 
 // The card's harness, settings and the controls its Agent tab offers, each with the
-// reason it cannot be sent when the route cannot carry it.
+// reason it cannot be sent when the route cannot carry it, and on a Firstmate task the
+// request notes its changes left with the orchestrator.
 function agentSummary({ board, ref, homes }: {
   board: string
   ref: string
@@ -299,12 +313,10 @@ function agentSummary({ board, ref, homes }: {
   const found = replyRoute({ card, homes: homes.map(path => resolveHome({ path })) })
   const harness = harnessControls({ provider })
   const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
-  const typing = firstmate && typingReason(firstmate)
   const controls = (harness?.controls ?? []).map(c => {
-    const keys = 'route' in found
-      ? c.options.map(o => inputReason({ kind: found.route.kind, input: o.input })).find(Boolean)
-      : undefined
-    const unavailable = 'reason' in found ? found.reason : typing || keys
+    const unavailable = 'reason' in found
+      ? found.reason
+      : c.options.map(o => inputReason({ kind: found.route.kind, input: o.input })).find(Boolean)
 
     return {
       setting: c.setting,
@@ -316,14 +328,20 @@ function agentSummary({ board, ref, homes }: {
   const agent = {
     card: card.id,
     harness: provider ?? 'none',
-    route: 'route' in found ? routeName({ route: found.route }) : `none: ${found.reason}`,
+    route: 'route' in found ? routeName({ route: found.route, control: true }) : `none: ${found.reason}`,
     ...(harness?.note ? { note: harness.note } : {}),
   }
+  const prefix = notePrefix({ board, card: card.id })
+  const notes = firstmate && fmReceipts({ home: firstmate.home, prefix })
+  const requests = firstmate
+    ? { requests: notes?.map(({ note, state, asked }) => ({ note, state, asked })) ?? 'unavailable: fm-inbox.sh receipts could not be read' }
+    : {}
 
   if (!harness) {
     return {
       agent,
       controls: [],
+      ...requests,
       help: [provider ? `Pnyx changes settings only for Claude Code and Codex sessions, not ${provider}` : 'This card has no agent session joined yet, so there is nothing to change'],
     }
   }
@@ -333,6 +351,7 @@ function agentSummary({ board, ref, homes }: {
   return {
     agent,
     controls,
+    ...requests,
     help: ready ? [`Run \`pnyx-axi agent ${card.id} ${ready.setting} ${ready.options.split(' ')[0]}\` to change it`] : ['No setting can be changed on this route'],
   }
 }
@@ -359,7 +378,8 @@ export const agent = guard({
 
     const [, setting, value] = positionals as [string, string, string]
     const card = findCard({ state: loadBoard({ board }).state, ref })
-    const picked = findOption({ provider: card.agent?.provider, setting, value })
+    const provider = card.agent?.provider
+    const picked = findOption({ provider, setting, value })
 
     if (!picked) {
       throw new AxiError(`card ${card.id} offers no ${setting} ${value}`, 'VALIDATION_ERROR', [`Run \`pnyx-axi agent ${card.id}\` to list its settings and values`])
@@ -368,11 +388,6 @@ export const agent = guard({
     const { control, option } = picked
     const found = replyRoute({ card, homes: homes.map(path => resolveHome({ path })) })
     const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
-    const typing = firstmate && typingReason(firstmate)
-
-    if (typing) {
-      throw new BoardError({ message: `card ${card.id} cannot take a setting change: ${typing}`, code: 'NO_ROUTE' })
-    }
 
     // What the session reported before, with everything it has recorded folded in,
     // so the readback compares like with like.
@@ -387,9 +402,10 @@ export const agent = guard({
     })
     const before = settled()
     const input = option.input
-    // A Firstmate task gets a key as a plain request: fm-send presses no such keys.
-    const typed = 'key' in input && firstmate
-      ? { text: keyRequest({ input, task: firstmate.task }) }
+    const harness = harnessControls({ provider })!.name
+    // A Firstmate task's worker is never typed into: its orchestrator gets a request note.
+    const typed = firstmate
+      ? { text: settingRequest({ option, task: firstmate.task, harness }) }
       : 'key' in input
         ? { text: `[${KEY_LABEL[input.key]}]`, key: input.key }
         : { text: input.text, confirm: input.confirm }
@@ -406,7 +422,7 @@ export const agent = guard({
     })
     let now = before
 
-    if (receipt.state === 'delivered') {
+    if (receipt.state === 'delivered' && !firstmate) {
       // A harness that records the change at once, as Codex does, confirms it here;
       // otherwise the session's next hook or turn does.
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, READBACK_MS)
@@ -424,6 +440,8 @@ export const agent = guard({
       out.help = [`Nothing was changed${receipt.detail ? `: ${receipt.detail}` : ''}`]
     } else if (receipt.state !== 'delivered') {
       out.help = [`The change may have landed${receipt.detail ? ` (${receipt.detail})` : ''}; check the session before sending again`]
+    } else if (!confirmed && firstmate) {
+      out.help = [`${receipt.detail ?? 'The request note'} asks Firstmate's orchestrator for it; the worker's next hook or turn confirms its new ${setting}. Run \`pnyx-axi agent ${card.id} --home ${firstmate.home}\` to see the request's state`]
     } else if (!confirmed) {
       out.help = [`The session has not reported its new ${setting} yet; it does on its next hook or turn. Run \`pnyx-axi card ${card.id}\` to check`]
     }
@@ -441,10 +459,12 @@ route (receipts as for reply), then reads the setting back from the transcript:
     mode as the default for new sessions; one more Enter answers its confirmation, if shown.
   Codex: effort lower|raise (Shift+Down, Shift+Up), fast toggle (/fast), collaboration toggle
     (Shift+Tab, Plan or Default). Codex picks model and approval mode only in its own pickers.
-A Firstmate task types commands through fm-send, which presses only Enter, so a change that needs
-a key goes to Firstmate as a plain request to press it in the worker's session; Terminal and
-Herdr press only Enter and refuse those. Nothing is sent while the session waits on a permission
-prompt or question.
+Terminal and Herdr press only Enter and refuse the keys. Nothing is typed while the session
+waits on a permission prompt or question.
+A Firstmate task's worker is never typed into: every change goes to its orchestrator as a request
+note through the home's bin/fm-inbox.sh note --request-id <id> (a retry with the same
+--idempotency-key replays that note), and the summary lists the card's notes as queued, handled
+or replied from fm-inbox.sh receipts.
 A setting the session has not reported yet is confirmed by its next hook or turn.
 `
 

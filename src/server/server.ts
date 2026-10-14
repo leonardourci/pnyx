@@ -455,11 +455,11 @@ export async function startServer({
           const agent = name === 'agent'
 
           const valid = agent
-            ? args.length === 4 && !!args[3]
+            ? args.length === 1 || (args.length === 4 && !!args[3])
             : args.length === 3 && !!args[2] && args[1].length <= 32000
 
           if (!valid) {
-            throw new BoardError({ message: agent ? 'agent expects card, setting, value and idempotency key' : 'reply expects card, text and idempotency key', code: 'VALIDATION_ERROR' })
+            throw new BoardError({ message: agent ? 'agent expects a card, or card, setting, value and idempotency key' : 'reply expects card, text and idempotency key', code: 'VALIDATION_ERROR' })
           }
 
           const card = findCard({ state, ref: args[0] })
@@ -470,11 +470,14 @@ export async function startServer({
             throw new BoardError({ message: `${found.reason}${agent ? '' : ' Your draft stays here.'}`, code: 'NO_ROUTE' })
           }
 
-          // A setting change is typed like a reply: `pnyx-axi agent` picks the harness's command and reads
-          // it back. Its setting and value come last, after --, so neither can read as a flag.
-          const [command, rest] = agent
-            ? [['agent', card.id, '--idempotency-key', args[3]], ['--', args[1], args[2]]]
-            : [['reply', card.id, '--text', args[1], '--idempotency-key', args[2]], []]
+          // A setting change is sent like a reply: `pnyx-axi agent` picks the harness's command and reads
+          // it back. Its setting and value come last, after --, so neither can read as a flag. A card
+          // alone reads the summary, with a Firstmate task's request notes.
+          const [command, rest] = !agent
+            ? [['reply', card.id, '--text', args[1], '--idempotency-key', args[2]], []]
+            : args.length === 1
+              ? [['agent', card.id], []]
+              : [['agent', card.id, '--idempotency-key', args[3]!], ['--', args[1]!, args[2]!]]
 
           // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.
           execFile(process.execPath, [join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js'), ...command, '--board', board, '--actor', 'web', ...homes.flatMap(h => ['--home', h]), ...rest], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {

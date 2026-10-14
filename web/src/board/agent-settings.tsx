@@ -94,13 +94,13 @@ export function SettingList({ settings }: { settings?: Record<string, string> })
   )
 }
 
-// What typing an option does, in the harness's own words; a Firstmate task gets a key as a request.
+// What typing an option does, in the harness's own words; a Firstmate task's orchestrator gets a request note.
 const typedAs = ({ option, kind }: { option: ControlOption; kind?: ThreadPage['routeKind'] }) =>
-  !('key' in option.input)
-    ? `Types ${option.input.text} in the session`
-    : kind === 'firstmate'
-      ? `Asks Firstmate to press ${KEY_LABEL[option.input.key]} in the session`
-      : `Presses ${KEY_LABEL[option.input.key]} in the session`
+  kind === 'firstmate'
+    ? "Asks Firstmate's orchestrator in a request note"
+    : 'key' in option.input
+      ? `Presses ${KEY_LABEL[option.input.key]} in the session`
+      : `Types ${option.input.text} in the session`
 
 // Why the route cannot press this control's keys, if it cannot.
 const keyReason = ({ control, kind }: { control: Control; kind?: ThreadPage['routeKind'] }) =>
@@ -109,6 +109,9 @@ const keyReason = ({ control, kind }: { control: Control; kind?: ThreadPage['rou
 // A change sent and not yet reported back by the session; sending while the command
 // itself is still on its way.
 interface Pending { value: string; before?: string; sending: boolean }
+
+// A request note a Firstmate task's change left with its orchestrator, as fm-inbox reports it.
+interface Request { note: string; state: string; asked: string }
 
 function ControlRow({
   control,
@@ -159,7 +162,9 @@ function ControlRow({
       {why && <p className="small muted">{why}</p>}
       {sent && (
         <p className="small gold" role="status">
-          {pending.sending ? `Sending ${sent.label}…` : `Sent ${sent.label}. Waiting for the session to report its ${label(control.setting).toLowerCase()}; it does on its next hook or turn.`}
+          {pending.sending
+            ? `Sending ${sent.label}…`
+            : `${kind === 'firstmate' ? 'Asked Firstmate for' : 'Sent'} ${sent.label}. Waiting for the session to report its ${label(control.setting).toLowerCase()}; it does on its next hook or turn.`}
         </p>
       )}
     </div>
@@ -182,11 +187,21 @@ export function AgentControls({
   notify(text: string): void
 }) {
   const [pending, setPending] = useState<Record<string, Pending>>({})
+  const [requests, setRequests] = useState<Request[] | string>([])
   const provider = card.agent?.provider
   const harness = harnessControls({ provider })
+  const page = thread?.card === card.id ? thread : null
+  const firstmate = connected && page?.routeKind === 'firstmate'
   useEffect(() => {
     setPending({})
+    setRequests([])
   }, [card.id])
+  useEffect(() => {
+    if (firstmate) {
+      void command('agent', [card.id]).then(r => setRequests(r.requests as Request[] | string))
+        .catch(() => undefined)
+    }
+  }, [firstmate, card.id, card.replies, card.settings, command])
   useEffect(() => {
     setPending(current => {
       const left = Object.fromEntries(Object.entries(current).filter(([setting, p]) => {
@@ -210,7 +225,6 @@ export function AgentControls({
     )
   }
 
-  const page = thread?.card === card.id ? thread : null
   const route = !connected ? 'Reconnect to change settings.' : !page ? 'Loading the route…' : page.route ? undefined : page.noRoute
 
   const settle = ({ setting }: { setting: string }) =>
@@ -242,9 +256,9 @@ export function AgentControls({
     <section className="agent-controls" aria-label="Change settings">
       <h3>Change from here</h3>
       <p className="small muted">
-        {route ?? `Typed into the session through ${page?.via ?? 'its route'}, as its own commands and keys.`}
-        {!route && page?.routeKind === 'firstmate' && harness.controls.some(c => c.options.some(o => 'key' in o.input))
-          && " A change that needs a key goes to Firstmate as a request to press it in the worker's session."}
+        {route ?? (firstmate
+          ? "Sent to Firstmate's orchestrator as a request note; Pnyx never types into the worker."
+          : `Typed into the session through ${page?.via ?? 'its route'}, as its own commands and keys.`)}
       </p>
       {harness.controls.map(control => (
         <ControlRow
@@ -260,6 +274,26 @@ export function AgentControls({
         />
       ))}
       {harness.note && <p className="small muted">{harness.note}</p>}
+      {firstmate && (
+        <div className="agent-requests" aria-label="Requests to Firstmate">
+          <h3>Requests to Firstmate</h3>
+          {typeof requests === 'string'
+            ? <p className="small muted">{requests}</p>
+            : requests.length === 0
+              ? <p className="small muted">No request notes yet.</p>
+              : (
+                <ul>
+                  {requests.map(r => (
+                    <li key={r.note} className="small">
+                      {r.asked}
+                      {' '}
+                      <span className="muted">{r.state}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+        </div>
+      )}
     </section>
   )
 }

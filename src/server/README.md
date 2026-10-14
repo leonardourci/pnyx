@@ -44,7 +44,9 @@ The same authenticated socket also accepts these commands:
   kind when there is one). A disconnect never automatically retries a reply.
 - `agent`, args `[cardId, setting, value, idempotencyKey]`: changes a session setting
   from the card's Agent tab through `pnyx-axi agent` in the same child process and on
-  the same route as `reply`, with the same receipts and the same refusal without a route.
+  the same route as `reply`, with the same receipts and the same refusal without a route
+  (a Firstmate task's change is a request note to its orchestrator). Args `[cardId]` read
+  the card's summary, including a Firstmate task's request notes and their state.
   See `pnyx-axi agent --help` for the settings and values.
 
 `view set --json <patch> [--if-revision <n>] [--event-id <id>]` validates preferences,

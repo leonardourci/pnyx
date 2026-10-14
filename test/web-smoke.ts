@@ -175,8 +175,8 @@ try {
   await browser('wait', 'Live fixture update received.')
   await eventually('[...document.querySelectorAll(".last-message")].some(m => m.textContent.includes("Live fixture update received."))', "the card's last message follows the live transcript")
   await screenshot('conversation.png')
-  // The Agent tab changes settings on the card's route: Firstmate types the command,
-  // then answers Claude Code's confirmation; a key it cannot press goes as a request.
+  // The Agent tab changes a Firstmate task's settings by asking its orchestrator in a
+  // request note, never by typing into the worker.
   const report = (settings: Record<string, string>) => withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
@@ -186,12 +186,14 @@ try {
   })
   report({ model: 'claude-sonnet-5-5', effort: 'medium', mode: 'default' })
   await click('button', 'Agent'); await browser('wait', 'Change from here')
-  await check('[...document.querySelectorAll(".control-row[aria-label=\'Permission mode\'] button")].every(b => !b.disabled && b.title.includes("Asks Firstmate"))', 'a key goes to Firstmate as a request')
-  await check('document.querySelector(".agent-controls > p").textContent.includes("goes to Firstmate as a request")', 'the tab says a key goes to Firstmate as a request')
+  await check('[...document.querySelectorAll(".control-row[aria-label=\'Permission mode\'] button")].every(b => !b.disabled && b.title.includes("request note"))', 'a key change is a request note too')
+  await check('document.querySelector(".agent-controls > p").textContent.includes("never types into the worker")', 'the tab says changes go to the orchestrator')
+  await browser('wait', 'No request notes yet')
   await check('document.querySelector(".control-row[aria-label=\'Effort\'] [aria-pressed=true]").textContent === "medium"', 'the reported effort is marked')
   await click('button', 'high'); await browser('wait', 'Waiting for the session to report its effort')
-  await browser('wait', 'has not reported its new effort yet')
-  assert.match(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), /arg=api-v2\narg=\/effort high\n---\n[^]*arg=api-v2\narg=--key\narg=Enter\n---\n$/)
+  await browser('wait', 'asks Firstmate')
+  assert.match(readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8'), /arg=Pnyx: please switch the worker on task api-v2 \(Claude Code\) to effort high\.\n---\n$/)
+  await browser('wait', 'queued')
   report({ effort: 'high' })
   await browser('wait', 'Effort')
   await check('!document.querySelector(".control-row[aria-label=\'Effort\'] p") && document.querySelector(".control-row[aria-label=\'Effort\'] [aria-pressed=true]").textContent === "high"', 'the session report confirms the change')

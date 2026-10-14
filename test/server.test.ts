@@ -576,8 +576,8 @@ test('browser reply delivery uses only configured fixture homes and never resend
 
   assert.equal(loadBoard({ board: 'default' }).state.cards[card]?.attention.length, 1)
 
-  // A setting change goes through the same worker: the command, then Enter for a confirmation.
-  writeFileSync(join(fixture.nativeHome, 'send-exit'), '0')
+  // A setting change goes through the same worker, as a request note to the task's orchestrator.
+  const sends = readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8')
   withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
@@ -591,7 +591,16 @@ test('browser reply delivery uses only configured fixture homes and never resend
     assert.equal((changed.agent as { sent: string }).sent, 'delivered')
   }
 
-  assert.match(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), /arg=\/effort high\n---\n[^]*arg=--key\narg=Enter\n---\n$/)
+  assert.match(readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8'), /arg=pnyx:default:c\d+:effort-1\narg=--json\narg=--\narg=Pnyx: please switch the worker on task api-v2 \(Claude Code\) to effort high\.\n---\n$/)
+  assert.equal(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), sends)
+  // A card alone reads the summary with its request notes.
+  t.command('agent-2', 'agent', [card])
+  const summary = await receipt('agent-2'); assert.equal(summary.type, 'receipt', JSON.stringify(summary))
+
+  if (summary.type === 'receipt') {
+    assert.deepEqual(summary.requests, [{ note: 'n1', state: 'queued', asked: 'Pnyx: please switch the worker on task api-v2 (Claude Code) to effort high.' }])
+  }
+
   t.command('search-1', 'search', ['conversation readable'])
   const found = await receipt('search-1'); assert.equal(found.type, 'receipt')
 

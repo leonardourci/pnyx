@@ -54,7 +54,7 @@ This adds a silent reporting hook to `~/.claude/settings.json` and `~/.codex/hoo
 
 ## Firstmate
 
-Pass each Firstmate home to `serve` with `--home` (repeat it for several homes). The server then watches the home's `state/` and `data/` folders, turns each task into a card, and sends your replies through the home's own `bin/fm-send.sh`. It only reads the home. Without a server, `pnyx-axi firstmate sync --home <path>` folds a home in once and `pnyx-axi firstmate watch --home <path>` keeps doing so; `pnyx-axi reply <id> --text <text> --home <path>` replies from the terminal. A Claude Code or Codex session started in an open task's worktree joins that task's card, which keeps replying through Firstmate.
+Pass each Firstmate home to `serve` with `--home` (repeat it for several homes). The server then watches the home's `state/` and `data/` folders, turns each task into a card, and sends your replies through the home's own `bin/fm-send.sh`; a setting change from a task card's Agent tab goes to the orchestrator as a request note through the home's `bin/fm-inbox.sh`. It only reads the home. Without a server, `pnyx-axi firstmate sync --home <path>` folds a home in once and `pnyx-axi firstmate watch --home <path>` keeps doing so; `pnyx-axi reply <id> --text <text> --home <path>` replies from the terminal. A Claude Code or Codex session started in an open task's worktree joins that task's card, which keeps replying through Firstmate.
 
 ## Using the board
 
