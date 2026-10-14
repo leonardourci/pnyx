@@ -59,6 +59,16 @@ const persistedMap = ({ values, min, max }: {
       })]),
   )
 
+// Focus shows only prompts and agent messages: on while a card shows neither tool
+// calls nor thinking, by its own override or the board default.
+export function traces({ view, card }: { view: ViewPreferences; card: string }) {
+  const overrides = view.cardTraceOverrides[card]
+  const tools = overrides?.tools ?? view.toolDetails
+  const thinking = overrides?.thinking ?? view.thinkingDetails
+
+  return { tools, thinking, focus: !tools && !thinking, overrides }
+}
+
 export const viewFor = ({ state }: { state: BoardState }): ViewPreferences => {
   const view = { ...structuredClone(DEFAULT_VIEW), ...state.view }
 

@@ -34,7 +34,7 @@ const ready = true;
 
 <img src=x onerror="window.pnyxUnsafe=true">
 
-Fish &amp; chips. [unsafe encoded](jav&#x61;script:alert(1)) and [unsafe](javascript:alert(1)) and ![remote image](https://example.com/tracker.png)
+Fish &amp; chips, escaped as `&amp;` in HTML. [unsafe encoded](jav&#x61;script:alert(1)) and [unsafe](javascript:alert(1)) and ![remote image](https://example.com/tracker.png)
 
 > A quoted reminder stays readable.
 
