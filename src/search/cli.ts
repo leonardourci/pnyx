@@ -55,7 +55,7 @@ async function status({ board }: { board: string }): Promise<Output> {
 
   return {
     index: s.builtThrough === seq ? `current through seq ${seq}` : `behind: through seq ${s.builtThrough} of ${seq}; the next search catches up`,
-    mode: readSettings().semantic && runtimeInstalled() ? 'hybrid: words fused with meaning' : 'lexical, fuzzy when nothing matches',
+    mode: readSettings({ }).semantic && runtimeInstalled() ? 'hybrid: words fused with meaning' : 'lexical, fuzzy when nothing matches',
     synonyms: `v${SYNONYMS_VERSION}, ${SYNONYMS.length} groups`,
     ...(await semanticStatus({ board })),
     docs: s.docs,
@@ -193,7 +193,7 @@ const settingsCommand = guard(args => {
 
   parse(args, {}, 0)
 
-  return { settings: settingEntries({ settings: readSettings() }), help: ['Run `pnyx-axi settings set search.semantic on|off`'] }
+  return { settings: settingEntries({ settings: readSettings({ }) }), help: ['Run `pnyx-axi settings set search.semantic on|off`'] }
 })
 
 export const searchCommands = { search: searchCommand, settings: settingsCommand }

@@ -4,12 +4,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decision } from '../src/core/decide.ts'
-import { emptyBoard, reduce } from '../src/core/reducer.ts'
-import { BoardError, type BoardEvent, type BoardState } from '../src/core/model.ts'
+import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
+import { BoardError, COLUMNS, type BoardEvent, type BoardState } from '../src/core/model.ts'
 import { clampViewSize, patchView, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
-import { columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
+import { agentActivity, columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
+import { observe } from '../src/integrations/hooks/observe.ts'
+import { briefNotes, relativeTime } from '../web/src/board/brief.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -57,17 +59,17 @@ test('preferences replay deterministically, guard revisions, and undo removes ma
   assert.throws(() => decideView({ state, patch: { fontSize: 18 }, meta: { ...meta, ifRevision: 0 } }), /changed/)
   const undone = reduce({
     state,
-    event: event(decideUndo({
-      state,
-      target: edit,
-      meta: {
-        ...meta,
-        ifRevision: 1,
-      },
-    })),
+    event: event(decideUndo({ state, target: edit, meta: { ...meta, ifRevision: 1 } })),
   })
   assert.deepEqual(viewFor({ state: undone }), viewFor({ state: initial }))
   assert.throws(() => patchView({ state, input: { fontSize: 100 } }), BoardError)
+  assert.throws(() => patchView({ state, input: { chatFontSize: 100 } }), BoardError)
+  assert.throws(() => patchView({ state, input: { codeFontSize: 5 } }), BoardError)
+  const sizes = patchView({
+    state,
+    input: { fontSize: 15, chatFontSize: 18, codeFontSize: 12 },
+  })
+  assert.deepEqual([sizes.fontSize, sizes.chatFontSize, sizes.codeFontSize], [15, 18, 12])
   assert.throws(() => patchView({ state, input: JSON.parse('{"columnWidths":{"__proto__":300}}') }), BoardError)
 })
 
@@ -99,14 +101,14 @@ test('saved resize preferences load within readable size limits', () => {
   assert.equal(clampViewSize({ value: 320.5, min: 320, max: 720 }), 321)
 })
 
-test('custom columns accept manual placement and cannot strand existing cards', () => {
+test('custom columns accept manual placement and return their cards to auto when deleted', () => {
   let state = push(emptyBoard(), 'a', { attention: [{ kind: 'question', key: 'q', blocking: true }] })
   state = reduce({ state, event: event(decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta })) })
   assert.equal(columnsFor(state).at(-1)?.title, 'Later')
   assert.equal(patchView({ state: emptyBoard(), input: { columnWidths: { 'custom:one': 400 }, customColumns: [{ id: 'custom:one', title: 'One' }] } }).columnWidths['custom:one'], 400)
   state = reduce({ state, event: event(decideMove({ state, ref: 'a', column: 'custom:later', meta })) })
   assert.equal(state.cards.c1!.column, 'custom:later')
-  assert.throws(() => patchView({ state, input: { customColumns: [] } }), /contains cards/)
+  assert.deepEqual(patchView({ state, input: { customColumns: [] } }).customColumns, [])
   assert.throws(() => decideMove({ state, ref: 'a', column: 'custom:missing', meta }), /unknown/)
   const toAuto = event(decideMove({ state, ref: 'a', column: null, meta }))
   state = reduce({ state, event: toAuto })
@@ -272,4 +274,97 @@ test("a card's last message is read again from only what its transcript gained",
   // A file replaced or cut short is read back from its end.
   writeFileSync(path, line('assistant', 'Fresh.', '2026-10-12T11:00:00.000Z'))
   assert.equal(latestMessage(path, third).message?.text, 'Fresh.')
+})
+
+test('deleting a populated column is atomic, replayable, undoable and guarded', () => {
+  const events: BoardEvent[] = []
+  let state = emptyBoard()
+
+  const apply = (d: Decision) => {
+    const e = event(d); events.push(e); state = reduce({ state, event: e })
+
+    return e
+  }
+
+  apply(decidePush({ state, key: 'question', input: { attention: [{ kind: 'question', key: 'q', blocking: true }] }, meta }))
+  apply(decidePush({ state, key: 'worker', input: {}, meta }))
+  apply(decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }], columnWidths: { 'custom:later': 400 } }, meta }))
+  apply(decideMove({ state, ref: 'question', column: 'custom:later', meta }))
+  apply(decideMove({ state, ref: 'worker', column: 'custom:later', meta }))
+  const before = structuredClone(state)
+  const deletion = apply(decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }))
+  assert.equal(state.cards.c1!.column, 'needs_you')
+  assert.equal(state.cards.c2!.column, 'workers_on_it')
+  assert.equal(state.cards.c1!.manualColumn, undefined)
+  assert.equal(viewFor({ state }).columnWidths['custom:later'], undefined)
+  assert.deepEqual(replay({ state: emptyBoard(), events }), state)
+  assert.deepEqual(decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }), { skipped: 'duplicate' })
+  const later = reduce({ state, event: event(decideMove({ state, ref: 'worker', column: 'done', meta })) })
+  assert.throws(() => decideUndo({ state: later, target: deletion, meta }), /moved since/)
+  const undo = apply(decideUndo({ state, target: deletion, meta: { ...meta, ifRevision: 2 } }))
+  assert.deepEqual(viewFor({ state }), viewFor({ state: before }))
+  assert.equal(state.cards.c1!.manualColumn, 'custom:later')
+  assert.equal(state.cards.c2!.column, 'custom:later')
+  assert.deepEqual(state.cards.c1!.attention, before.cards.c1!.attention)
+  const redo = apply(decideUndo({ state, target: undo, meta }))
+  assert.deepEqual(redo.type === 'board.view' && redo.data.placements?.map(p => p.cardId), ['c1', 'c2'])
+  assert.equal(state.cards.c1!.column, 'needs_you')
+  assert.deepEqual(replay({ state: emptyBoard(), events }), state)
+
+  for (const id of COLUMNS) {
+    assert.throws(() => patchView({ state, input: { customColumns: [{ id, title: 'Replacement' }] } }), /invalid/)
+  }
+})
+
+test('themes validate, default to System on older boards, and undo', () => {
+  assert.equal(viewFor({ state: emptyBoard() }).theme, 'system')
+
+  for (const theme of ['light', 'dark', 'system']) {
+    assert.equal(patchView({ state: emptyBoard(), input: { theme } }).theme, theme)
+  }
+
+  assert.throws(() => patchView({ state: emptyBoard(), input: { theme: 'sepia' } }), /invalid/)
+  const change = event(decideView({ state: emptyBoard(), patch: { theme: 'light' }, meta }))
+  const state = reduce({ state: emptyBoard(), event: change })
+  assert.equal(viewFor({ state }).theme, 'light')
+  assert.equal(viewFor({ state: reduce({ state, event: event(decideUndo({ state, target: change, meta })) }) }).theme, 'system')
+})
+
+test('the notes header keeps the newest distinct notes and skips text already in the chat', () => {
+  const note = { at: '2026-10-13T10:00:00Z', source: 'firstmate', text: 'resolved: Keep the composer visible.' }
+  const newer = { ...note, at: '2026-10-13T11:00:00Z' }
+  assert.deepEqual(briefNotes({ notes: [note, newer, { ...note, text: 'Already in the chat.' }], conversation: ['Already in the chat.'] }), [newer])
+  assert.deepEqual(briefNotes({ notes: [note], conversation: ['Keep the composer visible.'] }), [])
+  assert.equal(relativeTime({ at: note.at, now: Date.parse('2026-10-13T10:02:00Z') }), '2m ago')
+  assert.equal(relativeTime({ at: undefined, now: 0 }), 'Time not recorded')
+})
+
+test('a live joined session drives the running indicator; Firstmate status shows once it ends', () => {
+  const firstmate = { activity: 'working: task status', source: { adapter: 'firstmate', objectId: 'task' } }
+  let state = push(emptyBoard(), 'task', { title: 'Joined task', ...firstmate })
+  assert.equal(agentActivity({ card: state.cards.c1! }), undefined)
+
+  for (const [hook, expected] of [['UserPromptSubmit', 'working'], ['PreToolUse', 'working'], ['PostToolUseFailure', 'working'], ['Stop', 'idle']] as const) {
+    const [observed] = observe({ v: 1, id: hook, at: meta.at, harness: 'claude', event: hook, payload: { session_id: 'fixture', tool_name: 'Read' } })
+    assert.ok(observed)
+    state = push(state, 'task', observed.card)
+    assert.equal(agentActivity({ card: state.cards.c1! }), expected)
+    state = push(state, 'task', firstmate)
+    assert.equal(state.cards.c1!.activity, 'working: task status')
+    assert.equal(agentActivity({ card: state.cards.c1! }), expected)
+  }
+
+  const [ended] = observe({ v: 1, id: 'end', at: meta.at, harness: 'claude', event: 'SessionEnd', payload: { session_id: 'fixture' } })
+  assert.ok(ended)
+  state = push(state, 'task', ended.card)
+  assert.equal(shownActivity({ card: state.cards.c1! }), 'ended')
+  state = push(state, 'task', { ...firstmate, activity: 'working: new step' })
+  assert.equal(shownActivity({ card: state.cards.c1! }), 'working: new step')
+  assert.equal(agentActivity({ card: state.cards.c1! }), 'ended')
+})
+
+test('in-turn tool failures, denials and task updates count as working', () => {
+  for (const activity of ['Bash failed', 'Edit denied', 'task: write tests', 'task done: write tests']) {
+    assert.equal(agentActivity({ card: { ...push(emptyBoard(), 'k', { agent: { provider: 'claude', sessionId: 's' } }).cards.c1!, activity } }), 'working')
+  }
 })

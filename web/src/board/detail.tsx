@@ -8,7 +8,7 @@ import { Resize } from '../components/ui/resize.tsx'
 import { SettingChips, SettingList, harnessName } from './agent-settings.tsx'
 import { Links, Tags } from './card.tsx'
 import { Composer } from './composer.tsx'
-import { Notes } from './notes.tsx'
+import { ConversationBrief } from './notes.tsx'
 import { columnsFor, receiptLabel } from './view.ts'
 import type { Command } from './connection.ts'
 
@@ -120,6 +120,12 @@ export function Detail({
           </Button>
         </div>
         <h2>{card.title}</h2>
+        <ConversationBrief
+          card={card}
+          entries={entries}
+          command={command}
+          notify={notify}
+        />
         <Tags tags={card.tags} />
         <Links links={card.links} />
         <SettingChips settings={card.settings} />
@@ -127,7 +133,7 @@ export function Detail({
         {card.attention.map(a => <p className="request" key={a.key}>{a.text ?? a.kind}</p>)}
       </header>
       <nav className="detail-tabs" aria-label="Card detail">
-        {[['thread', 'Conversation'], ['notes', 'Notes'], ['agent', 'Agent'], ['history', 'History'], ['move', 'Why here / move']].map(([id,label]) => (
+        {[['thread', 'Conversation'], ['agent', 'Agent'], ['history', 'History'], ['move', 'Why here / move']].map(([id,label]) => (
           <Button
             key={id}
             data-conversation-tab={id === 'thread' ? '' : undefined}
@@ -238,7 +244,7 @@ export function Detail({
             notify={notify}
           />
         </>
-      ) : tab === 'notes' ? <Notes card={card} command={command} notify={notify} /> : tab === 'agent' ? (
+      ) : tab === 'agent' ? (
         <div className="detail-content">
           <SettingList settings={card.settings} />
           {!card.settings && <p className="empty">No settings reported yet. Claude Code and Codex report theirs as the session runs.</p>}

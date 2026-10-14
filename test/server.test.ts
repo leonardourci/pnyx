@@ -1,6 +1,6 @@
 import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
@@ -45,6 +45,15 @@ afterEach(async () => {
   await server?.close()
   server = undefined
 })
+
+// Stops a spawned server and waits for it to exit, so none outlives its test.
+async function stopChild({ child }: { child: ChildProcess }) {
+  if (child.exitCode === null && child.signalCode === null) {
+    const exited = once(child, 'exit')
+    child.kill('SIGTERM')
+    await exited
+  }
+}
 
 const cli = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { encoding: 'utf8', timeout: CLI_TIMEOUT_MS })
 
@@ -202,7 +211,7 @@ test('serve runs until stop, and the summary reports it without starting it', as
 
   const child = spawn(process.execPath, [BIN, 'serve', '--port', '0'], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
   // A failed assertion must not leave the piped child keeping this test file alive.
-  t.after(() => child.kill())
+  t.after(() => stopChild({ child }))
   let out = ''
   child.stdout.on('data', chunk => (out += chunk))
   const url = await until(() => /^url: "(http:\/\/127\.0\.0\.1:\d+)"$/m.exec(out)?.[1], 'serve to start')
@@ -227,7 +236,7 @@ test('serve refuses a taken port instead of picking another', async t => {
 
   try {
     const child = spawn(process.execPath, [BIN, 'serve', '--port', String(port)], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
-    t.after(() => child.kill())
+    t.after(() => stopChild({ child }))
     let out = ''
     child.stdout.on('data', chunk => (out += chunk))
     const [code] = await once(child, 'exit')

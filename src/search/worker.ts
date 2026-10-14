@@ -35,7 +35,7 @@ export type Request =
 // Where a model stands: being fetched (bytes so far of the total), loading, ready or failed.
 type Phase = { phase: 'downloading'; done: number; total: number } | { phase: 'loading' } | { phase: 'ready' } | { phase: 'failed'; message: string } | { phase: 'off' }
 
-const settings = readSettings()
+const settings = readSettings({ })
 let mode = ''
 let embedder: Phase = { phase: 'loading' }
 let reranker: Phase = { phase: 'loading' }
@@ -222,7 +222,7 @@ async function answer({ line }: { line: string }): Promise<Record<string, unknow
   try {
     const req = JSON.parse(line) as Request
     // Settings changed since this worker started: let a new one start with them.
-    const now = readSettings()
+    const now = readSettings({ })
 
     if (!now.semantic || now.model !== settings.model || now.rerank !== settings.rerank) {
       setTimeout(shutdown, 50)
@@ -331,7 +331,7 @@ function withVectors<T>({ board, b, fn }: {
 }
 
 async function indexBoard({ board, b }: { board: string; b: Backend }): Promise<void> {
-  while (readSettings().semantic && !closing) {
+  while (readSettings({ }).semantic && !closing) {
     const rows = withVectors({
       board,
       b,
@@ -383,7 +383,7 @@ function listen(): void {
       const replaced = process.platform !== 'win32' && socketId() !== bound
       const busy = indexing || embedder.phase === 'downloading' || reranker.phase === 'downloading'
 
-      if (replaced || !readSettings().semantic || (!busy && Date.now() - last > IDLE_MS)) {
+      if (replaced || !readSettings({ }).semantic || (!busy && Date.now() - last > IDLE_MS)) {
         shutdown()
       }
     }, TICK_MS)

@@ -1,10 +1,11 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { viewFor } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Input, Select } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import { InlineConfirm } from '../components/ui/inline-confirm.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { useBoard } from './connection.ts'
 import { BoardCard } from './card.tsx'
@@ -45,6 +46,8 @@ function Column({
   cards,
   view,
   save,
+  remove,
+  connected,
   children,
 }: {
   id: string
@@ -53,6 +56,8 @@ function Column({
   cards: Card[]
   view: ViewPreferences
   save(patch: unknown): Promise<boolean>
+  remove(): Promise<boolean>
+  connected: boolean
   children: ReactNode
 }) {
   const [width, setWidth] = useState<number | null>(null)
@@ -78,6 +83,15 @@ function Column({
           <span className="count">{String(cards.length).padStart(2,'0')}</span>
         </div>
         <p>{description}</p>
+        {id.startsWith('custom:') && (
+          <InlineConfirm
+            label={`Delete ${title} column`}
+            action="Delete column"
+            message={`Delete “${title}”? Its cards return to automatic placement. You can undo this.`}
+            disabled={!connected}
+            confirm={remove}
+          />
+        )}
       </header>
       <div className="column-cards">
         {children}
@@ -109,9 +123,25 @@ export function App() {
   const { state, command, connected, error, thread, setThread, latest } = useBoard()
   const [page, setPage] = useState(restored.page ?? 'board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
-  const notify = useCallback((text: string) => setNotice(text), [])
+  // The deletion a notice can undo; any later notice replaces it.
+  const [undoColumn, setUndoColumn] = useState<string | null>(null)
+  const notify = useCallback((text: string) => {
+    setNotice(text); setUndoColumn(null)
+  }, [])
   const pendingScroll = useRef(restored.scroll)
   const view = viewFor({ state })
+  useEffect(() => {
+    // System follows the operating system and switches live with it.
+    const root = document.documentElement, dark = matchMedia('(prefers-color-scheme: dark)')
+
+    const apply = () => {
+      root.dataset.theme = view.theme === 'system' ? (dark.matches ? 'dark' : 'light') : view.theme
+    }
+
+    apply(); dark.addEventListener('change', apply)
+
+    return () => dark.removeEventListener('change', apply)
+  }, [view.theme])
   const columns = columnsFor(state)
   const found = useFoundCards(command, query, workspace)
   const matches = new Map(found.map(h => [h.card, h]))
@@ -193,6 +223,22 @@ export function App() {
     const target = cards.find(c => c.id === selected) ?? cards.find(c => c.column === card?.column) ?? cards[0]; setSelected(null); requestAnimationFrame(() => focusElement(target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-empty-column="${CSS.escape(card?.column ?? 'needs_you')}"]`))
   }
 
+  const removeColumn = async ({ id }: { id: string }) => {
+    const eventId = crypto.randomUUID()
+
+    try {
+      await command('view', ['set', '--json', JSON.stringify({ customColumns: view.customColumns.filter(c => c.id !== id) }), '--if-revision', String(state.viewRevision ?? 0), '--event-id', eventId])
+      notify('Column deleted. Its cards returned to automatic placement.'); setUndoColumn(eventId)
+      requestAnimationFrame(() => focusElement('[data-card], [data-empty-column]'))
+
+      return true
+    } catch (e) {
+      notify((e as Error).message)
+
+      return false
+    }
+  }
+
   const keyboard = useBoardKeyboard({
     state,
     groups: columns.map(c => ({
@@ -236,7 +282,14 @@ export function App() {
       hints={keyboard.hints.length > 0}
       hintKey={keyboard.hintKey}
     >
-      <div className="app" style={{ fontSize: view.fontSize }}>
+      <div
+        className="app"
+        style={{
+          '--text-ui': `${view.fontSize}px`,
+          '--text-chat': `${view.chatFontSize}px`,
+          '--text-code': `${view.codeFontSize}px`,
+        } as CSSProperties}
+      >
         <header className="topbar">
           <div className="brand">
             <span className="mark">π</span>
@@ -345,6 +398,8 @@ export function App() {
                           cards={items}
                           view={view}
                           save={save}
+                          remove={() => removeColumn({ id: c.id })}
+                          connected={connected}
                         >
                           {items.map(item => (
                             <Fragment key={item.id}>
@@ -421,6 +476,16 @@ export function App() {
         {notice && (
           <div role="status" className="notice">
             <span>{notice}</span>
+            {undoColumn && (
+              <Button
+                onClick={() => {
+                  void command('undo', [undoColumn, '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()]).then(() => notify('Column and its cards restored.'))
+                    .catch(e => notify(e.message))
+                }}
+              >
+                Undo
+              </Button>
+            )}
             <Button aria-label="Dismiss notification" onClick={() => setNotice('')}>
               <Icon name="close" size={14} />
             </Button>

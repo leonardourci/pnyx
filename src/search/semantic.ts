@@ -253,7 +253,7 @@ async function rerank<T>({ order, text, query }: {
 // absent. When the worker cannot answer yet (models downloading or loading) or has
 // failed, full-text results come back with a line saying why.
 export async function searchBoard(
-  { board, query, settings = readSettings() }: {
+  { board, query, settings = readSettings({ }) }: {
     board: string
     query: Query
     settings?: SearchSettings
@@ -268,10 +268,10 @@ export async function searchBoard(
   }
 
   if (!settings.semantic || !(stubbed() || runtimeInstalled())) {
-    return lexicalOnly()
+    return lexicalOnly({ })
   }
 
-  const failure = activeFailure()
+  const failure = activeFailure({ })
 
   if (failure) {
     return lexicalOnly({ semantic: `unavailable: ${failure}; run \`pnyx-axi search setup --semantic\` to retry now` })
@@ -459,7 +459,7 @@ export interface SemanticStatus {
 // What semantic search is doing on this machine: off, not installed, preparing
 // its models, or the active mode and model and how much of the board is embedded.
 export async function semanticStatus({ board }: { board: string }): Promise<SemanticStatus> {
-  const s = readSettings()
+  const s = readSettings({ })
 
   if (!s.semantic) {
     return { semantic: 'off: run `pnyx-axi settings set search.semantic on` to turn it on' }
@@ -469,7 +469,7 @@ export async function semanticStatus({ board }: { board: string }): Promise<Sema
     return { semantic: 'not installed: pnyx-axi was installed without its optional dependencies (node-llama-cpp, sqlite-vec); search is full-text' }
   }
 
-  const failure = activeFailure()
+  const failure = activeFailure({ })
 
   if (failure) {
     return { semantic: `unavailable: ${failure}; run \`pnyx-axi search setup --semantic\` to retry now` }
