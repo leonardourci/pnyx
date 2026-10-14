@@ -8,6 +8,10 @@ commands:
   lint: pnpm run lint
   test: pnpm test
 
+document:
+  instructions: |
+    Keep documentation to the root README (what Pnyx is, install, setup and everyday use), AGENTS.md and the pnyx skill; do not add per-folder READMEs or design docs, and write one paragraph per line with no hard wraps.
+
 test:
   instructions: |
     Run the repository's deterministic suite, `pnpm test`, as the baseline and treat its result as the primary evidence.
