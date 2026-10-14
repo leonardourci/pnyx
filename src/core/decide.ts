@@ -15,6 +15,7 @@ import {
   type Link,
   type Outcome,
   type PushFields,
+  type RepliedEvent,
   type SourceRef,
 } from "./model.ts";
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from "./reducer.ts";
@@ -258,17 +259,32 @@ export function decideLink(state: BoardState, ref: string, url: string, link: Li
   });
 }
 
-export function decideOutcome(state: BoardState, ref: string, outcome: Outcome | null, meta: Meta): Decision {
+// source: the adapter observing this outcome. An observed outcome changes or
+// clears only through the same source.
+export function decideOutcome(state: BoardState, ref: string, outcome: Outcome | null, meta: Meta, source?: string): Decision {
   const card = findCard(state, ref);
+  const observed = card.outcome?.source;
+  if (observed && source !== observed) {
+    throw new BoardError(`card ${card.id}'s outcome comes from ${observed} and cannot be changed here`, "SOURCE_OWNED", [
+      `Run \`pnyx-axi move ${card.id} <column>\` to pin the card instead`,
+    ]);
+  }
   return decided(state, meta, {
     ...base(state, meta, card.id),
     type: "card.outcome",
     data: {
       before: card.outcome ?? null,
-      after: outcome,
+      after: outcome && source ? { ...outcome, source } : outcome,
       card: { title: card.title, workspace: card.workspace, tags: card.tags, links: card.links },
     },
   });
+}
+
+// Records one receipt of a reply. A receipt that repeats the reply's current state
+// appends nothing.
+export function decideReply(state: BoardState, ref: string, data: RepliedEvent["data"], meta: Meta): Decision {
+  const card = findCard(state, ref);
+  return decided(state, meta, { ...base(state, meta, card.id), type: "card.replied", data });
 }
 
 function currentValue(card: Card, target: BoardEvent): unknown {
@@ -281,6 +297,7 @@ function currentValue(card: Card, target: BoardEvent): unknown {
 }
 
 function afterValue(target: BoardEvent): unknown {
+  if (target.type === "card.replied") return null;
   if (target.type !== "card.pushed") return target.data.after;
   const after = target.data as unknown as Record<string, unknown>;
   return Object.fromEntries(Object.keys(target.data.before ?? {}).map((field) => [field, after[field] ?? null]));
@@ -290,13 +307,20 @@ function afterValue(target: BoardEvent): unknown {
 // undo never silently overwrites a later edit. Source observations, card creation
 // and merges are facts, not edits, and cannot be undone. Only a source makes a push
 // an observation: --actor is attribution, so a direct CLI or UI write stays undoable
-// whether a person or an agent made it.
+// whether a person or an agent made it. A sent reply cannot be unsent.
 export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): Decision {
+  if (target.type === "card.replied") {
+    throw notUndoable(`${target.id} records a reply, which cannot be unsent`);
+  }
   if (target.type === "card.pushed" && target.data.source) {
     throw notUndoable(`${target.id} records a source observation and cannot be undone`);
   }
   if (target.type === "card.pushed" && !target.data.before) {
     throw notUndoable(`${target.id} created card ${target.cardId} and cannot be undone`);
+  }
+  const observedBy = target.type === "card.outcome" && (target.data.after?.source ?? target.data.before?.source);
+  if (observedBy) {
+    throw notUndoable(`${target.id} records an outcome observed by ${observedBy} and cannot be undone`);
   }
   if (target.type === "card.linked" && target.data.after?.state === "merged") {
     throw notUndoable(`${target.id} records a merge, which cannot be undone`);

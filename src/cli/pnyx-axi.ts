@@ -2,6 +2,7 @@
 import { createRequire } from "node:module";
 import { AxiError, runAxiCli } from "axi-sdk-js";
 import { serve, stop } from "../server/server.ts";
+import { firstmateCommands, firstmateHelp } from "../integrations/firstmate/cli.ts";
 import { TOP_LEVEL_HELP, commandHelp, commands, home } from "./commands.ts";
 
 // Same relative path from src/cli and dist/cli.
@@ -12,11 +13,12 @@ await runAxiCli({
   version,
   topLevelHelp: TOP_LEVEL_HELP,
   home,
-  getCommandHelp: commandHelp,
+  getCommandHelp: (command) => commandHelp(command) ?? firstmateHelp(command),
   commands: {
     ...commands,
     serve,
     stop,
+    ...firstmateCommands,
     // Shadows the SDK's npm self-update: pnyx-axi is not published while pre-v1.
     update: () => {
       throw new AxiError("pnyx-axi is not published yet", "VALIDATION_ERROR", [
