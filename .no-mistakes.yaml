@@ -1,5 +1,5 @@
-# no-mistakes gate configuration. commands, test.instructions and
-# review.path_instructions are read only from the default-branch copy.
+# no-mistakes gate configuration. commands, test.instructions,
+# review.path_instructions and pr.* are read only from the default-branch copy.
 # The no-mistakes pipeline is the gate until the repo goes public; GitHub CI comes back then.
 no_ci: true
 
@@ -38,3 +38,7 @@ review:
     - path: "test/**"
       instructions: |
         Tests must not touch the real ~/.pnyx, real Firstmate homes, Paseo, Herdr, tmux or any real terminal. They use a temporary PNYX_HOME, a random port and test/fixtures/.
+
+pr:
+  template: .github/pull_request_template.md
+  publish_intent: false
