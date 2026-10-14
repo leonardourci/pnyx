@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { observe, type HookEnvelope } from "../src/integrations/hooks/observe.ts";
+import { DEPLOY_COMMANDS, PR_COMMANDS, observe, type HookEnvelope } from "../src/integrations/hooks/observe.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 const BIN = join(ROOT, "dist", "cli", "pnyx-axi.js");
@@ -80,6 +80,18 @@ test("hook skips shell commands that are not pull request or deploy commands", a
   assert.equal(spooled().length, 1);
 });
 
+const toolPayload = (command: unknown) => JSON.stringify({ session_id: SESSION, tool_name: "Bash", tool_input: { command } });
+
+test("hook passes on every listed pull request and deploy command, and not text that only mentions deploy", async () => {
+  const { script, spooled } = sandbox();
+  for (const command of ["cd deploy-scripts && ls", "cat docs/deploy.md", "git log --grep deploy"]) {
+    await hook(script, ["claude", "PreToolUse"], toolPayload(command));
+  }
+  assert.equal(spooled().length, 0);
+  for (const command of [...PR_COMMANDS, ...DEPLOY_COMMANDS]) await hook(script, ["claude", "PreToolUse"], toolPayload(command));
+  assert.equal(spooled().length, PR_COMMANDS.length + DEPLOY_COMMANDS.length);
+});
+
 test("hook stays silent and exits 0 on bad arguments, bad input and unwritable storage", async () => {
   const { script, home, spooled } = sandbox();
   for (const args of [[], ["other", "Stop"], ["claude", "Stop;rm"]]) {
@@ -101,25 +113,24 @@ test("hook sends the line to the board's server socket instead of the spool when
   const board = join(home, "boards", "default");
   mkdirSync(board, { recursive: true });
   const received: string[] = [];
-  // Like the server: reads until the hook closes its side, then closes.
+  // Like the server: handles each line when its newline arrives and replies nothing.
   const server = createServer((socket) => {
     let data = "";
-    socket.on("data", (chunk) => (data += chunk));
-    socket.on("end", () => {
-      received.push(data);
-      socket.end();
+    socket.on("data", (chunk) => {
+      data += chunk;
+      for (let at = data.indexOf("\n"); at >= 0; at = data.indexOf("\n")) {
+        received.push(data.slice(0, at));
+        data = data.slice(at + 1);
+      }
     });
   });
   await new Promise<void>((resolve) => server.listen(join(board, "server.sock"), resolve));
   try {
-    const started = Date.now();
     await hook(script, ["claude", "Stop"], fixture("claude-stop"));
-    assert.ok(Date.now() - started < 900, "the hook does not wait out nc's timeout");
   } finally {
     server.close();
   }
   assert.equal(received.length, 1);
-  assert.equal(received[0]!.split("\n").length, 2, "one line and a newline");
   assert.equal(JSON.parse(received[0]!).event, "Stop");
   assert.equal(spooled().length, 0);
 });
@@ -178,6 +189,18 @@ test("tool events report only pull request and deploy commands; a created pull r
   const [deployed] = observe(envelope("codex", "PostToolUse", "codex-post-tool-deploy"));
   assert.equal(deployed!.card.activity, "ran deploy");
   assert.equal(deployed!.link, undefined);
+});
+
+test("a deploy counts only when a listed command is in command position", () => {
+  const activity = (command: unknown) =>
+    observe({ ...envelope("claude", "PreToolUse", "claude-pre-tool-ls"), payload: JSON.parse(toolPayload(command)) })[0]?.card.activity;
+  for (const command of ["cd deploy-scripts && ls", "cat docs/deploy.md", "git log --grep deploy", "echo pnpm run deploy", ["bash", "-lc", "cat deploy.md"]]) {
+    assert.equal(activity(command), undefined, String(command));
+  }
+  for (const command of ["pnpm run deploy", "git push && wrangler deploy", "fly deploy", "pnpm test || vercel --prod", "make | netlify deploy --dir out", ["bash", "-lc", "pnpm run deploy"]]) {
+    assert.equal(activity(command), "running deploy", String(command));
+  }
+  assert.equal(activity("git push; gh-axi pr merge 3"), "running gh pr merge");
 });
 
 test("codex payloads map the same way; unknown events and payloads without a session map to nothing", () => {

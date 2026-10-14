@@ -20,12 +20,15 @@ home=${home%/hooks}
 # JSON strings cannot hold raw newlines, so flattening keeps the payload valid on one line.
 payload=$(tr '\n\r' '  ')
 
-# Tool hooks fire for every shell command; only pull request and deploy commands are
-# reported. pnyx-axi checks the parsed command again, so a loose match here is harmless.
+# Tool hooks fire for every shell command; only the pull request and deploy commands
+# listed in observe.ts (PR_COMMANDS, DEPLOY_COMMANDS) are reported. This passes any
+# payload containing one; pnyx-axi then checks the command is in command position.
 case $event in
 PreToolUse | PostToolUse)
   case $payload in
-  *'gh pr create'* | *'gh pr merge'* | *'gh-axi pr create'* | *'gh-axi pr merge'* | *deploy*) ;;
+  *'gh pr create'* | *'gh pr merge'* | *'gh-axi pr create'* | *'gh-axi pr merge'*) ;;
+  *'wrangler deploy'* | *'railway up'* | *'vercel deploy'* | *'vercel --prod'* | *'netlify deploy'* | *'fly deploy'*) ;;
+  *'eas update'* | *'eas submit'* | *'npm run deploy'* | *'pnpm run deploy'* | *'yarn run deploy'* | *'bun run deploy'*) ;;
   *) exit 0 ;;
   esac
   ;;
@@ -38,9 +41,10 @@ set -- $(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
 id="hook-$1-$$"
 line="{\"v\":1,\"id\":\"$id\",\"at\":\"$2\",\"harness\":\"$harness\",\"event\":\"$event\",\"payload\":${payload:-null}}"
 
-# The default board's server spools each line it reads and closes the connection
-# once nc closes its side. Without a running server there is no socket file, so
-# the common path never starts nc.
+# The default board's server handles each line as soon as its newline arrives and
+# replies nothing, so nothing here relies on nc half-closing; -w 1 bounds the wait
+# for an nc that keeps the connection open. Without a running server there is no
+# socket file, so the common path never starts nc.
 board=$home/boards/default
 if [ -S "$board/server.sock" ] && printf '%s\n' "$line" | nc -U -w 1 "$board/server.sock"; then
   exit 0

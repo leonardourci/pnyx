@@ -27,7 +27,23 @@ export interface Observation {
 }
 
 const PROVIDER: Record<Harness, string> = { claude: "claude-code", codex: "codex" };
-const COMMAND = /\b(?:gh|gh-axi)\s+pr\s+(create|merge)\b|\bdeploy\b/;
+// Shell commands a tool hook reports, counted only in command position. pnyx-hook.sh
+// pre-filters on the same list, so a change here goes there too.
+export const PR_COMMANDS = ["gh pr create", "gh pr merge", "gh-axi pr create", "gh-axi pr merge"];
+export const DEPLOY_COMMANDS = [
+  "wrangler deploy",
+  "railway up",
+  "vercel deploy",
+  "vercel --prod",
+  "netlify deploy",
+  "fly deploy",
+  "eas update",
+  "eas submit",
+  "npm run deploy",
+  "pnpm run deploy",
+  "yarn run deploy",
+  "bun run deploy",
+];
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/;
 
 export function isHookEnvelope(value: Record<string, unknown>): boolean {
@@ -40,15 +56,24 @@ function str(value: unknown): string | undefined {
 
 function commandText(input: unknown): string | undefined {
   const command = (input as { command?: unknown } | null)?.command;
-  if (Array.isArray(command)) return command.filter((c) => typeof c === "string").join(" ");
-  return str(command);
+  if (!Array.isArray(command)) return str(command);
+  // Codex may send argv, such as ["bash", "-lc", "pnpm run deploy"]: the shell's own command string.
+  const args = command.filter((c): c is string => typeof c === "string");
+  const flag = args.findIndex((a) => /^-[a-z]*c$/.test(a));
+  return flag >= 0 ? args[flag + 1] : args.join(" ");
 }
 
-// "gh pr create", "gh pr merge" or "deploy" for a reported command, else undefined.
+// "gh pr create", "gh pr merge" or "deploy" when a listed command starts the command
+// text or follows &&, ||, ;, | or a newline, else undefined.
 function commandLabel(payload: Record<string, unknown>): string | undefined {
-  const match = COMMAND.exec(commandText(payload.tool_input) ?? "");
-  if (!match) return undefined;
-  return match[1] ? `gh pr ${match[1]}` : "deploy";
+  for (const part of (commandText(payload.tool_input) ?? "").split(/&&|\|\||[;|\n]/)) {
+    const words = part.trim().replace(/\s+/g, " ");
+    const starts = (c: string) => words === c || words.startsWith(`${c} `);
+    const pr = PR_COMMANDS.find(starts);
+    if (pr) return `gh pr ${pr.split(" ").at(-1)}`;
+    if (DEPLOY_COMMANDS.some(starts)) return "deploy";
+  }
+  return undefined;
 }
 
 function activity(event: string, payload: Record<string, unknown>): string | undefined {
@@ -103,7 +128,6 @@ export function observe(envelope: HookEnvelope): Observation[] {
   const out: Observation[] = [];
   let key = parentKey;
   let card: Record<string, unknown> = { ...session, activity: doing };
-  if (envelope.event === "SessionStart" && str(p.session_title)) card.title = p.session_title;
   if (agentId) {
     out.push({ id: "parent", key: parentKey, card: session, ifMissing: true });
     key = `${parentKey}/${agentId}`;
