@@ -147,6 +147,8 @@ export interface Card {
   tags: string[]
   parentId?: string
   activity?: string
+  // The hook session's own latest activity, which a task source's status line does not replace.
+  sessionActivity?: string
   agent?: AgentRef
   settings?: AgentSettings
   terminal?: TerminalFacts

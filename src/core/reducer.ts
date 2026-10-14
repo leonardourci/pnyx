@@ -228,6 +228,10 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       card.activity = activity
     }
 
+    if (source?.adapter === 'hooks' && typeof activity === 'string') {
+      card.sessionActivity = activity
+    }
+
     if (parentId === null) {
       delete card.parentId
     } else if (parentId !== undefined && !wouldCycle(state.cards, card.id, parentId)) {

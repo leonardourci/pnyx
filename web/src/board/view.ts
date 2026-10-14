@@ -59,15 +59,24 @@ export function safeLink(link: Link): string | undefined {
   }
 }
 
+// The live hook session's activity while it runs, otherwise the latest status line.
+export const shownActivity = (card: Card) =>
+  card.sessionActivity && card.sessionActivity !== 'ended' ? card.sessionActivity : card.activity
+
 // A recorded session's live state, from its hook activity. Task status alone claims none.
 export function agentActivity({ card }: { card: Card }): 'working' | 'idle' | 'ended' | 'unknown' | undefined {
-  const activity = card.activity ?? ''
+  const activity = shownActivity(card) ?? ''
 
   if (!card.agent) {
     return undefined
   }
 
-  if (activity === 'working' || activity === 'compacting' || /^(?:running|ran) /.test(activity)) {
+  if (
+    activity === 'working'
+    || activity === 'compacting'
+    || /^(?:running |ran |task: |task done: )/.test(activity)
+    || /^\S+ (?:failed|denied)$/.test(activity)
+  ) {
     return 'working'
   }
 

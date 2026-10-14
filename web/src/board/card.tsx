@@ -7,7 +7,7 @@ import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { Harness, SettingChips } from './agent-settings.tsx'
-import { agentActivity, receiptLabel, safeLink, visibleParent } from './view.ts'
+import { agentActivity, receiptLabel, safeLink, shownActivity, visibleParent } from './view.ts'
 
 export function Links({ links }: { links: Link[] }) {
   return (
@@ -123,7 +123,7 @@ export function BoardCard({
       <div className="card-footer">
         <span className={activity ? `agent-activity activity-${activity}` : undefined}>
           {activity ? <i aria-hidden="true" /> : <Icon name={card.column} size={13} />}
-          {card.activity ?? (card.outcome ? card.outcome.state : 'Activity unknown')}
+          {shownActivity(card) ?? (card.outcome ? card.outcome.state : 'Activity unknown')}
         </span>
         {card.manualColumn ? (
           <span title="Manual placement">

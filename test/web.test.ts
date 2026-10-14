@@ -7,7 +7,7 @@ import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decis
 import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
 import { BoardError, COLUMNS, type BoardEvent, type BoardState } from '../src/core/model.ts'
 import { clampViewSize, patchView, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
-import { agentActivity, columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
+import { agentActivity, columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 import { observe } from '../src/integrations/hooks/observe.ts'
@@ -292,7 +292,8 @@ test('deleting a populated column is atomic, replayable, undoable and guarded', 
   assert.equal(state.cards.c1!.manualColumn, 'custom:later')
   assert.equal(state.cards.c2!.column, 'custom:later')
   assert.deepEqual(state.cards.c1!.attention, before.cards.c1!.attention)
-  apply(decideUndo(state, undo, meta))
+  const redo = apply(decideUndo(state, undo, meta))
+  assert.deepEqual(redo.type === 'board.view' && redo.data.placements?.map(p => p.cardId), ['c1', 'c2'])
   assert.equal(state.cards.c1!.column, 'needs_you')
   assert.deepEqual(replay(emptyBoard(), events), state)
 
@@ -324,17 +325,31 @@ test('the notes header keeps the newest distinct notes and skips text already in
   assert.equal(relativeTime({ at: undefined, now: 0 }), 'Time not recorded')
 })
 
-test('a joined session drives the running indicator and Firstmate status cannot overwrite it', () => {
+test('a live joined session drives the running indicator; Firstmate status shows once it ends', () => {
   const firstmate = { activity: 'working: task status', source: { adapter: 'firstmate', objectId: 'task' } }
   let state = push(emptyBoard(), 'task', { title: 'Joined task', ...firstmate })
   assert.equal(agentActivity({ card: state.cards.c1! }), undefined)
 
-  for (const [hook, expected] of [['UserPromptSubmit', 'working'], ['PreToolUse', 'working'], ['Stop', 'idle'], ['SessionEnd', 'ended']] as const) {
+  for (const [hook, expected] of [['UserPromptSubmit', 'working'], ['PreToolUse', 'working'], ['PostToolUseFailure', 'working'], ['Stop', 'idle']] as const) {
     const [observed] = observe({ v: 1, id: hook, at: meta.at, harness: 'claude', event: hook, payload: { session_id: 'fixture', tool_name: 'Read' } })
     assert.ok(observed)
     state = push(state, 'task', observed.card)
     assert.equal(agentActivity({ card: state.cards.c1! }), expected)
     state = push(state, 'task', firstmate)
+    assert.equal(state.cards.c1!.activity, 'working: task status')
     assert.equal(agentActivity({ card: state.cards.c1! }), expected)
+  }
+
+  const [ended] = observe({ v: 1, id: 'end', at: meta.at, harness: 'claude', event: 'SessionEnd', payload: { session_id: 'fixture' } })
+  assert.ok(ended)
+  state = push(state, 'task', ended.card)
+  assert.equal(shownActivity(state.cards.c1!), 'ended')
+  state = push(state, 'task', { ...firstmate, activity: 'working: new step' })
+  assert.equal(shownActivity(state.cards.c1!), 'working: new step')
+})
+
+test('in-turn tool failures, denials and task updates count as working', () => {
+  for (const activity of ['Bash failed', 'Edit denied', 'task: write tests', 'task done: write tests']) {
+    assert.equal(agentActivity({ card: { ...push(emptyBoard(), 'k', { agent: { provider: 'claude', sessionId: 's' } }).cards.c1!, activity } }), 'working')
   }
 })

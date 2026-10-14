@@ -399,11 +399,6 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
     return { skipped: 'stale' }
   }
 
-  // A joined session's live hook activity outranks the Firstmate task status line.
-  if (source?.adapter === 'firstmate' && card?.sourceRefs.some(r => r.adapter === 'hooks')) {
-    delete fields.activity
-  }
-
   let before: PushFields | undefined
 
   if (card) {
@@ -673,6 +668,10 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
 
       if (!card || (card.manualColumn ?? null) !== p.after) {
         throw new BoardError(`card ${p.cardId} was moved since this event`, 'CONFLICT')
+      }
+
+      if (placements.some(q => q.cardId === card.id)) {
+        continue
       }
 
       placements.push({
