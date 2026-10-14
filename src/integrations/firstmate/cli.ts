@@ -92,7 +92,9 @@ const reply = guard((args) => {
       `The send ended ${receipt.state} but was not recorded, so the board still shows it queued; check the task's inbox before sending again`,
     ];
   } else if (receipt.state === "failed") out.help = [`Fix the cause, then retry with --idempotency-key ${receipt.reply}`];
-  else if (receipt.state === "delivery_unknown" || receipt.state === "queued") out.help = ["Check the task's inbox before sending again; a retry with the same key does not resend"];
+  else if (receipt.state === "delivery_unknown") {
+    out.help = ["The message may have landed; confirm on the card and in the task's inbox before sending again, a retry with the same key does not resend"];
+  } else if (receipt.state === "queued") out.help = ["Check the task's inbox before sending again; a retry with the same key does not resend"];
   else out.help = [`Run \`pnyx-axi history --card ${receipt.card} --kind replied\` for its receipts`];
   return out;
 });

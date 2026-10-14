@@ -122,10 +122,8 @@ export function parseBacklog(text: string): Map<string, BacklogRow> {
   return rows;
 }
 
-const PR_URL = /https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+/;
-
-// Every task with a meta record, in id order. The pull request comes from the
-// meta's pr= field, else the first pull request URL in the status log.
+// Every task with a meta record, in id order. The pull request comes only from the
+// meta's pr= field, which Firstmate records when the pull request is ready.
 export function readHome(home: string): HomeObservation {
   const state = join(home, "state");
   const backlog = parseBacklog(readRegular(join(home, "data", "backlog.md")) ?? "");
@@ -138,7 +136,7 @@ export function readHome(home: string): HomeObservation {
     const meta = parseMeta(metaText);
     const log = readRegular(join(state, `${task}.status`)) ?? "";
     const row = backlog.get(task);
-    const pr = meta.pr || PR_URL.exec(log)?.[0];
+    const pr = meta.pr;
     const activity = latestActivity(log);
     const last = latestLine(log);
     tasks.push({

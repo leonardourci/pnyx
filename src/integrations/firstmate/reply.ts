@@ -41,8 +41,8 @@ interface Route {
   task: string;
 }
 
-// fm-send's exit contract: 0 recorded in the task's inbox (or typed and confirmed),
-// 3 typed but unconfirmed, any other status nothing delivered.
+// fm-send's exit contract as read here: 0 delivered; 1 and 3 may have landed (a
+// remote send that lost its transport exits 1); any other status nothing delivered.
 function send(route: Route, text: string, resolveKey: string | undefined): { state: ReplyState; detail?: string } {
   const args = [route.task, ...(resolveKey ? ["--resolve-key", resolveKey] : []), text];
   const result = spawnSync(join(route.home, "bin", "fm-send.sh"), args, {
@@ -56,9 +56,9 @@ function send(route: Route, text: string, resolveKey: string | undefined): { sta
     return { state: "failed", detail: `cannot run fm-send.sh: ${result.error.message}` };
   }
   if (result.status === 0) return { state: "delivered" };
-  // Killed by the timeout or a signal, or typed without confirmation: the message
+  // Killed by the timeout or a signal, or sent without confirmation: the message
   // may have landed, so it must not be resent blindly.
-  if (result.status === null || result.status === 3) return { state: "delivery_unknown", ...detail };
+  if (result.status === null || result.status === 1 || result.status === 3) return { state: "delivery_unknown", ...detail };
   return { state: "failed", ...detail };
 }
 
