@@ -197,7 +197,8 @@ test('a prompt offers its first line as the title, cut to one line; a session en
   assert.equal(observe(envelope('claude', 'SessionEnd', 'claude-session-end'))[0]!.outcome, 'ended')
   assert.equal(observe(envelope('claude', 'SubagentStop', 'claude-subagent-stop'))[1]!.outcome, 'ended')
   const bare = envelope('claude', 'SubagentStop', 'claude-subagent-stop')
-  const noAgent = { ...bare, payload: { ...bare.payload, agent_id: undefined } }
+  const barePayload = bare.payload as Record<string, unknown>
+  const noAgent = { ...bare, payload: { ...barePayload, agent_id: undefined } }
   assert.equal(observe(noAgent)[0]!.outcome, undefined, 'a SubagentStop without agent_id never ends the session')
   assert.equal(observe(envelope('claude', 'Stop', 'claude-stop'))[0]!.outcome, undefined, 'a finished turn is not an ended session')
 })
