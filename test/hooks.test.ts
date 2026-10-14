@@ -234,6 +234,7 @@ test('a subagent event makes sure the parent exists, then observes the child und
   const [parent, child] = observe(envelope('claude', 'SubagentStop', 'claude-subagent-stop'))
   assert.equal(parent!.key, `claude:${SESSION}`)
   assert.deepEqual(parent!.attend, { clear: ['hook:notification'] })
+  assert.equal(parent!.ifChanged, true)
   assert.equal(observe(envelope('claude', 'SubagentStart', 'claude-subagent-start'))[0]!.ifMissing, true)
   assert.equal(child!.key, `claude:${SESSION}/agent-a1`)
   assert.equal(child!.card.parent, `claude:${SESSION}`)
@@ -485,6 +486,13 @@ test('a subagent\'s permission prompt leaves Needs you on both cards once its to
   send('PostToolUse', 'claude-post-tool-bash', { agent_id: 'agent-a1', agent_type: 'Explore', tool_name: 'Write' })
   assert.match(run('card', parent), /^ {2}attention: none$/m)
   assert.match(run('card', child), /^ {2}attention: none$/m)
+  // With nothing left to clear, a subagent's tool call records nothing on the parent.
+  send('PostToolUse', 'claude-post-tool-bash', { agent_id: 'agent-a1', agent_type: 'Explore', tool_name: 'Write' })
+  const ids = readFileSync(join(home, 'boards', 'default', 'events.jsonl'), 'utf8').trimEnd()
+    .split('\n')
+    .map(l => JSON.parse(l).id)
+  assert.ok(ids.includes(`hook-${n - 1}-1:parent`))
+  assert.ok(!ids.includes(`hook-${n}-1:parent`))
 
   send('PermissionRequest', 'claude-permission-request-subagent')
   send('Notification', 'claude-notification-permission')

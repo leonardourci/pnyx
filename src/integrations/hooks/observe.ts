@@ -36,6 +36,8 @@ export interface Observation {
   attend?: Attend
   // Only create the card; an existing card is left as it is.
   ifMissing?: boolean
+  // Only push when the card is missing or attend changes its requests.
+  ifChanged?: boolean
   // A pull request URL seen in a command's output: a refresh hint, not its state.
   link?: string
 }
@@ -331,7 +333,7 @@ export function observe(envelope: HookEnvelope): Observation[] {
   if (agentId) {
     const clears = found.attend?.clear?.some(prefix => NOTIFICATION.startsWith(prefix))
     out.push(clears
-      ? { id: 'parent', key: parentKey, card: session, attend: { clear: [NOTIFICATION] } }
+      ? { id: 'parent', key: parentKey, card: session, attend: { clear: [NOTIFICATION] }, ifChanged: true }
       : { id: 'parent', key: parentKey, card: session, ifMissing: true })
     key = `${parentKey}/${agentId}`
     card = {

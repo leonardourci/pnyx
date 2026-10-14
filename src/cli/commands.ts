@@ -2,7 +2,7 @@
 // board's writer lock, ingests the hook spool, then appends at most one event.
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
 import { readFileSync, renameSync, rmSync } from 'node:fs'
-import { parseArgs, type ParseArgsConfig } from 'node:util'
+import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import {
   decideLink,
@@ -166,14 +166,21 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
 
     const m: Meta = { id: o.id ? `${entry.id}:${o.id}` : entry.id, at: entry.at, actor: `hook:${entry.harness}` }
     const current = writer.state.cards[writer.state.keys[o.key] ?? '']?.attention ?? []
-    const card = o.attend ? { ...o.card, attention: attend(current, o.attend) } : o.card
+    const attention = o.attend && attend(current, o.attend)
+
+    if (o.ifChanged && o.key in writer.state.keys && isDeepStrictEqual(attention, current)) {
+      continue
+    }
+
+    const card = attention ? { ...o.card, attention } : o.card
     apply(decidePush(writer.state, o.key, card, m))
 
     if (o.link) {
       apply(decideLink(writer.state, o.key, o.link, parseLink({ url: o.link }), { ...m, id: `${m.id}:link` }))
     }
 
-    if (!o.ifMissing && HARVEST_AFTER.includes(entry.event) && o.key in writer.state.keys) {
+    if (!o.ifMissing && !o.ifChanged && HARVEST_AFTER.includes(entry.event)
+      && o.key in writer.state.keys) {
       harvest.push(writer.state.keys[o.key]!)
     }
   }
