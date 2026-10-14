@@ -343,9 +343,10 @@ test('a live joined session drives the running indicator; Firstmate status shows
   const [ended] = observe({ v: 1, id: 'end', at: meta.at, harness: 'claude', event: 'SessionEnd', payload: { session_id: 'fixture' } })
   assert.ok(ended)
   state = push(state, 'task', ended.card)
-  assert.equal(shownActivity(state.cards.c1!), 'ended')
+  assert.equal(shownActivity({ card: state.cards.c1! }), 'ended')
   state = push(state, 'task', { ...firstmate, activity: 'working: new step' })
-  assert.equal(shownActivity(state.cards.c1!), 'working: new step')
+  assert.equal(shownActivity({ card: state.cards.c1! }), 'working: new step')
+  assert.equal(agentActivity({ card: state.cards.c1! }), 'ended')
 })
 
 test('in-turn tool failures, denials and task updates count as working', () => {

@@ -123,7 +123,7 @@ export function BoardCard({
       <div className="card-footer">
         <span className={activity ? `agent-activity activity-${activity}` : undefined}>
           {activity ? <i aria-hidden="true" /> : <Icon name={card.column} size={13} />}
-          {shownActivity(card) ?? (card.outcome ? card.outcome.state : 'Activity unknown')}
+          {shownActivity({ card }) ?? (card.outcome ? card.outcome.state : 'Activity unknown')}
         </span>
         {card.manualColumn ? (
           <span title="Manual placement">
