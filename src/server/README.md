@@ -26,9 +26,12 @@ The same authenticated socket also accepts these commands:
   another card waits for it.
   Missing folders, unsupported harnesses and partial discovery are explicit.
 - `reply`, args `[cardId, literalText, idempotencyKey]`: calls the CLI reply path in a
-  child process so native delivery does not block the socket. It accepts only homes
-  configured on server startup with repeatable `--home`. The browser cannot provide
-  arbitrary home or file paths. A disconnect never automatically retries a reply.
+  child process so native delivery does not block the socket. Firstmate cards need
+  their home configured on server startup with repeatable `--home`; other sessions
+  use the terminal their hooks recorded. The browser cannot provide arbitrary home,
+  file or terminal targets. A card without a route is refused with the reason, which
+  the thread page also carries as `noRoute` (`via` names the route when there is one).
+  A disconnect never automatically retries a reply.
 
 `view set --json <patch> [--if-revision <n>] [--event-id <id>]` validates preferences,
 appends `board.view`, and broadcasts it. `view show` includes the current revision;

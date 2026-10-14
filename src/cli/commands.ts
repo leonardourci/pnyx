@@ -1,7 +1,7 @@
 // pnyx-axi board commands. Every write goes through `commit`, which holds the
 // board's writer lock, ingests the hook spool, then appends at most one event.
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
-import { readFileSync, renameSync, rmSync } from 'node:fs'
+import { readFileSync, realpathSync, renameSync, rmSync } from 'node:fs'
 import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import {
@@ -12,6 +12,7 @@ import {
   decideView,
   decideUndo,
   findCard,
+  joinedKey,
   parseLink,
   type Decision,
   type Meta,
@@ -118,6 +119,19 @@ export function meta(values: Record<string, string | boolean | undefined>): Meta
   return m
 }
 
+// The folder's canonical path, or the path as given when it cannot be resolved.
+export function canonical(path: unknown): string | undefined {
+  if (typeof path !== 'string' || !path.startsWith('/')) {
+    return undefined
+  }
+
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+
 // Hook events after which a session's transcript has turns worth harvesting.
 const HARVEST_AFTER = ['Stop', 'SubagentStop', 'PostCompact', 'SessionEnd']
 
@@ -158,30 +172,36 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
   }
 
   const harvest: string[] = []
+  const folder = canonical((entry.payload as { cwd?: unknown } | null)?.cwd)
+  // A session (never a subagent, whose key has a /) started in a folder a source
+  // assigned, such as a Firstmate task's worktree, reports to that card.
+  const resolve = (key: string) => (key.includes('/') ? key : joinedKey(writer.state, key, folder))
 
   for (const o of observe(entry as unknown as HookEnvelope)) {
-    if (o.ifMissing && o.key in writer.state.keys) {
+    const key = resolve(o.key)
+
+    if (o.ifMissing && key in writer.state.keys) {
       continue
     }
 
+    const card = typeof o.card.parent === 'string' ? { ...o.card, parent: resolve(o.card.parent) } : o.card
     const m: Meta = { id: o.id ? `${entry.id}:${o.id}` : entry.id, at: entry.at, actor: `hook:${entry.harness}` }
-    const current = writer.state.cards[writer.state.keys[o.key] ?? '']?.attention ?? []
+    const current = writer.state.cards[writer.state.keys[key] ?? '']?.attention ?? []
     const attention = o.attend && attend(current, o.attend)
 
-    if (o.ifChanged && o.key in writer.state.keys && isDeepStrictEqual(attention, current)) {
+    if (o.ifChanged && key in writer.state.keys && isDeepStrictEqual(attention, current)) {
       continue
     }
 
-    const card = attention ? { ...o.card, attention } : o.card
-    apply(decidePush(writer.state, o.key, card, m))
+    apply(decidePush(writer.state, key, attention ? { ...card, attention } : card, m))
 
     if (o.link) {
-      apply(decideLink(writer.state, o.key, o.link, parseLink({ url: o.link }), { ...m, id: `${m.id}:link` }))
+      apply(decideLink(writer.state, key, o.link, parseLink({ url: o.link }), { ...m, id: `${m.id}:link` }))
     }
 
     if (!o.ifMissing && !o.ifChanged && HARVEST_AFTER.includes(entry.event)
-      && o.key in writer.state.keys) {
-      harvest.push(writer.state.keys[o.key]!)
+      && key in writer.state.keys) {
+      harvest.push(writer.state.keys[key]!)
     }
   }
 
@@ -810,7 +830,7 @@ commands:
   serve [--port <n>] [--home <path>]         Run the board server until stopped; --home also watches Firstmate
   stop                                       Stop the board's running server
   setup hooks [--harness claude|codex]       Install the silent reporting hooks (--remove, --preview)
-  reply <id> --text <text> --home <path>     Send a reply or decision answer through the card's Firstmate home
+  reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
   firstmate sync|watch --home <path>         Fold a Firstmate home's tasks into the board, once or on every change
 flags:
   --board <name>     Board to use (default: default)
@@ -825,6 +845,8 @@ Creates or updates the card with this key. Repeating the same push, or the same 
 card.json fields (all optional): title, workspace, tags[], parent (card id or key, null to clear), activity,
   agent {provider, sessionId, agentId, agentType, cwd, transcriptPath}, attention[] {kind, key, blocking, text},
   settings {<name>: <value>, or null to remove it} merged into the card's settings, such as model, effort, mode, fast,
+  terminal {tty, pid, program, tmux, tmuxPane, paseoTerminal, paseoHome, herdrSession, herdrPane, itermSession},
+  folder (absolute path, null to clear; a hook session started there reports to this card),
   source {adapter, objectId, instanceId, generation, cursor, observedAt}
 An observation older than the card's latest one from the same source is ignored.
 `,

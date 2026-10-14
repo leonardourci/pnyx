@@ -27,6 +27,8 @@ export interface TaskObservation {
   done: boolean
   merged: boolean
   activity?: string
+  // Canonical path of the task's worktree from its meta, where its agent runs.
+  worktree?: string
   decisions: OpenDecision[]
   // The latest status line, when it is failed: or blocked:.
   stalled?: { verb: string; note: string }
@@ -73,6 +75,14 @@ export function homeKey(home: string): string {
   return `${ADAPTER}:${createHash('sha256').update(home)
     .digest('hex')
     .slice(0, 8)}`
+}
+
+function canonicalPath(path: string): string {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
 }
 
 function isDir(path: string): boolean {
@@ -200,6 +210,7 @@ export function readHome(home: string): HomeObservation {
     const pr = meta.pr
     const activity = latestActivity(log)
     const last = latestLine(log)
+    const worktree = meta.worktree?.startsWith('/') ? canonicalPath(meta.worktree) : undefined
     tasks.push({
       task,
       title: row?.title ?? task,
@@ -208,6 +219,7 @@ export function readHome(home: string): HomeObservation {
       done: row?.done ?? false,
       merged: row?.merged ?? false,
       ...(activity ? { activity } : {}),
+      ...(worktree ? { worktree } : {}),
       decisions: openDecisions(log, meta.kind || 'ship'),
       ...(last && (last.verb === 'failed' || last.verb === 'blocked') ? { stalled: { verb: last.verb, note: last.note } } : {}),
       notes: taskNotes(home, task, log),

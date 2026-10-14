@@ -21,7 +21,9 @@ import {
   type PushFields,
   type RepliedEvent,
   type SourceRef,
+  type TerminalFacts,
 } from './model.ts'
+import { TERMINAL_FIELDS } from './route.ts'
 import { DEFAULT_VIEW, patchView, viewFor } from './view.ts'
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from './reducer.ts'
 
@@ -249,6 +251,38 @@ function mergeSettings(current: AgentSettings | undefined, value: unknown): Agen
   return Object.keys(merged).length ? merged : null
 }
 
+function parseTerminal(value: unknown): TerminalFacts {
+  if (!isRecord(value)) {
+    throw invalid('terminal must be an object')
+  }
+
+  onlyKeys(value, Object.keys(TERMINAL_FIELDS), 'terminal')
+
+  for (const [field, v] of Object.entries(value)) {
+    if (typeof v !== 'string' || !TERMINAL_FIELDS[field as keyof TerminalFacts].test(v)) {
+      throw invalid(`terminal.${field} has an unsupported value`)
+    }
+  }
+
+  return value as TerminalFacts
+}
+
+// The key a hook session's observation goes to: its own once it has a card, else
+// the one card whose source assigned the session's working folder, such as the
+// Firstmate task running there. Several such cards stay ambiguous, so the session
+// keeps its own card.
+// ponytail: matches the folder on every event until the session has its own card,
+// so a second session in the same folder joins too; record join aliases if that bites.
+export function joinedKey(state: BoardState, key: string, folder: string | undefined): string {
+  if (key in state.keys || !folder) {
+    return key
+  }
+
+  const matches = Object.values(state.cards).filter(c => c.folder === folder)
+
+  return matches.length === 1 ? matches[0]!.key : key
+}
+
 // Upserts the card with this key. `input` is the untrusted card JSON; `parent`
 // names the parent card by id or key, and null clears it.
 export function decidePush(state: BoardState, key: string, input: unknown, meta: Meta): Decision {
@@ -258,13 +292,14 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
     throw invalid('card must be a JSON object')
   }
 
-  onlyKeys(input, ['title', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'attention', 'source'], 'card')
+  onlyKeys(input, ['title', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'terminal', 'folder', 'attention', 'source'], 'card')
 
   const cardId = state.keys[key] ?? `c${state.seq + 1}`
   const fields: PushFields = {}
   const title = optionalText(input.title, 'title')
   const workspace = optionalText(input.workspace, 'workspace')
   const activity = optionalText(input.activity, 'activity')
+  const folder = input.folder === null ? null : optionalText(input.folder, 'folder')
 
   if (title) {
     fields.title = title
@@ -276,6 +311,16 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
 
   if (activity) {
     fields.activity = activity
+  }
+
+  if (folder === null) {
+    fields.folder = null
+  } else if (folder) {
+    if (!folder.startsWith('/')) {
+      throw invalid('folder must be an absolute path')
+    }
+
+    fields.folder = folder
   }
 
   if (input.tags !== undefined) {
@@ -292,6 +337,10 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
 
   if (input.settings !== undefined) {
     fields.settings = mergeSettings(state.cards[cardId]?.settings, input.settings)
+  }
+
+  if (input.terminal !== undefined) {
+    fields.terminal = parseTerminal(input.terminal)
   }
 
   if (input.attention !== undefined) {

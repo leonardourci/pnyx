@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process'
 import { readThread, threadPath, THREAD_CURSOR, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
 import { findCard } from '../core/decide.ts'
+import { replyRoute } from '../core/route.ts'
 import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
 import { searchBoard } from '../search/semantic.ts'
@@ -329,8 +330,10 @@ export async function startServer({
 
           const card = findCard(state, args[0])
 
-          if (!card.sourceRefs.some(r => r.adapter === 'firstmate' && homes.includes(r.instanceId ?? ''))) {
-            throw new BoardError('No configured reply route; draft retained', 'NO_ROUTE')
+          const found = replyRoute(card, homes)
+
+          if ('reason' in found) {
+            throw new BoardError(`${found.reason} Your draft stays here.`, 'NO_ROUTE')
           }
 
           // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.

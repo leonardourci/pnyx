@@ -85,8 +85,9 @@ export function Composer({
     setSending(true)
 
     try {
-      const r = await command('reply', [card, draft, attempt.current.id]); const receipt = r.reply as { state: string } | undefined
-      notify(receipt?.state === 'delivery_unknown' ? 'Delivery unknown. Check the native session before sending again.' : receipt?.state === 'failed' ? 'Delivery failed. Your draft is retained.' : 'Reply delivered to the route. This does not confirm it was handled.')
+      const r = await command('reply', [card, draft, attempt.current.id]); const receipt = r.reply as { state: string; detail?: string } | undefined
+      const why = receipt?.detail ? ` (${receipt.detail})` : ''
+      notify(receipt?.state === 'delivery_unknown' ? `Delivery unknown${why}. Check the native session before sending again.` : receipt?.state === 'failed' ? `Delivery failed${why}. Your draft is retained.` : 'Reply delivered to the route. This does not confirm it was handled.')
 
       if (receipt?.state === 'delivered' && currentDraft.current === draft) {
         setDraft(''); attempt.current = null
@@ -221,7 +222,11 @@ export function Composer({
           <Icon name="send" size={14} />
         </Button>
       </div>
-      <p id={`reply-note-${card}`} className="small muted">{thread?.route ? 'Queued, delivered and handled are separate facts.' : 'Reply route unavailable. Your draft stays here.'}</p>
+      <p id={`reply-note-${card}`} className="small muted">
+        {thread?.route
+          ? `Sends through ${thread.via ?? 'the recorded route'}. Queued, delivered and handled are separate facts.`
+          : `${thread?.noRoute ?? 'Reply route unavailable.'} Your draft stays here.`}
+      </p>
     </form>
   )
 }

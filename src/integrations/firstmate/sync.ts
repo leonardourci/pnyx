@@ -84,6 +84,8 @@ function taskCard(home: HomeObservation, task: TaskObservation): Record<string, 
     tags: task.repo ? [task.repo] : [],
     parent: home.key,
     ...(task.activity ? { activity: task.activity } : {}),
+    // A pool reuses worktrees, so a closed task gives its folder up for the next one.
+    folder: task.worktree && !task.done ? task.worktree : null,
     attention: attention(task),
     source: source(home.path, task.task),
   }

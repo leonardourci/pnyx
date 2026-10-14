@@ -9,6 +9,7 @@
 exec >/dev/null 2>&1
 # Bytes, not characters: tr and grep must not stop at invalid UTF-8 in a payload.
 export LC_ALL=C
+set -f
 
 harness=$1
 event=$2
@@ -18,6 +19,46 @@ case $event in '' | *[!A-Za-z]*) exit 0 ;; esac
 # The script lives in <PNYX_HOME>/hooks/.
 home=${0%/*}
 home=${home%/hooks}
+
+# Where the session's terminal is, so a reply can be typed into it: the harness
+# process and its TTY, and the host around it from the environment. Recorded when
+# a session starts or takes a prompt; a value outside the safe characters is left out.
+terminal=
+fact() {
+  case $2 in '' | -* | *[!A-Za-z0-9_./:%,@+=-]*) return ;; esac
+  terminal="$terminal${terminal:+,}\"$1\":\"$2\""
+}
+case $event in
+SessionStart | UserPromptSubmit)
+  # The harness is the nearest ancestor with a TTY, past any wrapper shell; the
+  # hook itself may run detached from the terminal.
+  pid=$PPID
+  for _ in 1 2 3 4; do
+    # shellcheck disable=SC2046
+    set -- $(ps -o ppid= -o tty= -o comm= -p "$pid")
+    [ $# -ge 3 ] || break
+    case $2:${3##*/} in
+    '?:'* | '??:'* | *:sh | *:bash | *:zsh | *:dash | *:-*) ;;
+    *)
+      fact tty "/dev/$2"
+      fact pid "$pid"
+      break
+      ;;
+    esac
+    [ "$1" -gt 1 ] || break
+    pid=$1
+  done
+  fact program "${TERM_PROGRAM:-}"
+  [ -z "${TMUX:-}" ] || fact tmux "${TMUX%%,*}"
+  fact tmuxPane "${TMUX_PANE:-}"
+  fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
+  fact paseoHome "${PASEO_HOME:-}"
+  fact herdrSession "${HERDR_SESSION:-}"
+  fact herdrPane "${HERDR_PANE_ID:-}"
+  fact itermSession "${ITERM_SESSION_ID:-}"
+  ;;
+esac
+[ -z "$terminal" ] || terminal="\"terminal\":{$terminal},"
 
 # One date call gives both the epoch ($1) and the ISO time ($2).
 # shellcheck disable=SC2046
@@ -36,14 +77,14 @@ tmp=$spool/.tmp-$name
 # large tool output costs little. JSON strings cannot hold raw newlines, so
 # flattening keeps the payload valid on one line.
 {
-  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s","payload":' "$id" "$2" "$harness" "$event"
+  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s"payload":' "$id" "$2" "$harness" "$event" "$terminal"
   tr '\n\r' '  '
   printf '}\n'
 } >"$tmp" || exit 0
 
 # Empty input has nothing after the envelope's own "payload": key.
 if ! grep -q '"payload": *[^ }]' "$tmp"; then
-  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s","payload":null}\n' "$id" "$2" "$harness" "$event" >"$tmp" || exit 0
+  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s"payload":null}\n' "$id" "$2" "$harness" "$event" "$terminal" >"$tmp" || exit 0
 fi
 
 # The default board's server handles each line as soon as its newline arrives and

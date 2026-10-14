@@ -2,7 +2,7 @@
 // fm-send. Never points at a real Firstmate home.
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -430,4 +430,42 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   // The card's home must be configured for this send.
   const other = copyFixture()
   fails(['reply', api.id, '--text', 'x', '--home', other.home], 'VALIDATION_ERROR')
+})
+
+test("a hook session in a task's worktree joins the task card, which keeps fm-send", () => {
+  const { home, env } = copyFixture()
+  const worktree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
+  const meta = join(home, 'state', 'api-v2.meta')
+  writeFileSync(meta, readFileSync(meta, 'utf8').replace(/^worktree=.*$/m, `worktree=${worktree}`))
+  syncHome('default', home)
+  const hook = (id: string, event: string, payload: Record<string, unknown>, extra = {}) =>
+    spoolWrite('default', { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'claude', event, payload, ...extra })
+  const terminal = { tty: '/dev/ttys042', pid: '4242', program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' }
+  // The hook reports the folder as the session saw it; the join compares canonical paths.
+  hook('h1', 'SessionStart', { session_id: 'fm-s', cwd: worktree, transcript_path: '/x/fm-s.jsonl' }, { terminal })
+  hook('h2', 'SubagentStart', { session_id: 'fm-s', agent_id: 'a1', cwd: worktree })
+  syncHome('default', home)
+  const { state } = loadBoard('default')
+  const api = cardOf(home, 'api-v2')
+  assert.equal(api.folder, realpathSync(worktree))
+  assert.equal(api.agent?.sessionId, 'fm-s')
+  assert.deepEqual(api.terminal, terminal)
+  assert.equal(state.keys['claude:fm-s'], undefined)
+  assert.equal(state.cards[state.keys['claude:fm-s/a1']!]!.parentId, api.id)
+
+  // The joined card still replies through Firstmate, never by typing into the pane.
+  const { run } = cli(env)
+  assert.match(run('reply', api.id, '--text', 'Use REST', '--home', home), /state: delivered/)
+  assert.match(readFileSync(join(home, 'sent.log'), 'utf8'), /arg=api-v2\narg=Use REST/)
+
+  // A closed task gives its worktree up, so the next session there keeps its own card.
+  const backlog = join(home, 'data', 'backlog.md')
+  const rows = readFileSync(backlog, 'utf8').split('\n')
+  const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] api-v2')), 1)
+  writeFileSync(backlog, [...rows, row!.replace('[ ]', '[x]')].join('\n'))
+  syncHome('default', home)
+  assert.equal(cardOf(home, 'api-v2').folder, undefined)
+  hook('h3', 'SessionStart', { session_id: 'next', cwd: worktree })
+  syncHome('default', home)
+  assert.ok(loadBoard('default').state.keys['claude:next'])
 })
