@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { startServer } from '../src/server/server.ts'
-import { loadBoard } from '../src/store/board-store.ts'
+import { loadBoard, withWriter } from '../src/store/board-store.ts'
+import { decideLink, decidePush } from '../src/core/decide.ts'
 import { seedWebFixture } from './web-fixture.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
@@ -154,6 +155,43 @@ try {
   await browser('emulate', '--viewport', '1440x900x1'); await browser('wait', 'The working board'); await click('button', 'History'); await browser('fill', await ref('searchbox', 'Search history'), 'conversation readable'); await browser('wait', 'Shape the first working board'); await screenshot('history.png')
   await browser('open', server.url); await browser('wait', 'Later')
   assert.equal(loadBoard('default').state.view?.customColumns.length, 1)
+  // Long unbroken metadata must reflow as the actual resize controls change size.
+  const long = 'veryLongUnbrokenPathSegment'.repeat(8)
+  const layoutMeta = { actor: 'fixture', at: '2026-10-14T11:00:00Z' }
+  withWriter('default', w => {
+    for (const decide of [
+      () => decidePush(w.state, 'coverage', { workspace: long, tags: [long], attention: [{ kind: 'question', key: 'layout-width', blocking: true, text: `/src/${long}/file.ts\nconst result = ${long};\n| path | ${long} |` }] }, layoutMeta),
+      () => decideLink(w.state, 'coverage', 'https://example.com/layout', { kind: 'url', url: 'https://example.com/layout', title: long }, layoutMeta),
+    ]) {
+      const d = decide()
+      assert.ok('event' in d); w.append(d.event)
+    }
+  })
+  await browser('wait', long)
+  const fits = "[...document.querySelectorAll('.column-cards,.card,.card-content')].every(el => el.scrollWidth <= el.clientWidth)"
+
+  const resizeColumn = async (key: string) => {
+    await browser('eval', '() => { const el = document.querySelector("[aria-label=\\"Resize Needs you column\\"]"); el.scrollIntoView({inline: "nearest"}); el.focus(); return true; }')
+    await browser('press', key)
+  }
+
+  for (const [key, width] of [['Home', 240], ['End', 640], ['Home', 240], ['Shift+ArrowRight', 272]] as const) {
+    await resizeColumn(key)
+    await check(`document.querySelector('.column-needs_you').getBoundingClientRect().width === ${width} && ${fits}`, `column and card content fit at ${width}px`)
+  }
+
+  await browser('eval', `() => { document.querySelector('[data-card="${fixture.state.keys.coverage}"]').closest('.card').querySelector('.resize-y').focus(); return true; }`)
+  await browser('press', 'Home'); await check(fits, 'short cards only scroll vertically')
+  await screenshot('columns-narrow.png')
+  await browser('press', 'End'); await check(fits, 'tall cards only scroll vertically')
+  await resizeColumn('End'); await screenshot('columns-wide.png')
+  await click('button', 'Settings'); await click('combobox', 'Conversation placement'); await click('option', 'Inline with cards'); await click('button', 'Back to board')
+  await click('button', 'Check the empty-state experience')
+  await resizeColumn('Home'); await check(`document.querySelector('.column-needs_you').getBoundingClientRect().width === 240 && ${fits}`, 'inline detail respects narrow column resize')
+  await resizeColumn('End'); await check(`document.querySelector('.column-needs_you').getBoundingClientRect().width === 640 && ${fits}`, 'inline detail respects wide column resize')
+  await browser('emulate', '--viewport', '390x844x1,mobile,touch'); await browser('wait', 'The working board')
+  await check(`document.documentElement.scrollWidth === innerWidth && document.querySelector('.column-needs_you').getBoundingClientRect().width <= document.querySelector('.kanban').clientWidth && ${fits}`, 'wide column fits mobile viewport without internal horizontal scrolling')
+  await screenshot('columns-mobile.png')
   const consoleOutput = await browser('console'); assert.doesNotMatch(consoleOutput, /(?:TypeError|ReferenceError|Uncaught)/)
   process.stdout.write(`Browser smoke passed; screenshots: ${evidence}\n`)
 } finally {

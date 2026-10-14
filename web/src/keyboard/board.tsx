@@ -186,6 +186,11 @@ export function useBoardKeyboard({
       return true
     }
 
+    if (id === 'find') {
+      return (page === 'board' || page === 'history')
+        && focusElement(page === 'board' ? "[aria-label='Find a card']" : "[aria-label='Search history']")
+    }
+
     if (id === 'search' || id === 'settings') {
       setPage(id === 'search' ? 'history' : 'settings'); requestAnimationFrame(() => focusElement(id === 'search' ? "[aria-label='Search history']" : '[data-settings-heading]'))
 

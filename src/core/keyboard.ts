@@ -29,6 +29,7 @@ export const KEY_ACTIONS = [
   action('cancel', 'Close the current layer', ['Escape'], [...navigation, 'composer', 'overlay', 'hints']),
   action('move', 'Move card', ['m'], ['board', 'thread']),
   action('search', 'Search history', ['/'], navigation),
+  action('find', 'Find in current view', ['Mod+f'], [...navigation, 'composer']),
   action('palette', 'Open commands', ['Mod+k'], navigation),
   action('help', 'Keyboard help', ['?'], navigation),
   action('hints', 'Show target hints', ['f'], navigation),
@@ -107,7 +108,11 @@ export function keyboardError(prefs: KeyboardPreferences): string | undefined {
           return 'Use logical keys, modifiers and up to three space-separated keys: ' + binding
         }
 
-        if (strokes.some(([mods, , key]) => (mods.some(m => m === 'Control' || m === 'Meta') && /^(l|t|w|r|f|p|q|n|\+|-|=|0)$/i.test(String(key))) || (mods.includes('Alt') && ['ArrowLeft', 'ArrowRight'].includes(String(key))))) {
+        const localFind = a.id === 'find' && strokes.length === 1
+          && strokes[0]![0].length === 1 && ['Control', 'Meta'].includes(strokes[0]![0][0]!)
+          && String(strokes[0]![2]).toLowerCase() === 'f'
+
+        if (!localFind && strokes.some(([mods, , key]) => (mods.some(m => m === 'Control' || m === 'Meta') && /^(l|t|w|r|f|p|q|n|\+|-|=|0)$/i.test(String(key))) || (mods.includes('Alt') && ['ArrowLeft', 'ArrowRight'].includes(String(key))))) {
           return 'Reserved browser shortcut: ' + binding
         }
 
@@ -190,7 +195,7 @@ export function resolveKey(
 
   const available = KEY_ACTIONS.filter(a =>
     a.scopes.includes(context.scope)
-    && (!context.editing || a.id === 'send' || (a.id === 'cancel' && context.scope !== 'navigation')))
+    && (!context.editing || a.id === 'find' || a.id === 'send' || (a.id === 'cancel' && context.scope !== 'navigation')))
   const candidates = progress.scope === context.scope && context.now <= progress.until
     ? progress.candidates
     : []
@@ -200,7 +205,7 @@ export function resolveKey(
     for (const binding of bindingsFor(prefs, a.id)) {
       const strokes = parseBinding(binding, context.platform)
 
-      if (!context.characterShortcuts && strokes.some(printable)) {
+      if ((!context.characterShortcuts || context.editing) && strokes.some(printable)) {
         continue
       }
 

@@ -68,6 +68,45 @@ test('typing, IME, dead keys, AltGraph and repeats cannot activate board command
 
   assert.equal(resolve({ key: 'ArrowDown' }, { characterShortcuts: false }).action, 'board.down')
 })
+test('find uses the platform modifier, works in fields, and remains rebindable', () => {
+  for (const platform of ['mac', 'other'] as const) {
+    const key = { key: 'f', ...(platform === 'mac' ? { metaKey: true } : { ctrlKey: true }) }
+
+    for (const scope of ['board', 'thread', 'navigation', 'composer'] as const) {
+      assert.equal(resolve(key, { platform, scope }).action, 'find')
+      assert.equal(resolve(key, { platform, scope, editing: true, characterShortcuts: false }).action, 'find')
+    }
+
+    for (const scope of ['overlay', 'hints'] as const) {
+      assert.equal(resolve(key, { platform, scope, editing: true }).consume, false)
+    }
+
+    const ignored = [
+      { shiftKey: true },
+      { altKey: true },
+      { isComposing: true },
+      { altGraph: true },
+      { defaultPrevented: true },
+      { repeat: true },
+    ]
+
+    for (const change of ignored) {
+      assert.equal(resolve({ ...key, ...change }, { platform }).consume, false)
+    }
+
+    assert.equal(resolve({ key: 'f', ...(platform === 'mac' ? { ctrlKey: true } : { metaKey: true }) }, { platform }).consume, false)
+    const prefs = { characterShortcuts: true, bindings: { find: ['Mod+g'] } }
+    assert.equal(keyboardError(prefs), undefined)
+    assert.equal(resolve(key, { platform }, prefs).consume, false)
+    assert.equal(resolve({ ...key, key: 'g' }, { platform, editing: true }, prefs).action, 'find')
+    assert.equal(resolve(key, { platform }, { ...prefs, bindings: { find: [] } }).consume, false)
+  }
+
+  assert.equal(keyboardError({ characterShortcuts: true, bindings: { find: ['z'] } }), undefined)
+  assert.equal(resolve({ key: 'z' }, { editing: true }, { characterShortcuts: true, bindings: { find: ['z'] } }).consume, false)
+  assert.match(keyboardError({ characterShortcuts: true, bindings: { find: [], reply: ['Mod+f'] } })!, /Reserved/)
+  assert.match(keyboardError({ characterShortcuts: true, bindings: { find: ['Mod+p'] } })!, /Reserved/)
+})
 test('rebinding validates overlapping scopes and sequence prefixes on both platforms', () => {
   const check = (bindings: KeyboardPreferences['bindings']) => keyboardError({ characterShortcuts: true, bindings })
   assert.match(check({ reply: ['j'] })!, /conflicts/)
