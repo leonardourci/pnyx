@@ -40,7 +40,7 @@ Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links t
 - Pnyx is a view plus a reply queue over existing tools. It does not orchestrate, dispatch or supervise agents.
 - `pnyx-axi` is the only writer of board state. Every change is an event appended to the board's `events.jsonl`, which is append-only and never rewritten. `snapshot.json` is a cache rebuilt from the log and replaced atomically.
 - The reducer is pure and deterministic: no I/O, clock or randomness inside it. Replaying the same log gives the same board.
-- No database and no tokens. Updates are pushed, and the browser uses one WebSocket.
+- No database, and no AI model calls or model tokens anywhere in the board's logic. The server's only token is a local per-install auth token for writes. Updates are pushed, and the browser uses one WebSocket.
 - Hooks are silent (no stdout or stderr), fast, and always exit 0. They never wait on a network call, browser or model.
 - The Firstmate integration only reads a Firstmate home's files and replies through Firstmate's own send command.
 - GitHub pull request state comes from `gh-axi`.
