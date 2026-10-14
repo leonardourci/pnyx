@@ -75,10 +75,12 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
       const link = prLink(writer.state, key, task, at);
       if (link) appended += apply(writer, decideLink(writer.state, key, link.url, link, meta));
       // Closed in Firstmate's backlog: done, or failed when its last line was failed:.
-      // A done: status line alone is often a handoff.
-      if (task.done && !writer.state.cards[writer.state.keys[key]!]!.outcome) {
-        const outcome = task.stalled?.verb === "failed" ? { state: "failed" as const, note: "closed after failure", closed: true } : { state: "done" as const };
-        appended += apply(writer, decideOutcome(writer.state, key, { ...outcome, source: ADAPTER }, meta));
+      // A done: status line alone is often a handoff. An outcome Firstmate recorded
+      // follows the backlog; one recorded by hand is left alone.
+      const current = writer.state.cards[writer.state.keys[key]!]!.outcome;
+      if (current ? current.source === ADAPTER : task.done) {
+        const outcome = !task.done ? null : task.stalled?.verb === "failed" ? { state: "failed" as const, note: "closed after failure", closed: true } : { state: "done" as const };
+        appended += apply(writer, decideOutcome(writer.state, key, outcome, meta, ADAPTER));
       }
     }
     const live = new Set(observed.tasks.map((t) => t.task));

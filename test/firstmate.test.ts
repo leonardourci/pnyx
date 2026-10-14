@@ -248,6 +248,28 @@ test("a Firstmate outcome is a source observation: undo and clear refuse it", ()
   assert.equal(cardOf(home, "docs-scout").column, "needs_you");
 });
 
+test("a Firstmate outcome follows the backlog on every sync", () => {
+  const { home } = copyFixture();
+  syncHome("default", home);
+  assert.deepEqual(cardOf(home, "docs-scout").outcome, { state: "done", source: "firstmate" });
+  // A later failed: line turns the recorded done into a closed failure.
+  appendFileSync(join(home, "state", "docs-scout.status"), "failed: rerun broke\n");
+  syncHome("default", home);
+  assert.deepEqual(cardOf(home, "docs-scout").outcome, { state: "failed", note: "closed after failure", closed: true, source: "firstmate" });
+  // Back in flight: the outcome is cleared.
+  const backlog = join(home, "data", "backlog.md");
+  const rows = readFileSync(backlog, "utf8").split("\n");
+  const [row] = rows.splice(rows.findIndex((l) => l.startsWith("- [x] docs-scout")), 1);
+  rows.splice(rows.indexOf("## In flight") + 1, 0, row!.replace("[x]", "[ ]"));
+  writeFileSync(backlog, rows.join("\n"));
+  syncHome("default", home);
+  assert.equal(cardOf(home, "docs-scout").outcome, undefined);
+  assert.notEqual(cardOf(home, "docs-scout").column, "done");
+  const cleared = readEvents("default").filter((e) => e.type === "card.outcome").at(-1)!;
+  cli(process.env).fails(["undo", cleared.id], "NOT_UNDOABLE");
+  assert.deepEqual(syncHome("default", home).appended, 0);
+});
+
 test("firstmate sync ingests the hook spool", () => {
   const { home } = copyFixture();
   spoolWrite("default", { id: "s1", key: "spooled", at: "2026-01-01T00:00:00.000Z", card: { title: "from a hook" } });
