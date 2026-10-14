@@ -9,6 +9,10 @@ export function liveTask({ card }: { card: Card }): boolean {
   return card.hidden !== true
 }
 
+export function cardSessionId({ card }: { card: Card }): string | undefined {
+  return card.sessionIds?.[0] ?? (card.agent ? sessionId({ agent: card.agent }) : undefined)
+}
+
 export function findSession({ state, ref }: { state: BoardState; ref: string }): AgentSession {
   const direct = state.sessions?.[ref]
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
@@ -50,6 +54,11 @@ export function projectSession({ state, session }: {
   }
 
   task.agent = structuredClone(session.agent)
+  task.sourceRefs = [
+    ...task.sourceRefs.filter(r => !session.sourceRefs.some(s =>
+      r.adapter === s.adapter && r.instanceId === s.instanceId && r.objectId === s.objectId)),
+    ...session.sourceRefs,
+  ]
   task.settings = session.settings && { ...session.settings }
   task.terminal = session.terminal && { ...session.terminal }
   task.activity = session.activity
@@ -126,7 +135,8 @@ export function observeSession({ state, card, event }: {
     session.activity = card.activity
     session.attention = card.attention.filter(a => a.key.startsWith('hook:'))
     const objectId = `${session.agent.sessionId}${session.agent.agentId ? `/${session.agent.agentId}` : ''}`
-    session.sourceRefs = card.sourceRefs.filter(r => (r.adapter === 'hooks' && r.objectId === objectId))
+    session.sourceRefs = card.sourceRefs.filter(r => (r.adapter === 'hooks' && r.objectId === objectId)
+      || (r.adapter === 'transcript' && r.objectId === session.agent.transcriptPath))
   }
 
   if (event.type === 'card.outcome' && (event.data.after?.source === 'hooks' || event.data.before?.source === 'hooks')) {

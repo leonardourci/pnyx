@@ -1,3 +1,4 @@
+import { cardSessionId } from '../../../src/core/tasks.ts'
 import { useEffect, useRef, useState } from 'react'
 import type { BoardState, Card, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
@@ -9,6 +10,7 @@ import { SettingChips, SettingList, harnessName } from './agent-settings.tsx'
 import { Links, Tags } from './card.tsx'
 import { Composer } from './composer.tsx'
 import { Notes } from './notes.tsx'
+import { TaskSession } from './task-session.tsx'
 import { columnsFor, receiptLabel } from './view.ts'
 import type { Command } from './connection.ts'
 
@@ -56,7 +58,8 @@ export function Detail({
   const overrides = view.cardTraceOverrides[card.id]
   const tools = overrides?.tools ?? view.toolDetails
   const thinking = overrides?.thinking ?? view.thinkingDetails
-  const page = thread?.card === card.id ? thread : null
+  const recipient = cardSessionId({ card })
+  const page = thread?.card === card.id && thread.session === recipient ? thread : null
   const olderCursor = older ? older.older : page?.older
   useEffect(() => {
     if (page) {
@@ -240,6 +243,13 @@ export function Detail({
         </>
       ) : tab === 'notes' ? <Notes card={card} command={command} notify={notify} /> : tab === 'agent' ? (
         <div className="detail-content">
+          <TaskSession
+            card={card}
+            state={state}
+            command={command}
+            connected={connected}
+            notify={notify}
+          />
           <SettingList settings={card.settings} />
           {!card.settings && <p className="empty">No settings reported yet. Claude Code and Codex report theirs as the session runs.</p>}
         </div>

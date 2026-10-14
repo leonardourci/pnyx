@@ -699,7 +699,10 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
       throw new BoardError('session attachment changed since this event', 'CONFLICT')
     }
 
-    const decision = decideSession({ state, ref: session.id, task: target.data.before, meta })
+    checkRevision(findCard(state, target.cardId), meta.ifRevision)
+    const decision = decideSession({
+      state, ref: session.id, task: target.data.before, meta: { ...meta, ifRevision: undefined },
+    })
 
     return 'event' in decision ? { event: { ...decision.event, undoes: target.id } } : decision
   }

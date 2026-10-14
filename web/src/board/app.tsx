@@ -1,4 +1,4 @@
-import { liveTask } from '../../../src/core/tasks.ts'
+import { cardSessionId, liveTask } from '../../../src/core/tasks.ts'
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
@@ -117,6 +117,7 @@ export function App() {
   const meaning = useMeaningCards(command, query, workspace)
   const cards = findBoxCards(state, workspace, tag, query, meaning)
   const card = selected ? state.cards[selected] : undefined
+  const attachedSession = card ? cardSessionId({ card }) : undefined
   const title = pageTitle(page, state.cards, selected)
   useEffect(() => {
     document.title = title
@@ -153,7 +154,7 @@ export function App() {
     return () => {
       cancelled = true
     }
-  }, [selected, connected, command, setThread, notify])
+  }, [selected, attachedSession, connected, command, setThread, notify])
   useEffect(() => {
     const keep = () => {
       try {
@@ -214,7 +215,7 @@ export function App() {
   })
   const detail = card && (
     <Detail
-      key={card.id}
+      key={`${card.id}:${attachedSession ?? ''}`}
       card={card}
       state={state}
       view={view}
@@ -408,7 +409,7 @@ export function App() {
                     <span>
                       {cards.length}
                       {' '}
-                      visible sessions
+                      visible tasks
                     </span>
                     <KeyboardFooter />
                   </footer>

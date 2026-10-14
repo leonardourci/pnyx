@@ -21,7 +21,7 @@ import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { commands, ingestSpool } from '../cli/commands.ts'
-import { BoardError, type BoardEvent, type BoardState } from '../core/model.ts'
+import { BoardError, type BoardEvent, type BoardState, type Card } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { boardDir, loadBoard, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/board-store.ts'
 import { infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
@@ -78,7 +78,7 @@ export async function startServer({
   }
 
   homes = homes.map(resolveHome)
-  const subscriptions = new Map<WebSocket, { card: string; watcher?: FSWatcher }>()
+  const subscriptions = new Map<WebSocket, { card: string; path?: string; watcher?: FSWatcher }>()
   const threadScheduled = new WeakSet<WebSocket>()
 
   const refreshThread = (ws: WebSocket) => {
@@ -106,6 +106,24 @@ export async function startServer({
         send(ws, { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' })
       }
     })
+  }
+
+  const bindThread = ({ ws, card }: { ws: WebSocket; card: Card }) => {
+    subscriptions.get(ws)?.watcher?.close()
+    const path = threadPath(card)
+    const sub: { card: string; path?: string; watcher?: FSWatcher } = { card: card.id, path }
+
+    if (path) {
+      try {
+        sub.watcher = watch(dirname(path), (_event, filename) => {
+          if (!filename || String(filename) === basename(path)) {
+            refreshThread(ws)
+          }
+        })
+      } catch { /* Missing transcript remains explicit. */ }
+    }
+
+    subscriptions.set(ws, sub)
   }
 
   const dir = boardDir(board)
@@ -139,7 +157,16 @@ export async function startServer({
         sendSnapshot(ws)
       }
 
-      if (subscriptions.get(ws)?.card === event.cardId) {
+      const sub = subscriptions.get(ws)
+
+      if (sub && (sub.card === event.cardId
+        || (event.type === 'task.session' && sub.card === event.data.before))) {
+        const card = state.cards[sub.card]
+
+        if (card && sub.path !== threadPath(card)) {
+          bindThread({ ws, card })
+        }
+
         refreshThread(ws)
       }
     }
@@ -308,20 +335,7 @@ export async function startServer({
             throw new BoardError('invalid thread cursor', 'VALIDATION_ERROR')
           }
 
-          const sub: { card: string; watcher?: FSWatcher } = { card: card.id }
-          const path = threadPath(card)
-
-          if (path) {
-            try {
-              sub.watcher = watch(dirname(path), (_event, filename) => {
-                if (!filename || String(filename) === basename(path)) {
-                  refreshThread(ws)
-                }
-              })
-            } catch { /* Missing transcript remains explicit. */ }
-          }
-
-          subscriptions.set(ws, sub)
+          bindThread({ ws, card })
           send(ws, { type: 'receipt', id, thread: readThread(board, state, card, homes, args[1]) })
         } else {
           if (args.length !== 3 || !args[2] || args[1].length > 32000) {

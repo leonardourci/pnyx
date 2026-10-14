@@ -2,7 +2,7 @@ import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -502,4 +502,65 @@ test('browser reply delivery uses only configured fixture homes and never resend
   }
 
   t.ws.close()
+})
+
+test('the open task follows attachment identity and watches only its current transcript', async () => {
+  const home = process.env.PNYX_HOME!
+  const paths = { a: join(home, 'session-a.jsonl'), b: join(home, 'session-b.jsonl') }
+  const line = ({ text }: { text: string }) => `${JSON.stringify({
+    type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text }] },
+  })}\n`
+
+  withWriter('default', writer => {
+    for (const key of ['task', 'a', 'b'] as const) {
+      if (key !== 'task') {
+        writeFileSync(paths[key], line({ text: `Conversation ${key}` }))
+      }
+
+      const input = key === 'task' ? { title: 'Task conversation' } : {
+        agent: { provider: 'claude-code', sessionId: key, transcriptPath: paths[key] },
+        terminal: { tty: '/dev/ttys123', pid: '123' },
+        source: { adapter: 'hooks', instanceId: 'claude', objectId: key },
+      }
+      const decision = decidePush(writer.state, key, input, { at: '2026-10-14T12:00:00Z', actor: 'test' })
+      assert.ok('event' in decision)
+      writer.append(decision.event)
+    }
+  })
+  server = await startServer({ board: 'default' })
+  const t = await tab(); await t.next()
+
+  const page = async ({ session, text }: { session?: string; text?: string }) => {
+    for (;;) {
+      const message = await t.next()
+      const thread = message.type === 'thread' ? message.thread
+        : message.type === 'receipt' ? message.thread as import('../src/thread/read.ts').ThreadPage | undefined
+          : undefined
+
+      if (thread?.session === session && thread
+        && (!text || thread.entries.some(entry => entry.text.includes(text)))) {
+        return thread
+      }
+    }
+  }
+
+  try {
+    t.command('thread', 'thread', ['task'])
+    await page({})
+    t.command('attach-a', 'attach', ['task', '--session', 'claude-code:a'])
+    assert.equal((await page({ session: 'claude-code:a', text: 'Conversation a' })).entries.length, 1)
+    appendFileSync(paths.a, line({ text: 'A continued' }))
+    await page({ session: 'claude-code:a', text: 'A continued' })
+    t.command('detach-a', 'detach', ['task'])
+    assert.deepEqual((await page({})).entries, [])
+    t.command('attach-b', 'attach', ['task', '--session', 'claude-code:b'])
+    const switched = await page({ session: 'claude-code:b', text: 'Conversation b' })
+    assert.equal(switched.entries.some(entry => entry.text.includes('Conversation a')), false)
+    appendFileSync(paths.a, line({ text: 'A after moving away' }))
+    await t.idle()
+    appendFileSync(paths.b, line({ text: 'B continued' }))
+    await page({ session: 'claude-code:b', text: 'B continued' })
+  } finally {
+    t.ws.close()
+  }
 })

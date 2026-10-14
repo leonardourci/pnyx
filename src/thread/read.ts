@@ -4,10 +4,11 @@ import type { BoardEvent, BoardState, Card, ReplyState } from '../core/model.ts'
 import { boardDir, readEventsFrom } from '../store/board-store.ts'
 import { redact, transcriptMessages } from '../search/text.ts'
 import { HOST_LABEL, replyRoute } from '../core/route.ts'
+import { cardSessionId } from '../core/tasks.ts'
 
 export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState }
 // route: a reply can be sent; via names the route, or noRoute says why there is none.
-export interface ThreadPage { card: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; noRoute?: string; watching: 'unknown' }
+export interface ThreadPage { card: string; session?: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; noRoute?: string; watching: 'unknown' }
 const MAX_BYTES = 10 * 1024 * 1024
 // Chunk long entries instead of losing their tail. Sixty bounded entries stay
 // below the socket budget even for JSON-escaped control characters.
@@ -106,6 +107,7 @@ export function readThread(
   const found = replyRoute(card, homes)
   const result: ThreadPage = {
     card: card.id,
+    ...(cardSessionId({ card }) ? { session: cardSessionId({ card }) } : {}),
     entries: [],
     route: 'route' in found,
     ...('route' in found ? { via: HOST_LABEL[found.route.kind] } : { noRoute: found.reason }),

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decidePush, decideSession, joinedKey, type Decision } from '../src/core/decide.ts'
+import { decidePush, decideSession, decideUndo, joinedKey, type Decision } from '../src/core/decide.ts'
 import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
 import { liveTask } from '../src/core/tasks.ts'
 import type { BoardEvent, BoardState } from '../src/core/model.ts'
@@ -137,4 +137,30 @@ test('attachments validate revisions and preserve reducer input', () => {
   assert.ok('event' in decision)
   reduce(f.state, decision.event)
   assert.deepEqual(f.state, before)
+})
+
+test('moving a session keeps its source freshness, so late hooks cannot regress the new task', () => {
+  const f = fixture()
+  f.session({ key: 'one' })
+  f.push({ key: 'target', input: { title: 'Target' } })
+  f.apply({ decision: decideSession({ state: f.state, ref: 'claude:one', task: 'target', meta }) })
+  const late = decidePush(f.state, 'target', {
+    agent: { provider: 'claude-code', sessionId: 'one' },
+    activity: 'old activity',
+    source: { adapter: 'hooks', instanceId: 'claude', objectId: 'one', observedAt: '2026-10-14T11:00:00Z' },
+  }, meta)
+  assert.deepEqual(late, { skipped: 'stale' })
+})
+
+test('undo attachment checks the revision of the original event task', () => {
+  const f = fixture()
+  f.session({ key: 'one' })
+  f.push({ key: 'target', input: { title: 'Target' } })
+  f.apply({ decision: decideSession({ state: f.state, ref: 'claude:one', task: 'target', meta }) })
+  const attachment = f.events.at(-1)!
+  f.push({ key: 'target', input: { title: 'Renamed' } })
+  const revision = f.state.cards[f.state.keys.target!]!.revision
+  f.apply({ decision: decideUndo(f.state, attachment, { ...meta, ifRevision: revision }) })
+  assert.equal(f.state.sessions?.['claude-code:one']?.taskId, 'c1')
+  assert.equal(f.state.cards[f.state.keys.target!]!.title, 'Renamed')
 })

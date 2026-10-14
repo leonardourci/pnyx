@@ -550,7 +550,7 @@ test('spooled hook events become cards on the next write, and a finished turn ne
 
   const session = run('card', `claude:${SESSION}`)
   // Same-second hooks may be ingested in either order, so only facts every order shares are checked.
-  assert.match(session, /^ {2}column: review$/m)
+  assert.match(session, /^ {2}column: (workers_on_it|review)$/m)
   assert.match(session, /^ {2}workspace: unassigned$/m)
   assert.match(session, /^ {2}title: Open a pull request$/m)
   assert.match(session, /^ {4}cwd: \/work\/repo$/m)

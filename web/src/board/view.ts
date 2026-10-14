@@ -4,7 +4,7 @@ import { viewFor } from '../../../src/core/view.ts'
 
 export const BUILTIN_COLUMNS: { id: Column; title: string; description: string }[] = [
   { id: 'needs_you', title: 'Needs you', description: 'Decisions & interruptions' },
-  { id: 'workers_on_it', title: 'Workers on it', description: 'Open work, including idle agents' },
+  { id: 'workers_on_it', title: 'Workers on it', description: 'Agents actively working' },
   { id: 'review', title: 'Waiting', description: 'Idle agents, unassigned tasks & open changes' },
   { id: 'done', title: 'Done', description: 'Confirmed outcomes, merges & ended sessions' },
 ]

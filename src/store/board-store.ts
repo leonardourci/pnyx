@@ -195,7 +195,7 @@ export function readEventsFrom(
 }
 
 // Bumped when the reducer derives cards differently, so an older cache is replayed.
-const RULES = 3
+const RULES = 4
 
 interface Snapshot {
   v: typeof EVENT_VERSION
