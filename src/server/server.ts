@@ -3,7 +3,7 @@
 // changes and the tab's commands.
 // It writes only through the CLI's own commands and spool drain, so the board
 // keeps a single writer whether a change comes from here or from the CLI.
-import { execFile, type ChildProcess } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
 import { findCard } from '../core/decide.ts'
@@ -32,8 +32,6 @@ const RESUME_LIMIT = 1000
 const MAX_BUFFERED = 1 << 20
 const MAX_BODY = 1 << 20
 const STOP_TIMEOUT_MS = 5000
-// A rebuild reads every transcript; a catch-up only what they gained.
-const INDEX_TIMEOUT_MS = 120_000
 // Matching cards a search returns, enough to filter the whole board.
 const SEARCH_LIMIT = 100
 // How often a live transcript's card is read again at most while the session writes.
@@ -242,33 +240,6 @@ export async function startServer({
     }
   }
 
-  // Keeps search.db current in a child process, never on this event loop: at start
-  // (rebuilding an index another version built) and before each search. One runs at
-  // a time; requests made meanwhile share the next run, so a search sees what the
-  // log and transcripts held when it was asked.
-  let indexer: ChildProcess | undefined
-  let indexing: Promise<void> | null = null, nextIndex: Promise<void> | null = null
-  const worker = join(import.meta.dirname, '..', 'search', import.meta.url.endsWith('.ts') ? 'index-worker.ts' : 'index-worker.js')
-  const runIndexer = () => new Promise<void>((resolve, reject) => {
-    const done = (error: Error | null) => (error ? reject(error) : resolve())
-
-    indexer = execFile(process.execPath, [worker, board], { timeout: INDEX_TIMEOUT_MS }, done)
-  })
-
-  const index = (): Promise<void> => {
-    if (!indexing) {
-      return (indexing = runIndexer().finally(() => {
-        indexing = null
-      }))
-    }
-
-    return (nextIndex ??= indexing.catch(() => undefined).then(() => {
-      nextIndex = null
-
-      return index()
-    }))
-  }
-
   // Folds whatever was appended since the last read, from this server or the CLI.
   const pump = () => {
     const read = readEventsFrom(board, offset)
@@ -399,11 +370,8 @@ export async function startServer({
 
           const query = { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), limit: SEARCH_LIMIT }
 
-          // The index catches up in a child process and the semantic leg waits on its
-          // worker, so the search never blocks this event loop; a failed catch-up still
-          // searches what is indexed.
-          void index().catch(() => undefined)
-            .then(() => searchBoard(board, query))
+          // The semantic leg waits on the worker process, never on this event loop.
+          void searchBoard(board, query)
             .then(result => send(ws, { type: 'receipt', id, ...result }))
             .catch((error: Error) => fail(error.message, error instanceof BoardError ? error.code : 'UNKNOWN'))
         } else if (name === 'settings') {
@@ -626,26 +594,17 @@ export async function startServer({
   // Events spooled while no server ran.
   kick()
   touchLatest(Object.keys(state.cards))
-  let closing = false
-  void index().catch((error: Error) => {
-    if (!closing) {
-      console.error(`pnyx-axi serve: search index: ${error.message}`)
-    }
-  })
 
   return {
     port: bound,
     url,
     socket: info.socket,
     async close() {
-      closing = true
-
       for (const w of [...watchers, ...folders.values()]) {
         w.close()
       }
 
       clearTimeout(latestTimer)
-      indexer?.kill()
 
       for (const ws of wss.clients) {
         ws.terminate()

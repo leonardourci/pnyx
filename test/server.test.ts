@@ -566,18 +566,25 @@ test('the board search finds a card by a word only its transcript holds, includi
   t.ws.close()
 })
 
-test('the server rebuilds a stale search index in the background when it starts', async () => {
-  seedWebFixture(process.env.PNYX_HOME!)
+test('a board search rebuilds a stale search index', async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!)
   // An index another version left behind.
   writeFileSync(searchPath('default'), 'not a database')
   assert.equal(indexStatus('default')?.current, false)
   server = await startServer({ board: 'default' })
-  const status = await until(() => {
-    const s = indexStatus('default')
+  const t = await tab(); await t.next()
+  t.command('s1', 'search', ['readable'])
+  let m = await t.next()
 
-    return s?.current && s.docs.transcript > 0 ? s : undefined
-  }, 'a rebuilt index')
-  assert.equal(status.transcripts.tracked, 1)
+  while (!((m.type === 'receipt' || m.type === 'error') && m.id === 's1')) {
+    m = await t.next()
+  }
+
+  assert.deepEqual(m.type === 'receipt' && (m.hits as { card: string }[]).map(h => h.card), [fixture.state.keys.layout])
+  const status = indexStatus('default')
+  assert.equal(status?.current, true)
+  assert.equal(status?.transcripts.tracked, 1)
+  t.ws.close()
 })
 
 test("each card gets its conversation's last message, pushed again as the transcript grows", async () => {
