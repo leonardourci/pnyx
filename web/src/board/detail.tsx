@@ -9,7 +9,7 @@ import { Composer } from "./composer.tsx";
 import { columnsFor, receiptLabel } from "./view.ts";
 import type { Command } from "./connection.ts";
 const merge = (a: ThreadEntry[], b: ThreadEntry[]) => { const ids = new Set(b.map(e => e.id)); return [...a.filter(e => !ids.has(e.id)), ...b]; };
-export function Detail({ card, state, view, thread, command, connected, close, save, draft, setDraft, outside, notify }: { card: Card; state: BoardState; view: ViewPreferences; thread: ThreadPage | null; command: Command; connected: boolean; close(): void; save(patch: unknown): void; draft: string; setDraft(text: string): void; outside: boolean; notify(text: string): void }) {
+export function Detail({ card, state, view, thread, command, connected, close, save, draft, setDraft, outside, notify }: { card: Card; state: BoardState; view: ViewPreferences; thread: ThreadPage | null; command: Command; connected: boolean; close(): void; save(patch: unknown): Promise<boolean>; draft: string; setDraft(text: string): void; outside: boolean; notify(text: string): void }) {
   const [width, setWidth] = useState<number | null>(null), [tab, setTab] = useState("thread"), [older, setOlder] = useState<ThreadPage | null>(null), [kept, setKept] = useState<ThreadEntry[]>([]), [latest, setLatest] = useState(false);
   const scroller = useRef<HTMLDivElement>(null), atBottom = useRef(true);
   const [history, setHistory] = useState<{ seq: number; id: string; at: string; summary: string }[]>([]);

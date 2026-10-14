@@ -8,7 +8,7 @@ export function Links({ links }: { links: Link[] }) {
   return <div className="links">{links.map(l => { const href = safeLink(l); return href && <a key={l.url} href={href} target="_blank" rel="noreferrer" title={`${l.title ?? l.url} · opens in new tab`}><Icon name={l.kind} />{l.kind === "github_pr" ? `#${l.number ?? "PR"}` : l.title ?? new URL(href).hostname}</a>; })}</div>;
 }
 export function Tags({ tags }: { tags: string[] }) { return <div className="tags">{tags.map(t => <span key={t} className={`tag tone-${[...t].reduce((n,c) => n + c.charCodeAt(0), 0) % 4}`}>{t}</span>)}</div>; }
-export function BoardCard({ card, visible, selected, view, open, save }: { card: CardData; visible: CardData[]; selected: boolean; view: ViewPreferences; open(id: string): void; save(patch: unknown): void }) {
+export function BoardCard({ card, visible, selected, view, open, save }: { card: CardData; visible: CardData[]; selected: boolean; view: ViewPreferences; open(id: string): void; save(patch: unknown): Promise<boolean> }) {
   const [height, setHeight] = useState<number | null>(null), parent = visibleParent(card, visible);
   return <article className={`card ${selected ? "selected" : ""} ${view.cardColors ? `accent-${card.column}` : ""}`} style={{ height: height ?? view.cardHeights[card.id] ?? view.cardHeight }}>
     <div className="row between"><span className="workspace">{card.workspace}</span><span className="source">{card.agent?.provider ?? card.sourceRefs[0]?.adapter ?? "Manual"}</span></div>

@@ -11,7 +11,7 @@ import { Detail } from "./detail.tsx";
 import { Settings } from "./settings.tsx";
 import { History } from "./history.tsx";
 import { columnsFor, filterCards } from "./view.ts";
-function Column({ id, title, description, cards, view, save, children }: { id: string; title: string; description: string; cards: Card[]; view: ViewPreferences; save(patch: unknown): void; children: ReactNode }) {
+function Column({ id, title, description, cards, view, save, children }: { id: string; title: string; description: string; cards: Card[]; view: ViewPreferences; save(patch: unknown): Promise<boolean>; children: ReactNode }) {
   const [width, setWidth] = useState<number | null>(null);
   return <section className={`column column-${id}`} aria-label={title} style={{ width: width ?? view.columnWidths[id] ?? 290, flexBasis: width ?? view.columnWidths[id] ?? 290 }}><header className="column-header"><div className="row between"><h2><Icon name={id} size={15} />{title}</h2><span className="count">{String(cards.length).padStart(2,"0")}</span></div><p>{description}</p></header><div className="column-cards">{children}{cards.length === 0 && <p className="empty" tabIndex={0}>No cards here</p>}</div><Resize label={`Resize ${title} column`} value={view.columnWidths[id] ?? 290} min={240} max={640} onPreview={setWidth} onCommit={n => save({ columnWidths: { [id]: n } })} /></section>;
 }
@@ -22,7 +22,7 @@ export function App() {
   const notify = useCallback((text: string) => setNotice(text), []);
   const view = viewFor(state), columns = columnsFor(state), cards = filterCards(state, workspace, tag, query), card = selected ? state.cards[selected] : undefined;
   const workspaces = [...new Set(Object.values(state.cards).map(c => c.workspace))].sort(), tags = [...new Set(Object.values(state.cards).flatMap(c => c.tags))].sort();
-  const save = useCallback((patch: unknown) => { void command("view", ["set", "--json", JSON.stringify(patch), "--event-id", crypto.randomUUID()]).then(() => notify("Preferences saved")).catch(e => notify(e.message)); }, [command, notify]);
+  const save = useCallback((patch: unknown) => command("view", ["set", "--json", JSON.stringify(patch), "--event-id", crypto.randomUUID()]).then(() => { notify("Preferences saved"); return true; }, e => { notify(e.message); return false; }), [command, notify]);
   useEffect(() => { if (!connected) return; let cancelled = false; setThread(null); void command("thread", [selected ?? ""]).then(r => { if (!cancelled && r.thread) setThread(r.thread as ThreadPage); }).catch(e => { if (!cancelled) notify(e.message); }); return () => { cancelled = true; }; }, [selected, connected, command, setThread, notify]);
   useEffect(() => {
     if (page === "board" && selected && view.panelPlacement === "inline") requestAnimationFrame(() => document.querySelector(".column-cards > .detail")?.scrollIntoView({ block: "nearest", inline: "nearest" }));

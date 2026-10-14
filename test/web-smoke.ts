@@ -31,10 +31,12 @@ const screenshot = async (name: string) => {
 const check = async (condition: string, label: string) => { const out = await browser("eval", `() => { if (!(${condition})) throw new Error(${JSON.stringify(label)}); return "passed"; }`); assert.match(out, /passed/, label); };
 const ref = async (role: string, name: string) => { const snapshot = await browser("snapshot"); const line = snapshot.split("\n").find(l => l.includes(`${role} ${JSON.stringify(name)}`)); assert.ok(line, `missing ${role}: ${name}`); return "@" + /uid=([^ ]+)/.exec(line)![1]; };
 const click = async (role: string, name: string) => { process.stdout.write(`Click ${role}: ${name}\n`); return browser("click", await ref(role, name)); };
-const settled = async (read: () => unknown, expected: unknown, label: string) => {
-  for (let i = 0; i < 50 && read() !== expected; i++) await new Promise(r => setTimeout(r, 100));
+const seq = () => loadBoard("default").state.seq;
+const settled = async (read: () => unknown, expected: unknown, label: string, until = () => read() === expected) => {
+  for (let i = 0; i < 50 && !until(); i++) await new Promise(r => setTimeout(r, 100));
   assert.equal(read(), expected, label);
 };
+const twoEvents = (from: number) => () => seq() >= from + 2;
 const rapid = (selector: string, events: string) => browser("eval", `async () => { const el = document.querySelector(${JSON.stringify(selector)}); for (const e of ${events}) { await Promise.resolve(); el.dispatchEvent(e.startsWith("key") ? new KeyboardEvent(e.slice(0, e.indexOf(":")), { key: e.slice(e.indexOf(":") + 1), bubbles: true }) : new MouseEvent(e, { bubbles: true })); } return true; }`);
 const view = () => loadBoard("default").state.view;
 try {
@@ -46,18 +48,34 @@ try {
   await browser("press", "ArrowRight");
   await check("document.querySelector(\"[aria-label=\\\"Resize Needs you column\\\"]\").getAttribute(\"aria-valuenow\") === \"298\"", "keyboard resize commits once");
   assert.equal(loadBoard("default").state.seq, beforeResize + 1);
+  let from = seq();
   await rapid("[aria-label=\"Resize Needs you column\"]", JSON.stringify(["keydown:ArrowRight", "keyup:ArrowRight", "keydown:ArrowRight", "keyup:ArrowRight"]));
-  await settled(() => view()?.columnWidths.needs_you, 314, "rapid keyboard resizes build on the pending width");
+  await settled(() => view()?.columnWidths.needs_you, 314, "rapid keyboard resizes build on the pending width", twoEvents(from));
   await click("button", "Shape the first working board"); await browser("wait", "The first pass is ready to review.");
   await check("!document.querySelector(\".message.tool p\") && document.querySelectorAll(\".message.message p\").length >= 3", "messages visible and traces collapsed");
   await click("switch", "Tool details"); await check("!!document.querySelector(\".message.tool p\")", "tool switch expands details");
+  const tools = () => view()?.cardTraceOverrides[fixture.state.keys.layout!]?.tools;
+  await settled(tools, true, "tool switch saves");
+  from = seq();
   await rapid("[role=switch][aria-checked]", JSON.stringify(["click", "click"]));
-  await settled(() => view()?.cardTraceOverrides[fixture.state.keys.layout!]?.tools, true, "rapid switch toggles build on the pending state");
+  await settled(tools, true, "rapid switch toggles build on the pending state", twoEvents(from));
   await browser("fill", await ref("textbox", "Reply to Shape the first working board"), "First line"); await browser("press", "Enter");
   await check("document.querySelector(\"textarea\").value === \"First line\\n\"", "Enter inserts a newline");
   await click("button", "Settings");
+  from = seq();
   await rapid("[aria-label=\"Increase Panel width\"]", JSON.stringify(["click", "click"]));
-  await settled(() => view()?.panelWidth, 456, "rapid number steps build on the pending value");
+  await settled(() => view()?.panelWidth, 456, "rapid number steps build on the pending value", twoEvents(from));
+  await browser("eval", "() => { const send = WebSocket.prototype.send; window.rejectNext = 0; WebSocket.prototype.send = function (data) { const m = JSON.parse(data); if (m.name === \"view\" && window.rejectNext > 0) { window.rejectNext--; m.args[2] = JSON.stringify({ panelWidth: 9999 }); data = JSON.stringify(m); } return send.call(this, data); }; return true; }");
+  from = seq();
+  await browser("eval", "() => { window.rejectNext = 1; return true; }");
+  await rapid("[aria-label=\"Increase Panel width\"]", JSON.stringify(["click", "click"]));
+  await settled(() => view()?.panelWidth, 472, "a stale rejection keeps the newer pending value", () => seq() >= from + 1);
+  await check("document.querySelector(\"input[aria-label='Panel width']\").value === \"472\"", "number field shows the newer saved value");
+  await browser("eval", "() => { window.rejectNext = 1; document.querySelector(\"[aria-label='Dismiss notification']\")?.click(); return true; }");
+  await rapid("[aria-label=\"Increase Panel width\"]", JSON.stringify(["click"]));
+  await browser("wait", "invalid view preference");
+  await check("document.querySelector(\"input[aria-label='Panel width']\").value === \"472\"", "a rejected save restores the saved value");
+  assert.equal(view()?.panelWidth, 472);
   await screenshot("settings.png"); await click("button", "Back to board");
   await check("document.querySelector(\"textarea\").value === \"First line\\n\"", "draft survives settings");
   await browser("fill", await ref("textbox", "Reply to Shape the first working board"), "/");
