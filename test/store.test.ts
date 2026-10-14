@@ -38,7 +38,20 @@ test('appends are durable lines and the snapshot matches a full replay', () => {
   const dir = boardDir({ board: 'default' })
   const lines = readFileSync(join(dir, 'events.jsonl'), 'utf8').trimEnd()
     .split('\n')
-  assert.deepEqual(lines.map(l => JSON.parse(l)), events)
+  const written = lines.map(l => JSON.parse(l))
+  assert.ok(written.every(e => e.boardId === 'default' && e.commandId === e.id))
+  const original = written.map(({
+    boardId, taskId, subtaskId, agentId,
+    sessionId, commandId, ...e
+  }) => {
+    assert.ok(boardId && taskId && commandId)
+    assert.ok(subtaskId === undefined || typeof subtaskId === 'string')
+    assert.ok(agentId === undefined || typeof agentId === 'string')
+    assert.ok(sessionId === undefined || typeof sessionId === 'string')
+
+    return e
+  })
+  assert.deepEqual(original, events)
   const expected = replay({ state: emptyBoard(), events })
   assert.deepEqual(loadBoard({ board: 'default' }).state, expected)
   const snapshot = JSON.parse(readFileSync(join(dir, 'snapshot.json'), 'utf8'))
@@ -91,7 +104,7 @@ test('a torn tail is skipped on read, blocks writes and is set aside by repair',
 
   const [first] = readStream({ name: 'torn-tail' })
   appendAll({ events: [{ ...first!, seq: 4, id: 'evt_4', type: 'card.moved', data: { before: 'review', after: null } }] })
-  assert.equal(loadBoard({ board: 'default' }).state.cards.c1!.column, 'review')
+  assert.equal(loadBoard({ board: 'default' }).state.cards.c1!.column, 'parked')
   rmSync(join(dir, 'snapshot.json'))
   assert.equal(loadBoard({ board: 'default' }).state.seq, 4)
   assert.equal(repairBoard({ board: 'default' }).tornBytes, 0)
