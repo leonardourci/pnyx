@@ -74,6 +74,7 @@ export function useBoardKeyboard({ state, groups, page, setPage, selected, open,
     }
     if ((id === "board.open" || id === "reply") && cardId) { open(cardId); focusDetail(id === "reply"); return true; }
     if (id === "move" && cardId && connected) { showOverlay("move", context); return true; }
+    if (id === "focus.workspace" || id === "focus.tags") { setPage("board"); requestAnimationFrame(() => focusElement(id === "focus.workspace" ? "[aria-label=Workspace]" : "[aria-label='Filter by tag']")); return true; }
     if (id === "search" || id === "settings") { setPage(id === "search" ? "history" : "settings"); requestAnimationFrame(() => focusElement(id === "search" ? "[aria-label='Search history']" : "[data-settings-heading]")); return true; }
     if (id === "palette" || id === "help") { showOverlay(id, context); return true; }
     if (id === "hints") {
@@ -118,7 +119,7 @@ export function KeyboardLayers({ keyboard, state, connected }: { keyboard: Retur
     items = overlay.kind === "move" ? [{ id: "auto", title: "Return to auto" }, ...columnsFor(state)].map(c => ({ id: c.id, label: c.title, detail: c.id === "auto" ? "Follow source facts" : "Manual placement", disabled: !connected || !card, run: () => move(c.id) })) : KEY_ACTIONS.filter(a => overlay.kind === "help" || !["cancel", "send", "palette"].includes(a.id)).map(a => ({ id: a.id, label: a.label, keyLabel: label(a.id), detail: `${a.scopes.join(" · ")}${!prefs.characterShortcuts ? " · character keys disabled" : ""}`, disabled: ["cancel", "send", "palette"].includes(a.id) || (a.id.startsWith("board.") && overlay.context.scope !== "board") || (a.id.startsWith("thread.") && overlay.context.scope !== "thread") || (["move", "reply"].includes(a.id) && (!card || (a.id === "move" && !connected))), run: () => {
       setTimeout(() => onAction(a.id, overlay.context), 0); closeOverlay();
     } }));
-    if (overlay.kind !== "move") items.push({ id: "focus.workspace", label: "Focus workspace filter", run: () => { closeOverlay(); requestAnimationFrame(() => focusElement("[aria-label=Workspace]")); } }, { id: "focus.tags", label: "Focus tag filter", run: () => { closeOverlay(); requestAnimationFrame(() => focusElement("[aria-label='Filter by tag']")); } });
+    if (overlay.kind !== "move") items.push(...[["focus.workspace", "Focus workspace filter"], ["focus.tags", "Focus tag filter"]].map(([id, label]) => ({ id, label, run: () => { closeOverlay(); setTimeout(() => onAction(id, overlay.context), 0); } })));
     if (overlay.kind === "palette") items = items.filter(item => !item.disabled);
   }
   return <>{overlay && <CommandMenu title={overlay.kind === "move" ? "Move card" : overlay.kind === "help" ? "Keyboard help" : "Commands"} description={overlay.kind === "move" ? "Placement does not complete work or resolve a source request." : "Shortcuts follow the focused area. Edit every binding in Settings."} items={items} close={closeOverlay} />}{hints.length > 0 && <div className="hint-layer" aria-label="Target hints">{hints.filter(h => h.label.startsWith(hintPrefix)).map(h => <span className="target-hint" key={h.label} style={{ left: h.x, top: h.y }}>{h.label}</span>)}<div className="hint-instructions" role="status">{hints.length} targets · Type a label · {label("cancel")} cancel · Backspace correct</div></div>}</>;
