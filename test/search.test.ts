@@ -261,6 +261,9 @@ test("a word matches its synonyms", () => {
   assert.match(run("search", "rollback", "--card", "c1"), /get \[reverted\] after/);
   assert.deepEqual(cards(run("search", "pull", "request", "lunch")), ["c5"]);
   assert.deepEqual(cards(run("search", "ticket")), ["c6"]);
+  // Punctuation around a word does not hide its synonyms.
+  assert.deepEqual(cards(run("search", "PR?")), ["c5"]);
+  assert.deepEqual(cards(run("search", "(pull", "request),", "lunch")), ["c5"]);
   assert.match(run("search", "status"), /^synonyms: "v1, 4 groups"$/m);
 });
 
@@ -279,4 +282,16 @@ test("when nothing matches, typos and partial words match the nearest indexed wo
   // An exact match wins: no fuzzy expansion when the words match as typed.
   assert.match(run("search", "checkout"), /^mode: lexical$/m);
   assert.match(run("search", "zzqqxx"), /^results: "none: /m);
+  // Punctuation around a typo does not stop it matching the nearest words.
+  assert.deepEqual(cards(run("search", "chekout?")), ["c2"]);
+});
+
+test("a word ending in * matches the indexed words starting with it", () => {
+  const { run, push } = board();
+  push("claude:s3", { title: "Retryable error" });
+  push("claude:s4", { title: "Deployment ready" });
+  // FTS5 stems "retry"* to retri*, which misses retryable; the indexed words fill the gap.
+  assert.deepEqual(cards(run("search", "retry*")).sort(), ["c2", "c5"]);
+  assert.deepEqual(cards(run("search", "deploy*")).sort(), ["c1", "c6"]);
+  assert.deepEqual(cards(run("search", "deplo*")).sort(), ["c1", "c6"]);
 });

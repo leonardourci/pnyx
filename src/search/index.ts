@@ -340,8 +340,12 @@ function words(text: string): Set<string> {
 
 const quote = (phrase: string) => `"${phrase.replace(/"/g, '""')}"`;
 
+// A query word without the punctuation around it, as synonyms and typo matching look it up.
+const bare = (token: string) => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+
 // One query word, or a synonym phrase, and what it may match: its synonym group,
-// or the word itself. A trailing * keeps prefix matching and skips synonyms and typos.
+// or the word itself. A trailing * matches the word as a prefix, and the indexed
+// words starting with it, and skips synonyms and typos.
 interface Term {
   alts: readonly string[];
   prefix: boolean;
@@ -357,17 +361,20 @@ function queryTerms(text: string): Term[] {
       terms.push({ alts: [token.slice(0, -1)], prefix: true, typo: false });
       continue;
     }
-    const pair = i + 1 < tokens.length ? synonymGroup.get(`${token} ${tokens[i + 1]}`.toLowerCase()) : undefined;
+    const pair = i + 1 < tokens.length ? synonymGroup.get(`${bare(token)} ${bare(tokens[i + 1]!)}`.toLowerCase()) : undefined;
     if (pair) i += 1;
-    const group = pair ?? synonymGroup.get(token.toLowerCase());
+    const group = pair ?? synonymGroup.get(bare(token).toLowerCase());
     terms.push(group ? { alts: group, prefix: false, typo: false } : { alts: [token], prefix: false, typo: true });
   }
   return terms;
 }
 
-// A term as an FTS5 expression, each phrase quoted so punctuation is never read as query syntax.
-const termExpr = (term: Term) =>
-  term.alts.length === 1 ? `${quote(term.alts[0]!)}${term.prefix ? "*" : ""}` : `(${term.alts.map(quote).join(" OR ")})`;
+// A term as an FTS5 expression, each phrase quoted so punctuation is never read as
+// query syntax. A prefix term's first alternative is the prefix.
+function termExpr(term: Term): string {
+  const alts = term.alts.map((alt, i) => `${quote(alt)}${term.prefix && i === 0 ? "*" : ""}`);
+  return alts.length === 1 ? alts[0]! : `(${alts.join(" OR ")})`;
+}
 
 // Every term must match.
 export const ftsQuery = (text: string): string => queryTerms(text).map(termExpr).join(" AND ");
@@ -387,7 +394,7 @@ const NEAREST = 5;
 
 // The indexed words nearest a query word: similar by trigrams, or containing it.
 function nearest(db: DatabaseSync, word: string): string[] {
-  const w = fold(word);
+  const w = fold(bare(word));
   if (!/^[\p{L}\p{N}]{3,}$/u.test(w)) return [];
   const candidates = db
     .prepare("SELECT term FROM terms_tri WHERE terms_tri MATCH ? ORDER BY rank LIMIT 200")
@@ -400,6 +407,18 @@ function nearest(db: DatabaseSync, word: string): string[] {
     .map((c) => c.term);
 }
 
+const PREFIXED = 50;
+
+// The indexed words starting with a prefix. FTS5 stems a prefix query ("retry"* looks
+// for retri*), so a prefix also matches these words, each stemmed as the index stems it.
+// ponytail: the first PREFIXED words in order; a short prefix may miss later ones.
+function prefixed(db: DatabaseSync, prefix: string): string[] {
+  const p = fold(bare(prefix));
+  if (!p) return [];
+  const rows = db.prepare("SELECT term FROM terms WHERE term >= ? AND term < ? ORDER BY term LIMIT ?").all(p, `${p}\u{10FFFF}`, PREFIXED) as { term: string }[];
+  return rows.map((r) => r.term).filter((term) => term !== p);
+}
+
 // One hit per card, best first by BM25. Without --card or --kind every word must
 // match somewhere on the card: its title, link titles or any chunk, the title and
 // link titles weighing half; the snippets are its chunks matching the most words.
@@ -407,12 +426,13 @@ function nearest(db: DatabaseSync, word: string): string[] {
 // Words match stemmed, case and accent folded, and with their synonyms; when that
 // finds nothing, words also match the indexed words nearest them.
 export function search(board: string, query: Query): { hits: Hit[]; total: number; match: Match } {
-  const terms = queryTerms(query.text);
-  if (!terms.length) throw new BoardError("query has no words to search for", "VALIDATION_ERROR", ['Run `pnyx-axi search "<words>"`']);
+  const typed = queryTerms(query.text);
+  if (!typed.length) throw new BoardError("query has no words to search for", "VALIDATION_ERROR", ['Run `pnyx-axi search "<words>"`']);
   const { DatabaseSync } = sqlite();
   const db = new DatabaseSync(searchPath(board), { readOnly: true });
   try {
     db.exec("PRAGMA busy_timeout = 5000");
+    const terms = typed.map((t) => (t.prefix ? { ...t, alts: [...t.alts, ...prefixed(db, t.alts[0]!)] } : t));
     const lexical = run(db, query, terms, "lexical");
     if (lexical.hits.length) return lexical;
     const fuzzy = terms.map((t) => (t.typo ? { ...t, alts: [...t.alts, ...nearest(db, t.alts[0]!)] } : t));
