@@ -9,7 +9,7 @@ import { SettingChips, SettingList, harnessName } from './agent-settings.tsx'
 import { Links, Tags } from './card.tsx'
 import { ConversationBrief } from './notes.tsx'
 import { columnsFor } from './view.ts'
-import { Thread } from './thread.tsx'
+import { merge, Thread } from './thread.tsx'
 import type { ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 
@@ -103,7 +103,7 @@ export function Detail({
         <h2>{card.title}</h2>
         <ConversationBrief
           card={card}
-          entries={kept}
+          entries={merge({ kept, page: thread?.card === card.id ? thread.entries : [] })}
           command={command}
           notify={notify}
         />

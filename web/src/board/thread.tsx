@@ -9,7 +9,7 @@ import { Messages } from './messages.tsx'
 import { agentActivity } from './view.ts'
 import type { Command } from './connection.ts'
 
-const merge = ({ kept, page }: { kept: ThreadEntry[]; page: ThreadEntry[] }) => {
+export const merge = ({ kept, page }: { kept: ThreadEntry[]; page: ThreadEntry[] }) => {
   const ids = new Set(page.map(e => e.id))
 
   return [...kept.filter(e => !ids.has(e.id)), ...page]
