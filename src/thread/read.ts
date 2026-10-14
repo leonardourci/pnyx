@@ -87,57 +87,91 @@ function clip(text: string): string {
   return `${cut.trimEnd()}…`
 }
 
-// The last typed user message or assistant reply of a transcript, read back from
-// its end: tool calls and output, thinking and injected text are skipped, so a
-// window of tool output doubles until a message turns up or MAX_BYTES is read.
-// A pure function of the file's bytes; null when it holds no message or is unreadable.
-export function latestMessage(path: string): LatestMessage | null {
+// The last typed user message or assistant reply among complete transcript lines;
+// tool calls and output, thinking and injected text are skipped.
+function lastMessage(lines: string[]): LatestMessage | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let record: unknown
+
+    try {
+      record = JSON.parse(lines[i]!)
+    } catch {
+      continue
+    }
+
+    const messages = transcriptMessages(record)
+
+    if (!messages.length) {
+      continue
+    }
+
+    const r = obj(record), role = obj(r.payload).role ?? r.type
+    const text = redact(messages.map(m => m.text).join(' ')).replace(/\s+/g, ' ')
+      .trim()
+
+    return {
+      role: role === 'user' ? 'user' : 'assistant',
+      text: clip(text),
+      ...(messages[0]!.at ? { at: messages[0]!.at } : {}),
+    }
+  }
+
+  return null
+}
+
+// A transcript's last message and how far it was read: size is the end of its last
+// complete line, so a later read of the same file parses only what was appended.
+export interface LatestRead {
+  message: LatestMessage | null
+  path: string
+  ino: number
+  size: number
+}
+
+// Given the previous read of the same, grown file, parses only the complete lines
+// appended since and keeps the previous message when they hold none. Otherwise reads
+// back from the end: a window of tool output doubles until a message turns up or
+// MAX_BYTES is read. message is null when the file holds no message or is unreadable.
+export function latestMessage(path: string, prev?: LatestRead): LatestRead {
   let fd: number | undefined
 
   try {
     fd = openSync(path, 'r')
-    const { size } = fstatSync(fd)
+    const { size, ino } = fstatSync(fd)
+
+    // Complete lines from start: the last may still be written.
+    const read = (start: number) => {
+      const buf = Buffer.alloc(size - start)
+      readSync(fd!, buf, 0, buf.length, start)
+      const end = buf.lastIndexOf(10) + 1
+
+      return {
+        lines: buf.toString('utf8', 0, end).split('\n')
+          .slice(0, -1),
+        size: start + end,
+      }
+    }
+
+    const grown = prev?.path === path && prev.ino === ino && prev.size <= size
+
+    if (prev && grown && size - prev.size <= MAX_BYTES) {
+      const { lines, size: end } = read(prev.size)
+
+      return { message: lastMessage(lines) ?? prev.message, path, ino, size: end }
+    }
 
     for (let window = LATEST_WINDOW; ; window *= 2) {
       const start = Math.max(0, size - Math.min(window, MAX_BYTES))
-      const buf = Buffer.alloc(size - start)
-      readSync(fd, buf, 0, buf.length, start)
-      // Complete lines only: the first may be cut by the window, the last may still be written.
-      const lines = buf.toString('utf8', 0, buf.lastIndexOf(10) + 1).split('\n')
-        .slice(start ? 1 : 0, -1)
+      const { lines, size: end } = read(start)
+      // The first line may be cut by the window.
+      const message = lastMessage(lines.slice(start ? 1 : 0))
 
-      for (let i = lines.length - 1; i >= 0; i--) {
-        let record: unknown
-
-        try {
-          record = JSON.parse(lines[i]!)
-        } catch {
-          continue
-        }
-
-        const messages = transcriptMessages(record)
-
-        if (!messages.length) {
-          continue
-        }
-
-        const r = obj(record), role = obj(r.payload).role ?? r.type
-        const text = redact(messages.map(m => m.text).join(' ')).replace(/\s+/g, ' ')
-          .trim()
-
-        return {
-          role: role === 'user' ? 'user' : 'assistant',
-          text: clip(text),
-          ...(messages[0]!.at ? { at: messages[0]!.at } : {}),
-        }
-      }
-
-      if (!start || window >= MAX_BYTES) {
-        return null
+      if (message || !start || window >= MAX_BYTES) {
+        return { message, path, ino, size: end }
       }
     }
   } catch {
-    return null
+    return { message: null, path, ino: 0, size: 0 }
   } finally {
     if (fd !== undefined) {
       closeSync(fd)

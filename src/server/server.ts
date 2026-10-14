@@ -4,7 +4,7 @@
 // It writes only through the CLI's own commands and spool drain, so the board
 // keeps a single writer whether a change comes from here or from the CLI.
 import { execFile } from 'node:child_process'
-import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type ThreadPage } from '../thread/read.ts'
+import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
 import { findCard } from '../core/decide.ts'
 import { watchHomes } from '../integrations/firstmate/cli.ts'
@@ -166,6 +166,7 @@ export async function startServer({
   // changes: transcript folders are watched, as a live session writes between hook events.
   // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
   const latest: Record<string, LatestMessage> = {}
+  const reads = new Map<string, LatestRead>()
   const folders = new Map<string, FSWatcher>()
   const unread = new Set<string>()
   let latestTimer: ReturnType<typeof setTimeout> | undefined
@@ -205,7 +206,15 @@ export async function startServer({
         watchFolder(dirname(path))
       }
 
-      const message = path ? latestMessage(path) : null
+      const read = path ? latestMessage(path, reads.get(id)) : undefined
+
+      if (read) {
+        reads.set(id, read)
+      } else {
+        reads.delete(id)
+      }
+
+      const message = read?.message ?? null
 
       if (JSON.stringify(message) === JSON.stringify(latest[id] ?? null)) {
         continue
