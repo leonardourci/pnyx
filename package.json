@@ -18,7 +18,8 @@
     "test": "pnpm run build && node --test \"test/**/*.test.ts\"",
     "web:dev": "vite --config web/vite.config.ts",
     "test:web": "pnpm run build && node test/web-smoke.ts",
-    "test:keyboard": "pnpm run build && node test/keyboard-smoke.ts"
+    "test:keyboard": "pnpm run build && node test/keyboard-smoke.ts",
+    "lint:fix": "eslint --fix ."
   },
   "dependencies": {
     "axi-sdk-js": "^0.1.13",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.20.5",
     "@types/react": "^19.3.0",
