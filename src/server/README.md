@@ -21,9 +21,11 @@ Files: `server.json` (pid, port, url, socket) and `server.sock` in the board fol
 The same authenticated socket also accepts these commands:
 
 - `thread`, args `[cardId, optionalBeforeCursor]`: a receipt with a `thread` page,
-  then `type: thread` pushes when the recorded transcript or reply receipts change.
+  then `type: thread` pushes when the recorded transcript or reply receipts change, or
+  when a `board.view` event turns the card's tool or thinking traces on or off.
   Passing an empty card ID unsubscribes. Missing files and unsupported providers are
-  explicit. Reads use complete JSONL records, a 10 MB window, up to 60 entries and
+  explicit. Reads use complete JSONL records, a 10 MB window, up to 60 entries (traces
+  the card hides under Focus are dropped before counting) and
   long messages split into complete, paged chunks. Cursors retain separate transcript and reply positions, including chunk ordinals, so no message tail is silently discarded. Directory watches handle native file replacement.
 - `search`, args `[text, optionalWorkspace]`: the hybrid search (`searchBoard`: full-text,
   transcripts included, plus meaning when semantic search is on), up to 100 matching
