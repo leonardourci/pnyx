@@ -20,6 +20,7 @@ import {
   type Link,
   type Note,
   type Outcome,
+  type FormField,
   type PushFields,
   type Question,
   type RepliedEvent,
@@ -154,7 +155,7 @@ function parseAttention(value: unknown): Attention[] {
       throw invalid(`attention[${i}] must be an object`)
     }
 
-    onlyKeys(item, ['kind', 'key', 'blocking', 'text', 'questions', 'answered'], `attention[${i}]`)
+    onlyKeys(item, ['kind', 'key', 'blocking', 'text', 'questions', 'form', 'answered'], `attention[${i}]`)
 
     if (item.blocking !== undefined && typeof item.blocking !== 'boolean') {
       throw invalid(`attention[${i}].blocking must be true or false`)
@@ -169,7 +170,45 @@ function parseAttention(value: unknown): Attention[] {
       blocking: item.blocking === true,
       ...(note ? { text: note } : {}),
       ...(item.questions !== undefined ? { questions: parseQuestions({ value: item.questions, what: `attention[${i}].questions` }) } : {}),
+      ...(item.form !== undefined ? { form: parseForm({ value: item.form, what: `attention[${i}].form` }) } : {}),
       ...(answered ? { answered } : {}),
+    }
+  })
+}
+
+const FIELD_TYPES = ['string', 'number', 'integer', 'boolean'] as const
+
+function parseForm({ value, what }: { value: unknown; what: string }): FormField[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw invalid(`${what} must be a non-empty list`)
+  }
+
+  return value.map((item, i) => {
+    const at = `${what}[${i}]`
+
+    if (!isRecord(item)) {
+      throw invalid(`${at} must be an object`)
+    }
+
+    onlyKeys(item, ['name', 'title', 'type', 'options', 'required'], at)
+    const type = FIELD_TYPES.find(t => t === item.type)
+
+    if (!type) {
+      throw invalid(`${at}.type must be one of ${FIELD_TYPES.join(', ')}`)
+    }
+
+    if (item.options !== undefined && (!Array.isArray(item.options) || !item.options.every(o => typeof o === 'string' && o !== ''))) {
+      throw invalid(`${at}.options must be a list of strings`)
+    }
+
+    const title = optionalText(item.title, `${at}.title`)
+
+    return {
+      name: text(item.name, `${at}.name`),
+      ...(title ? { title } : {}),
+      type,
+      ...(item.options ? { options: item.options as string[] } : {}),
+      ...(item.required === true ? { required: true } : {}),
     }
   })
 }

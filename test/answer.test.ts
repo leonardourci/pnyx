@@ -50,6 +50,7 @@ const single = opened({ harness: 'claude', event: 'PreToolUse', name: 'claude-pr
 const permission = opened({ harness: 'claude', event: 'PermissionRequest', name: 'claude-permission-request' })
 const plan = opened({ harness: 'claude', event: 'PermissionRequest', name: 'claude-permission-request-plan' })
 const codex = opened({ harness: 'codex', event: 'PermissionRequest', name: 'codex-permission-request' })
+const elicitation = opened({ harness: 'claude', event: 'Elicitation', name: 'claude-elicitation-form' })
 
 const prompt = ({ provider, request }: { provider: string; request: Attention }): Prompt =>
   answerPrompt({ card: card({ provider, attention: [request] }), request })!
@@ -150,6 +151,39 @@ test('each harness gets the keys its own prompt expects', () => {
   assert.deepEqual(keys({ provider: 'codex', request: codex, value: { choice: 'allow' } }), ['y'])
   assert.deepEqual(keys({ provider: 'codex', request: codex, value: { choice: 'deny' } }), [KEY.escape])
   assert.deepEqual(keys({ provider: 'codex', request: codex, value: { choice: 'deny', text: 'skip it' } }), [KEY.escape, 'skip it', KEY.enter])
+})
+
+test('an MCP form keeps its fields, is checked, and is filled with the keys its prompt expects', () => {
+  assert.deepEqual(elicitation.form, [
+    { name: 'name', title: 'Name', type: 'string', required: true },
+    { name: 'color', title: 'Color', type: 'string', options: ['red', 'blue'] },
+    { name: 'ok', title: 'Agree', type: 'boolean' },
+  ])
+  assert.deepEqual(prompt({ provider: 'claude-code', request: elicitation }), { kind: 'form' })
+  const url = { ...fixture({ name: 'claude-elicitation-form' }), mode: 'url', url: 'https://example.com/auth' }
+  const envelope: HookEnvelope = { v: 1, id: 'hook-3', at: '2026-10-14T17:00:00Z', harness: 'claude', event: 'Elicitation', payload: url }
+  assert.equal(attend([], observe(envelope)[0]!.attend!)[0]!.form, undefined, 'a URL elicitation is answered in the session')
+
+  const error = (value: unknown) => {
+    const result = checkAnswer({ prompt: { kind: 'form' }, request: elicitation, value })
+
+    return 'error' in result ? result.error : undefined
+  }
+
+  assert.match(error({ choice: 'accept', values: {} })!, /Name is required/)
+  assert.match(error({ choice: 'accept', values: { name: 'Ada', color: 'green' } })!, /one of red, blue/)
+  assert.match(error({ choice: 'accept', values: { name: 'Ada', ok: 'yes' } })!, /true or false/)
+  assert.match(error({ choice: 'accept', values: { name: 'Ada', age: 3 } })!, /no field age/)
+  assert.match(error({ choice: 'allow' })!, /takes \{"choice":"accept"/)
+
+  const form = (value: unknown) => keys({ provider: 'claude-code', request: elicitation, value })
+  assert.deepEqual(form({ choice: 'accept', values: { name: 'Grace Hopper', color: 'blue', ok: true } }), [
+    'Grace Hopper', KEY.down, KEY.right, KEY.down, KEY.space, KEY.down, KEY.space, KEY.down, KEY.enter,
+  ])
+  assert.deepEqual(form({ choice: 'accept', values: { name: 'Ada', ok: false } }), ['Ada', KEY.down, KEY.down, KEY.down, KEY.enter])
+  assert.deepEqual(form({ choice: 'decline' }), [KEY.down, KEY.down, KEY.down, KEY.right, KEY.enter])
+  const answer = checked({ provider: 'claude-code', request: elicitation, value: { choice: 'accept', values: { name: 'Ada', ok: true } } })
+  assert.equal(answerText({ prompt: { kind: 'form' }, request: elicitation, answer }), 'Accept\nName: Ada\nAgree: yes')
 })
 
 test('a delivered answer marks its request answered and frees the card until the session moves on', () => {

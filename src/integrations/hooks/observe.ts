@@ -3,7 +3,7 @@
 // never run. Every mapping is a fixed rule on fields the harness sends; nothing
 // is classified by a model.
 import { basename } from 'node:path'
-import type { Attention, Question } from '../../core/model.ts'
+import type { Attention, FormField, Question } from '../../core/model.ts'
 import { terminalFacts } from '../../core/route.ts'
 import { hookSettings } from './settings.ts'
 
@@ -153,6 +153,37 @@ function questions({ value }: { value: unknown }): Question[] | undefined {
   return found.length && found.length === (value as unknown[]).length ? found : undefined
 }
 
+const FIELD_TYPES = ['string', 'number', 'integer', 'boolean']
+
+// An MCP form's fields in the order its prompt lists them; undefined for a URL
+// elicitation or a field the board cannot fill (a list, an object, a format it
+// does not know), so the form is filled in the terminal.
+function form({ payload }: { payload: Record<string, unknown> }): FormField[] | undefined {
+  const schema = (payload.requested_schema ?? {}) as { properties?: unknown; required?: unknown }
+  type Property = Record<string, unknown> | null
+  const properties = Object.entries((schema.properties ?? {}) as Record<string, Property>)
+  const required = Array.isArray(schema.required) ? schema.required : []
+  const fields = properties.flatMap(([name, p]): FormField[] => {
+    const type = str(p?.type)
+    const options = Array.isArray(p?.enum) && p.enum.every(o => typeof o === 'string') ? p.enum as string[] : undefined
+    const title = str(p?.title)
+
+    if (!type || !FIELD_TYPES.includes(type) || (options && type !== 'string') || p?.format !== undefined) {
+      return []
+    }
+
+    return [{
+      name,
+      ...(title ? { title } : {}),
+      type: type as FormField['type'],
+      ...(options ? { options } : {}),
+      ...(required.includes(name) ? { required: true } : {}),
+    }]
+  })
+
+  return str(payload.mode) !== 'url' && fields.length && fields.length === properties.length ? fields : undefined
+}
+
 // The request a tool call puts to the user: its question, a plan to approve, or
 // permission to run it with what it would run.
 function request(
@@ -264,8 +295,10 @@ function signal(event: string, payload: Record<string, unknown>): Signal | undef
       return notification(payload)
     case 'Elicitation': {
       const text = short([str(payload.mcp_server_name), str(payload.message)].filter(Boolean).join(': '))
+      const fields = form({ payload })
+      const add: Attention = { kind: 'input', key: ELICITATION, blocking: true, text: text || 'Input needed' }
 
-      return { activity: 'waiting for your input', attend: { add: { kind: 'input', key: ELICITATION, blocking: true, text: text || 'Input needed' } } }
+      return { activity: 'waiting for your input', attend: { add: fields ? { ...add, form: fields } : add } }
     }
     case 'ElicitationResult':
       return { activity: 'working', attend: { clear: [ELICITATION] } }

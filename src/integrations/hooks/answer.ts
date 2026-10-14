@@ -9,7 +9,9 @@ export const KEY = {
   escape: '\u001b',
   tab: '\t',
   up: '\u001b[A',
+  down: '\u001b[B',
   right: '\u001b[C',
+  space: ' ',
 }
 
 // One keystroke chunk and how long the prompt needs before the next one.
@@ -52,6 +54,33 @@ function claudeQuestions({ request, answer }: { request: Attention; answer: Answ
   return steps({ keys: [...keys, ...(review ? ['1'] : [])] })
 }
 
+// Claude Code's MCP form starts on its first field, in schema order, then Accept
+// and Decline. Typing fills a text or number field; Right opens a choice field,
+// whose options Down walks and Space picks; Space ticks a box; Down moves to the
+// next field. Enter on Accept sends the form; Right from Accept is Decline.
+function claudeForm({ request, answer }: { request: Attention; answer: Answer }): KeyStep[] {
+  const fields = request.form ?? []
+
+  if (answer.choice === 'decline') {
+    return steps({ keys: [...fields.map(() => KEY.down), KEY.right, KEY.enter] })
+  }
+
+  const keys = fields.flatMap(field => {
+    const value = answer.values?.[field.name]
+    const index = Math.max(0, field.options?.indexOf(String(value)) ?? 0)
+    const below = Array<string>(index).fill(KEY.down)
+    const fill = value === undefined || value === false
+      ? []
+      : field.options
+        ? [KEY.right, ...below, KEY.space]
+        : [value === true ? KEY.space : String(value)]
+
+    return [...fill, KEY.down]
+  })
+
+  return steps({ keys: [...keys, KEY.enter] })
+}
+
 // The keystrokes that answer request in the session's own prompt.
 export function answerKeys(
   { provider, request, answer }: { provider: string; request: Attention; answer: Answer },
@@ -70,6 +99,10 @@ export function answerKeys(
 
   if (request.kind === 'question') {
     return claudeQuestions({ request, answer })
+  }
+
+  if (request.form) {
+    return claudeForm({ request, answer })
   }
 
   switch (answer.choice) {

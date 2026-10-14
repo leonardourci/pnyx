@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { answerPrompt, type Choice, type QuestionAnswer } from '../../../src/core/answer.ts'
-import type { Attention, Card, Question } from '../../../src/core/model.ts'
-import { Button, Input } from '../components/ui/controls.tsx'
+import type { Attention, Card, FormField, Question } from '../../../src/core/model.ts'
+import { Button, Input, Switch } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import type { Command } from './connection.ts'
 
@@ -93,6 +93,89 @@ function Questions({ request, busy, send }: { request: Attention; busy: boolean;
   )
 }
 
+type Values = Record<string, string | boolean>
+
+function FormInput({ field, value, change }: {
+  field: FormField
+  value: string | boolean | undefined
+  change(args: { value: string | boolean }): void
+}) {
+  const label = `${field.title ?? field.name}${field.required ? ' *' : ''}`
+
+  if (field.type === 'boolean') {
+    return (
+      <Switch label={label} checked={value === true} onChange={next => change({ value: next })} />
+    )
+  }
+
+  if (field.options) {
+    return (
+      <fieldset className="ask-question">
+        <legend>{label}</legend>
+        <div className="ask-options">
+          {field.options.map(option => (
+            <Button
+              key={option}
+              className="ask-option"
+              aria-pressed={value === option}
+              onClick={() => change({ value: option })}
+            >
+              <span className="ask-label">{option}</span>
+            </Button>
+          ))}
+        </div>
+      </fieldset>
+    )
+  }
+
+  return (
+    <Input
+      aria-label={label}
+      placeholder={label}
+      inputMode={field.type === 'string' ? undefined : 'decimal'}
+      value={typeof value === 'string' ? value : ''}
+      onChange={e => change({ value: e.target.value })}
+    />
+  )
+}
+
+// An MCP server's form: each field, then Accept with the values or Decline.
+function Form({ request, busy, send }: { request: Attention; busy: boolean; send: Send }) {
+  const fields = request.form ?? []
+  const [values, setValues] = useState<Values>({})
+  const filled = Object.fromEntries(fields.flatMap(f => {
+    const v = values[f.name]
+
+    if (v === undefined || (typeof v === 'string' && !v.trim())) {
+      return []
+    }
+
+    return [[f.name, f.type === 'number' || f.type === 'integer' ? Number(v) : v]]
+  }))
+  const ready = fields.every(f => !f.required || filled[f.name] !== undefined)
+
+  return (
+    <div className="ask-choices">
+      {fields.map(field => (
+        <FormInput
+          key={field.name}
+          field={field}
+          value={values[field.name]}
+          change={({ value }) => setValues(all => ({ ...all, [field.name]: value }))}
+        />
+      ))}
+      <div className="row wrap">
+        <Button variant="primary" disabled={busy || !ready} onClick={() => void send({ request, value: { choice: 'accept', values: filled } })}>
+          Accept
+        </Button>
+        <Button variant="surface" disabled={busy} onClick={() => void send({ request, value: { choice: 'decline' } })}>
+          Decline
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 type ChoicesProps = { request: Attention; choices: Choice[]; busy: boolean; send: Send }
 
 function Choices({ request, choices, busy, send }: ChoicesProps) {
@@ -125,7 +208,7 @@ function Choices({ request, choices, busy, send }: ChoicesProps) {
   )
 }
 
-const TITLE: Record<string, string> = { question: 'Asking you', permission: 'Asking permission', plan: 'Plan to approve' }
+const TITLE: Record<string, string> = { question: 'Asking you', permission: 'Asking permission', plan: 'Plan to approve', input: 'Asking for input' }
 
 // The agent's own open prompts, shown in its thread with the options its terminal
 // shows, so the owner answers right there. An answer is typed into the session as
@@ -184,14 +267,16 @@ export function InlineQuestions({ card, command, connected, notify }: {
                 ? <p className="small muted">Reconnect to answer.</p>
                 : prompt?.kind === 'questions'
                   ? <Questions request={request} busy={busy === request.key} send={send} />
-                  : prompt && (
-                    <Choices
-                      request={request}
-                      choices={prompt.choices}
-                      busy={busy === request.key}
-                      send={send}
-                    />
-                  )}
+                  : prompt?.kind === 'form'
+                    ? <Form request={request} busy={busy === request.key} send={send} />
+                    : prompt && (
+                      <Choices
+                        request={request}
+                        choices={prompt.choices}
+                        busy={busy === request.key}
+                        send={send}
+                      />
+                    )}
           </article>
         )
       })}

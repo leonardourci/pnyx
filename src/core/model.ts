@@ -98,6 +98,16 @@ export interface Question {
   multiSelect?: boolean
 }
 
+// One field of an MCP server's form, as its elicitation schema names it. options
+// lists the values of a choice field.
+export interface FormField {
+  name: string
+  title?: string
+  type: 'string' | 'number' | 'integer' | 'boolean'
+  options?: string[]
+  required?: boolean
+}
+
 // An explicit source request. blocking requests (a question, a permission prompt)
 // outrank linked pull requests; the rest only outrank ongoing work.
 export interface Attention {
@@ -107,6 +117,8 @@ export interface Attention {
   text?: string
   // The questions behind a question request, so the board can answer it inline.
   questions?: Question[]
+  // The fields of an MCP server's form, so the board can fill it in inline.
+  form?: FormField[]
   // The reply that answered it from the board. The request stays until the session's
   // own hooks close it, but no longer counts as waiting on anyone.
   answered?: string

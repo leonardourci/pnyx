@@ -287,12 +287,13 @@ The session's process must still own that TTY; the text is typed once, then subm
 Terminal is the exception: its do script types the text and Return together, with no settle.
 Receipts: queued, then delivered, delivery_unknown or failed. Retrying the same --idempotency-key
 resends only after a failed send.
---answer answers an agent's open question, permission or plan prompt (its request key, from
+--answer answers an agent's open question, permission, plan or MCP form prompt (its request key, from
 \`pnyx-axi card <id>\`) by pressing the keys that prompt expects in the session's terminal:
   question:   --json '{"answers":[{"pick":[2]},{"pick":[1,3]},{"text":"free text"}]}'  one per question,
               options numbered from 1; text only for a single-choice question
   permission: --json '{"choice":"allow"}' or '{"choice":"deny","text":"do this instead"}'
   plan:       --json '{"choice":"approve"}' or '{"choice":"revise","text":"what to change"}'
+  MCP form:   --json '{"choice":"accept","values":{"name":"Ada","count":2,"agree":true}}' or '{"choice":"decline"}'
 --seen refuses the answer when the request's text changed. A delivered answer marks the request
 answered; the session's own hooks close it once it moves on.
 `

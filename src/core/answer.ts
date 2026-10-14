@@ -1,21 +1,26 @@
 // Inline answers to an agent's own prompt: which open requests the board can answer,
 // the choices each one offers, and the check of an answer before anything is typed.
 // Pure; the keys each harness expects are in integrations/hooks/answer.ts.
-import type { Attention, Card } from './model.ts'
+import type { Attention, Card, FormField } from './model.ts'
 
 // One question's answer: the 1-based numbers of the options picked, or free text
 // typed into the prompt's own "Type something" line (single-choice questions only).
 export type QuestionAnswer = { pick: number[] } | { text: string }
 
-export const CHOICES = ['allow', 'deny', 'approve', 'revise'] as const
+export const CHOICES = ['allow', 'deny', 'approve', 'revise', 'accept', 'decline'] as const
 export type ChoiceName = (typeof CHOICES)[number]
 
+// A form field's value: text for a text or choice field, a number, or true/false.
+export type FieldValue = string | number | boolean
+
 // A question request takes answers, one per question; a permission or plan request
-// takes a choice, with text where the choice asks for it.
+// takes a choice, with text where the choice asks for it; a form is accepted with
+// its values by field name, or declined.
 export interface Answer {
   answers?: QuestionAnswer[]
   choice?: ChoiceName
   text?: string
+  values?: Record<string, FieldValue>
 }
 
 export interface Choice {
@@ -24,12 +29,13 @@ export interface Choice {
   text: 'none' | 'optional' | 'required'
 }
 
-export type Prompt = { kind: 'questions' } | { kind: 'choices'; choices: Choice[] }
+export type Prompt = { kind: 'questions' } | { kind: 'form' } | { kind: 'choices'; choices: Choice[] }
 type Checked = { answer: Answer } | { error: string }
 
 // Free text goes into a one-line field of the agent's prompt.
 const TEXT_MAX = 2000
 const TOOL_REQUEST = 'hook:tool:'
+const ELICITATION = 'hook:elicitation'
 
 const CLAUDE_PERMISSION: Choice[] = [
   { choice: 'allow', label: 'Yes', text: 'none' },
@@ -50,11 +56,15 @@ const CODEX_PERMISSION: Choice[] = [
 export function answerPrompt(
   { card, request }: { card: Card; request: Attention },
 ): Prompt | undefined {
+  const provider = card.agent?.provider
+
+  if (request.key === ELICITATION && request.form?.length && provider === 'claude-code' && !request.answered) {
+    return { kind: 'form' }
+  }
+
   if (request.answered || !request.key.startsWith(TOOL_REQUEST)) {
     return undefined
   }
-
-  const provider = card.agent?.provider
 
   if (provider === 'claude-code') {
     if (request.kind === 'question') {
@@ -133,6 +143,72 @@ function checkQuestions({ request, value }: { request: Attention; value: unknown
   return { answer: { answers } }
 }
 
+type Field = { field: FormField; value: unknown }
+
+function fieldValue({ field, value }: Field): { value: FieldValue } | { error: string } {
+  const name = field.title ?? field.name
+
+  if (field.type === 'boolean') {
+    return typeof value === 'boolean' ? { value } : { error: `${name} must be true or false` }
+  }
+
+  if (field.type !== 'string') {
+    const ok = typeof value === 'number' && Number.isFinite(value) && (field.type === 'number' || Number.isInteger(value))
+
+    return ok ? { value } : { error: `${name} must be ${field.type === 'integer' ? 'a whole number' : 'a number'}` }
+  }
+
+  const text = line({ value })
+
+  if (!text || text.length > TEXT_MAX) {
+    return { error: `${name} must be 1 to ${TEXT_MAX} characters` }
+  }
+
+  return !field.options || field.options.includes(text) ? { value: text } : { error: `${name} must be one of ${field.options.join(', ')}` }
+}
+
+type Form = { fields: FormField[]; value: Record<string, unknown> }
+
+function checkForm({ fields, value }: Form): Checked {
+  if (value.choice === 'decline') {
+    return { answer: { choice: 'decline' } }
+  }
+
+  const given = record({ value: value.values })
+
+  if (value.choice !== 'accept' || !given) {
+    return { error: 'a form takes {"choice":"accept","values":{...}} or {"choice":"decline"}' }
+  }
+
+  const unknown = Object.keys(given).filter(k => !fields.some(f => f.name === k))
+
+  if (unknown.length) {
+    return { error: `the form has no field ${unknown.join(', ')}` }
+  }
+
+  const values: Record<string, FieldValue> = {}
+
+  for (const field of fields) {
+    if (given[field.name] === undefined || given[field.name] === '') {
+      if (field.required) {
+        return { error: `${field.title ?? field.name} is required` }
+      }
+
+      continue
+    }
+
+    const checked = fieldValue({ field, value: given[field.name] })
+
+    if ('error' in checked) {
+      return checked
+    }
+
+    values[field.name] = checked.value
+  }
+
+  return { answer: { choice: 'accept', values } }
+}
+
 // The answer in its checked, normalized form, or why it does not fit the prompt.
 export function checkAnswer(
   { prompt, request, value: raw }: { prompt: Prompt; request: Attention; value: unknown },
@@ -145,6 +221,10 @@ export function checkAnswer(
 
   if (prompt.kind === 'questions') {
     return checkQuestions({ request, value: value.answers })
+  }
+
+  if (prompt.kind === 'form') {
+    return checkForm({ fields: request.form ?? [], value })
   }
 
   const choice = prompt.choices.find(c => c.choice === value.choice)
@@ -174,6 +254,21 @@ export function checkAnswer(
 export function answerText(
   { prompt, request, answer }: { prompt: Prompt; request: Attention; answer: Answer },
 ): string {
+  if (prompt.kind === 'form') {
+    if (answer.choice === 'decline') {
+      return 'Decline'
+    }
+
+    const said = (request.form ?? []).filter(f => answer.values?.[f.name] !== undefined)
+      .map(f => {
+        const v = answer.values![f.name]
+
+        return `${f.title ?? f.name}: ${typeof v === 'boolean' ? (v ? 'yes' : 'no') : v}`
+      })
+
+    return ['Accept', ...said].join('\n')
+  }
+
   if (prompt.kind === 'questions') {
     return (request.questions ?? []).map((question, i) => {
       const a = answer.answers?.[i]
