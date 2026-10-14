@@ -52,7 +52,7 @@ export type AgentSettings = Record<string, string>
 
 // Where a hook found the session's terminal, recorded from the environment it ran
 // in: the harness process and its TTY, the terminal program, and the tmux pane,
-// Paseo terminal, Herdr pane or iTerm2 session around it. A reply route reads it.
+// Paseo terminal or Herdr pane around it. A reply route reads it.
 export interface TerminalFacts {
   tty?: string
   pid?: string
