@@ -7,7 +7,7 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { decideNote, decidePush, noteId } from '../../core/decide.ts'
-import type { SourceNote } from '../../core/model.ts'
+import { SESSION_TITLE, type SourceNote } from '../../core/model.ts'
 import type { Writer } from '../../store/board-store.ts'
 import { readTranscript } from '../../search/index.ts'
 import { codexThreadTitle, transcriptNotes } from './notes.ts'
@@ -99,11 +99,19 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
     }
 
     const settings: FoundSettings = {}
-    const subagent = writer.state.cards[id]!.agent!.agentId !== undefined
+    const { agent, autoTitle } = writer.state.cards[id]!
+    const subagent = agent!.agentId !== undefined
+    // The session title the transcript named last before this read.
+    let title = tail.reset || !cursors[name]?.pos || autoTitle?.from !== 'session' ? undefined : `${SESSION_TITLE}${autoTitle.text}`
 
     for (const line of tail.lines) {
       for (const note of transcriptNotes(line.record)) {
-        appended += appendNote(writer, id, note, at)
+        if (note.kind !== 'context' || !note.text.startsWith(SESSION_TITLE)) {
+          appended += appendNote(writer, id, note, at)
+        } else if (note.text !== title) {
+          title = note.text
+          appended += appendNote(writer, id, { ...note, ref: `${note.ref}@${line.pos}` }, at)
+        }
       }
 
       Object.assign(settings, transcriptSettings(line.record, subagent))

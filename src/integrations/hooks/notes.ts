@@ -142,6 +142,6 @@ export function codexThreadTitle(index: string, sessionId: string): SourceNote[]
   }
 
   return title
-    ? [{ kind: 'context', source: 'codex', text: `${SESSION_TITLE}${title}`, ref: `title:${title}`, ...(at ? { at } : {}) }]
+    ? [{ kind: 'context', source: 'codex', text: `${SESSION_TITLE}${title}`, ref: `title:${at ?? ''}:${title}`, ...(at ? { at } : {}) }]
     : []
 }

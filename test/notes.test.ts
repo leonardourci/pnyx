@@ -210,7 +210,7 @@ test("Codex's session index yields the session's latest thread name", () => {
     JSON.stringify({ id: 'x2', thread_name: 'Ledger rounding fix', updated_at: '2026-10-12T11:00:00Z' }),
   ].join('\n')
   assert.deepEqual(codexThreadTitle(index, 'x2'), [
-    { kind: 'context', source: 'codex', text: 'Session title: Ledger rounding fix', ref: 'title:Ledger rounding fix', at: '2026-10-12T11:00:00Z' },
+    { kind: 'context', source: 'codex', text: 'Session title: Ledger rounding fix', ref: 'title:2026-10-12T11:00:00Z:Ledger rounding fix', at: '2026-10-12T11:00:00Z' },
   ])
   assert.deepEqual(codexThreadTitle(index, 'missing'), [])
 })
@@ -239,4 +239,33 @@ test("a hook-only card takes the harness's own session title over its first prom
   assert.match(run('card', 'c1'), /^ {2}title: Ledger rounding$/m)
   assert.match(run('card', 'c2'), /^ {2}title: Ledger sync drift$/m)
   assert.match(run('harvest'), /none: nothing new/)
+})
+
+test('a session renamed back to an earlier title takes that title again', () => {
+  const { home, run, push } = board()
+  const path = join(home, 's1.jsonl')
+  writeFileSync(path, '')
+  push('claude:s1', { agent: { provider: 'claude-code', sessionId: 's1', transcriptPath: path } })
+
+  const codexHome = join(home, 'codex')
+  const rollout = join(codexHome, 'sessions', '2026', '10', '12', 'rollout-x2.jsonl')
+  mkdirSync(join(rollout, '..'), { recursive: true })
+  writeFileSync(rollout, '')
+  push('codex:x2', { agent: { provider: 'codex', sessionId: 'x2', transcriptPath: rollout } })
+  const index = join(codexHome, 'session_index.jsonl')
+
+  for (const [i, title] of ['Alpha', 'Beta', 'Alpha'].entries()) {
+    appendFileSync(path, `${JSON.stringify({ type: 'custom-title', customTitle: title, sessionId: 's1' })}\n`)
+    appendFileSync(index, `${JSON.stringify({ id: 'x2', thread_name: title, updated_at: `2026-10-12T1${i}:00:00Z` })}\n`)
+    assert.match(run('harvest'), /^ {2}notes: 2 new$/m)
+    assert.match(run('card', 'c1'), new RegExp(`^ {2}title: ${title}$`, 'm'))
+    assert.match(run('card', 'c2'), new RegExp(`^ {2}title: ${title}$`, 'm'))
+  }
+
+  // The same records read again, even from the start, append nothing.
+  appendFileSync(path, `${JSON.stringify({ type: 'custom-title', customTitle: 'Alpha', sessionId: 's1' })}\n`)
+  assert.match(run('harvest'), /none: nothing new/)
+  writeFileSync(join(home, 'boards', 'default', 'harvest.json'), 'not json')
+  assert.match(run('harvest'), /none: nothing new/)
+  assert.match(run('card', 'c1'), /^ {2}title: Alpha$/m)
 })
