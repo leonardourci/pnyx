@@ -16,7 +16,7 @@ The same authenticated socket also accepts these commands:
 - `thread`, args `[cardId, optionalBeforeCursor]`: a receipt with a `thread` page,
   then `type: thread` pushes when the recorded transcript or reply receipts change.
   Passing an empty card ID unsubscribes. Missing files and unsupported providers are
-  explicit. Reads use complete JSONL records, a 10 MB window, up to 100 entries and
+  explicit. Reads use complete JSONL records, a 10 MB window, up to 60 entries and
   long messages split into complete, paged chunks. Cursors retain separate transcript and reply positions, including chunk ordinals, so no message tail is silently discarded. Directory watches handle native file replacement.
 - `search`, args `[text, optionalWorkspace]`: full-text results from the derived index.
 - `reply`, args `[cardId, literalText, idempotencyKey]`: calls the CLI reply path in a
@@ -24,7 +24,7 @@ The same authenticated socket also accepts these commands:
   configured on server startup with repeatable `--home`. The browser cannot provide
   arbitrary home or file paths. A disconnect never automatically retries a reply.
 
-`view set --json <patch> --if-revision <n> --event-id <id>` validates preferences,
+`view set --json <patch> [--if-revision <n>] [--event-id <id>]` validates preferences,
 appends `board.view`, and broadcasts it. `view show` includes the current revision;
 `view schema` returns defaults. A custom column uses a `custom:<slug>` ID and manual
 placement; the four automatic columns keep their existing rules. Map patches merge;
