@@ -24,6 +24,8 @@ import {
   type RepliedEvent,
   type SourceRef,
   type TerminalFacts,
+  type ViewEvent,
+  type ViewPreferences,
 } from './model.ts'
 import { TERMINAL_FIELDS } from './route.ts'
 import { DEFAULT_VIEW, patchView, viewFor } from './view.ts'
@@ -397,6 +399,11 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
     return { skipped: 'stale' }
   }
 
+  // A joined session's live hook activity outranks the Firstmate task status line.
+  if (source?.adapter === 'firstmate' && card?.sourceRefs.some(r => r.adapter === 'hooks')) {
+    delete fields.activity
+  }
+
   let before: PushFields | undefined
 
   if (card) {
@@ -658,8 +665,32 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
     }
 
     const after = patchView({ ...state, view: DEFAULT_VIEW }, target.data.before)
+    const placements = removedColumnPlacements({ state, after })
 
-    return { event: { ...base(state, meta, '$board'), type: 'board.view', undoes: target.id, data: { before: viewFor(state), after } } }
+    // Undoing a column deletion puts its cards back, unless one was placed since.
+    for (const p of target.data.placements ?? []) {
+      const card = state.cards[p.cardId]
+
+      if (!card || (card.manualColumn ?? null) !== p.after) {
+        throw new BoardError(`card ${p.cardId} was moved since this event`, 'CONFLICT')
+      }
+
+      placements.push({
+        cardId: card.id,
+        before: p.after,
+        after: p.before,
+        revision: card.revision,
+      })
+    }
+
+    return {
+      event: {
+        ...base(state, meta, '$board'),
+        type: 'board.view',
+        undoes: target.id,
+        data: { before: viewFor(state), after, ...(placements.length ? { placements } : {}) },
+      },
+    }
   }
 
   if (target.type === 'card.replied') {
@@ -762,5 +793,25 @@ export function decideView(state: BoardState, patch: unknown, meta: Meta): Decis
     return { skipped: 'unchanged' }
   }
 
-  return { event: { ...base(state, meta, '$board'), type: 'board.view', data: { before, after } } }
+  const placements = removedColumnPlacements({ state, after })
+
+  return {
+    event: {
+      ...base(state, meta, '$board'),
+      type: 'board.view',
+      data: { before, after, ...(placements.length ? { placements } : {}) },
+    },
+  }
+}
+
+// Cards pinned to a custom column the new view drops, returned to automatic placement.
+function removedColumnPlacements({ state, after }: {
+  state: BoardState
+  after: ViewPreferences
+}): NonNullable<ViewEvent['data']['placements']> {
+  const kept = new Set<Column>(after.customColumns.map(c => c.id))
+
+  return Object.values(state.cards)
+    .filter(c => c.manualColumn?.startsWith('custom:') && !kept.has(c.manualColumn))
+    .map(c => ({ cardId: c.id, before: c.manualColumn!, after: null, revision: c.revision }))
 }

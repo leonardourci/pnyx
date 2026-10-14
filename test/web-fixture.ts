@@ -1,6 +1,7 @@
 import { cpSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
-import { decideLink, decidePush, type Decision } from '../src/core/decide.ts'
+import { decideLink, decideNote, decidePush, type Decision } from '../src/core/decide.ts'
+import type { Note } from '../src/core/model.ts'
 import { loadBoard, withWriter } from '../src/store/board-store.ts'
 
 export function seedWebFixture(home: string) {
@@ -26,6 +27,9 @@ export function seedWebFixture(home: string) {
     for (const [key, number, state] of [['layout', 42, 'open'], ['review', 321, 'open'], ['docs', 309, 'merged']] as const) {
       const url = `https://github.com/example/project/pull/${number}`; append(decideLink(w.state, key, url, { kind: 'github_pr', url, number, state }, meta))
     }
+
+    const notes = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/web/notes.json'), 'utf8')) as Note[]
+    notes.forEach((note, i) => append(decideNote(w.state, 'layout', note, { ...meta, id: `fixture-note-${i}` })))
 
     const url = 'https://linear.app/example/issue/UI-42'
     append(decideLink(w.state, 'layout', url, { kind: 'linear', url, title: 'Design the agent board' }, meta))

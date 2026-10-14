@@ -59,6 +59,25 @@ export function safeLink(link: Link): string | undefined {
   }
 }
 
+// A recorded session's live state, from its hook activity. Task status alone claims none.
+export function agentActivity({ card }: { card: Card }): 'working' | 'idle' | 'ended' | 'unknown' | undefined {
+  const activity = card.activity ?? ''
+
+  if (!card.agent) {
+    return undefined
+  }
+
+  if (activity === 'working' || activity === 'compacting' || /^(?:running|ran) /.test(activity)) {
+    return 'working'
+  }
+
+  if (activity === 'ended') {
+    return 'ended'
+  }
+
+  return /^(?:idle|stopped|started|resumed|compacted|interrupted)\b/.test(activity) ? 'idle' : 'unknown'
+}
+
 export const receiptLabel = (state: string) => ({ queued: 'Queued', delivered: 'Delivered', delivery_unknown: 'Delivery unknown', failed: 'Delivery failed' }[state] ?? state)
 export const slashPrefix = (text: string, cursor: number) => /^\/[a-z0-9_.:-]*$/i.test(text.slice(0, cursor)) ? text.slice(0, cursor) : null
 export const slashMatches = (command: string, prefix: string) => command.replace(/^[$/]/, '').toLowerCase()

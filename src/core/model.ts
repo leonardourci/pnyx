@@ -237,8 +237,11 @@ export type RepliedEvent = EventBase & {
 }
 
 export interface ViewPreferences {
+  theme: 'light' | 'dark' | 'system'
   keyboard: import('./keyboard.ts').KeyboardPreferences
   fontSize: number
+  chatFontSize: number
+  codeFontSize: number
   panelPlacement: 'right' | 'inline'
   panelWidth: number
   composerHeight: number
@@ -254,7 +257,12 @@ export interface ViewPreferences {
 
 export type ViewEvent = EventBase & {
   type: 'board.view'
-  data: { before: ViewPreferences; after: ViewPreferences }
+  // placements: cards a deleted custom column returned to automatic placement, applied atomically.
+  data: {
+    before: ViewPreferences
+    after: ViewPreferences
+    placements?: { cardId: string; before: Column | null; after: Column | null; revision: number }[]
+  }
 }
 
 // One harvested note. Its id is derived from the source record, so harvesting the
