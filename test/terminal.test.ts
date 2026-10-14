@@ -307,7 +307,7 @@ test('agent reads a Codex change back from the transcript at once', () => {
   assert.ok(calls().at(-1)!.endsWith('arg=-l\narg=--\narg=\u001b[Z\n'))
 })
 
-test('iTerm2 gets a key as raw bytes; Terminal, Herdr and Firstmate refuse keys before sending', () => {
+test('iTerm2 gets a key as raw bytes; Terminal and Herdr refuse keys before sending', () => {
   const { run, calls, session, fails } = hosts()
   session('s1', { program: 'iTerm.app' })
   assert.match(run('agent', 's1', 'mode', 'next'), /sent: delivered/)

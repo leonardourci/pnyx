@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
 import { decideReply, findCard, type Meta } from '../core/decide.ts'
 import { BoardError, type Card, type ReplyState } from '../core/model.ts'
-import { KEY_LABEL, confirms, findOption, harnessControls, inputReason, type Key } from '../core/control.ts'
+import { KEY_LABEL, confirms, findOption, harnessControls, inputReason, keyRequest, type Key } from '../core/control.ts'
 import { replyRoute, type ReplyRoute } from '../core/route.ts'
 import { STATUS_KEY, TASK_ID, resolveHome, typingReason } from '../integrations/firstmate/home.ts'
 import { fmEnter, fmSend } from '../integrations/firstmate/reply.ts'
@@ -387,12 +387,17 @@ export const agent = guard({
     })
     const before = settled()
     const input = option.input
+    // A Firstmate task gets a key as a plain request: fm-send presses no such keys.
+    const typed = 'key' in input && firstmate
+      ? { text: keyRequest({ input, task: firstmate.task }) }
+      : 'key' in input
+        ? { text: `[${KEY_LABEL[input.key]}]`, key: input.key }
+        : { text: input.text, confirm: input.confirm }
     const receipt = sendReply({
       board,
       request: {
         card: card.id,
-        text: 'key' in input ? `[${KEY_LABEL[input.key]}]` : input.text,
-        ...('key' in input ? { key: input.key } : { confirm: input.confirm }),
+        ...typed,
         control: true,
         homes,
         actor: meta({ values }).actor,
@@ -436,8 +441,10 @@ route (receipts as for reply), then reads the setting back from the transcript:
     mode as the default for new sessions; one more Enter answers its confirmation, if shown.
   Codex: effort lower|raise (Shift+Down, Shift+Up), fast toggle (/fast), collaboration toggle
     (Shift+Tab, Plan or Default). Codex picks model and approval mode only in its own pickers.
-A Firstmate task types through fm-send, which presses only Enter; Terminal and Herdr press only
-Enter too. Nothing is sent while the session waits on a permission prompt or question.
+A Firstmate task types commands through fm-send, which presses only Enter, so a change that needs
+a key goes to Firstmate as a plain request to press it in the worker's session; Terminal and
+Herdr press only Enter and refuse those. Nothing is sent while the session waits on a permission
+prompt or question.
 A setting the session has not reported yet is confirmed by its next hook or turn.
 `
 
