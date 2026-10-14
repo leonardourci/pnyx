@@ -198,23 +198,23 @@ test("a tab resumes from its cursor, gets CLI writes, and resyncs with a snapsho
   assert.equal(moved.type === "event" && moved.event.type, "card.moved");
 });
 
-test("a tab writes over its WebSocket and gets a receipt with its request id, recorded as web", async () => {
+test("a tab gets its write's event before the receipt with its request id, recorded as web", async () => {
   const cardId = await boardWithCard();
   const t = await tab("?after=1");
 
   t.command("req-1", "move", [cardId, "review"]);
+  const pushed = await t.next();
+  assert.equal(pushed.type === "event" && pushed.event.type, "card.moved");
+  assert.equal(pushed.type === "event" && pushed.event.actor, "web");
   const receipt = await t.next();
   assert.equal(receipt.type, "receipt");
   assert.equal(receipt.type === "receipt" && receipt.id, "req-1");
   assert.deepEqual(receipt.type === "receipt" && receipt.card, { id: cardId, column: "review", revision: 2 });
-  const pushed = await t.next();
-  assert.equal(pushed.type === "event" && pushed.event.type, "card.moved");
-  assert.equal(pushed.type === "event" && pushed.event.actor, "web");
 
   t.command("req-2", "outcome", [cardId, "done", "--actor", "leo"]);
-  assert.equal((await t.next()).type, "receipt");
   const outcome = await t.next();
   assert.equal(outcome.type === "event" && outcome.event.actor, "leo");
+  assert.equal((await t.next()).type, "receipt");
 });
 
 test("a bad command gets an error carrying its request id and writes nothing", async () => {
@@ -244,6 +244,7 @@ test("writes through the server always land on the server's own board", async ()
   const cardId = await boardWithCard("work");
   const t = await tab("?after=1");
   t.command("req-1", "move", [cardId, "review"]);
+  assert.equal((await t.next()).type, "event");
   assert.equal((await t.next()).type, "receipt");
   await seqIs(2, "work");
   assert.equal(loadBoard("work").state.cards[cardId]!.column, "review");
@@ -312,11 +313,11 @@ test("web preferences, custom moves and read queries share the authenticated soc
   const card = await boardWithCard();
   const t = await tab(); await t.next();
   t.command("view-1", "view", ["set", "--json", JSON.stringify({ customColumns: [{ id: "custom:later", title: "Later" }], panelWidth: 500 }), "--if-revision", "0", "--event-id", "web-view"]);
-  const receipt = await t.next(); assert.equal(receipt.type, "receipt");
   const update = await t.next(); assert.equal(update.type, "event");
+  const receipt = await t.next(); assert.equal(receipt.type, "receipt");
   assert.equal(loadBoard("default").state.view?.panelWidth, 500);
   t.command("move-1", "move", [card, "custom:later", "--if-revision", "1"]);
-  assert.equal((await t.next()).type, "receipt"); await t.next();
+  assert.equal((await t.next()).type, "event"); assert.equal((await t.next()).type, "receipt");
   assert.equal(loadBoard("default").state.cards[card]?.column, "custom:later");
   t.command("view-stale", "view", ["set", "--json", "{\"fontSize\":18}", "--if-revision", "0"]);
   const stale = await t.next(); assert.equal(stale.type, "error"); if (stale.type === "error") assert.equal(stale.code, "REVISION_CONFLICT");

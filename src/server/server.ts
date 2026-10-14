@@ -210,8 +210,9 @@ export async function startServer({ board, port = 0, homes = [] }: { board: stri
     }
     const actor = name === "history" || args.some((a) => a === "--actor" || a.startsWith("--actor=")) ? [] : ["--actor", "web"];
     try {
-      send(ws, { ...commands[name as (typeof CLI_COMMANDS)[number]]([...args, ...actor, "--board", board]), type: "receipt", id });
-      kick();
+      const result = commands[name as (typeof CLI_COMMANDS)[number]]([...args, ...actor, "--board", board]);
+      try { pump(); } catch { kick(); }
+      send(ws, { ...result, type: "receipt", id });
     } catch (error) {
       if (!(error instanceof AxiError)) return fail((error as Error).message, "UNKNOWN");
       fail(error.message, error.code, error.suggestions);
