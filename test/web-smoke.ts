@@ -204,6 +204,8 @@ try {
   await browser('emulate', '--viewport', '390x844x1,mobile,touch'); await browser('wait', 'The working board')
   await check(`document.documentElement.scrollWidth === innerWidth && document.querySelector('.column-needs_you').getBoundingClientRect().width <= document.querySelector('.kanban').clientWidth && ${fits}`, 'wide column fits mobile viewport without internal horizontal scrolling')
   await screenshot('columns-mobile.png')
+  await browser('emulate', '--viewport', '320x640x1,mobile,touch'); await browser('wait', 'The working board')
+  await check(`document.documentElement.scrollWidth === innerWidth && document.querySelector('.column-needs_you').getBoundingClientRect().width <= document.querySelector('.kanban').clientWidth && ${fits}`, 'inline detail column fits a 320px viewport without horizontal scrolling')
   const consoleOutput = await browser('console'); assert.doesNotMatch(consoleOutput, /(?:TypeError|ReferenceError|Uncaught)/)
   process.stdout.write(`Browser smoke passed; screenshots: ${evidence}\n`)
 } finally {
