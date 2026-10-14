@@ -9,6 +9,7 @@ Node 22.13 or newer (for the built-in `node:sqlite`) and pnpm (the version is pi
 ```sh
 pnpm install
 pnpm run lint    # tsc --noEmit for the CLI and the web board, then ESLint
+pnpm lint:fix    # ESLint --fix for spacing and line breaks; agents run it before committing
 pnpm test        # builds the CLI and web board, then runs node --test
 pnpm run web:dev # Vite dev server for the board
 ```

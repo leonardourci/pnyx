@@ -1,52 +1,62 @@
 // Files that announce a running server and guard its writes: server.json and the
 // ingest socket per board, and one local write token per install.
-import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { boardDir, pnyxHome } from "../store/board-store.ts";
+import { randomBytes } from 'node:crypto'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { boardDir, pnyxHome } from '../store/board-store.ts'
 
-const HEALTH_TIMEOUT_MS = 1000;
+const HEALTH_TIMEOUT_MS = 1000
 
 export interface ServerInfo {
-  pid: number;
-  port: number;
-  url: string;
+  pid: number
+  port: number
+  url: string
   // Null when the ingest socket could not be bound; hooks then spool.
-  socket: string | null;
+  socket: string | null
 }
 
-export const infoPath = (board: string) => join(boardDir(board), "server.json");
-export const socketPath = (board: string) => join(boardDir(board), "server.sock");
+export const infoPath = (board: string) => join(boardDir(board), 'server.json')
+export const socketPath = (board: string) => join(boardDir(board), 'server.sock')
 
 // The board's server, or null when none is running. Trusted only when the
 // recorded port answers /health with this board and pid, so a server.json left
 // by a server that died (its pid or port since reused) counts as not running.
 export async function readServer(board: string): Promise<ServerInfo | null> {
-  let info: ServerInfo;
+  let info: ServerInfo
+
   try {
-    info = JSON.parse(readFileSync(infoPath(board), "utf8")) as ServerInfo;
-    const res = await fetch(`http://127.0.0.1:${info.port}/health`, { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) });
-    const health = (await res.json()) as { board?: unknown; pid?: unknown };
-    return health.board === board && health.pid === info.pid ? info : null;
+    info = JSON.parse(readFileSync(infoPath(board), 'utf8')) as ServerInfo
+    const res = await fetch(`http://127.0.0.1:${info.port}/health`, { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) })
+    const health = (await res.json()) as { board?: unknown; pid?: unknown }
+
+    return health.board === board && health.pid === info.pid ? info : null
   } catch {
-    return null;
+    return null
   }
 }
 
 // Created on first use, readable only by this user. The WebSocket handshake requires it.
 export function localToken(): string {
-  const path = join(pnyxHome(), "token");
+  const path = join(pnyxHome(), 'token')
+
   try {
-    return readFileSync(path, "utf8").trim();
+    return readFileSync(path, 'utf8').trim()
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error
+    }
   }
-  mkdirSync(pnyxHome(), { recursive: true });
+
+  mkdirSync(pnyxHome(), { recursive: true })
+
   try {
-    writeFileSync(path, randomBytes(32).toString("hex"), { flag: "wx", mode: 0o600 });
+    writeFileSync(path, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 })
   } catch (error) {
     // Another process created it first; use theirs.
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+      throw error
+    }
   }
-  return readFileSync(path, "utf8").trim();
+
+  return readFileSync(path, 'utf8').trim()
 }
