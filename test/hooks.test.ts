@@ -316,7 +316,17 @@ test('codex payloads map the same way; unknown events and payloads without a ses
 })
 
 type Case = [harness: 'claude' | 'codex', event: string, fixture: string, activity: string | undefined, attention?: Attention[]]
-const ask: Attention = { kind: 'question', key: 'hook:tool:AskUserQuestion', blocking: true, text: 'Do you prefer red or blue?' }
+const ask: Attention = {
+  kind: 'question',
+  key: 'hook:tool:AskUserQuestion',
+  blocking: true,
+  text: 'Do you prefer red or blue?',
+  questions: [{
+    question: 'Do you prefer red or blue?',
+    header: 'Color',
+    options: [{ label: 'Red', description: 'Choose red' }, { label: 'Blue', description: 'Choose blue' }],
+  }],
+}
 const allowTouch = (tool: string): Attention =>
   ({ kind: 'permission', key: `hook:tool:${tool}`, blocking: true, text: `Allow ${tool}: touch hello.txt && echo made` })
 const NOTHING = Symbol('no observation')

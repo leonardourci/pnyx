@@ -6,6 +6,7 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import type { ReplyState } from '../../core/model.ts'
 import type { TerminalRoute } from '../../core/route.ts'
+import type { KeyStep } from './answer.ts'
 
 const STEP_TIMEOUT_MS = 15_000
 const DETAIL_MAX = 300
@@ -119,9 +120,9 @@ function typeThenEnter(
     : { state: 'delivered' }
 }
 
-function tmux(route: Extract<TerminalRoute, { kind: 'tmux' }>, text: string): Delivery {
-  const sock = ['-S', route.socket]
-  const shown = run('tmux', [...sock, 'display-message', '-p', '-t', route.pane, '#{pane_tty}'])
+// The tmux pane still shows the session's TTY.
+function checkPane({ route }: { route: Extract<TerminalRoute, { kind: 'tmux' }> }): Delivery | undefined {
+  const shown = run('tmux', ['-S', route.socket, 'display-message', '-p', '-t', route.pane, '#{pane_tty}'])
   const missing = outcome(shown, 'tmux', false)
 
   if (missing) {
@@ -130,6 +131,17 @@ function tmux(route: Extract<TerminalRoute, { kind: 'tmux' }>, text: string): De
 
   if ((shown.stdout ?? '').trim() !== route.tty) {
     return { state: 'failed', detail: `tmux pane ${route.pane} no longer shows ${route.tty}; nothing was typed` }
+  }
+
+  return undefined
+}
+
+function tmux(route: Extract<TerminalRoute, { kind: 'tmux' }>, text: string): Delivery {
+  const sock = ['-S', route.socket]
+  const missing = checkPane({ route })
+
+  if (missing) {
+    return missing
   }
 
   // paste-buffer -p brackets the paste only when the program asked for it.
@@ -234,6 +246,70 @@ function appleScript(route: Extract<TerminalRoute, { kind: 'iterm2' | 'terminal-
   }
 
   return failed
+}
+
+// iTerm2 types each keystroke chunk with write text, which sends no newline.
+const ITERM_KEYS = `on run argv
+  set {theTty, theKeys} to argv
+  tell application "iTerm2"
+    repeat with w in windows
+      repeat with t in tabs of w
+        repeat with s in sessions of t
+          if tty of s is theTty then
+            tell s to write text theKeys newline false
+            return
+          end if
+        end repeat
+      end repeat
+    end repeat
+  end tell
+  error "no iTerm2 session on " & theTty number ${NOT_FOUND}
+end run`
+
+// One keystroke chunk, typed rather than pasted: a pasted digit would not pick an option.
+type Sent = { command: string; result: SpawnSyncReturns<string> }
+
+function sendKeys({ route, keys }: { route: TerminalRoute; keys: string }): Sent | Delivery {
+  switch (route.kind) {
+    case 'tmux':
+      return { command: 'tmux', result: run('tmux', ['-S', route.socket, 'send-keys', '-t', route.pane, '-l', '--', keys]) }
+    case 'paseo':
+      return { command: 'paseo', result: run('paseo', ['terminal', 'send-keys', ...(route.home ? ['--home', route.home] : []), route.terminal, '-l', '--', keys]) }
+    case 'herdr':
+      return keys.startsWith('-')
+        ? { state: 'failed', detail: 'Herdr cannot type text starting with -' }
+        : { command: 'herdr', result: run('herdr', ['pane', 'send-text', route.pane, keys, '--session', route.session], { env: { ...process.env, HERDR_SESSION: route.session } }) }
+    case 'iterm2':
+      return { command: 'osascript', result: run('osascript', ['-e', ITERM_KEYS, route.tty, keys]) }
+    default:
+      return { state: 'failed', detail: 'Terminal cannot type a key without Return, so answer in the session itself' }
+  }
+}
+
+// Types an inline answer into the session's own prompt, one keystroke chunk at a
+// time with its settle after it. Once a chunk went in, a failure leaves the prompt
+// half answered, so it is delivery_unknown and never retyped.
+export function pressKeys({ route, steps }: { route: TerminalRoute; steps: KeyStep[] }): Delivery {
+  const gone = checkProcess(route) ?? (route.kind === 'tmux' ? checkPane({ route }) : undefined)
+
+  if (gone) {
+    return gone
+  }
+
+  for (const [i, step] of steps.entries()) {
+    const sent = sendKeys({ route, keys: step.keys })
+    const failed = 'state' in sent ? sent : outcome(sent.result, sent.command, i > 0)
+
+    if (failed) {
+      return i > 0 || failed.state !== 'failed'
+        ? { state: 'delivery_unknown', detail: `the answer was typed only in part${failed.detail ? `: ${failed.detail}` : ''}; check the session before answering again` }
+        : failed
+    }
+
+    sleep(step.settleMs)
+  }
+
+  return { state: 'delivered' }
 }
 
 export function typeInto(route: TerminalRoute, text: string): Delivery {

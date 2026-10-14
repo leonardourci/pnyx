@@ -3,7 +3,7 @@
 // never run. Every mapping is a fixed rule on fields the harness sends; nothing
 // is classified by a model.
 import { basename } from 'node:path'
-import type { Attention } from '../../core/model.ts'
+import type { Attention, Question } from '../../core/model.ts'
 import { terminalFacts } from '../../core/route.ts'
 import { hookSettings } from './settings.ts'
 
@@ -128,6 +128,31 @@ function commandLabel(payload: Record<string, unknown>): string | undefined {
   return undefined
 }
 
+// AskUserQuestion's questions with their options, as its prompt shows them; a
+// question without a text or options is left out, so it is answered in the terminal.
+function questions({ value }: { value: unknown }): Question[] | undefined {
+  const found = (Array.isArray(value) ? value : []).flatMap((item): Question[] => {
+    const q = (item ?? {}) as Record<string, unknown>
+    const question = str(q.question)
+    const options = (Array.isArray(q.options) ? q.options : []).flatMap(o => {
+      const option = (o ?? {}) as Record<string, unknown>
+      const label = str(option.label)
+      const description = str(option.description)
+
+      return label ? [{ label, ...(description ? { description } : {}) }] : []
+    })
+    const header = str(q.header)
+
+    const multiSelect = q.multiSelect === true ? { multiSelect: true } : {}
+
+    return question && options.length
+      ? [{ question, ...(header ? { header } : {}), options, ...multiSelect }]
+      : []
+  })
+
+  return found.length && found.length === (value as unknown[]).length ? found : undefined
+}
+
 // The request a tool call puts to the user: its question, a plan to approve, or
 // permission to run it with what it would run.
 function request(
@@ -139,9 +164,16 @@ function request(
   const key = `${HOOK}tool:${tool}`
 
   if (tool === 'AskUserQuestion') {
-    const question = (input.questions as { question?: unknown }[] | undefined)?.[0]?.question
+    const asked = questions({ value: input.questions })
+    const first = (input.questions as { question?: unknown }[] | undefined)?.[0]?.question
 
-    return { kind: 'question', key, blocking: true, text: short(str(question)) ?? 'Answer a question' }
+    return {
+      kind: 'question',
+      key,
+      blocking: true,
+      text: short(str(first)) ?? 'Answer a question',
+      ...(asked ? { questions: asked } : {}),
+    }
   }
 
   if (tool === 'ExitPlanMode') {

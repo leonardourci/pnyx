@@ -21,6 +21,7 @@ import {
   type Note,
   type Outcome,
   type PushFields,
+  type Question,
   type RepliedEvent,
   type SourceRef,
   type TerminalFacts,
@@ -153,19 +154,61 @@ function parseAttention(value: unknown): Attention[] {
       throw invalid(`attention[${i}] must be an object`)
     }
 
-    onlyKeys(item, ['kind', 'key', 'blocking', 'text'], `attention[${i}]`)
+    onlyKeys(item, ['kind', 'key', 'blocking', 'text', 'questions', 'answered'], `attention[${i}]`)
 
     if (item.blocking !== undefined && typeof item.blocking !== 'boolean') {
       throw invalid(`attention[${i}].blocking must be true or false`)
     }
 
     const note = optionalText(item.text, `attention[${i}].text`)
+    const answered = optionalText(item.answered, `attention[${i}].answered`)
 
     return {
       kind: text(item.kind, `attention[${i}].kind`),
       key: text(item.key, `attention[${i}].key`),
       blocking: item.blocking === true,
       ...(note ? { text: note } : {}),
+      ...(item.questions !== undefined ? { questions: parseQuestions({ value: item.questions, what: `attention[${i}].questions` }) } : {}),
+      ...(answered ? { answered } : {}),
+    }
+  })
+}
+
+function parseQuestions({ value, what }: { value: unknown; what: string }): Question[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw invalid(`${what} must be a non-empty list`)
+  }
+
+  return value.map((item, i) => {
+    const at = `${what}[${i}]`
+
+    if (!isRecord(item)) {
+      throw invalid(`${at} must be an object`)
+    }
+
+    onlyKeys(item, ['question', 'header', 'options', 'multiSelect'], at)
+
+    if (!Array.isArray(item.options)) {
+      throw invalid(`${at}.options must be a list`)
+    }
+
+    const header = optionalText(item.header, `${at}.header`)
+    const options = item.options.map((option, j) => {
+      if (!isRecord(option)) {
+        throw invalid(`${at}.options[${j}] must be an object`)
+      }
+
+      onlyKeys(option, ['label', 'description'], `${at}.options[${j}]`)
+      const description = optionalText(option.description, `${at}.options[${j}].description`)
+
+      return { label: text(option.label, `${at}.options[${j}].label`), ...(description ? { description } : {}) }
+    })
+
+    return {
+      question: text(item.question, `${at}.question`),
+      ...(header ? { header } : {}),
+      options,
+      ...(item.multiSelect === true ? { multiSelect: true } : {}),
     }
   })
 }

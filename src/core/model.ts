@@ -89,6 +89,15 @@ export interface Link {
   checkedAt?: string
 }
 
+// One question an agent put with the options its own prompt shows, as Claude Code's
+// AskUserQuestion sends it. multiSelect takes several options instead of one.
+export interface Question {
+  question: string
+  header?: string
+  options: { label: string; description?: string }[]
+  multiSelect?: boolean
+}
+
 // An explicit source request. blocking requests (a question, a permission prompt)
 // outrank linked pull requests; the rest only outrank ongoing work.
 export interface Attention {
@@ -96,6 +105,11 @@ export interface Attention {
   key: string
   blocking: boolean
   text?: string
+  // The questions behind a question request, so the board can answer it inline.
+  questions?: Question[]
+  // The reply that answered it from the board. The request stays until the session's
+  // own hooks close it, but no longer counts as waiting on anyone.
+  answered?: string
 }
 
 // closed: the source closed the task, so even a failure is final and needs no one.
@@ -232,6 +246,8 @@ export type RepliedEvent = EventBase & {
     route: string
     text?: string
     resolveKey?: string
+    // The request key an inline answer answers; its delivered receipt marks it answered.
+    answers?: string
     detail?: string
   }
 }

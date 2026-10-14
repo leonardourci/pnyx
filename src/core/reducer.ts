@@ -22,7 +22,10 @@ export function columnFor(card: Card): Column {
     return card.manualColumn
   }
 
-  if (card.attention.some(a => a.blocking)) {
+  // A request answered from the board waits on the session, not on anyone.
+  const open = card.attention.filter(a => !a.answered)
+
+  if (open.some(a => a.blocking)) {
     return 'needs_you'
   }
 
@@ -40,7 +43,7 @@ export function columnFor(card: Card): Column {
     return 'needs_you'
   }
 
-  if (card.attention.length > 0) {
+  if (open.length > 0) {
     return 'needs_you'
   }
 
@@ -243,6 +246,12 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       card.replies = replies.some(r => r.id === reply.id)
         ? replies.map(r => (r.id === reply.id ? reply : r))
         : [...replies, reply]
+      const answers = event.data.answers
+
+      if (answers && event.data.state === 'delivered') {
+        card.attention = card.attention
+          .map(a => (a.key === answers ? { ...a, answered: reply.id } : a))
+      }
     } else if (event.type === 'card.noted') {
       const { kind, source, at, text } = event.data
       card.notes = [...(card.notes ?? []), { id: event.id, kind, source, ...(at ? { at } : {}) }]

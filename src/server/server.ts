@@ -247,7 +247,7 @@ export async function startServer({
       return fail('command needs a string id', 'VALIDATION_ERROR')
     }
 
-    if (['thread', 'search', 'reply', 'catalog', 'settings'].includes(String(name))) {
+    if (['thread', 'search', 'reply', 'answer', 'catalog', 'settings'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail('args must be strings', 'VALIDATION_ERROR')
       }
@@ -324,8 +324,13 @@ export async function startServer({
           subscriptions.set(ws, sub)
           send(ws, { type: 'receipt', id, thread: readThread(board, state, card, homes, args[1]) })
         } else {
-          if (args.length !== 3 || !args[2] || args[1].length > 32000) {
-            throw new BoardError('reply expects card, text and idempotency key', 'VALIDATION_ERROR')
+          // reply: card, text and idempotency key. answer: card, request key, the
+          // answer as JSON, idempotency key and the request text it was written for.
+          const answering = name === 'answer'
+          const [, body, key] = answering ? args.slice(1) : args
+
+          if (args.length !== (answering ? 5 : 3) || !key || body!.length > 32000) {
+            throw new BoardError(answering ? 'answer expects card, request key, answer, idempotency key and the request text' : 'reply expects card, text and idempotency key', 'VALIDATION_ERROR')
           }
 
           const card = findCard(state, args[0])
@@ -336,8 +341,12 @@ export async function startServer({
             throw new BoardError(`${found.reason} Your draft stays here.`, 'NO_ROUTE')
           }
 
+          const workerArgs = answering
+            ? [card.id, '--answer', args[1], '--json', args[2], '--idempotency-key', args[3], '--seen', args[4]]
+            : [card.id, '--text', args[1], '--idempotency-key', args[2]]
+
           // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.
-          execFile(process.execPath, [join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js'), card.id, '--text', args[1], '--idempotency-key', args[2], '--board', board, '--actor', 'web', ...homes.flatMap(h => ['--home', h])], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {
+          execFile(process.execPath, [join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js'), ...workerArgs, '--board', board, '--actor', 'web', ...homes.flatMap(h => ['--home', h])], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {
             kick()
 
             if (ws.readyState !== ws.OPEN) {
