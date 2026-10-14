@@ -101,10 +101,12 @@ function inbox<T>() {
             waiting.splice(waiting.indexOf(waiter), 1)
             reject(new Error('timed out waiting for a message'))
           }, TIMEOUT_MS).unref()
+
           const waiter = (m: T) => {
             clearTimeout(timer)
             resolve(m)
           }
+
           waiting.push(waiter)
         }),
   }
