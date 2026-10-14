@@ -233,7 +233,8 @@ test('a session event observes the session card with its folder and transcript',
 test('a subagent event makes sure the parent exists, then observes the child under it', () => {
   const [parent, child] = observe(envelope('claude', 'SubagentStop', 'claude-subagent-stop'))
   assert.equal(parent!.key, `claude:${SESSION}`)
-  assert.equal(parent!.ifMissing, true)
+  assert.deepEqual(parent!.attend, { clear: ['hook:notification'] })
+  assert.equal(observe(envelope('claude', 'SubagentStart', 'claude-subagent-start'))[0]!.ifMissing, true)
   assert.equal(child!.key, `claude:${SESSION}/agent-a1`)
   assert.equal(child!.card.parent, `claude:${SESSION}`)
   assert.equal(child!.card.activity, 'stopped')
@@ -351,7 +352,7 @@ const CASES: (Case | [Case[0], string, string, typeof NOTHING])[] = [
     [{ kind: 'input', key: 'hook:elicitation', blocking: true, text: 'my-mcp-server: Please provide your username' }]],
   ['claude', 'ElicitationResult', 'claude-elicitation-result', 'working', []],
   ['claude', 'SubagentStart', 'claude-subagent-start', 'started'],
-  ['claude', 'SubagentStop', 'claude-subagent-stop', 'stopped'],
+  ['claude', 'SubagentStop', 'claude-subagent-stop', 'stopped', []],
   ['claude', 'SubagentStop', 'claude-subagent-stop-helper', NOTHING],
   ['claude', 'TaskCreated', 'claude-task-created', 'task: Implement user authentication'],
   ['claude', 'TaskCompleted', 'claude-task-completed', 'task done: Implement user authentication'],
@@ -373,7 +374,7 @@ const CASES: (Case | [Case[0], string, string, typeof NOTHING])[] = [
   ['codex', 'PostToolUse', 'codex-post-tool', 'working', []],
   ['codex', 'PostToolUse', 'codex-post-tool-deploy', 'ran deploy', []],
   ['codex', 'SubagentStart', 'codex-subagent-start', 'started'],
-  ['codex', 'SubagentStop', 'codex-subagent-stop', 'stopped'],
+  ['codex', 'SubagentStop', 'codex-subagent-stop', 'stopped', []],
   ['codex', 'PreCompact', 'codex-pre-compact', 'compacting'],
   ['codex', 'PostCompact', 'codex-post-compact', 'compacted'],
   ['codex', 'Stop', 'codex-stop', 'idle', []],
@@ -456,6 +457,40 @@ test('a permission prompt moves the session to Needs you with its reason, and th
 
   assert.match(send('PermissionRequest', 'codex-permission-request', 'codex'), /^ {2}column: needs_you$/m)
   assert.match(send('PostToolUse', 'codex-post-tool', 'codex'), /^ {2}column: workers_on_it$/m)
+})
+
+test('a subagent\'s permission prompt leaves Needs you on both cards once its tool call ends or it stops', () => {
+  const { run, home } = sandbox()
+  const spool = join(home, 'boards', 'default', 'spool')
+  mkdirSync(spool, { recursive: true })
+  const probe = join(home, 'probe.json')
+  writeFileSync(probe, '{}')
+  const parent = `claude:${SESSION}`
+  const child = `${parent}/agent-a1`
+  let n = 0
+
+  const send = (event: string, name: string, extra: Record<string, unknown> = {}) => {
+    n += 1
+    const base = envelope('claude', event, name)
+    const line = { ...base, payload: { ...(base.payload as object), ...extra }, id: `hook-${n}-1`, at: `2026-10-13T14:00:${String(n).padStart(2, '0')}Z` }
+    writeFileSync(join(spool, `${String(n).padStart(15, '0')}-1-x.json`), JSON.stringify(line))
+    run('push', '--key', 'probe', '--file', probe)
+  }
+
+  send('SessionStart', 'claude-session-start')
+  send('PermissionRequest', 'claude-permission-request-subagent')
+  send('Notification', 'claude-notification-permission')
+  assert.match(run('card', parent), /^ {2}column: needs_you$/m)
+  assert.match(run('card', child), /Allow Write/)
+  send('PostToolUse', 'claude-post-tool-bash', { agent_id: 'agent-a1', agent_type: 'Explore', tool_name: 'Write' })
+  assert.match(run('card', parent), /^ {2}attention: none$/m)
+  assert.match(run('card', child), /^ {2}attention: none$/m)
+
+  send('PermissionRequest', 'claude-permission-request-subagent')
+  send('Notification', 'claude-notification-permission')
+  send('SubagentStop', 'claude-subagent-stop')
+  assert.match(run('card', parent), /^ {2}attention: none$/m)
+  assert.match(run('card', child), /^ {2}attention: none$/m)
 })
 
 test('spooled hook events become cards on the next write, and never mark a task done', async () => {

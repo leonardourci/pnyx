@@ -22,7 +22,7 @@ A request is blocking unless marked otherwise; a blocking request puts the card 
 | PermissionDenied | Claude Code | `<tool> denied` | closes that tool's request |
 | PostToolUse | both | working, or `ran gh pr create` and the like | closes that tool's request, idle and error |
 | PostToolUseFailure | Claude Code | `<tool> failed`, or interrupted | as PostToolUse |
-| Notification `permission_prompt` | Claude Code | | opens its message unless a request is already open |
+| Notification `permission_prompt` | Claude Code | | opens its message unless a request is already open; a subagent's tool call ending or the subagent stopping closes it |
 | Notification `agent_needs_input` | Claude Code | needs your input | opens its message |
 | Notification `elicitation_dialog`, `elicitation_url_dialog` | Claude Code | | opens its message unless a request is already open |
 | Notification `elicitation_complete`, `elicitation_response` | Claude Code | | closes the input request |
@@ -30,7 +30,8 @@ A request is blocking unless marked otherwise; a blocking request puts the card 
 | Notification, other types | Claude Code | its message (`auth_success` is ignored) | |
 | Elicitation | Claude Code | waiting for your input | opens `<server>: <message>` |
 | ElicitationResult | Claude Code | working | closes the input request |
-| SubagentStart, SubagentStop | both | started, stopped (on the child's card) | |
+| SubagentStart | both | started (on the child's card) | |
+| SubagentStop | both | stopped (on the child's card) | clears all |
 | TaskCreated, TaskCompleted | Claude Code | `task: <subject>`, `task done: <subject>` | |
 | TeammateIdle | Claude Code | `teammate <name> idle` | |
 | PreCompact, PostCompact | both | compacting, compacted | |

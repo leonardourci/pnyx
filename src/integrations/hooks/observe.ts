@@ -247,7 +247,7 @@ function signal(event: string, payload: Record<string, unknown>): Signal | undef
     case 'SubagentStart':
       return { activity: 'started' }
     case 'SubagentStop':
-      return { activity: 'stopped' }
+      return { activity: 'stopped', attend: all }
     case 'TaskCreated':
     case 'TaskCompleted': {
       const subject = str(payload.task_subject) ?? str(payload.task_id) ?? 'a task'
@@ -284,7 +284,9 @@ export function attend(current: Attention[], change: Attend): Attention[] {
 
 // Returns no observations for a payload without a session id or an event Pnyx does
 // not report. A subagent's events go to its own card, keyed under its parent
-// session, after making sure the parent card exists.
+// session, after making sure the parent card exists. A subagent's permission prompt
+// notifies on the parent card, so a subagent event that ends its requests also
+// clears that notification there.
 export function observe(envelope: HookEnvelope): Observation[] {
   const payload = envelope.payload
 
@@ -327,7 +329,10 @@ export function observe(envelope: HookEnvelope): Observation[] {
   let card: Record<string, unknown> = { ...session, ...activity }
 
   if (agentId) {
-    out.push({ id: 'parent', key: parentKey, card: session, ifMissing: true })
+    const clears = found.attend?.clear?.some(prefix => NOTIFICATION.startsWith(prefix))
+    out.push(clears
+      ? { id: 'parent', key: parentKey, card: session, attend: { clear: [NOTIFICATION] } }
+      : { id: 'parent', key: parentKey, card: session, ifMissing: true })
     key = `${parentKey}/${agentId}`
     card = {
       source: source(`${sessionId}/${agentId}`),
