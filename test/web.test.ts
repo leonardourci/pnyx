@@ -7,7 +7,7 @@ import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decis
 import { emptyBoard, reduce } from "../src/core/reducer.ts";
 import { BoardError, type BoardEvent, type BoardState } from "../src/core/model.ts";
 import { patchView, viewFor } from "../src/core/view.ts";
-import { columnsFor, filterCards, safeLink, slashPrefix, visibleParent } from "../web/src/board/view.ts";
+import { columnsFor, filterCards, safeLink, slashMatches, slashPrefix, visibleParent } from "../web/src/board/view.ts";
 import { withWriter } from "../src/store/board-store.ts";
 import { readThread, recordEntries } from "../src/thread/read.ts";
 const meta = { at: "2026-10-13T10:00:00Z", actor: "test" };
@@ -57,6 +57,9 @@ test("filters do not expose excluded parent details, and links/slashes stay lite
   assert.equal(slashPrefix("/plan", 5), "/plan");
   assert.equal(slashPrefix("open /path", 10), null);
   assert.equal(slashPrefix("/tmp/file", 9), null);
+  for (const typed of ["/d", "/D", "/dep"]) assert.equal(slashMatches("/Deploy", slashPrefix(typed, typed.length)!), true);
+  assert.equal(slashMatches("$Review", "/rev"), true);
+  assert.equal(slashMatches("/Deploy", "/r"), false);
 });
 
 test("thread reader ignores partial records, pages old messages, separates traces and reports unavailable capabilities", () => {

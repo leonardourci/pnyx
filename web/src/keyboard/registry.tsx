@@ -10,15 +10,16 @@ export function focusElement(selector: string) {
   const element = document.querySelector<HTMLElement>(selector);
   element?.focus({ preventScroll: true }); element?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
-export function KeyboardProvider({ prefs, onAction, hints, hintKey, children }: { prefs: KeyboardPreferences; onAction(id: string, context: ActionContext): boolean; hints: boolean; hintKey(event: KeyboardEvent): boolean; children: ReactNode }) {
+export function KeyboardProvider({ prefs, onAction, leaveField, hints, hintKey, children }: { prefs: KeyboardPreferences; onAction(id: string, context: ActionContext): boolean; leaveField(): void; hints: boolean; hintKey(event: KeyboardEvent): boolean; children: ReactNode }) {
   const platform: KeyPlatform = /Mac|iPhone|iPad/.test(navigator.platform) ? "mac" : "other";
-  const handlers = useRef(new Map<string, Handler>()), current = useRef({ prefs, onAction, hints, hintKey });
-  current.current = { prefs, onAction, hints, hintKey };
+  const handlers = useRef(new Map<string, Handler>()), current = useRef({ prefs, onAction, leaveField, hints, hintKey });
+  current.current = { prefs, onAction, leaveField, hints, hintKey };
   useEffect(() => {
     let progress = emptyProgress();
     const keydown = (event: KeyboardEvent) => {
-      const { prefs, onAction, hints, hintKey } = current.current;
+      const { prefs, onAction, leaveField, hints, hintKey } = current.current;
       const target = event.target instanceof HTMLElement ? event.target : document.body;
+      if (!hints && target instanceof HTMLInputElement && target.type === "search") { if (event.key === "Escape" && !event.isComposing && !target.value) { target.blur(); leaveField(); } return; }
       const overlay = target.closest("[data-key-scope=overlay]");
       const scope = hints ? "hints" : overlay ? "overlay" : (target.dataset.keyScope ?? "navigation") as KeyScope;
       // These controls own their standard navigation and selection keys.

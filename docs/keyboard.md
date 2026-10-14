@@ -11,7 +11,9 @@ Enter in the composer adds a newline. Mod+Enter sends once, using the existing
 reply queue and receipts. Escape dismisses suggestions first, leaves the composer
 next, then closes the detail and returns to the board. Drafts survive that loop.
 Text fields do not trigger board shortcuts, including Mod+K. Composition, dead
-keys, AltGraph, and held send/move keys never submit actions.
+keys, AltGraph, and held send/move keys never submit actions. In search and
+filter fields Escape stays native: it clears the text, then an empty field
+returns focus to the board without closing the open conversation.
 
 Other defaults are m for manual placement, / for history search, Mod+K for
 Commands, ? for help, f for visible target hints, and Mod+, for Settings. Mod is

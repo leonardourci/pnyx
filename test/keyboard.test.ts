@@ -75,6 +75,11 @@ test("keyboard events replay, undo, merge and reset with revision checks and leg
   assert.deepEqual(viewFor(undone).keyboard, DEFAULT_KEYBOARD);
   const old = JSON.parse(JSON.stringify(viewFor(state))); delete old.keyboard;
   assert.deepEqual(viewFor({ ...initial, view: old }).keyboard, DEFAULT_KEYBOARD);
+  const legacy = JSON.parse(JSON.stringify(event(decideView(initial, { fontSize: 16 }, { ...meta, id: "legacy-font" }))));
+  delete legacy.data.before.keyboard; delete legacy.data.after.keyboard;
+  const legacyState = reduce(initial, legacy);
+  const restored = reduce(legacyState, event(decideUndo(legacyState, legacy, { actor: "test", at: meta.at, ifRevision: 1 })));
+  assert.equal(viewFor(restored).fontSize, 14);
 });
 test("ragged columns remember positions, stop at ends, and recover moved or removed focus", () => {
   const columns = [{ id: "a", cards: ["a1", "a2", "a3"] }, { id: "b", cards: [] }, { id: "c", cards: ["c1", "c2"] }];
