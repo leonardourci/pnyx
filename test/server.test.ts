@@ -15,6 +15,7 @@ import { infoPath, localToken, socketPath } from '../src/server/state.ts'
 import { boardDir, loadBoard, spoolDir, spoolWrite, withWriter } from '../src/store/board-store.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { indexStatus, searchPath } from '../src/search/index.ts'
+import { writeSetting } from '../src/search/settings.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -558,7 +559,9 @@ test('the board search finds a card by a word only its transcript holds, includi
   // "readable" is only in the transcript's first user message, not in any title, link or event.
   assert.deepEqual(cards(await search('s1', 'readable')), [fixture.state.keys.layout])
   appendFileSync(fixture.transcript, assistantLine('The flamingo rollout is staged behind the flag.', '2026-10-13T11:00:00Z'))
-  assert.deepEqual(cards(await search('s2', 'flamingo rollout')), [fixture.state.keys.layout])
+  const byText = await search('s2', 'flamingo rollout')
+  assert.deepEqual(cards(byText), [fixture.state.keys.layout])
+  assert.equal(byText.type === 'receipt' && (byText.hits as { match: string }[])[0]!.match, 'lexical')
   assert.deepEqual(cards(await search('s3', 'flamingo nowhere')), [])
   t.ws.close()
 })
@@ -593,4 +596,42 @@ test("each card gets its conversation's last message, pushed again as the transc
   const later = await tab(); await later.next()
   assert.deepEqual(await later.latest(card), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
   t.ws.close(); later.ws.close()
+})
+
+test('with semantic search on, the board search finds a transcript-only card by meaning when its words do not all match', async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  appendFileSync(fixture.transcript, assistantLine('Flamingo rollout staged.', '2026-10-13T11:00:00Z'))
+  // The stub worker embeds with hashed word vectors, so no model is fetched or loaded.
+  delete process.env.PNYX_SEMANTIC
+  process.env.PNYX_SEMANTIC_STUB = '1'
+  writeSetting('search.rerank', 'off')
+
+  try {
+    server = await startServer({ board: 'default' })
+    const t = await tab(); await t.next()
+    // "dinosaur" is nowhere, so full text finds nothing; the transcript holds the other words.
+    const deadline = Date.now() + 20_000
+    let hits: { card: string; match: string; weak?: true }[] = []
+
+    for (let n = 0; !hits.some(h => h.match === 'semantic') && Date.now() < deadline; n++) {
+      t.command(`m${n}`, 'search', ['flamingo rollout staged dinosaur'])
+      let m = await t.next()
+
+      while (!(m.type === 'receipt' || m.type === 'error') || m.id !== `m${n}`) {
+        m = await t.next()
+      }
+
+      assert.equal(m.type, 'receipt', JSON.stringify(m))
+      hits = m.type === 'receipt' ? m.hits as typeof hits : []
+      await new Promise(r => setTimeout(r, 200))
+    }
+
+    assert.deepEqual(hits.filter(h => !h.weak).map(h => [h.card, h.match]), [[fixture.state.keys.layout, 'semantic']])
+    t.ws.close()
+  } finally {
+    // Stops the worker for this home within seconds.
+    writeSetting('search.semantic', 'off')
+    process.env.PNYX_SEMANTIC = 'off'
+    delete process.env.PNYX_SEMANTIC_STUB
+  }
 })
