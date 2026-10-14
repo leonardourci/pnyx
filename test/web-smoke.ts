@@ -9,6 +9,9 @@ import { startServer } from '../src/server/server.ts'
 import { loadBoard } from '../src/store/board-store.ts'
 import { seedWebFixture } from './web-fixture.ts'
 
+// Semantic search is on by default; these tests never start its worker or fetch models.
+process.env.PNYX_SEMANTIC = 'off'
+
 const exec = promisify(execFile)
 const home = mkdtempSync(join(tmpdir(), 'pnyx-web-smoke-'))
 process.env.PNYX_HOME = home

@@ -61,13 +61,22 @@ Pass each Firstmate home to `serve` with `--home` (repeat it for several homes).
 - **Columns:** Needs you (decisions and interruptions), Workers on it, Review (a linked pull request is open) and Done. Cards move on their own from source facts; a manual move pins a card until you return it to automatic.
 - **Cards:** click a card or press Enter to open its conversation, notes, history and links. Type in the composer and press Mod+Enter to send a reply; type `/` there to insert a local Claude Code or Codex skill or command.
 - **Keyboard:** arrows or h/j/k/l move between cards, `m` moves the focused card, `/` searches history, Mod+K opens Commands, `?` shows help, `f` shows hints. Every binding can be changed in Settings. See [docs/keyboard.md](docs/keyboard.md).
-- **Search:** the History page searches titles, links, events, notes and transcripts. From the terminal, `pnyx-axi search "<words>"`.
+- **Search:** every search box (Find a card, History, the Cmd+K palette) and `pnyx-axi search "<words>"` find cards by meaning, in any language, as well as by their words, across titles, links, events, notes and transcripts. Semantic search runs local models on your machine; the first search downloads them in the background (about 1 GB with a GPU, 115 MB on CPU only), and searches are full-text until they are ready. `pnyx-axi search status` shows the progress.
 
 Run `pnyx-axi --help` for every command.
 
+## Skip semantic search
+
+On a slow laptop, or to keep search full-text only:
+
+- Leave out the optional packages it runs on (node-llama-cpp and sqlite-vec): after `pnpm run build`, run `pnpm install --no-optional` in the clone (before the build it would also drop the build tools' own native parts). Search then falls back to full-text silently.
+- Or switch it off: Settings → Search on the board, or `pnyx-axi settings set search.semantic off`. `PNYX_SEMANTIC=off` does the same for one shell or script. To free the disk, delete `~/.pnyx/models/`.
+
+`pnyx-axi settings set search.rerank off` keeps meaning but skips the reranker, which costs about 0.4 s a search on a GPU (`auto`, the default, turns it off on CPU-only machines).
+
 ## Where data lives
 
-Everything is in `~/.pnyx/` (or `$PNYX_HOME`): the hook script in `hooks/`, the local write token, and one folder per board in `boards/<board>/` with `events.jsonl` (the append-only log), `snapshot.json`, `search.db` and `harvest.json`. Nothing at runtime writes inside the repository.
+Everything is in `~/.pnyx/` (or `$PNYX_HOME`): the hook script in `hooks/`, the local write token, `settings.json`, the semantic search models in `models/` with the worker's `semantic.log`, and one folder per board in `boards/<board>/` with `events.jsonl` (the append-only log), `snapshot.json`, `search.db` and `harvest.json`. Nothing at runtime writes inside the repository.
 
 To start a board over, stop the server and delete its folder: `pnyx-axi stop && rm -rf ~/.pnyx/boards/default`. `pnyx-axi search rebuild` rebuilds only the search index.
 
@@ -84,4 +93,4 @@ pnpm remove -g pnyx-axi
 
 ## Development
 
-See [AGENTS.md](AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. `pnpm test:web` runs a real browser smoke test through `chrome-devtools-axi` with a temporary `PNYX_HOME`, a random port, synthetic transcripts and a fake Firstmate send script; set `PNYX_EVIDENCE_DIR` to a folder outside the repository to keep its screenshots. `pnpm test:keyboard` exercises navigation, rebinding, hints and slash insertion with real browser keys. `pnpm run web:dev` serves the board through Vite.
+See [AGENTS.md](AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. `pnpm test:web` runs a real browser smoke test through `chrome-devtools-axi` with a temporary `PNYX_HOME`, a random port, synthetic transcripts and a fake Firstmate send script; set `PNYX_EVIDENCE_DIR` to a folder outside the repository to keep its screenshots. `pnpm test:keyboard` exercises navigation, rebinding, hints and slash insertion with real browser keys. `pnpm test:semantic` checks semantic search on the real models; set `PNYX_GOLDEN_MODELS` to a folder already holding them to skip the download. `pnpm run web:dev` serves the board through Vite.

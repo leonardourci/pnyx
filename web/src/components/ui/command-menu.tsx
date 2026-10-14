@@ -15,14 +15,40 @@ export function CommandMenu({
   description,
   items,
   close,
+  search,
 }: {
   title: string
   description: string
   items: MenuItem[]
   close(): void
+  // More results for a typed query, fetched after a pause and listed after the matching items.
+  search?(query: string): Promise<MenuItem[]>
 }) {
   const [query, setQuery] = useState(''), [active, setActive] = useState(0), root = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null), id = useId()
-  const visible = items.filter(i => `${i.label} ${i.detail ?? ''}`.toLowerCase().includes(query.toLowerCase()))
+  const [found, setFound] = useState<{ query: string; items: MenuItem[] }>({ query: '', items: [] })
+  const q = query.trim()
+  useEffect(() => {
+    if (!search || !q) {
+      return
+    }
+
+    let live = true
+    const timer = setTimeout(() => {
+      void search(q).then(results => {
+        if (live) {
+          setFound({ query: q, items: results })
+        }
+      }, () => {})
+    }, 180)
+
+    return () => {
+      live = false; clearTimeout(timer)
+    }
+  }, [search, q])
+  const visible = [
+    ...items.filter(i => `${i.label} ${i.detail ?? ''}`.toLowerCase().includes(query.toLowerCase())),
+    ...(q && found.query === q ? found.items : []),
+  ]
   const index = Math.min(active, Math.max(0, visible.length - 1))
   useEffect(() => {
     input.current?.focus()
@@ -83,7 +109,7 @@ export function CommandMenu({
           aria-controls={`${id}-list`}
           aria-activedescendant={visible[index] ? `${id}-${index}` : undefined}
           autoComplete="off"
-          placeholder="Type to find an action…"
+          placeholder={search ? 'Type to find an action or a card…' : 'Type to find an action…'}
           value={query}
           onChange={e => {
             setQuery(e.target.value); setActive(0)

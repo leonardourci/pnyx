@@ -11,6 +11,9 @@ import { transcriptNotes } from '../src/integrations/hooks/notes.ts'
 import { transcriptMessages } from '../src/search/text.ts'
 import { loadBoard, readEvents, spoolWrite } from '../src/store/board-store.ts'
 
+// Semantic search is on by default; these tests never start its worker or fetch models.
+process.env.PNYX_SEMANTIC = 'off'
+
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 const FIXTURES = join(import.meta.dirname, 'fixtures')
 const CLAUDE = join(FIXTURES, 'transcripts', 'claude-notes.jsonl')

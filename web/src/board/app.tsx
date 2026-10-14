@@ -10,7 +10,8 @@ import { BoardCard } from './card.tsx'
 import { Detail } from './detail.tsx'
 import { Settings } from './settings.tsx'
 import { History } from './history.tsx'
-import { columnsFor, filterCards } from './view.ts'
+import { columnsFor, findBoxCards } from './view.ts'
+import { useMeaningCards } from './card-search.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { KeyboardFooter, KeyboardLayers, KeyboardToolbar, useBoardKeyboard } from '../keyboard/board.tsx'
 
@@ -86,7 +87,8 @@ export function App() {
   const notify = useCallback((text: string) => setNotice(text), [])
   const view = viewFor(state)
   const columns = columnsFor(state)
-  const cards = filterCards(state, workspace, tag, query)
+  const meaning = useMeaningCards(command, query, workspace)
+  const cards = findBoxCards(state, workspace, tag, query, meaning)
   const card = selected ? state.cards[selected] : undefined
   const workspaces = [...new Set(Object.values(state.cards).map(c => c.workspace))].sort()
   const tags = [...new Set(Object.values(state.cards).flatMap(c => c.tags))].sort()
@@ -206,6 +208,8 @@ export function App() {
               view={view}
               save={save}
               close={() => setPage('board')}
+              command={command}
+              notify={notify}
             />
           ) : page === 'history' ? (
             <History

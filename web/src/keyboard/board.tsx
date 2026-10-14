@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { BoardState } from '../../../src/core/model.ts'
 import { KEY_ACTIONS } from '../../../src/core/keyboard.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { CommandMenu, type MenuItem } from '../components/ui/command-menu.tsx'
 import type { Command } from '../board/connection.ts'
 import { columnsFor } from '../board/view.ts'
+import { findCards } from '../board/card-search.ts'
 import { focusElement, useKeyboard, type ActionContext } from './registry.tsx'
 import { navigate, restoreAnchor, type BoardAnchor, type ColumnCards } from './navigation.ts'
 import { hintLabels, visibleTargets, type Hint } from './hints.ts'
@@ -16,6 +17,9 @@ const readAnchor = (target: HTMLElement): BoardAnchor | undefined => target.data
   : target.dataset.emptyColumn
     ? { column: target.dataset.emptyColumn }
     : undefined
+
+// Cards listed under the actions when a Cmd+K query finds some.
+const CARD_RESULTS = 8
 
 export function useBoardKeyboard({
   state,
@@ -272,8 +276,26 @@ export function useBoardKeyboard({
       .catch(e => notify(e.message))
   }
 
+  // Cmd+K also finds cards, ranked like every other search. Stable across
+  // renders, so a board update does not restart the palette's pending search.
+  const latest = useRef({ command, open, closeOverlay })
+  latest.current = { command, open, closeOverlay }
+  const searchCards = useCallback(async (q: string): Promise<MenuItem[]> => {
+    const hits = await findCards(latest.current.command, q)
+
+    return hits.slice(0, CARD_RESULTS).map(h => ({
+      id: `card:${h.card}`,
+      label: h.title,
+      detail: h.match === 'semantic' ? 'Open card · similar meaning' : 'Open card',
+      run: () => {
+        latest.current.closeOverlay(); latest.current.open(h.card)
+      },
+    }))
+  }, [])
+
   return {
     remembered,
+    searchCards,
     onAction,
     leaveField,
     hintKey,
@@ -343,7 +365,7 @@ export function KeyboardLayers({
   connected: boolean
 }) {
   const { label, prefs } = useKeyboard()
-  const { overlay, closeOverlay, onAction, move, hints, hintPrefix } = keyboard
+  const { overlay, closeOverlay, onAction, move, hints, hintPrefix, searchCards } = keyboard
   let items: MenuItem[] = []
 
   if (overlay) {
@@ -372,6 +394,7 @@ export function KeyboardLayers({
           description={overlay.kind === 'move' ? 'Placement does not complete work or resolve a source request.' : 'Shortcuts follow the focused area. Edit every binding in Settings.'}
           items={items}
           close={closeOverlay}
+          {...(overlay.kind === 'palette' ? { search: searchCards } : {})}
         />
       )}
       {hints.length > 0 && (

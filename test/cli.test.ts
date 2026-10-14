@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
+// Semantic search is on by default; these tests never start its worker or fetch models.
+process.env.PNYX_SEMANTIC = 'off'
+
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 
 function run(...args: string[]): string {
@@ -25,7 +28,7 @@ test('no arguments prints an empty board summary', () => {
 test('--help prints concise help', () => {
   const out = run('--help')
   assert.match(out, /^usage: pnyx-axi/)
-  assert.ok(out.split('\n').length < 27)
+  assert.ok(out.split('\n').length < 28)
 })
 
 test('update fails with a structured error while unpublished', () => {

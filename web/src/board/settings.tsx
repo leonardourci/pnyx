@@ -2,17 +2,23 @@ import type { BoardState, ViewPreferences } from '../../../src/core/model.ts'
 import { Button, NumberField, Select, Switch } from '../components/ui/controls.tsx'
 import { KeyboardSettings } from '../keyboard/settings.tsx'
 import { columnsFor } from './view.ts'
+import type { Command } from './connection.ts'
+import { SearchSettings } from './search-settings.tsx'
 
 export function Settings({
   state,
   view,
   save,
   close,
+  command,
+  notify,
 }: {
   state: BoardState
   view: ViewPreferences
   save(patch: unknown): Promise<boolean>
   close(): void
+  command: Command
+  notify(text: string): void
 }) {
   return (
     <section className="settings" aria-label="Settings">
@@ -86,6 +92,7 @@ export function Settings({
             />
           ))}
         </section>
+        <SearchSettings command={command} notify={notify} />
         <section className="settings-box">
           <h2>About this board</h2>
           <p className="muted">Every saved preference is part of the board history. Source facts and manual placement stay separate.</p>

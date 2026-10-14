@@ -9,7 +9,8 @@ import { readCatalog, type Catalog, type CatalogLocations } from '../thread/cata
 import { findCard } from '../core/decide.ts'
 import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
-import { search, updateIndex } from '../search/index.ts'
+import { searchBoard } from '../search/semantic.ts'
+import { readSettings, settingEntries, writeSetting } from '../search/settings.ts'
 import { timingSafeEqual } from 'node:crypto'
 import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -244,7 +245,7 @@ export async function startServer({
       return fail('command needs a string id', 'VALIDATION_ERROR')
     }
 
-    if (['thread', 'search', 'reply', 'catalog'].includes(String(name))) {
+    if (['thread', 'search', 'reply', 'catalog', 'settings'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail('args must be strings', 'VALIDATION_ERROR')
       }
@@ -278,8 +279,18 @@ export async function startServer({
             throw new BoardError('search expects text and optional workspace', 'VALIDATION_ERROR')
           }
 
-          updateIndex(board)
-          send(ws, { type: 'receipt', id, ...search(board, { text: args[0] ?? '', workspace: args[1] || undefined, limit: 30 }) })
+          // The semantic leg waits on the worker process, never on this event loop.
+          void searchBoard(board, { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), limit: 30 })
+            .then(result => send(ws, { type: 'receipt', id, ...result }))
+            .catch((error: Error) => fail(error.message, error instanceof BoardError ? error.code : 'UNKNOWN'))
+        } else if (name === 'settings') {
+          // This machine's search settings, shared by every board: [] reads them, ['set', key, value] changes one.
+          if (args.length && (args.length !== 3 || args[0] !== 'set')) {
+            throw new BoardError('settings expects nothing, or set, a key and a value', 'VALIDATION_ERROR')
+          }
+
+          const settings = args.length ? writeSetting(args[1]!, args[2]!) : readSettings()
+          send(ws, { type: 'receipt', id, settings: settingEntries(settings) })
         } else if (name === 'thread') {
           const old = subscriptions.get(ws); old?.watcher?.close(); subscriptions.delete(ws)
 
