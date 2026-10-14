@@ -193,7 +193,7 @@ export function observe(envelope: HookEnvelope): Observation[] {
         agentType,
         transcriptPath: str(p.agent_transcript_path),
       }),
-      autoTitle: { from: 'agent', text: `${agentType ?? 'Subagent'} ${agentId.slice(0, 4)}` },
+      autoTitle: { from: 'agent', text: `${agentType ?? 'Subagent'} ${agentId.slice(-4)}` },
       parent: parentKey,
       activity: doing,
     }
