@@ -22,7 +22,7 @@ export function columnFor(card: Card): Column {
   if (prs.length > 0 && prs.every((l) => l.state === "merged")) return "done";
   if (prs.some((l) => l.state === "closed")) return "needs_you";
   if (card.attention.length > 0) return "needs_you";
-  if (card.outcome) return card.outcome.state === "failed" ? "needs_you" : "done";
+  if (card.outcome) return card.outcome.state === "failed" && !card.outcome.closed ? "needs_you" : "done";
   return "workers_on_it";
 }
 

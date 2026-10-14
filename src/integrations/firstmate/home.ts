@@ -11,6 +11,9 @@ import { latestActivity, latestLine, openDecisions, type OpenDecision } from "./
 export const ADAPTER = "firstmate";
 // objectId of the home's own card; task ids start with a letter or digit.
 export const HOME_OBJECT = "@home";
+// Attention key of a latest failed: or blocked: line. Decision keys are slugs, so
+// it never names a decision fm-send could resolve.
+export const STATUS_KEY = "@status";
 export const TASK_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export interface TaskObservation {

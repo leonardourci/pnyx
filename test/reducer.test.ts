@@ -132,6 +132,7 @@ test("column rules follow the settled precedence", () => {
     ["done outcome", { outcome: { state: "done" } }, "done"],
     ["cancelled outcome", { outcome: { state: "cancelled" } }, "done"],
     ["failed outcome", { outcome: { state: "failed" } }, "needs_you"],
+    ["closed failed outcome", { outcome: { state: "failed", closed: true } }, "done"],
     ["non-PR links do not place", { links: [{ kind: "linear", url: "https://linear.app/x" }] }, "workers_on_it"],
   ];
   for (const [name, overrides, expected] of cases) assert.equal(columnFor(card(overrides)), expected, name);
