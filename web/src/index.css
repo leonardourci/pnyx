@@ -79,4 +79,5 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .work-area > .detail { max-width: 70%; }
 @media (max-width: 760px) { .work-area > .detail { max-width: 100%; } }
+.last-message { margin-top: 8px; padding: 6px 8px; border-left: 2px solid var(--color-line); background: var(--color-background); border-radius: 0 4px 4px 0; font-size: .7em; }.last-message .row { color: var(--color-muted); font-size: .9em; }.last-message strong { color: var(--color-ink); font-weight: 550; }.last-message p { margin-top: 3px; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 .search-match { margin-top: 8px; font-size: .7em; color: var(--color-muted); line-height: 1.5; overflow-wrap: anywhere; }

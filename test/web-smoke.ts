@@ -86,6 +86,7 @@ const view = () => loadBoard('default').state.view
 try {
   await browser('open', server.url); await browser('resize', '1440', '900'); await browser('wait', 'The working board')
   await check('document.querySelectorAll("[data-card]").length === 6', 'fixture cards appear')
+  await eventually('[...document.querySelectorAll(".last-message")].some(m => m.textContent.includes("The first pass is ready to review."))', "the card shows its conversation's last message")
   await screenshot('board.png')
   // "readable" is only in the card's transcript, so only the server's full-text search finds it.
   await browser('fill', await ref('searchbox', 'Find a card'), 'readable')
@@ -102,7 +103,7 @@ try {
   await rapid('[aria-label="Resize Needs you column"]', JSON.stringify(['keydown:ArrowRight', 'keyup:ArrowRight', 'keydown:ArrowRight', 'keyup:ArrowRight']))
   await oneEvent(from, 'a busy resize ignores a second press')
   assert.equal(view()?.columnWidths.needs_you, 306)
-  await click('button', 'Shape the first working board'); await browser('wait', 'The first pass is ready to review.')
+  await click('button', 'Shape the first working board'); await browser('wait', 'Keep the conversation readable')
   await check('!document.querySelector(".message.tool p") && document.querySelectorAll(".message.message p").length >= 3', 'messages visible and traces collapsed')
   await click('switch', 'Tool details'); await check('!!document.querySelector(".message.tool p")', 'tool switch expands details')
   const tools = () => view()?.cardTraceOverrides[fixture.state.keys.layout!]?.tools
@@ -140,6 +141,7 @@ try {
   assert.match(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), /The fixture layout looks good/)
   appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: '2026-10-13T11:00:00Z', message: { content: 'Live fixture update received.' } }) + '\n')
   await browser('wait', 'Live fixture update received.')
+  await eventually('[...document.querySelectorAll(".last-message")].some(m => m.textContent.includes("Live fixture update received."))', "the card's last message follows the live transcript")
   await screenshot('conversation.png')
   await browser('fill', await ref('textbox', 'Reply to Shape the first working board'), 'Keep this draft')
   await click('combobox', 'Workspace'); await click('option', 'Work')

@@ -37,6 +37,18 @@ export function findBoxCards(
   return [...local, ...found.map(id => state.cards[id]).filter(added)]
 }
 
+export function relativeTime(at: string | undefined, now: number): string {
+  const ms = at ? now - Date.parse(at) : NaN
+
+  if (!Number.isFinite(ms)) {
+    return ''
+  }
+
+  const minutes = Math.floor(ms / 60000)
+
+  return minutes < 1 ? 'just now' : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`
+}
+
 export function visibleParent(card: Card, visible: Card[]): Card | undefined {
   return visible.find(c => c.id === card.parentId)
 }

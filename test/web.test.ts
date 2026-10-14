@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -7,9 +7,9 @@ import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decis
 import { emptyBoard, reduce } from '../src/core/reducer.ts'
 import { BoardError, type BoardEvent, type BoardState } from '../src/core/model.ts'
 import { patchView, viewFor } from '../src/core/view.ts'
-import { columnsFor, filterCards, findBoxCards, safeLink, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
+import { columnsFor, filterCards, findBoxCards, relativeTime, safeLink, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
-import { readThread, recordEntries } from '../src/thread/read.ts'
+import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -64,6 +64,8 @@ test('filters do not expose excluded parent details, and links/slashes stay lite
   const visible = filterCards(state, 'B', 'ui', 'searchable')
   assert.equal(visible.length, 1)
   assert.equal(visibleParent(visible[0]!, visible), undefined)
+  const now = Date.parse('2026-10-13T12:00:00Z')
+  assert.deepEqual(['2026-10-13T11:59:30Z', '2026-10-13T11:55:00Z', '2026-10-13T09:00:00Z', '2026-10-11T12:00:00Z', undefined].map(at => relativeTime(at, now)), ['just now', '5m ago', '3h ago', '2d ago', ''])
   assert.equal(safeLink({ kind: 'url', url: 'javascript:alert(1)' }), undefined)
   assert.equal(slashPrefix('/plan', 5), '/plan')
   assert.equal(slashPrefix('open /path', 10), null)
@@ -155,4 +157,24 @@ test('long transcript messages and reply history page without losing text or dup
     return w.state
   })
   assert.equal(readThread('default', later, later.cards.c1!, []).entries.at(-1)?.text, 'reply 90')
+})
+
+test("a card's last message comes from the transcript tail, without tool calls, thinking, injected or torn text", () => {
+  const fixture = (name: string) => join(import.meta.dirname, 'fixtures/transcripts', name)
+  const claude = latestMessage(fixture('claude-session.jsonl'))!
+  // The summary record and the torn last line are skipped; long text is cut to two card lines.
+  assert.equal(claude.role, 'assistant')
+  assert.equal(claude.at, '2026-10-11T09:02:00.000Z')
+  assert.match(claude.text, /^Paragraph 0 about the orders table backfill\. Rows are copied/)
+  assert.ok(claude.text.length <= 280 && claude.text.endsWith('…'))
+  assert.deepEqual(latestMessage(fixture('codex-session.jsonl')), { role: 'assistant', text: 'The export query scans every invoice without an index.', at: '2026-10-12T10:00:07.000Z' })
+  // A newer Codex user message wins over the reply, its injected context stripped, even
+  // when tool output after it overflows the first read window.
+  const dir = mkdtempSync(join(tmpdir(), 'pnyx-latest-')), path = join(dir, 'codex.jsonl')
+  const line = (payload: unknown) => JSON.stringify({ timestamp: '2026-10-12T10:01:00.000Z', type: 'response_item', payload }) + '\n'
+  writeFileSync(path, readFileSync(fixture('codex-session.jsonl'), 'utf8') + line({ type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>\n<cwd>/work</cwd>\n</environment_context>Now add the index.' }] }) + line({ type: 'function_call_output', call_id: 'c2', output: 'x'.repeat(200_000) }))
+  assert.deepEqual(latestMessage(path), { role: 'user', text: 'Now add the index.', at: '2026-10-12T10:01:00.000Z' })
+  assert.equal(latestMessage(join(dir, 'missing.jsonl')), null)
+  writeFileSync(path, line({ type: 'reasoning', summary: [] }))
+  assert.equal(latestMessage(path), null)
 })

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardState } from '../../../src/core/model.ts'
 import { emptyBoard, reduce } from '../../../src/core/reducer.ts'
 import type { ServerMessage } from '../../../src/server/server.ts'
-import type { ThreadPage } from '../../../src/thread/read.ts'
+import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
 
 export type Receipt = Record<string, unknown>
 export type Command = (name: string, args: string[]) => Promise<Receipt>
@@ -10,6 +10,7 @@ export type Command = (name: string, args: string[]) => Promise<Receipt>
 export function useBoard() {
   const [state, setState] = useState<BoardState>(emptyBoard), [connected, setConnected] = useState(false), [error, setError] = useState('')
   const [thread, setThread] = useState<ThreadPage | null>(null)
+  const [latest, setLatest] = useState<Record<string, LatestMessage>>({})
   const stateRef = useRef(state)
   const socket = useRef<WebSocket | null>(null)
   const hasSnapshot = useRef(false)
@@ -47,7 +48,7 @@ export function useBoard() {
 
       ws.onopen = () => {
         if (!closed) {
-          setConnected(true); setError('')
+          setConnected(true); setError(''); setLatest({})
         }
       }
 
@@ -75,6 +76,20 @@ export function useBoard() {
             stateRef.current = reduce(stateRef.current, m.event); setState(stateRef.current)
           } else if (m.type === 'thread') {
             setThread(m.thread)
+          } else if (m.type === 'latest') {
+            setLatest(old => {
+              const next = { ...old }
+
+              for (const [card, message] of Object.entries(m.messages)) {
+                if (message) {
+                  next[card] = message
+                } else {
+                  delete next[card]
+                }
+              }
+
+              return next
+            })
           } else if (m.type === 'error' && !m.id) {
             setError(m.error)
           } else if (m.id) {
@@ -131,5 +146,5 @@ export function useBoard() {
     socket.current.send(JSON.stringify({ type: 'command', id, name, args }))
   }), [])
 
-  return { state, connected, error, command, thread, setThread }
+  return { state, connected, error, command, thread, setThread, latest }
 }

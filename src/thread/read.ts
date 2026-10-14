@@ -71,6 +71,80 @@ export function threadPath(card: Card): string | undefined {
   return path && isAbsolute(path) && path.endsWith('.jsonl') && ['claude', 'claude-code', 'codex'].includes(card.agent!.provider) ? path : undefined
 }
 
+export interface LatestMessage { role: 'user' | 'assistant'; text: string; at?: string }
+// Enough for two lines on a card; the card clamps what it shows.
+const LATEST_TEXT = 280
+const LATEST_WINDOW = 64 * 1024
+
+// Cut to LATEST_TEXT, never inside a surrogate pair.
+function clip(text: string): string {
+  if (text.length <= LATEST_TEXT) {
+    return text
+  }
+
+  const cut = text.slice(0, LATEST_TEXT - 1).replace(/[\uD800-\uDBFF]$/, '')
+
+  return `${cut.trimEnd()}…`
+}
+
+// The last typed user message or assistant reply of a transcript, read back from
+// its end: tool calls and output, thinking and injected text are skipped, so a
+// window of tool output doubles until a message turns up or MAX_BYTES is read.
+// A pure function of the file's bytes; null when it holds no message or is unreadable.
+export function latestMessage(path: string): LatestMessage | null {
+  let fd: number | undefined
+
+  try {
+    fd = openSync(path, 'r')
+    const { size } = fstatSync(fd)
+
+    for (let window = LATEST_WINDOW; ; window *= 2) {
+      const start = Math.max(0, size - Math.min(window, MAX_BYTES))
+      const buf = Buffer.alloc(size - start)
+      readSync(fd, buf, 0, buf.length, start)
+      // Complete lines only: the first may be cut by the window, the last may still be written.
+      const lines = buf.toString('utf8', 0, buf.lastIndexOf(10) + 1).split('\n')
+        .slice(start ? 1 : 0, -1)
+
+      for (let i = lines.length - 1; i >= 0; i--) {
+        let record: unknown
+
+        try {
+          record = JSON.parse(lines[i]!)
+        } catch {
+          continue
+        }
+
+        const messages = transcriptMessages(record)
+
+        if (!messages.length) {
+          continue
+        }
+
+        const r = obj(record), role = obj(r.payload).role ?? r.type
+        const text = redact(messages.map(m => m.text).join(' ')).replace(/\s+/g, ' ')
+          .trim()
+
+        return {
+          role: role === 'user' ? 'user' : 'assistant',
+          text: clip(text),
+          ...(messages[0]!.at ? { at: messages[0]!.at } : {}),
+        }
+      }
+
+      if (!start || window >= MAX_BYTES) {
+        return null
+      }
+    }
+  } catch {
+    return null
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd)
+    }
+  }
+}
+
 // A cursor carries each sources position, so paging cannot skip transcript
 // chunks when reply receipts also fill the latest page.
 export const THREAD_CURSOR = /^n(\d+:\d+)?;r(\d+:\d+)?$/
