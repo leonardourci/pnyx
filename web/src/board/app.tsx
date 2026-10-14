@@ -55,7 +55,7 @@ function Column({
   description: string
   cards: Card[]
   view: ViewPreferences
-  save(patch: unknown): Promise<boolean>
+  save({ patch }: { patch: unknown }): Promise<boolean>
   remove(): Promise<boolean>
   connected: boolean
   children: ReactNode
@@ -112,8 +112,8 @@ function Column({
         value={view.columnWidths[id] ?? 290}
         min={VIEW_SIZE_LIMITS.columnWidth.min}
         max={VIEW_SIZE_LIMITS.columnWidth.max}
-        onPreview={setWidth}
-        onCommit={n => save({ columnWidths: { [id]: n } })}
+        onPreview={({ value }) => setWidth(value)}
+        onCommit={({ value: n }) => save({ patch: { columnWidths: { [id]: n } } })}
       />
     </section>
   )
@@ -125,7 +125,7 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   // The deletion a notice can undo; any later notice replaces it.
   const [undoColumn, setUndoColumn] = useState<string | null>(null)
-  const notify = useCallback((text: string) => {
+  const notify = useCallback(({ text }: { text: string }) => {
     setNotice(text); setUndoColumn(null)
   }, [])
   const pendingScroll = useRef(restored.scroll)
@@ -142,23 +142,23 @@ export function App() {
 
     return () => dark.removeEventListener('change', apply)
   }, [view.theme])
-  const columns = columnsFor(state)
-  const found = useFoundCards(command, query, workspace)
+  const columns = columnsFor({ state })
+  const found = useFoundCards({ command, query, workspace })
   const matches = new Map(found.map(h => [h.card, h]))
-  const cards = findBoxCards(state, workspace, tag, query, found.map(h => h.card))
+  const cards = findBoxCards({ state, workspace, tag, query, meaning: found.map(h => h.card) })
   const card = selected ? state.cards[selected] : undefined
-  const title = pageTitle(page, state.cards, selected)
+  const title = pageTitle({ page, cards: state.cards, selected })
   useEffect(() => {
     document.title = title
   }, [title])
   const workspaces = [...new Set(Object.values(state.cards).map(c => c.workspace))].sort()
   const tags = [...new Set(Object.values(state.cards).flatMap(c => c.tags))].sort()
-  const save = useCallback((patch: unknown) => command('view', ['set', '--json', JSON.stringify(patch), '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()]).then(() => {
-    notify('Preferences saved')
+  const save = useCallback(({ patch }: { patch: unknown }) => command({ name: 'view', args: ['set', '--json', JSON.stringify(patch), '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => {
+    notify({ text: 'Preferences saved' })
 
     return true
   }, e => {
-    notify(e.message)
+    notify({ text: e.message })
 
     return false
   }), [command, notify, state.viewRevision])
@@ -167,14 +167,14 @@ export function App() {
       return
     }
 
-    let cancelled = false; setThread(null); void command('thread', [selected ?? '']).then(r => {
+    let cancelled = false; setThread(null); void command({ name: 'thread', args: [selected ?? ''] }).then(r => {
       if (!cancelled && r.thread) {
         setThread(r.thread as ThreadPage)
       }
     })
       .catch(e => {
         if (!cancelled) {
-          notify(e.message)
+          notify({ text: e.message })
         }
       })
 
@@ -213,27 +213,27 @@ export function App() {
     }
   }, [page, selected, view.panelPlacement])
 
-  const open = (id: string) => {
+  const open = ({ id }: { id: string }) => {
     if (state.cards[id]) {
       setSelected(id); setPage('board')
     }
   }
 
   const close = () => {
-    const target = cards.find(c => c.id === selected) ?? cards.find(c => c.column === card?.column) ?? cards[0]; setSelected(null); requestAnimationFrame(() => focusElement(target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-empty-column="${CSS.escape(card?.column ?? 'needs_you')}"]`))
+    const target = cards.find(c => c.id === selected) ?? cards.find(c => c.column === card?.column) ?? cards[0]; setSelected(null); requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-empty-column="${CSS.escape(card?.column ?? 'needs_you')}"]` }))
   }
 
   const removeColumn = async ({ id }: { id: string }) => {
     const eventId = crypto.randomUUID()
 
     try {
-      await command('view', ['set', '--json', JSON.stringify({ customColumns: view.customColumns.filter(c => c.id !== id) }), '--if-revision', String(state.viewRevision ?? 0), '--event-id', eventId])
-      notify('Column deleted. Its cards returned to automatic placement.'); setUndoColumn(eventId)
-      requestAnimationFrame(() => focusElement('[data-card], [data-empty-column]'))
+      await command({ name: 'view', args: ['set', '--json', JSON.stringify({ customColumns: view.customColumns.filter(c => c.id !== id) }), '--if-revision', String(state.viewRevision ?? 0), '--event-id', eventId] })
+      notify({ text: 'Column deleted. Its cards returned to automatic placement.' }); setUndoColumn(eventId)
+      requestAnimationFrame(() => focusElement({ selector: '[data-card], [data-empty-column]' }))
 
       return true
     } catch (e) {
-      notify((e as Error).message)
+      notify({ text: (e as Error).message })
 
       return false
     }
@@ -246,7 +246,7 @@ export function App() {
       cards: cards.filter(card => card.column === c.id).map(card => card.id),
     })),
     page,
-    setPage,
+    setPage: ({ page }) => setPage(page),
     selected,
     open,
     close,
@@ -268,7 +268,7 @@ export function App() {
       close={close}
       save={save}
       draft={drafts[card.id] ?? ''}
-      setDraft={text => setDrafts(d => ({ ...d, [card.id]: text }))}
+      setDraft={({ text }) => setDrafts(d => ({ ...d, [card.id]: text }))}
       outside={!cards.some(c => c.id === card.id)}
       notify={notify}
     />
@@ -356,13 +356,13 @@ export function App() {
                     label="Workspace"
                     value={workspace}
                     options={[{ value: '', label: 'All workspaces' }, ...workspaces.map(w => ({ value: w, label: w }))]}
-                    onChange={setWorkspace}
+                    onChange={({ value }) => setWorkspace(value)}
                   />
                   <Select
                     label="Filter by tag"
                     value={tag}
                     options={[{ value: '', label: 'All tags' }, ...tags.map(t => ({ value: t, label: t }))]}
-                    onChange={setTag}
+                    onChange={({ value }) => setTag(value)}
                   />
                   {(workspace || tag) && (
                     <Button
@@ -434,8 +434,8 @@ export function App() {
                               return
                             }
 
-                            const patch = { customColumns: [...view.customColumns, { id: `custom:${crypto.randomUUID()}`, title: newColumn.trim() }] }; void command('view', ['set', '--json', JSON.stringify(patch), '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()]).then(() => setNewColumn(null))
-                              .catch(e => notify(e.message))
+                            const patch = { customColumns: [...view.customColumns, { id: `custom:${crypto.randomUUID()}`, title: newColumn.trim() }] }; void command({ name: 'view', args: ['set', '--json', JSON.stringify(patch), '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => setNewColumn(null))
+                              .catch(e => notify({ text: e.message }))
                           }}
                         >
                           <Input
@@ -479,8 +479,8 @@ export function App() {
             {undoColumn && (
               <Button
                 onClick={() => {
-                  void command('undo', [undoColumn, '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()]).then(() => notify('Column and its cards restored.'))
-                    .catch(e => notify(e.message))
+                  void command({ name: 'undo', args: [undoColumn, '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Column and its cards restored.' }))
+                    .catch(e => notify({ text: e.message }))
                 }}
               >
                 Undo

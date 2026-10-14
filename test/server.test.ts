@@ -55,11 +55,11 @@ async function stopChild({ child }: { child: ChildProcess }) {
   }
 }
 
-const cli = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { encoding: 'utf8', timeout: CLI_TIMEOUT_MS })
+const cli = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { encoding: 'utf8', timeout: CLI_TIMEOUT_MS })
 
-const hookEvent = (id: string, key: string, title: string) => ({ id, key, at: '2026-10-13T14:00:00Z', actor: 'hook', card: { title } })
+const hookEvent = ({ id, key, title }: { id: string; key: string; title: string }) => ({ id, key, at: '2026-10-13T14:00:00Z', actor: 'hook', card: { title } })
 
-async function until<T>(check: () => T | undefined, what: string): Promise<T> {
+async function until<T>({ check, what }: { check: () => T | undefined; what: string }): Promise<T> {
   const deadline = Date.now() + TIMEOUT_MS
 
   for (;;) {
@@ -77,9 +77,9 @@ async function until<T>(check: () => T | undefined, what: string): Promise<T> {
   }
 }
 
-const seqIs = (seq: number, board = 'default') => until(() => (loadBoard({ board }).state.seq === seq ? true : undefined), `seq ${seq}`)
+const seqIs = ({ seq, board = 'default' }: { seq: number; board?: string }) => until({ check: () => (loadBoard({ board }).state.seq === seq ? true : undefined), what: `seq ${seq}` })
 
-async function sendToSocket(path: string, text: string): Promise<void> {
+async function sendToSocket({ path, text }: { path: string; text: string }): Promise<void> {
   const conn = connect(path)
   await once(conn, 'connect')
   conn.end(text)
@@ -88,21 +88,21 @@ async function sendToSocket(path: string, text: string): Promise<void> {
 
 function inbox<T>() {
   const queue: T[] = []
-  const waiting: ((m: T) => void)[] = []
+  const waiting: (({ message }: { message: T }) => void)[] = []
 
   return {
     queue,
-    put(message: T) {
+    put({ message }: { message: T }) {
       const waiter = waiting.shift()
 
       if (waiter) {
-        waiter(message)
+        waiter({ message })
       } else {
         queue.push(message)
       }
     },
     // A reply or agent receipt comes from a spawned CLI worker, so its wait takes CLI_TIMEOUT_MS.
-    next: (ms = TIMEOUT_MS) =>
+    next: ({ ms = TIMEOUT_MS }: { ms?: number } = {}) =>
       queue.length > 0
         ? Promise.resolve(queue.shift()!)
         : new Promise<T>((resolve, reject) => {
@@ -112,9 +112,9 @@ function inbox<T>() {
             reject(new Error('timed out waiting for a message'))
           }, ms).unref()
 
-          const waiter = (m: T) => {
+          const waiter = ({ message }: { message: T }) => {
             clearTimeout(timer)
-            resolve(m)
+            resolve(message)
           }
 
           waiting.push(waiter)
@@ -125,7 +125,7 @@ function inbox<T>() {
 type LatestMessages = Extract<ServerMessage, { type: 'latest' }>['messages']
 
 // Last-message pushes arrive on their own queue, so the other messages keep their order.
-async function tab(query = '') {
+async function tab({ query = '' }: { query?: string } = {}) {
   const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/ws?token=${localToken()}${query.replace('?', '&')}`)
   tabs.add(ws)
   const main = inbox<ServerMessage>(), latest = inbox<LatestMessages>()
@@ -134,9 +134,9 @@ async function tab(query = '') {
     const message = JSON.parse(String(data)) as ServerMessage
 
     if (message.type === 'latest') {
-      latest.put(message.messages)
+      latest.put({ message: message.messages })
     } else {
-      main.put(message)
+      main.put({ message })
     }
   })
   await once(ws, 'open')
@@ -149,7 +149,7 @@ async function tab(query = '') {
     hello,
     next: main.next,
     // The next last-message push that includes this card.
-    async latest(card: string) {
+    async latest({ card }: { card: string }) {
       for (;;) {
         const messages = await latest.next()
 
@@ -158,7 +158,7 @@ async function tab(query = '') {
         }
       }
     },
-    command(id: string, name: string, args: string[]) {
+    command({ id, name, args }: { id: string; name: string; args: string[] }) {
       ws.send(JSON.stringify({ type: 'command', id, name, args }))
     },
     // Nothing arrives within a short quiet period.
@@ -169,7 +169,11 @@ async function tab(query = '') {
   }
 }
 
-function http(method: string, path: string, headers: Record<string, string> = {}) {
+function http({ method, path, headers = {} }: {
+  method: string
+  path: string
+  headers?: Record<string, string>
+}) {
   return new Promise<{
     status: number
     headers: Record<string, unknown>
@@ -186,8 +190,7 @@ function http(method: string, path: string, headers: Record<string, string> = {}
 }
 
 async function handshakeStatus(
-  query: string,
-  headers: Record<string, string> = {},
+  { query, headers = {} }: { query: string; headers?: Record<string, string> },
 ): Promise<number> {
   const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/ws${query}`, { headers })
   tabs.add(ws)
@@ -196,16 +199,16 @@ async function handshakeStatus(
   return response.statusCode
 }
 
-async function boardWithCard(board = 'default') {
+async function boardWithCard({ board = 'default' }: { board?: string } = {}) {
   server = await startServer({ board })
-  await sendToSocket(server.socket!, JSON.stringify(hookEvent('hook-1', 'a', 'A')))
-  await seqIs(1, board)
+  await sendToSocket({ path: server.socket!, text: JSON.stringify(hookEvent({ id: 'hook-1', key: 'a', title: 'A' })) })
+  await seqIs({ seq: 1, board })
 
   return loadBoard({ board }).state.keys.a!
 }
 
 test('serve runs until stop, and the summary reports it without starting it', async t => {
-  const before = cli()
+  const before = cli({ })
   assert.match(before, /^server: not running$/m)
   assert.match(before, /pnyx-axi serve/)
   assert.equal(existsSync(infoPath({ board: 'default' })), false)
@@ -215,19 +218,19 @@ test('serve runs until stop, and the summary reports it without starting it', as
   t.after(() => stopChild({ child }))
   let out = ''
   child.stdout.on('data', chunk => (out += chunk))
-  const url = await until(() => /^url: "(http:\/\/127\.0\.0\.1:\d+)"$/m.exec(out)?.[1], 'serve to start')
-  await until(() => (existsSync(infoPath({ board: 'default' })) ? true : undefined), 'server.json')
-  assert.match(cli(), new RegExp(`^server: "running at ${url}"$`, 'm'))
+  const url = await until({ check: () => /^url: "(http:\/\/127\.0\.0\.1:\d+)"$/m.exec(out)?.[1], what: 'serve to start' })
+  await until({ check: () => (existsSync(infoPath({ board: 'default' })) ? true : undefined), what: 'server.json' })
+  assert.match(cli({ }), new RegExp(`^server: "running at ${url}"$`, 'm'))
   assert.ok(existsSync(socketPath({ board: 'default' })))
 
-  assert.match(cli('stop'), /^server: stopped$/m)
+  assert.match(cli({ args: ['stop'] }), /^server: stopped$/m)
   const [code] = await once(child, 'exit')
   assert.equal(code, 0)
   assert.match(out, /^server: stopped$/m)
   assert.equal(existsSync(infoPath({ board: 'default' })), false)
   assert.equal(existsSync(socketPath({ board: 'default' })), false)
-  assert.match(cli(), /^server: not running$/m)
-  assert.match(cli('stop'), /^server: "none: not running"$/m)
+  assert.match(cli({ }), /^server: not running$/m)
+  assert.match(cli({ args: ['stop'] }), /^server: "none: not running"$/m)
 })
 
 test('serve refuses a taken port instead of picking another', async t => {
@@ -257,12 +260,12 @@ test('a second server for the same board is refused', async () => {
 
 test('hook events on the socket become cards and reach open tabs', async () => {
   server = await startServer({ board: 'default' })
-  const t = await tab()
+  const t = await tab({ })
   assert.deepEqual(await t.next(), { type: 'snapshot', seq: 0, state: loadBoard({ board: 'default' }).state })
 
-  const event = JSON.stringify(hookEvent('hook-1', 'session-a', 'Fix the parser'))
+  const event = JSON.stringify(hookEvent({ id: 'hook-1', key: 'session-a', title: 'Fix the parser' }))
   // A repeated event id is ingested once; a line that is not JSON is dropped.
-  await sendToSocket(server.socket!, `${event}\nnot json\n${event}`)
+  await sendToSocket({ path: server.socket!, text: `${event}\nnot json\n${event}` })
   const message = await t.next()
   assert.equal(message.type, 'event')
   assert.equal(message.type === 'event' && message.event.seq, 1)
@@ -274,11 +277,11 @@ test('hook events on the socket become cards and reach open tabs', async () => {
 })
 
 test('spooled hook events are drained on start and while running', async () => {
-  spoolWrite({ board: 'default', entry: hookEvent('hook-1', 'session-a', 'Written while the server was down') })
+  spoolWrite({ board: 'default', entry: hookEvent({ id: 'hook-1', key: 'session-a', title: 'Written while the server was down' }) })
   server = await startServer({ board: 'default' })
-  await seqIs(1)
-  spoolWrite({ board: 'default', entry: hookEvent('hook-2', 'session-b', 'Spooled while it runs') })
-  await seqIs(2)
+  await seqIs({ seq: 1 })
+  spoolWrite({ board: 'default', entry: hookEvent({ id: 'hook-2', key: 'session-b', title: 'Spooled while it runs' }) })
+  await seqIs({ seq: 2 })
   const { state } = loadBoard({ board: 'default' })
   assert.deepEqual(Object.keys(state.keys).sort(), ['session-a', 'session-b'])
   assert.deepEqual(readdirSync(spoolDir({ dir: boardDir({ board: 'default' }) })), [])
@@ -286,19 +289,19 @@ test('spooled hook events are drained on start and while running', async () => {
 
 test('a tab resumes from its cursor, gets CLI writes, and resyncs with a snapshot on a gap', async () => {
   server = await startServer({ board: 'default' })
-  await sendToSocket(server.socket!, `${JSON.stringify(hookEvent('hook-1', 'a', 'A'))}\n${JSON.stringify(hookEvent('hook-2', 'b', 'B'))}\n`)
-  await seqIs(2)
+  await sendToSocket({ path: server.socket!, text: `${JSON.stringify(hookEvent({ id: 'hook-1', key: 'a', title: 'A' }))}\n${JSON.stringify(hookEvent({ id: 'hook-2', key: 'b', title: 'B' }))}\n` })
+  await seqIs({ seq: 2 })
 
-  const behind = await tab('?after=1')
+  const behind = await tab({ query: '?after=1' })
   const caughtUp = await behind.next()
   assert.equal(caughtUp.type === 'event' && caughtUp.event.seq, 2)
   await behind.idle()
 
-  const current = await tab('?after=2')
+  const current = await tab({ query: '?after=2' })
   await current.idle()
 
   // A cursor the server cannot continue from gets the whole board instead.
-  const ahead = await tab('?after=99')
+  const ahead = await tab({ query: '?after=99' })
   const snapshot = await ahead.next()
   assert.equal(snapshot.type, 'snapshot')
   assert.equal(snapshot.type === 'snapshot' && snapshot.seq, 2)
@@ -310,17 +313,17 @@ test('a tab resumes from its cursor, gets CLI writes, and resyncs with a snapsho
 
   // The CLI stays a writer of the same log; the server pushes what it appends.
   const cardId = loadBoard({ board: 'default' }).state.keys.a!
-  cli('move', cardId, 'review')
+  cli({ args: ['move', cardId, 'review'] })
   const moved = await current.next()
   assert.equal(moved.type === 'event' && moved.event.seq, 3)
   assert.equal(moved.type === 'event' && moved.event.type, 'card.moved')
 })
 
 test("a tab gets its write's event before the receipt with its request id, recorded as web", async () => {
-  const cardId = await boardWithCard()
-  const t = await tab('?after=1')
+  const cardId = await boardWithCard({ })
+  const t = await tab({ query: '?after=1' })
 
-  t.command('req-1', 'move', [cardId, 'review'])
+  t.command({ id: 'req-1', name: 'move', args: [cardId, 'review'] })
   const pushed = await t.next()
   assert.equal(pushed.type === 'event' && pushed.event.type, 'card.moved')
   assert.equal(pushed.type === 'event' && pushed.event.actor, 'web')
@@ -329,15 +332,15 @@ test("a tab gets its write's event before the receipt with its request id, recor
   assert.equal(receipt.type === 'receipt' && receipt.id, 'req-1')
   assert.deepEqual(receipt.type === 'receipt' && receipt.card, { id: cardId, column: 'review', revision: 2 })
 
-  t.command('req-2', 'outcome', [cardId, 'done', '--actor', 'leo'])
+  t.command({ id: 'req-2', name: 'outcome', args: [cardId, 'done', '--actor', 'leo'] })
   const outcome = await t.next()
   assert.equal(outcome.type === 'event' && outcome.event.actor, 'leo')
   assert.equal((await t.next()).type, 'receipt')
 })
 
 test('a bad command gets an error carrying its request id and writes nothing', async () => {
-  const cardId = await boardWithCard()
-  const t = await tab('?after=1')
+  const cardId = await boardWithCard({ })
+  const t = await tab({ query: '?after=1' })
 
   const cases: [string, string, unknown, string][] = [
     ['r1', 'push', ['--key', 'x', '--file', '/etc/hosts'], 'NOT_FOUND'],
@@ -363,12 +366,12 @@ test('a bad command gets an error carrying its request id and writes nothing', a
 })
 
 test("writes through the server always land on the server's own board", async () => {
-  const cardId = await boardWithCard('work')
-  const t = await tab('?after=1')
-  t.command('req-1', 'move', [cardId, 'review'])
+  const cardId = await boardWithCard({ board: 'work' })
+  const t = await tab({ query: '?after=1' })
+  t.command({ id: 'req-1', name: 'move', args: [cardId, 'review'] })
   assert.equal((await t.next()).type, 'event')
   assert.equal((await t.next()).type, 'receipt')
-  await seqIs(2, 'work')
+  await seqIs({ seq: 2, board: 'work' })
   assert.equal(loadBoard({ board: 'work' }).state.cards[cardId]!.column, 'review')
   assert.equal(loadBoard({ board: 'default' }).state.seq, 0)
 })
@@ -376,11 +379,11 @@ test("writes through the server always land on the server's own board", async ()
 test('the WebSocket handshake needs the token, an exact host and an exact origin', async () => {
   server = await startServer({ board: 'default' })
   const token = `?token=${localToken()}`
-  assert.equal(await handshakeStatus(''), 401)
-  assert.equal(await handshakeStatus('?token=wrong'), 401)
-  assert.equal(await handshakeStatus(token, { origin: 'http://evil.example' }), 403)
-  assert.equal(await handshakeStatus(token, { origin: `http://127.0.0.1:${server.port}.evil.example` }), 403)
-  assert.equal(await handshakeStatus(token, { host: `evil.example:${server.port}` }), 403)
+  assert.equal(await handshakeStatus({ query: '' }), 401)
+  assert.equal(await handshakeStatus({ query: '?token=wrong' }), 401)
+  assert.equal(await handshakeStatus({ query: token, headers: { origin: 'http://evil.example' } }), 403)
+  assert.equal(await handshakeStatus({ query: token, headers: { origin: `http://127.0.0.1:${server.port}.evil.example` } }), 403)
+  assert.equal(await handshakeStatus({ query: token, headers: { host: `evil.example:${server.port}` } }), 403)
 
   const ok = new WebSocket(`ws://127.0.0.1:${server.port}/ws${token}`, { headers: { origin: `http://localhost:${server.port}` } })
   tabs.add(ok)
@@ -393,27 +396,27 @@ test('the board page carries the token only for its own host and origin; /health
   const meta = `<meta name="pnyx-token" content="${localToken()}" />`
 
   for (const path of ['/', '/index.html', '/some/route']) {
-    const page = await http('GET', path, { origin: `http://127.0.0.1:${server.port}` })
+    const page = await http({ method: 'GET', path, headers: { origin: `http://127.0.0.1:${server.port}` } })
     assert.equal(page.status, 200)
     assert.ok(page.text.includes(meta), path)
     assert.equal(page.headers['cache-control'], 'no-store')
   }
 
   for (const headers of [{ host: `evil.example:${server.port}` }, { origin: 'http://evil.example' }] as Record<string, string>[]) {
-    const refused = await http('GET', '/', headers)
+    const refused = await http({ method: 'GET', path: '/', headers })
     assert.equal(refused.status, 403)
     assert.ok(!refused.text.includes(localToken()))
   }
 
-  const health = await http('GET', '/health')
+  const health = await http({ method: 'GET', path: '/health' })
   assert.equal(health.status, 200)
   const { build } = JSON.parse(health.text) as { build: string }
   assert.deepEqual(JSON.parse(health.text), { board: 'default', pid: process.pid, build })
   assert.match(build, /^[0-9a-f]{12}$/)
-  assert.ok((await http('GET', '/')).text.includes(`<meta name="pnyx-build" content="${build}" />`))
-  assert.deepEqual((await tab()).hello, { type: 'hello', build })
-  assert.equal((await http('GET', '/api/commands/move')).status, 200)
-  assert.equal((await http('POST', '/api/commands/move')).status, 405)
+  assert.ok((await http({ method: 'GET', path: '/' })).text.includes(`<meta name="pnyx-build" content="${build}" />`))
+  assert.deepEqual((await tab({ })).hello, { type: 'hello', build })
+  assert.equal((await http({ method: 'GET', path: '/api/commands/move' })).status, 200)
+  assert.equal((await http({ method: 'POST', path: '/api/commands/move' })).status, 405)
 })
 
 test('a server.json left by a dead server is not trusted, even when its pid was reused', async () => {
@@ -428,8 +431,8 @@ test('a server.json left by a dead server is not trusted, even when its pid was 
     mkdirSync(boardDir({ board: 'default' }), { recursive: true })
     writeFileSync(infoPath({ board: 'default' }), JSON.stringify({ pid: other.pid, port, url: `http://127.0.0.1:${port}`, socket: null }))
 
-    assert.match(cli(), /^server: not running$/m)
-    assert.match(cli('stop'), /^server: "none: not running"$/m)
+    assert.match(cli({ }), /^server: not running$/m)
+    assert.match(cli({ args: ['stop'] }), /^server: "none: not running"$/m)
     assert.equal(other.exitCode, null)
     assert.equal(other.signalCode, null)
     server = await startServer({ board: 'default' })
@@ -439,30 +442,30 @@ test('a server.json left by a dead server is not trusted, even when its pid was 
 })
 
 test('web preferences, custom moves and read queries share the authenticated socket', async () => {
-  const card = await boardWithCard()
-  const t = await tab(); await t.next()
-  t.command('view-1', 'view', ['set', '--json', JSON.stringify({ customColumns: [{ id: 'custom:later', title: 'Later' }], panelWidth: 500 }), '--if-revision', '0', '--event-id', 'web-view'])
+  const card = await boardWithCard({ })
+  const t = await tab({ }); await t.next()
+  t.command({ id: 'view-1', name: 'view', args: ['set', '--json', JSON.stringify({ customColumns: [{ id: 'custom:later', title: 'Later' }], panelWidth: 500 }), '--if-revision', '0', '--event-id', 'web-view'] })
   const update = await t.next(); assert.equal(update.type, 'event')
   const receipt = await t.next(); assert.equal(receipt.type, 'receipt')
   assert.equal(loadBoard({ board: 'default' }).state.view?.panelWidth, 500)
-  t.command('move-1', 'move', [card, 'custom:later', '--if-revision', '1'])
+  t.command({ id: 'move-1', name: 'move', args: [card, 'custom:later', '--if-revision', '1'] })
   assert.equal((await t.next()).type, 'event'); assert.equal((await t.next()).type, 'receipt')
   assert.equal(loadBoard({ board: 'default' }).state.cards[card]?.column, 'custom:later')
-  t.command('view-stale', 'view', ['set', '--json', '{"fontSize":18}', '--if-revision', '0'])
+  t.command({ id: 'view-stale', name: 'view', args: ['set', '--json', '{"fontSize":18}', '--if-revision', '0'] })
   const stale = await t.next(); assert.equal(stale.type, 'error')
 
   if (stale.type === 'error') {
     assert.equal(stale.code, 'REVISION_CONFLICT')
   }
 
-  t.command('thread-1', 'thread', [card])
+  t.command({ id: 'thread-1', name: 'thread', args: [card] })
   const thread = await t.next(); assert.equal(thread.type, 'receipt')
 
   if (thread.type === 'receipt') {
     assert.equal((thread.thread as { route: boolean }).route, false)
   }
 
-  t.command('reply-1', 'reply', [card, 'test', 'id'])
+  t.command({ id: 'reply-1', name: 'reply', args: [card, 'test', 'id'] })
   const reply = await t.next(); assert.equal(reply.type, 'error')
 
   if (reply.type === 'error') {
@@ -470,23 +473,23 @@ test('web preferences, custom moves and read queries share the authenticated soc
   }
 
   // A setting change takes the reply's route, so it is refused the same way.
-  t.command('agent-1', 'agent', [card, 'effort', 'high', 'id'])
+  t.command({ id: 'agent-1', name: 'agent', args: [card, 'effort', 'high', 'id'] })
   const agent = await t.next(); assert.equal(agent.type, 'error')
 
   if (agent.type === 'error') {
     assert.equal(agent.code, 'NO_ROUTE')
   }
 
-  t.command('agent-2', 'agent', [card, 'effort', 'high'])
+  t.command({ id: 'agent-2', name: 'agent', args: [card, 'effort', 'high'] })
   const short = await t.next(); assert.equal(short.type, 'error')
 
   if (short.type === 'error') {
     assert.equal(short.code, 'VALIDATION_ERROR')
   }
 
-  t.command('history-1', 'history', ['--card', card]); assert.equal((await t.next()).type, 'receipt')
-  t.command('escape-board', 'history', ['--board', 'other']); assert.equal((await t.next()).type, 'error')
-  t.command('card-1', 'card', [card, '--full'])
+  t.command({ id: 'history-1', name: 'history', args: ['--card', card] }); assert.equal((await t.next()).type, 'receipt')
+  t.command({ id: 'escape-board', name: 'history', args: ['--board', 'other'] }); assert.equal((await t.next()).type, 'error')
+  t.command({ id: 'card-1', name: 'card', args: [card, '--full'] })
   const shown = await t.next(); assert.equal(shown.type, 'receipt')
 
   if (shown.type === 'receipt') {
@@ -512,11 +515,11 @@ test("overlapping catalog requests share or queue the socket's read and answer e
 
   const { one, two } = loadBoard({ board: 'default' }).state.keys
   server = await startServer({ board: 'default', catalogLocations: locations })
-  const t = await tab(); await t.next()
+  const t = await tab({ }); await t.next()
   const requests = [['c1', one], ['c2', one], ['c3', two], ['c4', one]] as const
 
   for (const [id, card] of requests) {
-    t.command(id, 'catalog', [card!])
+    t.command({ id, name: 'catalog', args: [card!] })
   }
 
   const replies = new Map<string, ServerMessage>()
@@ -537,15 +540,15 @@ test("overlapping catalog requests share or queue the socket's read and answer e
 })
 
 test('browser reply delivery uses only configured fixture homes and never resends an unknown result', async () => {
-  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
   server = await startServer({ board: 'default', homes: [fixture.nativeHome] })
-  const t = await tab(); await t.next()
+  const t = await tab({ }); await t.next()
   const card = fixture.state.keys.layout!
   writeFileSync(join(fixture.nativeHome, 'send-exit'), '3')
 
-  const receipt = async (id: string) => {
+  const receipt = async ({ id }: { id: string }) => {
     for (;;) {
-      const m = await t.next(CLI_TIMEOUT_MS)
+      const m = await t.next({ ms: CLI_TIMEOUT_MS })
 
       if ((m.type === 'receipt' || m.type === 'error') && m.id === id) {
         return m
@@ -553,23 +556,23 @@ test('browser reply delivery uses only configured fixture homes and never resend
     }
   }
 
-  t.command('send-1', 'reply', [card, 'A literal fixture reply', 'unknown-reply'])
-  const first = await receipt('send-1'); assert.equal(first.type, 'receipt')
+  t.command({ id: 'send-1', name: 'reply', args: [card, 'A literal fixture reply', 'unknown-reply'] })
+  const first = await receipt({ id: 'send-1' }); assert.equal(first.type, 'receipt')
 
   if (first.type === 'receipt') {
     assert.equal((first.reply as { state: string }).state, 'delivery_unknown')
   }
 
-  t.command('send-2', 'reply', [card, 'A literal fixture reply', 'unknown-reply'])
-  const second = await receipt('send-2'); assert.equal(second.type, 'receipt')
+  t.command({ id: 'send-2', name: 'reply', args: [card, 'A literal fixture reply', 'unknown-reply'] })
+  const second = await receipt({ id: 'send-2' }); assert.equal(second.type, 'receipt')
 
   if (second.type === 'receipt') {
     assert.equal((second.reply as { sent: boolean }).sent, false)
   }
 
   assert.equal(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8').match(/A literal fixture reply/g)?.length, 1)
-  t.command('send-3', 'reply', [card, '   ', 'blank-reply'])
-  const invalid = await receipt('send-3'); assert.equal(invalid.type, 'error')
+  t.command({ id: 'send-3', name: 'reply', args: [card, '   ', 'blank-reply'] })
+  const invalid = await receipt({ id: 'send-3' }); assert.equal(invalid.type, 'error')
 
   if (invalid.type === 'error') {
     assert.equal(invalid.code, 'VALIDATION_ERROR')
@@ -585,8 +588,8 @@ test('browser reply delivery uses only configured fixture homes and never resend
       const d = decidePush({ state: w.state, key: 'layout', input: { agent: { provider: 'claude-code', sessionId: 'fixture-layout' } }, meta: { actor: 'test', at: '2026-10-14T17:00:00Z' } }); assert.ok('event' in d); w.append({ event: d.event })
     },
   })
-  t.command('agent-1', 'agent', [card, 'effort', 'high', 'effort-1'])
-  const changed = await receipt('agent-1'); assert.equal(changed.type, 'receipt', JSON.stringify(changed))
+  t.command({ id: 'agent-1', name: 'agent', args: [card, 'effort', 'high', 'effort-1'] })
+  const changed = await receipt({ id: 'agent-1' }); assert.equal(changed.type, 'receipt', JSON.stringify(changed))
 
   if (changed.type === 'receipt') {
     assert.equal((changed.agent as { sent: string }).sent, 'delivered')
@@ -594,8 +597,8 @@ test('browser reply delivery uses only configured fixture homes and never resend
 
   assert.match(readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8'), /arg=pnyx:default:c\d+:effort-1\narg=--json\narg=--\narg=Pnyx: please switch the worker on task api-v2 \(Claude Code\) to effort high\.\n---\n$/)
   assert.equal(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), sends)
-  t.command('search-1', 'search', ['conversation readable'])
-  const found = await receipt('search-1'); assert.equal(found.type, 'receipt')
+  t.command({ id: 'search-1', name: 'search', args: ['conversation readable'] })
+  const found = await receipt({ id: 'search-1' }); assert.equal(found.type, 'receipt')
 
   if (found.type === 'receipt') {
     assert.equal((found.hits as { card: string }[])[0]?.card, card)
@@ -604,15 +607,15 @@ test('browser reply delivery uses only configured fixture homes and never resend
   t.ws.close()
 })
 
-const assistantLine = (text: string, at: string) => JSON.stringify({ type: 'assistant', timestamp: at, message: { content: [{ type: 'text', text }] } }) + '\n'
+const assistantLine = ({ text, at }: { text: string; at: string }) => JSON.stringify({ type: 'assistant', timestamp: at, message: { content: [{ type: 'text', text }] } }) + '\n'
 
 test('the board search finds a card by a word only its transcript holds, including words a live session just wrote', async () => {
-  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
   server = await startServer({ board: 'default' })
-  const t = await tab(); await t.next()
+  const t = await tab({ }); await t.next()
 
-  const search = async (id: string, text: string) => {
-    t.command(id, 'search', [text])
+  const search = async ({ id, text }: { id: string; text: string }) => {
+    t.command({ id, name: 'search', args: [text] })
 
     for (;;) {
       const m = await t.next()
@@ -623,25 +626,25 @@ test('the board search finds a card by a word only its transcript holds, includi
     }
   }
 
-  const cards = (m: ServerMessage) => (m.type === 'receipt' ? (m.hits as { card: string }[]).map(h => h.card) : m)
+  const cards = ({ m }: { m: ServerMessage }) => (m.type === 'receipt' ? (m.hits as { card: string }[]).map(h => h.card) : m)
   // "readable" is only in the transcript's first user message, not in any title, link or event.
-  assert.deepEqual(cards(await search('s1', 'readable')), [fixture.state.keys.layout])
-  appendFileSync(fixture.transcript, assistantLine('The flamingo rollout is staged behind the flag.', '2026-10-13T11:00:00Z'))
-  const byText = await search('s2', 'flamingo rollout')
-  assert.deepEqual(cards(byText), [fixture.state.keys.layout])
+  assert.deepEqual(cards({ m: await search({ id: 's1', text: 'readable' }) }), [fixture.state.keys.layout])
+  appendFileSync(fixture.transcript, assistantLine({ text: 'The flamingo rollout is staged behind the flag.', at: '2026-10-13T11:00:00Z' }))
+  const byText = await search({ id: 's2', text: 'flamingo rollout' })
+  assert.deepEqual(cards({ m: byText }), [fixture.state.keys.layout])
   assert.equal(byText.type === 'receipt' && (byText.hits as { match: string }[])[0]!.match, 'lexical')
-  assert.deepEqual(cards(await search('s3', 'flamingo nowhere')), [])
+  assert.deepEqual(cards({ m: await search({ id: 's3', text: 'flamingo nowhere' }) }), [])
   t.ws.close()
 })
 
 test('a board search rebuilds a stale search index', async () => {
-  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
   // An index another version left behind.
   writeFileSync(searchPath({ board: 'default' }), 'not a database')
   assert.equal(indexStatus({ board: 'default' })?.current, false)
   server = await startServer({ board: 'default' })
-  const t = await tab(); await t.next()
-  t.command('s1', 'search', ['readable'])
+  const t = await tab({ }); await t.next()
+  t.command({ id: 's1', name: 'search', args: ['readable'] })
   let m = await t.next()
 
   while (!((m.type === 'receipt' || m.type === 'error') && m.id === 's1')) {
@@ -656,33 +659,33 @@ test('a board search rebuilds a stale search index', async () => {
 })
 
 test("each card gets its conversation's last message, pushed again as the transcript grows", async () => {
-  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
   const card = fixture.state.keys.layout!
   server = await startServer({ board: 'default' })
-  const t = await tab(); await t.next()
-  assert.deepEqual(await t.latest(card), { role: 'assistant', text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.', at: '2026-10-13T10:49:00Z' })
+  const t = await tab({ }); await t.next()
+  assert.deepEqual(await t.latest({ card }), { role: 'assistant', text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.', at: '2026-10-13T10:49:00Z' })
   // Tool calls and thinking never replace the last message; a newer typed user message does.
   appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: '2026-10-13T11:00:00Z', message: { content: [{ type: 'thinking', thinking: 'hidden' }, { type: 'tool_use', name: 'Bash', input: {} }] } }) + '\n')
   appendFileSync(fixture.transcript, JSON.stringify({ type: 'user', timestamp: '2026-10-13T11:01:00Z', message: { content: 'Ship   it\nnow.' } }) + '\n')
-  assert.deepEqual(await t.latest(card), { role: 'user', text: 'Ship it now.', at: '2026-10-13T11:01:00Z' })
-  appendFileSync(fixture.transcript, assistantLine('Shipped.', '2026-10-13T11:02:00Z'))
-  assert.deepEqual(await t.latest(card), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
+  assert.deepEqual(await t.latest({ card }), { role: 'user', text: 'Ship it now.', at: '2026-10-13T11:01:00Z' })
+  appendFileSync(fixture.transcript, assistantLine({ text: 'Shipped.', at: '2026-10-13T11:02:00Z' }))
+  assert.deepEqual(await t.latest({ card }), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
   // A tab that connects later gets every card's last message at once.
-  const later = await tab(); await later.next()
-  assert.deepEqual(await later.latest(card), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
+  const later = await tab({ }); await later.next()
+  assert.deepEqual(await later.latest({ card }), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
   // A tab that resyncs, such as one dropped while lagging, gets them again after its snapshot.
   t.ws.send(JSON.stringify({ type: 'resync' }))
   assert.equal((await t.next()).type, 'snapshot')
-  assert.deepEqual(await t.latest(card), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
+  assert.deepEqual(await t.latest({ card }), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
   t.ws.close(); later.ws.close()
 })
 
 test("a tab whose snapshot alone fills its send buffer still gets every card's last message", async () => {
-  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
   server = await startServer({ board: 'default' })
   const card = fixture.state.keys.layout!, message = { role: 'assistant', text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.', at: '2026-10-13T10:49:00Z' }
-  const first = await tab(); await first.next()
-  assert.deepEqual(await first.latest(card), message)
+  const first = await tab({ }); await first.next()
+  assert.deepEqual(await first.latest({ card }), message)
   withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
@@ -691,15 +694,15 @@ test("a tab whose snapshot alone fills its send buffer still gets every card's l
   })
   assert.equal((await first.next()).type, 'event')
   // The card's message is read already, so a later tab gets it only right after its snapshot.
-  const t = await tab()
+  const t = await tab({ })
   assert.equal((await t.next()).type, 'snapshot')
-  assert.deepEqual(await t.latest(card), message)
+  assert.deepEqual(await t.latest({ card }), message)
   first.ws.close(); t.ws.close()
 })
 
 test('with semantic search on, the board search finds a transcript-only card by meaning when its words do not all match', async () => {
-  const fixture = seedWebFixture(process.env.PNYX_HOME!)
-  appendFileSync(fixture.transcript, assistantLine('Flamingo rollout staged.', '2026-10-13T11:00:00Z'))
+  const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
+  appendFileSync(fixture.transcript, assistantLine({ text: 'Flamingo rollout staged.', at: '2026-10-13T11:00:00Z' }))
   // The stub worker embeds with hashed word vectors, so no model is fetched or loaded.
   delete process.env.PNYX_SEMANTIC
   process.env.PNYX_SEMANTIC_STUB = '1'
@@ -707,13 +710,13 @@ test('with semantic search on, the board search finds a transcript-only card by 
 
   try {
     server = await startServer({ board: 'default' })
-    const t = await tab(); await t.next()
+    const t = await tab({ }); await t.next()
     // "dinosaur" is nowhere, so full text finds nothing; the transcript holds the other words.
     // The first search waits for the worker to start and embed the board, so receipts may be slow:
     // wait longer than the server's own worst case (10s index request plus 30s embed request).
     const deadline = Date.now() + 60_000
 
-    const receipt = async (id: string): Promise<ServerMessage> => {
+    const receipt = async ({ id }: { id: string }): Promise<ServerMessage> => {
       for (;;) {
         try {
           const m = await t.next()
@@ -732,8 +735,8 @@ test('with semantic search on, the board search finds a transcript-only card by 
     let hits: { card: string; match: string; weak?: true }[] = []
 
     for (let n = 0; !hits.some(h => h.match === 'semantic') && Date.now() < deadline; n++) {
-      t.command(`m${n}`, 'search', ['flamingo rollout staged dinosaur'])
-      const m = await receipt(`m${n}`)
+      t.command({ id: `m${n}`, name: 'search', args: ['flamingo rollout staged dinosaur'] })
+      const m = await receipt({ id: `m${n}` })
       assert.equal(m.type, 'receipt', JSON.stringify(m))
       hits = m.type === 'receipt' ? m.hits as typeof hits : []
     }
@@ -749,17 +752,17 @@ test('with semantic search on, the board search finds a transcript-only card by 
 })
 
 test('a stopped server leaves no open handles, even with board and transcript changes still in flight', async () => {
-  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
   const card = fixture.state.keys.layout!
   const settle = () => new Promise(r => setTimeout(r, 300))
   // Resources this process held before the server, such as the test runner's own.
   await settle()
   const before = process.getActiveResourcesInfo().sort()
   server = await startServer({ board: 'default' })
-  const t = await tab(); await t.next()
-  assert.ok(await t.latest(card))
-  t.command('thread-1', 'thread', [card])
-  t.command('search-1', 'search', ['readable'])
+  const t = await tab({ }); await t.next()
+  assert.ok(await t.latest({ card }))
+  t.command({ id: 'thread-1', name: 'thread', args: [card] })
+  t.command({ id: 'search-1', name: 'search', args: ['readable'] })
 
   for (let n = 0; n < 2;) {
     const m = await t.next()
@@ -771,8 +774,8 @@ test('a stopped server leaves no open handles, even with board and transcript ch
 
   // Changes that land just before the stop schedule more work: a log append, a spool
   // drain and a transcript write that the folder watchers see.
-  appendFileSync(fixture.transcript, assistantLine('Still writing.', '2026-10-13T11:05:00Z'))
-  cli('move', card, 'review')
+  appendFileSync(fixture.transcript, assistantLine({ text: 'Still writing.', at: '2026-10-13T11:05:00Z' }))
+  cli({ args: ['move', card, 'review'] })
   await server.close()
   server = undefined
   await settle()

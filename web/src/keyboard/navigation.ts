@@ -2,10 +2,12 @@ export interface ColumnCards { id: string; cards: string[] }
 export interface BoardAnchor { column: string; card?: string }
 
 export function navigate(
-  columns: ColumnCards[],
-  current: BoardAnchor,
-  action: string,
-  remembered: Record<string, string>,
+  { columns, current, action, remembered }: {
+    columns: ColumnCards[]
+    current: BoardAnchor
+    action: string
+    remembered: Record<string, string>
+  },
 ): BoardAnchor {
   const column = Math.max(0, columns.findIndex(c => c.id === current.column))
   const list = columns[column]
@@ -33,9 +35,11 @@ export function navigate(
 }
 
 export function restoreAnchor(
-  columns: ColumnCards[],
-  previous: ColumnCards[],
-  anchor: BoardAnchor,
+  { columns, previous, anchor }: {
+    columns: ColumnCards[]
+    previous: ColumnCards[]
+    anchor: BoardAnchor
+  },
 ): BoardAnchor {
   const same = columns.find(c => c.cards.includes(anchor.card ?? ''))
 

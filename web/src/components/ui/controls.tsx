@@ -4,18 +4,18 @@ export function Button({ className = '', variant = 'quiet', ...props }: Componen
   return <button type="button" className={`button ${variant} ${className}`} {...props} />
 }
 
-export function Input(props: ComponentProps<'input'>) {
+export function Input({ ...props }: ComponentProps<'input'>) {
   return <input {...props} className={`input ${props.className ?? ''}`} />
 }
 
-export function Textarea(props: ComponentProps<'textarea'>) {
+export function Textarea({ ...props }: ComponentProps<'textarea'>) {
   return <textarea {...props} className={`input textarea ${props.className ?? ''}`} />
 }
 
-export function useBusy(): [boolean, (save: () => unknown) => void] {
+export function useBusy(): [boolean, ({ save }: { save: () => unknown }) => void] {
   const [busy, setBusy] = useState(false), running = useRef(false)
 
-  return [busy, save => {
+  return [busy, ({ save }) => {
     if (running.current) {
       return
     }
@@ -34,7 +34,7 @@ export function Switch({
 }: {
   label: string
   checked: boolean
-  onChange(value: boolean): unknown
+  onChange({ value }: { value: boolean }): unknown
 }) {
   const [busy, run] = useBusy()
 
@@ -44,7 +44,7 @@ export function Switch({
       role="switch"
       aria-checked={checked}
       aria-busy={busy}
-      onClick={() => run(() => onChange(!checked))}
+      onClick={() => run({ save: () => onChange({ value: !checked }) })}
     >
       <span className="switch-track">
         <span />
@@ -66,7 +66,7 @@ export function Select({
   label: string
   value: string
   options: Option[]
-  onChange(value: string): void
+  onChange({ value }: { value: string }): void
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false), [active, setActive] = useState(0)
@@ -87,9 +87,9 @@ export function Select({
     return () => document.removeEventListener('pointerdown', close)
   }, [open])
 
-  const choose = (n: number) => {
+  const choose = ({ position: n }: { position: number }) => {
     if (options[n]) {
-      onChange(options[n].value)
+      onChange({ value: options[n].value })
     }
 
     setOpen(false); trigger.current?.focus()
@@ -115,7 +115,7 @@ export function Select({
           } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
             e.preventDefault(); setOpen(true); setActive(n => e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1 : Math.max(0, Math.min(options.length - 1, n + (e.key === 'ArrowDown' ? 1 : -1))))
           } else if (open && e.key === 'Enter') {
-            e.preventDefault(); choose(active)
+            e.preventDefault(); choose({ position: active })
           } else if (e.key === 'Tab') {
             setOpen(false)
           }
@@ -141,7 +141,7 @@ export function Select({
               aria-selected={o.value === value}
               className={active === n ? 'active' : ''}
               onPointerMove={() => setActive(n)}
-              onClick={() => choose(n)}
+              onClick={() => choose({ position: n })}
             >
               {o.label}
               <span aria-hidden="true">{o.value === value ? '✓' : ''}</span>
@@ -166,10 +166,10 @@ export function NumberField({
   min: number
   max: number
   step?: number
-  onChange(value: number): unknown
+  onChange({ value }: { value: number }): unknown
 }) {
   const id = useId(), [busy, run] = useBusy()
-  const onChange = (n: number) => run(() => save(n))
+  const onChange = ({ next: n }: { next: number }) => run({ save: () => save({ value: n }) })
   const [draft, setDraft] = useState(String(value))
   useEffect(() => setDraft(String(value)), [value])
 
@@ -177,7 +177,7 @@ export function NumberField({
     <div className="number-field" aria-busy={busy}>
       <label htmlFor={id}>{label}</label>
       <span className="number-control">
-        <Button aria-label={`Decrease ${label}`} disabled={value <= min} onClick={() => onChange(Math.max(min, value - step))}>−</Button>
+        <Button aria-label={`Decrease ${label}`} disabled={value <= min} onClick={() => onChange({ next: Math.max(min, value - step) })}>−</Button>
         <Input
           id={id}
           aria-label={label}
@@ -188,7 +188,7 @@ export function NumberField({
             const n = Number(draft); setDraft(String(value))
 
             if (!busy && Number.isInteger(n) && n >= min && n <= max && n !== value) {
-              onChange(n)
+              onChange({ next: n })
             }
           }}
           onKeyDown={e => {
@@ -198,7 +198,7 @@ export function NumberField({
           }}
         />
         <span>px</span>
-        <Button aria-label={`Increase ${label}`} disabled={value >= max} onClick={() => onChange(Math.min(max, value + step))}>+</Button>
+        <Button aria-label={`Increase ${label}`} disabled={value >= max} onClick={() => onChange({ next: Math.min(max, value + step) })}>+</Button>
       </span>
     </div>
   )

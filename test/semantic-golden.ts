@@ -14,8 +14,8 @@ import { EMBEDDERS, RERANKER } from '../src/search/models.ts'
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 const home = mkdtempSync(join(tmpdir(), 'pnyx-golden-'))
 const env = { ...process.env, PNYX_HOME: home, PNYX_SEMANTIC_STUB: '', PNYX_SEMANTIC: '' }
-const run = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
-const cards = (out: string) => [...out.matchAll(/^ {2}- card: (\S+)$/gm)].map(m => m[1])
+const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
+const cards = ({ out }: { out: string }) => [...out.matchAll(/^ {2}- card: (\S+)$/gm)].map(m => m[1])
 
 const from = process.env.PNYX_GOLDEN_MODELS
 
@@ -38,8 +38,8 @@ const CARDS: [string, string][] = [
 ]
 const ids = CARDS.map(([title, note], i) => {
   writeFileSync(join(home, 'card.json'), JSON.stringify({ title }))
-  const id = run('push', '--key', `k${i}`, '--file', join(home, 'card.json')).match(/^card:\n {2}id: (\S+)$/m)![1]!
-  run('outcome', id, 'done', '--note', note)
+  const id = run({ args: ['push', '--key', `k${i}`, '--file', join(home, 'card.json')] }).match(/^card:\n {2}id: (\S+)$/m)![1]!
+  run({ args: ['outcome', id, 'done', '--note', note] })
 
   return id
 })
@@ -58,8 +58,8 @@ async function embedded(): Promise<void> {
   let shown = ''
 
   for (let i = 0; i < 3000; i += 1) {
-    run('search', 'orders')
-    const status = run('search', 'status')
+    run({ args: ['search', 'orders'] })
+    const status = run({ args: ['search', 'status'] })
     const line = status.match(/^semantic: .*$/m)?.[0] ?? ''
     const m = status.match(/^vectors: (\d+) of (\d+) entries embedded$/m)
 
@@ -77,16 +77,16 @@ async function embedded(): Promise<void> {
   throw new Error('the worker never finished embedding')
 }
 
-function check(label: string): void {
+function check({ label }: { label: string }): void {
   for (const [q, card] of QUERIES) {
-    assert.equal(cards(run('search', q))[0], card, `${label}: ${q}`)
+    assert.equal(cards({ out: run({ args: ['search', q] }) })[0], card, `${label}: ${q}`)
   }
 
   const times: number[] = []
 
   for (let i = 0; i < 5; i += 1) {
     const t = performance.now()
-    run('search', QUERIES[i]![0])
+    run({ args: ['search', QUERIES[i]![0]] })
     times.push(performance.now() - t)
   }
 
@@ -96,16 +96,16 @@ function check(label: string): void {
 
 try {
   await embedded()
-  const status = run('search', 'status')
+  const status = run({ args: ['search', 'status'] })
   console.log(status.match(/^semantic: .*$/m)![0])
-  check(`default model, reranker ${/^rerank: on$/m.test(status) ? 'on' : 'off'}`)
-  run('settings', 'set', 'search.rerank', 'off')
+  check({ label: `default model, reranker ${/^rerank: on$/m.test(status) ? 'on' : 'off'}` })
+  run({ args: ['settings', 'set', 'search.rerank', 'off'] })
   await embedded()
-  check('default model, reranker off')
-  run('settings', 'set', 'search.model', 'granite-97m')
+  check({ label: 'default model, reranker off' })
+  run({ args: ['settings', 'set', 'search.model', 'granite-97m'] })
   await embedded()
-  check('granite-97m')
+  check({ label: 'granite-97m' })
   console.log('golden check passed')
 } finally {
-  run('settings', 'set', 'search.semantic', 'off')
+  run({ args: ['settings', 'set', 'search.semantic', 'off'] })
 }

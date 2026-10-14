@@ -24,13 +24,13 @@ export function Composer({
   card: string
   title: string
   draft: string
-  setDraft(text: string): void
+  setDraft({ text }: { text: string }): void
   thread: ThreadPage | null
   height: number
   command: Command
-  save(patch: unknown): Promise<boolean>
+  save({ patch }: { patch: unknown }): Promise<boolean>
   connected: boolean
-  notify(text: string): void
+  notify({ text }: { text: string }): void
 }) {
   const [preview, setPreview] = useState<number | null>(null)
   const [sending, setSending] = useState(false)
@@ -41,7 +41,7 @@ export function Composer({
   const currentDraft = useRef(draft)
   currentDraft.current = draft
   const { label } = useKeyboard(), [catalog, setCatalog] = useState<Catalog | null>(null)
-  const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches(s.command, prefix ?? ''))
+  const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches({ command: s.command, prefix: prefix ?? '' }))
   const catalogOpen = prefix !== null
   useEffect(() => {
     if (!catalogOpen || !connected) {
@@ -50,7 +50,7 @@ export function Composer({
 
     let cancelled = false; setCatalog(null)
     const timer = setTimeout(() => {
-      void command('catalog', [card]).then(r => {
+      void command({ name: 'catalog', args: [card] }).then(r => {
         if (!cancelled) {
           setCatalog(r.catalog as Catalog)
         }
@@ -70,8 +70,8 @@ export function Composer({
     document.getElementById(`suggestion-${card}-${active}`)?.scrollIntoView({ block: 'nearest' })
   }, [card, active])
 
-  const choose = (command: string) => {
-    const cursor = input.current?.selectionStart ?? draft.length; setDraft(command + ' ' + draft.slice(cursor)); setPrefix(null); setActive(-1); input.current?.focus(); requestAnimationFrame(() => input.current?.setSelectionRange(command.length + 1, command.length + 1))
+  const choose = ({ command }: { command: string }) => {
+    const cursor = input.current?.selectionStart ?? draft.length; setDraft({ text: command + ' ' + draft.slice(cursor) }); setPrefix(null); setActive(-1); input.current?.focus(); requestAnimationFrame(() => input.current?.setSelectionRange(command.length + 1, command.length + 1))
   }
 
   const send = async () => {
@@ -86,37 +86,43 @@ export function Composer({
     setSending(true)
 
     try {
-      const r = await command('reply', [card, draft, attempt.current.id]); const receipt = r.reply as { state: string; detail?: string } | undefined
+      const r = await command({ name: 'reply', args: [card, draft, attempt.current.id] }); const receipt = r.reply as { state: string; detail?: string } | undefined
       const why = receipt?.detail ? ` (${receipt.detail})` : ''
-      notify(receipt?.state === 'delivery_unknown' ? `Delivery unknown${why}. Check the native session before sending again.` : receipt?.state === 'failed' ? `Delivery failed${why}. Your draft is retained.` : 'Reply delivered to the route. This does not confirm it was handled.')
+      notify({ text: receipt?.state === 'delivery_unknown' ? `Delivery unknown${why}. Check the native session before sending again.` : receipt?.state === 'failed' ? `Delivery failed${why}. Your draft is retained.` : 'Reply delivered to the route. This does not confirm it was handled.' })
 
       if (receipt?.state === 'delivered' && currentDraft.current === draft) {
-        setDraft(''); attempt.current = null
+        setDraft({ text: '' }); attempt.current = null
       }
     } catch (e) {
-      notify((e as Error).message)
+      notify({ text: (e as Error).message })
     } finally {
       setSending(false)
     }
   }
 
-  useKeyAction('send', ({ scope }) => {
-    if (scope !== 'composer') {
-      return false
-    }
+  useKeyAction({
+    id: 'send',
+    handler: ({ context: { scope } }) => {
+      if (scope !== 'composer') {
+        return false
+      }
 
-    void send()
+      void send()
 
-    return true
+      return true
+    },
   })
-  useKeyAction('cancel', ({ scope }) => {
-    if (scope !== 'composer' || prefix === null) {
-      return false
-    }
+  useKeyAction({
+    id: 'cancel',
+    handler: ({ context: { scope } }) => {
+      if (scope !== 'composer' || prefix === null) {
+        return false
+      }
 
-    setPrefix(null); setActive(-1)
+      setPrefix(null); setActive(-1)
 
-    return true
+      return true
+    },
   })
 
   return (
@@ -134,8 +140,8 @@ export function Composer({
         value={height}
         min={VIEW_SIZE_LIMITS.composerHeight.min}
         max={VIEW_SIZE_LIMITS.composerHeight.max}
-        onPreview={setPreview}
-        onCommit={n => save({ composerHeight: n })}
+        onPreview={({ value }) => setPreview(value)}
+        onCommit={({ value: n }) => save({ patch: { composerHeight: n } })}
       />
       <label htmlFor={`reply-${card}`} className="small muted">
         Reply to
@@ -155,7 +161,7 @@ export function Composer({
                   key={s.command}
                   className={n === active ? 'active' : ''}
                   onMouseDown={e => e.preventDefault()}
-                  onClick={() => choose(s.command)}
+                  onClick={() => choose({ command: s.command })}
                 >
                   <strong>{s.command}</strong>
                   <span>
@@ -179,8 +185,8 @@ export function Composer({
           aria-controls={catalogOpen ? `suggestions-${card}` : undefined}
           aria-activedescendant={active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
           onChange={e => {
-            setDraft(e.target.value)
-            setPrefix(slashPrefix(e.target.value, e.target.selectionStart))
+            setDraft({ text: e.target.value })
+            setPrefix(slashPrefix({ text: e.target.value, cursor: e.target.selectionStart }))
             setActive(-1)
           }}
           onKeyDown={e => {
@@ -199,7 +205,7 @@ export function Composer({
             }
 
             if (prefix !== null && active >= 0 && e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
-              e.preventDefault(); choose(suggestions[active].command)
+              e.preventDefault(); choose({ command: suggestions[active].command })
 
               return
             }
@@ -210,11 +216,11 @@ export function Composer({
         <span className="small muted">
           Enter newline ·
           {' '}
-          {label('send')}
+          {label({ id: 'send' })}
           {' '}
           send ·
           {' '}
-          {label('cancel')}
+          {label({ id: 'cancel' })}
           {' '}
           leave
         </span>

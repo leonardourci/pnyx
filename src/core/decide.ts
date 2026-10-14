@@ -365,14 +365,15 @@ export function joinedKey({ state, key, folder, terminal, probed }: {
 
   const tty = terminal?.tty
   const headless = probed && !tty
-  const ownTerminal = (c: Card) => !!session && c.terminal?.paseoTerminal === session
-  const succeeds = (c: Card) => !!tty
+  const ownTerminal = ({ card: c }: { card: Card }) =>
+    !!session && c.terminal?.paseoTerminal === session
+  const succeeds = ({ card: c }: { card: Card }) => !!tty
     && (c.activity === 'ended' || !c.terminal?.tty || c.terminal.tty === tty)
   const matches = Object.values(state.cards).filter(c => c.folder === folder
     && (c.agent
-      ? ownTerminal(c) && succeeds(c)
-      : c.terminal?.paseoTerminal ? ownTerminal(c) && !headless : !session || !headless))
-  const own = matches.filter(ownTerminal)
+      ? ownTerminal({ card: c }) && succeeds({ card: c })
+      : c.terminal?.paseoTerminal ? ownTerminal({ card: c }) && !headless : !session || !headless))
+  const own = matches.filter(card => ownTerminal({ card }))
 
   return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key
 }

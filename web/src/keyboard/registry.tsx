@@ -2,17 +2,17 @@ import { createContext, useContext, useEffect, useRef, type ReactNode } from 're
 import { bindingsFor, characterBinding, emptyProgress, keyLabel, resolveKey, type KeyboardPreferences, type KeyPlatform, type KeyScope } from '../../../src/core/keyboard.ts'
 
 export interface ActionContext { scope: KeyScope; target: HTMLElement }
-type Handler = (context: ActionContext) => boolean
+type Handler = ({ context }: { context: ActionContext }) => boolean
 interface KeyboardContext {
   prefs: KeyboardPreferences
   platform: KeyPlatform
-  label(id: string): string
+  label({ id }: { id: string }): string
   handlers: Map<string, Handler>
 }
 const Context = createContext<KeyboardContext | null>(null)
-export const isEditing = (target: HTMLElement) => !!target.closest('input,textarea,[contenteditable]:not([contenteditable=false])')
+export const isEditing = ({ target }: { target: HTMLElement }) => !!target.closest('input,textarea,[contenteditable]:not([contenteditable=false])')
 
-export function focusElement(selector: string) {
+export function focusElement({ selector }: { selector: string }) {
   const element = document.querySelector<HTMLElement>(selector)
   element?.focus({ preventScroll: true }); element?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 
@@ -28,10 +28,10 @@ export function KeyboardProvider({
   children,
 }: {
   prefs: KeyboardPreferences
-  onAction(id: string, context: ActionContext): boolean
+  onAction({ id, context }: { id: string; context: ActionContext }): boolean
   leaveField(): void
   hints: boolean
-  hintKey(event: KeyboardEvent): boolean
+  hintKey({ event }: { event: KeyboardEvent }): boolean
   children: ReactNode
 }) {
   const platform: KeyPlatform = /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other'
@@ -70,18 +70,23 @@ export function KeyboardProvider({
         return
       }
 
-      const result = resolveKey({ event: { key: event.key, code: event.code, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat, defaultPrevented: event.defaultPrevented, isComposing: event.isComposing, altGraph: event.getModifierState('AltGraph') }, context: { scope, editing: isEditing(target), platform, characterShortcuts: prefs.characterShortcuts, now: performance.now() }, prefs, progress })
+      const result = resolveKey({ event: { key: event.key, code: event.code, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat, defaultPrevented: event.defaultPrevented, isComposing: event.isComposing, altGraph: event.getModifierState('AltGraph') }, context: { scope, editing: isEditing({ target }), platform, characterShortcuts: prefs.characterShortcuts, now: performance.now() }, prefs, progress })
       progress = result.progress
 
       if (result.action) {
         const context = { scope, target }
 
-        if (handlers.current.get(result.action)?.(context) || onAction(result.action, context)) {
+        if (handlers.current.get(result.action)?.({
+          context,
+        }) || onAction({
+          id: result.action,
+          context,
+        })) {
           event.preventDefault()
         }
       } else if (result.consume) {
         event.preventDefault()
-      } else if (hints && !event.defaultPrevented && !event.isComposing && hintKey(event)) {
+      } else if (hints && !event.defaultPrevented && !event.isComposing && hintKey({ event })) {
         event.preventDefault()
       }
     }
@@ -104,7 +109,7 @@ export function KeyboardProvider({
         prefs,
         platform,
         handlers: handlers.current,
-        label: id => keyLabel(
+        label: ({ id }) => keyLabel(
           {
             keys: bindingsFor({ prefs, id }).filter(
               binding => prefs.characterShortcuts || !characterBinding({ binding, platform }),
@@ -129,10 +134,10 @@ export function useKeyboard() {
   return value
 }
 
-export function useKeyAction(id: string, handler: Handler) {
+export function useKeyAction({ id, handler }: { id: string; handler: Handler }) {
   const { handlers } = useKeyboard(), current = useRef(handler); current.current = handler
   useEffect(() => {
-    const run: Handler = context => current.current(context); handlers.set(id, run)
+    const run: Handler = ({ context }) => current.current({ context }); handlers.set(id, run)
 
     return () => {
       if (handlers.get(id) === run) {

@@ -13,7 +13,7 @@ export function Links({ links }: { links: Link[] }) {
   return (
     <div className="links">
       {links.map(l => {
-        const href = safeLink(l)
+        const href = safeLink({ link: l })
 
         return href && (
           <a
@@ -63,11 +63,14 @@ export function BoardCard({
   visible: CardData[]
   selected: boolean
   view: ViewPreferences
-  open(id: string): void
-  save(patch: unknown): Promise<boolean>
+  open({ id }: { id: string }): void
+  save({ patch }: { patch: unknown }): Promise<boolean>
   tabIndex: number
 }) {
-  const [height, setHeight] = useState<number | null>(null), parent = visibleParent(card, visible)
+  const [height, setHeight] = useState<number | null>(null), parent = visibleParent({
+    card,
+    visible,
+  })
   const activity = agentActivity({ card })
 
   return (
@@ -81,7 +84,7 @@ export function BoardCard({
       // Anywhere on the card opens it, except its own controls and a text selection.
       onClick={e => {
         if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, [role="separator"]') && !window.getSelection()?.toString()) {
-          open(card.id)
+          open({ id: card.id })
         }
       }}
     >
@@ -93,7 +96,7 @@ export function BoardCard({
       <div className="card-content">
         <Button
           className="card-open"
-          onClick={() => open(card.id)}
+          onClick={() => open({ id: card.id })}
           data-card={card.id}
           data-key-scope="board"
           tabIndex={tabIndex}
@@ -101,7 +104,7 @@ export function BoardCard({
           <h3>{card.title}</h3>
         </Button>
         {parent && (
-          <Button className="parent" onClick={() => open(parent.id)}>
+          <Button className="parent" onClick={() => open({ id: parent.id })}>
             <Icon name="parent" size={13} />
             {parent.title}
           </Button>
@@ -130,7 +133,7 @@ export function BoardCard({
             <Icon name="pin" size={13} />
             Pinned
           </span>
-        ) : <span>{card.replies?.at(-1) ? receiptLabel(card.replies.at(-1)!.state) : 'Automatic'}</span>}
+        ) : <span>{card.replies?.at(-1) ? receiptLabel({ state: card.replies.at(-1)!.state }) : 'Automatic'}</span>}
       </div>
       <Resize
         label={`Resize card ${card.title}`}
@@ -138,8 +141,8 @@ export function BoardCard({
         value={view.cardHeights[card.id] ?? view.cardHeight}
         min={VIEW_SIZE_LIMITS.cardHeight.min}
         max={VIEW_SIZE_LIMITS.cardHeight.max}
-        onPreview={setHeight}
-        onCommit={n => save({ cardHeights: { [card.id]: n } })}
+        onPreview={({ value }) => setHeight(value)}
+        onCommit={({ value: n }) => save({ patch: { cardHeights: { [card.id]: n } } })}
       />
     </article>
   )

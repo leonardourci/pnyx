@@ -6,7 +6,7 @@ import type { BoardEvent } from '../src/core/model.ts'
 export const STREAMS = join(import.meta.dirname, 'fixtures', 'streams')
 
 // Complete lines of a recorded stream; a torn last line is left to the store.
-export function readStream(name: string): BoardEvent[] {
+export function readStream({ name }: { name: string }): BoardEvent[] {
   const text = readFileSync(join(STREAMS, `${name}.jsonl`), 'utf8')
 
   return text
@@ -17,7 +17,7 @@ export function readStream(name: string): BoardEvent[] {
 }
 
 // Compares with the checked-in board. UPDATE_GOLDEN=1 rewrites it after an intended change.
-export function assertGolden(name: string, actual: unknown): void {
+export function assertGolden({ name, actual }: { name: string; actual: unknown }): void {
   const path = join(STREAMS, `${name}.expected.json`)
 
   if (process.env.UPDATE_GOLDEN) {

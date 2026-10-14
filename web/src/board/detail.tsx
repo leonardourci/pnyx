@@ -12,7 +12,7 @@ import { ConversationBrief } from './notes.tsx'
 import { columnsFor, receiptLabel } from './view.ts'
 import type { Command } from './connection.ts'
 
-const merge = (a: ThreadEntry[], b: ThreadEntry[]) => {
+const merge = ({ a, b }: { a: ThreadEntry[]; b: ThreadEntry[] }) => {
   const ids = new Set(b.map(e => e.id))
 
   return [...a.filter(e => !ids.has(e.id)), ...b]
@@ -39,11 +39,11 @@ export function Detail({
   command: Command
   connected: boolean
   close(): void
-  save(patch: unknown): Promise<boolean>
+  save({ patch }: { patch: unknown }): Promise<boolean>
   draft: string
-  setDraft(text: string): void
+  setDraft({ text }: { text: string }): void
   outside: boolean
-  notify(text: string): void
+  notify({ text }: { text: string }): void
 }) {
   const [width, setWidth] = useState<number | null>(null), [tab, setTab] = useState('thread'), [older, setOlder] = useState<ThreadPage | null>(null), [kept, setKept] = useState<ThreadEntry[]>([]), [latest, setLatest] = useState(false)
   const scroller = useRef<HTMLDivElement>(null), atBottom = useRef(true)
@@ -60,7 +60,7 @@ export function Detail({
   const olderCursor = older ? older.older : page?.older
   useEffect(() => {
     if (page) {
-      setKept(k => merge(k, page.entries))
+      setKept(k => merge({ a: k, b: page.entries }))
     }
   }, [page])
   useEffect(() => {
@@ -72,17 +72,17 @@ export function Detail({
   }, [page])
   useEffect(() => {
     if (tab === 'history') {
-      void command('history', ['--card', card.id, '--limit', '50']).then(r => setHistory(Array.isArray(r.events) ? r.events : []))
-        .catch(e => notify(e.message))
+      void command({ name: 'history', args: ['--card', card.id, '--limit', '50'] }).then(r => setHistory(Array.isArray(r.events) ? r.events : []))
+        .catch(e => notify({ text: e.message }))
     }
   }, [tab, card.id, card.revision, command, notify])
 
-  const move = (to: string) => {
-    void command('move', [card.id, ...(to === 'auto' ? ['--auto'] : [to]), '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()]).then(() => notify('Placement updated. Source requests are unchanged.'))
-      .catch(e => notify(e.message))
+  const move = ({ to }: { to: string }) => {
+    void command({ name: 'move', args: [card.id, ...(to === 'auto' ? ['--auto'] : [to]), '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Placement updated. Source requests are unchanged.' }))
+      .catch(e => notify({ text: e.message }))
   }
 
-  const entries = merge(kept, page?.entries ?? [])
+  const entries = merge({ a: kept, b: page?.entries ?? [] })
 
   return (
     <aside
@@ -102,8 +102,8 @@ export function Detail({
           value={view.panelWidth}
           min={VIEW_SIZE_LIMITS.panelWidth.min}
           max={VIEW_SIZE_LIMITS.panelWidth.max}
-          onPreview={setWidth}
-          onCommit={n => save({ panelWidth: n })}
+          onPreview={({ value }) => setWidth(value)}
+          onCommit={({ value: n }) => save({ patch: { panelWidth: n } })}
         />
       )}
       <header className="detail-header">
@@ -113,7 +113,7 @@ export function Detail({
             {' '}
             ·
             {' '}
-            {card.agent ? harnessName(card.agent.provider) : 'Agent session'}
+            {card.agent ? harnessName({ provider: card.agent.provider }) : 'Agent session'}
           </span>
           <Button aria-label="Close detail" onClick={close}>
             <Icon name="close" />
@@ -148,14 +148,14 @@ export function Detail({
         <>
           <div className="thread-controls">
             <div className="row wrap">
-              <Switch label="Tool details" checked={tools} onChange={tools => save({ cardTraceOverrides: { [card.id]: { tools } } })} />
-              <Switch label="Thinking" checked={thinking} onChange={thinking => save({ cardTraceOverrides: { [card.id]: { thinking } } })} />
+              <Switch label="Tool details" checked={tools} onChange={({ value: tools }) => save({ patch: { cardTraceOverrides: { [card.id]: { tools } } } })} />
+              <Switch label="Thinking" checked={thinking} onChange={({ value: thinking }) => save({ patch: { cardTraceOverrides: { [card.id]: { thinking } } } })} />
             </div>
             <div className="row between small muted">
               <span>{overrides ? 'This card has overrides' : 'Following board defaults'}</span>
               <Button
                 disabled={!overrides}
-                onClick={() => save({ cardTraceOverrides: { [card.id]: null } })}
+                onClick={() => save({ patch: { cardTraceOverrides: { [card.id]: null } } })}
               >
                 Use defaults
               </Button>
@@ -180,10 +180,14 @@ export function Detail({
             {olderCursor !== undefined && (
               <Button
                 onClick={() => {
-                  void command('thread', [card.id, String(olderCursor)]).then(r => {
-                    const p = r.thread as ThreadPage; setOlder(p); setKept(k => merge(p.entries, k))
+                  void command({ name: 'thread', args: [card.id, String(olderCursor)] }).then(r => {
+                    const p = r.thread as ThreadPage; setOlder(p); setKept(k =>
+                      merge({
+                        a: p.entries,
+                        b: k,
+                      }))
                   })
-                    .catch(e => notify(e.message))
+                    .catch(e => notify({ text: e.message }))
                 }}
               >
                 Load older messages
@@ -202,10 +206,10 @@ export function Detail({
                       {e.role === 'assistant' ? 'Agent' : e.role === 'user' ? 'You' : e.role}
                     </strong>
                     <time>{e.at ? new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</time>
-                    {!expanded && <Button onClick={() => save({ cardTraceOverrides: { [card.id]: { [e.kind === 'tool' ? 'tools' : 'thinking']: true } } })}>Show</Button>}
+                    {!expanded && <Button onClick={() => save({ patch: { cardTraceOverrides: { [card.id]: { [e.kind === 'tool' ? 'tools' : 'thinking']: true } } } })}>Show</Button>}
                   </div>
                   {expanded && <p>{e.text}</p>}
-                  {e.receipt && <span className={`receipt receipt-${e.receipt}`}>{receiptLabel(e.receipt)}</span>}
+                  {e.receipt && <span className={`receipt receipt-${e.receipt}`}>{receiptLabel({ state: e.receipt })}</span>}
                 </article>
               )
             })}
@@ -277,28 +281,28 @@ export function Detail({
           <Select
             label="Move card"
             value={card.manualColumn ?? 'auto'}
-            options={[{ value: 'auto', label: 'Return to auto' }, ...columnsFor(state).map(c => ({ value: c.id, label: c.title }))]}
-            onChange={move}
+            options={[{ value: 'auto', label: 'Return to auto' }, ...columnsFor({ state }).map(c => ({ value: c.id, label: c.title }))]}
+            onChange={({ value }) => move({ to: value })}
             disabled={!connected}
           />
           <p className="small muted">Moving to Done does not complete the task or resolve a source decision.</p>
           <Button
             onClick={() => {
-              void command('history', ['--card', card.id, '--kind', 'moved', '--limit', '1']).then(async r => {
+              void command({ name: 'history', args: ['--card', card.id, '--kind', 'moved', '--limit', '1'] }).then(async r => {
                 const events = r.events as { id: string }[]
 
                 if (!Array.isArray(events) || !events.length) {
-                  return notify('No placement to undo.')
+                  return notify({ text: 'No placement to undo.' })
                 }
 
-                await command('undo', [events[0].id, '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()]); notify('Placement undone.')
+                await command({ name: 'undo', args: [events[0].id, '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] }); notify({ text: 'Placement undone.' })
               })
-                .catch(e => notify(e.message))
+                .catch(e => notify({ text: e.message }))
             }}
           >
             Undo last placement
           </Button>
-          <Button onClick={() => save({ cardHeights: { [card.id]: null } })}>
+          <Button onClick={() => save({ patch: { cardHeights: { [card.id]: null } } })}>
             Use default card height
           </Button>
         </div>
