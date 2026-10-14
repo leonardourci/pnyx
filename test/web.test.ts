@@ -6,8 +6,8 @@ import { test } from 'node:test'
 import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decision } from '../src/core/decide.ts'
 import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
 import { BoardError, COLUMNS, type BoardEvent, type BoardState } from '../src/core/model.ts'
-import { clampViewSize, patchView, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
-import { agentActivity, columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
+import { clampViewSize, patchView, traces, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
+import { agentActivity, columnsFor, filterCards, findBoxCards, focusedActivity, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 import { observe } from '../src/integrations/hooks/observe.ts'
@@ -190,6 +190,46 @@ test('thread reader ignores partial records, pages old messages, separates trace
   const entries = recordEntries({ record: { type: 'assistant', message: { content: [{ type: 'text', text: 'hello' }, { type: 'thinking', thinking: 'thinking' }, { type: 'tool_use', input: 'sk-abcdefghijklmnop123456789' }] } }, offset: 0 })
   assert.deepEqual(entries.map(e => e.kind), ['message', 'thinking', 'tool']); assert.equal(entries[2]?.text, '[redacted]')
   assert.deepEqual(recordEntries({ record: { type: 'user', isMeta: true, message: { content: 'injected' } }, offset: 0 }), [])
+})
+
+test('Focus hides traces before paging so tool-heavy output cannot push replies off the page', () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-focus-')); process.env.PNYX_HOME = home
+  const path = join(home, 'session.jsonl')
+  const replies = Array.from({ length: 3 }, (_, i) => ({ type: 'assistant', message: { content: `reply ${i}` } }))
+  const tools = Array.from({ length: 120 }, (_, i) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', input: `tool ${i}` }] } }))
+  writeFileSync(path, [...replies, ...tools].map(r => JSON.stringify(r)).join('\n') + '\n')
+  let state = push({ state: emptyBoard(), key: 'a', fields: { activity: 'running git status', agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
+  const focused = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
+  assert.deepEqual(focused.entries.map(e => e.text), ['reply 0', 'reply 1', 'reply 2'])
+  assert.ok(traces({ view: viewFor({ state }), card: 'c1' }).focus)
+  assert.equal(focusedActivity({ activity: state.cards.c1!.activity, focus: true }), 'working')
+  const showTools = { cardTraceOverrides: { c1: { tools: true } } }
+  state = reduce({ state, event: event({ d: decideView({ state, patch: showTools, meta }) }) })
+  const full = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
+  assert.equal(full.entries.length, 60); assert.ok(full.entries.every(e => e.kind === 'tool'))
+  const { focus } = traces({ view: viewFor({ state }), card: 'c1' })
+  assert.equal(focusedActivity({ activity: 'running git status', focus }), 'running git status')
+  assert.equal(focusedActivity({ activity: 'idle', focus: true }), 'idle')
+
+  for (const activity of ['ran git status', 'task: review the diff', 'task done: review the diff', 'Bash failed', 'Edit denied']) {
+    assert.equal(focusedActivity({ activity, focus: true }), 'working')
+  }
+})
+
+test('Focus pages messages from a tool-heavy tail larger than the first read window', () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-focus-window-')); process.env.PNYX_HOME = home
+  const path = join(home, 'session.jsonl'), padding = 'x'.repeat(4000)
+  const records = Array.from({ length: 90 }, (_, i) => [
+    { type: 'assistant', message: { content: `message ${i}` } },
+    { type: 'assistant', message: { content: [{ type: 'tool_use', input: `${padding} ${i}` }] } },
+  ]).flat()
+  writeFileSync(path, records.map(r => JSON.stringify(r)).join('\n') + '\n')
+  const state = push({ state: emptyBoard(), key: 'a', fields: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
+  const page = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
+  assert.deepEqual(page.entries.map(e => e.text), Array.from({ length: 60 }, (_, i) => `message ${i + 30}`))
+  const older = readThread({ board: 'default', state, card: state.cards.c1!, homes: [], before: page.older })
+  assert.deepEqual(older.entries.map(e => e.text), Array.from({ length: 30 }, (_, i) => `message ${i}`))
+  assert.equal(older.older, undefined)
 })
 
 test('long transcript messages and reply history page without losing text or duplicating entries', () => {

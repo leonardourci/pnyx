@@ -68,6 +68,9 @@ export function safeLink({ link }: { link: Link }): string | undefined {
 export const shownActivity = ({ card }: { card: Card }) =>
   card.sessionActivity && card.sessionActivity !== 'ended' ? card.sessionActivity : card.activity
 
+// Hook activity that names a tool or task the agent runs ("running git status").
+const TOOL_ACTIVITY = /^(?:running |ran |task: |task done: )|^\S+ (?:failed|denied)$/
+
 // A recorded session's live state, from its hook activity. Task status alone claims none.
 export function agentActivity({ card }: { card: Card }): 'working' | 'idle' | 'ended' | 'unknown' | undefined {
   const activity = card.sessionActivity ?? card.activity ?? ''
@@ -79,8 +82,7 @@ export function agentActivity({ card }: { card: Card }): 'working' | 'idle' | 'e
   if (
     activity === 'working'
     || activity === 'compacting'
-    || /^(?:running |ran |task: |task done: )/.test(activity)
-    || /^\S+ (?:failed|denied)$/.test(activity)
+    || TOOL_ACTIVITY.test(activity)
   ) {
     return 'working'
   }
@@ -100,3 +102,7 @@ export const slashMatches = ({ command, prefix }: { command: string; prefix: str
 // A page without a build (the Vite dev server) or a server without one never reloads.
 export const shouldReload = ({ loaded, server }: { loaded: string | undefined; server: string }) =>
   Boolean(loaded && server && loaded !== server)
+
+// Under Focus a card only says the agent is working.
+export const focusedActivity = ({ activity, focus }: { activity?: string; focus: boolean }) =>
+  focus && TOOL_ACTIVITY.test(activity ?? '') ? 'working' : activity

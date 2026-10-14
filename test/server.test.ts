@@ -465,6 +465,11 @@ test('web preferences, custom moves and read queries share the authenticated soc
     assert.equal((thread.thread as { route: boolean }).route, false)
   }
 
+  t.command({ id: 'view-2', name: 'view', args: ['set', '--json', '{"panelWidth":520}', '--if-revision', '1'] })
+  assert.deepEqual([(await t.next()).type, (await t.next()).type], ['event', 'receipt'], 'a resize leaves the open conversation alone')
+  t.command({ id: 'view-3', name: 'view', args: ['set', '--json', JSON.stringify({ cardTraceOverrides: { [card]: { tools: true } } }), '--if-revision', '2'] })
+  assert.deepEqual([(await t.next()).type, (await t.next()).type, (await t.next()).type].sort(), ['event', 'receipt', 'thread'], 'showing traces pages the conversation again')
+
   t.command({ id: 'reply-1', name: 'reply', args: [card, 'test', 'id'] })
   const reply = await t.next(); assert.equal(reply.type, 'error')
 
