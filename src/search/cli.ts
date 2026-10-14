@@ -14,10 +14,7 @@ const SEARCH: Options = {
   card: { type: "string" },
   workspace: { type: "string" },
   limit: { type: "string" },
-  json: { type: "boolean" },
 };
-
-const render = (out: Output, json: boolean): Output | string => (json ? JSON.stringify(out) : out);
 
 function status(board: string): Output {
   const s = indexStatus(board);
@@ -43,7 +40,7 @@ function built(result: IndexResult): Output {
   return { rebuilt: result, help: ['Run `pnyx-axi search "<words>"`'] };
 }
 
-const searchCommand = guard<Output | string>((args) => {
+const searchCommand = guard((args) => {
   if (args[0] === "status" || args[0] === "rebuild") {
     const { board } = parse(args.slice(1), COMMON, 0);
     return args[0] === "status" ? status(board) : built(rebuildIndex(board));
@@ -67,23 +64,22 @@ const searchCommand = guard<Output | string>((args) => {
     ...(card ? { card } : {}),
     ...(values.workspace ? { workspace: values.workspace as string } : {}),
   });
-  const json = Boolean(values.json);
   if (hits.length === 0) {
-    return render({ mode: "lexical", results: `none: no matches for ${JSON.stringify(text)}`, help: ["Every word must match; try fewer words or a prefix like `deplo*`"] }, json);
+    return { mode: "lexical", results: `none: no matches for ${JSON.stringify(text)}`, help: ["Every word must match; try fewer words or a prefix like `deplo*`"] };
   }
   const out: Output = { mode: "lexical", results: hits };
   const help = card ? [`Run \`pnyx-axi history --card ${card}\` for its events`] : [`Run \`pnyx-axi card ${hits[0]!.card}\` to open the top match`];
   if (total > hits.length) help.push(`${total - hits.length} more ${card ? "matches" : "matching cards"}; raise --limit (max ${MAX}) or narrow with --kind, --card or --workspace`);
   out.help = help;
-  return render(out, json);
+  return out;
 });
 
 export const searchCommands = { search: searchCommand };
 
-export const SEARCH_HELP = `usage: pnyx-axi search "<words>" [--kind event|transcript] [--card <id>] [--workspace <name>] [--limit <n>] [--json]
+export const SEARCH_HELP = `usage: pnyx-axi search "<words>" [--kind event|transcript] [--card <id>] [--workspace <name>] [--limit <n>]
        pnyx-axi search status | rebuild [--board <name>]
 Full-text search over card titles, links, event text and the session transcripts hooks recorded.
-Every word must match; end a word with * to match a prefix; \`search -- status\` searches for that word.
+Every word must match somewhere on one card's text, its title or its link titles; end a word with * to match a prefix; \`search -- status\` searches for that word.
 Results are ranked by BM25, best first, one per card (all of a card's matches with --card),
 ${LIMIT} by default (max ${MAX}).
 Each search first indexes what the log and transcripts gained. The index, search.db in the board's

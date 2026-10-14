@@ -3,7 +3,7 @@
 import type { Attention, BoardEvent } from "../core/model.ts";
 
 // Bump when chunk() or the filters change what is indexed; the index rebuilds on mismatch.
-export const CHUNKER_VERSION = 1;
+export const CHUNKER_VERSION = 2;
 
 // About 256 tokens at 3 characters a token.
 const CHUNK_MAX = 768;
@@ -17,8 +17,8 @@ const SECRETS = [
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
 ];
 
-// Text a harness injects into a user turn: reminders, hook output and command tags.
-const INJECTED = /<(system-reminder|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g;
+// Text a harness injects into a user turn: reminders, hook output, command tags and Codex's context blocks.
+const INJECTED = /<(system-reminder|environment_context|user_instructions|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g;
 
 export function redact(text: string): string {
   return SECRETS.reduce((t, re) => t.replace(re, "[redacted]"), text);
@@ -129,17 +129,22 @@ export interface Message {
   text: string;
 }
 
-// The typed user messages and assistant text blocks of one Claude Code transcript
-// record. Tool calls and results, thinking, images, meta records and injected
-// text are left out.
+const TEXT_BLOCKS = ["text", "input_text", "output_text"];
+
+// The typed user messages and assistant text blocks of one Claude Code or Codex
+// transcript record. Tool calls and results, thinking, images, meta records,
+// developer messages and injected text are left out.
 export function transcriptMessages(record: unknown): Message[] {
-  const r = record as { type?: unknown; isMeta?: unknown; timestamp?: unknown; message?: { content?: unknown } } | null;
-  if (typeof r !== "object" || r === null || (r.type !== "user" && r.type !== "assistant") || r.isMeta === true) return [];
-  const content = r.message?.content;
+  type Record = { type?: unknown; isMeta?: unknown; timestamp?: unknown; message?: { content?: unknown }; payload?: { type?: unknown; role?: unknown; content?: unknown } };
+  const r = record as Record | null;
+  if (typeof r !== "object" || r === null || r.isMeta === true) return [];
+  const codex = r.type === "response_item" && r.payload?.type === "message" && (r.payload.role === "user" || r.payload.role === "assistant");
+  if (!codex && r.type !== "user" && r.type !== "assistant") return [];
+  const content = codex ? r.payload!.content : r.message?.content;
   const blocks = typeof content === "string" ? [content] : Array.isArray(content) ? content : [];
   const at = typeof r.timestamp === "string" ? r.timestamp : undefined;
   return blocks
-    .map((b) => (typeof b === "string" ? b : b?.type === "text" && typeof b.text === "string" ? (b.text as string) : ""))
+    .map((b) => (typeof b === "string" ? b : TEXT_BLOCKS.includes(b?.type) && typeof b.text === "string" ? (b.text as string) : ""))
     .map((t) => t.replace(INJECTED, "").trim())
     .filter(Boolean)
     .map((text) => (at ? { at, text } : { text }));

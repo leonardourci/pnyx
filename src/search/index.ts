@@ -11,14 +11,16 @@ import { boardDir, loadBoard, readEventsFrom } from "../store/board-store.ts";
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from "./text.ts";
 
 // Bump when the tables change; the index rebuilds on mismatch.
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const KINDS = ["event", "transcript"] as const;
 export type Kind = (typeof KINDS)[number];
 
 const EVENTS = "events";
 
 // pos is the event seq for an event, or the byte offset of the JSONL line for a
-// transcript; part numbers the chunks taken from it. Vectors can later key on docs.id.
+// transcript; part numbers the chunks taken from it. context repeats the card's title
+// and link titles on every row, so the words of one query can match across a card.
+// Vectors can later key on docs.id.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS docs (
@@ -30,16 +32,21 @@ CREATE TABLE IF NOT EXISTS docs (
   part INTEGER NOT NULL,
   at TEXT NOT NULL,
   body TEXT NOT NULL,
+  context TEXT NOT NULL,
   content_hash TEXT NOT NULL,
   UNIQUE (source, pos, part)
 );
 CREATE INDEX IF NOT EXISTS docs_card ON docs (card);
-CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5 (body, content='docs', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
+CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5 (body, context, content='docs', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
 CREATE TRIGGER IF NOT EXISTS docs_ai AFTER INSERT ON docs BEGIN
-  INSERT INTO docs_fts (rowid, body) VALUES (new.id, new.body);
+  INSERT INTO docs_fts (rowid, body, context) VALUES (new.id, new.body, new.context);
 END;
 CREATE TRIGGER IF NOT EXISTS docs_ad AFTER DELETE ON docs BEGIN
-  INSERT INTO docs_fts (docs_fts, rowid, body) VALUES ('delete', old.id, old.body);
+  INSERT INTO docs_fts (docs_fts, rowid, body, context) VALUES ('delete', old.id, old.body, old.context);
+END;
+CREATE TRIGGER IF NOT EXISTS docs_au AFTER UPDATE OF context ON docs BEGIN
+  INSERT INTO docs_fts (docs_fts, rowid, body, context) VALUES ('delete', old.id, old.body, old.context);
+  INSERT INTO docs_fts (rowid, body, context) VALUES (new.id, new.body, new.context);
 END;
 CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, title TEXT NOT NULL, workspace TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS cursors (source TEXT PRIMARY KEY, card TEXT NOT NULL, identity TEXT NOT NULL, pos INTEGER NOT NULL, seq INTEGER NOT NULL);
@@ -134,14 +141,16 @@ export interface IndexResult {
 // the index, in one transaction. SQLite's write lock keeps two indexers apart.
 function catchUp(db: DatabaseSync, board: string): IndexResult {
   const insert = db.prepare(
-    "INSERT OR IGNORE INTO docs (card, kind, source, pos, part, at, body, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT OR IGNORE INTO docs (card, kind, source, pos, part, at, body, context, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
+  const cards = Object.values(loadBoard(board).state.cards);
+  const context = new Map(cards.map((c) => [c.id, redact([c.title, ...c.links.map((l) => l.title)].filter(Boolean).join("\n"))]));
   let docs = 0;
   const add = (card: string, kind: Kind, source: string, pos: number, at: string, text: string, firstPart = 0): number => {
     let part = firstPart;
     for (const body of chunk(redact(text))) {
       const hash = createHash("sha256").update(body).digest("hex");
-      docs += Number(insert.run(card, kind, source, pos, part, at, body, hash).changes);
+      docs += Number(insert.run(card, kind, source, pos, part, at, body, context.get(card) ?? "", hash).changes);
       part += 1;
     }
     return part;
@@ -171,7 +180,11 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
 
     db.exec("DELETE FROM cards");
     const putCard = db.prepare("INSERT INTO cards (id, title, workspace) VALUES (?, ?, ?)");
-    for (const card of Object.values(loadBoard(board).state.cards)) putCard.run(card.id, card.title, card.workspace);
+    const putContext = db.prepare("UPDATE docs SET context = :context WHERE card = :card AND context <> :context");
+    for (const card of cards) {
+      putCard.run(card.id, card.title, card.workspace);
+      putContext.run({ card: card.id, context: context.get(card.id)! });
+    }
 
     let transcripts = 0;
     const dropSource = db.prepare("DELETE FROM docs WHERE source = ?");
@@ -268,7 +281,8 @@ export interface Hit {
   snippet: string;
 }
 
-// The user's words as an FTS5 query: every term must match (FTS5's default AND),
+// The user's words as an FTS5 query: every term must match (FTS5's default AND)
+// somewhere on one row, its own text or its card's context,
 // each quoted so punctuation is never read as query syntax; a trailing * keeps
 // prefix matching.
 export function ftsQuery(text: string): string {
@@ -282,7 +296,7 @@ export function ftsQuery(text: string): string {
     .join(" ");
 }
 
-// BM25-ranked hits, best first, ties broken by row id. Without a card filter each
+// BM25-ranked hits, best first, a context match weighing half a body match, ties broken by row id. Without a card filter each
 // card shows once, with its best chunk.
 export function search(board: string, query: Query): { hits: Hit[]; total: number } {
   const match = ftsQuery(query.text);
@@ -294,7 +308,7 @@ export function search(board: string, query: Query): { hits: Hit[]; total: numbe
     const rows = db
       .prepare(
         `WITH hits AS (
-           SELECT d.id, d.card, d.kind, d.at, bm25(docs_fts) AS rank
+           SELECT d.id, d.card, d.kind, d.at, bm25(docs_fts, 1.0, 0.5) AS rank
            FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid LEFT JOIN cards c ON c.id = d.card
            WHERE docs_fts MATCH :match
              AND (:kind IS NULL OR d.kind = :kind)
@@ -313,7 +327,7 @@ export function search(board: string, query: Query): { hits: Hit[]; total: numbe
       total: number;
     }[];
     // The rowid is bound as a BigInt: FTS5 ignores a rowid constraint bound as a float, which a JS number is.
-    const snippet = db.prepare("SELECT snippet(docs_fts, 0, '[', ']', '…', 16) AS s FROM docs_fts WHERE docs_fts MATCH ? AND rowid = ?");
+    const snippet = db.prepare("SELECT snippet(docs_fts, -1, '[', ']', '…', 16) AS s FROM docs_fts WHERE docs_fts MATCH ? AND rowid = ?");
     const title = db.prepare("SELECT title FROM cards WHERE id = ?");
     const hits = rows.map((r) => ({
       card: r.card,

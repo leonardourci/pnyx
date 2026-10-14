@@ -10,6 +10,7 @@ import { chunk, eventText, redact, transcriptMessages } from "../src/search/text
 
 const BIN = join(import.meta.dirname, "..", "dist", "cli", "pnyx-axi.js");
 const TRANSCRIPT = join(import.meta.dirname, "fixtures", "transcripts", "claude-session.jsonl");
+const CODEX = join(import.meta.dirname, "fixtures", "transcripts", "codex-session.jsonl");
 
 test("a short message is one chunk; a long one splits on paragraphs, deterministically", () => {
   assert.deepEqual(chunk("  one line  "), ["one line"]);
@@ -55,6 +56,14 @@ test("only typed messages and assistant text are read from a transcript", () => 
     assert.ok(!all.includes(hidden), hidden);
   }
   assert.match(all, /Use the token sk-/);
+});
+
+test("only typed messages and assistant text are read from a Codex transcript", () => {
+  const records = readFileSync(CODEX, "utf8").split("\n").slice(0, -1).map((l) => JSON.parse(l) as unknown);
+  assert.deepEqual(records.flatMap(transcriptMessages), [
+    { at: "2026-10-12T10:00:03.000Z", text: "Why is the invoice export timing out?" },
+    { at: "2026-10-12T10:00:07.000Z", text: "The export query scans every invoice without an index." },
+  ]);
 });
 
 test("an event's text is what it changed", () => {
@@ -126,15 +135,37 @@ test("search finds titles, links, notes and transcript text, ranked one per card
   assert.match(backfill, /^results\[2\]/m);
   assert.match(backfill, /5 more matches; raise --limit/);
 
-  const json = JSON.parse(run("search", "orders", "--kind", "transcript", "--json")) as { mode: string; results: { card: string; match: string }[] };
-  assert.equal(json.mode, "lexical");
-  assert.deepEqual(json.results.map((r) => [r.card, r.match]), [["c1", "lexical"]]);
+  // Every word must match on one card, not in one chunk: a title word and a note word.
+  assert.match(run("search", "checkout", "rolled"), /^results\[1\]\S*\n {2}c2,Checkout flake,event,/m);
+  assert.match(run("search", "retry", "release"), /^ {2}c2,/m);
+  assert.match(run("search", "orders", "--kind", "transcript"), /^results\[1\]\S*\n {2}c1,/m);
 
   const status = run("search", "status");
   assert.match(status, /^index: current through seq 4$/m);
   assert.match(status, /^semantic: "planned, not built"$/m);
   assert.match(status, /^ {2}tracked: 1$/m);
   assert.equal(statSync(join(home, "boards", "default", "search.db")).mode & 0o777, 0o600);
+});
+
+test("a Codex session's messages are searchable", () => {
+  const { run, push, home } = board();
+  const codex = join(home, "rollout.jsonl");
+  copyFileSync(CODEX, codex);
+  push("codex:x1", { title: "Invoice export", agent: { provider: "codex", sessionId: "x1", transcriptPath: codex } });
+  assert.match(run("search", "invoice", "index"), /^ {2}c5,Invoice export,transcript,"2026-10-12T10:00:07.000Z",lexical,"The export query scans every \[invoice\] without an \[index\]\."$/m);
+  for (const hidden of ["developerword", "envcontextword", "codexthoughtword", "codexcallword", "codexoutputword", "sessionmetaword"]) {
+    assert.match(run("search", hidden), /^results: "none: /m, hidden);
+  }
+});
+
+test("a renamed card or link is found by its new title", () => {
+  const { run, push } = board();
+  assert.match(run("search", "flake", "rolled"), /^ {2}c2,/m);
+  push("claude:s2", { title: "Checkout retries", workspace: "home" });
+  run("link", "c2", "--url", "https://github.com/o/r/pull/42", "--title", "Harden payments");
+  assert.match(run("search", "flake", "rolled"), /^results: "none: /m);
+  assert.match(run("search", "retries", "rolled"), /^ {2}c2,Checkout retries,/m);
+  assert.match(run("search", "payments", "rolled"), /^ {2}c2,/m);
 });
 
 test("each search indexes what the log and transcripts gained", () => {

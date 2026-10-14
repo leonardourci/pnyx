@@ -77,7 +77,7 @@ Replay by sequence (or by the sequence at an ingest timestamp) restores any **re
 
 Activity is a recent view; History queries the same log for past work, decisions and evidence. Outcome events keep their event-time title, workspace, tags, source-owned completion notes, links and evidence references even after archival or card edits. Agents use filters, stable IDs, through-sequence and bounded cursor pages. Corrections append superseding events.
 
-`pnyx-axi search` runs full-text search across everything on a card: titles, links (pull request numbers and titles), event text and the session transcripts the hooks recorded. Its index, `search.db` in the board's folder, is SQLite FTS5 through Node's built-in `node:sqlite`. It is a derived index, not a store: deletable like `snapshot.json`, rebuilt from the log and the transcripts, never read as board state, and written only by the indexer in `src/search/`, which each search runs first to fold in what the log and transcripts gained. Transcripts are indexed by message, long messages split into chunks; tool calls and output, thinking and injected text stay out, and secret-shaped strings are redacted. Results are ranked by BM25 with a snippet and no generated summaries. Semantic search is planned: vectors will attach to the same indexed chunks without re-chunking.
+`pnyx-axi search` runs full-text search across everything on a card: titles, links (pull request numbers and titles), event text and the Claude Code and Codex session transcripts the hooks recorded. Its index, `search.db` in the board's folder, is SQLite FTS5 through Node's built-in `node:sqlite`. It is a derived index, not a store: deletable like `snapshot.json`, rebuilt from the log and the transcripts, never read as board state, and written only by the indexer in `src/search/`, which each search runs first to fold in what the log and transcripts gained. Transcripts are indexed by message, long messages split into chunks; tool calls and output, thinking and injected text stay out, and secret-shaped strings are redacted. Every word must match somewhere on one card: each indexed row also carries its card's title and link titles, weighted at half its own text. Results are ranked by BM25 with a snippet and no generated summaries. Semantic search is planned: vectors will attach to the same indexed chunks without re-chunking.
 
 Size estimate: 100 cards × 50 changed facts a day × 800 bytes is about **4 MB a day, 120 MB a month**. A 1,000-card snapshot at 3 KB a card is about **3 MB**, plus queues and indexes. Segment history around 64 MB and page old segments without discarding them. Bound the thread cache to 10 MB, pages to 100 messages and pending browser output to 1 MB; coalesce display bursts. Targets, not measurements: service RSS under 150 MB at 1,000 cards, idle under 1% of one core, ordinary local updates under one second. Board state needs no database; the only SQLite file is the derived search index.
 
@@ -103,7 +103,7 @@ pnyx-axi watch --after <seq>
 pnyx-axi poll --consumer <id> --after <seq>
 pnyx-axi ack <action> --state applied --receipt <ref>
 pnyx-axi history --workspace <workspace> --kind outcome --before <seq> --limit 50
-pnyx-axi search "<words>" [--workspace <w>] [--kind event|transcript] [--card <id>] [--limit 20] [--json]
+pnyx-axi search "<words>" [--workspace <w>] [--kind event|transcript] [--card <id>] [--limit 20]
 pnyx-axi search status | rebuild
 pnyx-axi replay --at <seq>
 pnyx-axi undo <event-id> --if-revision <revision>
