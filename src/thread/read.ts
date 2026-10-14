@@ -5,11 +5,12 @@ import { boardDir, readEventsFrom } from '../store/board-store.ts'
 import { redact, transcriptMessages } from '../search/text.ts'
 import { HOST_LABEL, replyRoute } from '../core/route.ts'
 import { traces, viewFor } from '../core/view.ts'
+import { cardSessionId } from '../core/tasks.ts'
 
 // messageId and part let the board rejoin a long message split into transport chunks.
 export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; messageId?: string; part?: number }
 // route: a reply can be sent; via names the route, or noRoute says why there is none.
-export interface ThreadPage { card: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; noRoute?: string; watching: 'unknown' }
+export interface ThreadPage { card: string; session?: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; noRoute?: string; watching: 'unknown' }
 const MAX_BYTES = 10 * 1024 * 1024
 // Chunk long entries instead of losing their tail. Sixty bounded entries stay
 // below the socket budget even for JSON-escaped control characters.
@@ -39,7 +40,7 @@ const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => {
   return parts
 }
 
-const obj = ({ value: v }: { value: unknown }): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string, unknown> : {}
+const obj = ({ v }: { v: unknown }): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string, unknown> : {}
 
 export function recordEntries({ record, offset, tools = true, thinking = true }: {
   record: unknown
@@ -47,20 +48,20 @@ export function recordEntries({ record, offset, tools = true, thinking = true }:
   tools?: boolean
   thinking?: boolean
 }): ThreadEntry[] {
-  const r = obj({ value: record })
+  const r = obj({ v: record })
 
   if (r.isMeta === true) {
     return []
   }
 
-  const payload = obj({ value: r.payload }), message = obj({ value: r.message })
+  const payload = obj({ v: r.payload }), message = obj({ v: r.message })
   const role = typeof payload.role === 'string' ? payload.role : String(r.type)
   const at = typeof r.timestamp === 'string' ? r.timestamp : undefined
   const entries: ThreadEntry[] = transcriptMessages({ record }).map((m, i) => ({ id: `${offset}:m${i}`, kind: 'message', role, text: m.text, at: m.at }))
   const blocks = Array.isArray(message.content) ? message.content : r.type === 'response_item' ? [payload] : []
 
   for (const [i, raw] of blocks.entries()) {
-    const b = obj({ value: raw })
+    const b = obj({ v: raw })
     const kind = ['tool_use', 'tool_result', 'function_call', 'function_call_output'].includes(String(b.type)) ? 'tool' : ['thinking', 'reasoning'].includes(String(b.type)) ? 'thinking' : null
 
     if (!kind || (kind === 'tool' && !tools) || (kind === 'thinking' && !thinking)) {
@@ -114,7 +115,7 @@ function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
       continue
     }
 
-    const r = obj({ value: record }), role = obj({ value: r.payload }).role ?? r.type
+    const r = obj({ v: record }), role = obj({ v: r.payload }).role ?? r.type
     const text = redact({ text: messages.map(m => m.text).join(' ') }).replace(/\s+/g, ' ')
       .trim()
 
@@ -193,9 +194,11 @@ export function latestMessage({ path, prev }: { path: string; prev?: LatestRead 
 export const THREAD_CURSOR = /^n(\d+:\d+)?;r(\d+:\d+)?$/
 const PAGE = 60
 type RepliedEvent = Extract<BoardEvent, { type: 'card.replied' }>
-const replyLogs = new Map<string, { end: number; events: RepliedEvent[] }>()
+type ChatEvent = Extract<BoardEvent, { type: 'chat.message' }>
+type LoggedMessage = RepliedEvent | ChatEvent
+const replyLogs = new Map<string, { end: number; events: LoggedMessage[] }>()
 
-function repliedEvents({ board }: { board: string }): RepliedEvent[] {
+function repliedEvents({ board }: { board: string }): LoggedMessage[] {
   const dir = boardDir({ board })
   let log = replyLogs.get(dir) ?? { end: 0, events: [] }
   let read = readEventsFrom({ board, offset: log.end })
@@ -204,7 +207,8 @@ function repliedEvents({ board }: { board: string }): RepliedEvent[] {
     log = { end: 0, events: [] }; read = readEventsFrom({ board, offset: 0 })
   }
 
-  const added = (read?.events ?? []).filter((e): e is RepliedEvent => e.type === 'card.replied' && !!e.data.text)
+  const added = (read?.events ?? []).filter((e): e is LoggedMessage =>
+    (e.type === 'card.replied' && !!e.data.text) || e.type === 'chat.message')
   log = { end: read?.end ?? 0, events: added.length ? [...log.events, ...added] : log.events }
   replyLogs.set(dir, log)
 
@@ -223,6 +227,7 @@ export function readThread(
   const found = replyRoute({ card, homes })
   const result: ThreadPage = {
     card: card.id,
+    ...(cardSessionId({ card }) ? { session: cardSessionId({ card }) } : {}),
     entries: [],
     route: 'route' in found,
     ...('route' in found ? { via: HOST_LABEL[found.route.kind] } : { noRoute: found.reason }),
@@ -324,8 +329,27 @@ export function readThread(
   }
 
   const [replySeq, replyPart] = replyCursor?.split(':').map(Number) ?? [Infinity, Infinity]
+  let archived = false
 
   for (const e of repliedEvents({ board })) {
+    if (e.type === 'chat.message') {
+      const session = cardSessionId({ card })
+
+      const participant = session ? e.data.session === session : e.cardId === card.id
+
+      if (!result.unavailable || !participant || e.seq > replySeq!) {
+        continue
+      }
+
+      splitEntry({ entry: { id: e.id, role: e.data.role, kind: 'message', text: e.data.text, at: e.at } }).forEach((item, index) => {
+        if (e.seq < replySeq! || index < replyPart!) {
+          candidates.push({ item, reply: `${e.seq}:${index}` })
+          archived = true
+        }
+      })
+      continue
+    }
+
     if (e.cardId !== card.id || e.seq > replySeq!) {
       continue
     }
@@ -335,6 +359,10 @@ export function readThread(
         candidates.push({ item, reply: `${e.seq}:${index}` })
       }
     })
+  }
+
+  if (archived) {
+    result.unavailable = 'Showing stored messages; the native transcript is unavailable.'
   }
 
   candidates.sort((a,b) => (a.item.at ?? '').localeCompare(b.item.at ?? ''))
