@@ -327,16 +327,19 @@ function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
 // recorded a new terminal for a respawn; a headless run in a Paseo terminal (no
 // tty), even on a card with no session yet, or a session in another or an unknown
 // terminal, keeps its own card and never takes over the task's agent, terminal or
-// reply route. A card with a recorded Paseo terminal takes only an interactive
-// session in that terminal, or an event that carries no terminal at all (hooks
-// trusted mid-session); one with none takes any interactive or non-Paseo session.
-// When several cards remain, the one launched in the session's own terminal wins;
-// otherwise they stay ambiguous and the session keeps its own card.
-export function joinedKey({ state, key, folder, terminal }: {
+// reply route. A card with a recorded Paseo terminal takes, and keeps, only events
+// from that terminal, which hooks record on every event; a session it took that
+// shows another terminal reports to its own card. One with none takes any session
+// but a headless run in Paseo. probed says the hook looked for the session's tty,
+// which it does only when a session starts or takes a prompt. When several cards
+// remain, the one launched in the session's own terminal wins; otherwise they stay
+// ambiguous and the session keeps its own card.
+export function joinedKey({ state, key, folder, terminal, probed }: {
   state: BoardState
   key: string
   folder: string | undefined
   terminal?: TerminalFacts
+  probed: boolean
 }): string {
   if (key in state.keys) {
     return key
@@ -347,23 +350,28 @@ export function joinedKey({ state, key, folder, terminal }: {
   const joined = Object.values(state.cards).find(c => c.sourceRefs.some(r =>
     r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === sessionId))
 
+  const session = terminal?.paseoTerminal
+
   if (joined) {
-    return !joined.agent || joined.agent.sessionId === sessionId ? joined.key : key
+    return (!joined.agent || joined.agent.sessionId === sessionId)
+      && (!joined.terminal?.paseoTerminal || joined.terminal.paseoTerminal === session)
+      ? joined.key
+      : key
   }
 
   if (!folder) {
     return key
   }
 
-  const session = terminal?.paseoTerminal
   const tty = terminal?.tty
+  const headless = probed && !tty
   const ownTerminal = (c: Card) => !!session && c.terminal?.paseoTerminal === session
   const succeeds = (c: Card) => !!tty
     && (c.activity === 'ended' || !c.terminal?.tty || c.terminal.tty === tty)
   const matches = Object.values(state.cards).filter(c => c.folder === folder
     && (c.agent
       ? ownTerminal(c) && succeeds(c)
-      : c.terminal?.paseoTerminal ? !terminal || (ownTerminal(c) && !!tty) : !session || !!tty))
+      : c.terminal?.paseoTerminal ? ownTerminal(c) && !headless : !session || !headless))
   const own = matches.filter(ownTerminal)
 
   return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key

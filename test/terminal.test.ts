@@ -254,6 +254,17 @@ test('the hook records the terminal the session runs in, past wrapper shells, an
     tmuxPane: '%5',
     paseoTerminal: 'term-1',
   })
+
+  // Any other event records only the Paseo terminal, and leaves the card's facts alone.
+  const tool = execFileAsync('/bin/sh', [script, 'claude', 'PreToolUse'], { encoding: 'utf8', env: hostEnv })
+  tool.child.stdin!.end('{"session_id":"s1","cwd":"/work","tool_name":"Bash","tool_input":{"command":"ls"}}')
+  await tool
+  const lines = readdirSync(spool).filter(f => f.endsWith('.json'))
+    .map(f => JSON.parse(readFileSync(join(spool, f), 'utf8')) as { event: string; terminal?: object })
+  assert.deepEqual(lines.find(l => l.event === 'PreToolUse')?.terminal, { paseoTerminal: 'term-1' })
+  execFileSync(process.execPath, [BIN, 'harvest'], { env: { ...env, PNYX_HOME: home }, encoding: 'utf8' })
+  const after = loadBoard({ board: 'default' }).state
+  assert.deepEqual(after.cards[after.keys['claude:s1']!]!.terminal, line.terminal)
 })
 
 test('agent types a Claude Code command, answers its confirmation and presses keys where the host can', () => {

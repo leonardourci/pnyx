@@ -8,6 +8,8 @@ import { terminalFacts } from '../../core/route.ts'
 import { hookSettings } from './settings.ts'
 
 export const HARNESSES = ['claude', 'codex'] as const
+// The events whose hook looks for the session's terminal; any other carries at most its Paseo terminal.
+export const TERMINAL_EVENTS = ['SessionStart', 'UserPromptSubmit']
 export type Harness = (typeof HARNESSES)[number]
 
 // What pnyx-hook.sh writes: one line per hook call.
@@ -364,7 +366,9 @@ export function observe({ envelope }: { envelope: HookEnvelope }): Observation[]
   const activity = found.activity ? { activity: found.activity } : {}
   const out: Observation[] = []
   let key = parentKey
-  const terminal = terminalFacts({ value: envelope.terminal })
+  const terminal = TERMINAL_EVENTS.includes(envelope.event)
+    ? terminalFacts({ value: envelope.terminal })
+    : undefined
   let card: Record<string, unknown> = { ...session, ...activity, ...(terminal ? { terminal } : {}) }
 
   if (agentId) {

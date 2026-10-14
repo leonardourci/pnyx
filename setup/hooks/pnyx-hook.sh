@@ -22,7 +22,9 @@ home=${home%/hooks}
 
 # Where the session's terminal is, so a reply can be typed into it: the harness
 # process and its TTY, and the host around it from the environment. Recorded when
-# a session starts or takes a prompt; a value outside the safe characters is left out.
+# a session starts or takes a prompt, except the Paseo terminal, which every event
+# records so each one shows the task it runs for; a value outside the safe
+# characters is left out.
 terminal=
 fact() {
   case $2 in '' | -* | *[!A-Za-z0-9_./:%,@+=-]*) return ;; esac
@@ -57,12 +59,12 @@ SessionStart | UserPromptSubmit)
   fact program "${TERM_PROGRAM:-}"
   [ -z "${TMUX:-}" ] || fact tmux "${TMUX%%,*}"
   fact tmuxPane "${TMUX_PANE:-}"
-  fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
   fact paseoHome "${PASEO_HOME:-}"
   fact herdrSession "${HERDR_SESSION:-}"
   fact herdrPane "${HERDR_PANE_ID:-}"
   ;;
 esac
+fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
 [ -z "$terminal" ] || terminal="\"terminal\":{$terminal},"
 
 # One date call gives both the epoch ($1) and the ISO time ($2).

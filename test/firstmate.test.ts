@@ -649,7 +649,7 @@ test('a task launched in a Paseo terminal takes only a session from that termina
   assert.equal(loadBoard({ board: 'default' }).state.keys['claude:s-worker'], undefined)
 })
 
-test('a Paseo task takes a worker whose first event shows no terminal, not one in another terminal', () => {
+test('a Paseo task takes only events from its terminal, whatever event comes first', () => {
   const { home } = copyFixture()
   const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
   writeFileSync(join(home, 'state', 'wt-q.meta'), `task=wt-q\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-q\n`)
@@ -680,16 +680,57 @@ test('a Paseo task takes a worker whose first event shows no terminal, not one i
   assert.equal(cardOf(home, 'wt-q').agent, undefined)
   assert.equal(own({ session: 's-other' }), true)
 
+  // An event that shows no Paseo terminal keeps its own card too.
+  hook({ id: 'h1b', session: 's-bare', event: 'PreToolUse' })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf(home, 'wt-q').agent, undefined)
+  assert.equal(own({ session: 's-bare' }), true)
+
   // A worker already running when its hooks were trusted first reports a tool call,
-  // which carries no terminal; it joins, and its later events from the task's terminal follow.
-  hook({ id: 'h2', session: 's-worker', event: 'PreToolUse' })
+  // which shows only its Paseo terminal; it joins, and its later events follow.
+  hook({ id: 'h2', session: 's-worker', event: 'PreToolUse', terminal: { paseoTerminal: 'term-q' } })
   syncHome({ board: 'default', home })
   assert.equal(cardOf(home, 'wt-q').agent?.sessionId, 's-worker')
+  assert.deepEqual(cardOf(home, 'wt-q').terminal, { paseoTerminal: 'term-q' })
   assert.equal(own({ session: 's-worker' }), false)
   hook({ id: 'h3', session: 's-worker', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys051', pid: '5151', paseoTerminal: 'term-q' } })
   syncHome({ board: 'default', home })
   assert.equal(cardOf(home, 'wt-q').agent?.sessionId, 's-worker')
   assert.equal(cardOf(home, 'wt-q').terminal?.paseoTerminal, 'term-q')
+  assert.equal(own({ session: 's-worker' }), false)
+})
+
+test('a session that joined a Paseo task and then shows another terminal reports to its own card', () => {
+  const { home } = copyFixture()
+  const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
+  writeFileSync(join(home, 'state', 'wt-r.meta'), `task=wt-r\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-r\n`)
+  syncHome({ board: 'default', home })
+  const hook = ({ id, session, event, terminal }: {
+    id: string
+    session: string
+    event: string
+    terminal: object
+  }) =>
+    spoolWrite({
+      board: 'default',
+      entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'codex', event, payload: { session_id: session, cwd: worktree, prompt: 'x' }, terminal },
+    })
+  const own = ({ session }: { session: string }) => !!loadBoard({ board: 'default' }).state.keys[`codex:${session}`]
+
+  hook({ id: 'h1', session: 's-a', event: 'PreToolUse', terminal: { paseoTerminal: 'term-r' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf(home, 'wt-r').agent?.sessionId, 's-a')
+
+  // Its next prompt comes from tmux: that goes to its own card, and the task keeps its terminal.
+  hook({ id: 'h2', session: 's-a', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys060', pid: '6060', program: 'tmux' } })
+  syncHome({ board: 'default', home })
+  assert.equal(own({ session: 's-a' }), true)
+  assert.deepEqual(cardOf(home, 'wt-r').terminal, { paseoTerminal: 'term-r' })
+
+  // The worker in the task's terminal still takes the card over.
+  hook({ id: 'h3', session: 's-worker', event: 'SessionStart', terminal: { tty: '/dev/ttys061', pid: '6161', paseoTerminal: 'term-r' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf(home, 'wt-r').agent?.sessionId, 's-worker')
   assert.equal(own({ session: 's-worker' }), false)
 })
 

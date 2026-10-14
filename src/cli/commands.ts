@@ -35,7 +35,7 @@ import { terminalFacts } from '../core/route.ts'
 import { readServer } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
-import { HARNESSES, attend, isHookEnvelope, observe, type Harness, type HookEnvelope } from '../integrations/hooks/observe.ts'
+import { HARNESSES, TERMINAL_EVENTS, attend, isHookEnvelope, observe, type Harness, type HookEnvelope } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from '../store/board-store.ts'
 
@@ -195,9 +195,10 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
   const harvest: string[] = []
   const folder = canonical({ path: (entry.payload as { cwd?: unknown } | null)?.cwd })
   const terminal = terminalFacts({ value: entry.terminal })
+  const probed = TERMINAL_EVENTS.includes(entry.event)
   // A session (never a subagent, whose key has a /) started in a folder a source
   // assigned, such as a Firstmate task's worktree, reports to that card.
-  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder, terminal }))
+  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder, terminal, probed }))
 
   for (const o of observe({ envelope: entry as unknown as HookEnvelope })) {
     const key = resolve({ key: o.key })
