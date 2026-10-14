@@ -30,8 +30,9 @@ export type NoteKind = (typeof NOTE_KINDS)[number]
 export const SESSION_TITLE = 'Session title: '
 
 // A title a source offers for a card nobody titled, best first: the harness's own
-// session title, the session's first prompt, then its working folder.
-export const AUTO_TITLE_SOURCES = ['session', 'prompt', 'folder'] as const
+// session title, the session's first prompt, a subagent's type and short id, then
+// its working folder.
+export const AUTO_TITLE_SOURCES = ['session', 'prompt', 'agent', 'folder'] as const
 
 export interface AutoTitle {
   from: (typeof AUTO_TITLE_SOURCES)[number]

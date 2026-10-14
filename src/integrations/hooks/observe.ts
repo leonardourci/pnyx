@@ -185,14 +185,15 @@ export function observe(envelope: HookEnvelope): Observation[] {
   if (agentId) {
     out.push({ id: 'parent', key: parentKey, card: session, ifMissing: true })
     key = `${parentKey}/${agentId}`
+    const agentType = str(p.agent_type)
     card = {
       source: source(`${sessionId}/${agentId}`),
       agent: agent({
         agentId,
-        agentType: str(p.agent_type),
+        agentType,
         transcriptPath: str(p.agent_transcript_path),
       }),
-      ...(autoTitle ? { autoTitle } : {}),
+      autoTitle: { from: 'agent', text: `${agentType ?? 'Subagent'} ${agentId.slice(0, 4)}` },
       parent: parentKey,
       activity: doing,
     }

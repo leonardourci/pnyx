@@ -210,6 +210,11 @@ test('a subagent event makes sure the parent exists, then observes the child und
   assert.equal(child!.key, `claude:${SESSION}/agent-a1`)
   assert.equal(child!.card.parent, `claude:${SESSION}`)
   assert.equal(child!.card.activity, 'stopped')
+  assert.deepEqual(child!.card.autoTitle, { from: 'agent', text: 'Explore agen' }, 'a subagent is titled by its type and short id, not the folder')
+  const untyped = envelope('claude', 'SubagentStart', 'claude-subagent-start')
+  const untypedPayload = untyped.payload as Record<string, unknown>
+  const [, bareChild] = observe({ ...untyped, payload: { ...untypedPayload, agent_type: undefined, agent_id: 'b7c9d2' } })
+  assert.deepEqual(bareChild!.card.autoTitle, { from: 'agent', text: 'Subagent b7c9' })
   assert.deepEqual(child!.card.agent, {
     provider: 'claude-code',
     sessionId: SESSION,

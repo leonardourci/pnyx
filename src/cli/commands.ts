@@ -825,7 +825,7 @@ flags:
 const COMMAND_HELP: Record<string, string> = {
   push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
-card.json fields (all optional): title, autoTitle {from: session|prompt|folder, text} (used only while no title is set), workspace, tags[], parent (card id or key, null to clear), activity,
+card.json fields (all optional): title, autoTitle {from: session|prompt|agent|folder, text} (used only while no title is set), workspace, tags[], parent (card id or key, null to clear), activity,
   agent {provider, sessionId, agentId, agentType, cwd, transcriptPath}, attention[] {kind, key, blocking, text},
   settings {<name>: <value>, or null to remove it} merged into the card's settings, such as model, effort, mode, fast,
   source {adapter, objectId, instanceId, generation, cursor, observedAt}
