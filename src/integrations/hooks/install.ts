@@ -12,18 +12,47 @@ import type { Harness } from './observe.ts'
 const SCRIPT = 'pnyx-hook.sh'
 // Same relative path from src/integrations/hooks and dist/integrations/hooks.
 const SCRIPT_SOURCE = join(import.meta.dirname, '..', '..', '..', 'setup', 'hooks', SCRIPT)
-// The tool events only report pull request and deploy commands, all run through the shell tool.
-const EVENTS: { event: string; matcher?: string }[] = [
-  { event: 'SessionStart' },
-  { event: 'UserPromptSubmit' },
-  { event: 'PreToolUse', matcher: 'Bash' },
-  { event: 'PostToolUse', matcher: 'Bash' },
-  { event: 'Stop' },
-  { event: 'SubagentStart' },
-  { event: 'SubagentStop' },
-  { event: 'SessionEnd' },
-]
-// Codex caps SessionEnd hooks at 3 seconds; the script takes milliseconds.
+// Every event each harness's own interface reacts to, for every tool. Claude Code
+// events left out, and why, are listed in src/integrations/hooks/README.md.
+const EVENTS: Record<Harness, string[]> = {
+  claude: [
+    'SessionStart',
+    'UserPromptSubmit',
+    'PreToolUse',
+    'PermissionRequest',
+    'PermissionDenied',
+    'PostToolUse',
+    'PostToolUseFailure',
+    'Notification',
+    'Elicitation',
+    'ElicitationResult',
+    'SubagentStart',
+    'SubagentStop',
+    'TaskCreated',
+    'TaskCompleted',
+    'TeammateIdle',
+    'PreCompact',
+    'PostCompact',
+    'Stop',
+    'StopFailure',
+    'SessionEnd',
+  ],
+  codex: [
+    'SessionStart',
+    'UserPromptSubmit',
+    'PreToolUse',
+    'PermissionRequest',
+    'PostToolUse',
+    'SubagentStart',
+    'SubagentStop',
+    'PreCompact',
+    'PostCompact',
+    'Stop',
+    'Interrupt',
+    'SessionEnd',
+  ],
+}
+// Codex caps SessionEnd and Interrupt hooks at 3 seconds; the script takes milliseconds.
 const TIMEOUT_SECONDS = 3
 
 interface Handler {
@@ -87,9 +116,9 @@ function merged(config: Config, harness: Harness, remove: boolean): Config {
   const wanted = new Map(
     remove
       ? []
-      : EVENTS.map(({ event, matcher }) => [
+      : EVENTS[harness].map(event => [
         event,
-        { matcher, handler: { type: 'command', command: `${quote(scriptPath())} ${harness} ${event}`, timeout: TIMEOUT_SECONDS } },
+        { type: 'command', command: `${quote(scriptPath())} ${harness} ${event}`, timeout: TIMEOUT_SECONDS },
       ]),
   )
   const hooks: Record<string, Group[]> = {}
@@ -112,13 +141,14 @@ function merged(config: Config, harness: Harness, remove: boolean): Config {
 
         const want = wanted.get(event)
 
-        if (!want || group.matcher !== want.matcher) {
+        // Pnyx groups match every tool, so one left from a version with a matcher is replaced.
+        if (!want || group.matcher !== undefined) {
           return []
         }
 
         wanted.delete(event)
 
-        return [{ ...h, ...want.handler }]
+        return [{ ...h, ...want }]
       })
 
       return handlers.length ? [{ ...group, hooks: handlers }] : []
@@ -129,8 +159,8 @@ function merged(config: Config, harness: Harness, remove: boolean): Config {
     }
   }
 
-  for (const [event, { matcher, handler }] of wanted) {
-    hooks[event] = [...(hooks[event] ?? []), { ...(matcher ? { matcher } : {}), hooks: [handler] }]
+  for (const [event, handler] of wanted) {
+    hooks[event] = [...(hooks[event] ?? []), { hooks: [handler] }]
   }
 
   const next: Config = { ...config, hooks }
