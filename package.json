@@ -17,6 +17,8 @@
     "lint": "pnpm run typecheck && eslint .",
     "test": "pnpm run build && node --test \"test/**/*.test.ts\"",
     "web:dev": "vite --config web/vite.config.ts",
+    "dev": "pnpm run \"/^(dev:server|web:dev)$/\"",
+    "dev:server": "node --watch src/cli/pnyx-axi.ts serve --board dev --port ${PNYX_DEV_PORT:-4319}",
     "test:web": "pnpm run build && node test/web-smoke.ts",
     "test:keyboard": "pnpm run build && node test/keyboard-smoke.ts",
     "lint:fix": "eslint --fix .",
