@@ -31,6 +31,9 @@ export interface ReplyReceipt {
   state: ReplyState;
   sent: boolean;
   detail?: string;
+  // Set when the send ran but its outcome could not be written; the board still
+  // shows the reply as queued.
+  recordError?: string;
 }
 
 interface Route {
@@ -99,10 +102,15 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
 
   // Sent outside the writer lock: fm-send can take a while and must not block other writers.
   const outcome = send(queued.route, text, resolveKey);
-  withWriter(board, (writer) => {
-    const data = { reply: queued.reply, route: ADAPTER, ...outcome };
-    const decision = decideReply(writer.state, queued.card, data, meta());
-    if ("event" in decision) writer.append(decision.event);
-  });
-  return { card: queued.card, reply: queued.reply, sent: true, ...outcome };
+  const receipt = { card: queued.card, reply: queued.reply, sent: true, ...outcome };
+  try {
+    withWriter(board, (writer) => {
+      const data = { reply: queued.reply, route: ADAPTER, ...outcome };
+      const decision = decideReply(writer.state, queued.card, data, meta());
+      if ("event" in decision) writer.append(decision.event);
+    });
+  } catch (error) {
+    return { ...receipt, recordError: (error as Error).message };
+  }
+  return receipt;
 }

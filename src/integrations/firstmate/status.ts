@@ -96,12 +96,18 @@ export function openDecisions(log: string, kind: string): OpenDecision[] {
   return [...open.values()];
 }
 
-// The latest declared line as `<verb>: <note>`, for the card's activity.
-export function latestActivity(log: string): string | undefined {
+// The latest line with a verb and a colon.
+export function latestLine(log: string): StatusLine | undefined {
   const lines = log.split("\n");
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = parseStatusLine(lines[i]!);
-    if (line.colon && line.verb) return line.note ? `${line.verb}: ${line.note}` : line.verb;
+    if (line.colon && line.verb) return line;
   }
   return undefined;
+}
+
+// The latest declared line as `<verb>: <note>`, for the card's activity.
+export function latestActivity(log: string): string | undefined {
+  const line = latestLine(log);
+  return line && (line.note ? `${line.verb}: ${line.note}` : line.verb);
 }
