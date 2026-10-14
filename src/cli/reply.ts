@@ -406,9 +406,16 @@ export const agent = guard({
     // A Firstmate task's worker is never typed into: its orchestrator gets a request note.
     const typed = firstmate
       ? { text: settingRequest({ option, task: firstmate.task, harness }) }
-      : 'key' in input
-        ? { text: `[${KEY_LABEL[input.key]}]`, key: input.key }
-        : { text: input.text, confirm: input.confirm }
+      : 'request' in input
+        ? undefined
+        : 'key' in input
+          ? { text: `[${KEY_LABEL[input.key]}]`, key: input.key }
+          : { text: input.text, confirm: input.confirm }
+
+    if (!typed) {
+      throw new AxiError('this setting requires a Firstmate request route', 'NO_ROUTE')
+    }
+
     const receipt = sendReply({
       board,
       request: {
