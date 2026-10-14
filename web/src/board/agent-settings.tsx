@@ -100,7 +100,9 @@ const typedAs = ({ option, kind }: { option: ControlOption; kind?: ThreadPage['r
     ? "Asks Firstmate's orchestrator in a request note"
     : 'key' in option.input
       ? `Presses ${KEY_LABEL[option.input.key]} in the session`
-      : `Types ${option.input.text} in the session`
+      : 'text' in option.input
+        ? `Types ${option.input.text} in the session`
+        : 'Requires a Firstmate request route'
 
 // Why the route cannot press this control's keys, if it cannot.
 const keyReason = ({ control, kind }: { control: Control; kind?: ThreadPage['routeKind'] }) =>
