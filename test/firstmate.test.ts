@@ -99,8 +99,8 @@ test("sync turns each task into a card under the home's card", () => {
   );
   assert.equal(api.column, "needs_you");
   assert.equal(api.activity, "working: PR https://github.com/example/app/pull/41 opened");
-  // The PR found in the status log is linked as open; decisions still win.
-  assert.deepEqual(api.links.map((l) => [l.number, l.state]), [[41, "open"]]);
+  // A pull request named only in the status log is not the task's own.
+  assert.deepEqual(api.links, []);
   assert.deepEqual(api.sourceRefs, [{ adapter: "firstmate", instanceId: home, objectId: "api-v2" }]);
 
   // The scout's terminal line closed its decision, and its Done backlog row
@@ -171,7 +171,9 @@ test("a done: status line alone is not completion", () => {
 
 test("sync never overwrites a link state another source refreshed", () => {
   const { home } = copyFixture();
+  appendFileSync(join(home, "state", "api-v2.meta"), "pr=https://github.com/example/app/pull/41\n");
   syncHome("default", home);
+  assert.equal(cardOf(home, "api-v2").links[0]!.state, "open");
   const api = cardOf(home, "api-v2");
   execFileSync(process.execPath, [BIN, "link", api.id, "--url", "https://github.com/example/app/pull/41", "--state", "closed"], {
     env: process.env,
@@ -225,7 +227,7 @@ function cli(env: NodeJS.ProcessEnv) {
 test("firstmate sync through the CLI", () => {
   const { home, env } = copyFixture();
   const { run, fails } = cli(env);
-  assert.match(run("firstmate", "sync", "--home", home), /home,4,9$/m);
+  assert.match(run("firstmate", "sync", "--home", home), /home,4,8$/m);
   assert.match(run(), /needs_you: 2/);
   fails(["firstmate", "sync"], "VALIDATION_ERROR");
   fails(["firstmate", "sync", "--home", join(home, "data")], "VALIDATION_ERROR");
@@ -247,13 +249,20 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   // The answer does not close the decision by itself; Firstmate's resolved line does.
   assert.equal(cardOf(home, "api-v2").attention.length, 2);
 
-  writeFileSync(join(home, "send-exit"), "1");
+  writeFileSync(join(home, "send-exit"), "2");
   assert.match(run("reply", api.id, "--text", "ping", "--idempotency-key", "k2", "--home", home), /state: failed/);
   writeFileSync(join(home, "send-exit"), "0");
   assert.match(run("reply", api.id, "--text", "ping", "--idempotency-key", "k2", "--home", home), /state: delivered/);
   writeFileSync(join(home, "send-exit"), "3");
   assert.match(run("reply", api.id, "--text", "maybe", "--idempotency-key", "k3", "--home", home), /state: delivery_unknown/);
   assert.match(run("reply", api.id, "--text", "maybe", "--idempotency-key", "k3", "--home", home), /sent: false/);
+  // Exit 1 (a remote send that lost its transport) may also have landed.
+  writeFileSync(join(home, "send-exit"), "1");
+  const unknown = run("reply", api.id, "--text", "remote", "--idempotency-key", "k4", "--home", home);
+  assert.match(unknown, /state: delivery_unknown/);
+  assert.match(unknown, /may have landed/);
+  assert.doesNotMatch(unknown, /retry with --idempotency-key/);
+  assert.match(run("reply", api.id, "--text", "remote", "--idempotency-key", "k4", "--home", home), /sent: false/);
 
   const history = run("history", "--card", api.id, "--kind", "replied", "--limit", "100");
   assert.equal(history.match(/reply k2 /g)?.length, 4);
@@ -274,9 +283,9 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   assert.match(retry, /state: queued/);
   assert.match(retry, /sent: false/);
   assert.match(retry, /Check the task's inbox/);
-  assert.equal(sent().split("---").length - 1, 5);
+  assert.equal(sent().split("---").length - 1, 6);
   // A known failure that could not be recorded says nothing was delivered.
-  writeFileSync(join(home, "send-exit"), "1");
+  writeFileSync(join(home, "send-exit"), "2");
   writeFileSync(join(home, "tear"), "");
   const lost = run("reply", api.id, "--text", "lost", "--home", home);
   assert.match(lost, /state: failed/);
