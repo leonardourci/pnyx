@@ -1,5 +1,6 @@
 // The settings a card's Agent tab can change, by typing into the session what its
-// harness's own interface takes, on the card's reply route. Pure: delivery and the
+// harness's own interface takes, on the card's reply route, or on a Firstmate task by
+// asking its orchestrator in a request note (settingRequest). Pure: delivery and the
 // readback of the new value happen elsewhere. Checked against each harness's docs
 // and a real session (Claude Code 2.1.299, Codex 0.160.1):
 //
@@ -14,19 +15,18 @@
 // Claude Code saves a typed model, effort or fast mode as the default for new
 // sessions, and Codex saves /fast. While its prompt cache is warm, Claude Code asks
 // to confirm a model or effort change with Yes selected, so those get one more Enter;
-// Enter on an empty prompt does nothing. Firstmate's send presses no such keys, so a
-// Firstmate task gets a key's change as a plain request its orchestrator acts on.
+// Enter on an empty prompt does nothing.
 import type { ReplyRoute } from './route.ts'
 
 export const KEYS = ['shift-tab', 'shift-up', 'shift-down'] as const
 export type Key = (typeof KEYS)[number]
 export const KEY_LABEL: Record<Key, string> = { 'shift-tab': 'Shift+Tab', 'shift-up': 'Shift+Up', 'shift-down': 'Shift+Down' }
 
-// What is typed: a command submitted with Enter (confirm adds one more Enter), or one
-// key, with what pressing it asks for in words (`<task>` names the Firstmate task).
-export type ControlInput = { text: string; confirm?: boolean } | { key: Key; ask: string }
+// What is typed: a command submitted with Enter (confirm adds one more Enter), or one key.
+export type ControlInput = { text: string; confirm?: boolean } | { key: Key }
 
-export interface ControlOption { value: string; label: string; input: ControlInput }
+// ask is the change in words for a Firstmate request, `<worker>` standing for the task's worker.
+export interface ControlOption { value: string; label: string; input: ControlInput; ask: string }
 
 export interface Control {
   setting: string
@@ -37,36 +37,45 @@ export interface Control {
   confirm: 'equals' | 'includes' | 'changes'
 }
 
-export interface Controls { controls: Control[]; note?: string }
+export interface Controls { name: string; controls: Control[]; note?: string }
 
-const typed = ({ values, command, confirm }: {
+const typed = ({ values, command, name, confirm }: {
   values: string[]
   command: string
+  // The setting as a request names it.
+  name: string
   confirm?: boolean
-}): ControlOption[] => values.map(value => ({ value, label: value, input: { text: `/${command} ${value}`, ...(confirm ? { confirm } : {}) } }))
+}): ControlOption[] => values.map(value => ({
+  value,
+  label: value,
+  input: { text: `/${command} ${value}`, ...(confirm ? { confirm } : {}) },
+  ask: `switch <worker> to ${name} ${value}`,
+}))
 
 const HARNESS_CONTROLS: Record<string, Controls> = {
   'claude-code': {
+    name: 'Claude Code',
     controls: [
-      { setting: 'model', confirm: 'includes', options: typed({ values: ['opus', 'sonnet', 'haiku', 'fable'], command: 'model', confirm: true }) },
-      { setting: 'effort', confirm: 'equals', options: typed({ values: ['low', 'medium', 'high', 'xhigh', 'max'], command: 'effort', confirm: true }) },
-      { setting: 'mode', confirm: 'changes', options: [{ value: 'next', label: 'Next mode', input: { key: 'shift-tab', ask: 'switch the worker on <task> to the next permission mode (Shift+Tab in its session)' } }] },
-      { setting: 'fast', confirm: 'equals', options: typed({ values: ['on', 'off'], command: 'fast' }) },
+      { setting: 'model', confirm: 'includes', options: typed({ values: ['opus', 'sonnet', 'haiku', 'fable'], command: 'model', name: 'model', confirm: true }) },
+      { setting: 'effort', confirm: 'equals', options: typed({ values: ['low', 'medium', 'high', 'xhigh', 'max'], command: 'effort', name: 'effort', confirm: true }) },
+      { setting: 'mode', confirm: 'changes', options: [{ value: 'next', label: 'Next mode', input: { key: 'shift-tab' }, ask: 'switch <worker> to the next permission mode' }] },
+      { setting: 'fast', confirm: 'equals', options: typed({ values: ['on', 'off'], command: 'fast', name: 'fast mode' }) },
     ],
     note: 'Claude Code also saves a model, effort or fast mode set here as your default for new sessions. Mode cycles manual, accept edits and plan, then bypass permissions and auto where enabled.',
   },
   'codex': {
+    name: 'Codex',
     controls: [
       {
         setting: 'effort',
         confirm: 'changes',
         options: [
-          { value: 'lower', label: 'Lower', input: { key: 'shift-down', ask: 'lower the reasoning effort of the worker on <task> by one step (Shift+Down in its Codex session)' } },
-          { value: 'raise', label: 'Raise', input: { key: 'shift-up', ask: 'raise the reasoning effort of the worker on <task> by one step (Shift+Up in its Codex session)' } },
+          { value: 'lower', label: 'Lower', input: { key: 'shift-down' }, ask: 'lower the reasoning effort of <worker> by one step' },
+          { value: 'raise', label: 'Raise', input: { key: 'shift-up' }, ask: 'raise the reasoning effort of <worker> by one step' },
         ],
       },
-      { setting: 'fast', confirm: 'changes', options: [{ value: 'toggle', label: 'Toggle', input: { text: '/fast' } }] },
-      { setting: 'collaboration', confirm: 'changes', options: [{ value: 'toggle', label: 'Toggle plan', input: { key: 'shift-tab', ask: 'toggle Plan mode for the worker on <task> between turns (Shift+Tab in its Codex session)' } }] },
+      { setting: 'fast', confirm: 'changes', options: [{ value: 'toggle', label: 'Toggle', input: { text: '/fast' }, ask: 'toggle fast mode for <worker>' }] },
+      { setting: 'collaboration', confirm: 'changes', options: [{ value: 'toggle', label: 'Toggle plan', input: { key: 'shift-tab' }, ask: 'toggle Plan mode for <worker>' }] },
     ],
     note: 'Codex picks its model and approval mode only in its own /model and /permissions pickers, so change those in the session. /fast exists only for models with a Fast tier and Codex saves it as your default; Shift+Tab works only between turns.',
   },
@@ -89,10 +98,9 @@ export function findOption({ provider, setting, value }: {
 }
 
 // Why a route cannot carry this input, or undefined when it can. Text goes wherever
-// a reply goes, except to the Firstmate tasks whose send would not type it (checked
-// with the task's meta in the Firstmate integration); a key goes to a Firstmate task
-// as a request (keyRequest), and otherwise needs a host that presses keys.
-export function inputReason({ kind, input }: { kind: ReplyRoute['kind']; input: { key: Key } | { text: string } }): string | undefined {
+// a reply goes and a key needs a host that presses keys; a Firstmate task gets every
+// change as a request note, so it takes any input.
+export function inputReason({ kind, input }: { kind: ReplyRoute['kind']; input: ControlInput }): string | undefined {
   if (!('key' in input)) {
     return undefined
   }
@@ -106,13 +114,14 @@ export function inputReason({ kind, input }: { kind: ReplyRoute['kind']; input: 
   }
 }
 
-// The plain request a Firstmate task gets for a key fm-send cannot press: no slash and
-// no key, so its orchestrator reads it and acts on its worker.
-export function keyRequest({ input, task }: {
-  input: { key: Key; ask: string }
+// The request note a Firstmate task's orchestrator gets for a change to its worker,
+// which Pnyx never types into: it names the task, the harness and the wanted setting.
+export function settingRequest({ option, task, harness }: {
+  option: ControlOption
   task: string
+  harness: string
 }): string {
-  return `Please ${input.ask.replace('<task>', task)}.`
+  return `Pnyx: please ${option.ask.replace('<worker>', `the worker on task ${task} (${harness})`)}.`
 }
 
 // Whether the session's reported value confirms the option sent while it reported before.

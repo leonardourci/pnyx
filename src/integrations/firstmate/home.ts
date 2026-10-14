@@ -227,20 +227,3 @@ export function readHome(home: string): HomeObservation {
 
   return { path: home, key: homeKey(home), title: basename(home), tasks }
 }
-
-// Why fm-send would not type a harness command into this task's session: a remote
-// task takes only inbox records, and a secondmate's input arrives as a marked message.
-export function typingReason({ home, task }: { home: string; task: string }): string | undefined {
-  const text = TASK_ID.test(task) ? readRegular(join(home, 'state', `${task}.meta`)) : undefined
-  const meta = text === undefined ? {} : parseMeta(text)
-
-  if (meta.remote_host) {
-    return 'This Firstmate task runs on another machine, where fm-send only records messages, so a command cannot reach its session.'
-  }
-
-  if (meta.kind === 'secondmate') {
-    return "Firstmate's send marks a secondmate's input as a message, so a command would arrive as chat."
-  }
-
-  return undefined
-}
