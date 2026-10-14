@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { decideReply, findCard, type Meta } from "../../core/decide.ts";
 import { BoardError, type ReplyState } from "../../core/model.ts";
 import { withWriter } from "../../store/board-store.ts";
-import { ADAPTER, HOME_OBJECT, resolveHome } from "./home.ts";
+import { ADAPTER, HOME_OBJECT, STATUS_KEY, resolveHome } from "./home.ts";
 import { firstmateRef } from "./sync.ts";
 
 const SEND_TIMEOUT_MS = 120_000;
@@ -89,7 +89,7 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
     const known = card.replies?.find((r) => r.id === reply);
     const route = { home: ref.instanceId, task: ref.objectId };
     if (known && known.state !== "failed") return { card: card.id, reply, state: known.state, route, resend: false };
-    if (resolveKey !== undefined && !card.attention.some((a) => a.key === resolveKey)) {
+    if (resolveKey !== undefined && (resolveKey === STATUS_KEY || !card.attention.some((a) => a.key === resolveKey))) {
       throw invalid(`card ${card.id} has no open decision with key ${resolveKey}`, [`Run \`pnyx-axi card ${card.id}\` to see its attention keys`]);
     }
     // A retry after a failed send queues again, so every attempt has its own receipts.

@@ -111,7 +111,7 @@ test("sync turns each task into a card under the home's card", () => {
   assert.equal(scout.column, "done");
   // A failed: line closes the ship's decisions but asks for the owner.
   const hotfix = cardOf(home, "hotfix-2");
-  assert.deepEqual(hotfix.attention, [{ kind: "failed", key: "status", blocking: true, text: "tests red after patch" }]);
+  assert.deepEqual(hotfix.attention, [{ kind: "failed", key: "@status", blocking: true, text: "tests red after patch" }]);
   assert.equal(hotfix.outcome, undefined);
   assert.equal(hotfix.column, "needs_you");
   // meta pr= plus a merged backlog row: Done.
@@ -120,6 +120,22 @@ test("sync turns each task into a card under the home's card", () => {
   assert.equal(release.column, "done");
 
   assert.deepEqual(syncHome("default", home), { tasks: 4, appended: 0 });
+});
+
+test("a failed task closed in the backlog lands in Done as a closed failure", () => {
+  const { home } = copyFixture();
+  syncHome("default", home);
+  assert.equal(cardOf(home, "hotfix-2").column, "needs_you");
+  const backlog = join(home, "data", "backlog.md");
+  const rows = readFileSync(backlog, "utf8").split("\n");
+  const [row] = rows.splice(rows.findIndex((l) => l.startsWith("- [ ] hotfix-2")), 1);
+  rows.splice(rows.indexOf("## Done") + 1, 0, row!.replace("[ ]", "[x]"));
+  writeFileSync(backlog, rows.join("\n"));
+  syncHome("default", home);
+  const hotfix = cardOf(home, "hotfix-2");
+  assert.deepEqual(hotfix.attention, []);
+  assert.deepEqual(hotfix.outcome, { state: "failed", note: "closed after failure", closed: true });
+  assert.equal(hotfix.column, "done");
 });
 
 test("a done: status line alone is not completion", () => {
@@ -241,8 +257,18 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   assert.match(retry, /sent: false/);
   assert.match(retry, /Check the task's inbox/);
   assert.equal(sent().split("---").length - 1, 5);
+  // A known failure that could not be recorded says nothing was delivered.
+  writeFileSync(join(home, "send-exit"), "1");
+  writeFileSync(join(home, "tear"), "");
+  const lost = run("reply", api.id, "--text", "lost", "--home", home);
+  assert.match(lost, /state: failed/);
+  assert.match(lost, /nothing was delivered/);
+  rmSync(join(home, "tear"));
+  run("repair");
 
   fails(["reply", api.id, "--text", "x", "--resolve-key", "nope", "--home", home], "VALIDATION_ERROR");
+  // A failed: line's attention is not a Firstmate decision fm-send could resolve.
+  fails(["reply", cardOf(home, "hotfix-2").id, "--text", "x", "--resolve-key", "@status", "--home", home], "VALIDATION_ERROR");
   fails(["reply", api.id, "--text=--resolve-key x", "--home", home], "VALIDATION_ERROR");
   fails(["reply", cardOf(home).id, "--text", "x", "--home", home], "NO_ROUTE");
   fails(["undo", readEvents("default").find((e) => e.type === "card.replied")!.id], "NOT_UNDOABLE");
