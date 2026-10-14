@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import type { Card as CardData, Link, ViewPreferences } from '../../../src/core/model.ts'
-import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
+import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { HybridHit } from '../../../src/search/semantic.ts'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { Harness, SettingChips } from './agent-settings.tsx'
-import { agentActivity, receiptLabel, safeLink, shownActivity, visibleParent } from './view.ts'
+import { agentActivity, focusedActivity, receiptLabel, safeLink, shownActivity, visibleParent } from './view.ts'
 
 export function Links({ links }: { links: Link[] }) {
   return (
@@ -126,7 +126,7 @@ export function BoardCard({
       <div className="card-footer">
         <span className={activity ? `agent-activity activity-${activity}` : undefined}>
           {activity ? <i aria-hidden="true" /> : <Icon name={card.column} size={13} />}
-          {shownActivity({ card }) ?? (card.outcome ? card.outcome.state : 'Activity unknown')}
+          {focusedActivity({ activity: shownActivity({ card }), focus: traces({ view, card: card.id }).focus }) ?? (card.outcome ? card.outcome.state : 'Activity unknown')}
         </span>
         {card.manualColumn ? (
           <span title="Manual placement">

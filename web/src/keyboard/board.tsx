@@ -184,7 +184,11 @@ export function useBoardKeyboard({
       return true
     }
 
-    if (id.startsWith('thread.')) {
+    if (id === 'thread.reply') {
+      return focusElement({ selector: '.composer textarea' })
+    }
+
+    if (id.startsWith('thread.') && id !== 'thread.comment') {
       const el = document.querySelector<HTMLElement>('[data-key-scope=thread]')
 
       if (!el) {
@@ -198,7 +202,7 @@ export function useBoardKeyboard({
     }
 
     if ((id === 'board.open' || id === 'reply') && cardId) {
-      open({ id: cardId }); focusDetail({ composer: id === 'reply' })
+      open({ id: cardId }); focusDetail({ composer: true })
 
       return true
     }
@@ -400,7 +404,7 @@ export function KeyboardLayers({
   state: BoardState
   connected: boolean
 }) {
-  const { label, prefs } = useKeyboard()
+  const { label, prefs, handlers } = useKeyboard()
   const { overlay, closeOverlay, onAction, move, hints, hintPrefix, searchCards } = keyboard
   let items: MenuItem[] = []
 
@@ -413,7 +417,10 @@ export function KeyboardLayers({
       detail: `${a.scopes.join(' · ')}${!prefs.characterShortcuts ? ' · character keys disabled' : ''}`,
       disabled: ['cancel', 'send', 'palette'].includes(a.id) || (a.id.startsWith('board.') && overlay.context.scope !== 'board') || (a.id.startsWith('thread.') && overlay.context.scope !== 'thread') || (['move', 'reply'].includes(a.id) && (!card || (a.id === 'move' && !connected))),
       run: () => {
-        setTimeout(() => onAction({ id: a.id, context: overlay.context }), 0); closeOverlay()
+        // A component's own handler (such as comments on the thread) runs first.
+        const run = () => handlers.get(a.id)?.({ context: overlay.context })
+          || onAction({ id: a.id, context: overlay.context })
+        setTimeout(run, 0); closeOverlay()
       },
     }))
 
