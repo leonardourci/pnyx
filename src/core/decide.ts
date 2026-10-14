@@ -286,11 +286,13 @@ function parseTerminal(value: unknown): TerminalFacts {
 // The key a hook session's observation (key `<harness>:<session>`) goes to: its own
 // once it has a card, else the card it already joined, else the one card whose
 // source assigned the session's working folder, such as the Firstmate task running
-// there. A card that already holds a session keeps it, so a second session in the
-// folder keeps its own card and never takes over the task's agent, terminal or reply
-// route. A card launched in another Paseo terminal than the session's is not its
-// task. When several cards remain, the one launched in the session's own terminal
-// wins; otherwise they stay ambiguous and the session keeps its own card.
+// there. A card that already holds a session passes to a new session only in the
+// card's own Paseo terminal (after /clear, /new or a respawn the source recorded);
+// a session in another or an unknown terminal keeps its own card and never takes
+// over the task's agent, terminal or reply route. A card launched in another Paseo
+// terminal than the session's is not its task. When several cards remain, the one
+// launched in the session's own terminal wins; otherwise they stay ambiguous and
+// the session keeps its own card.
 export function joinedKey(
   state: BoardState,
   key: string,
@@ -314,9 +316,10 @@ export function joinedKey(
   }
 
   const session = terminal?.paseoTerminal
-  const matches = Object.values(state.cards).filter(c => c.folder === folder && !c.agent
-    && (!session || !c.terminal?.paseoTerminal || c.terminal.paseoTerminal === session))
-  const own = matches.filter(c => session && c.terminal?.paseoTerminal === session)
+  const ownTerminal = (c: Card) => !!session && c.terminal?.paseoTerminal === session
+  const matches = Object.values(state.cards).filter(c => c.folder === folder
+    && (ownTerminal(c) || (!c.agent && (!session || !c.terminal?.paseoTerminal))))
+  const own = matches.filter(ownTerminal)
 
   return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key
 }

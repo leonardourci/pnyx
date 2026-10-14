@@ -490,12 +490,12 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   assert.ok(loadBoard('default').state.keys['claude:next'])
 })
 
-test('a session joins the task launched in its worktree; the task keeps that session', () => {
+test('a session joins the task launched in its worktree; only a session in its terminal takes over', () => {
   const { home } = copyFixture()
   const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
   const meta = (task: string, terminal: string) =>
     writeFileSync(join(home, 'state', `${task}.meta`), `task=${task}\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=${terminal}\n`)
-  const hook = (id: string, session: string, paseoTerminal: string) =>
+  const hook = (id: string, session: string, paseoTerminal?: string) =>
     spoolWrite('default', {
       v: 1,
       id,
@@ -503,7 +503,7 @@ test('a session joins the task launched in its worktree; the task keeps that ses
       harness: 'claude',
       event: 'SessionStart',
       payload: { session_id: session, cwd: worktree },
-      terminal: { tty: '/dev/ttys042', pid: '4242', program: 'kitty', paseoTerminal },
+      terminal: { tty: '/dev/ttys042', pid: '4242', program: 'kitty', ...(paseoTerminal ? { paseoTerminal } : {}) },
     })
   const own = (session: string) => !!loadBoard('default').state.keys[`claude:${session}`]
 
@@ -520,11 +520,32 @@ test('a session joins the task launched in its worktree; the task keeps that ses
   assert.equal(cardOf(home, 'wt-b').terminal?.pid, '4242')
   assert.equal(own('s-b'), false)
 
-  // A second session in the folder, even in the same terminal, never replaces it.
-  hook('h2', 's-twin', 'term-b')
+  // A second session in the folder, in another or an unknown terminal, never replaces it.
+  hook('h2', 's-twin', 'term-elsewhere')
+  hook('h2b', 's-bare')
   syncHome('default', home)
   assert.equal(cardOf(home, 'wt-b').agent?.sessionId, 's-b')
+  assert.equal(cardOf(home, 'wt-b').terminal?.pid, '4242')
   assert.equal(own('s-twin'), true)
+  assert.equal(own('s-bare'), true)
+
+  // A new session in the task's own terminal (/clear, /new) continues the card,
+  // and its later events reach it.
+  hook('h2c', 's-b2', 'term-b')
+  syncHome('default', home)
+  hook('h2d', 's-b2', 'term-b')
+  syncHome('default', home)
+  assert.equal(cardOf(home, 'wt-b').agent?.sessionId, 's-b2')
+  assert.equal(own('s-b2'), false)
+
+  // Firstmate respawns the worker in a new terminal; its session continues the card.
+  meta('wt-b', 'term-b3')
+  syncHome('default', home)
+  assert.deepEqual(cardOf(home, 'wt-b').terminal, { paseoTerminal: 'term-b3' })
+  hook('h2e', 's-b3', 'term-b3')
+  syncHome('default', home)
+  assert.equal(cardOf(home, 'wt-b').agent?.sessionId, 's-b3')
+  assert.equal(own('s-b3'), false)
 
   // Follow-up tasks launched into the same worktree: each session's own Paseo
   // terminal tells them apart, and one launched elsewhere joins neither.
