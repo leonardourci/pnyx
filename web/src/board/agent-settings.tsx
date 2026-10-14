@@ -196,12 +196,21 @@ export function AgentControls({
     setPending({})
     setRequests([])
   }, [card.id])
+  // A new note is a new reply: its receipts, not each settings report, reload the notes.
+  const replies = card.replies?.map(r => `${r.id}:${r.state}`).join(' ')
   useEffect(() => {
+    let latest = true
+
     if (firstmate) {
-      void command('agent', [card.id]).then(r => setRequests(r.requests as Request[] | string))
-        .catch(() => undefined)
+      void command('agent', [card.id])
+        .then(r => latest && setRequests(r.requests as Request[] | string))
+        .catch((e: Error) => latest && setRequests(e.message))
     }
-  }, [firstmate, card.id, card.replies, card.settings, command])
+
+    return () => {
+      latest = false
+    }
+  }, [firstmate, card.id, replies, command])
   useEffect(() => {
     setPending(current => {
       const left = Object.fromEntries(Object.entries(current).filter(([setting, p]) => {
