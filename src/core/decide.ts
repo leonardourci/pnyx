@@ -318,34 +318,64 @@ function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
 }
 
 // The key a hook session's observation (key `<harness>:<session>`) goes to: its own
-// once it has a card, else the card it already joined, else the one card whose
+// once it has a card, else the card it joined while that card's agent is still this
+// session (a superseded session reports to its own card), else the one card whose
 // source assigned the session's working folder, such as the Firstmate task running
-// there. Several such cards stay ambiguous, so the session keeps its own card.
-// ponytail: a second session in the same folder joins too; record join aliases if that bites.
-export function joinedKey({ state, key, folder }: {
+// there. A card that already holds a session passes to a new session only in the
+// card's own Paseo terminal, and only to an interactive one (it has a tty) once the
+// card's session ended, on the same tty (/clear, /new), or after the source
+// recorded a new terminal for a respawn; a headless run in a Paseo terminal (no
+// tty), even on a card with no session yet, or a session in another or an unknown
+// terminal, keeps its own card and never takes over the task's agent, terminal or
+// reply route. A card with a recorded Paseo terminal takes, and keeps, only events
+// from that terminal, which hooks record on every event; a session it took that
+// shows another terminal reports to its own card. One with none takes any session
+// but a headless run in Paseo. probed says the hook looked for the session's tty,
+// which it does only when a session starts or takes a prompt. When several cards
+// remain, the one launched in the session's own terminal wins; otherwise they stay
+// ambiguous and the session keeps its own card.
+export function joinedKey({ state, key, folder, terminal, probed }: {
   state: BoardState
   key: string
   folder: string | undefined
+  terminal?: TerminalFacts
+  probed: boolean
 }): string {
   if (key in state.keys) {
     return key
   }
 
   const colon = key.indexOf(':')
+  const sessionId = key.slice(colon + 1)
   const joined = Object.values(state.cards).find(c => c.sourceRefs.some(r =>
-    r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === key.slice(colon + 1)))
+    r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === sessionId))
+
+  const session = terminal?.paseoTerminal
 
   if (joined) {
-    return joined.key
+    return (!joined.agent || joined.agent.sessionId === sessionId)
+      && (!joined.terminal?.paseoTerminal || joined.terminal.paseoTerminal === session)
+      ? joined.key
+      : key
   }
 
   if (!folder) {
     return key
   }
 
-  const matches = Object.values(state.cards).filter(c => c.folder === folder)
+  const tty = terminal?.tty
+  const headless = probed && !tty
+  const ownTerminal = ({ card: c }: { card: Card }) =>
+    !!session && c.terminal?.paseoTerminal === session
+  const succeeds = ({ card: c }: { card: Card }) => !!tty
+    && (c.activity === 'ended' || !c.terminal?.tty || c.terminal.tty === tty)
+  const matches = Object.values(state.cards).filter(c => c.folder === folder
+    && (c.agent
+      ? ownTerminal({ card: c }) && succeeds({ card: c })
+      : c.terminal?.paseoTerminal ? ownTerminal({ card: c }) && !headless : !session || !headless))
+  const own = matches.filter(card => ownTerminal({ card }))
 
-  return matches.length === 1 ? matches[0]!.key : key
+  return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key
 }
 
 // Upserts the card with this key. `input` is the untrusted card JSON; `parent`

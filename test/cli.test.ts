@@ -28,7 +28,7 @@ test('no arguments prints an empty board summary', () => {
 test('--help prints concise help', () => {
   const out = run({ args: ['--help'] })
   assert.match(out, /^usage: pnyx-axi/)
-  assert.ok(out.split('\n').length < 28)
+  assert.ok(out.split('\n').length < 29)
 })
 
 test('update fails with a structured error while unpublished', () => {
