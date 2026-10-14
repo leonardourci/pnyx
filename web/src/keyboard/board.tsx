@@ -296,14 +296,17 @@ export function KeyboardToolbar({
     <div className="keyboard-toolbar">
       <Button onClick={e => action('palette', { scope: 'navigation', target: e.currentTarget })}>
         Commands
+        {' '}
         <kbd>{label('palette')}</kbd>
       </Button>
       <Button onClick={e => action('help', { scope: 'navigation', target: e.currentTarget })}>
         Help
+        {' '}
         <kbd>{label('help')}</kbd>
       </Button>
       <Button onClick={e => action('hints', { scope: 'navigation', target: e.currentTarget })}>
         Hints
+        {' '}
         <kbd>{label('hints')}</kbd>
       </Button>
     </div>

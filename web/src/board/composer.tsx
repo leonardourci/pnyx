@@ -137,6 +137,7 @@ export function Composer({
       />
       <label htmlFor={`reply-${card}`} className="small muted">
         Reply to
+        {' '}
         {title}
       </label>
       <div className="composer-input">
@@ -206,9 +207,11 @@ export function Composer({
       <div className="row between">
         <span className="small muted">
           Enter newline ·
+          {' '}
           {label('send')}
           {' '}
           send ·
+          {' '}
           {label('cancel')}
           {' '}
           leave

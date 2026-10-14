@@ -230,6 +230,7 @@ export function Detail({
             <article key={e.id} className="history-entry">
               <span className="eyebrow">
                 Event
+                {' '}
                 {e.seq}
               </span>
               <p>{e.summary}</p>
