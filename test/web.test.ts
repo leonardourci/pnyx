@@ -7,7 +7,7 @@ import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decis
 import { emptyBoard, reduce } from '../src/core/reducer.ts'
 import { BoardError, type BoardEvent, type BoardState } from '../src/core/model.ts'
 import { clampViewSize, patchView, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
-import { columnsFor, filterCards, findBoxCards, pageTitle, relativeTime, safeLink, shouldReload, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
+import { columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 
@@ -110,8 +110,6 @@ test('filters do not expose excluded parent details, and links/slashes stay lite
   const visible = filterCards(state, 'B', 'ui', 'searchable')
   assert.equal(visible.length, 1)
   assert.equal(visibleParent(visible[0]!, visible), undefined)
-  const now = Date.parse('2026-10-13T12:00:00Z')
-  assert.deepEqual(['2026-10-13T11:59:30Z', '2026-10-13T11:55:00Z', '2026-10-13T09:00:00Z', '2026-10-11T12:00:00Z', undefined].map(at => relativeTime(at, now)), ['just now', '5m ago', '3h ago', '2d ago', ''])
   assert.equal(safeLink({ kind: 'url', url: 'javascript:alert(1)' }), undefined)
   assert.equal(slashPrefix('/plan', 5), '/plan')
   assert.equal(slashPrefix('open /path', 10), null)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { Card as CardData, Link, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { HybridHit } from '../../../src/search/semantic.ts'
@@ -7,7 +7,7 @@ import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { Harness, SettingChips } from './agent-settings.tsx'
-import { receiptLabel, relativeTime, safeLink, visibleParent } from './view.ts'
+import { receiptLabel, safeLink, visibleParent } from './view.ts'
 
 export function Links({ links }: { links: Link[] }) {
   return (
@@ -36,30 +36,11 @@ export function Tags({ tags }: { tags: string[] }) {
   return <div className="tags">{tags.map(t => <span key={t} className={`tag tone-${[...t].reduce((n,c) => n + c.charCodeAt(0), 0) % 4}`}>{t}</span>)}</div>
 }
 
-// How long ago, rendered again only when the label changes.
-function Ago({ at }: { at: string }) {
-  const [label, setLabel] = useState(() => relativeTime(at, Date.now()))
-
-  useEffect(() => {
-    const tick = () => setLabel(relativeTime(at, Date.now()))
-
-    tick()
-    const timer = setInterval(tick, 30000)
-
-    return () => clearInterval(timer)
-  }, [at])
-
-  return <time dateTime={at} title={new Date(at).toLocaleString()}>{label}</time>
-}
-
 // The last message of the card's conversation, two lines at most.
 function LastMessage({ message }: { message: LatestMessage }) {
   return (
     <div className="last-message" title={message.text}>
-      <div className="row between">
-        <strong>{message.role === 'user' ? 'You' : 'Agent'}</strong>
-        {message.at && <Ago at={message.at} />}
-      </div>
+      <strong>{message.role === 'user' ? 'You' : 'Agent'}</strong>
       <p>{message.text}</p>
     </div>
   )
