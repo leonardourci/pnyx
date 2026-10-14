@@ -11,8 +11,10 @@ import { navigate, restoreAnchor, type BoardAnchor, type ColumnCards } from './n
 import { hintLabels, visibleTargets, type Hint } from './hints.ts'
 
 interface Overlay { kind: 'palette' | 'help' | 'move'; context: ActionContext; card?: string; revision?: number }
-const anchorElement = (anchor: BoardAnchor) => anchor.card ? `[data-card="${CSS.escape(anchor.card)}"]` : `[data-empty-column="${CSS.escape(anchor.column)}"]`
-const readAnchor = (target: HTMLElement): BoardAnchor | undefined => target.dataset.card
+const anchorElement = ({ anchor }: { anchor: BoardAnchor }) => anchor.card ? `[data-card="${CSS.escape(anchor.card)}"]` : `[data-empty-column="${CSS.escape(anchor.column)}"]`
+const readAnchor = ({ target }: {
+  target: HTMLElement
+}): BoardAnchor | undefined => target.dataset.card
   ? { card: target.dataset.card, column: target.closest<HTMLElement>('[data-column]')!.dataset.column! }
   : target.dataset.emptyColumn
     ? { column: target.dataset.emptyColumn }
@@ -38,13 +40,13 @@ export function useBoardKeyboard({
   state: BoardState
   groups: ColumnCards[]
   page: string
-  setPage(page: string): void
+  setPage({ page }: { page: string }): void
   selected: string | null
-  open(id: string): void
+  open({ id }: { id: string }): void
   close(): void
   command: Command
   connected: boolean
-  notify(text: string): void
+  notify({ text }: { text: string }): void
   newColumn: boolean
   cancelColumn(): void
 }) {
@@ -56,7 +58,7 @@ export function useBoardKeyboard({
   const signature = JSON.stringify(groups)
   useEffect(() => {
     const track = (e: FocusEvent) => {
-      const target = e.target as HTMLElement, anchor = readAnchor(target)
+      const target = e.target as HTMLElement, anchor = readAnchor({ target })
       focus.current.owned = !!anchor
 
       if (anchor) {
@@ -76,13 +78,17 @@ export function useBoardKeyboard({
   }, [])
   useLayoutEffect(() => {
     if (page === 'board' && focus.current.owned && focus.current.anchor) {
-      const restored = restoreAnchor(groups, previous.current, focus.current.anchor)
+      const restored = restoreAnchor({
+        columns: groups,
+        previous: previous.current,
+        anchor: focus.current.anchor,
+      })
 
       if (document.activeElement === document.body || !document.activeElement?.isConnected) {
-        focusElement(anchorElement(restored))
+        focusElement({ selector: anchorElement({ anchor: restored }) })
 
         if (restored.card !== focus.current.anchor.card) {
-          notify('Board focus moved to the nearest visible card.')
+          notify({ text: 'Board focus moved to the nearest visible card.' })
         }
       }
     }
@@ -107,9 +113,9 @@ export function useBoardKeyboard({
   useEffect(() => {
     setHints([]); setHintPrefix('')
   }, [state.seq])
-  const focusDetail = (composer: boolean) => requestAnimationFrame(() => {
+  const focusDetail = ({ composer }: { composer: boolean }) => requestAnimationFrame(() => {
     document.querySelector<HTMLButtonElement>('[data-conversation-tab]')?.click()
-    requestAnimationFrame(() => focusElement(composer ? '.composer textarea' : '[data-key-scope=thread]'))
+    requestAnimationFrame(() => focusElement({ selector: composer ? '.composer textarea' : '[data-key-scope=thread]' }))
   })
 
   const closeOverlay = () => {
@@ -117,20 +123,28 @@ export function useBoardKeyboard({
       if (returnFocus.current?.isConnected) {
         returnFocus.current.focus()
       } else if (focus.current.anchor) {
-        focusElement(anchorElement(restoreAnchor(groups, previous.current, focus.current.anchor)))
+        focusElement({
+          selector: anchorElement({
+            anchor: restoreAnchor({
+              columns: groups,
+              previous: previous.current,
+              anchor: focus.current.anchor,
+            }),
+          }),
+        })
       }
     })
   }
 
-  const showOverlay = (kind: Overlay['kind'], context: ActionContext) => {
+  const showOverlay = ({ kind, context }: { kind: Overlay['kind']; context: ActionContext }) => {
     cancelAnimationFrame(restoring.current)
     returnFocus.current = context.target
-    const id = readAnchor(context.target)?.card ?? selected ?? undefined
+    const id = readAnchor({ target: context.target })?.card ?? selected ?? undefined
     setOverlay({ kind, context, card: id, revision: id ? state.cards[id]?.revision : undefined })
   }
 
-  const onAction = (id: string, context: ActionContext): boolean => {
-    const anchor = readAnchor(context.target)
+  const onAction = ({ id, context }: { id: string; context: ActionContext }): boolean => {
+    const anchor = readAnchor({ target: context.target })
       ?? focus.current.anchor
       ?? (groups[0] ? { column: groups[0].id, card: groups[0].cards[0] } : undefined)
     const cardId = context.scope === 'board' ? anchor?.card : selected ?? undefined
@@ -143,11 +157,11 @@ export function useBoardKeyboard({
       } else if (newColumn) {
         cancelColumn()
       } else if (context.scope === 'composer') {
-        focusDetail(false)
+        focusDetail({ composer: false })
       } else if (selected && page === 'board') {
         close()
       } else if (page !== 'board') {
-        setPage('board'); requestAnimationFrame(() => anchor && focusElement(anchorElement(anchor)))
+        setPage({ page: 'board' }); requestAnimationFrame(() => anchor && focusElement({ selector: anchorElement({ anchor }) }))
       } else {
         return false
       }
@@ -156,7 +170,16 @@ export function useBoardKeyboard({
     }
 
     if (id.startsWith('board.') && id !== 'board.open' && anchor) {
-      focusElement(anchorElement(navigate(groups, anchor, id, remembered)))
+      focusElement({
+        selector: anchorElement({
+          anchor: navigate({
+            columns: groups,
+            current: anchor,
+            action: id,
+            remembered,
+          }),
+        }),
+      })
 
       return true
     }
@@ -175,36 +198,36 @@ export function useBoardKeyboard({
     }
 
     if ((id === 'board.open' || id === 'reply') && cardId) {
-      open(cardId); focusDetail(id === 'reply')
+      open({ id: cardId }); focusDetail({ composer: id === 'reply' })
 
       return true
     }
 
     if (id === 'move' && cardId && connected) {
-      showOverlay('move', context)
+      showOverlay({ kind: 'move', context })
 
       return true
     }
 
     if (id === 'find') {
       return (page === 'board' || page === 'history')
-        && focusElement(page === 'board' ? "[aria-label='Find a card']" : "[aria-label='Search history']")
+        && focusElement({ selector: page === 'board' ? "[aria-label='Find a card']" : "[aria-label='Search history']" })
     }
 
     if (id === 'search' || id === 'settings') {
-      setPage(id === 'search' ? 'history' : 'settings'); requestAnimationFrame(() => focusElement(id === 'search' ? "[aria-label='Search history']" : '[data-settings-heading]'))
+      setPage({ page: id === 'search' ? 'history' : 'settings' }); requestAnimationFrame(() => focusElement({ selector: id === 'search' ? "[aria-label='Search history']" : '[data-settings-heading]' }))
 
       return true
     }
 
     if (id === 'palette' || id === 'help') {
-      showOverlay(id, context)
+      showOverlay({ kind: id, context })
 
       return true
     }
 
     if (id === 'hints') {
-      const targets = visibleTargets(), labels = hintLabels(targets.length); setHints(targets.map((t, i) => ({ ...t, label: labels[i] }))); setHintPrefix('')
+      const targets = visibleTargets(), labels = hintLabels({ count: targets.length }); setHints(targets.map((t, i) => ({ ...t, label: labels[i] }))); setHintPrefix('')
 
       return true
     }
@@ -217,11 +240,19 @@ export function useBoardKeyboard({
       ?? (groups[0] ? { column: groups[0].id, card: groups[0].cards[0] } : undefined)
 
     if (page === 'board' && anchor) {
-      focusElement(anchorElement(restoreAnchor(groups, previous.current, anchor)))
+      focusElement({
+        selector: anchorElement({
+          anchor: restoreAnchor({
+            columns: groups,
+            previous: previous.current,
+            anchor,
+          }),
+        }),
+      })
     }
   }
 
-  const hintKey = (event: KeyboardEvent) => {
+  const hintKey = ({ event }: { event: KeyboardEvent }) => {
     if (event.ctrlKey || event.metaKey || event.altKey || event.getModifierState('AltGraph') || event.repeat) {
       return false
     }
@@ -246,7 +277,7 @@ export function useBoardKeyboard({
     const matching = hints.filter(h => h.label.startsWith(prefix))
 
     if (!matching.length) {
-      setHintPrefix(''); notify('No target matches. Type a visible hint label.')
+      setHintPrefix(''); notify({ text: 'No target matches. Type a visible hint label.' })
 
       return true
     }
@@ -270,30 +301,30 @@ export function useBoardKeyboard({
     return true
   }
 
-  const move = (to: string) => {
+  const move = ({ to }: { to: string }) => {
     if (!overlay?.card) {
       return
     }
 
     const { card, revision } = overlay
     closeOverlay()
-    void command('move', [card, ...(to === 'auto' ? ['--auto'] : [to]), '--if-revision', String(revision), '--event-id', crypto.randomUUID()]).then(() => notify('Placement updated. Source requests are unchanged.'))
-      .catch(e => notify(e.message))
+    void command({ name: 'move', args: [card, ...(to === 'auto' ? ['--auto'] : [to]), '--if-revision', String(revision), '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Placement updated. Source requests are unchanged.' }))
+      .catch(e => notify({ text: e.message }))
   }
 
   // Cmd+K also finds cards, ranked like every other search. Stable across
   // renders, so a board update does not restart the palette's pending search.
   const latest = useRef({ command, open, closeOverlay })
   latest.current = { command, open, closeOverlay }
-  const searchCards = useCallback(async (q: string): Promise<MenuItem[]> => {
-    const hits = await findCards(latest.current.command, q)
+  const searchCards = useCallback(async ({ query: q }: { query: string }): Promise<MenuItem[]> => {
+    const hits = await findCards({ command: latest.current.command, query: q })
 
     return hits.slice(0, CARD_RESULTS).map(h => ({
       id: `card:${h.card}`,
       label: h.title,
       detail: h.match === 'semantic' ? 'Open card · similar meaning' : 'Open card',
       run: () => {
-        latest.current.closeOverlay(); latest.current.open(h.card)
+        latest.current.closeOverlay(); latest.current.open({ id: h.card })
       },
     }))
   }, [])
@@ -315,26 +346,26 @@ export function useBoardKeyboard({
 export function KeyboardToolbar({
   action,
 }: {
-  action(id: string, context: ActionContext): boolean
+  action({ id, context }: { id: string; context: ActionContext }): boolean
 }) {
   const { label } = useKeyboard()
 
   return (
     <div className="keyboard-toolbar">
-      <Button onClick={e => action('palette', { scope: 'navigation', target: e.currentTarget })}>
+      <Button onClick={e => action({ id: 'palette', context: { scope: 'navigation', target: e.currentTarget } })}>
         Commands
         {' '}
-        <kbd>{label('palette')}</kbd>
+        <kbd>{label({ id: 'palette' })}</kbd>
       </Button>
-      <Button onClick={e => action('help', { scope: 'navigation', target: e.currentTarget })}>
+      <Button onClick={e => action({ id: 'help', context: { scope: 'navigation', target: e.currentTarget } })}>
         Help
         {' '}
-        <kbd>{label('help')}</kbd>
+        <kbd>{label({ id: 'help' })}</kbd>
       </Button>
-      <Button onClick={e => action('hints', { scope: 'navigation', target: e.currentTarget })}>
+      <Button onClick={e => action({ id: 'hints', context: { scope: 'navigation', target: e.currentTarget } })}>
         Hints
         {' '}
-        <kbd>{label('hints')}</kbd>
+        <kbd>{label({ id: 'hints' })}</kbd>
       </Button>
     </div>
   )
@@ -345,15 +376,15 @@ export function KeyboardFooter() {
 
   return (
     <span>
-      {label('board.down')}
+      {label({ id: 'board.down' })}
       {' '}
       next ·
       {' '}
-      {label('board.open')}
+      {label({ id: 'board.open' })}
       {' '}
       open ·
       {' '}
-      {label('reply')}
+      {label({ id: 'reply' })}
       {' '}
       reply
     </span>
@@ -375,14 +406,14 @@ export function KeyboardLayers({
 
   if (overlay) {
     const card = overlay.card ? state.cards[overlay.card] : undefined
-    items = overlay.kind === 'move' ? [{ id: 'auto', title: 'Return to auto' }, ...columnsFor(state)].map(c => ({ id: c.id, label: c.title, detail: c.id === 'auto' ? 'Follow source facts' : 'Manual placement', disabled: !connected || !card, run: () => move(c.id) })) : KEY_ACTIONS.filter(a => overlay.kind === 'help' || !['cancel', 'send', 'palette'].includes(a.id)).map(a => ({
+    items = overlay.kind === 'move' ? [{ id: 'auto', title: 'Return to auto' }, ...columnsFor({ state })].map(c => ({ id: c.id, label: c.title, detail: c.id === 'auto' ? 'Follow source facts' : 'Manual placement', disabled: !connected || !card, run: () => move({ to: c.id }) })) : KEY_ACTIONS.filter(a => overlay.kind === 'help' || !['cancel', 'send', 'palette'].includes(a.id)).map(a => ({
       id: a.id,
       label: a.label,
-      keyLabel: label(a.id),
+      keyLabel: label({ id: a.id }),
       detail: `${a.scopes.join(' · ')}${!prefs.characterShortcuts ? ' · character keys disabled' : ''}`,
       disabled: ['cancel', 'send', 'palette'].includes(a.id) || (a.id.startsWith('board.') && overlay.context.scope !== 'board') || (a.id.startsWith('thread.') && overlay.context.scope !== 'thread') || (['move', 'reply'].includes(a.id) && (!card || (a.id === 'move' && !connected))),
       run: () => {
-        setTimeout(() => onAction(a.id, overlay.context), 0); closeOverlay()
+        setTimeout(() => onAction({ id: a.id, context: overlay.context }), 0); closeOverlay()
       },
     }))
 
@@ -410,7 +441,7 @@ export function KeyboardLayers({
             {' '}
             targets · Type a label ·
             {' '}
-            {label('cancel')}
+            {label({ id: 'cancel' })}
             {' '}
             cancel · Backspace correct
           </div>

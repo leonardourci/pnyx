@@ -7,9 +7,9 @@ export const BUILTIN_COLUMNS: { id: Column; title: string; description: string }
   { id: 'review', title: 'Review', description: 'Linked change is open' },
   { id: 'done', title: 'Done', description: 'Confirmed outcomes, merges & ended sessions' },
 ]
-export const columnsFor = (state: BoardState) => [...BUILTIN_COLUMNS, ...viewFor({ state }).customColumns.map(c => ({ ...c, description: 'Manual placement' }))]
+export const columnsFor = ({ state }: { state: BoardState }) => [...BUILTIN_COLUMNS, ...viewFor({ state }).customColumns.map(c => ({ ...c, description: 'Manual placement' }))]
 
-export function pageTitle(page: string, cards: BoardState['cards'], selected: string | null = null): string {
+export function pageTitle({ page, cards, selected = null }: { page: string; cards: BoardState['cards']; selected?: string | null }): string {
   const count = Object.values(cards).filter(c => c.column === 'needs_you').length
   const label = page === 'history' ? 'History' : page === 'settings' ? 'Settings'
     : (selected && cards[selected]?.title) || 'Board'
@@ -17,7 +17,7 @@ export function pageTitle(page: string, cards: BoardState['cards'], selected: st
   return `${count > 0 ? `(${count}) ` : ''}${label} · Pnyx`
 }
 
-export function filterCards(state: BoardState, workspace: string, tag: string, query = ''): Card[] {
+export function filterCards({ state, workspace, tag, query = '' }: { state: BoardState; workspace: string; tag: string; query?: string }): Card[] {
   const words = query.toLowerCase().trim()
     .split(/\s+/)
     .filter(Boolean)
@@ -31,25 +31,30 @@ export function filterCards(state: BoardState, workspace: string, tag: string, q
 // the other cards the board's search found, best first, within the same workspace
 // and tag filters.
 export function findBoxCards(
-  state: BoardState,
-  workspace: string,
-  tag: string,
-  query: string,
-  found: string[],
+  { state, workspace, tag, query, meaning: found }: {
+    state: BoardState
+    workspace: string
+    tag: string
+    query: string
+    meaning: string[]
+  },
 ): Card[] {
-  const local = filterCards(state, workspace, tag, query)
+  const local = filterCards({ state, workspace, tag, query })
   const seen = new Set(local.map(c => c.id))
-  const added = (c: Card | undefined): c is Card => !!c && !seen.has(c.id)
-    && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag))
 
-  return [...local, ...found.map(id => state.cards[id]).filter(added)]
+  return [...local, ...found.map(id => state.cards[id]).filter((c): c is Card =>
+    !!c && !seen.has(c.id)
+    && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag)))]
 }
 
-export function visibleParent(card: Card, visible: Card[]): Card | undefined {
+export function visibleParent({ card, visible }: {
+  card: Card
+  visible: Card[]
+}): Card | undefined {
   return visible.find(c => c.id === card.parentId)
 }
 
-export function safeLink(link: Link): string | undefined {
+export function safeLink({ link }: { link: Link }): string | undefined {
   try {
     const url = new URL(link.url)
 
@@ -87,11 +92,11 @@ export function agentActivity({ card }: { card: Card }): 'working' | 'idle' | 'e
   return /^(?:idle|stopped|started|resumed|compacted|interrupted)\b/.test(activity) ? 'idle' : 'unknown'
 }
 
-export const receiptLabel = (state: string) => ({ queued: 'Queued', delivered: 'Delivered', delivery_unknown: 'Delivery unknown', failed: 'Delivery failed' }[state] ?? state)
-export const slashPrefix = (text: string, cursor: number) => /^\/[a-z0-9_.:-]*$/i.test(text.slice(0, cursor)) ? text.slice(0, cursor) : null
-export const slashMatches = (command: string, prefix: string) => command.replace(/^[$/]/, '').toLowerCase()
+export const receiptLabel = ({ state }: { state: string }) => ({ queued: 'Queued', delivered: 'Delivered', delivery_unknown: 'Delivery unknown', failed: 'Delivery failed' }[state] ?? state)
+export const slashPrefix = ({ text, cursor }: { text: string; cursor: number }) => /^\/[a-z0-9_.:-]*$/i.test(text.slice(0, cursor)) ? text.slice(0, cursor) : null
+export const slashMatches = ({ command, prefix }: { command: string; prefix: string }) => command.replace(/^[$/]/, '').toLowerCase()
   .startsWith(prefix.replace(/^\//, '').toLowerCase())
 // A tab reloads when the server it reconnected to serves another build than the page it loaded.
 // A page without a build (the Vite dev server) or a server without one never reloads.
-export const shouldReload = (loaded: string | undefined, server: string) =>
+export const shouldReload = ({ loaded, server }: { loaded: string | undefined; server: string }) =>
   Boolean(loaded && server && loaded !== server)

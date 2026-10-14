@@ -2,27 +2,27 @@ import { useEffect, useRef, useState } from 'react'
 import { clampViewSize } from '../../../../src/core/view.ts'
 import { useBusy } from './controls.tsx'
 
-export function Resize({ label, value, min, max, axis = 'x', reverse = false, onPreview, onCommit }: { label: string; value: number; min: number; max: number; axis?: 'x' | 'y'; reverse?: boolean; onPreview(value: number | null): void; onCommit(value: number): unknown }) {
+export function Resize({ label, value, min, max, axis = 'x', reverse = false, onPreview, onCommit }: { label: string; value: number; min: number; max: number; axis?: 'x' | 'y'; reverse?: boolean; onPreview({ value }: { value: number | null }): void; onCommit({ value }: { value: number }): unknown }) {
   const [preview, setPreview] = useState<number | null>(null), [busy, run] = useBusy()
   const current = useRef<number | null>(null)
   const drag = useRef<{ start: number; value: number } | null>(null)
 
-  const previewAt = (n: number) => {
+  const previewAt = ({ size: n }: { size: number }) => {
     const next = clampViewSize({ value: n, min, max })
     current.current = next
     setPreview(next)
-    onPreview(next)
+    onPreview({ value: next })
   }
 
-  const finish = (cancel = false) => {
+  const finish = ({ cancel = false }: { cancel?: boolean } = {}) => {
     const n = current.current
     current.current = null
     drag.current = null
     setPreview(null)
-    onPreview(null)
+    onPreview({ value: null })
 
     if (!cancel && n !== null && n !== value) {
-      run(() => onCommit(clampViewSize({ value: n, min, max })))
+      run({ save: () => onCommit({ value: clampViewSize({ value: n, min, max }) }) })
     }
   }
 
@@ -50,20 +50,20 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
       }}
       onPointerMove={e => {
         if (drag.current) {
-          previewAt(drag.current.value + ((axis === 'x' ? e.clientX : e.clientY) - drag.current.start) * (reverse ? -1 : 1))
+          previewAt({ size: drag.current.value + ((axis === 'x' ? e.clientX : e.clientY) - drag.current.start) * (reverse ? -1 : 1) })
         }
       }}
-      onPointerUp={() => finish()}
-      onPointerCancel={() => finish(true)}
+      onPointerUp={() => finish({ })}
+      onPointerCancel={() => finish({ cancel: true })}
       onLostPointerCapture={() => {
         if (drag.current) {
-          finish(true)
+          finish({ cancel: true })
         }
       }}
-      onBlur={() => finish()}
+      onBlur={() => finish({ })}
       onKeyDown={e => {
         if (e.key === 'Escape') {
-          e.preventDefault(); e.stopPropagation(); finish(true)
+          e.preventDefault(); e.stopPropagation(); finish({ cancel: true })
 
           return
         }
@@ -80,11 +80,11 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
           return
         }
 
-        previewAt(e.key === 'Home' ? min : e.key === 'End' ? max : (current.current ?? value) + (e.key === keys[1] ? 1 : -1) * (reverse ? -1 : 1) * (e.shiftKey ? 32 : 8))
+        previewAt({ size: e.key === 'Home' ? min : e.key === 'End' ? max : (current.current ?? value) + (e.key === keys[1] ? 1 : -1) * (reverse ? -1 : 1) * (e.shiftKey ? 32 : 8) })
       }}
       onKeyUp={e => {
         if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
-          finish()
+          finish({ })
         }
       }}
     />

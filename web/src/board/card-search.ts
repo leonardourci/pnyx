@@ -6,13 +6,17 @@ import type { Command } from './connection.ts'
 // full-text plus meaning ranking as `pnyx-axi search` and History. Weak results
 // (the reranker found them unrelated, or a card found by meaning alone is not
 // a strong match) are left out.
-export const findCards = (command: Command, query: string, workspace = '') =>
-  command('search', [query, workspace]).then(r => (r.hits as HybridHit[]).filter(h => !h.weak))
+export const findCards = ({ command, query, workspace = '' }: { command: Command; query: string; workspace?: string }) =>
+  command({ name: 'search', args: [query, workspace] }).then(r => (r.hits as HybridHit[]).filter(h => !h.weak))
 
 // The cards the search found strongly, by words anywhere on them (transcripts included)
 // or by meaning, best first, for the board's "Find a card" box to add after its own
 // matches; none with no query or before the server answers.
-export function useFoundCards(command: Command, query: string, workspace: string): HybridHit[] {
+export function useFoundCards({ command, query, workspace }: {
+  command: Command
+  query: string
+  workspace: string
+}): HybridHit[] {
   const [found, setFound] = useState<{ query: string; hits: HybridHit[] } | null>(null)
   const q = query.trim()
   useEffect(() => {
@@ -22,7 +26,7 @@ export function useFoundCards(command: Command, query: string, workspace: string
 
     let live = true
     const timer = setTimeout(() => {
-      void findCards(command, q, workspace).then(hits => {
+      void findCards({ command, query: q, workspace }).then(hits => {
         if (live) {
           setFound({ query: `${q}\n${workspace}`, hits })
         }

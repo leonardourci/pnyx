@@ -26,7 +26,7 @@ function copyFixture(): { home: string; env: NodeJS.ProcessEnv } {
   return { home: resolveHome({ path: join(root, 'home') }), env }
 }
 
-const cardOf = (home: string, task?: string) => {
+const cardOf = ({ home, task }: { home: string; task?: string }) => {
   const { state } = loadBoard({ board: 'default' })
 
   return state.cards[state.keys[task ? `${homeKey({ home })}:${task}` : homeKey({ home })]!]!
@@ -113,9 +113,9 @@ test("sync turns each task into a card under the home's card", () => {
   const result = syncHome({ board: 'default', home, at: '2026-10-13T10:00:00.000Z' })
   assert.equal(result.tasks, 4)
 
-  const parent = cardOf(home)
+  const parent = cardOf({ home })
   assert.equal(parent.tags[0], 'firstmate')
-  const api = cardOf(home, 'api-v2')
+  const api = cardOf({ home, task: 'api-v2' })
   assert.equal(api.title, 'app: v2 API with (optional) pagination')
   assert.deepEqual(api.tags, ['app'])
   assert.equal(api.parentId, parent.id)
@@ -134,17 +134,17 @@ test("sync turns each task into a card under the home's card", () => {
 
   // The scout's terminal line closed its decision, and its Done backlog row
   // records it as done with no pull request.
-  const scout = cardOf(home, 'docs-scout')
+  const scout = cardOf({ home, task: 'docs-scout' })
   assert.deepEqual(scout.attention, [])
   assert.deepEqual(scout.outcome, { state: 'done', source: 'firstmate' })
   assert.equal(scout.column, 'done')
   // A failed: line closes the ship's decisions but asks for the owner.
-  const hotfix = cardOf(home, 'hotfix-2')
+  const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [{ kind: 'failed', key: '@status', blocking: true, text: 'tests red after patch' }])
   assert.equal(hotfix.outcome, undefined)
   assert.equal(hotfix.column, 'needs_you')
   // meta pr= plus a merged backlog row: Done.
-  const release = cardOf(home, 'release-1')
+  const release = cardOf({ home, task: 'release-1' })
   assert.deepEqual(release.links.map(l => [l.number, l.state]), [[40, 'merged']])
   assert.equal(release.column, 'done')
 
@@ -154,14 +154,14 @@ test("sync turns each task into a card under the home's card", () => {
 test('a failed task closed in the backlog lands in Done as a closed failure', () => {
   const { home } = copyFixture()
   syncHome({ board: 'default', home })
-  assert.equal(cardOf(home, 'hotfix-2').column, 'needs_you')
+  assert.equal(cardOf({ home, task: 'hotfix-2' }).column, 'needs_you')
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] hotfix-2')), 1)
   rows.splice(rows.indexOf('## Done') + 1, 0, row!.replace('[ ]', '[x]'))
   writeFileSync(backlog, rows.join('\n'))
   syncHome({ board: 'default', home })
-  const hotfix = cardOf(home, 'hotfix-2')
+  const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [])
   assert.deepEqual(hotfix.outcome, { state: 'failed', note: 'closed after failure', closed: true, source: 'firstmate' })
   assert.equal(hotfix.column, 'done')
@@ -171,15 +171,15 @@ test('a blocked task closed in the backlog leaves Needs you', () => {
   const { home } = copyFixture()
   writeFileSync(join(home, 'state', 'hotfix-2.status'), 'working: reproducing\nblocked: waiting for CI token\n')
   syncHome({ board: 'default', home })
-  assert.deepEqual(cardOf(home, 'hotfix-2').attention.map(a => [a.kind, a.key]), [['blocked', 'default']])
-  assert.equal(cardOf(home, 'hotfix-2').column, 'needs_you')
+  assert.deepEqual(cardOf({ home, task: 'hotfix-2' }).attention.map(a => [a.kind, a.key]), [['blocked', 'default']])
+  assert.equal(cardOf({ home, task: 'hotfix-2' }).column, 'needs_you')
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] hotfix-2')), 1)
   rows.splice(rows.indexOf('## Done') + 1, 0, row!.replace('[ ]', '[x]'))
   writeFileSync(backlog, rows.join('\n'))
   syncHome({ board: 'default', home })
-  const hotfix = cardOf(home, 'hotfix-2')
+  const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [])
   assert.deepEqual(hotfix.outcome, { state: 'done', source: 'firstmate' })
   assert.equal(hotfix.column, 'done')
@@ -194,22 +194,22 @@ test('a done: status line alone is not completion', () => {
   rows.splice(rows.indexOf('## In flight') + 1, 0, row!.replace('[x]', '[ ]'))
   writeFileSync(backlog, rows.join('\n'))
   syncHome({ board: 'default', home })
-  assert.equal(cardOf(home, 'docs-scout').outcome, undefined)
-  assert.equal(cardOf(home, 'docs-scout').column, 'workers_on_it')
+  assert.equal(cardOf({ home, task: 'docs-scout' }).outcome, undefined)
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'workers_on_it')
 })
 
 test('sync never overwrites a link state another source refreshed', () => {
   const { home } = copyFixture()
   appendFileSync(join(home, 'state', 'api-v2.meta'), 'pr=https://github.com/example/app/pull/41\n')
   syncHome({ board: 'default', home })
-  assert.equal(cardOf(home, 'api-v2').links[0]!.state, 'open')
-  const api = cardOf(home, 'api-v2')
+  assert.equal(cardOf({ home, task: 'api-v2' }).links[0]!.state, 'open')
+  const api = cardOf({ home, task: 'api-v2' })
   execFileSync(process.execPath, [BIN, 'link', api.id, '--url', 'https://github.com/example/app/pull/41', '--state', 'closed'], {
     env: process.env,
   })
   appendFileSync(join(home, 'state', 'api-v2.status'), 'working: still going\n')
   syncHome({ board: 'default', home })
-  assert.equal(cardOf(home, 'api-v2').links[0]!.state, 'closed')
+  assert.equal(cardOf({ home, task: 'api-v2' }).links[0]!.state, 'closed')
 })
 
 test('a task whose records are gone drops its open decisions', () => {
@@ -218,7 +218,7 @@ test('a task whose records are gone drops its open decisions', () => {
   rmSync(join(home, 'state', 'api-v2.meta'))
   rmSync(join(home, 'state', 'api-v2.status'))
   syncHome({ board: 'default', home })
-  const api = cardOf(home, 'api-v2')
+  const api = cardOf({ home, task: 'api-v2' })
   assert.deepEqual(api.attention, [])
   assert.equal(api.title, 'app: v2 API with (optional) pagination')
 })
@@ -245,16 +245,16 @@ test('watch reconciles on start and folds each change', async () => {
     const changed = new Promise<void>(resolve => (wake = resolve))
     appendFileSync(join(home, 'state', 'api-v2.status'), 'resolved [key=api-shape]: REST\n')
     await Promise.race([changed, new Promise((_, reject) => setTimeout(() => reject(new Error('no sync after change')), 5000))])
-    assert.deepEqual(cardOf(home, 'api-v2').attention.map(a => a.key), ['ci-token'])
+    assert.deepEqual(cardOf({ home, task: 'api-v2' }).attention.map(a => a.key), ['ci-token'])
   } finally {
     watcher.close()
   }
 })
 
-function cli(env: NodeJS.ProcessEnv) {
-  const run = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
-  const fails = (args: string[], code: string) =>
-    assert.throws(() => run(...args), (error: { stdout: string }) => {
+function cli({ env }: { env: NodeJS.ProcessEnv }) {
+  const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
+  const fails = ({ args, code }: { args: string[]; code: string }) =>
+    assert.throws(() => run({ args: [...args] }), (error: { stdout: string }) => {
       assert.match(error.stdout, new RegExp(`^code: ${code}$`, 'm'))
 
       return true
@@ -265,11 +265,11 @@ function cli(env: NodeJS.ProcessEnv) {
 
 test('firstmate sync through the CLI', () => {
   const { home, env } = copyFixture()
-  const { run, fails } = cli(env)
-  assert.match(run('firstmate', 'sync', '--home', home), /home,4,13$/m)
-  assert.match(run(), /needs_you: 2/)
-  fails(['firstmate', 'sync'], 'VALIDATION_ERROR')
-  fails(['firstmate', 'sync', '--home', join(home, 'data')], 'VALIDATION_ERROR')
+  const { run, fails } = cli({ env })
+  assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,4,13$/m)
+  assert.match(run({ }), /needs_you: 2/)
+  fails({ args: ['firstmate', 'sync'], code: 'VALIDATION_ERROR' })
+  fails({ args: ['firstmate', 'sync', '--home', join(home, 'data')], code: 'VALIDATION_ERROR' })
 })
 
 test('serve --home folds the home into the board without a separate watch', async () => {
@@ -290,7 +290,7 @@ test('serve --home folds the home into the board without a separate watch', asyn
       })
     })
     assert.match(out, /^firstmate: "watching 1 home"$/m)
-    assert.equal(cardOf(home, 'api-v2').title, 'app: v2 API with (optional) pagination')
+    assert.equal(cardOf({ home, task: 'api-v2' }).title, 'app: v2 API with (optional) pagination')
   } finally {
     // A server that already exited has no exit event left to wait for.
     if (server.exitCode === null && server.signalCode === null) {
@@ -303,44 +303,44 @@ test('serve --home folds the home into the board without a separate watch', asyn
 
 test('a Firstmate outcome is a source observation: undo and clear refuse it', () => {
   const { home, env } = copyFixture()
-  const { run, fails } = cli(env)
-  run('firstmate', 'sync', '--home', home)
-  const scout = cardOf(home, 'docs-scout')
+  const { run, fails } = cli({ env })
+  run({ args: ['firstmate', 'sync', '--home', home] })
+  const scout = cardOf({ home, task: 'docs-scout' })
   const recorded = readEvents({ board: 'default' }).find(e => e.type === 'card.outcome' && e.cardId === scout.id)!
-  fails(['undo', recorded.id], 'NOT_UNDOABLE')
-  fails(['outcome', scout.id, '--clear'], 'SOURCE_OWNED')
-  fails(['outcome', scout.id, 'cancelled'], 'SOURCE_OWNED')
-  run('move', scout.id, 'needs_you')
-  run('firstmate', 'sync', '--home', home)
-  assert.deepEqual(cardOf(home, 'docs-scout').outcome, { state: 'done', source: 'firstmate' })
-  assert.equal(cardOf(home, 'docs-scout').column, 'needs_you')
+  fails({ args: ['undo', recorded.id], code: 'NOT_UNDOABLE' })
+  fails({ args: ['outcome', scout.id, '--clear'], code: 'SOURCE_OWNED' })
+  fails({ args: ['outcome', scout.id, 'cancelled'], code: 'SOURCE_OWNED' })
+  run({ args: ['move', scout.id, 'needs_you'] })
+  run({ args: ['firstmate', 'sync', '--home', home] })
+  assert.deepEqual(cardOf({ home, task: 'docs-scout' }).outcome, { state: 'done', source: 'firstmate' })
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'needs_you')
 })
 
 test("a task's decisions, reports and Captain's intent show on its card", () => {
   const { home, env } = copyFixture()
-  const { run, fails } = cli(env)
-  run('firstmate', 'sync', '--home', home)
-  const api = run('card', cardOf(home, 'api-v2').id)
+  const { run, fails } = cli({ env })
+  run({ args: ['firstmate', 'sync', '--home', home] })
+  const api = run({ args: ['card', cardOf({ home, task: 'api-v2' }).id] })
   assert.match(api, /^ {2}decisions\[1\]\{at,source,text\}:\n {4}"2026-10-13T14:01:40.000Z",firstmate,"needs-decision \[api-shape\]: REST or RPC for the v2 endpoints\?"$/m)
   assert.match(api, /^ {2}context\[1\]\{at,source,text\}:\n {4}"[^"]+",firstmate,"Captain's intent:\\nShip the v2 API so partners can page through invoices\.\\nKeep v1 working until every partner moves\."$/m)
   assert.doesNotMatch(api, /Firstmate spec|Setup text/)
-  assert.match(run('card', cardOf(home, 'release-1').id), /^ {2}summary\[1\]\{at,source,text\}:\n {4}"2026-10-13T14:06:40.000Z",firstmate,"done: PR https:\/\/github.com\/example\/app\/pull\/40 checks green"$/m)
+  assert.match(run({ args: ['card', cardOf({ home, task: 'release-1' }).id] }), /^ {2}summary\[1\]\{at,source,text\}:\n {4}"2026-10-13T14:06:40.000Z",firstmate,"done: PR https:\/\/github.com\/example\/app\/pull\/40 checks green"$/m)
   // New lines add notes; a re-sync adds nothing twice.
   appendFileSync(join(home, 'state', 'api-v2.status'), 'resolved [key=api-shape] [at=1791900700]: REST\n')
-  assert.match(run('firstmate', 'sync', '--home', home), /home,4,2$/m)
-  assert.match(run('firstmate', 'sync', '--home', home), /home,4,0$/m)
-  assert.match(run('search', 'partners', 'page'), /^ {6}note,"[^"]+","…Ship the v2 API so \[partners\] can \[page\]/m)
-  fails(['undo', readEvents({ board: 'default' }).find(e => e.type === 'card.noted')!.id], 'NOT_UNDOABLE')
+  assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,4,2$/m)
+  assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,4,0$/m)
+  assert.match(run({ args: ['search', 'partners', 'page'] }), /^ {6}note,"[^"]+","…Ship the v2 API so \[partners\] can \[page\]/m)
+  fails({ args: ['undo', readEvents({ board: 'default' }).find(e => e.type === 'card.noted')!.id], code: 'NOT_UNDOABLE' })
 })
 
 test('a Firstmate outcome follows the backlog on every sync', () => {
   const { home } = copyFixture()
   syncHome({ board: 'default', home })
-  assert.deepEqual(cardOf(home, 'docs-scout').outcome, { state: 'done', source: 'firstmate' })
+  assert.deepEqual(cardOf({ home, task: 'docs-scout' }).outcome, { state: 'done', source: 'firstmate' })
   // A later failed: line turns the recorded done into a closed failure.
   appendFileSync(join(home, 'state', 'docs-scout.status'), 'failed: rerun broke\n')
   syncHome({ board: 'default', home })
-  assert.deepEqual(cardOf(home, 'docs-scout').outcome, { state: 'failed', note: 'closed after failure', closed: true, source: 'firstmate' })
+  assert.deepEqual(cardOf({ home, task: 'docs-scout' }).outcome, { state: 'failed', note: 'closed after failure', closed: true, source: 'firstmate' })
   // Back in flight: the outcome is cleared.
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
@@ -348,11 +348,11 @@ test('a Firstmate outcome follows the backlog on every sync', () => {
   rows.splice(rows.indexOf('## In flight') + 1, 0, row!.replace('[x]', '[ ]'))
   writeFileSync(backlog, rows.join('\n'))
   syncHome({ board: 'default', home })
-  assert.equal(cardOf(home, 'docs-scout').outcome, undefined)
-  assert.notEqual(cardOf(home, 'docs-scout').column, 'done')
+  assert.equal(cardOf({ home, task: 'docs-scout' }).outcome, undefined)
+  assert.notEqual(cardOf({ home, task: 'docs-scout' }).column, 'done')
   const cleared = readEvents({ board: 'default' }).filter(e => e.type === 'card.outcome')
     .at(-1)!
-  cli(process.env).fails(['undo', cleared.id], 'NOT_UNDOABLE')
+  cli({ env: process.env }).fails({ args: ['undo', cleared.id], code: 'NOT_UNDOABLE' })
   assert.deepEqual(syncHome({ board: 'default', home }).appended, 0)
 })
 
@@ -365,36 +365,36 @@ test('firstmate sync ingests the hook spool', () => {
 
 test("reply sends through the home's fm-send with FM_HOME and records receipts", () => {
   const { home, env } = copyFixture()
-  const { run, fails } = cli(env)
-  run('firstmate', 'sync', '--home', home)
-  const api = cardOf(home, 'api-v2')
+  const { run, fails } = cli({ env })
+  run({ args: ['firstmate', 'sync', '--home', home] })
+  const api = cardOf({ home, task: 'api-v2' })
   const sent = () => (existsSync(join(home, 'sent.log')) ? readFileSync(join(home, 'sent.log'), 'utf8') : '')
 
-  const out = run('reply', api.id, '--text', 'Use REST', '--resolve-key', 'api-shape', '--idempotency-key', 'k1', '--home', home)
+  const out = run({ args: ['reply', api.id, '--text', 'Use REST', '--resolve-key', 'api-shape', '--idempotency-key', 'k1', '--home', home] })
   assert.match(out, /state: delivered/)
   assert.equal(sent(), `FM_HOME=${home}\narg=api-v2\narg=--resolve-key\narg=api-shape\narg=Use REST\n---\n`)
   // A retry with the same key does not send again.
-  assert.match(run('reply', api.id, '--text', 'Use REST', '--idempotency-key', 'k1', '--home', home), /sent: false/)
+  assert.match(run({ args: ['reply', api.id, '--text', 'Use REST', '--idempotency-key', 'k1', '--home', home] }), /sent: false/)
   assert.equal(sent().split('---').length, 2)
   // The answer does not close the decision by itself; Firstmate's resolved line does.
-  assert.equal(cardOf(home, 'api-v2').attention.length, 2)
+  assert.equal(cardOf({ home, task: 'api-v2' }).attention.length, 2)
 
   writeFileSync(join(home, 'send-exit'), '2')
-  assert.match(run('reply', api.id, '--text', 'ping', '--idempotency-key', 'k2', '--home', home), /state: failed/)
+  assert.match(run({ args: ['reply', api.id, '--text', 'ping', '--idempotency-key', 'k2', '--home', home] }), /state: failed/)
   writeFileSync(join(home, 'send-exit'), '0')
-  assert.match(run('reply', api.id, '--text', 'ping', '--idempotency-key', 'k2', '--home', home), /state: delivered/)
+  assert.match(run({ args: ['reply', api.id, '--text', 'ping', '--idempotency-key', 'k2', '--home', home] }), /state: delivered/)
   writeFileSync(join(home, 'send-exit'), '3')
-  assert.match(run('reply', api.id, '--text', 'maybe', '--idempotency-key', 'k3', '--home', home), /state: delivery_unknown/)
-  assert.match(run('reply', api.id, '--text', 'maybe', '--idempotency-key', 'k3', '--home', home), /sent: false/)
+  assert.match(run({ args: ['reply', api.id, '--text', 'maybe', '--idempotency-key', 'k3', '--home', home] }), /state: delivery_unknown/)
+  assert.match(run({ args: ['reply', api.id, '--text', 'maybe', '--idempotency-key', 'k3', '--home', home] }), /sent: false/)
   // Exit 1 (a remote send that lost its transport) may also have landed.
   writeFileSync(join(home, 'send-exit'), '1')
-  const unknown = run('reply', api.id, '--text', 'remote', '--idempotency-key', 'k4', '--home', home)
+  const unknown = run({ args: ['reply', api.id, '--text', 'remote', '--idempotency-key', 'k4', '--home', home] })
   assert.match(unknown, /state: delivery_unknown/)
   assert.match(unknown, /may have landed/)
   assert.doesNotMatch(unknown, /retry with --idempotency-key/)
-  assert.match(run('reply', api.id, '--text', 'remote', '--idempotency-key', 'k4', '--home', home), /sent: false/)
+  assert.match(run({ args: ['reply', api.id, '--text', 'remote', '--idempotency-key', 'k4', '--home', home] }), /sent: false/)
 
-  const history = run('history', '--card', api.id, '--kind', 'replied', '--limit', '100')
+  const history = run({ args: ['history', '--card', api.id, '--kind', 'replied', '--limit', '100'] })
   assert.equal(history.match(/reply k2 /g)?.length, 4)
   assert.match(history, /reply k1 delivered/)
   assert.match(history, /reply k3 delivery_unknown/)
@@ -403,13 +403,13 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   // names the reply, and a retry finds it queued and does not resend.
   writeFileSync(join(home, 'send-exit'), '0')
   writeFileSync(join(home, 'tear'), '')
-  const unrecorded = run('reply', api.id, '--text', 'torn', '--home', home)
+  const unrecorded = run({ args: ['reply', api.id, '--text', 'torn', '--home', home] })
   assert.match(unrecorded, /state: delivered/)
   assert.match(unrecorded, /recordError: /)
   const id = /reply: (r\d+)/.exec(unrecorded)![1]!
   rmSync(join(home, 'tear'))
-  run('repair')
-  const retry = run('reply', api.id, '--text', 'torn', '--idempotency-key', id, '--home', home)
+  run({ args: ['repair'] })
+  const retry = run({ args: ['reply', api.id, '--text', 'torn', '--idempotency-key', id, '--home', home] })
   assert.match(retry, /state: queued/)
   assert.match(retry, /sent: false/)
   assert.match(retry, /Check the task's inbox/)
@@ -417,26 +417,26 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   // A known failure that could not be recorded says nothing was delivered.
   writeFileSync(join(home, 'send-exit'), '2')
   writeFileSync(join(home, 'tear'), '')
-  const lost = run('reply', api.id, '--text', 'lost', '--home', home)
+  const lost = run({ args: ['reply', api.id, '--text', 'lost', '--home', home] })
   assert.match(lost, /state: failed/)
   assert.match(lost, /nothing was delivered/)
   rmSync(join(home, 'tear'))
-  run('repair')
+  run({ args: ['repair'] })
 
-  fails(['reply', api.id, '--text', 'x', '--resolve-key', 'nope', '--home', home], 'VALIDATION_ERROR')
+  fails({ args: ['reply', api.id, '--text', 'x', '--resolve-key', 'nope', '--home', home], code: 'VALIDATION_ERROR' })
   // A failed: line's attention is not a Firstmate decision fm-send could resolve.
-  fails(['reply', cardOf(home, 'hotfix-2').id, '--text', 'x', '--resolve-key', '@status', '--home', home], 'VALIDATION_ERROR')
-  fails(['reply', api.id, '--text=--resolve-key x', '--home', home], 'VALIDATION_ERROR')
-  fails(['reply', cardOf(home).id, '--text', 'x', '--home', home], 'NO_ROUTE')
+  fails({ args: ['reply', cardOf({ home, task: 'hotfix-2' }).id, '--text', 'x', '--resolve-key', '@status', '--home', home], code: 'VALIDATION_ERROR' })
+  fails({ args: ['reply', api.id, '--text=--resolve-key x', '--home', home], code: 'VALIDATION_ERROR' })
+  fails({ args: ['reply', cardOf({ home }).id, '--text', 'x', '--home', home], code: 'NO_ROUTE' })
   // A task id that is not Firstmate's would reach fm-send as an option.
   const crafted = join(home, 'crafted.json')
   writeFileSync(crafted, JSON.stringify({ title: 'crafted', source: { adapter: 'firstmate', instanceId: home, objectId: '--resolve-key' } }))
-  run('push', '--key', 'crafted', '--file', crafted)
-  fails(['reply', 'crafted', '--text', 'x', '--home', home], 'NO_ROUTE')
-  fails(['undo', readEvents({ board: 'default' }).find(e => e.type === 'card.replied')!.id], 'NOT_UNDOABLE')
+  run({ args: ['push', '--key', 'crafted', '--file', crafted] })
+  fails({ args: ['reply', 'crafted', '--text', 'x', '--home', home], code: 'NO_ROUTE' })
+  fails({ args: ['undo', readEvents({ board: 'default' }).find(e => e.type === 'card.replied')!.id], code: 'NOT_UNDOABLE' })
   // The card's home must be configured for this send.
   const other = copyFixture()
-  fails(['reply', api.id, '--text', 'x', '--home', other.home], 'VALIDATION_ERROR')
+  fails({ args: ['reply', api.id, '--text', 'x', '--home', other.home], code: 'VALIDATION_ERROR' })
 })
 
 test("a hook session in a task's worktree joins the task card, which keeps fm-send", () => {
@@ -445,15 +445,20 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   const meta = join(home, 'state', 'api-v2.meta')
   writeFileSync(meta, readFileSync(meta, 'utf8').replace(/^worktree=.*$/m, `worktree=${worktree}`))
   syncHome({ board: 'default', home })
-  const hook = (id: string, event: string, payload: Record<string, unknown>, extra = {}) =>
+  const hook = ({ id, event, payload, extra = {} }: {
+    id: string
+    event: string
+    payload: Record<string, unknown>
+    extra?: Record<string, unknown>
+  }) =>
     spoolWrite({ board: 'default', entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'claude', event, payload, ...extra } })
   const terminal = { tty: '/dev/ttys042', pid: '4242', program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' }
   // The hook reports the folder as the session saw it; the join compares canonical paths.
-  hook('h1', 'SessionStart', { session_id: 'fm-s', cwd: worktree, transcript_path: '/x/fm-s.jsonl' }, { terminal })
-  hook('h2', 'SubagentStart', { session_id: 'fm-s', agent_id: 'a1', cwd: worktree })
+  hook({ id: 'h1', event: 'SessionStart', payload: { session_id: 'fm-s', cwd: worktree, transcript_path: '/x/fm-s.jsonl' }, extra: { terminal } })
+  hook({ id: 'h2', event: 'SubagentStart', payload: { session_id: 'fm-s', agent_id: 'a1', cwd: worktree } })
   syncHome({ board: 'default', home })
   const { state } = loadBoard({ board: 'default' })
-  const api = cardOf(home, 'api-v2')
+  const api = cardOf({ home, task: 'api-v2' })
   assert.equal(api.folder, realpathSync(worktree))
   assert.equal(api.agent?.sessionId, 'fm-s')
   assert.deepEqual(api.terminal, terminal)
@@ -461,23 +466,23 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   assert.equal(state.cards[state.keys['claude:fm-s/a1']!]!.parentId, api.id)
 
   // The joined card still replies through Firstmate, never by typing into the pane.
-  const { run, fails } = cli(env)
-  assert.match(run('reply', api.id, '--text', 'Use REST', '--home', home), /state: delivered/)
+  const { run, fails } = cli({ env })
+  assert.match(run({ args: ['reply', api.id, '--text', 'Use REST', '--home', home] }), /state: delivered/)
   assert.match(readFileSync(join(home, 'sent.log'), 'utf8'), /arg=api-v2\narg=Use REST/)
 
   // Firstmate sync replaces only its own attention, so the session's permission request stays.
-  hook('h2a', 'PermissionRequest', { session_id: 'fm-s', cwd: worktree, tool_name: 'Bash', tool_input: { command: 'rm -rf build' } })
+  hook({ id: 'h2a', event: 'PermissionRequest', payload: { session_id: 'fm-s', cwd: worktree, tool_name: 'Bash', tool_input: { command: 'rm -rf build' } } })
   syncHome({ board: 'default', home })
   syncHome({ board: 'default', home })
-  const asks = cardOf(home, 'api-v2').attention.filter(a => a.key.startsWith('hook:'))
+  const asks = cardOf({ home, task: 'api-v2' }).attention.filter(a => a.key.startsWith('hook:'))
   assert.equal(asks.length, 1)
   assert.equal(asks[0]!.blocking, true)
-  fails(['reply', api.id, '--text', 'x', '--resolve-key', asks[0]!.key, '--home', home], 'VALIDATION_ERROR')
+  fails({ args: ['reply', api.id, '--text', 'x', '--resolve-key', asks[0]!.key, '--home', home], code: 'VALIDATION_ERROR' })
 
   // The joined session ending leaves the task's outcome to Firstmate.
-  hook('h2e', 'SessionEnd', { session_id: 'fm-s', cwd: worktree })
+  hook({ id: 'h2e', event: 'SessionEnd', payload: { session_id: 'fm-s', cwd: worktree } })
   syncHome({ board: 'default', home })
-  assert.equal(cardOf(home, 'api-v2').outcome, undefined)
+  assert.equal(cardOf({ home, task: 'api-v2' }).outcome, undefined)
 
   // A closed task gives its worktree up, so the next session there keeps its own card.
   const backlog = join(home, 'data', 'backlog.md')
@@ -485,11 +490,11 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] api-v2')), 1)
   writeFileSync(backlog, [...rows, row!.replace('[ ]', '[x]')].join('\n'))
   syncHome({ board: 'default', home })
-  assert.equal(cardOf(home, 'api-v2').folder, undefined)
+  assert.equal(cardOf({ home, task: 'api-v2' }).folder, undefined)
   // The joined session's later events still reach the task card, not a card of its own.
-  hook('h2b', 'SubagentStop', { session_id: 'fm-s', agent_id: 'a1', cwd: worktree })
-  hook('h2c', 'SessionEnd', { session_id: 'fm-s', cwd: worktree })
-  hook('h3', 'SessionStart', { session_id: 'next', cwd: worktree })
+  hook({ id: 'h2b', event: 'SubagentStop', payload: { session_id: 'fm-s', agent_id: 'a1', cwd: worktree } })
+  hook({ id: 'h2c', event: 'SessionEnd', payload: { session_id: 'fm-s', cwd: worktree } })
+  hook({ id: 'h3', event: 'SessionStart', payload: { session_id: 'next', cwd: worktree } })
   syncHome({ board: 'default', home })
   assert.equal(loadBoard({ board: 'default' }).state.keys['claude:fm-s'], undefined)
   assert.ok(loadBoard({ board: 'default' }).state.keys['claude:next'])

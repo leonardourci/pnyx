@@ -14,6 +14,8 @@ pnpm test        # builds the CLI and web board, then runs node --test
 pnpm run web:dev # Vite dev server for the board
 ```
 
+Functions take one destructured object parameter; no-argument functions and signatures owned by external APIs keep their contracts.
+
 Tests use Node's built-in test runner and run TypeScript directly through Node's type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests never touch the real `~/.pnyx`, a real Firstmate home, Paseo, Herdr, tmux or any real terminal: use a temporary `PNYX_HOME`, a random port and `test/fixtures/`.
 
 ## Layout
