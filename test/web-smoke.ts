@@ -202,6 +202,7 @@ try {
     await screenshot(`agent-${scheme}.png`)
   }
 
+  await browser('emulate', '--color-scheme', 'auto'); await browser('wait', 'Change from here')
   await click('button', 'Conversation')
   await browser('fill', await ref('textbox', 'Reply to Shape the first working board'), 'Keep this draft')
   await click('combobox', 'Workspace'); await click('option', 'Work')
@@ -218,7 +219,9 @@ try {
   await click('button', 'Shape the first working board'); await click('button', 'Why here / move'); await click('combobox', 'Move card'); await click('option', 'Later')
   await check('document.querySelector(".detail-content").textContent.includes("Pinned manually")', 'custom column move persists')
   assert.equal(loadBoard({ board: 'default' }).state.cards[fixture.state.keys.layout!]!.attention.length, 1)
-  await click('button', 'Conversation'); await browser('emulate', '--viewport', '390x844x1,mobile,touch'); await browser('wait', 'Later'); await click('button', 'Shape the first working board'); await browser('wait', 'Reply to Shape the first working board')
+  await click('button', 'Conversation'); await browser('emulate', '--viewport', '390x844x1,mobile,touch'); await browser('wait', 'Later')
+  // On a phone the open panel can cover the card's centre, so open it by its own element.
+  await browser('eval', `() => { document.querySelector('[data-card="${fixture.state.keys.layout}"]').click(); return true }`); await browser('wait', 'Reply to Shape the first working board')
   await check('innerWidth === 390 && document.documentElement.scrollWidth === innerWidth && document.querySelector(".composer").getBoundingClientRect().bottom <= innerHeight', 'mobile composer stays in viewport')
   await screenshot('mobile.png')
   await click('button', 'History'); await browser('fill', await ref('searchbox', 'Search history'), 'conversation readable'); await browser('wait', 'Shape the first working board')
