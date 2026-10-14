@@ -1,9 +1,9 @@
-import { useEffect, useId, useRef, useState, type ComponentProps, type InputHTMLAttributes } from "react";
+import { useEffect, useId, useRef, useState, type ComponentProps } from "react";
 
 export function Button({ className = "", variant = "quiet", ...props }: ComponentProps<"button"> & { variant?: "quiet" | "primary" | "surface" }) {
   return <button type="button" className={`button ${variant} ${className}`} {...props} />;
 }
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) { return <input {...props} className={`input ${props.className ?? ""}`} />; }
+export function Input(props: ComponentProps<"input">) { return <input {...props} className={`input ${props.className ?? ""}`} />; }
 export function Textarea(props: ComponentProps<"textarea">) { return <textarea {...props} className={`input textarea ${props.className ?? ""}`} />; }
 export function useBusy(): [boolean, (save: () => unknown) => void] {
   const [busy, setBusy] = useState(false), running = useRef(false);

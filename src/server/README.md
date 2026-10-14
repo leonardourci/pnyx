@@ -19,6 +19,12 @@ The same authenticated socket also accepts these commands:
   explicit. Reads use complete JSONL records, a 10 MB window, up to 60 entries and
   long messages split into complete, paged chunks. Cursors retain separate transcript and reply positions, including chunk ordinals, so no message tail is silently discarded. Directory watches handle native file replacement.
 - `search`, args `[text, optionalWorkspace]`: full-text results from the derived index.
+- `catalog`, args `[cardId]`: a receipt with local harness command metadata. The
+  recorded working folder determines project scope; the browser cannot supply a
+  path. Reads are bounded and only one catalog read per socket runs at a time:
+  a repeated request for the same card shares the pending read, and a request for
+  another card waits for it.
+  Missing folders, unsupported harnesses and partial discovery are explicit.
 - `reply`, args `[cardId, literalText, idempotencyKey]`: calls the CLI reply path in a
   child process so native delivery does not block the socket. It accepts only homes
   configured on server startup with repeatable `--home`. The browser cannot provide
@@ -29,3 +35,11 @@ appends `board.view`, and broadcasts it. `view show` includes the current revisi
 `view schema` returns defaults. A custom column uses a `custom:<slug>` ID and manual
 placement; the four automatic columns keep their existing rules. Map patches merge;
 null removes a per-card override. Undo is another event and checks intervening edits.
+
+Keyboard preferences use the same events and revision checks. For example,
+`{"keyboard":{"bindings":{"settings":["g s"]}}}` changes the settings action
+to a sequence. An empty array unbinds an action, `null` removes its override, and
+`{"keyboard":{"bindings":null}}` restores all defaults. The shared validator
+rejects unknown actions, overlapping bindings and sequence prefixes, browser
+reservations, and send bindings without a command modifier. See
+[keyboard and local catalogs](../../docs/keyboard.md).

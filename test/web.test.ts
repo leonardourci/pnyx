@@ -7,7 +7,7 @@ import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decis
 import { emptyBoard, reduce } from "../src/core/reducer.ts";
 import { BoardError, type BoardEvent, type BoardState } from "../src/core/model.ts";
 import { patchView, viewFor } from "../src/core/view.ts";
-import { columnsFor, filterCards, safeLink, slashPrefix, visibleParent } from "../web/src/board/view.ts";
+import { columnsFor, filterCards, safeLink, slashMatches, slashPrefix, visibleParent } from "../web/src/board/view.ts";
 import { withWriter } from "../src/store/board-store.ts";
 import { readThread, recordEntries } from "../src/thread/read.ts";
 const meta = { at: "2026-10-13T10:00:00Z", actor: "test" };
@@ -57,6 +57,9 @@ test("filters do not expose excluded parent details, and links/slashes stay lite
   assert.equal(slashPrefix("/plan", 5), "/plan");
   assert.equal(slashPrefix("open /path", 10), null);
   assert.equal(slashPrefix("/tmp/file", 9), null);
+  for (const typed of ["/d", "/D", "/dep"]) assert.equal(slashMatches("/Deploy", slashPrefix(typed, typed.length)!), true);
+  assert.equal(slashMatches("$Review", "/rev"), true);
+  assert.equal(slashMatches("/Deploy", "/r"), false);
 });
 
 test("thread reader ignores partial records, pages old messages, separates traces and reports unavailable capabilities", () => {
@@ -69,7 +72,7 @@ test("thread reader ignores partial records, pages old messages, separates trace
   assert.equal(page.entries.length, 60); assert.equal(page.entries.at(-1)?.text, "message 89"); assert.ok(page.older);
   const older = readThread("default", state, state.cards.c1!, [], page.older);
   assert.equal(older.entries.length, 30); assert.equal(older.entries[0]?.text, "message 0"); assert.equal(older.older, undefined);
-  assert.equal(page.route, false); assert.deepEqual(page.suggestions, []); assert.equal(page.watching, "unknown");
+  assert.equal(page.route, false); assert.equal(page.watching, "unknown");
   const entries = recordEntries({ type: "assistant", message: { content: [{ type: "text", text: "hello" }, { type: "thinking", thinking: "thinking" }, { type: "tool_use", input: "sk-abcdefghijklmnop123456789" }] } }, 0);
   assert.deepEqual(entries.map(e => e.kind), ["message", "thinking", "tool"]); assert.equal(entries[2]?.text, "[redacted]");
   assert.deepEqual(recordEntries({ type: "user", isMeta: true, message: { content: "injected" } }, 0), []);

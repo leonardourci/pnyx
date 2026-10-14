@@ -337,7 +337,7 @@ function afterValue(target: BoardEvent): unknown {
 // harvested note is a source observation.
 export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): Decision {
   if (target.type === "board.view") {
-    if (state.undone[target.id] || !isDeepStrictEqual(viewFor(state), target.data.after)) throw new BoardError("preferences changed since this event", "CONFLICT");
+    if (state.undone[target.id] || !isDeepStrictEqual(viewFor(state), viewFor({ ...state, view: target.data.after }))) throw new BoardError("preferences changed since this event", "CONFLICT");
     if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) throw new BoardError("view preferences changed", "REVISION_CONFLICT");
     const after = patchView({ ...state, view: DEFAULT_VIEW }, target.data.before);
     return { event: { ...base(state, meta, "$board"), type: "board.view", undoes: target.id, data: { before: viewFor(state), after } } };

@@ -14,4 +14,5 @@ export function filterCards(state: BoardState, workspace: string, tag: string, q
 export function visibleParent(card: Card, visible: Card[]): Card | undefined { return visible.find(c => c.id === card.parentId); }
 export function safeLink(link: Link): string | undefined { try { const url = new URL(link.url); return ["https:", "http:"].includes(url.protocol) ? url.href : undefined; } catch { return undefined; } }
 export const receiptLabel = (state: string) => ({ queued: "Queued", delivered: "Delivered", delivery_unknown: "Delivery unknown", failed: "Delivery failed" }[state] ?? state);
-export const slashPrefix = (text: string, cursor: number) => /^\/[a-z-]*$/i.test(text.slice(0, cursor)) ? text.slice(0, cursor).toLowerCase() : null;
+export const slashPrefix = (text: string, cursor: number) => /^\/[a-z0-9_.:-]*$/i.test(text.slice(0, cursor)) ? text.slice(0, cursor) : null;
+export const slashMatches = (command: string, prefix: string) => command.replace(/^[$/]/, "").toLowerCase().startsWith(prefix.replace(/^\//, "").toLowerCase());

@@ -5,6 +5,7 @@
 // keeps a single writer whether a change comes from here or from the CLI.
 import { execFile } from "node:child_process";
 import { readThread, threadPath, THREAD_CURSOR, type ThreadPage } from "../thread/read.ts";
+import { readCatalog, type Catalog, type CatalogLocations } from "../thread/catalog.ts";
 import { findCard } from "../core/decide.ts";
 import { resolveHome } from "../integrations/firstmate/home.ts";
 import { search, updateIndex } from "../search/index.ts";
@@ -57,7 +58,7 @@ export interface RunningServer {
   close(): Promise<void>;
 }
 
-export async function startServer({ board, port = 0, homes = [] }: { board: string; port?: number; homes?: string[] }): Promise<RunningServer> {
+export async function startServer({ board, port = 0, homes = [], catalogLocations }: { board: string; port?: number; homes?: string[]; catalogLocations?: CatalogLocations }): Promise<RunningServer> {
   if (await readServer(board)) {
     throw new BoardError(`a server is already running for board ${board}`, "ALREADY_RUNNING", ["Run `pnyx-axi` to see its address"]);
   }
@@ -159,15 +160,27 @@ export async function startServer({ board, port = 0, homes = [] }: { board: stri
   });
 
   // A tab's write: the same CLI command, pinned to this board, under the same writer lock.
+  const catalogReads = new WeakMap<WebSocket, { card: string; read: Promise<Catalog> }>();
   const runCommand = (ws: WebSocket, message: { id?: unknown; name?: unknown; args?: unknown }) => {
     const id = typeof message.id === "string" ? message.id : null;
     const fail = (error: string, code: string, help?: string[]) => send(ws, { type: "error", id, error, code, help });
     const { name, args } = message;
     if (id === null) return fail("command needs a string id", "VALIDATION_ERROR");
-    if (["thread", "search", "reply"].includes(String(name))) {
+    if (["thread", "search", "reply", "catalog"].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === "string")) return fail("args must be strings", "VALIDATION_ERROR");
       try {
-        if (name === "search") {
+        if (name === "catalog") {
+          if (args.length !== 1) throw new BoardError("catalog expects a card", "VALIDATION_ERROR");
+          const card = findCard(state, args[0]);
+          let entry = catalogReads.get(ws);
+          if (entry?.card !== card.id) {
+            const previous = entry?.read.catch(() => undefined);
+            const next = { card: card.id, read: Promise.resolve(previous).then(() => readCatalog(card, catalogLocations)) };
+            catalogReads.set(ws, entry = next);
+            void next.read.catch(() => undefined).finally(() => { if (catalogReads.get(ws) === next) catalogReads.delete(ws); });
+          }
+          void entry.read.then(catalog => send(ws, { type: "receipt", id, catalog })).catch(() => fail("Local catalog unavailable", "CATALOG_UNAVAILABLE"));
+        } else if (name === "search") {
           if (args.length > 2) throw new BoardError("search expects text and optional workspace", "VALIDATION_ERROR");
           updateIndex(board);
           send(ws, { type: "receipt", id, ...search(board, { text: args[0] ?? "", workspace: args[1] || undefined, limit: 30 }) });
