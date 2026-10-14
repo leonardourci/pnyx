@@ -66,7 +66,7 @@ export function useBoard() {
               closed = true; ws.close(); location.reload()
             }
           } else if (m.type === 'snapshot') {
-            hasSnapshot.current = true; stateRef.current = m.state; setState(m.state)
+            hasSnapshot.current = true; stateRef.current = m.state; setState(m.state); setLatest({})
           } else if (m.type === 'event') {
             if (m.event.seq <= stateRef.current.seq) {
               return

@@ -133,9 +133,11 @@ export async function startServer({
     ws.send(JSON.stringify(message))
   }
 
+  // A snapshot is always followed by every card's last message, which the tab takes in place of its own.
   const sendSnapshot = (ws: WebSocket) => {
     resyncing.delete(ws)
     send(ws, { type: 'snapshot', seq: state.seq, state })
+    send(ws, { type: 'latest', messages: latest })
   }
 
   // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.
@@ -548,19 +550,14 @@ export async function startServer({
       })
       send(ws, { type: 'hello', build: buildId() })
       resume(ws, url.searchParams.get('after'))
-      send(ws, { type: 'latest', messages: latest })
     })
   })
 
   // A cursor this server can continue from gets only the events after it; any
   // other cursor (ahead of the board, older than the kept events, or none) gets a snapshot.
+  // Either way the tab then gets every card's last message.
   const resume = (ws: WebSocket, after: string | null) => {
     const seq = after !== null && /^\d+$/.test(after) ? Number(after) : undefined
-
-    if (seq === state.seq) {
-      return
-    }
-
     const first = recent[0]?.seq ?? state.seq + 1
 
     if (seq === undefined || seq > state.seq || seq < first - 1) {
@@ -572,6 +569,8 @@ export async function startServer({
         send(ws, { type: 'event', event })
       }
     }
+
+    send(ws, { type: 'latest', messages: latest })
   }
 
   await new Promise<void>((resolve, reject) => {

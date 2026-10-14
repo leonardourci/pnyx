@@ -12,7 +12,7 @@ The server reads the log for appends from any writer, including the CLI, and pus
 Each card's last conversation message (the last typed user message or assistant reply in
 its recorded transcript, without tool calls, thinking or injected text, cut to 280
 characters) is pushed as `{"type":"latest","messages":{"<cardId>":{role,text,at}|null}}`:
-every card's on connect, then the ones that changed. A card is read again when it gets an
+every card's on connect and after each snapshot, then the ones that changed. A card is read again when it gets an
 event or its transcript folder changes: only the lines appended since its last read, or
 back from the transcript's end when the file is new, shrank or was replaced.
 

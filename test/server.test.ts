@@ -614,6 +614,10 @@ test("each card gets its conversation's last message, pushed again as the transc
   // A tab that connects later gets every card's last message at once.
   const later = await tab(); await later.next()
   assert.deepEqual(await later.latest(card), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
+  // A tab that resyncs, such as one dropped while lagging, gets them again after its snapshot.
+  t.ws.send(JSON.stringify({ type: 'resync' }))
+  assert.equal((await t.next()).type, 'snapshot')
+  assert.deepEqual(await t.latest(card), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
   t.ws.close(); later.ws.close()
 })
 
