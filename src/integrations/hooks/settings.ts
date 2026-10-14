@@ -58,13 +58,17 @@ function approval(value: unknown): string | undefined {
   return str(value) ?? (Object.keys(obj(value)).length ? Object.keys(obj(value))[0] : undefined)
 }
 
-function claudeSettings(record: Record<string, unknown>): FoundSettings | undefined {
+function claudeSettings(
+  record: Record<string, unknown>,
+  subagent: boolean,
+): FoundSettings | undefined {
   if (record.type === 'permission-mode') {
     return known({ mode: str(record.permissionMode) })
   }
 
-  // A sidechain record belongs to a subagent, whose settings live on its own card.
-  if (record.type !== 'assistant' || record.isSidechain === true) {
+  // In a session's transcript a sidechain record belongs to a subagent, whose settings
+  // live on its own card; a subagent's own transcript holds only sidechain records.
+  if (record.type !== 'assistant' || (record.isSidechain === true && !subagent)) {
     return undefined
   }
 
@@ -120,9 +124,10 @@ function codexSettings(record: Record<string, unknown>): FoundSettings | undefin
 }
 
 // The settings one transcript record reports, or undefined for a record that holds
-// none. Claude Code and Codex records are told apart by their shape.
-export function transcriptSettings(record: unknown): FoundSettings | undefined {
+// none, read from a subagent's own transcript when subagent is set. Claude Code and
+// Codex records are told apart by their shape.
+export function transcriptSettings(record: unknown, subagent = false): FoundSettings | undefined {
   const r = obj(record)
 
-  return 'payload' in r ? codexSettings(r) : claudeSettings(r)
+  return 'payload' in r ? codexSettings(r) : claudeSettings(r, subagent)
 }

@@ -37,7 +37,7 @@ test('hook payloads report the model, effort and permission mode they carry', ()
   assert.equal(hookSettings(payload('claude-subagent-start')), undefined)
 })
 
-test('a Claude Code transcript reports each turn\'s model, effort, speed and context, skipping subagent and synthetic turns', () => {
+test('a Claude Code session transcript reports each turn\'s model, effort, speed and context, skipping subagent and synthetic turns', () => {
   assert.deepEqual(fold(transcript('claude-settings')), {
     mode: 'default',
     model: 'claude-opus-5-5',
@@ -174,5 +174,25 @@ test('a Codex session reports its model on every hook and the rest from its roll
     sandbox: 'workspace-write',
     collaboration: 'plan',
     summary: 'concise',
+  })
+})
+
+test('a subagent card reports the settings its own transcript records', () => {
+  const { home, nudge } = board()
+  const path = join(home, 'agent-a1.jsonl')
+  // A subagent's own transcript holds only sidechain records.
+  writeFileSync(path, readFileSync(transcript('claude-settings'), 'utf8').split('\n')
+    .filter(line => line.includes('"isSidechain":true'))
+    .map(line => `${line}\n`)
+    .join(''))
+  spoolWrite('default', { v: 1, id: 'h1', at: '2026-10-14T09:00:10Z', harness: 'claude', event: 'SubagentStop', payload: { session_id: 's1', transcript_path: join(home, 's1.jsonl'), cwd: '/work', permission_mode: 'default', agent_id: 'agent-a1', agent_type: 'Explore', agent_transcript_path: path } })
+  nudge()
+  assert.deepEqual(settingsOf('claude:s1/agent-a1'), {
+    mode: 'default',
+    model: 'claude-haiku-5-5',
+    effort: 'low',
+    fast: 'off',
+    client: 'cli',
+    version: '2.1.299',
   })
 })

@@ -75,13 +75,14 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
     }
 
     const settings: FoundSettings = {}
+    const subagent = writer.state.cards[id]!.agent!.agentId !== undefined
 
     for (const line of tail.lines) {
       for (const note of transcriptNotes(line.record)) {
         appended += appendNote(writer, id, note, at)
       }
 
-      Object.assign(settings, transcriptSettings(line.record))
+      Object.assign(settings, transcriptSettings(line.record, subagent))
     }
 
     const card = writer.state.cards[id]!
