@@ -206,7 +206,7 @@ export function observe(envelope: HookEnvelope): Observation[] {
 
   const observation: Observation = { id: '', key, card }
 
-  if (envelope.event === 'SessionEnd' || envelope.event === 'SubagentStop') {
+  if (envelope.event === 'SessionEnd' || (envelope.event === 'SubagentStop' && agentId)) {
     observation.outcome = 'ended'
   } else if (REOPENS.includes(envelope.event)) {
     observation.outcome = null

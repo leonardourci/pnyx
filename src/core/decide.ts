@@ -477,7 +477,7 @@ export function decideLink(
 }
 
 // source: the adapter observing this outcome. An observed outcome changes or
-// clears only through the same source.
+// clears only through the same source; a person may replace one hooks observed.
 export function decideOutcome(
   state: BoardState,
   ref: string,
@@ -488,7 +488,7 @@ export function decideOutcome(
   const card = findCard(state, ref)
   const observed = card.outcome?.source
 
-  if (observed && source !== observed) {
+  if (observed && source !== observed && !(source === undefined && observed === 'hooks')) {
     throw new BoardError(`card ${card.id}'s outcome comes from ${observed} and cannot be changed here`, 'SOURCE_OWNED', [
       `Run \`pnyx-axi move ${card.id} <column>\` to pin the card instead`,
     ])
