@@ -5,7 +5,7 @@ import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Select, Switch } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
-import { SettingChips, SettingList, harnessName } from './agent-settings.tsx'
+import { AgentControls, SettingChips, SettingList, harnessName } from './agent-settings.tsx'
 import { Links, Tags } from './card.tsx'
 import { Composer } from './composer.tsx'
 import { Notes } from './notes.tsx'
@@ -242,6 +242,13 @@ export function Detail({
         <div className="detail-content">
           <SettingList settings={card.settings} />
           {!card.settings && <p className="empty">No settings reported yet. Claude Code and Codex report theirs as the session runs.</p>}
+          <AgentControls
+            card={card}
+            thread={thread}
+            command={command}
+            connected={connected}
+            notify={notify}
+          />
         </div>
       ) : tab === 'history' ? (
         <div className="detail-content">

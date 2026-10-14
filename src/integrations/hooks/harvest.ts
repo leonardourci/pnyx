@@ -11,7 +11,7 @@ import { SESSION_TITLE, type SourceNote } from '../../core/model.ts'
 import type { Writer } from '../../store/board-store.ts'
 import { readTranscript } from '../../search/index.ts'
 import { codexThreadTitle, transcriptNotes } from './notes.ts'
-import { transcriptSettings, type FoundSettings } from './settings.ts'
+import { LIVE_HOOK_SETTINGS, transcriptSettings, type FoundSettings } from './settings.ts'
 
 const CURSORS = 'harvest.json'
 
@@ -102,7 +102,13 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
     }
 
     const settings: FoundSettings = {}
-    const { agent, autoTitle } = writer.state.cards[id]!
+    const { agent, autoTitle, sourceRefs, settings: held } = writer.state.cards[id]!
+    // The transcript is written after the fact and read later, so a record older than
+    // the session's latest hook never overrides a value of a setting hooks report live.
+    const hooked = Math.max(0, ...sourceRefs.filter(r => r.adapter === 'hooks')
+      .map(r => Date.parse(r.observedAt ?? '') || 0))
+    const live = (LIVE_HOOK_SETTINGS[agent!.provider] ?? [])
+      .filter(name => held?.[name] !== undefined)
     const subagent = agent!.agentId !== undefined
     // The session title the transcript named last before this read.
     let title = tail.reset || !cursors[name]?.pos || autoTitle?.from !== 'session' ? undefined : `${SESSION_TITLE}${autoTitle.text}`
@@ -117,7 +123,13 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
         }
       }
 
-      Object.assign(settings, transcriptSettings(line.record, subagent))
+      const found = transcriptSettings(line.record, subagent)
+      const stamp = Date.parse(String((line.record as { timestamp?: unknown }).timestamp))
+      const stale = hooked > 0 && !(stamp >= hooked)
+
+      Object.assign(settings, stale
+        ? Object.fromEntries(Object.entries(found ?? {}).filter(([name]) => !live.includes(name)))
+        : found)
     }
 
     const card = writer.state.cards[id]!

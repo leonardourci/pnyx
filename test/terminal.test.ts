@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 import type { Card } from '../src/core/model.ts'
+import { confirms, findOption } from '../src/core/control.ts'
 import { replyRoute, terminalFacts } from '../src/core/route.ts'
 import { loadBoard } from '../src/store/board-store.ts'
 
@@ -238,4 +239,117 @@ test('the hook records the terminal the session runs in, past wrapper shells', a
   process.env.PNYX_HOME = home
   const { state } = loadBoard('default')
   assert.deepEqual(state.cards[state.keys['claude:s1']!]!.terminal, line.terminal)
+})
+
+test('agent types a Claude Code command, answers its confirmation and presses keys where the host can', () => {
+  const { run, calls, set, session, fails } = hosts()
+  session('s1', { program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' })
+  set('tmux.out', `${TTY}\n`)
+  assert.match(run('agent', 's1'), /harness: claude-code[\s\S]*route: "terminal:tmux"[\s\S]*mode,unknown,next,yes/)
+
+  const effort = run('agent', 's1', 'effort', 'high', '--idempotency-key', 'e1')
+  assert.match(effort, /sent: delivered/)
+  // Not reported back yet: Claude Code reports effort on its next turn.
+  assert.match(effort, /confirmed: false[\s\S]*next hook or turn/)
+  const keys = calls().map(c => c.split('\n')[0])
+  assert.deepEqual(keys, ['call=ps', 'call=tmux', 'call=tmux', 'call=tmux', 'call=tmux', 'call=ps', 'call=tmux', 'call=tmux'])
+  assert.match(calls()[2]!, /stdin=\/effort high/)
+  // The command is submitted, then one more Enter answers a confirmation if one shows.
+  assert.match(calls()[4]!, /arg=send-keys\narg=-t\narg=%3\narg=Enter\n$/)
+  assert.match(calls()[7]!, /arg=send-keys\narg=-t\narg=%3\narg=Enter\n$/)
+  assert.match(run('history', '--card', 's1', '--kind', 'replied'), /reply e1 delivered/)
+
+  assert.match(run('agent', 's1', 'mode', 'next'), /sent: delivered/)
+  assert.match(calls().at(-1)!, /arg=send-keys\narg=-t\narg=%3\narg=BTab\n$/)
+  assert.equal(calls().filter(c => c.includes('load-buffer')).length, 1)
+
+  fails(['agent', 's1', 'model', 'gpt-6'], 'VALIDATION_ERROR')
+  fails(['agent', 's1', 'collaboration', 'toggle'], 'VALIDATION_ERROR')
+  fails(['agent', 's1', 'model'], 'VALIDATION_ERROR')
+})
+
+test('agent reads a Codex change back from the transcript at once', () => {
+  const { root, run, calls, set } = hosts()
+  const transcript = join(root, 'rollout.jsonl')
+  writeFileSync(transcript, `${JSON.stringify({ type: 'session_meta', payload: { originator: 'codex_cli_rs' } })}\n`)
+  const file = join(root, 'codex.json')
+  writeFileSync(file, JSON.stringify({
+    agent: { provider: 'codex', sessionId: 'x1', transcriptPath: transcript },
+    settings: { effort: 'medium' },
+    terminal: { tty: TTY, pid: '4242', program: 'kitty', paseoTerminal: 'term-1' },
+  }))
+  run('push', '--key', 'x1', '--file', file)
+  assert.match(run('agent', 'x1'), /harness: codex[\s\S]*picks its model and approval mode only[\s\S]*effort,medium,lower raise,yes/)
+
+  // The fake host stands in for Codex: the change lands in its rollout as it is sent.
+  const applied = { timestamp: '2026-10-14T16:06:00Z', type: 'event_msg', payload: { type: 'thread_settings_applied', thread_settings: { reasoning_effort: 'high', service_tier: 'default' } } }
+  set('append.path', transcript)
+  set('paseo.append.1', `${JSON.stringify(applied)}\n`)
+  const out = run('agent', 'x1', 'effort', 'raise')
+  assert.match(out, /sent: delivered\n {2}before: medium\n {2}now: high\n {2}confirmed: true/)
+  assert.ok(calls().at(-1)!.endsWith('arg=terminal\narg=send-keys\narg=term-1\narg=-l\narg=--\narg=\u001b[1;2A\n'))
+  assert.match(run('agent', 'x1', 'collaboration', 'toggle'), /sent: delivered/)
+  assert.ok(calls().at(-1)!.endsWith('arg=-l\narg=--\narg=\u001b[Z\n'))
+})
+
+test('iTerm2 gets a key as raw bytes; Terminal, Herdr and Firstmate refuse keys before sending', () => {
+  const { run, calls, session, fails } = hosts()
+  session('s1', { program: 'iTerm.app' })
+  assert.match(run('agent', 's1', 'mode', 'next'), /sent: delivered/)
+  const key = calls().at(-1)!
+  assert.match(key, /tell application "iTerm2"[\s\S]*newline false[\s\S]*end run\narg=\/dev\/ttys042\n/)
+  assert.ok(key.endsWith('arg=\u001b[Z\n'))
+
+  const before = calls().length
+  session('s2', { program: 'Apple_Terminal' })
+  session('s3', { program: 'ghostty', herdrSession: 'work', herdrPane: 'p_7' })
+  fails(['agent', 's2', 'mode', 'next'], 'NO_ROUTE')
+  fails(['agent', 's3', 'mode', 'next'], 'NO_ROUTE')
+  assert.match(run('agent', 's2'), /mode,unknown,next,"Terminal types whole lines/)
+  assert.equal(calls().length, before)
+  // Typed commands still go everywhere a reply goes.
+  assert.match(run('agent', 's2', 'fast', 'off'), /sent: delivered/)
+  assert.match(calls().at(-1)!, /tell application "Terminal"[\s\S]*arg=\/fast off\n/)
+})
+
+test("a session's report confirms a change the way its control reads back", () => {
+  const check = (
+    provider: string,
+    setting: string,
+    value: string,
+    before?: string,
+    after?: string,
+  ) =>
+    confirms({ ...findOption({ provider, setting, value })!, before, after })
+
+  // A model alias confirms on the full id the session reports.
+  assert.equal(check('claude-code', 'model', 'opus', 'claude-sonnet-5-5', 'claude-opus-5-5'), true)
+  assert.equal(check('claude-code', 'model', 'opus', 'claude-sonnet-5-5', 'claude-sonnet-5-5'), false)
+  assert.equal(check('claude-code', 'effort', 'high', 'medium', 'high'), true)
+  assert.equal(check('claude-code', 'effort', 'xhigh', 'medium', 'high'), false)
+  // A key that cycles or steps confirms on any change.
+  assert.equal(check('claude-code', 'mode', 'next', 'auto', 'default'), true)
+  assert.equal(check('codex', 'effort', 'raise', 'medium', 'medium'), false)
+  assert.equal(check('codex', 'fast', 'toggle', 'off', undefined), false)
+  assert.equal(findOption({ provider: 'codex', setting: 'model', value: 'gpt-6' }), undefined)
+  assert.equal(findOption({ provider: 'opencode', setting: 'effort', value: 'high' }), undefined)
+})
+
+test('a setting change waits for an open request and never answers one the session opens meanwhile', () => {
+  const { run, calls, set, session, fails } = hosts()
+  session('claude:s1', { program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' })
+  set('tmux.out', `${TTY}\n`)
+  const hook = (event: string, payload: Record<string, unknown>) => JSON.stringify({ v: 1, id: `h-${event}`, at: '2026-10-14T17:00:00Z', harness: 'claude', event, payload: { session_id: 's1', cwd: '/work', ...payload } })
+
+  // A permission prompt shows up while the command settles: no confirming Enter.
+  set('tmux.spool.4', hook('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } }))
+  const out = run('agent', 'claude:s1', 'model', 'opus')
+  assert.match(out, /sent: delivery_unknown/)
+  assert.match(out, /the session opened a request, so Pnyx pressed nothing more/)
+  assert.deepEqual(calls().map(c => c.split('\n')[0]), ['call=ps', 'call=tmux', 'call=tmux', 'call=tmux', 'call=tmux'])
+
+  // While it stays open, nothing is typed for a setting at all; a reply still goes.
+  fails(['agent', 'claude:s1', 'mode', 'next'], 'SESSION_WAITING')
+  assert.equal(calls().length, 5)
+  assert.match(run('reply', 'claude:s1', '--text', 'yes'), /state: delivered/)
 })

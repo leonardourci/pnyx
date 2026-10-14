@@ -5,18 +5,27 @@
 import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
 import { decideReply, findCard, type Meta } from '../core/decide.ts'
-import { BoardError, type ReplyState } from '../core/model.ts'
+import { BoardError, type Card, type ReplyState } from '../core/model.ts'
+import { KEY_LABEL, confirms, findOption, harnessControls, inputReason, type Key } from '../core/control.ts'
 import { replyRoute, type ReplyRoute } from '../core/route.ts'
-import { STATUS_KEY, TASK_ID, resolveHome } from '../integrations/firstmate/home.ts'
-import { fmSend } from '../integrations/firstmate/reply.ts'
+import { STATUS_KEY, TASK_ID, resolveHome, typingReason } from '../integrations/firstmate/home.ts'
+import { fmEnter, fmSend } from '../integrations/firstmate/reply.ts'
+import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { HOOK } from '../integrations/hooks/observe.ts'
-import { typeInto } from '../integrations/hooks/terminal.ts'
-import { withWriter } from '../store/board-store.ts'
+import { pressKey, typeInto, type Delivery } from '../integrations/hooks/terminal.ts'
+import { loadBoard, withWriter } from '../store/board-store.ts'
 import { COMMON, drainSpool, guard, meta, parse, required, type Options, type Output } from './commands.ts'
 
 export interface ReplyRequest {
   card: string
+  // What is typed, or for a key the name kept on its receipts.
   text: string
+  // A key pressed instead of typing text, where the route's host can press it.
+  key?: Key
+  // One more Enter after the text, for a command the harness may ask to confirm.
+  confirm?: boolean
+  // A setting change, refused while the session waits on an open request.
+  control?: boolean
   // Idempotency key: a retry with the same id never sends twice unless the
   // earlier send failed outright.
   id?: string
@@ -46,8 +55,48 @@ function routeName(route: ReplyRoute): string {
   return route.kind === 'firstmate' ? 'firstmate' : `terminal:${route.kind}`
 }
 
-function deliver(route: ReplyRoute, text: string, resolveKey: string | undefined) {
-  return route.kind === 'firstmate' ? fmSend(route, text, resolveKey) : typeInto(route, text)
+// Time for Claude Code to show its confirmation after a model or effort command.
+const CONFIRM_SETTLE_MS = 1500
+
+// A permission prompt, question or other request the session's hooks show as open:
+// keys sent then would answer it instead of reaching the prompt.
+function waiting(card: Card | undefined): boolean {
+  return card?.attention.some(a => a.blocking && a.key.startsWith(HOOK)) ?? false
+}
+
+function deliver({ board, card, route, request }: {
+  board: string
+  card: string
+  route: ReplyRoute
+  request: ReplyRequest
+}): Delivery {
+  const { text, key, confirm, resolveKey } = request
+  const sent = route.kind === 'firstmate'
+    ? fmSend(route, text, resolveKey)
+    : key ? pressKey({ route, key }) : typeInto(route, text)
+
+  if (!confirm || sent.state !== 'delivered') {
+    return sent
+  }
+
+  // Claude Code asks to confirm a model or effort change while its prompt cache is
+  // warm, with Yes selected, and an Enter at an empty prompt does nothing. A request
+  // the session opened meanwhile would take that Enter instead, so then none is pressed.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, CONFIRM_SETTLE_MS)
+
+  if (withWriter(board, writer => {
+    drainSpool(writer)
+
+    return waiting(writer.state.cards[card])
+  })) {
+    return { state: 'delivery_unknown', detail: 'the command was sent, then the session opened a request, so Pnyx pressed nothing more; answer it and any confirmation in the session' }
+  }
+
+  const answered = route.kind === 'firstmate' ? fmEnter({ route }) : pressKey({ route, key: 'enter' })
+
+  return answered.state === 'delivered'
+    ? sent
+    : { state: 'delivery_unknown', detail: `the command was sent, but the Enter that answers its confirmation was not${answered.detail ? ` (${answered.detail})` : ''}; check the session` }
 }
 
 export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
@@ -78,6 +127,16 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
     }
 
     const route = found.route
+    const key = request.key
+    const unpressable = key && inputReason({ kind: route.kind, input: { key } })
+
+    if (unpressable) {
+      throw new BoardError(`card ${card.id} cannot take ${KEY_LABEL[key!]}: ${unpressable}`, 'NO_ROUTE')
+    }
+
+    if (request.control && waiting(card)) {
+      throw new BoardError(`card ${card.id} is waiting on a request; answer it in the session before changing settings`, 'SESSION_WAITING')
+    }
 
     if (route.kind === 'firstmate') {
       if (!TASK_ID.test(route.task)) {
@@ -126,7 +185,7 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
   }
 
   // Sent outside the writer lock: a send can take a while and must not block other writers.
-  const outcome = deliver(queued.route, text, resolveKey)
+  const outcome = deliver({ board, card: queued.card, route: queued.route, request })
   const receipt = { card: queued.card, reply: queued.reply, sent: true, ...outcome }
 
   try {
@@ -202,6 +261,156 @@ export const reply = guard(args => {
 
   return out
 })
+
+// Time for a harness to record a change it writes at once, as Codex does, before
+// the transcript is read back.
+const READBACK_MS = 1000
+
+// The card's harness, settings and the controls its Agent tab offers, each with the
+// reason it cannot be sent when the route cannot carry it.
+function agentSummary({ board, ref, homes }: {
+  board: string
+  ref: string
+  homes: string[]
+}): Output {
+  const card = findCard(loadBoard(board).state, ref)
+  const provider = card.agent?.provider
+  const found = replyRoute(card, homes.map(resolveHome))
+  const harness = harnessControls({ provider })
+  const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
+  const typing = firstmate && typingReason(firstmate)
+  const controls = (harness?.controls ?? []).map(c => {
+    const keys = 'route' in found
+      ? c.options.map(o => inputReason({ kind: found.route.kind, input: o.input })).find(Boolean)
+      : undefined
+    const unavailable = 'reason' in found ? found.reason : typing || keys
+
+    return {
+      setting: c.setting,
+      now: card.settings?.[c.setting] ?? 'unknown',
+      options: c.options.map(o => o.value).join(' '),
+      ready: unavailable ?? 'yes',
+    }
+  })
+  const agent = {
+    card: card.id,
+    harness: provider ?? 'none',
+    route: 'route' in found ? routeName(found.route) : `none: ${found.reason}`,
+    ...(harness?.note ? { note: harness.note } : {}),
+  }
+
+  if (!harness) {
+    return {
+      agent,
+      controls: [],
+      help: [provider ? `Pnyx changes settings only for Claude Code and Codex sessions, not ${provider}` : 'This card has no agent session joined yet, so there is nothing to change'],
+    }
+  }
+
+  const ready = controls.find(c => c.ready === 'yes')
+
+  return {
+    agent,
+    controls,
+    help: ready ? [`Run \`pnyx-axi agent ${card.id} ${ready.setting} ${ready.options.split(' ')[0]}\` to change it`] : ['No setting can be changed on this route'],
+  }
+}
+
+export const agent = guard(args => {
+  const options: Options = {
+    ...COMMON,
+    home: { type: 'string', multiple: true },
+    actor: { type: 'string' },
+    'idempotency-key': { type: 'string' },
+  }
+  const { values, positionals, board } = parse(args, options, 3)
+  const ref = required(positionals[0], 'card id')
+  const homes = (values.home as string[] | undefined) ?? []
+
+  if (positionals.length < 3) {
+    if (positionals.length === 2) {
+      throw new AxiError('give a setting and a value', 'VALIDATION_ERROR', [`Run \`pnyx-axi agent ${ref}\` to list them`])
+    }
+
+    return agentSummary({ board, ref, homes })
+  }
+
+  const [, setting, value] = positionals as [string, string, string]
+  const card = findCard(loadBoard(board).state, ref)
+  const picked = findOption({ provider: card.agent?.provider, setting, value })
+
+  if (!picked) {
+    throw new AxiError(`card ${card.id} offers no ${setting} ${value}`, 'VALIDATION_ERROR', [`Run \`pnyx-axi agent ${card.id}\` to list its settings and values`])
+  }
+
+  const { control, option } = picked
+  const found = replyRoute(card, homes.map(resolveHome))
+  const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
+  const typing = firstmate && typingReason(firstmate)
+
+  if (typing) {
+    throw new BoardError(`card ${card.id} cannot take a setting change: ${typing}`, 'NO_ROUTE')
+  }
+
+  // What the session reported before, with everything it has recorded folded in,
+  // so the readback compares like with like.
+  const settled = () => withWriter(board, writer => {
+    drainSpool(writer)
+    harvestTranscripts(writer, [card.id], new Date().toISOString())
+
+    return writer.state.cards[card.id]?.settings?.[setting]
+  })
+  const before = settled()
+  const input = option.input
+  const receipt = sendReply(board, {
+    card: card.id,
+    text: 'key' in input ? `[${KEY_LABEL[input.key]}]` : input.text,
+    ...('key' in input ? { key: input.key } : { confirm: input.confirm }),
+    control: true,
+    homes,
+    actor: meta(values).actor,
+    ...(values['idempotency-key'] ? { id: values['idempotency-key'] as string } : {}),
+  })
+  let now = before
+
+  if (receipt.state === 'delivered') {
+    // A harness that records the change at once, as Codex does, confirms it here;
+    // otherwise the session's next hook or turn does.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, READBACK_MS)
+    now = settled()
+  }
+
+  const confirmed = confirms({ control, option, before, after: now })
+  const out: Output = {
+    agent: { card: card.id, setting, value, sent: receipt.state, before: before ?? 'unknown', now: now ?? 'unknown', confirmed },
+  }
+
+  if (receipt.recordError) {
+    out.help = [`The change ended ${receipt.state} but was not recorded: ${receipt.recordError}; check the session before sending again`]
+  } else if (receipt.state === 'failed') {
+    out.help = [`Nothing was changed${receipt.detail ? `: ${receipt.detail}` : ''}`]
+  } else if (receipt.state !== 'delivered') {
+    out.help = [`The change may have landed${receipt.detail ? ` (${receipt.detail})` : ''}; check the session before sending again`]
+  } else if (!confirmed) {
+    out.help = [`The session has not reported its new ${setting} yet; it does on its next hook or turn. Run \`pnyx-axi card ${card.id}\` to check`]
+  }
+
+  return out
+})
+
+export const AGENT_HELP = `usage: pnyx-axi agent <id> [<setting> <value>] [--home <path>]... [--idempotency-key <key>]
+Without a setting, lists the card's harness, settings and the ones Pnyx can change, with values.
+With one, types what the harness's own interface takes into the session, on the card's reply
+route (receipts as for reply), then reads the setting back from the transcript:
+  Claude Code: model opus|sonnet|haiku|fable (/model), effort low|medium|high|xhigh|max (/effort),
+    fast on|off (/fast), mode next (Shift+Tab). Claude Code saves a typed model, effort or fast
+    mode as the default for new sessions; one more Enter answers its confirmation, if shown.
+  Codex: effort lower|raise (Shift+Down, Shift+Up), fast toggle (/fast), collaboration toggle
+    (Shift+Tab, Plan or Default). Codex picks model and approval mode only in its own pickers.
+A Firstmate task types through fm-send, which presses only Enter; Terminal and Herdr press only
+Enter too. Nothing is sent while the session waits on a permission prompt or question.
+A setting the session has not reported yet is confirmed by its next hook or turn.
+`
 
 export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <file|-> [--home <path>]... [--resolve-key <key>] [--idempotency-key <key>]
 A Firstmate task card replies through its home's bin/fm-send.sh, with FM_HOME set; its home must

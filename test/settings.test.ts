@@ -35,6 +35,8 @@ test('hook payloads report the model, effort and permission mode they carry', ()
   assert.deepEqual(hookSettings(payload('claude-stop-effort')), { effort: 'xhigh', mode: 'acceptEdits' })
   assert.deepEqual(hookSettings(payload('codex-session-start')), { model: 'gpt-6', mode: 'default' })
   assert.equal(hookSettings(payload('claude-subagent-start')), undefined)
+  // A model switch reports the new model at once, before the next turn.
+  assert.deepEqual(hookSettings(payload('claude-post-model-switch')), { model: 'claude-haiku-5-5' })
 })
 
 test('a Claude Code session transcript reports each turn\'s model, effort, speed and context, skipping subagent and synthetic turns', () => {
@@ -155,6 +157,34 @@ test('hook events and the transcript keep a Claude Code card\'s settings current
   // Settings from a transcript are a source observation.
   const observed = readEvents('default').findLast(e => e.type === 'card.pushed' && e.actor === 'harvest')!
   assert.throws(() => run('undo', observed.id), (error: { stdout: string }) => /code: NOT_UNDOABLE/.test(error.stdout))
+})
+
+test('a transcript record written before the latest hook never overrides what hooks reported live', () => {
+  const { home, run, nudge } = board()
+  const path = join(home, 's2.jsonl')
+  const base = { session_id: 's2', transcript_path: path, cwd: '/work' }
+  // The prompt went in under auto mode and the turn ran at medium effort; the
+  // starting-mode record repeats auto even after Shift+Tab moved the session on.
+  writeFileSync(path, [
+    { type: 'permission-mode', permissionMode: 'auto', sessionId: 's2' },
+    { type: 'user', timestamp: '2026-10-14T10:00:00.000Z', sessionId: 's2', permissionMode: 'auto', message: { role: 'user', content: 'Go.' } },
+    { type: 'assistant', timestamp: '2026-10-14T10:00:05.000Z', sessionId: 's2', effort: 'medium', message: { model: 'claude-sonnet-5-5', role: 'assistant', content: [{ type: 'text', text: 'Done.' }], usage: { speed: 'standard' } } },
+  ].map(r => `${JSON.stringify(r)}\n`).join(''))
+  // Hooks already reported the session in accept edits at high effort, after those records.
+  spoolWrite('default', { v: 1, id: 'h1', at: '2026-10-14T10:01:00Z', harness: 'claude', event: 'Stop', payload: { ...base, permission_mode: 'acceptEdits', effort: { level: 'high' } } })
+  nudge()
+  assert.deepEqual(settingsOf('claude:s2'), { mode: 'acceptEdits', effort: 'high', model: 'claude-sonnet-5-5', fast: 'off' })
+
+  // A later turn's records are newer than every hook, so they count.
+  appendFileSync(path, [
+    { type: 'permission-mode', permissionMode: 'auto', sessionId: 's2' },
+    { type: 'user', timestamp: '2026-10-14T10:02:00.000Z', sessionId: 's2', permissionMode: 'plan', message: { role: 'user', content: 'Plan it.' } },
+    { type: 'assistant', timestamp: '2026-10-14T10:02:05.000Z', sessionId: 's2', effort: 'max', message: { model: 'claude-opus-5-5', role: 'assistant', content: [{ type: 'text', text: 'Planned.' }], usage: { speed: 'standard' } } },
+  ].map(r => `${JSON.stringify(r)}\n`).join(''))
+  spoolWrite('default', { v: 1, id: 'h2', at: '2026-10-14T10:02:00Z', harness: 'claude', event: 'Notification', payload: { ...base, notification_type: 'idle_prompt' } })
+  nudge()
+  run('harvest')
+  assert.deepEqual(settingsOf('claude:s2'), { mode: 'plan', effort: 'max', model: 'claude-opus-5-5', fast: 'off' })
 })
 
 test('a Codex session reports its model on every hook and the rest from its rollout', () => {

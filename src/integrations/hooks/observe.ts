@@ -270,6 +270,9 @@ function signal(event: string, payload: Record<string, unknown>): Signal | undef
       return { activity: 'compacted' }
     case 'SessionEnd':
       return { activity: 'ended', attend: all }
+    case 'PostModelSwitch':
+      // Only the new model, read by hookSettings; nothing changes in the session's work.
+      return {}
     default:
       return undefined
   }

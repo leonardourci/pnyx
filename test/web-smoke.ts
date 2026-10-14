@@ -154,6 +154,31 @@ try {
   await browser('wait', 'Live fixture update received.')
   await eventually('[...document.querySelectorAll(".last-message")].some(m => m.textContent.includes("Live fixture update received."))', "the card's last message follows the live transcript")
   await screenshot('conversation.png')
+  // The Agent tab changes settings on the card's route: Firstmate types the command,
+  // then answers Claude Code's confirmation; keys it cannot press are explained.
+  const report = (settings: Record<string, string>) => withWriter('default', w => {
+    const d = decidePush(w.state, 'layout', { agent: { provider: 'claude-code', sessionId: 'fixture-layout', transcriptPath: fixture.transcript }, settings }, { actor: 'fixture', at: '2026-10-14T16:30:00Z' })
+    assert.ok('event' in d); w.append(d.event)
+  })
+  report({ model: 'claude-sonnet-5-5', effort: 'medium', mode: 'default' })
+  await click('button', 'Agent'); await browser('wait', 'Change from here')
+  await check('[...document.querySelectorAll(".control-row[aria-label=\'Permission mode\'] button")].every(b => b.disabled && b.title.includes("Firstmate"))', 'keys Firstmate cannot press are disabled with the reason')
+  await check('document.querySelector(".control-row[aria-label=\'Permission mode\'] p").textContent.includes("presses only Enter")', 'the reason shows under the control')
+  await check('document.querySelector(".control-row[aria-label=\'Effort\'] [aria-pressed=true]").textContent === "medium"', 'the reported effort is marked')
+  await click('button', 'high'); await browser('wait', 'Waiting for the session to report its effort')
+  await browser('wait', 'has not reported its new effort yet')
+  assert.match(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), /arg=api-v2\narg=\/effort high\n---\n[^]*arg=api-v2\narg=--key\narg=Enter\n---\n$/)
+  report({ effort: 'high' })
+  await browser('wait', 'Effort')
+  await check('!document.querySelector(".control-row[aria-label=\'Effort\'] p") && document.querySelector(".control-row[aria-label=\'Effort\'] [aria-pressed=true]").textContent === "high"', 'the session report confirms the change')
+
+  for (const scheme of ['light', 'dark']) {
+    await browser('emulate', '--color-scheme', scheme); await browser('wait', 'Change from here')
+    await check('getComputedStyle(document.querySelector(".segmented .button")).color !== getComputedStyle(document.querySelector(".segmented .button")).backgroundColor', `Agent tab controls stay legible with a ${scheme} system theme`)
+    await screenshot(`agent-${scheme}.png`)
+  }
+
+  await click('button', 'Conversation')
   await browser('fill', await ref('textbox', 'Reply to Shape the first working board'), 'Keep this draft')
   await click('combobox', 'Workspace'); await click('option', 'Work')
   await check('document.querySelectorAll("[data-card]").length === 3 && document.querySelector(".detail").textContent.includes("Outside current filters")', 'workspace filters preserve the open conversation')

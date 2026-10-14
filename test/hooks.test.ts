@@ -55,6 +55,7 @@ const CLAUDE_EVENTS = [
   'Stop',
   'StopFailure',
   'SessionEnd',
+  'PostModelSwitch',
 ]
 const CODEX_EVENTS = [
   'SessionStart',
@@ -390,6 +391,7 @@ const CASES: (Case | [Case[0], string, string, typeof NOTHING])[] = [
     'stopped on rate_limit',
     [{ kind: 'error', key: 'hook:error', blocking: false, text: 'rate_limit: 429 Too Many Requests' }]],
   ['claude', 'SessionEnd', 'claude-session-end', 'ended', []],
+  ['claude', 'PostModelSwitch', 'claude-post-model-switch', undefined, undefined],
   ['codex', 'SessionStart', 'codex-session-start', 'resumed', []],
   ['codex', 'UserPromptSubmit', 'codex-user-prompt', 'working', []],
   ['codex', 'PreToolUse', 'codex-pre-tool', 'running Bash', []],

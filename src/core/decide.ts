@@ -286,9 +286,17 @@ function parseTerminal(value: unknown): TerminalFacts {
 // The key a hook session's observation (key `<harness>:<session>`) goes to: its own
 // once it has a card, else the card it already joined, else the one card whose
 // source assigned the session's working folder, such as the Firstmate task running
-// there. Several such cards stay ambiguous, so the session keeps its own card.
-// ponytail: a second session in the same folder joins too; record join aliases if that bites.
-export function joinedKey(state: BoardState, key: string, folder: string | undefined): string {
+// there. A card that already holds a session keeps it, so a second session in the
+// folder keeps its own card and never takes over the task's agent, terminal or reply
+// route. A card launched in another Paseo terminal than the session's is not its
+// task. When several cards remain, the one launched in the session's own terminal
+// wins; otherwise they stay ambiguous and the session keeps its own card.
+export function joinedKey(
+  state: BoardState,
+  key: string,
+  folder: string | undefined,
+  terminal?: TerminalFacts,
+): string {
   if (key in state.keys) {
     return key
   }
@@ -305,9 +313,12 @@ export function joinedKey(state: BoardState, key: string, folder: string | undef
     return key
   }
 
-  const matches = Object.values(state.cards).filter(c => c.folder === folder)
+  const session = terminal?.paseoTerminal
+  const matches = Object.values(state.cards).filter(c => c.folder === folder && !c.agent
+    && (!session || !c.terminal?.paseoTerminal || c.terminal.paseoTerminal === session))
+  const own = matches.filter(c => session && c.terminal?.paseoTerminal === session)
 
-  return matches.length === 1 ? matches[0]!.key : key
+  return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key
 }
 
 // Upserts the card with this key. `input` is the untrusted card JSON; `parent`

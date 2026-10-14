@@ -5,9 +5,9 @@
 //
 // | Setting | Claude Code | Codex |
 // |---|---|---|
-// | model | SessionStart `model`; an assistant turn's `message.model` | every hook's `model`; turn context and thread settings `model` |
+// | model | SessionStart `model`, PostModelSwitch `to_model`; an assistant turn's `message.model` | every hook's `model`; turn context and thread settings `model` |
 // | effort | `effort.level` on tool and Stop hooks; an assistant turn's `effort` | turn context `effort`, thread settings `reasoning_effort` |
-// | mode | `permission_mode` on hooks; `permission-mode` records | `permission_mode` on hooks |
+// | mode | `permission_mode` on hooks; a prompt record's `permissionMode` | `permission_mode` on hooks |
 // | fast | an assistant turn's `message.usage.speed` | thread settings or turn context `service_tier` (`fast`, sent as `priority`) |
 // | context | `requestedModel` ending in `[1m]` | |
 // | client | `entrypoint` | session meta `originator` |
@@ -34,13 +34,18 @@ function known(settings: Record<string, string | null | undefined>): FoundSettin
   return Object.keys(found).length ? found : undefined
 }
 
+// Settings a harness's hooks report on nearly every event, so the latest hook holds
+// the live value: Claude Code sends its model only at session start and after a switch.
+export const LIVE_HOOK_SETTINGS: Record<string, string[]> = { 'claude-code': ['effort', 'mode'], 'codex': ['model', 'mode'] }
+
 const onOff = (fast: boolean | undefined) => (fast === undefined ? undefined : fast ? 'on' : 'off')
 
 // Settings a hook payload carries: Claude Code sends the model only on SessionStart
-// and effort only around tool use and Stop; Codex sends the model on every hook.
+// and after a switch, and effort only around tool use and Stop; Codex sends the
+// model on every hook.
 export function hookSettings(payload: Record<string, unknown>): FoundSettings | undefined {
   return known({
-    model: str(payload.model),
+    model: str(payload.model) ?? str(payload.to_model),
     effort: str(payload.effort) ?? str(obj(payload.effort).level),
     mode: str(payload.permission_mode),
   })
@@ -62,13 +67,19 @@ function claudeSettings(
   record: Record<string, unknown>,
   subagent: boolean,
 ): FoundSettings | undefined {
-  if (record.type === 'permission-mode') {
+  // In a session's transcript a sidechain record belongs to a subagent, whose settings
+  // live on its own card; a subagent's own transcript holds only sidechain records.
+  if (record.isSidechain === true && !subagent) {
+    return undefined
+  }
+
+  // A prompt records the mode it was sent in. The separate permission-mode records
+  // keep the session's starting mode, not one changed with Shift+Tab since.
+  if (record.type === 'user') {
     return known({ mode: str(record.permissionMode) })
   }
 
-  // In a session's transcript a sidechain record belongs to a subagent, whose settings
-  // live on its own card; a subagent's own transcript holds only sidechain records.
-  if (record.type !== 'assistant' || (record.isSidechain === true && !subagent)) {
+  if (record.type !== 'assistant') {
     return undefined
   }
 

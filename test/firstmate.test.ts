@@ -212,14 +212,16 @@ test('sync never overwrites a link state another source refreshed', () => {
   assert.equal(cardOf(home, 'api-v2').links[0]!.state, 'closed')
 })
 
-test('a task whose records are gone drops its open decisions', () => {
+test('a task whose records are gone drops its open decisions and its folder', () => {
   const { home } = copyFixture()
   syncHome('default', home)
+  assert.equal(cardOf(home, 'api-v2').folder, '/tmp/fixture-worktree/api-v2')
   rmSync(join(home, 'state', 'api-v2.meta'))
   rmSync(join(home, 'state', 'api-v2.status'))
   syncHome('default', home)
   const api = cardOf(home, 'api-v2')
   assert.deepEqual(api.attention, [])
+  assert.equal(api.folder, undefined)
   assert.equal(api.title, 'app: v2 API with (optional) pagination')
 })
 
@@ -486,4 +488,91 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   syncHome('default', home)
   assert.equal(loadBoard('default').state.keys['claude:fm-s'], undefined)
   assert.ok(loadBoard('default').state.keys['claude:next'])
+})
+
+test('a session joins the task launched in its worktree; the task keeps that session', () => {
+  const { home } = copyFixture()
+  const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
+  const meta = (task: string, terminal: string) =>
+    writeFileSync(join(home, 'state', `${task}.meta`), `task=${task}\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=${terminal}\n`)
+  const hook = (id: string, session: string, paseoTerminal: string) =>
+    spoolWrite('default', {
+      v: 1,
+      id,
+      at: '2026-10-14T00:00:00Z',
+      harness: 'claude',
+      event: 'SessionStart',
+      payload: { session_id: session, cwd: worktree },
+      terminal: { tty: '/dev/ttys042', pid: '4242', program: 'kitty', paseoTerminal },
+    })
+  const own = (session: string) => !!loadBoard('default').state.keys[`claude:${session}`]
+
+  // The pool hands the worktree from a finished task, whose records are gone, to the next.
+  meta('wt-a', 'term-a')
+  syncHome('default', home)
+  rmSync(join(home, 'state', 'wt-a.meta'))
+  meta('wt-b', 'term-b')
+  syncHome('default', home)
+  assert.deepEqual(cardOf(home, 'wt-b').terminal, { paseoTerminal: 'term-b' })
+  hook('h1', 's-b', 'term-b')
+  syncHome('default', home)
+  assert.equal(cardOf(home, 'wt-b').agent?.sessionId, 's-b')
+  assert.equal(cardOf(home, 'wt-b').terminal?.pid, '4242')
+  assert.equal(own('s-b'), false)
+
+  // A second session in the folder, even in the same terminal, never replaces it.
+  hook('h2', 's-twin', 'term-b')
+  syncHome('default', home)
+  assert.equal(cardOf(home, 'wt-b').agent?.sessionId, 's-b')
+  assert.equal(own('s-twin'), true)
+
+  // Follow-up tasks launched into the same worktree: each session's own Paseo
+  // terminal tells them apart, and one launched elsewhere joins neither.
+  meta('wt-c', 'term-c0')
+  meta('wt-d', 'term-d')
+  syncHome('default', home)
+  // A task respawned before its session joined records its new terminal.
+  meta('wt-c', 'term-c')
+  syncHome('default', home)
+  assert.deepEqual(cardOf(home, 'wt-c').terminal, { paseoTerminal: 'term-c' })
+  hook('h3', 's-d', 'term-d')
+  hook('h4', 's-other', 'term-elsewhere')
+  syncHome('default', home)
+  assert.equal(cardOf(home, 'wt-d').agent?.sessionId, 's-d')
+  assert.equal(cardOf(home, 'wt-c').agent, undefined)
+  assert.equal(own('s-other'), true)
+})
+
+test('settings change through fm-send on a joined task card; keys it cannot press are refused', () => {
+  const { home, env } = copyFixture()
+  const worktree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
+  const meta = join(home, 'state', 'api-v2.meta')
+  writeFileSync(meta, readFileSync(meta, 'utf8').replace(/^worktree=.*$/m, `worktree=${worktree}`))
+  syncHome('default', home)
+  spoolWrite('default', { v: 1, id: 'h1', at: '2026-10-14T00:00:00Z', harness: 'claude', event: 'SessionStart', payload: { session_id: 'fm-s', cwd: worktree, model: 'claude-sonnet-5-5' } })
+  syncHome('default', home)
+  const api = cardOf(home, 'api-v2')
+  const { run, fails } = cli(env)
+
+  assert.match(run('agent', api.id, '--home', home), /harness: claude-code\n {2}route: firstmate[\s\S]*mode,unknown,next,"Firstmate's send command presses only Enter/)
+  assert.match(run('agent', api.id, 'model', 'opus', '--home', home), /sent: delivered/)
+  // The command is typed through Firstmate, then one Enter answers a confirmation.
+  assert.equal(readFileSync(join(home, 'sent.log'), 'utf8'), `FM_HOME=${home}\narg=api-v2\narg=/model opus\n---\nFM_HOME=${home}\narg=api-v2\narg=--key\narg=Enter\n---\n`)
+  fails(['agent', api.id, 'mode', 'next', '--home', home], 'NO_ROUTE')
+  assert.equal(readFileSync(join(home, 'sent.log'), 'utf8').split('---').length - 1, 2)
+  // A failed send changes nothing.
+  writeFileSync(join(home, 'send-exit'), '2')
+  assert.match(run('agent', api.id, 'fast', 'on', '--home', home), /sent: failed[\s\S]*Nothing was changed/)
+  writeFileSync(join(home, 'send-exit'), '0')
+
+  // fm-send marks a secondmate's input as a message, and a remote task takes only
+  // inbox records, so neither gets a command.
+  const sends = () => readFileSync(join(home, 'sent.log'), 'utf8').split('---').length
+  const count = sends()
+  writeFileSync(meta, readFileSync(meta, 'utf8').replace(/^kind=.*$/m, 'kind=secondmate'))
+  fails(['agent', api.id, 'model', 'opus', '--home', home], 'NO_ROUTE')
+  assert.match(run('agent', api.id, '--home', home), /model,claude-sonnet-5-5,opus sonnet haiku fable,"Firstmate's send marks a secondmate's input/)
+  writeFileSync(meta, `${readFileSync(meta, 'utf8').replace(/^kind=.*$/m, 'kind=ship')}remote_host=box\n`)
+  fails(['agent', api.id, 'model', 'opus', '--home', home], 'NO_ROUTE')
+  assert.equal(sends(), count)
 })

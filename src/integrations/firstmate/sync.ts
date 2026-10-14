@@ -88,6 +88,7 @@ function taskCard(
   home: HomeObservation,
   task: TaskObservation,
   kept: Attention[],
+  current: Card | undefined,
 ): Record<string, unknown> {
   return {
     title: task.title,
@@ -96,6 +97,11 @@ function taskCard(
     ...(task.activity ? { activity: task.activity } : {}),
     // A pool reuses worktrees, so a closed task gives its folder up for the next one.
     folder: task.worktree && !task.done ? task.worktree : null,
+    // The task's own terminal tells it apart from another task in the same worktree
+    // when its session joins; the session's own facts replace it then.
+    ...(task.paseoTerminal && !current?.agent
+      ? { terminal: { paseoTerminal: task.paseoTerminal } }
+      : {}),
     attention: [...attention(task), ...kept],
     source: source(home.path, task.task),
   }
@@ -130,7 +136,8 @@ function apply(writer: Writer, decision: Decision): number {
 
 // Reconciles the board with the home's current files. Unchanged facts append
 // nothing, so syncing twice is a no-op. A task whose records are gone keeps its
-// card but drops its open decisions, since nothing can answer them any more.
+// card but drops its open decisions, since nothing can answer them any more, and
+// its folder.
 export function syncHome(board: string, home: string, at = new Date().toISOString()): SyncResult {
   const observed = readHome(home)
   const meta: Meta = { at, actor: ADAPTER }
@@ -146,7 +153,7 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
 
     for (const task of observed.tasks) {
       const key = `${observed.key}:${task.task}`
-      const card = taskCard(observed, task, hookAttention(writer.state, key))
+      const card = taskCard(observed, task, hookAttention(writer.state, key), writer.state.cards[writer.state.keys[key] ?? ''])
       appended += apply(writer, decidePush(writer.state, key, card, meta))
       const link = prLink(writer.state, key, task, at)
 
@@ -192,13 +199,14 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
 
       const kept = hookAttention(writer.state, card.key)
 
-      if (card.attention.length === kept.length) {
+      if (card.attention.length === kept.length && !card.folder) {
         continue
       }
 
+      // Its worktree goes back to the pool too, so the next task there can claim it.
       appended += apply(
         writer,
-        decidePush(writer.state, card.key, { attention: kept, source: ref }, meta),
+        decidePush(writer.state, card.key, { attention: kept, folder: null, source: ref }, meta),
       )
     }
 
