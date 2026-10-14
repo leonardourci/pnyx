@@ -538,6 +538,12 @@ test('a session joins the task launched in its worktree; only a session in its t
   assert.equal(cardOf(home, 'wt-b').agent?.sessionId, 's-b2')
   assert.equal(own('s-b2'), false)
 
+  // The session it replaced reports to its own card from then on.
+  hook('h2s', 's-b', 'term-b')
+  syncHome('default', home)
+  assert.equal(cardOf(home, 'wt-b').agent?.sessionId, 's-b2')
+  assert.equal(own('s-b'), true)
+
   // Firstmate respawns the worker in a new terminal; its session continues the card.
   meta('wt-b', 'term-b3')
   syncHome('default', home)
@@ -562,6 +568,27 @@ test('a session joins the task launched in its worktree; only a session in its t
   assert.equal(cardOf(home, 'wt-d').agent?.sessionId, 's-d')
   assert.equal(cardOf(home, 'wt-c').agent, undefined)
   assert.equal(own('s-other'), true)
+})
+
+test('a joined session outside Paseo keeps its terminal facts across syncs', () => {
+  const { home } = copyFixture()
+  const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
+  writeFileSync(join(home, 'state', 'wt-t.meta'), `task=wt-t\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-t\n`)
+  syncHome('default', home)
+  spoolWrite('default', {
+    v: 1,
+    id: 'h1',
+    at: '2026-10-14T00:00:00Z',
+    harness: 'claude',
+    event: 'SessionStart',
+    payload: { session_id: 's-tmux', cwd: worktree },
+    terminal: { tty: '/dev/ttys042', pid: '4242', program: 'tmux' },
+  })
+  syncHome('default', home)
+
+  assert.equal(cardOf(home, 'wt-t').agent?.sessionId, 's-tmux')
+  assert.deepEqual(cardOf(home, 'wt-t').terminal, { tty: '/dev/ttys042', pid: '4242', program: 'tmux' })
+  assert.equal(syncHome('default', home).appended, 0)
 })
 
 test('settings change through fm-send on a joined task card; keys it cannot press are refused', () => {
