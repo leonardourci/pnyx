@@ -324,11 +324,11 @@ test('a model download is checked against its pinned size and SHA-256', async ()
     const sha256 = createHash('sha256').update(body)
       .digest('hex')
     const good = { file: 'm.gguf', url, sha256, bytes: body.length }
-    await assert.rejects(download({ ...good, file: 'bad.gguf', sha256: '0'.repeat(64) }), /does not match its pin/)
-    assert.ok(!existsSync(modelPath({ ...good, file: 'bad.gguf' })) && !existsSync(`${modelPath({ ...good, file: 'bad.gguf' })}.part`))
-    assert.equal(await download(good), 'downloaded')
-    assert.deepEqual(readFileSync(modelPath(good)), body)
-    assert.equal(await download(good), 'present')
+    await assert.rejects(download({ model: { ...good, file: 'bad.gguf', sha256: '0'.repeat(64) } }), /does not match its pin/)
+    assert.ok(!existsSync(modelPath({ model: { ...good, file: 'bad.gguf' } })) && !existsSync(`${modelPath({ model: { ...good, file: 'bad.gguf' } })}.part`))
+    assert.equal(await download({ model: good }), 'downloaded')
+    assert.deepEqual(readFileSync(modelPath({ model: good })), body)
+    assert.equal(await download({ model: good }), 'present')
   } finally {
     server.close()
     delete process.env.PNYX_HOME

@@ -97,14 +97,14 @@ function readConfig(path: string): Config {
   try {
     config = JSON.parse(readFileSync(path, 'utf8'))
   } catch (error) {
-    throw new BoardError(`cannot read ${path}: ${(error as Error).message}`, 'VALIDATION_ERROR', ['Fix the JSON by hand, then rerun'])
+    throw new BoardError({ message: `cannot read ${path}: ${(error as Error).message}`, code: 'VALIDATION_ERROR', help: ['Fix the JSON by hand, then rerun'] })
   }
 
   const hooks = (config as Config | null)?.hooks
   const isObject = (v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v)
 
   if (!isObject(config) || (hooks !== undefined && !isObject(hooks))) {
-    throw new BoardError(`${path} is not a hook config object`, 'VALIDATION_ERROR', ['Fix it by hand, then rerun'])
+    throw new BoardError({ message: `${path} is not a hook config object`, code: 'VALIDATION_ERROR', help: ['Fix it by hand, then rerun'] })
   }
 
   return config as Config

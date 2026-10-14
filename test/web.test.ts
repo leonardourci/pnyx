@@ -25,7 +25,7 @@ const event = (d: Decision): BoardEvent => {
 }
 
 const push = (state: BoardState, key: string, fields: unknown) =>
-  reduce(state, event(decidePush(state, key, fields, meta)))
+  reduce({ state, event: event(decidePush({ state, key, input: fields, meta })) })
 
 test('tab titles follow the view, selected card and current needs-you count', () => {
   for (const [page, label] of [['board', 'Board'], ['history', 'History'], ['settings', 'Settings']] as const) {
@@ -41,44 +41,52 @@ test('tab titles follow the view, selected card and current needs-you count', ()
   assert.equal(pageTitle('history', state.cards, 'c1'), '(2) History · Pnyx')
   assert.equal(pageTitle('settings', state.cards, 'c1'), '(2) Settings · Pnyx')
   state = push(state, 'a', { title: 'Updated card title' })
-  state = reduce(state, event(decideMove(state, 'b', 'done', meta)))
+  state = reduce({ state, event: event(decideMove({ state, ref: 'b', column: 'done', meta })) })
   assert.equal(pageTitle('board', state.cards, 'c1'), '(1) Updated card title · Pnyx')
-  state = reduce(state, event(decideMove(state, 'a', 'done', meta)))
+  state = reduce({ state, event: event(decideMove({ state, ref: 'a', column: 'done', meta })) })
   assert.equal(pageTitle('board', state.cards, 'c1'), 'Updated card title · Pnyx')
 })
 
 test('preferences replay deterministically, guard revisions, and undo removes map overrides', () => {
   const initial = push(emptyBoard(), 'a', { title: 'A' })
-  const edit = event(decideView(initial, { columnWidths: { review: 400 }, cardTraceOverrides: { c1: { tools: true } } }, { ...meta, ifRevision: 0, id: 'view-1' }))
-  const state = reduce(initial, edit)
+  const edit = event(decideView({ state: initial, patch: { columnWidths: { review: 400 }, cardTraceOverrides: { c1: { tools: true } } }, meta: { ...meta, ifRevision: 0, id: 'view-1' } }))
+  const state = reduce({ state: initial, event: edit })
   assert.equal(initial.view, undefined)
   assert.equal(state.viewRevision, 1)
-  assert.equal(viewFor(state).columnWidths.review, 400)
-  assert.deepEqual(reduce(initial, edit), state)
-  assert.deepEqual(decideView(state, {}, { ...meta, id: 'view-1', ifRevision: 0 }), { skipped: 'duplicate' })
-  assert.throws(() => decideView(state, { fontSize: 18 }, { ...meta, ifRevision: 0 }), /changed/)
-  const undone = reduce(state, event(decideUndo(state, edit, { ...meta, ifRevision: 1 })))
-  assert.deepEqual(viewFor(undone), viewFor(initial))
-  assert.throws(() => patchView(state, { fontSize: 100 }), BoardError)
-  assert.throws(() => patchView(state, { chatFontSize: 100 }), BoardError)
-  assert.throws(() => patchView(state, { codeFontSize: 5 }), BoardError)
-  const sizes = patchView(state, { fontSize: 15, chatFontSize: 18, codeFontSize: 12 })
+  assert.equal(viewFor({ state }).columnWidths.review, 400)
+  assert.deepEqual(reduce({ state: initial, event: edit }), state)
+  assert.deepEqual(decideView({ state, patch: {}, meta: { ...meta, id: 'view-1', ifRevision: 0 } }), { skipped: 'duplicate' })
+  assert.throws(() => decideView({ state, patch: { fontSize: 18 }, meta: { ...meta, ifRevision: 0 } }), /changed/)
+  const undone = reduce({
+    state,
+    event: event(decideUndo({ state, target: edit, meta: { ...meta, ifRevision: 1 } })),
+  })
+  assert.deepEqual(viewFor({ state: undone }), viewFor({ state: initial }))
+  assert.throws(() => patchView({ state, input: { fontSize: 100 } }), BoardError)
+  assert.throws(() => patchView({ state, input: { chatFontSize: 100 } }), BoardError)
+  assert.throws(() => patchView({ state, input: { codeFontSize: 5 } }), BoardError)
+  const sizes = patchView({
+    state,
+    input: { fontSize: 15, chatFontSize: 18, codeFontSize: 12 },
+  })
   assert.deepEqual([sizes.fontSize, sizes.chatFontSize, sizes.codeFontSize], [15, 18, 12])
-  assert.throws(() => patchView(state, JSON.parse('{"columnWidths":{"__proto__":300}}')), BoardError)
+  assert.throws(() => patchView({ state, input: JSON.parse('{"columnWidths":{"__proto__":300}}') }), BoardError)
 })
 
 test('saved resize preferences load within readable size limits', () => {
   const initial = push(emptyBoard(), 'a', { title: 'A' })
-  const view = viewFor(initial)
+  const view = viewFor({ state: initial })
   const loaded = viewFor({
-    ...initial,
-    view: {
-      ...view,
-      panelWidth: 1,
-      composerHeight: 999,
-      cardHeight: 1,
-      columnWidths: { needs_you: 1, review: 900 },
-      cardHeights: { c1: 1 },
+    state: {
+      ...initial,
+      view: {
+        ...view,
+        panelWidth: 1,
+        composerHeight: 999,
+        cardHeight: 1,
+        columnWidths: { needs_you: 1, review: 900 },
+        cardHeights: { c1: 1 },
+      },
     },
   })
 
@@ -88,26 +96,26 @@ test('saved resize preferences load within readable size limits', () => {
   assert.equal(loaded.columnWidths.needs_you, VIEW_SIZE_LIMITS.columnWidth.min)
   assert.equal(loaded.columnWidths.review, VIEW_SIZE_LIMITS.columnWidth.max)
   assert.equal(loaded.cardHeights.c1, VIEW_SIZE_LIMITS.cardHeight.min)
-  assert.equal(clampViewSize(100, 320, 720), 320)
-  assert.equal(clampViewSize(800, 320, 720), 720)
-  assert.equal(clampViewSize(320.5, 320, 720), 321)
+  assert.equal(clampViewSize({ value: 100, min: 320, max: 720 }), 320)
+  assert.equal(clampViewSize({ value: 800, min: 320, max: 720 }), 720)
+  assert.equal(clampViewSize({ value: 320.5, min: 320, max: 720 }), 321)
 })
 
 test('custom columns accept manual placement and return their cards to auto when deleted', () => {
   let state = push(emptyBoard(), 'a', { attention: [{ kind: 'question', key: 'q', blocking: true }] })
-  state = reduce(state, event(decideView(state, { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta)))
+  state = reduce({ state, event: event(decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta })) })
   assert.equal(columnsFor(state).at(-1)?.title, 'Later')
-  assert.equal(patchView(emptyBoard(), { columnWidths: { 'custom:one': 400 }, customColumns: [{ id: 'custom:one', title: 'One' }] }).columnWidths['custom:one'], 400)
-  state = reduce(state, event(decideMove(state, 'a', 'custom:later', meta)))
+  assert.equal(patchView({ state: emptyBoard(), input: { columnWidths: { 'custom:one': 400 }, customColumns: [{ id: 'custom:one', title: 'One' }] } }).columnWidths['custom:one'], 400)
+  state = reduce({ state, event: event(decideMove({ state, ref: 'a', column: 'custom:later', meta })) })
   assert.equal(state.cards.c1!.column, 'custom:later')
-  assert.deepEqual(patchView(state, { customColumns: [] }).customColumns, [])
-  assert.throws(() => decideMove(state, 'a', 'custom:missing', meta), /unknown/)
-  const toAuto = event(decideMove(state, 'a', null, meta))
-  state = reduce(state, toAuto)
+  assert.deepEqual(patchView({ state, input: { customColumns: [] } }).customColumns, [])
+  assert.throws(() => decideMove({ state, ref: 'a', column: 'custom:missing', meta }), /unknown/)
+  const toAuto = event(decideMove({ state, ref: 'a', column: null, meta }))
+  state = reduce({ state, event: toAuto })
   assert.equal(state.cards.c1!.column, 'needs_you')
   assert.equal(state.cards.c1!.attention.length, 1)
-  state = reduce(state, event(decideView(state, { customColumns: [] }, meta)))
-  assert.throws(() => decideUndo(state, toAuto, meta), /unknown custom column/)
+  state = reduce({ state, event: event(decideView({ state, patch: { customColumns: [] }, meta })) })
+  assert.throws(() => decideUndo({ state, target: toAuto, meta }), /unknown custom column/)
 })
 
 test('filters do not expose excluded parent details, and links/slashes stay literal', () => {
@@ -177,14 +185,17 @@ test('long transcript messages and reply history page without losing text or dup
   const home = mkdtempSync(join(tmpdir(), 'pnyx-thread-pages-')); process.env.PNYX_HOME = home
   const path = join(home, 'session.jsonl'), longText = 'abcdefghij'.repeat(7000)
   writeFileSync(path, JSON.stringify({ type: 'assistant', timestamp: '2026-10-12T10:00:00Z', message: { content: longText } }) + '\n')
-  const state = withWriter('default', w => {
-    w.append(event(decidePush(w.state, 'a', { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } }, meta)))
+  const state = withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      w.append({ event: event(decidePush({ state: w.state, key: 'a', input: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } }, meta })) })
 
-    for (let i = 0; i < 90; i++) {
-      w.append(event(decideReply(w.state, 'a', { reply: `r${i}`, state: 'queued', route: 'fixture', text: `reply ${i}` }, meta)))
-    }
+      for (let i = 0; i < 90; i++) {
+        w.append({ event: event(decideReply({ state: w.state, ref: 'a', data: { reply: `r${i}`, state: 'queued', route: 'fixture', text: `reply ${i}` }, meta })) })
+      }
 
-    return w.state
+      return w.state
+    },
   })
   let cursor: string | undefined
   const pages: ReturnType<typeof readThread>['entries'][] = []
@@ -201,10 +212,13 @@ test('long transcript messages and reply history page without losing text or dup
   assert.equal(entries.filter(e => e.role.startsWith('assistant')).map(e => e.text)
     .join(''), longText)
   assert.equal(entries.filter(e => e.role === 'You').length, 90)
-  const later = withWriter('default', w => {
-    w.append(event(decideReply(w.state, 'a', { reply: 'r90', state: 'queued', route: 'fixture', text: 'reply 90' }, meta)))
+  const later = withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      w.append({ event: event(decideReply({ state: w.state, ref: 'a', data: { reply: 'r90', state: 'queued', route: 'fixture', text: 'reply 90' }, meta })) })
 
-    return w.state
+      return w.state
+    },
   })
   assert.equal(readThread('default', later, later.cards.c1!, []).entries.at(-1)?.text, 'reply 90')
 })
@@ -267,53 +281,53 @@ test('deleting a populated column is atomic, replayable, undoable and guarded', 
   let state = emptyBoard()
 
   const apply = (d: Decision) => {
-    const e = event(d); events.push(e); state = reduce(state, e)
+    const e = event(d); events.push(e); state = reduce({ state, event: e })
 
     return e
   }
 
-  apply(decidePush(state, 'question', { attention: [{ kind: 'question', key: 'q', blocking: true }] }, meta))
-  apply(decidePush(state, 'worker', {}, meta))
-  apply(decideView(state, { customColumns: [{ id: 'custom:later', title: 'Later' }], columnWidths: { 'custom:later': 400 } }, meta))
-  apply(decideMove(state, 'question', 'custom:later', meta))
-  apply(decideMove(state, 'worker', 'custom:later', meta))
+  apply(decidePush({ state, key: 'question', input: { attention: [{ kind: 'question', key: 'q', blocking: true }] }, meta }))
+  apply(decidePush({ state, key: 'worker', input: {}, meta }))
+  apply(decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }], columnWidths: { 'custom:later': 400 } }, meta }))
+  apply(decideMove({ state, ref: 'question', column: 'custom:later', meta }))
+  apply(decideMove({ state, ref: 'worker', column: 'custom:later', meta }))
   const before = structuredClone(state)
-  const deletion = apply(decideView(state, { customColumns: [] }, { ...meta, id: 'delete', ifRevision: 1 }))
+  const deletion = apply(decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }))
   assert.equal(state.cards.c1!.column, 'needs_you')
   assert.equal(state.cards.c2!.column, 'workers_on_it')
   assert.equal(state.cards.c1!.manualColumn, undefined)
-  assert.equal(viewFor(state).columnWidths['custom:later'], undefined)
-  assert.deepEqual(replay(emptyBoard(), events), state)
-  assert.deepEqual(decideView(state, { customColumns: [] }, { ...meta, id: 'delete', ifRevision: 1 }), { skipped: 'duplicate' })
-  const later = reduce(state, event(decideMove(state, 'worker', 'done', meta)))
-  assert.throws(() => decideUndo(later, deletion, meta), /moved since/)
-  const undo = apply(decideUndo(state, deletion, { ...meta, ifRevision: 2 }))
-  assert.deepEqual(viewFor(state), viewFor(before))
+  assert.equal(viewFor({ state }).columnWidths['custom:later'], undefined)
+  assert.deepEqual(replay({ state: emptyBoard(), events }), state)
+  assert.deepEqual(decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }), { skipped: 'duplicate' })
+  const later = reduce({ state, event: event(decideMove({ state, ref: 'worker', column: 'done', meta })) })
+  assert.throws(() => decideUndo({ state: later, target: deletion, meta }), /moved since/)
+  const undo = apply(decideUndo({ state, target: deletion, meta: { ...meta, ifRevision: 2 } }))
+  assert.deepEqual(viewFor({ state }), viewFor({ state: before }))
   assert.equal(state.cards.c1!.manualColumn, 'custom:later')
   assert.equal(state.cards.c2!.column, 'custom:later')
   assert.deepEqual(state.cards.c1!.attention, before.cards.c1!.attention)
-  const redo = apply(decideUndo(state, undo, meta))
+  const redo = apply(decideUndo({ state, target: undo, meta }))
   assert.deepEqual(redo.type === 'board.view' && redo.data.placements?.map(p => p.cardId), ['c1', 'c2'])
   assert.equal(state.cards.c1!.column, 'needs_you')
-  assert.deepEqual(replay(emptyBoard(), events), state)
+  assert.deepEqual(replay({ state: emptyBoard(), events }), state)
 
   for (const id of COLUMNS) {
-    assert.throws(() => patchView(state, { customColumns: [{ id, title: 'Replacement' }] }), /invalid/)
+    assert.throws(() => patchView({ state, input: { customColumns: [{ id, title: 'Replacement' }] } }), /invalid/)
   }
 })
 
 test('themes validate, default to System on older boards, and undo', () => {
-  assert.equal(viewFor(emptyBoard()).theme, 'system')
+  assert.equal(viewFor({ state: emptyBoard() }).theme, 'system')
 
   for (const theme of ['light', 'dark', 'system']) {
-    assert.equal(patchView(emptyBoard(), { theme }).theme, theme)
+    assert.equal(patchView({ state: emptyBoard(), input: { theme } }).theme, theme)
   }
 
-  assert.throws(() => patchView(emptyBoard(), { theme: 'sepia' }), /invalid/)
-  const change = event(decideView(emptyBoard(), { theme: 'light' }, meta))
-  const state = reduce(emptyBoard(), change)
-  assert.equal(viewFor(state).theme, 'light')
-  assert.equal(viewFor(reduce(state, event(decideUndo(state, change, meta)))).theme, 'system')
+  assert.throws(() => patchView({ state: emptyBoard(), input: { theme: 'sepia' } }), /invalid/)
+  const change = event(decideView({ state: emptyBoard(), patch: { theme: 'light' }, meta }))
+  const state = reduce({ state: emptyBoard(), event: change })
+  assert.equal(viewFor({ state }).theme, 'light')
+  assert.equal(viewFor({ state: reduce({ state, event: event(decideUndo({ state, target: change, meta })) }) }).theme, 'system')
 })
 
 test('the notes header keeps the newest distinct notes and skips text already in the chat', () => {

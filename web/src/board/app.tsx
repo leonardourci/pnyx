@@ -129,7 +129,7 @@ export function App() {
     setNotice(text); setUndoColumn(null)
   }, [])
   const pendingScroll = useRef(restored.scroll)
-  const view = viewFor(state)
+  const view = viewFor({ state })
   useEffect(() => {
     // System follows the operating system and switches live with it.
     const root = document.documentElement, dark = matchMedia('(prefers-color-scheme: dark)')

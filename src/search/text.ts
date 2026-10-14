@@ -21,12 +21,12 @@ const SECRETS = [
 // Codex's context blocks and the AGENTS.md instructions Codex adds under a header line.
 const INJECTED = /(?:# AGENTS\.md instructions for [^\n]*\s*)?<(system-reminder|environment_context|user_instructions|INSTRUCTIONS|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g
 
-export function redact(text: string): string {
+export function redact({ text }: { text: string }): string {
   return SECRETS.reduce((t, re) => t.replace(re, '[redacted]'), text)
 }
 
 // Paragraphs, keeping a fenced code block whole.
-function paragraphs(text: string): string[] {
+function paragraphs({ text }: { text: string }): string[] {
   const out: string[] = []
   let current: string[] = []
   let fenced = false
@@ -55,7 +55,7 @@ function paragraphs(text: string): string[] {
 }
 
 // A paragraph over the limit splits on lines; a line over it, at the last space before the limit.
-function pieces(paragraph: string): string[] {
+function pieces({ paragraph }: { paragraph: string }): string[] {
   if (paragraph.length <= CHUNK_MAX) {
     return [paragraph]
   }
@@ -94,14 +94,14 @@ function pieces(paragraph: string): string[] {
 // A pure function of the text: one chunk for a short message; a long one packs
 // paragraphs up to the limit, each chunk after the first repeating the previous
 // chunk's last paragraph when it fits.
-export function chunk(text: string): string[] {
+export function chunk({ text }: { text: string }): string[] {
   const t = text.trim()
 
   if (t.length <= CHUNK_MAX) {
     return t ? [t] : []
   }
 
-  const units = paragraphs(t).flatMap(pieces)
+  const units = paragraphs({ text: t }).flatMap(paragraph => pieces({ paragraph }))
   const chunks: string[] = []
   let current: string[] = []
   let size = 0
@@ -125,30 +125,30 @@ export function chunk(text: string): string[] {
   return chunks
 }
 
-const attentionText = (list: Attention[] | undefined) => (list ?? []).map(a => a.text)
+const attentionText = ({ list }: { list: Attention[] | undefined }) => (list ?? []).map(a => a.text)
 
 // The text an event carries: titles, tags, attention questions, link titles and
 // numbers, outcome notes, replies and reasons. Status flips carry none; a push
 // or link update repeats only what it changed.
-export function eventText(event: BoardEvent): string {
+export function eventText({ event }: { event: BoardEvent }): string {
   const parts: (string | undefined)[] = [event.reason]
 
   switch (event.type) {
     case 'card.pushed': {
       const { data } = event
-      const changed = (field: string) => !data.before || field in data.before
+      const changed = ({ field }: { field: string }) => !data.before || field in data.before
 
-      if (changed('title')) {
+      if (changed({ field: 'title' })) {
         parts.push(data.title ?? undefined)
       }
 
-      if (changed('tags')) {
+      if (changed({ field: 'tags' })) {
         parts.push(...(data.tags ?? []).filter(t => !data.before?.tags?.includes(t)))
       }
 
-      if (changed('attention')) {
-        const known = attentionText(data.before?.attention)
-        parts.push(...attentionText(data.attention).filter(t => !known.includes(t)))
+      if (changed({ field: 'attention' })) {
+        const known = attentionText({ list: data.before?.attention })
+        parts.push(...attentionText({ list: data.attention }).filter(t => !known.includes(t)))
       }
 
       break
@@ -189,7 +189,7 @@ const TEXT_BLOCKS = ['text', 'input_text', 'output_text']
 // transcript record. Tool calls and results, thinking, images, meta records,
 // developer messages and injected text are left out, and so is a compaction
 // summary, which is harvested as a note instead.
-export function transcriptMessages(record: unknown): Message[] {
+export function transcriptMessages({ record }: { record: unknown }): Message[] {
   type Record = {
     type?: unknown
     isMeta?: unknown

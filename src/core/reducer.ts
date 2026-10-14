@@ -17,7 +17,7 @@ export function emptyBoard(): BoardState {
 
 // Placement rules, highest precedence first: a manual move, a blocking source
 // request, linked pull requests, other attention or a recorded outcome, then ongoing work.
-export function columnFor(card: Card): Column {
+export function columnFor({ card }: { card: Card }): Column {
   if (card.manualColumn) {
     return card.manualColumn
   }
@@ -54,7 +54,7 @@ export function columnFor(card: Card): Column {
 // Keeps the best auto title seen: a better source replaces a worse one, a later
 // session title or folder replaces an earlier one, and the first prompt stays. It
 // becomes the title only while no push has set one.
-function offerTitle(card: Card, next: AutoTitle): void {
+function offerTitle({ card, next }: { card: Card; next: AutoTitle }): void {
   const current = card.autoTitle
 
   if (current) {
@@ -72,14 +72,17 @@ function offerTitle(card: Card, next: AutoTitle): void {
   }
 }
 
-function sameSource(a: SourceRef, b: SourceRef): boolean {
+function sameSource({ a, b }: { a: SourceRef; b: SourceRef }): boolean {
   return a.adapter === b.adapter && a.instanceId === b.instanceId && a.objectId === b.objectId
 }
 
 // True when the card already holds a newer observation of the same source object:
 // a higher generation, or the same generation observed later.
-export function isStaleSource(card: Card | undefined, source: SourceRef): boolean {
-  const known = card?.sourceRefs.find(r => sameSource(r, source))
+export function isStaleSource({ card, source }: {
+  card: Card | undefined
+  source: SourceRef
+}): boolean {
+  const known = card?.sourceRefs.find(r => sameSource({ a: r, b: source }))
 
   if (!known) {
     return false
@@ -98,13 +101,17 @@ export function isStaleSource(card: Card | undefined, source: SourceRef): boolea
     && source.observedAt < known.observedAt
 }
 
-export function isStaleLink(current: Link | undefined, next: Link): boolean {
+export function isStaleLink({ current, next }: { current: Link | undefined; next: Link }): boolean {
   return current?.checkedAt !== undefined
     && next.checkedAt !== undefined
     && next.checkedAt < current.checkedAt
 }
 
-export function wouldCycle(cards: Record<string, Card>, cardId: string, parentId: string): boolean {
+export function wouldCycle({ cards, cardId, parentId }: {
+  cards: Record<string, Card>
+  cardId: string
+  parentId: string
+}): boolean {
   const seen = new Set<string>()
 
   for (let p: string | undefined = parentId; p !== undefined; p = cards[p]?.parentId) {
@@ -120,7 +127,7 @@ export function wouldCycle(cards: Record<string, Card>, cardId: string, parentId
 
 // Applies one event to a state the caller owns. Returns false when the event is
 // ignored: already applied, out of sequence, for an unknown card, or stale.
-function apply(state: BoardState, event: BoardEvent): boolean {
+function apply({ state, event }: { state: BoardState; event: BoardEvent }): boolean {
   if (event.seq <= state.seq || event.id in state.eventIds) {
     return false
   }
@@ -145,7 +152,7 @@ function apply(state: BoardState, event: BoardEvent): boolean {
         delete placed.manualColumn
       }
 
-      placed.column = columnFor(placed)
+      placed.column = columnFor({ card: placed })
       placed.revision += 1
       placed.updatedSeq = event.seq
       placed.updatedAt = event.at
@@ -189,11 +196,11 @@ function apply(state: BoardState, event: BoardEvent): boolean {
     }
 
     if (source) {
-      if (isStaleSource(card, source)) {
+      if (isStaleSource({ card, source })) {
         return false
       }
 
-      card.sourceRefs = [...card.sourceRefs.filter(r => !sameSource(r, source)), source]
+      card.sourceRefs = [...card.sourceRefs.filter(r => !sameSource({ a: r, b: source })), source]
     }
 
     const { parentId, activity, settings, folder, autoTitle, ...rest } = fields
@@ -213,7 +220,7 @@ function apply(state: BoardState, event: BoardEvent): boolean {
     }
 
     if (autoTitle) {
-      offerTitle(card, autoTitle)
+      offerTitle({ card, next: autoTitle })
     }
 
     if (folder === null) {
@@ -234,7 +241,11 @@ function apply(state: BoardState, event: BoardEvent): boolean {
 
     if (parentId === null) {
       delete card.parentId
-    } else if (parentId !== undefined && !wouldCycle(state.cards, card.id, parentId)) {
+    } else if (parentId !== undefined && !wouldCycle({
+      cards: state.cards,
+      cardId: card.id,
+      parentId,
+    })) {
       card.parentId = parentId
     }
   } else {
@@ -252,7 +263,7 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       const { url, after } = event.data
       const current = card.links.find(l => l.url === url)
 
-      if (after && !event.undoes && isStaleLink(current, after)) {
+      if (after && !event.undoes && isStaleLink({ current, next: after })) {
         return false
       }
 
@@ -271,7 +282,7 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       card.notes = [...(card.notes ?? []), { id: event.id, kind, source, ...(at ? { at } : {}) }]
 
       if (kind === 'context' && text.startsWith(SESSION_TITLE)) {
-        offerTitle(card, { from: 'session', text: text.slice(SESSION_TITLE.length) })
+        offerTitle({ card, next: { from: 'session', text: text.slice(SESSION_TITLE.length) } })
       }
     } else {
       if (event.data.after) {
@@ -286,7 +297,7 @@ function apply(state: BoardState, event: BoardEvent): boolean {
     state.undone[event.undoes] = event.id
   }
 
-  card.column = columnFor(card)
+  card.column = columnFor({ card })
   card.revision += 1
 
   if (event.type === 'card.noted') {
@@ -300,16 +311,19 @@ function apply(state: BoardState, event: BoardEvent): boolean {
 }
 
 // Pure: returns a new state and leaves the input untouched.
-export function replay(state: BoardState, events: Iterable<BoardEvent>): BoardState {
+export function replay({ state, events }: {
+  state: BoardState
+  events: Iterable<BoardEvent>
+}): BoardState {
   const next = structuredClone(state)
 
   for (const event of events) {
-    apply(next, event)
+    apply({ state: next, event })
   }
 
   return next
 }
 
-export function reduce(state: BoardState, event: BoardEvent): BoardState {
-  return replay(state, [event])
+export function reduce({ state, event }: { state: BoardState; event: BoardEvent }): BoardState {
+  return replay({ state, events: [event] })
 }

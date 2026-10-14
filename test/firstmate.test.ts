@@ -27,7 +27,7 @@ function copyFixture(): { home: string; env: NodeJS.ProcessEnv } {
 }
 
 const cardOf = (home: string, task?: string) => {
-  const { state } = loadBoard('default')
+  const { state } = loadBoard({ board: 'default' })
 
   return state.cards[state.keys[task ? `${homeKey(home)}:${task}` : homeKey(home)]!]!
 }
@@ -302,7 +302,7 @@ test('a Firstmate outcome is a source observation: undo and clear refuse it', ()
   const { run, fails } = cli(env)
   run('firstmate', 'sync', '--home', home)
   const scout = cardOf(home, 'docs-scout')
-  const recorded = readEvents('default').find(e => e.type === 'card.outcome' && e.cardId === scout.id)!
+  const recorded = readEvents({ board: 'default' }).find(e => e.type === 'card.outcome' && e.cardId === scout.id)!
   fails(['undo', recorded.id], 'NOT_UNDOABLE')
   fails(['outcome', scout.id, '--clear'], 'SOURCE_OWNED')
   fails(['outcome', scout.id, 'cancelled'], 'SOURCE_OWNED')
@@ -326,7 +326,7 @@ test("a task's decisions, reports and Captain's intent show on its card", () => 
   assert.match(run('firstmate', 'sync', '--home', home), /home,4,2$/m)
   assert.match(run('firstmate', 'sync', '--home', home), /home,4,0$/m)
   assert.match(run('search', 'partners', 'page'), /^ {6}note,"[^"]+","…Ship the v2 API so \[partners\] can \[page\]/m)
-  fails(['undo', readEvents('default').find(e => e.type === 'card.noted')!.id], 'NOT_UNDOABLE')
+  fails(['undo', readEvents({ board: 'default' }).find(e => e.type === 'card.noted')!.id], 'NOT_UNDOABLE')
 })
 
 test('a Firstmate outcome follows the backlog on every sync', () => {
@@ -346,7 +346,7 @@ test('a Firstmate outcome follows the backlog on every sync', () => {
   syncHome('default', home)
   assert.equal(cardOf(home, 'docs-scout').outcome, undefined)
   assert.notEqual(cardOf(home, 'docs-scout').column, 'done')
-  const cleared = readEvents('default').filter(e => e.type === 'card.outcome')
+  const cleared = readEvents({ board: 'default' }).filter(e => e.type === 'card.outcome')
     .at(-1)!
   cli(process.env).fails(['undo', cleared.id], 'NOT_UNDOABLE')
   assert.deepEqual(syncHome('default', home).appended, 0)
@@ -354,9 +354,9 @@ test('a Firstmate outcome follows the backlog on every sync', () => {
 
 test('firstmate sync ingests the hook spool', () => {
   const { home } = copyFixture()
-  spoolWrite('default', { id: 's1', key: 'spooled', at: '2026-01-01T00:00:00.000Z', card: { title: 'from a hook' } })
+  spoolWrite({ board: 'default', entry: { id: 's1', key: 'spooled', at: '2026-01-01T00:00:00.000Z', card: { title: 'from a hook' } } })
   syncHome('default', home)
-  assert.equal(loadBoard('default').state.cards[loadBoard('default').state.keys['spooled']!]!.title, 'from a hook')
+  assert.equal(loadBoard({ board: 'default' }).state.cards[loadBoard({ board: 'default' }).state.keys['spooled']!]!.title, 'from a hook')
 })
 
 test("reply sends through the home's fm-send with FM_HOME and records receipts", () => {
@@ -429,7 +429,7 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   writeFileSync(crafted, JSON.stringify({ title: 'crafted', source: { adapter: 'firstmate', instanceId: home, objectId: '--resolve-key' } }))
   run('push', '--key', 'crafted', '--file', crafted)
   fails(['reply', 'crafted', '--text', 'x', '--home', home], 'NO_ROUTE')
-  fails(['undo', readEvents('default').find(e => e.type === 'card.replied')!.id], 'NOT_UNDOABLE')
+  fails(['undo', readEvents({ board: 'default' }).find(e => e.type === 'card.replied')!.id], 'NOT_UNDOABLE')
   // The card's home must be configured for this send.
   const other = copyFixture()
   fails(['reply', api.id, '--text', 'x', '--home', other.home], 'VALIDATION_ERROR')
@@ -442,13 +442,13 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   writeFileSync(meta, readFileSync(meta, 'utf8').replace(/^worktree=.*$/m, `worktree=${worktree}`))
   syncHome('default', home)
   const hook = (id: string, event: string, payload: Record<string, unknown>, extra = {}) =>
-    spoolWrite('default', { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'claude', event, payload, ...extra })
+    spoolWrite({ board: 'default', entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'claude', event, payload, ...extra } })
   const terminal = { tty: '/dev/ttys042', pid: '4242', program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' }
   // The hook reports the folder as the session saw it; the join compares canonical paths.
   hook('h1', 'SessionStart', { session_id: 'fm-s', cwd: worktree, transcript_path: '/x/fm-s.jsonl' }, { terminal })
   hook('h2', 'SubagentStart', { session_id: 'fm-s', agent_id: 'a1', cwd: worktree })
   syncHome('default', home)
-  const { state } = loadBoard('default')
+  const { state } = loadBoard({ board: 'default' })
   const api = cardOf(home, 'api-v2')
   assert.equal(api.folder, realpathSync(worktree))
   assert.equal(api.agent?.sessionId, 'fm-s')
@@ -487,6 +487,6 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   hook('h2c', 'SessionEnd', { session_id: 'fm-s', cwd: worktree })
   hook('h3', 'SessionStart', { session_id: 'next', cwd: worktree })
   syncHome('default', home)
-  assert.equal(loadBoard('default').state.keys['claude:fm-s'], undefined)
-  assert.ok(loadBoard('default').state.keys['claude:next'])
+  assert.equal(loadBoard({ board: 'default' }).state.keys['claude:fm-s'], undefined)
+  assert.ok(loadBoard({ board: 'default' }).state.keys['claude:next'])
 })

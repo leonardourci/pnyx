@@ -42,13 +42,13 @@ export function appendNote(
   at: string,
 ): number {
   const card = writer.state.cards[cardId]!
-  const decision = decideNote(writer.state, card.id, note, { at, actor: 'harvest', id: noteId(card.key, ref) })
+  const decision = decideNote({ state: writer.state, ref: card.id, note, meta: { at, actor: 'harvest', id: noteId({ cardKey: card.key, ref }) } })
 
   if (!('event' in decision)) {
     return 0
   }
 
-  writer.append(decision.event)
+  writer.append({ event: decision.event })
 
   return 1
 }
@@ -95,7 +95,7 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
 
     appended += codexTitle(writer, id, path, at)
     const name = `${id}\n${path}`
-    const tail = readTranscript({ source: path, ...(cursors[name] ?? { identity: '', pos: 0 }) })
+    const tail = readTranscript({ cursor: { source: path, ...(cursors[name] ?? { identity: '', pos: 0 }) } })
 
     if (!tail) {
       continue
@@ -133,10 +133,10 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
         objectId: path,
         observedAt: at,
       }
-      const decision = decidePush(writer.state, card.key, { settings, source }, { at, actor: 'harvest' })
+      const decision = decidePush({ state: writer.state, key: card.key, input: { settings, source }, meta: { at, actor: 'harvest' } })
 
       if ('event' in decision) {
-        writer.append(decision.event)
+        writer.append({ event: decision.event })
       }
     }
 

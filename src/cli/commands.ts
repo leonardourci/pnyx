@@ -142,42 +142,51 @@ const HOOKS = 'hooks'
 // whose transcripts to harvest.
 function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
   if (typeof entry?.id !== 'string' || typeof entry.at !== 'string') {
-    throw new BoardError('spool entry needs id and at', 'VALIDATION_ERROR')
+    throw new BoardError({ message: 'spool entry needs id and at', code: 'VALIDATION_ERROR' })
   }
 
   const apply = (decision: Decision) => {
     if ('event' in decision) {
-      writer.append(decision.event)
+      writer.append({ event: decision.event })
     }
   }
 
   if (!isHookEnvelope(entry)) {
     if (typeof entry.key !== 'string') {
-      throw new BoardError('spool entry needs id, key and at', 'VALIDATION_ERROR')
+      throw new BoardError({ message: 'spool entry needs id, key and at', code: 'VALIDATION_ERROR' })
     }
 
     const actor = typeof entry.actor === 'string' ? entry.actor : 'hook'
     const card = (entry.card ?? {}) as Record<string, unknown>
     const source = card.source ?? { adapter: actor, objectId: entry.key, observedAt: entry.at }
     apply(decidePush(
-      writer.state,
-      entry.key,
-      { ...card, source },
-      { id: entry.id, at: entry.at, actor },
+      {
+        state: writer.state,
+        key: entry.key,
+        input: {
+          ...card,
+          source,
+        },
+        meta: {
+          id: entry.id,
+          at: entry.at,
+          actor,
+        },
+      },
     ))
 
     return []
   }
 
   if (!(HARNESSES as readonly string[]).includes(entry.harness as string) || typeof entry.event !== 'string') {
-    throw new BoardError('hook entry needs a known harness and an event', 'VALIDATION_ERROR')
+    throw new BoardError({ message: 'hook entry needs a known harness and an event', code: 'VALIDATION_ERROR' })
   }
 
   const harvest: string[] = []
   const folder = canonical((entry.payload as { cwd?: unknown } | null)?.cwd)
   // A session (never a subagent, whose key has a /) started in a folder a source
   // assigned, such as a Firstmate task's worktree, reports to that card.
-  const resolve = (key: string) => (key.includes('/') ? key : joinedKey(writer.state, key, folder))
+  const resolve = (key: string) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder }))
 
   for (const o of observe(entry as unknown as HookEnvelope)) {
     const key = resolve(o.key)
@@ -195,7 +204,15 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
       continue
     }
 
-    const pushed = decidePush(writer.state, key, attention ? { ...card, attention } : card, m)
+    const pushed = decidePush({
+      state: writer.state,
+      key,
+      input: attention ? {
+        ...card,
+        attention,
+      } : card,
+      meta: m,
+    })
     apply(pushed)
     // Hooks own only the outcome they recorded on the session's own card: a joined
     // Firstmate task, or a Firstmate or manual outcome, keeps its own rule.
@@ -205,11 +222,11 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
 
     if (o.outcome !== undefined && target && !stale && owned) {
       const outcome = o.outcome && { state: o.outcome }
-      apply(decideOutcome(writer.state, key, outcome, { ...m, id: `${m.id}:outcome` }, HOOKS))
+      apply(decideOutcome({ state: writer.state, ref: key, outcome, meta: { ...m, id: `${m.id}:outcome` }, source: HOOKS }))
     }
 
     if (o.link) {
-      apply(decideLink(writer.state, key, o.link, parseLink({ url: o.link }), { ...m, id: `${m.id}:link` }))
+      apply(decideLink({ state: writer.state, ref: key, url: o.link, link: parseLink({ input: { url: o.link } }), meta: { ...m, id: `${m.id}:link` } }))
     }
 
     if (!o.ifMissing && !o.ifChanged && HARVEST_AFTER.includes(entry.event)
@@ -230,7 +247,7 @@ export function drainSpool(writer: Writer): { ingested: number; rejected: number
   let rejected = 0
   const harvest = new Set<string>()
 
-  for (const file of spoolFiles(writer.dir)) {
+  for (const file of spoolFiles({ dir: writer.dir })) {
     try {
       for (const id of ingest(writer, JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>)) {
         harvest.add(id)
@@ -256,7 +273,7 @@ export function drainSpool(writer: Writer): { ingested: number; rejected: number
 
 // The server's way into the same writer: drain the spool under the writer lock.
 export function ingestSpool(board: string): { ingested: number; rejected: number; notes?: number } {
-  return withWriter(board, drainSpool)
+  return withWriter({ board, fn: ({ writer }) => drainSpool(writer) })
 }
 
 function receipt(state: BoardState, event: BoardEvent): Output {
@@ -290,7 +307,7 @@ function originalReceipt(
   seq: number,
   intent: Intent,
 ): Output {
-  const events = readEvents(board)
+  const events = readEvents({ board })
   const index = events.findIndex(e => e.id === id && e.seq === seq)
   const original = events[index]!
 
@@ -304,7 +321,7 @@ function originalReceipt(
   }
 
   return {
-    ...receipt(replay(emptyBoard(), events.slice(0, index + 1)), original),
+    ...receipt(replay({ state: emptyBoard(), events: events.slice(0, index + 1) }), original),
     duplicate: 'event id already applied; nothing appended',
   }
 }
@@ -317,28 +334,31 @@ function commit(
   intent: Intent,
   decide: (state: BoardState) => Decision,
 ): Output {
-  return withWriter(board, writer => {
-    const spool = drainSpool(writer)
-    const seq = meta.id === undefined ? undefined : writer.state.eventIds[meta.id]
-    let out: Output
+  return withWriter({
+    board,
+    fn: ({ writer }) => {
+      const spool = drainSpool(writer)
+      const seq = meta.id === undefined ? undefined : writer.state.eventIds[meta.id]
+      let out: Output
 
-    if (seq !== undefined) {
-      out = originalReceipt(board, writer.state, meta.id!, seq, intent)
-    } else {
-      const decision = decide(writer.state)
+      if (seq !== undefined) {
+        out = originalReceipt(board, writer.state, meta.id!, seq, intent)
+      } else {
+        const decision = decide(writer.state)
 
-      if ('event' in decision) {
-        writer.append(decision.event)
+        if ('event' in decision) {
+          writer.append({ event: decision.event })
+        }
+
+        out = 'event' in decision ? receipt(writer.state, decision.event) : { event: `none: ${decision.skipped}` }
       }
 
-      out = 'event' in decision ? receipt(writer.state, decision.event) : { event: `none: ${decision.skipped}` }
-    }
+      if (spool.ingested || spool.rejected) {
+        out.spool = spool
+      }
 
-    if (spool.ingested || spool.rejected) {
-      out.spool = spool
-    }
-
-    return out
+      return out
+    },
   })
 }
 
@@ -423,7 +443,7 @@ function cardDetail(card: Card): Output {
 }
 
 export async function home(): Promise<Output> {
-  const { dir, state, tornBytes } = loadBoard(DEFAULT_BOARD)
+  const { dir, state, tornBytes } = loadBoard({ board: DEFAULT_BOARD })
   const cards = Object.values(state.cards)
   const columns = Object.fromEntries(
     COLUMNS.map(c => [c, cards.filter(card => card.column === c).length]),
@@ -437,7 +457,7 @@ export async function home(): Promise<Output> {
   }
 
   const serveHint = server ? [] : ['Run `pnyx-axi serve` to start the board server']
-  const spooled = spoolFiles(dir).length
+  const spooled = spoolFiles({ dir }).length
 
   if (spooled > 0) {
     out.spool = `${spooled} hook events waiting; the next write ingests them`
@@ -475,7 +495,7 @@ const push = guard(args => {
     throw new AxiError(`cannot read card JSON from ${file}: ${(error as Error).message}`, 'VALIDATION_ERROR')
   }
 
-  return commit(board, m, { type: 'card.pushed', card: key }, state => decidePush(state, key, input, m))
+  return commit(board, m, { type: 'card.pushed', card: key }, state => decidePush({ state, key, input, meta: m }))
 })
 
 // Notes shown per section by default, and the text length each is cut to.
@@ -487,7 +507,7 @@ const NOTE_SECTIONS = { summary: 'summary', decision: 'decisions', context: 'con
 // from the log, where each noted event keeps it.
 function cardNotes(board: string, card: Card, full: boolean): { notes: Output; cut: boolean } {
   const ids = new Set((card.notes ?? []).map(n => n.id))
-  const events = ids.size ? readEvents(board).filter((e): e is NotedEvent => e.type === 'card.noted' && ids.has(e.id)) : []
+  const events = ids.size ? readEvents({ board }).filter((e): e is NotedEvent => e.type === 'card.noted' && ids.has(e.id)) : []
   let cut = false
   const notes: Output = {}
 
@@ -514,7 +534,7 @@ function cardNotes(board: string, card: Card, full: boolean): { notes: Output; c
 
 const card = guard(args => {
   const { values, positionals, board } = parse(args, { ...COMMON, full: { type: 'boolean' } }, 1)
-  const found = findCard(loadBoard(board).state, required(positionals[0], 'card id'))
+  const found = findCard({ state: loadBoard({ board }).state, ref: required(positionals[0], 'card id') })
   const { notes, cut } = cardNotes(board, found, Boolean(values.full))
   const help = [`Run \`pnyx-axi history --card ${found.id}\` for its events`]
 
@@ -534,39 +554,45 @@ const card = guard(args => {
 // ponytail: reads every linked pull request on each run; skip merged ones already noted if boards grow.
 const harvest = guard(args => {
   const { values, board } = parse(args, { ...COMMON, card: { type: 'string' } }, 0)
-  const { state } = loadBoard(board)
-  const cards = values.card ? [findCard(state, values.card as string)] : Object.values(state.cards)
+  const { state } = loadBoard({ board })
+  const cards = values.card ? [findCard({
+    state,
+    ref: values.card as string,
+  })] : Object.values(state.cards)
   // Read before taking the writer lock: gh-axi can be slow and must not block other writers.
   const prs = cards.flatMap(c => c.links.filter(l => l.kind === 'github_pr').map(l => ({ card: c.id, url: l.url, note: pullRequestNote(l.url) })))
 
-  return withWriter(board, writer => {
-    const spool = drainSpool(writer)
-    const at = new Date().toISOString()
-    let notes = harvestTranscripts(writer, cards.map(c => c.id), at)
+  return withWriter({
+    board,
+    fn: ({ writer }) => {
+      const spool = drainSpool(writer)
+      const at = new Date().toISOString()
+      let notes = harvestTranscripts(writer, cards.map(c => c.id), at)
 
-    for (const pr of prs) {
-      if (pr.note) {
-        notes += appendNote(writer, pr.card, pr.note, at)
+      for (const pr of prs) {
+        if (pr.note) {
+          notes += appendNote(writer, pr.card, pr.note, at)
+        }
       }
-    }
 
-    const unread = prs.filter(pr => !pr.note).map(pr => pr.url)
-    const out: Output = { harvested: { cards: cards.length, notes: notes ? `${notes} new` : 'none: nothing new', pullRequests: prs.length - unread.length } }
+      const unread = prs.filter(pr => !pr.note).map(pr => pr.url)
+      const out: Output = { harvested: { cards: cards.length, notes: notes ? `${notes} new` : 'none: nothing new', pullRequests: prs.length - unread.length } }
 
-    if (unread.length) {
-      out.unread = unread
-    }
+      if (unread.length) {
+        out.unread = unread
+      }
 
-    if (spool.ingested || spool.rejected) {
-      out.spool = spool
-    }
+      if (spool.ingested || spool.rejected) {
+        out.spool = spool
+      }
 
-    out.help = [
-      ...(unread.length ? ['gh-axi could not read those pull requests; check `gh-axi pr view <number> --repo <owner/repo>`'] : []),
-      values.card ? `Run \`pnyx-axi card ${cards[0]!.id}\` to see its notes` : "Run `pnyx-axi card <id>` to see a card's notes",
-    ]
+      out.help = [
+        ...(unread.length ? ['gh-axi could not read those pull requests; check `gh-axi pr view <number> --repo <owner/repo>`'] : []),
+        values.card ? `Run \`pnyx-axi card ${cards[0]!.id}\` to see its notes` : "Run `pnyx-axi card <id>` to see a card's notes",
+      ]
 
-    return out
+      return out
+    },
   })
 })
 
@@ -581,7 +607,7 @@ const move = guard(args => {
 
   const target = values.auto ? null : column(positionals[1]!)
 
-  return commit(board, m, { type: 'card.moved', card: ref }, state => decideMove(state, ref, target, m))
+  return commit(board, m, { type: 'card.moved', card: ref }, state => decideMove({ state, ref, column: target, meta: m }))
 })
 
 const link = guard(args => {
@@ -601,9 +627,9 @@ const link = guard(args => {
   const s = (name: string) => values[name] as string | undefined
   const parsed = values.remove
     ? null
-    : parseLink({ url, kind: s('kind'), number: s('number'), title: s('title'), state: s('state'), checkedAt: s('state') && new Date().toISOString() })
+    : parseLink({ input: { url, kind: s('kind'), number: s('number'), title: s('title'), state: s('state'), checkedAt: s('state') && new Date().toISOString() } })
 
-  return commit(board, m, { type: 'card.linked', card: ref }, state => decideLink(state, ref, url, parsed, m))
+  return commit(board, m, { type: 'card.linked', card: ref }, state => decideLink({ state, ref, url, link: parsed, meta: m }))
 })
 
 const outcome = guard(args => {
@@ -625,7 +651,7 @@ const outcome = guard(args => {
     ? null
     : { state: state as OutcomeState, ...(note ? { note } : {}) }
 
-  return commit(board, m, { type: 'card.outcome', card: ref }, s => decideOutcome(s, ref, result, m))
+  return commit(board, m, { type: 'card.outcome', card: ref }, s => decideOutcome({ state: s, ref, outcome: result, meta: m }))
 })
 
 function summarize(event: BoardEvent): string {
@@ -672,14 +698,14 @@ const history = guard(args => {
     throw new AxiError(`unknown kind: ${kind}`, 'VALIDATION_ERROR', ['Use one of pushed, moved, linked, outcome, replied, noted'])
   }
 
-  const { state } = loadBoard(board)
-  const cardId = values.card ? findCard(state, values.card as string).id : undefined
+  const { state } = loadBoard({ board })
+  const cardId = values.card ? findCard({ state, ref: values.card as string }).id : undefined
   const workspace = values.workspace as string | undefined
   // An outcome keeps the workspace it was recorded under; other events use the card's current one.
   const inWorkspace = (e: BoardEvent) =>
     (e.type === 'card.outcome' ? e.data.card.workspace : state.cards[e.cardId]?.workspace) === workspace
 
-  const matches = readEvents(board)
+  const matches = readEvents({ board })
     .filter(e => (before === undefined || e.seq < before) && (!cardId || e.cardId === cardId))
     .filter(e => (!type || e.type === type) && (!workspace || inWorkspace(e)))
     .reverse()
@@ -713,7 +739,7 @@ const undo = guard(args => {
   const { values, positionals, board } = parse(args, WRITE, 1)
   const m = meta(values)
   const id = required(positionals[0], 'event id')
-  const target = readEvents(board).find(e => e.id === id)
+  const target = readEvents({ board }).find(e => e.id === id)
 
   if (!target) {
     throw new AxiError(`event not found: ${id}`, 'NOT_FOUND', ['Run `pnyx-axi history` to find event ids'])
@@ -723,13 +749,13 @@ const undo = guard(args => {
     board,
     m,
     { type: target.type, card: target.cardId },
-    state => decideUndo(state, target, m),
+    state => decideUndo({ state, target, meta: m }),
   )
 })
 
 const repair = guard(args => {
   const { board } = parse(args, COMMON, 0)
-  const result = repairBoard(board)
+  const result = repairBoard({ board })
 
   return {
     repair: result.tornBytes > 0 ? `set aside ${result.tornBytes} torn bytes` : 'none: log ends cleanly',
@@ -784,9 +810,9 @@ const view = guard(args => {
   const { values, board } = parse(rest, { ...WRITE, json: { type: 'string' } }, 0)
 
   if (sub === 'show') {
-    const { state } = loadBoard(board)
+    const { state } = loadBoard({ board })
 
-    return { view: viewFor(state), revision: state.viewRevision ?? 0 }
+    return { view: viewFor({ state }), revision: state.viewRevision ?? 0 }
   }
 
   if (sub === 'schema') {
@@ -807,7 +833,7 @@ const view = guard(args => {
 
   const m = meta(values)
 
-  return commit(board, m, { type: 'board.view', card: '$board' }, s => decideView(s, patch, m))
+  return commit(board, m, { type: 'board.view', card: '$board' }, s => decideView({ state: s, patch, meta: m }))
 })
 
 export const commands = {

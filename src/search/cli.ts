@@ -26,7 +26,7 @@ const SEARCH: Options = {
 const SETUP: Options = { ...COMMON, semantic: { type: 'boolean' } }
 
 // A rejected promise carries a BoardError the way guard() converts a thrown one.
-async function axi<T>(work: Promise<T>): Promise<T> {
+async function axi<T>({ work }: { work: Promise<T> }): Promise<T> {
   try {
     return await work
   } catch (error) {
@@ -38,9 +38,9 @@ async function axi<T>(work: Promise<T>): Promise<T> {
   }
 }
 
-async function status(board: string): Promise<Output> {
-  const s = indexStatus(board)
-  const seq = loadBoard(board).state.seq
+async function status({ board }: { board: string }): Promise<Output> {
+  const s = indexStatus({ board })
+  const seq = loadBoard({ board }).state.seq
 
   if (!s) {
     return {
@@ -55,20 +55,20 @@ async function status(board: string): Promise<Output> {
 
   return {
     index: s.builtThrough === seq ? `current through seq ${seq}` : `behind: through seq ${s.builtThrough} of ${seq}; the next search catches up`,
-    mode: readSettings().semantic && runtimeInstalled() ? 'hybrid: words fused with meaning' : 'lexical, fuzzy when nothing matches',
+    mode: readSettings({ }).semantic && runtimeInstalled() ? 'hybrid: words fused with meaning' : 'lexical, fuzzy when nothing matches',
     synonyms: `v${SYNONYMS_VERSION}, ${SYNONYMS.length} groups`,
-    ...(await semanticStatus(board)),
+    ...(await semanticStatus({ board })),
     docs: s.docs,
     transcripts: s.transcripts,
     bytes: s.bytes,
   }
 }
 
-function built(result: IndexResult): Output {
+function built({ result }: { result: IndexResult }): Output {
   return { rebuilt: result, help: ['Run `pnyx-axi search "<words>"`'] }
 }
 
-async function setup(args: string[]): Promise<Output> {
+async function setup({ args }: { args: string[] }): Promise<Output> {
   const { values, board } = parse(args, SETUP, 0)
 
   if (!values.semantic) {
@@ -76,13 +76,13 @@ async function setup(args: string[]): Promise<Output> {
   }
 
   // Download progress goes to stderr, and only to a terminal.
-  const progress = (line: string) => {
+  const progress = ({ line }: { line: string }) => {
     if (process.stderr.isTTY) {
       process.stderr.write(`${line}\n`)
     }
   }
 
-  const r = await setupSemantic(board, progress)
+  const r = await setupSemantic({ board, progress })
 
   return {
     semantic: 'on',
@@ -98,11 +98,11 @@ const searchCommand = guard<Output | Promise<Output>>(args => {
   if (args[0] === 'status' || args[0] === 'rebuild') {
     const { board } = parse(args.slice(1), COMMON, 0)
 
-    return args[0] === 'status' ? axi(status(board)) : built(rebuildIndex(board))
+    return args[0] === 'status' ? axi({ work: status({ board }) }) : built({ result: rebuildIndex({ board }) })
   }
 
   if (args[0] === 'setup') {
-    return axi(setup(args.slice(1)))
+    return axi({ work: setup({ args: args.slice(1) }) })
   }
 
   // Unquoted words are one query.
@@ -127,23 +127,30 @@ const searchCommand = guard<Output | Promise<Output>>(args => {
 
   const card = values.card === undefined
     ? undefined
-    : findCard(loadBoard(board).state, values.card as string).id
+    : findCard({ state: loadBoard({ board }).state, ref: values.card as string }).id
 
-  return axi(searchBoard(board, {
-    text,
-    limit: Math.min(rawLimit ? Number(rawLimit) : LIMIT, MAX),
-    ...(kind ? { kind: kind as Kind } : {}),
-    ...(card ? { card } : {}),
-    ...(values.workspace ? { workspace: values.workspace as string } : {}),
+  return axi({
+    work: searchBoard({
+      board,
+      query: {
+        text,
+        limit: Math.min(rawLimit ? Number(rawLimit) : LIMIT, MAX),
+        ...(kind ? { kind: kind as Kind } : {}),
+        ...(card ? { card } : {}),
+        ...(values.workspace ? { workspace: values.workspace as string } : {}),
+      },
+    })
+      .then(result => present({ input: result, text, card, kind })),
   })
-    .then(result => present(result, text, card, kind)))
 })
 
 function present(
-  { hits, total, mode, semantic, note }: SearchResult,
-  text: string,
-  card: string | undefined,
-  kind: string | undefined,
+  { input: { hits, total, mode, semantic, note }, text, card, kind }: {
+    input: SearchResult
+    text: string
+    card: string | undefined
+    kind: string | undefined
+  },
 ): Output {
   const head: Output = { mode, ...(semantic ? { semantic } : {}), ...(note ? { note } : {}) }
 
@@ -174,12 +181,19 @@ const settingsCommand = guard(args => {
       throw new AxiError('settings set needs a key and a value', 'VALIDATION_ERROR', [`Keys: ${SETTING_KEYS.join(', ')}`])
     }
 
-    return { settings: settingEntries(writeSetting(positionals[0]!, positionals[1]!)) }
+    return {
+      settings: settingEntries({
+        settings: writeSetting({
+          key: positionals[0]!,
+          value: positionals[1]!,
+        }),
+      }),
+    }
   }
 
   parse(args, {}, 0)
 
-  return { settings: settingEntries(readSettings()), help: ['Run `pnyx-axi settings set search.semantic on|off`'] }
+  return { settings: settingEntries({ settings: readSettings({ }) }), help: ['Run `pnyx-axi settings set search.semantic on|off`'] }
 })
 
 export const searchCommands = { search: searchCommand, settings: settingsCommand }

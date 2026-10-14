@@ -16,13 +16,13 @@ const TRANSCRIPT = join(import.meta.dirname, 'fixtures', 'transcripts', 'claude-
 const CODEX = join(import.meta.dirname, 'fixtures', 'transcripts', 'codex-session.jsonl')
 
 test('a short message is one chunk; a long one splits on paragraphs, deterministically', () => {
-  assert.deepEqual(chunk('  one line  '), ['one line'])
-  assert.deepEqual(chunk(' \n '), [])
+  assert.deepEqual(chunk({ text: '  one line  ' }), ['one line'])
+  assert.deepEqual(chunk({ text: ' \n ' }), [])
   const paragraphs = Array.from({ length: 6 }, (_, i) => `Paragraph ${i} ${'word '.repeat(50).trim()}`)
-  const chunks = chunk(paragraphs.join('\n\n'))
+  const chunks = chunk({ text: paragraphs.join('\n\n') })
   assert.ok(chunks.length > 1)
   assert.ok(chunks.every(c => c.length <= 768))
-  assert.deepEqual(chunk(paragraphs.join('\n\n')), chunks)
+  assert.deepEqual(chunk({ text: paragraphs.join('\n\n') }), chunks)
   // Each chunk after the first starts with the previous chunk's last paragraph.
   assert.equal(chunks[1]!.split('\n\n')[0], chunks[0]!.split('\n\n').at(-1))
 
@@ -33,9 +33,9 @@ test('a short message is one chunk; a long one splits on paragraphs, determinist
 
 test('a code fence stays whole and an overlong line is cut', () => {
   const fence = ['```', 'a', '', 'b', '```'].join('\n')
-  const chunks = chunk(`${'intro '.repeat(120)}\n\n${fence}`)
+  const chunks = chunk({ text: `${'intro '.repeat(120)}\n\n${fence}` })
   assert.ok(chunks.some(c => c.includes(fence)))
-  const long = chunk('x'.repeat(2000))
+  const long = chunk({ text: 'x'.repeat(2000) })
   assert.deepEqual(long.map(c => c.length), [768, 768, 464])
 })
 
@@ -48,16 +48,16 @@ test('secret-shaped strings are redacted', () => {
     'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcdefghijklmnop',
     '-----BEGIN PRIVATE KEY-----\nMIIabc\n-----END PRIVATE KEY-----',
   ].join(' ')
-  assert.equal(redact(text), Array(6).fill('[redacted]')
+  assert.equal(redact({ text }), Array(6).fill('[redacted]')
     .join(' '))
-  assert.equal(redact('skip the sk- prefix'), 'skip the sk- prefix')
+  assert.equal(redact({ text: 'skip the sk- prefix' }), 'skip the sk- prefix')
 })
 
 test('only typed messages and assistant text are read from a transcript', () => {
   const records = readFileSync(TRANSCRIPT, 'utf8').split('\n')
     .slice(0, -1)
     .map(l => JSON.parse(l) as unknown)
-  const texts = records.flatMap(transcriptMessages).map(m => m.text)
+  const texts = records.flatMap(arg0 => transcriptMessages({ record: arg0 })).map(m => m.text)
   assert.equal(texts[0], 'Why did the deploy get reverted after the migration?')
   assert.equal(texts[1], 'The migration locked the orders table, so the deploy was rolled back.')
   const all = texts.join('\n')
@@ -73,7 +73,7 @@ test('only typed messages and assistant text are read from a Codex transcript', 
   const records = readFileSync(CODEX, 'utf8').split('\n')
     .slice(0, -1)
     .map(l => JSON.parse(l) as unknown)
-  assert.deepEqual(records.flatMap(transcriptMessages), [
+  assert.deepEqual(records.flatMap(arg0 => transcriptMessages({ record: arg0 })), [
     { at: '2026-10-12T10:00:03.000Z', text: 'Why is the invoice export timing out?' },
     { at: '2026-10-12T10:00:07.000Z', text: 'The export query scans every invoice without an index.' },
   ])
@@ -86,26 +86,26 @@ test("an event's text is what it changed", () => {
     type: 'card.pushed',
     data: { key: 'k', title: 'Same title', tags: ['a', 'b'], attention: [{ kind: 'question', key: 'q1', blocking: true, text: 'Which region?' }], before: { tags: ['a'] } },
   } as BoardEvent
-  assert.equal(eventText(update), 'b')
+  assert.equal(eventText({ event: update }), 'b')
   const created = { ...update, data: { ...update.data, before: undefined } } as BoardEvent
-  assert.equal(eventText(created), 'Same title\na\nb\nWhich region?')
+  assert.equal(eventText({ event: created }), 'Same title\na\nb\nWhich region?')
   const link = { url: 'https://github.com/o/r/pull/7', kind: 'github_pr', number: 7, title: 'Fix it' } as const
   const linked = { ...base, type: 'card.linked', data: { url: link.url, before: null, after: link } } as BoardEvent
-  assert.equal(eventText(linked), '#7 Fix it https://github.com/o/r/pull/7')
+  assert.equal(eventText({ event: linked }), '#7 Fix it https://github.com/o/r/pull/7')
   const merged = { ...linked, data: { url: link.url, before: link, after: { ...link, state: 'merged' } } } as BoardEvent
-  assert.equal(eventText(merged), '')
+  assert.equal(eventText({ event: merged }), '')
   const moved = { ...base, type: 'card.moved', reason: 'Keep in review', data: { before: null, after: 'review' } } as BoardEvent
-  assert.equal(eventText(moved), 'Keep in review')
+  assert.equal(eventText({ event: moved }), 'Keep in review')
 })
 
 test('query words and phrases in a synonym group match the whole group', () => {
-  assert.equal(ftsQuery('Rollback the pull request'), '("rollback" OR "revert") AND "the" AND ("pr" OR "pull request")')
-  assert.equal(ftsQuery('ship*'), '"ship"*')
+  assert.equal(ftsQuery({ text: 'Rollback the pull request' }), '("rollback" OR "revert") AND "the" AND ("pr" OR "pull request")')
+  assert.equal(ftsQuery({ text: 'ship*' }), '"ship"*')
 })
 
 test('query words are quoted so punctuation is never FTS5 syntax', () => {
-  assert.equal(ftsQuery('fix "AND" -x pull/7 deplo* :'), '"fix" AND """AND""" AND "-x" AND "pull/7" AND "deplo"*')
-  assert.equal(ftsQuery(' - : '), '')
+  assert.equal(ftsQuery({ text: 'fix "AND" -x pull/7 deplo* :' }), '"fix" AND """AND""" AND "-x" AND "pull/7" AND "deplo"*')
+  assert.equal(ftsQuery({ text: ' - : ' }), '')
 })
 
 // The card ids of a search's results, best first.

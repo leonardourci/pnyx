@@ -354,7 +354,7 @@ export function observe(envelope: HookEnvelope): Observation[] {
   const activity = found.activity ? { activity: found.activity } : {}
   const out: Observation[] = []
   let key = parentKey
-  const terminal = terminalFacts(envelope.terminal)
+  const terminal = terminalFacts({ value: envelope.terminal })
   let card: Record<string, unknown> = { ...session, ...activity, ...(terminal ? { terminal } : {}) }
 
   if (agentId) {

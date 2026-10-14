@@ -70,7 +70,7 @@ export function KeyboardProvider({
         return
       }
 
-      const result = resolveKey({ key: event.key, code: event.code, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat, defaultPrevented: event.defaultPrevented, isComposing: event.isComposing, altGraph: event.getModifierState('AltGraph') }, { scope, editing: isEditing(target), platform, characterShortcuts: prefs.characterShortcuts, now: performance.now() }, prefs, progress)
+      const result = resolveKey({ event: { key: event.key, code: event.code, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat, defaultPrevented: event.defaultPrevented, isComposing: event.isComposing, altGraph: event.getModifierState('AltGraph') }, context: { scope, editing: isEditing(target), platform, characterShortcuts: prefs.characterShortcuts, now: performance.now() }, prefs, progress })
       progress = result.progress
 
       if (result.action) {
@@ -105,10 +105,12 @@ export function KeyboardProvider({
         platform,
         handlers: handlers.current,
         label: id => keyLabel(
-          bindingsFor(prefs, id).filter(
-            binding => prefs.characterShortcuts || !characterBinding(binding, platform),
-          ),
-          platform,
+          {
+            keys: bindingsFor({ prefs, id }).filter(
+              binding => prefs.characterShortcuts || !characterBinding({ binding, platform }),
+            ),
+            platform,
+          },
         ),
       }}
     >

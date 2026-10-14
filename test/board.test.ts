@@ -142,9 +142,9 @@ test('a torn tail blocks writes until repair', () => {
 test('spooled hook events are ingested once, in order, by the next write', () => {
   const { env, run, card } = board()
   process.env.PNYX_HOME = env.PNYX_HOME
-  spoolWrite('default', { id: 'hook-1', key: 'codex:t1', at: '2026-10-13T10:00:00Z', actor: 'hook', card: { title: 'From hook' } })
-  spoolWrite('default', { id: 'hook-1', key: 'codex:t1', at: '2026-10-13T10:00:01Z', card: { title: 'Respooled' } })
-  const spool = join(boardDir('default'), 'spool')
+  spoolWrite({ board: 'default', entry: { id: 'hook-1', key: 'codex:t1', at: '2026-10-13T10:00:00Z', actor: 'hook', card: { title: 'From hook' } } })
+  spoolWrite({ board: 'default', entry: { id: 'hook-1', key: 'codex:t1', at: '2026-10-13T10:00:01Z', card: { title: 'Respooled' } } })
+  const spool = join(boardDir({ board: 'default' }), 'spool')
   writeFileSync(join(spool, '999-bad.json'), '{nope')
   const out = run('push', '--key', 'other', '--file', card({}))
   assert.match(out, /^ {2}ingested: 2$/m)
@@ -158,7 +158,7 @@ test('a spooled hook push is an observation, so undo refuses it', () => {
   const { env, run, fails, card } = board()
   process.env.PNYX_HOME = env.PNYX_HOME
   run('push', '--key', 'codex:t1', '--file', card({ title: 'Manual' }))
-  spoolWrite('default', { id: 'hook-7', key: 'codex:t1', at: '2026-10-13T10:00:00Z', card: { activity: 'idle' } })
+  spoolWrite({ board: 'default', entry: { id: 'hook-7', key: 'codex:t1', at: '2026-10-13T10:00:00Z', card: { activity: 'idle' } } })
   run('push', '--key', 'other', '--file', card({}))
   assert.match(run('card', 'codex:t1'), /^ {2}activity: idle$/m)
   fails(['undo', 'hook-7'], 1, 'NOT_UNDOABLE')

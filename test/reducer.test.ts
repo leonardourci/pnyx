@@ -6,13 +6,13 @@ import { assertGolden, readStream } from './streams.ts'
 
 for (const name of ['lifecycle', 'duplicates', 'pinned-attention', 'undo']) {
   test(`golden replay: ${name}`, () => {
-    assertGolden(name, replay(emptyBoard(), readStream(name)))
+    assertGolden(name, replay({ state: emptyBoard(), events: readStream(name) }))
   })
 }
 
 test('lifecycle: open pull request is review, all merged is done, outcome places the child', () => {
   const events = readStream('lifecycle')
-  const at = (seq: number) => replay(emptyBoard(), events.slice(0, seq))
+  const at = (seq: number) => replay({ state: emptyBoard(), events: events.slice(0, seq) })
   assert.equal(at(1).cards.c1!.column, 'workers_on_it')
   assert.equal(at(3).cards.c1!.column, 'review')
   // One of two pull requests merged: still review.
@@ -26,7 +26,7 @@ test('lifecycle: open pull request is review, all merged is done, outcome places
 })
 
 test('duplicates and out-of-order observations are ignored', () => {
-  const state = replay(emptyBoard(), readStream('duplicates'))
+  const state = replay({ state: emptyBoard(), events: readStream('duplicates') })
   const card = state.cards.c1!
   assert.equal(state.seq, 9)
   assert.equal(card.title, 'Refactor store layer')
@@ -40,7 +40,7 @@ test('duplicates and out-of-order observations are ignored', () => {
 })
 
 test('a pinned card keeps its column and shows new attention', () => {
-  const state = replay(emptyBoard(), readStream('pinned-attention'))
+  const state = replay({ state: emptyBoard(), events: readStream('pinned-attention') })
   const card = state.cards.c1!
   assert.equal(card.column, 'review')
   assert.equal(card.manualColumn, 'review')
@@ -56,11 +56,11 @@ test('a pinned card keeps its column and shows new attention', () => {
     type: 'card.moved',
     data: { before: 'review', after: null },
   }
-  assert.equal(reduce(state, auto).cards.c1!.column, 'needs_you')
+  assert.equal(reduce({ state, event: auto }).cards.c1!.column, 'needs_you')
 })
 
 test('undo events restore the card and record what they reversed', () => {
-  const state = replay(emptyBoard(), readStream('undo'))
+  const state = replay({ state: emptyBoard(), events: readStream('undo') })
   const card = state.cards.c1!
   assert.equal(card.manualColumn, undefined)
   assert.deepEqual(card.links, [])
@@ -73,10 +73,16 @@ test('replay is pure and deterministic', () => {
   const events = readStream('lifecycle')
   const start = emptyBoard()
   const frozen = structuredClone(start)
-  const once = replay(start, events)
+  const once = replay({ state: start, events })
   assert.deepEqual(start, frozen)
-  assert.deepEqual(replay(replay(start, events.slice(0, 4)), events.slice(4)), once)
-  assert.deepEqual(replay(emptyBoard(), events), once)
+  assert.deepEqual(replay({
+    state: replay({
+      state: start,
+      events: events.slice(0, 4),
+    }),
+    events: events.slice(4),
+  }), once)
+  assert.deepEqual(replay({ state: emptyBoard(), events }), once)
 })
 
 test('a parent change that would make a cycle is ignored', () => {
@@ -91,7 +97,10 @@ test('a parent change that would make a cycle is ignored', () => {
     type: 'card.pushed',
     data: { key: 'claude:host-a:sess-1', parentId: 'c2' },
   }
-  assert.equal(replay(emptyBoard(), [...events, cycle]).cards.c1!.parentId, undefined)
+  assert.equal(replay({
+    state: emptyBoard(),
+    events: [...events, cycle],
+  }).cards.c1!.parentId, undefined)
 })
 
 function card(overrides: Partial<Card>): Card {
@@ -139,7 +148,7 @@ test('column rules follow the settled precedence', () => {
   ]
 
   for (const [name, overrides, expected] of cases) {
-    assert.equal(columnFor(card(overrides)), expected, name)
+    assert.equal(columnFor({ card: card(overrides) }), expected, name)
   }
 })
 
@@ -148,7 +157,7 @@ test('an auto title fills an untitled card, best source first, and never replace
 
   const apply = (type: string, data: object) => {
     const seq = state.seq + 1
-    state = reduce(state, { v: 1, seq, id: `e${seq}`, at: '2026-10-13T00:00:00Z', actor: 'test', cardId: 'c1', type, data } as BoardEvent)
+    state = reduce({ state, event: { v: 1, seq, id: `e${seq}`, at: '2026-10-13T00:00:00Z', actor: 'test', cardId: 'c1', type, data } as BoardEvent })
 
     return state.cards.c1!.title
   }

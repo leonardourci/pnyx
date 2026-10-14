@@ -25,12 +25,12 @@ export const stubbed = () => process.env.PNYX_SEMANTIC_STUB === '1'
 
 const settingsPath = () => join(pnyxHome(), 'settings.json')
 
-const onOffAuto = (value: unknown): Auto<boolean> | undefined =>
+const onOffAuto = ({ value }: { value: unknown }): Auto<boolean> | undefined =>
   value === 'on' ? true : value === 'off' ? false : value === 'auto' ? 'auto' : undefined
 
 // PNYX_SEMANTIC=off turns semantic search off for a process and its children,
 // whatever the file says: a CI machine, a script, the test suite. Writes keep the file's own value.
-export function readSettings(applyEnv = true): SearchSettings {
+export function readSettings({ applyEnv = true }: { applyEnv?: boolean } = {}): SearchSettings {
   let raw: Record<string, unknown> = {}
 
   try {
@@ -43,7 +43,7 @@ export function readSettings(applyEnv = true): SearchSettings {
 
   return {
     semantic: !(applyEnv && process.env.PNYX_SEMANTIC === 'off') && raw['search.semantic'] !== 'off',
-    rerank: onOffAuto(raw['search.rerank']) ?? DEFAULTS.rerank,
+    rerank: onOffAuto({ value: raw['search.rerank'] }) ?? DEFAULTS.rerank,
     model: EMBEDDER_IDS.includes(model as EmbedderId) ? (model as EmbedderId) : DEFAULTS.model,
   }
 }
@@ -51,48 +51,50 @@ export function readSettings(applyEnv = true): SearchSettings {
 export const SETTING_KEYS = ['search.semantic', 'search.rerank', 'search.model'] as const
 export type SettingKey = (typeof SETTING_KEYS)[number]
 
-const word = (v: Auto<boolean>) => (v === 'auto' ? 'auto' : v ? 'on' : 'off')
+const word = ({ value }: { value: Auto<boolean> }) => (value === 'auto' ? 'auto' : value ? 'on' : 'off')
 
-export function settingEntries(s: SearchSettings): Record<SettingKey, string> {
-  return { 'search.semantic': s.semantic ? 'on' : 'off', 'search.rerank': word(s.rerank), 'search.model': s.model }
+export function settingEntries({ settings }: {
+  settings: SearchSettings
+}): Record<SettingKey, string> {
+  return { 'search.semantic': settings.semantic ? 'on' : 'off', 'search.rerank': word({ value: settings.rerank }), 'search.model': settings.model }
 }
 
 // Validates and saves one setting.
-export function writeSetting(key: string, value: string): SearchSettings {
-  const next = readSettings(false)
+export function writeSetting({ key, value }: { key: string; value: string }): SearchSettings {
+  const next = readSettings({ applyEnv: false })
 
   if (key === 'search.semantic') {
     if (value !== 'on' && value !== 'off') {
-      throw new BoardError('search.semantic takes on or off', 'VALIDATION_ERROR')
+      throw new BoardError({ message: 'search.semantic takes on or off', code: 'VALIDATION_ERROR' })
     }
 
     next.semantic = value === 'on'
   } else if (key === 'search.rerank') {
-    const rerank = onOffAuto(value)
+    const rerank = onOffAuto({ value })
 
     if (rerank === undefined) {
-      throw new BoardError('search.rerank takes auto, on or off', 'VALIDATION_ERROR')
+      throw new BoardError({ message: 'search.rerank takes auto, on or off', code: 'VALIDATION_ERROR' })
     }
 
     next.rerank = rerank
   } else if (key === 'search.model') {
     if (value !== 'auto' && !EMBEDDER_IDS.includes(value as EmbedderId)) {
-      throw new BoardError(`search.model takes auto, ${EMBEDDER_IDS.join(' or ')}`, 'VALIDATION_ERROR')
+      throw new BoardError({ message: `search.model takes auto, ${EMBEDDER_IDS.join(' or ')}`, code: 'VALIDATION_ERROR' })
     }
 
     next.model = value as Auto<EmbedderId>
   } else {
-    throw new BoardError(`unknown setting: ${key}`, 'VALIDATION_ERROR', [`Use one of ${SETTING_KEYS.join(', ')}`])
+    throw new BoardError({ message: `unknown setting: ${key}`, code: 'VALIDATION_ERROR', help: [`Use one of ${SETTING_KEYS.join(', ')}`] })
   }
 
-  saveSettings(next)
+  saveSettings({ settings: next })
 
   return next
 }
 
-export function saveSettings(s: SearchSettings): void {
+export function saveSettings({ settings }: { settings: SearchSettings }): void {
   mkdirSync(pnyxHome(), { recursive: true })
   const tmp = `${settingsPath()}.${process.pid}.tmp`
-  writeFileSync(tmp, `${JSON.stringify(settingEntries(s), null, 2)}\n`)
+  writeFileSync(tmp, `${JSON.stringify(settingEntries({ settings }), null, 2)}\n`)
   renameSync(tmp, settingsPath())
 }

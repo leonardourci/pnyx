@@ -82,7 +82,7 @@ export async function startServer({
   catalogLocations?: CatalogLocations
 }): Promise<RunningServer> {
   if (await readServer(board)) {
-    throw new BoardError(`a server is already running for board ${board}`, 'ALREADY_RUNNING', ['Run `pnyx-axi` to see its address'])
+    throw new BoardError({ message: `a server is already running for board ${board}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
   }
 
   homes = homes.map(resolveHome)
@@ -118,10 +118,10 @@ export async function startServer({
     })
   }
 
-  const dir = boardDir(board)
-  mkdirSync(spoolDir(dir), { recursive: true })
+  const dir = boardDir({ board })
+  mkdirSync(spoolDir({ dir }), { recursive: true })
   const token = Buffer.from(localToken())
-  let { state, offset } = loadBoard(board)
+  let { state, offset } = loadBoard({ board })
   let recent: BoardEvent[] = []
   const resyncing = new WeakSet<WebSocket>()
 
@@ -158,7 +158,7 @@ export async function startServer({
   }
 
   const reload = () => {
-    ({ state, offset } = loadBoard(board))
+    ({ state, offset } = loadBoard({ board }))
     recent = []
 
     for (const ws of wss.clients) {
@@ -261,7 +261,7 @@ export async function startServer({
 
   // Folds whatever was appended since the last read, from this server or the CLI.
   const pump = () => {
-    const read = readEventsFrom(board, offset)
+    const read = readEventsFrom({ board, offset })
 
     if (!read) {
       return reload()
@@ -272,7 +272,7 @@ export async function startServer({
         return reload()
       }
 
-      state = reduce(state, event)
+      state = reduce({ state, event })
       recent.push(event)
       broadcast(event)
       touchLatest([event.cardId])
@@ -302,7 +302,7 @@ export async function startServer({
       }
 
       try {
-        if (spoolFiles(dir).length > 0) {
+        if (spoolFiles({ dir }).length > 0) {
           ingestSpool(board)
         }
 
@@ -365,10 +365,10 @@ export async function startServer({
       try {
         if (name === 'catalog') {
           if (args.length !== 1) {
-            throw new BoardError('catalog expects a card', 'VALIDATION_ERROR')
+            throw new BoardError({ message: 'catalog expects a card', code: 'VALIDATION_ERROR' })
           }
 
-          const card = findCard(state, args[0])
+          const card = findCard({ state, ref: args[0] })
           let entry = catalogReads.get(ws)
 
           if (entry?.card !== card.id) {
@@ -388,23 +388,26 @@ export async function startServer({
           void entry.read.then(catalog => send(ws, { type: 'receipt', id, catalog })).catch(() => fail('Local catalog unavailable', 'CATALOG_UNAVAILABLE'))
         } else if (name === 'search') {
           if (args.length > 2) {
-            throw new BoardError('search expects text and optional workspace', 'VALIDATION_ERROR')
+            throw new BoardError({ message: 'search expects text and optional workspace', code: 'VALIDATION_ERROR' })
           }
 
           const query = { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), limit: SEARCH_LIMIT }
 
           // The semantic leg waits on the worker process, never on this event loop.
-          void searchBoard(board, query)
+          void searchBoard({ board, query })
             .then(result => send(ws, { type: 'receipt', id, ...result }))
             .catch((error: Error) => fail(error.message, error instanceof BoardError ? error.code : 'UNKNOWN'))
         } else if (name === 'settings') {
           // This machine's search settings, shared by every board: [] reads them, ['set', key, value] changes one.
           if (args.length && (args.length !== 3 || args[0] !== 'set')) {
-            throw new BoardError('settings expects nothing, or set, a key and a value', 'VALIDATION_ERROR')
+            throw new BoardError({ message: 'settings expects nothing, or set, a key and a value', code: 'VALIDATION_ERROR' })
           }
 
-          const settings = args.length ? writeSetting(args[1]!, args[2]!) : readSettings()
-          send(ws, { type: 'receipt', id, settings: settingEntries(settings) })
+          const settings = args.length ? writeSetting({
+            key: args[1]!,
+            value: args[2]!,
+          }) : readSettings({ })
+          send(ws, { type: 'receipt', id, settings: settingEntries({ settings }) })
         } else if (name === 'thread') {
           const old = subscriptions.get(ws); old?.watcher?.close(); subscriptions.delete(ws)
 
@@ -414,10 +417,10 @@ export async function startServer({
             return
           }
 
-          const card = findCard(state, args[0])
+          const card = findCard({ state, ref: args[0] })
 
           if (args[1] !== undefined && (args[1].length > 100 || !THREAD_CURSOR.test(args[1]))) {
-            throw new BoardError('invalid thread cursor', 'VALIDATION_ERROR')
+            throw new BoardError({ message: 'invalid thread cursor', code: 'VALIDATION_ERROR' })
           }
 
           const sub: { card: string; watcher?: FSWatcher } = { card: card.id }
@@ -437,15 +440,15 @@ export async function startServer({
           send(ws, { type: 'receipt', id, thread: readThread(board, state, card, homes, args[1]) })
         } else {
           if (args.length !== 3 || !args[2] || args[1].length > 32000) {
-            throw new BoardError('reply expects card, text and idempotency key', 'VALIDATION_ERROR')
+            throw new BoardError({ message: 'reply expects card, text and idempotency key', code: 'VALIDATION_ERROR' })
           }
 
-          const card = findCard(state, args[0])
+          const card = findCard({ state, ref: args[0] })
 
-          const found = replyRoute(card, homes)
+          const found = replyRoute({ card, homes })
 
           if ('reason' in found) {
-            throw new BoardError(`${found.reason} Your draft stays here.`, 'NO_ROUTE')
+            throw new BoardError({ message: `${found.reason} Your draft stays here.`, code: 'NO_ROUTE' })
           }
 
           // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.
@@ -591,7 +594,7 @@ export async function startServer({
       const entry = JSON.parse(line) as { id?: unknown }
 
       if (typeof entry === 'object' && entry !== null && typeof entry.id === 'string') {
-        spoolWrite(board, entry as { id: string })
+        spoolWrite({ board, entry: entry as { id: string } })
       }
     } catch {
       // Not JSON: dropped, as a hook never waits for an answer.
@@ -600,7 +603,7 @@ export async function startServer({
     kick()
   })
 
-  const watchers: FSWatcher[] = [watch(dir, kick), watch(spoolDir(dir), kick)]
+  const watchers: FSWatcher[] = [watch(dir, kick), watch(spoolDir({ dir }), kick)]
   const url = `http://127.0.0.1:${bound}`
   const info: ServerInfo = {
     pid: process.pid,

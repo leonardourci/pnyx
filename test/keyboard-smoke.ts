@@ -18,8 +18,11 @@ process.env.PNYX_HOME = home
 const fixture = seedWebFixture(home), cwd = join(home, 'project'), skill = join(cwd, '.claude/skills/review-local')
 mkdirSync(skill, { recursive: true }); writeFileSync(join(skill, 'SKILL.md'), '---\nname: review-local\ndescription: Review the local fixture\n---\nLiteral fixture only\n')
 const meta = { actor: 'fixture', at: '2026-10-14T10:00:00Z' }
-withWriter('default', w => {
-  const d = decidePush(w.state, 'layout', { agent: { ...w.state.cards[fixture.state.keys.layout!]!.agent, cwd } }, meta); assert.ok('event' in d); w.append(d.event)
+withWriter({
+  board: 'default',
+  fn: ({ writer: w }) => {
+    const d = decidePush({ state: w.state, key: 'layout', input: { agent: { ...w.state.cards[fixture.state.keys.layout!]!.agent, cwd } }, meta }); assert.ok('event' in d); w.append({ event: d.event })
+  },
 })
 const server = await startServer({ board: 'default', homes: [fixture.nativeHome], catalogLocations: { home, claude: join(home, '.claude'), codex: join(home, '.codex') } })
 const env = { ...process.env, CHROME_DEVTOOLS_AXI_SESSION: `pnyx-keyboard-${process.pid}` }
@@ -51,7 +54,7 @@ const press = (key: string) => browser('press', key)
 const focus = (selector: string) => browser('eval', `() => { document.querySelector(${JSON.stringify(selector)}).focus(); return true; }`)
 const active = (selector: string) => `document.activeElement.matches(${JSON.stringify(selector)})`
 const cardSelector = `[data-card="${fixture.state.keys.layout}"]`
-const board = () => loadBoard('default').state
+const board = () => loadBoard({ board: 'default' }).state
 
 const screenshot = async (name: string) => {
   const path = join(evidence, name); rmSync(path, { force: true })
@@ -154,12 +157,18 @@ try {
   await click('button', 'Back to board'); await browser('open', server.url); await browser('wait', 'The working board'); await focus(cardSelector); await press('g'); await press('r'); await browser('wait', 'Reply to Shape the first working board'); await check(active('textarea'), 'bindings survive reload')
   await press('Escape'); await press('Escape')
   // Empty-column navigation and live moves use source events, not DOM edits.
-  withWriter('default', w => {
-    const d = decideView(w.state, { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta); assert.ok('event' in d); w.append(d.event)
+  withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      const d = decideView({ state: w.state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta }); assert.ok('event' in d); w.append({ event: d.event })
+    },
   })
   await browser('wait', 'Later'); await focus(cardSelector); await press('ArrowRight'); await check(active("[data-empty-column='custom:later']"), 'empty columns remain keyboard reachable'); await press('ArrowLeft'); await check(active(cardSelector), 'empty column returns to remembered card')
-  withWriter('default', w => {
-    const d = decideMove(w.state, 'layout', 'review', meta); assert.ok('event' in d); w.append(d.event)
+  withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      const d = decideMove({ state: w.state, ref: 'layout', column: 'review', meta }); assert.ok('event' in d); w.append({ event: d.event })
+    },
   })
   await browser('eval', `() => new Promise((resolve, reject) => { const observer = new MutationObserver(check); const timer = setTimeout(() => { observer.disconnect(); reject(new Error("source move not rendered")); }, 5000); function check() { if (document.querySelector(${JSON.stringify(cardSelector)}).closest("[data-column]").dataset.column === "review") { clearTimeout(timer); observer.disconnect(); resolve(true); } } observer.observe(document.body, { subtree: true, childList: true }); check(); })`); await check(active(cardSelector) + " && document.activeElement.closest('[data-column]').dataset.column === 'review'", 'live move retains card focus')
   await press('?'); await browser('wait', 'Keyboard help'); await press('Escape'); await check(active(cardSelector), 'help restores board focus')

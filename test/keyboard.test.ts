@@ -13,7 +13,7 @@ const resolve = (
   event: KeyInput,
   change: Partial<KeyContext> = {},
   prefs = DEFAULT_KEYBOARD,
-) => resolveKey(event, { ...context, ...change }, prefs)
+) => resolveKey({ event, context: { ...context, ...change }, prefs })
 
 const event = (d: Decision): BoardEvent => {
   assert.ok('event' in d)
@@ -22,7 +22,7 @@ const event = (d: Decision): BoardEvent => {
 }
 
 test('scopes, exact modifiers and logical punctuation resolve through tinykeys', () => {
-  assert.equal(keyboardError(DEFAULT_KEYBOARD), undefined)
+  assert.equal(keyboardError({ prefs: DEFAULT_KEYBOARD }), undefined)
   assert.equal(resolve({ key: 'j' }).action, 'board.down')
   assert.equal(resolve({ key: 'j' }, { scope: 'thread' }).action, 'thread.down')
   assert.equal(resolve({ key: 'j' }, { scope: 'navigation' }).consume, false)
@@ -96,19 +96,19 @@ test('find uses the platform modifier, works in fields, and remains rebindable',
 
     assert.equal(resolve({ key: 'f', ...(platform === 'mac' ? { ctrlKey: true } : { metaKey: true }) }, { platform }).consume, false)
     const prefs = { characterShortcuts: true, bindings: { find: ['Mod+g'] } }
-    assert.equal(keyboardError(prefs), undefined)
+    assert.equal(keyboardError({ prefs }), undefined)
     assert.equal(resolve(key, { platform }, prefs).consume, false)
     assert.equal(resolve({ ...key, key: 'g' }, { platform, editing: true }, prefs).action, 'find')
     assert.equal(resolve(key, { platform }, { ...prefs, bindings: { find: [] } }).consume, false)
   }
 
-  assert.equal(keyboardError({ characterShortcuts: true, bindings: { find: ['z'] } }), undefined)
+  assert.equal(keyboardError({ prefs: { characterShortcuts: true, bindings: { find: ['z'] } } }), undefined)
   assert.equal(resolve({ key: 'z' }, { editing: true }, { characterShortcuts: true, bindings: { find: ['z'] } }).consume, false)
-  assert.match(keyboardError({ characterShortcuts: true, bindings: { find: [], reply: ['Mod+f'] } })!, /Reserved/)
-  assert.match(keyboardError({ characterShortcuts: true, bindings: { find: ['Mod+p'] } })!, /Reserved/)
+  assert.match(keyboardError({ prefs: { characterShortcuts: true, bindings: { find: [], reply: ['Mod+f'] } } })!, /Reserved/)
+  assert.match(keyboardError({ prefs: { characterShortcuts: true, bindings: { find: ['Mod+p'] } } })!, /Reserved/)
 })
 test('rebinding validates overlapping scopes and sequence prefixes on both platforms', () => {
-  const check = (bindings: KeyboardPreferences['bindings']) => keyboardError({ characterShortcuts: true, bindings })
+  const check = (bindings: KeyboardPreferences['bindings']) => keyboardError({ prefs: { characterShortcuts: true, bindings } })
   assert.match(check({ reply: ['j'] })!, /conflicts/)
   assert.match(check({ reply: ['Mod+k'] })!, /conflicts/)
   assert.match(check({ reply: ['Control+k'] })!, /conflicts/)
@@ -126,38 +126,45 @@ test('rebinding validates overlapping scopes and sequence prefixes on both platf
   assert.equal(check({ reply: ['g r'], move: ['g m'], search: [] }), undefined)
   const prefs = { characterShortcuts: true, bindings: { settings: ['g s'], help: ['g h'] } }
   const first = resolve({ key: 'g' }, {}, prefs); assert.equal(first.consume, true); assert.equal(first.action, undefined)
-  assert.equal(resolveKey({ key: 's' }, { ...context, now: 500 }, prefs, first.progress).action, 'settings')
-  assert.equal(resolveKey({ key: 's' }, { ...context, now: 1600 }, prefs, first.progress).action, undefined)
-  assert.equal(resolveKey({ key: 's' }, { ...context, scope: 'composer', editing: true }, prefs, first.progress).action, undefined)
+  assert.equal(resolveKey({ event: { key: 's' }, context: { ...context, now: 500 }, prefs, progress: first.progress }).action, 'settings')
+  assert.equal(resolveKey({ event: { key: 's' }, context: { ...context, now: 1600 }, prefs, progress: first.progress }).action, undefined)
+  assert.equal(resolveKey({ event: { key: 's' }, context: { ...context, scope: 'composer', editing: true }, prefs, progress: first.progress }).action, undefined)
   assert.equal(resolve({ key: 'g' }, { characterShortcuts: false }, prefs).consume, false)
 })
 test('keyboard events replay, undo, merge and reset with revision checks and legacy defaults', () => {
   const initial = emptyBoard(), meta = { actor: 'test', at: '2026-10-14T10:00:00Z', id: 'keyboard-edit', ifRevision: 0 }
-  const edit = event(decideView(initial, { keyboard: { bindings: { settings: ['g s'] }, characterShortcuts: false } }, meta))
-  const state = reduce(initial, edit)
-  assert.deepEqual(viewFor(state).keyboard, { characterShortcuts: false, bindings: { settings: ['g s'] } })
-  assert.deepEqual(reduce(initial, edit), state)
-  assert.throws(() => decideView(state, { keyboard: { bindings: { help: [] } } }, { ...meta, id: 'another' }), /changed/)
+  const edit = event(decideView({ state: initial, patch: { keyboard: { bindings: { settings: ['g s'] }, characterShortcuts: false } }, meta }))
+  const state = reduce({ state: initial, event: edit })
+  assert.deepEqual(viewFor({ state }).keyboard, { characterShortcuts: false, bindings: { settings: ['g s'] } })
+  assert.deepEqual(reduce({ state: initial, event: edit }), state)
+  assert.throws(() => decideView({ state, patch: { keyboard: { bindings: { help: [] } } }, meta: { ...meta, id: 'another' } }), /changed/)
   assert.deepEqual(
-    patchView(state, { keyboard: { bindings: { help: [] } } }).keyboard.bindings,
+    patchView({ state, input: { keyboard: { bindings: { help: [] } } } }).keyboard.bindings,
     { settings: ['g s'], help: [] },
   )
   assert.deepEqual(
-    patchView(state, { keyboard: { bindings: { settings: null } } }).keyboard.bindings,
+    patchView({ state, input: { keyboard: { bindings: { settings: null } } } }).keyboard.bindings,
     {},
   )
-  assert.deepEqual(patchView(state, { keyboard: { bindings: null } }).keyboard.bindings, {})
-  assert.throws(() => patchView(state, { keyboard: { bindings: { reply: ['m'] } } }), /conflicts/)
-  assert.throws(() => patchView(state, JSON.parse('{"keyboard":{"bindings":{"__proto__":[]}}}')), /invalid/)
-  const undone = reduce(state, event(decideUndo(state, edit, { actor: 'test', at: meta.at, ifRevision: 1 })))
-  assert.deepEqual(viewFor(undone).keyboard, DEFAULT_KEYBOARD)
-  const old = JSON.parse(JSON.stringify(viewFor(state))); delete old.keyboard
-  assert.deepEqual(viewFor({ ...initial, view: old }).keyboard, DEFAULT_KEYBOARD)
-  const legacy = JSON.parse(JSON.stringify(event(decideView(initial, { fontSize: 16 }, { ...meta, id: 'legacy-font' }))))
+  assert.deepEqual(patchView({
+    state,
+    input: {
+      keyboard: {
+        bindings: null,
+      },
+    },
+  }).keyboard.bindings, {})
+  assert.throws(() => patchView({ state, input: { keyboard: { bindings: { reply: ['m'] } } } }), /conflicts/)
+  assert.throws(() => patchView({ state, input: JSON.parse('{"keyboard":{"bindings":{"__proto__":[]}}}') }), /invalid/)
+  const undone = reduce({ state, event: event(decideUndo({ state, target: edit, meta: { actor: 'test', at: meta.at, ifRevision: 1 } })) })
+  assert.deepEqual(viewFor({ state: undone }).keyboard, DEFAULT_KEYBOARD)
+  const old = JSON.parse(JSON.stringify(viewFor({ state }))); delete old.keyboard
+  assert.deepEqual(viewFor({ state: { ...initial, view: old } }).keyboard, DEFAULT_KEYBOARD)
+  const legacy = JSON.parse(JSON.stringify(event(decideView({ state: initial, patch: { fontSize: 16 }, meta: { ...meta, id: 'legacy-font' } }))))
   delete legacy.data.before.keyboard; delete legacy.data.after.keyboard
-  const legacyState = reduce(initial, legacy)
-  const restored = reduce(legacyState, event(decideUndo(legacyState, legacy, { actor: 'test', at: meta.at, ifRevision: 1 })))
-  assert.equal(viewFor(restored).fontSize, 14)
+  const legacyState = reduce({ state: initial, event: legacy })
+  const restored = reduce({ state: legacyState, event: event(decideUndo({ state: legacyState, target: legacy, meta: { actor: 'test', at: meta.at, ifRevision: 1 } })) })
+  assert.equal(viewFor({ state: restored }).fontSize, 14)
 })
 test('ragged columns remember positions, stop at ends, and recover moved or removed focus', () => {
   const columns = [{ id: 'a', cards: ['a1', 'a2', 'a3'] }, { id: 'b', cards: [] }, { id: 'c', cards: ['c1', 'c2'] }]

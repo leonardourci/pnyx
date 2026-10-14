@@ -82,7 +82,7 @@ const card = (fields: Partial<Card>): Card => ({
 })
 
 const reason = (c: Card) => {
-  const r = replyRoute(c, [])
+  const r = replyRoute({ card: c, homes: [] })
 
   return 'reason' in r ? r.reason : r.route.kind
 }
@@ -103,9 +103,9 @@ test('the innermost recorded host is the route', () => {
   // A Firstmate task keeps its own send command, even with a terminal recorded.
   const fm = card({ sourceRefs: [{ adapter: 'firstmate', instanceId: '/fm', objectId: 'task' }], terminal: { ...base, program: 'Apple_Terminal' } })
   assert.match(reason(fm), /not configured/)
-  assert.deepEqual(replyRoute(fm, ['/fm']), { route: { kind: 'firstmate', home: '/fm', task: 'task' } })
+  assert.deepEqual(replyRoute({ card: fm, homes: ['/fm'] }), { route: { kind: 'firstmate', home: '/fm', task: 'task' } })
   // Values that could reach a command line as options or quotes are dropped.
-  assert.deepEqual(terminalFacts({ tty: TTY, tmuxPane: '-t', program: 'a b', pid: '0', paseoTerminal: '--x', extra: 'y' }), { tty: TTY })
+  assert.deepEqual(terminalFacts({ value: { tty: TTY, tmuxPane: '-t', program: 'a b', pid: '0', paseoTerminal: '--x', extra: 'y' } }), { tty: TTY })
 })
 
 test('a tmux reply checks the pane, pastes once and presses Enter', () => {
@@ -236,6 +236,6 @@ test('the hook records the terminal the session runs in, past wrapper shells', a
   // Ingesting the spool puts the facts on the session's card.
   execFileSync(process.execPath, [BIN, 'harvest'], { env: { ...env, PNYX_HOME: home }, encoding: 'utf8' })
   process.env.PNYX_HOME = home
-  const { state } = loadBoard('default')
+  const { state } = loadBoard({ board: 'default' })
   assert.deepEqual(state.cards[state.keys['claude:s1']!]!.terminal, line.terminal)
 })

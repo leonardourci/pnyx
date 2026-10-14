@@ -52,7 +52,7 @@ test('a Claude Code transcript yields its titles, compaction summaries and answe
   assert.equal(notes[0]!.ref, notes[1]!.ref)
   assert.equal(new Set(notes.map(n => n.ref)).size, notes.length - 1)
   // The compaction summary is a note, not transcript text.
-  assert.ok(!records(CLAUDE).flatMap(transcriptMessages)
+  assert.ok(!records(CLAUDE).flatMap(arg0 => transcriptMessages({ record: arg0 }))
     .some(m => m.text.includes('zebrafish')))
 })
 
@@ -93,7 +93,7 @@ function board() {
   return { home, run, fails, push, transcript }
 }
 
-const noted = () => readEvents('default').filter(e => e.type === 'card.noted')
+const noted = () => readEvents({ board: 'default' }).filter(e => e.type === 'card.noted')
 
 test('harvest folds transcript notes and pull requests into cards once', () => {
   const { run, fails, push, transcript } = board()
@@ -149,11 +149,11 @@ test('a session that ends a turn is harvested when its hook event is ingested', 
   const { run, transcript } = board()
   const path = transcript('s9.jsonl', CLAUDE)
   const payload = { session_id: 's9', transcript_path: path, cwd: '/work' }
-  spoolWrite('default', { v: 1, id: 'h1', at: '2026-10-11T11:00:00.000Z', harness: 'claude', event: 'Stop', payload })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-11T11:00:00.000Z', harness: 'claude', event: 'Stop', payload } })
   writeFileSync(join(process.env.PNYX_HOME!, 'other.json'), '{}')
   // Any write drains the spool first.
   assert.match(run('push', '--key', 'other', '--file', join(process.env.PNYX_HOME!, 'other.json')), /^ {2}notes: 6$/m)
-  const { state } = loadBoard('default')
+  const { state } = loadBoard({ board: 'default' })
   assert.equal(state.cards[state.keys['claude:s9']!]!.notes?.length, 6)
 })
 
@@ -178,14 +178,14 @@ test('a harvested note neither reorders cards nor changes when they were updated
   const { run, push, transcript } = board()
   push('claude:s1', { title: 'Invoices', agent: { provider: 'claude-code', sessionId: 's1', transcriptPath: transcript('s1.jsonl', CLAUDE) } })
   push('other', { title: 'Other' })
-  const before = loadBoard('default').state.cards.c1!
+  const before = loadBoard({ board: 'default' }).state.cards.c1!
   assert.match(run('harvest'), /^ {2}notes: 6 new$/m)
-  const after = loadBoard('default').state.cards.c1!
+  const after = loadBoard({ board: 'default' }).state.cards.c1!
   assert.equal(after.notes?.length, 6)
   assert.equal(after.revision, before.revision + 6)
   assert.equal(after.updatedSeq, before.updatedSeq)
   assert.equal(after.updatedAt, before.updatedAt)
-  assert.ok(after.updatedSeq < loadBoard('default').state.cards.c2!.updatedSeq)
+  assert.ok(after.updatedSeq < loadBoard({ board: 'default' }).state.cards.c2!.updatedSeq)
 })
 
 test('building the search index first harvests every transcript, so compaction summaries stay searchable', () => {
