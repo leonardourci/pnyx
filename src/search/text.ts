@@ -1,0 +1,146 @@
+// What goes into the search index: the text an event or a transcript record
+// carries, run through one redaction filter and one deterministic chunker.
+import type { Attention, BoardEvent } from "../core/model.ts";
+
+// Bump when chunk() or the filters change what is indexed; the index rebuilds on mismatch.
+export const CHUNKER_VERSION = 1;
+
+// About 256 tokens at 3 characters a token.
+const CHUNK_MAX = 768;
+
+const SECRETS = [
+  /-----BEGIN ([A-Z0-9 ]+)-----[\s\S]*?-----END \1-----/g,
+  /\bsk-[A-Za-z0-9_-]{16,}/g,
+  /\bgh[pousr]_[A-Za-z0-9]{20,}/g,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/g,
+  /\bAKIA[0-9A-Z]{16}\b/g,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
+];
+
+// Text a harness injects into a user turn: reminders, hook output and command tags.
+const INJECTED = /<(system-reminder|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g;
+
+export function redact(text: string): string {
+  return SECRETS.reduce((t, re) => t.replace(re, "[redacted]"), text);
+}
+
+// Paragraphs, keeping a fenced code block whole.
+function paragraphs(text: string): string[] {
+  const out: string[] = [];
+  let current: string[] = [];
+  let fenced = false;
+  for (const line of text.split("\n")) {
+    if (line.trimStart().startsWith("```")) fenced = !fenced;
+    if (!fenced && line.trim() === "") {
+      if (current.length) out.push(current.join("\n"));
+      current = [];
+    } else current.push(line);
+  }
+  if (current.length) out.push(current.join("\n"));
+  return out;
+}
+
+// A paragraph over the limit splits on lines; a line over it, at the last space before the limit.
+function pieces(paragraph: string): string[] {
+  if (paragraph.length <= CHUNK_MAX) return [paragraph];
+  const out: string[] = [];
+  let current = "";
+  for (let line of paragraph.split("\n")) {
+    while (line.length > CHUNK_MAX) {
+      const cut = line.lastIndexOf(" ", CHUNK_MAX) > CHUNK_MAX / 2 ? line.lastIndexOf(" ", CHUNK_MAX) : CHUNK_MAX;
+      if (current) out.push(current);
+      out.push(line.slice(0, cut));
+      current = "";
+      line = line.slice(cut).trimStart();
+    }
+    if (current && current.length + 1 + line.length > CHUNK_MAX) {
+      out.push(current);
+      current = line;
+    } else current = current ? `${current}\n${line}` : line;
+  }
+  if (current) out.push(current);
+  return out;
+}
+
+// A pure function of the text: one chunk for a short message; a long one packs
+// paragraphs up to the limit, each chunk after the first repeating the previous
+// chunk's last paragraph when it fits.
+export function chunk(text: string): string[] {
+  const t = text.trim();
+  if (t.length <= CHUNK_MAX) return t ? [t] : [];
+  const units = paragraphs(t).flatMap(pieces);
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let size = 0;
+  for (const unit of units) {
+    if (current.length && size + 2 + unit.length > CHUNK_MAX) {
+      chunks.push(current.join("\n\n"));
+      const last = current.at(-1)!;
+      current = current.length > 1 && last.length + 2 + unit.length <= CHUNK_MAX ? [last] : [];
+      size = current.length ? last.length : 0;
+    }
+    size += (current.length ? 2 : 0) + unit.length;
+    current.push(unit);
+  }
+  if (current.length) chunks.push(current.join("\n\n"));
+  return chunks;
+}
+
+const attentionText = (list: Attention[] | undefined) => (list ?? []).map((a) => a.text);
+
+// The text an event carries: titles, tags, attention questions, link titles and
+// numbers, outcome notes, replies and reasons. Status flips carry none; a push
+// or link update repeats only what it changed.
+export function eventText(event: BoardEvent): string {
+  const parts: (string | undefined)[] = [event.reason];
+  switch (event.type) {
+    case "card.pushed": {
+      const { data } = event;
+      const changed = (field: string) => !data.before || field in data.before;
+      if (changed("title")) parts.push(data.title);
+      if (changed("tags")) parts.push(...(data.tags ?? []).filter((t) => !data.before?.tags?.includes(t)));
+      if (changed("attention")) {
+        const known = attentionText(data.before?.attention);
+        parts.push(...attentionText(data.attention).filter((t) => !known.includes(t)));
+      }
+      break;
+    }
+    case "card.linked": {
+      const { before, after } = event.data;
+      if (after && (!before || before.title !== after.title || before.url !== after.url)) {
+        parts.push([after.number === undefined ? "" : `#${after.number}`, after.title, after.url].filter(Boolean).join(" "));
+      }
+      break;
+    }
+    case "card.outcome":
+      parts.push(event.data.after?.note);
+      break;
+    case "card.replied":
+      parts.push(event.data.text);
+      break;
+    case "card.moved":
+      break;
+  }
+  return parts.filter(Boolean).join("\n");
+}
+
+export interface Message {
+  at?: string;
+  text: string;
+}
+
+// The typed user messages and assistant text blocks of one Claude Code transcript
+// record. Tool calls and results, thinking, images, meta records and injected
+// text are left out.
+export function transcriptMessages(record: unknown): Message[] {
+  const r = record as { type?: unknown; isMeta?: unknown; timestamp?: unknown; message?: { content?: unknown } } | null;
+  if (typeof r !== "object" || r === null || (r.type !== "user" && r.type !== "assistant") || r.isMeta === true) return [];
+  const content = r.message?.content;
+  const blocks = typeof content === "string" ? [content] : Array.isArray(content) ? content : [];
+  const at = typeof r.timestamp === "string" ? r.timestamp : undefined;
+  return blocks
+    .map((b) => (typeof b === "string" ? b : b?.type === "text" && typeof b.text === "string" ? (b.text as string) : ""))
+    .map((t) => t.replace(INJECTED, "").trim())
+    .filter(Boolean)
+    .map((text) => (at ? { at, text } : { text }));
+}

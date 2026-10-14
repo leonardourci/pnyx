@@ -1,0 +1,183 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+import type { BoardEvent } from "../src/core/model.ts";
+import { ftsQuery } from "../src/search/index.ts";
+import { chunk, eventText, redact, transcriptMessages } from "../src/search/text.ts";
+
+const BIN = join(import.meta.dirname, "..", "dist", "cli", "pnyx-axi.js");
+const TRANSCRIPT = join(import.meta.dirname, "fixtures", "transcripts", "claude-session.jsonl");
+
+test("a short message is one chunk; a long one splits on paragraphs, deterministically", () => {
+  assert.deepEqual(chunk("  one line  "), ["one line"]);
+  assert.deepEqual(chunk(" \n "), []);
+  const paragraphs = Array.from({ length: 6 }, (_, i) => `Paragraph ${i} ${"word ".repeat(50).trim()}`);
+  const chunks = chunk(paragraphs.join("\n\n"));
+  assert.ok(chunks.length > 1);
+  assert.ok(chunks.every((c) => c.length <= 768));
+  assert.deepEqual(chunk(paragraphs.join("\n\n")), chunks);
+  // Each chunk after the first starts with the previous chunk's last paragraph.
+  assert.equal(chunks[1]!.split("\n\n")[0], chunks[0]!.split("\n\n").at(-1));
+  for (const p of paragraphs) assert.ok(chunks.some((c) => c.includes(p)));
+});
+
+test("a code fence stays whole and an overlong line is cut", () => {
+  const fence = ["```", "a", "", "b", "```"].join("\n");
+  const chunks = chunk(`${"intro ".repeat(120)}\n\n${fence}`);
+  assert.ok(chunks.some((c) => c.includes(fence)));
+  const long = chunk("x".repeat(2000));
+  assert.deepEqual(long.map((c) => c.length), [768, 768, 464]);
+});
+
+test("secret-shaped strings are redacted", () => {
+  const text = [
+    "sk-abcdefghijklmnop1234",
+    "ghp_abcdefghijklmnopqrstuvwxyz",
+    "github_pat_abcdefghijklmnopqrstuvwxyz",
+    "AKIAABCDEFGHIJKLMNOP",
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcdefghijklmnop",
+    "-----BEGIN PRIVATE KEY-----\nMIIabc\n-----END PRIVATE KEY-----",
+  ].join(" ");
+  assert.equal(redact(text), Array(6).fill("[redacted]").join(" "));
+  assert.equal(redact("skip the sk- prefix"), "skip the sk- prefix");
+});
+
+test("only typed messages and assistant text are read from a transcript", () => {
+  const records = readFileSync(TRANSCRIPT, "utf8").split("\n").slice(0, -1).map((l) => JSON.parse(l) as unknown);
+  const texts = records.flatMap(transcriptMessages).map((m) => m.text);
+  assert.equal(texts[0], "Why did the deploy get reverted after the migration?");
+  assert.equal(texts[1], "The migration locked the orders table, so the deploy was rolled back.");
+  const all = texts.join("\n");
+  for (const hidden of ["toolinputword", "tooloutputword", "secretthought", "metaskillbody", "injectedreminder", "summaryrecordword"]) {
+    assert.ok(!all.includes(hidden), hidden);
+  }
+  assert.match(all, /Use the token sk-/);
+});
+
+test("an event's text is what it changed", () => {
+  const base = { v: 1, seq: 2, id: "e2", at: "2026-10-13T00:00:00Z", actor: "cli", cardId: "c1" } as const;
+  const update = {
+    ...base,
+    type: "card.pushed",
+    data: { key: "k", title: "Same title", tags: ["a", "b"], attention: [{ kind: "question", key: "q1", blocking: true, text: "Which region?" }], before: { tags: ["a"] } },
+  } as BoardEvent;
+  assert.equal(eventText(update), "b");
+  const created = { ...update, data: { ...update.data, before: undefined } } as BoardEvent;
+  assert.equal(eventText(created), "Same title\na\nb\nWhich region?");
+  const link = { url: "https://github.com/o/r/pull/7", kind: "github_pr", number: 7, title: "Fix it" } as const;
+  const linked = { ...base, type: "card.linked", data: { url: link.url, before: null, after: link } } as BoardEvent;
+  assert.equal(eventText(linked), "#7 Fix it https://github.com/o/r/pull/7");
+  const merged = { ...linked, data: { url: link.url, before: link, after: { ...link, state: "merged" } } } as BoardEvent;
+  assert.equal(eventText(merged), "");
+  const moved = { ...base, type: "card.moved", reason: "Keep in review", data: { before: null, after: "review" } } as BoardEvent;
+  assert.equal(eventText(moved), "Keep in review");
+});
+
+test("query words are quoted so punctuation is never FTS5 syntax", () => {
+  assert.equal(ftsQuery('deploy "AND" -x pull/7 deplo* :'), '"deploy" """AND""" "-x" "pull/7" "deplo"*');
+  assert.equal(ftsQuery(" - : "), "");
+});
+
+function board() {
+  // Tests never touch the real ~/.pnyx.
+  const home = mkdtempSync(join(tmpdir(), "pnyx-search-"));
+  const env = { ...process.env, PNYX_HOME: home };
+  const run = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const fails = (args: string[], code: string) =>
+    assert.throws(() => run(...args), (error: { stdout: string }) => {
+      assert.match(error.stdout, new RegExp(`^code: ${code}$`, "m"));
+      return true;
+    });
+  const push = (key: string, card: object) => {
+    const file = join(home, `${key}.json`);
+    writeFileSync(file, JSON.stringify(card));
+    run("push", "--key", key, "--file", file);
+  };
+  const transcript = join(home, "session.jsonl");
+  copyFileSync(TRANSCRIPT, transcript);
+  push("claude:s1", { title: "Orders migration", workspace: "work", agent: { provider: "claude", sessionId: "s1", transcriptPath: transcript } });
+  push("claude:s2", { title: "Checkout flake", workspace: "home" });
+  run("link", "c2", "--url", "https://github.com/o/r/pull/42", "--title", "Fix checkout retry");
+  run("outcome", "c2", "done", "--note", "rolled back release 4.2");
+  return { home, run, fails, push, transcript };
+}
+
+test("search finds titles, links, notes and transcript text, ranked one per card", () => {
+  const { run, home } = board();
+  assert.match(run("search", "status"), /^index: "none: not built yet"$/m);
+
+  const deploy = run("search", "deploy");
+  assert.match(deploy, /^mode: lexical$/m);
+  assert.match(deploy, /^results\[1\]\{card,title,kind,at,match,snippet\}:$/m);
+  assert.match(deploy, /^ {2}c1,Orders migration,transcript,"2026-10-11T09:00:00.000Z",lexical,"Why did the \[deploy\] get reverted/m);
+  assert.match(run("search", "42"), /^ {2}c2,Checkout flake,event,.*#\[42\] Fix checkout retry/m);
+  assert.match(run("search", "rolled", "back"), /^results\[2\]/m);
+  assert.match(run("search", "rolled", "back", "--kind", "event"), /^results\[1\]\S*\n {2}c2,/m);
+  assert.match(run("search", "migration", "--workspace", "home"), /^results: "none: no matches for \\"migration\\""$/m);
+  assert.match(run("search", "redacted"), /token \[\[redacted\]\] to check/);
+  for (const hidden of ["tooloutputword", "secretthought", "injectedreminder", "sk-test1234567890abcdefXYZ", "torntailword"]) {
+    assert.match(run("search", hidden), /^results: "none: /m, hidden);
+  }
+
+  const backfill = run("search", "backfill", "--card", "claude:s1", "--limit", "2");
+  assert.match(backfill, /^results\[2\]/m);
+  assert.match(backfill, /5 more matches; raise --limit/);
+
+  const json = JSON.parse(run("search", "orders", "--kind", "transcript", "--json")) as { mode: string; results: { card: string; match: string }[] };
+  assert.equal(json.mode, "lexical");
+  assert.deepEqual(json.results.map((r) => [r.card, r.match]), [["c1", "lexical"]]);
+
+  const status = run("search", "status");
+  assert.match(status, /^index: current through seq 4$/m);
+  assert.match(status, /^semantic: "planned, not built"$/m);
+  assert.match(status, /^ {2}tracked: 1$/m);
+  assert.equal(statSync(join(home, "boards", "default", "search.db")).mode & 0o777, 0o600);
+});
+
+test("each search indexes what the log and transcripts gained", () => {
+  const { run, push, transcript } = board();
+  run("search", "deploy");
+  assert.match(run("search", "status"), /^index: current through seq 4$/m);
+  push("claude:s3", { title: "Canary rollout" });
+  assert.match(run("search", "status"), /^index: "behind: through seq 4 of 5; the next search catches up"$/m);
+  // The torn last line completes, and a new message lands.
+  appendFileSync(transcript, `}}\n${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Canary is green" }] } })}\n`);
+  assert.match(run("search", "canary"), /^results\[2\]/m);
+  assert.match(run("search", "torntailword"), /^ {2}c1,/m);
+  assert.match(run("search", "canary", "--card", "c1"), /^ {2}c1,Orders migration,transcript,unknown,lexical,"\[Canary\] is green"$/m);
+});
+
+test("a replaced or shortened transcript is read again from the start", () => {
+  const { run, transcript, home } = board();
+  assert.match(run("search", "deploy"), /^results\[1\]/m);
+  const replacement = join(home, "new.jsonl");
+  writeFileSync(replacement, `${JSON.stringify({ type: "user", message: { content: "compacted summary of the outage" } })}\n`);
+  renameSync(replacement, transcript);
+  assert.match(run("search", "deploy"), /^results: "none: /m);
+  assert.match(run("search", "outage"), /^results\[1\]/m);
+  writeFileSync(transcript, "");
+  assert.match(run("search", "outage"), /^results: "none: /m);
+});
+
+test("rebuild recreates the index from the sources", () => {
+  const { run, home } = board();
+  run("search", "deploy");
+  const db = join(home, "boards", "default", "search.db");
+  writeFileSync(db, "not a database");
+  assert.match(run("search", "status"), /^index: "stale: /m);
+  assert.match(run("search", "deploy"), /^results\[1\]/m);
+  assert.match(run("search", "rebuild"), /^ {2}docs: 14$/m);
+  assert.match(run("search", "deploy"), /^results\[1\]/m);
+});
+
+test("search refuses bad input with structured errors", () => {
+  const { fails } = board();
+  fails(["search"], "VALIDATION_ERROR");
+  fails(["search", "-", "--kind", "event"], "VALIDATION_ERROR");
+  fails(["search", "x", "--kind", "title"], "VALIDATION_ERROR");
+  fails(["search", "x", "--limit", "0"], "VALIDATION_ERROR");
+  fails(["search", "x", "--card", "nope"], "NOT_FOUND");
+});

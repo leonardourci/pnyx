@@ -451,6 +451,7 @@ commands:
   link <id> --url <url> [--state open]       Add, update or --remove a link
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
+  search "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the board server in the foreground until stopped

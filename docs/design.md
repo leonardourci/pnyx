@@ -75,9 +75,11 @@ A write validates the expected revision and idempotency key, appends and flushes
 
 Replay by sequence (or by the sequence at an ingest timestamp) restores any **recorded** board state. Events carry schema and rule versions and every input fact the reducer needs; external observations are recorded rather than refetched during replay. Native transcripts stay owned by their source, so replay cannot recover source content that was never kept. Undo appends a reversing event that references the original edit, checks intervening revisions and keeps history. It can reverse pins, settings or metadata edits. A direct CLI or UI write is a manual edit whether a person or an agent made it, so it stays undoable; anything carrying a source (adapters, hooks, the spool) is an observation and is not. The actor field is attribution only. It cannot unsend a reply, change a provider permission, undo a merge or roll back a deployment.
 
-Activity is a recent view; History queries the same log for past work, decisions and evidence. Outcome events keep their event-time title, workspace, tags, source-owned completion notes, links and evidence references even after archival or card edits. Agents use filters, stable IDs, through-sequence and bounded cursor pages. Corrections append superseding events. A planned history search index (`src/search/`), derived from the log and rebuildable like the snapshot, narrows scans of old segments; no generated summaries or database are needed to start.
+Activity is a recent view; History queries the same log for past work, decisions and evidence. Outcome events keep their event-time title, workspace, tags, source-owned completion notes, links and evidence references even after archival or card edits. Agents use filters, stable IDs, through-sequence and bounded cursor pages. Corrections append superseding events.
 
-Size estimate: 100 cards × 50 changed facts a day × 800 bytes is about **4 MB a day, 120 MB a month**. A 1,000-card snapshot at 3 KB a card is about **3 MB**, plus queues and indexes. Segment history around 64 MB and page old segments without discarding them. Bound the thread cache to 10 MB, pages to 100 messages and pending browser output to 1 MB; coalesce display bursts. Targets, not measurements: service RSS under 150 MB at 1,000 cards, idle under 1% of one core, ordinary local updates under one second. SQLite waits for a measured need.
+`pnyx-axi search` runs full-text search across everything on a card: titles, links (pull request numbers and titles), event text and the session transcripts the hooks recorded. Its index, `search.db` in the board's folder, is SQLite FTS5 through Node's built-in `node:sqlite`. It is a derived index, not a store: deletable like `snapshot.json`, rebuilt from the log and the transcripts, never read as board state, and written only by the indexer in `src/search/`, which each search runs first to fold in what the log and transcripts gained. Transcripts are indexed by message, long messages split into chunks; tool calls and output, thinking and injected text stay out, and secret-shaped strings are redacted. Results are ranked by BM25 with a snippet and no generated summaries. Semantic search is planned: vectors will attach to the same indexed chunks without re-chunking.
+
+Size estimate: 100 cards × 50 changed facts a day × 800 bytes is about **4 MB a day, 120 MB a month**. A 1,000-card snapshot at 3 KB a card is about **3 MB**, plus queues and indexes. Segment history around 64 MB and page old segments without discarding them. Bound the thread cache to 10 MB, pages to 100 messages and pending browser output to 1 MB; coalesce display bursts. Targets, not measurements: service RSS under 150 MB at 1,000 cards, idle under 1% of one core, ordinary local updates under one second. Board state needs no database; the only SQLite file is the derived search index.
 
 ## Threads, replies and liveness
 
@@ -101,6 +103,8 @@ pnyx-axi watch --after <seq>
 pnyx-axi poll --consumer <id> --after <seq>
 pnyx-axi ack <action> --state applied --receipt <ref>
 pnyx-axi history --workspace <workspace> --kind outcome --before <seq> --limit 50
+pnyx-axi search "<words>" [--workspace <w>] [--kind event|transcript] [--card <id>] [--limit 20] [--json]
+pnyx-axi search status | rebuild
 pnyx-axi replay --at <seq>
 pnyx-axi undo <event-id> --if-revision <revision>
 pnyx-axi view set --font-size 16 --panel right
@@ -126,4 +130,4 @@ Workspace filters, colored tags, an orchestrator with its children, four columns
 2. **Prove the boundaries:** fixture replay and undo, sibling agents in one folder, hook-disabled Firstmate workers, silent and fast hook failure with spool recovery, watcher gap recovery, source permission state, idempotent queues and reply receipts. Benchmarks establish the latency and memory targets before they are claimed.
 3. **Optional integrations:** Paseo, Herdr and tmux location and input, and more harness hooks. Add capabilities one at a time; never substitute periodic polling for a missing push contract.
 
-Deliberately absent: model classification or board-maintenance agents, dispatch or supervision by Pnyx, permission bypass, GitHub work management, cloud hosting, terminal emulation, universal transcript scraping, inferred completion, automatic restarts and a database.
+Deliberately absent: model classification or board-maintenance agents, dispatch or supervision by Pnyx, permission bypass, GitHub work management, cloud hosting, terminal emulation, universal transcript scraping, inferred completion, automatic restarts and a database for board state (`search.db` is a derived, deletable index).
