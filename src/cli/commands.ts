@@ -912,9 +912,12 @@ function columnCommand({ args }: { args: string[] }): Output {
       }
 
       validateColumns({ columns })
+      const gone = ({ id }: { id?: Column }) =>
+        id !== undefined && !columns.some(column => column.id === id)
       const placements = Object.fromEntries(Object.values(state.cards)
-        .filter(c => c.manualColumn && !columns.some(column => column.id === c.manualColumn))
-        .map(c => [c.id, { before: c.manualColumn!, after: fallback ?? columns[0]!.id }]))
+        .filter(c => gone({ id: c.manualColumn })
+          || (c.tracking === 'declared' && gone({ id: c.column })))
+        .map(c => [c.id, { before: c.manualColumn ?? null, after: fallback ?? columns[0]!.id }]))
 
       return hydraEvent({ state, meta: m, cardId: '$board', change: { type: 'board.columns', data: { columns, before, placements, ...(fallback ? { fallback } : {}) } } })
     },
