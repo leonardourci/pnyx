@@ -106,7 +106,7 @@ pnyx-axi undo <event-id> --if-revision <revision>
 pnyx-axi view set --font-size 16 --panel right
 pnyx-axi view set --column-width needs=320 --card-height 250
 pnyx-axi view show | schema
-pnyx-axi setup hooks [--preview]
+pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
 pnyx-axi settings set sessionStartSummary true
 pnyx-axi refresh <id> --links
 pnyx-axi ping <id> | attach <id>
