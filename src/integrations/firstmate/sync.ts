@@ -2,6 +2,9 @@
 // them current with fs.watch. Every write goes through the board's single writer.
 import { watch, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
+import { boardConfig, declareTask, hydraEvent } from '../../core/hydra.ts'
+import { parseStatusLine } from './status.ts'
 import {
   decideLink,
   decideNote,
@@ -28,6 +31,8 @@ import {
 export interface SyncResult {
   tasks: number
   appended: number
+  // Set when the board's Hydra is another identity, so this home was not mirrored.
+  ignored?: string
 }
 
 const source = ({ home, objectId }: { home: string; objectId: string }): SourceRef => ({
@@ -57,14 +62,14 @@ function attention({ task }: { task: TaskObservation }): Attention[] {
     return open
   }
 
-  const carries = ({ attention: a }: { attention: Attention }) =>
+  const carries = ({ a }: { a: Attention }) =>
     a.kind === stalled.verb && a.text === (stalled.note || undefined)
 
   if (task.done) {
-    return open.filter(a => !carries({ attention: a }))
+    return open.filter(a => !carries({ a }))
   }
 
-  if (open.some(attention => carries({ attention }))) {
+  if (open.some(a => carries({ a }))) {
     return open
   }
 
@@ -90,7 +95,7 @@ function taskCard(
   return {
     title: task.title,
     tags: task.repo ? [task.repo] : [],
-    parent: home.key,
+    parent: null,
     ...(task.activity ? { activity: task.activity } : {}),
     // A pool reuses worktrees, so a closed task gives its folder up for the next one.
     folder: task.worktree && !task.done ? task.worktree : null,
@@ -146,6 +151,18 @@ export function syncHome({ board, home, at = new Date().toISOString() }: {
     board,
     fn: ({ writer }) => {
       drainSpool({ writer })
+
+      if (writer.state.configured && (writer.state.board!.hydra.kind !== 'firstmate' || writer.state.board!.hydra.home !== home)) {
+        return { tasks: 0, appended: 0, ignored: `board ${board} has Hydra ${writer.state.board!.hydra.id}, not this home` }
+      }
+
+      let configured = 0
+
+      if (!writer.state.configured) {
+        const config = boardConfig({ state: writer.state, id: board })
+        configured = apply({ writer, decision: hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data: { ...config, hydra: { id: observed.key, name: 'Hydra', kind: 'firstmate', home } } } }) })
+      }
+
       let appended = apply({
         writer,
         decision: decidePush(
@@ -161,26 +178,89 @@ export function syncHome({ board, home, at = new Date().toISOString() }: {
           },
         ),
       })
+      appended += configured
 
       for (const task of observed.tasks) {
         const key = `${observed.key}:${task.task}`
         const card = taskCard({
           home: observed,
           task,
-          kept: hookAttention({
-            state: writer.state,
-            key,
-          }),
+          kept: hookAttention({ state: writer.state, key }),
         })
         appended += apply({
           writer,
-          decision: decidePush({
-            state: writer.state,
-            key,
-            input: card,
-            meta,
-          }),
+          decision: decidePush({ state: writer.state, key, input: card, meta }),
         })
+        const mirrored = writer.state.cards[writer.state.keys[key]!]!
+
+        const record = {
+          ...task.record,
+          meta: task.record.present?.meta
+            ? task.record.meta : mirrored.mirror?.meta ?? task.record.meta,
+          status: task.record.present?.status
+            ? task.record.status : mirrored.mirror?.status ?? task.record.status,
+        }
+
+        if (!isDeepStrictEqual(mirrored.mirror, record)) {
+          appended += apply({ writer, decision: hydraEvent({ state: writer.state, meta, cardId: mirrored.id, change: { type: 'task.mirrored', data: record } }) })
+        }
+
+        const states: Record<string, string> = { working: 'working', 'needs-decision': 'needs_you', 'needs-you': 'needs_you', paused: 'paused', blocked: 'blocked', failed: 'blocked', done: 'done' }
+
+        let declared: string | undefined
+
+        for (const [index, raw] of task.record.status.split('\n').entries()) {
+          const line = parseStatusLine({ line: raw })
+          const status = states[line.verb]
+
+          if (!line.colon || !status || line.key === null) {
+            continue
+          }
+
+          const stamp = /\[at=(\d+)\]/.exec(raw)?.[1]
+          const timestamp = stamp ? new Date(Number(stamp) * 1000) : undefined
+          const id = noteId({ cardKey: key, ref: `declaration:${index}:${raw}` })
+          declared = status
+          const validTime = timestamp && Number.isFinite(timestamp.getTime())
+          const declarationMeta = {
+            ...meta,
+            id,
+            ...(validTime ? { at: timestamp.toISOString() } : {}),
+          }
+          appended += apply({
+            writer,
+            decision: declareTask({
+              state: writer.state,
+              ref: key,
+              status,
+              note: line.note,
+              meta: declarationMeta,
+              source: ADAPTER,
+              raw,
+            }),
+          })
+        }
+
+        const currentStatus = writer.state.cards[mirrored.id]!.status?.state
+        const expected = task.done ? 'done' : task.decisions.length ? 'needs_you' : declared ?? 'paused'
+
+        if (expected && expected !== currentStatus) {
+          const note = task.done ? 'Closed in Firstmate backlog'
+            : task.decisions.length ? 'Firstmate has unresolved decisions'
+              : declared ? 'Latest Firstmate status declaration' : 'No active Firstmate worker declaration'
+          appended += apply({
+            writer,
+            decision: declareTask({
+              state: writer.state,
+              ref: key,
+              status: expected,
+              note,
+              meta,
+              source: ADAPTER,
+            }),
+          })
+        }
+
         const link = prLink({ state: writer.state, key, task, at })
 
         if (link) {
@@ -325,7 +405,7 @@ export function watchHome(
     }
   }
 
-  const schedule = ({ ms = SETTLE_MS }: { ms?: number } = {}) => {
+  const schedule = ({ ms = SETTLE_MS }) => {
     if (!closed && !timer) {
       timer = setTimeout(sync, ms)
     }
@@ -342,7 +422,7 @@ export function watchHome(
       try {
         const w = watch(join(home, dir), (_type, file) => {
           if (!file || RELEVANT.test(String(file))) {
-            schedule({ })
+            schedule({})
           }
         })
         w.on('error', () => {
@@ -351,7 +431,7 @@ export function watchHome(
           }
 
           start()
-          schedule({ })
+          schedule({})
         })
         watchers.push(w)
       } catch {

@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { canonical } from '../../cli/commands.ts'
 import { basename, join } from 'node:path'
-import { BoardError, type SourceNote } from '../../core/model.ts'
+import { BoardError, type FirstmateRecord, type SourceNote } from '../../core/model.ts'
 import { latestActivity, latestLine, openDecisions, statusNotes, type OpenDecision } from './status.ts'
 
 export const ADAPTER = 'firstmate'
@@ -35,6 +35,7 @@ export interface TaskObservation {
   stalled?: { verb: string; note: string }
   // Decisions and reports from the status log, and the brief's Captain's intent.
   notes: SourceNote[]
+  record: FirstmateRecord
 }
 
 export interface HomeObservation {
@@ -49,6 +50,8 @@ interface BacklogRow {
   repo?: string
   done: boolean
   merged: boolean
+  raw: string
+  section: string
 }
 
 // Canonical path of a configured home; refuses anything that is not a Firstmate home.
@@ -148,6 +151,8 @@ export function parseBacklog({ text }: { text: string }): Map<string, BacklogRow
       ...(facts.repo ? { repo: facts.repo } : {}),
       done: section === 'done',
       merged: section === 'done' && facts.merged !== undefined,
+      raw: line,
+      section,
     })
   }
 
@@ -188,26 +193,24 @@ export function readHome({ home }: { home: string }): HomeObservation {
   const backlog = parseBacklog({ text: readRegular({ path: join(home, 'data', 'backlog.md') }) ?? '' })
   const tasks: TaskObservation[] = []
 
-  for (const file of readdirSync(state).sort()) {
-    const task = file.endsWith('.meta') ? file.slice(0, -'.meta'.length) : ''
+  const taskIds = new Set([...backlog.keys(), ...readdirSync(state).filter(f => f.endsWith('.meta'))
+    .map(f => f.slice(0, -'.meta'.length))])
 
+  for (const task of [...taskIds].sort()) {
     if (!TASK_ID.test(task)) {
       continue
     }
 
-    const metaText = readRegular({ path: join(state, file) })
-
-    if (metaText === undefined) {
-      continue
-    }
-
-    const meta = parseMeta({ text: metaText })
-    const log = readRegular({ path: join(state, `${task}.status`) }) ?? ''
+    const metaText = readRegular({ path: join(state, `${task}.meta`) })
+    const statusText = readRegular({ path: join(state, `${task}.status`) })
+    const meta = parseMeta({ text: metaText ?? '' })
+    const log = statusText ?? ''
     const row = backlog.get(task)
     const pr = meta.pr
     const activity = latestActivity({ log })
     const last = latestLine({ log })
     const worktree = canonical({ path: meta.worktree })
+    const present = { meta: metaText !== undefined, status: statusText !== undefined }
     tasks.push({
       task,
       title: row?.title ?? task,
@@ -220,6 +223,7 @@ export function readHome({ home }: { home: string }): HomeObservation {
       decisions: openDecisions({ log, kind: meta.kind || 'ship' }),
       ...(last && (last.verb === 'failed' || last.verb === 'blocked') ? { stalled: { verb: last.verb, note: last.note } } : {}),
       notes: taskNotes({ home, task, log }),
+      record: { home, task, meta, status: log, present, ...(row ? { backlog: { ...row } } : {}) },
     })
   }
 
