@@ -18,38 +18,38 @@ process.env.PNYX_SEMANTIC = 'off'
 
 const meta = { at: '2026-10-13T10:00:00Z', actor: 'test' }
 
-const event = (d: Decision): BoardEvent => {
+const event = ({ d }: { d: Decision }): BoardEvent => {
   assert.ok('event' in d)
 
   return d.event
 }
 
-const push = (state: BoardState, key: string, fields: unknown) =>
-  reduce({ state, event: event(decidePush({ state, key, input: fields, meta })) })
+const push = ({ state, key, fields }: { state: BoardState; key: string; fields: unknown }) =>
+  reduce({ state, event: event({ d: decidePush({ state, key, input: fields, meta }) }) })
 
 test('tab titles follow the view, selected card and current needs-you count', () => {
   for (const [page, label] of [['board', 'Board'], ['history', 'History'], ['settings', 'Settings']] as const) {
     assert.equal(pageTitle({ page, cards: {} }), `${label} · Pnyx`)
   }
 
-  let state = push(emptyBoard(), 'a', { title: 'Review <literal> changes', attention: [{ kind: 'question', key: 'q', blocking: true }] })
-  state = push(state, 'b', { title: 'Another decision', attention: [{ kind: 'question', key: 'q', blocking: true }] })
-  state = push(state, 'c', { title: 'Still working', activity: 'working' })
+  let state = push({ state: emptyBoard(), key: 'a', fields: { title: 'Review <literal> changes', attention: [{ kind: 'question', key: 'q', blocking: true }] } })
+  state = push({ state, key: 'b', fields: { title: 'Another decision', attention: [{ kind: 'question', key: 'q', blocking: true }] } })
+  state = push({ state, key: 'c', fields: { title: 'Still working', activity: 'working' } })
   assert.equal(pageTitle({ page: 'board', cards: state.cards }), '(2) Board · Pnyx')
   assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'c1' }), '(2) Review <literal> changes · Pnyx')
   assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'missing' }), '(2) Board · Pnyx')
   assert.equal(pageTitle({ page: 'history', cards: state.cards, selected: 'c1' }), '(2) History · Pnyx')
   assert.equal(pageTitle({ page: 'settings', cards: state.cards, selected: 'c1' }), '(2) Settings · Pnyx')
-  state = push(state, 'a', { title: 'Updated card title' })
-  state = reduce({ state, event: event(decideMove({ state, ref: 'b', column: 'done', meta })) })
+  state = push({ state, key: 'a', fields: { title: 'Updated card title' } })
+  state = reduce({ state, event: event({ d: decideMove({ state, ref: 'b', column: 'done', meta }) }) })
   assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'c1' }), '(1) Updated card title · Pnyx')
-  state = reduce({ state, event: event(decideMove({ state, ref: 'a', column: 'done', meta })) })
+  state = reduce({ state, event: event({ d: decideMove({ state, ref: 'a', column: 'done', meta }) }) })
   assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'c1' }), 'Updated card title · Pnyx')
 })
 
 test('preferences replay deterministically, guard revisions, and undo removes map overrides', () => {
-  const initial = push(emptyBoard(), 'a', { title: 'A' })
-  const edit = event(decideView({ state: initial, patch: { columnWidths: { review: 400 }, cardTraceOverrides: { c1: { tools: true } } }, meta: { ...meta, ifRevision: 0, id: 'view-1' } }))
+  const initial = push({ state: emptyBoard(), key: 'a', fields: { title: 'A' } })
+  const edit = event({ d: decideView({ state: initial, patch: { columnWidths: { review: 400 }, cardTraceOverrides: { c1: { tools: true } } }, meta: { ...meta, ifRevision: 0, id: 'view-1' } }) })
   const state = reduce({ state: initial, event: edit })
   assert.equal(initial.view, undefined)
   assert.equal(state.viewRevision, 1)
@@ -59,7 +59,7 @@ test('preferences replay deterministically, guard revisions, and undo removes ma
   assert.throws(() => decideView({ state, patch: { fontSize: 18 }, meta: { ...meta, ifRevision: 0 } }), /changed/)
   const undone = reduce({
     state,
-    event: event(decideUndo({ state, target: edit, meta: { ...meta, ifRevision: 1 } })),
+    event: event({ d: decideUndo({ state, target: edit, meta: { ...meta, ifRevision: 1 } }) }),
   })
   assert.deepEqual(viewFor({ state: undone }), viewFor({ state: initial }))
   assert.throws(() => patchView({ state, input: { fontSize: 100 } }), BoardError)
@@ -74,7 +74,7 @@ test('preferences replay deterministically, guard revisions, and undo removes ma
 })
 
 test('saved resize preferences load within readable size limits', () => {
-  const initial = push(emptyBoard(), 'a', { title: 'A' })
+  const initial = push({ state: emptyBoard(), key: 'a', fields: { title: 'A' } })
   const view = viewFor({ state: initial })
   const loaded = viewFor({
     state: {
@@ -102,25 +102,36 @@ test('saved resize preferences load within readable size limits', () => {
 })
 
 test('custom columns accept manual placement and return their cards to auto when deleted', () => {
-  let state = push(emptyBoard(), 'a', { attention: [{ kind: 'question', key: 'q', blocking: true }] })
-  state = reduce({ state, event: event(decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta })) })
+  let state = push({ state: emptyBoard(), key: 'a', fields: { attention: [{ kind: 'question', key: 'q', blocking: true }] } })
+  state = reduce({ state, event: event({ d: decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta }) }) })
   assert.equal(columnsFor({ state }).at(-1)?.title, 'Later')
   assert.equal(patchView({ state: emptyBoard(), input: { columnWidths: { 'custom:one': 400 }, customColumns: [{ id: 'custom:one', title: 'One' }] } }).columnWidths['custom:one'], 400)
-  state = reduce({ state, event: event(decideMove({ state, ref: 'a', column: 'custom:later', meta })) })
+  state = reduce({ state, event: event({ d: decideMove({ state, ref: 'a', column: 'custom:later', meta }) }) })
   assert.equal(state.cards.c1!.column, 'custom:later')
   assert.deepEqual(patchView({ state, input: { customColumns: [] } }).customColumns, [])
   assert.throws(() => decideMove({ state, ref: 'a', column: 'custom:missing', meta }), /unknown/)
-  const toAuto = event(decideMove({ state, ref: 'a', column: null, meta }))
+  const toAuto = event({ d: decideMove({ state, ref: 'a', column: null, meta }) })
   state = reduce({ state, event: toAuto })
   assert.equal(state.cards.c1!.column, 'needs_you')
   assert.equal(state.cards.c1!.attention.length, 1)
-  state = reduce({ state, event: event(decideView({ state, patch: { customColumns: [] }, meta })) })
+  state = reduce({
+    state,
+    event: event({
+      d: decideView({
+        state,
+        patch: {
+          customColumns: [],
+        },
+        meta,
+      }),
+    }),
+  })
   assert.throws(() => decideUndo({ state, target: toAuto, meta }), /unknown custom column/)
 })
 
 test('filters do not expose excluded parent details, and links/slashes stay literal', () => {
-  let state = push(emptyBoard(), 'parent', { title: 'Private parent', workspace: 'A' })
-  state = push(state, 'child', { title: 'Searchable child', workspace: 'B', parent: 'parent', tags: ['ui'] })
+  let state = push({ state: emptyBoard(), key: 'parent', fields: { title: 'Private parent', workspace: 'A' } })
+  state = push({ state, key: 'child', fields: { title: 'Searchable child', workspace: 'B', parent: 'parent', tags: ['ui'] } })
   const visible = filterCards({ state, workspace: 'B', tag: 'ui', query: 'searchable' })
   assert.equal(visible.length, 1)
   assert.equal(visibleParent({ card: visible[0]!, visible }), undefined)
@@ -141,13 +152,13 @@ test('the Find box shows every card its filter matches, then the strong meaning-
   let state = emptyBoard()
 
   for (let i = 0; i < 35; i += 1) {
-    state = push(state, `deploy-${i}`, { title: `Deploy step ${i}`, workspace: 'A' })
+    state = push({ state, key: `deploy-${i}`, fields: { title: `Deploy step ${i}`, workspace: 'A' } })
   }
 
-  state = push(state, 'ops-rotation', { title: 'Rotate keys', workspace: 'A', tags: ['infra'] })
-  state = push(state, 'cookie', { title: 'Session cookie', workspace: 'B' })
-  const id = (key: string) => Object.values(state.cards).find(c => c.key === key)!.id
-  const ids = (cards: { id: string }[]) => cards.map(c => c.id)
+  state = push({ state, key: 'ops-rotation', fields: { title: 'Rotate keys', workspace: 'A', tags: ['infra'] } })
+  state = push({ state, key: 'cookie', fields: { title: 'Session cookie', workspace: 'B' } })
+  const id = ({ key }: { key: string }) => Object.values(state.cards).find(c => c.key === key)!.id
+  const ids = ({ cards }: { cards: { id: string }[] }) => cards.map(c => c.id)
 
   // Semantic search off (no meaning-only cards): exactly the filter, every match, partial words, tags and keys.
   for (const query of ['deploy', 'dep', 'infra', 'ops-rot', 'step 3', 'nothing like it', '']) {
@@ -155,14 +166,14 @@ test('the Find box shows every card its filter matches, then the strong meaning-
   }
 
   assert.equal(findBoxCards({ state, workspace: '', tag: '', query: 'dep', meaning: [] }).length, 35)
-  assert.deepEqual(ids(findBoxCards({ state, workspace: '', tag: '', query: 'infra', meaning: [] })), [id('ops-rotation')])
-  assert.deepEqual(ids(findBoxCards({ state, workspace: '', tag: '', query: 'ops-rot', meaning: [] })), [id('ops-rotation')])
+  assert.deepEqual(ids({ cards: findBoxCards({ state, workspace: '', tag: '', query: 'infra', meaning: [] }) }), [id({ key: 'ops-rotation' })])
+  assert.deepEqual(ids({ cards: findBoxCards({ state, workspace: '', tag: '', query: 'ops-rot', meaning: [] }) }), [id({ key: 'ops-rotation' })])
 
   // Meaning-only cards come after, once each, within the workspace and tag filters.
-  const found = findBoxCards({ state, workspace: '', tag: '', query: 'deploy', meaning: [id('cookie'), id('deploy-0'), 'gone'] })
-  assert.deepEqual(ids(found), [...ids(filterCards({ state, workspace: '', tag: '', query: 'deploy' })), id('cookie')])
-  assert.equal(findBoxCards({ state, workspace: 'A', tag: '', query: 'deploy', meaning: [id('cookie')] }).length, 35)
-  assert.deepEqual(ids(findBoxCards({ state, workspace: '', tag: 'infra', query: 'deploy', meaning: [id('cookie'), id('ops-rotation')] })), [id('ops-rotation')])
+  const found = findBoxCards({ state, workspace: '', tag: '', query: 'deploy', meaning: [id({ key: 'cookie' }), id({ key: 'deploy-0' }), 'gone'] })
+  assert.deepEqual(ids({ cards: found }), [...ids({ cards: filterCards({ state, workspace: '', tag: '', query: 'deploy' }) }), id({ key: 'cookie' })])
+  assert.equal(findBoxCards({ state, workspace: 'A', tag: '', query: 'deploy', meaning: [id({ key: 'cookie' })] }).length, 35)
+  assert.deepEqual(ids({ cards: findBoxCards({ state, workspace: '', tag: 'infra', query: 'deploy', meaning: [id({ key: 'cookie' }), id({ key: 'ops-rotation' })] }) }), [id({ key: 'ops-rotation' })])
 })
 
 test('thread reader ignores partial records, pages old messages, separates traces and reports unavailable capabilities', () => {
@@ -170,7 +181,7 @@ test('thread reader ignores partial records, pages old messages, separates trace
   const path = join(home, 'session.jsonl')
   const records = Array.from({ length: 90 }, (_, i) => JSON.stringify({ type: 'assistant', message: { content: `message ${i}` } }))
   writeFileSync(path, records.join('\n') + '\n{"partial":')
-  const state = push(emptyBoard(), 'a', { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } })
+  const state = push({ state: emptyBoard(), key: 'a', fields: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
   const page = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
   assert.equal(page.entries.length, 60); assert.equal(page.entries.at(-1)?.text, 'message 89'); assert.ok(page.older)
   const older = readThread({ board: 'default', state, card: state.cards.c1!, homes: [], before: page.older })
@@ -188,10 +199,10 @@ test('long transcript messages and reply history page without losing text or dup
   const state = withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
-      w.append({ event: event(decidePush({ state: w.state, key: 'a', input: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } }, meta })) })
+      w.append({ event: event({ d: decidePush({ state: w.state, key: 'a', input: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } }, meta }) }) })
 
       for (let i = 0; i < 90; i++) {
-        w.append({ event: event(decideReply({ state: w.state, ref: 'a', data: { reply: `r${i}`, state: 'queued', route: 'fixture', text: `reply ${i}` }, meta })) })
+        w.append({ event: event({ d: decideReply({ state: w.state, ref: 'a', data: { reply: `r${i}`, state: 'queued', route: 'fixture', text: `reply ${i}` }, meta }) }) })
       }
 
       return w.state
@@ -215,7 +226,7 @@ test('long transcript messages and reply history page without losing text or dup
   const later = withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
-      w.append({ event: event(decideReply({ state: w.state, ref: 'a', data: { reply: 'r90', state: 'queued', route: 'fixture', text: 'reply 90' }, meta })) })
+      w.append({ event: event({ d: decideReply({ state: w.state, ref: 'a', data: { reply: 'r90', state: 'queued', route: 'fixture', text: 'reply 90' }, meta }) }) })
 
       return w.state
     },
@@ -234,34 +245,34 @@ test('a tab reloads only when it reconnects to a server serving another build', 
 })
 
 test("a card's last message comes from the transcript tail, without tool calls, thinking, injected or torn text", () => {
-  const fixture = (name: string) => join(import.meta.dirname, 'fixtures/transcripts', name)
-  const claude = latestMessage({ path: fixture('claude-session.jsonl') }).message!
+  const fixture = ({ name }: { name: string }) => join(import.meta.dirname, 'fixtures/transcripts', name)
+  const claude = latestMessage({ path: fixture({ name: 'claude-session.jsonl' }) }).message!
   // The summary record and the torn last line are skipped; long text is cut to two card lines.
   assert.equal(claude.role, 'assistant')
   assert.equal(claude.at, '2026-10-11T09:02:00.000Z')
   assert.match(claude.text, /^Paragraph 0 about the orders table backfill\. Rows are copied/)
   assert.ok(claude.text.length <= 280 && claude.text.endsWith('…'))
-  assert.deepEqual(latestMessage({ path: fixture('codex-session.jsonl') }).message, { role: 'assistant', text: 'The export query scans every invoice without an index.', at: '2026-10-12T10:00:07.000Z' })
+  assert.deepEqual(latestMessage({ path: fixture({ name: 'codex-session.jsonl' }) }).message, { role: 'assistant', text: 'The export query scans every invoice without an index.', at: '2026-10-12T10:00:07.000Z' })
   // A newer Codex user message wins over the reply, its injected context stripped, even
   // when tool output after it overflows the first read window.
   const dir = mkdtempSync(join(tmpdir(), 'pnyx-latest-')), path = join(dir, 'codex.jsonl')
-  const line = (payload: unknown) => JSON.stringify({ timestamp: '2026-10-12T10:01:00.000Z', type: 'response_item', payload }) + '\n'
-  writeFileSync(path, readFileSync(fixture('codex-session.jsonl'), 'utf8') + line({ type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>\n<cwd>/work</cwd>\n</environment_context>Now add the index.' }] }) + line({ type: 'function_call_output', call_id: 'c2', output: 'x'.repeat(200_000) }))
+  const line = ({ payload }: { payload: unknown }) => JSON.stringify({ timestamp: '2026-10-12T10:01:00.000Z', type: 'response_item', payload }) + '\n'
+  writeFileSync(path, readFileSync(fixture({ name: 'codex-session.jsonl' }), 'utf8') + line({ payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>\n<cwd>/work</cwd>\n</environment_context>Now add the index.' }] } }) + line({ payload: { type: 'function_call_output', call_id: 'c2', output: 'x'.repeat(200_000) } }))
   assert.deepEqual(latestMessage({ path }).message, { role: 'user', text: 'Now add the index.', at: '2026-10-12T10:01:00.000Z' })
   assert.equal(latestMessage({ path: join(dir, 'missing.jsonl') }).message, null)
-  writeFileSync(path, line({ type: 'reasoning', summary: [] }))
+  writeFileSync(path, line({ payload: { type: 'reasoning', summary: [] } }))
   assert.equal(latestMessage({ path }).message, null)
 })
 
 test("a card's last message is read again from only what its transcript gained", () => {
   const dir = mkdtempSync(join(tmpdir(), 'pnyx-latest-')), path = join(dir, 'claude.jsonl')
-  const line = (type: string, text: string, at: string) => JSON.stringify({ type, timestamp: at, message: { content: [{ type: 'text', text }] } }) + '\n'
+  const line = ({ type, text, at }: { type: string; text: string; at: string }) => JSON.stringify({ type, timestamp: at, message: { content: [{ type: 'text', text }] } }) + '\n'
   const tool = JSON.stringify({ type: 'assistant', timestamp: '2026-10-12T10:02:00.000Z', message: { content: [{ type: 'tool_use', name: 'Bash', input: {} }] } }) + '\n'
-  writeFileSync(path, line('assistant', 'First reply.', '2026-10-12T10:00:00.000Z'))
+  writeFileSync(path, line({ type: 'assistant', text: 'First reply.', at: '2026-10-12T10:00:00.000Z' }))
   const first = latestMessage({ path })
   assert.equal(first.message?.text, 'First reply.')
   // Appended tool calls and a torn line hold no message: the previous one stays, and the torn line is read once complete.
-  const torn = line('user', 'Ship it.', '2026-10-12T10:03:00.000Z')
+  const torn = line({ type: 'user', text: 'Ship it.', at: '2026-10-12T10:03:00.000Z' })
   appendFileSync(path, tool + torn.slice(0, 20))
   const second = latestMessage({ path, prev: first })
   assert.equal(second.message?.text, 'First reply.')
@@ -272,7 +283,7 @@ test("a card's last message is read again from only what its transcript gained",
   const third = latestMessage({ path, prev: second })
   assert.equal(third.message?.text, 'Ship it.')
   // A file replaced or cut short is read back from its end.
-  writeFileSync(path, line('assistant', 'Fresh.', '2026-10-12T11:00:00.000Z'))
+  writeFileSync(path, line({ type: 'assistant', text: 'Fresh.', at: '2026-10-12T11:00:00.000Z' }))
   assert.equal(latestMessage({ path, prev: third }).message?.text, 'Fresh.')
 })
 
@@ -280,33 +291,42 @@ test('deleting a populated column is atomic, replayable, undoable and guarded', 
   const events: BoardEvent[] = []
   let state = emptyBoard()
 
-  const apply = (d: Decision) => {
-    const e = event(d); events.push(e); state = reduce({ state, event: e })
+  const apply = ({ d }: { d: Decision }) => {
+    const e = event({ d }); events.push(e); state = reduce({ state, event: e })
 
     return e
   }
 
-  apply(decidePush({ state, key: 'question', input: { attention: [{ kind: 'question', key: 'q', blocking: true }] }, meta }))
-  apply(decidePush({ state, key: 'worker', input: {}, meta }))
-  apply(decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }], columnWidths: { 'custom:later': 400 } }, meta }))
-  apply(decideMove({ state, ref: 'question', column: 'custom:later', meta }))
-  apply(decideMove({ state, ref: 'worker', column: 'custom:later', meta }))
+  apply({ d: decidePush({ state, key: 'question', input: { attention: [{ kind: 'question', key: 'q', blocking: true }] }, meta }) })
+  apply({ d: decidePush({ state, key: 'worker', input: {}, meta }) })
+  apply({ d: decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }], columnWidths: { 'custom:later': 400 } }, meta }) })
+  apply({ d: decideMove({ state, ref: 'question', column: 'custom:later', meta }) })
+  apply({ d: decideMove({ state, ref: 'worker', column: 'custom:later', meta }) })
   const before = structuredClone(state)
-  const deletion = apply(decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }))
+  const deletion = apply({ d: decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }) })
   assert.equal(state.cards.c1!.column, 'needs_you')
   assert.equal(state.cards.c2!.column, 'workers_on_it')
   assert.equal(state.cards.c1!.manualColumn, undefined)
   assert.equal(viewFor({ state }).columnWidths['custom:later'], undefined)
   assert.deepEqual(replay({ state: emptyBoard(), events }), state)
   assert.deepEqual(decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }), { skipped: 'duplicate' })
-  const later = reduce({ state, event: event(decideMove({ state, ref: 'worker', column: 'done', meta })) })
+  const later = reduce({ state, event: event({ d: decideMove({ state, ref: 'worker', column: 'done', meta }) }) })
   assert.throws(() => decideUndo({ state: later, target: deletion, meta }), /moved since/)
-  const undo = apply(decideUndo({ state, target: deletion, meta: { ...meta, ifRevision: 2 } }))
+  const undo = apply({
+    d: decideUndo({
+      state,
+      target: deletion,
+      meta: {
+        ...meta,
+        ifRevision: 2,
+      },
+    }),
+  })
   assert.deepEqual(viewFor({ state }), viewFor({ state: before }))
   assert.equal(state.cards.c1!.manualColumn, 'custom:later')
   assert.equal(state.cards.c2!.column, 'custom:later')
   assert.deepEqual(state.cards.c1!.attention, before.cards.c1!.attention)
-  const redo = apply(decideUndo({ state, target: undo, meta }))
+  const redo = apply({ d: decideUndo({ state, target: undo, meta }) })
   assert.deepEqual(redo.type === 'board.view' && redo.data.placements?.map(p => p.cardId), ['c1', 'c2'])
   assert.equal(state.cards.c1!.column, 'needs_you')
   assert.deepEqual(replay({ state: emptyBoard(), events }), state)
@@ -324,10 +344,10 @@ test('themes validate, default to System on older boards, and undo', () => {
   }
 
   assert.throws(() => patchView({ state: emptyBoard(), input: { theme: 'sepia' } }), /invalid/)
-  const change = event(decideView({ state: emptyBoard(), patch: { theme: 'light' }, meta }))
+  const change = event({ d: decideView({ state: emptyBoard(), patch: { theme: 'light' }, meta }) })
   const state = reduce({ state: emptyBoard(), event: change })
   assert.equal(viewFor({ state }).theme, 'light')
-  assert.equal(viewFor({ state: reduce({ state, event: event(decideUndo({ state, target: change, meta })) }) }).theme, 'system')
+  assert.equal(viewFor({ state: reduce({ state, event: event({ d: decideUndo({ state, target: change, meta }) }) }) }).theme, 'system')
 })
 
 test('the notes header keeps the newest distinct notes and skips text already in the chat', () => {
@@ -341,30 +361,30 @@ test('the notes header keeps the newest distinct notes and skips text already in
 
 test('a live joined session drives the running indicator; Firstmate status shows once it ends', () => {
   const firstmate = { activity: 'working: task status', source: { adapter: 'firstmate', objectId: 'task' } }
-  let state = push(emptyBoard(), 'task', { title: 'Joined task', ...firstmate })
+  let state = push({ state: emptyBoard(), key: 'task', fields: { title: 'Joined task', ...firstmate } })
   assert.equal(agentActivity({ card: state.cards.c1! }), undefined)
 
   for (const [hook, expected] of [['UserPromptSubmit', 'working'], ['PreToolUse', 'working'], ['PostToolUseFailure', 'working'], ['Stop', 'idle']] as const) {
     const [observed] = observe({ envelope: { v: 1, id: hook, at: meta.at, harness: 'claude', event: hook, payload: { session_id: 'fixture', tool_name: 'Read' } } })
     assert.ok(observed)
-    state = push(state, 'task', observed.card)
+    state = push({ state, key: 'task', fields: observed.card })
     assert.equal(agentActivity({ card: state.cards.c1! }), expected)
-    state = push(state, 'task', firstmate)
+    state = push({ state, key: 'task', fields: firstmate })
     assert.equal(state.cards.c1!.activity, 'working: task status')
     assert.equal(agentActivity({ card: state.cards.c1! }), expected)
   }
 
   const [ended] = observe({ envelope: { v: 1, id: 'end', at: meta.at, harness: 'claude', event: 'SessionEnd', payload: { session_id: 'fixture' } } })
   assert.ok(ended)
-  state = push(state, 'task', ended.card)
+  state = push({ state, key: 'task', fields: ended.card })
   assert.equal(shownActivity({ card: state.cards.c1! }), 'ended')
-  state = push(state, 'task', { ...firstmate, activity: 'working: new step' })
+  state = push({ state, key: 'task', fields: { ...firstmate, activity: 'working: new step' } })
   assert.equal(shownActivity({ card: state.cards.c1! }), 'working: new step')
   assert.equal(agentActivity({ card: state.cards.c1! }), 'ended')
 })
 
 test('in-turn tool failures, denials and task updates count as working', () => {
   for (const activity of ['Bash failed', 'Edit denied', 'task: write tests', 'task done: write tests']) {
-    assert.equal(agentActivity({ card: { ...push(emptyBoard(), 'k', { agent: { provider: 'claude', sessionId: 's' } }).cards.c1!, activity } }), 'working')
+    assert.equal(agentActivity({ card: { ...push({ state: emptyBoard(), key: 'k', fields: { agent: { provider: 'claude', sessionId: 's' } } }).cards.c1!, activity } }), 'working')
   }
 })
