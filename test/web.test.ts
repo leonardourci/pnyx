@@ -7,7 +7,7 @@ import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decis
 import { emptyBoard, reduce } from '../src/core/reducer.ts'
 import { BoardError, type BoardEvent, type BoardState } from '../src/core/model.ts'
 import { patchView, viewFor } from '../src/core/view.ts'
-import { columnsFor, filterCards, findBoxCards, safeLink, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
+import { columnsFor, filterCards, findBoxCards, safeLink, shouldReload, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { readThread, recordEntries } from '../src/thread/read.ts'
 
@@ -155,4 +155,14 @@ test('long transcript messages and reply history page without losing text or dup
     return w.state
   })
   assert.equal(readThread('default', later, later.cards.c1!, []).entries.at(-1)?.text, 'reply 90')
+})
+
+test('a tab reloads only when it reconnects to a server serving another build', () => {
+  assert.equal(shouldReload('aaa111', 'bbb222'), true)
+  assert.equal(shouldReload('aaa111', 'aaa111'), false)
+  // The Vite dev page has no build; hot module replacement updates it instead.
+  assert.equal(shouldReload(undefined, 'bbb222'), false)
+  assert.equal(shouldReload('', 'bbb222'), false)
+  // A server with nothing built cannot name a newer page.
+  assert.equal(shouldReload('aaa111', ''), false)
 })
