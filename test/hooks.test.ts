@@ -458,8 +458,11 @@ test('an ended session moves to Done, an open question still needs you, and a re
   assert.match(card(), /^ {2}column: workers_on_it$/m, 'a subagent ending leaves its parent at work')
 
   send('SessionEnd', 'claude-session-end')
-  run('outcome', `claude:${SESSION}`, 'failed')
+  run('outcome', `claude:${SESSION}`, 'failed', '--event-id', 'manual-failed')
   assert.match(card(), /^ {2}outcome:\n {4}state: failed$/m, "a person's outcome replaces an observed end")
+  run('undo', 'manual-failed')
+  assert.match(card(), /^ {2}outcome:\n {4}state: ended\n {4}source: hooks$/m, "undoing a person's outcome restores the observed end")
+  run('outcome', `claude:${SESSION}`, 'failed')
   send('UserPromptSubmit', 'claude-user-prompt')
   assert.match(card(), /^ {2}outcome:\n {4}state: failed$/m, "a later hook leaves a person's outcome alone")
 })
