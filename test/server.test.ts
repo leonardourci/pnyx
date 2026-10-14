@@ -79,16 +79,21 @@ async function tab(query = '') {
     }
   })
   await once(ws, 'open')
+  const next = () =>
+    queue.length > 0
+      ? Promise.resolve(queue.shift()!)
+      : new Promise<ServerMessage>((resolve, reject) => {
+        waiting.push(resolve)
+        setTimeout(() => reject(new Error('timed out waiting for a message')), TIMEOUT_MS).unref()
+      })
+  // Every connection opens with the server's build.
+  const hello = await next()
+  assert.equal(hello.type, 'hello')
 
   return {
     ws,
-    next: () =>
-      queue.length > 0
-        ? Promise.resolve(queue.shift()!)
-        : new Promise<ServerMessage>((resolve, reject) => {
-          waiting.push(resolve)
-          setTimeout(() => reject(new Error('timed out waiting for a message')), TIMEOUT_MS).unref()
-        }),
+    hello,
+    next,
     command(id: string, name: string, args: string[]) {
       ws.send(JSON.stringify({ type: 'command', id, name, args }))
     },
@@ -314,7 +319,11 @@ test('the board page carries the token only for its own host and origin; /health
 
   const health = await http('GET', '/health')
   assert.equal(health.status, 200)
-  assert.deepEqual(JSON.parse(health.text), { board: 'default', pid: process.pid })
+  const { build } = JSON.parse(health.text) as { build: string }
+  assert.deepEqual(JSON.parse(health.text), { board: 'default', pid: process.pid, build })
+  assert.match(build, /^[0-9a-f]{12}$/)
+  assert.ok((await http('GET', '/')).text.includes(`<meta name="pnyx-build" content="${build}" />`))
+  assert.deepEqual((await tab()).hello, { type: 'hello', build })
   assert.equal((await http('GET', '/api/commands/move')).status, 200)
   assert.equal((await http('POST', '/api/commands/move')).status, 405)
 })

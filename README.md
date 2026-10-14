@@ -30,7 +30,7 @@ pnyx-axi serve                              # board only
 pnyx-axi serve --home ~/path/to/firstmate   # also shows and replies to Firstmate tasks
 ```
 
-Open the `url` it prints. `pnyx-axi` with no arguments shows the board summary and the running server's address. Stop the server with Ctrl+C or `pnyx-axi stop`.
+Open the `url` it prints. `pnyx-axi` with no arguments shows the board summary and the running server's address. Stop the server with Ctrl+C or `pnyx-axi stop`. When the server restarts on a new build, an open board reloads itself and keeps the open card, unsent drafts and scroll position.
 
 To keep it running in the background:
 
@@ -94,3 +94,9 @@ pnpm remove -g pnyx-axi
 ## Development
 
 See [AGENTS.md](AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. `pnpm test:web` runs a real browser smoke test through `chrome-devtools-axi` with a temporary `PNYX_HOME`, a random port, synthetic transcripts and a fake Firstmate send script; set `PNYX_EVIDENCE_DIR` to a folder outside the repository to keep its screenshots. `pnpm test:keyboard` exercises navigation, rebinding, hints and slash insertion with real browser keys. `pnpm test:semantic` checks semantic search on the real models; set `PNYX_GOLDEN_MODELS` to a folder already holding them to skip the download. `pnpm run web:dev` serves the board through Vite.
+
+```sh
+pnpm dev
+```
+
+`pnpm dev` runs the board server for a separate `dev` board under `node --watch`, which restarts it when server code changes, and the Vite dev server, which updates the web board in place as you edit `web/`. Open the URL Vite prints; it forwards the board's WebSocket to the dev server on port 4319 (set `PNYX_DEV_PORT` to change it).
