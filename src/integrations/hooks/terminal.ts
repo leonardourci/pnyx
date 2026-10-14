@@ -2,8 +2,10 @@
 // CLI: tmux, Herdr or Paseo, or AppleScript for iTerm2 and Terminal. Before
 // anything is typed, the session's process must still own its TTY, so text never
 // lands in a shell the agent left behind. The text is typed once, then submitted
-// with Enter after a short settle; nothing is retried or retyped.
+// with Enter after a short settle; nothing is retried or retyped. A setting change
+// may instead press one key, such as Shift+Tab, where the host can.
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
+import type { Key } from '../../core/control.ts'
 import type { ReplyState } from '../../core/model.ts'
 import type { TerminalRoute } from '../../core/route.ts'
 
@@ -13,6 +15,10 @@ const DETAIL_MAX = 300
 // pressed before it settles can pick an entry instead of submitting.
 const SETTLE_MS = 400
 const POPUP_SETTLE_MS = 1500
+// The bytes a terminal sends for each key, for hosts that type input literally, and
+// tmux's names for them.
+const SEQUENCE: Record<Key, string> = { 'shift-tab': '\u001b[Z', 'shift-up': '\u001b[1;2A', 'shift-down': '\u001b[1;2B' }
+const TMUX_KEY: Record<Key | 'enter', string> = { 'enter': 'Enter', 'shift-tab': 'BTab', 'shift-up': 'S-Up', 'shift-down': 'S-Down' }
 // AppleScript error number for "no such session", raised before anything is typed.
 const NOT_FOUND = 4404
 
@@ -133,9 +139,9 @@ function typeThenEnter(
     : { state: 'delivered' }
 }
 
-function tmux({ route, text }: { route: Extract<TerminalRoute, { kind: 'tmux' }>; text: string }): Delivery {
-  const sock = ['-S', route.socket]
-  const shown = run({ command: 'tmux', args: [...sock, 'display-message', '-p', '-t', route.pane, '#{pane_tty}'] })
+// The pane still shows the session's TTY.
+function checkPane({ route }: { route: Extract<TerminalRoute, { kind: 'tmux' }> }): Delivery | undefined {
+  const shown = run({ command: 'tmux', args: ['-S', route.socket, 'display-message', '-p', '-t', route.pane, '#{pane_tty}'] })
   const missing = outcome({ result: shown, command: 'tmux', typed: false })
 
   if (missing) {
@@ -144,6 +150,17 @@ function tmux({ route, text }: { route: Extract<TerminalRoute, { kind: 'tmux' }>
 
   if ((shown.stdout ?? '').trim() !== route.tty) {
     return { state: 'failed', detail: `tmux pane ${route.pane} no longer shows ${route.tty}; nothing was typed` }
+  }
+
+  return undefined
+}
+
+function tmux({ route, text }: { route: Extract<TerminalRoute, { kind: 'tmux' }>; text: string }): Delivery {
+  const sock = ['-S', route.socket]
+  const moved = checkPane({ route })
+
+  if (moved) {
+    return moved
   }
 
   // paste-buffer -p brackets the paste only when the program asked for it.
@@ -203,6 +220,23 @@ const SCRIPTS = {
   end tell
   error "no iTerm2 session on " & theTty number ${NOT_FOUND}
 end run`,
+  // Writes the key's bytes without a newline.
+  'iterm2-key': `on run argv
+  set {theTty, theText} to argv
+  tell application "iTerm2"
+    repeat with w in windows
+      repeat with t in tabs of w
+        repeat with s in sessions of t
+          if tty of s is theTty then
+            tell s to write text theText newline false
+            return
+          end if
+        end repeat
+      end repeat
+    end repeat
+  end tell
+  error "no iTerm2 session on " & theTty number ${NOT_FOUND}
+end run`,
   'terminal-app': `on run argv
   set {theTty, theText, settle} to argv
   tell application "Terminal"
@@ -219,8 +253,14 @@ end run`,
 end run`,
 }
 
-function appleScript({ route, text }: { route: Extract<TerminalRoute, { kind: 'iterm2' | 'terminal-app' }>; text: string }): Delivery {
-  const result = run({ command: 'osascript', args: ['-e', SCRIPTS[route.kind], route.tty, pasted({ text }), String(settle({ text }) / 1000)] })
+function appleScript({ route, text, key }: {
+  route: Extract<TerminalRoute, { kind: 'iterm2' | 'terminal-app' }>
+  text: string
+  key?: Key
+}): Delivery {
+  const result = key
+    ? run({ command: 'osascript', args: ['-e', SCRIPTS['iterm2-key'], route.tty, SEQUENCE[key]] })
+    : run({ command: 'osascript', args: ['-e', SCRIPTS[route.kind], route.tty, pasted({ text }), String(settle({ text }) / 1000)] })
   const failed = outcome({ result, command: 'osascript', typed: true })
 
   if (!failed) {
@@ -256,5 +296,40 @@ export function typeInto({ route, text }: { route: TerminalRoute; text: string }
     case 'paseo': return paseo({ route, text: body })
     case 'herdr': return herdr({ route, text: body })
     default: return appleScript({ route, text: body })
+  }
+}
+
+// Presses one key in the session's terminal: Enter on every host, other keys where
+// the host can send them (core/control.ts says which).
+export function pressKey({ route, key }: { route: TerminalRoute; key: Key | 'enter' }): Delivery {
+  const gone = checkProcess({ route })
+
+  if (gone) {
+    return gone
+  }
+
+  switch (route.kind) {
+    case 'tmux': {
+      const moved = checkPane({ route })
+
+      return moved ?? outcome({ result: run({ command: 'tmux', args: ['-S', route.socket, 'send-keys', '-t', route.pane, TMUX_KEY[key]] }), command: 'tmux', typed: false }) ?? { state: 'delivered' }
+    }
+    case 'paseo': {
+      const home = route.home ? ['--home', route.home] : []
+      const keys = key === 'enter' ? ['Enter'] : ['-l', '--', SEQUENCE[key]]
+
+      return outcome({ result: run({ command: 'paseo', args: ['terminal', 'send-keys', ...home, route.terminal, ...keys] }), command: 'paseo', typed: false }) ?? { state: 'delivered' }
+    }
+    case 'herdr':
+      if (key !== 'enter') {
+        return { state: 'failed', detail: 'Pnyx does not press keys other than Enter in Herdr; nothing was sent' }
+      }
+
+      return outcome({ result: run({ command: 'herdr', args: ['pane', 'send-keys', route.pane, 'enter', '--session', route.session], options: { env: { ...process.env, HERDR_SESSION: route.session } } }), command: 'herdr', typed: false }) ?? { state: 'delivered' }
+    case 'iterm2':
+      return key === 'enter' ? appleScript({ route, text: '' }) : appleScript({ route, text: '', key })
+    case 'terminal-app':
+      // do script with no text types only its Return.
+      return key === 'enter' ? appleScript({ route, text: '' }) : { state: 'failed', detail: 'Terminal types whole lines, so Pnyx cannot press keys there; nothing was sent' }
   }
 }

@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 import type { Card } from '../src/core/model.ts'
+import { confirms, findOption, inputReason } from '../src/core/control.ts'
 import { replyRoute, terminalFacts } from '../src/core/route.ts'
 import { loadBoard } from '../src/store/board-store.ts'
 
@@ -204,7 +205,7 @@ test('a card with no route says why', () => {
 
 const execFileAsync = promisify(execFile)
 
-test('the hook records the terminal the session runs in, past wrapper shells', async () => {
+test('the hook records the terminal the session runs in, past wrapper shells, and none for a headless run', async () => {
   const { root, env } = hosts()
   const home = join(root, 'pnyx')
   const script = join(home, 'hooks', 'pnyx-hook.sh')
@@ -242,4 +243,157 @@ test('the hook records the terminal the session runs in, past wrapper shells', a
   process.env.PNYX_HOME = home
   const { state } = loadBoard({ board: 'default' })
   assert.deepEqual(state.cards[state.keys['claude:s1']!]!.terminal, line.terminal)
+
+  // A headless harness that session started records no tty or pid of its own.
+  writeFileSync(join(env.STUB_DIR, 'ps.out.3'), '888 ?? zsh\n')
+  writeFileSync(join(env.STUB_DIR, 'ps.out.4'), '777 ?? /usr/local/bin/claude\n')
+  writeFileSync(join(env.STUB_DIR, 'ps.out.5'), '1 ttys042 /usr/local/bin/claude\n')
+  const headless = execFileAsync('/bin/sh', [script, 'claude', 'SessionStart'], { encoding: 'utf8', env: hostEnv })
+  headless.child.stdin!.end('{"session_id":"s2","cwd":"/work"}')
+  await headless
+  const [file] = readdirSync(spool).filter(f => f.endsWith('.json'))
+  assert.deepEqual(JSON.parse(readFileSync(join(spool, file!), 'utf8')).terminal, {
+    program: 'tmux',
+    tmux: '/tmp/tmux-501/default',
+    tmuxPane: '%5',
+    paseoTerminal: 'term-1',
+  })
+
+  // Any other event records only the Paseo terminal, and leaves the card's facts alone.
+  const tool = execFileAsync('/bin/sh', [script, 'claude', 'PreToolUse'], { encoding: 'utf8', env: hostEnv })
+  tool.child.stdin!.end('{"session_id":"s1","cwd":"/work","tool_name":"Bash","tool_input":{"command":"ls"}}')
+  await tool
+  const lines = readdirSync(spool).filter(f => f.endsWith('.json'))
+    .map(f => JSON.parse(readFileSync(join(spool, f), 'utf8')) as { event: string; terminal?: object })
+  assert.deepEqual(lines.find(l => l.event === 'PreToolUse')?.terminal, { paseoTerminal: 'term-1' })
+  execFileSync(process.execPath, [BIN, 'harvest'], { env: { ...env, PNYX_HOME: home }, encoding: 'utf8' })
+  const after = loadBoard({ board: 'default' }).state
+  assert.deepEqual(after.cards[after.keys['claude:s1']!]!.terminal, line.terminal)
+})
+
+test('agent types a Claude Code command, answers its confirmation and presses keys where the host can', () => {
+  const { run, calls, set, session, fails } = hosts()
+  session({ key: 's1', terminal: { program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' } })
+  set({ file: 'tmux.out', text: `${TTY}\n` })
+  assert.match(run({ args: ['agent', 's1'] }), /harness: claude-code[\s\S]*route: "terminal:tmux"[\s\S]*mode,unknown,next,yes/)
+
+  const effort = run({ args: ['agent', 's1', 'effort', 'high', '--idempotency-key', 'e1'] })
+  assert.match(effort, /sent: delivered/)
+  // Not reported back yet: Claude Code reports effort on its next turn.
+  assert.match(effort, /confirmed: false[\s\S]*next hook or turn/)
+  const keys = calls().map(c => c.split('\n')[0])
+  assert.deepEqual(keys, ['call=ps', 'call=tmux', 'call=tmux', 'call=tmux', 'call=tmux', 'call=ps', 'call=tmux', 'call=tmux'])
+  assert.match(calls()[2]!, /stdin=\/effort high/)
+  // The command is submitted, then one more Enter answers a confirmation if one shows.
+  assert.match(calls()[4]!, /arg=send-keys\narg=-t\narg=%3\narg=Enter\n$/)
+  assert.match(calls()[7]!, /arg=send-keys\narg=-t\narg=%3\narg=Enter\n$/)
+  assert.match(run({ args: ['history', '--card', 's1', '--kind', 'replied'] }), /reply e1 delivered/)
+
+  assert.match(run({ args: ['agent', 's1', 'mode', 'next'] }), /sent: delivered/)
+  assert.match(calls().at(-1)!, /arg=send-keys\narg=-t\narg=%3\narg=BTab\n$/)
+  assert.equal(calls().filter(c => c.includes('load-buffer')).length, 1)
+
+  fails({ args: ['agent', 's1', 'model', 'gpt-6'], code: 'VALIDATION_ERROR' })
+  fails({ args: ['agent', 's1', 'collaboration', 'toggle'], code: 'VALIDATION_ERROR' })
+  fails({ args: ['agent', 's1', 'model'], code: 'VALIDATION_ERROR' })
+})
+
+test('agent reads a Codex change back from the transcript at once', () => {
+  const { root, run, calls, set, fails } = hosts()
+  const transcript = join(root, 'rollout.jsonl')
+  writeFileSync(transcript, `${JSON.stringify({ type: 'session_meta', payload: { originator: 'codex_cli_rs' } })}\n`)
+  const file = join(root, 'codex.json')
+  writeFileSync(file, JSON.stringify({
+    agent: { provider: 'codex', sessionId: 'x1', transcriptPath: transcript },
+    settings: { effort: 'medium' },
+    terminal: { tty: TTY, pid: '4242', program: 'kitty', paseoTerminal: 'term-1' },
+  }))
+  run({ args: ['push', '--key', 'x1', '--file', file] })
+  fails({ args: ['agent', 'x1', 'model', 'gpt-6.1-sol'], code: 'VALIDATION_ERROR' })
+  fails({ args: ['agent', 'x1', 'approval', 'on-request'], code: 'VALIDATION_ERROR' })
+  assert.match(run({ args: ['agent', 'x1'] }), /harness: codex[\s\S]*picks its model and approval mode only[\s\S]*effort,medium,lower raise,yes/)
+
+  // The fake host stands in for Codex: the change lands in its rollout as it is sent.
+  const applied = { timestamp: '2026-10-14T16:06:00Z', type: 'event_msg', payload: { type: 'thread_settings_applied', thread_settings: { reasoning_effort: 'high', service_tier: 'default' } } }
+  set({ file: 'append.path', text: transcript })
+  set({ file: 'paseo.append.1', text: `${JSON.stringify(applied)}\n` })
+  const out = run({ args: ['agent', 'x1', 'effort', 'raise'] })
+  assert.match(out, /sent: delivered\n {2}before: medium\n {2}now: high\n {2}confirmed: true/)
+  assert.ok(calls().at(-1)!.endsWith('arg=terminal\narg=send-keys\narg=term-1\narg=-l\narg=--\narg=\u001b[1;2A\n'))
+  assert.match(run({ args: ['agent', 'x1', 'collaboration', 'toggle'] }), /sent: delivered/)
+  assert.ok(calls().at(-1)!.endsWith('arg=-l\narg=--\narg=\u001b[Z\n'))
+})
+
+test('iTerm2 gets a key as raw bytes; Terminal and Herdr refuse keys before sending', () => {
+  const { run, calls, session, fails } = hosts()
+  session({ key: 's1', terminal: { program: 'iTerm.app' } })
+  assert.match(run({ args: ['agent', 's1', 'mode', 'next'] }), /sent: delivered/)
+  const key = calls().at(-1)!
+  assert.match(key, /tell application "iTerm2"[\s\S]*newline false[\s\S]*end run\narg=\/dev\/ttys042\n/)
+  assert.ok(key.endsWith('arg=\u001b[Z\n'))
+
+  const before = calls().length
+  session({ key: 's2', terminal: { program: 'Apple_Terminal' } })
+  session({ key: 's3', terminal: { program: 'ghostty', herdrSession: 'work', herdrPane: 'p_7' } })
+  fails({ args: ['agent', 's2', 'mode', 'next'], code: 'NO_ROUTE' })
+  fails({ args: ['agent', 's3', 'mode', 'next'], code: 'NO_ROUTE' })
+  assert.match(run({ args: ['agent', 's2'] }), /mode,unknown,next,"Terminal types whole lines/)
+  assert.equal(calls().length, before)
+  // Typed commands still go everywhere a reply goes.
+  assert.match(run({ args: ['agent', 's2', 'fast', 'off'] }), /sent: delivered/)
+  assert.match(calls().at(-1)!, /tell application "Terminal"[\s\S]*arg=\/fast off\n/)
+})
+
+test("a session's report confirms a change the way its control reads back", () => {
+  const check = ({ provider, setting, value, before, after }: {
+    provider: string
+    setting: string
+    value: string
+    before?: string
+    after?: string
+  }) =>
+    confirms({ ...findOption({ provider, setting, value })!, before, after })
+
+  // A model alias confirms on the full id the session reports.
+  assert.equal(check({ provider: 'claude-code', setting: 'model', value: 'opus', before: 'claude-sonnet-5-5', after: 'claude-opus-5-5' }), true)
+  assert.equal(check({ provider: 'claude-code', setting: 'model', value: 'opus', before: 'claude-sonnet-5-5', after: 'claude-sonnet-5-5' }), false)
+  assert.equal(check({ provider: 'claude-code', setting: 'effort', value: 'high', before: 'medium', after: 'high' }), true)
+  assert.equal(check({ provider: 'claude-code', setting: 'effort', value: 'xhigh', before: 'medium', after: 'high' }), false)
+  // A key that cycles or steps confirms on any change.
+  assert.equal(check({ provider: 'claude-code', setting: 'mode', value: 'next', before: 'auto', after: 'default' }), true)
+  assert.equal(check({ provider: 'codex', setting: 'effort', value: 'raise', before: 'medium', after: 'medium' }), false)
+  assert.equal(check({ provider: 'codex', setting: 'fast', value: 'toggle', before: 'off', after: undefined }), false)
+  assert.equal(findOption({ provider: 'codex', setting: 'model', value: 'gpt-6' }), undefined)
+
+  for (const [setting, value] of [['model', 'gpt-6.1-sol'], ['approval', 'on-request']]) {
+    assert.equal(findOption({ provider: 'codex', setting: setting!, value: value! }), undefined)
+    const picked = findOption({ provider: 'codex', setting: setting!, value: value!, firstmate: true })
+    assert.ok(picked, `${setting} must be requestable on a Firstmate Codex card`)
+    assert.deepEqual(picked.option.input, { request: true })
+    assert.equal(inputReason({ kind: 'firstmate', input: picked.option.input }), undefined)
+    assert.match(inputReason({ kind: 'tmux', input: picked.option.input })!, /only be requested through Firstmate/)
+    assert.equal(confirms({ ...picked, before: undefined, after: value }), true)
+    assert.equal(confirms({ ...picked, before: 'old', after: 'different' }), false)
+  }
+
+  assert.equal(findOption({ provider: 'opencode', setting: 'effort', value: 'high' }), undefined)
+})
+
+test('a setting change waits for an open request and never answers one the session opens meanwhile', () => {
+  const { run, calls, set, session, fails } = hosts()
+  session({ key: 'claude:s1', terminal: { program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' } })
+  set({ file: 'tmux.out', text: `${TTY}\n` })
+  const hook = ({ event, payload }: { event: string; payload: Record<string, unknown> }) => JSON.stringify({ v: 1, id: `h-${event}`, at: '2026-10-14T17:00:00Z', harness: 'claude', event, payload: { session_id: 's1', cwd: '/work', ...payload } })
+
+  // A permission prompt shows up while the command settles: no confirming Enter.
+  set({ file: 'tmux.spool.4', text: hook({ event: 'PermissionRequest', payload: { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } } }) })
+  const out = run({ args: ['agent', 'claude:s1', 'model', 'opus'] })
+  assert.match(out, /sent: delivery_unknown/)
+  assert.match(out, /the session opened a request, so Pnyx pressed nothing more/)
+  assert.deepEqual(calls().map(c => c.split('\n')[0]), ['call=ps', 'call=tmux', 'call=tmux', 'call=tmux', 'call=tmux'])
+
+  // While it stays open, nothing is typed for a setting at all; a reply still goes.
+  fails({ args: ['agent', 'claude:s1', 'mode', 'next'], code: 'SESSION_WAITING' })
+  assert.equal(calls().length, 5)
+  assert.match(run({ args: ['reply', 'claude:s1', '--text', 'yes'] }), /state: delivered/)
 })

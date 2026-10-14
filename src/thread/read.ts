@@ -3,13 +3,13 @@ import { isAbsolute } from 'node:path'
 import type { BoardEvent, BoardState, Card, ReplyState } from '../core/model.ts'
 import { boardDir, readEventsFrom } from '../store/board-store.ts'
 import { redact, transcriptMessages } from '../search/text.ts'
-import { HOST_LABEL, replyRoute } from '../core/route.ts'
+import { HOST_LABEL, replyRoute, type ReplyRoute } from '../core/route.ts'
 import { traces, viewFor } from '../core/view.ts'
 
 // messageId and part let the board rejoin a long message split into transport chunks.
 export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; messageId?: string; part?: number }
-// route: a reply can be sent; via names the route, or noRoute says why there is none.
-export interface ThreadPage { card: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; noRoute?: string; watching: 'unknown' }
+// route: a reply can be sent; via names the route and routeKind is its kind, or noRoute says why there is none.
+export interface ThreadPage { card: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; routeKind?: ReplyRoute['kind']; noRoute?: string; watching: 'unknown' }
 const MAX_BYTES = 10 * 1024 * 1024
 // Chunk long entries instead of losing their tail. Sixty bounded entries stay
 // below the socket budget even for JSON-escaped control characters.
@@ -225,7 +225,7 @@ export function readThread(
     card: card.id,
     entries: [],
     route: 'route' in found,
-    ...('route' in found ? { via: HOST_LABEL[found.route.kind] } : { noRoute: found.reason }),
+    ...('route' in found ? { via: HOST_LABEL[found.route.kind], routeKind: found.route.kind } : { noRoute: found.reason }),
     watching: 'unknown',
   }
   const match = before === undefined ? null : THREAD_CURSOR.exec(before)

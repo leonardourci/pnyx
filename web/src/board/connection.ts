@@ -149,7 +149,7 @@ export function useBoard() {
     const id = crypto.randomUUID()
     const timer = setTimeout(() => {
       pending.current.delete(id); reject(new Error('No receipt yet. Check history before retrying.'))
-    }, name === 'reply' ? 140000 : 15000)
+    }, name === 'reply' || name === 'agent' ? 140000 : 15000)
     pending.current.set(id, {
       resolve: ({ receipt }) =>
         resolve(receipt),

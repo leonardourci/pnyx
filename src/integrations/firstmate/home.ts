@@ -8,6 +8,7 @@ import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { canonical } from '../../cli/commands.ts'
 import { basename, join } from 'node:path'
 import { BoardError, type SourceNote } from '../../core/model.ts'
+import { TERMINAL_FIELDS } from '../../core/route.ts'
 import { latestActivity, latestLine, openDecisions, statusNotes, type OpenDecision } from './status.ts'
 
 export const ADAPTER = 'firstmate'
@@ -30,6 +31,9 @@ export interface TaskObservation {
   activity?: string
   // Canonical path of the task's worktree from its meta, where its agent runs.
   worktree?: string
+  // The Paseo terminal the task's agent was launched in, from its meta, which tells
+  // tasks sharing a worktree apart.
+  paseoTerminal?: string
   decisions: OpenDecision[]
   // The latest status line, when it is failed: or blocked:.
   stalled?: { verb: string; note: string }
@@ -208,6 +212,7 @@ export function readHome({ home }: { home: string }): HomeObservation {
     const activity = latestActivity({ log })
     const last = latestLine({ log })
     const worktree = canonical({ path: meta.worktree })
+    const paseoTerminal = meta.paseo_terminal_id
     tasks.push({
       task,
       title: row?.title ?? task,
@@ -217,6 +222,7 @@ export function readHome({ home }: { home: string }): HomeObservation {
       merged: row?.merged ?? false,
       ...(activity ? { activity } : {}),
       ...(worktree ? { worktree } : {}),
+      ...(TERMINAL_FIELDS.paseoTerminal.test(paseoTerminal ?? '') ? { paseoTerminal } : {}),
       decisions: openDecisions({ log, kind: meta.kind || 'ship' }),
       ...(last && (last.verb === 'failed' || last.verb === 'blocked') ? { stalled: { verb: last.verb, note: last.note } } : {}),
       notes: taskNotes({ home, task, log }),

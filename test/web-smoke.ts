@@ -175,6 +175,51 @@ try {
   await browser({ args: ['wait', 'Live fixture update received.'] })
   await eventually({ condition: '[...document.querySelectorAll(".last-message")].some(m => m.textContent.includes("Live fixture update received."))', label: "the card's last message follows the live transcript" })
   await screenshot({ name: 'conversation.png' })
+  // The Agent tab changes a Firstmate task's settings by asking its orchestrator in a
+  // request note, never by typing into the worker.
+  const report = ({ settings, provider = 'claude-code' }: { settings: Record<string, string>; provider?: string }) => withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      const d = decidePush({ state: w.state, key: 'layout', input: { agent: { provider, sessionId: 'fixture-layout', transcriptPath: fixture.transcript }, settings }, meta: { actor: 'fixture', at: '2026-10-14T16:30:00Z' } })
+      assert.ok('event' in d); w.append({ event: d.event })
+    },
+  })
+  report({ settings: { model: 'claude-sonnet-5-5', effort: 'medium', mode: 'default' } })
+  await click({ role: 'button', name: 'Agent' }); await browser({ args: ['wait', 'Change from here'] })
+  await check({ condition: '[...document.querySelectorAll(".control-row[aria-label=\'Permission mode\'] button")].every(b => !b.disabled && b.title.includes("request note"))', label: 'a key change is a request note too' })
+  await check({ condition: 'document.querySelector(".agent-controls > p").textContent.includes("never types into the worker")', label: 'the tab says changes go to the orchestrator' })
+  await check({ condition: 'document.querySelector(".control-row[aria-label=\'Effort\'] [aria-pressed=true]").textContent === "medium"', label: 'the reported effort is marked' })
+  await click({ role: 'button', name: 'high' }); await browser({ args: ['wait', 'Waiting for the session to report its effort'] })
+  await browser({ args: ['wait', 'asks Firstmate'] })
+  const inbox = readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8')
+  assert.equal(inbox.match(/^arg=note$/gm)?.length, 1)
+  assert.match(inbox, /^arg=Pnyx: please switch the worker on task api-v2 \(Claude Code\) to effort high\.\n---\n/m)
+  report({ settings: { effort: 'high' } })
+  await browser({ args: ['wait', 'Effort'] })
+  await check({ condition: '!document.querySelector(".control-row[aria-label=\'Effort\'] p") && document.querySelector(".control-row[aria-label=\'Effort\'] [aria-pressed=true]").textContent === "high"', label: 'the session report confirms the change' })
+
+  for (const scheme of ['light', 'dark']) {
+    await browser({ args: ['emulate', '--color-scheme', scheme] }); await browser({ args: ['wait', 'Change from here'] })
+    await check({ condition: 'getComputedStyle(document.querySelector(".segmented .button")).color !== getComputedStyle(document.querySelector(".segmented .button")).backgroundColor', label: `Agent tab controls stay legible with a ${scheme} system theme` })
+    await screenshot({ name: `agent-${scheme}.png` })
+  }
+
+  report({ provider: 'codex', settings: { model: 'gpt-6-astra', approval: 'untrusted' } })
+  await browser({ args: ['wait', 'gpt-6.1-sol'] })
+  await check({ condition: '[...document.querySelectorAll(".control-row[aria-label=\'Model\'] button, .control-row[aria-label=\'Approval policy\'] button")].every(b => !b.disabled && b.title.includes("request note"))', label: 'Codex model and approval options are requests to Firstmate' })
+  await screenshot({ name: 'codex-firstmate-settings.png' })
+  const sentBefore = readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8')
+  await click({ role: 'button', name: 'gpt-6.1-sol' }); await browser({ args: ['wait', 'Waiting for the session to report its model'] })
+  await click({ role: 'button', name: 'on-request' }); await browser({ args: ['wait', 'Waiting for the session to report its approval policy'] })
+  const codexInbox = readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8')
+  assert.match(codexInbox, /arg=Pnyx: please switch the worker on task api-v2 \(Codex\) to model gpt-6.1-sol\./)
+  assert.match(codexInbox, /arg=Pnyx: please switch the worker on task api-v2 \(Codex\) to approval policy on-request\./)
+  assert.equal(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), sentBefore)
+  report({ provider: 'codex', settings: { model: 'gpt-6.1-sol', approval: 'on-request' } })
+  await eventually({ condition: '!document.querySelector(".control-row[aria-label=\'Model\'] p") && !document.querySelector(".control-row[aria-label=\'Approval policy\'] p")', label: 'Codex reports confirm the requested settings' })
+
+  await browser({ args: ['emulate', '--color-scheme', 'auto'] }); await browser({ args: ['wait', 'Change from here'] })
+  await click({ role: 'button', name: 'Conversation' })
   await browser({ args: ['fill', await ref({ role: 'textbox', name: 'Reply to Shape the first working board' }), 'Keep this draft'] })
   await click({ role: 'combobox', name: 'Workspace' }); await click({ role: 'option', name: 'Work' })
   await check({ condition: 'document.querySelectorAll("[data-card]").length === 3 && document.querySelector(".detail").textContent.includes("Outside current filters")', label: 'workspace filters preserve the open conversation' })
@@ -190,7 +235,9 @@ try {
   await click({ role: 'button', name: 'Shape the first working board' }); await click({ role: 'button', name: 'Why here / move' }); await click({ role: 'combobox', name: 'Move card' }); await click({ role: 'option', name: 'Later' })
   await check({ condition: 'document.querySelector(".detail-content").textContent.includes("Pinned manually")', label: 'custom column move persists' })
   assert.equal(loadBoard({ board: 'default' }).state.cards[fixture.state.keys.layout!]!.attention.length, 1)
-  await click({ role: 'button', name: 'Conversation' }); await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] }); await browser({ args: ['wait', 'Later'] }); await click({ role: 'button', name: 'Shape the first working board' }); await browser({ args: ['wait', 'Reply to Shape the first working board'] })
+  await click({ role: 'button', name: 'Conversation' }); await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] }); await browser({ args: ['wait', 'Later'] })
+  // On a phone the open panel can cover the card's centre, so open it by its own element.
+  await browser({ args: ['eval', `() => { document.querySelector('[data-card="${fixture.state.keys.layout}"]').click(); return true }`] }); await browser({ args: ['wait', 'Reply to Shape the first working board'] })
   await check({ condition: 'innerWidth === 390 && document.documentElement.scrollWidth === innerWidth && document.querySelector(".composer").getBoundingClientRect().bottom <= innerHeight', label: 'mobile composer stays in viewport' })
   await screenshot({ name: 'mobile.png' })
   await click({ role: 'button', name: 'History' }); await browser({ args: ['fill', await ref({ role: 'searchbox', name: 'Search history' }), 'conversation readable'] }); await browser({ args: ['wait', 'Shape the first working board'] })

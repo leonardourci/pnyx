@@ -101,7 +101,8 @@ function inbox<T>() {
         queue.push(message)
       }
     },
-    next: () =>
+    // A reply or agent receipt comes from a spawned CLI worker, so its wait takes CLI_TIMEOUT_MS.
+    next: ({ ms = TIMEOUT_MS }: { ms?: number } = {}) =>
       queue.length > 0
         ? Promise.resolve(queue.shift()!)
         : new Promise<T>((resolve, reject) => {
@@ -109,7 +110,7 @@ function inbox<T>() {
             // A wait that timed out must not swallow the message that arrives after it.
             waiting.splice(waiting.indexOf(waiter), 1)
             reject(new Error('timed out waiting for a message'))
-          }, TIMEOUT_MS).unref()
+          }, ms).unref()
 
           const waiter = ({ message }: { message: T }) => {
             clearTimeout(timer)
@@ -476,6 +477,21 @@ test('web preferences, custom moves and read queries share the authenticated soc
     assert.equal(reply.code, 'NO_ROUTE')
   }
 
+  // A setting change takes the reply's route, so it is refused the same way.
+  t.command({ id: 'agent-1', name: 'agent', args: [card, 'effort', 'high', 'id'] })
+  const agent = await t.next(); assert.equal(agent.type, 'error')
+
+  if (agent.type === 'error') {
+    assert.equal(agent.code, 'NO_ROUTE')
+  }
+
+  t.command({ id: 'agent-2', name: 'agent', args: [card, 'effort', 'high'] })
+  const short = await t.next(); assert.equal(short.type, 'error')
+
+  if (short.type === 'error') {
+    assert.equal(short.code, 'VALIDATION_ERROR')
+  }
+
   t.command({ id: 'history-1', name: 'history', args: ['--card', card] }); assert.equal((await t.next()).type, 'receipt')
   t.command({ id: 'escape-board', name: 'history', args: ['--board', 'other'] }); assert.equal((await t.next()).type, 'error')
   t.command({ id: 'card-1', name: 'card', args: [card, '--full'] })
@@ -537,7 +553,7 @@ test('browser reply delivery uses only configured fixture homes and never resend
 
   const receipt = async ({ id }: { id: string }) => {
     for (;;) {
-      const m = await t.next()
+      const m = await t.next({ ms: CLI_TIMEOUT_MS })
 
       if ((m.type === 'receipt' || m.type === 'error') && m.id === id) {
         return m
@@ -568,6 +584,24 @@ test('browser reply delivery uses only configured fixture homes and never resend
   }
 
   assert.equal(loadBoard({ board: 'default' }).state.cards[card]?.attention.length, 1)
+
+  // A setting change goes through the same worker, as a request note to the task's orchestrator.
+  const sends = readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8')
+  withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      const d = decidePush({ state: w.state, key: 'layout', input: { agent: { provider: 'claude-code', sessionId: 'fixture-layout' } }, meta: { actor: 'test', at: '2026-10-14T17:00:00Z' } }); assert.ok('event' in d); w.append({ event: d.event })
+    },
+  })
+  t.command({ id: 'agent-1', name: 'agent', args: [card, 'effort', 'high', 'effort-1'] })
+  const changed = await receipt({ id: 'agent-1' }); assert.equal(changed.type, 'receipt', JSON.stringify(changed))
+
+  if (changed.type === 'receipt') {
+    assert.equal((changed.agent as { sent: string }).sent, 'delivered')
+  }
+
+  assert.match(readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8'), /arg=pnyx:default:c\d+:effort-1\narg=--json\narg=--\narg=Pnyx: please switch the worker on task api-v2 \(Claude Code\) to effort high\.\n---\n$/)
+  assert.equal(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), sends)
   t.command({ id: 'search-1', name: 'search', args: ['conversation readable'] })
   const found = await receipt({ id: 'search-1' }); assert.equal(found.type, 'receipt')
 
