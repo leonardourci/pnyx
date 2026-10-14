@@ -8,6 +8,7 @@ import { loadBoard } from '../store/board-store.ts'
 import { SYNONYMS, SYNONYMS_VERSION } from './synonyms.ts'
 import { KINDS, SNIPPETS, indexStatus, rebuildIndex, type IndexResult, type Kind } from './index.ts'
 import { EMBEDDER_IDS, type EmbedderId } from './models.ts'
+import { runtimeInstalled } from './runtime.ts'
 import { searchBoard, semanticStatus, setupSemantic, type SearchResult } from './semantic.ts'
 import { SETTING_KEYS, readSettings, settingEntries, writeSetting } from './settings.ts'
 
@@ -55,7 +56,7 @@ async function status(board: string): Promise<Output> {
 
   return {
     index: s.builtThrough === seq ? `current through seq ${seq}` : `behind: through seq ${s.builtThrough} of ${seq}; the next search catches up`,
-    mode: readSettings().semantic ? 'hybrid: words fused with meaning' : 'lexical, fuzzy when nothing matches',
+    mode: readSettings().semantic && runtimeInstalled() ? 'hybrid: words fused with meaning' : 'lexical, fuzzy when nothing matches',
     synonyms: `v${SYNONYMS_VERSION}, ${SYNONYMS.length} groups`,
     ...(await semanticStatus(board)),
     docs: s.docs,
@@ -103,8 +104,8 @@ async function setup(args: string[]): Promise<Output> {
   return {
     semantic: 'on',
     mode: r.mode,
-    model: r.settings.model,
-    rerank: r.settings.rerank ? 'on' : 'off',
+    model: r.choice.model,
+    rerank: r.choice.rerank ? 'on' : 'off',
     files: r.files,
     help: ['Run `pnyx-axi search "<words>"`; entries are embedded in the background', 'Run `pnyx-axi settings set search.semantic off` to turn it off'],
   }
@@ -219,22 +220,27 @@ Each search first indexes what the log and transcripts gained. The index, search
 folder, is a derived cache: \`search rebuild\` deletes and rebuilds it from the log and transcripts,
 after harvesting every card's transcript.
 Tool calls and output, thinking and injected text are not indexed; secret-shaped strings are redacted.
-Semantic search is off until \`search setup --semantic\`, which installs node-llama-cpp and sqlite-vec with
-npm into the Pnyx home's runtime/ folder, downloads pinned, Apache-2.0 models into its models/ folder (checked by SHA-256 and golden vectors) and turns it on: with a GPU
-(Metal, CUDA or Vulkan) granite-embedding-311m and the Qwen3-Reranker-0.6B reranker, about 1 GB;
-on CPU only, granite-embedding-97m without the reranker, about 115 MB. Then searches also find cards
-by meaning, in any language (match: semantic, or both), fused with the word matches; --lexical skips
-that for one search, and --card is always lexical. The reranker re-scores the top 20, marks weak
-results and says when nothing matches strongly. A background worker process embeds entries at low
-priority and exits after a minute idle; \`search status\` shows the mode and progress.
-Turn either off with \`pnyx-axi settings set search.semantic off\` or \`search.rerank off\`.
+Semantic search is on by default: searches also find cards by meaning, in any language (match:
+semantic, or both), fused with the word matches by rank. It runs local, pinned Apache-2.0 models
+through the optional node-llama-cpp and sqlite-vec packages: with a GPU (Metal, CUDA or Vulkan)
+granite-embedding-311m and the Qwen3-Reranker-0.6B reranker, about 1 GB; on CPU only,
+granite-embedding-97m without the reranker, about 115 MB. The first search downloads them in the
+background into the Pnyx home's models/ folder, checked by SHA-256 and golden vectors; searches are
+full-text and say so until they are ready (\`search status\` shows the progress). \`search setup
+--semantic\` downloads them now instead, in the foreground. A background worker process embeds
+entries at low priority and exits after a minute idle. The reranker re-scores the top 20, marks weak
+results and says when nothing matches strongly. --lexical skips meaning for one search.
+Turn it off with \`pnyx-axi settings set search.semantic off\` (or PNYX_SEMANTIC=off for one
+process); installed without optional dependencies, search is full-text only.
 `
 
 export const SETTINGS_HELP = `usage: pnyx-axi settings
        pnyx-axi settings set <key> <value>
 This machine's search settings, in the Pnyx home's settings.json, shared by every board:
-  search.semantic on|off   Find cards by meaning as well as by words (needs \`search setup --semantic\`)
-  search.rerank on|off     Re-score the top results with the reranker (about 0.4 s a search on a GPU)
-  search.model ${EMBEDDER_IDS.join('|')}  The embedding model; granite-97m suits a CPU-only machine
-Turning on a setting whose model or runtime is not installed is refused.
+  search.semantic on|off        Find cards by meaning as well as by words (default on)
+  search.rerank auto|on|off     Re-score the top results with the reranker, about 0.4 s a search
+                                on a GPU (auto: on with a GPU, off on CPU only)
+  search.model auto|${EMBEDDER_IDS.join('|')}  The embedding model (auto: granite-311m with a GPU,
+                                granite-97m on CPU only)
+A model the settings need is downloaded on the next search.
 `

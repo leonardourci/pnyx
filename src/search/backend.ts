@@ -4,11 +4,10 @@
 // overlap that never touch a model file. The worker process loads models;
 // `search setup` also loads them once to run their golden check.
 import { createHash } from 'node:crypto'
-import { pathToFileURL } from 'node:url'
 import { BoardError } from '../core/model.ts'
 import { EMBEDDERS, PROBES, RERANKER, RERANK_PROBE, modelPath, type EmbedderId, type ModelFile } from './models.ts'
-import { runtimeRequire } from './runtime.ts'
-import { stubbed } from './settings.ts'
+import { llamaCppUrl } from './runtime.ts'
+import { stubbed, type SearchSettings } from './settings.ts'
 
 export interface Backend {
   // metal, cuda, vulkan, cpu or stub.
@@ -60,7 +59,7 @@ function unit(vector: ArrayLike<number>): Float32Array {
 type Embedding = { getEmbeddingFor(tokens: number[]): Promise<{ vector: readonly number[] }> }
 type Ranking = { rankAll(query: string, docs: string[], options: { onOverflow: 'maxChunk' }): Promise<number[]> }
 
-// The part of node-llama-cpp this file uses; the package lives in the runtime folder, not in pnyx-axi's dependencies.
+// The part of node-llama-cpp this file uses; it is an optional dependency, so it is typed here rather than imported.
 interface LlamaCpp {
   LlamaLogLevel: { error: unknown }
   getLlama(options: { gpu: 'auto'; build: 'never'; logLevel: unknown }): Promise<{
@@ -74,7 +73,7 @@ interface LlamaCpp {
   }>
 }
 
-const llamaCpp = () => import(pathToFileURL(runtimeRequire().resolve('node-llama-cpp')).href) as Promise<LlamaCpp>
+const llamaCpp = () => import(llamaCppUrl()) as Promise<LlamaCpp>
 
 // The detected mode without loading a model: what `search setup` picks models by.
 export async function detectMode(): Promise<string> {
@@ -90,8 +89,19 @@ export async function detectMode(): Promise<string> {
   return mode
 }
 
+// What auto settings mean on a machine: with a GPU backend the 311m embedder and
+// the reranker; on CPU only the 97m embedder alone (the reranker takes seconds there).
+export type Choice = { model: EmbedderId; rerank: boolean }
+
+export function resolveChoice(settings: SearchSettings, mode: string): Choice {
+  return {
+    model: settings.model === 'auto' ? (mode === 'cpu' ? 'granite-97m' : 'granite-311m') : settings.model,
+    rerank: settings.rerank === 'auto' ? mode !== 'cpu' : settings.rerank,
+  }
+}
+
 export async function loadBackend(model: EmbedderId): Promise<Backend> {
-  return stubbed() ? stubBackend() : realBackend(model)
+  return stubbed() ? stubBackend(model) : realBackend(model)
 }
 
 async function realBackend(id: EmbedderId): Promise<Backend> {
@@ -177,10 +187,10 @@ function stubVector(text: string): Float32Array {
   return unit(v)
 }
 
-function stubBackend(): Backend {
+function stubBackend(id: EmbedderId): Backend {
   return {
     mode: 'stub',
-    key: 'stub',
+    key: `${id}@stub/stub`,
     dims: STUB_DIMS,
     probes: PROBES.map(stubVector),
     embed: async text => stubVector(text),

@@ -1,6 +1,6 @@
 // Semantic search on top of the full-text index: the worker client, the hybrid
-// ranking and `search setup --semantic`. Only used when the search.semantic
-// setting is on; with it off, search is lexical exactly as before.
+// ranking and `search setup --semantic`. On by default; with the search.semantic
+// setting off, or the optional packages not installed, search is lexical exactly as before.
 // Ranking: the full-text query as typed (every word must match) and an exact
 // nearest-vector scan each give up to 50 cards; reciprocal rank fusion (k = 60)
 // merges them, card id breaking ties. With the reranker on, it re-scores the top
@@ -12,14 +12,15 @@ import { closeSync, existsSync, lstatSync, mkdirSync, openSync, rmSync } from 'n
 import { createConnection } from 'node:net'
 import { constants, setPriority, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { pnyxHome } from '../store/board-store.ts'
+import { BoardError } from '../core/model.ts'
+import { loadBoard, pnyxHome } from '../store/board-store.ts'
 import { localToken } from '../server/state.ts'
-import { SemanticError, detectMode, loadBackend } from './backend.ts'
+import { SemanticError, detectMode, loadBackend, resolveChoice, type Choice } from './backend.ts'
 import { search, updateIndex, type Hit, type Match, type Query } from './index.ts'
-import { EMBEDDERS, RERANKER, download, modelPath, type EmbedderId, type ModelFile } from './models.ts'
-import { RUNTIME_LABEL, installRuntime, runtimeBytes, runtimeInstalled } from './runtime.ts'
+import { EMBEDDERS, RERANKER, activeFailure, clearFailure, download, modelPath, type EmbedderId, type ModelFile } from './models.ts'
+import { runtimeInstalled } from './runtime.ts'
 import { readSettings, saveSettings, stubbed, type SearchSettings } from './settings.ts'
-import { nearestCards, vectorCounts, type Nearest, type VectorRead } from './vectors.ts'
+import { nearestCards, nearestChunks, vectorCounts, type NearChunk, type Nearest, type VectorRead } from './vectors.ts'
 import type { Request } from './worker.ts'
 
 const CANDIDATES = 50
@@ -154,10 +155,6 @@ async function request(req: Request, timeoutMs: number): Promise<Reply> {
 }
 
 async function ask(req: Request, timeoutMs: number): Promise<Reply> {
-  if (!stubbed() && !runtimeInstalled()) {
-    throw new SemanticError(`the semantic search runtime (${RUNTIME_LABEL}) is not installed`)
-  }
-
   const reply = await request(req, timeoutMs)
 
   if (reply.error) {
@@ -177,12 +174,23 @@ export interface SearchResult {
   hits: HybridHit[]
   total: number
   mode: string
-  // Present only when semantic search is on: ready, indexing or unavailable.
+  // Present only when semantic search runs: ready, indexing, preparing or unavailable.
   semantic?: string
   note?: string
 }
 
+type Phase = { phase: string; done?: number; total?: number; message?: string }
+
 const describe = (key: string) => key.replace(/@[^/]*\//, ' on ')
+
+// A model that is not ready yet, as a status line.
+function phaseText(what: string, p: Phase): string {
+  if (p.phase === 'downloading') {
+    return `downloading the ${what}, ${Math.floor(((p.done ?? 0) / (p.total ?? 1)) * 100)}% of ${((p.total ?? 0) / 1e6).toFixed(0)} MB`
+  }
+
+  return p.phase === 'failed' ? `the ${what} failed: ${p.message ?? 'unknown error'}` : `${p.phase === 'loading' ? 'loading' : p.phase} the ${what}`
+}
 
 const excerpt = (text: string) => {
   const flat = text.replace(/\s+/g, ' ').trim()
@@ -190,9 +198,50 @@ const excerpt = (text: string) => {
   return flat.length > SNIPPET_MAX ? `${flat.slice(0, SNIPPET_MAX)}…` : flat
 }
 
-// Search as the settings say: lexical when semantic search is off or --card is
-// given, hybrid otherwise, falling back to lexical (and saying so) when the
-// worker cannot answer.
+const strip = (snippet: string) => snippet.replace(/[[\]]/g, '')
+
+// Reciprocal rank fusion of ranked lists of ids, best first, ties by id.
+function fuse<T extends string | number>(lists: T[][]): T[] {
+  const score = new Map<T, number>()
+
+  for (const list of lists) {
+    list.forEach((id, rank) => score.set(id, (score.get(id) ?? 0) + 1 / (RRF_K + rank + 1)))
+  }
+
+  return [...score].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([id]) => id)
+}
+
+interface Reranked<T> {
+  order: T[]
+  weak: Set<T>
+  note?: string
+  failed?: string
+}
+
+// Re-scores the top results with the reranker; on failure keeps the fused order.
+async function rerank<T>(order: T[], text: (id: T) => string, query: string): Promise<Reranked<T>> {
+  const top = order.slice(0, RERANK_TOP)
+
+  try {
+    const scores = (await ask({ op: 'rerank', query, docs: top.map(text) }, RERANK_TIMEOUT_MS)).scores as number[]
+    const ranked = top
+      .map((id, i) => ({ id, s: scores[i]!, i }))
+      .sort((a, b) => b.s - a.s || a.i - b.i)
+    const weak = new Set(ranked.filter(r => r.s < WEAK).map(r => r.id))
+    const note = ranked[0]!.s < STRONG ? 'no strong match: the results below are the nearest, but none clearly answers the query' : undefined
+
+    const reordered = [...ranked.map(r => r.id), ...order.slice(RERANK_TOP)]
+
+    return { order: reordered, weak, ...(note ? { note } : {}) }
+  } catch (error) {
+    return { order, weak: new Set(), failed: (error as Error).message }
+  }
+}
+
+// Search as the settings say. Hybrid when semantic search is on and its optional
+// packages are installed; full-text exactly as before when it is off or they are
+// absent. When the worker cannot answer yet (models downloading or loading) or has
+// failed, full-text results come back with a line saying why.
 export async function searchBoard(
   board: string,
   query: Query,
@@ -200,68 +249,84 @@ export async function searchBoard(
 ): Promise<SearchResult> {
   updateIndex(board)
 
-  if (!settings.semantic || query.card) {
+  const lexicalOnly = (semantic?: string): SearchResult => {
     const r = search(board, query)
 
-    return { hits: r.hits, total: r.total, mode: r.match }
+    return { hits: r.hits, total: r.total, mode: r.match, ...(semantic ? { semantic } : {}) }
   }
 
-  const lexical = search(board, { ...query, limit: Math.max(query.limit, CANDIDATES) })
-  let vectors: VectorRead
-  let key: string
+  if (!settings.semantic || !(stubbed() || runtimeInstalled())) {
+    return lexicalOnly()
+  }
+
+  const failure = activeFailure()
+
+  if (failure) {
+    return lexicalOnly(`unavailable: ${failure}; run \`pnyx-axi search setup --semantic\` to retry now`)
+  }
+
+  let reply: Reply
 
   try {
     await ask({ op: 'index', board }, INDEX_TIMEOUT_MS)
-    const reply = await ask({ op: 'embed', text: query.text }, EMBED_TIMEOUT_MS)
-    key = reply.key as string
-    const filters = {
-      ...(query.kind ? { kind: query.kind } : {}),
-      ...(query.workspace ? { workspace: query.workspace } : {}),
-    }
-    const vector = Float32Array.from(reply.vector as number[])
-    vectors = nearestCards(board, key, vector, filters, CANDIDATES)
+    reply = await ask({ op: 'embed', text: query.text }, EMBED_TIMEOUT_MS)
   } catch (error) {
-    return { hits: lexical.hits.slice(0, query.limit), total: lexical.total, mode: lexical.match, semantic: `unavailable: ${(error as Error).message}` }
+    return lexicalOnly(`unavailable: ${(error as Error).message}`)
   }
 
-  const score = new Map<string, number>()
-  const add = (card: string, rank: number) =>
-    score.set(card, (score.get(card) ?? 0) + 1 / (RRF_K + rank + 1))
-  lexical.hits.forEach((h, i) => add(h.card, i))
-  vectors.nearest.forEach((n, i) => add(n.card, i))
-  let order = [...score].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([card]) => card)
+  if (reply.code === 'NOT_READY') {
+    return lexicalOnly(`${phaseText('model', reply.embedder as Phase)}; full-text results until it is ready`)
+  }
+
+  const key = reply.key as string
+  const vector = Float32Array.from(reply.vector as number[])
+  const reranker = reply.reranker as Phase
+  const pendingReranker = reranker.phase === 'downloading' || reranker.phase === 'loading' ? `; ${phaseText('reranker', reranker)}` : ''
+
+  const leg: Leg = { key, vector, useReranker: reply.rerank === true, pendingReranker }
+
+  return query.card ? await cardSearch(board, query, leg) : await boardSearch(board, query, leg)
+}
+
+// The query's vector and how to rank with it.
+interface Leg {
+  key: string
+  vector: Float32Array
+  useReranker: boolean
+  // A status suffix while the reranker is still downloading or loading.
+  pendingReranker: string
+}
+
+function readiness(key: string, v: { embedded: number; total: number }): string {
+  return v.embedded >= v.total
+    ? `ready: ${describe(key)}`
+    : `indexing: ${v.embedded} of ${v.total} entries embedded with ${describe(key)}; the rest match by words only`
+}
+
+// Cards: the full-text card ranking fused with each card's nearest chunk.
+async function boardSearch(board: string, query: Query, leg: Leg): Promise<SearchResult> {
+  const { key, vector, useReranker, pendingReranker } = leg
+  const lexical = search(board, { ...query, limit: Math.max(query.limit, CANDIDATES) })
+  const filters = {
+    ...(query.kind ? { kind: query.kind } : {}),
+    ...(query.workspace ? { workspace: query.workspace } : {}),
+  }
+  const vectors: VectorRead = nearestCards(board, key, vector, filters, CANDIDATES)
   const byWords = new Map(lexical.hits.map(h => [h.card, h]))
   const byMeaning = new Map<string, Nearest>(vectors.nearest.map(n => [n.card, n]))
-
-  let semantic = vectors.embedded >= vectors.total ? `ready: ${describe(key)}` : `indexing: ${vectors.embedded} of ${vectors.total} entries embedded with ${describe(key)}; the rest match by words only`
-  let note: string | undefined
-  const weak = new Set<string>()
+  let order = fuse([lexical.hits.map(h => h.card), vectors.nearest.map(n => n.card)])
+  let semantic = readiness(key, vectors) + pendingReranker
+  let ranked: Reranked<string> = { order, weak: new Set() }
   let mode = 'hybrid'
 
-  if (settings.rerank && order.length) {
-    const top = order.slice(0, RERANK_TOP)
-    const docs = top.map(c => byMeaning.get(c)?.body ?? byWords.get(c)!.snippets.map(s => s.snippet.replace(/[[\]]/g, '')).join('\n'))
+  if (useReranker && order.length) {
+    ranked = await rerank(order, c => byMeaning.get(c)?.body ?? byWords.get(c)!.snippets.map(s => strip(s.snippet)).join('\n'), query.text)
+    order = ranked.order
 
-    try {
-      const scores = (await ask({ op: 'rerank', query: query.text, docs }, RERANK_TIMEOUT_MS)).scores as number[]
-      const ranked = top
-        .map((card, i) => ({ card, s: scores[i]!, i }))
-        .sort((a, b) => b.s - a.s || a.i - b.i)
-
-      for (const r of ranked) {
-        if (r.s < WEAK) {
-          weak.add(r.card)
-        }
-      }
-
-      if (ranked[0]!.s < STRONG) {
-        note = 'no strong match: the results below are the nearest, but none clearly answers the query'
-      }
-
-      order = [...ranked.map(r => r.card), ...order.slice(RERANK_TOP)]
+    if (ranked.failed) {
+      semantic += `; reranker unavailable: ${ranked.failed}`
+    } else {
       mode = 'hybrid, reranked'
-    } catch (error) {
-      semantic += `; reranker unavailable: ${(error as Error).message}`
     }
   }
 
@@ -272,14 +337,67 @@ export async function searchBoard(
       ? { ...words, match: near ? 'both' : words.match }
       : { card, title: near!.title, match: 'semantic', snippets: [{ kind: near!.kind, at: near!.at || 'unknown', snippet: excerpt(near!.body) }] }
 
-    return weak.has(card) ? { ...hit, weak: true } : hit
+    return ranked.weak.has(card) ? { ...hit, weak: true } : hit
   })
 
   // Every card is somewhere in the vector order, so only word matches count toward more results.
   // ponytail: no similarity floor for meaning-only cards without the reranker; add one per model once measured on real boards.
   const total = Math.max(lexical.total, hits.length)
 
-  return { hits, total, mode, semantic, ...(note ? { note } : {}) }
+  return { hits, total, mode, semantic, ...(ranked.note ? { note: ranked.note } : {}) }
+}
+
+// One card's entries (--card): its full-text matching entries fused with its
+// entries nearest the query, as one hit whose snippets are the best entries.
+async function cardSearch(board: string, query: Query, leg: Leg): Promise<SearchResult> {
+  const { key, vector, useReranker, pendingReranker } = leg
+  const card = query.card!
+  const limit = Math.max(query.limit, CANDIDATES)
+  const lexical = search(board, { ...query, limit, withIds: true }).hits[0]
+  const words = new Map((lexical?.snippets ?? []).map(s => [s.id!, s]))
+  const near = nearestChunks(board, key, vector, card, query.kind, CANDIDATES)
+  const meaning = new Map<number, NearChunk>(near.map(n => [n.id, n]))
+  let order = fuse([[...words.keys()], near.map(n => n.id)])
+  const counts = vectorCounts(board, key) ?? { embedded: 0, total: 0 }
+  let semantic = readiness(key, counts) + pendingReranker
+  let ranked: Reranked<number> = { order, weak: new Set() }
+  let mode = 'hybrid'
+
+  if (useReranker && order.length) {
+    const text = (id: number) => meaning.get(id)?.body ?? strip(words.get(id)!.snippet)
+    ranked = await rerank(order, text, query.text)
+    order = ranked.order
+
+    if (ranked.failed) {
+      semantic += `; reranker unavailable: ${ranked.failed}`
+    } else {
+      mode = 'hybrid, reranked'
+    }
+  }
+
+  if (!order.length) {
+    return { hits: [], total: 0, mode, semantic }
+  }
+
+  const snippets = order.slice(0, query.limit).map(id => {
+    const w = words.get(id)
+
+    if (w) {
+      return { kind: w.kind, at: w.at, snippet: w.snippet }
+    }
+
+    const n = meaning.get(id)!
+
+    return { kind: n.kind, at: n.at || 'unknown', snippet: excerpt(n.body) }
+  })
+  const match = words.size && near.length ? 'both' : words.size ? lexical!.match : 'semantic'
+  const title = lexical?.title ?? loadBoard(board).state.cards[card]?.title ?? card
+
+  const hits: HybridHit[] = [{ card, title, match, snippets }]
+
+  const total = order.length
+
+  return { hits, total, mode, semantic, ...(ranked.note ? { note: ranked.note } : {}) }
 }
 
 export interface SemanticStatus {
@@ -288,58 +406,81 @@ export interface SemanticStatus {
   vectors?: string
 }
 
-// What semantic search is doing on this machine: off, or the active mode and
-// model and how many of the board's entries have vectors.
+// What semantic search is doing on this machine: off, not installed, preparing
+// its models, or the active mode and model and how much of the board is embedded.
 export async function semanticStatus(board: string): Promise<SemanticStatus> {
   const s = readSettings()
 
   if (!s.semantic) {
-    return { semantic: 'off: run `pnyx-axi search setup --semantic` to turn it on' }
+    return { semantic: 'off: run `pnyx-axi settings set search.semantic on` to turn it on' }
+  }
+
+  if (!stubbed() && !runtimeInstalled()) {
+    return { semantic: 'not installed: pnyx-axi was installed without its optional dependencies (node-llama-cpp, sqlite-vec); search is full-text' }
+  }
+
+  const failure = activeFailure()
+
+  if (failure) {
+    return { semantic: `unavailable: ${failure}; run \`pnyx-axi search setup --semantic\` to retry now` }
   }
 
   try {
     const reply = await ask({ op: 'status' }, STATUS_TIMEOUT_MS)
+    const embedder = reply.embedder as Phase
+    const reranker = reply.reranker as Phase
+    const rerank = reranker.phase === 'ready' ? 'on' : reranker.phase === 'off' ? 'off' : phaseText('reranker', reranker)
+
+    if (embedder.phase !== 'ready') {
+      return { semantic: `preparing (${reply.mode as string || 'detecting'}): ${phaseText('model', embedder)}; full-text results until it is ready` }
+    }
+
     const key = reply.key as string
     const v = vectorCounts(board, key)
 
     return {
       semantic: `on: ${describe(key)}, ${reply.dims as number} dimensions`,
-      rerank: s.rerank ? 'on' : 'off',
+      rerank,
       ...(v ? { vectors: `${v.embedded} of ${v.total} entries embedded` } : {}),
     }
   } catch (error) {
-    return { semantic: `unavailable: ${(error as Error).message}`, rerank: s.rerank ? 'on' : 'off' }
+    return { semantic: `unavailable: ${(error as Error).message}` }
   }
 }
 
 export interface SetupFile {
   file: string
   bytes: number
-  status: 'present' | 'downloaded' | 'installed' | 'stub'
+  status: 'present' | 'downloaded' | 'stub'
 }
 
-// Installs the runtime, detects the mode, downloads what it needs (the 311m embedder and the reranker
+// Fetches the models now, in the foreground, instead of on the first search:
+// detects the mode, downloads what it needs (the 311m embedder and the reranker
 // with a GPU, the 97m embedder alone on CPU, unless overridden), checks each model
-// against its golden values, then turns semantic search on and starts embedding the board.
+// against its golden values, saves the choice, turns semantic search on and
+// starts embedding the board. Clears a recorded failure.
 export async function setupSemantic(
   board: string,
   options: { model?: EmbedderId; rerank?: boolean },
   progress: (line: string) => void,
-): Promise<{ mode: string; settings: SearchSettings; files: SetupFile[] }> {
-  const files: SetupFile[] = []
-
-  if (stubbed()) {
-    files.push({ file: RUNTIME_LABEL, bytes: 0, status: 'stub' })
-  } else {
-    progress(`${RUNTIME_LABEL}: installing with npm`)
-    const status = installRuntime()
-    files.push({ file: RUNTIME_LABEL, bytes: runtimeBytes(), status })
+): Promise<{ mode: string; choice: Choice; files: SetupFile[] }> {
+  if (!stubbed() && !runtimeInstalled()) {
+    throw new BoardError('semantic search needs the optional dependencies node-llama-cpp and sqlite-vec, which this install skipped', 'NOT_INSTALLED', [
+      'Run `pnpm install` in the pnyx clone to add them back',
+    ])
   }
 
+  clearFailure()
+  const settings: SearchSettings = {
+    ...readSettings(false),
+    semantic: true,
+    ...(options.model ? { model: options.model } : {}),
+    ...(options.rerank === undefined ? {} : { rerank: options.rerank }),
+  }
   const mode = await detectMode()
-  const model = options.model ?? (mode === 'cpu' ? 'granite-97m' : 'granite-311m')
-  const rerank = options.rerank ?? mode !== 'cpu'
-  const wanted: ModelFile[] = [EMBEDDERS[model], ...(rerank ? [RERANKER] : [])]
+  const choice = resolveChoice(settings, mode)
+  const wanted: ModelFile[] = [EMBEDDERS[choice.model], ...(choice.rerank ? [RERANKER] : [])]
+  const files: SetupFile[] = []
 
   for (const m of wanted) {
     if (stubbed()) {
@@ -360,10 +501,10 @@ export async function setupSemantic(
   }
 
   try {
-    const backend = await loadBackend(model)
+    const backend = await loadBackend(choice.model)
 
     try {
-      if (rerank) {
+      if (choice.rerank) {
         await backend.rerank('probe', ['probe'])
       }
     } finally {
@@ -378,10 +519,9 @@ export async function setupSemantic(
     throw error
   }
 
-  const settings = { semantic: true, rerank, model }
   saveSettings(settings)
   updateIndex(board)
   await ask({ op: 'index', board }, INDEX_TIMEOUT_MS).catch(() => undefined)
 
-  return { mode, settings, files }
+  return { mode, choice, files }
 }

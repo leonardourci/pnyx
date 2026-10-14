@@ -1,8 +1,9 @@
 // Manual check of semantic search on the real models: pnpm test:semantic.
-// Downloads the pinned files (about 1.1 GB) into a disposable Pnyx home, or links
-// them from PNYX_GOLDEN_MODELS, a folder already holding them. Setup checks each
-// model against its golden values; this then checks that both embedders find
-// cards across languages and by paraphrase, and prints warm search times.
+// Works as a fresh install does, with no setup command: the first searches fetch
+// the pinned files (about 1.1 GB) into a disposable Pnyx home in the background,
+// unless PNYX_GOLDEN_MODELS names a folder already holding them to link. Each model
+// is checked against its golden values as it loads; this then checks that both
+// embedders find cards across languages and by paraphrase, and prints warm search times.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, linkSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
@@ -12,7 +13,7 @@ import { EMBEDDERS, RERANKER } from '../src/search/models.ts'
 
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 const home = mkdtempSync(join(tmpdir(), 'pnyx-golden-'))
-const env = { ...process.env, PNYX_HOME: home, PNYX_SEMANTIC_STUB: '' }
+const env = { ...process.env, PNYX_HOME: home, PNYX_SEMANTIC_STUB: '', PNYX_SEMANTIC: '' }
 const run = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
 const cards = (out: string) => [...out.matchAll(/^ {2}- card: (\S+)$/gm)].map(m => m[1])
 
@@ -52,15 +53,25 @@ const QUERIES: [string, string][] = [
   ['phone emulator out of RAM', ids[4]!],
 ]
 
+// Searches until the models are fetched and loaded and every entry is embedded.
 async function embedded(): Promise<void> {
-  for (let i = 0; i < 300; i += 1) {
-    const m = run('search', 'status').match(/^vectors: (\d+) of (\d+) entries embedded$/m)
+  let shown = ''
 
-    if (m && m[1] === m[2]) {
+  for (let i = 0; i < 3000; i += 1) {
+    run('search', 'orders')
+    const status = run('search', 'status')
+    const line = status.match(/^semantic: .*$/m)?.[0] ?? ''
+    const m = status.match(/^vectors: (\d+) of (\d+) entries embedded$/m)
+
+    if (line !== shown && /preparing/.test(line)) {
+      console.log(shown = line)
+    }
+
+    if (m && m[1] === m[2] && /^rerank: (on|off)$/m.test(status)) {
       return
     }
 
-    await new Promise(resolve => setTimeout(resolve, 200))
+    await new Promise(resolve => setTimeout(resolve, 500))
   }
 
   throw new Error('the worker never finished embedding')
@@ -84,14 +95,14 @@ function check(label: string): void {
 }
 
 try {
-  const setup = run('search', 'setup', '--semantic')
-  console.log(setup.match(/^mode: .*$/m)![0])
   await embedded()
-  console.log(run('search', 'status').match(/^semantic: .*$/m)![0])
-  check(`default model, reranker ${/^rerank: on$/m.test(setup) ? 'on' : 'off'}`)
+  const status = run('search', 'status')
+  console.log(status.match(/^semantic: .*$/m)![0])
+  check(`default model, reranker ${/^rerank: on$/m.test(status) ? 'on' : 'off'}`)
   run('settings', 'set', 'search.rerank', 'off')
+  await embedded()
   check('default model, reranker off')
-  run('search', 'setup', '--semantic', '--model', 'granite-97m', '--no-rerank')
+  run('settings', 'set', 'search.model', 'granite-97m')
   await embedded()
   check('granite-97m')
   console.log('golden check passed')

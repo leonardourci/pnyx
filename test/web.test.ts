@@ -11,6 +11,9 @@ import { columnsFor, filterCards, safeLink, slashMatches, slashPrefix, visiblePa
 import { withWriter } from '../src/store/board-store.ts'
 import { readThread, recordEntries } from '../src/thread/read.ts'
 
+// Semantic search is on by default; these tests never start its worker or fetch models.
+process.env.PNYX_SEMANTIC = 'off'
+
 const meta = { at: '2026-10-13T10:00:00Z', actor: 'test' }
 
 const event = (d: Decision): BoardEvent => {

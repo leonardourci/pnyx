@@ -1,0 +1,3 @@
+allowBuilds:
+  # Prebuilt llama.cpp binaries come as optional dependencies; its postinstall would build from source.
+  node-llama-cpp: false

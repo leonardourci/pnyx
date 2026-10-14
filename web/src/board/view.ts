@@ -19,6 +19,19 @@ export function filterCards(state: BoardState, workspace: string, tag: string, q
     .sort((a,b) => b.updatedSeq - a.updatedSeq || a.id.localeCompare(b.id))
 }
 
+// The cards a search ranked, in its order, within the workspace and tag filters.
+export function rankedCards(
+  state: BoardState,
+  ids: string[],
+  workspace: string,
+  tag: string,
+): Card[] {
+  const shown = (c: Card | undefined): c is Card =>
+    !!c && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag))
+
+  return ids.map(id => state.cards[id]).filter(shown)
+}
+
 export function visibleParent(card: Card, visible: Card[]): Card | undefined {
   return visible.find(c => c.id === card.parentId)
 }

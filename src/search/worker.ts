@@ -1,15 +1,18 @@
 // The semantic search worker: one process per Pnyx home, spawned on demand by
 // a search and run at low priority, never inside the board server or a hook. It
-// listens on a local socket, loads the embedder (and the reranker on first use),
-// embeds queries and reranks candidates for any client, and in between embeds the
+// listens on a local socket. On start it picks the models for this machine,
+// downloads any that are missing (reporting progress; searches stay full-text
+// meanwhile), loads the embedder, then fetches and loads the reranker. It embeds
+// queries and reranks candidates for any client, and in between embeds the
 // entries each board's index gained, one at a time, newest first. After a minute
 // with nothing to do it exits and frees the models' memory.
 // Protocol: one JSON request line per connection, answered with one JSON line.
 import { createConnection, createServer, type Socket } from 'node:net'
 import type { DatabaseSync } from 'node:sqlite'
 import { rmSync, statSync } from 'node:fs'
-import { loadBackend, type Backend } from './backend.ts'
-import { readSettings } from './settings.ts'
+import { SemanticError, detectMode, loadBackend, resolveChoice, type Backend } from './backend.ts'
+import { EMBEDDERS, RERANKER, download, isInstalled, modelPath, recordFailure, type ModelFile } from './models.ts'
+import { readSettings, stubbed } from './settings.ts'
 import { claimVectors, openVectors, pending, putVectors } from './vectors.ts'
 import { workerSocket } from './semantic.ts'
 
@@ -19,6 +22,9 @@ const TICK_MS = 2_000
 // Entries embedded between commits; a commit holds the write lock only briefly.
 const BATCH = 32
 const RETRY_MS = 5_000
+// After a failure, how long searches stay full-text before a worker tries again.
+const DOWNLOAD_COOLDOWN_MS = 10 * 60_000
+const BROKEN_COOLDOWN_MS = 24 * 60 * 60_000
 
 export type Request =
   | { op: 'status' }
@@ -26,8 +32,18 @@ export type Request =
   | { op: 'rerank'; query: string; docs: string[] }
   | { op: 'index'; board: string }
 
+// Where a model stands: being fetched (bytes so far of the total), loading, ready or failed.
+type Phase = { phase: 'downloading'; done: number; total: number } | { phase: 'loading' } | { phase: 'ready' } | { phase: 'failed'; message: string } | { phase: 'off' }
+
 const settings = readSettings()
+let mode = ''
+let embedder: Phase = { phase: 'loading' }
+let reranker: Phase = { phase: 'loading' }
 let backend: Promise<Backend> | null = null
+// Settles once the worker knows whether it must download the embedder, so a
+// query neither waits through a download nor answers before a quick load.
+let decide: () => void = () => {}
+const decided = new Promise<void>(resolve => (decide = resolve))
 const queue = new Set<string>()
 let indexing = false
 let last = Date.now()
@@ -88,7 +104,95 @@ function shutdown(): void {
   exit()
 }
 
-const load = () => (backend ??= loadBackend(settings.model))
+async function fetchModel(m: ModelFile, track: (p: Phase) => void): Promise<void> {
+  if (stubbed()) {
+    // Tests stand in for a download's progress with PNYX_SEMANTIC_STUB_DOWNLOAD_MS.
+    const ms = Number(process.env.PNYX_SEMANTIC_STUB_DOWNLOAD_MS) || 0
+
+    for (let t = 0; t < ms; t += 100) {
+      track({ phase: 'downloading', done: Math.round((m.bytes * t) / ms), total: m.bytes })
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+
+    return
+  }
+
+  if (isInstalled(m)) {
+    return
+  }
+
+  track({ phase: 'downloading', done: 0, total: m.bytes })
+  await download(m, bytes => track({ phase: 'downloading', done: bytes, total: m.bytes }))
+}
+
+// Fails this worker for a while: searches stay full-text and say why, and no new
+// worker starts until the cooldown ends (or `search setup --semantic` clears it).
+function fail(error: unknown, forMs: number): never {
+  const message = (error as Error).message
+  console.error((error as Error).stack)
+  recordFailure(message, forMs)
+  setTimeout(shutdown, RETRY_MS)
+  throw error
+}
+
+// Picks the models, fetches the embedder and loads it; then the reranker, when on.
+async function prepare(): Promise<Backend> {
+  try {
+    mode = await detectMode()
+  } finally {
+    // A detection failure is answered as such rather than waited on.
+    setTimeout(decide, 0)
+  }
+
+  const choice = resolveChoice(settings, mode)
+  const spec = EMBEDDERS[choice.model]
+  reranker = choice.rerank ? { phase: 'loading' } : { phase: 'off' }
+
+  try {
+    const fetching = fetchModel(spec, p => (embedder = p))
+    decide()
+    await fetching
+  } catch (error) {
+    embedder = { phase: 'failed', message: (error as Error).message }
+    fail(error, DOWNLOAD_COOLDOWN_MS)
+  }
+
+  embedder = { phase: 'loading' }
+  let b: Backend
+
+  try {
+    b = await loadBackend(choice.model)
+  } catch (error) {
+    embedder = { phase: 'failed', message: (error as Error).message }
+    const broken = error instanceof SemanticError ? error.broken : undefined
+
+    // A file failing its golden check is deleted, so the next attempt downloads it afresh.
+    if (broken) {
+      rmSync(modelPath(broken), { force: true })
+    }
+
+    fail(error, broken ? BROKEN_COOLDOWN_MS : DOWNLOAD_COOLDOWN_MS)
+  }
+
+  embedder = { phase: 'ready' }
+
+  if (choice.rerank) {
+    // The reranker downloads and loads in the background; searches rank without it until then.
+    void fetchModel(RERANKER, p => (reranker = p))
+      .then(() => b.rerank('probe', ['probe']))
+      .then(() => (reranker = { phase: 'ready' }))
+      .catch((error: unknown) => {
+        reranker = { phase: 'failed', message: (error as Error).message }
+        console.error((error as Error).stack)
+      })
+  }
+
+  return b
+}
+
+const load = () => (backend ??= prepare())
+
+const describe = (p: Phase) => (p.phase === 'downloading' ? { phase: p.phase, done: p.done, total: p.total } : p)
 
 async function answer(line: string): Promise<Record<string, unknown>> {
   touch()
@@ -98,7 +202,7 @@ async function answer(line: string): Promise<Record<string, unknown>> {
     // Settings changed since this worker started: let a new one start with them.
     const now = readSettings()
 
-    if (!now.semantic || now.model !== settings.model) {
+    if (!now.semantic || now.model !== settings.model || now.rerank !== settings.rerank) {
       setTimeout(shutdown, 50)
 
       return { error: 'semantic settings changed; retry', code: 'RESTART' }
@@ -111,19 +215,33 @@ async function answer(line: string): Promise<Record<string, unknown>> {
       return { queued: req.board }
     }
 
-    const b = await load()
-
-    if (req.op === 'status') {
-      return { mode: b.mode, key: b.key, dims: b.dims }
+    // Status and queries answer at once while a model downloads: searches stay full-text meanwhile.
+    if (req.op !== 'status') {
+      void load().catch(() => {})
+      await decided
     }
 
+    if (req.op === 'status' || embedder.phase === 'downloading') {
+      const b = embedder.phase === 'ready' ? await load() : undefined
+
+      return {
+        ...(req.op === 'status' ? {} : { code: 'NOT_READY' }),
+        mode,
+        embedder: describe(embedder),
+        reranker: describe(reranker),
+        ...(b ? { key: b.key, dims: b.dims } : {}),
+      }
+    }
+
+    const b = await load()
+
     if (req.op === 'embed') {
-      return { key: b.key, vector: Array.from(await b.embed(req.text)) }
+      return { key: b.key, rerank: reranker.phase === 'ready', reranker: describe(reranker), vector: Array.from(await b.embed(req.text)) }
     }
 
     if (req.op === 'rerank') {
-      if (!now.rerank) {
-        return { error: 'the reranker is off', code: 'OFF' }
+      if (reranker.phase !== 'ready') {
+        return { error: `the reranker is ${reranker.phase}`, code: 'OFF' }
       }
 
       return { scores: await b.rerank(req.query, req.docs) }
@@ -131,14 +249,6 @@ async function answer(line: string): Promise<Record<string, unknown>> {
 
     return { error: 'unknown op', code: 'VALIDATION_ERROR' }
   } catch (error) {
-    // A backend that failed to load stays failed; exit soon so a later search retries it.
-    if (backend) {
-      void backend.catch(() => setTimeout(shutdown, RETRY_MS))
-    }
-
-    // Its output is semantic.log in the Pnyx home.
-    console.error((error as Error).stack)
-
     return { error: (error as Error).message, code: 'UNAVAILABLE' }
   }
 }
@@ -232,12 +342,13 @@ function listen(): void {
     bound = socketId()
     setInterval(() => {
       const replaced = process.platform !== 'win32' && socketId() !== bound
+      const busy = indexing || embedder.phase === 'downloading' || reranker.phase === 'downloading'
 
-      if (replaced || !readSettings().semantic || (!indexing && Date.now() - last > IDLE_MS)) {
+      if (replaced || !readSettings().semantic || (!busy && Date.now() - last > IDLE_MS)) {
         shutdown()
       }
     }, TICK_MS)
-    // Start loading the models now; the request that spawned this worker needs them.
+    // Start now; the request that spawned this worker needs the models.
     void load().catch(() => {})
   })
 }

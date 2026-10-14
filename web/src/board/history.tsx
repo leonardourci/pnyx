@@ -36,7 +36,7 @@ export function History({
         }
 
         setHits(Array.isArray(r.hits) ? r.hits : [])
-        setNote(typeof r.note === 'string' ? r.note : '')
+        setNote([r.semantic, r.note].filter(s => typeof s === 'string' && !s.startsWith('ready')).join(' · '))
         setEvents(Array.isArray(r.events) ? r.events : [])
       })
         .catch(e => {

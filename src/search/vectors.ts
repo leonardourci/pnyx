@@ -5,7 +5,7 @@
 import { existsSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
 import { sqlite, searchPath, type Kind } from './index.ts'
-import { runtimeRequire } from './runtime.ts'
+import { sqliteVecPath } from './runtime.ts'
 
 const VECTORS = 'CREATE TABLE IF NOT EXISTS vectors (hash TEXT PRIMARY KEY, embedding BLOB NOT NULL) WITHOUT ROWID'
 // Below this cosine between a probe's stored and fresh vector, the runtime has
@@ -139,8 +139,7 @@ export function nearestCards(
       return { nearest: [], ...counts }
     }
 
-    db.loadExtension((runtimeRequire()('sqlite-vec') as { getLoadablePath(): string }).getLoadablePath())
-    db.enableLoadExtension(false)
+    loadVec(db)
     const rows = db
       .prepare(
         `SELECT d.card, c.title, d.kind, d.at, d.body, min(vec_distance_cosine(v.embedding, :q)) AS distance
@@ -154,6 +153,44 @@ export function nearestCards(
 
     return { nearest, ...counts }
   })
+}
+
+export interface NearChunk {
+  id: number
+  kind: Kind
+  at: string
+  body: string
+}
+
+// One card's chunks nearest the query vector, best first, as `--card` ranks entries.
+export function nearestChunks(
+  board: string,
+  key: string,
+  query: Float32Array,
+  card: string,
+  kind: Kind | undefined,
+  limit: number,
+): NearChunk[] {
+  return withReader(board, key, (db, counts) => {
+    if (!counts.embedded) {
+      return []
+    }
+
+    loadVec(db)
+
+    return db
+      .prepare(
+        `SELECT d.id, d.kind, d.at, d.body FROM docs d JOIN vectors v ON v.hash = d.content_hash
+         WHERE d.card = :card AND (:kind IS NULL OR d.kind = :kind)
+         ORDER BY vec_distance_cosine(v.embedding, :q), d.id LIMIT :limit`,
+      )
+      .all({ q: blob(query), card, kind: kind ?? null, limit }) as unknown as NearChunk[]
+  })
+}
+
+function loadVec(db: DatabaseSync): void {
+  db.loadExtension(sqliteVecPath())
+  db.enableLoadExtension(false)
 }
 
 // How many of the board's entries have a vector from this backend; null when the index is not built.

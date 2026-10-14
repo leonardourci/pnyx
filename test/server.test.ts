@@ -15,6 +15,9 @@ import { infoPath, localToken, socketPath } from '../src/server/state.ts'
 import { boardDir, loadBoard, spoolDir, spoolWrite, withWriter } from '../src/store/board-store.ts'
 import { decidePush } from '../src/core/decide.ts'
 
+// Semantic search is on by default; these tests never start its worker or fetch models.
+process.env.PNYX_SEMANTIC = 'off'
+
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 const TIMEOUT_MS = 3000
 

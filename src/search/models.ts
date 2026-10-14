@@ -1,7 +1,7 @@
 // The model files semantic search runs on, pinned by URL and SHA-256, and their
 // one explicit download into $PNYX_HOME/models/. All are Apache-2.0.
 import { createHash } from 'node:crypto'
-import { createWriteStream, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
+import { createWriteStream, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -191,6 +191,26 @@ export function isInstalled(m: ModelFile): boolean {
   }
 }
 
+// Partial downloads of this file left by processes that are gone (an interrupted
+// download, a worker that stopped when semantic search was turned off).
+function removeAbandoned(m: ModelFile): void {
+  for (const name of readdirSync(modelsDir())) {
+    const pid = Number(name.slice(m.file.length + 1, -'.part'.length))
+
+    if (!name.startsWith(`${m.file}.`) || !name.endsWith('.part') || !Number.isInteger(pid)) {
+      continue
+    }
+
+    try {
+      process.kill(pid, 0)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+        rmSync(join(modelsDir(), name), { force: true })
+      }
+    }
+  }
+}
+
 // Fetches a pinned file to <file>.<pid>.part, hashing as it streams, and names it
 // only when size and SHA-256 match. Reports progress in bytes. A minute without
 // data aborts it.
@@ -201,6 +221,7 @@ export async function download(m: ModelFile, progress: (bytes: number) => void =
   }
 
   mkdirSync(modelsDir(), { recursive: true })
+  removeAbandoned(m)
   const part = `${modelPath(m)}.${process.pid}.part`
   const failed = (why: string) => new BoardError(`download of ${m.file} failed: ${why}`, 'DOWNLOAD_FAILED', ['Check the network and run `pnyx-axi search setup --semantic` again'])
   const stall = new AbortController()
@@ -245,3 +266,24 @@ export async function download(m: ModelFile, progress: (bytes: number) => void =
 
   return 'downloaded'
 }
+
+// A failed download or golden check, recorded so searches stop starting workers that
+// would fail the same way (or fetch a gigabyte again) until it expires.
+const failurePath = () => join(pnyxHome(), 'semantic-failure.json')
+
+export function recordFailure(message: string, forMs: number): void {
+  mkdirSync(pnyxHome(), { recursive: true })
+  writeFileSync(failurePath(), `${JSON.stringify({ message, until: Date.now() + forMs })}\n`)
+}
+
+export function activeFailure(): string | undefined {
+  try {
+    const { message, until } = JSON.parse(readFileSync(failurePath(), 'utf8')) as { message: string; until: number }
+
+    return until > Date.now() ? message : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export const clearFailure = () => rmSync(failurePath(), { force: true })

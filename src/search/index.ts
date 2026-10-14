@@ -401,6 +401,8 @@ export interface Query {
   card?: string
   workspace?: string
   limit: number
+  // Also return each snippet's docs.id, for semantic search to fuse entries by.
+  withIds?: boolean
 }
 
 // A card's best-matching chunks shown with a hit; with --card, up to --limit of them.
@@ -410,6 +412,7 @@ export interface Snippet {
   kind: Kind
   at: string
   snippet: string
+  id?: number
 }
 
 // lexical: the words as typed, stemmed and with synonyms; fuzzy: nothing matched
@@ -614,7 +617,7 @@ function run(
           .all({ ...filters, limit: query.limit })
   ) as Row[]
   const top = db.prepare(
-    `SELECT d.kind, d.at, snippet(docs_fts, 0, '[', ']', '…', 16) AS s FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid
+    `SELECT d.id, d.kind, d.at, snippet(docs_fts, 0, '[', ']', '…', 16) AS s FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid
      WHERE docs_fts MATCH :match AND d.card = :card AND (:kind IS NULL OR d.kind = :kind) ORDER BY ${RANK}, d.id LIMIT :n`,
   )
   const snippetMatch = query.card || query.kind ? match : exprs.join(' OR ')
@@ -628,8 +631,8 @@ function run(
         card: r.card,
         kind: query.kind ?? null,
         n: query.card ? query.limit : SNIPPETS,
-      }) as { kind: Kind; at: string; s: string }[]
-    ).map(t => ({ kind: t.kind, at: t.at || 'unknown', snippet: t.s.replace(/\s+/g, ' ') })),
+      }) as { id: number; kind: Kind; at: string; s: string }[]
+    ).map(t => ({ kind: t.kind, at: t.at || 'unknown', snippet: t.s.replace(/\s+/g, ' '), ...(query.withIds ? { id: t.id } : {}) })),
   }))
 
   return { hits, total: cards[0]?.total ?? 0, match: mode }

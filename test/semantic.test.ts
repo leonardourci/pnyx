@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,17 +15,10 @@ const run$ = promisify(execFile)
 const cards = (out: string) => [...out.matchAll(/^ {2}- card: (\S+)$/gm)].map(m => m[1])
 
 // A board in a temporary home. With stub, the worker embeds with hash vectors and
-// reranks by word overlap, so no model is ever downloaded or loaded, and the
-// runtime folder holds only a link to the repository's sqlite-vec, so nothing is installed.
-function board(stub = true) {
+// reranks by word overlap, so no model is ever downloaded or loaded.
+function board(extra: Record<string, string> = {}) {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-sem-'))
-
-  if (stub) {
-    mkdirSync(join(home, 'runtime', 'node_modules'), { recursive: true })
-    symlinkSync(join(import.meta.dirname, '..', 'node_modules', 'sqlite-vec'), join(home, 'runtime', 'node_modules', 'sqlite-vec'), 'junction')
-  }
-
-  const env = { ...process.env, PNYX_HOME: home, PNYX_SEMANTIC_STUB: stub ? '1' : '' }
+  const env = { ...process.env, PNYX_HOME: home, PNYX_SEMANTIC_STUB: '1', ...extra }
   const run = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   const fails = (args: string[], code: string, message?: RegExp) =>
     assert.throws(() => run(...args), (error: { stdout: string }) => {
@@ -55,54 +48,96 @@ function board(stub = true) {
   return { home, env, run, fails, push, stop }
 }
 
-// Waits until the background worker has embedded every entry.
+// Waits until the background worker has its models and has embedded every entry.
 async function embedded(run: (...args: string[]) => string): Promise<string> {
   for (let i = 0; i < 100; i += 1) {
     const status = run('search', 'status')
     const m = status.match(/^vectors: (\d+) of (\d+) entries embedded$/m)
 
-    if (m && m[1] === m[2]) {
+    if (m && m[1] === m[2] && /^rerank: (on|off)$/m.test(status)) {
       return status
     }
 
+    run('search', 'orders')
     await new Promise(resolve => setTimeout(resolve, 100))
   }
 
   throw new Error('the worker never finished embedding')
 }
 
-test('semantic search is off by default and search stays lexical', async () => {
-  const { run, home } = board()
-  assert.match(run('settings'), /^ {2}search\.semantic: off$/m)
-  const out = run('search', 'orders')
-  assert.match(out, /^mode: lexical$/m)
-  assert.doesNotMatch(out, /^semantic:/m)
-  process.env.PNYX_HOME = home
-  const { workerSocket } = await import('../src/search/semantic.ts')
-  assert.ok(!existsSync(workerSocket()), 'no worker starts while semantic search is off')
-  delete process.env.PNYX_HOME
+test('semantic search is on by default; models are picked for the machine', async () => {
+  const { run, stop } = board()
+
+  try {
+    assert.match(run('settings'), /^ {2}search\.semantic: on\n {2}search\.rerank: auto\n {2}search\.model: auto$/m)
+    const status = await embedded(run)
+    // The stub counts as a GPU machine: the 311m-sized stub embedder and the reranker.
+    assert.match(status, /^semantic: "on: granite-311m on stub, 64 dimensions"$/m)
+    assert.match(status, /^rerank: on$/m)
+    assert.match(run('search', 'reverted', 'cookie'), /^mode: "hybrid, reranked"$/m)
+  } finally {
+    stop()
+  }
 })
 
-test('turning semantic search on needs the models; bad settings are refused', () => {
-  const { fails } = board(false)
-  fails(['settings', 'set', 'search.semantic', 'on'], 'VALIDATION_ERROR', /runtime \(node-llama-cpp@3\.22\.1 sqlite-vec@0\.1\.9\) is not installed/)
-  fails(['settings', 'set', 'search.rerank', 'on'], 'VALIDATION_ERROR', /reranker is not downloaded/)
+test('while a model downloads, search is full-text and shows the progress', async () => {
+  const { run, stop } = board({ PNYX_SEMANTIC_STUB_DOWNLOAD_MS: '4000' })
+
+  try {
+    const lexical = run('search', 'orders', '--lexical')
+    let out = run('search', 'orders')
+
+    for (let i = 0; i < 20 && !/downloading/.test(out); i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+      out = run('search', 'orders')
+    }
+
+    assert.match(out, /^semantic: "downloading the model, \d+% of 347 MB; full-text results until it is ready"$/m)
+    assert.equal(out.replace(/^semantic: .*\n/m, ''), lexical)
+    assert.match(run('search', 'status'), /^semantic: "preparing \(stub\): downloading the model, \d+% of 347 MB; full-text results until it is ready"$/m)
+    await embedded(run)
+    assert.match(run('search', 'orders'), /^mode: "hybrid, reranked"$/m)
+  } finally {
+    stop()
+  }
+})
+
+test('bad settings are refused; PNYX_SEMANTIC=off and the setting turn semantic search off', async () => {
+  const { run, fails, home, env } = board({ PNYX_SEMANTIC: 'off' })
   fails(['settings', 'set', 'search.semantic', 'maybe'], 'VALIDATION_ERROR')
+  fails(['settings', 'set', 'search.rerank', 'sometimes'], 'VALIDATION_ERROR')
   fails(['settings', 'set', 'search.model', 'huge'], 'VALIDATION_ERROR')
   fails(['settings', 'set', 'nope', 'on'], 'VALIDATION_ERROR')
   fails(['search', 'setup'], 'VALIDATION_ERROR')
   fails(['search', 'setup', '--semantic', '--model', 'huge'], 'VALIDATION_ERROR')
+  // The variable wins over the file but is never written to it.
+  run('settings', 'set', 'search.rerank', 'off')
+  assert.match(readFileSync(join(home, 'settings.json'), 'utf8'), /"search\.semantic": "on"/)
+  const out = run('search', 'orders')
+  assert.match(out, /^mode: lexical$/m)
+  assert.doesNotMatch(out, /^semantic:/m)
+  assert.match(run('search', 'status'), /^semantic: "off: /m)
+  process.env.PNYX_HOME = home
+  const { workerSocket } = await import('../src/search/semantic.ts')
+  assert.ok(!existsSync(workerSocket()), 'no worker starts while semantic search is off')
+  delete process.env.PNYX_HOME
+  void env
 })
 
-test('with semantic search on but no runtime installed, search says so and stays full-text', () => {
-  const { run, home } = board(false)
-  const before = run('search', 'orders')
-  writeFileSync(join(home, 'settings.json'), JSON.stringify({ 'search.semantic': 'on', 'search.rerank': 'off', 'search.model': 'granite-97m' }))
-  const out = run('search', 'orders')
-  assert.match(out, /^semantic: "unavailable: the semantic search runtime \(node-llama-cpp@3\.22\.1 sqlite-vec@0\.1\.9\) is not installed"$/m)
-  assert.equal(out.replace(/^semantic: .*\n/m, ''), before)
-  assert.match(run('search', 'status'), /^semantic: "unavailable: the semantic search runtime .* is not installed"$/m)
-  assert.ok(!existsSync(join(home, 'semantic.log')), 'no worker is started without the runtime')
+test('after a failure, search stays full-text and says so until setup retries', async () => {
+  const { run, home, stop } = board()
+
+  try {
+    writeFileSync(join(home, 'semantic-failure.json'), JSON.stringify({ message: 'download of x failed: HTTP 503', until: Date.now() + 60_000 }))
+    const out = run('search', 'orders')
+    assert.match(out, /^semantic: "unavailable: download of x failed: HTTP 503; run `pnyx-axi search setup --semantic` to retry now"$/m)
+    assert.match(out, /^mode: lexical$/m)
+    run('search', 'setup', '--semantic')
+    assert.ok(!existsSync(join(home, 'semantic-failure.json')))
+    await embedded(run)
+  } finally {
+    stop()
+  }
 })
 
 test('the worker socket sits in a folder only this user can use', { skip: process.platform === 'win32' }, async () => {
@@ -138,16 +173,17 @@ test('setup turns semantic search on; hybrid search finds cards by meaning and b
     const setup = run('search', 'setup', '--semantic')
     assert.match(setup, /^semantic: on$/m)
     assert.match(setup, /^mode: stub$/m)
+    assert.match(setup, /^model: granite-311m$/m)
     assert.match(setup, /^rerank: on$/m)
     run('settings', 'set', 'search.rerank', 'off')
     const status = await embedded(run)
-    assert.match(status, /^semantic: "on: stub, 64 dimensions"$/m)
+    assert.match(status, /^semantic: "on: granite-311m on stub, 64 dimensions"$/m)
     assert.match(status, /^mode: "hybrid: words fused with meaning"$/m)
 
     // "reverted cookie": no card holds both words, so the full-text leg finds nothing; meaning finds both.
     const meaning = run('search', 'reverted', 'cookie')
     assert.match(meaning, /^mode: hybrid$/m)
-    assert.match(meaning, /^semantic: "ready: stub"$/m)
+    assert.match(meaning, /^semantic: "ready: granite-311m on stub"$/m)
     assert.deepEqual(cards(meaning).slice(0, 2)
       .sort(), ['c1', 'c3'])
     assert.match(meaning, /^ {4}match: semantic$/m)
@@ -159,12 +195,18 @@ test('setup turns semantic search on; hybrid search finds cards by meaning and b
     assert.match(both, /^ {4}match: both$/m)
     assert.match(both, /\[orders\] table/)
 
-    // Filters apply to both legs; --lexical and --card search by words only.
+    // Filters apply to both legs; --lexical searches by words only.
     const homeOnly = cards(run('search', 'reverted', 'cookie', '--workspace', 'home'))
     assert.equal(homeOnly[0], 'c3')
     assert.ok(!homeOnly.includes('c1'))
     assert.match(run('search', 'reverted', 'cookie', '--lexical'), /^mode: lexical\nresults: "none: /m)
-    assert.match(run('search', 'orders', '--card', 'c1'), /^mode: lexical$/m)
+
+    // --card ranks one card's entries the same way: no entry holds both words, yet meaning finds one.
+    const entries = run('search', 'table', 'dinosaur', '--card', 'c1')
+    assert.match(entries, /^mode: hybrid$/m)
+    assert.match(entries, /^ {4}match: semantic$/m)
+    assert.match(entries, /^ {6}event,"[^"]+",deploy reverted because the migration locked the orders table$/m)
+    assert.match(run('search', 'table', 'dinosaur', '--card', 'c1', '--lexical'), /^results: "none: /m)
   } finally {
     stop()
   }
@@ -189,10 +231,11 @@ test('the reranker reorders the top results, marks weak ones and says when nothi
   }
 })
 
-test('turned off, search output is exactly what it was before setup', async () => {
-  const { run, stop } = board()
+test('turned off, search output is exactly the full-text output', async () => {
+  const { run, stop, env } = board()
   const queries = [['orders'], ['reverted', 'cookie'], ['migraton'], ['orders', '--card', 'c1']]
-  const before = queries.map(q => run('search', ...q))
+  const off = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { env: { ...env, PNYX_SEMANTIC: 'off' }, encoding: 'utf8' })
+  const before = queries.map(q => off('search', ...q))
   run('search', 'setup', '--semantic')
   await embedded(run)
   stop()
