@@ -7,7 +7,9 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { decideNote, decidePush, noteId } from '../../core/decide.ts'
-import { SESSION_TITLE, type SourceNote } from '../../core/model.ts'
+import { EVENT_VERSION, SESSION_TITLE, type SourceNote } from '../../core/model.ts'
+import { cardSessionId } from '../../core/tasks.ts'
+import { recordEntries } from '../../thread/read.ts'
 import type { Writer } from '../../store/board-store.ts'
 import { readTranscript } from '../../search/index.ts'
 import { codexThreadTitle, transcriptNotes } from './notes.ts'
@@ -119,6 +121,32 @@ export function harvestTranscripts({ writer, cardIds, at }: {
     let title = tail.reset || !cursors[name]?.pos || autoTitle?.from !== 'session' ? undefined : `${SESSION_TITLE}${autoTitle.text}`
 
     for (const line of tail.lines) {
+      const card = writer.state.cards[id]!
+      const session = cardSessionId({ card })
+
+      if (session && (card.tracking === 'declared' || id === '$hydra')) {
+        for (const entry of recordEntries({ record: line.record, offset: line.pos }).filter(e => e.kind === 'message')) {
+          const messageId = noteId({ cardKey: session, ref: `chat:${path}:${tail.identity}:${entry.id}:${entry.text}` })
+
+          if (!(messageId in writer.state.eventIds)) {
+            writer.append({
+              event: {
+                v: EVENT_VERSION,
+                seq: writer.state.seq + 1,
+                id: messageId,
+                at: entry.at ?? at,
+                actor: `session:${session}`,
+                cardId: id,
+                type: 'chat.message',
+                sessionId: session,
+                messageId,
+                data: { session, nativeId: entry.id, role: entry.role, text: entry.text },
+              },
+            })
+          }
+        }
+      }
+
       for (const note of transcriptNotes({ record: line.record })) {
         if (note.kind !== 'context' || !note.text.startsWith(SESSION_TITLE)) {
           appended += appendNote({ writer, cardId: id, note, at })
