@@ -262,6 +262,8 @@ test('a session renamed back to an earlier title takes that title again', () => 
     assert.match(run('card', 'c2'), new RegExp(`^ {2}title: ${title}$`, 'm'))
   }
 
+  // A Codex index entry bumped without a rename appends nothing.
+  appendFileSync(index, `${JSON.stringify({ id: 'x2', thread_name: 'Alpha', updated_at: '2026-10-12T13:00:00Z' })}\n`)
   // The same records read again, even from the start, append nothing.
   appendFileSync(path, `${JSON.stringify({ type: 'custom-title', customTitle: 'Alpha', sessionId: 's1' })}\n`)
   assert.match(run('harvest'), /none: nothing new/)

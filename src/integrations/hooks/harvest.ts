@@ -72,7 +72,10 @@ function codexTitle(writer: Writer, cardId: string, path: string, at: string): n
     return 0
   }
 
+  const shown = card.autoTitle?.from === 'session' ? `${SESSION_TITLE}${card.autoTitle.text}` : undefined
+
   return codexThreadTitle(index, card.agent.sessionId)
+    .filter(note => note.text !== shown)
     .reduce((n, note) => n + appendNote(writer, cardId, note, at), 0)
 }
 
