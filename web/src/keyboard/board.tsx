@@ -119,6 +119,7 @@ export function KeyboardLayers({ keyboard, state, connected }: { keyboard: Retur
       setTimeout(() => onAction(a.id, overlay.context), 0); closeOverlay();
     } }));
     if (overlay.kind !== "move") items.push({ id: "focus.workspace", label: "Focus workspace filter", run: () => { closeOverlay(); requestAnimationFrame(() => focusElement("[aria-label=Workspace]")); } }, { id: "focus.tags", label: "Focus tag filter", run: () => { closeOverlay(); requestAnimationFrame(() => focusElement("[aria-label='Filter by tag']")); } });
+    if (overlay.kind === "palette") items = items.filter(item => !item.disabled);
   }
   return <>{overlay && <CommandMenu title={overlay.kind === "move" ? "Move card" : overlay.kind === "help" ? "Keyboard help" : "Commands"} description={overlay.kind === "move" ? "Placement does not complete work or resolve a source request." : "Shortcuts follow the focused area. Edit every binding in Settings."} items={items} close={closeOverlay} />}{hints.length > 0 && <div className="hint-layer" aria-label="Target hints">{hints.filter(h => h.label.startsWith(hintPrefix)).map(h => <span className="target-hint" key={h.label} style={{ left: h.x, top: h.y }}>{h.label}</span>)}<div className="hint-instructions" role="status">{hints.length} targets · Type a label · {label("cancel")} cancel · Backspace correct</div></div>}</>;
 }

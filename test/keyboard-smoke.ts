@@ -88,7 +88,7 @@ try {
   await focus(".thread"); await press("g"); await press("r"); await check("document.querySelector('textarea').value === 'Preserve inline draft'", "filtered conversation keeps draft"); await press("Escape"); await press("Escape");
   await check("document.activeElement.matches('[data-card]') && document.activeElement.closest('.card').querySelector('.workspace').textContent === 'Work'", "filtered close finds a visible board anchor");
   await browser("emulate", "--viewport", "390x844x1,mobile,touch"); await click("button", "Commands"); await browser("wait", "Search Commands");
-  await check("document.documentElement.scrollWidth === innerWidth && document.querySelector('[role=dialog]').getBoundingClientRect().bottom <= innerHeight", "mobile palette fits viewport"); await screenshot("keyboard-mobile.png");
+  await check("document.documentElement.scrollWidth === innerWidth && document.querySelector('[role=dialog]').getBoundingClientRect().bottom <= innerHeight && !document.querySelector('[role=option][aria-disabled=true]')", "mobile palette fits viewport and shows available actions"); await screenshot("keyboard-mobile.png");
   const consoleOutput = await browser("console"); assert.doesNotMatch(consoleOutput, /(?:TypeError|ReferenceError|Uncaught)/);
   process.stdout.write(`Keyboard smoke passed; screenshots: ${evidence}\n`);
 } finally { await server.close(); await browser("stop").catch(() => {}); rmSync(home, { recursive: true, force: true }); }
