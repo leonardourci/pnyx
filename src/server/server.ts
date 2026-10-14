@@ -1,5 +1,6 @@
-// The local board server: loopback HTTP for writes and the web board, a Unix
-// socket for hook events, and one WebSocket per browser tab for pushed changes.
+// The local board server: loopback HTTP for the web board and a health check, a
+// Unix socket for hook events, and one WebSocket per browser tab for pushed
+// changes and the tab's commands.
 // It writes only through the CLI's own commands and spool drain, so the board
 // keeps a single writer whether a change comes from here or from the CLI.
 import { timingSafeEqual } from "node:crypto";
@@ -36,7 +37,12 @@ const MIME: Record<string, string> = {
 };
 
 // Server to browser. A snapshot replaces whatever the tab held; events then follow in sequence.
-export type ServerMessage = { type: "snapshot"; seq: number; state: BoardState } | { type: "event"; event: BoardEvent };
+// Each command gets a receipt or an error carrying its id.
+export type ServerMessage =
+  | { type: "snapshot"; seq: number; state: BoardState }
+  | { type: "event"; event: BoardEvent }
+  | { type: "receipt"; id: string; [field: string]: unknown }
+  | { type: "error"; id: string | null; error: string; code: string; help?: string[] };
 
 export interface RunningServer {
   port: number;
@@ -46,7 +52,7 @@ export interface RunningServer {
 }
 
 export async function startServer({ board, port = 0 }: { board: string; port?: number }): Promise<RunningServer> {
-  if (readServer(board)) {
+  if (await readServer(board)) {
     throw new BoardError(`a server is already running for board ${board}`, "ALREADY_RUNNING", ["Run `pnyx-axi` to see its address"]);
   }
   const dir = boardDir(board);
@@ -117,42 +123,39 @@ export async function startServer({ board, port = 0 }: { board: string; port?: n
   const origins = new Set<string>();
   const allowed = (req: IncomingMessage) =>
     hosts.has(req.headers.host ?? "") && (req.headers.origin === undefined || origins.has(req.headers.origin));
-  const authorized = (req: IncomingMessage) => {
-    const given = Buffer.from(/^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1] ?? "");
-    return token.length > 0 && given.length === token.length && timingSafeEqual(given, token);
+  const authorized = (given: string | null) => {
+    const bytes = Buffer.from(given ?? "");
+    return token.length > 0 && bytes.length === token.length && timingSafeEqual(bytes, token);
   };
 
   const http = createServer((req, res) => {
     if (!allowed(req)) return reply(res, 403, { error: "origin or host not allowed", code: "FORBIDDEN" });
-    const path = new URL(req.url ?? "/", "http://localhost").pathname;
-    const command = /^\/api\/commands\/([a-z]+)$/.exec(path)?.[1];
-    if (command !== undefined) return void handleCommand(req, res, command);
     if (req.method !== "GET" && req.method !== "HEAD") return reply(res, 405, { error: "method not allowed", code: "METHOD_NOT_ALLOWED" });
-    serveStatic(res, path);
+    const path = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (path === "/health") return reply(res, 200, { board, pid: process.pid });
+    serveStatic(res, path, token.toString());
   });
 
-  const handleCommand = async (req: IncomingMessage, res: ServerResponse, name: string) => {
-    if (req.method !== "POST") return reply(res, 405, { error: "use POST", code: "METHOD_NOT_ALLOWED" });
-    if (!authorized(req)) return reply(res, 401, { error: "missing or wrong token", code: "UNAUTHORIZED" });
-    if (!(WRITE_COMMANDS as readonly string[]).includes(name)) {
-      return reply(res, 404, { error: `unknown command: ${name}`, code: "NOT_FOUND", help: [`Use one of ${WRITE_COMMANDS.join(", ")}`] });
+  // A tab's write: the same CLI command, pinned to this board, under the same writer lock.
+  const runCommand = (ws: WebSocket, message: { id?: unknown; name?: unknown; args?: unknown }) => {
+    const id = typeof message.id === "string" ? message.id : null;
+    const fail = (error: string, code: string, help?: string[]) => send(ws, { type: "error", id, error, code, help });
+    const { name, args } = message;
+    if (id === null) return fail("command needs a string id", "VALIDATION_ERROR");
+    if (typeof name !== "string" || !(WRITE_COMMANDS as readonly string[]).includes(name)) {
+      return fail(`unknown command: ${String(name)}`, "NOT_FOUND", [`Use one of ${WRITE_COMMANDS.join(", ")}`]);
     }
-    let args: unknown;
+    if (!Array.isArray(args) || !args.every((a) => typeof a === "string")) return fail("args must be [string, ...]", "VALIDATION_ERROR");
+    if (args.some((a) => a === "--board" || a.startsWith("--board="))) {
+      return fail(`--board is not allowed; this server writes board ${board}`, "VALIDATION_ERROR");
+    }
+    const actor = args.some((a) => a === "--actor" || a.startsWith("--actor=")) ? [] : ["--actor", "web"];
     try {
-      args = (JSON.parse(await readBody(req)) as { args?: unknown }).args;
-    } catch {
-      args = undefined;
-    }
-    if (!Array.isArray(args) || !args.every((a) => typeof a === "string")) {
-      return reply(res, 400, { error: 'body must be {"args": [string, ...]}', code: "VALIDATION_ERROR" });
-    }
-    try {
-      reply(res, 200, commands[name as (typeof WRITE_COMMANDS)[number]](args));
+      send(ws, { ...commands[name as (typeof WRITE_COMMANDS)[number]]([...args, ...actor, "--board", board]), type: "receipt", id });
       kick();
     } catch (error) {
-      if (!(error instanceof AxiError)) return reply(res, 500, { error: (error as Error).message, code: "UNKNOWN" });
-      const status = error.code === "VALIDATION_ERROR" ? 400 : error.code === "NOT_FOUND" ? 404 : 409;
-      reply(res, status, { error: error.message, code: error.code, help: error.suggestions });
+      if (!(error instanceof AxiError)) return fail((error as Error).message, "UNKNOWN");
+      fail(error.message, error.code, error.suggestions);
     }
   };
 
@@ -163,9 +166,16 @@ export async function startServer({ board, port = 0 }: { board: string; port?: n
       socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
       return;
     }
+    if (!authorized(url.searchParams.get("token"))) {
+      socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      return;
+    }
     wss.handleUpgrade(req, socket, head, (ws) => {
       ws.on("message", (data) => {
-        if (parseMessage(data.toString())?.type === "resync") sendSnapshot(ws);
+        const message = parseMessage(data.toString());
+        if (message?.type === "resync") sendSnapshot(ws);
+        else if (message?.type === "command") runCommand(ws, message);
+        else send(ws, { type: "error", id: null, error: "unknown message", code: "VALIDATION_ERROR", help: ["Send a command or resync message"] });
       });
       resume(ws, url.searchParams.get("after"));
     });
@@ -263,25 +273,15 @@ async function listenIngest(board: string, onLine: (line: string) => void): Prom
   return server;
 }
 
-function parseMessage(text: string): { type?: unknown } | undefined {
+type ClientMessage = { type?: unknown; id?: unknown; name?: unknown; args?: unknown };
+
+function parseMessage(text: string): ClientMessage | undefined {
   try {
-    return JSON.parse(text) as { type?: unknown };
+    const message = JSON.parse(text) as unknown;
+    return typeof message === "object" && message !== null ? (message as ClientMessage) : undefined;
   } catch {
     return undefined;
   }
-}
-
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.setEncoding("utf8");
-    req.on("data", (chunk: string) => {
-      body += chunk;
-      if (body.length > MAX_BODY) req.destroy(new Error("body too large"));
-    });
-    req.on("end", () => resolve(body));
-    req.on("error", reject);
-  });
 }
 
 function reply(res: ServerResponse, status: number, body: unknown): void {
@@ -289,10 +289,18 @@ function reply(res: ServerResponse, status: number, body: unknown): void {
 }
 
 // The built web board from dist/web; any unknown path falls back to its index.html.
-function serveStatic(res: ServerResponse, path: string): void {
+// index.html carries the token for the WebSocket handshake; the caller has already
+// checked Host and Origin, so only this server's own page gets it.
+function serveStatic(res: ServerResponse, path: string, token: string): void {
+  const index = join(WEB_ROOT, "index.html");
   const file = normalize(join(WEB_ROOT, path === "/" ? "index.html" : path));
-  for (const candidate of file.startsWith(`${WEB_ROOT}/`) ? [file, join(WEB_ROOT, "index.html")] : []) {
+  for (const candidate of file.startsWith(`${WEB_ROOT}/`) ? [file, index] : []) {
     try {
+      if (candidate === index) {
+        const html = readFileSync(index, "utf8").replace("</head>", `<meta name="pnyx-token" content="${token}" />\n</head>`);
+        res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-store" }).end(html);
+        return;
+      }
       const body = readFileSync(candidate);
       res.writeHead(200, { "content-type": MIME[extname(candidate)] ?? "application/octet-stream" }).end(body);
       return;
@@ -339,16 +347,16 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   return { server: "stopped", board };
 }
 
-// `pnyx-axi stop`: signals the board's server and waits for it to remove server.json.
-export function stop(args: string[]): Record<string, unknown> {
+// `pnyx-axi stop`: signals the board's server and waits until it no longer answers.
+export async function stop(args: string[]): Promise<Record<string, unknown>> {
   const board = boardFlag(args).board ?? "default";
-  const info = readServer(board);
+  const info = await readServer(board);
   if (!info) return { server: "none: not running", help: ["Run `pnyx-axi serve` to start it"] };
   process.kill(info.pid, "SIGTERM");
   const deadline = Date.now() + STOP_TIMEOUT_MS;
-  while (readServer(board)) {
+  while (await readServer(board)) {
     if (Date.now() > deadline) throw new AxiError(`server pid ${info.pid} did not stop`, "TIMEOUT", [`Check process ${info.pid}`]);
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    await new Promise((r) => setTimeout(r, 25));
   }
   return { server: "stopped", board };
 }

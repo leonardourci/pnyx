@@ -218,12 +218,12 @@ function cardDetail(card: Card): Output {
   return detail;
 }
 
-export function home(): Output {
+export async function home(): Promise<Output> {
   const { state, tornBytes } = loadBoard(DEFAULT_BOARD);
   const cards = Object.values(state.cards);
   const columns = Object.fromEntries(COLUMNS.map((c) => [c, cards.filter((card) => card.column === c).length]));
   // Reports the server; never starts it.
-  const server = readServer(DEFAULT_BOARD);
+  const server = await readServer(DEFAULT_BOARD);
   const out: Output = { board: DEFAULT_BOARD, server: server ? `running at ${server.url}` : "not running", columns };
   if (tornBytes > 0) out.warning = "events.jsonl has a torn tail; run `pnyx-axi repair`";
   const serveHint = server ? [] : ["Run `pnyx-axi serve` to start the board server"];
@@ -444,8 +444,10 @@ Repair copies the torn bytes to a side file and appends a marker so readers skip
 Serves the board on 127.0.0.1 (a random port unless --port is given) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
 Hook events arrive on the board's server.sock or through its spool. Browsers get one WebSocket at /ws:
 a snapshot on connect, then events by sequence; /ws?after=<seq> resumes, a gap gets a fresh snapshot.
-Writes are POST /api/commands/<move|link|outcome|undo> {"args":[...]} with the token in $PNYX_HOME/token
-as \`Authorization: Bearer <token>\`.
+The handshake needs ?token=<token>: the board page served here carries it, local programs read $PNYX_HOME/token.
+Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo","args":[...]}
+gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write this board;
+--board is refused and the actor defaults to web. GET /health answers {"board","pid"}.
 `,
   stop: `usage: pnyx-axi stop [--board <name>]
 `,

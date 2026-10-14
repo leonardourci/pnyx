@@ -5,6 +5,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { boardDir, pnyxHome } from "../store/board-store.ts";
 
+const HEALTH_TIMEOUT_MS = 1000;
+
 export interface ServerInfo {
   pid: number;
   port: number;
@@ -16,20 +18,22 @@ export interface ServerInfo {
 export const infoPath = (board: string) => join(boardDir(board), "server.json");
 export const socketPath = (board: string) => join(boardDir(board), "server.sock");
 
-// The board's server, or null when none is running. A server.json left by a
-// process that is gone counts as not running.
-export function readServer(board: string): ServerInfo | null {
+// The board's server, or null when none is running. Trusted only when the
+// recorded port answers /health with this board and pid, so a server.json left
+// by a server that died (its pid or port since reused) counts as not running.
+export async function readServer(board: string): Promise<ServerInfo | null> {
   let info: ServerInfo;
   try {
     info = JSON.parse(readFileSync(infoPath(board), "utf8")) as ServerInfo;
-    process.kill(info.pid, 0);
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM" ? info! : null;
+    const res = await fetch(`http://127.0.0.1:${info.port}/health`, { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) });
+    const health = (await res.json()) as { board?: unknown; pid?: unknown };
+    return health.board === board && health.pid === info.pid ? info : null;
+  } catch {
+    return null;
   }
-  return info;
 }
 
-// Created on first use, readable only by this user. Clients send it as a bearer token on writes.
+// Created on first use, readable only by this user. The WebSocket handshake requires it.
 export function localToken(): string {
   const path = join(pnyxHome(), "token");
   try {
