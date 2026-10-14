@@ -192,7 +192,10 @@ try {
   await check('document.querySelector(".control-row[aria-label=\'Effort\'] [aria-pressed=true]").textContent === "medium"', 'the reported effort is marked')
   await click('button', 'high'); await browser('wait', 'Waiting for the session to report its effort')
   await browser('wait', 'asks Firstmate')
-  assert.match(readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8'), /arg=Pnyx: please switch the worker on task api-v2 \(Claude Code\) to effort high\.\n---\n$/)
+  // The tab reloads the notes' receipts after the reply lands, so the note need not be last.
+  const inbox = readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8')
+  assert.equal(inbox.match(/^arg=note$/gm)?.length, 1)
+  assert.match(inbox, /^arg=Pnyx: please switch the worker on task api-v2 \(Claude Code\) to effort high\.\n---\n/m)
   await browser('wait', 'queued')
   report({ effort: 'high' })
   await browser('wait', 'Effort')
