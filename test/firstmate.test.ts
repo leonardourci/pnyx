@@ -1,7 +1,7 @@
 // Firstmate integration against a fixture home copied into a temp dir, with a fake
 // fm-send. Never points at a real Firstmate home.
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -263,6 +263,32 @@ test('firstmate sync through the CLI', () => {
   assert.match(run(), /needs_you: 2/)
   fails(['firstmate', 'sync'], 'VALIDATION_ERROR')
   fails(['firstmate', 'sync', '--home', join(home, 'data')], 'VALIDATION_ERROR')
+})
+
+test('serve --home folds the home into the board without a separate watch', async () => {
+  const { home, env } = copyFixture()
+  const server = spawn(process.execPath, [BIN, 'serve', '--home', home], { env, stdio: ['ignore', 'pipe', 'inherit'] })
+
+  try {
+    let out = ''
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`serve did not start: ${out}`)), 10000)
+      server.stdout.on('data', (chunk: Buffer) => {
+        out += chunk
+
+        if (out.includes('help[1]')) {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+    })
+    assert.match(out, /^firstmate: "watching 1 home"$/m)
+    assert.equal(cardOf(home, 'api-v2').title, 'app: v2 API with (optional) pagination')
+  } finally {
+    const exited = new Promise(resolve => server.once('exit', resolve))
+    server.kill('SIGTERM')
+    await exited
+  }
 })
 
 test('a Firstmate outcome is a source observation: undo and clear refuse it', () => {
