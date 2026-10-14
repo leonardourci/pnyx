@@ -100,7 +100,9 @@ try {
   await check("!!document.querySelector(\".column-cards > .detail\") && document.querySelector(\"textarea\").value === \"Keep this draft\"", "inline placement preserves drafts");
   await screenshot("inline.png");
   await click("button", "Settings"); await click("combobox", "Conversation placement"); await click("option", "Right panel"); await click("button", "Back to board");
-  await click("button", "Close detail"); await click("button", "+ Add column"); await browser("fill", await ref("textbox", "New column name"), "Later"); await click("button", "Create column"); await browser("wait", "Later");
+  await click("button", "Close detail"); await click("button", "+ Add column"); await browser("fill", await ref("textbox", "New column name"), "Discard me"); await browser("press", "Escape");
+  await check("!document.querySelector(\"[aria-label='New column name']\") && [...document.querySelectorAll(\"button\")].some(b => b.textContent === \"+ Add column\")", "Escape dismisses the inline column form");
+  await click("button", "+ Add column"); await browser("fill", await ref("textbox", "New column name"), "Later"); await click("button", "Create column"); await browser("wait", "Later");
   assert.equal(loadBoard("default").state.view?.customColumns.at(-1)?.title, "Later");
   await click("button", "Shape the first working board"); await click("button", "Why here / move"); await click("combobox", "Move card"); await click("option", "Later");
   await check("document.querySelector(\".detail-content\").textContent.includes(\"Pinned manually\")", "custom column move persists");
