@@ -2,7 +2,7 @@
 // them current with fs.watch. Every write goes through the board's single writer.
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
-import { decideLink, decidePush, parseLink, type Decision, type Meta } from "../../core/decide.ts";
+import { decideLink, decideOutcome, decidePush, parseLink, type Decision, type Meta } from "../../core/decide.ts";
 import type { Attention, BoardState, Card, SourceRef } from "../../core/model.ts";
 import { withWriter, type Writer } from "../../store/board-store.ts";
 import { ADAPTER, HOME_OBJECT, readHome, type HomeObservation, type TaskObservation } from "./home.ts";
@@ -19,8 +19,13 @@ export function firstmateRef(card: Card): SourceRef | undefined {
   return card.sourceRefs.find((r) => r.adapter === ADAPTER);
 }
 
+// Open decisions, plus the latest status line when it says the task failed or is
+// blocked and no open decision already carries it.
 function attention(task: TaskObservation): Attention[] {
-  return task.decisions.map((d) => ({ kind: d.verb, key: d.key, blocking: true, ...(d.note ? { text: d.note } : {}) }));
+  const open = task.decisions.map((d) => ({ kind: d.verb, key: d.key, blocking: true, ...(d.note ? { text: d.note } : {}) }));
+  const stalled = task.stalled;
+  if (!stalled || open.some((a) => a.kind === stalled.verb && a.text === (stalled.note || undefined))) return open;
+  return [...open, { kind: stalled.verb, key: "status", blocking: true, ...(stalled.note ? { text: stalled.note } : {}) }];
 }
 
 function taskCard(home: HomeObservation, task: TaskObservation): Record<string, unknown> {
@@ -63,6 +68,10 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
       appended += apply(writer, decidePush(writer.state, key, taskCard(observed, task), meta));
       const link = prLink(writer.state, key, task, at);
       if (link) appended += apply(writer, decideLink(writer.state, key, link.url, link, meta));
+      // Closed in Firstmate's backlog: done. A done: status line alone is often a handoff.
+      if (task.done && !writer.state.cards[writer.state.keys[key]!]!.outcome) {
+        appended += apply(writer, decideOutcome(writer.state, key, { state: "done" }, meta));
+      }
     }
     const live = new Set(observed.tasks.map((t) => t.task));
     for (const card of Object.values(writer.state.cards)) {

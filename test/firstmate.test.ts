@@ -68,19 +68,21 @@ test("the decision fold opens, closes and clears keys like Firstmate", () => {
 
 test("backlog rows give titles, repo tags and merged state", () => {
   const rows = parseBacklog(readFileSync(join(FIXTURE, "data", "backlog.md"), "utf8"));
-  assert.deepEqual(rows.get("api-v2"), { title: "app: v2 API with (optional) pagination", repo: "app", merged: false });
+  assert.deepEqual(rows.get("api-v2"), { title: "app: v2 API with (optional) pagination", repo: "app", done: false, merged: false });
   assert.deepEqual(rows.get("release-1"), {
     title: "app: cut release 1 https://github.com/example/app/pull/40",
     repo: "app",
+    done: true,
     merged: true,
   });
   assert.equal(rows.get("later-1")?.merged, false);
+  assert.deepEqual(rows.get("docs-scout"), { title: "app: survey the docs", repo: "docs", done: true, merged: false });
 });
 
 test("sync turns each task into a card under the home's card", () => {
   const { home } = copyFixture();
   const result = syncHome("default", home, "2026-10-13T10:00:00.000Z");
-  assert.equal(result.tasks, 3);
+  assert.equal(result.tasks, 4);
 
   const parent = cardOf(home);
   assert.equal(parent.tags[0], "firstmate");
@@ -101,15 +103,36 @@ test("sync turns each task into a card under the home's card", () => {
   assert.deepEqual(api.links.map((l) => [l.number, l.state]), [[41, "open"]]);
   assert.deepEqual(api.sourceRefs, [{ adapter: "firstmate", instanceId: home, objectId: "api-v2" }]);
 
-  // The scout's terminal line closed its decision; no backlog-free title fallback needed.
-  assert.deepEqual(cardOf(home, "docs-scout").attention, []);
-  assert.equal(cardOf(home, "docs-scout").column, "workers_on_it");
+  // The scout's terminal line closed its decision, and its Done backlog row
+  // records it as done with no pull request.
+  const scout = cardOf(home, "docs-scout");
+  assert.deepEqual(scout.attention, []);
+  assert.deepEqual(scout.outcome, { state: "done" });
+  assert.equal(scout.column, "done");
+  // A failed: line closes the ship's decisions but asks for the owner.
+  const hotfix = cardOf(home, "hotfix-2");
+  assert.deepEqual(hotfix.attention, [{ kind: "failed", key: "status", blocking: true, text: "tests red after patch" }]);
+  assert.equal(hotfix.outcome, undefined);
+  assert.equal(hotfix.column, "needs_you");
   // meta pr= plus a merged backlog row: Done.
   const release = cardOf(home, "release-1");
   assert.deepEqual(release.links.map((l) => [l.number, l.state]), [[40, "merged"]]);
   assert.equal(release.column, "done");
 
-  assert.deepEqual(syncHome("default", home), { tasks: 3, appended: 0 });
+  assert.deepEqual(syncHome("default", home), { tasks: 4, appended: 0 });
+});
+
+test("a done: status line alone is not completion", () => {
+  const { home } = copyFixture();
+  const backlog = join(home, "data", "backlog.md");
+  const rows = readFileSync(backlog, "utf8").split("\n");
+  const scout = rows.findIndex((l) => l.startsWith("- [x] docs-scout"));
+  const [row] = rows.splice(scout, 1);
+  rows.splice(rows.indexOf("## In flight") + 1, 0, row!.replace("[x]", "[ ]"));
+  writeFileSync(backlog, rows.join("\n"));
+  syncHome("default", home);
+  assert.equal(cardOf(home, "docs-scout").outcome, undefined);
+  assert.equal(cardOf(home, "docs-scout").column, "workers_on_it");
 });
 
 test("sync never overwrites a link state another source refreshed", () => {
@@ -145,7 +168,7 @@ test("watch reconciles on start and folds each change", async () => {
     wake();
   });
   try {
-    assert.equal(results[0]!.tasks, 3);
+    assert.equal(results[0]!.tasks, 4);
     const changed = new Promise<void>((resolve) => (wake = resolve));
     appendFileSync(join(home, "state", "api-v2.status"), "resolved [key=api-shape]: REST\n");
     await Promise.race([changed, new Promise((_, reject) => setTimeout(() => reject(new Error("no sync after change")), 5000))]);
@@ -168,8 +191,8 @@ function cli(env: NodeJS.ProcessEnv) {
 test("firstmate sync through the CLI", () => {
   const { home, env } = copyFixture();
   const { run, fails } = cli(env);
-  assert.match(run("firstmate", "sync", "--home", home), /home,3,6$/m);
-  assert.match(run(), /needs_you: 1/);
+  assert.match(run("firstmate", "sync", "--home", home), /home,4,9$/m);
+  assert.match(run(), /needs_you: 2/);
   fails(["firstmate", "sync"], "VALIDATION_ERROR");
   fails(["firstmate", "sync", "--home", join(home, "data")], "VALIDATION_ERROR");
 });
@@ -202,6 +225,22 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   assert.equal(history.match(/reply k2 /g)?.length, 4);
   assert.match(history, /reply k1 delivered/);
   assert.match(history, /reply k3 delivery_unknown/);
+
+  // The send went through but its outcome could not be recorded: the receipt still
+  // names the reply, and a retry finds it queued and does not resend.
+  writeFileSync(join(home, "send-exit"), "0");
+  writeFileSync(join(home, "tear"), "");
+  const unrecorded = run("reply", api.id, "--text", "torn", "--home", home);
+  assert.match(unrecorded, /state: delivered/);
+  assert.match(unrecorded, /recordError: /);
+  const id = /reply: (r\d+)/.exec(unrecorded)![1]!;
+  rmSync(join(home, "tear"));
+  run("repair");
+  const retry = run("reply", api.id, "--text", "torn", "--idempotency-key", id, "--home", home);
+  assert.match(retry, /state: queued/);
+  assert.match(retry, /sent: false/);
+  assert.match(retry, /Check the task's inbox/);
+  assert.equal(sent().split("---").length - 1, 5);
 
   fails(["reply", api.id, "--text", "x", "--resolve-key", "nope", "--home", home], "VALIDATION_ERROR");
   fails(["reply", api.id, "--text=--resolve-key x", "--home", home], "VALIDATION_ERROR");

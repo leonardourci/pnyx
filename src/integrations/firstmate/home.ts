@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { basename, join } from "node:path";
 import { BoardError } from "../../core/model.ts";
-import { latestActivity, openDecisions, type OpenDecision } from "./status.ts";
+import { latestActivity, latestLine, openDecisions, type OpenDecision } from "./status.ts";
 
 export const ADAPTER = "firstmate";
 // objectId of the home's own card; task ids start with a letter or digit.
@@ -18,10 +18,14 @@ export interface TaskObservation {
   title: string;
   repo?: string;
   pr?: string;
-  // The backlog lists the task as done with its pull request merged.
+  // The backlog lists the task under Done, which Firstmate's cleanup does once the
+  // task is closed; merged when its pull request merged too.
+  done: boolean;
   merged: boolean;
   activity?: string;
   decisions: OpenDecision[];
+  // The latest status line, when it is failed: or blocked:.
+  stalled?: { verb: string; note: string };
 }
 
 export interface HomeObservation {
@@ -34,6 +38,7 @@ export interface HomeObservation {
 interface BacklogRow {
   title: string;
   repo?: string;
+  done: boolean;
   merged: boolean;
 }
 
@@ -107,6 +112,7 @@ export function parseBacklog(text: string): Map<string, BacklogRow> {
     rows.set(row[1]!, {
       title: title || row[1]!,
       ...(facts.repo ? { repo: facts.repo } : {}),
+      done: section === "done",
       merged: section === "done" && facts.merged !== undefined,
     });
   }
@@ -131,14 +137,17 @@ export function readHome(home: string): HomeObservation {
     const row = backlog.get(task);
     const pr = meta.pr || PR_URL.exec(log)?.[0];
     const activity = latestActivity(log);
+    const last = latestLine(log);
     tasks.push({
       task,
       title: row?.title ?? task,
       ...(row?.repo ? { repo: row.repo } : {}),
       ...(pr ? { pr } : {}),
+      done: row?.done ?? false,
       merged: row?.merged ?? false,
       ...(activity ? { activity } : {}),
       decisions: openDecisions(log, meta.kind || "ship"),
+      ...(last && (last.verb === "failed" || last.verb === "blocked") ? { stalled: { verb: last.verb, note: last.note } } : {}),
     });
   }
   return { path: home, key: homeKey(home), title: basename(home), tasks };
