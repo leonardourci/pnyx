@@ -38,7 +38,13 @@ test('Claude catalog uses personal, project and enabled plugin metadata with det
   }))
   write(join(home, '.claude/plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins }))
   write(join(home, 'escape.md'), 'Should not appear')
-  const first = await readCatalog(card, locations), second = await readCatalog(card, locations)
+  const first = await readCatalog({
+      card,
+      locations,
+    }), second = await readCatalog({
+      card,
+      locations,
+    })
   assert.deepEqual(first, second)
   assert.deepEqual(first.suggestions.map(s => s.command), ['/check', '/good:extra', '/good:plan', '/review'])
   assert.equal(first.suggestions.at(-1)?.description, 'Personal wins')
@@ -51,7 +57,7 @@ test('Codex exposes native skill mentions and top-level prompts, with project sc
   write(join(home, '.codex/prompts/draft.md'), '---\ndescription: Draft from $ARGUMENTS\n---\nBody is not returned')
   write(join(home, '.codex/prompts/nested/ignored.md'), 'Ignored')
   write(join(home, '.claude/commands/wrong.md'), 'Wrong harness')
-  const result = await readCatalog(card, locations)
+  const result = await readCatalog({ card, locations })
   assert.deepEqual(result.suggestions.map(s => s.command), ['$project', '$review', '/prompts:draft'])
   assert.equal(result.suggestions.at(-1)?.description, 'Draft from $ARGUMENTS')
 })
@@ -62,9 +68,9 @@ test('catalog bounds malformed metadata, oversized files, symlink cycles, and un
   write(join(home, 'linked/SKILL.md'), skill('linked'))
   symlinkSync(join(home, 'linked'), join(cwd, '.claude/skills/linked'))
   mkdirSync(join(cwd, '.claude/commands'), { recursive: true }); symlinkSync(join(cwd, '.claude/commands'), join(cwd, '.claude/commands/loop'))
-  const result = await readCatalog(card, locations)
+  const result = await readCatalog({ card, locations })
   assert.deepEqual(result.suggestions.map(s => s.command), ['/linked']); assert.match(result.note!, /could not be read/)
-  assert.match((await readCatalog({ ...card, agent: { ...card.agent!, cwd: undefined } }, locations)).unavailable!, /No working folder/)
-  assert.match((await readCatalog({ ...card, agent: { ...card.agent!, cwd: join(home, 'missing') } }, locations)).unavailable!, /unavailable/)
-  assert.match((await readCatalog({ ...card, agent: { ...card.agent!, provider: 'unknown' } }, locations)).unavailable!, /no supported/)
+  assert.match((await readCatalog({ card: { ...card, agent: { ...card.agent!, cwd: undefined } }, locations })).unavailable!, /No working folder/)
+  assert.match((await readCatalog({ card: { ...card, agent: { ...card.agent!, cwd: join(home, 'missing') } }, locations })).unavailable!, /unavailable/)
+  assert.match((await readCatalog({ card: { ...card, agent: { ...card.agent!, provider: 'unknown' } }, locations })).unavailable!, /no supported/)
 })

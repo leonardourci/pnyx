@@ -129,7 +129,11 @@ function openWriter({ board, fresh = false }: { board: string; fresh?: boolean }
   withWriter({
     board,
     fn: ({ writer }) =>
-      harvestTranscripts(writer, Object.keys(writer.state.cards), new Date().toISOString()),
+      harvestTranscripts({
+        writer,
+        cardIds: Object.keys(writer.state.cards),
+        at: new Date().toISOString(),
+      }),
   })
   const db = new DatabaseSync(path)
   // Transcript text is as private as the transcripts.

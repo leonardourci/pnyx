@@ -11,9 +11,14 @@ const DETAIL_MAX = 300
 // fm-send's exit contract as read here: 0 delivered; 1 and 3 may have landed (a
 // remote send that lost its transport exits 1); any other status nothing delivered.
 export function fmSend(
-  route: { home: string; task: string },
-  text: string,
-  resolveKey: string | undefined,
+  { route, text, resolveKey }: {
+    route: {
+      home: string
+      task: string
+    }
+    text: string
+    resolveKey: string | undefined
+  },
 ): { state: ReplyState; detail?: string } {
   const args = [route.task, ...(resolveKey ? ['--resolve-key', resolveKey] : []), text]
   const result = spawnSync(join(route.home, 'bin', 'fm-send.sh'), args, {

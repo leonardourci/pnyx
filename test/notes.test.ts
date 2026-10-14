@@ -25,7 +25,7 @@ const records = (path: string) => readFileSync(path, 'utf8').split('\n')
   .map(l => JSON.parse(l) as unknown)
 
 test('a Claude Code transcript yields its titles, compaction summaries and answered questions', () => {
-  const notes = records(CLAUDE).flatMap(transcriptNotes)
+  const notes = records(CLAUDE).flatMap(record => transcriptNotes({ record }))
   assert.deepEqual(
     notes.map(({ kind, source, text, at }) => ({ kind, source, text, ...(at ? { at } : {}) })),
     [
@@ -52,13 +52,13 @@ test('a Claude Code transcript yields its titles, compaction summaries and answe
   assert.equal(notes[0]!.ref, notes[1]!.ref)
   assert.equal(new Set(notes.map(n => n.ref)).size, notes.length - 1)
   // The compaction summary is a note, not transcript text.
-  assert.ok(!records(CLAUDE).flatMap(arg0 => transcriptMessages({ record: arg0 }))
+  assert.ok(!records(CLAUDE).flatMap(record => transcriptMessages({ record }))
     .some(m => m.text.includes('zebrafish')))
 })
 
 test('a Codex transcript yields its readable compaction summaries', () => {
   assert.deepEqual(
-    records(CODEX).flatMap(transcriptNotes)
+    records(CODEX).flatMap(record => transcriptNotes({ record }))
       .map(({ kind, source, text, at }) => ({ kind, source, text, at })),
     [{ kind: 'summary', source: 'codex', text: 'The ledger sync drifts because rounding happens before currency conversion.', at: '2026-10-12T11:00:00.000Z' }],
   )
@@ -209,10 +209,10 @@ test("Codex's session index yields the session's latest thread name", () => {
     JSON.stringify({ id: 'other', thread_name: 'Other work' }),
     JSON.stringify({ id: 'x2', thread_name: 'Ledger rounding fix', updated_at: '2026-10-12T11:00:00Z' }),
   ].join('\n')
-  assert.deepEqual(codexThreadTitle(index, 'x2'), [
+  assert.deepEqual(codexThreadTitle({ index, sessionId: 'x2' }), [
     { kind: 'context', source: 'codex', text: 'Session title: Ledger rounding fix', ref: 'title:2026-10-12T11:00:00Z:Ledger rounding fix', at: '2026-10-12T11:00:00Z' },
   ])
-  assert.deepEqual(codexThreadTitle(index, 'missing'), [])
+  assert.deepEqual(codexThreadTitle({ index, sessionId: 'missing' }), [])
 })
 
 test("a hook-only card takes the harness's own session title over its first prompt", () => {

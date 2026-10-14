@@ -55,7 +55,11 @@ const WRITE: Options = {
   'if-revision': { type: 'string' },
 }
 
-export function parse(args: string[], options: Options, positionals: number) {
+export function parse({ args, options, positionals }: {
+  args: string[]
+  options: Options
+  positionals: number
+}) {
   let parsed
 
   try {
@@ -79,7 +83,7 @@ export function parse(args: string[], options: Options, positionals: number) {
   }
 }
 
-export function required(value: string | undefined, what: string): string {
+export function required({ value, what }: { value: string | undefined; what: string }): string {
   if (!value) {
     throw new AxiError(`missing ${what}`, 'VALIDATION_ERROR', ['Run the command with --help'])
   }
@@ -87,7 +91,10 @@ export function required(value: string | undefined, what: string): string {
   return value
 }
 
-function integer(value: string | boolean | undefined, flag: string): number | undefined {
+function integer({ value, flag }: {
+  value: string | boolean | undefined
+  flag: string
+}): number | undefined {
   if (value === undefined) {
     return undefined
   }
@@ -99,7 +106,7 @@ function integer(value: string | boolean | undefined, flag: string): number | un
   return Number(value)
 }
 
-export function meta(values: Record<string, string | boolean | undefined>): Meta {
+export function meta({ values }: { values: Record<string, string | boolean | undefined> }): Meta {
   const m: Meta = { at: new Date().toISOString(), actor: (values.actor as string | undefined) ?? 'cli' }
 
   if (typeof values.reason === 'string') {
@@ -110,7 +117,7 @@ export function meta(values: Record<string, string | boolean | undefined>): Meta
     m.id = values['event-id']
   }
 
-  const ifRevision = integer(values['if-revision'], '--if-revision')
+  const ifRevision = integer({ value: values['if-revision'], flag: '--if-revision' })
 
   if (ifRevision !== undefined) {
     m.ifRevision = ifRevision
@@ -120,7 +127,7 @@ export function meta(values: Record<string, string | boolean | undefined>): Meta
 }
 
 // The folder's canonical path, or the path as given when it cannot be resolved.
-export function canonical(path: unknown): string | undefined {
+export function canonical({ path }: { path: unknown }): string | undefined {
   if (typeof path !== 'string' || !path.startsWith('/')) {
     return undefined
   }
@@ -140,18 +147,18 @@ const HOOKS = 'hooks'
 // Appends what one spool entry reports: a raw harness hook payload becomes card
 // observations, anything else is a push with an explicit key. Returns the cards
 // whose transcripts to harvest.
-function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
+function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unknown> }): string[] {
   if (typeof entry?.id !== 'string' || typeof entry.at !== 'string') {
     throw new BoardError({ message: 'spool entry needs id and at', code: 'VALIDATION_ERROR' })
   }
 
-  const apply = (decision: Decision) => {
+  const apply = ({ decision }: { decision: Decision }) => {
     if ('event' in decision) {
       writer.append({ event: decision.event })
     }
   }
 
-  if (!isHookEnvelope(entry)) {
+  if (!isHookEnvelope({ value: entry })) {
     if (typeof entry.key !== 'string') {
       throw new BoardError({ message: 'spool entry needs id, key and at', code: 'VALIDATION_ERROR' })
     }
@@ -159,21 +166,23 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
     const actor = typeof entry.actor === 'string' ? entry.actor : 'hook'
     const card = (entry.card ?? {}) as Record<string, unknown>
     const source = card.source ?? { adapter: actor, objectId: entry.key, observedAt: entry.at }
-    apply(decidePush(
-      {
-        state: writer.state,
-        key: entry.key,
-        input: {
-          ...card,
-          source,
+    apply({
+      decision: decidePush(
+        {
+          state: writer.state,
+          key: entry.key,
+          input: {
+            ...card,
+            source,
+          },
+          meta: {
+            id: entry.id,
+            at: entry.at,
+            actor,
+          },
         },
-        meta: {
-          id: entry.id,
-          at: entry.at,
-          actor,
-        },
-      },
-    ))
+      ),
+    })
 
     return []
   }
@@ -183,22 +192,22 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
   }
 
   const harvest: string[] = []
-  const folder = canonical((entry.payload as { cwd?: unknown } | null)?.cwd)
+  const folder = canonical({ path: (entry.payload as { cwd?: unknown } | null)?.cwd })
   // A session (never a subagent, whose key has a /) started in a folder a source
   // assigned, such as a Firstmate task's worktree, reports to that card.
-  const resolve = (key: string) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder }))
+  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder }))
 
-  for (const o of observe(entry as unknown as HookEnvelope)) {
-    const key = resolve(o.key)
+  for (const o of observe({ envelope: entry as unknown as HookEnvelope })) {
+    const key = resolve({ key: o.key })
 
     if (o.ifMissing && key in writer.state.keys) {
       continue
     }
 
-    const card = typeof o.card.parent === 'string' ? { ...o.card, parent: resolve(o.card.parent) } : o.card
+    const card = typeof o.card.parent === 'string' ? { ...o.card, parent: resolve({ key: o.card.parent }) } : o.card
     const m: Meta = { id: o.id ? `${entry.id}:${o.id}` : entry.id, at: entry.at, actor: `hook:${entry.harness}` }
     const current = writer.state.cards[writer.state.keys[key] ?? '']?.attention ?? []
-    const attention = o.attend && attend(current, o.attend)
+    const attention = o.attend && attend({ current, change: o.attend })
 
     if (o.ifChanged && key in writer.state.keys && isDeepStrictEqual(attention, current)) {
       continue
@@ -213,7 +222,7 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
       } : card,
       meta: m,
     })
-    apply(pushed)
+    apply({ decision: pushed })
     // Hooks own only the outcome they recorded on the session's own card: a joined
     // Firstmate task, or a Firstmate or manual outcome, keeps its own rule.
     const target = writer.state.cards[writer.state.keys[key] ?? '']
@@ -222,11 +231,11 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
 
     if (o.outcome !== undefined && target && !stale && owned) {
       const outcome = o.outcome && { state: o.outcome }
-      apply(decideOutcome({ state: writer.state, ref: key, outcome, meta: { ...m, id: `${m.id}:outcome` }, source: HOOKS }))
+      apply({ decision: decideOutcome({ state: writer.state, ref: key, outcome, meta: { ...m, id: `${m.id}:outcome` }, source: HOOKS }) })
     }
 
     if (o.link) {
-      apply(decideLink({ state: writer.state, ref: key, url: o.link, link: parseLink({ input: { url: o.link } }), meta: { ...m, id: `${m.id}:link` } }))
+      apply({ decision: decideLink({ state: writer.state, ref: key, url: o.link, link: parseLink({ input: { url: o.link } }), meta: { ...m, id: `${m.id}:link` } }) })
     }
 
     if (!o.ifMissing && !o.ifChanged && HARVEST_AFTER.includes(entry.event)
@@ -242,14 +251,20 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
 // source observation, so it can never be undone. A file that cannot be read is
 // renamed to *.rejected so it is not retried forever. Then harvests the notes in
 // the transcripts of sessions that finished a turn.
-export function drainSpool(writer: Writer): { ingested: number; rejected: number; notes?: number } {
+export function drainSpool({ writer }: {
+  writer: Writer
+}): {
+  ingested: number
+  rejected: number
+  notes?: number
+} {
   let ingested = 0
   let rejected = 0
   const harvest = new Set<string>()
 
   for (const file of spoolFiles({ dir: writer.dir })) {
     try {
-      for (const id of ingest(writer, JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>)) {
+      for (const id of ingest({ writer, entry: JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown> })) {
         harvest.add(id)
       }
     } catch (error) {
@@ -266,17 +281,27 @@ export function drainSpool(writer: Writer): { ingested: number; rejected: number
     ingested += 1
   }
 
-  const notes = harvest.size ? harvestTranscripts(writer, harvest, new Date().toISOString()) : 0
+  const notes = harvest.size ? harvestTranscripts({
+    writer,
+    cardIds: harvest,
+    at: new Date().toISOString(),
+  }) : 0
 
   return { ingested, rejected, ...(notes ? { notes } : {}) }
 }
 
 // The server's way into the same writer: drain the spool under the writer lock.
-export function ingestSpool(board: string): { ingested: number; rejected: number; notes?: number } {
-  return withWriter({ board, fn: ({ writer }) => drainSpool(writer) })
+export function ingestSpool({ board }: {
+  board: string
+}): {
+  ingested: number
+  rejected: number
+  notes?: number
+} {
+  return withWriter({ board, fn: ({ writer }) => drainSpool({ writer }) })
 }
 
-function receipt(state: BoardState, event: BoardEvent): Output {
+function receipt({ state, event }: { state: BoardState; event: BoardEvent }): Output {
   if (event.type === 'board.view') {
     return {
       event: { seq: event.seq, id: event.id, type: event.type },
@@ -301,11 +326,13 @@ interface Intent {
 // The receipt the event with this id got when it was appended. An id already used
 // for another card or event type is a conflict, not a retry.
 function originalReceipt(
-  board: string,
-  state: BoardState,
-  id: string,
-  seq: number,
-  intent: Intent,
+  { board, state, id, seq, intent }: {
+    board: string
+    state: BoardState
+    id: string
+    seq: number
+    intent: Intent
+  },
 ): Output {
   const events = readEvents({ board })
   const index = events.findIndex(e => e.id === id && e.seq === seq)
@@ -321,7 +348,13 @@ function originalReceipt(
   }
 
   return {
-    ...receipt(replay({ state: emptyBoard(), events: events.slice(0, index + 1) }), original),
+    ...receipt({
+      state: replay({
+        state: emptyBoard(),
+        events: events.slice(0, index + 1),
+      }),
+      event: original,
+    }),
     duplicate: 'event id already applied; nothing appended',
   }
 }
@@ -329,28 +362,34 @@ function originalReceipt(
 // A repeated --event-id answers with the original receipt before any other check,
 // so a retry of a write that already landed never reports a conflict.
 function commit(
-  board: string,
-  meta: Meta,
-  intent: Intent,
-  decide: (state: BoardState) => Decision,
+  { board, meta, intent, decide }: {
+    board: string
+    meta: Meta
+    intent: Intent
+    decide: (
+      { state }: {
+        state: BoardState
+      },
+    ) => Decision
+  },
 ): Output {
   return withWriter({
     board,
     fn: ({ writer }) => {
-      const spool = drainSpool(writer)
+      const spool = drainSpool({ writer })
       const seq = meta.id === undefined ? undefined : writer.state.eventIds[meta.id]
       let out: Output
 
       if (seq !== undefined) {
-        out = originalReceipt(board, writer.state, meta.id!, seq, intent)
+        out = originalReceipt({ board, state: writer.state, id: meta.id!, seq, intent })
       } else {
-        const decision = decide(writer.state)
+        const decision = decide({ state: writer.state })
 
         if ('event' in decision) {
           writer.append({ event: decision.event })
         }
 
-        out = 'event' in decision ? receipt(writer.state, decision.event) : { event: `none: ${decision.skipped}` }
+        out = 'event' in decision ? receipt({ state: writer.state, event: decision.event }) : { event: `none: ${decision.skipped}` }
       }
 
       if (spool.ingested || spool.rejected) {
@@ -363,10 +402,10 @@ function commit(
 }
 
 // Maps core and store errors onto AXI's structured errors.
-export function guard<T = Output>(handler: (args: string[]) => T) {
+export function guard<T = Output>({ handler }: { handler: ({ args }: { args: string[] }) => T }) {
   return (args: string[]): T => {
     try {
-      return handler(args)
+      return handler({ args })
     } catch (error) {
       if (error instanceof BoardError) {
         throw new AxiError(error.message, error.code, error.help)
@@ -377,7 +416,7 @@ export function guard<T = Output>(handler: (args: string[]) => T) {
   }
 }
 
-function column(value: string): Column {
+function column({ value }: { value: string }): Column {
   const c = value.startsWith('custom:') ? value : value.replace(/-/g, '_')
 
   if (!(COLUMNS as readonly string[]).includes(c) && !/^custom:[a-z0-9-]{1,60}$/.test(c)) {
@@ -387,7 +426,7 @@ function column(value: string): Column {
   return c as Column
 }
 
-function cardRow(card: Card) {
+function cardRow({ card }: { card: Card }) {
   return {
     id: card.id,
     title: card.title,
@@ -396,7 +435,7 @@ function cardRow(card: Card) {
   }
 }
 
-function cardDetail(card: Card): Output {
+function cardDetail({ card }: { card: Card }): Output {
   const detail: Output = {
     id: card.id,
     key: card.key,
@@ -449,7 +488,7 @@ export async function home(): Promise<Output> {
     COLUMNS.map(c => [c, cards.filter(card => card.column === c).length]),
   )
   // Reports the server; never starts it.
-  const server = await readServer(DEFAULT_BOARD)
+  const server = await readServer({ board: DEFAULT_BOARD })
   const out: Output = { board: DEFAULT_BOARD, server: server ? `running at ${server.url}` : 'not running', columns }
 
   if (tornBytes > 0) {
@@ -470,9 +509,14 @@ export async function home(): Promise<Output> {
     return out
   }
 
-  const order = (c: Card) => (COLUMNS as readonly string[]).indexOf(c.column)
-  const sorted = cards.sort((a, b) => order(a) - order(b) || b.updatedSeq - a.updatedSeq)
-  out.cards = sorted.slice(0, HOME_LIMIT).map(cardRow)
+  const order = ({ card: c }: { card: Card }) => (COLUMNS as readonly string[]).indexOf(c.column)
+  const sorted = cards.sort((a, b) =>
+    order({
+      card: a,
+    }) - order({
+      card: b,
+    }) || b.updatedSeq - a.updatedSeq)
+  out.cards = sorted.slice(0, HOME_LIMIT).map(card => cardRow({ card }))
   out.help = ['Run `pnyx-axi card <id>` for details', 'Run `pnyx-axi history` for recent events', ...serveHint]
 
   if (sorted.length > HOME_LIMIT) {
@@ -482,20 +526,22 @@ export async function home(): Promise<Output> {
   return out
 }
 
-const push = guard(args => {
-  const { values, board } = parse(args, { ...WRITE, key: { type: 'string' }, file: { type: 'string' } }, 0)
-  const m = meta(values)
-  const key = required(values.key as string | undefined, '--key')
-  const file = required(values.file as string | undefined, '--file')
-  let input: unknown
+const push = guard({
+  handler: ({ args }) => {
+    const { values, board } = parse({ args, options: { ...WRITE, key: { type: 'string' }, file: { type: 'string' } }, positionals: 0 })
+    const m = meta({ values })
+    const key = required({ value: values.key as string | undefined, what: '--key' })
+    const file = required({ value: values.file as string | undefined, what: '--file' })
+    let input: unknown
 
-  try {
-    input = JSON.parse(readFileSync(file === '-' ? 0 : file, 'utf8'))
-  } catch (error) {
-    throw new AxiError(`cannot read card JSON from ${file}: ${(error as Error).message}`, 'VALIDATION_ERROR')
-  }
+    try {
+      input = JSON.parse(readFileSync(file === '-' ? 0 : file, 'utf8'))
+    } catch (error) {
+      throw new AxiError(`cannot read card JSON from ${file}: ${(error as Error).message}`, 'VALIDATION_ERROR')
+    }
 
-  return commit(board, m, { type: 'card.pushed', card: key }, state => decidePush({ state, key, input, meta: m }))
+    return commit({ board, meta: m, intent: { type: 'card.pushed', card: key }, decide: ({ state }) => decidePush({ state, key, input, meta: m }) })
+  },
 })
 
 // Notes shown per section by default, and the text length each is cut to.
@@ -505,7 +551,14 @@ const NOTE_SECTIONS = { summary: 'summary', decision: 'decisions', context: 'con
 
 // The card's Summary, Decisions and Context notes, newest first. The text comes
 // from the log, where each noted event keeps it.
-function cardNotes(board: string, card: Card, full: boolean): { notes: Output; cut: boolean } {
+function cardNotes({ board, card, full }: {
+  board: string
+  card: Card
+  full: boolean
+}): {
+  notes: Output
+  cut: boolean
+} {
   const ids = new Set((card.notes ?? []).map(n => n.id))
   const events = ids.size ? readEvents({ board }).filter((e): e is NotedEvent => e.type === 'card.noted' && ids.has(e.id)) : []
   let cut = false
@@ -532,129 +585,139 @@ function cardNotes(board: string, card: Card, full: boolean): { notes: Output; c
   return { notes, cut }
 }
 
-const card = guard(args => {
-  const { values, positionals, board } = parse(args, { ...COMMON, full: { type: 'boolean' } }, 1)
-  const found = findCard({ state: loadBoard({ board }).state, ref: required(positionals[0], 'card id') })
-  const { notes, cut } = cardNotes(board, found, Boolean(values.full))
-  const help = [`Run \`pnyx-axi history --card ${found.id}\` for its events`]
+const card = guard({
+  handler: ({ args }) => {
+    const { values, positionals, board } = parse({ args, options: { ...COMMON, full: { type: 'boolean' } }, positionals: 1 })
+    const found = findCard({ state: loadBoard({ board }).state, ref: required({ value: positionals[0], what: 'card id' }) })
+    const { notes, cut } = cardNotes({ board, card: found, full: Boolean(values.full) })
+    const help = [`Run \`pnyx-axi history --card ${found.id}\` for its events`]
 
-  if (cut) {
-    help.unshift(`Run \`pnyx-axi card ${found.id} --full\` for every note in full`)
-  }
+    if (cut) {
+      help.unshift(`Run \`pnyx-axi card ${found.id} --full\` for every note in full`)
+    }
 
-  if (!found.notes?.length) {
-    help.push(`Run \`pnyx-axi harvest --card ${found.id}\` to collect its summaries, decisions and context`)
-  }
+    if (!found.notes?.length) {
+      help.push(`Run \`pnyx-axi harvest --card ${found.id}\` to collect its summaries, decisions and context`)
+    }
 
-  return { card: cardDetail(found), notes, help }
+    return { card: cardDetail({ card: found }), notes, help }
+  },
 })
 
 // Collects the notes sources already recorded: the cards' transcripts from where
 // the last read stopped, and each linked pull request's title and description.
 // ponytail: reads every linked pull request on each run; skip merged ones already noted if boards grow.
-const harvest = guard(args => {
-  const { values, board } = parse(args, { ...COMMON, card: { type: 'string' } }, 0)
-  const { state } = loadBoard({ board })
-  const cards = values.card ? [findCard({
-    state,
-    ref: values.card as string,
-  })] : Object.values(state.cards)
-  // Read before taking the writer lock: gh-axi can be slow and must not block other writers.
-  const prs = cards.flatMap(c => c.links.filter(l => l.kind === 'github_pr').map(l => ({ card: c.id, url: l.url, note: pullRequestNote(l.url) })))
+const harvest = guard({
+  handler: ({ args }) => {
+    const { values, board } = parse({ args, options: { ...COMMON, card: { type: 'string' } }, positionals: 0 })
+    const { state } = loadBoard({ board })
+    const cards = values.card ? [findCard({
+      state,
+      ref: values.card as string,
+    })] : Object.values(state.cards)
+    // Read before taking the writer lock: gh-axi can be slow and must not block other writers.
+    const prs = cards.flatMap(c => c.links.filter(l => l.kind === 'github_pr').map(l => ({ card: c.id, url: l.url, note: pullRequestNote({ url: l.url }) })))
 
-  return withWriter({
-    board,
-    fn: ({ writer }) => {
-      const spool = drainSpool(writer)
-      const at = new Date().toISOString()
-      let notes = harvestTranscripts(writer, cards.map(c => c.id), at)
+    return withWriter({
+      board,
+      fn: ({ writer }) => {
+        const spool = drainSpool({ writer })
+        const at = new Date().toISOString()
+        let notes = harvestTranscripts({ writer, cardIds: cards.map(c => c.id), at })
 
-      for (const pr of prs) {
-        if (pr.note) {
-          notes += appendNote(writer, pr.card, pr.note, at)
+        for (const pr of prs) {
+          if (pr.note) {
+            notes += appendNote({ writer, cardId: pr.card, note: pr.note, at })
+          }
         }
-      }
 
-      const unread = prs.filter(pr => !pr.note).map(pr => pr.url)
-      const out: Output = { harvested: { cards: cards.length, notes: notes ? `${notes} new` : 'none: nothing new', pullRequests: prs.length - unread.length } }
+        const unread = prs.filter(pr => !pr.note).map(pr => pr.url)
+        const out: Output = { harvested: { cards: cards.length, notes: notes ? `${notes} new` : 'none: nothing new', pullRequests: prs.length - unread.length } }
 
-      if (unread.length) {
-        out.unread = unread
-      }
+        if (unread.length) {
+          out.unread = unread
+        }
 
-      if (spool.ingested || spool.rejected) {
-        out.spool = spool
-      }
+        if (spool.ingested || spool.rejected) {
+          out.spool = spool
+        }
 
-      out.help = [
-        ...(unread.length ? ['gh-axi could not read those pull requests; check `gh-axi pr view <number> --repo <owner/repo>`'] : []),
-        values.card ? `Run \`pnyx-axi card ${cards[0]!.id}\` to see its notes` : "Run `pnyx-axi card <id>` to see a card's notes",
-      ]
+        out.help = [
+          ...(unread.length ? ['gh-axi could not read those pull requests; check `gh-axi pr view <number> --repo <owner/repo>`'] : []),
+          values.card ? `Run \`pnyx-axi card ${cards[0]!.id}\` to see its notes` : "Run `pnyx-axi card <id>` to see a card's notes",
+        ]
 
-      return out
-    },
-  })
+        return out
+      },
+    })
+  },
 })
 
-const move = guard(args => {
-  const { values, positionals, board } = parse(args, { ...WRITE, auto: { type: 'boolean' } }, 2)
-  const m = meta(values)
-  const ref = required(positionals[0], 'card id')
+const move = guard({
+  handler: ({ args }) => {
+    const { values, positionals, board } = parse({ args, options: { ...WRITE, auto: { type: 'boolean' } }, positionals: 2 })
+    const m = meta({ values })
+    const ref = required({ value: positionals[0], what: 'card id' })
 
-  if (Boolean(values.auto) === (positionals[1] !== undefined)) {
-    throw new AxiError('give either a column or --auto', 'VALIDATION_ERROR', [`Columns: ${COLUMNS.join(', ')}`])
-  }
+    if (Boolean(values.auto) === (positionals[1] !== undefined)) {
+      throw new AxiError('give either a column or --auto', 'VALIDATION_ERROR', [`Columns: ${COLUMNS.join(', ')}`])
+    }
 
-  const target = values.auto ? null : column(positionals[1]!)
+    const target = values.auto ? null : column({ value: positionals[1]! })
 
-  return commit(board, m, { type: 'card.moved', card: ref }, state => decideMove({ state, ref, column: target, meta: m }))
+    return commit({ board, meta: m, intent: { type: 'card.moved', card: ref }, decide: ({ state }) => decideMove({ state, ref, column: target, meta: m }) })
+  },
 })
 
-const link = guard(args => {
-  const options: Options = {
-    ...WRITE,
-    url: { type: 'string' },
-    kind: { type: 'string' },
-    number: { type: 'string' },
-    title: { type: 'string' },
-    state: { type: 'string' },
-    remove: { type: 'boolean' },
-  }
-  const { values, positionals, board } = parse(args, options, 1)
-  const m = meta(values)
-  const ref = required(positionals[0], 'card id')
-  const url = required(values.url as string | undefined, '--url')
-  const s = (name: string) => values[name] as string | undefined
-  const parsed = values.remove
-    ? null
-    : parseLink({ input: { url, kind: s('kind'), number: s('number'), title: s('title'), state: s('state'), checkedAt: s('state') && new Date().toISOString() } })
+const link = guard({
+  handler: ({ args }) => {
+    const options: Options = {
+      ...WRITE,
+      url: { type: 'string' },
+      kind: { type: 'string' },
+      number: { type: 'string' },
+      title: { type: 'string' },
+      state: { type: 'string' },
+      remove: { type: 'boolean' },
+    }
+    const { values, positionals, board } = parse({ args, options, positionals: 1 })
+    const m = meta({ values })
+    const ref = required({ value: positionals[0], what: 'card id' })
+    const url = required({ value: values.url as string | undefined, what: '--url' })
+    const s = ({ name }: { name: string }) => values[name] as string | undefined
+    const parsed = values.remove
+      ? null
+      : parseLink({ input: { url, kind: s({ name: 'kind' }), number: s({ name: 'number' }), title: s({ name: 'title' }), state: s({ name: 'state' }), checkedAt: s({ name: 'state' }) && new Date().toISOString() } })
 
-  return commit(board, m, { type: 'card.linked', card: ref }, state => decideLink({ state, ref, url, link: parsed, meta: m }))
+    return commit({ board, meta: m, intent: { type: 'card.linked', card: ref }, decide: ({ state }) => decideLink({ state, ref, url, link: parsed, meta: m }) })
+  },
 })
 
-const outcome = guard(args => {
-  const { values, positionals, board } = parse(args, { ...WRITE, note: { type: 'string' }, clear: { type: 'boolean' } }, 2)
-  const m = meta(values)
-  const ref = required(positionals[0], 'card id')
-  const state = positionals[1]
+const outcome = guard({
+  handler: ({ args }) => {
+    const { values, positionals, board } = parse({ args, options: { ...WRITE, note: { type: 'string' }, clear: { type: 'boolean' } }, positionals: 2 })
+    const m = meta({ values })
+    const ref = required({ value: positionals[0], what: 'card id' })
+    const state = positionals[1]
 
-  if (Boolean(values.clear) === (state !== undefined)) {
-    throw new AxiError('give either an outcome or --clear', 'VALIDATION_ERROR', [`Outcomes: ${OUTCOME_STATES.join(', ')}`])
-  }
+    if (Boolean(values.clear) === (state !== undefined)) {
+      throw new AxiError('give either an outcome or --clear', 'VALIDATION_ERROR', [`Outcomes: ${OUTCOME_STATES.join(', ')}`])
+    }
 
-  if (state !== undefined && !(OUTCOME_STATES as readonly string[]).includes(state)) {
-    throw new AxiError(`unknown outcome: ${state}`, 'VALIDATION_ERROR', [`Use one of ${OUTCOME_STATES.join(', ')}`])
-  }
+    if (state !== undefined && !(OUTCOME_STATES as readonly string[]).includes(state)) {
+      throw new AxiError(`unknown outcome: ${state}`, 'VALIDATION_ERROR', [`Use one of ${OUTCOME_STATES.join(', ')}`])
+    }
 
-  const note = values.note as string | undefined
-  const result = state === undefined
-    ? null
-    : { state: state as OutcomeState, ...(note ? { note } : {}) }
+    const note = values.note as string | undefined
+    const result = state === undefined
+      ? null
+      : { state: state as OutcomeState, ...(note ? { note } : {}) }
 
-  return commit(board, m, { type: 'card.outcome', card: ref }, s => decideOutcome({ state: s, ref, outcome: result, meta: m }))
+    return commit({ board, meta: m, intent: { type: 'card.outcome', card: ref }, decide: ({ state: s }) => decideOutcome({ state: s, ref, outcome: result, meta: m }) })
+  },
 })
 
-function summarize(event: BoardEvent): string {
+function summarize({ event }: { event: BoardEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
@@ -679,161 +742,181 @@ function summarize(event: BoardEvent): string {
   }
 }
 
-const history = guard(args => {
-  const options: Options = {
-    ...COMMON,
-    card: { type: 'string' },
-    kind: { type: 'string' },
-    workspace: { type: 'string' },
-    before: { type: 'string' },
-    limit: { type: 'string' },
-  }
-  const { values, board } = parse(args, options, 0)
-  const limit = Math.min(integer(values.limit, '--limit') ?? HISTORY_LIMIT, HISTORY_MAX)
-  const before = integer(values.before, '--before')
-  const kind = values.kind as string | undefined
-  const type = kind && (kind.startsWith('card.') ? kind : `card.${kind}`)
+const history = guard({
+  handler: ({ args }) => {
+    const options: Options = {
+      ...COMMON,
+      card: { type: 'string' },
+      kind: { type: 'string' },
+      workspace: { type: 'string' },
+      before: { type: 'string' },
+      limit: { type: 'string' },
+    }
+    const { values, board } = parse({ args, options, positionals: 0 })
+    const limit = Math.min(integer({ value: values.limit, flag: '--limit' }) ?? HISTORY_LIMIT, HISTORY_MAX)
+    const before = integer({ value: values.before, flag: '--before' })
+    const kind = values.kind as string | undefined
+    const type = kind && (kind.startsWith('card.') ? kind : `card.${kind}`)
 
-  if (type && !(EVENT_TYPES as readonly string[]).includes(type)) {
-    throw new AxiError(`unknown kind: ${kind}`, 'VALIDATION_ERROR', ['Use one of pushed, moved, linked, outcome, replied, noted'])
-  }
+    if (type && !(EVENT_TYPES as readonly string[]).includes(type)) {
+      throw new AxiError(`unknown kind: ${kind}`, 'VALIDATION_ERROR', ['Use one of pushed, moved, linked, outcome, replied, noted'])
+    }
 
-  const { state } = loadBoard({ board })
-  const cardId = values.card ? findCard({ state, ref: values.card as string }).id : undefined
-  const workspace = values.workspace as string | undefined
-  // An outcome keeps the workspace it was recorded under; other events use the card's current one.
-  const inWorkspace = (e: BoardEvent) =>
-    (e.type === 'card.outcome' ? e.data.card.workspace : state.cards[e.cardId]?.workspace) === workspace
-
-  const matches = readEvents({ board })
-    .filter(e => (before === undefined || e.seq < before) && (!cardId || e.cardId === cardId))
-    .filter(e => (!type || e.type === type) && (!workspace || inWorkspace(e)))
-    .reverse()
-  const page = matches.slice(0, limit)
-
-  if (page.length === 0) {
-    return { events: 'none: no matching events' }
-  }
-
-  const out: Output = {
-    events: page.map(e => ({
-      seq: e.seq,
-      id: e.id,
-      at: e.at,
-      type: e.type,
-      card: e.cardId,
-      actor: e.actor,
-      summary: summarize(e),
-    })),
-  }
-
-  if (matches.length > limit) {
-    const flags = ['card', 'kind', 'workspace', 'limit', 'board'].flatMap(f => (values[f] ? [`--${f}`, String(values[f])] : []))
-    out.help = [`Run \`pnyx-axi history ${[...flags, '--before', String(page.at(-1)!.seq)].join(' ')}\` for older events`]
-  }
-
-  return out
-})
-
-const undo = guard(args => {
-  const { values, positionals, board } = parse(args, WRITE, 1)
-  const m = meta(values)
-  const id = required(positionals[0], 'event id')
-  const target = readEvents({ board }).find(e => e.id === id)
-
-  if (!target) {
-    throw new AxiError(`event not found: ${id}`, 'NOT_FOUND', ['Run `pnyx-axi history` to find event ids'])
-  }
-
-  return commit(
-    board,
-    m,
-    { type: target.type, card: target.cardId },
-    state => decideUndo({ state, target, meta: m }),
-  )
-})
-
-const repair = guard(args => {
-  const { board } = parse(args, COMMON, 0)
-  const result = repairBoard({ board })
-
-  return {
-    repair: result.tornBytes > 0 ? `set aside ${result.tornBytes} torn bytes` : 'none: log ends cleanly',
-    ...(result.preserved ? { preserved: result.preserved } : {}),
-    snapshot: `rebuilt through seq ${result.seq}`,
-  }
-})
-
-const setup = guard(args => {
-  const options: Options = { harness: { type: 'string' }, remove: { type: 'boolean' }, preview: { type: 'boolean' } }
-  const { values, positionals } = parse(args, options, 1)
-
-  if (positionals[0] !== 'hooks') {
-    throw new AxiError(`unknown setup target: ${positionals[0] ?? '(none)'}`, 'VALIDATION_ERROR', ['Run `pnyx-axi setup hooks`'])
-  }
-
-  const harness = values.harness as string | undefined
-
-  if (harness !== undefined && !(HARNESSES as readonly string[]).includes(harness)) {
-    throw new AxiError(`unknown harness: ${harness}`, 'VALIDATION_ERROR', [`Use one of ${HARNESSES.join(', ')}`])
-  }
-
-  const targets = harness ? [harness as Harness] : detectedHarnesses()
-
-  if (targets.length === 0) {
-    throw new AxiError('no Claude Code or Codex config folder found', 'NOT_FOUND', ['Run `pnyx-axi setup hooks --harness claude|codex`'])
-  }
-
-  const remove = Boolean(values.remove)
-  const preview = Boolean(values.preview)
-  const hooks = targets.map(h => setupHooks(h, { remove, preview }))
-  const out: Output = { hooks }
-
-  if (preview) {
-    out.preview = 'nothing written; rerun without --preview to apply'
-  }
-
-  const help: string[] = []
-
-  if (!remove && !preview && targets.includes('codex')) {
-    help.push('Codex asks you to review and trust new hooks: run `/hooks` in Codex')
-  }
-
-  help.push(remove ? 'Run `pnyx-axi setup hooks` to install them again' : 'New sessions appear on the board; run `pnyx-axi` to see it')
-  out.help = help
-
-  return out
-})
-
-const view = guard(args => {
-  const [sub, ...rest] = args
-  const { values, board } = parse(rest, { ...WRITE, json: { type: 'string' } }, 0)
-
-  if (sub === 'show') {
     const { state } = loadBoard({ board })
+    const cardId = values.card ? findCard({ state, ref: values.card as string }).id : undefined
+    const workspace = values.workspace as string | undefined
+    // An outcome keeps the workspace it was recorded under; other events use the card's current one.
+    const inWorkspace = ({ e }: { e: BoardEvent }) =>
+      (e.type === 'card.outcome' ? e.data.card.workspace : state.cards[e.cardId]?.workspace) === workspace
 
-    return { view: viewFor({ state }), revision: state.viewRevision ?? 0 }
-  }
+    const matches = readEvents({ board })
+      .filter(e => (before === undefined || e.seq < before) && (!cardId || e.cardId === cardId))
+      .filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e })))
+      .reverse()
+    const page = matches.slice(0, limit)
 
-  if (sub === 'schema') {
-    return { defaults: DEFAULT_VIEW, help: ['view set --json <patch> --if-revision <revision>'] }
-  }
+    if (page.length === 0) {
+      return { events: 'none: no matching events' }
+    }
 
-  if (sub !== 'set') {
-    throw new AxiError('use view show, schema or set', 'VALIDATION_ERROR')
-  }
+    const out: Output = {
+      events: page.map(e => ({
+        seq: e.seq,
+        id: e.id,
+        at: e.at,
+        type: e.type,
+        card: e.cardId,
+        actor: e.actor,
+        summary: summarize({ event: e }),
+      })),
+    }
 
-  let patch: unknown
+    if (matches.length > limit) {
+      const flags = ['card', 'kind', 'workspace', 'limit', 'board'].flatMap(f => (values[f] ? [`--${f}`, String(values[f])] : []))
+      out.help = [`Run \`pnyx-axi history ${[...flags, '--before', String(page.at(-1)!.seq)].join(' ')}\` for older events`]
+    }
 
-  try {
-    patch = JSON.parse(required(values.json as string, '--json'))
-  } catch {
-    throw new AxiError('--json must contain a preference object', 'VALIDATION_ERROR')
-  }
+    return out
+  },
+})
 
-  const m = meta(values)
+const undo = guard({
+  handler: ({ args }) => {
+    const { values, positionals, board } = parse({ args, options: WRITE, positionals: 1 })
+    const m = meta({ values })
+    const id = required({ value: positionals[0], what: 'event id' })
+    const target = readEvents({ board }).find(e => e.id === id)
 
-  return commit(board, m, { type: 'board.view', card: '$board' }, s => decideView({ state: s, patch, meta: m }))
+    if (!target) {
+      throw new AxiError(`event not found: ${id}`, 'NOT_FOUND', ['Run `pnyx-axi history` to find event ids'])
+    }
+
+    return commit(
+      {
+        board,
+        meta: m,
+        intent: {
+          type: target.type,
+          card: target.cardId,
+        },
+        decide: ({ state }) =>
+          decideUndo({
+            state,
+            target,
+            meta: m,
+          }),
+      },
+    )
+  },
+})
+
+const repair = guard({
+  handler: ({ args }) => {
+    const { board } = parse({ args, options: COMMON, positionals: 0 })
+    const result = repairBoard({ board })
+
+    return {
+      repair: result.tornBytes > 0 ? `set aside ${result.tornBytes} torn bytes` : 'none: log ends cleanly',
+      ...(result.preserved ? { preserved: result.preserved } : {}),
+      snapshot: `rebuilt through seq ${result.seq}`,
+    }
+  },
+})
+
+const setup = guard({
+  handler: ({ args }) => {
+    const options: Options = { harness: { type: 'string' }, remove: { type: 'boolean' }, preview: { type: 'boolean' } }
+    const { values, positionals } = parse({ args, options, positionals: 1 })
+
+    if (positionals[0] !== 'hooks') {
+      throw new AxiError(`unknown setup target: ${positionals[0] ?? '(none)'}`, 'VALIDATION_ERROR', ['Run `pnyx-axi setup hooks`'])
+    }
+
+    const harness = values.harness as string | undefined
+
+    if (harness !== undefined && !(HARNESSES as readonly string[]).includes(harness)) {
+      throw new AxiError(`unknown harness: ${harness}`, 'VALIDATION_ERROR', [`Use one of ${HARNESSES.join(', ')}`])
+    }
+
+    const targets = harness ? [harness as Harness] : detectedHarnesses()
+
+    if (targets.length === 0) {
+      throw new AxiError('no Claude Code or Codex config folder found', 'NOT_FOUND', ['Run `pnyx-axi setup hooks --harness claude|codex`'])
+    }
+
+    const remove = Boolean(values.remove)
+    const preview = Boolean(values.preview)
+    const hooks = targets.map(h => setupHooks({ harness: h, opts: { remove, preview } }))
+    const out: Output = { hooks }
+
+    if (preview) {
+      out.preview = 'nothing written; rerun without --preview to apply'
+    }
+
+    const help: string[] = []
+
+    if (!remove && !preview && targets.includes('codex')) {
+      help.push('Codex asks you to review and trust new hooks: run `/hooks` in Codex')
+    }
+
+    help.push(remove ? 'Run `pnyx-axi setup hooks` to install them again' : 'New sessions appear on the board; run `pnyx-axi` to see it')
+    out.help = help
+
+    return out
+  },
+})
+
+const view = guard({
+  handler: ({ args }) => {
+    const [sub, ...rest] = args
+    const { values, board } = parse({ args: rest, options: { ...WRITE, json: { type: 'string' } }, positionals: 0 })
+
+    if (sub === 'show') {
+      const { state } = loadBoard({ board })
+
+      return { view: viewFor({ state }), revision: state.viewRevision ?? 0 }
+    }
+
+    if (sub === 'schema') {
+      return { defaults: DEFAULT_VIEW, help: ['view set --json <patch> --if-revision <revision>'] }
+    }
+
+    if (sub !== 'set') {
+      throw new AxiError('use view show, schema or set', 'VALIDATION_ERROR')
+    }
+
+    let patch: unknown
+
+    try {
+      patch = JSON.parse(required({ value: values.json as string, what: '--json' }))
+    } catch {
+      throw new AxiError('--json must contain a preference object', 'VALIDATION_ERROR')
+    }
+
+    const m = meta({ values })
+
+    return commit({ board, meta: m, intent: { type: 'board.view', card: '$board' }, decide: ({ state: s }) => decideView({ state: s, patch, meta: m }) })
+  },
 })
 
 export const commands = {
@@ -942,7 +1025,7 @@ gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. The
 `,
 }
 
-export function commandHelp(command: string): string | undefined {
+export function commandHelp({ command }: { command: string }): string | undefined {
   if (command === 'view') {
     return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--board <name>]'
   }

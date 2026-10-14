@@ -18,7 +18,7 @@ const CURSORS = 'harvest.json'
 // "<card id>\n<transcript path>" -> how far it was read.
 type Cursors = Record<string, { identity: string; pos: number }>
 
-function readCursors(dir: string): Cursors {
+function readCursors({ dir }: { dir: string }): Cursors {
   try {
     const value = JSON.parse(readFileSync(join(dir, CURSORS), 'utf8')) as unknown
 
@@ -28,7 +28,7 @@ function readCursors(dir: string): Cursors {
   }
 }
 
-function writeCursors(dir: string, cursors: Cursors): void {
+function writeCursors({ dir, cursors }: { dir: string; cursors: Cursors }): void {
   const tmp = join(dir, `.${CURSORS}.tmp-${process.pid}`)
   writeFileSync(tmp, JSON.stringify(cursors))
   renameSync(tmp, join(dir, CURSORS))
@@ -36,10 +36,12 @@ function writeCursors(dir: string, cursors: Cursors): void {
 
 // Appends one harvested note to a card; returns 1 when it was new.
 export function appendNote(
-  writer: Writer,
-  cardId: string,
-  { ref, ...note }: SourceNote,
-  at: string,
+  { writer, cardId, note: { ref, ...note }, at }: {
+    writer: Writer
+    cardId: string
+    note: SourceNote
+    at: string
+  },
 ): number {
   const card = writer.state.cards[cardId]!
   const decision = decideNote({ state: writer.state, ref: card.id, note, meta: { at, actor: 'harvest', id: noteId({ cardKey: card.key, ref }) } })
@@ -56,7 +58,12 @@ export function appendNote(
 // Codex writes a session's thread name to session_index.jsonl in its home, not to
 // the transcript at <home>/sessions/YYYY/MM/DD/rollout-*.jsonl.
 // ponytail: reads the whole index each time; it is one short line per named thread.
-function codexTitle(writer: Writer, cardId: string, path: string, at: string): number {
+function codexTitle({ writer, cardId, path, at }: {
+  writer: Writer
+  cardId: string
+  path: string
+  at: string
+}): number {
   const card = writer.state.cards[cardId]!
   const sessions = dirname(dirname(dirname(dirname(path))))
 
@@ -74,15 +81,19 @@ function codexTitle(writer: Writer, cardId: string, path: string, at: string): n
 
   const shown = card.autoTitle?.from === 'session' ? `${SESSION_TITLE}${card.autoTitle.text}` : undefined
 
-  return codexThreadTitle(index, card.agent.sessionId)
+  return codexThreadTitle({ index, sessionId: card.agent.sessionId })
     .filter(note => note.text !== shown)
-    .reduce((n, note) => n + appendNote(writer, cardId, note, at), 0)
+    .reduce((n, note) => n + appendNote({ writer, cardId, note, at }), 0)
 }
 
 // Harvests the transcripts of these cards from where the last read stopped, and
 // returns how many notes were appended. A missing transcript waits for its file.
-export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at: string): number {
-  const cursors = readCursors(writer.dir)
+export function harvestTranscripts({ writer, cardIds, at }: {
+  writer: Writer
+  cardIds: Iterable<string>
+  at: string
+}): number {
+  const cursors = readCursors({ dir: writer.dir })
   let appended = 0
   let moved = false
 
@@ -93,7 +104,7 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
       continue
     }
 
-    appended += codexTitle(writer, id, path, at)
+    appended += codexTitle({ writer, cardId: id, path, at })
     const name = `${id}\n${path}`
     const tail = readTranscript({ cursor: { source: path, ...(cursors[name] ?? { identity: '', pos: 0 }) } })
 
@@ -108,16 +119,16 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
     let title = tail.reset || !cursors[name]?.pos || autoTitle?.from !== 'session' ? undefined : `${SESSION_TITLE}${autoTitle.text}`
 
     for (const line of tail.lines) {
-      for (const note of transcriptNotes(line.record)) {
+      for (const note of transcriptNotes({ record: line.record })) {
         if (note.kind !== 'context' || !note.text.startsWith(SESSION_TITLE)) {
-          appended += appendNote(writer, id, note, at)
+          appended += appendNote({ writer, cardId: id, note, at })
         } else if (note.text !== title) {
           title = note.text
-          appended += appendNote(writer, id, { ...note, ref: `${note.ref}@${line.pos}` }, at)
+          appended += appendNote({ writer, cardId: id, note: { ...note, ref: `${note.ref}@${line.pos}` }, at })
         }
       }
 
-      Object.assign(settings, transcriptSettings(line.record, subagent))
+      Object.assign(settings, transcriptSettings({ record: line.record, subagent }))
     }
 
     const card = writer.state.cards[id]!
@@ -145,7 +156,7 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
   }
 
   if (moved) {
-    writeCursors(writer.dir, cursors)
+    writeCursors({ dir: writer.dir, cursors })
   }
 
   return appended

@@ -81,17 +81,17 @@ export async function startServer({
   homes?: string[]
   catalogLocations?: CatalogLocations
 }): Promise<RunningServer> {
-  if (await readServer(board)) {
+  if (await readServer({ board })) {
     throw new BoardError({ message: `a server is already running for board ${board}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
   }
 
-  homes = homes.map(resolveHome)
+  homes = homes.map(path => resolveHome({ path }))
   const subscriptions = new Map<WebSocket, { card: string; watcher?: FSWatcher }>()
   const threadScheduled = new WeakSet<WebSocket>()
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
 
-  const refreshThread = (ws: WebSocket) => {
+  const refreshThread = ({ ws }: { ws: WebSocket }) => {
     if (closed || threadScheduled.has(ws)) {
       return
     }
@@ -111,9 +111,9 @@ export async function startServer({
       }
 
       try {
-        send(ws, { type: 'thread', thread: readThread(board, state, card, homes) })
+        send({ ws, message: { type: 'thread', thread: readThread({ board, state, card, homes }) } })
       } catch {
-        send(ws, { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' })
+        send({ ws, message: { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' } })
       }
     })
   }
@@ -125,7 +125,7 @@ export async function startServer({
   let recent: BoardEvent[] = []
   const resyncing = new WeakSet<WebSocket>()
 
-  const send = (ws: WebSocket, message: ServerMessage) => {
+  const send = ({ ws, message }: { ws: WebSocket; message: ServerMessage }) => {
     if (ws.bufferedAmount > MAX_BUFFERED) {
       resyncing.add(ws)
 
@@ -136,23 +136,23 @@ export async function startServer({
   }
 
   // A snapshot is always followed by every card's last message, which the tab takes in place of its own.
-  const sendSnapshot = (ws: WebSocket) => {
+  const sendSnapshot = ({ ws }: { ws: WebSocket }) => {
     resyncing.delete(ws)
-    send(ws, { type: 'snapshot', seq: state.seq, state })
+    send({ ws, message: { type: 'snapshot', seq: state.seq, state } })
     ws.send(JSON.stringify({ type: 'latest', messages: latest } satisfies ServerMessage))
   }
 
   // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.
-  const broadcast = (event: BoardEvent) => {
+  const broadcast = ({ event }: { event: BoardEvent }) => {
     for (const ws of wss.clients) {
       if (!resyncing.has(ws)) {
-        send(ws, { type: 'event', event })
+        send({ ws, message: { type: 'event', event } })
       } else if (ws.bufferedAmount <= MAX_BUFFERED) {
-        sendSnapshot(ws)
+        sendSnapshot({ ws })
       }
 
       if (subscriptions.get(ws)?.card === event.cardId) {
-        refreshThread(ws)
+        refreshThread({ ws })
       }
     }
   }
@@ -162,10 +162,10 @@ export async function startServer({
     recent = []
 
     for (const ws of wss.clients) {
-      sendSnapshot(ws)
+      sendSnapshot({ ws })
     }
 
-    touchLatest(Object.keys(state.cards))
+    touchLatest({ ids: Object.keys(state.cards) })
   }
 
   // Each card's last conversation message, read from its transcript tail and pushed
@@ -178,7 +178,7 @@ export async function startServer({
   const unread = new Set<string>()
   let latestTimer: ReturnType<typeof setTimeout> | undefined
 
-  const watchFolder = (dir: string) => {
+  const watchFolder = ({ dir }: { dir: string }) => {
     if (closed || folders.has(dir)) {
       return
     }
@@ -186,12 +186,14 @@ export async function startServer({
     try {
       const watcher = watch(dir, (_event, filename) => {
         const changed = filename ? join(dir, String(filename)) : undefined
-        touchLatest(Object.values(state.cards).filter(c => {
-          const path = threadPath(c)
+        touchLatest({
+          ids: Object.values(state.cards).filter(c => {
+            const path = threadPath({ card: c })
 
-          return path && (changed ? path === changed : dirname(path) === dir)
+            return path && (changed ? path === changed : dirname(path) === dir)
+          })
+            .map(c => c.id),
         })
-          .map(c => c.id))
       })
       watcher.on('error', () => {
         watcher.close(); folders.delete(dir)
@@ -207,13 +209,13 @@ export async function startServer({
     const changed: Record<string, LatestMessage | null> = {}
 
     for (const id of unread) {
-      const card = state.cards[id], path = card && threadPath(card)
+      const card = state.cards[id], path = card && threadPath({ card })
 
       if (path) {
-        watchFolder(dirname(path))
+        watchFolder({ dir: dirname(path) })
       }
 
-      const read = path ? latestMessage(path, reads.get(id)) : undefined
+      const read = path ? latestMessage({ path, prev: reads.get(id) }) : undefined
 
       if (read) {
         reads.set(id, read)
@@ -240,12 +242,12 @@ export async function startServer({
 
     if (Object.keys(changed).length) {
       for (const ws of wss.clients) {
-        send(ws, { type: 'latest', messages: changed })
+        send({ ws, message: { type: 'latest', messages: changed } })
       }
     }
   }
 
-  function touchLatest(ids: Iterable<string>) {
+  function touchLatest({ ids }: { ids: Iterable<string> }) {
     if (closed) {
       return
     }
@@ -274,8 +276,8 @@ export async function startServer({
 
       state = reduce({ state, event })
       recent.push(event)
-      broadcast(event)
-      touchLatest([event.cardId])
+      broadcast({ event })
+      touchLatest({ ids: [event.cardId] })
     }
 
     offset = read.end
@@ -303,7 +305,7 @@ export async function startServer({
 
       try {
         if (spoolFiles({ dir }).length > 0) {
-          ingestSpool(board)
+          ingestSpool({ board })
         }
 
         pump()
@@ -318,48 +320,55 @@ export async function startServer({
   // that send no Origin are local programs, not pages; writes still need the token.
   const hosts = new Set<string>()
   const origins = new Set<string>()
-  const allowed = (req: IncomingMessage) =>
+  const allowed = ({ req }: { req: IncomingMessage }) =>
     hosts.has(req.headers.host ?? '') && (req.headers.origin === undefined || origins.has(req.headers.origin))
 
-  const authorized = (given: string | null) => {
+  const authorized = ({ given }: { given: string | null }) => {
     const bytes = Buffer.from(given ?? '')
 
     return token.length > 0 && bytes.length === token.length && timingSafeEqual(bytes, token)
   }
 
   const http = createServer((req, res) => {
-    if (!allowed(req)) {
-      return reply(res, 403, { error: 'origin or host not allowed', code: 'FORBIDDEN' })
+    if (!allowed({ req })) {
+      return reply({ res, status: 403, body: { error: 'origin or host not allowed', code: 'FORBIDDEN' } })
     }
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      return reply(res, 405, { error: 'method not allowed', code: 'METHOD_NOT_ALLOWED' })
+      return reply({ res, status: 405, body: { error: 'method not allowed', code: 'METHOD_NOT_ALLOWED' } })
     }
 
     const path = new URL(req.url ?? '/', 'http://localhost').pathname
 
     if (path === '/health') {
-      return reply(res, 200, { board, pid: process.pid, build: buildId() })
+      return reply({ res, status: 200, body: { board, pid: process.pid, build: buildId() } })
     }
 
-    serveStatic(res, path, token.toString())
+    serveStatic({ res, path, token: token.toString() })
   })
 
   // A tab's write: the same CLI command, pinned to this board, under the same writer lock.
   const catalogReads = new WeakMap<WebSocket, { card: string; read: Promise<Catalog> }>()
 
-  const runCommand = (ws: WebSocket, message: { id?: unknown; name?: unknown; args?: unknown }) => {
+  const runCommand = ({ ws, message }: {
+    ws: WebSocket
+    message: {
+      id?: unknown
+      name?: unknown
+      args?: unknown
+    }
+  }) => {
     const id = typeof message.id === 'string' ? message.id : null
-    const fail = (error: string, code: string, help?: string[]) => send(ws, { type: 'error', id, error, code, help })
+    const fail = ({ error, code, help }: { error: string; code: string; help?: string[] }) => send({ ws, message: { type: 'error', id, error, code, help } })
     const { name, args } = message
 
     if (id === null) {
-      return fail('command needs a string id', 'VALIDATION_ERROR')
+      return fail({ error: 'command needs a string id', code: 'VALIDATION_ERROR' })
     }
 
     if (['thread', 'search', 'reply', 'catalog', 'settings'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
-        return fail('args must be strings', 'VALIDATION_ERROR')
+        return fail({ error: 'args must be strings', code: 'VALIDATION_ERROR' })
       }
 
       try {
@@ -375,7 +384,11 @@ export async function startServer({
             const previous = entry?.read.catch(() => undefined)
             const next = {
               card: card.id,
-              read: Promise.resolve(previous).then(() => readCatalog(card, catalogLocations)),
+              read: Promise.resolve(previous).then(() =>
+                readCatalog({
+                  card,
+                  locations: catalogLocations,
+                })),
             }
             catalogReads.set(ws, entry = next)
             void next.read.catch(() => undefined).finally(() => {
@@ -385,7 +398,7 @@ export async function startServer({
             })
           }
 
-          void entry.read.then(catalog => send(ws, { type: 'receipt', id, catalog })).catch(() => fail('Local catalog unavailable', 'CATALOG_UNAVAILABLE'))
+          void entry.read.then(catalog => send({ ws, message: { type: 'receipt', id, catalog } })).catch(() => fail({ error: 'Local catalog unavailable', code: 'CATALOG_UNAVAILABLE' }))
         } else if (name === 'search') {
           if (args.length > 2) {
             throw new BoardError({ message: 'search expects text and optional workspace', code: 'VALIDATION_ERROR' })
@@ -395,8 +408,8 @@ export async function startServer({
 
           // The semantic leg waits on the worker process, never on this event loop.
           void searchBoard({ board, query })
-            .then(result => send(ws, { type: 'receipt', id, ...result }))
-            .catch((error: Error) => fail(error.message, error instanceof BoardError ? error.code : 'UNKNOWN'))
+            .then(result => send({ ws, message: { type: 'receipt', id, ...result } }))
+            .catch((error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
         } else if (name === 'settings') {
           // This machine's search settings, shared by every board: [] reads them, ['set', key, value] changes one.
           if (args.length && (args.length !== 3 || args[0] !== 'set')) {
@@ -407,12 +420,12 @@ export async function startServer({
             key: args[1]!,
             value: args[2]!,
           }) : readSettings({ })
-          send(ws, { type: 'receipt', id, settings: settingEntries({ settings }) })
+          send({ ws, message: { type: 'receipt', id, settings: settingEntries({ settings }) } })
         } else if (name === 'thread') {
           const old = subscriptions.get(ws); old?.watcher?.close(); subscriptions.delete(ws)
 
           if (!args[0]) {
-            send(ws, { type: 'receipt', id })
+            send({ ws, message: { type: 'receipt', id } })
 
             return
           }
@@ -424,20 +437,20 @@ export async function startServer({
           }
 
           const sub: { card: string; watcher?: FSWatcher } = { card: card.id }
-          const path = threadPath(card)
+          const path = threadPath({ card })
 
           if (path) {
             try {
               sub.watcher = watch(dirname(path), (_event, filename) => {
                 if (!filename || String(filename) === basename(path)) {
-                  refreshThread(ws)
+                  refreshThread({ ws })
                 }
               })
             } catch { /* Missing transcript remains explicit. */ }
           }
 
           subscriptions.set(ws, sub)
-          send(ws, { type: 'receipt', id, thread: readThread(board, state, card, homes, args[1]) })
+          send({ ws, message: { type: 'receipt', id, thread: readThread({ board, state, card, homes, before: args[1] }) } })
         } else {
           if (args.length !== 3 || !args[2] || args[1].length > 32000) {
             throw new BoardError({ message: 'reply expects card, text and idempotency key', code: 'VALIDATION_ERROR' })
@@ -469,36 +482,36 @@ export async function startServer({
               }
 
               if (typeof known?.message === 'string' && typeof known.code === 'string') {
-                fail(known.message, known.code, known.help)
+                fail({ error: known.message, code: known.code, help: known.help })
               } else {
-                fail('Reply could not be confirmed; check receipts before sending again', 'DELIVERY_UNKNOWN')
+                fail({ error: 'Reply could not be confirmed; check receipts before sending again', code: 'DELIVERY_UNKNOWN' })
               }
             } else {
               try {
-                send(ws, { type: 'receipt', id, ...JSON.parse(stdout) })
+                send({ ws, message: { type: 'receipt', id, ...JSON.parse(stdout) } })
               } catch {
-                fail('Reply receipt unavailable; check history', 'DELIVERY_UNKNOWN')
+                fail({ error: 'Reply receipt unavailable; check history', code: 'DELIVERY_UNKNOWN' })
               }
             }
           })
         }
       } catch (error) {
-        fail((error as Error).message, error instanceof BoardError ? error.code : 'UNKNOWN')
+        fail({ error: (error as Error).message, code: error instanceof BoardError ? error.code : 'UNKNOWN' })
       }
 
       return
     }
 
     if (typeof name !== 'string' || !(CLI_COMMANDS as readonly string[]).includes(name)) {
-      return fail(`unknown command: ${String(name)}`, 'NOT_FOUND', [`Use one of ${CLI_COMMANDS.join(', ')}`])
+      return fail({ error: `unknown command: ${String(name)}`, code: 'NOT_FOUND', help: [`Use one of ${CLI_COMMANDS.join(', ')}`] })
     }
 
     if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
-      return fail('args must be [string, ...]', 'VALIDATION_ERROR')
+      return fail({ error: 'args must be [string, ...]', code: 'VALIDATION_ERROR' })
     }
 
     if (args.some(a => a === '--board' || a.startsWith('--board='))) {
-      return fail(`--board is not allowed; this server writes board ${board}`, 'VALIDATION_ERROR')
+      return fail({ error: `--board is not allowed; this server writes board ${board}`, code: 'VALIDATION_ERROR' })
     }
 
     const actor = name === 'history' || name === 'card' || args.some(a => a === '--actor' || a.startsWith('--actor=')) ? [] : ['--actor', 'web']
@@ -512,13 +525,13 @@ export async function startServer({
         kick()
       }
 
-      send(ws, { ...result, type: 'receipt', id })
+      send({ ws, message: { ...result, type: 'receipt', id } })
     } catch (error) {
       if (!(error instanceof AxiError)) {
-        return fail((error as Error).message, 'UNKNOWN')
+        return fail({ error: (error as Error).message, code: 'UNKNOWN' })
       }
 
-      fail(error.message, error.code, error.suggestions)
+      fail({ error: error.message, code: error.code, help: error.suggestions })
     }
   }
 
@@ -526,13 +539,13 @@ export async function startServer({
   http.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
 
-    if (url.pathname !== '/ws' || !allowed(req)) {
+    if (url.pathname !== '/ws' || !allowed({ req })) {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
 
       return
     }
 
-    if (!authorized(url.searchParams.get('token'))) {
+    if (!authorized({ given: url.searchParams.get('token') })) {
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
 
       return
@@ -543,39 +556,39 @@ export async function startServer({
         subscriptions.get(ws)?.watcher?.close(); subscriptions.delete(ws)
       })
       ws.on('message', data => {
-        const message = parseMessage(data.toString())
+        const message = parseMessage({ text: data.toString() })
 
         if (message?.type === 'resync') {
-          sendSnapshot(ws)
+          sendSnapshot({ ws })
         } else if (message?.type === 'command') {
-          runCommand(ws, message)
+          runCommand({ ws, message })
         } else {
-          send(ws, { type: 'error', id: null, error: 'unknown message', code: 'VALIDATION_ERROR', help: ['Send a command or resync message'] })
+          send({ ws, message: { type: 'error', id: null, error: 'unknown message', code: 'VALIDATION_ERROR', help: ['Send a command or resync message'] } })
         }
       })
-      send(ws, { type: 'hello', build: buildId() })
-      resume(ws, url.searchParams.get('after'))
+      send({ ws, message: { type: 'hello', build: buildId() } })
+      resume({ ws, after: url.searchParams.get('after') })
     })
   })
 
   // A cursor this server can continue from gets only the events after it; any
   // other cursor (ahead of the board, older than the kept events, or none) gets a snapshot.
   // Either way the tab then gets every card's last message.
-  const resume = (ws: WebSocket, after: string | null) => {
+  const resume = ({ ws, after }: { ws: WebSocket; after: string | null }) => {
     const seq = after !== null && /^\d+$/.test(after) ? Number(after) : undefined
     const first = recent[0]?.seq ?? state.seq + 1
 
     if (seq === undefined || seq > state.seq || seq < first - 1) {
-      return sendSnapshot(ws)
+      return sendSnapshot({ ws })
     }
 
     for (const event of recent) {
       if (event.seq > seq) {
-        send(ws, { type: 'event', event })
+        send({ ws, message: { type: 'event', event } })
       }
     }
 
-    send(ws, { type: 'latest', messages: latest })
+    send({ ws, message: { type: 'latest', messages: latest } })
   }
 
   await new Promise<void>((resolve, reject) => {
@@ -589,18 +602,21 @@ export async function startServer({
     origins.add(`http://${host}`)
   }
 
-  const ingest = await listenIngest(board, line => {
-    try {
-      const entry = JSON.parse(line) as { id?: unknown }
+  const ingest = await listenIngest({
+    board,
+    onLine: ({ line }) => {
+      try {
+        const entry = JSON.parse(line) as { id?: unknown }
 
-      if (typeof entry === 'object' && entry !== null && typeof entry.id === 'string') {
-        spoolWrite({ board, entry: entry as { id: string } })
-      }
-    } catch {
+        if (typeof entry === 'object' && entry !== null && typeof entry.id === 'string') {
+          spoolWrite({ board, entry: entry as { id: string } })
+        }
+      } catch {
       // Not JSON: dropped, as a hook never waits for an answer.
-    }
+      }
 
-    kick()
+      kick()
+    },
   })
 
   const watchers: FSWatcher[] = [watch(dir, kick), watch(spoolDir({ dir }), kick)]
@@ -609,14 +625,14 @@ export async function startServer({
     pid: process.pid,
     port: bound,
     url,
-    socket: ingest && socketPath(board),
+    socket: ingest && socketPath({ board }),
   }
-  const tmp = `${infoPath(board)}.tmp-${process.pid}`
+  const tmp = `${infoPath({ board })}.tmp-${process.pid}`
   writeFileSync(tmp, JSON.stringify(info))
-  renameSync(tmp, infoPath(board))
+  renameSync(tmp, infoPath({ board }))
   // Events spooled while no server ran.
   kick()
-  touchLatest(Object.keys(state.cards))
+  touchLatest({ ids: Object.keys(state.cards) })
 
   return {
     port: bound,
@@ -645,10 +661,10 @@ export async function startServer({
         new Promise(r => http.close(r)),
         ingest && new Promise(r => ingest.close(r)),
       ])
-      rmSync(infoPath(board), { force: true })
+      rmSync(infoPath({ board }), { force: true })
 
       if (ingest) {
-        rmSync(socketPath(board), { force: true })
+        rmSync(socketPath({ board }), { force: true })
       }
     },
   }
@@ -657,10 +673,9 @@ export async function startServer({
 // Hook events, one JSON object per line. Null when the socket cannot be bound
 // (a path too long for a Unix socket, say); hooks then spool and the watcher drains it.
 async function listenIngest(
-  board: string,
-  onLine: (line: string) => void,
+  { board, onLine }: { board: string; onLine: ({ line }: { line: string }) => void },
 ): Promise<SocketServer | null> {
-  const path = socketPath(board)
+  const path = socketPath({ board })
   // Left by a server that did not stop cleanly; startServer already checked none is running.
   rmSync(path, { force: true })
   const server = createSocketServer(conn => {
@@ -674,13 +689,13 @@ async function listenIngest(
       }
 
       for (let i = buffered.indexOf('\n'); i >= 0; i = buffered.indexOf('\n')) {
-        onLine(buffered.slice(0, i))
+        onLine({ line: buffered.slice(0, i) })
         buffered = buffered.slice(i + 1)
       }
     })
     conn.on('end', () => {
       if (buffered.trim()) {
-        onLine(buffered)
+        onLine({ line: buffered })
       }
 
       conn.end()
@@ -704,7 +719,7 @@ async function listenIngest(
 
 type ClientMessage = { type?: unknown; id?: unknown; name?: unknown; args?: unknown }
 
-function parseMessage(text: string): ClientMessage | undefined {
+function parseMessage({ text }: { text: string }): ClientMessage | undefined {
   try {
     const message = JSON.parse(text) as unknown
 
@@ -716,19 +731,23 @@ function parseMessage(text: string): ClientMessage | undefined {
 
 // Names the built web board: index.html links the content-hashed assets, so its
 // hash changes with every rebuild. Empty when nothing is built (the Vite dev server).
-const buildOf = (html: string) => createHash('sha256').update(html)
+const buildOf = ({ html }: { html: string }) => createHash('sha256').update(html)
   .digest('hex')
   .slice(0, 12)
 
 function buildId(): string {
   try {
-    return buildOf(readFileSync(join(WEB_ROOT, 'index.html'), 'utf8'))
+    return buildOf({ html: readFileSync(join(WEB_ROOT, 'index.html'), 'utf8') })
   } catch {
     return ''
   }
 }
 
-function reply(res: ServerResponse, status: number, body: unknown): void {
+function reply({ res, status, body }: {
+  res: ServerResponse
+  status: number
+  body: unknown
+}): void {
   res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body))
 }
 
@@ -736,7 +755,11 @@ function reply(res: ServerResponse, status: number, body: unknown): void {
 // index.html carries the token for the WebSocket handshake; the caller has already
 // checked Host and Origin, so only this server's own page gets it. It also carries
 // its build, so an open tab can tell when a restarted server serves a newer one.
-function serveStatic(res: ServerResponse, path: string, token: string): void {
+function serveStatic({ res, path, token }: {
+  res: ServerResponse
+  path: string
+  token: string
+}): void {
   const index = join(WEB_ROOT, 'index.html')
   const file = normalize(join(WEB_ROOT, path === '/' ? 'index.html' : path))
 
@@ -744,7 +767,7 @@ function serveStatic(res: ServerResponse, path: string, token: string): void {
     try {
       if (candidate === index) {
         const raw = readFileSync(index, 'utf8')
-        const html = raw.replace('</head>', `<meta name="pnyx-token" content="${token}" />\n<meta name="pnyx-build" content="${buildOf(raw)}" />\n</head>`)
+        const html = raw.replace('</head>', `<meta name="pnyx-token" content="${token}" />\n<meta name="pnyx-build" content="${buildOf({ html: raw })}" />\n</head>`)
         res.writeHead(200, { 'content-type': MIME['.html'], 'cache-control': 'no-store' }).end(html)
 
         return
@@ -759,10 +782,10 @@ function serveStatic(res: ServerResponse, path: string, token: string): void {
     }
   }
 
-  reply(res, 404, { error: 'not found; run `pnpm run build` for the web board', code: 'NOT_FOUND' })
+  reply({ res, status: 404, body: { error: 'not found; run `pnpm run build` for the web board', code: 'NOT_FOUND' } })
 }
 
-function boardFlag(args: string[], options: { port?: { type: 'string' }; home?: { type: 'string'; multiple: true } } = {}) {
+function boardFlag({ args, options = {} }: { args: string[]; options?: { port?: { type: 'string' }; home?: { type: 'string'; multiple: true } } }) {
   try {
     const { values } = parseArgs({ args, options: { board: { type: 'string' }, ...options }, strict: true })
 
@@ -777,7 +800,7 @@ export const DEFAULT_PORT = 4747
 
 // `pnyx-axi serve`: runs in the foreground until SIGINT, SIGTERM or `pnyx-axi stop`.
 export async function serve(args: string[]): Promise<Record<string, unknown>> {
-  const values = boardFlag(args, { port: { type: 'string' }, home: { type: 'string', multiple: true } })
+  const values = boardFlag({ args, options: { port: { type: 'string' }, home: { type: 'string', multiple: true } } })
   const board = values.board ?? 'default'
 
   if (values.port !== undefined && !/^\d+$/.test(values.port)) {
@@ -806,8 +829,8 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   }
 
   // Each --home both takes replies and feeds the board, as `firstmate watch` would.
-  const homes = (values.home ?? []).map(resolveHome)
-  const firstmate = homes.length > 0 ? watchHomes(board, homes) : undefined
+  const homes = (values.home ?? []).map(path => resolveHome({ path }))
+  const firstmate = homes.length > 0 ? watchHomes({ board, list: homes }) : undefined
   // TOON for a flat object is `key: value`; JSON quoting keeps the values valid TOON.
   const watching = homes.length > 0 ? `firstmate: ${JSON.stringify(`watching ${homes.length} home${homes.length === 1 ? '' : 's'}`)}\n` : ''
   process.stdout.write(`server: running\nboard: ${board}\nurl: ${JSON.stringify(server.url)}\n${watching}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
@@ -823,8 +846,8 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
 
 // `pnyx-axi stop`: signals the board's server and waits until it no longer answers.
 export async function stop(args: string[]): Promise<Record<string, unknown>> {
-  const board = boardFlag(args).board ?? 'default'
-  const info = await readServer(board)
+  const board = boardFlag({ args }).board ?? 'default'
+  const info = await readServer({ board })
 
   if (!info) {
     return { server: 'none: not running', help: ['Run `pnyx-axi serve` to start it'] }
@@ -833,7 +856,7 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
   process.kill(info.pid, 'SIGTERM')
   const deadline = Date.now() + STOP_TIMEOUT_MS
 
-  while (await readServer(board)) {
+  while (await readServer({ board })) {
     if (Date.now() > deadline) {
       throw new AxiError(`server pid ${info.pid} did not stop`, 'TIMEOUT', [`Check process ${info.pid}`])
     }

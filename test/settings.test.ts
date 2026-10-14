@@ -23,7 +23,7 @@ function fold(...paths: string[]): FoundSettings {
   for (const path of paths) {
     for (const line of readFileSync(path, 'utf8').split('\n')
       .filter(Boolean)) {
-      Object.assign(found, transcriptSettings(JSON.parse(line)))
+      Object.assign(found, transcriptSettings({ record: JSON.parse(line) }))
     }
   }
 
@@ -31,10 +31,10 @@ function fold(...paths: string[]): FoundSettings {
 }
 
 test('hook payloads report the model, effort and permission mode they carry', () => {
-  assert.deepEqual(hookSettings(payload('claude-session-start')), { model: 'claude-opus-5-5', mode: 'default' })
-  assert.deepEqual(hookSettings(payload('claude-stop-effort')), { effort: 'xhigh', mode: 'acceptEdits' })
-  assert.deepEqual(hookSettings(payload('codex-session-start')), { model: 'gpt-6', mode: 'default' })
-  assert.equal(hookSettings(payload('claude-subagent-start')), undefined)
+  assert.deepEqual(hookSettings({ payload: payload('claude-session-start') }), { model: 'claude-opus-5-5', mode: 'default' })
+  assert.deepEqual(hookSettings({ payload: payload('claude-stop-effort') }), { effort: 'xhigh', mode: 'acceptEdits' })
+  assert.deepEqual(hookSettings({ payload: payload('codex-session-start') }), { model: 'gpt-6', mode: 'default' })
+  assert.equal(hookSettings({ payload: payload('claude-subagent-start') }), undefined)
 })
 
 test('a Claude Code session transcript reports each turn\'s model, effort, speed and context, skipping subagent and synthetic turns', () => {
@@ -71,7 +71,7 @@ test('a Codex rollout reports its session meta, thread settings and turn context
     collaboration: 'plan',
     summary: 'concise',
   })
-  assert.equal(transcriptSettings({ type: 'response_item', payload: { type: 'message' } }), undefined)
+  assert.equal(transcriptSettings({ record: { type: 'response_item', payload: { type: 'message' } } }), undefined)
 })
 
 test('pushed settings merge into the card, null removes one, and bad names or values are refused', () => {

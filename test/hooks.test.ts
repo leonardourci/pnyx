@@ -210,7 +210,7 @@ const envelope = (harness: 'claude' | 'codex', event: string, name: string): Hoo
 })
 
 test('a session event observes the session card with its folder and transcript', () => {
-  const [o, ...rest] = observe(envelope('claude', 'SessionStart', 'claude-session-start'))
+  const [o, ...rest] = observe({ envelope: envelope('claude', 'SessionStart', 'claude-session-start') })
   assert.equal(rest.length, 0)
   assert.deepEqual(o, {
     id: '',
@@ -233,26 +233,26 @@ test('a session event observes the session card with its folder and transcript',
 })
 
 test('a prompt offers its first line as the title, cut to one line; a session end records the ended outcome', () => {
-  const [prompt] = observe(envelope('claude', 'UserPromptSubmit', 'claude-user-prompt'))
+  const [prompt] = observe({ envelope: envelope('claude', 'UserPromptSubmit', 'claude-user-prompt') })
   assert.deepEqual(prompt!.card.autoTitle, { from: 'prompt', text: 'Open a pull request' })
   assert.equal(prompt!.outcome, null, 'a new prompt reopens an ended session')
   const long = { ...envelope('claude', 'UserPromptSubmit', 'claude-user-prompt'), payload: { session_id: SESSION, prompt: `\n  ${'x'.repeat(150)}\nmore` } }
-  assert.equal((observe(long)[0]!.card.autoTitle as { text: string }).text, `${'x'.repeat(99)}…`)
-  assert.equal(observe(envelope('claude', 'SessionEnd', 'claude-session-end'))[0]!.outcome, 'ended')
-  assert.equal(observe(envelope('claude', 'SubagentStop', 'claude-subagent-stop'))[1]!.outcome, 'ended')
+  assert.equal((observe({ envelope: long })[0]!.card.autoTitle as { text: string }).text, `${'x'.repeat(99)}…`)
+  assert.equal(observe({ envelope: envelope('claude', 'SessionEnd', 'claude-session-end') })[0]!.outcome, 'ended')
+  assert.equal(observe({ envelope: envelope('claude', 'SubagentStop', 'claude-subagent-stop') })[1]!.outcome, 'ended')
   const bare = envelope('claude', 'SubagentStop', 'claude-subagent-stop')
   const barePayload = bare.payload as Record<string, unknown>
   const noAgent = { ...bare, payload: { ...barePayload, agent_id: undefined } }
-  assert.equal(observe(noAgent)[0]!.outcome, undefined, 'a SubagentStop without agent_id never ends the session')
-  assert.equal(observe(envelope('claude', 'Stop', 'claude-stop'))[0]!.outcome, undefined, 'a finished turn is not an ended session')
+  assert.equal(observe({ envelope: noAgent })[0]!.outcome, undefined, 'a SubagentStop without agent_id never ends the session')
+  assert.equal(observe({ envelope: envelope('claude', 'Stop', 'claude-stop') })[0]!.outcome, undefined, 'a finished turn is not an ended session')
 })
 
 test('a subagent event makes sure the parent exists, then observes the child under it', () => {
-  const [parent, child] = observe(envelope('claude', 'SubagentStop', 'claude-subagent-stop'))
+  const [parent, child] = observe({ envelope: envelope('claude', 'SubagentStop', 'claude-subagent-stop') })
   assert.equal(parent!.key, `claude:${SESSION}`)
   assert.deepEqual(parent!.attend, { clear: ['hook:notification'] })
   assert.equal(parent!.ifChanged, true)
-  assert.equal(observe(envelope('claude', 'SubagentStart', 'claude-subagent-start'))[0]!.ifMissing, true)
+  assert.equal(observe({ envelope: envelope('claude', 'SubagentStart', 'claude-subagent-start') })[0]!.ifMissing, true)
   assert.equal(child!.key, `claude:${SESSION}/agent-a1`)
   assert.equal(child!.card.parent, `claude:${SESSION}`)
   assert.equal(child!.card.activity, 'stopped')
@@ -267,24 +267,24 @@ test('a subagent event makes sure the parent exists, then observes the child und
   assert.deepEqual(child!.card.autoTitle, { from: 'agent', text: 'Explore t-a1' }, 'a subagent is titled by its type and short id, not the folder')
   const untyped = envelope('claude', 'SubagentStart', 'claude-subagent-start')
   const untypedPayload = untyped.payload as Record<string, unknown>
-  const [, bareChild] = observe({ ...untyped, payload: { ...untypedPayload, agent_type: undefined, agent_id: 'b7c9d2' } })
+  const [, bareChild] = observe({ envelope: { ...untyped, payload: { ...untypedPayload, agent_type: undefined, agent_id: 'b7c9d2' } } })
   assert.deepEqual(bareChild!.card.autoTitle, { from: 'agent', text: 'Subagent c9d2' })
 })
 
 test('tool events name the running tool and pull request or deploy commands; a created pull request is a link', () => {
-  assert.equal(observe(envelope('claude', 'PreToolUse', 'claude-pre-tool-ls'))[0]!.card.activity, 'running Bash')
-  assert.equal(observe(envelope('claude', 'PreToolUse', 'claude-pre-tool-pr-create'))[0]!.card.activity, 'running gh pr create')
-  const [created] = observe(envelope('claude', 'PostToolUse', 'claude-post-tool-pr-create'))
+  assert.equal(observe({ envelope: envelope('claude', 'PreToolUse', 'claude-pre-tool-ls') })[0]!.card.activity, 'running Bash')
+  assert.equal(observe({ envelope: envelope('claude', 'PreToolUse', 'claude-pre-tool-pr-create') })[0]!.card.activity, 'running gh pr create')
+  const [created] = observe({ envelope: envelope('claude', 'PostToolUse', 'claude-post-tool-pr-create') })
   assert.equal(created!.card.activity, 'ran gh pr create')
   assert.equal(created!.link, 'https://github.com/example/repo/pull/42')
-  const [deployed] = observe(envelope('codex', 'PostToolUse', 'codex-post-tool-deploy'))
+  const [deployed] = observe({ envelope: envelope('codex', 'PostToolUse', 'codex-post-tool-deploy') })
   assert.equal(deployed!.card.activity, 'ran deploy')
   assert.equal(deployed!.link, undefined)
 })
 
 test('a deploy counts only when a listed command is in command position', () => {
   const activity = (command: unknown) =>
-    observe({ ...envelope('claude', 'PreToolUse', 'claude-pre-tool-ls'), payload: JSON.parse(toolPayload(command)) })[0]?.card.activity
+    observe({ envelope: { ...envelope('claude', 'PreToolUse', 'claude-pre-tool-ls'), payload: JSON.parse(toolPayload(command)) } })[0]?.card.activity
 
   for (const command of ['cd deploy-scripts && ls', 'cat docs/deploy.md', 'git log --grep deploy', 'echo pnpm run deploy', ['bash', '-lc', 'cat deploy.md']]) {
     assert.equal(activity(command), 'running Bash', String(command))
@@ -306,13 +306,13 @@ test('a deploy counts only when a listed command is in command position', () => 
 })
 
 test('codex payloads map the same way; unknown events and payloads without a session map to nothing', () => {
-  const [o] = observe(envelope('codex', 'SessionStart', 'codex-session-start'))
+  const [o] = observe({ envelope: envelope('codex', 'SessionStart', 'codex-session-start') })
   assert.equal(o!.key, `codex:${CODEX_SESSION}`)
   assert.equal(o!.card.activity, 'resumed')
   assert.deepEqual(o!.card.agent, { provider: 'codex', sessionId: CODEX_SESSION, cwd: '/work/other' })
-  assert.deepEqual(observe(envelope('claude', 'MessageDisplay', 'claude-stop')), [])
-  assert.deepEqual(observe({ ...envelope('claude', 'Stop', 'claude-stop'), payload: {} }), [])
-  assert.deepEqual(observe({ ...envelope('claude', 'Stop', 'claude-stop'), payload: null }), [])
+  assert.deepEqual(observe({ envelope: envelope('claude', 'MessageDisplay', 'claude-stop') }), [])
+  assert.deepEqual(observe({ envelope: { ...envelope('claude', 'Stop', 'claude-stop'), payload: {} } }), [])
+  assert.deepEqual(observe({ envelope: { ...envelope('claude', 'Stop', 'claude-stop'), payload: null } }), [])
 })
 
 type Case = [harness: 'claude' | 'codex', event: string, fixture: string, activity: string | undefined, attention?: Attention[]]
@@ -407,7 +407,7 @@ const CASES: (Case | [Case[0], string, string, typeof NOTHING])[] = [
 
 test('every subscribed event of both harnesses maps to the activity and requests its interface shows', () => {
   for (const [harness, event, name, activity, attention] of CASES) {
-    const observations = observe(envelope(harness, event, name))
+    const observations = observe({ envelope: envelope(harness, event, name) })
     const o = observations.at(-1)
 
     if (activity === NOTHING) {
@@ -416,7 +416,10 @@ test('every subscribed event of both harnesses maps to the activity and requests
     }
 
     assert.equal(o!.card.activity, activity, name)
-    assert.deepEqual(o!.attend ? attend([], o!.attend) : undefined, attention, name)
+    assert.deepEqual(o!.attend ? attend({
+      current: [],
+      change: o!.attend,
+    }) : undefined, attention, name)
   }
 
   for (const [harness, events] of [['claude', CLAUDE_EVENTS], ['codex', CODEX_EVENTS]] as const) {
@@ -426,21 +429,21 @@ test('every subscribed event of both harnesses maps to the activity and requests
 })
 
 test('a request ends with its own tool call, the turn, or a newer request, and only hook requests are cleared', () => {
-  const change = (event: string, name: string) => observe(envelope('claude', event, name)).at(-1)!.attend!
+  const change = (event: string, name: string) => observe({ envelope: envelope('claude', event, name) }).at(-1)!.attend!
   const decision: Attention = { kind: 'decision', key: 'firstmate:api-shape', blocking: true }
   const write: Attention = { kind: 'permission', key: 'hook:tool:Write', blocking: true, text: 'Allow Write' }
   const idle: Attention = { kind: 'idle', key: 'hook:idle', blocking: false }
 
   // A finished Bash call clears its own prompt and idle, not a Write prompt still open.
-  assert.deepEqual(attend([allowTouch('Bash'), write, idle], change('PostToolUse', 'claude-post-tool-bash')), [write])
+  assert.deepEqual(attend({ current: [allowTouch('Bash'), write, idle], change: change('PostToolUse', 'claude-post-tool-bash') }), [write])
   // The generic notification repeats an open prompt, so it adds nothing then.
-  assert.deepEqual(attend([write], change('Notification', 'claude-notification-permission')), [write])
+  assert.deepEqual(attend({ current: [write], change: change('Notification', 'claude-notification-permission') }), [write])
   // A blocking request goes before a waiting-idle one, since the card shows the first.
-  assert.deepEqual(attend([idle], change('PermissionRequest', 'claude-permission-request')), [allowTouch('Bash'), idle])
+  assert.deepEqual(attend({ current: [idle], change: change('PermissionRequest', 'claude-permission-request') }), [allowTouch('Bash'), idle])
   // The end of a turn clears every hook request and keeps another source's.
-  assert.deepEqual(attend([decision, write, idle], change('Stop', 'claude-stop')), [decision])
-  assert.deepEqual(attend([ask], change('UserPromptSubmit', 'claude-user-prompt')), [])
-  assert.deepEqual(attend([ask], change('PostToolUse', 'claude-post-tool-bash')), [ask])
+  assert.deepEqual(attend({ current: [decision, write, idle], change: change('Stop', 'claude-stop') }), [decision])
+  assert.deepEqual(attend({ current: [ask], change: change('UserPromptSubmit', 'claude-user-prompt') }), [])
+  assert.deepEqual(attend({ current: [ask], change: change('PostToolUse', 'claude-post-tool-bash') }), [ask])
 })
 
 test('a permission prompt moves the session to Needs you with its reason, and the tool call moves it back', () => {

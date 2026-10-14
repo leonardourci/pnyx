@@ -57,7 +57,7 @@ test('only typed messages and assistant text are read from a transcript', () => 
   const records = readFileSync(TRANSCRIPT, 'utf8').split('\n')
     .slice(0, -1)
     .map(l => JSON.parse(l) as unknown)
-  const texts = records.flatMap(arg0 => transcriptMessages({ record: arg0 })).map(m => m.text)
+  const texts = records.flatMap(record => transcriptMessages({ record })).map(m => m.text)
   assert.equal(texts[0], 'Why did the deploy get reverted after the migration?')
   assert.equal(texts[1], 'The migration locked the orders table, so the deploy was rolled back.')
   const all = texts.join('\n')
@@ -73,7 +73,7 @@ test('only typed messages and assistant text are read from a Codex transcript', 
   const records = readFileSync(CODEX, 'utf8').split('\n')
     .slice(0, -1)
     .map(l => JSON.parse(l) as unknown)
-  assert.deepEqual(records.flatMap(arg0 => transcriptMessages({ record: arg0 })), [
+  assert.deepEqual(records.flatMap(record => transcriptMessages({ record })), [
     { at: '2026-10-12T10:00:03.000Z', text: 'Why is the invoice export timing out?' },
     { at: '2026-10-12T10:00:07.000Z', text: 'The export query scans every invoice without an index.' },
   ])

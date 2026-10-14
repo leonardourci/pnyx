@@ -20,7 +20,8 @@ await runAxiCli({
   version,
   topLevelHelp: TOP_LEVEL_HELP,
   home,
-  getCommandHelp: command => commandHelp(command) ?? firstmateHelp(command) ?? HELP[command],
+  getCommandHelp: command => commandHelp({ command })
+    ?? firstmateHelp({ command }) ?? HELP[command],
   commands: {
     ...commands,
     serve,

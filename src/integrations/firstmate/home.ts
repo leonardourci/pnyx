@@ -52,7 +52,7 @@ interface BacklogRow {
 }
 
 // Canonical path of a configured home; refuses anything that is not a Firstmate home.
-export function resolveHome(path: string): string {
+export function resolveHome({ path }: { path: string }): string {
   let real: string
 
   try {
@@ -61,7 +61,7 @@ export function resolveHome(path: string): string {
     throw new BoardError({ message: `Firstmate home not found: ${path}`, code: 'NOT_FOUND', help: ["Pass the home's root folder with --home"] })
   }
 
-  if (!isDir(join(real, 'state'))) {
+  if (!isDir({ path: join(real, 'state') })) {
     throw new BoardError({
       message: `not a Firstmate home (no state/ folder): ${path}`,
       code: 'VALIDATION_ERROR',
@@ -76,13 +76,13 @@ export function resolveHome(path: string): string {
 
 // Card key of a home: stable for the same canonical path, distinct across homes
 // that share a folder name.
-export function homeKey(home: string): string {
+export function homeKey({ home }: { home: string }): string {
   return `${ADAPTER}:${createHash('sha256').update(home)
     .digest('hex')
     .slice(0, 8)}`
 }
 
-function isDir(path: string): boolean {
+function isDir({ path }: { path: string }): boolean {
   try {
     return lstatSync(path).isDirectory()
   } catch {
@@ -91,7 +91,7 @@ function isDir(path: string): boolean {
 }
 
 // A regular file's text, or undefined when it is missing or a symlink.
-function readRegular(path: string): string | undefined {
+function readRegular({ path }: { path: string }): string | undefined {
   try {
     return lstatSync(path).isFile() ? readFileSync(path, 'utf8') : undefined
   } catch {
@@ -99,7 +99,7 @@ function readRegular(path: string): string | undefined {
   }
 }
 
-export function parseMeta(text: string): Record<string, string> {
+export function parseMeta({ text }: { text: string }): Record<string, string> {
   const meta: Record<string, string> = {}
 
   for (const line of text.split('\n')) {
@@ -119,7 +119,7 @@ const ROW_FACTS = new Set(['repo', 'kind', 'priority', 'since', 'merged', 'repor
 // Backlog rows: `- [ ] <id> - <title> (repo: x) (kind: y) (since d)`, grouped
 // under `## In flight`, `## Queued` and `## Done`; a done row ends `(merged d)`
 // when its pull request merged.
-export function parseBacklog(text: string): Map<string, BacklogRow> {
+export function parseBacklog({ text }: { text: string }): Map<string, BacklogRow> {
   const rows = new Map<string, BacklogRow>()
   let section = ''
 
@@ -156,7 +156,7 @@ export function parseBacklog(text: string): Map<string, BacklogRow> {
 
 // The body of a brief's `## Captain's intent` section, up to the next heading of
 // the same or a higher level.
-export function captainsIntent(brief: string): string | undefined {
+export function captainsIntent({ brief }: { brief: string }): string | undefined {
   const lines = brief.split('\n')
   const start = lines.findIndex(l => /^##\s+Captain'?s intent\s*$/i.test(l))
 
@@ -170,9 +170,9 @@ export function captainsIntent(brief: string): string | undefined {
     .trim() || undefined
 }
 
-function taskNotes(home: string, task: string, log: string): SourceNote[] {
-  const notes: SourceNote[] = statusNotes(log).map(({ line, ...note }) => ({ ...note, source: ADAPTER, ref: `status:${line}` }))
-  const intent = captainsIntent(readRegular(join(home, 'data', task, 'brief.md')) ?? '')
+function taskNotes({ home, task, log }: { home: string; task: string; log: string }): SourceNote[] {
+  const notes: SourceNote[] = statusNotes({ log }).map(({ line, ...note }) => ({ ...note, source: ADAPTER, ref: `status:${line}` }))
+  const intent = captainsIntent({ brief: readRegular({ path: join(home, 'data', task, 'brief.md') }) ?? '' })
 
   if (intent) {
     notes.push({ kind: 'context', source: ADAPTER, text: `Captain's intent:\n${intent}`, ref: `brief:${intent}` })
@@ -183,9 +183,9 @@ function taskNotes(home: string, task: string, log: string): SourceNote[] {
 
 // Every task with a meta record, in id order. The pull request comes only from the
 // meta's pr= field, which Firstmate records when the pull request is ready.
-export function readHome(home: string): HomeObservation {
+export function readHome({ home }: { home: string }): HomeObservation {
   const state = join(home, 'state')
-  const backlog = parseBacklog(readRegular(join(home, 'data', 'backlog.md')) ?? '')
+  const backlog = parseBacklog({ text: readRegular({ path: join(home, 'data', 'backlog.md') }) ?? '' })
   const tasks: TaskObservation[] = []
 
   for (const file of readdirSync(state).sort()) {
@@ -195,19 +195,19 @@ export function readHome(home: string): HomeObservation {
       continue
     }
 
-    const metaText = readRegular(join(state, file))
+    const metaText = readRegular({ path: join(state, file) })
 
     if (metaText === undefined) {
       continue
     }
 
-    const meta = parseMeta(metaText)
-    const log = readRegular(join(state, `${task}.status`)) ?? ''
+    const meta = parseMeta({ text: metaText })
+    const log = readRegular({ path: join(state, `${task}.status`) }) ?? ''
     const row = backlog.get(task)
     const pr = meta.pr
-    const activity = latestActivity(log)
-    const last = latestLine(log)
-    const worktree = canonical(meta.worktree)
+    const activity = latestActivity({ log })
+    const last = latestLine({ log })
+    const worktree = canonical({ path: meta.worktree })
     tasks.push({
       task,
       title: row?.title ?? task,
@@ -217,11 +217,11 @@ export function readHome(home: string): HomeObservation {
       merged: row?.merged ?? false,
       ...(activity ? { activity } : {}),
       ...(worktree ? { worktree } : {}),
-      decisions: openDecisions(log, meta.kind || 'ship'),
+      decisions: openDecisions({ log, kind: meta.kind || 'ship' }),
       ...(last && (last.verb === 'failed' || last.verb === 'blocked') ? { stalled: { verb: last.verb, note: last.note } } : {}),
-      notes: taskNotes(home, task, log),
+      notes: taskNotes({ home, task, log }),
     })
   }
 
-  return { path: home, key: homeKey(home), title: basename(home), tasks }
+  return { path: home, key: homeKey({ home }), title: basename(home), tasks }
 }

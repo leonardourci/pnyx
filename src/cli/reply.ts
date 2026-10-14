@@ -37,33 +37,40 @@ export interface ReplyReceipt {
   recordError?: string
 }
 
-function invalid(message: string, help: string[] = []): BoardError {
+function invalid({ message, help = [] }: { message: string; help?: string[] }): BoardError {
   return new BoardError({ message, code: 'VALIDATION_ERROR', help })
 }
 
 // The route name kept on each receipt.
-function routeName(route: ReplyRoute): string {
+function routeName({ route }: { route: ReplyRoute }): string {
   return route.kind === 'firstmate' ? 'firstmate' : `terminal:${route.kind}`
 }
 
-function deliver(route: ReplyRoute, text: string, resolveKey: string | undefined) {
-  return route.kind === 'firstmate' ? fmSend(route, text, resolveKey) : typeInto(route, text)
+function deliver({ route, text, resolveKey }: {
+  route: ReplyRoute
+  text: string
+  resolveKey: string | undefined
+}) {
+  return route.kind === 'firstmate' ? fmSend({ route, text, resolveKey }) : typeInto({ route, text })
 }
 
-export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
+export function sendReply({ board, request }: {
+  board: string
+  request: ReplyRequest
+}): ReplyReceipt {
   const { text, resolveKey } = request
 
   if (text.trim() === '') {
-    throw invalid('reply text is empty')
+    throw invalid({ message: 'reply text is empty' })
   }
 
   const meta = (): Meta => ({ at: new Date().toISOString(), actor: request.actor ?? 'cli' })
-  const homes = request.homes.map(resolveHome)
+  const homes = request.homes.map(path => resolveHome({ path }))
 
   const queued = withWriter({
     board,
     fn: ({ writer }) => {
-      drainSpool(writer)
+      drainSpool({ writer })
       const card = findCard({ state: writer.state, ref: request.card })
       const found = replyRoute({ card, homes })
 
@@ -71,9 +78,12 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
         const home = card.sourceRefs.find(r => r.adapter === 'firstmate')?.instanceId
 
         if (home && found.reason.includes('not configured')) {
-          throw invalid(`card ${card.id} belongs to Firstmate home ${home}, which is not configured`, [
-            `Pass --home ${home} to allow replies to it`,
-          ])
+          throw invalid({
+            message: `card ${card.id} belongs to Firstmate home ${home}, which is not configured`,
+            help: [
+              `Pass --home ${home} to allow replies to it`,
+            ],
+          })
         }
 
         throw new BoardError({ message: `card ${card.id} has no reply route: ${found.reason}`, code: 'NO_ROUTE' })
@@ -88,10 +98,10 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
 
         // fm-send has no `--` separator, so a leading flag would be read as an option.
         if (text.startsWith('--')) {
-          throw invalid('reply text cannot start with --')
+          throw invalid({ message: 'reply text cannot start with --' })
         }
       } else if (resolveKey !== undefined) {
-        throw invalid('--resolve-key answers Firstmate decisions; this card replies through its terminal')
+        throw invalid({ message: '--resolve-key answers Firstmate decisions; this card replies through its terminal' })
       }
 
       const reply = request.id ?? `r${writer.state.seq + 1}`
@@ -109,11 +119,11 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
         || !card.attention.some(a => a.key === resolveKey)
       )
       ) {
-        throw invalid(`card ${card.id} has no open decision with key ${resolveKey}`, [`Run \`pnyx-axi card ${card.id}\` to see its attention keys`])
+        throw invalid({ message: `card ${card.id} has no open decision with key ${resolveKey}`, help: [`Run \`pnyx-axi card ${card.id}\` to see its attention keys`] })
       }
 
       // A retry after a failed send queues again, so every attempt has its own receipts.
-      const data = { reply, state: 'queued' as const, route: routeName(route), text, ...(resolveKey ? { resolveKey } : {}) }
+      const data = { reply, state: 'queued' as const, route: routeName({ route }), text, ...(resolveKey ? { resolveKey } : {}) }
       const decision = decideReply({ state: writer.state, ref: card.id, data, meta: meta() })
 
       if ('event' in decision) {
@@ -129,15 +139,15 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
   }
 
   // Sent outside the writer lock: a send can take a while and must not block other writers.
-  const outcome = deliver(queued.route, text, resolveKey)
+  const outcome = deliver({ route: queued.route, text, resolveKey })
   const receipt = { card: queued.card, reply: queued.reply, sent: true, ...outcome }
 
   try {
     withWriter({
       board,
       fn: ({ writer }) => {
-        drainSpool(writer)
-        const data = { reply: queued.reply, route: routeName(queued.route), ...outcome }
+        drainSpool({ writer })
+        const data = { reply: queued.reply, route: routeName({ route: queued.route }), ...outcome }
         const decision = decideReply({ state: writer.state, ref: queued.card, data, meta: meta() })
 
         if ('event' in decision) {
@@ -152,61 +162,66 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
   return receipt
 }
 
-export const reply = guard(args => {
-  const options: Options = {
-    ...COMMON,
-    home: { type: 'string', multiple: true },
-    actor: { type: 'string' },
-    text: { type: 'string' },
-    file: { type: 'string' },
-    'idempotency-key': { type: 'string' },
-    'resolve-key': { type: 'string' },
-  }
-  const { values, positionals, board } = parse(args, options, 1)
-  const ref = required(positionals[0], 'card id')
-  const file = values.file as string | undefined
-
-  if ((values.text === undefined) === (file === undefined)) {
-    throw new AxiError('give either --text or --file', 'VALIDATION_ERROR', ['Run `pnyx-axi reply --help`'])
-  }
-
-  let text = values.text as string | undefined
-
-  if (file !== undefined) {
-    try {
-      text = readFileSync(file === '-' ? 0 : file, 'utf8')
-    } catch (error) {
-      throw new AxiError(`cannot read reply text from ${file}: ${(error as Error).message}`, 'VALIDATION_ERROR')
+export const reply = guard({
+  handler: ({ args }) => {
+    const options: Options = {
+      ...COMMON,
+      home: { type: 'string', multiple: true },
+      actor: { type: 'string' },
+      text: { type: 'string' },
+      file: { type: 'string' },
+      'idempotency-key': { type: 'string' },
+      'resolve-key': { type: 'string' },
     }
-  }
+    const { values, positionals, board } = parse({ args, options, positionals: 1 })
+    const ref = required({ value: positionals[0], what: 'card id' })
+    const file = values.file as string | undefined
 
-  const receipt = sendReply(board, {
-    card: ref,
-    text: text!,
-    homes: (values.home as string[] | undefined) ?? [],
-    actor: meta(values).actor,
-    ...(values['idempotency-key'] ? { id: values['idempotency-key'] as string } : {}),
-    ...(values['resolve-key'] ? { resolveKey: values['resolve-key'] as string } : {}),
-  })
-  const out: Output = { reply: receipt }
+    if ((values.text === undefined) === (file === undefined)) {
+      throw new AxiError('give either --text or --file', 'VALIDATION_ERROR', ['Run `pnyx-axi reply --help`'])
+    }
 
-  if (receipt.recordError && receipt.state === 'failed') {
-    out.help = ['The send failed and nothing was delivered; once the cause is fixed, send again without --idempotency-key']
-  } else if (receipt.recordError) {
-    out.help = [
-      `The send ended ${receipt.state} but was not recorded, so the board still shows it queued; check the task's inbox or the session before sending again`,
-    ]
-  } else if (receipt.state === 'failed') {
-    out.help = [`Fix the cause, then retry with --idempotency-key ${receipt.reply}`]
-  } else if (receipt.state === 'delivery_unknown') {
-    out.help = ["The message may have landed; confirm in the task's inbox or the session before sending again, a retry with the same key does not resend"]
-  } else if (receipt.state === 'queued') {
-    out.help = ["Check the task's inbox or the session before sending again; a retry with the same key does not resend"]
-  } else {
-    out.help = [`Run \`pnyx-axi history --card ${receipt.card} --kind replied\` for its receipts`]
-  }
+    let text = values.text as string | undefined
 
-  return out
+    if (file !== undefined) {
+      try {
+        text = readFileSync(file === '-' ? 0 : file, 'utf8')
+      } catch (error) {
+        throw new AxiError(`cannot read reply text from ${file}: ${(error as Error).message}`, 'VALIDATION_ERROR')
+      }
+    }
+
+    const receipt = sendReply({
+      board,
+      request: {
+        card: ref,
+        text: text!,
+        homes: (values.home as string[] | undefined) ?? [],
+        actor: meta({ values }).actor,
+        ...(values['idempotency-key'] ? { id: values['idempotency-key'] as string } : {}),
+        ...(values['resolve-key'] ? { resolveKey: values['resolve-key'] as string } : {}),
+      },
+    })
+    const out: Output = { reply: receipt }
+
+    if (receipt.recordError && receipt.state === 'failed') {
+      out.help = ['The send failed and nothing was delivered; once the cause is fixed, send again without --idempotency-key']
+    } else if (receipt.recordError) {
+      out.help = [
+        `The send ended ${receipt.state} but was not recorded, so the board still shows it queued; check the task's inbox or the session before sending again`,
+      ]
+    } else if (receipt.state === 'failed') {
+      out.help = [`Fix the cause, then retry with --idempotency-key ${receipt.reply}`]
+    } else if (receipt.state === 'delivery_unknown') {
+      out.help = ["The message may have landed; confirm in the task's inbox or the session before sending again, a retry with the same key does not resend"]
+    } else if (receipt.state === 'queued') {
+      out.help = ["Check the task's inbox or the session before sending again; a retry with the same key does not resend"]
+    } else {
+      out.help = [`Run \`pnyx-axi history --card ${receipt.card} --kind replied\` for its receipts`]
+    }
+
+    return out
+  },
 })
 
 export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <file|-> [--home <path>]... [--resolve-key <key>] [--idempotency-key <key>]

@@ -171,14 +171,14 @@ test('thread reader ignores partial records, pages old messages, separates trace
   const records = Array.from({ length: 90 }, (_, i) => JSON.stringify({ type: 'assistant', message: { content: `message ${i}` } }))
   writeFileSync(path, records.join('\n') + '\n{"partial":')
   const state = push(emptyBoard(), 'a', { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } })
-  const page = readThread('default', state, state.cards.c1!, [])
+  const page = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
   assert.equal(page.entries.length, 60); assert.equal(page.entries.at(-1)?.text, 'message 89'); assert.ok(page.older)
-  const older = readThread('default', state, state.cards.c1!, [], page.older)
+  const older = readThread({ board: 'default', state, card: state.cards.c1!, homes: [], before: page.older })
   assert.equal(older.entries.length, 30); assert.equal(older.entries[0]?.text, 'message 0'); assert.equal(older.older, undefined)
   assert.equal(page.route, false); assert.equal(page.watching, 'unknown')
-  const entries = recordEntries({ type: 'assistant', message: { content: [{ type: 'text', text: 'hello' }, { type: 'thinking', thinking: 'thinking' }, { type: 'tool_use', input: 'sk-abcdefghijklmnop123456789' }] } }, 0)
+  const entries = recordEntries({ record: { type: 'assistant', message: { content: [{ type: 'text', text: 'hello' }, { type: 'thinking', thinking: 'thinking' }, { type: 'tool_use', input: 'sk-abcdefghijklmnop123456789' }] } }, offset: 0 })
   assert.deepEqual(entries.map(e => e.kind), ['message', 'thinking', 'tool']); assert.equal(entries[2]?.text, '[redacted]')
-  assert.deepEqual(recordEntries({ type: 'user', isMeta: true, message: { content: 'injected' } }, 0), [])
+  assert.deepEqual(recordEntries({ record: { type: 'user', isMeta: true, message: { content: 'injected' } }, offset: 0 }), [])
 })
 
 test('long transcript messages and reply history page without losing text or duplicating entries', () => {
@@ -201,7 +201,7 @@ test('long transcript messages and reply history page without losing text or dup
   const pages: ReturnType<typeof readThread>['entries'][] = []
 
   do {
-    const page = readThread('default', state, state.cards.c1!, [], cursor)
+    const page = readThread({ board: 'default', state, card: state.cards.c1!, homes: [], before: cursor })
     assert.ok(page.entries.length <= 60)
     pages.unshift(page.entries); cursor = page.older
     assert.ok(pages.length < 10, 'pagination terminates')
@@ -220,7 +220,7 @@ test('long transcript messages and reply history page without losing text or dup
       return w.state
     },
   })
-  assert.equal(readThread('default', later, later.cards.c1!, []).entries.at(-1)?.text, 'reply 90')
+  assert.equal(readThread({ board: 'default', state: later, card: later.cards.c1!, homes: [] }).entries.at(-1)?.text, 'reply 90')
 })
 
 test('a tab reloads only when it reconnects to a server serving another build', () => {
@@ -235,22 +235,22 @@ test('a tab reloads only when it reconnects to a server serving another build', 
 
 test("a card's last message comes from the transcript tail, without tool calls, thinking, injected or torn text", () => {
   const fixture = (name: string) => join(import.meta.dirname, 'fixtures/transcripts', name)
-  const claude = latestMessage(fixture('claude-session.jsonl')).message!
+  const claude = latestMessage({ path: fixture('claude-session.jsonl') }).message!
   // The summary record and the torn last line are skipped; long text is cut to two card lines.
   assert.equal(claude.role, 'assistant')
   assert.equal(claude.at, '2026-10-11T09:02:00.000Z')
   assert.match(claude.text, /^Paragraph 0 about the orders table backfill\. Rows are copied/)
   assert.ok(claude.text.length <= 280 && claude.text.endsWith('…'))
-  assert.deepEqual(latestMessage(fixture('codex-session.jsonl')).message, { role: 'assistant', text: 'The export query scans every invoice without an index.', at: '2026-10-12T10:00:07.000Z' })
+  assert.deepEqual(latestMessage({ path: fixture('codex-session.jsonl') }).message, { role: 'assistant', text: 'The export query scans every invoice without an index.', at: '2026-10-12T10:00:07.000Z' })
   // A newer Codex user message wins over the reply, its injected context stripped, even
   // when tool output after it overflows the first read window.
   const dir = mkdtempSync(join(tmpdir(), 'pnyx-latest-')), path = join(dir, 'codex.jsonl')
   const line = (payload: unknown) => JSON.stringify({ timestamp: '2026-10-12T10:01:00.000Z', type: 'response_item', payload }) + '\n'
   writeFileSync(path, readFileSync(fixture('codex-session.jsonl'), 'utf8') + line({ type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>\n<cwd>/work</cwd>\n</environment_context>Now add the index.' }] }) + line({ type: 'function_call_output', call_id: 'c2', output: 'x'.repeat(200_000) }))
-  assert.deepEqual(latestMessage(path).message, { role: 'user', text: 'Now add the index.', at: '2026-10-12T10:01:00.000Z' })
-  assert.equal(latestMessage(join(dir, 'missing.jsonl')).message, null)
+  assert.deepEqual(latestMessage({ path }).message, { role: 'user', text: 'Now add the index.', at: '2026-10-12T10:01:00.000Z' })
+  assert.equal(latestMessage({ path: join(dir, 'missing.jsonl') }).message, null)
   writeFileSync(path, line({ type: 'reasoning', summary: [] }))
-  assert.equal(latestMessage(path).message, null)
+  assert.equal(latestMessage({ path }).message, null)
 })
 
 test("a card's last message is read again from only what its transcript gained", () => {
@@ -258,22 +258,22 @@ test("a card's last message is read again from only what its transcript gained",
   const line = (type: string, text: string, at: string) => JSON.stringify({ type, timestamp: at, message: { content: [{ type: 'text', text }] } }) + '\n'
   const tool = JSON.stringify({ type: 'assistant', timestamp: '2026-10-12T10:02:00.000Z', message: { content: [{ type: 'tool_use', name: 'Bash', input: {} }] } }) + '\n'
   writeFileSync(path, line('assistant', 'First reply.', '2026-10-12T10:00:00.000Z'))
-  const first = latestMessage(path)
+  const first = latestMessage({ path })
   assert.equal(first.message?.text, 'First reply.')
   // Appended tool calls and a torn line hold no message: the previous one stays, and the torn line is read once complete.
   const torn = line('user', 'Ship it.', '2026-10-12T10:03:00.000Z')
   appendFileSync(path, tool + torn.slice(0, 20))
-  const second = latestMessage(path, first)
+  const second = latestMessage({ path, prev: first })
   assert.equal(second.message?.text, 'First reply.')
   assert.equal(second.size, first.size + tool.length)
   appendFileSync(path, torn.slice(20))
   // The earlier bytes are never read again: overwriting them in place changes nothing.
   const fd = openSync(path, 'r+'); writeSync(fd, 'x', 0); closeSync(fd)
-  const third = latestMessage(path, second)
+  const third = latestMessage({ path, prev: second })
   assert.equal(third.message?.text, 'Ship it.')
   // A file replaced or cut short is read back from its end.
   writeFileSync(path, line('assistant', 'Fresh.', '2026-10-12T11:00:00.000Z'))
-  assert.equal(latestMessage(path, third).message?.text, 'Fresh.')
+  assert.equal(latestMessage({ path, prev: third }).message?.text, 'Fresh.')
 })
 
 test('deleting a populated column is atomic, replayable, undoable and guarded', () => {
@@ -345,7 +345,7 @@ test('a live joined session drives the running indicator; Firstmate status shows
   assert.equal(agentActivity({ card: state.cards.c1! }), undefined)
 
   for (const [hook, expected] of [['UserPromptSubmit', 'working'], ['PreToolUse', 'working'], ['PostToolUseFailure', 'working'], ['Stop', 'idle']] as const) {
-    const [observed] = observe({ v: 1, id: hook, at: meta.at, harness: 'claude', event: hook, payload: { session_id: 'fixture', tool_name: 'Read' } })
+    const [observed] = observe({ envelope: { v: 1, id: hook, at: meta.at, harness: 'claude', event: hook, payload: { session_id: 'fixture', tool_name: 'Read' } } })
     assert.ok(observed)
     state = push(state, 'task', observed.card)
     assert.equal(agentActivity({ card: state.cards.c1! }), expected)
@@ -354,7 +354,7 @@ test('a live joined session drives the running indicator; Firstmate status shows
     assert.equal(agentActivity({ card: state.cards.c1! }), expected)
   }
 
-  const [ended] = observe({ v: 1, id: 'end', at: meta.at, harness: 'claude', event: 'SessionEnd', payload: { session_id: 'fixture' } })
+  const [ended] = observe({ envelope: { v: 1, id: 'end', at: meta.at, harness: 'claude', event: 'SessionEnd', payload: { session_id: 'fixture' } } })
   assert.ok(ended)
   state = push(state, 'task', ended.card)
   assert.equal(shownActivity({ card: state.cards.c1! }), 'ended')

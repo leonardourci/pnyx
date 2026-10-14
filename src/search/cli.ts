@@ -69,7 +69,7 @@ function built({ result }: { result: IndexResult }): Output {
 }
 
 async function setup({ args }: { args: string[] }): Promise<Output> {
-  const { values, board } = parse(args, SETUP, 0)
+  const { values, board } = parse({ args, options: SETUP, positionals: 0 })
 
   if (!values.semantic) {
     throw new AxiError('search setup needs --semantic', 'VALIDATION_ERROR', ['Run `pnyx-axi search setup --semantic`'])
@@ -94,54 +94,56 @@ async function setup({ args }: { args: string[] }): Promise<Output> {
   }
 }
 
-const searchCommand = guard<Output | Promise<Output>>(args => {
-  if (args[0] === 'status' || args[0] === 'rebuild') {
-    const { board } = parse(args.slice(1), COMMON, 0)
+const searchCommand = guard<Output | Promise<Output>>({
+  handler: ({ args }) => {
+    if (args[0] === 'status' || args[0] === 'rebuild') {
+      const { board } = parse({ args: args.slice(1), options: COMMON, positionals: 0 })
 
-    return args[0] === 'status' ? axi({ work: status({ board }) }) : built({ result: rebuildIndex({ board }) })
-  }
+      return args[0] === 'status' ? axi({ work: status({ board }) }) : built({ result: rebuildIndex({ board }) })
+    }
 
-  if (args[0] === 'setup') {
-    return axi({ work: setup({ args: args.slice(1) }) })
-  }
+    if (args[0] === 'setup') {
+      return axi({ work: setup({ args: args.slice(1) }) })
+    }
 
-  // Unquoted words are one query.
-  const { values, positionals, board } = parse(args, SEARCH, Infinity)
-  const text = positionals.join(' ')
+    // Unquoted words are one query.
+    const { values, positionals, board } = parse({ args, options: SEARCH, positionals: Infinity })
+    const text = positionals.join(' ')
 
-  if (!text) {
-    throw new AxiError('missing query', 'VALIDATION_ERROR', ['Run `pnyx-axi search "<words>"`'])
-  }
+    if (!text) {
+      throw new AxiError('missing query', 'VALIDATION_ERROR', ['Run `pnyx-axi search "<words>"`'])
+    }
 
-  const kind = values.kind as string | undefined
+    const kind = values.kind as string | undefined
 
-  if (kind !== undefined && !(KINDS as readonly string[]).includes(kind)) {
-    throw new AxiError(`unknown kind: ${kind}`, 'VALIDATION_ERROR', [`Use one of ${KINDS.join(', ')}`])
-  }
+    if (kind !== undefined && !(KINDS as readonly string[]).includes(kind)) {
+      throw new AxiError(`unknown kind: ${kind}`, 'VALIDATION_ERROR', [`Use one of ${KINDS.join(', ')}`])
+    }
 
-  const rawLimit = values.limit as string | undefined
+    const rawLimit = values.limit as string | undefined
 
-  if (rawLimit !== undefined && !/^[1-9]\d*$/.test(rawLimit)) {
-    throw new AxiError('--limit must be a positive integer', 'VALIDATION_ERROR')
-  }
+    if (rawLimit !== undefined && !/^[1-9]\d*$/.test(rawLimit)) {
+      throw new AxiError('--limit must be a positive integer', 'VALIDATION_ERROR')
+    }
 
-  const card = values.card === undefined
-    ? undefined
-    : findCard({ state: loadBoard({ board }).state, ref: values.card as string }).id
+    const card = values.card === undefined
+      ? undefined
+      : findCard({ state: loadBoard({ board }).state, ref: values.card as string }).id
 
-  return axi({
-    work: searchBoard({
-      board,
-      query: {
-        text,
-        limit: Math.min(rawLimit ? Number(rawLimit) : LIMIT, MAX),
-        ...(kind ? { kind: kind as Kind } : {}),
-        ...(card ? { card } : {}),
-        ...(values.workspace ? { workspace: values.workspace as string } : {}),
-      },
+    return axi({
+      work: searchBoard({
+        board,
+        query: {
+          text,
+          limit: Math.min(rawLimit ? Number(rawLimit) : LIMIT, MAX),
+          ...(kind ? { kind: kind as Kind } : {}),
+          ...(card ? { card } : {}),
+          ...(values.workspace ? { workspace: values.workspace as string } : {}),
+        },
+      })
+        .then(result => present({ input: result, text, card, kind })),
     })
-      .then(result => present({ input: result, text, card, kind })),
-  })
+  },
 })
 
 function present(
@@ -173,27 +175,29 @@ function present(
 }
 
 // pnyx-axi settings [set <key> <value>]: this machine's search settings.
-const settingsCommand = guard(args => {
-  if (args[0] === 'set') {
-    const { positionals } = parse(args.slice(1), {}, 2)
+const settingsCommand = guard({
+  handler: ({ args }) => {
+    if (args[0] === 'set') {
+      const { positionals } = parse({ args: args.slice(1), options: {}, positionals: 2 })
 
-    if (positionals.length !== 2) {
-      throw new AxiError('settings set needs a key and a value', 'VALIDATION_ERROR', [`Keys: ${SETTING_KEYS.join(', ')}`])
-    }
+      if (positionals.length !== 2) {
+        throw new AxiError('settings set needs a key and a value', 'VALIDATION_ERROR', [`Keys: ${SETTING_KEYS.join(', ')}`])
+      }
 
-    return {
-      settings: settingEntries({
-        settings: writeSetting({
-          key: positionals[0]!,
-          value: positionals[1]!,
+      return {
+        settings: settingEntries({
+          settings: writeSetting({
+            key: positionals[0]!,
+            value: positionals[1]!,
+          }),
         }),
-      }),
+      }
     }
-  }
 
-  parse(args, {}, 0)
+    parse({ args, options: {}, positionals: 0 })
 
-  return { settings: settingEntries({ settings: readSettings({ }) }), help: ['Run `pnyx-axi settings set search.semantic on|off`'] }
+    return { settings: settingEntries({ settings: readSettings({ }) }), help: ['Run `pnyx-axi settings set search.semantic on|off`'] }
+  },
 })
 
 export const searchCommands = { search: searchCommand, settings: settingsCommand }
