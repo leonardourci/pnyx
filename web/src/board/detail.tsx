@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { BoardState, Card, ViewPreferences } from '../../../src/core/model.ts'
-import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
+import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Select } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
@@ -47,6 +47,15 @@ export function Detail({
   const [width, setWidth] = useState<number | null>(null), [tab, setTab] = useState('thread')
   // Every loaded conversation entry, older pages included, so the brief skips notes any of them repeat.
   const [kept, setKept] = useState<ThreadEntry[]>([])
+  const [older, setOlder] = useState<ThreadPage | null>(null)
+  const { tools, thinking } = traces({ view, card: card.id })
+  const [pagedFor, setPagedFor] = useState(`${tools}:${thinking}`)
+
+  // The server pages only the traces on show, so a switch starts the pages over.
+  if (pagedFor !== `${tools}:${thinking}`) {
+    setPagedFor(`${tools}:${thinking}`); setKept([]); setOlder(null)
+  }
+
   const [history, setHistory] = useState<{
     seq: number
     id: string
@@ -132,6 +141,8 @@ export function Detail({
           thread={thread}
           kept={kept}
           setKept={setKept}
+          older={older}
+          setOlder={setOlder}
           command={command}
           connected={connected}
           save={save}
