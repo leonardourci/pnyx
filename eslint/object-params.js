@@ -205,7 +205,7 @@ export default {
     }
 
     return {
-      'FunctionDeclaration, FunctionExpression, ArrowFunctionExpression, TSFunctionType, TSMethodSignature, TSCallSignatureDeclaration, TSDeclareFunction, TSConstructorType, TSConstructSignatureDeclaration': node => check({ node }),
+      'FunctionDeclaration, FunctionExpression, ArrowFunctionExpression, TSFunctionType, TSMethodSignature, TSCallSignatureDeclaration, TSDeclareFunction, TSConstructorType, TSConstructSignatureDeclaration, TSEmptyBodyFunctionExpression': node => check({ node }),
     }
   },
 }

@@ -51,6 +51,10 @@ test('functions require one destructured object, including methods and internal 
     'const f = (...values: string[]) => values',
     'const f = (options: { value: string }) => options.value',
     'class C { method(value: string) {} }',
+    'class C { constructor(value: string) {} }',
+    'abstract class C { abstract method(value: string): void }',
+    'class C { method(value: { value: string }): void; method({ value }: { value: string }) {} }',
+    'const object = { method(value: string) {} }',
     'interface C { method(value: string): void }',
     'type F = (value: string) => void',
     'declare function f(value: string): void',
@@ -69,6 +73,8 @@ test('functions require one destructured object, including methods and internal 
     'const f = ({ value = 1 }: { value?: number } = {}) => value',
     'const f = <T>({ value }: { value: T }) => value',
     'type F = ({ value }: { value: string }) => void',
+    'abstract class C { abstract method({ value }: { value: string }): void }',
+    'class C { method({ value }: { value: string }): void; method({ value }: { value: string }) {} }',
   ]) {
     assert.equal((await objectErrors({ code })).length, 0, code)
   }
