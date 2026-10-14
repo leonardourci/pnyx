@@ -204,6 +204,7 @@ be passed with --home, and --resolve-key answers that open decision. Any other a
 typed into the terminal its hooks recorded: a tmux pane, a Herdr pane, a Paseo terminal, or an
 iTerm2 or Terminal session found by its TTY (macOS asks once to allow controlling those apps).
 The session's process must still own that TTY; the text is typed once, then submitted with Enter.
+Terminal is the exception: its do script types the text and Return together, with no settle.
 Receipts: queued, then delivered, delivery_unknown or failed. Retrying the same --idempotency-key
 resends only after a failed send.
 `
