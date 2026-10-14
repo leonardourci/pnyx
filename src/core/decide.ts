@@ -9,6 +9,7 @@ import {
   LINK_STATES,
   NOTE_KINDS,
   type AgentRef,
+  type AgentSettings,
   type Attention,
   type BoardEvent,
   type BoardState,
@@ -221,6 +222,33 @@ function parseAgent(value: unknown): AgentRef {
   return agent
 }
 
+// Merges pushed settings into the card's current ones: a string sets a setting and
+// null removes it. Returns the card's whole settings after the push, so the event
+// replays and undoes on its own.
+function mergeSettings(current: AgentSettings | undefined, value: unknown): AgentSettings | null {
+  if (!isRecord(value)) {
+    throw invalid('settings must be an object')
+  }
+
+  const merged = { ...current }
+
+  for (const [name, v] of Object.entries(value)) {
+    if (!/^[a-z][A-Za-z]{0,31}$/.test(name)) {
+      throw invalid(`settings.${name}: a setting name is a camelCase word`)
+    }
+
+    if (v === null) {
+      delete merged[name]
+    } else if (typeof v === 'string' && v.trim() !== '' && v.length <= 200) {
+      merged[name] = v
+    } else {
+      throw invalid(`settings.${name} must be a string of up to 200 characters, or null to remove it`)
+    }
+  }
+
+  return Object.keys(merged).length ? merged : null
+}
+
 // Upserts the card with this key. `input` is the untrusted card JSON; `parent`
 // names the parent card by id or key, and null clears it.
 export function decidePush(state: BoardState, key: string, input: unknown, meta: Meta): Decision {
@@ -230,7 +258,7 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
     throw invalid('card must be a JSON object')
   }
 
-  onlyKeys(input, ['title', 'workspace', 'tags', 'parent', 'activity', 'agent', 'attention', 'source'], 'card')
+  onlyKeys(input, ['title', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'attention', 'source'], 'card')
 
   const cardId = state.keys[key] ?? `c${state.seq + 1}`
   const fields: PushFields = {}
@@ -260,6 +288,10 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
 
   if (input.agent !== undefined) {
     fields.agent = parseAgent(input.agent)
+  }
+
+  if (input.settings !== undefined) {
+    fields.settings = mergeSettings(state.cards[cardId]?.settings, input.settings)
   }
 
   if (input.attention !== undefined) {

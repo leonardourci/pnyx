@@ -45,6 +45,11 @@ export interface AgentRef {
   transcriptPath?: string
 }
 
+// A harness session's settings as the harness itself recorded them, by name: model,
+// effort, mode and fast, plus any setting only one harness has. Only known values
+// are kept. src/integrations/hooks/settings.ts lists where each one comes from.
+export type AgentSettings = Record<string, string>
+
 export interface Link {
   kind: LinkKind
   url: string
@@ -110,6 +115,7 @@ export interface Card {
   parentId?: string
   activity?: string
   agent?: AgentRef
+  settings?: AgentSettings
   attention: Attention[]
   links: Link[]
   sourceRefs: SourceRef[]
@@ -133,6 +139,8 @@ export interface PushFields {
   parentId?: string | null
   activity?: string | null
   agent?: AgentRef
+  // The card's whole settings after the push; null when it has none.
+  settings?: AgentSettings | null
   attention?: Attention[]
 }
 

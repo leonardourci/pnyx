@@ -40,14 +40,17 @@ A post-tool hook that sees a recognized `gh pr create`/`merge`, its `gh-axi` equ
 Board {id, name, schemaVersion, ruleVersion, sources, workspaceMappings,
        manualMovePolicy, viewPreferences, sessionStartSummary:false}
 Card {id, key, title, workspace, tags[], parentId?, sourceRefs[], agentRef?,
-      terminalRef?, links[], taskOutcome, activity, attention[], notes[], freshness,
+      settings?, terminalRef?, links[], taskOutcome, activity, attention[], notes[], freshness,
       manualColumn?, revision}
 Note {kind:summary|decision|context, source, text, at?}
 SourceRef {adapter, instanceId, objectId, generation, cursor?, observedAt}
 AgentRef {hostId, provider, sessionId, childAgentId?, parentEvidence?, cwd}
 TerminalRef {machineId, backend, endpointId, processGeneration}
 Link {kind:github_pr|linear|url, url, label, number?, observedState?, checkedAt?}
+Settings {model?, effort?, mode?, fast?, <harness-specific>?}
 ```
+
+A card's settings are what its harness already reports, never asked for: hook payloads carry the permission mode, effort and (Codex on every hook, Claude Code at session start) the model; the transcript read after each turn adds each turn's model, effort and speed, Claude Code's 1M context and Codex's approval policy, sandbox, collaboration mode and reasoning summary. A push merges settings by name, so a mid-session change shows up on the next hook or turn. Only known values are shown; Pnyx never changes them.
 
 Observations of the same agent join by **same session ID or same working folder**, applied across all sources rather than as rules per adapter pair. IDs are namespaced by host and provider, and folder paths are canonicalized on the same host. Both observations and their provenance are kept: Firstmate supplies backlog titles and task decisions, hooks add native session identity. Event IDs and source generations handle replay and process reuse.
 

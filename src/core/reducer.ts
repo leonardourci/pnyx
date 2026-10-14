@@ -153,8 +153,14 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       card.sourceRefs = [...card.sourceRefs.filter(r => !sameSource(r, source)), source]
     }
 
-    const { parentId, activity, ...rest } = fields
+    const { parentId, activity, settings, ...rest } = fields
     Object.assign(card, rest)
+
+    if (settings === null) {
+      delete card.settings
+    } else if (settings !== undefined) {
+      card.settings = settings
+    }
 
     if (activity === null) {
       delete card.activity

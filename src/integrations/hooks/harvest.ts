@@ -2,14 +2,16 @@
 // writer the caller holds. Read-only towards the transcript. Each note's id derives
 // from its source record, so a re-read appends nothing new; harvest.json in the
 // board's folder only remembers how far each transcript was read, and deleting it
-// costs one full re-read.
+// costs one full re-read. The settings a transcript gained, such as a model switch
+// or a new effort, update the card as an observation of the transcript.
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
-import { decideNote, noteId } from '../../core/decide.ts'
+import { decideNote, decidePush, noteId } from '../../core/decide.ts'
 import type { SourceNote } from '../../core/model.ts'
 import type { Writer } from '../../store/board-store.ts'
 import { readTranscript } from '../../search/index.ts'
 import { transcriptNotes } from './notes.ts'
+import { transcriptSettings, type FoundSettings } from './settings.ts'
 
 const CURSORS = 'harvest.json'
 
@@ -72,9 +74,33 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
       continue
     }
 
+    const settings: FoundSettings = {}
+
     for (const line of tail.lines) {
       for (const note of transcriptNotes(line.record)) {
         appended += appendNote(writer, id, note, at)
+      }
+
+      Object.assign(settings, transcriptSettings(line.record))
+    }
+
+    const card = writer.state.cards[id]!
+
+    // Only a change is recorded: re-reading the same settings appends nothing.
+    const changed = Object.entries(settings)
+      .some(([name, value]) => (card.settings?.[name] ?? null) !== value)
+
+    if (changed) {
+      const source = {
+        adapter: 'transcript',
+        instanceId: card.agent!.provider,
+        objectId: path,
+        observedAt: at,
+      }
+      const decision = decidePush(writer.state, card.key, { settings, source }, { at, actor: 'harvest' })
+
+      if ('event' in decision) {
+        writer.append(decision.event)
       }
     }
 

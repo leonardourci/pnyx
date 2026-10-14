@@ -17,6 +17,21 @@ const paths: Record<string, string> = {
   linear: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M5 6l13 13M3 11l10 10M11 3l10 10',
   github_pr: 'M6 8v12M18 20V9a3 3 0 0 0-3-3h-3m3-3-3 3 3 3M8 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0M8 20a2 2 0 1 1-4 0 2 2 0 0 1 4 0M20 20a2 2 0 1 1-4 0 2 2 0 0 1 4 0',
   pin: 'm9 3 9 3-3 5 1 5-5-1-6 6m3-8L5 8z',
+  // Harnesses, drawn as neutral marks rather than their makers' logos.
+  'claude-code': 'M12 3q1 8 9 9-8 1-9 9-1-8-9-9 8-1 9-9z',
+  codex: 'M3 5h18v14H3zM7 10l3 2-3 2m5 1h5',
+  // Agent settings.
+  model: 'M7 7h10v10H7zM10 3v4m4-4v4m-4 10v4m4-4v4M3 10h4m-4 4h4m10-4h4m-4 4h4',
+  effort: 'M4 17a8 8 0 0 1 16 0M12 17l4-5',
+  mode: 'M12 3 20 6v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+  fast: 'M13 2 4 14h7l-1 8 9-12h-7z',
+  context: 'M4 8V4h4m8 0h4v4m0 8v4h-4m-8 0H4v-4',
+  client: 'M3 4h18v12H3zM8 20h8m-4-4v4',
+  version: 'M3 12V3h9l9 9-9 9zM8 8h.01',
+  approval: 'M4 12l5 5L20 6',
+  sandbox: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9',
+  collaboration: 'M9 3h6v3H9zM6 5H5v16h14V5h-1M8 12h8m-8 4h5',
+  summary: 'M4 6h16M4 12h16M4 18h10',
 }
 
 export function Icon({ name, size = 16 }: { name: string; size?: number }) {
