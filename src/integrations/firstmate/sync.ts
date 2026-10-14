@@ -100,9 +100,10 @@ function taskCard(
     // A pool reuses worktrees, so a closed task gives its folder up for the next one.
     folder: task.worktree && !task.done ? task.worktree : null,
     // The task's own terminal tells it apart from another task in the same worktree
-    // and lets the session in it join, including a respawned worker's. While it is
-    // unchanged, the joined session's fuller facts stay.
+    // and lets the session in it join, including a respawned worker's. A joined
+    // session's own facts stay unless its Paseo terminal is no longer the task's.
     ...(task.paseoTerminal && task.paseoTerminal !== current?.terminal?.paseoTerminal
+      && (!current?.agent || current.terminal?.paseoTerminal)
       ? { terminal: { paseoTerminal: task.paseoTerminal } }
       : {}),
     attention: [...attention({ task }), ...kept],

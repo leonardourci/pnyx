@@ -318,7 +318,8 @@ function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
 }
 
 // The key a hook session's observation (key `<harness>:<session>`) goes to: its own
-// once it has a card, else the card it already joined, else the one card whose
+// once it has a card, else the card it joined while that card's agent is still this
+// session (a superseded session reports to its own card), else the one card whose
 // source assigned the session's working folder, such as the Firstmate task running
 // there. A card that already holds a session passes to a new session only in the
 // card's own Paseo terminal (after /clear, /new or a respawn the source recorded);
@@ -338,11 +339,12 @@ export function joinedKey({ state, key, folder, terminal }: {
   }
 
   const colon = key.indexOf(':')
+  const sessionId = key.slice(colon + 1)
   const joined = Object.values(state.cards).find(c => c.sourceRefs.some(r =>
-    r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === key.slice(colon + 1)))
+    r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === sessionId))
 
   if (joined) {
-    return joined.key
+    return !joined.agent || joined.agent.sessionId === sessionId ? joined.key : key
   }
 
   if (!folder) {
