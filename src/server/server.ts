@@ -111,7 +111,7 @@ export async function startServer({
       }
 
       try {
-        send(ws, { type: 'thread', thread: readThread(board, state, card, homes) })
+        send(ws, { type: 'thread', thread: readThread({ board, state, card, homes }) })
       } catch {
         send(ws, { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' })
       }
@@ -187,7 +187,7 @@ export async function startServer({
       const watcher = watch(dir, (_event, filename) => {
         const changed = filename ? join(dir, String(filename)) : undefined
         touchLatest(Object.values(state.cards).filter(c => {
-          const path = threadPath(c)
+          const path = threadPath({ card: c })
 
           return path && (changed ? path === changed : dirname(path) === dir)
         })
@@ -207,13 +207,13 @@ export async function startServer({
     const changed: Record<string, LatestMessage | null> = {}
 
     for (const id of unread) {
-      const card = state.cards[id], path = card && threadPath(card)
+      const card = state.cards[id], path = card && threadPath({ card })
 
       if (path) {
         watchFolder(dirname(path))
       }
 
-      const read = path ? latestMessage(path, reads.get(id)) : undefined
+      const read = path ? latestMessage({ path, prev: reads.get(id) }) : undefined
 
       if (read) {
         reads.set(id, read)
@@ -375,7 +375,11 @@ export async function startServer({
             const previous = entry?.read.catch(() => undefined)
             const next = {
               card: card.id,
-              read: Promise.resolve(previous).then(() => readCatalog(card, catalogLocations)),
+              read: Promise.resolve(previous).then(() =>
+                readCatalog({
+                  card,
+                  locations: catalogLocations,
+                })),
             }
             catalogReads.set(ws, entry = next)
             void next.read.catch(() => undefined).finally(() => {
@@ -424,7 +428,7 @@ export async function startServer({
           }
 
           const sub: { card: string; watcher?: FSWatcher } = { card: card.id }
-          const path = threadPath(card)
+          const path = threadPath({ card })
 
           if (path) {
             try {
@@ -437,7 +441,7 @@ export async function startServer({
           }
 
           subscriptions.set(ws, sub)
-          send(ws, { type: 'receipt', id, thread: readThread(board, state, card, homes, args[1]) })
+          send(ws, { type: 'receipt', id, thread: readThread({ board, state, card, homes, before: args[1] }) })
         } else {
           if (args.length !== 3 || !args[2] || args[1].length > 32000) {
             throw new BoardError({ message: 'reply expects card, text and idempotency key', code: 'VALIDATION_ERROR' })
