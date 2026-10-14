@@ -40,13 +40,8 @@ The same authenticated socket also accepts these commands:
   their home configured on server startup with repeatable `--home`; other sessions
   use the terminal their hooks recorded. The browser cannot provide arbitrary home,
   file or terminal targets. A card without a route is refused with the reason, which
-  the thread page also carries as `noRoute` (`via` names the route and `routeKind` its
-  kind when there is one). A disconnect never automatically retries a reply.
-- `agent`, args `[cardId, setting, value, idempotencyKey]`: changes a session setting
-  from the card's Agent tab through `pnyx-axi agent` in the same child process and on
-  the same route as `reply`, with the same receipts and the same refusal without a route
-  (a Firstmate task's change is a request note to its orchestrator).
-  See `pnyx-axi agent --help` for the settings and values.
+  the thread page also carries as `noRoute` (`via` names the route when there is one).
+  A disconnect never automatically retries a reply.
 
 `view set --json <patch> [--if-revision <n>] [--event-id <id>]` validates preferences,
 appends `board.view`, and broadcasts it. `view show` includes the current revision;
