@@ -1,5 +1,4 @@
-// Internal functions use named arguments. Positional signatures are reserved for
-// the callbacks and entry points whose calling convention belongs to another API.
+// External callers own their callback and entry-point signatures.
 const arrayCallbacks = new Set([
   'map',
   'flatMap',
