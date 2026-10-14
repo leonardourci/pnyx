@@ -157,7 +157,8 @@ try {
   await click('button', 'History'); await browser('fill', await ref('searchbox', 'Search history'), 'conversation readable'); await browser('wait', 'Shape the first working board')
   await check('document.title === "(1) History · Pnyx"', 'history tab title uses the updated attention count')
   await check('document.querySelectorAll(".result-title").length === 1', 'full-text transcript search works')
-  await browser('emulate', '--viewport', '1440x900x1'); await browser('wait', 'The working board'); await click('button', 'History'); await browser('fill', await ref('searchbox', 'Search history'), 'conversation readable'); await browser('wait', 'Shape the first working board'); await screenshot('history.png')
+  // The viewport change reloads the tab, which restores the open page.
+  await browser('emulate', '--viewport', '1440x900x1'); await browser('wait', 'History'); await click('button', 'History'); await browser('fill', await ref('searchbox', 'Search history'), 'conversation readable'); await browser('wait', 'Shape the first working board'); await screenshot('history.png'); await click('button', 'Board')
   await browser('open', server.url); await browser('wait', 'Later')
   assert.equal(loadBoard('default').state.view?.customColumns.length, 1)
   // Long unbroken metadata must reflow as the actual resize controls change size.
