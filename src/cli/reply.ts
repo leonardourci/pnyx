@@ -9,6 +9,7 @@ import { BoardError, type ReplyState } from '../core/model.ts'
 import { replyRoute, type ReplyRoute } from '../core/route.ts'
 import { STATUS_KEY, TASK_ID, resolveHome } from '../integrations/firstmate/home.ts'
 import { fmSend } from '../integrations/firstmate/reply.ts'
+import { HOOK } from '../integrations/hooks/observe.ts'
 import { typeInto } from '../integrations/hooks/terminal.ts'
 import { withWriter } from '../store/board-store.ts'
 import { COMMON, drainSpool, guard, meta, parse, required, type Options, type Output } from './commands.ts'
@@ -100,7 +101,11 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
 
     if (
       resolveKey !== undefined
-      && (resolveKey === STATUS_KEY || !card.attention.some(a => a.key === resolveKey))
+      && (
+        resolveKey === STATUS_KEY
+        || resolveKey.startsWith(HOOK)
+        || !card.attention.some(a => a.key === resolveKey)
+      )
     ) {
       throw invalid(`card ${card.id} has no open decision with key ${resolveKey}`, [`Run \`pnyx-axi card ${card.id}\` to see its attention keys`])
     }

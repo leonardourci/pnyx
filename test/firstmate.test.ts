@@ -454,9 +454,18 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   assert.equal(state.cards[state.keys['claude:fm-s/a1']!]!.parentId, api.id)
 
   // The joined card still replies through Firstmate, never by typing into the pane.
-  const { run } = cli(env)
+  const { run, fails } = cli(env)
   assert.match(run('reply', api.id, '--text', 'Use REST', '--home', home), /state: delivered/)
   assert.match(readFileSync(join(home, 'sent.log'), 'utf8'), /arg=api-v2\narg=Use REST/)
+
+  // Firstmate sync replaces only its own attention, so the session's permission request stays.
+  hook('h2a', 'PermissionRequest', { session_id: 'fm-s', cwd: worktree, tool_name: 'Bash', tool_input: { command: 'rm -rf build' } })
+  syncHome('default', home)
+  syncHome('default', home)
+  const asks = cardOf(home, 'api-v2').attention.filter(a => a.key.startsWith('hook:'))
+  assert.equal(asks.length, 1)
+  assert.equal(asks[0]!.blocking, true)
+  fails(['reply', api.id, '--text', 'x', '--resolve-key', asks[0]!.key, '--home', home], 'VALIDATION_ERROR')
 
   // A closed task gives its worktree up, so the next session there keeps its own card.
   const backlog = join(home, 'data', 'backlog.md')

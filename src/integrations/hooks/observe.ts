@@ -65,7 +65,7 @@ export const DEPLOY_COMMANDS = [
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
 // Keys of the requests hooks open, so clearing them never touches another source's.
-const HOOK = 'hook:'
+export const HOOK = 'hook:'
 const ELICITATION = `${HOOK}elicitation`
 const NOTIFICATION = `${HOOK}notification`
 // Requests that end once the agent is busy again: waiting idle and a failed turn.
