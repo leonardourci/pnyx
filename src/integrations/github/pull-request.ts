@@ -9,7 +9,7 @@ const BODY_MAX = 8000
 const PR_URL = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\/?$/
 
 // One `  key: value` field of gh-axi's TOON output; a quoted value is a JSON string.
-function field(out: string, key: string): string | undefined {
+function field({ out, key } : { out: string; key: string }): string | undefined {
   const line = new RegExp(`^ {2}${key}: (.*)$`, 'm').exec(out)?.[1]
 
   if (line === undefined) {
@@ -29,7 +29,7 @@ function field(out: string, key: string): string | undefined {
 
 // The description without its collapsed blocks and HTML comments, which hold
 // generated evidence and template markers rather than what the change is.
-function description(body: string): string {
+function description({ body } : { body: string }): string {
   const text = body
     .replace(/<details>[\s\S]*?<\/details>/g, '')
     .replace(/<!--[\s\S]*?-->/g, '')
@@ -42,7 +42,7 @@ function description(body: string): string {
 // The pull request as a context note, or null when it is not a GitHub pull request
 // URL or gh-axi cannot read it. The ref carries the text, so an edited description
 // becomes a new note and the earlier one stays.
-export function pullRequestNote(url: string): SourceNote | null {
+export function pullRequestNote({ url } : { url: string }): SourceNote | null {
   const pr = PR_URL.exec(url)
 
   if (!pr) {
@@ -59,13 +59,13 @@ export function pullRequestNote(url: string): SourceNote | null {
     return null
   }
 
-  const title = field(result.stdout, 'title')
+  const title = field({ out: result.stdout, key: 'title' })
 
   if (!title) {
     return null
   }
 
-  const body = description(field(result.stdout, 'body') ?? '')
+  const body = description({ body: field({ out: result.stdout, key: 'body' }) ?? '' })
   const text = `Pull request #${number}: ${title}${body ? `\n\n${body}` : ''}`
 
   return { kind: 'context', source: 'github', text, ref: `pr:${url}:${text}` }

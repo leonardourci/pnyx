@@ -23,17 +23,17 @@ function copyFixture(): { home: string; env: NodeJS.ProcessEnv } {
   const env = { ...process.env, PNYX_HOME: join(root, 'pnyx') }
   process.env.PNYX_HOME = env.PNYX_HOME
 
-  return { home: resolveHome(join(root, 'home')), env }
+  return { home: resolveHome({ path: join(root, 'home') }), env }
 }
 
 const cardOf = (home: string, task?: string) => {
   const { state } = loadBoard({ board: 'default' })
 
-  return state.cards[state.keys[task ? `${homeKey(home)}:${task}` : homeKey(home)]!]!
+  return state.cards[state.keys[task ? `${homeKey({ home })}:${task}` : homeKey({ home })]!]!
 }
 
 test("status lines follow Firstmate's key grammar", () => {
-  assert.deepEqual(parseStatusLine('needs-decision [key=api] [at=1]: pick one'), {
+  assert.deepEqual(parseStatusLine({ line: 'needs-decision [key=api] [at=1]: pick one' }), {
     verb: 'needs-decision',
     note: 'pick one',
     key: 'api',
@@ -41,13 +41,13 @@ test("status lines follow Firstmate's key grammar", () => {
     colon: true,
   })
   // A readable stamp with colons does not move the head/note boundary.
-  assert.equal(parseStatusLine('blocked [at=10:30]: stuck').note, 'stuck')
+  assert.equal(parseStatusLine({ line: 'blocked [at=10:30]: stuck' }).note, 'stuck')
   // A key at the head of the note is the same key, stripped from the note.
-  assert.deepEqual([parseStatusLine('resolved: [key=api] REST').key, parseStatusLine('resolved: [key=api] REST').note], ['api', 'REST'])
-  assert.equal(parseStatusLine('needs-decision: plain').key, 'default')
-  assert.equal(parseStatusLine('needs-decision [key=a b]: x').key, null)
-  assert.equal(parseStatusLine('resolved corr=0123456789abcdef [key=k]: ok').verb, 'resolved')
-  assert.equal(parseStatusLine('just prose').declares, false)
+  assert.deepEqual([parseStatusLine({ line: 'resolved: [key=api] REST' }).key, parseStatusLine({ line: 'resolved: [key=api] REST' }).note], ['api', 'REST'])
+  assert.equal(parseStatusLine({ line: 'needs-decision: plain' }).key, 'default')
+  assert.equal(parseStatusLine({ line: 'needs-decision [key=a b]: x' }).key, null)
+  assert.equal(parseStatusLine({ line: 'resolved corr=0123456789abcdef [key=k]: ok' }).verb, 'resolved')
+  assert.equal(parseStatusLine({ line: 'just prose' }).declares, false)
 })
 
 test('the decision fold opens, closes and clears keys like Firstmate', () => {
@@ -61,14 +61,14 @@ test('the decision fold opens, closes and clears keys like Firstmate', () => {
     'needs-decision: keyless uses default',
   ].join('\n')
   assert.deepEqual(
-    openDecisions(log, 'ship').map(d => d.key),
+    openDecisions({ log, kind: 'ship' }).map(d => d.key),
     ['b', 'pending-reply-y', 'default'],
   )
   // A ship or scout terminal line closes every decision; a secondmate's does not.
-  assert.deepEqual(openDecisions(`${log}\ndone: shipped`, 'ship'), [])
-  assert.equal(openDecisions(`${log}\ndone: other work`, 'secondmate').length, 3)
-  assert.deepEqual(openDecisions('needs-decision [key=k]: x\ncaptain-held [key=k]: moved to captain', 'ship'), [])
-  assert.equal(latestActivity('working: a\ncontinuation prose\n'), 'working: a')
+  assert.deepEqual(openDecisions({ log: `${log}\ndone: shipped`, kind: 'ship' }), [])
+  assert.equal(openDecisions({ log: `${log}\ndone: other work`, kind: 'secondmate' }).length, 3)
+  assert.deepEqual(openDecisions({ log: 'needs-decision [key=k]: x\ncaptain-held [key=k]: moved to captain', kind: 'ship' }), [])
+  assert.equal(latestActivity({ log: 'working: a\ncontinuation prose\n' }), 'working: a')
 })
 
 test('decisions, answers and reports in a status log become notes', () => {
@@ -82,7 +82,7 @@ test('decisions, answers and reports in a status log become notes', () => {
     'needs-decision [key=bad slug]: malformed keys move nothing',
   ].join('\n')
   assert.deepEqual(
-    statusNotes(log).map(({ kind, text, at }) => ({ kind, text, at })),
+    statusNotes({ log }).map(({ kind, text, at }) => ({ kind, text, at })),
     [
       { kind: 'decision', text: 'needs-decision [api]: REST or RPC?', at: '2026-10-13T14:01:40.000Z' },
       { kind: 'decision', text: 'resolved [api]: REST, the captain said keep it boring', at: '2026-10-13T14:03:20.000Z' },
@@ -91,12 +91,12 @@ test('decisions, answers and reports in a status log become notes', () => {
     ],
   )
   const brief = readFileSync(join(FIXTURE, 'data', 'api-v2', 'brief.md'), 'utf8')
-  assert.equal(captainsIntent(brief), 'Ship the v2 API so partners can page through invoices.\nKeep v1 working until every partner moves.')
-  assert.equal(captainsIntent('# Task\nno intent here'), undefined)
+  assert.equal(captainsIntent({ brief }), 'Ship the v2 API so partners can page through invoices.\nKeep v1 working until every partner moves.')
+  assert.equal(captainsIntent({ brief: '# Task\nno intent here' }), undefined)
 })
 
 test('backlog rows give titles, repo tags and merged state', () => {
-  const rows = parseBacklog(readFileSync(join(FIXTURE, 'data', 'backlog.md'), 'utf8'))
+  const rows = parseBacklog({ text: readFileSync(join(FIXTURE, 'data', 'backlog.md'), 'utf8') })
   assert.deepEqual(rows.get('api-v2'), { title: 'app: v2 API with (optional) pagination', repo: 'app', done: false, merged: false })
   assert.deepEqual(rows.get('release-1'), {
     title: 'app: cut release 1 https://github.com/example/app/pull/40',
@@ -110,7 +110,7 @@ test('backlog rows give titles, repo tags and merged state', () => {
 
 test("sync turns each task into a card under the home's card", () => {
   const { home } = copyFixture()
-  const result = syncHome('default', home, '2026-10-13T10:00:00.000Z')
+  const result = syncHome({ board: 'default', home, at: '2026-10-13T10:00:00.000Z' })
   assert.equal(result.tasks, 4)
 
   const parent = cardOf(home)
@@ -148,19 +148,19 @@ test("sync turns each task into a card under the home's card", () => {
   assert.deepEqual(release.links.map(l => [l.number, l.state]), [[40, 'merged']])
   assert.equal(release.column, 'done')
 
-  assert.deepEqual(syncHome('default', home), { tasks: 4, appended: 0 })
+  assert.deepEqual(syncHome({ board: 'default', home }), { tasks: 4, appended: 0 })
 })
 
 test('a failed task closed in the backlog lands in Done as a closed failure', () => {
   const { home } = copyFixture()
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.equal(cardOf(home, 'hotfix-2').column, 'needs_you')
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] hotfix-2')), 1)
   rows.splice(rows.indexOf('## Done') + 1, 0, row!.replace('[ ]', '[x]'))
   writeFileSync(backlog, rows.join('\n'))
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   const hotfix = cardOf(home, 'hotfix-2')
   assert.deepEqual(hotfix.attention, [])
   assert.deepEqual(hotfix.outcome, { state: 'failed', note: 'closed after failure', closed: true, source: 'firstmate' })
@@ -170,7 +170,7 @@ test('a failed task closed in the backlog lands in Done as a closed failure', ()
 test('a blocked task closed in the backlog leaves Needs you', () => {
   const { home } = copyFixture()
   writeFileSync(join(home, 'state', 'hotfix-2.status'), 'working: reproducing\nblocked: waiting for CI token\n')
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.deepEqual(cardOf(home, 'hotfix-2').attention.map(a => [a.kind, a.key]), [['blocked', 'default']])
   assert.equal(cardOf(home, 'hotfix-2').column, 'needs_you')
   const backlog = join(home, 'data', 'backlog.md')
@@ -178,7 +178,7 @@ test('a blocked task closed in the backlog leaves Needs you', () => {
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] hotfix-2')), 1)
   rows.splice(rows.indexOf('## Done') + 1, 0, row!.replace('[ ]', '[x]'))
   writeFileSync(backlog, rows.join('\n'))
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   const hotfix = cardOf(home, 'hotfix-2')
   assert.deepEqual(hotfix.attention, [])
   assert.deepEqual(hotfix.outcome, { state: 'done', source: 'firstmate' })
@@ -193,7 +193,7 @@ test('a done: status line alone is not completion', () => {
   const [row] = rows.splice(scout, 1)
   rows.splice(rows.indexOf('## In flight') + 1, 0, row!.replace('[x]', '[ ]'))
   writeFileSync(backlog, rows.join('\n'))
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.equal(cardOf(home, 'docs-scout').outcome, undefined)
   assert.equal(cardOf(home, 'docs-scout').column, 'workers_on_it')
 })
@@ -201,23 +201,23 @@ test('a done: status line alone is not completion', () => {
 test('sync never overwrites a link state another source refreshed', () => {
   const { home } = copyFixture()
   appendFileSync(join(home, 'state', 'api-v2.meta'), 'pr=https://github.com/example/app/pull/41\n')
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.equal(cardOf(home, 'api-v2').links[0]!.state, 'open')
   const api = cardOf(home, 'api-v2')
   execFileSync(process.execPath, [BIN, 'link', api.id, '--url', 'https://github.com/example/app/pull/41', '--state', 'closed'], {
     env: process.env,
   })
   appendFileSync(join(home, 'state', 'api-v2.status'), 'working: still going\n')
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.equal(cardOf(home, 'api-v2').links[0]!.state, 'closed')
 })
 
 test('a task whose records are gone drops its open decisions', () => {
   const { home } = copyFixture()
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   rmSync(join(home, 'state', 'api-v2.meta'))
   rmSync(join(home, 'state', 'api-v2.status'))
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   const api = cardOf(home, 'api-v2')
   assert.deepEqual(api.attention, [])
   assert.equal(api.title, 'app: v2 API with (optional) pagination')
@@ -227,13 +227,17 @@ test('watch reconciles on start and folds each change', async () => {
   const { home } = copyFixture()
   const results: SyncResult[] = []
   let wake: () => void = () => {}
-  const watcher = watchHome('default', home, r => {
-    if (r instanceof Error) {
-      throw r
-    }
+  const watcher = watchHome({
+    board: 'default',
+    home,
+    onSync: ({ result: r }) => {
+      if (r instanceof Error) {
+        throw r
+      }
 
-    results.push(r)
-    wake()
+      results.push(r)
+      wake()
+    },
   })
 
   try {
@@ -331,11 +335,11 @@ test("a task's decisions, reports and Captain's intent show on its card", () => 
 
 test('a Firstmate outcome follows the backlog on every sync', () => {
   const { home } = copyFixture()
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.deepEqual(cardOf(home, 'docs-scout').outcome, { state: 'done', source: 'firstmate' })
   // A later failed: line turns the recorded done into a closed failure.
   appendFileSync(join(home, 'state', 'docs-scout.status'), 'failed: rerun broke\n')
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.deepEqual(cardOf(home, 'docs-scout').outcome, { state: 'failed', note: 'closed after failure', closed: true, source: 'firstmate' })
   // Back in flight: the outcome is cleared.
   const backlog = join(home, 'data', 'backlog.md')
@@ -343,19 +347,19 @@ test('a Firstmate outcome follows the backlog on every sync', () => {
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [x] docs-scout')), 1)
   rows.splice(rows.indexOf('## In flight') + 1, 0, row!.replace('[x]', '[ ]'))
   writeFileSync(backlog, rows.join('\n'))
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.equal(cardOf(home, 'docs-scout').outcome, undefined)
   assert.notEqual(cardOf(home, 'docs-scout').column, 'done')
   const cleared = readEvents({ board: 'default' }).filter(e => e.type === 'card.outcome')
     .at(-1)!
   cli(process.env).fails(['undo', cleared.id], 'NOT_UNDOABLE')
-  assert.deepEqual(syncHome('default', home).appended, 0)
+  assert.deepEqual(syncHome({ board: 'default', home }).appended, 0)
 })
 
 test('firstmate sync ingests the hook spool', () => {
   const { home } = copyFixture()
   spoolWrite({ board: 'default', entry: { id: 's1', key: 'spooled', at: '2026-01-01T00:00:00.000Z', card: { title: 'from a hook' } } })
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.equal(loadBoard({ board: 'default' }).state.cards[loadBoard({ board: 'default' }).state.keys['spooled']!]!.title, 'from a hook')
 })
 
@@ -440,14 +444,14 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   const worktree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
   const meta = join(home, 'state', 'api-v2.meta')
   writeFileSync(meta, readFileSync(meta, 'utf8').replace(/^worktree=.*$/m, `worktree=${worktree}`))
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   const hook = (id: string, event: string, payload: Record<string, unknown>, extra = {}) =>
     spoolWrite({ board: 'default', entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'claude', event, payload, ...extra } })
   const terminal = { tty: '/dev/ttys042', pid: '4242', program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' }
   // The hook reports the folder as the session saw it; the join compares canonical paths.
   hook('h1', 'SessionStart', { session_id: 'fm-s', cwd: worktree, transcript_path: '/x/fm-s.jsonl' }, { terminal })
   hook('h2', 'SubagentStart', { session_id: 'fm-s', agent_id: 'a1', cwd: worktree })
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   const { state } = loadBoard({ board: 'default' })
   const api = cardOf(home, 'api-v2')
   assert.equal(api.folder, realpathSync(worktree))
@@ -463,8 +467,8 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
 
   // Firstmate sync replaces only its own attention, so the session's permission request stays.
   hook('h2a', 'PermissionRequest', { session_id: 'fm-s', cwd: worktree, tool_name: 'Bash', tool_input: { command: 'rm -rf build' } })
-  syncHome('default', home)
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
+  syncHome({ board: 'default', home })
   const asks = cardOf(home, 'api-v2').attention.filter(a => a.key.startsWith('hook:'))
   assert.equal(asks.length, 1)
   assert.equal(asks[0]!.blocking, true)
@@ -472,7 +476,7 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
 
   // The joined session ending leaves the task's outcome to Firstmate.
   hook('h2e', 'SessionEnd', { session_id: 'fm-s', cwd: worktree })
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.equal(cardOf(home, 'api-v2').outcome, undefined)
 
   // A closed task gives its worktree up, so the next session there keeps its own card.
@@ -480,13 +484,13 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   const rows = readFileSync(backlog, 'utf8').split('\n')
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] api-v2')), 1)
   writeFileSync(backlog, [...rows, row!.replace('[ ]', '[x]')].join('\n'))
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.equal(cardOf(home, 'api-v2').folder, undefined)
   // The joined session's later events still reach the task card, not a card of its own.
   hook('h2b', 'SubagentStop', { session_id: 'fm-s', agent_id: 'a1', cwd: worktree })
   hook('h2c', 'SessionEnd', { session_id: 'fm-s', cwd: worktree })
   hook('h3', 'SessionStart', { session_id: 'next', cwd: worktree })
-  syncHome('default', home)
+  syncHome({ board: 'default', home })
   assert.equal(loadBoard({ board: 'default' }).state.keys['claude:fm-s'], undefined)
   assert.ok(loadBoard({ board: 'default' }).state.keys['claude:next'])
 })

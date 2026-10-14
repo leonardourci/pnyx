@@ -22,9 +22,9 @@ type Rec = {
   payload?: { message?: unknown }
 }
 
-const str = (value: unknown): string | undefined => (typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined)
+const str = ({ value } : { value: unknown }): string | undefined => (typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined)
 
-function contentText(content: unknown): string {
+function contentText({ content } : { content: unknown }): string {
   if (typeof content === 'string') {
     return content
   }
@@ -37,7 +37,7 @@ function contentText(content: unknown): string {
 }
 
 // The user's answers to one AskUserQuestion call, one decision per answered question.
-function answers(r: Rec, at: string | undefined): SourceNote[] {
+function answers({ r, at } : { r: Rec; at: string | undefined }): SourceNote[] {
   const result = r.toolUseResult as {
     questions?: unknown
     answers?: unknown
@@ -55,9 +55,9 @@ function answers(r: Rec, at: string | undefined): SourceNote[] {
   }
 
   const call = Array.isArray(r.message?.content)
-    ? (r.message.content as { tool_use_id?: unknown }[]).find(b => str(b?.tool_use_id))
+    ? (r.message.content as { tool_use_id?: unknown }[]).find(b => str({ value: b?.tool_use_id }))
     : undefined
-  const id = str(call?.tool_use_id) ?? str(r.uuid)
+  const id = str({ value: call?.tool_use_id }) ?? str({ value: r.uuid })
 
   if (!id) {
     return []
@@ -66,56 +66,56 @@ function answers(r: Rec, at: string | undefined): SourceNote[] {
   const notes = (result.annotations ?? {}) as Record<string, { notes?: unknown } | undefined>
 
   return result.questions.flatMap((q: { question?: unknown }, i: number) => {
-    const question = str(q?.question)
-    const answer = question && str((given as Record<string, unknown>)[question])
+    const question = str({ value: q?.question })
+    const answer = question && str({ value: (given as Record<string, unknown>)[question] })
 
     if (!question || !answer) {
       return []
     }
 
-    const note = str(notes[question]?.notes)
+    const note = str({ value: notes[question]?.notes })
     const text = [question, `Answer: ${answer}`, ...(note ? [`Notes: ${note}`] : [])].join('\n')
 
     return [{ kind: 'decision' as const, source: 'claude-code', text, ref: `ask:${id}:${i}`, ...(at ? { at } : {}) }]
   })
 }
 
-export function transcriptNotes(record: unknown): SourceNote[] {
+export function transcriptNotes({ record } : { record: unknown }): SourceNote[] {
   const r = record as Rec | null
 
   if (typeof r !== 'object' || r === null) {
     return []
   }
 
-  const at = str(r.timestamp)
-  const note = (kind: Note['kind'], source: string, text: string | undefined, ref: string): SourceNote[] =>
+  const at = str({ value: r.timestamp })
+  const note = ({ kind, source, text, ref } : { kind: Note['kind']; source: string; text: string | undefined; ref: string }): SourceNote[] =>
     text ? [{ kind, source, text, ref, ...(at ? { at } : {}) }] : []
 
   switch (r.type) {
     case 'user':
       if (r.isCompactSummary === true) {
-        const text = str(contentText(r.message?.content).replace(COMPACT_PREAMBLE, ''))
+        const text = str({ value: contentText({ content: r.message?.content }).replace(COMPACT_PREAMBLE, '') })
 
-        return note('summary', 'claude-code', text, `compact:${str(r.uuid) ?? text}`)
+        return note({ kind: 'summary', source: 'claude-code', text, ref: `compact:${str({ value: r.uuid }) ?? text}` })
       }
 
-      return answers(r, at)
+      return answers({ r, at })
     case 'summary': {
-      const text = str(r.summary)
+      const text = str({ value: r.summary })
 
-      return note('summary', 'claude-code', text, `summary:${str(r.leafUuid) ?? ''}:${text}`)
+      return note({ kind: 'summary', source: 'claude-code', text, ref: `summary:${str({ value: r.leafUuid }) ?? ''}:${text}` })
     }
     case 'custom-title':
     case 'ai-title': {
-      const title = str(r.customTitle) ?? str(r.aiTitle)
+      const title = str({ value: r.customTitle }) ?? str({ value: r.aiTitle })
 
-      return note('context', 'claude-code', title && `${SESSION_TITLE}${title}`, `title:${title}`)
+      return note({ kind: 'context', source: 'claude-code', text: title && `${SESSION_TITLE}${title}`, ref: `title:${title}` })
     }
     case 'compacted': {
       // Codex's local compaction keeps its summary here; a remote one is encrypted and leaves it empty.
-      const text = str(r.payload?.message)
+      const text = str({ value: r.payload?.message })
 
-      return note('summary', 'codex', text, `compacted:${at ?? ''}:${text}`)
+      return note({ kind: 'summary', source: 'codex', text, ref: `compacted:${at ?? ''}:${text}` })
     }
     default:
       return []
@@ -124,7 +124,10 @@ export function transcriptNotes(record: unknown): SourceNote[] {
 
 // The thread name Codex last recorded for this session in its session_index.jsonl,
 // one {id, thread_name, updated_at} record per line, later lines newer.
-export function codexThreadTitle(index: string, sessionId: string): SourceNote[] {
+export function codexThreadTitle({ index, sessionId } : {
+  index: string
+  sessionId: string
+}): SourceNote[] {
   let title: string | undefined
   let at: string | undefined
 
@@ -132,9 +135,9 @@ export function codexThreadTitle(index: string, sessionId: string): SourceNote[]
     try {
       const r = JSON.parse(line) as { id?: unknown; thread_name?: unknown; updated_at?: unknown }
 
-      if (r.id === sessionId && str(r.thread_name)) {
-        title = str(r.thread_name)
-        at = str(r.updated_at)
+      if (r.id === sessionId && str({ value: r.thread_name })) {
+        title = str({ value: r.thread_name })
+        at = str({ value: r.updated_at })
       }
     } catch {
       // A torn or foreign line names no thread.

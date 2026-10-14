@@ -47,7 +47,7 @@ function routeName(route: ReplyRoute): string {
 }
 
 function deliver(route: ReplyRoute, text: string, resolveKey: string | undefined) {
-  return route.kind === 'firstmate' ? fmSend(route, text, resolveKey) : typeInto(route, text)
+  return route.kind === 'firstmate' ? fmSend({ route, text, resolveKey }) : typeInto({ route, text })
 }
 
 export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
@@ -58,7 +58,7 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
   }
 
   const meta = (): Meta => ({ at: new Date().toISOString(), actor: request.actor ?? 'cli' })
-  const homes = request.homes.map(resolveHome)
+  const homes = request.homes.map(path => resolveHome({ path }))
 
   const queued = withWriter({
     board,

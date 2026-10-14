@@ -151,7 +151,7 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
     }
   }
 
-  if (!isHookEnvelope(entry)) {
+  if (!isHookEnvelope({ value: entry })) {
     if (typeof entry.key !== 'string') {
       throw new BoardError({ message: 'spool entry needs id, key and at', code: 'VALIDATION_ERROR' })
     }
@@ -188,7 +188,7 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
   // assigned, such as a Firstmate task's worktree, reports to that card.
   const resolve = (key: string) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder }))
 
-  for (const o of observe(entry as unknown as HookEnvelope)) {
+  for (const o of observe({ envelope: entry as unknown as HookEnvelope })) {
     const key = resolve(o.key)
 
     if (o.ifMissing && key in writer.state.keys) {
@@ -198,7 +198,7 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
     const card = typeof o.card.parent === 'string' ? { ...o.card, parent: resolve(o.card.parent) } : o.card
     const m: Meta = { id: o.id ? `${entry.id}:${o.id}` : entry.id, at: entry.at, actor: `hook:${entry.harness}` }
     const current = writer.state.cards[writer.state.keys[key] ?? '']?.attention ?? []
-    const attention = o.attend && attend(current, o.attend)
+    const attention = o.attend && attend({ current, change: o.attend })
 
     if (o.ifChanged && key in writer.state.keys && isDeepStrictEqual(attention, current)) {
       continue
@@ -266,7 +266,11 @@ export function drainSpool(writer: Writer): { ingested: number; rejected: number
     ingested += 1
   }
 
-  const notes = harvest.size ? harvestTranscripts(writer, harvest, new Date().toISOString()) : 0
+  const notes = harvest.size ? harvestTranscripts({
+    writer,
+    cardIds: harvest,
+    at: new Date().toISOString(),
+  }) : 0
 
   return { ingested, rejected, ...(notes ? { notes } : {}) }
 }
@@ -560,18 +564,18 @@ const harvest = guard(args => {
     ref: values.card as string,
   })] : Object.values(state.cards)
   // Read before taking the writer lock: gh-axi can be slow and must not block other writers.
-  const prs = cards.flatMap(c => c.links.filter(l => l.kind === 'github_pr').map(l => ({ card: c.id, url: l.url, note: pullRequestNote(l.url) })))
+  const prs = cards.flatMap(c => c.links.filter(l => l.kind === 'github_pr').map(l => ({ card: c.id, url: l.url, note: pullRequestNote({ url: l.url }) })))
 
   return withWriter({
     board,
     fn: ({ writer }) => {
       const spool = drainSpool(writer)
       const at = new Date().toISOString()
-      let notes = harvestTranscripts(writer, cards.map(c => c.id), at)
+      let notes = harvestTranscripts({ writer, cardIds: cards.map(c => c.id), at })
 
       for (const pr of prs) {
         if (pr.note) {
-          notes += appendNote(writer, pr.card, pr.note, at)
+          notes += appendNote({ writer, cardId: pr.card, note: pr.note, at })
         }
       }
 
@@ -786,7 +790,7 @@ const setup = guard(args => {
 
   const remove = Boolean(values.remove)
   const preview = Boolean(values.preview)
-  const hooks = targets.map(h => setupHooks(h, { remove, preview }))
+  const hooks = targets.map(h => setupHooks({ harness: h, opts: { remove, preview } }))
   const out: Output = { hooks }
 
   if (preview) {

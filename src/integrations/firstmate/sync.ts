@@ -30,21 +30,21 @@ export interface SyncResult {
   appended: number
 }
 
-const source = (home: string, objectId: string): SourceRef => ({
+const source = ({ home, objectId } : { home: string; objectId: string }): SourceRef => ({
   adapter: ADAPTER,
   instanceId: home,
   objectId,
 })
 
 // The Firstmate source ref of a card, if it has one.
-export function firstmateRef(card: Card): SourceRef | undefined {
+export function firstmateRef({ card } : { card: Card }): SourceRef | undefined {
   return card.sourceRefs.find(r => r.adapter === ADAPTER)
 }
 
 // Open decisions, plus the latest status line when it says the task failed or is
 // blocked and no open decision carries it. A task closed in the backlog drops the
 // latest line's attention, even when it is an open decision.
-function attention(task: TaskObservation): Attention[] {
+function attention({ task } : { task: TaskObservation }): Attention[] {
   const open = task.decisions.map(d => ({
     kind: d.verb,
     key: d.key,
@@ -57,14 +57,14 @@ function attention(task: TaskObservation): Attention[] {
     return open
   }
 
-  const carries = (a: Attention) =>
+  const carries = ({ attention: a } : { attention: Attention }) =>
     a.kind === stalled.verb && a.text === (stalled.note || undefined)
 
   if (task.done) {
-    return open.filter(a => !carries(a))
+    return open.filter(a => !carries({ attention: a }))
   }
 
-  if (open.some(carries)) {
+  if (open.some(attention => carries({ attention }))) {
     return open
   }
 
@@ -80,14 +80,12 @@ function attention(task: TaskObservation): Attention[] {
 }
 
 // The attention a joined hook session opened on the card, which sync leaves alone.
-function hookAttention(state: BoardState, key: string): Attention[] {
+function hookAttention({ state, key } : { state: BoardState; key: string }): Attention[] {
   return state.cards[state.keys[key] ?? '']?.attention.filter(a => a.key.startsWith(HOOK)) ?? []
 }
 
 function taskCard(
-  home: HomeObservation,
-  task: TaskObservation,
-  kept: Attention[],
+  { home, task, kept } : { home: HomeObservation; task: TaskObservation; kept: Attention[] },
 ): Record<string, unknown> {
   return {
     title: task.title,
@@ -96,15 +94,20 @@ function taskCard(
     ...(task.activity ? { activity: task.activity } : {}),
     // A pool reuses worktrees, so a closed task gives its folder up for the next one.
     folder: task.worktree && !task.done ? task.worktree : null,
-    attention: [...attention(task), ...kept],
-    source: source(home.path, task.task),
+    attention: [...attention({ task }), ...kept],
+    source: source({ home: home.path, objectId: task.task }),
   }
 }
 
 // The link to record for the task's pull request, or null when the card already
 // has what Firstmate knows. Firstmate adds the link as open and later marks it
 // merged from the backlog; it never overwrites a state another source refreshed.
-function prLink(state: BoardState, key: string, task: TaskObservation, at: string) {
+function prLink({ state, key, task, at } : {
+  state: BoardState
+  key: string
+  task: TaskObservation
+  at: string
+}) {
   if (!task.pr) {
     return null
   }
@@ -118,7 +121,7 @@ function prLink(state: BoardState, key: string, task: TaskObservation, at: strin
   return parseLink({ input: { url: task.pr, state: task.merged ? 'merged' : 'open', checkedAt: at } })
 }
 
-function apply(writer: Writer, decision: Decision): number {
+function apply({ writer, decision } : { writer: Writer; decision: Decision }): number {
   if (!('event' in decision)) {
     return 0
   }
@@ -131,41 +134,66 @@ function apply(writer: Writer, decision: Decision): number {
 // Reconciles the board with the home's current files. Unchanged facts append
 // nothing, so syncing twice is a no-op. A task whose records are gone keeps its
 // card but drops its open decisions, since nothing can answer them any more.
-export function syncHome(board: string, home: string, at = new Date().toISOString()): SyncResult {
-  const observed = readHome(home)
+export function syncHome({ board, home, at = new Date().toISOString() } : {
+  board: string
+  home: string
+  at?: string
+}): SyncResult {
+  const observed = readHome({ home })
   const meta: Meta = { at, actor: ADAPTER }
 
   return withWriter({
     board,
     fn: ({ writer }) => {
       drainSpool(writer)
-      let appended = apply(writer, decidePush(
-        {
-          state: writer.state,
-          key: observed.key,
-          input: {
-            title: observed.title,
-            tags: [ADAPTER],
-            source: source(home, HOME_OBJECT),
+      let appended = apply({
+        writer,
+        decision: decidePush(
+          {
+            state: writer.state,
+            key: observed.key,
+            input: {
+              title: observed.title,
+              tags: [ADAPTER],
+              source: source({ home, objectId: HOME_OBJECT }),
+            },
+            meta,
           },
-          meta,
-        },
-      ))
+        ),
+      })
 
       for (const task of observed.tasks) {
         const key = `${observed.key}:${task.task}`
-        const card = taskCard(observed, task, hookAttention(writer.state, key))
-        appended += apply(writer, decidePush({ state: writer.state, key, input: card, meta }))
-        const link = prLink(writer.state, key, task, at)
+        const card = taskCard({
+          home: observed,
+          task,
+          kept: hookAttention({
+            state: writer.state,
+            key,
+          }),
+        })
+        appended += apply({
+          writer,
+          decision: decidePush({
+            state: writer.state,
+            key,
+            input: card,
+            meta,
+          }),
+        })
+        const link = prLink({ state: writer.state, key, task, at })
 
         if (link) {
-          appended += apply(writer, decideLink({
-            state: writer.state,
-            ref: key,
-            url: link.url,
-            link,
-            meta,
-          }))
+          appended += apply({
+            writer,
+            decision: decideLink({
+              state: writer.state,
+              ref: key,
+              url: link.url,
+              link,
+              meta,
+            }),
+          })
         }
 
         // Closed in Firstmate's backlog: done, or failed when its last line was failed:.
@@ -179,30 +207,35 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
             : task.stalled?.verb === 'failed'
               ? { state: 'failed' as const, note: 'closed after failure', closed: true }
               : { state: 'done' as const }
-          appended += apply(writer, decideOutcome({
-            state: writer.state,
-            ref: key,
-            outcome,
-            meta,
-            source: ADAPTER,
-          }))
+          appended += apply({
+            writer,
+            decision: decideOutcome({
+              state: writer.state,
+              ref: key,
+              outcome,
+              meta,
+              source: ADAPTER,
+            }),
+          })
         }
 
         for (const { ref, ...note } of task.notes) {
           appended += apply(
-            writer,
-            decideNote({
-              state: writer.state,
-              ref: key,
-              note,
-              meta: {
-                ...meta,
-                id: noteId({
-                  cardKey: key,
-                  ref,
-                }),
-              },
-            }),
+            {
+              writer,
+              decision: decideNote({
+                state: writer.state,
+                ref: key,
+                note,
+                meta: {
+                  ...meta,
+                  id: noteId({
+                    cardKey: key,
+                    ref,
+                  }),
+                },
+              }),
+            },
           )
         }
       }
@@ -210,7 +243,7 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
       const live = new Set(observed.tasks.map(t => t.task))
 
       for (const card of Object.values(writer.state.cards)) {
-        const ref = firstmateRef(card)
+        const ref = firstmateRef({ card })
 
         if (
           !ref
@@ -221,23 +254,25 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
           continue
         }
 
-        const kept = hookAttention(writer.state, card.key)
+        const kept = hookAttention({ state: writer.state, key: card.key })
 
         if (card.attention.length === kept.length) {
           continue
         }
 
         appended += apply(
-          writer,
-          decidePush({
-            state: writer.state,
-            key: card.key,
-            input: {
-              attention: kept,
-              source: ref,
-            },
-            meta,
-          }),
+          {
+            writer,
+            decision: decidePush({
+              state: writer.state,
+              key: card.key,
+              input: {
+                attention: kept,
+                source: ref,
+              },
+              meta,
+            }),
+          },
         )
       }
 
@@ -260,9 +295,15 @@ const RETRY_MS = 1000
 // Bursts coalesce into one sync. A watcher error re-creates the watchers and
 // resyncs, so a dropped event cannot leave the board behind. No polling.
 export function watchHome(
-  board: string,
-  home: string,
-  onSync: (result: SyncResult | Error) => void,
+  { board, home, onSync } : {
+    board: string
+    home: string
+    onSync: (
+      { result } : {
+        result: SyncResult | Error
+      },
+    ) => void
+  },
 ): HomeWatch {
   let watchers: FSWatcher[] = []
   let timer: NodeJS.Timeout | undefined
@@ -276,15 +317,15 @@ export function watchHome(
     }
 
     try {
-      onSync(syncHome(board, home))
+      onSync({ result: syncHome({ board, home }) })
     } catch (error) {
-      onSync(error as Error)
+      onSync({ result: error as Error })
       // A locked board or a half-written file clears on its own; try once more later.
-      schedule(RETRY_MS)
+      schedule({ ms: RETRY_MS })
     }
   }
 
-  const schedule = (ms = SETTLE_MS) => {
+  const schedule = ({ ms = SETTLE_MS } : { ms?: number } = {}) => {
     if (!closed && !timer) {
       timer = setTimeout(sync, ms)
     }
@@ -301,7 +342,7 @@ export function watchHome(
       try {
         const w = watch(join(home, dir), (_type, file) => {
           if (!file || RELEVANT.test(String(file))) {
-            schedule()
+            schedule({ })
           }
         })
         w.on('error', () => {
@@ -310,7 +351,7 @@ export function watchHome(
           }
 
           start()
-          schedule()
+          schedule({ })
         })
         watchers.push(w)
       } catch {

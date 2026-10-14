@@ -67,7 +67,7 @@ interface Group {
 }
 type Config = { hooks?: Record<string, Group[]> } & Record<string, unknown>
 
-export function configPath(harness: Harness): string {
+export function configPath({ harness } : { harness: Harness }): string {
   if (harness === 'claude') {
     return join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'settings.json')
   }
@@ -79,15 +79,15 @@ export function scriptPath(): string {
   return join(pnyxHome(), 'hooks', SCRIPT)
 }
 
-function quote(value: string): string {
+function quote({ value } : { value: string }): string {
   return `'${value.replace(/'/g, '\'\\\'\'')}'`
 }
 
-function isPnyx(handler: Handler): boolean {
+function isPnyx({ handler } : { handler: Handler }): boolean {
   return typeof handler.command === 'string' && handler.command.includes(`/${SCRIPT}`)
 }
 
-function readConfig(path: string): Config {
+function readConfig({ path } : { path: string }): Config {
   if (!existsSync(path)) {
     return {}
   }
@@ -101,9 +101,9 @@ function readConfig(path: string): Config {
   }
 
   const hooks = (config as Config | null)?.hooks
-  const isObject = (v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v)
+  const isObject = ({ value: v } : { value: unknown }) => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-  if (!isObject(config) || (hooks !== undefined && !isObject(hooks))) {
+  if (!isObject({ value: config }) || (hooks !== undefined && !isObject({ value: hooks }))) {
     throw new BoardError({ message: `${path} is not a hook config object`, code: 'VALIDATION_ERROR', help: ['Fix it by hand, then rerun'] })
   }
 
@@ -112,13 +112,17 @@ function readConfig(path: string): Config {
 
 // The config with each event's first Pnyx handler updated in place and any other Pnyx
 // handler taken out; Pnyx entries still missing are appended. Removing takes them all out.
-function merged(config: Config, harness: Harness, remove: boolean): Config {
+function merged({ config, harness, remove } : {
+  config: Config
+  harness: Harness
+  remove: boolean
+}): Config {
   const wanted = new Map(
     remove
       ? []
       : EVENTS[harness].map(event => [
         event,
-        { type: 'command', command: `${quote(scriptPath())} ${harness} ${event}`, timeout: TIMEOUT_SECONDS },
+        { type: 'command', command: `${quote({ value: scriptPath() })} ${harness} ${event}`, timeout: TIMEOUT_SECONDS },
       ]),
   )
   const hooks: Record<string, Group[]> = {}
@@ -130,12 +134,12 @@ function merged(config: Config, harness: Harness, remove: boolean): Config {
     }
 
     const kept = groups.flatMap(group => {
-      if (!Array.isArray(group?.hooks) || !group.hooks.some(isPnyx)) {
+      if (!Array.isArray(group?.hooks) || !group.hooks.some(handler => isPnyx({ handler }))) {
         return [group]
       }
 
       const handlers = group.hooks.flatMap(h => {
-        if (!isPnyx(h)) {
+        if (!isPnyx({ handler: h })) {
           return [h]
         }
 
@@ -181,12 +185,11 @@ export interface SetupResult {
 // Applies the change unless previewing. The config is replaced atomically and only
 // when its content changes; a symlinked config is written through the link.
 export function setupHooks(
-  harness: Harness,
-  opts: { remove: boolean; preview: boolean },
+  { harness, opts } : { harness: Harness; opts: { remove: boolean; preview: boolean } },
 ): SetupResult {
-  const path = configPath(harness)
-  const config = readConfig(path)
-  const next = merged(config, harness, opts.remove)
+  const path = configPath({ harness })
+  const config = readConfig({ path })
+  const next = merged({ config, harness, remove: opts.remove })
   const changed = JSON.stringify(next) !== JSON.stringify(config)
 
   if (!opts.preview && !opts.remove) {
@@ -208,5 +211,5 @@ export function setupHooks(
 
 // Harnesses whose config folder exists, for `setup hooks` without --harness.
 export function detectedHarnesses(): Harness[] {
-  return (['claude', 'codex'] as const).filter(h => existsSync(dirname(configPath(h))))
+  return (['claude', 'codex'] as const).filter(h => existsSync(dirname(configPath({ harness: h }))))
 }

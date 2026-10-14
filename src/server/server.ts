@@ -85,7 +85,7 @@ export async function startServer({
     throw new BoardError({ message: `a server is already running for board ${board}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
   }
 
-  homes = homes.map(resolveHome)
+  homes = homes.map(path => resolveHome({ path }))
   const subscriptions = new Map<WebSocket, { card: string; watcher?: FSWatcher }>()
   const threadScheduled = new WeakSet<WebSocket>()
   // Set by close(): work already scheduled then must not open new watchers or timers.
@@ -806,8 +806,8 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   }
 
   // Each --home both takes replies and feeds the board, as `firstmate watch` would.
-  const homes = (values.home ?? []).map(resolveHome)
-  const firstmate = homes.length > 0 ? watchHomes(board, homes) : undefined
+  const homes = (values.home ?? []).map(path => resolveHome({ path }))
+  const firstmate = homes.length > 0 ? watchHomes({ board, list: homes }) : undefined
   // TOON for a flat object is `key: value`; JSON quoting keeps the values valid TOON.
   const watching = homes.length > 0 ? `firstmate: ${JSON.stringify(`watching ${homes.length} home${homes.length === 1 ? '' : 's'}`)}\n` : ''
   process.stdout.write(`server: running\nboard: ${board}\nurl: ${JSON.stringify(server.url)}\n${watching}help[1]: Run \`pnyx-axi stop\` to stop it\n`)

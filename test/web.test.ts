@@ -345,7 +345,7 @@ test('a live joined session drives the running indicator; Firstmate status shows
   assert.equal(agentActivity({ card: state.cards.c1! }), undefined)
 
   for (const [hook, expected] of [['UserPromptSubmit', 'working'], ['PreToolUse', 'working'], ['PostToolUseFailure', 'working'], ['Stop', 'idle']] as const) {
-    const [observed] = observe({ v: 1, id: hook, at: meta.at, harness: 'claude', event: hook, payload: { session_id: 'fixture', tool_name: 'Read' } })
+    const [observed] = observe({ envelope: { v: 1, id: hook, at: meta.at, harness: 'claude', event: hook, payload: { session_id: 'fixture', tool_name: 'Read' } } })
     assert.ok(observed)
     state = push(state, 'task', observed.card)
     assert.equal(agentActivity({ card: state.cards.c1! }), expected)
@@ -354,7 +354,7 @@ test('a live joined session drives the running indicator; Firstmate status shows
     assert.equal(agentActivity({ card: state.cards.c1! }), expected)
   }
 
-  const [ended] = observe({ v: 1, id: 'end', at: meta.at, harness: 'claude', event: 'SessionEnd', payload: { session_id: 'fixture' } })
+  const [ended] = observe({ envelope: { v: 1, id: 'end', at: meta.at, harness: 'claude', event: 'SessionEnd', payload: { session_id: 'fixture' } } })
   assert.ok(ended)
   state = push(state, 'task', ended.card)
   assert.equal(shownActivity({ card: state.cards.c1! }), 'ended')
