@@ -1,6 +1,8 @@
 ---
 name: write-front-end
 description: Use only when writing or reviewing code under web/ (the React + Vite + Tailwind board). Not needed for CLI, core, store, server or integration work.
+paths:
+  - "web/**"
 ---
 
 # Writing the web board
