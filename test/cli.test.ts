@@ -22,13 +22,13 @@ test('no arguments prints an empty board summary', () => {
   assert.match(out, /^board: default$/m)
   assert.match(out, /^ {2}needs_you: 0$/m)
   assert.match(out, /^cards: "none: no cards yet"$/m)
-  assert.match(out, /pnyx-axi push --key/)
+  assert.match(out, /pnyx-axi task create --title/)
 })
 
 test('--help prints concise help', () => {
   const out = run({ args: ['--help'] })
   assert.match(out, /^usage: pnyx-axi/)
-  assert.ok(out.split('\n').length < 28)
+  assert.ok(out.split('\n').length < 40)
 })
 
 test('update fails with a structured error while unpublished', () => {

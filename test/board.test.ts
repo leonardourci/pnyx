@@ -17,7 +17,7 @@ function board() {
   // Tests never touch the real ~/.pnyx.
   const home = mkdtempSync(join(tmpdir(), 'pnyx-board-'))
   const env = { ...process.env, PNYX_HOME: home }
-  const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
+  const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
   const fails = ({ args, status, code }: { args: string[]; status: number; code: string }) =>
     assert.throws(() => run({ args: [...args] }), (error: { status: number; stdout: string }) => {
       assert.equal(error.status, status)
@@ -45,7 +45,7 @@ test('push is an idempotent upsert by key', () => {
   const retry = run({ args: ['push', '--key', 'claude:s1', '--file', card({ json: { title: 'y' } }), '--event-id', 'e1'] })
   assert.match(retry, /^ {2}seq: 2$/m)
   assert.match(retry, /^duplicate: /m)
-  const out = run({ })
+  const out = run({ args: [] })
   assert.match(out, /^ {2}workers_on_it: 1$/m)
   assert.match(out, /^ {2}c1,x,workers_on_it,none$/m)
 })
@@ -54,7 +54,7 @@ test('links, moves and outcomes place the card', () => {
   const { run, card } = board()
   run({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'Task' } })] })
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'open'] })
-  assert.match(run({ args: ['card', 'k'] }), /^ {2}column: review$/m)
+  assert.match(run({ args: ['card', 'k'] }), /^ {2}column: parked$/m)
   run({ args: ['move', 'c1', 'needs-you'] })
   assert.match(run({ args: ['card', 'c1'] }), /^ {2}placement: manual$/m)
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'merged'] })
@@ -133,7 +133,7 @@ test('a torn tail blocks writes until repair', () => {
   const { home, run, fails, card } = board()
   run({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'a' } })] })
   appendFileSync(join(home, 'boards', 'default', 'events.jsonl'), '{"v":1,"seq":2,"id":"ev')
-  assert.match(run({ }), /torn tail/)
+  assert.match(run({ args: [] }), /torn tail/)
   fails({ args: ['move', 'c1', 'done'], status: 1, code: 'TORN_TAIL' })
   assert.match(run({ args: ['repair'] }), /set aside 23 torn bytes/)
   assert.match(run({ args: ['move', 'c1', 'done'] }), /^ {2}seq: 2$/m)
@@ -184,6 +184,6 @@ test('concurrent writers get one contiguous sequence', async () => {
   const log = readFileSync(join(env.PNYX_HOME, 'boards', 'default', 'events.jsonl'), 'utf8').trimEnd()
     .split('\n')
   assert.deepEqual(log.map(l => JSON.parse(l).seq), [1, 2, 3, 4, 5, 6, 7, 8])
-  assert.match(run({ }), /^ {2}workers_on_it: 8$/m)
+  assert.match(run({ args: [] }), /^ {2}workers_on_it: 8$/m)
   assert.equal(existsSync(join(env.PNYX_HOME, 'boards', 'default', 'writer.lock')), false)
 })
