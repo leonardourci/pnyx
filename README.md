@@ -30,7 +30,7 @@ pnyx-axi serve                              # board only
 pnyx-axi serve --home ~/path/to/firstmate   # also shows and replies to Firstmate tasks
 ```
 
-Open the `url` it prints. `pnyx-axi` with no arguments shows the board summary and the running server's address. Stop the server with Ctrl+C or `pnyx-axi stop`. When the server restarts on a new build, an open board reloads itself and keeps the open card, unsent drafts and scroll position.
+Open the `url` it prints, http://127.0.0.1:4747 unless `--port` says otherwise; if that port is taken, `serve` exits with `PORT_IN_USE` rather than picking another. `pnyx-axi` with no arguments shows the board summary and the running server's address. Stop the server with Ctrl+C or `pnyx-axi stop`. When the server restarts on a new build at the same port, an open board reloads itself and keeps the open card, unsent drafts and scroll position.
 
 To keep it running in the background:
 

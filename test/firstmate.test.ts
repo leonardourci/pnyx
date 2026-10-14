@@ -270,7 +270,7 @@ test('firstmate sync through the CLI', () => {
 
 test('serve --home folds the home into the board without a separate watch', async () => {
   const { home, env } = copyFixture()
-  const server = spawn(process.execPath, [BIN, 'serve', '--home', home], { env, stdio: ['ignore', 'pipe', 'inherit'] })
+  const server = spawn(process.execPath, [BIN, 'serve', '--port', '0', '--home', home], { env, stdio: ['ignore', 'pipe', 'inherit'] })
 
   try {
     let out = ''

@@ -145,7 +145,7 @@ test('serve runs until stop, and the summary reports it without starting it', as
   assert.match(before, /pnyx-axi serve/)
   assert.equal(existsSync(infoPath('default')), false)
 
-  const child = spawn(process.execPath, [BIN, 'serve'], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(process.execPath, [BIN, 'serve', '--port', '0'], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
   let out = ''
   child.stdout.on('data', chunk => (out += chunk))
   const url = await until(() => /^url: "(http:\/\/127\.0\.0\.1:\d+)"$/m.exec(out)?.[1], 'serve to start')
@@ -161,6 +161,25 @@ test('serve runs until stop, and the summary reports it without starting it', as
   assert.equal(existsSync(socketPath('default')), false)
   assert.match(cli(), /^server: not running$/m)
   assert.match(cli('stop'), /^server: "none: not running"$/m)
+})
+
+test('serve refuses a taken port instead of picking another', async () => {
+  const holder = createServer().listen(0, '127.0.0.1')
+  await once(holder, 'listening')
+  const { port } = holder.address() as { port: number }
+
+  try {
+    const child = spawn(process.execPath, [BIN, 'serve', '--port', String(port)], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
+    let out = ''
+    child.stdout.on('data', chunk => (out += chunk))
+    const [code] = await once(child, 'exit')
+    assert.notEqual(code, 0)
+    assert.match(out, new RegExp(`port ${port} is in use`))
+    assert.match(out, /PORT_IN_USE/)
+    assert.match(out, /--port/)
+  } finally {
+    holder.close()
+  }
 })
 
 test('a second server for the same board is refused', async () => {

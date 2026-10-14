@@ -647,6 +647,9 @@ function boardFlag(args: string[], options: { port?: { type: 'string' }; home?: 
   }
 }
 
+// A fixed default keeps one board at one address, so an open tab finds a restarted server again.
+export const DEFAULT_PORT = 4747
+
 // `pnyx-axi serve`: runs in the foreground until SIGINT, SIGTERM or `pnyx-axi stop`.
 export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const values = boardFlag(args, { port: { type: 'string' }, home: { type: 'string', multiple: true } })
@@ -656,12 +659,13 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     throw new AxiError('--port must be a number', 'VALIDATION_ERROR')
   }
 
+  const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
   let server: RunningServer
 
   try {
     server = await startServer({
       board,
-      port: values.port === undefined ? 0 : Number(values.port),
+      port,
       homes: values.home,
     })
   } catch (error) {
@@ -670,7 +674,7 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     }
 
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-      throw new AxiError(`port ${values.port} is in use`, 'PORT_IN_USE', ['Pick another --port, or omit it for a random one'])
+      throw new AxiError(`port ${port} is in use`, 'PORT_IN_USE', [`Stop what holds port ${port}, or pick another --port`])
     }
 
     throw error
