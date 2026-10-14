@@ -191,9 +191,9 @@ export function AgentControls({
   const [pending, setPending] = useState<Record<string, Pending>>({})
   const [requests, setRequests] = useState<Request[] | string>([])
   const provider = card.agent?.provider
-  const harness = harnessControls({ provider })
   const page = thread?.card === card.id ? thread : null
   const firstmate = connected && page?.routeKind === 'firstmate'
+  const harness = harnessControls({ provider, firstmate })
   useEffect(() => {
     setPending({})
     setRequests([])

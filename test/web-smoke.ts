@@ -177,14 +177,14 @@ try {
   await screenshot('conversation.png')
   // The Agent tab changes a Firstmate task's settings by asking its orchestrator in a
   // request note, never by typing into the worker.
-  const report = (settings: Record<string, string>) => withWriter({
+  const report = ({ settings, provider = 'claude-code' }: { settings: Record<string, string>; provider?: string }) => withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
-      const d = decidePush({ state: w.state, key: 'layout', input: { agent: { provider: 'claude-code', sessionId: 'fixture-layout', transcriptPath: fixture.transcript }, settings }, meta: { actor: 'fixture', at: '2026-10-14T16:30:00Z' } })
+      const d = decidePush({ state: w.state, key: 'layout', input: { agent: { provider, sessionId: 'fixture-layout', transcriptPath: fixture.transcript }, settings }, meta: { actor: 'fixture', at: '2026-10-14T16:30:00Z' } })
       assert.ok('event' in d); w.append({ event: d.event })
     },
   })
-  report({ model: 'claude-sonnet-5-5', effort: 'medium', mode: 'default' })
+  report({ settings: { model: 'claude-sonnet-5-5', effort: 'medium', mode: 'default' } })
   await click('button', 'Agent'); await browser('wait', 'Change from here')
   await check('[...document.querySelectorAll(".control-row[aria-label=\'Permission mode\'] button")].every(b => !b.disabled && b.title.includes("request note"))', 'a key change is a request note too')
   await check('document.querySelector(".agent-controls > p").textContent.includes("never types into the worker")', 'the tab says changes go to the orchestrator')
@@ -197,7 +197,7 @@ try {
   assert.equal(inbox.match(/^arg=note$/gm)?.length, 1)
   assert.match(inbox, /^arg=Pnyx: please switch the worker on task api-v2 \(Claude Code\) to effort high\.\n---\n/m)
   await browser('wait', 'queued')
-  report({ effort: 'high' })
+  report({ settings: { effort: 'high' } })
   await browser('wait', 'Effort')
   await check('!document.querySelector(".control-row[aria-label=\'Effort\'] p") && document.querySelector(".control-row[aria-label=\'Effort\'] [aria-pressed=true]").textContent === "high"', 'the session report confirms the change')
 
@@ -206,6 +206,20 @@ try {
     await check('getComputedStyle(document.querySelector(".segmented .button")).color !== getComputedStyle(document.querySelector(".segmented .button")).backgroundColor', `Agent tab controls stay legible with a ${scheme} system theme`)
     await screenshot(`agent-${scheme}.png`)
   }
+
+  report({ provider: 'codex', settings: { model: 'gpt-6-astra', approval: 'untrusted' } })
+  await browser('wait', 'gpt-6.1-sol')
+  await check('[...document.querySelectorAll(".control-row[aria-label=\'Model\'] button, .control-row[aria-label=\'Approval policy\'] button")].every(b => !b.disabled && b.title.includes("request note"))', 'Codex model and approval options are requests to Firstmate')
+  await screenshot('codex-firstmate-settings.png')
+  const sentBefore = readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8')
+  await click('button', 'gpt-6.1-sol'); await browser('wait', 'Waiting for the session to report its model')
+  await click('button', 'on-request'); await browser('wait', 'Waiting for the session to report its approval policy')
+  const codexInbox = readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8')
+  assert.match(codexInbox, /arg=Pnyx: please switch the worker on task api-v2 \(Codex\) to model gpt-6.1-sol\./)
+  assert.match(codexInbox, /arg=Pnyx: please switch the worker on task api-v2 \(Codex\) to approval policy on-request\./)
+  assert.equal(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), sentBefore)
+  report({ provider: 'codex', settings: { model: 'gpt-6.1-sol', approval: 'on-request' } })
+  await eventually('!document.querySelector(".control-row[aria-label=\'Model\'] p") && !document.querySelector(".control-row[aria-label=\'Approval policy\'] p")', 'Codex reports confirm the requested settings')
 
   await browser('emulate', '--color-scheme', 'auto'); await browser('wait', 'Change from here')
   await click('button', 'Conversation')
