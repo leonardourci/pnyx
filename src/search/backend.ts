@@ -16,6 +16,8 @@ export interface Backend {
   // since vectors from different backends differ slightly. search.db keeps vectors from one key only.
   key: string
   dims: number
+  // The similarity a meaning-only match needs without the reranker (see EMBEDDERS).
+  floor: number
   // Each PROBES text's vector, as this backend makes it.
   probes: Float32Array[]
   // A unit vector.
@@ -155,6 +157,7 @@ async function realBackend(id: EmbedderId): Promise<Backend> {
     mode,
     key: `${id}@${spec.sha256.slice(0, 16)}/${mode}`,
     dims: spec.dims,
+    floor: spec.floor,
     probes,
     embed,
     async rerank(query, docs) {
@@ -169,6 +172,8 @@ async function realBackend(id: EmbedderId): Promise<Backend> {
 }
 
 const STUB_DIMS = 64
+// A chunk holding most of the query's words passes; one sharing a word or none does not.
+const STUB_FLOOR = 0.5
 const fold = (text: string) => text.toLowerCase().normalize('NFD')
   .replace(/\p{M}/gu, '')
 const stubWords = (text: string) => fold(text).match(/[\p{L}\p{N}]+/gu) ?? []
@@ -192,6 +197,7 @@ function stubBackend(id: EmbedderId): Backend {
     mode: 'stub',
     key: `${id}@stub/stub`,
     dims: STUB_DIMS,
+    floor: STUB_FLOOR,
     probes: PROBES.map(stubVector),
     embed: async text => stubVector(text),
     // The share of the query's words the document holds.

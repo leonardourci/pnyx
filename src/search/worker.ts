@@ -11,7 +11,7 @@ import { createConnection, createServer, type Socket } from 'node:net'
 import type { DatabaseSync } from 'node:sqlite'
 import { rmSync, statSync } from 'node:fs'
 import { SemanticError, detectMode, loadBackend, resolveChoice, type Backend } from './backend.ts'
-import { EMBEDDERS, RERANKER, download, isInstalled, modelPath, recordFailure, type ModelFile } from './models.ts'
+import { EMBEDDERS, RERANKER, activeFailure, download, isInstalled, modelPath, recordFailure, type ModelFile } from './models.ts'
 import { readSettings, stubbed } from './settings.ts'
 import { claimVectors, openVectors, pending, putVectors } from './vectors.ts'
 import { workerSocket } from './semantic.ts'
@@ -139,6 +139,9 @@ function fail(error: unknown, forMs: number): never {
 async function prepare(): Promise<Backend> {
   try {
     mode = await detectMode()
+  } catch (error) {
+    embedder = { phase: 'failed', message: (error as Error).message }
+    fail(error, DOWNLOAD_COOLDOWN_MS)
   } finally {
     // A detection failure is answered as such rather than waited on.
     setTimeout(decide, 0)
@@ -176,14 +179,26 @@ async function prepare(): Promise<Backend> {
 
   embedder = { phase: 'ready' }
 
-  if (choice.rerank) {
-    // The reranker downloads and loads in the background; searches rank without it until then.
+  const rerankFailure = choice.rerank ? activeFailure('reranker') : undefined
+
+  if (rerankFailure) {
+    reranker = { phase: 'failed', message: rerankFailure }
+  } else if (choice.rerank) {
+    // The reranker downloads and loads in the background; searches rank without it
+    // until then, and after a failure until its cooldown ends.
     void fetchModel(RERANKER, p => (reranker = p))
       .then(() => b.rerank('probe', ['probe']))
       .then(() => (reranker = { phase: 'ready' }))
       .catch((error: unknown) => {
         reranker = { phase: 'failed', message: (error as Error).message }
         console.error((error as Error).stack)
+        const broken = error instanceof SemanticError ? error.broken : undefined
+
+        if (broken) {
+          rmSync(modelPath(broken), { force: true })
+        }
+
+        recordFailure((error as Error).message, broken ? BROKEN_COOLDOWN_MS : DOWNLOAD_COOLDOWN_MS, 'reranker')
       })
   }
 
@@ -236,7 +251,7 @@ async function answer(line: string): Promise<Record<string, unknown>> {
     const b = await load()
 
     if (req.op === 'embed') {
-      return { key: b.key, rerank: reranker.phase === 'ready', reranker: describe(reranker), vector: Array.from(await b.embed(req.text)) }
+      return { key: b.key, floor: b.floor, rerank: reranker.phase === 'ready', reranker: describe(reranker), vector: Array.from(await b.embed(req.text)) }
     }
 
     if (req.op === 'rerank') {

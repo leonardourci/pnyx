@@ -4,13 +4,15 @@ import type { Command } from './connection.ts'
 
 // Every search box ranks cards through the board server's search, the same
 // full-text plus meaning ranking as `pnyx-axi search` and History. Weak results
-// (the reranker found them unrelated) are left out.
+// (the reranker found them unrelated, or a card found by meaning alone is not
+// a strong match) are left out.
 export const findCards = (command: Command, query: string, workspace = '') =>
   command('search', [query, workspace]).then(r => (r.hits as HybridHit[]).filter(h => !h.weak))
 
-// The cards the board's "Find a card" box matches, best first, or null with no
-// query or before the server answers (the box then filters titles locally).
-export function useCardSearch(command: Command, query: string, workspace: string): string[] | null {
+// The cards the search found strongly by meaning alone, best first, for the board's
+// "Find a card" box to add after its own matches; none with no query, before the
+// server answers, or with semantic search off.
+export function useMeaningCards(command: Command, query: string, workspace: string): string[] {
   const [found, setFound] = useState<{ query: string; ids: string[] } | null>(null)
   const q = query.trim()
   useEffect(() => {
@@ -22,7 +24,7 @@ export function useCardSearch(command: Command, query: string, workspace: string
     const timer = setTimeout(() => {
       void findCards(command, q, workspace).then(hits => {
         if (live) {
-          setFound({ query: `${q}\n${workspace}`, ids: hits.map(h => h.card) })
+          setFound({ query: `${q}\n${workspace}`, ids: hits.filter(h => h.match === 'semantic').map(h => h.card) })
         }
       }, () => {})
     }, 180)
@@ -32,5 +34,5 @@ export function useCardSearch(command: Command, query: string, workspace: string
     }
   }, [command, q, workspace])
 
-  return q && found?.query === `${q}\n${workspace}` ? found.ids : null
+  return q && found?.query === `${q}\n${workspace}` ? found.ids : []
 }

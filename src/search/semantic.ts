@@ -5,7 +5,9 @@
 // nearest-vector scan each give up to 50 cards; reciprocal rank fusion (k = 60)
 // merges them, card id breaking ties. With the reranker on, it re-scores the top
 // 20 against each card's nearest chunk; its score marks weak results and says
-// when nothing matched strongly.
+// when nothing matched strongly. A card found by meaning alone is weak unless the
+// reranker kept it in its top 20, or, without the reranker, unless its nearest
+// chunk reaches the model's similarity floor.
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, rmSync } from 'node:fs'
@@ -17,7 +19,7 @@ import { loadBoard, pnyxHome } from '../store/board-store.ts'
 import { localToken } from '../server/state.ts'
 import { SemanticError, detectMode, loadBackend, resolveChoice, type Choice } from './backend.ts'
 import { search, updateIndex, type Hit, type Match, type Query } from './index.ts'
-import { EMBEDDERS, RERANKER, activeFailure, clearFailure, download, modelPath, type EmbedderId, type ModelFile } from './models.ts'
+import { EMBEDDERS, RERANKER, activeFailure, clearFailure, download, modelPath, type ModelFile } from './models.ts'
 import { runtimeInstalled } from './runtime.ts'
 import { readSettings, saveSettings, stubbed, type SearchSettings } from './settings.ts'
 import { nearestCards, nearestChunks, vectorCounts, type NearChunk, type Nearest, type VectorRead } from './vectors.ts'
@@ -283,7 +285,8 @@ export async function searchBoard(
   const reranker = reply.reranker as Phase
   const pendingReranker = reranker.phase === 'downloading' || reranker.phase === 'loading' ? `; ${phaseText('reranker', reranker)}` : ''
 
-  const leg: Leg = { key, vector, useReranker: reply.rerank === true, pendingReranker }
+  const floor = reply.floor as number
+  const leg: Leg = { key, floor, vector, useReranker: reply.rerank === true, pendingReranker }
 
   return query.card ? await cardSearch(board, query, leg) : await boardSearch(board, query, leg)
 }
@@ -291,6 +294,7 @@ export async function searchBoard(
 // The query's vector and how to rank with it.
 interface Leg {
   key: string
+  floor: number
   vector: Float32Array
   useReranker: boolean
   // A status suffix while the reranker is still downloading or loading.
@@ -305,7 +309,7 @@ function readiness(key: string, v: { embedded: number; total: number }): string 
 
 // Cards: the full-text card ranking fused with each card's nearest chunk.
 async function boardSearch(board: string, query: Query, leg: Leg): Promise<SearchResult> {
-  const { key, vector, useReranker, pendingReranker } = leg
+  const { key, floor, vector, useReranker, pendingReranker } = leg
   const lexical = search(board, { ...query, limit: Math.max(query.limit, CANDIDATES) })
   const filters = {
     ...(query.kind ? { kind: query.kind } : {}),
@@ -330,18 +334,20 @@ async function boardSearch(board: string, query: Query, leg: Leg): Promise<Searc
     }
   }
 
+  const reranked = useReranker && !ranked.failed
+  const top = new Set(order.slice(0, RERANK_TOP))
   const hits = order.slice(0, query.limit).map((card): HybridHit => {
     const words = byWords.get(card)
     const near = byMeaning.get(card)
     const hit: HybridHit = words
       ? { ...words, match: near ? 'both' : words.match }
       : { card, title: near!.title, match: 'semantic', snippets: [{ kind: near!.kind, at: near!.at || 'unknown', snippet: excerpt(near!.body) }] }
+    const weakMeaning = !words && (reranked ? !top.has(card) : near!.similarity < floor)
 
-    return ranked.weak.has(card) ? { ...hit, weak: true } : hit
+    return ranked.weak.has(card) || weakMeaning ? { ...hit, weak: true } : hit
   })
 
   // Every card is somewhere in the vector order, so only word matches count toward more results.
-  // ponytail: no similarity floor for meaning-only cards without the reranker; add one per model once measured on real boards.
   const total = Math.max(lexical.total, hits.length)
 
   return { hits, total, mode, semantic, ...(ranked.note ? { note: ranked.note } : {}) }
@@ -455,13 +461,12 @@ export interface SetupFile {
 }
 
 // Fetches the models now, in the foreground, instead of on the first search:
-// detects the mode, downloads what it needs (the 311m embedder and the reranker
-// with a GPU, the 97m embedder alone on CPU, unless overridden), checks each model
-// against its golden values, saves the choice, turns semantic search on and
+// detects the mode, downloads what the settings need (with auto, the 311m embedder
+// and the reranker with a GPU, the 97m embedder alone on CPU), checks each model
+// against its golden values, turns semantic search on and
 // starts embedding the board. Clears a recorded failure.
 export async function setupSemantic(
   board: string,
-  options: { model?: EmbedderId; rerank?: boolean },
   progress: (line: string) => void,
 ): Promise<{ mode: string; choice: Choice; files: SetupFile[] }> {
   if (!stubbed() && !runtimeInstalled()) {
@@ -471,12 +476,7 @@ export async function setupSemantic(
   }
 
   clearFailure()
-  const settings: SearchSettings = {
-    ...readSettings(false),
-    semantic: true,
-    ...(options.model ? { model: options.model } : {}),
-    ...(options.rerank === undefined ? {} : { rerank: options.rerank }),
-  }
+  const settings: SearchSettings = { ...readSettings(false), semantic: true }
   const mode = await detectMode()
   const choice = resolveChoice(settings, mode)
   const wanted: ModelFile[] = [EMBEDDERS[choice.model], ...(choice.rerank ? [RERANKER] : [])]

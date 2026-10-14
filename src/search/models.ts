@@ -17,6 +17,9 @@ export interface ModelFile {
 
 export interface Embedder extends ModelFile {
   dims: number
+  // The cosine similarity a card found by meaning alone must reach to count as a
+  // strong match when the reranker does not run.
+  floor: number
   // The first 16 dimensions of each PROBES vector, as the pinned file gives them
   // on Metal. Metal and CPU differ by under 0.002 a dimension; a broken
   // conversion or runtime differs by far more.
@@ -25,6 +28,10 @@ export interface Embedder extends ModelFile {
 
 const HF = 'https://huggingface.co'
 
+// Floors calibrated on the round-2 evaluation set A (30 documents, 24 answerable and
+// 6 no-answer queries) with the real models on Metal: 0.85 keeps 77% of the 311m's
+// relevant pairs and passes 0.1% of irrelevant ones, 0.82 keeps 69% of the 97m's and
+// passes 0.3%; neither adds a result to a no-answer query.
 export const EMBEDDERS = {
   // granite-embedding-311m-multilingual-r2, community Q8_0 conversion whose vectors match IBM's ONNX.
   'granite-311m': {
@@ -33,6 +40,7 @@ export const EMBEDDERS = {
     sha256: '960116d274ff796e65713a984c4d3de52999795512c64a02bb162e231fa1f3f8',
     bytes: 347018080,
     dims: 768,
+    floor: 0.85,
     golden: [
       [
         0.00267,
@@ -97,6 +105,7 @@ export const EMBEDDERS = {
     sha256: '25155b89638e501ac33495fa278d551d7545e1e2f62722a499bba1f064c080f2',
     bytes: 115061088,
     dims: 384,
+    floor: 0.82,
     golden: [
       [
         -0.02959,
@@ -268,17 +277,19 @@ export async function download(m: ModelFile, progress: (bytes: number) => void =
 }
 
 // A failed download or golden check, recorded so searches stop starting workers that
-// would fail the same way (or fetch a gigabyte again) until it expires.
-const failurePath = () => join(pnyxHome(), 'semantic-failure.json')
+// would fail the same way (or fetch a gigabyte again) until it expires. The
+// reranker's failures are kept apart: searches still run on the embedder meanwhile.
+type Failing = 'semantic' | 'reranker'
+const failurePath = (what: Failing) => join(pnyxHome(), `${what}-failure.json`)
 
-export function recordFailure(message: string, forMs: number): void {
+export function recordFailure(message: string, forMs: number, what: Failing = 'semantic'): void {
   mkdirSync(pnyxHome(), { recursive: true })
-  writeFileSync(failurePath(), `${JSON.stringify({ message, until: Date.now() + forMs })}\n`)
+  writeFileSync(failurePath(what), `${JSON.stringify({ message, until: Date.now() + forMs })}\n`)
 }
 
-export function activeFailure(): string | undefined {
+export function activeFailure(what: Failing = 'semantic'): string | undefined {
   try {
-    const { message, until } = JSON.parse(readFileSync(failurePath(), 'utf8')) as { message: string; until: number }
+    const { message, until } = JSON.parse(readFileSync(failurePath(what), 'utf8')) as { message: string; until: number }
 
     return until > Date.now() ? message : undefined
   } catch {
@@ -286,4 +297,7 @@ export function activeFailure(): string | undefined {
   }
 }
 
-export const clearFailure = () => rmSync(failurePath(), { force: true })
+export function clearFailure(): void {
+  rmSync(failurePath('semantic'), { force: true })
+  rmSync(failurePath('reranker'), { force: true })
+}

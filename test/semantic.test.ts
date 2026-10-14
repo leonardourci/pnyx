@@ -45,7 +45,10 @@ function board(extra: Record<string, string> = {}) {
   // Turning semantic search off stops the worker within seconds.
   const stop = () => run('settings', 'set', 'search.semantic', 'off')
 
-  return { home, env, run, fails, push, stop }
+  // The same command with semantic search off for this process: the full-text output.
+  const lexical = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { env: { ...env, PNYX_SEMANTIC: 'off' }, encoding: 'utf8' })
+
+  return { home, env, run, lexical, fails, push, stop }
 }
 
 // Waits until the background worker has its models and has embedded every entry.
@@ -81,10 +84,10 @@ test('semantic search is on by default; models are picked for the machine', asyn
 })
 
 test('while a model downloads, search is full-text and shows the progress', async () => {
-  const { run, stop } = board({ PNYX_SEMANTIC_STUB_DOWNLOAD_MS: '4000' })
+  const { run, lexical: off, stop } = board({ PNYX_SEMANTIC_STUB_DOWNLOAD_MS: '4000' })
 
   try {
-    const lexical = run('search', 'orders', '--lexical')
+    const lexical = off('search', 'orders')
     let out = run('search', 'orders')
 
     for (let i = 0; i < 20 && !/downloading/.test(out); i += 1) {
@@ -109,7 +112,6 @@ test('bad settings are refused; PNYX_SEMANTIC=off and the setting turn semantic 
   fails(['settings', 'set', 'search.model', 'huge'], 'VALIDATION_ERROR')
   fails(['settings', 'set', 'nope', 'on'], 'VALIDATION_ERROR')
   fails(['search', 'setup'], 'VALIDATION_ERROR')
-  fails(['search', 'setup', '--semantic', '--model', 'huge'], 'VALIDATION_ERROR')
   // The variable wins over the file but is never written to it.
   run('settings', 'set', 'search.rerank', 'off')
   assert.match(readFileSync(join(home, 'settings.json'), 'utf8'), /"search\.semantic": "on"/)
@@ -167,7 +169,7 @@ test('the worker socket sits in a folder only this user can use', { skip: proces
 })
 
 test('setup turns semantic search on; hybrid search finds cards by meaning and by words', async () => {
-  const { run, stop } = board()
+  const { run, lexical, stop } = board()
 
   try {
     const setup = run('search', 'setup', '--semantic')
@@ -195,18 +197,61 @@ test('setup turns semantic search on; hybrid search finds cards by meaning and b
     assert.match(both, /^ {4}match: both$/m)
     assert.match(both, /\[orders\] table/)
 
-    // Filters apply to both legs; --lexical searches by words only.
+    // Filters apply to both legs; with semantic search off, words only.
     const homeOnly = cards(run('search', 'reverted', 'cookie', '--workspace', 'home'))
     assert.equal(homeOnly[0], 'c3')
     assert.ok(!homeOnly.includes('c1'))
-    assert.match(run('search', 'reverted', 'cookie', '--lexical'), /^mode: lexical\nresults: "none: /m)
+    assert.match(lexical('search', 'reverted', 'cookie'), /^mode: lexical\nresults: "none: /m)
 
     // --card ranks one card's entries the same way: no entry holds both words, yet meaning finds one.
     const entries = run('search', 'table', 'dinosaur', '--card', 'c1')
     assert.match(entries, /^mode: hybrid$/m)
     assert.match(entries, /^ {4}match: semantic$/m)
     assert.match(entries, /^ {6}event,"[^"]+",deploy reverted because the migration locked the orders table$/m)
-    assert.match(run('search', 'table', 'dinosaur', '--card', 'c1', '--lexical'), /^results: "none: /m)
+    assert.match(lexical('search', 'table', 'dinosaur', '--card', 'c1'), /^results: "none: /m)
+  } finally {
+    stop()
+  }
+})
+
+test('without the reranker, a card found by meaning alone is weak under the similarity floor', async () => {
+  const { run, stop } = board()
+
+  try {
+    run('settings', 'set', 'search.rerank', 'off')
+    await embedded(run)
+    // An unrelated query: every card is somewhere in the vector order, but none is near enough.
+    const unrelated = run('search', 'dinosaur', 'banana')
+    assert.equal(cards(unrelated).length, 3)
+    assert.equal(unrelated.match(/^ {4}weak: true$/gm)?.length, 3)
+    // Most of the query's words in one entry: that card is strong, the others weak.
+    const near = run('search', 'session', 'cookie', 'expired', 'dinosaur')
+    assert.equal(cards(near)[0], 'c3')
+    assert.match(near, /^ {2}- card: c3\n(?: {4}(?!weak).*\n)*(?! {4})/m)
+    assert.equal(near.match(/^ {4}weak: true$/gm)?.length, 2)
+  } finally {
+    stop()
+  }
+})
+
+test('a recorded reranker failure keeps searches on the embedder alone until setup clears it', async () => {
+  const { run, home, stop } = board()
+
+  try {
+    writeFileSync(join(home, 'reranker-failure.json'), JSON.stringify({ message: 'download of r failed: HTTP 503', until: Date.now() + 60_000 }))
+    let status = ''
+
+    for (let i = 0; i < 100 && !/^vectors: (\d+) of \1 /m.test(status); i += 1) {
+      run('search', 'orders')
+      await new Promise(resolve => setTimeout(resolve, 100))
+      status = run('search', 'status')
+    }
+
+    assert.match(status, /^semantic: "on: /m)
+    assert.match(status, /^rerank: "the reranker failed: download of r failed: HTTP 503"$/m)
+    assert.match(run('search', 'orders'), /^mode: hybrid$/m)
+    run('search', 'setup', '--semantic')
+    assert.ok(!existsSync(join(home, 'reranker-failure.json')))
   } finally {
     stop()
   }

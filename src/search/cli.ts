@@ -7,7 +7,7 @@ import { COMMON, guard, parse, type Options, type Output } from '../cli/commands
 import { loadBoard } from '../store/board-store.ts'
 import { SYNONYMS, SYNONYMS_VERSION } from './synonyms.ts'
 import { KINDS, SNIPPETS, indexStatus, rebuildIndex, type IndexResult, type Kind } from './index.ts'
-import { EMBEDDER_IDS, type EmbedderId } from './models.ts'
+import { EMBEDDER_IDS } from './models.ts'
 import { runtimeInstalled } from './runtime.ts'
 import { searchBoard, semanticStatus, setupSemantic, type SearchResult } from './semantic.ts'
 import { SETTING_KEYS, readSettings, settingEntries, writeSetting } from './settings.ts'
@@ -21,10 +21,9 @@ const SEARCH: Options = {
   card: { type: 'string' },
   workspace: { type: 'string' },
   limit: { type: 'string' },
-  lexical: { type: 'boolean' },
 }
 
-const SETUP: Options = { ...COMMON, semantic: { type: 'boolean' }, model: { type: 'string' }, rerank: { type: 'boolean' }, 'no-rerank': { type: 'boolean' } }
+const SETUP: Options = { ...COMMON, semantic: { type: 'boolean' } }
 
 // A rejected promise carries a BoardError the way guard() converts a thrown one.
 async function axi<T>(work: Promise<T>): Promise<T> {
@@ -76,18 +75,6 @@ async function setup(args: string[]): Promise<Output> {
     throw new AxiError('search setup needs --semantic', 'VALIDATION_ERROR', ['Run `pnyx-axi search setup --semantic`'])
   }
 
-  const model = values.model as string | undefined
-
-  if (model !== undefined && !EMBEDDER_IDS.includes(model as EmbedderId)) {
-    throw new AxiError(`--model takes ${EMBEDDER_IDS.join(' or ')}`, 'VALIDATION_ERROR')
-  }
-
-  if (values.rerank && values['no-rerank']) {
-    throw new AxiError('use --rerank or --no-rerank, not both', 'VALIDATION_ERROR')
-  }
-
-  const rerank = values.rerank ? true : values['no-rerank'] ? false : undefined
-
   // Download progress goes to stderr, and only to a terminal.
   const progress = (line: string) => {
     if (process.stderr.isTTY) {
@@ -95,11 +82,7 @@ async function setup(args: string[]): Promise<Output> {
     }
   }
 
-  const options = {
-    ...(model ? { model: model as EmbedderId } : {}),
-    ...(rerank === undefined ? {} : { rerank }),
-  }
-  const r = await setupSemantic(board, options, progress)
+  const r = await setupSemantic(board, progress)
 
   return {
     semantic: 'on',
@@ -145,7 +128,6 @@ const searchCommand = guard<Output | Promise<Output>>(args => {
   const card = values.card === undefined
     ? undefined
     : findCard(loadBoard(board).state, values.card as string).id
-  const settings = readSettings()
 
   return axi(searchBoard(board, {
     text,
@@ -153,7 +135,7 @@ const searchCommand = guard<Output | Promise<Output>>(args => {
     ...(kind ? { kind: kind as Kind } : {}),
     ...(card ? { card } : {}),
     ...(values.workspace ? { workspace: values.workspace as string } : {}),
-  }, values.lexical ? { ...settings, semantic: false } : settings)
+  })
     .then(result => present(result, text, card, kind)))
 })
 
@@ -202,9 +184,9 @@ const settingsCommand = guard(args => {
 
 export const searchCommands = { search: searchCommand, settings: settingsCommand }
 
-export const SEARCH_HELP = `usage: pnyx-axi search "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--limit <n>] [--lexical]
+export const SEARCH_HELP = `usage: pnyx-axi search "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--limit <n>]
        pnyx-axi search status | rebuild [--board <name>]
-       pnyx-axi search setup --semantic [--model ${EMBEDDER_IDS.join('|')}] [--rerank | --no-rerank]
+       pnyx-axi search setup --semantic
 Full-text search over card titles, links, event text, harvested notes and the session transcripts
 hooks recorded. Every word must match somewhere on one card: its title, link titles or any entry.
 With --card or --kind, every word must match in one entry of that card or kind. Words match by
@@ -227,9 +209,11 @@ granite-embedding-311m and the Qwen3-Reranker-0.6B reranker, about 1 GB; on CPU 
 granite-embedding-97m without the reranker, about 115 MB. The first search downloads them in the
 background into the Pnyx home's models/ folder, checked by SHA-256 and golden vectors; searches are
 full-text and say so until they are ready (\`search status\` shows the progress). \`search setup
---semantic\` downloads them now instead, in the foreground. A background worker process embeds
-entries at low priority and exits after a minute idle. The reranker re-scores the top 20, marks weak
-results and says when nothing matches strongly. --lexical skips meaning for one search.
+--semantic\` downloads what the settings need now instead, in the foreground. A background
+worker process embeds entries at low priority and exits after a minute idle. The reranker re-scores
+the top 20, marks weak results and says when nothing matches strongly. A card found by meaning
+alone is weak outside the reranked top 20, or without the reranker, when its nearest entry is under
+the model's similarity floor.
 Turn it off with \`pnyx-axi settings set search.semantic off\` (or PNYX_SEMANTIC=off for one
 process); installed without optional dependencies, search is full-text only.
 `
