@@ -20,21 +20,21 @@ export function filterCards(state: BoardState, workspace: string, tag: string, q
 }
 
 // The "Find a card" box: every card the filter above matches, in its order, then
-// the cards a search found strongly by meaning alone, best first, within the same
-// workspace and tag filters.
+// the other cards the board's search found, best first, within the same workspace
+// and tag filters.
 export function findBoxCards(
   state: BoardState,
   workspace: string,
   tag: string,
   query: string,
-  meaning: string[],
+  found: string[],
 ): Card[] {
   const local = filterCards(state, workspace, tag, query)
   const seen = new Set(local.map(c => c.id))
   const added = (c: Card | undefined): c is Card => !!c && !seen.has(c.id)
     && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag))
 
-  return [...local, ...meaning.map(id => state.cards[id]).filter(added)]
+  return [...local, ...found.map(id => state.cards[id]).filter(added)]
 }
 
 export function visibleParent(card: Card, visible: Card[]): Card | undefined {

@@ -18,7 +18,12 @@ The same authenticated socket also accepts these commands:
   Passing an empty card ID unsubscribes. Missing files and unsupported providers are
   explicit. Reads use complete JSONL records, a 10 MB window, up to 60 entries and
   long messages split into complete, paged chunks. Cursors retain separate transcript and reply positions, including chunk ordinals, so no message tail is silently discarded. Directory watches handle native file replacement.
-- `search`, args `[text, optionalWorkspace]`: full-text results from the derived index.
+- `search`, args `[text, optionalWorkspace]`: the hybrid search (`searchBoard`: full-text,
+  transcripts included, plus meaning when semantic search is on), up to 100 matching
+  cards; the board's card search box, History and the palette all use it. The
+  index is caught up in a child process (`src/search/index-worker.ts`) before each search and
+  when the server starts, which also rebuilds an index another version built; the event
+  loop never waits on it. Overlapping requests share the next run.
 - `catalog`, args `[cardId]`: a receipt with local harness command metadata. The
   recorded working folder determines project scope; the browser cannot supply a
   path. Reads are bounded and only one catalog read per socket runs at a time:

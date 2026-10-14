@@ -2,7 +2,7 @@ import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -14,6 +14,7 @@ import { startServer, type RunningServer, type ServerMessage } from '../src/serv
 import { infoPath, localToken, socketPath } from '../src/server/state.ts'
 import { boardDir, loadBoard, spoolDir, spoolWrite, withWriter } from '../src/store/board-store.ts'
 import { decidePush } from '../src/core/decide.ts'
+import { indexStatus, searchPath } from '../src/search/index.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -469,4 +470,46 @@ test('browser reply delivery uses only configured fixture homes and never resend
   }
 
   t.ws.close()
+})
+
+const assistantLine = (text: string, at: string) => JSON.stringify({ type: 'assistant', timestamp: at, message: { content: [{ type: 'text', text }] } }) + '\n'
+
+test('the board search finds a card by a word only its transcript holds, including words a live session just wrote', async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  server = await startServer({ board: 'default' })
+  const t = await tab(); await t.next()
+
+  const search = async (id: string, text: string) => {
+    t.command(id, 'search', [text])
+
+    for (;;) {
+      const m = await t.next()
+
+      if ((m.type === 'receipt' || m.type === 'error') && m.id === id) {
+        return m
+      }
+    }
+  }
+
+  const cards = (m: ServerMessage) => (m.type === 'receipt' ? (m.hits as { card: string }[]).map(h => h.card) : m)
+  // "readable" is only in the transcript's first user message, not in any title, link or event.
+  assert.deepEqual(cards(await search('s1', 'readable')), [fixture.state.keys.layout])
+  appendFileSync(fixture.transcript, assistantLine('The flamingo rollout is staged behind the flag.', '2026-10-13T11:00:00Z'))
+  assert.deepEqual(cards(await search('s2', 'flamingo rollout')), [fixture.state.keys.layout])
+  assert.deepEqual(cards(await search('s3', 'flamingo nowhere')), [])
+  t.ws.close()
+})
+
+test('the server rebuilds a stale search index in the background when it starts', async () => {
+  seedWebFixture(process.env.PNYX_HOME!)
+  // An index another version left behind.
+  writeFileSync(searchPath('default'), 'not a database')
+  assert.equal(indexStatus('default')?.current, false)
+  server = await startServer({ board: 'default' })
+  const status = await until(() => {
+    const s = indexStatus('default')
+
+    return s?.current && s.docs.transcript > 0 ? s : undefined
+  }, 'a rebuilt index')
+  assert.equal(status.transcripts.tracked, 1)
 })

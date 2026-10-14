@@ -9,11 +9,11 @@ import type { Command } from './connection.ts'
 export const findCards = (command: Command, query: string, workspace = '') =>
   command('search', [query, workspace]).then(r => (r.hits as HybridHit[]).filter(h => !h.weak))
 
-// The cards the search found strongly by meaning alone, best first, for the board's
-// "Find a card" box to add after its own matches; none with no query, before the
-// server answers, or with semantic search off.
-export function useMeaningCards(command: Command, query: string, workspace: string): string[] {
-  const [found, setFound] = useState<{ query: string; ids: string[] } | null>(null)
+// The cards the search found strongly, by words anywhere on them (transcripts included)
+// or by meaning, best first, for the board's "Find a card" box to add after its own
+// matches; none with no query or before the server answers.
+export function useFoundCards(command: Command, query: string, workspace: string): HybridHit[] {
+  const [found, setFound] = useState<{ query: string; hits: HybridHit[] } | null>(null)
   const q = query.trim()
   useEffect(() => {
     if (!q) {
@@ -24,7 +24,7 @@ export function useMeaningCards(command: Command, query: string, workspace: stri
     const timer = setTimeout(() => {
       void findCards(command, q, workspace).then(hits => {
         if (live) {
-          setFound({ query: `${q}\n${workspace}`, ids: hits.filter(h => h.match === 'semantic').map(h => h.card) })
+          setFound({ query: `${q}\n${workspace}`, hits })
         }
       }, () => {})
     }, 180)
@@ -34,5 +34,5 @@ export function useMeaningCards(command: Command, query: string, workspace: stri
     }
   }, [command, q, workspace])
 
-  return q && found?.query === `${q}\n${workspace}` ? found.ids : []
+  return q && found?.query === `${q}\n${workspace}` ? found.hits : []
 }

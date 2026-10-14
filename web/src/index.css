@@ -79,3 +79,4 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .work-area > .detail { max-width: 70%; }
 @media (max-width: 760px) { .work-area > .detail { max-width: 100%; } }
+.search-match { margin-top: 8px; font-size: .7em; color: var(--color-muted); line-height: 1.5; overflow-wrap: anywhere; }
