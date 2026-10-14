@@ -130,6 +130,7 @@ function apply(state: BoardState, event: BoardEvent): boolean {
   if (event.undoes) state.undone[event.undoes] = event.id;
   card.column = columnFor(card);
   card.revision += 1;
+  if (event.type === "card.noted") return true;
   card.updatedSeq = event.seq;
   card.updatedAt = event.at;
   return true;

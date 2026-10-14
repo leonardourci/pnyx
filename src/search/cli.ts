@@ -97,6 +97,7 @@ Results are ranked by BM25, best first, one per card with its ${SNIPPETS} best-m
 snippets (with --card, its matching entries up to --limit); ${LIMIT} cards by default (max ${MAX}).
 A harvested note (a summary, decision or context; see \`pnyx-axi harvest\`) counts double.
 Each search first indexes what the log and transcripts gained. The index, search.db in the board's
-folder, is a derived cache: \`search rebuild\` deletes and rebuilds it from the log and transcripts.
+folder, is a derived cache: \`search rebuild\` deletes and rebuilds it from the log and transcripts,
+after harvesting every card's transcript.
 Tool calls and output, thinking and injected text are not indexed; secret-shaped strings are redacted.
 `;

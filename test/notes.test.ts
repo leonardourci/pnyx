@@ -161,3 +161,31 @@ test("search finds notes and ranks them above the same words in a transcript", (
   assert.deepEqual(cards(run("search", "zebrafish", "--kind", "transcript")), ["c1"]);
   assert.match(run("search", "status"), /^ {2}note: 1$/m);
 });
+
+test("a harvested note neither reorders cards nor changes when they were updated", () => {
+  const { run, push, transcript } = board();
+  push("claude:s1", { title: "Invoices", agent: { provider: "claude-code", sessionId: "s1", transcriptPath: transcript("s1.jsonl", CLAUDE) } });
+  push("other", { title: "Other" });
+  const before = loadBoard("default").state.cards.c1!;
+  assert.match(run("harvest"), /^ {2}notes: 6 new$/m);
+  const after = loadBoard("default").state.cards.c1!;
+  assert.equal(after.notes?.length, 6);
+  assert.equal(after.revision, before.revision + 6);
+  assert.equal(after.updatedSeq, before.updatedSeq);
+  assert.equal(after.updatedAt, before.updatedAt);
+  assert.ok(after.updatedSeq < loadBoard("default").state.cards.c2!.updatedSeq);
+});
+
+test("building the search index first harvests every transcript, so compaction summaries stay searchable", () => {
+  const { home, run, push } = board();
+  const path = join(home, "s1.jsonl");
+  writeFileSync(path, readFileSync(CLAUDE, "utf8"));
+  push("claude:s1", { title: "Invoices", agent: { provider: "claude-code", sessionId: "s1", transcriptPath: path } });
+  assert.equal(noted().length, 0);
+  assert.match(run("search", "zebrafish", "--kind", "note"), /^ {2}- card: c1$/m);
+  assert.equal(noted().length, 6);
+  appendFileSync(path, `${JSON.stringify({ type: "user", isCompactSummary: true, uuid: "z2", message: { content: "Quokka migration paused." } })}\n`);
+  assert.match(run("search", "rebuild"), /rebuilt:/);
+  assert.equal(noted().length, 7);
+  assert.match(run("search", "quokka", "--kind", "note"), /^ {2}- card: c1$/m);
+});

@@ -152,7 +152,7 @@ test("search finds titles, links, notes and transcript text, ranked one per card
   assert.deepEqual(cards(run("search", "orders", "--kind", "transcript")), ["c1"]);
 
   const status = run("search", "status");
-  assert.match(status, /^index: current through seq 4$/m);
+  assert.match(status, /^index: current through seq 5$/m);
   assert.match(status, /^semantic: "planned, not built"$/m);
   assert.match(status, /^ {2}tracked: 1$/m);
   assert.equal(statSync(join(home, "boards", "default", "search.db")).mode & 0o777, 0o600);
@@ -202,9 +202,9 @@ test("words from different entries of one card match the card, and --card matche
 test("each search indexes what the log and transcripts gained", () => {
   const { run, push, transcript } = board();
   run("search", "reverted");
-  assert.match(run("search", "status"), /^index: current through seq 4$/m);
+  assert.match(run("search", "status"), /^index: current through seq 5$/m);
   push("claude:s3", { title: "Canary rollout" });
-  assert.match(run("search", "status"), /^index: "behind: through seq 4 of 5; the next search catches up"$/m);
+  assert.match(run("search", "status"), /^index: "behind: through seq 5 of 6; the next search catches up"$/m);
   // The torn last line completes, and a new message lands.
   appendFileSync(transcript, `}}\n${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Canary is green" }] } })}\n`);
   assert.equal(cards(run("search", "canary")).length, 2);
@@ -231,7 +231,7 @@ test("rebuild recreates the index from the sources", () => {
   writeFileSync(db, "not a database");
   assert.match(run("search", "status"), /^index: "stale: /m);
   assert.match(run("search", "reverted"), /^results\[1\]/m);
-  assert.match(run("search", "rebuild"), /^ {2}docs: 14$/m);
+  assert.match(run("search", "rebuild"), /^ {2}docs: 15$/m);
   assert.match(run("search", "reverted"), /^results\[1\]/m);
 });
 
@@ -248,8 +248,8 @@ test("words match by stem, ignoring case and accents", () => {
   const { run, push } = board();
   assert.deepEqual(cards(run("search", "deploying", "migrations")), ["c1"]);
   push("claude:s3", { title: "Migração do banco" });
-  assert.deepEqual(cards(run("search", "migracao")), ["c5"]);
-  assert.deepEqual(cards(run("search", "MIGRAÇÃO")), ["c5"]);
+  assert.deepEqual(cards(run("search", "migracao")), ["c6"]);
+  assert.deepEqual(cards(run("search", "MIGRAÇÃO")), ["c6"]);
 });
 
 test("a word matches its synonyms", () => {

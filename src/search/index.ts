@@ -8,7 +8,8 @@ import { createRequire } from "node:module";
 import { isAbsolute, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { BoardError } from "../core/model.ts";
-import { boardDir, loadBoard, readEventsFrom } from "../store/board-store.ts";
+import { harvestTranscripts } from "../integrations/hooks/harvest.ts";
+import { boardDir, loadBoard, readEventsFrom, withWriter } from "../store/board-store.ts";
 import { synonymGroup } from "./synonyms.ts";
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from "./text.ts";
 
@@ -97,7 +98,8 @@ function isCurrent(db: DatabaseSync): boolean {
 }
 
 // Opens the index for writing, creating it, or deleting and recreating it when it
-// was built by another schema or chunker version.
+// was built by another schema or chunker version. A new index first harvests every
+// card's transcript, so what a transcript holds as a note is a note before it is indexed.
 // ponytail: a rebuild deletes the file under any concurrent reader; it reopens on its next query.
 function openWriter(board: string, fresh = false): DatabaseSync {
   const { DatabaseSync } = sqlite();
@@ -111,6 +113,7 @@ function openWriter(board: string, fresh = false): DatabaseSync {
     db.close();
     removeIndex(path);
   }
+  withWriter(board, (writer) => harvestTranscripts(writer, Object.keys(writer.state.cards), new Date().toISOString()));
   const db = new DatabaseSync(path);
   // Transcript text is as private as the transcripts.
   chmodSync(path, 0o600);
