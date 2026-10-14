@@ -5,6 +5,7 @@
 // Captain's intent.
 import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { canonical } from '../../cli/commands.ts'
 import { basename, join } from 'node:path'
 import { BoardError, type SourceNote } from '../../core/model.ts'
 import { latestActivity, latestLine, openDecisions, statusNotes, type OpenDecision } from './status.ts'
@@ -27,6 +28,8 @@ export interface TaskObservation {
   done: boolean
   merged: boolean
   activity?: string
+  // Canonical path of the task's worktree from its meta, where its agent runs.
+  worktree?: string
   decisions: OpenDecision[]
   // The latest status line, when it is failed: or blocked:.
   stalled?: { verb: string; note: string }
@@ -200,6 +203,7 @@ export function readHome(home: string): HomeObservation {
     const pr = meta.pr
     const activity = latestActivity(log)
     const last = latestLine(log)
+    const worktree = canonical(meta.worktree)
     tasks.push({
       task,
       title: row?.title ?? task,
@@ -208,6 +212,7 @@ export function readHome(home: string): HomeObservation {
       done: row?.done ?? false,
       merged: row?.merged ?? false,
       ...(activity ? { activity } : {}),
+      ...(worktree ? { worktree } : {}),
       decisions: openDecisions(log, meta.kind || 'ship'),
       ...(last && (last.verb === 'failed' || last.verb === 'blocked') ? { stalled: { verb: last.verb, note: last.note } } : {}),
       notes: taskNotes(home, task, log),

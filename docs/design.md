@@ -13,7 +13,7 @@ Firstmate can launch some workers with hooks disabled, so hooks alone cannot cov
 
 **Notes are harvested, never written for Pnyx.** Each card keeps a Summary, Decisions and Context section built only from what sources already recorded, at no model cost and with nothing new asked of agents: Claude Code's compaction summaries, session titles and AskUserQuestion questions with the user's answers; Codex's readable compaction summaries; Firstmate's needs-decision, resolved and done lines with their text and the brief's Captain's intent; and a linked pull request's title and description through `gh-axi`. Transcripts are harvested when a session ends a turn and on `pnyx-axi harvest`, Firstmate records on every sync, pull requests on `pnyx-axi harvest`. Every source is only read.
 
-Paseo, Herdr and tmux are optional later enrichments for location, native thread access or typing. A plain terminal inventory does not create cards. Hooks cover local sessions where user hooks are enabled; they cannot discover a session that was already running until it sends a supported event, and they cannot override disabled hooks. Missing coverage is shown explicitly. Firstmate's initial file snapshot imports its existing tasks.
+Typing into a session needs no extra source: the hooks record, when a session starts or takes a prompt, the harness process, its TTY and the host around it (tmux, Herdr, Paseo, iTerm2 or Terminal) from the environment. Paseo, Herdr and tmux remain optional later enrichments for location and native thread access. A plain terminal inventory does not create cards. Hooks cover local sessions where user hooks are enabled; they cannot discover a session that was already running until it sends a supported event, and they cannot override disabled hooks. Missing coverage is shown explicitly. Firstmate's initial file snapshot imports its existing tasks.
 
 ## Silent reporting and push delivery
 
@@ -40,12 +40,12 @@ A post-tool hook that sees a recognized `gh pr create`/`merge`, its `gh-axi` equ
 Board {id, name, schemaVersion, ruleVersion, sources, workspaceMappings,
        manualMovePolicy, viewPreferences, sessionStartSummary:false}
 Card {id, key, title, workspace, tags[], parentId?, sourceRefs[], agentRef?,
-      settings?, terminalRef?, links[], taskOutcome, activity, attention[], notes[], freshness,
+      settings?, terminalRef?, folder?, links[], taskOutcome, activity, attention[], notes[], freshness,
       manualColumn?, revision}
 Note {kind:summary|decision|context, source, text, at?}
 SourceRef {adapter, instanceId, objectId, generation, cursor?, observedAt}
 AgentRef {hostId, provider, sessionId, childAgentId?, parentEvidence?, cwd}
-TerminalRef {machineId, backend, endpointId, processGeneration}
+TerminalRef {tty, pid, program, tmux, tmuxPane, paseoTerminal, paseoHome, herdrSession, herdrPane}
 Link {kind:github_pr|linear|url, url, label, number?, observedState?, checkedAt?}
 Settings {model?, effort?, mode?, fast?, <harness-specific>?}
 ```
@@ -54,7 +54,7 @@ A card's settings are what its harness already reports, never asked for: hook pa
 
 Observations of the same agent join by **same session ID or same working folder**, applied across all sources rather than as rules per adapter pair. IDs are namespaced by host and provider, and folder paths are canonicalized on the same host. Both observations and their provenance are kept: Firstmate supplies backlog titles and task decisions, hooks add native session identity. Event IDs and source generations handle replay and process reuse.
 
-Folder equality is a fallback match, not proof that every process in a repository is one agent. Distinct known session or child IDs stay distinct, and several folder-only candidates stay ambiguous until identity resolves them. Joins are recorded as reversible aliases so a wrong join can be corrected without deleting source history. Two agents and nested children sharing one folder must be tested before shipping.
+A source can assign a card its working folder: an open Firstmate task records its worktree, and a hook session started there reports to that task card, so the card has one composer. Folder equality is a fallback match, not proof that every process in a repository is one agent. Distinct known session or child IDs stay distinct, and several folder-only candidates stay ambiguous until identity resolves them. Joins are recorded as reversible aliases so a wrong join can be corrected without deleting source history. Two agents and nested children sharing one folder must be tested before shipping.
 
 Each card has exactly one coarse workspace, free tags, an optional parent ID, and explicit workspace mappings with `unassigned` for gaps. Parents may cross workspaces; filters do not expose an excluded parent's details. Parent cycles are rejected. Titles are literal source or backlog titles, or ID fallbacks, never model-generated. Hooks never infer task completion from idle, turn end or terminal exit.
 
@@ -93,7 +93,7 @@ Size estimate: 100 cards × 50 changed facts a day × 800 bytes is about **4 MB 
 
 Claude Code hooks expose transcript paths: read completed JSONL records and follow file changes. Codex session files need a version-tested reader, with "unavailable" shown for missing or unsupported paths. An optional Paseo adapter can use its paginated timeline. Readers handle partial lines, replacement, rotation and compaction and never write to native transcripts. Only recorded thinking that the provider exposes is shown. Logical children without an input endpoint point to their owner.
 
-The composer queues literal text for a verified existing route. Firstmate-owned work always replies through Firstmate's send command; other input routes are optional source capabilities. Native skills and commands stay interpreted by the harness. A missing, busy, changed or unverified route keeps the reply queued. An ambiguous send result becomes `delivery_unknown` instead of triggering a blind duplicate. A successful submit is not proof the agent handled or answered the message.
+The composer queues literal text for a verified existing route, chosen deterministically from recorded facts. Firstmate-owned work always replies through Firstmate's send command. Any other session is typed into the terminal its hooks recorded, through the innermost host: tmux send-keys (a paste buffer), Herdr's or Paseo's CLI, or AppleScript for iTerm2 and Terminal, which find the session by TTY and need the user's one-time macOS automation permission. Before typing, the harness process must still own its recorded TTY, so text never lands in a shell left behind. The text is typed once, then submitted with Enter after a settle that is longer for a leading / or $. Terminal is the exception: its `do script` types the text and Return together, with no settle. A card without a route says why in the composer. Native skills and commands stay interpreted by the harness. A missing, changed or unverified route types nothing and records the reply failed with the reason. An ambiguous send result becomes `delivery_unknown` instead of triggering a blind duplicate. A successful submit is not proof the agent handled or answered the message.
 
 Listener presence, source freshness and working/idle are distinct facts. Socket connection and close, plus consumer leases, drive the "Not watching" banner; lease timers measure presence, not source polling. Ping is a deduplicated queued nudge where a wake route exists. Re-attach opens the known native session. There is no automatic restart and no repeated ping loop. Firstmate's inbox policy stays authoritative for Firstmate work.
 
@@ -139,6 +139,6 @@ Workspace filters, colored tags, an orchestrator with its children, four columns
 
 1. **Smallest useful v1:** event writer, reducer and cache; the AXI CLI; local socket and spool; silent user hooks for tested Claude Code and Codex versions; the Firstmate file reader, FSEvents watcher and send route; the generic identity join; the four-column WebSocket board; native thread reads; history; shared preferences; linked open pull request state through `gh-axi`. No Firstmate patches.
 2. **Prove the boundaries:** fixture replay and undo, sibling agents in one folder, hook-disabled Firstmate workers, silent and fast hook failure with spool recovery, watcher gap recovery, source permission state, idempotent queues and reply receipts. Benchmarks establish the latency and memory targets before they are claimed.
-3. **Optional integrations:** Paseo, Herdr and tmux location and input, and more harness hooks. Add capabilities one at a time; never substitute periodic polling for a missing push contract.
+3. **Optional integrations:** Paseo, Herdr and tmux location and native threads, and more harness hooks. Add capabilities one at a time; never substitute periodic polling for a missing push contract.
 
 Deliberately absent: model classification or board-maintenance agents, dispatch or supervision by Pnyx, permission bypass, GitHub work management, cloud hosting, terminal emulation, universal transcript scraping, inferred completion, automatic restarts and a database for board state (`search.db` is a derived, deletable index).

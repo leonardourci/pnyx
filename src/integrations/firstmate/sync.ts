@@ -15,6 +15,7 @@ import {
 import type { Attention, BoardState, Card, SourceRef } from '../../core/model.ts'
 import { drainSpool } from '../../cli/commands.ts'
 import { withWriter, type Writer } from '../../store/board-store.ts'
+import { HOOK } from '../hooks/observe.ts'
 import {
   ADAPTER,
   HOME_OBJECT,
@@ -78,13 +79,24 @@ function attention(task: TaskObservation): Attention[] {
   ]
 }
 
-function taskCard(home: HomeObservation, task: TaskObservation): Record<string, unknown> {
+// The attention a joined hook session opened on the card, which sync leaves alone.
+function hookAttention(state: BoardState, key: string): Attention[] {
+  return state.cards[state.keys[key] ?? '']?.attention.filter(a => a.key.startsWith(HOOK)) ?? []
+}
+
+function taskCard(
+  home: HomeObservation,
+  task: TaskObservation,
+  kept: Attention[],
+): Record<string, unknown> {
   return {
     title: task.title,
     tags: task.repo ? [task.repo] : [],
     parent: home.key,
     ...(task.activity ? { activity: task.activity } : {}),
-    attention: attention(task),
+    // A pool reuses worktrees, so a closed task gives its folder up for the next one.
+    folder: task.worktree && !task.done ? task.worktree : null,
+    attention: [...attention(task), ...kept],
     source: source(home.path, task.task),
   }
 }
@@ -134,7 +146,8 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
 
     for (const task of observed.tasks) {
       const key = `${observed.key}:${task.task}`
-      appended += apply(writer, decidePush(writer.state, key, taskCard(observed, task), meta))
+      const card = taskCard(observed, task, hookAttention(writer.state, key))
+      appended += apply(writer, decidePush(writer.state, key, card, meta))
       const link = prLink(writer.state, key, task, at)
 
       if (link) {
@@ -177,13 +190,15 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
         continue
       }
 
-      if (card.attention.length === 0) {
+      const kept = hookAttention(writer.state, card.key)
+
+      if (card.attention.length === kept.length) {
         continue
       }
 
       appended += apply(
         writer,
-        decidePush(writer.state, card.key, { attention: [], source: ref }, meta),
+        decidePush(writer.state, card.key, { attention: kept, source: ref }, meta),
       )
     }
 

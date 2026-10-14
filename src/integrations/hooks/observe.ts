@@ -3,6 +3,7 @@
 // never run. Every mapping is a fixed rule on fields the harness sends; nothing
 // is classified by a model.
 import type { Attention } from '../../core/model.ts'
+import { terminalFacts } from '../../core/route.ts'
 import { hookSettings } from './settings.ts'
 
 export const HARNESSES = ['claude', 'codex'] as const
@@ -15,6 +16,8 @@ export interface HookEnvelope {
   at: string
   harness: Harness
   event: string
+  // Where the session's terminal is, on SessionStart and UserPromptSubmit.
+  terminal?: unknown
   payload: unknown
 }
 
@@ -62,7 +65,7 @@ export const DEPLOY_COMMANDS = [
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
 // Keys of the requests hooks open, so clearing them never touches another source's.
-const HOOK = 'hook:'
+export const HOOK = 'hook:'
 const ELICITATION = `${HOOK}elicitation`
 const NOTIFICATION = `${HOOK}notification`
 // Requests that end once the agent is busy again: waiting idle and a failed turn.
@@ -328,7 +331,8 @@ export function observe(envelope: HookEnvelope): Observation[] {
   const activity = found.activity ? { activity: found.activity } : {}
   const out: Observation[] = []
   let key = parentKey
-  let card: Record<string, unknown> = { ...session, ...activity }
+  const terminal = terminalFacts(envelope.terminal)
+  let card: Record<string, unknown> = { ...session, ...activity, ...(terminal ? { terminal } : {}) }
 
   if (agentId) {
     const clears = found.attend?.clear?.some(prefix => NOTIFICATION.startsWith(prefix))

@@ -50,6 +50,21 @@ export interface AgentRef {
 // are kept. src/integrations/hooks/settings.ts lists where each one comes from.
 export type AgentSettings = Record<string, string>
 
+// Where a hook found the session's terminal, recorded from the environment it ran
+// in: the harness process and its TTY, the terminal program, and the tmux pane,
+// Paseo terminal or Herdr pane around it. A reply route reads it.
+export interface TerminalFacts {
+  tty?: string
+  pid?: string
+  program?: string
+  tmux?: string
+  tmuxPane?: string
+  paseoTerminal?: string
+  paseoHome?: string
+  herdrSession?: string
+  herdrPane?: string
+}
+
 export interface Link {
   kind: LinkKind
   url: string
@@ -116,6 +131,10 @@ export interface Card {
   activity?: string
   agent?: AgentRef
   settings?: AgentSettings
+  terminal?: TerminalFacts
+  // The working folder a source assigned, such as a Firstmate task's worktree; a
+  // hook session started in it joins this card.
+  folder?: string
   attention: Attention[]
   links: Link[]
   sourceRefs: SourceRef[]
@@ -141,6 +160,8 @@ export interface PushFields {
   agent?: AgentRef
   // The card's whole settings after the push; null when it has none.
   settings?: AgentSettings | null
+  terminal?: TerminalFacts
+  folder?: string | null
   attention?: Attention[]
 }
 
