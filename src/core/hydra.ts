@@ -1,6 +1,7 @@
 // Hydra's work records. No I/O, timers or inferred state transitions.
 import { BoardError, EVENT_VERSION, TASK_STATES, type BoardColumn, type BoardConfig, type BoardEvent, type BoardState, type Card, type Column, type HydraEvent, type TaskStatus } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
+import { assignDefined } from './tasks.ts'
 
 export const HYDRA_CARD = '$hydra'
 export const TEMPLATE_COLUMNS: BoardColumn[] = [
@@ -70,8 +71,13 @@ export function refreshTasks({ state }: { state: BoardState }): void {
 
   if (hydra) {
     hydra.sessionIds = session ? [session.id] : []
-    hydra.agent = session ? { ...session.agent } : undefined
-    hydra.terminal = session?.terminal && { ...session.terminal }
+    assignDefined({
+      target: hydra,
+      values: {
+        agent: session && { ...session.agent },
+        terminal: session?.terminal && { ...session.terminal },
+      },
+    })
     hydra.hidden = true
   }
 }

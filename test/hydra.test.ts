@@ -116,7 +116,11 @@ test('ad-hoc sessions never become tasks, and a confirmed merge completes declar
 
   try {
     f.run({ args: ['board', 'create', 'default'] })
-    f.push({ key: 'ad-hoc', input: { title: 'Unassigned interactive session', agent: { provider: 'codex', sessionId: 's' }, terminal: { tty: '/dev/ttys123' } } })
+    const adHoc = { title: 'Unassigned interactive session', agent: { provider: 'codex', sessionId: 's' }, terminal: { tty: '/dev/ttys123' } }
+    f.push({ key: 'ad-hoc', input: adHoc })
+    const pushed = f.events().length
+    f.push({ key: 'ad-hoc', input: adHoc })
+    assert.equal(f.events().length, pushed)
     assert.equal(Object.values(f.state().cards).filter(card => liveTask({ card })).length, 0)
     f.run({ args: ['board', 'set', '--hydra', 'codex:s', '--session', 'codex:s'] })
     f.run({ args: ['task', 'create', '--key', 'work', '--title', 'Work'] })
