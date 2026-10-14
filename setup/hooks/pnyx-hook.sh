@@ -30,18 +30,24 @@ fact() {
 }
 case $event in
 SessionStart | UserPromptSubmit)
-  # The harness is the nearest ancestor with a TTY, past any wrapper shell; the
-  # hook itself may run detached from the terminal.
+  # The harness is the nearest ancestor past any wrapper shell. Its TTY and pid are
+  # recorded only when it has a TTY, so a headless run (`claude -p`, `codex exec`)
+  # records none, even when an interactive session started it.
   pid=$PPID
   for _ in 1 2 3 4; do
     # shellcheck disable=SC2046
     set -- $(ps -o ppid= -o tty= -o comm= -p "$pid")
     [ $# -ge 3 ] || break
-    case $2:${3##*/} in
-    '?:'* | '??:'* | *:sh | *:bash | *:zsh | *:dash | *:-*) ;;
+    case ${3##*/} in
+    sh | bash | zsh | dash | -*) ;;
     *)
-      fact tty "/dev/$2"
-      fact pid "$pid"
+      case $2 in
+      '?' | '??') ;;
+      *)
+        fact tty "/dev/$2"
+        fact pid "$pid"
+        ;;
+      esac
       break
       ;;
     esac

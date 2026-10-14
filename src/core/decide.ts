@@ -322,8 +322,10 @@ function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
 // session (a superseded session reports to its own card), else the one card whose
 // source assigned the session's working folder, such as the Firstmate task running
 // there. A card that already holds a session passes to a new session only in the
-// card's own Paseo terminal (after /clear, /new or a respawn the source recorded);
-// a session in another or an unknown terminal keeps its own card and never takes
+// card's own Paseo terminal, and only to an interactive one (it has a tty) once the
+// card's session ended, on the same tty (/clear, /new), or after the source
+// recorded a new terminal for a respawn; a headless run the session started, or a
+// session in another or an unknown terminal, keeps its own card and never takes
 // over the task's agent, terminal or reply route. A card launched in another Paseo
 // terminal than the session's is not its task. When several cards remain, the one
 // launched in the session's own terminal wins; otherwise they stay ambiguous and
@@ -352,9 +354,14 @@ export function joinedKey({ state, key, folder, terminal }: {
   }
 
   const session = terminal?.paseoTerminal
+  const tty = terminal?.tty
   const ownTerminal = (c: Card) => !!session && c.terminal?.paseoTerminal === session
+  const succeeds = (c: Card) => !!tty
+    && (c.activity === 'ended' || !c.terminal?.tty || c.terminal.tty === tty)
   const matches = Object.values(state.cards).filter(c => c.folder === folder
-    && (ownTerminal(c) || (!c.agent && (!session || !c.terminal?.paseoTerminal))))
+    && (c.agent
+      ? ownTerminal(c) && succeeds(c)
+      : ownTerminal(c) || !session || !c.terminal?.paseoTerminal))
   const own = matches.filter(ownTerminal)
 
   return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key

@@ -201,7 +201,7 @@ test('a card with no route says why', () => {
 
 const execFileAsync = promisify(execFile)
 
-test('the hook records the terminal the session runs in, past wrapper shells', async () => {
+test('the hook records the terminal the session runs in, past wrapper shells, and none for a headless run', async () => {
   const { root, env } = hosts()
   const home = join(root, 'pnyx')
   const script = join(home, 'hooks', 'pnyx-hook.sh')
@@ -239,6 +239,21 @@ test('the hook records the terminal the session runs in, past wrapper shells', a
   process.env.PNYX_HOME = home
   const { state } = loadBoard({ board: 'default' })
   assert.deepEqual(state.cards[state.keys['claude:s1']!]!.terminal, line.terminal)
+
+  // A headless harness that session started records no tty or pid of its own.
+  writeFileSync(join(env.STUB_DIR, 'ps.out.3'), '888 ?? zsh\n')
+  writeFileSync(join(env.STUB_DIR, 'ps.out.4'), '777 ?? /usr/local/bin/claude\n')
+  writeFileSync(join(env.STUB_DIR, 'ps.out.5'), '1 ttys042 /usr/local/bin/claude\n')
+  const headless = execFileAsync('/bin/sh', [script, 'claude', 'SessionStart'], { encoding: 'utf8', env: hostEnv })
+  headless.child.stdin!.end('{"session_id":"s2","cwd":"/work"}')
+  await headless
+  const [file] = readdirSync(spool).filter(f => f.endsWith('.json'))
+  assert.deepEqual(JSON.parse(readFileSync(join(spool, file!), 'utf8')).terminal, {
+    program: 'tmux',
+    tmux: '/tmp/tmux-501/default',
+    tmuxPane: '%5',
+    paseoTerminal: 'term-1',
+  })
 })
 
 test('agent types a Claude Code command, answers its confirmation and presses keys where the host can', () => {

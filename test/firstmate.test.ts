@@ -502,7 +502,8 @@ test('a session joins the task launched in its worktree; only a session in its t
   const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
   const meta = (task: string, terminal: string) =>
     writeFileSync(join(home, 'state', `${task}.meta`), `task=${task}\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=${terminal}\n`)
-  const hook = (id: string, session: string, paseoTerminal?: string) =>
+  const tty = { tty: '/dev/ttys042', pid: '4242' }
+  const hook = (id: string, session: string, paseoTerminal?: string, facts: object = tty, extra: object = {}) =>
     spoolWrite({
       board: 'default',
       entry: {
@@ -511,8 +512,8 @@ test('a session joins the task launched in its worktree; only a session in its t
         at: '2026-10-14T00:00:00Z',
         harness: 'claude',
         event: 'SessionStart',
-        payload: { session_id: session, cwd: worktree },
-        terminal: { tty: '/dev/ttys042', pid: '4242', program: 'kitty', ...(paseoTerminal ? { paseoTerminal } : {}) },
+        payload: { session_id: session, cwd: worktree, ...extra },
+        terminal: { ...facts, program: 'kitty', ...(paseoTerminal ? { paseoTerminal } : {}) },
       },
     })
   const own = (session: string) => !!loadBoard({ board: 'default' }).state.keys[`claude:${session}`]
@@ -539,9 +540,16 @@ test('a session joins the task launched in its worktree; only a session in its t
   assert.equal(own('s-twin'), true)
   assert.equal(own('s-bare'), true)
 
-  // A new session in the task's own terminal (/clear, /new) continues the card,
-  // and its later events reach it.
-  hook('h2c', 's-b2', 'term-b')
+  // A headless run the worker starts in its worktree inherits the task's terminal
+  // but has no tty of its own, so it keeps its own card.
+  hook('h2h', 's-child', 'term-b', {})
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf(home, 'wt-b').agent?.sessionId, 's-b')
+  assert.equal(own('s-child'), true)
+
+  // Claude Code's /clear starts a new session on the same tty, which continues the
+  // card, and its later events reach it.
+  hook('h2c', 's-b2', 'term-b', tty, { source: 'clear' })
   syncHome({ board: 'default', home })
   hook('h2d', 's-b2', 'term-b')
   syncHome({ board: 'default', home })
