@@ -34,7 +34,7 @@ export function KeyboardSettings({
       }
     }
 
-    const invalid = keyboardError(next)
+    const invalid = keyboardError({ prefs: next })
 
     if (invalid) {
       setError(invalid)
@@ -80,10 +80,10 @@ export function KeyboardSettings({
                 disabled={busy}
                 aria-label={`Rebind ${a.label}`}
                 onClick={() => {
-                  setEditing(a.id); setDraft(bindingsFor(prefs, a.id).join('\n')); setError('')
+                  setEditing(a.id); setDraft(bindingsFor({ prefs, id: a.id }).join('\n')); setError('')
                 }}
               >
-                <kbd>{keyLabel(bindingsFor(prefs, a.id), platform)}</kbd>
+                <kbd>{keyLabel({ keys: bindingsFor({ prefs, id: a.id }), platform })}</kbd>
                 <span className="muted">Edit</span>
               </Button>
             </div>

@@ -14,7 +14,7 @@ const MAX_BYTES = 10 * 1024 * 1024
 const MAX_TEXT = 1000
 
 const splitEntry = (entry: ThreadEntry): ThreadEntry[] => {
-  const text = redact(entry.text)
+  const text = redact({ text: entry.text })
 
   if (text.length <= MAX_TEXT) {
     return [{ ...entry, text }]
@@ -49,7 +49,7 @@ export function recordEntries(record: unknown, offset: number): ThreadEntry[] {
   const payload = obj(r.payload), message = obj(r.message)
   const role = typeof payload.role === 'string' ? payload.role : String(r.type)
   const at = typeof r.timestamp === 'string' ? r.timestamp : undefined
-  const entries: ThreadEntry[] = transcriptMessages(record).map((m, i) => ({ id: `${offset}:m${i}`, kind: 'message', role, text: m.text, at: m.at }))
+  const entries: ThreadEntry[] = transcriptMessages({ record }).map((m, i) => ({ id: `${offset}:m${i}`, kind: 'message', role, text: m.text, at: m.at }))
   const blocks = Array.isArray(message.content) ? message.content : r.type === 'response_item' ? [payload] : []
 
   for (const [i, raw] of blocks.entries()) {
@@ -101,14 +101,14 @@ function lastMessage(lines: string[]): LatestMessage | null {
       continue
     }
 
-    const messages = transcriptMessages(record)
+    const messages = transcriptMessages({ record })
 
     if (!messages.length) {
       continue
     }
 
     const r = obj(record), role = obj(r.payload).role ?? r.type
-    const text = redact(messages.map(m => m.text).join(' ')).replace(/\s+/g, ' ')
+    const text = redact({ text: messages.map(m => m.text).join(' ') }).replace(/\s+/g, ' ')
       .trim()
 
     return {
@@ -189,12 +189,12 @@ type RepliedEvent = Extract<BoardEvent, { type: 'card.replied' }>
 const replyLogs = new Map<string, { end: number; events: RepliedEvent[] }>()
 
 function repliedEvents(board: string): RepliedEvent[] {
-  const dir = boardDir(board)
+  const dir = boardDir({ board })
   let log = replyLogs.get(dir) ?? { end: 0, events: [] }
-  let read = readEventsFrom(board, log.end)
+  let read = readEventsFrom({ board, offset: log.end })
 
   if (!read) {
-    log = { end: 0, events: [] }; read = readEventsFrom(board, 0)
+    log = { end: 0, events: [] }; read = readEventsFrom({ board, offset: 0 })
   }
 
   const added = (read?.events ?? []).filter((e): e is RepliedEvent => e.type === 'card.replied' && !!e.data.text)
@@ -211,7 +211,7 @@ export function readThread(
   homes: string[],
   before?: string,
 ): ThreadPage {
-  const found = replyRoute(card, homes)
+  const found = replyRoute({ card, homes })
   const result: ThreadPage = {
     card: card.id,
     entries: [],

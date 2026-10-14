@@ -38,7 +38,7 @@ export interface ReplyReceipt {
 }
 
 function invalid(message: string, help: string[] = []): BoardError {
-  return new BoardError(message, 'VALIDATION_ERROR', help)
+  return new BoardError({ message, code: 'VALIDATION_ERROR', help })
 }
 
 // The route name kept on each receipt.
@@ -60,65 +60,68 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
   const meta = (): Meta => ({ at: new Date().toISOString(), actor: request.actor ?? 'cli' })
   const homes = request.homes.map(resolveHome)
 
-  const queued = withWriter(board, writer => {
-    drainSpool(writer)
-    const card = findCard(writer.state, request.card)
-    const found = replyRoute(card, homes)
+  const queued = withWriter({
+    board,
+    fn: ({ writer }) => {
+      drainSpool(writer)
+      const card = findCard({ state: writer.state, ref: request.card })
+      const found = replyRoute({ card, homes })
 
-    if ('reason' in found) {
-      const home = card.sourceRefs.find(r => r.adapter === 'firstmate')?.instanceId
+      if ('reason' in found) {
+        const home = card.sourceRefs.find(r => r.adapter === 'firstmate')?.instanceId
 
-      if (home && found.reason.includes('not configured')) {
-        throw invalid(`card ${card.id} belongs to Firstmate home ${home}, which is not configured`, [
-          `Pass --home ${home} to allow replies to it`,
-        ])
+        if (home && found.reason.includes('not configured')) {
+          throw invalid(`card ${card.id} belongs to Firstmate home ${home}, which is not configured`, [
+            `Pass --home ${home} to allow replies to it`,
+          ])
+        }
+
+        throw new BoardError({ message: `card ${card.id} has no reply route: ${found.reason}`, code: 'NO_ROUTE' })
       }
 
-      throw new BoardError(`card ${card.id} has no reply route: ${found.reason}`, 'NO_ROUTE')
-    }
+      const route = found.route
 
-    const route = found.route
+      if (route.kind === 'firstmate') {
+        if (!TASK_ID.test(route.task)) {
+          throw new BoardError({ message: `card ${card.id} has no reply route`, code: 'NO_ROUTE', help: ['Reply to a Firstmate task card'] })
+        }
 
-    if (route.kind === 'firstmate') {
-      if (!TASK_ID.test(route.task)) {
-        throw new BoardError(`card ${card.id} has no reply route`, 'NO_ROUTE', ['Reply to a Firstmate task card'])
+        // fm-send has no `--` separator, so a leading flag would be read as an option.
+        if (text.startsWith('--')) {
+          throw invalid('reply text cannot start with --')
+        }
+      } else if (resolveKey !== undefined) {
+        throw invalid('--resolve-key answers Firstmate decisions; this card replies through its terminal')
       }
 
-      // fm-send has no `--` separator, so a leading flag would be read as an option.
-      if (text.startsWith('--')) {
-        throw invalid('reply text cannot start with --')
+      const reply = request.id ?? `r${writer.state.seq + 1}`
+      const known = card.replies?.find(r => r.id === reply)
+
+      if (known && known.state !== 'failed') {
+        return { card: card.id, reply, state: known.state, route, resend: false }
       }
-    } else if (resolveKey !== undefined) {
-      throw invalid('--resolve-key answers Firstmate decisions; this card replies through its terminal')
-    }
 
-    const reply = request.id ?? `r${writer.state.seq + 1}`
-    const known = card.replies?.find(r => r.id === reply)
-
-    if (known && known.state !== 'failed') {
-      return { card: card.id, reply, state: known.state, route, resend: false }
-    }
-
-    if (
-      resolveKey !== undefined
+      if (
+        resolveKey !== undefined
       && (
         resolveKey === STATUS_KEY
         || resolveKey.startsWith(HOOK)
         || !card.attention.some(a => a.key === resolveKey)
       )
-    ) {
-      throw invalid(`card ${card.id} has no open decision with key ${resolveKey}`, [`Run \`pnyx-axi card ${card.id}\` to see its attention keys`])
-    }
+      ) {
+        throw invalid(`card ${card.id} has no open decision with key ${resolveKey}`, [`Run \`pnyx-axi card ${card.id}\` to see its attention keys`])
+      }
 
-    // A retry after a failed send queues again, so every attempt has its own receipts.
-    const data = { reply, state: 'queued' as const, route: routeName(route), text, ...(resolveKey ? { resolveKey } : {}) }
-    const decision = decideReply(writer.state, card.id, data, meta())
+      // A retry after a failed send queues again, so every attempt has its own receipts.
+      const data = { reply, state: 'queued' as const, route: routeName(route), text, ...(resolveKey ? { resolveKey } : {}) }
+      const decision = decideReply({ state: writer.state, ref: card.id, data, meta: meta() })
 
-    if ('event' in decision) {
-      writer.append(decision.event)
-    }
+      if ('event' in decision) {
+        writer.append({ event: decision.event })
+      }
 
-    return { card: card.id, reply, state: 'queued' as ReplyState, route, resend: true }
+      return { card: card.id, reply, state: 'queued' as ReplyState, route, resend: true }
+    },
   })
 
   if (!queued.resend) {
@@ -130,14 +133,17 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
   const receipt = { card: queued.card, reply: queued.reply, sent: true, ...outcome }
 
   try {
-    withWriter(board, writer => {
-      drainSpool(writer)
-      const data = { reply: queued.reply, route: routeName(queued.route), ...outcome }
-      const decision = decideReply(writer.state, queued.card, data, meta())
+    withWriter({
+      board,
+      fn: ({ writer }) => {
+        drainSpool(writer)
+        const data = { reply: queued.reply, route: routeName(queued.route), ...outcome }
+        const decision = decideReply({ state: writer.state, ref: queued.card, data, meta: meta() })
 
-      if ('event' in decision) {
-        writer.append(decision.event)
-      }
+        if ('event' in decision) {
+          writer.append({ event: decision.event })
+        }
+      },
     })
   } catch (error) {
     return { ...receipt, recordError: (error as Error).message }

@@ -111,7 +111,7 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const notify = useCallback((text: string) => setNotice(text), [])
   const pendingScroll = useRef(restored.scroll)
-  const view = viewFor(state)
+  const view = viewFor({ state })
   const columns = columnsFor(state)
   const found = useFoundCards(command, query, workspace)
   const matches = new Map(found.map(h => [h.card, h]))

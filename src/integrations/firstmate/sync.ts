@@ -115,7 +115,7 @@ function prLink(state: BoardState, key: string, task: TaskObservation, at: strin
     return null
   }
 
-  return parseLink({ url: task.pr, state: task.merged ? 'merged' : 'open', checkedAt: at })
+  return parseLink({ input: { url: task.pr, state: task.merged ? 'merged' : 'open', checkedAt: at } })
 }
 
 function apply(writer: Writer, decision: Decision): number {
@@ -123,7 +123,7 @@ function apply(writer: Writer, decision: Decision): number {
     return 0
   }
 
-  writer.append(decision.event)
+  writer.append({ event: decision.event })
 
   return 1
 }
@@ -135,74 +135,114 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
   const observed = readHome(home)
   const meta: Meta = { at, actor: ADAPTER }
 
-  return withWriter(board, writer => {
-    drainSpool(writer)
-    let appended = apply(writer, decidePush(
-      writer.state,
-      observed.key,
-      { title: observed.title, tags: [ADAPTER], source: source(home, HOME_OBJECT) },
-      meta,
-    ))
+  return withWriter({
+    board,
+    fn: ({ writer }) => {
+      drainSpool(writer)
+      let appended = apply(writer, decidePush(
+        {
+          state: writer.state,
+          key: observed.key,
+          input: {
+            title: observed.title,
+            tags: [ADAPTER],
+            source: source(home, HOME_OBJECT),
+          },
+          meta,
+        },
+      ))
 
-    for (const task of observed.tasks) {
-      const key = `${observed.key}:${task.task}`
-      const card = taskCard(observed, task, hookAttention(writer.state, key))
-      appended += apply(writer, decidePush(writer.state, key, card, meta))
-      const link = prLink(writer.state, key, task, at)
+      for (const task of observed.tasks) {
+        const key = `${observed.key}:${task.task}`
+        const card = taskCard(observed, task, hookAttention(writer.state, key))
+        appended += apply(writer, decidePush({ state: writer.state, key, input: card, meta }))
+        const link = prLink(writer.state, key, task, at)
 
-      if (link) {
-        appended += apply(writer, decideLink(writer.state, key, link.url, link, meta))
+        if (link) {
+          appended += apply(writer, decideLink({
+            state: writer.state,
+            ref: key,
+            url: link.url,
+            link,
+            meta,
+          }))
+        }
+
+        // Closed in Firstmate's backlog: done, or failed when its last line was failed:.
+        // A done: status line alone is often a handoff. An outcome Firstmate recorded
+        // follows the backlog; one recorded by hand is left alone.
+        const current = writer.state.cards[writer.state.keys[key]!]!.outcome
+
+        if (current ? current.source === ADAPTER : task.done) {
+          const outcome = !task.done
+            ? null
+            : task.stalled?.verb === 'failed'
+              ? { state: 'failed' as const, note: 'closed after failure', closed: true }
+              : { state: 'done' as const }
+          appended += apply(writer, decideOutcome({
+            state: writer.state,
+            ref: key,
+            outcome,
+            meta,
+            source: ADAPTER,
+          }))
+        }
+
+        for (const { ref, ...note } of task.notes) {
+          appended += apply(
+            writer,
+            decideNote({
+              state: writer.state,
+              ref: key,
+              note,
+              meta: {
+                ...meta,
+                id: noteId({
+                  cardKey: key,
+                  ref,
+                }),
+              },
+            }),
+          )
+        }
       }
 
-      // Closed in Firstmate's backlog: done, or failed when its last line was failed:.
-      // A done: status line alone is often a handoff. An outcome Firstmate recorded
-      // follows the backlog; one recorded by hand is left alone.
-      const current = writer.state.cards[writer.state.keys[key]!]!.outcome
+      const live = new Set(observed.tasks.map(t => t.task))
 
-      if (current ? current.source === ADAPTER : task.done) {
-        const outcome = !task.done
-          ? null
-          : task.stalled?.verb === 'failed'
-            ? { state: 'failed' as const, note: 'closed after failure', closed: true }
-            : { state: 'done' as const }
-        appended += apply(writer, decideOutcome(writer.state, key, outcome, meta, ADAPTER))
-      }
+      for (const card of Object.values(writer.state.cards)) {
+        const ref = firstmateRef(card)
 
-      for (const { ref, ...note } of task.notes) {
-        appended += apply(
-          writer,
-          decideNote(writer.state, key, note, { ...meta, id: noteId(key, ref) }),
-        )
-      }
-    }
-
-    const live = new Set(observed.tasks.map(t => t.task))
-
-    for (const card of Object.values(writer.state.cards)) {
-      const ref = firstmateRef(card)
-
-      if (
-        !ref
+        if (
+          !ref
         || ref.instanceId !== home
         || ref.objectId === HOME_OBJECT
         || live.has(ref.objectId)
-      ) {
-        continue
+        ) {
+          continue
+        }
+
+        const kept = hookAttention(writer.state, card.key)
+
+        if (card.attention.length === kept.length) {
+          continue
+        }
+
+        appended += apply(
+          writer,
+          decidePush({
+            state: writer.state,
+            key: card.key,
+            input: {
+              attention: kept,
+              source: ref,
+            },
+            meta,
+          }),
+        )
       }
 
-      const kept = hookAttention(writer.state, card.key)
-
-      if (card.attention.length === kept.length) {
-        continue
-      }
-
-      appended += apply(
-        writer,
-        decidePush(writer.state, card.key, { attention: kept, source: ref }, meta),
-      )
-    }
-
-    return { tasks: observed.tasks.length, appended }
+      return { tasks: observed.tasks.length, appended }
+    },
   })
 }
 

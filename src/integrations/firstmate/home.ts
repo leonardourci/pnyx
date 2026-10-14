@@ -58,13 +58,17 @@ export function resolveHome(path: string): string {
   try {
     real = realpathSync(path)
   } catch {
-    throw new BoardError(`Firstmate home not found: ${path}`, 'NOT_FOUND', ["Pass the home's root folder with --home"])
+    throw new BoardError({ message: `Firstmate home not found: ${path}`, code: 'NOT_FOUND', help: ["Pass the home's root folder with --home"] })
   }
 
   if (!isDir(join(real, 'state'))) {
-    throw new BoardError(`not a Firstmate home (no state/ folder): ${path}`, 'VALIDATION_ERROR', [
-      "Pass the home's root folder with --home",
-    ])
+    throw new BoardError({
+      message: `not a Firstmate home (no state/ folder): ${path}`,
+      code: 'VALIDATION_ERROR',
+      help: [
+        "Pass the home's root folder with --home",
+      ],
+    })
   }
 
   return real

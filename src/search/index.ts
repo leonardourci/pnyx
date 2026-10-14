@@ -79,23 +79,23 @@ export function sqlite(): typeof import('node:sqlite') {
   }
 }
 
-export const searchPath = (board: string) => join(boardDir(board), 'search.db')
+export const searchPath = ({ board }: { board: string }) => join(boardDir({ board }), 'search.db')
 
-function removeIndex(path: string): void {
+function removeIndex({ path }: { path: string }): void {
   for (const suffix of ['', '-journal', '-wal', '-shm']) {
     rmSync(`${path}${suffix}`, { force: true })
   }
 }
 
-function metaValue(db: DatabaseSync, key: string): string | undefined {
+function metaValue({ db, key }: { db: DatabaseSync; key: string }): string | undefined {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined
 
   return row?.value
 }
 
-function isCurrent(db: DatabaseSync): boolean {
+function isCurrent({ db }: { db: DatabaseSync }): boolean {
   try {
-    return metaValue(db, 'index_schema_version') === String(SCHEMA_VERSION) && metaValue(db, 'chunker_version') === String(CHUNKER_VERSION)
+    return metaValue({ db, key: 'index_schema_version' }) === String(SCHEMA_VERSION) && metaValue({ db, key: 'chunker_version' }) === String(CHUNKER_VERSION)
   } catch {
     return false
   }
@@ -105,32 +105,32 @@ function isCurrent(db: DatabaseSync): boolean {
 // was built by another schema or chunker version. A new index first harvests every
 // card's transcript, so what a transcript holds as a note is a note before it is indexed.
 // ponytail: a rebuild deletes the file under any concurrent reader; it reopens on its next query.
-function openWriter(board: string, fresh = false): DatabaseSync {
+function openWriter({ board, fresh = false }: { board: string; fresh?: boolean }): DatabaseSync {
   const { DatabaseSync } = sqlite()
-  const path = searchPath(board)
-  mkdirSync(boardDir(board), { recursive: true })
+  const path = searchPath({ board })
+  mkdirSync(boardDir({ board }), { recursive: true })
 
   if (fresh) {
-    removeIndex(path)
+    removeIndex({ path })
   }
 
   if (existsSync(path)) {
     const db = new DatabaseSync(path)
     db.exec('PRAGMA busy_timeout = 5000')
 
-    if (isCurrent(db)) {
+    if (isCurrent({ db })) {
       return db
     }
 
     db.close()
-    removeIndex(path)
+    removeIndex({ path })
   }
 
-  withWriter(board, writer => harvestTranscripts(
-    writer,
-    Object.keys(writer.state.cards),
-    new Date().toISOString(),
-  ))
+  withWriter({
+    board,
+    fn: ({ writer }) =>
+      harvestTranscripts(writer, Object.keys(writer.state.cards), new Date().toISOString()),
+  })
   const db = new DatabaseSync(path)
   // Transcript text is as private as the transcripts.
   chmodSync(path, 0o600)
@@ -151,7 +151,7 @@ interface Cursor {
   seq: number
 }
 
-function transaction<T>(db: DatabaseSync, fn: () => T): T {
+function transaction<T>({ db, fn }: { db: DatabaseSync; fn: () => T }): T {
   db.exec('BEGIN IMMEDIATE')
 
   try {
@@ -173,7 +173,7 @@ export interface IndexResult {
 
 // Folds what the log and the recorded transcripts gained since the cursors into
 // the index, in one transaction. SQLite's write lock keeps two indexers apart.
-function catchUp(db: DatabaseSync, board: string): IndexResult {
+function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResult {
   const insert = db.prepare(
     'INSERT OR IGNORE INTO docs (card, kind, source, pos, part, at, body, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
   )
@@ -183,8 +183,8 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
   const putTerm = db.prepare('INSERT OR IGNORE INTO terms (term) VALUES (?)')
   const seen = new Set<string>()
 
-  const addTerms = (text: string) => {
-    for (const term of words(text)) {
+  const addTerms = ({ text }: { text: string }) => {
+    for (const term of words({ text })) {
       if (seen.has(term)) {
         continue
       }
@@ -197,24 +197,26 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
   let docs = 0
 
   const add = (
-    card: string,
-    kind: Kind,
-    source: string,
-    pos: number,
-    at: string,
-    text: string,
-    firstPart = 0,
+    { card, kind, source, pos, at, text, firstPart = 0 }: {
+      card: string
+      kind: Kind
+      source: string
+      pos: number
+      at: string
+      text: string
+      firstPart?: number
+    },
   ): number => {
     let part = firstPart
 
-    for (const body of chunk(redact(text))) {
+    for (const body of chunk({ text: redact({ text }) })) {
       const hash = createHash('sha256').update(body)
         .digest('hex')
       const changes = Number(insert.run(card, kind, source, pos, part, at, body, hash).changes)
 
       if (changes) {
         dirty.add(card)
-        addTerms(body)
+        addTerms({ text: body })
       }
 
       docs += changes
@@ -231,98 +233,106 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
   )
   const track = db.prepare("INSERT OR IGNORE INTO cursors (source, card, identity, pos, seq) VALUES (?, ?, '', 0, 0)")
 
-  return transaction(db, () => {
-    let cursor = (getCursor.get(EVENTS) as Cursor | undefined) ?? { source: EVENTS, card: '', identity: '', pos: 0, seq: 0 }
-    let read = readEventsFrom(board, cursor.pos)
+  return transaction({
+    db,
+    fn: () => {
+      let cursor = (getCursor.get(EVENTS) as Cursor | undefined) ?? { source: EVENTS, card: '', identity: '', pos: 0, seq: 0 }
+      let read = readEventsFrom({ board, offset: cursor.pos })
 
-    // The log never shrinks or reorders, so a mismatch means the index is from another log: start over.
-    if (!read || (read.events.length > 0 && read.events[0]!.seq !== cursor.seq + 1)) {
-      db.exec('DELETE FROM docs; DELETE FROM cursors; DELETE FROM cards; DELETE FROM card_fts; DELETE FROM terms; DELETE FROM terms_tri;')
-      cursor = { ...cursor, pos: 0, seq: 0 }
-      read = readEventsFrom(board, 0)!
-    }
+      // The log never shrinks or reorders, so a mismatch means the index is from another log: start over.
+      if (!read || (read.events.length > 0 && read.events[0]!.seq !== cursor.seq + 1)) {
+        db.exec('DELETE FROM docs; DELETE FROM cursors; DELETE FROM cards; DELETE FROM card_fts; DELETE FROM terms; DELETE FROM terms_tri;')
+        cursor = { ...cursor, pos: 0, seq: 0 }
+        read = readEventsFrom({ board, offset: 0 })!
+      }
 
-    for (const event of read.events) {
+      for (const event of read.events) {
       // A note carries the time its source recorded it, when known.
-      if (event.type === 'card.noted') {
-        add(event.cardId, 'note', EVENTS, event.seq, event.data.at ?? event.at, eventText(event))
-      } else {
-        add(event.cardId, 'event', EVENTS, event.seq, event.at, eventText(event))
-      }
+        if (event.type === 'card.noted') {
+          add({ card: event.cardId, kind: 'note', source: EVENTS, pos: event.seq, at: event.data.at ?? event.at, text: eventText({ event }) })
+        } else {
+          add({ card: event.cardId, kind: 'event', source: EVENTS, pos: event.seq, at: event.at, text: eventText({ event }) })
+        }
 
-      const path = event.type === 'card.pushed' ? event.data.agent?.transcriptPath : undefined
+        const path = event.type === 'card.pushed' ? event.data.agent?.transcriptPath : undefined
 
-      if (path && isAbsolute(path) && path.endsWith('.jsonl')) {
-        track.run(path, event.cardId)
-      }
-    }
-
-    putCursor.run({ ...cursor, pos: read.end, seq: read.events.at(-1)?.seq ?? cursor.seq })
-
-    let transcripts = 0
-    const dropSource = db.prepare('DELETE FROM docs WHERE source = ?')
-
-    for (const t of db.prepare('SELECT * FROM cursors WHERE source <> ?').all(EVENTS) as unknown as Cursor[]) {
-      const tail = readTranscript(t)
-
-      if (!tail) {
-        continue
-      }
-
-      if (tail.reset && Number(dropSource.run(t.source).changes)) {
-        dirty.add(t.card)
-      }
-
-      for (const line of tail.lines) {
-        let part = 0
-
-        for (const m of transcriptMessages(line.record)) {
-          part = add(t.card, 'transcript', t.source, line.pos, m.at ?? '', m.text, part)
+        if (path && isAbsolute(path) && path.endsWith('.jsonl')) {
+          track.run(path, event.cardId)
         }
       }
 
-      putCursor.run({ ...t, identity: tail.identity, pos: tail.end, seq: 0 })
-      transcripts += tail.lines.length > 0 ? 1 : 0
-    }
+      putCursor.run({ ...cursor, pos: read.end, seq: read.events.at(-1)?.seq ?? cursor.seq })
 
-    const getContext = db.prepare('SELECT context FROM cards WHERE id = ?')
-    const putCard = db.prepare(
-      'INSERT INTO cards (id, title, workspace, context) VALUES (:id, :title, :workspace, :context) ' +
+      let transcripts = 0
+      const dropSource = db.prepare('DELETE FROM docs WHERE source = ?')
+
+      for (const t of db.prepare('SELECT * FROM cursors WHERE source <> ?').all(EVENTS) as unknown as Cursor[]) {
+        const tail = readTranscript({ cursor: t })
+
+        if (!tail) {
+          continue
+        }
+
+        if (tail.reset && Number(dropSource.run(t.source).changes)) {
+          dirty.add(t.card)
+        }
+
+        for (const line of tail.lines) {
+          let part = 0
+
+          for (const m of transcriptMessages({ record: line.record })) {
+            part = add({ card: t.card, kind: 'transcript', source: t.source, pos: line.pos, at: m.at ?? '', text: m.text, firstPart: part })
+          }
+        }
+
+        putCursor.run({ ...t, identity: tail.identity, pos: tail.end, seq: 0 })
+        transcripts += tail.lines.length > 0 ? 1 : 0
+      }
+
+      const getContext = db.prepare('SELECT context FROM cards WHERE id = ?')
+      const putCard = db.prepare(
+        'INSERT INTO cards (id, title, workspace, context) VALUES (:id, :title, :workspace, :context) ' +
         'ON CONFLICT (id) DO UPDATE SET title = :title, workspace = :workspace, context = :context',
-    )
+      )
 
-    for (const card of Object.values(loadBoard(board).state.cards)) {
-      const context = redact([card.title, ...card.links.map(l => l.title)].filter(Boolean).join('\n'))
+      for (const card of Object.values(loadBoard({ board }).state.cards)) {
+        const context = redact({ text: [card.title, ...card.links.map(l => l.title)].filter(Boolean).join('\n') })
 
-      if ((getContext.get(card.id) as { context: string } | undefined)?.context !== context) {
-        dirty.add(card.id)
-        addTerms(context)
+        if ((getContext.get(card.id) as { context: string } | undefined)?.context !== context) {
+          dirty.add(card.id)
+          addTerms({ text: context })
+        }
+
+        putCard.run({ id: card.id, title: card.title, workspace: card.workspace, context })
       }
 
-      putCard.run({ id: card.id, title: card.title, workspace: card.workspace, context })
-    }
+      // ponytail: a changed card's row is rebuilt from all its chunks; append-only rows if long sessions make that slow.
+      const getCard = db.prepare('SELECT n, context FROM cards WHERE id = ?')
+      const cardBody = db.prepare(
+        "SELECT coalesce(group_concat(body, char(10)), '') AS body FROM (SELECT body FROM docs WHERE card = ? AND (kind = 'note') = ? ORDER BY id)",
+      )
+      const dropCard = db.prepare('DELETE FROM card_fts WHERE rowid = ?')
+      const putCardText = db.prepare('INSERT INTO card_fts (rowid, context, notes, body) VALUES (?, ?, ?, ?)')
 
-    // ponytail: a changed card's row is rebuilt from all its chunks; append-only rows if long sessions make that slow.
-    const getCard = db.prepare('SELECT n, context FROM cards WHERE id = ?')
-    const cardBody = db.prepare(
-      "SELECT coalesce(group_concat(body, char(10)), '') AS body FROM (SELECT body FROM docs WHERE card = ? AND (kind = 'note') = ? ORDER BY id)",
-    )
-    const dropCard = db.prepare('DELETE FROM card_fts WHERE rowid = ?')
-    const putCardText = db.prepare('INSERT INTO card_fts (rowid, context, notes, body) VALUES (?, ?, ?, ?)')
+      for (const id of dirty) {
+        const card = getCard.get(id) as { n: number; context: string } | undefined
 
-    for (const id of dirty) {
-      const card = getCard.get(id) as { n: number; context: string } | undefined
+        if (!card) {
+          continue
+        }
 
-      if (!card) {
-        continue
+        dropCard.run(BigInt(card.n))
+        const text = ({ notes }: {
+          notes: boolean
+        }) =>
+          (cardBody.get(id, notes ? 1 : 0) as {
+            body: string
+          }).body
+        putCardText.run(BigInt(card.n), card.context, text({ notes: true }), text({ notes: false }))
       }
 
-      dropCard.run(BigInt(card.n))
-      const text = (notes: boolean) => (cardBody.get(id, notes ? 1 : 0) as { body: string }).body
-      putCardText.run(BigInt(card.n), card.context, text(true), text(false))
-    }
-
-    return { events: read.events.length, transcripts, docs }
+      return { events: read.events.length, transcripts, docs }
+    },
   })
 }
 
@@ -338,7 +348,7 @@ export interface TranscriptRead {
 // inode) or one shorter than the cursor is read again from the start. Null when
 // the file is missing or unreadable, so the cursor waits for it.
 // ponytail: reads the unread tail in one buffer; stream it if transcripts grow past memory.
-export function readTranscript(cursor: Pick<Cursor, 'source' | 'identity' | 'pos'>): TranscriptRead | null {
+export function readTranscript({ cursor }: { cursor: Pick<Cursor, 'source' | 'identity' | 'pos'> }): TranscriptRead | null {
   let fd: number
 
   try {
@@ -375,21 +385,21 @@ export function readTranscript(cursor: Pick<Cursor, 'source' | 'identity' | 'pos
   }
 }
 
-export function updateIndex(board: string): IndexResult {
-  const db = openWriter(board)
+export function updateIndex({ board }: { board: string }): IndexResult {
+  const db = openWriter({ board })
 
   try {
-    return catchUp(db, board)
+    return catchUp({ db, board })
   } finally {
     db.close()
   }
 }
 
-export function rebuildIndex(board: string): IndexResult {
-  const db = openWriter(board, true)
+export function rebuildIndex({ board }: { board: string }): IndexResult {
+  const db = openWriter({ board, fresh: true })
 
   try {
-    return catchUp(db, board)
+    return catchUp({ db, board })
   } finally {
     db.close()
   }
@@ -427,19 +437,19 @@ export interface Hit {
 }
 
 // Case and accents folded, as the index folds them.
-const fold = (text: string) => text.toLowerCase().normalize('NFD')
+const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
   .replace(/\p{M}/gu, '')
 
 // The distinct words of a text, folded, as typo matching looks them up. Words under
 // three letters have no trigram; longer than 32 are mostly hashes and ids.
-function words(text: string): Set<string> {
-  return new Set((fold(text).match(/[\p{L}\p{N}]+/gu) ?? []).filter(w => w.length >= 3 && w.length <= 32))
+function words({ text }: { text: string }): Set<string> {
+  return new Set((fold({ text }).match(/[\p{L}\p{N}]+/gu) ?? []).filter(w => w.length >= 3 && w.length <= 32))
 }
 
-const quote = (phrase: string) => `"${phrase.replace(/"/g, '""')}"`
+const quote = ({ phrase }: { phrase: string }) => `"${phrase.replace(/"/g, '""')}"`
 
 // A query word without the punctuation around it, as synonyms and typo matching look it up.
-const bare = (token: string) => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+const bare = ({ token }: { token: string }) => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
 
 // One query word, or a synonym phrase, and what it may match: its synonym group,
 // or the word itself. A trailing * matches the word as a prefix, and the indexed
@@ -450,7 +460,7 @@ interface Term {
   typo: boolean
 }
 
-function queryTerms(text: string): Term[] {
+function queryTerms({ text }: { text: string }): Term[] {
   const tokens = text.split(/\s+/).filter(token => /[\p{L}\p{N}]/u.test(token))
   const terms: Term[] = []
 
@@ -462,13 +472,13 @@ function queryTerms(text: string): Term[] {
       continue
     }
 
-    const pair = i + 1 < tokens.length ? synonymGroup.get(`${bare(token)} ${bare(tokens[i + 1]!)}`.toLowerCase()) : undefined
+    const pair = i + 1 < tokens.length ? synonymGroup.get(`${bare({ token })} ${bare({ token: tokens[i + 1]! })}`.toLowerCase()) : undefined
 
     if (pair) {
       i += 1
     }
 
-    const group = pair ?? synonymGroup.get(bare(token).toLowerCase())
+    const group = pair ?? synonymGroup.get(bare({ token }).toLowerCase())
     terms.push(
       group
         ? { alts: group, prefix: false, typo: false }
@@ -481,23 +491,27 @@ function queryTerms(text: string): Term[] {
 
 // A term as an FTS5 expression, each phrase quoted so punctuation is never read as
 // query syntax. A prefix term's first alternative is the prefix.
-function termExpr(term: Term): string {
-  const alts = term.alts.map((alt, i) => `${quote(alt)}${term.prefix && i === 0 ? '*' : ''}`)
+function termExpr({ term }: { term: Term }): string {
+  const alts = term.alts.map((alt, i) => `${quote({ phrase: alt })}${term.prefix && i === 0 ? '*' : ''}`)
 
   return alts.length === 1 ? alts[0]! : `(${alts.join(' OR ')})`
 }
 
 // Every term must match.
-export const ftsQuery = (text: string): string => queryTerms(text).map(termExpr)
+export const ftsQuery = ({ text }: {
+  text: string
+}): string => queryTerms({
+  text,
+}).map(term => termExpr({ term }))
   .join(' AND ')
 
-const trigrams = (word: string) =>
+const trigrams = ({ word }: { word: string }) =>
   Array.from({ length: Math.max(word.length - 2, 0) }, (_, i) => word.slice(i, i + 3))
 
 // Trigram similarity of two words, padded so their first and last letters weigh in.
-function similarity(a: string, b: string): number {
-  const x = new Set(trigrams(` ${a} `))
-  const y = new Set(trigrams(` ${b} `))
+function similarity({ a, b }: { a: string; b: string }): number {
+  const x = new Set(trigrams({ word: ` ${a} ` }))
+  const y = new Set(trigrams({ word: ` ${b} ` }))
   const shared = [...x].filter(t => y.has(t)).length
 
   return shared / (x.size + y.size - shared)
@@ -507,8 +521,8 @@ const SIMILAR = 0.4
 const NEAREST = 5
 
 // The indexed words nearest a query word: similar by trigrams, or containing it.
-function nearest(db: DatabaseSync, word: string): string[] {
-  const w = fold(bare(word))
+function nearest({ db, word }: { db: DatabaseSync; word: string }): string[] {
+  const w = fold({ text: bare({ token: word }) })
 
   if (!/^[\p{L}\p{N}]{3,}$/u.test(w)) {
     return []
@@ -516,13 +530,13 @@ function nearest(db: DatabaseSync, word: string): string[] {
 
   const candidates = db
     .prepare('SELECT term FROM terms_tri WHERE terms_tri MATCH ? ORDER BY rank LIMIT 200')
-    .all(trigrams(w).map(quote)
+    .all(trigrams({ word: w }).map(phrase => quote({ phrase }))
       .join(' OR ')) as { term: string }[]
 
   return candidates
     .map(({ term }) => ({
       term,
-      score: term.includes(w) && w.length >= 4 ? 1 : similarity(w, term),
+      score: term.includes(w) && w.length >= 4 ? 1 : similarity({ a: w, b: term }),
     }))
     .filter(c => c.term !== w && c.score >= SIMILAR)
     .sort((a, b) => b.score - a.score || a.term.localeCompare(b.term))
@@ -535,8 +549,8 @@ const PREFIXED = 50
 // The indexed words starting with a prefix. FTS5 stems a prefix query ("retry"* looks
 // for retri*), so a prefix also matches these words, each stemmed as the index stems it.
 // ponytail: the first PREFIXED words in order; a short prefix may miss later ones.
-function prefixed(db: DatabaseSync, prefix: string): string[] {
-  const p = fold(bare(prefix))
+function prefixed({ db, prefix }: { db: DatabaseSync; prefix: string }): string[] {
+  const p = fold({ text: bare({ token: prefix }) })
 
   if (!p) {
     return []
@@ -553,44 +567,48 @@ function prefixed(db: DatabaseSync, prefix: string): string[] {
 // chunks matching the most words. With --card or --kind every word must match in one chunk of that card or kind.
 // Words match stemmed, case and accent folded, and with their synonyms; when that
 // finds nothing, words also match the indexed words nearest them.
-export function search(board: string, query: Query): { hits: Hit[]; total: number; match: Match } {
-  const typed = queryTerms(query.text)
+export function search({ board, query }: {
+  board: string
+  query: Query
+}): {
+  hits: Hit[]
+  total: number
+  match: Match
+} {
+  const typed = queryTerms({ text: query.text })
 
   if (!typed.length) {
-    throw new BoardError('query has no words to search for', 'VALIDATION_ERROR', ['Run `pnyx-axi search "<words>"`'])
+    throw new BoardError({ message: 'query has no words to search for', code: 'VALIDATION_ERROR', help: ['Run `pnyx-axi search "<words>"`'] })
   }
 
   const { DatabaseSync } = sqlite()
-  const db = new DatabaseSync(searchPath(board), { readOnly: true })
+  const db = new DatabaseSync(searchPath({ board }), { readOnly: true })
 
   try {
     db.exec('PRAGMA busy_timeout = 5000')
     const terms = typed.map(t => (
-      t.prefix ? { ...t, alts: [...t.alts, ...prefixed(db, t.alts[0]!)] } : t
+      t.prefix ? { ...t, alts: [...t.alts, ...prefixed({ db, prefix: t.alts[0]! })] } : t
     ))
-    const lexical = run(db, query, terms, 'lexical')
+    const lexical = run({ db, query, terms, mode: 'lexical' })
 
     if (lexical.hits.length) {
       return lexical
     }
 
     const fuzzy = terms.map(t => (
-      t.typo ? { ...t, alts: [...t.alts, ...nearest(db, t.alts[0]!)] } : t
+      t.typo ? { ...t, alts: [...t.alts, ...nearest({ db, word: t.alts[0]! })] } : t
     ))
 
-    return fuzzy.some((t, i) => t.alts.length !== terms[i]!.alts.length) ? run(db, query, fuzzy, 'fuzzy') : lexical
+    return fuzzy.some((t, i) => t.alts.length !== terms[i]!.alts.length) ? run({ db, query, terms: fuzzy, mode: 'fuzzy' }) : lexical
   } finally {
     db.close()
   }
 }
 
 function run(
-  db: DatabaseSync,
-  query: Query,
-  terms: Term[],
-  mode: Match,
+  { db, query, terms, mode }: { db: DatabaseSync; query: Query; terms: Term[]; mode: Match },
 ): { hits: Hit[]; total: number; match: Match } {
-  const exprs = terms.map(termExpr)
+  const exprs = terms.map(term => termExpr({ term }))
   const match = exprs.join(' AND ')
   const filters = { match, workspace: query.workspace ?? null }
   const chunks = `SELECT d.id, d.card, ${RANK} AS rank FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid JOIN cards c ON c.id = d.card
@@ -647,8 +665,8 @@ export interface IndexStatus {
 }
 
 // Reads the index without writing it. Null when it has not been built.
-export function indexStatus(board: string): IndexStatus | null {
-  const path = searchPath(board)
+export function indexStatus({ board }: { board: string }): IndexStatus | null {
+  const path = searchPath({ board })
 
   if (!existsSync(path)) {
     return null
@@ -661,7 +679,7 @@ export function indexStatus(board: string): IndexStatus | null {
     db.exec('PRAGMA busy_timeout = 5000')
     const bytes = statSync(path).size
 
-    if (!isCurrent(db)) {
+    if (!isCurrent({ db })) {
       return {
         builtThrough: 0,
         docs: { event: 0, note: 0, transcript: 0 },
@@ -671,13 +689,13 @@ export function indexStatus(board: string): IndexStatus | null {
       }
     }
 
-    const count = (kind: Kind) => (db.prepare('SELECT count(*) AS n FROM docs WHERE kind = ?').get(kind) as { n: number }).n
+    const count = ({ kind }: { kind: Kind }) => (db.prepare('SELECT count(*) AS n FROM docs WHERE kind = ?').get(kind) as { n: number }).n
     const cursors = db.prepare('SELECT * FROM cursors').all() as unknown as Cursor[]
     const transcripts = cursors.filter(c => c.source !== EVENTS)
 
     return {
       builtThrough: cursors.find(c => c.source === EVENTS)?.seq ?? 0,
-      docs: { event: count('event'), note: count('note'), transcript: count('transcript') },
+      docs: { event: count({ kind: 'event' }), note: count({ kind: 'note' }), transcript: count({ kind: 'transcript' }) },
       transcripts: {
         tracked: transcripts.length,
         missing: transcripts.filter(c => !existsSync(c.source)).length,

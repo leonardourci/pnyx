@@ -22,7 +22,7 @@ export const TERMINAL_FIELDS: Record<keyof TerminalFacts, RegExp> = {
 }
 
 // The recorded facts that have the accepted shape; undefined when none do.
-export function terminalFacts(value: unknown): TerminalFacts | undefined {
+export function terminalFacts({ value }: { value: unknown }): TerminalFacts | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return undefined
   }
@@ -59,24 +59,24 @@ export const HOST_LABEL: Record<ReplyRoute['kind'], string> = {
 // The innermost host wins: tmux and Herdr run inside a terminal app and inherit
 // its variables, and Paseo stamps its own into everything started from it.
 // TERM_PROGRAM is set by the terminal emulator itself, and tmux replaces it.
-function host(t: TerminalFacts): TerminalHost | undefined {
-  if (t.tmux && t.tmuxPane) {
-    return { kind: 'tmux', socket: t.tmux, pane: t.tmuxPane }
+function host({ facts }: { facts: TerminalFacts }): TerminalHost | undefined {
+  if (facts.tmux && facts.tmuxPane) {
+    return { kind: 'tmux', socket: facts.tmux, pane: facts.tmuxPane }
   }
 
-  if (t.herdrSession && t.herdrPane) {
-    return { kind: 'herdr', session: t.herdrSession, pane: t.herdrPane }
+  if (facts.herdrSession && facts.herdrPane) {
+    return { kind: 'herdr', session: facts.herdrSession, pane: facts.herdrPane }
   }
 
-  if (t.paseoTerminal) {
-    return { kind: 'paseo', terminal: t.paseoTerminal, ...(t.paseoHome ? { home: t.paseoHome } : {}) }
+  if (facts.paseoTerminal) {
+    return { kind: 'paseo', terminal: facts.paseoTerminal, ...(facts.paseoHome ? { home: facts.paseoHome } : {}) }
   }
 
-  if (t.program === 'iTerm.app') {
+  if (facts.program === 'iTerm.app') {
     return { kind: 'iterm2' }
   }
 
-  if (t.program === 'Apple_Terminal') {
+  if (facts.program === 'Apple_Terminal') {
     return { kind: 'terminal-app' }
   }
 
@@ -86,8 +86,7 @@ function host(t: TerminalFacts): TerminalHost | undefined {
 // The route for a reply to this card, or the reason there is none. homes are the
 // canonical Firstmate homes configured for replies.
 export function replyRoute(
-  card: Card,
-  homes: string[],
+  { card, homes }: { card: Card; homes: string[] },
 ): { route: ReplyRoute } | { reason: string } {
   const firstmate = card.sourceRefs.find(r => r.adapter === 'firstmate')
 
@@ -123,7 +122,7 @@ export function replyRoute(
     return { reason: 'No terminal is recorded for this session yet. Re-run `pnyx-axi setup hooks` to enable typing into sessions; a session then records its terminal when it starts or takes a prompt.' }
   }
 
-  const found = host(t)
+  const found = host({ facts: t })
 
   if (!found) {
     return { reason: `Pnyx cannot type into ${t.program ?? 'this terminal'}. Supported: tmux, Herdr, Paseo, iTerm2 and Terminal.` }

@@ -78,7 +78,10 @@ export function useBoard() {
               return
             }
 
-            stateRef.current = reduce(stateRef.current, m.event); setState(stateRef.current)
+            stateRef.current = reduce({
+              state: stateRef.current,
+              event: m.event,
+            }); setState(stateRef.current)
           } else if (m.type === 'thread') {
             setThread(m.thread)
           } else if (m.type === 'latest') {

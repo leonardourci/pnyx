@@ -12,24 +12,27 @@ export function seedWebFixture(home: string) {
   cpSync(join(import.meta.dirname, 'fixtures/web/thread.jsonl'), transcript)
   const rows = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/web/board.json'), 'utf8')) as { key: string; [key: string]: unknown }[]
   const meta = { actor: 'fixture', at: '2026-10-13T10:50:00Z' }
-  withWriter('default', w => {
-    const append = (d: Decision) => {
-      if ('event' in d) {
-        w.append(d.event)
+  withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      const append = (d: Decision) => {
+        if ('event' in d) {
+          w.append({ event: d.event })
+        }
       }
-    }
 
-    for (const { key, ...fields } of rows) {
-      append(decidePush(w.state, key, { ...fields, ...(key === 'layout' ? { source: { adapter: 'firstmate', instanceId: nativeHome, objectId: 'api-v2' }, agent: { provider: 'claude', sessionId: 'fixture-layout', transcriptPath: transcript } } : {}) }, meta))
-    }
+      for (const { key, ...fields } of rows) {
+        append(decidePush({ state: w.state, key, input: { ...fields, ...(key === 'layout' ? { source: { adapter: 'firstmate', instanceId: nativeHome, objectId: 'api-v2' }, agent: { provider: 'claude', sessionId: 'fixture-layout', transcriptPath: transcript } } : {}) }, meta }))
+      }
 
-    for (const [key, number, state] of [['layout', 42, 'open'], ['review', 321, 'open'], ['docs', 309, 'merged']] as const) {
-      const url = `https://github.com/example/project/pull/${number}`; append(decideLink(w.state, key, url, { kind: 'github_pr', url, number, state }, meta))
-    }
+      for (const [key, number, state] of [['layout', 42, 'open'], ['review', 321, 'open'], ['docs', 309, 'merged']] as const) {
+        const url = `https://github.com/example/project/pull/${number}`; append(decideLink({ state: w.state, ref: key, url, link: { kind: 'github_pr', url, number, state }, meta }))
+      }
 
-    const url = 'https://linear.app/example/issue/UI-42'
-    append(decideLink(w.state, 'layout', url, { kind: 'linear', url, title: 'Design the agent board' }, meta))
+      const url = 'https://linear.app/example/issue/UI-42'
+      append(decideLink({ state: w.state, ref: 'layout', url, link: { kind: 'linear', url, title: 'Design the agent board' }, meta }))
+    },
   })
 
-  return { nativeHome, transcript, state: loadBoard('default').state }
+  return { nativeHome, transcript, state: loadBoard({ board: 'default' }).state }
 }

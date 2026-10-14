@@ -7,7 +7,7 @@ export const BUILTIN_COLUMNS: { id: Column; title: string; description: string }
   { id: 'review', title: 'Review', description: 'Linked change is open' },
   { id: 'done', title: 'Done', description: 'Confirmed outcomes, merges & ended sessions' },
 ]
-export const columnsFor = (state: BoardState) => [...BUILTIN_COLUMNS, ...viewFor(state).customColumns.map(c => ({ ...c, description: 'Manual placement' }))]
+export const columnsFor = (state: BoardState) => [...BUILTIN_COLUMNS, ...viewFor({ state }).customColumns.map(c => ({ ...c, description: 'Manual placement' }))]
 
 export function pageTitle(page: string, cards: BoardState['cards'], selected: string | null = null): string {
   const count = Object.values(cards).filter(c => c.column === 'needs_you').length

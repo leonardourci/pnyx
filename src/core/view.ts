@@ -27,101 +27,143 @@ export const VIEW_SIZE_LIMITS = {
   columnHeight: { min: 200 },
 } as const
 
-export const clampViewSize = (value: number, min: number, max: number) =>
+export const clampViewSize = ({ value, min, max }: { value: number; min: number; max: number }) =>
   Math.round(Math.max(min, Math.min(max, value)))
 
-const persistedSize = (value: unknown, fallback: number, min: number, max: number) =>
-  typeof value === 'number' && Number.isFinite(value) ? clampViewSize(value, min, max) : fallback
+const persistedSize = ({ value, fallback, min, max }: {
+  value: unknown
+  fallback: number
+  min: number
+  max: number
+}) =>
+  typeof value === 'number' && Number.isFinite(value) ? clampViewSize({ value, min, max }) : fallback
 
-const persistedMap = (values: Record<string, number> | undefined, min: number, max: number) =>
+const persistedMap = ({ values, min, max }: {
+  values: Record<string, number> | undefined
+  min: number
+  max: number
+}) =>
   Object.fromEntries(
-    Object.entries(values ?? {}).map(([key, value]) => [key, persistedSize(value, min, min, max)]),
+    Object.entries(values ?? {}).map(([key, value]) =>
+      [key, persistedSize({
+        value,
+        fallback: min,
+        min,
+        max,
+      })]),
   )
 
-export const viewFor = (state: BoardState): ViewPreferences => {
+export const viewFor = ({ state }: { state: BoardState }): ViewPreferences => {
   const view = { ...structuredClone(DEFAULT_VIEW), ...state.view }
 
   return {
     ...view,
     panelWidth: persistedSize(
-      view.panelWidth,
-      DEFAULT_VIEW.panelWidth,
-      VIEW_SIZE_LIMITS.panelWidth.min,
-      VIEW_SIZE_LIMITS.panelWidth.max,
+      {
+        value: view.panelWidth,
+        fallback: DEFAULT_VIEW.panelWidth,
+        min: VIEW_SIZE_LIMITS.panelWidth.min,
+        max: VIEW_SIZE_LIMITS.panelWidth.max,
+      },
     ),
     composerHeight: persistedSize(
-      view.composerHeight,
-      DEFAULT_VIEW.composerHeight,
-      VIEW_SIZE_LIMITS.composerHeight.min,
-      VIEW_SIZE_LIMITS.composerHeight.max,
+      {
+        value: view.composerHeight,
+        fallback: DEFAULT_VIEW.composerHeight,
+        min: VIEW_SIZE_LIMITS.composerHeight.min,
+        max: VIEW_SIZE_LIMITS.composerHeight.max,
+      },
     ),
     cardHeight: persistedSize(
-      view.cardHeight,
-      DEFAULT_VIEW.cardHeight,
-      VIEW_SIZE_LIMITS.cardHeight.min,
-      VIEW_SIZE_LIMITS.cardHeight.max,
+      {
+        value: view.cardHeight,
+        fallback: DEFAULT_VIEW.cardHeight,
+        min: VIEW_SIZE_LIMITS.cardHeight.min,
+        max: VIEW_SIZE_LIMITS.cardHeight.max,
+      },
     ),
     columnWidths: persistedMap(
-      view.columnWidths,
-      VIEW_SIZE_LIMITS.columnWidth.min,
-      VIEW_SIZE_LIMITS.columnWidth.max,
+      {
+        values: view.columnWidths,
+        min: VIEW_SIZE_LIMITS.columnWidth.min,
+        max: VIEW_SIZE_LIMITS.columnWidth.max,
+      },
     ),
     cardHeights: persistedMap(
-      view.cardHeights,
-      VIEW_SIZE_LIMITS.cardHeight.min,
-      VIEW_SIZE_LIMITS.cardHeight.max,
+      {
+        values: view.cardHeights,
+        min: VIEW_SIZE_LIMITS.cardHeight.min,
+        max: VIEW_SIZE_LIMITS.cardHeight.max,
+      },
     ),
   }
 }
 
-const invalid = (key: string): never => {
-  throw new BoardError(`invalid view preference: ${key}`, 'VALIDATION_ERROR')
+const invalid = ({ detail }: { detail: string }): never => {
+  throw new BoardError({ message: `invalid view preference: ${detail}`, code: 'VALIDATION_ERROR' })
 }
 
-const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
-const safeKey = (key: string) => !['__proto__', 'prototype', 'constructor'].includes(key)
+const record = ({ value }: { value: unknown }): Record<string, unknown> | undefined =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+const safeKey = ({ key }: { key: string }) => !['__proto__', 'prototype', 'constructor'].includes(key)
 
-const size = (value: unknown, min: number, max: number, key: string) => {
+const size = ({ value, min, max, key }: {
+  value: unknown
+  min: number
+  max: number
+  key: string
+}) => {
   if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) {
-    invalid(key)
+    invalid({ detail: key })
   }
 
   return value as number
 }
 
 // A patch merges maps; null removes an individual override. All callers use this validator.
-export function patchView(state: BoardState, input: unknown): ViewPreferences {
-  if (!record(input)) {
-    return invalid('expected an object')
+export function patchView({ state, input: rawInput }: {
+  state: BoardState
+  input: unknown
+}): ViewPreferences {
+  const input = record({ value: rawInput })
+
+  if (!input) {
+    return invalid({ detail: 'expected an object' })
   }
 
-  const next = structuredClone(viewFor(state))
+  const next = structuredClone(viewFor({ state }))
 
   for (const [key, value] of Object.entries(input).sort(([a], [b]) => a === 'customColumns' ? -1 : b === 'customColumns' ? 1 : a.localeCompare(b))) {
     switch (key) {
       case 'keyboard': {
-        if (!record(value) || Object.keys(value).some(k => !['characterShortcuts', 'bindings'].includes(k))) {
-          return invalid(key)
+        const keyboard = record({ value })
+
+        if (!keyboard || Object.keys(keyboard).some(k => !['characterShortcuts', 'bindings'].includes(k))) {
+          return invalid({ detail: key })
         }
 
-        if (value.characterShortcuts !== undefined) {
-          if (typeof value.characterShortcuts !== 'boolean') {
-            return invalid(key)
+        if (keyboard.characterShortcuts !== undefined) {
+          if (typeof keyboard.characterShortcuts !== 'boolean') {
+            return invalid({ detail: key })
           }
 
-          next.keyboard.characterShortcuts = value.characterShortcuts
+          next.keyboard.characterShortcuts = keyboard.characterShortcuts
         }
 
-        if (value.bindings === null) {
+        if (keyboard.bindings === null) {
           next.keyboard.bindings = {}
-        } else if (value.bindings !== undefined) {
-          if (!record(value.bindings)) {
-            return invalid(key)
+        } else if (keyboard.bindings !== undefined) {
+          const bindings = record({ value: keyboard.bindings })
+
+          if (!bindings) {
+            return invalid({ detail: key })
           }
 
-          for (const [id, keys] of Object.entries(value.bindings)) {
-            if (!safeKey(id) || !KEY_ACTIONS.some(action => action.id === id)) {
-              return invalid(key)
+          for (const [id, keys] of Object.entries(bindings)) {
+            if (!safeKey({ key: id }) || !KEY_ACTIONS.some(action => action.id === id)) {
+              return invalid({ detail: key })
             }
 
             if (keys === null) {
@@ -129,95 +171,104 @@ export function patchView(state: BoardState, input: unknown): ViewPreferences {
             } else if (Array.isArray(keys) && keys.every(k => typeof k === 'string')) {
               next.keyboard.bindings[id] = keys
             } else {
-              return invalid(key)
+              return invalid({ detail: key })
             }
           }
         }
 
-        const error = keyboardError(next.keyboard)
+        const error = keyboardError({ prefs: next.keyboard })
 
         if (error) {
-          return invalid(error)
+          return invalid({ detail: error })
         }
 
         break
       }
-      case 'fontSize': next.fontSize = size(value, 12, 20, key); break
-      case 'panelWidth': next.panelWidth = size(value, VIEW_SIZE_LIMITS.panelWidth.min, VIEW_SIZE_LIMITS.panelWidth.max, key); break
-      case 'composerHeight': next.composerHeight = size(value, VIEW_SIZE_LIMITS.composerHeight.min, VIEW_SIZE_LIMITS.composerHeight.max, key); break
-      case 'cardHeight': next.cardHeight = size(value, VIEW_SIZE_LIMITS.cardHeight.min, VIEW_SIZE_LIMITS.cardHeight.max, key); break
+      case 'fontSize': next.fontSize = size({ value, min: 12, max: 20, key }); break
+      case 'panelWidth': next.panelWidth = size({ value, min: VIEW_SIZE_LIMITS.panelWidth.min, max: VIEW_SIZE_LIMITS.panelWidth.max, key }); break
+      case 'composerHeight': next.composerHeight = size({ value, min: VIEW_SIZE_LIMITS.composerHeight.min, max: VIEW_SIZE_LIMITS.composerHeight.max, key }); break
+      case 'cardHeight': next.cardHeight = size({ value, min: VIEW_SIZE_LIMITS.cardHeight.min, max: VIEW_SIZE_LIMITS.cardHeight.max, key }); break
       case 'panelPlacement':
         if (value !== 'right' && value !== 'inline') {
-          return invalid(key)
+          return invalid({ detail: key })
         }
 
         next.panelPlacement = value; break
       case 'cardColors': case 'toolDetails': case 'thinkingDetails':
         if (typeof value !== 'boolean') {
-          return invalid(key)
+          return invalid({ detail: key })
         }
 
         next[key] = value; break
       case 'columnWidths': case 'cardHeights': {
-        if (!record(value)) {
-          return invalid(key)
+        const map = record({ value })
+
+        if (!map) {
+          return invalid({ detail: key })
         }
 
-        for (const [id, n] of Object.entries(value)) {
-          if (!safeKey(id)) {
-            return invalid(key)
+        for (const [id, n] of Object.entries(map)) {
+          if (!safeKey({ key: id })) {
+            return invalid({ detail: key })
           }
 
           if (key === 'cardHeights' && !state.cards[id]) {
-            return invalid(id)
+            return invalid({ detail: id })
           }
 
           if (key === 'columnWidths' && ![...COLUMNS, ...next.customColumns.map(c => c.id)].includes(id as never)) {
-            return invalid(id)
+            return invalid({ detail: id })
           }
 
           if (n === null) {
             delete next[key][id]
           } else {
             const limits = key === 'columnWidths' ? VIEW_SIZE_LIMITS.columnWidth : VIEW_SIZE_LIMITS.cardHeight
-            next[key][id] = size(n, limits.min, limits.max, key)
+            next[key][id] = size({ value: n, min: limits.min, max: limits.max, key })
           }
         }
 
         break
       }
-      case 'cardTraceOverrides':
-        if (!record(value)) {
-          return invalid(key)
+      case 'cardTraceOverrides': {
+        const map = record({ value })
+
+        if (!map) {
+          return invalid({ detail: key })
         }
 
-        for (const [id, override] of Object.entries(value)) {
-          if (!safeKey(id) || !state.cards[id]) {
-            return invalid(id)
+        for (const [id, rawOverride] of Object.entries(map)) {
+          if (!safeKey({ key: id }) || !state.cards[id]) {
+            return invalid({ detail: id })
           }
 
-          if (override === null) {
+          if (rawOverride === null) {
             delete next.cardTraceOverrides[id]; continue
           }
 
-          if (!record(override) || Object.entries(override).some(([k, v]) => !['tools', 'thinking'].includes(k) || typeof v !== 'boolean')) {
-            return invalid(key)
+          const override = record({ value: rawOverride })
+
+          if (!override || Object.entries(override).some(([k, v]) => !['tools', 'thinking'].includes(k) || typeof v !== 'boolean')) {
+            return invalid({ detail: key })
           }
 
           next.cardTraceOverrides[id] = { ...next.cardTraceOverrides[id], ...override }
         }
 
         break
+      }
       case 'customColumns': {
         if (!Array.isArray(value) || value.length > 20) {
-          return invalid(key)
+          return invalid({ detail: key })
         }
 
         const ids = new Set<string>()
-        next.customColumns = value.map(c => {
-          if (!record(c) || typeof c.id !== 'string' || !/^custom:[a-z0-9-]{1,60}$/.test(c.id) || ids.has(c.id)
+        next.customColumns = value.map(rawColumn => {
+          const c = record({ value: rawColumn })
+
+          if (!c || typeof c.id !== 'string' || !/^custom:[a-z0-9-]{1,60}$/.test(c.id) || ids.has(c.id)
             || typeof c.title !== 'string' || !c.title.trim() || c.title.length > 60 || Object.keys(c).some(k => k !== 'id' && k !== 'title')) {
-            return invalid(key)
+            return invalid({ detail: key })
           }
 
           ids.add(c.id)
@@ -226,12 +277,12 @@ export function patchView(state: BoardState, input: unknown): ViewPreferences {
         })
 
         if (Object.values(state.cards).some(c => c.manualColumn?.startsWith('custom:') && !ids.has(c.manualColumn))) {
-          return invalid('column still contains cards')
+          return invalid({ detail: 'column still contains cards' })
         }
 
         break
       }
-      default: return invalid(key)
+      default: return invalid({ detail: key })
     }
   }
 

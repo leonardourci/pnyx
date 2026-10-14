@@ -69,7 +69,7 @@ const click = async (role: string, name: string) => {
   return browser('click', await ref(role, name))
 }
 
-const seq = () => loadBoard('default').state.seq
+const seq = () => loadBoard({ board: 'default' }).state.seq
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 const oneEvent = async (from: number, label: string) => {
@@ -82,7 +82,7 @@ const oneEvent = async (from: number, label: string) => {
 }
 
 const rapid = (selector: string, events: string) => browser('eval', `async () => { const el = document.querySelector(${JSON.stringify(selector)}); for (const e of ${events}) { await Promise.resolve(); el.dispatchEvent(e.startsWith("key") ? new KeyboardEvent(e.slice(0, e.indexOf(":")), { key: e.slice(e.indexOf(":") + 1), bubbles: true }) : new MouseEvent(e, { bubbles: true })); } return true; }`)
-const view = () => loadBoard('default').state.view
+const view = () => loadBoard({ board: 'default' }).state.view
 
 try {
   await browser('open', server.url); await browser('resize', '1440', '900'); await browser('wait', 'The working board')
@@ -98,11 +98,11 @@ try {
   await screenshot('board-search.png')
   await browser('press', 'Escape')
   await eventually('document.querySelectorAll("[data-card]").length === 6', 'clearing the search shows every card')
-  const beforeResize = loadBoard('default').state.seq
+  const beforeResize = loadBoard({ board: 'default' }).state.seq
   await browser('eval', '() => { document.querySelector("[aria-label=\\"Resize Needs you column\\"]").focus(); return true; }')
   await browser('press', 'ArrowRight')
   await check('document.querySelector("[aria-label=\\"Resize Needs you column\\"]").getAttribute("aria-valuenow") === "298"', 'keyboard resize commits once')
-  assert.equal(loadBoard('default').state.seq, beforeResize + 1)
+  assert.equal(loadBoard({ board: 'default' }).state.seq, beforeResize + 1)
   let from = seq()
   await rapid('[aria-label="Resize Needs you column"]', JSON.stringify(['keydown:ArrowRight', 'keyup:ArrowRight', 'keydown:ArrowRight', 'keyup:ArrowRight']))
   await oneEvent(from, 'a busy resize ignores a second press')
@@ -148,7 +148,7 @@ try {
   await check('document.querySelector(".slash-menu").textContent.includes("No working folder")', 'slash catalog absence is explicit')
   await browser('press', 'Escape'); await check('!document.querySelector(".slash-menu") && document.querySelector("textarea").value === "/"', 'Escape preserves literal draft')
   await browser('fill', await ref('textbox', 'Reply to Shape the first working board'), 'The fixture layout looks good.'); await check('!document.querySelector(".composer [type=submit]").disabled', 'configured fixture route is available'); await click('button', 'Send reply'); await browser('wait', 'Delivered')
-  assert.equal(loadBoard('default').state.cards[fixture.state.keys.layout!]!.replies?.at(-1)?.state, 'delivered')
+  assert.equal(loadBoard({ board: 'default' }).state.cards[fixture.state.keys.layout!]!.replies?.at(-1)?.state, 'delivered')
   assert.match(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), /The fixture layout looks good/)
   appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: '2026-10-13T11:00:00Z', message: { content: 'Live fixture update received.' } }) + '\n')
   await browser('wait', 'Live fixture update received.')
@@ -165,10 +165,10 @@ try {
   await click('button', 'Close detail'); await click('button', '+ Add column'); await browser('fill', await ref('textbox', 'New column name'), 'Discard me'); await browser('press', 'Escape')
   await check("!document.querySelector(\"[aria-label='New column name']\") && [...document.querySelectorAll(\"button\")].some(b => b.textContent === \"+ Add column\")", 'Escape dismisses the inline column form')
   await click('button', '+ Add column'); await browser('fill', await ref('textbox', 'New column name'), 'Later'); await click('button', 'Create column'); await browser('wait', 'Later')
-  assert.equal(loadBoard('default').state.view?.customColumns.at(-1)?.title, 'Later')
+  assert.equal(loadBoard({ board: 'default' }).state.view?.customColumns.at(-1)?.title, 'Later')
   await click('button', 'Shape the first working board'); await click('button', 'Why here / move'); await click('combobox', 'Move card'); await click('option', 'Later')
   await check('document.querySelector(".detail-content").textContent.includes("Pinned manually")', 'custom column move persists')
-  assert.equal(loadBoard('default').state.cards[fixture.state.keys.layout!]!.attention.length, 1)
+  assert.equal(loadBoard({ board: 'default' }).state.cards[fixture.state.keys.layout!]!.attention.length, 1)
   await click('button', 'Conversation'); await browser('emulate', '--viewport', '390x844x1,mobile,touch'); await browser('wait', 'Later'); await click('button', 'Shape the first working board'); await browser('wait', 'Reply to Shape the first working board')
   await check('innerWidth === 390 && document.documentElement.scrollWidth === innerWidth && document.querySelector(".composer").getBoundingClientRect().bottom <= innerHeight', 'mobile composer stays in viewport')
   await screenshot('mobile.png')
@@ -178,18 +178,21 @@ try {
   // The viewport change reloads the tab, which restores the open page.
   await browser('emulate', '--viewport', '1440x900x1'); await browser('wait', 'History'); await click('button', 'History'); await browser('fill', await ref('searchbox', 'Search history'), 'conversation readable'); await browser('wait', 'Shape the first working board'); await screenshot('history.png'); await click('button', 'Board')
   await browser('open', server.url); await browser('wait', 'Later')
-  assert.equal(loadBoard('default').state.view?.customColumns.length, 1)
+  assert.equal(loadBoard({ board: 'default' }).state.view?.customColumns.length, 1)
   // Long unbroken metadata must reflow as the actual resize controls change size.
   const long = 'veryLongUnbrokenPathSegment'.repeat(8)
   const layoutMeta = { actor: 'fixture', at: '2026-10-14T11:00:00Z' }
-  withWriter('default', w => {
-    for (const decide of [
-      () => decidePush(w.state, 'coverage', { workspace: long, tags: [long], attention: [{ kind: 'question', key: 'layout-width', blocking: true, text: `/src/${long}/file.ts\nconst result = ${long};\n| path | ${long} |` }] }, layoutMeta),
-      () => decideLink(w.state, 'coverage', 'https://example.com/layout', { kind: 'url', url: 'https://example.com/layout', title: long }, layoutMeta),
-    ]) {
-      const d = decide()
-      assert.ok('event' in d); w.append(d.event)
-    }
+  withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      for (const decide of [
+        () => decidePush({ state: w.state, key: 'coverage', input: { workspace: long, tags: [long], attention: [{ kind: 'question', key: 'layout-width', blocking: true, text: `/src/${long}/file.ts\nconst result = ${long};\n| path | ${long} |` }] }, meta: layoutMeta }),
+        () => decideLink({ state: w.state, ref: 'coverage', url: 'https://example.com/layout', link: { kind: 'url', url: 'https://example.com/layout', title: long }, meta: layoutMeta }),
+      ]) {
+        const d = decide()
+        assert.ok('event' in d); w.append({ event: d.event })
+      }
+    },
   })
   await browser('wait', long)
   const fits = "[...document.querySelectorAll('.column-cards,.card,.card-content')].every(el => el.scrollWidth <= el.clientWidth)"

@@ -77,15 +77,15 @@ test('a Codex rollout reports its session meta, thread settings and turn context
 test('pushed settings merge into the card, null removes one, and bad names or values are refused', () => {
   const meta = (id: string) => ({ id, at: '2026-10-14T09:00:00Z', actor: 'cli' })
   const apply = (state: ReturnType<typeof emptyBoard>, decision: ReturnType<typeof decidePush>) =>
-    ('event' in decision ? reduce(state, decision.event) : state)
-  let state = apply(emptyBoard(), decidePush(emptyBoard(), 'k', { settings: { model: 'm1', fast: 'off' } }, meta('e1')))
-  state = apply(state, decidePush(state, 'k', { settings: { fast: 'on', effort: 'high' } }, meta('e2')))
+    ('event' in decision ? reduce({ state, event: decision.event }) : state)
+  let state = apply(emptyBoard(), decidePush({ state: emptyBoard(), key: 'k', input: { settings: { model: 'm1', fast: 'off' } }, meta: meta('e1') }))
+  state = apply(state, decidePush({ state, key: 'k', input: { settings: { fast: 'on', effort: 'high' } }, meta: meta('e2') }))
   assert.deepEqual(state.cards.c1!.settings, { model: 'm1', fast: 'on', effort: 'high' })
-  state = apply(state, decidePush(state, 'k', { settings: { model: null, fast: null, effort: null } }, meta('e3')))
+  state = apply(state, decidePush({ state, key: 'k', input: { settings: { model: null, fast: null, effort: null } }, meta: meta('e3') }))
   assert.equal(state.cards.c1!.settings, undefined)
-  assert.deepEqual(decidePush(state, 'k', { settings: {} }, meta('e4')), { skipped: 'unchanged' })
-  assert.throws(() => decidePush(state, 'k', { settings: { 'bad name': 'x' } }, meta('e5')), /camelCase/)
-  assert.throws(() => decidePush(state, 'k', { settings: { model: 3 } }, meta('e5')), /string/)
+  assert.deepEqual(decidePush({ state, key: 'k', input: { settings: {} }, meta: meta('e4') }), { skipped: 'unchanged' })
+  assert.throws(() => decidePush({ state, key: 'k', input: { settings: { 'bad name': 'x' } }, meta: meta('e5') }), /camelCase/)
+  assert.throws(() => decidePush({ state, key: 'k', input: { settings: { model: 3 } }, meta: meta('e5') }), /string/)
 })
 
 function board() {
@@ -105,7 +105,7 @@ function board() {
 }
 
 const settingsOf = (key: string) => {
-  const { state } = loadBoard('default')
+  const { state } = loadBoard({ board: 'default' })
 
   return state.cards[state.keys[key]!]!.settings
 }
@@ -115,12 +115,12 @@ test('hook events and the transcript keep a Claude Code card\'s settings current
   const path = join(home, 's1.jsonl')
   copyFileSync(transcript('claude-settings'), path)
   const base = { session_id: 's1', transcript_path: path, cwd: '/work' }
-  spoolWrite('default', { v: 1, id: 'h1', at: '2026-10-14T09:00:00Z', harness: 'claude', event: 'SessionStart', payload: { ...base, model: 'claude-opus-5-5', permission_mode: 'default', source: 'startup' } })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-14T09:00:00Z', harness: 'claude', event: 'SessionStart', payload: { ...base, model: 'claude-opus-5-5', permission_mode: 'default', source: 'startup' } } })
   nudge()
   assert.deepEqual(settingsOf('claude:s1'), { model: 'claude-opus-5-5', mode: 'default' })
 
   // The turn ends: the Stop hook and the transcript fill in the rest.
-  spoolWrite('default', { v: 1, id: 'h2', at: '2026-10-14T09:00:10Z', harness: 'claude', event: 'Stop', payload: { ...base, permission_mode: 'default', effort: { level: 'high' } } })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h2', at: '2026-10-14T09:00:10Z', harness: 'claude', event: 'Stop', payload: { ...base, permission_mode: 'default', effort: { level: 'high' } } } })
   nudge()
   assert.deepEqual(settingsOf('claude:s1'), {
     model: 'claude-opus-5-5',
@@ -136,7 +136,7 @@ test('hook events and the transcript keep a Claude Code card\'s settings current
 
   // The user switches to plan mode and fast mode; the next turn reports both.
   appendFileSync(path, readFileSync(transcript('claude-settings-later'), 'utf8'))
-  spoolWrite('default', { v: 1, id: 'h3', at: '2026-10-14T09:10:10Z', harness: 'claude', event: 'Stop', payload: { ...base, permission_mode: 'plan', effort: { level: 'xhigh' } } })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h3', at: '2026-10-14T09:10:10Z', harness: 'claude', event: 'Stop', payload: { ...base, permission_mode: 'plan', effort: { level: 'xhigh' } } } })
   nudge()
   assert.deepEqual(settingsOf('claude:s1'), {
     model: 'claude-opus-5-5',
@@ -148,12 +148,12 @@ test('hook events and the transcript keep a Claude Code card\'s settings current
   })
 
   // Reading the transcript again, even from the start, changes nothing.
-  const events = readEvents('default').length
+  const events = readEvents({ board: 'default' }).length
   writeFileSync(join(home, 'boards', 'default', 'harvest.json'), '{}')
   run('harvest')
-  assert.equal(readEvents('default').length, events)
+  assert.equal(readEvents({ board: 'default' }).length, events)
   // Settings from a transcript are a source observation.
-  const observed = readEvents('default').findLast(e => e.type === 'card.pushed' && e.actor === 'harvest')!
+  const observed = readEvents({ board: 'default' }).findLast(e => e.type === 'card.pushed' && e.actor === 'harvest')!
   assert.throws(() => run('undo', observed.id), (error: { stdout: string }) => /code: NOT_UNDOABLE/.test(error.stdout))
 })
 
@@ -161,7 +161,7 @@ test('a Codex session reports its model on every hook and the rest from its roll
   const { home, nudge } = board()
   const path = join(home, 'x2.jsonl')
   copyFileSync(transcript('codex-settings'), path)
-  spoolWrite('default', { v: 1, id: 'h1', at: '2026-10-14T09:05:10Z', harness: 'codex', event: 'Stop', payload: { session_id: 'x2', transcript_path: path, cwd: '/work', model: 'gpt-6.1-sol', permission_mode: 'plan' } })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-14T09:05:10Z', harness: 'codex', event: 'Stop', payload: { session_id: 'x2', transcript_path: path, cwd: '/work', model: 'gpt-6.1-sol', permission_mode: 'plan' } } })
   nudge()
   assert.deepEqual(settingsOf('codex:x2'), {
     model: 'gpt-6.1-sol',
@@ -185,7 +185,7 @@ test('a subagent card reports the settings its own transcript records', () => {
     .filter(line => line.includes('"isSidechain":true'))
     .map(line => `${line}\n`)
     .join(''))
-  spoolWrite('default', { v: 1, id: 'h1', at: '2026-10-14T09:00:10Z', harness: 'claude', event: 'SubagentStop', payload: { session_id: 's1', transcript_path: join(home, 's1.jsonl'), cwd: '/work', permission_mode: 'default', agent_id: 'agent-a1', agent_type: 'Explore', agent_transcript_path: path } })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-14T09:00:10Z', harness: 'claude', event: 'SubagentStop', payload: { session_id: 's1', transcript_path: join(home, 's1.jsonl'), cwd: '/work', permission_mode: 'default', agent_id: 'agent-a1', agent_type: 'Explore', agent_transcript_path: path } } })
   nudge()
   assert.deepEqual(settingsOf('claude:s1/agent-a1'), {
     mode: 'default',
