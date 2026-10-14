@@ -20,6 +20,8 @@ process.env.PNYX_SEMANTIC = 'off'
 
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 const TIMEOUT_MS = 3000
+// CLI children start a fresh node process; under a parallel test run that can take far longer than a poll.
+const CLI_TIMEOUT_MS = 30000
 
 let server: RunningServer | undefined
 
@@ -33,7 +35,7 @@ afterEach(async () => {
   server = undefined
 })
 
-const cli = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { encoding: 'utf8', timeout: TIMEOUT_MS })
+const cli = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { encoding: 'utf8', timeout: CLI_TIMEOUT_MS })
 
 const hookEvent = (id: string, key: string, title: string) => ({ id, key, at: '2026-10-13T14:00:00Z', actor: 'hook', card: { title } })
 
@@ -139,13 +141,15 @@ async function boardWithCard(board = 'default') {
   return loadBoard(board).state.keys.a!
 }
 
-test('serve runs until stop, and the summary reports it without starting it', async () => {
+test('serve runs until stop, and the summary reports it without starting it', async t => {
   const before = cli()
   assert.match(before, /^server: not running$/m)
   assert.match(before, /pnyx-axi serve/)
   assert.equal(existsSync(infoPath('default')), false)
 
   const child = spawn(process.execPath, [BIN, 'serve', '--port', '0'], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
+  // A failed assertion must not leave the piped child keeping this test file alive.
+  t.after(() => child.kill())
   let out = ''
   child.stdout.on('data', chunk => (out += chunk))
   const url = await until(() => /^url: "(http:\/\/127\.0\.0\.1:\d+)"$/m.exec(out)?.[1], 'serve to start')
@@ -163,13 +167,14 @@ test('serve runs until stop, and the summary reports it without starting it', as
   assert.match(cli('stop'), /^server: "none: not running"$/m)
 })
 
-test('serve refuses a taken port instead of picking another', async () => {
+test('serve refuses a taken port instead of picking another', async t => {
   const holder = createServer().listen(0, '127.0.0.1')
   await once(holder, 'listening')
   const { port } = holder.address() as { port: number }
 
   try {
     const child = spawn(process.execPath, [BIN, 'serve', '--port', String(port)], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
+    t.after(() => child.kill())
     let out = ''
     child.stdout.on('data', chunk => (out += chunk))
     const [code] = await once(child, 'exit')
