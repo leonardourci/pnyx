@@ -12,6 +12,7 @@ import { cardSessionId } from '../../core/tasks.ts'
 import { recordEntries } from '../../thread/read.ts'
 import type { Writer } from '../../store/board-store.ts'
 import { readTranscript } from '../../search/index.ts'
+import { redact } from '../../search/text.ts'
 import { codexThreadTitle, transcriptNotes } from './notes.ts'
 import { transcriptSettings, type FoundSettings } from './settings.ts'
 
@@ -140,7 +141,12 @@ export function harvestTranscripts({ writer, cardIds, at }: {
                 type: 'chat.message',
                 sessionId: session,
                 messageId,
-                data: { session, nativeId: entry.id, role: entry.role, text: entry.text },
+                data: {
+                  session,
+                  nativeId: entry.id,
+                  role: entry.role,
+                  text: redact({ text: entry.text }),
+                },
               },
             })
           }
