@@ -16,7 +16,7 @@ export function useBoardKeyboard({ state, groups, page, setPage, selected, open,
   state: BoardState; groups: ColumnCards[]; page: string; setPage(page: string): void; selected: string | null; open(id: string): void; close(): void; command: Command; connected: boolean; notify(text: string): void; newColumn: boolean; cancelColumn(): void;
 }) {
   const [remembered, setRemembered] = useState<Record<string, string>>({}), [overlay, setOverlay] = useState<Overlay | null>(null), [hints, setHints] = useState<Hint[]>([]), [hintPrefix, setHintPrefix] = useState("");
-  const focus = useRef<{ anchor?: BoardAnchor; owned: boolean }>({ owned: false }), previous = useRef(groups), returnFocus = useRef<HTMLElement | null>(null);
+  const focus = useRef<{ anchor?: BoardAnchor; owned: boolean }>({ owned: false }), previous = useRef(groups), returnFocus = useRef<HTMLElement | null>(null), restoring = useRef(0);
   const signature = JSON.stringify(groups);
   useEffect(() => {
     const track = (e: FocusEvent) => {
@@ -47,8 +47,9 @@ export function useBoardKeyboard({ state, groups, page, setPage, selected, open,
     document.querySelector<HTMLButtonElement>("[data-conversation-tab]")?.click();
     requestAnimationFrame(() => focusElement(composer ? ".composer textarea" : "[data-key-scope=thread]"));
   });
-  const closeOverlay = () => { setOverlay(null); requestAnimationFrame(() => { if (returnFocus.current?.isConnected) returnFocus.current.focus(); else if (focus.current.anchor) focusElement(anchorElement(restoreAnchor(groups, previous.current, focus.current.anchor))); }); };
+  const closeOverlay = () => { setOverlay(null); restoring.current = requestAnimationFrame(() => { if (returnFocus.current?.isConnected) returnFocus.current.focus(); else if (focus.current.anchor) focusElement(anchorElement(restoreAnchor(groups, previous.current, focus.current.anchor))); }); };
   const showOverlay = (kind: Overlay["kind"], context: ActionContext) => {
+    cancelAnimationFrame(restoring.current);
     returnFocus.current = context.target;
     const id = readAnchor(context.target)?.card ?? selected ?? undefined;
     setOverlay({ kind, context, card: id, revision: id ? state.cards[id]?.revision : undefined });

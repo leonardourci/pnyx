@@ -58,6 +58,12 @@ try {
   await press("m"); await browser("wait", "Manual placement"); await fill("combobox", "Search Move card", "Done"); await press("Enter"); await browser("wait", "Placement updated");
   assert.equal(board().cards[fixture.state.keys.layout!]!.column, "done"); assert.equal(board().cards[fixture.state.keys.layout!]!.attention.length, 1);
   await check(active(cardSelector), "moving a focused card follows its identity");
+  const frames = () => browser("eval", "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => resolve(true), 50))))");
+  for (const [query, title] of [["Keyboard help", "Keyboard help"], ["Move card", "Move card"]]) {
+    await press(`${mod}+k`); await browser("wait", "Search Commands"); await fill("combobox", "Search Commands", query); await press("Enter"); await browser("wait", `Search ${title}`); await frames();
+    await check(`document.activeElement.matches("[aria-label='Search ${title}']")`, `palette hands focus to ${title}`);
+    await press("Escape"); await frames(); await check(active(cardSelector), `${title} restores the card after the palette`);
+  }
   await press(`${mod}+k`); await browser("wait", "Search Commands"); await screenshot("keyboard-palette.png");
   await fill("combobox", "Search Commands", "settings"); await press("Enter"); await browser("wait", "Keyboard shortcuts");
   await click("button", "Rebind Focus reply composer"); await fill("textbox", "One binding per line", "j"); await click("button", "Save binding"); await browser("wait", "Shortcut conflicts");
