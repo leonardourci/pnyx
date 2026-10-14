@@ -15,6 +15,8 @@ export const isEditing = (target: HTMLElement) => !!target.closest('input,textar
 export function focusElement(selector: string) {
   const element = document.querySelector<HTMLElement>(selector)
   element?.focus({ preventScroll: true }); element?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+
+  return !!element && document.activeElement === element
 }
 
 export function KeyboardProvider({
@@ -43,8 +45,8 @@ export function KeyboardProvider({
       const { prefs, onAction, leaveField, hints, hintKey } = current.current
       const target = event.target instanceof HTMLElement ? event.target : document.body
 
-      if (!hints && target instanceof HTMLInputElement && target.type === 'search') {
-        if (event.key !== 'Escape' || event.isComposing) {
+      if (!hints && target instanceof HTMLInputElement && target.type === 'search' && event.key === 'Escape') {
+        if (event.isComposing) {
           return
         }
 

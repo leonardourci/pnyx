@@ -6,8 +6,8 @@ import { test } from 'node:test'
 import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decision } from '../src/core/decide.ts'
 import { emptyBoard, reduce } from '../src/core/reducer.ts'
 import { BoardError, type BoardEvent, type BoardState } from '../src/core/model.ts'
-import { patchView, viewFor } from '../src/core/view.ts'
-import { columnsFor, filterCards, findBoxCards, safeLink, shouldReload, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
+import { clampViewSize, patchView, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
+import { columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { readThread, recordEntries } from '../src/thread/read.ts'
 
@@ -25,6 +25,26 @@ const event = (d: Decision): BoardEvent => {
 const push = (state: BoardState, key: string, fields: unknown) =>
   reduce(state, event(decidePush(state, key, fields, meta)))
 
+test('tab titles follow the view, selected card and current needs-you count', () => {
+  for (const [page, label] of [['board', 'Board'], ['history', 'History'], ['settings', 'Settings']] as const) {
+    assert.equal(pageTitle(page, {}), `${label} · Pnyx`)
+  }
+
+  let state = push(emptyBoard(), 'a', { title: 'Review <literal> changes', attention: [{ kind: 'question', key: 'q', blocking: true }] })
+  state = push(state, 'b', { title: 'Another decision', attention: [{ kind: 'question', key: 'q', blocking: true }] })
+  state = push(state, 'c', { title: 'Still working', activity: 'working' })
+  assert.equal(pageTitle('board', state.cards), '(2) Board · Pnyx')
+  assert.equal(pageTitle('board', state.cards, 'c1'), '(2) Review <literal> changes · Pnyx')
+  assert.equal(pageTitle('board', state.cards, 'missing'), '(2) Board · Pnyx')
+  assert.equal(pageTitle('history', state.cards, 'c1'), '(2) History · Pnyx')
+  assert.equal(pageTitle('settings', state.cards, 'c1'), '(2) Settings · Pnyx')
+  state = push(state, 'a', { title: 'Updated card title' })
+  state = reduce(state, event(decideMove(state, 'b', 'done', meta)))
+  assert.equal(pageTitle('board', state.cards, 'c1'), '(1) Updated card title · Pnyx')
+  state = reduce(state, event(decideMove(state, 'a', 'done', meta)))
+  assert.equal(pageTitle('board', state.cards, 'c1'), 'Updated card title · Pnyx')
+})
+
 test('preferences replay deterministically, guard revisions, and undo removes map overrides', () => {
   const initial = push(emptyBoard(), 'a', { title: 'A' })
   const edit = event(decideView(initial, { columnWidths: { review: 400 }, cardTraceOverrides: { c1: { tools: true } } }, { ...meta, ifRevision: 0, id: 'view-1' }))
@@ -39,6 +59,32 @@ test('preferences replay deterministically, guard revisions, and undo removes ma
   assert.deepEqual(viewFor(undone), viewFor(initial))
   assert.throws(() => patchView(state, { fontSize: 100 }), BoardError)
   assert.throws(() => patchView(state, JSON.parse('{"columnWidths":{"__proto__":300}}')), BoardError)
+})
+
+test('saved resize preferences load within readable size limits', () => {
+  const initial = push(emptyBoard(), 'a', { title: 'A' })
+  const view = viewFor(initial)
+  const loaded = viewFor({
+    ...initial,
+    view: {
+      ...view,
+      panelWidth: 1,
+      composerHeight: 999,
+      cardHeight: 1,
+      columnWidths: { needs_you: 1, review: 900 },
+      cardHeights: { c1: 1 },
+    },
+  })
+
+  assert.equal(loaded.panelWidth, VIEW_SIZE_LIMITS.panelWidth.min)
+  assert.equal(loaded.composerHeight, VIEW_SIZE_LIMITS.composerHeight.max)
+  assert.equal(loaded.cardHeight, VIEW_SIZE_LIMITS.cardHeight.min)
+  assert.equal(loaded.columnWidths.needs_you, VIEW_SIZE_LIMITS.columnWidth.min)
+  assert.equal(loaded.columnWidths.review, VIEW_SIZE_LIMITS.columnWidth.max)
+  assert.equal(loaded.cardHeights.c1, VIEW_SIZE_LIMITS.cardHeight.min)
+  assert.equal(clampViewSize(100, 320, 720), 320)
+  assert.equal(clampViewSize(800, 320, 720), 720)
+  assert.equal(clampViewSize(320.5, 320, 720), 321)
 })
 
 test('custom columns accept manual placement and cannot strand existing cards', () => {

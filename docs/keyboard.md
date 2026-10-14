@@ -10,14 +10,18 @@ and Home/End reach the first/latest loaded content.
 Enter in the composer adds a newline. Mod+Enter sends once, using the existing
 reply queue and receipts. Escape dismisses suggestions first, leaves the composer
 next, then closes the detail and returns to the board. Drafts survive that loop.
-Text fields do not trigger board shortcuts, including Mod+K. Composition, dead
-keys, AltGraph, and held send/move keys never submit actions. Escape runs that
+Text fields do not trigger board shortcuts, including Mod+K, except for finding
+in the current view. Mod+F focuses Find a card on the board or Search history in
+History, including from a text field. It leaves browser find available in Settings
+and overlays, or when unbound. Composition, dead keys, AltGraph, and held
+send/move keys never submit actions. Escape runs that
 loop only from the composer, overlays and non-text focus. In search and filter
 fields it clears the text, then an empty field returns focus to the board without
 closing the open conversation; other fields keep Escape for themselves.
 
-Other defaults are m for manual placement, / for history search, Mod+K for
-Commands, ? for help, f for visible target hints, and Mod+, for Settings. Mod is
+Other defaults are m for manual placement, / for history search, Mod+F for finding
+in the current view, Mod+K for Commands, ? for help, f for visible target hints,
+and Mod+, for Settings. Mod is
 Command on macOS and Control elsewhere. Browsers, extensions or the OS may reserve
 Mod+,; the Settings button and Commands remain fallbacks. There are no extra
 single-key pin, filter, link-opening or trace-toggle shortcuts.

@@ -16,10 +16,63 @@ export const DEFAULT_VIEW: ViewPreferences = {
   cardTraceOverrides: {},
   customColumns: [],
 }
-export const viewFor = (state: BoardState): ViewPreferences => ({
-  ...structuredClone(DEFAULT_VIEW),
-  ...state.view,
-})
+
+export const VIEW_SIZE_LIMITS = {
+  panelWidth: { min: 320, max: 720 },
+  panelHeight: { min: 280 },
+  composerHeight: { min: 140, max: 420 },
+  cardHeight: { min: 200, max: 600 },
+  columnWidth: { min: 240, max: 640 },
+  cardWidth: { min: 200 },
+  columnHeight: { min: 200 },
+} as const
+
+export const clampViewSize = (value: number, min: number, max: number) =>
+  Math.round(Math.max(min, Math.min(max, value)))
+
+const persistedSize = (value: unknown, fallback: number, min: number, max: number) =>
+  typeof value === 'number' && Number.isFinite(value) ? clampViewSize(value, min, max) : fallback
+
+const persistedMap = (values: Record<string, number> | undefined, min: number, max: number) =>
+  Object.fromEntries(
+    Object.entries(values ?? {}).map(([key, value]) => [key, persistedSize(value, min, min, max)]),
+  )
+
+export const viewFor = (state: BoardState): ViewPreferences => {
+  const view = { ...structuredClone(DEFAULT_VIEW), ...state.view }
+
+  return {
+    ...view,
+    panelWidth: persistedSize(
+      view.panelWidth,
+      DEFAULT_VIEW.panelWidth,
+      VIEW_SIZE_LIMITS.panelWidth.min,
+      VIEW_SIZE_LIMITS.panelWidth.max,
+    ),
+    composerHeight: persistedSize(
+      view.composerHeight,
+      DEFAULT_VIEW.composerHeight,
+      VIEW_SIZE_LIMITS.composerHeight.min,
+      VIEW_SIZE_LIMITS.composerHeight.max,
+    ),
+    cardHeight: persistedSize(
+      view.cardHeight,
+      DEFAULT_VIEW.cardHeight,
+      VIEW_SIZE_LIMITS.cardHeight.min,
+      VIEW_SIZE_LIMITS.cardHeight.max,
+    ),
+    columnWidths: persistedMap(
+      view.columnWidths,
+      VIEW_SIZE_LIMITS.columnWidth.min,
+      VIEW_SIZE_LIMITS.columnWidth.max,
+    ),
+    cardHeights: persistedMap(
+      view.cardHeights,
+      VIEW_SIZE_LIMITS.cardHeight.min,
+      VIEW_SIZE_LIMITS.cardHeight.max,
+    ),
+  }
+}
 
 const invalid = (key: string): never => {
   throw new BoardError(`invalid view preference: ${key}`, 'VALIDATION_ERROR')
@@ -90,9 +143,9 @@ export function patchView(state: BoardState, input: unknown): ViewPreferences {
         break
       }
       case 'fontSize': next.fontSize = size(value, 12, 20, key); break
-      case 'panelWidth': next.panelWidth = size(value, 320, 720, key); break
-      case 'composerHeight': next.composerHeight = size(value, 140, 420, key); break
-      case 'cardHeight': next.cardHeight = size(value, 200, 600, key); break
+      case 'panelWidth': next.panelWidth = size(value, VIEW_SIZE_LIMITS.panelWidth.min, VIEW_SIZE_LIMITS.panelWidth.max, key); break
+      case 'composerHeight': next.composerHeight = size(value, VIEW_SIZE_LIMITS.composerHeight.min, VIEW_SIZE_LIMITS.composerHeight.max, key); break
+      case 'cardHeight': next.cardHeight = size(value, VIEW_SIZE_LIMITS.cardHeight.min, VIEW_SIZE_LIMITS.cardHeight.max, key); break
       case 'panelPlacement':
         if (value !== 'right' && value !== 'inline') {
           return invalid(key)
@@ -126,7 +179,8 @@ export function patchView(state: BoardState, input: unknown): ViewPreferences {
           if (n === null) {
             delete next[key][id]
           } else {
-            next[key][id] = size(n, key === 'columnWidths' ? 240 : 200, key === 'columnWidths' ? 640 : 600, key)
+            const limits = key === 'columnWidths' ? VIEW_SIZE_LIMITS.columnWidth : VIEW_SIZE_LIMITS.cardHeight
+            next[key][id] = size(n, limits.min, limits.max, key)
           }
         }
 

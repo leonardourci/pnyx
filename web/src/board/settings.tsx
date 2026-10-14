@@ -1,4 +1,5 @@
 import type { BoardState, ViewPreferences } from '../../../src/core/model.ts'
+import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { Button, NumberField, Select, Switch } from '../components/ui/controls.tsx'
 import { KeyboardSettings } from '../keyboard/settings.tsx'
 import { columnsFor } from './view.ts'
@@ -52,15 +53,15 @@ export function Settings({
           <NumberField
             label="Panel width"
             value={view.panelWidth}
-            min={320}
-            max={720}
+            min={VIEW_SIZE_LIMITS.panelWidth.min}
+            max={VIEW_SIZE_LIMITS.panelWidth.max}
             onChange={panelWidth => save({ panelWidth })}
           />
           <NumberField
             label="Composer height"
             value={view.composerHeight}
-            min={140}
-            max={420}
+            min={VIEW_SIZE_LIMITS.composerHeight.min}
+            max={VIEW_SIZE_LIMITS.composerHeight.max}
             onChange={composerHeight => save({ composerHeight })}
           />
         </section>
@@ -70,8 +71,8 @@ export function Settings({
           <NumberField
             label="Default card height"
             value={view.cardHeight}
-            min={200}
-            max={600}
+            min={VIEW_SIZE_LIMITS.cardHeight.min}
+            max={VIEW_SIZE_LIMITS.cardHeight.max}
             onChange={cardHeight => save({ cardHeight })}
           />
           <Switch label="Card accent colors" checked={view.cardColors} onChange={cardColors => save({ cardColors })} />
@@ -86,8 +87,8 @@ export function Settings({
               key={c.id}
               label={c.title}
               value={view.columnWidths[c.id] ?? 290}
-              min={240}
-              max={640}
+              min={VIEW_SIZE_LIMITS.columnWidth.min}
+              max={VIEW_SIZE_LIMITS.columnWidth.max}
               onChange={n => save({ columnWidths: { [c.id]: n } })}
             />
           ))}

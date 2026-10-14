@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { startServer } from '../src/server/server.ts'
-import { loadBoard } from '../src/store/board-store.ts'
+import { loadBoard, withWriter } from '../src/store/board-store.ts'
+import { decideLink, decidePush } from '../src/core/decide.ts'
 import { seedWebFixture } from './web-fixture.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
@@ -49,7 +50,7 @@ const screenshot = async (name: string) => {
 }
 
 const check = async (condition: string, label: string) => {
-  const out = await browser('eval', `() => { if (!(${condition})) throw new Error(${JSON.stringify(label)}); return "passed"; }`); assert.match(out, /passed/, label)
+  const out = await browser('eval', `async () => { if (!(${condition})) throw new Error(${JSON.stringify(label)}); return "passed"; }`); assert.match(out, /passed/, label)
 }
 
 const ref = async (role: string, name: string) => {
@@ -82,6 +83,9 @@ const view = () => loadBoard('default').state.view
 try {
   await browser('open', server.url); await browser('resize', '1440', '900'); await browser('wait', 'The working board')
   await check('document.querySelectorAll("[data-card]").length === 6', 'fixture cards appear')
+  await check('document.title === "(2) Board · Pnyx"', 'board tab title includes attention count')
+  await check('await Promise.all([...document.querySelectorAll(\'link[rel="icon"],link[rel="apple-touch-icon"]\')].map(async link => { const response = await fetch(link.href); const blob = await response.blob(); const image = new Image(); image.src = URL.createObjectURL(blob); try { await image.decode(); return response.ok && (link.type === \'image/svg+xml\' ? blob.type === link.type : image.width === Number(link.sizes.value.split(\'x\')[0]) && image.height === image.width); } finally { URL.revokeObjectURL(image.src); } })).then(results => results.length === 4 && results.every(Boolean))', 'favicon and apple-touch assets load at their declared sizes')
+  await check('parseFloat(getComputedStyle(document.querySelector(".column-needs_you")).minWidth) >= 240 && parseFloat(getComputedStyle(document.querySelector(".card")).minWidth) >= 200 && parseFloat(getComputedStyle(document.querySelector(".card")).minHeight) >= 200', 'columns and cards keep readable minimum dimensions')
   await screenshot('board.png')
   const beforeResize = loadBoard('default').state.seq
   await browser('eval', '() => { document.querySelector("[aria-label=\\"Resize Needs you column\\"]").focus(); return true; }')
@@ -92,7 +96,13 @@ try {
   await rapid('[aria-label="Resize Needs you column"]', JSON.stringify(['keydown:ArrowRight', 'keyup:ArrowRight', 'keydown:ArrowRight', 'keyup:ArrowRight']))
   await oneEvent(from, 'a busy resize ignores a second press')
   assert.equal(view()?.columnWidths.needs_you, 306)
+  from = seq()
+  await browser('eval', '() => { const el = document.querySelector("[aria-label=\\"Resize Needs you column\\"]"); el.setPointerCapture = () => {}; el.dispatchEvent(new PointerEvent("pointerdown", { button: 0, pointerId: 7, clientX: 400, bubbles: true })); el.dispatchEvent(new PointerEvent("pointermove", { pointerId: 7, clientX: 0, bubbles: true })); el.dispatchEvent(new PointerEvent("pointerup", { pointerId: 7, bubbles: true })); return true; }')
+  await oneEvent(from, 'drag resize clamps to the column minimum')
+  await check('document.querySelector("[aria-label=\\"Resize Needs you column\\"]").getAttribute("aria-valuenow") === "240"', 'drag resize cannot pass the column minimum')
   await click('button', 'Shape the first working board'); await browser('wait', 'The first pass is ready to review.')
+  await check('document.title === "(2) Shape the first working board · Pnyx"', 'open card appears in tab title')
+  await check('parseFloat(getComputedStyle(document.querySelector(".detail")).minWidth) >= 320 && parseFloat(getComputedStyle(document.querySelector(".detail")).minHeight) >= 280', 'conversation panel keeps readable minimum dimensions')
   await check('!document.querySelector(".message.tool p") && document.querySelectorAll(".message.message p").length >= 3', 'messages visible and traces collapsed')
   await click('switch', 'Tool details'); await check('!!document.querySelector(".message.tool p")', 'tool switch expands details')
   const tools = () => view()?.cardTraceOverrides[fixture.state.keys.layout!]?.tools
@@ -105,6 +115,7 @@ try {
   await browser('fill', await ref('textbox', 'Reply to Shape the first working board'), 'First line'); await browser('press', 'Enter')
   await check('document.querySelector("textarea").value === "First line\\n"', 'Enter inserts a newline')
   await click('button', 'Settings')
+  await check('document.title === "(2) Settings · Pnyx"', 'settings tab title replaces selected card')
   from = seq()
   await rapid('[aria-label="Increase Panel width"]', JSON.stringify(['click', 'click']))
   await oneEvent(from, 'a busy number field ignores a quick second step')
@@ -150,10 +161,51 @@ try {
   await check('innerWidth === 390 && document.documentElement.scrollWidth === innerWidth && document.querySelector(".composer").getBoundingClientRect().bottom <= innerHeight', 'mobile composer stays in viewport')
   await screenshot('mobile.png')
   await click('button', 'History'); await browser('fill', await ref('searchbox', 'Search history'), 'conversation readable'); await browser('wait', 'Shape the first working board')
+  await check('document.title === "(1) History · Pnyx"', 'history tab title uses the updated attention count')
   await check('document.querySelectorAll(".result-title").length === 1', 'full-text transcript search works')
-  await browser('emulate', '--viewport', '1440x900x1'); await browser('wait', 'The working board'); await click('button', 'History'); await browser('fill', await ref('searchbox', 'Search history'), 'conversation readable'); await browser('wait', 'Shape the first working board'); await screenshot('history.png')
+  // The viewport change reloads the tab, which restores the open page.
+  await browser('emulate', '--viewport', '1440x900x1'); await browser('wait', 'History'); await click('button', 'History'); await browser('fill', await ref('searchbox', 'Search history'), 'conversation readable'); await browser('wait', 'Shape the first working board'); await screenshot('history.png'); await click('button', 'Board')
   await browser('open', server.url); await browser('wait', 'Later')
   assert.equal(loadBoard('default').state.view?.customColumns.length, 1)
+  // Long unbroken metadata must reflow as the actual resize controls change size.
+  const long = 'veryLongUnbrokenPathSegment'.repeat(8)
+  const layoutMeta = { actor: 'fixture', at: '2026-10-14T11:00:00Z' }
+  withWriter('default', w => {
+    for (const decide of [
+      () => decidePush(w.state, 'coverage', { workspace: long, tags: [long], attention: [{ kind: 'question', key: 'layout-width', blocking: true, text: `/src/${long}/file.ts\nconst result = ${long};\n| path | ${long} |` }] }, layoutMeta),
+      () => decideLink(w.state, 'coverage', 'https://example.com/layout', { kind: 'url', url: 'https://example.com/layout', title: long }, layoutMeta),
+    ]) {
+      const d = decide()
+      assert.ok('event' in d); w.append(d.event)
+    }
+  })
+  await browser('wait', long)
+  const fits = "[...document.querySelectorAll('.column-cards,.card,.card-content')].every(el => el.scrollWidth <= el.clientWidth)"
+
+  const resizeColumn = async (key: string) => {
+    await browser('eval', '() => { const el = document.querySelector("[aria-label=\\"Resize Needs you column\\"]"); el.scrollIntoView({inline: "nearest"}); el.focus(); return true; }')
+    await browser('press', key)
+  }
+
+  for (const [key, width] of [['Home', 240], ['End', 640], ['Home', 240], ['Shift+ArrowRight', 272]] as const) {
+    await resizeColumn(key)
+    await check(`document.querySelector('.column-needs_you').getBoundingClientRect().width === ${width} && ${fits}`, `column and card content fit at ${width}px`)
+  }
+
+  await browser('eval', `() => { document.querySelector('[data-card="${fixture.state.keys.coverage}"]').closest('.card').querySelector('.resize-y').focus(); return true; }`)
+  await browser('press', 'Home'); await check(fits, 'short cards only scroll vertically')
+  await screenshot('columns-narrow.png')
+  await browser('press', 'End'); await check(fits, 'tall cards only scroll vertically')
+  await resizeColumn('End'); await screenshot('columns-wide.png')
+  await click('button', 'Settings'); await click('combobox', 'Conversation placement'); await click('option', 'Inline with cards'); await click('button', 'Back to board')
+  await click('button', 'Check the empty-state experience')
+  await resizeColumn('Home'); await check(`document.querySelector('.column-needs_you').getBoundingClientRect().width === 340 && document.querySelector('.column-cards > .detail').getBoundingClientRect().width >= 320 && ${fits}`, 'inline detail keeps its readable minimum when the column is narrowed')
+  await resizeColumn('End'); await check(`document.querySelector('.column-needs_you').getBoundingClientRect().width === 640 && ${fits}`, 'inline detail respects wide column resize')
+  await browser('emulate', '--viewport', '390x844x1,mobile,touch'); await browser('wait', 'The working board')
+  await check(`document.documentElement.scrollWidth === innerWidth && document.querySelector('.column-needs_you').getBoundingClientRect().width <= document.querySelector('.kanban').clientWidth && ${fits}`, 'wide column fits mobile viewport without internal horizontal scrolling')
+  await screenshot('columns-mobile.png')
+  await browser('emulate', '--viewport', '320x640x1,mobile,touch'); await browser('wait', 'The working board')
+  await check(`document.documentElement.scrollWidth === innerWidth && document.querySelector('.column-needs_you').getBoundingClientRect().width <= document.querySelector('.kanban').clientWidth && ${fits}`, 'inline detail column fits a 320px viewport without horizontal scrolling')
   const consoleOutput = await browser('console'); assert.doesNotMatch(consoleOutput, /(?:TypeError|ReferenceError|Uncaught)/)
   process.stdout.write(`Browser smoke passed; screenshots: ${evidence}\n`)
 } finally {

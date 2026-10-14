@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Card as CardData, Link, ViewPreferences } from '../../../src/core/model.ts'
+import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
@@ -53,7 +54,7 @@ export function BoardCard({
   const [height, setHeight] = useState<number | null>(null), parent = visibleParent(card, visible)
 
   return (
-    <article className={`card ${selected ? 'selected' : ''} ${view.cardColors ? `accent-${card.column}` : ''}`} style={{ height: height ?? view.cardHeights[card.id] ?? view.cardHeight }}>
+    <article className={`card ${selected ? 'selected' : ''} ${view.cardColors ? `accent-${card.column}` : ''}`} style={{ height: height ?? view.cardHeights[card.id] ?? view.cardHeight, minWidth: VIEW_SIZE_LIMITS.cardWidth.min, minHeight: VIEW_SIZE_LIMITS.cardHeight.min }}>
       <div className="row between">
         <span className="workspace">{card.workspace}</span>
         <Harness card={card} />
@@ -103,8 +104,8 @@ export function BoardCard({
         label={`Resize card ${card.title}`}
         axis="y"
         value={view.cardHeights[card.id] ?? view.cardHeight}
-        min={200}
-        max={600}
+        min={VIEW_SIZE_LIMITS.cardHeight.min}
+        max={VIEW_SIZE_LIMITS.cardHeight.max}
         onPreview={setHeight}
         onCommit={n => save({ cardHeights: { [card.id]: n } })}
       />

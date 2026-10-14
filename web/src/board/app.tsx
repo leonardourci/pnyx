@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
+import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { viewFor } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Input, Select } from '../components/ui/controls.tsx'
@@ -10,7 +11,7 @@ import { BoardCard } from './card.tsx'
 import { Detail } from './detail.tsx'
 import { Settings } from './settings.tsx'
 import { History } from './history.tsx'
-import { columnsFor, findBoxCards } from './view.ts'
+import { columnsFor, findBoxCards, pageTitle } from './view.ts'
 import { useMeaningCards } from './card-search.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { KeyboardFooter, KeyboardLayers, KeyboardToolbar, useBoardKeyboard } from '../keyboard/board.tsx'
@@ -64,6 +65,8 @@ function Column({
       style={{
         width: width ?? view.columnWidths[id] ?? 290,
         flexBasis: width ?? view.columnWidths[id] ?? 290,
+        minWidth: VIEW_SIZE_LIMITS.columnWidth.min,
+        minHeight: VIEW_SIZE_LIMITS.columnHeight.min,
       }}
     >
       <header className="column-header">
@@ -93,8 +96,8 @@ function Column({
       <Resize
         label={`Resize ${title} column`}
         value={view.columnWidths[id] ?? 290}
-        min={240}
-        max={640}
+        min={VIEW_SIZE_LIMITS.columnWidth.min}
+        max={VIEW_SIZE_LIMITS.columnWidth.max}
         onPreview={setWidth}
         onCommit={n => save({ columnWidths: { [id]: n } })}
       />
@@ -113,6 +116,10 @@ export function App() {
   const meaning = useMeaningCards(command, query, workspace)
   const cards = findBoxCards(state, workspace, tag, query, meaning)
   const card = selected ? state.cards[selected] : undefined
+  const title = pageTitle(page, state.cards, selected)
+  useEffect(() => {
+    document.title = title
+  }, [title])
   const workspaces = [...new Set(Object.values(state.cards).map(c => c.workspace))].sort()
   const tags = [...new Set(Object.values(state.cards).flatMap(c => c.tags))].sort()
   const save = useCallback((patch: unknown) => command('view', ['set', '--json', JSON.stringify(patch), '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()]).then(() => {

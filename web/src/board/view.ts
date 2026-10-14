@@ -9,6 +9,14 @@ export const BUILTIN_COLUMNS: { id: Column; title: string; description: string }
 ]
 export const columnsFor = (state: BoardState) => [...BUILTIN_COLUMNS, ...viewFor(state).customColumns.map(c => ({ ...c, description: 'Manual placement' }))]
 
+export function pageTitle(page: string, cards: BoardState['cards'], selected: string | null = null): string {
+  const count = Object.values(cards).filter(c => c.column === 'needs_you').length
+  const label = page === 'history' ? 'History' : page === 'settings' ? 'Settings'
+    : (selected && cards[selected]?.title) || 'Board'
+
+  return `${count > 0 ? `(${count}) ` : ''}${label} · Pnyx`
+}
+
 export function filterCards(state: BoardState, workspace: string, tag: string, query = ''): Card[] {
   const words = query.toLowerCase().trim()
     .split(/\s+/)

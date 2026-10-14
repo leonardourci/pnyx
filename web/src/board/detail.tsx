@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BoardState, Card, ViewPreferences } from '../../../src/core/model.ts'
+import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Select, Switch } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
@@ -84,14 +85,23 @@ export function Detail({
   const entries = merge(kept, page?.entries ?? [])
 
   return (
-    <aside aria-label={`Details for ${card.title}`} className={`detail ${view.panelPlacement}`} style={{ width: width ?? view.panelWidth, flexBasis: width ?? view.panelWidth }}>
+    <aside
+      aria-label={`Details for ${card.title}`}
+      className={`detail ${view.panelPlacement}`}
+      style={{
+        width: width ?? view.panelWidth,
+        flexBasis: width ?? view.panelWidth,
+        minWidth: view.panelPlacement === 'right' ? VIEW_SIZE_LIMITS.panelWidth.min : 0,
+        minHeight: view.panelPlacement === 'right' ? VIEW_SIZE_LIMITS.panelHeight.min : undefined,
+      }}
+    >
       {view.panelPlacement === 'right' && (
         <Resize
           label="Resize conversation panel"
           reverse
           value={view.panelWidth}
-          min={320}
-          max={720}
+          min={VIEW_SIZE_LIMITS.panelWidth.min}
+          max={VIEW_SIZE_LIMITS.panelWidth.max}
           onPreview={setWidth}
           onCommit={n => save({ panelWidth: n })}
         />
