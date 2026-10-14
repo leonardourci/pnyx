@@ -28,8 +28,8 @@ const RESUME_LIMIT = 1000;
 const MAX_BUFFERED = 1 << 20;
 const MAX_BODY = 1 << 20;
 const STOP_TIMEOUT_MS = 5000;
-// CLI commands exposed to the browser. push and repair stay CLI-only: push reads a file path, repair is maintenance.
-const CLI_COMMANDS = ["move", "link", "outcome", "undo", "view", "history"] as const;
+// CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
+const CLI_COMMANDS = ["move", "link", "outcome", "undo", "view", "history", "card"] as const;
 // Same relative path from src/server and dist/server.
 const WEB_ROOT = join(import.meta.dirname, "..", "..", "dist", "web");
 const MIME: Record<string, string> = {
@@ -208,7 +208,7 @@ export async function startServer({ board, port = 0, homes = [] }: { board: stri
     if (args.some((a) => a === "--board" || a.startsWith("--board="))) {
       return fail(`--board is not allowed; this server writes board ${board}`, "VALIDATION_ERROR");
     }
-    const actor = name === "history" || args.some((a) => a === "--actor" || a.startsWith("--actor=")) ? [] : ["--actor", "web"];
+    const actor = name === "history" || name === "card" || args.some((a) => a === "--actor" || a.startsWith("--actor=")) ? [] : ["--actor", "web"];
     try {
       const result = commands[name as (typeof CLI_COMMANDS)[number]]([...args, ...actor, "--board", board]);
       try { pump(); } catch { kick(); }

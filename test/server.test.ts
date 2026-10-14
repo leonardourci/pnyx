@@ -328,6 +328,9 @@ test("web preferences, custom moves and read queries share the authenticated soc
   const reply = await t.next(); assert.equal(reply.type, "error"); if (reply.type === "error") assert.equal(reply.code, "NO_ROUTE");
   t.command("history-1", "history", ["--card", card]); assert.equal((await t.next()).type, "receipt");
   t.command("escape-board", "history", ["--board", "other"]); assert.equal((await t.next()).type, "error");
+  t.command("card-1", "card", [card, "--full"]);
+  const shown = await t.next(); assert.equal(shown.type, "receipt");
+  if (shown.type === "receipt") assert.deepEqual(shown.notes, { summary: "none", decisions: "none", context: "none" });
   t.ws.close();
 });
 
