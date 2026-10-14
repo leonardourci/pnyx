@@ -26,6 +26,8 @@ const TIMEOUT_MS = 3000
 const CLI_TIMEOUT_MS = 30000
 
 let server: RunningServer | undefined
+// Every tab a test opens, closed after it even when it fails.
+const tabs = new Set<WebSocket>()
 
 beforeEach(() => {
   // Every test gets its own home; nothing touches the real ~/.pnyx.
@@ -33,6 +35,13 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+  for (const ws of tabs) {
+    // A refused handshake reports its own end as an error; that is expected here.
+    ws.on('error', () => {})
+    ws.terminate()
+  }
+
+  tabs.clear()
   await server?.close()
   server = undefined
 })
@@ -98,6 +107,7 @@ type LatestMessages = Extract<ServerMessage, { type: 'latest' }>['messages']
 // Last-message pushes arrive on their own queue, so the other messages keep their order.
 async function tab(query = '') {
   const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/ws?token=${localToken()}${query.replace('?', '&')}`)
+  tabs.add(ws)
   const main = inbox<ServerMessage>(), latest = inbox<LatestMessages>()
   const queue = main.queue
   ws.on('message', data => {
@@ -160,6 +170,7 @@ async function handshakeStatus(
   headers: Record<string, string> = {},
 ): Promise<number> {
   const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/ws${query}`, { headers })
+  tabs.add(ws)
   const [, response] = await once(ws, 'unexpected-response')
 
   return response.statusCode
@@ -352,6 +363,7 @@ test('the WebSocket handshake needs the token, an exact host and an exact origin
   assert.equal(await handshakeStatus(token, { host: `evil.example:${server.port}` }), 403)
 
   const ok = new WebSocket(`ws://127.0.0.1:${server.port}/ws${token}`, { headers: { origin: `http://localhost:${server.port}` } })
+  tabs.add(ok)
   await once(ok, 'open')
   ok.close()
 })
@@ -641,4 +653,35 @@ test('with semantic search on, the board search finds a transcript-only card by 
     process.env.PNYX_SEMANTIC = 'off'
     delete process.env.PNYX_SEMANTIC_STUB
   }
+})
+
+test('a stopped server leaves no open handles, even with board and transcript changes still in flight', async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  const card = fixture.state.keys.layout!
+  const settle = () => new Promise(r => setTimeout(r, 300))
+  // Resources this process held before the server, such as the test runner's own.
+  await settle()
+  const before = process.getActiveResourcesInfo().sort()
+  server = await startServer({ board: 'default' })
+  const t = await tab(); await t.next()
+  assert.ok(await t.latest(card))
+  t.command('thread-1', 'thread', [card])
+  t.command('search-1', 'search', ['readable'])
+
+  for (let n = 0; n < 2;) {
+    const m = await t.next()
+
+    if (m.type === 'receipt') {
+      n++
+    }
+  }
+
+  // Changes that land just before the stop schedule more work: a log append, a spool
+  // drain and a transcript write that the folder watchers see.
+  appendFileSync(fixture.transcript, assistantLine('Still writing.', '2026-10-13T11:05:00Z'))
+  cli('move', card, 'review')
+  await server.close()
+  server = undefined
+  await settle()
+  assert.deepEqual(process.getActiveResourcesInfo().sort(), before)
 })

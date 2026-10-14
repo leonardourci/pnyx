@@ -86,9 +86,11 @@ export async function startServer({
   homes = homes.map(resolveHome)
   const subscriptions = new Map<WebSocket, { card: string; watcher?: FSWatcher }>()
   const threadScheduled = new WeakSet<WebSocket>()
+  // Set by close(): work already scheduled then must not open new watchers or timers.
+  let closed = false
 
   const refreshThread = (ws: WebSocket) => {
-    if (threadScheduled.has(ws)) {
+    if (closed || threadScheduled.has(ws)) {
       return
     }
 
@@ -173,7 +175,7 @@ export async function startServer({
   let latestTimer: ReturnType<typeof setTimeout> | undefined
 
   const watchFolder = (dir: string) => {
-    if (folders.has(dir)) {
+    if (closed || folders.has(dir)) {
       return
     }
 
@@ -240,6 +242,10 @@ export async function startServer({
   }
 
   function touchLatest(ids: Iterable<string>) {
+    if (closed) {
+      return
+    }
+
     for (const id of ids) {
       unread.add(id)
     }
@@ -279,13 +285,17 @@ export async function startServer({
   let scheduled = false
 
   const kick = () => {
-    if (scheduled) {
+    if (closed || scheduled) {
       return
     }
 
     scheduled = true
     setImmediate(() => {
       scheduled = false
+
+      if (closed) {
+        return
+      }
 
       try {
         if (spoolFiles(dir).length > 0) {
@@ -609,10 +619,16 @@ export async function startServer({
     url,
     socket: info.socket,
     async close() {
-      for (const w of [...watchers, ...folders.values()]) {
+      closed = true
+
+      const threads = [...subscriptions.values()].flatMap(sub => sub.watcher ?? [])
+
+      for (const w of [...watchers, ...folders.values(), ...threads]) {
         w.close()
       }
 
+      folders.clear()
+      subscriptions.clear()
       clearTimeout(latestTimer)
 
       for (const ws of wss.clients) {
