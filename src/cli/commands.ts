@@ -790,6 +790,7 @@ commands:
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
   search "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
+  settings [set <key> <value>]               Semantic search settings; turn it on with search setup --semantic
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   view show|schema|set                        Inspect or save board view preferences
   repair                                     Set aside a torn log tail and rebuild the snapshot

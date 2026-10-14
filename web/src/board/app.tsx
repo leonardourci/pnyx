@@ -206,6 +206,8 @@ export function App() {
               view={view}
               save={save}
               close={() => setPage('board')}
+              command={command}
+              notify={notify}
             />
           ) : page === 'history' ? (
             <History

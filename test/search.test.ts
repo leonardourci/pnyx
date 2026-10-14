@@ -168,7 +168,7 @@ test('search finds titles, links, notes and transcript text, ranked one per card
 
   const status = run('search', 'status')
   assert.match(status, /^index: current through seq 5$/m)
-  assert.match(status, /^semantic: "planned, not built"$/m)
+  assert.match(status, /^semantic: "off: run `pnyx-axi search setup --semantic` to turn it on"$/m)
   assert.match(status, /^ {2}tracked: 1$/m)
   assert.equal(statSync(join(home, 'boards', 'default', 'search.db')).mode & 0o777, 0o600)
 })

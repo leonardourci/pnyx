@@ -68,7 +68,7 @@ const require = createRequire(import.meta.url)
 
 // Node 22 prints an ExperimentalWarning to stderr when node:sqlite loads; it is the
 // only experimental module Pnyx uses, so warnings are muted for that one load.
-function sqlite(): typeof import('node:sqlite') {
+export function sqlite(): typeof import('node:sqlite') {
   const emit = process.emitWarning
   process.emitWarning = () => {}
 

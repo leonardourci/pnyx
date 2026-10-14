@@ -19,10 +19,13 @@
     "web:dev": "vite --config web/vite.config.ts",
     "test:web": "pnpm run build && node test/web-smoke.ts",
     "test:keyboard": "pnpm run build && node test/keyboard-smoke.ts",
-    "lint:fix": "eslint --fix ."
+    "lint:fix": "eslint --fix .",
+    "test:semantic": "pnpm run build && node test/semantic-golden.ts"
   },
   "dependencies": {
     "axi-sdk-js": "^0.1.13",
+    "node-llama-cpp": "3.22.1",
+    "sqlite-vec": "0.1.9",
     "tinykeys": "^4.0.1",
     "ws": "^8.22.0",
     "yaml": "^2.9.1"

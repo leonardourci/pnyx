@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Command } from './connection.ts'
-import type { Hit } from '../../../src/search/index.ts'
+import type { HybridHit as Hit } from '../../../src/search/semantic.ts'
 import { Button, Input, Select } from '../components/ui/controls.tsx'
 
 interface EventRow {
@@ -23,7 +23,7 @@ export function History({
   open(id: string): void
   notify(text: string): void
 }) {
-  const [query, setQuery] = useState(''), [kind, setKind] = useState(''), [hits, setHits] = useState<Hit[]>([]), [events, setEvents] = useState<EventRow[]>([]), [loading, setLoading] = useState(false), [before, setBefore] = useState<number | null>(null)
+  const [query, setQuery] = useState(''), [kind, setKind] = useState(''), [hits, setHits] = useState<Hit[]>([]), [events, setEvents] = useState<EventRow[]>([]), [loading, setLoading] = useState(false), [before, setBefore] = useState<number | null>(null), [note, setNote] = useState('')
   const generation = useRef(0)
   useEffect(() => {
     const gen = ++generation.current
@@ -36,6 +36,7 @@ export function History({
         }
 
         setHits(Array.isArray(r.hits) ? r.hits : [])
+        setNote(typeof r.note === 'string' ? r.note : '')
         setEvents(Array.isArray(r.events) ? r.events : [])
       })
         .catch(e => {
@@ -91,9 +92,11 @@ export function History({
         </Button>
       </div>
       <div className="history-results" aria-busy={loading}>
+        {query.trim() && note && <p className="muted" role="status">{note}</p>}
         {query.trim() ? hits.map(hit => (
           <article className="history-entry" key={hit.card}>
             <Button className="result-title" onClick={() => open(hit.card)}>{hit.title}</Button>
+            {hit.match === 'semantic' && <span className="small muted">similar meaning</span>}
             {hit.snippets.map((s,i) => <p key={i} className="muted">{s.snippet}</p>)}
           </article>
         )) : events.map(e => (
