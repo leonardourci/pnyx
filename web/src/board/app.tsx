@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
 import { viewFor } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
@@ -14,6 +14,28 @@ import { columnsFor, findBoxCards } from './view.ts'
 import { useFoundCards } from './card-search.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { KeyboardFooter, KeyboardLayers, KeyboardToolbar, useBoardKeyboard } from '../keyboard/board.tsx'
+
+// What a reload (by hand, or after the server serves a new build) would otherwise lose:
+// the open card, the page, unsent drafts and how far the board was scrolled. Kept per tab.
+const RESTORE_KEY = 'pnyx-restore'
+type Restore = {
+  selected?: string | null
+  page?: string
+  drafts?: Record<string, string>
+  scroll?: Record<string, [number, number]>
+}
+const restored: Restore = (() => {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(RESTORE_KEY) ?? '{}') as Restore
+    sessionStorage.removeItem(RESTORE_KEY)
+
+    return value
+  } catch {
+    return {}
+  }
+})()
+const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [data-column] > .column-cards')]
+  .map(el => [el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban', el] as const)
 
 function Column({
   id,
@@ -82,9 +104,10 @@ function Column({
 
 export function App() {
   const { state, command, connected, error, thread, setThread, latest } = useBoard()
-  const [page, setPage] = useState('board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(null), [drafts, setDrafts] = useState<Record<string,string>>({}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
+  const [page, setPage] = useState(restored.page ?? 'board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
+  const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const notify = useCallback((text: string) => setNotice(text), [])
+  const pendingScroll = useRef(restored.scroll)
   const view = viewFor(state)
   const columns = columnsFor(state)
   const found = useFoundCards(command, query, workspace)
@@ -122,6 +145,31 @@ export function App() {
       cancelled = true
     }
   }, [selected, connected, command, setThread, notify])
+  useEffect(() => {
+    const keep = () => {
+      try {
+        const scroll = Object.fromEntries(scrollers()
+          .map(([key, el]) => [key, [el.scrollLeft, el.scrollTop]]))
+        sessionStorage.setItem(RESTORE_KEY, JSON.stringify({ selected, page, drafts, scroll }))
+      } catch { /* Storage full or blocked: the reload starts fresh. */ }
+    }
+
+    addEventListener('pagehide', keep)
+
+    return () => removeEventListener('pagehide', keep)
+  }, [selected, page, drafts])
+  useEffect(() => {
+    const scroll = pendingScroll.current
+
+    if (scroll && state.seq > 0) {
+      pendingScroll.current = undefined
+      requestAnimationFrame(() => {
+        for (const [key, el] of scrollers()) {
+          el.scrollTo(...(scroll[key] ?? [0, 0]))
+        }
+      })
+    }
+  }, [state.seq])
   useEffect(() => {
     if (page === 'board' && selected && view.panelPlacement === 'inline') {
       requestAnimationFrame(() => document.querySelector('.column-cards > .detail')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }))

@@ -67,3 +67,7 @@ export const receiptLabel = (state: string) => ({ queued: 'Queued', delivered: '
 export const slashPrefix = (text: string, cursor: number) => /^\/[a-z0-9_.:-]*$/i.test(text.slice(0, cursor)) ? text.slice(0, cursor) : null
 export const slashMatches = (command: string, prefix: string) => command.replace(/^[$/]/, '').toLowerCase()
   .startsWith(prefix.replace(/^\//, '').toLowerCase())
+// A tab reloads when the server it reconnected to serves another build than the page it loaded.
+// A page without a build (the Vite dev server) or a server without one never reloads.
+export const shouldReload = (loaded: string | undefined, server: string) =>
+  Boolean(loaded && server && loaded !== server)

@@ -853,7 +853,7 @@ A crash mid-append can leave a torn last line; writes refuse until it is repaire
 Repair copies the torn bytes to a side file and appends a marker so readers skip them; the log is never cut.
 `,
   serve: `usage: pnyx-axi serve [--port <n>] [--board <name>] [--home <Firstmate path>]...
-Serves the board on 127.0.0.1 (a random port unless --port is given) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
+Serves the board on 127.0.0.1 port 4747 (--port overrides it; 0 picks a random one) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
 Each --home is a Firstmate home: replies to its cards go through it, and its tasks are folded into the board
 as \`pnyx-axi firstmate watch\` would, so no second process is needed.
 Hook events arrive on the board's server.sock or through its spool. Browsers get one WebSocket at /ws:

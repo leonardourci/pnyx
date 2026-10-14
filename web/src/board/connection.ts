@@ -3,6 +3,7 @@ import type { BoardState } from '../../../src/core/model.ts'
 import { emptyBoard, reduce } from '../../../src/core/reducer.ts'
 import type { ServerMessage } from '../../../src/server/server.ts'
 import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
+import { shouldReload } from './view.ts'
 
 export type Receipt = Record<string, unknown>
 export type Command = (name: string, args: string[]) => Promise<Receipt>
@@ -60,7 +61,11 @@ export function useBoard() {
         try {
           const m = JSON.parse(e.data) as ServerMessage
 
-          if (m.type === 'snapshot') {
+          if (m.type === 'hello') {
+            if (shouldReload(document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content, m.build)) {
+              closed = true; ws.close(); location.reload()
+            }
+          } else if (m.type === 'snapshot') {
             hasSnapshot.current = true; stateRef.current = m.state; setState(m.state)
           } else if (m.type === 'event') {
             if (m.event.seq <= stateRef.current.seq) {

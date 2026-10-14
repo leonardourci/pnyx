@@ -108,10 +108,15 @@ async function tab(query = '') {
     }
   })
   await once(ws, 'open')
+  const next = main.next
+  // Every connection opens with the server's build.
+  const hello = await next()
+  assert.equal(hello.type, 'hello')
 
   return {
     ws,
-    next: main.next,
+    hello,
+    next,
     // The next last-message push that includes this card.
     async latest(card: string) {
       for (;;) {
@@ -173,7 +178,7 @@ test('serve runs until stop, and the summary reports it without starting it', as
   assert.match(before, /pnyx-axi serve/)
   assert.equal(existsSync(infoPath('default')), false)
 
-  const child = spawn(process.execPath, [BIN, 'serve'], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(process.execPath, [BIN, 'serve', '--port', '0'], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
   let out = ''
   child.stdout.on('data', chunk => (out += chunk))
   const url = await until(() => /^url: "(http:\/\/127\.0\.0\.1:\d+)"$/m.exec(out)?.[1], 'serve to start')
@@ -189,6 +194,25 @@ test('serve runs until stop, and the summary reports it without starting it', as
   assert.equal(existsSync(socketPath('default')), false)
   assert.match(cli(), /^server: not running$/m)
   assert.match(cli('stop'), /^server: "none: not running"$/m)
+})
+
+test('serve refuses a taken port instead of picking another', async () => {
+  const holder = createServer().listen(0, '127.0.0.1')
+  await once(holder, 'listening')
+  const { port } = holder.address() as { port: number }
+
+  try {
+    const child = spawn(process.execPath, [BIN, 'serve', '--port', String(port)], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
+    let out = ''
+    child.stdout.on('data', chunk => (out += chunk))
+    const [code] = await once(child, 'exit')
+    assert.notEqual(code, 0)
+    assert.match(out, new RegExp(`port ${port} is in use`))
+    assert.match(out, /PORT_IN_USE/)
+    assert.match(out, /--port/)
+  } finally {
+    holder.close()
+  }
 })
 
 test('a second server for the same board is refused', async () => {
@@ -347,7 +371,11 @@ test('the board page carries the token only for its own host and origin; /health
 
   const health = await http('GET', '/health')
   assert.equal(health.status, 200)
-  assert.deepEqual(JSON.parse(health.text), { board: 'default', pid: process.pid })
+  const { build } = JSON.parse(health.text) as { build: string }
+  assert.deepEqual(JSON.parse(health.text), { board: 'default', pid: process.pid, build })
+  assert.match(build, /^[0-9a-f]{12}$/)
+  assert.ok((await http('GET', '/')).text.includes(`<meta name="pnyx-build" content="${build}" />`))
+  assert.deepEqual((await tab()).hello, { type: 'hello', build })
   assert.equal((await http('GET', '/api/commands/move')).status, 200)
   assert.equal((await http('POST', '/api/commands/move')).status, 405)
 })
@@ -578,20 +606,32 @@ test('with semantic search on, the board search finds a transcript-only card by 
     server = await startServer({ board: 'default' })
     const t = await tab(); await t.next()
     // "dinosaur" is nowhere, so full text finds nothing; the transcript holds the other words.
-    const deadline = Date.now() + 20_000
+    // The first search waits for the worker to start and embed the board, so receipts may be slow.
+    const deadline = Date.now() + 30_000
+
+    const receipt = async (id: string): Promise<ServerMessage> => {
+      for (;;) {
+        try {
+          const m = await t.next()
+
+          if ((m.type === 'receipt' || m.type === 'error') && m.id === id) {
+            return m
+          }
+        } catch (error) {
+          if (Date.now() > deadline) {
+            throw error
+          }
+        }
+      }
+    }
+
     let hits: { card: string; match: string; weak?: true }[] = []
 
     for (let n = 0; !hits.some(h => h.match === 'semantic') && Date.now() < deadline; n++) {
       t.command(`m${n}`, 'search', ['flamingo rollout staged dinosaur'])
-      let m = await t.next()
-
-      while (!(m.type === 'receipt' || m.type === 'error') || m.id !== `m${n}`) {
-        m = await t.next()
-      }
-
+      const m = await receipt(`m${n}`)
       assert.equal(m.type, 'receipt', JSON.stringify(m))
       hits = m.type === 'receipt' ? m.hits as typeof hits : []
-      await new Promise(r => setTimeout(r, 200))
     }
 
     assert.deepEqual(hits.filter(h => !h.weak).map(h => [h.card, h.match]), [[fixture.state.keys.layout, 'semantic']])

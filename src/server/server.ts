@@ -11,7 +11,7 @@ import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
 import { searchBoard } from '../search/semantic.ts'
 import { readSettings, settingEntries, writeSetting } from '../search/settings.ts'
-import { timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
@@ -53,6 +53,7 @@ const MIME: Record<string, string> = {
 // Server to browser. A snapshot replaces whatever the tab held; events then follow in sequence.
 // Each command gets a receipt or an error carrying its id.
 export type ServerMessage =
+  | { type: 'hello'; build: string }
   | { type: 'thread'; thread: ThreadPage }
   | { type: 'snapshot'; seq: number; state: BoardState }
   | { type: 'event'; event: BoardEvent }
@@ -343,7 +344,7 @@ export async function startServer({
     const path = new URL(req.url ?? '/', 'http://localhost').pathname
 
     if (path === '/health') {
-      return reply(res, 200, { board, pid: process.pid })
+      return reply(res, 200, { board, pid: process.pid, build: buildId() })
     }
 
     serveStatic(res, path, token.toString())
@@ -555,6 +556,7 @@ export async function startServer({
           send(ws, { type: 'error', id: null, error: 'unknown message', code: 'VALIDATION_ERROR', help: ['Send a command or resync message'] })
         }
       })
+      send(ws, { type: 'hello', build: buildId() })
       resume(ws, url.searchParams.get('after'))
       send(ws, { type: 'latest', messages: latest })
     })
@@ -721,13 +723,28 @@ function parseMessage(text: string): ClientMessage | undefined {
   }
 }
 
+// Names the built web board: index.html links the content-hashed assets, so its
+// hash changes with every rebuild. Empty when nothing is built (the Vite dev server).
+const buildOf = (html: string) => createHash('sha256').update(html)
+  .digest('hex')
+  .slice(0, 12)
+
+function buildId(): string {
+  try {
+    return buildOf(readFileSync(join(WEB_ROOT, 'index.html'), 'utf8'))
+  } catch {
+    return ''
+  }
+}
+
 function reply(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body))
 }
 
 // The built web board from dist/web; any unknown path falls back to its index.html.
 // index.html carries the token for the WebSocket handshake; the caller has already
-// checked Host and Origin, so only this server's own page gets it.
+// checked Host and Origin, so only this server's own page gets it. It also carries
+// its build, so an open tab can tell when a restarted server serves a newer one.
 function serveStatic(res: ServerResponse, path: string, token: string): void {
   const index = join(WEB_ROOT, 'index.html')
   const file = normalize(join(WEB_ROOT, path === '/' ? 'index.html' : path))
@@ -735,7 +752,8 @@ function serveStatic(res: ServerResponse, path: string, token: string): void {
   for (const candidate of file.startsWith(`${WEB_ROOT}/`) ? [file, index] : []) {
     try {
       if (candidate === index) {
-        const html = readFileSync(index, 'utf8').replace('</head>', `<meta name="pnyx-token" content="${token}" />\n</head>`)
+        const raw = readFileSync(index, 'utf8')
+        const html = raw.replace('</head>', `<meta name="pnyx-token" content="${token}" />\n<meta name="pnyx-build" content="${buildOf(raw)}" />\n</head>`)
         res.writeHead(200, { 'content-type': MIME['.html'], 'cache-control': 'no-store' }).end(html)
 
         return
@@ -763,6 +781,9 @@ function boardFlag(args: string[], options: { port?: { type: 'string' }; home?: 
   }
 }
 
+// A fixed default keeps one board at one address, so an open tab finds a restarted server again.
+export const DEFAULT_PORT = 4747
+
 // `pnyx-axi serve`: runs in the foreground until SIGINT, SIGTERM or `pnyx-axi stop`.
 export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const values = boardFlag(args, { port: { type: 'string' }, home: { type: 'string', multiple: true } })
@@ -772,12 +793,13 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     throw new AxiError('--port must be a number', 'VALIDATION_ERROR')
   }
 
+  const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
   let server: RunningServer
 
   try {
     server = await startServer({
       board,
-      port: values.port === undefined ? 0 : Number(values.port),
+      port,
       homes: values.home,
     })
   } catch (error) {
@@ -786,7 +808,7 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     }
 
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-      throw new AxiError(`port ${values.port} is in use`, 'PORT_IN_USE', ['Pick another --port, or omit it for a random one'])
+      throw new AxiError(`port ${port} is in use`, 'PORT_IN_USE', [`Stop what holds port ${port}, or pick another --port`])
     }
 
     throw error
