@@ -13,7 +13,7 @@ import { resolveHome } from '../integrations/firstmate/home.ts'
 import { searchBoard } from '../search/semantic.ts'
 import { readSettings, settingEntries, writeSetting } from '../search/settings.ts'
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
+import { chmodSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
 import { basename, dirname, extname, join, normalize } from 'node:path'
@@ -21,10 +21,10 @@ import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { commands, ingestSpool } from '../cli/commands.ts'
-import { BoardError, type BoardEvent, type BoardState, type ViewPreferences } from '../core/model.ts'
+import { BoardError, type BoardEvent, type BoardState, type Card, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
-import { boardDir, loadBoard, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/board-store.ts'
+import { boardDir, loadBoard, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/board-store.ts'
 import { infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 
 // Events kept in memory for cursor resume; an older cursor gets a snapshot instead.
@@ -45,7 +45,7 @@ const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) =>
 // How often a live transcript's card and open conversation are read again at most while the session writes.
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
-const CLI_COMMANDS = ['move', 'link', 'outcome', 'undo', 'view', 'history', 'card'] as const
+const CLI_COMMANDS = ['task', 'column', 'hydra', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card'] as const
 // Same relative path from src/server and dist/server.
 const WEB_ROOT = join(import.meta.dirname, '..', '..', 'dist', 'web')
 const MIME: Record<string, string> = {
@@ -94,7 +94,7 @@ export async function startServer({
   }
 
   homes = homes.map(path => resolveHome({ path }))
-  const subscriptions = new Map<WebSocket, { card: string; watcher?: FSWatcher }>()
+  const subscriptions = new Map<WebSocket, { card: string; path?: string; watcher?: FSWatcher }>()
   const threadTimers = new Map<WebSocket, ReturnType<typeof setTimeout>>()
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
@@ -125,8 +125,26 @@ export async function startServer({
     }, LATEST_DELAY_MS))
   }
 
+  const bindThread = ({ ws, card }: { ws: WebSocket; card: Card }) => {
+    subscriptions.get(ws)?.watcher?.close()
+    const path = threadPath({ card })
+    const sub: { card: string; path?: string; watcher?: FSWatcher } = { card: card.id, path }
+
+    if (path) {
+      try {
+        sub.watcher = watch(dirname(path), (_event, filename) => {
+          if (!filename || String(filename) === basename(path)) {
+            refreshThread({ ws })
+          }
+        })
+      } catch { /* Missing transcript remains explicit. */ }
+    }
+
+    subscriptions.set(ws, sub)
+  }
+
   const dir = boardDir({ board })
-  mkdirSync(spoolDir({ dir }), { recursive: true })
+  privateDir({ dir: spoolDir({ dir }) })
   const token = Buffer.from(localToken())
   let { state, offset } = loadBoard({ board })
   let recent: BoardEvent[] = []
@@ -158,10 +176,18 @@ export async function startServer({
         sendSnapshot({ ws })
       }
 
-      const card = subscriptions.get(ws)?.card
+      const sub = subscriptions.get(ws)
 
       // A view change that switches this card's traces on or off changes its page.
-      if (card && (card === event.cardId || (event.type === 'board.view' && shownTraces({ view: event.data.before, card }) !== shownTraces({ view: event.data.after, card })))) {
+      if (sub && (sub.card === event.cardId
+        || (event.type === 'task.session' && sub.card === event.data.before)
+        || (event.type === 'board.view' && shownTraces({ view: event.data.before, card: sub.card }) !== shownTraces({ view: event.data.after, card: sub.card })))) {
+        const card = state.cards[sub.card]
+
+        if (card && sub.path !== threadPath({ card })) {
+          bindThread({ ws, card })
+        }
+
         refreshThread({ ws })
       }
     }
@@ -362,11 +388,7 @@ export async function startServer({
 
   const runCommand = ({ ws, message }: {
     ws: WebSocket
-    message: {
-      id?: unknown
-      name?: unknown
-      args?: unknown
-    }
+    message: { id?: unknown; name?: unknown; args?: unknown }
   }) => {
     const id = typeof message.id === 'string' ? message.id : null
     const fail = ({ error, code, help }: { error: string; code: string; help?: string[] }) => send({ ws, message: { type: 'error', id, error, code, help } })
@@ -394,11 +416,10 @@ export async function startServer({
             const previous = entry?.read.catch(() => undefined)
             const next = {
               card: card.id,
-              read: Promise.resolve(previous).then(() =>
-                readCatalog({
-                  card,
-                  locations: catalogLocations,
-                })),
+              read: Promise.resolve(previous).then(() => readCatalog({
+                card,
+                locations: catalogLocations,
+              })),
             }
             catalogReads.set(ws, entry = next)
             void next.read.catch(() => undefined).finally(() => {
@@ -446,20 +467,7 @@ export async function startServer({
             throw new BoardError({ message: 'invalid thread cursor', code: 'VALIDATION_ERROR' })
           }
 
-          const sub: { card: string; watcher?: FSWatcher } = { card: card.id }
-          const path = threadPath({ card })
-
-          if (path) {
-            try {
-              sub.watcher = watch(dirname(path), (_event, filename) => {
-                if (!filename || String(filename) === basename(path)) {
-                  refreshThread({ ws })
-                }
-              })
-            } catch { /* Missing transcript remains explicit. */ }
-          }
-
-          subscriptions.set(ws, sub)
+          bindThread({ ws, card })
           send({ ws, message: { type: 'receipt', id, thread: readThread({ board, state, card, homes, before: args[1] }) } })
         } else {
           if (args.length !== 3 || !args[2] || args[1].length > 32000) {
