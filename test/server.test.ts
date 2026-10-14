@@ -101,7 +101,8 @@ function inbox<T>() {
         queue.push(message)
       }
     },
-    next: () =>
+    // A reply or agent receipt comes from a spawned CLI worker, so its wait takes CLI_TIMEOUT_MS.
+    next: (ms = TIMEOUT_MS) =>
       queue.length > 0
         ? Promise.resolve(queue.shift()!)
         : new Promise<T>((resolve, reject) => {
@@ -109,7 +110,7 @@ function inbox<T>() {
             // A wait that timed out must not swallow the message that arrives after it.
             waiting.splice(waiting.indexOf(waiter), 1)
             reject(new Error('timed out waiting for a message'))
-          }, TIMEOUT_MS).unref()
+          }, ms).unref()
 
           const waiter = (m: T) => {
             clearTimeout(timer)
@@ -541,7 +542,7 @@ test('browser reply delivery uses only configured fixture homes and never resend
 
   const receipt = async (id: string) => {
     for (;;) {
-      const m = await t.next()
+      const m = await t.next(CLI_TIMEOUT_MS)
 
       if ((m.type === 'receipt' || m.type === 'error') && m.id === id) {
         return m
