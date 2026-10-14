@@ -40,7 +40,7 @@ A post-tool hook that sees a recognized `gh pr create`/`merge`, its `gh-axi` equ
 Board {id, name, schemaVersion, ruleVersion, sources, workspaceMappings,
        manualMovePolicy, viewPreferences, sessionStartSummary:false}
 Card {id, key, title, workspace, tags[], parentId?, sourceRefs[], agentRef?,
-      settings?, terminalRef?, folder?, links[], taskOutcome, activity, attention[], notes[], freshness,
+      settings?, terminalRef?, folder?, links[], taskOutcome, activity, sessionActivity?, attention[], notes[], freshness,
       manualColumn?, revision}
 Note {kind:summary|decision|context, source, text, at?}
 SourceRef {adapter, instanceId, objectId, generation, cursor?, observedAt}
