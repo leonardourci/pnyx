@@ -2,8 +2,11 @@ import { BoardError, COLUMNS, type BoardState, type ViewPreferences } from './mo
 import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from './keyboard.ts'
 
 export const DEFAULT_VIEW: ViewPreferences = {
+  theme: 'system',
   keyboard: DEFAULT_KEYBOARD,
   fontSize: 14,
+  chatFontSize: 16,
+  codeFontSize: 13,
   panelPlacement: 'right',
   panelWidth: 440,
   composerHeight: 180,
@@ -21,6 +24,9 @@ export const VIEW_SIZE_LIMITS = {
   panelWidth: { min: 320, max: 720 },
   panelHeight: { min: 280 },
   composerHeight: { min: 140, max: 420 },
+  fontSize: { min: 12, max: 20 },
+  chatFontSize: { min: 12, max: 22 },
+  codeFontSize: { min: 10, max: 20 },
   cardHeight: { min: 200, max: 600 },
   columnWidth: { min: 240, max: 640 },
   cardWidth: { min: 200 },
@@ -43,6 +49,24 @@ export const viewFor = (state: BoardState): ViewPreferences => {
 
   return {
     ...view,
+    fontSize: persistedSize(
+      view.fontSize,
+      DEFAULT_VIEW.fontSize,
+      VIEW_SIZE_LIMITS.fontSize.min,
+      VIEW_SIZE_LIMITS.fontSize.max,
+    ),
+    chatFontSize: persistedSize(
+      view.chatFontSize,
+      DEFAULT_VIEW.chatFontSize,
+      VIEW_SIZE_LIMITS.chatFontSize.min,
+      VIEW_SIZE_LIMITS.chatFontSize.max,
+    ),
+    codeFontSize: persistedSize(
+      view.codeFontSize,
+      DEFAULT_VIEW.codeFontSize,
+      VIEW_SIZE_LIMITS.codeFontSize.min,
+      VIEW_SIZE_LIMITS.codeFontSize.max,
+    ),
     panelWidth: persistedSize(
       view.panelWidth,
       DEFAULT_VIEW.panelWidth,
@@ -142,7 +166,14 @@ export function patchView(state: BoardState, input: unknown): ViewPreferences {
 
         break
       }
-      case 'fontSize': next.fontSize = size(value, 12, 20, key); break
+      case 'theme':
+        if (value !== 'light' && value !== 'dark' && value !== 'system') {
+          return invalid(key)
+        }
+
+        next.theme = value; break
+      case 'fontSize': case 'chatFontSize': case 'codeFontSize':
+        next[key] = size(value, VIEW_SIZE_LIMITS[key].min, VIEW_SIZE_LIMITS[key].max, key); break
       case 'panelWidth': next.panelWidth = size(value, VIEW_SIZE_LIMITS.panelWidth.min, VIEW_SIZE_LIMITS.panelWidth.max, key); break
       case 'composerHeight': next.composerHeight = size(value, VIEW_SIZE_LIMITS.composerHeight.min, VIEW_SIZE_LIMITS.composerHeight.max, key); break
       case 'cardHeight': next.cardHeight = size(value, VIEW_SIZE_LIMITS.cardHeight.min, VIEW_SIZE_LIMITS.cardHeight.max, key); break
@@ -225,8 +256,11 @@ export function patchView(state: BoardState, input: unknown): ViewPreferences {
           return { id: c.id as `custom:${string}`, title: c.title.trim() }
         })
 
-        if (Object.values(state.cards).some(c => c.manualColumn?.startsWith('custom:') && !ids.has(c.manualColumn))) {
-          return invalid('column still contains cards')
+        // A deleted column's cards return to automatic placement (see decideView); its width goes.
+        for (const id of Object.keys(next.columnWidths)) {
+          if (id.startsWith('custom:') && !ids.has(id)) {
+            delete next.columnWidths[id]
+          }
         }
 
         break

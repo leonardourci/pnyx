@@ -46,7 +46,9 @@ The same authenticated socket also accepts these commands:
 `view set --json <patch> [--if-revision <n>] [--event-id <id>]` validates preferences,
 appends `board.view`, and broadcasts it. `view show` includes the current revision;
 `view schema` returns defaults. A custom column uses a `custom:<slug>` ID and manual
-placement; the four automatic columns keep their existing rules. Map patches merge;
+placement; the four automatic columns keep their existing rules. Dropping a custom
+column returns its cards to automatic placement in the same `board.view` event, and
+undoing it puts them back unless one was moved since. Map patches merge;
 null removes a per-card override. Undo is another event and checks intervening edits.
 
 Keyboard preferences use the same events and revision checks. For example,

@@ -35,14 +35,24 @@ export function Settings({
         <section className="settings-box">
           <h2>Reading & conversation</h2>
           <p className="muted">Keep the conversation beside your work, or open it in its column.</p>
-          <NumberField
-            label="Font size"
-            step={1}
-            value={view.fontSize}
-            min={12}
-            max={20}
-            onChange={fontSize => save({ fontSize })}
+          <label className="setting-label">Theme</label>
+          <Select
+            label="Theme"
+            value={view.theme}
+            options={[{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
+            onChange={theme => save({ theme })}
           />
+          {([['fontSize', 'UI font size'], ['chatFontSize', 'Chat font size'], ['codeFontSize', 'Code font size']] as const).map(([key, label]) => (
+            <NumberField
+              key={key}
+              label={label}
+              step={1}
+              value={view[key]}
+              min={VIEW_SIZE_LIMITS[key].min}
+              max={VIEW_SIZE_LIMITS[key].max}
+              onChange={n => save({ [key]: n })}
+            />
+          ))}
           <label className="setting-label">Conversation placement</label>
           <Select
             label="Conversation placement"
