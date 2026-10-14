@@ -185,7 +185,7 @@ export function useBoardKeyboard({
     }
 
     if (id === 'thread.reply') {
-      return focusElement('.composer textarea')
+      return focusElement({ selector: '.composer textarea' })
     }
 
     if (id.startsWith('thread.') && id !== 'thread.comment') {

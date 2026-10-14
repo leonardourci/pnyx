@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { BoardState, Card, ViewPreferences } from '../../../src/core/model.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
@@ -55,6 +55,13 @@ export function Detail({
   if (pagedFor !== `${tools}:${thinking}`) {
     setPagedFor(`${tools}:${thinking}`); setKept([]); setOlder(null)
   }
+
+  // Stable, so the thread's page effect runs only when a new page arrives.
+  const keep = useCallback(({ entries }: { entries: ThreadEntry[] }) =>
+    setKept(k => merge({ kept: k, page: entries })), [])
+  const keepOlder = useCallback(({ page }: { page: ThreadPage }) => {
+    setOlder(page); setKept(k => merge({ kept: page.entries, page: k }))
+  }, [])
 
   const [history, setHistory] = useState<{
     seq: number
@@ -140,9 +147,9 @@ export function Detail({
           view={view}
           thread={thread}
           kept={kept}
-          setKept={setKept}
+          keep={keep}
           older={older}
-          setOlder={setOlder}
+          keepOlder={keepOlder}
           command={command}
           connected={connected}
           save={save}

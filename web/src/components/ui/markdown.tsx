@@ -86,7 +86,7 @@ type Render = { tokens: Token[]; inItem?: boolean; base?: number }
 // with its offset in the source text, so callers can attach comments to it.
 export function Markdown({ text, block }: {
   text: string
-  block?(info: MarkdownBlock & { children: ReactNode }): ReactNode
+  block?({ index, offset, quote, children }: MarkdownBlock & { children: ReactNode }): ReactNode
 }) {
   const tokens = useMemo(() => markdown.lexer(text), [text])
   let index = 0

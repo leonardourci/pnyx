@@ -222,7 +222,7 @@ export function App() {
     if (state.cards[id]) {
       // The conversation opens at its reply input, the end of the thread.
       setSelected(id); setPage('board')
-      requestAnimationFrame(() => requestAnimationFrame(() => focusElement('.composer textarea')))
+      requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.composer textarea' })))
     }
   }
 

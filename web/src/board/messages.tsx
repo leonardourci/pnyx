@@ -16,7 +16,7 @@ const roleLabel = ({ role }: { role: string }) => role === 'assistant' ? 'Agent'
 export function Messages({ entries, comments, setComments }: {
   entries: ThreadEntry[]
   comments: ChatComment[]
-  setComments(comments: ChatComment[]): void
+  setComments({ items }: { items: ChatComment[] }): void
 }) {
   const root = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState<string | null>(null)
@@ -42,7 +42,7 @@ export function Messages({ entries, comments, setComments }: {
 
   const addComment = ({ quote, text = '' }: { quote: Quote; text?: string }) => {
     const comment = { ...quote, id: crypto.randomUUID(), text }
-    setComments([...comments, comment]); setEditing(comment.id); setSelection(null)
+    setComments({ items: [...comments, comment] }); setEditing(comment.id); setSelection(null)
     window.getSelection()?.removeAllRanges()
   }
 
@@ -89,27 +89,30 @@ export function Messages({ entries, comments, setComments }: {
     return true
   }
 
-  useKeyAction('thread.up', () => step({ to: 'up' }))
-  useKeyAction('thread.down', () => step({ to: 'down' }))
-  useKeyAction('thread.first', () => step({ to: 'first' }))
-  useKeyAction('thread.last', () => step({ to: 'last' }))
-  useKeyAction('thread.comment', () => {
-    const element = blockFor({ key: active }) ?? blocks().at(-1)
+  useKeyAction({ id: 'thread.up', handler: () => step({ to: 'up' }) })
+  useKeyAction({ id: 'thread.down', handler: () => step({ to: 'down' }) })
+  useKeyAction({ id: 'thread.first', handler: () => step({ to: 'first' }) })
+  useKeyAction({ id: 'thread.last', handler: () => step({ to: 'last' }) })
+  useKeyAction({
+    id: 'thread.comment',
+    handler: () => {
+      const element = blockFor({ key: active }) ?? blocks().at(-1)
 
-    if (!element) {
-      return false
-    }
+      if (!element) {
+        return false
+      }
 
-    setActive(element.dataset.messageBlock!); addComment({ quote: quoteFrom({ element }) })
+      setActive(element.dataset.messageBlock!); addComment({ quote: quoteFrom({ element }) })
 
-    return true
+      return true
+    },
   })
 
   const finish = ({ comment }: { comment: ChatComment }) => {
     setEditing(null)
 
     if (!comment.text.trim()) {
-      setComments(comments.filter(c => c.id !== comment.id))
+      setComments({ items: comments.filter(c => c.id !== comment.id) })
     }
 
     focusBlock({ element: blockFor({ key: blockKey(comment) }) })
@@ -176,7 +179,7 @@ export function Messages({ entries, comments, setComments }: {
                     <Button
                       className={`block-comment-action ${selected ? 'has-selection' : ''}`}
                       aria-label="Comment on this block"
-                      title={selected ? 'Type to comment on your selection' : `Comment · ${label('thread.comment')}`}
+                      title={selected ? 'Type to comment on your selection' : `Comment · ${label({ id: 'thread.comment' })}`}
                       onMouseDown={e => e.preventDefault()}
                       onClick={() => addComment({ quote: selected ? selection : whole })}
                     >
@@ -184,7 +187,7 @@ export function Messages({ entries, comments, setComments }: {
                       {(selected || active === key) && (
                         <>
                           Comment
-                          {selected ? <span className="small">or start typing</span> : <kbd>{label('thread.comment')}</kbd>}
+                          {selected ? <span className="small">or start typing</span> : <kbd>{label({ id: 'thread.comment' })}</kbd>}
                         </>
                       )}
                     </Button>
@@ -194,11 +197,12 @@ export function Messages({ entries, comments, setComments }: {
                         comment={comment}
                         editing={editing === comment.id}
                         edit={() => setEditing(comment.id)}
-                        change={text => setComments(comments.map(c =>
-                          c.id === comment.id ? { ...c, text } : c))}
+                        change={({ text }) => setComments({
+                          items: comments.map(c => c.id === comment.id ? { ...c, text } : c),
+                        })}
                         finish={() => finish({ comment })}
                         remove={() => {
-                          setComments(comments.filter(c => c.id !== comment.id))
+                          setComments({ items: comments.filter(c => c.id !== comment.id) })
                           focusBlock({ element: blockFor({ key }) })
                         }}
                       />
@@ -208,7 +212,7 @@ export function Messages({ entries, comments, setComments }: {
               }}
             />
           ) : <pre className="trace-text">{entry.text}</pre>}
-          {entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel(entry.receipt)}</span>}
+          {entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
         </article>
       ))}
     </div>
@@ -219,7 +223,7 @@ function InlineComment({ comment, editing, edit, change, finish, remove }: {
   comment: ChatComment
   editing: boolean
   edit(): void
-  change(text: string): void
+  change({ text }: { text: string }): void
   finish(): void
   remove(): void
 }) {
@@ -236,7 +240,7 @@ function InlineComment({ comment, editing, edit, change, finish, remove }: {
           }}
           aria-label="Comment on selected text"
           value={comment.text}
-          onChange={e => change(e.target.value)}
+          onChange={e => change({ text: e.target.value })}
           onKeyDown={e => {
             if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
               e.preventDefault(); e.stopPropagation(); finish()

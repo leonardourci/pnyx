@@ -22,9 +22,9 @@ export function Thread({
   view,
   thread,
   kept,
-  setKept,
+  keep,
   older,
-  setOlder,
+  keepOlder,
   command,
   connected,
   save,
@@ -38,17 +38,17 @@ export function Thread({
   view: ViewPreferences
   thread: ThreadPage | null
   kept: ThreadEntry[]
-  setKept(update: (kept: ThreadEntry[]) => ThreadEntry[]): void
+  keep({ entries }: { entries: ThreadEntry[] }): void
   older: ThreadPage | null
-  setOlder(page: ThreadPage): void
+  keepOlder({ page }: { page: ThreadPage }): void
   command: Command
   connected: boolean
-  save(patch: unknown): Promise<boolean>
+  save({ patch }: { patch: unknown }): Promise<boolean>
   draft: string
-  setDraft(text: string): void
+  setDraft({ text }: { text: string }): void
   comments: ChatComment[]
-  setComments(comments: ChatComment[]): void
-  notify(text: string): void
+  setComments({ items }: { items: ChatComment[] }): void
+  notify({ text }: { text: string }): void
 }) {
   const [latest, setLatest] = useState(false)
   const scroller = useRef<HTMLDivElement>(null), atBottom = useRef(true)
@@ -57,9 +57,9 @@ export function Thread({
   const olderCursor = older ? older.older : page?.older
   useEffect(() => {
     if (page) {
-      setKept(k => merge({ kept: k, page: page.entries }))
+      keep({ entries: page.entries })
     }
-  }, [page, setKept])
+  }, [page, keep])
   useEffect(() => {
     if (atBottom.current && scroller.current) {
       scroller.current.scrollTop = scroller.current.scrollHeight
@@ -76,14 +76,14 @@ export function Thread({
     <>
       <div className="thread-controls">
         <div className="row wrap">
-          <Switch label="Focus" checked={focus} onChange={focus => save({ cardTraceOverrides: { [card.id]: { tools: !focus, thinking: !focus } } })} />
+          <Switch label="Focus" checked={focus} onChange={({ value: focus }) => save({ patch: { cardTraceOverrides: { [card.id]: { tools: !focus, thinking: !focus } } } })} />
           <span className="small muted">{focus ? 'Prompts and agent messages only' : 'Showing tool calls and thinking'}</span>
         </div>
         <div className="row between small muted">
           <span>{overrides ? 'This card has overrides' : 'Following board defaults'}</span>
           <Button
             disabled={!overrides}
-            onClick={() => save({ cardTraceOverrides: { [card.id]: null } })}
+            onClick={() => save({ patch: { cardTraceOverrides: { [card.id]: null } } })}
           >
             Use defaults
           </Button>
@@ -108,11 +108,9 @@ export function Thread({
         {olderCursor !== undefined && (
           <Button
             onClick={() => {
-              void command('thread', [card.id, String(olderCursor)]).then(r => {
-                const p = r.thread as ThreadPage
-                setOlder(p); setKept(k => merge({ kept: p.entries, page: k }))
-              })
-                .catch(e => notify(e.message))
+              void command({ name: 'thread', args: [card.id, String(olderCursor)] })
+                .then(r => keepOlder({ page: r.thread as ThreadPage }))
+                .catch(e => notify({ text: e.message }))
             }}
           >
             Load older messages

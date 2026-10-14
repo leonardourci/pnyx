@@ -224,10 +224,10 @@ test('Focus pages messages from a tool-heavy tail larger than the first read win
     { type: 'assistant', message: { content: [{ type: 'tool_use', input: `${padding} ${i}` }] } },
   ]).flat()
   writeFileSync(path, records.map(r => JSON.stringify(r)).join('\n') + '\n')
-  const state = push(emptyBoard(), 'a', { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } })
-  const page = readThread('default', state, state.cards.c1!, [])
+  const state = push({ state: emptyBoard(), key: 'a', fields: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
+  const page = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
   assert.deepEqual(page.entries.map(e => e.text), Array.from({ length: 60 }, (_, i) => `message ${i + 30}`))
-  const older = readThread('default', state, state.cards.c1!, [], page.older)
+  const older = readThread({ board: 'default', state, card: state.cards.c1!, homes: [], before: page.older })
   assert.deepEqual(older.entries.map(e => e.text), Array.from({ length: 30 }, (_, i) => `message ${i}`))
   assert.equal(older.older, undefined)
 })

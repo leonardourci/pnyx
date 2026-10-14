@@ -175,7 +175,7 @@ export function Composer({
                   {' '}
                   {c.text.trim()}
                 </span>
-                <Button aria-label="Remove comment" onClick={() => setComments(comments.filter(x => x.id !== c.id))}>Remove</Button>
+                <Button aria-label="Remove comment" onClick={() => setComments({ items: comments.filter(x => x.id !== c.id) })}>Remove</Button>
               </li>
             ))}
           </ul>
