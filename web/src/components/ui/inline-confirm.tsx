@@ -44,10 +44,12 @@ export function InlineConfirm({ label, action, message, disabled, confirm }: {
             <Button
               variant="primary"
               disabled={busy || disabled}
-              onClick={() => run(async () => {
-                if (await confirm()) {
-                  setOpen(false)
-                }
+              onClick={() => run({
+                save: async () => {
+                  if (await confirm()) {
+                    setOpen(false)
+                  }
+                },
               })}
             >
               {action}

@@ -29,22 +29,22 @@ const push = (state: BoardState, key: string, fields: unknown) =>
 
 test('tab titles follow the view, selected card and current needs-you count', () => {
   for (const [page, label] of [['board', 'Board'], ['history', 'History'], ['settings', 'Settings']] as const) {
-    assert.equal(pageTitle(page, {}), `${label} · Pnyx`)
+    assert.equal(pageTitle({ page, cards: {} }), `${label} · Pnyx`)
   }
 
   let state = push(emptyBoard(), 'a', { title: 'Review <literal> changes', attention: [{ kind: 'question', key: 'q', blocking: true }] })
   state = push(state, 'b', { title: 'Another decision', attention: [{ kind: 'question', key: 'q', blocking: true }] })
   state = push(state, 'c', { title: 'Still working', activity: 'working' })
-  assert.equal(pageTitle('board', state.cards), '(2) Board · Pnyx')
-  assert.equal(pageTitle('board', state.cards, 'c1'), '(2) Review <literal> changes · Pnyx')
-  assert.equal(pageTitle('board', state.cards, 'missing'), '(2) Board · Pnyx')
-  assert.equal(pageTitle('history', state.cards, 'c1'), '(2) History · Pnyx')
-  assert.equal(pageTitle('settings', state.cards, 'c1'), '(2) Settings · Pnyx')
+  assert.equal(pageTitle({ page: 'board', cards: state.cards }), '(2) Board · Pnyx')
+  assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'c1' }), '(2) Review <literal> changes · Pnyx')
+  assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'missing' }), '(2) Board · Pnyx')
+  assert.equal(pageTitle({ page: 'history', cards: state.cards, selected: 'c1' }), '(2) History · Pnyx')
+  assert.equal(pageTitle({ page: 'settings', cards: state.cards, selected: 'c1' }), '(2) Settings · Pnyx')
   state = push(state, 'a', { title: 'Updated card title' })
   state = reduce({ state, event: event(decideMove({ state, ref: 'b', column: 'done', meta })) })
-  assert.equal(pageTitle('board', state.cards, 'c1'), '(1) Updated card title · Pnyx')
+  assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'c1' }), '(1) Updated card title · Pnyx')
   state = reduce({ state, event: event(decideMove({ state, ref: 'a', column: 'done', meta })) })
-  assert.equal(pageTitle('board', state.cards, 'c1'), 'Updated card title · Pnyx')
+  assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'c1' }), 'Updated card title · Pnyx')
 })
 
 test('preferences replay deterministically, guard revisions, and undo removes map overrides', () => {
@@ -104,7 +104,7 @@ test('saved resize preferences load within readable size limits', () => {
 test('custom columns accept manual placement and return their cards to auto when deleted', () => {
   let state = push(emptyBoard(), 'a', { attention: [{ kind: 'question', key: 'q', blocking: true }] })
   state = reduce({ state, event: event(decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta })) })
-  assert.equal(columnsFor(state).at(-1)?.title, 'Later')
+  assert.equal(columnsFor({ state }).at(-1)?.title, 'Later')
   assert.equal(patchView({ state: emptyBoard(), input: { columnWidths: { 'custom:one': 400 }, customColumns: [{ id: 'custom:one', title: 'One' }] } }).columnWidths['custom:one'], 400)
   state = reduce({ state, event: event(decideMove({ state, ref: 'a', column: 'custom:later', meta })) })
   assert.equal(state.cards.c1!.column, 'custom:later')
@@ -121,20 +121,20 @@ test('custom columns accept manual placement and return their cards to auto when
 test('filters do not expose excluded parent details, and links/slashes stay literal', () => {
   let state = push(emptyBoard(), 'parent', { title: 'Private parent', workspace: 'A' })
   state = push(state, 'child', { title: 'Searchable child', workspace: 'B', parent: 'parent', tags: ['ui'] })
-  const visible = filterCards(state, 'B', 'ui', 'searchable')
+  const visible = filterCards({ state, workspace: 'B', tag: 'ui', query: 'searchable' })
   assert.equal(visible.length, 1)
-  assert.equal(visibleParent(visible[0]!, visible), undefined)
-  assert.equal(safeLink({ kind: 'url', url: 'javascript:alert(1)' }), undefined)
-  assert.equal(slashPrefix('/plan', 5), '/plan')
-  assert.equal(slashPrefix('open /path', 10), null)
-  assert.equal(slashPrefix('/tmp/file', 9), null)
+  assert.equal(visibleParent({ card: visible[0]!, visible }), undefined)
+  assert.equal(safeLink({ link: { kind: 'url', url: 'javascript:alert(1)' } }), undefined)
+  assert.equal(slashPrefix({ text: '/plan', cursor: 5 }), '/plan')
+  assert.equal(slashPrefix({ text: 'open /path', cursor: 10 }), null)
+  assert.equal(slashPrefix({ text: '/tmp/file', cursor: 9 }), null)
 
   for (const typed of ['/d', '/D', '/dep']) {
-    assert.equal(slashMatches('/Deploy', slashPrefix(typed, typed.length)!), true)
+    assert.equal(slashMatches({ command: '/Deploy', prefix: slashPrefix({ text: typed, cursor: typed.length })! }), true)
   }
 
-  assert.equal(slashMatches('$Review', '/rev'), true)
-  assert.equal(slashMatches('/Deploy', '/r'), false)
+  assert.equal(slashMatches({ command: '$Review', prefix: '/rev' }), true)
+  assert.equal(slashMatches({ command: '/Deploy', prefix: '/r' }), false)
 })
 
 test('the Find box shows every card its filter matches, then the strong meaning-only cards', () => {
@@ -151,18 +151,18 @@ test('the Find box shows every card its filter matches, then the strong meaning-
 
   // Semantic search off (no meaning-only cards): exactly the filter, every match, partial words, tags and keys.
   for (const query of ['deploy', 'dep', 'infra', 'ops-rot', 'step 3', 'nothing like it', '']) {
-    assert.deepEqual(findBoxCards(state, '', '', query, []), filterCards(state, '', '', query))
+    assert.deepEqual(findBoxCards({ state, workspace: '', tag: '', query, meaning: [] }), filterCards({ state, workspace: '', tag: '', query }))
   }
 
-  assert.equal(findBoxCards(state, '', '', 'dep', []).length, 35)
-  assert.deepEqual(ids(findBoxCards(state, '', '', 'infra', [])), [id('ops-rotation')])
-  assert.deepEqual(ids(findBoxCards(state, '', '', 'ops-rot', [])), [id('ops-rotation')])
+  assert.equal(findBoxCards({ state, workspace: '', tag: '', query: 'dep', meaning: [] }).length, 35)
+  assert.deepEqual(ids(findBoxCards({ state, workspace: '', tag: '', query: 'infra', meaning: [] })), [id('ops-rotation')])
+  assert.deepEqual(ids(findBoxCards({ state, workspace: '', tag: '', query: 'ops-rot', meaning: [] })), [id('ops-rotation')])
 
   // Meaning-only cards come after, once each, within the workspace and tag filters.
-  const found = findBoxCards(state, '', '', 'deploy', [id('cookie'), id('deploy-0'), 'gone'])
-  assert.deepEqual(ids(found), [...ids(filterCards(state, '', '', 'deploy')), id('cookie')])
-  assert.equal(findBoxCards(state, 'A', '', 'deploy', [id('cookie')]).length, 35)
-  assert.deepEqual(ids(findBoxCards(state, '', 'infra', 'deploy', [id('cookie'), id('ops-rotation')])), [id('ops-rotation')])
+  const found = findBoxCards({ state, workspace: '', tag: '', query: 'deploy', meaning: [id('cookie'), id('deploy-0'), 'gone'] })
+  assert.deepEqual(ids(found), [...ids(filterCards({ state, workspace: '', tag: '', query: 'deploy' })), id('cookie')])
+  assert.equal(findBoxCards({ state, workspace: 'A', tag: '', query: 'deploy', meaning: [id('cookie')] }).length, 35)
+  assert.deepEqual(ids(findBoxCards({ state, workspace: '', tag: 'infra', query: 'deploy', meaning: [id('cookie'), id('ops-rotation')] })), [id('ops-rotation')])
 })
 
 test('thread reader ignores partial records, pages old messages, separates traces and reports unavailable capabilities', () => {
@@ -224,13 +224,13 @@ test('long transcript messages and reply history page without losing text or dup
 })
 
 test('a tab reloads only when it reconnects to a server serving another build', () => {
-  assert.equal(shouldReload('aaa111', 'bbb222'), true)
-  assert.equal(shouldReload('aaa111', 'aaa111'), false)
+  assert.equal(shouldReload({ loaded: 'aaa111', server: 'bbb222' }), true)
+  assert.equal(shouldReload({ loaded: 'aaa111', server: 'aaa111' }), false)
   // The Vite dev page has no build; hot module replacement updates it instead.
-  assert.equal(shouldReload(undefined, 'bbb222'), false)
-  assert.equal(shouldReload('', 'bbb222'), false)
+  assert.equal(shouldReload({ loaded: undefined, server: 'bbb222' }), false)
+  assert.equal(shouldReload({ loaded: '', server: 'bbb222' }), false)
   // A server with nothing built cannot name a newer page.
-  assert.equal(shouldReload('aaa111', ''), false)
+  assert.equal(shouldReload({ loaded: 'aaa111', server: '' }), false)
 })
 
 test("a card's last message comes from the transcript tail, without tool calls, thinking, injected or torn text", () => {

@@ -16,10 +16,10 @@ export function Settings({
 }: {
   state: BoardState
   view: ViewPreferences
-  save(patch: unknown): Promise<boolean>
+  save({ patch }: { patch: unknown }): Promise<boolean>
   close(): void
   command: Command
-  notify(text: string): void
+  notify({ text }: { text: string }): void
 }) {
   return (
     <section className="settings" aria-label="Settings">
@@ -40,7 +40,7 @@ export function Settings({
             label="Theme"
             value={view.theme}
             options={[{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
-            onChange={theme => save({ theme })}
+            onChange={({ value: theme }) => save({ patch: { theme } })}
           />
           {([['fontSize', 'UI font size'], ['chatFontSize', 'Chat font size'], ['codeFontSize', 'Code font size']] as const).map(([key, label]) => (
             <NumberField
@@ -50,7 +50,7 @@ export function Settings({
               value={view[key]}
               min={VIEW_SIZE_LIMITS[key].min}
               max={VIEW_SIZE_LIMITS[key].max}
-              onChange={n => save({ [key]: n })}
+              onChange={({ value: n }) => save({ patch: { [key]: n } })}
             />
           ))}
           <label className="setting-label">Conversation placement</label>
@@ -58,21 +58,21 @@ export function Settings({
             label="Conversation placement"
             value={view.panelPlacement}
             options={[{ value: 'right', label: 'Right panel' }, { value: 'inline', label: 'Inline with cards' }]}
-            onChange={panelPlacement => save({ panelPlacement })}
+            onChange={({ value: panelPlacement }) => save({ patch: { panelPlacement } })}
           />
           <NumberField
             label="Panel width"
             value={view.panelWidth}
             min={VIEW_SIZE_LIMITS.panelWidth.min}
             max={VIEW_SIZE_LIMITS.panelWidth.max}
-            onChange={panelWidth => save({ panelWidth })}
+            onChange={({ value: panelWidth }) => save({ patch: { panelWidth } })}
           />
           <NumberField
             label="Composer height"
             value={view.composerHeight}
             min={VIEW_SIZE_LIMITS.composerHeight.min}
             max={VIEW_SIZE_LIMITS.composerHeight.max}
-            onChange={composerHeight => save({ composerHeight })}
+            onChange={({ value: composerHeight }) => save({ patch: { composerHeight } })}
           />
         </section>
         <section className="settings-box">
@@ -83,23 +83,23 @@ export function Settings({
             value={view.cardHeight}
             min={VIEW_SIZE_LIMITS.cardHeight.min}
             max={VIEW_SIZE_LIMITS.cardHeight.max}
-            onChange={cardHeight => save({ cardHeight })}
+            onChange={({ value: cardHeight }) => save({ patch: { cardHeight } })}
           />
-          <Switch label="Card accent colors" checked={view.cardColors} onChange={cardColors => save({ cardColors })} />
-          <Switch label="Tool details by default" checked={view.toolDetails} onChange={toolDetails => save({ toolDetails })} />
-          <Switch label="Thinking by default" checked={view.thinkingDetails} onChange={thinkingDetails => save({ thinkingDetails })} />
+          <Switch label="Card accent colors" checked={view.cardColors} onChange={({ value: cardColors }) => save({ patch: { cardColors } })} />
+          <Switch label="Tool details by default" checked={view.toolDetails} onChange={({ value: toolDetails }) => save({ patch: { toolDetails } })} />
+          <Switch label="Thinking by default" checked={view.thinkingDetails} onChange={({ value: thinkingDetails }) => save({ patch: { thinkingDetails } })} />
         </section>
         <section className="settings-box">
           <h2>Column widths</h2>
           <p className="muted">Drag a boundary or focus it and use arrow keys. Shift moves in larger steps.</p>
-          {columnsFor(state).map(c => (
+          {columnsFor({ state }).map(c => (
             <NumberField
               key={c.id}
               label={c.title}
               value={view.columnWidths[c.id] ?? 290}
               min={VIEW_SIZE_LIMITS.columnWidth.min}
               max={VIEW_SIZE_LIMITS.columnWidth.max}
-              onChange={n => save({ columnWidths: { [c.id]: n } })}
+              onChange={({ value: n }) => save({ patch: { columnWidths: { [c.id]: n } } })}
             />
           ))}
         </section>

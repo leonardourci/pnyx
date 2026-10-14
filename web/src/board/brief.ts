@@ -1,16 +1,16 @@
 export interface BriefNote { at?: string; source: string; text: string }
 
-const normalize = (text: string) => text.replace(/\s+/g, ' ').trim()
+const normalize = ({ text }: { text: string }) => text.replace(/\s+/g, ' ').trim()
 
 // Newest first, each text once, leaving out what the conversation already shows.
 export function briefNotes({ notes, conversation }: {
   notes: BriefNote[]
   conversation: string[]
 }): BriefNote[] {
-  const chat = conversation.map(normalize), seen = new Set<string>()
+  const chat = conversation.map(arg0 => normalize({ text: arg0 })), seen = new Set<string>()
 
   return [...notes].sort((a, b) => (b.at ?? '').localeCompare(a.at ?? '')).filter(note => {
-    const text = normalize(note.text).replace(/^(?:done|resolved)(?: \[[^\]]+\])?:\s*/, '')
+    const text = normalize({ text: note.text }).replace(/^(?:done|resolved)(?: \[[^\]]+\])?:\s*/, '')
 
     if (!text || seen.has(text) || chat.some(message => message.includes(text))) {
       return false

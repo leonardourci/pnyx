@@ -7,7 +7,7 @@ import type { Command } from './connection.ts'
 
 type Sections = Record<'summary' | 'decisions' | 'context', BriefNote[]>
 
-const list = (value: unknown) => (Array.isArray(value) ? value as BriefNote[] : [])
+const list = ({ value }: { value: unknown }) => (Array.isArray(value) ? value as BriefNote[] : [])
 const STATUS = /^(?:done|resolved|needs-decision)(?: \[[^\]]+\])?:\s*/
 
 // The card's harvested notes, as `pnyx-axi card --full` reports them, folded into one
@@ -16,7 +16,7 @@ export function ConversationBrief({ card, entries, command, notify }: {
   card: Card
   entries: ThreadEntry[]
   command: Command
-  notify(text: string): void
+  notify({ text }: { text: string }): void
 }) {
   const [notes, setNotes] = useState<Sections>({ summary: [], decisions: [], context: [] })
   const [now, setNow] = useState(Date.now)
@@ -27,20 +27,20 @@ export function ConversationBrief({ card, entries, command, notify }: {
   }, [])
   useEffect(() => {
     let cancelled = false
-    void command('card', [card.id, '--full']).then(r => {
+    void command({ name: 'card', args: [card.id, '--full'] }).then(r => {
       const data = r.notes as Record<string, unknown> | undefined
 
       if (!cancelled) {
         setNotes({
-          summary: list(data?.summary),
-          decisions: list(data?.decisions),
-          context: list(data?.context),
+          summary: list({ value: data?.summary }),
+          decisions: list({ value: data?.decisions }),
+          context: list({ value: data?.context }),
         })
       }
     })
       .catch(e => {
         if (!cancelled) {
-          notify(e.message)
+          notify({ text: e.message })
         }
       })
 
@@ -58,7 +58,7 @@ export function ConversationBrief({ card, entries, command, notify }: {
     return null
   }
 
-  const meta = (note: BriefNote) => (
+  const meta = ({ note }: { note: BriefNote }) => (
     <span className="brief-meta">
       {note.source}
       {' · '}
@@ -92,14 +92,14 @@ export function ConversationBrief({ card, entries, command, notify }: {
       {summary && (
         <div className="brief-item">
           <CollapsibleText text={summary.text.replace(STATUS, '')} />
-          {meta(summary)}
+          {meta({ note: summary })}
         </div>
       )}
       {items.map(([label, note], i) => (
         <article className="brief-item" key={`${label}-${note.at}-${i}`}>
           <span className="eyebrow">{label}</span>
           <CollapsibleText text={note.text.replace(STATUS, '')} />
-          {meta(note)}
+          {meta({ note })}
         </article>
       ))}
     </Disclosure>

@@ -168,16 +168,16 @@ test('keyboard events replay, undo, merge and reset with revision checks and leg
 })
 test('ragged columns remember positions, stop at ends, and recover moved or removed focus', () => {
   const columns = [{ id: 'a', cards: ['a1', 'a2', 'a3'] }, { id: 'b', cards: [] }, { id: 'c', cards: ['c1', 'c2'] }]
-  assert.deepEqual(navigate(columns, { column: 'a', card: 'a3' }, 'board.down', {}), { column: 'a', card: 'a3' })
-  assert.deepEqual(navigate(columns, { column: 'a', card: 'a2' }, 'board.right', {}), { column: 'b', card: undefined })
-  assert.deepEqual(navigate(columns, { column: 'b' }, 'board.right', { c: 'c2' }), { column: 'c', card: 'c2' })
-  assert.deepEqual(navigate(columns, { column: 'c', card: 'c2' }, 'board.first', {}), { column: 'c', card: 'c1' })
+  assert.deepEqual(navigate({ columns, current: { column: 'a', card: 'a3' }, action: 'board.down', remembered: {} }), { column: 'a', card: 'a3' })
+  assert.deepEqual(navigate({ columns, current: { column: 'a', card: 'a2' }, action: 'board.right', remembered: {} }), { column: 'b', card: undefined })
+  assert.deepEqual(navigate({ columns, current: { column: 'b' }, action: 'board.right', remembered: { c: 'c2' } }), { column: 'c', card: 'c2' })
+  assert.deepEqual(navigate({ columns, current: { column: 'c', card: 'c2' }, action: 'board.first', remembered: {} }), { column: 'c', card: 'c1' })
   const changed = [{ id: 'a', cards: ['a1', 'a3'] }, { id: 'b', cards: ['a2'] }, columns[2]]
-  assert.deepEqual(restoreAnchor(changed, columns, { column: 'a', card: 'a2' }), { column: 'b', card: 'a2' })
-  assert.deepEqual(restoreAnchor([changed[0], columns[1], columns[2]], columns, { column: 'a', card: 'a2' }), { column: 'a', card: 'a3' })
+  assert.deepEqual(restoreAnchor({ columns: changed, previous: columns, anchor: { column: 'a', card: 'a2' } }), { column: 'b', card: 'a2' })
+  assert.deepEqual(restoreAnchor({ columns: [changed[0], columns[1], columns[2]], previous: columns, anchor: { column: 'a', card: 'a2' } }), { column: 'a', card: 'a3' })
 
   for (const count of [0, 1, 9, 10, 81, 82, 1000]) {
-    const labels = hintLabels(count); assert.equal(new Set(labels).size, count)
+    const labels = hintLabels({ count }); assert.equal(new Set(labels).size, count)
 
     for (const label of labels) {
       assert.equal(labels.filter(other => other.startsWith(label)).length, 1)

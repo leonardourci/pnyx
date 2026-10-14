@@ -22,23 +22,31 @@ const SETTINGS: Record<string, string> = {
 // Shown on the card itself; the open card lists every setting.
 const ON_CARD = ['model', 'effort', 'mode']
 
-const label = (name: string) => SETTINGS[name] ?? name
+const label = ({ name }: { name: string }) => SETTINGS[name] ?? name
 // "bypassPermissions" reads as "bypass permissions"; model ids and versions stay as written.
-const shown = (name: string, value: string) =>
+const shown = ({ name, value }: { name: string; value: string }) =>
   name === 'model' || name === 'version' ? value : value.replace(/([a-z])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`)
 
-function ordered(settings: Record<string, string>): [string, string][] {
+function ordered({ settings }: { settings: Record<string, string> }): [string, string][] {
   const known = Object.keys(SETTINGS)
-  const rank = (name: string) => (known.includes(name) ? known.indexOf(name) : known.length)
+  const rank = ({ name }: {
+    name: string
+  }) =>
+    (known.includes(name) ? known.indexOf(name) : known.length)
 
-  return Object.entries(settings).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+  return Object.entries(settings).sort(([a], [b]) =>
+    rank({
+      name: a,
+    }) - rank({
+      name: b,
+    }) || a.localeCompare(b))
 }
 
-export const harnessName = (provider: string) => HARNESSES[provider] ?? provider
+export const harnessName = ({ provider }: { provider: string }) => HARNESSES[provider] ?? provider
 
 export function Harness({ card }: { card: Card }) {
   const provider = card.agent?.provider
-  const name = provider ? harnessName(provider) : card.sourceRefs[0]?.adapter ?? 'Manual'
+  const name = provider ? harnessName({ provider }) : card.sourceRefs[0]?.adapter ?? 'Manual'
 
   return (
     <span className="source harness" title={name}>
@@ -51,7 +59,7 @@ export function Harness({ card }: { card: Card }) {
 // The card's compact settings: model, effort and mode, plus fast mode while it is on.
 // Hovering one shows its full name and value.
 export function SettingChips({ settings }: { settings?: Record<string, string> }) {
-  const chips = ordered(settings ?? {}).filter(([name, value]) => ON_CARD.includes(name) || (name === 'fast' && value === 'on'))
+  const chips = ordered({ settings: settings ?? {} }).filter(([name, value]) => ON_CARD.includes(name) || (name === 'fast' && value === 'on'))
 
   return chips.length > 0 && (
     <div className="setting-chips">
@@ -59,11 +67,11 @@ export function SettingChips({ settings }: { settings?: Record<string, string> }
         <span
           key={name}
           className="setting-chip"
-          title={`${label(name)}: ${value}`}
-          aria-label={`${label(name)}: ${value}`}
+          title={`${label({ name })}: ${value}`}
+          aria-label={`${label({ name })}: ${value}`}
         >
           <Icon name={name} size={12} />
-          {name === 'fast' ? 'Fast' : shown(name, name === 'model' ? value.replace(/^claude-/, '') : value)}
+          {name === 'fast' ? 'Fast' : shown({ name, value: name === 'model' ? value.replace(/^claude-/, '') : value })}
         </span>
       ))}
     </div>
@@ -72,17 +80,17 @@ export function SettingChips({ settings }: { settings?: Record<string, string> }
 
 // Every setting the card's harness reported, for the open card.
 export function SettingList({ settings }: { settings?: Record<string, string> }) {
-  const entries = ordered(settings ?? {})
+  const entries = ordered({ settings: settings ?? {} })
 
   return entries.length > 0 && (
     <dl className="setting-list" aria-label="Agent settings">
       {entries.map(([name, value]) => (
-        <div key={name} title={`${label(name)}: ${value}`}>
+        <div key={name} title={`${label({ name })}: ${value}`}>
           <dt>
             <Icon name={name} size={12} />
-            {label(name)}
+            {label({ name })}
           </dt>
-          <dd>{shown(name, value)}</dd>
+          <dd>{shown({ name, value })}</dd>
         </div>
       ))}
     </dl>
