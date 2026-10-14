@@ -3,7 +3,7 @@
 import type { Attention, BoardEvent } from "../core/model.ts";
 
 // Bump when chunk() or the filters change what is indexed; the index rebuilds on mismatch.
-export const CHUNKER_VERSION = 2;
+export const CHUNKER_VERSION = 3;
 
 // About 256 tokens at 3 characters a token.
 const CHUNK_MAX = 768;
@@ -17,8 +17,9 @@ const SECRETS = [
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
 ];
 
-// Text a harness injects into a user turn: reminders, hook output, command tags and Codex's context blocks.
-const INJECTED = /<(system-reminder|environment_context|user_instructions|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g;
+// Text a harness injects into a user turn: reminders, hook output, command tags,
+// Codex's context blocks and the AGENTS.md instructions Codex adds under a header line.
+const INJECTED = /(?:# AGENTS\.md instructions for [^\n]*\s*)?<(system-reminder|environment_context|user_instructions|INSTRUCTIONS|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g;
 
 export function redact(text: string): string {
   return SECRETS.reduce((t, re) => t.replace(re, "[redacted]"), text);

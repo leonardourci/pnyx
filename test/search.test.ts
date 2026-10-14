@@ -90,6 +90,9 @@ test("query words are quoted so punctuation is never FTS5 syntax", () => {
   assert.equal(ftsQuery(" - : "), "");
 });
 
+// The card ids of a search's results, best first.
+const cards = (out: string) => [...out.matchAll(/^ {2}- card: (\S+)$/gm)].map((m) => m[1]);
+
 function board() {
   // Tests never touch the real ~/.pnyx.
   const home = mkdtempSync(join(tmpdir(), "pnyx-search-"));
@@ -120,11 +123,11 @@ test("search finds titles, links, notes and transcript text, ranked one per card
 
   const deploy = run("search", "deploy");
   assert.match(deploy, /^mode: lexical$/m);
-  assert.match(deploy, /^results\[1\]\{card,title,kind,at,match,snippet\}:$/m);
-  assert.match(deploy, /^ {2}c1,Orders migration,transcript,"2026-10-11T09:00:00.000Z",lexical,"Why did the \[deploy\] get reverted/m);
-  assert.match(run("search", "42"), /^ {2}c2,Checkout flake,event,.*#\[42\] Fix checkout retry/m);
-  assert.match(run("search", "rolled", "back"), /^results\[2\]/m);
-  assert.match(run("search", "rolled", "back", "--kind", "event"), /^results\[1\]\S*\n {2}c2,/m);
+  assert.match(deploy, /^results\[1\]:\n {2}- card: c1\n {4}title: Orders migration\n {4}match: lexical\n {4}snippets\[\d\]\{kind,at,snippet\}:$/m);
+  assert.match(deploy, /^ {6}transcript,"2026-10-11T09:00:00.000Z","Why did the \[deploy\] get reverted/m);
+  assert.match(run("search", "42"), /^ {6}event,.*#\[42\] Fix checkout retry/m);
+  assert.deepEqual(cards(run("search", "rolled", "back")), ["c2", "c1"]);
+  assert.deepEqual(cards(run("search", "rolled", "back", "--kind", "event")), ["c2"]);
   assert.match(run("search", "migration", "--workspace", "home"), /^results: "none: no matches for \\"migration\\""$/m);
   assert.match(run("search", "redacted"), /token \[\[redacted\]\] to check/);
   for (const hidden of ["tooloutputword", "secretthought", "injectedreminder", "sk-test1234567890abcdefXYZ", "torntailword"]) {
@@ -132,13 +135,16 @@ test("search finds titles, links, notes and transcript text, ranked one per card
   }
 
   const backfill = run("search", "backfill", "--card", "claude:s1", "--limit", "2");
-  assert.match(backfill, /^results\[2\]/m);
+  assert.deepEqual(cards(backfill), ["c1"]);
+  assert.match(backfill, /^ {4}snippets\[2\]/m);
   assert.match(backfill, /5 more matches; raise --limit/);
 
   // Every word must match on one card, not in one chunk: a title word and a note word.
-  assert.match(run("search", "checkout", "rolled"), /^results\[1\]\S*\n {2}c2,Checkout flake,event,/m);
-  assert.match(run("search", "retry", "release"), /^ {2}c2,/m);
-  assert.match(run("search", "orders", "--kind", "transcript"), /^results\[1\]\S*\n {2}c1,/m);
+  const mixed = run("search", "checkout", "rolled");
+  assert.deepEqual(cards(mixed), ["c2"]);
+  assert.match(mixed, /^ {6}event,.*"\[rolled\] back release 4\.2"$/m);
+  assert.deepEqual(cards(run("search", "retry", "release")), ["c2"]);
+  assert.deepEqual(cards(run("search", "orders", "--kind", "transcript")), ["c1"]);
 
   const status = run("search", "status");
   assert.match(status, /^index: current through seq 4$/m);
@@ -152,20 +158,40 @@ test("a Codex session's messages are searchable", () => {
   const codex = join(home, "rollout.jsonl");
   copyFileSync(CODEX, codex);
   push("codex:x1", { title: "Invoice export", agent: { provider: "codex", sessionId: "x1", transcriptPath: codex } });
-  assert.match(run("search", "invoice", "index"), /^ {2}c5,Invoice export,transcript,"2026-10-12T10:00:07.000Z",lexical,"The export query scans every \[invoice\] without an \[index\]\."$/m);
-  for (const hidden of ["developerword", "envcontextword", "codexthoughtword", "codexcallword", "codexoutputword", "sessionmetaword"]) {
+  const invoice = run("search", "invoice", "index");
+  assert.deepEqual(cards(invoice), ["c5"]);
+  assert.match(invoice, /^ {6}transcript,"2026-10-12T10:00:07.000Z","The export query scans every \[invoice\] without an \[index\]\."$/m);
+  for (const hidden of ["agentsmdword", "developerword", "envcontextword", "codexthoughtword", "codexcallword", "codexoutputword", "sessionmetaword"]) {
     assert.match(run("search", hidden), /^results: "none: /m, hidden);
   }
 });
 
 test("a renamed card or link is found by its new title", () => {
   const { run, push } = board();
-  assert.match(run("search", "flake", "rolled"), /^ {2}c2,/m);
+  assert.deepEqual(cards(run("search", "flake", "rolled")), ["c2"]);
   push("claude:s2", { title: "Checkout retries", workspace: "home" });
   run("link", "c2", "--url", "https://github.com/o/r/pull/42", "--title", "Harden payments");
-  assert.match(run("search", "flake", "rolled"), /^results: "none: /m);
-  assert.match(run("search", "retries", "rolled"), /^ {2}c2,Checkout retries,/m);
-  assert.match(run("search", "payments", "rolled"), /^ {2}c2,/m);
+  assert.match(run("search", "retries", "rolled"), /^ {2}- card: c2\n {4}title: Checkout retries$/m);
+  assert.deepEqual(cards(run("search", "payments", "rolled")), ["c2"]);
+});
+
+test("words from different entries of one card match the card, and --card matches one entry", () => {
+  const { run, push, home } = board();
+  const session = join(home, "s2.jsonl");
+  writeFileSync(session, `${JSON.stringify({ type: "user", timestamp: "2026-10-12T08:00:00.000Z", message: { content: "The checkout call hit a timeout" } })}\n`);
+  push("claude:s2", { title: "Checkout flake", workspace: "home", agent: { provider: "claude", sessionId: "s2", transcriptPath: session } });
+  const spread = run("search", "rolled", "timeout");
+  assert.deepEqual(cards(spread), ["c2"]);
+  assert.match(spread, /^ {4}snippets\[2\]\{kind,at,snippet\}:$/m);
+  assert.match(spread, /\[rolled\] back release/);
+  assert.match(spread, /hit a \[timeout\]/);
+  // With --card a title word matches only the entries that carry it, not every chunk of the card.
+  const titled = run("search", "checkout", "--card", "c2");
+  assert.deepEqual(cards(titled), ["c2"]);
+  assert.match(titled, /^ {4}snippets\[3\]/m);
+  assert.doesNotMatch(titled, /more matches/);
+  assert.match(run("search", "rolled", "timeout", "--card", "c2"), /^results: "none: /m);
+  assert.match(run("search", "checkout", "--card", "c2", "--kind", "transcript"), /^ {4}snippets\[1\]\{kind,at,snippet\}:\n {6}transcript,/m);
 });
 
 test("each search indexes what the log and transcripts gained", () => {
@@ -176,9 +202,9 @@ test("each search indexes what the log and transcripts gained", () => {
   assert.match(run("search", "status"), /^index: "behind: through seq 4 of 5; the next search catches up"$/m);
   // The torn last line completes, and a new message lands.
   appendFileSync(transcript, `}}\n${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Canary is green" }] } })}\n`);
-  assert.match(run("search", "canary"), /^results\[2\]/m);
-  assert.match(run("search", "torntailword"), /^ {2}c1,/m);
-  assert.match(run("search", "canary", "--card", "c1"), /^ {2}c1,Orders migration,transcript,unknown,lexical,"\[Canary\] is green"$/m);
+  assert.equal(cards(run("search", "canary")).length, 2);
+  assert.deepEqual(cards(run("search", "torntailword")), ["c1"]);
+  assert.match(run("search", "canary", "--card", "c1"), /^ {6}transcript,unknown,"\[Canary\] is green"$/m);
 });
 
 test("a replaced or shortened transcript is read again from the start", () => {

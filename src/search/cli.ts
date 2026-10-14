@@ -3,7 +3,7 @@ import { AxiError } from "axi-sdk-js";
 import { findCard } from "../core/decide.ts";
 import { COMMON, guard, parse, type Options, type Output } from "../cli/commands.ts";
 import { loadBoard } from "../store/board-store.ts";
-import { KINDS, indexStatus, rebuildIndex, search, updateIndex, type IndexResult, type Kind } from "./index.ts";
+import { KINDS, SNIPPETS, indexStatus, rebuildIndex, search, updateIndex, type IndexResult, type Kind } from "./index.ts";
 
 const LIMIT = 20;
 const MAX = 100;
@@ -65,11 +65,16 @@ const searchCommand = guard((args) => {
     ...(values.workspace ? { workspace: values.workspace as string } : {}),
   });
   if (hits.length === 0) {
-    return { mode: "lexical", results: `none: no matches for ${JSON.stringify(text)}`, help: ["Every word must match; try fewer words or a prefix like `deplo*`"] };
+    return {
+      mode: "lexical",
+      results: `none: no matches for ${JSON.stringify(text)}`,
+      help: [card || kind ? "Every word must match in one entry; try fewer words or a prefix like `deplo*`" : "Every word must match on one card; try fewer words or a prefix like `deplo*`"],
+    };
   }
   const out: Output = { mode: "lexical", results: hits };
   const help = card ? [`Run \`pnyx-axi history --card ${card}\` for its events`] : [`Run \`pnyx-axi card ${hits[0]!.card}\` to open the top match`];
-  if (total > hits.length) help.push(`${total - hits.length} more ${card ? "matches" : "matching cards"}; raise --limit (max ${MAX}) or narrow with --kind, --card or --workspace`);
+  const shown = card ? hits[0]!.snippets.length : hits.length;
+  if (total > shown) help.push(`${total - shown} more ${card ? "matches" : "matching cards"}; raise --limit (max ${MAX}) or narrow with --kind, --card or --workspace`);
   out.help = help;
   return out;
 });
@@ -79,9 +84,11 @@ export const searchCommands = { search: searchCommand };
 export const SEARCH_HELP = `usage: pnyx-axi search "<words>" [--kind event|transcript] [--card <id>] [--workspace <name>] [--limit <n>]
        pnyx-axi search status | rebuild [--board <name>]
 Full-text search over card titles, links, event text and the session transcripts hooks recorded.
-Every word must match somewhere on one card's text, its title or its link titles; end a word with * to match a prefix; \`search -- status\` searches for that word.
-Results are ranked by BM25, best first, one per card (all of a card's matches with --card),
-${LIMIT} by default (max ${MAX}).
+Every word must match somewhere on one card: its title, link titles or any entry. With --card or
+--kind, every word must match in one entry of that card or kind. End a word with * to match a prefix;
+\`search -- status\` searches for that word.
+Results are ranked by BM25, best first, one per card with its ${SNIPPETS} best-matching entries as
+snippets (with --card, its matching entries up to --limit); ${LIMIT} cards by default (max ${MAX}).
 Each search first indexes what the log and transcripts gained. The index, search.db in the board's
 folder, is a derived cache: \`search rebuild\` deletes and rebuilds it from the log and transcripts.
 Tool calls and output, thinking and injected text are not indexed; secret-shaped strings are redacted.

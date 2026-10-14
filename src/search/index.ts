@@ -11,16 +11,16 @@ import { boardDir, loadBoard, readEventsFrom } from "../store/board-store.ts";
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from "./text.ts";
 
 // Bump when the tables change; the index rebuilds on mismatch.
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const KINDS = ["event", "transcript"] as const;
 export type Kind = (typeof KINDS)[number];
 
 const EVENTS = "events";
 
 // pos is the event seq for an event, or the byte offset of the JSONL line for a
-// transcript; part numbers the chunks taken from it. context repeats the card's title
-// and link titles on every row, so the words of one query can match across a card.
-// Vectors can later key on docs.id.
+// transcript; part numbers the chunks taken from it. Vectors can later key on docs.id.
+// card_fts holds one row per card, keyed by cards.n: its title and link titles, and
+// all its chunks, so the words of one query can match anywhere on a card.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS docs (
@@ -32,23 +32,19 @@ CREATE TABLE IF NOT EXISTS docs (
   part INTEGER NOT NULL,
   at TEXT NOT NULL,
   body TEXT NOT NULL,
-  context TEXT NOT NULL,
   content_hash TEXT NOT NULL,
   UNIQUE (source, pos, part)
 );
 CREATE INDEX IF NOT EXISTS docs_card ON docs (card);
-CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5 (body, context, content='docs', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
+CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5 (body, content='docs', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
 CREATE TRIGGER IF NOT EXISTS docs_ai AFTER INSERT ON docs BEGIN
-  INSERT INTO docs_fts (rowid, body, context) VALUES (new.id, new.body, new.context);
+  INSERT INTO docs_fts (rowid, body) VALUES (new.id, new.body);
 END;
 CREATE TRIGGER IF NOT EXISTS docs_ad AFTER DELETE ON docs BEGIN
-  INSERT INTO docs_fts (docs_fts, rowid, body, context) VALUES ('delete', old.id, old.body, old.context);
+  INSERT INTO docs_fts (docs_fts, rowid, body) VALUES ('delete', old.id, old.body);
 END;
-CREATE TRIGGER IF NOT EXISTS docs_au AFTER UPDATE OF context ON docs BEGIN
-  INSERT INTO docs_fts (docs_fts, rowid, body, context) VALUES ('delete', old.id, old.body, old.context);
-  INSERT INTO docs_fts (rowid, body, context) VALUES (new.id, new.body, new.context);
-END;
-CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, title TEXT NOT NULL, workspace TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS cards (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, workspace TEXT NOT NULL, context TEXT NOT NULL);
+CREATE VIRTUAL TABLE IF NOT EXISTS card_fts USING fts5 (context, body, content='', contentless_delete=1, tokenize='unicode61 remove_diacritics 2');
 CREATE TABLE IF NOT EXISTS cursors (source TEXT PRIMARY KEY, card TEXT NOT NULL, identity TEXT NOT NULL, pos INTEGER NOT NULL, seq INTEGER NOT NULL);
 `;
 
@@ -141,16 +137,18 @@ export interface IndexResult {
 // the index, in one transaction. SQLite's write lock keeps two indexers apart.
 function catchUp(db: DatabaseSync, board: string): IndexResult {
   const insert = db.prepare(
-    "INSERT OR IGNORE INTO docs (card, kind, source, pos, part, at, body, context, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT OR IGNORE INTO docs (card, kind, source, pos, part, at, body, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
   );
-  const cards = Object.values(loadBoard(board).state.cards);
-  const context = new Map(cards.map((c) => [c.id, redact([c.title, ...c.links.map((l) => l.title)].filter(Boolean).join("\n"))]));
+  // Cards whose card_fts row no longer matches their chunks, title or link titles.
+  const dirty = new Set<string>();
   let docs = 0;
   const add = (card: string, kind: Kind, source: string, pos: number, at: string, text: string, firstPart = 0): number => {
     let part = firstPart;
     for (const body of chunk(redact(text))) {
       const hash = createHash("sha256").update(body).digest("hex");
-      docs += Number(insert.run(card, kind, source, pos, part, at, body, context.get(card) ?? "", hash).changes);
+      const changes = Number(insert.run(card, kind, source, pos, part, at, body, hash).changes);
+      if (changes) dirty.add(card);
+      docs += changes;
       part += 1;
     }
     return part;
@@ -167,7 +165,7 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
     let read = readEventsFrom(board, cursor.pos);
     // The log never shrinks or reorders, so a mismatch means the index is from another log: start over.
     if (!read || (read.events.length > 0 && read.events[0]!.seq !== cursor.seq + 1)) {
-      db.exec("DELETE FROM docs; DELETE FROM cursors;");
+      db.exec("DELETE FROM docs; DELETE FROM cursors; DELETE FROM cards; DELETE FROM card_fts;");
       cursor = { ...cursor, pos: 0, seq: 0 };
       read = readEventsFrom(board, 0)!;
     }
@@ -178,26 +176,40 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
     }
     putCursor.run({ ...cursor, pos: read.end, seq: read.events.at(-1)?.seq ?? cursor.seq });
 
-    db.exec("DELETE FROM cards");
-    const putCard = db.prepare("INSERT INTO cards (id, title, workspace) VALUES (?, ?, ?)");
-    const putContext = db.prepare("UPDATE docs SET context = :context WHERE card = :card AND context <> :context");
-    for (const card of cards) {
-      putCard.run(card.id, card.title, card.workspace);
-      putContext.run({ card: card.id, context: context.get(card.id)! });
-    }
-
     let transcripts = 0;
     const dropSource = db.prepare("DELETE FROM docs WHERE source = ?");
     for (const t of db.prepare("SELECT * FROM cursors WHERE source <> ?").all(EVENTS) as unknown as Cursor[]) {
       const tail = readTranscript(t);
       if (!tail) continue;
-      if (tail.reset) dropSource.run(t.source);
+      if (tail.reset && Number(dropSource.run(t.source).changes)) dirty.add(t.card);
       for (const line of tail.lines) {
         let part = 0;
         for (const m of transcriptMessages(line.record)) part = add(t.card, "transcript", t.source, line.pos, m.at ?? "", m.text, part);
       }
       putCursor.run({ ...t, identity: tail.identity, pos: tail.end, seq: 0 });
       transcripts += tail.lines.length > 0 ? 1 : 0;
+    }
+
+    const getContext = db.prepare("SELECT context FROM cards WHERE id = ?");
+    const putCard = db.prepare(
+      "INSERT INTO cards (id, title, workspace, context) VALUES (:id, :title, :workspace, :context) " +
+        "ON CONFLICT (id) DO UPDATE SET title = :title, workspace = :workspace, context = :context",
+    );
+    for (const card of Object.values(loadBoard(board).state.cards)) {
+      const context = redact([card.title, ...card.links.map((l) => l.title)].filter(Boolean).join("\n"));
+      if ((getContext.get(card.id) as { context: string } | undefined)?.context !== context) dirty.add(card.id);
+      putCard.run({ id: card.id, title: card.title, workspace: card.workspace, context });
+    }
+    // ponytail: a changed card's row is rebuilt from all its chunks; append-only rows if long sessions make that slow.
+    const getCard = db.prepare("SELECT n, context FROM cards WHERE id = ?");
+    const cardBody = db.prepare("SELECT coalesce(group_concat(body, char(10)), '') AS body FROM (SELECT body FROM docs WHERE card = ? ORDER BY id)");
+    const dropCard = db.prepare("DELETE FROM card_fts WHERE rowid = ?");
+    const putCardText = db.prepare("INSERT INTO card_fts (rowid, context, body) VALUES (?, ?, ?)");
+    for (const id of dirty) {
+      const card = getCard.get(id) as { n: number; context: string } | undefined;
+      if (!card) continue;
+      dropCard.run(BigInt(card.n));
+      putCardText.run(BigInt(card.n), card.context, (cardBody.get(id) as { body: string }).body);
     }
     return { events: read.events.length, transcripts, docs };
   });
@@ -272,72 +284,87 @@ export interface Query {
   limit: number;
 }
 
-export interface Hit {
-  card: string;
-  title: string;
+// A card's best-matching chunks shown with a hit; with --card, up to --limit of them.
+export const SNIPPETS = 3;
+
+export interface Snippet {
   kind: Kind;
   at: string;
-  match: "lexical";
   snippet: string;
 }
 
-// The user's words as an FTS5 query: every term must match (FTS5's default AND)
-// somewhere on one row, its own text or its card's context,
-// each quoted so punctuation is never read as query syntax; a trailing * keeps
-// prefix matching.
-export function ftsQuery(text: string): string {
+export interface Hit {
+  card: string;
+  title: string;
+  match: "lexical";
+  snippets: Snippet[];
+}
+
+// The user's words as FTS5 terms, each quoted so punctuation is never read as
+// query syntax; a trailing * keeps prefix matching.
+function ftsTerms(text: string): string[] {
   return text
     .split(/\s+/)
     .filter((term) => /[\p{L}\p{N}]/u.test(term))
     .map((term) => {
       const prefix = term.endsWith("*") ? "*" : "";
       return `"${(prefix ? term.slice(0, -1) : term).replace(/"/g, '""')}"${prefix}`;
-    })
-    .join(" ");
+    });
 }
 
-// BM25-ranked hits, best first, a context match weighing half a body match, ties broken by row id. Without a card filter each
-// card shows once, with its best chunk.
+// Every term must match (FTS5's default AND).
+export const ftsQuery = (text: string): string => ftsTerms(text).join(" ");
+
+// One hit per card, best first by BM25. Without --card or --kind every word must
+// match somewhere on the card: its title, link titles or any chunk, the title and
+// link titles weighing half; the snippets are its chunks matching the most words.
+// With --card or --kind every word must match in one chunk of that card or kind.
 export function search(board: string, query: Query): { hits: Hit[]; total: number } {
-  const match = ftsQuery(query.text);
-  if (!match) throw new BoardError("query has no words to search for", "VALIDATION_ERROR", ['Run `pnyx-axi search "<words>"`']);
+  const terms = ftsTerms(query.text);
+  if (!terms.length) throw new BoardError("query has no words to search for", "VALIDATION_ERROR", ['Run `pnyx-axi search "<words>"`']);
+  const match = terms.join(" ");
   const { DatabaseSync } = sqlite();
   const db = new DatabaseSync(searchPath(board), { readOnly: true });
   try {
     db.exec("PRAGMA busy_timeout = 5000");
-    const rows = db
-      .prepare(
-        `WITH hits AS (
-           SELECT d.id, d.card, d.kind, d.at, bm25(docs_fts, 1.0, 0.5) AS rank
-           FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid LEFT JOIN cards c ON c.id = d.card
-           WHERE docs_fts MATCH :match
-             AND (:kind IS NULL OR d.kind = :kind)
-             AND (:card IS NULL OR d.card = :card)
-             AND (:workspace IS NULL OR c.workspace = :workspace)
-         ), best AS (
-           SELECT *, row_number() OVER (PARTITION BY CASE WHEN :card IS NULL THEN card ELSE id END ORDER BY rank, id) AS n FROM hits
-         )
-         SELECT id, card, kind, at, count(*) OVER () AS total FROM best WHERE n = 1 ORDER BY rank, id LIMIT :limit`,
-      )
-      .all({ match, kind: query.kind ?? null, card: query.card ?? null, workspace: query.workspace ?? null, limit: query.limit }) as {
-      id: number;
-      card: string;
-      kind: Kind;
-      at: string;
-      total: number;
-    }[];
-    // The rowid is bound as a BigInt: FTS5 ignores a rowid constraint bound as a float, which a JS number is.
-    const snippet = db.prepare("SELECT snippet(docs_fts, -1, '[', ']', '…', 16) AS s FROM docs_fts WHERE docs_fts MATCH ? AND rowid = ?");
-    const title = db.prepare("SELECT title FROM cards WHERE id = ?");
-    const hits = rows.map((r) => ({
+    const filters = { match, workspace: query.workspace ?? null };
+    const chunks = `SELECT d.id, d.card, bm25(docs_fts) AS rank FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid JOIN cards c ON c.id = d.card
+      WHERE docs_fts MATCH :match AND (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace)`;
+    type Row = { card: string; title: string; total: number };
+    const cards = (
+      query.card
+        ? db
+            .prepare(`WITH h AS MATERIALIZED (${chunks} AND d.card = :card) SELECT h.card, c.title, count(*) AS total FROM h JOIN cards c ON c.id = h.card GROUP BY h.card`)
+            .all({ ...filters, kind: query.kind ?? null, card: query.card })
+        : query.kind
+          ? db
+              .prepare(
+                `WITH h AS MATERIALIZED (${chunks}) SELECT h.card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.id = h.card
+                 GROUP BY h.card ORDER BY min(h.rank), min(h.id) LIMIT :limit`,
+              )
+              .all({ ...filters, kind: query.kind, limit: query.limit })
+          : db
+              .prepare(
+                `WITH h AS MATERIALIZED (SELECT rowid AS n, bm25(card_fts, 0.5, 1.0) AS rank FROM card_fts WHERE card_fts MATCH :match)
+                 SELECT c.id AS card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.n = h.n
+                 WHERE :workspace IS NULL OR c.workspace = :workspace ORDER BY h.rank, c.n LIMIT :limit`,
+              )
+              .all({ ...filters, limit: query.limit })
+    ) as Row[];
+    const top = db.prepare(
+      `SELECT d.kind, d.at, snippet(docs_fts, 0, '[', ']', '…', 16) AS s FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid
+       WHERE docs_fts MATCH :match AND d.card = :card AND (:kind IS NULL OR d.kind = :kind) ORDER BY bm25(docs_fts), d.id LIMIT :n`,
+    );
+    const snippetMatch = query.card || query.kind ? match : terms.join(" OR ");
+    const hits = cards.map((r) => ({
       card: r.card,
-      title: (title.get(r.card) as { title: string } | undefined)?.title ?? r.card,
-      kind: r.kind,
-      at: r.at || "unknown",
+      title: r.title,
       match: "lexical" as const,
-      snippet: (snippet.get(match, BigInt(r.id)) as { s: string }).s.replace(/\s+/g, " "),
+      snippets: (
+        top.all({ match: snippetMatch, card: r.card, kind: query.kind ?? null, n: query.card ? query.limit : SNIPPETS }) as { kind: Kind; at: string; s: string }[]
+      ).map((t) => ({ kind: t.kind, at: t.at || "unknown", snippet: t.s.replace(/\s+/g, " ") })),
     }));
-    return { hits, total: rows[0]?.total ?? 0 };
+    return { hits, total: cards[0]?.total ?? 0 };
   } finally {
     db.close();
   }
