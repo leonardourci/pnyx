@@ -58,8 +58,8 @@ function routeName({ route, control }: { route: ReplyRoute; control?: boolean })
 }
 
 // The request id of a setting change's note: per board, card and change, so a retry
-// of the same change replays its note and the card's notes can be found again.
-const notePrefix = ({ board, card }: { board: string; card: string }) => `pnyx:${board}:${card}:`
+// of the same change replays its note.
+const noteId = ({ board, card, reply }: { board: string; card: string; reply: string }) => `pnyx:${board}:${card}:${reply}`
 
 // Time for Claude Code to show its confirmation after a model or effort command.
 const CONFIRM_SETTLE_MS = 1500
@@ -81,7 +81,7 @@ function deliver({ board, card, reply, route, request }: {
 
   if (route.kind === 'firstmate') {
     return request.control
-      ? fmNote({ home: route.home, requestId: `${notePrefix({ board, card })}${reply}`, text })
+      ? fmNote({ home: route.home, requestId: noteId({ board, card, reply }), text })
       : fmSend({ route, text, resolveKey })
   }
 
