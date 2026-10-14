@@ -4,7 +4,7 @@
 // It writes only through the CLI's own commands and spool drain, so the board
 // keeps a single writer whether a change comes from here or from the CLI.
 import { execFile } from 'node:child_process'
-import { readThread, threadPath, THREAD_CURSOR, type ThreadPage } from '../thread/read.ts'
+import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
 import { findCard } from '../core/decide.ts'
 import { replyRoute } from '../core/route.ts'
@@ -32,6 +32,10 @@ const RESUME_LIMIT = 1000
 const MAX_BUFFERED = 1 << 20
 const MAX_BODY = 1 << 20
 const STOP_TIMEOUT_MS = 5000
+// Matching cards a search returns, enough to filter the whole board.
+const SEARCH_LIMIT = 100
+// How often a live transcript's card is read again at most while the session writes.
+const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
 const CLI_COMMANDS = ['move', 'link', 'outcome', 'undo', 'view', 'history', 'card'] as const
 // Same relative path from src/server and dist/server.
@@ -52,6 +56,8 @@ export type ServerMessage =
   | { type: 'thread'; thread: ThreadPage }
   | { type: 'snapshot'; seq: number; state: BoardState }
   | { type: 'event'; event: BoardEvent }
+  // Last conversation messages by card: all of them on connect, then the ones that changed (null when gone).
+  | { type: 'latest'; messages: Record<string, LatestMessage | null> }
   | { type: 'receipt'; id: string; [field: string]: unknown }
   | { type: 'error'; id: string | null; error: string; code: string; help?: string[] }
 
@@ -80,9 +86,11 @@ export async function startServer({
   homes = homes.map(resolveHome)
   const subscriptions = new Map<WebSocket, { card: string; watcher?: FSWatcher }>()
   const threadScheduled = new WeakSet<WebSocket>()
+  // Set by close(): work already scheduled then must not open new watchers or timers.
+  let closed = false
 
   const refreshThread = (ws: WebSocket) => {
-    if (threadScheduled.has(ws)) {
+    if (closed || threadScheduled.has(ws)) {
       return
     }
 
@@ -125,9 +133,11 @@ export async function startServer({
     ws.send(JSON.stringify(message))
   }
 
+  // A snapshot is always followed by every card's last message, which the tab takes in place of its own.
   const sendSnapshot = (ws: WebSocket) => {
     resyncing.delete(ws)
     send(ws, { type: 'snapshot', seq: state.seq, state })
+    ws.send(JSON.stringify({ type: 'latest', messages: latest } satisfies ServerMessage))
   }
 
   // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.
@@ -152,6 +162,99 @@ export async function startServer({
     for (const ws of wss.clients) {
       sendSnapshot(ws)
     }
+
+    touchLatest(Object.keys(state.cards))
+  }
+
+  // Each card's last conversation message, read from its transcript tail and pushed
+  // to every tab. A card is read again when it gets an event or its transcript
+  // changes: transcript folders are watched, as a live session writes between hook events.
+  // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
+  const latest: Record<string, LatestMessage> = {}
+  const reads = new Map<string, LatestRead>()
+  const folders = new Map<string, FSWatcher>()
+  const unread = new Set<string>()
+  let latestTimer: ReturnType<typeof setTimeout> | undefined
+
+  const watchFolder = (dir: string) => {
+    if (closed || folders.has(dir)) {
+      return
+    }
+
+    try {
+      const watcher = watch(dir, (_event, filename) => {
+        const changed = filename ? join(dir, String(filename)) : undefined
+        touchLatest(Object.values(state.cards).filter(c => {
+          const path = threadPath(c)
+
+          return path && (changed ? path === changed : dirname(path) === dir)
+        })
+          .map(c => c.id))
+      })
+      watcher.on('error', () => {
+        watcher.close(); folders.delete(dir)
+      })
+      folders.set(dir, watcher)
+    } catch {
+      // A missing folder is watched once the card's next event reads it again.
+    }
+  }
+
+  const readLatest = () => {
+    latestTimer = undefined
+    const changed: Record<string, LatestMessage | null> = {}
+
+    for (const id of unread) {
+      const card = state.cards[id], path = card && threadPath(card)
+
+      if (path) {
+        watchFolder(dirname(path))
+      }
+
+      const read = path ? latestMessage(path, reads.get(id)) : undefined
+
+      if (read) {
+        reads.set(id, read)
+      } else {
+        reads.delete(id)
+      }
+
+      const message = read?.message ?? null
+
+      if (JSON.stringify(message) === JSON.stringify(latest[id] ?? null)) {
+        continue
+      }
+
+      if (message) {
+        latest[id] = message
+      } else {
+        delete latest[id]
+      }
+
+      changed[id] = message
+    }
+
+    unread.clear()
+
+    if (Object.keys(changed).length) {
+      for (const ws of wss.clients) {
+        send(ws, { type: 'latest', messages: changed })
+      }
+    }
+  }
+
+  function touchLatest(ids: Iterable<string>) {
+    if (closed) {
+      return
+    }
+
+    for (const id of ids) {
+      unread.add(id)
+    }
+
+    if (unread.size) {
+      latestTimer ??= setTimeout(readLatest, LATEST_DELAY_MS)
+    }
   }
 
   // Folds whatever was appended since the last read, from this server or the CLI.
@@ -170,6 +273,7 @@ export async function startServer({
       state = reduce(state, event)
       recent.push(event)
       broadcast(event)
+      touchLatest([event.cardId])
     }
 
     offset = read.end
@@ -183,13 +287,17 @@ export async function startServer({
   let scheduled = false
 
   const kick = () => {
-    if (scheduled) {
+    if (closed || scheduled) {
       return
     }
 
     scheduled = true
     setImmediate(() => {
       scheduled = false
+
+      if (closed) {
+        return
+      }
 
       try {
         if (spoolFiles(dir).length > 0) {
@@ -281,8 +389,10 @@ export async function startServer({
             throw new BoardError('search expects text and optional workspace', 'VALIDATION_ERROR')
           }
 
+          const query = { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), limit: SEARCH_LIMIT }
+
           // The semantic leg waits on the worker process, never on this event loop.
-          void searchBoard(board, { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), limit: 30 })
+          void searchBoard(board, query)
             .then(result => send(ws, { type: 'receipt', id, ...result }))
             .catch((error: Error) => fail(error.message, error instanceof BoardError ? error.code : 'UNKNOWN'))
         } else if (name === 'settings') {
@@ -445,13 +555,9 @@ export async function startServer({
 
   // A cursor this server can continue from gets only the events after it; any
   // other cursor (ahead of the board, older than the kept events, or none) gets a snapshot.
+  // Either way the tab then gets every card's last message.
   const resume = (ws: WebSocket, after: string | null) => {
     const seq = after !== null && /^\d+$/.test(after) ? Number(after) : undefined
-
-    if (seq === state.seq) {
-      return
-    }
-
     const first = recent[0]?.seq ?? state.seq + 1
 
     if (seq === undefined || seq > state.seq || seq < first - 1) {
@@ -463,6 +569,8 @@ export async function startServer({
         send(ws, { type: 'event', event })
       }
     }
+
+    send(ws, { type: 'latest', messages: latest })
   }
 
   await new Promise<void>((resolve, reject) => {
@@ -503,15 +611,24 @@ export async function startServer({
   renameSync(tmp, infoPath(board))
   // Events spooled while no server ran.
   kick()
+  touchLatest(Object.keys(state.cards))
 
   return {
     port: bound,
     url,
     socket: info.socket,
     async close() {
-      for (const w of watchers) {
+      closed = true
+
+      const threads = [...subscriptions.values()].flatMap(sub => sub.watcher ?? [])
+
+      for (const w of [...watchers, ...folders.values(), ...threads]) {
         w.close()
       }
+
+      folders.clear()
+      subscriptions.clear()
+      clearTimeout(latestTimer)
 
       for (const ws of wss.clients) {
         ws.terminate()

@@ -12,7 +12,7 @@ import { Detail } from './detail.tsx'
 import { Settings } from './settings.tsx'
 import { History } from './history.tsx'
 import { columnsFor, findBoxCards, pageTitle } from './view.ts'
-import { useMeaningCards } from './card-search.ts'
+import { useFoundCards } from './card-search.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { KeyboardFooter, KeyboardLayers, KeyboardToolbar, useBoardKeyboard } from '../keyboard/board.tsx'
 
@@ -106,15 +106,16 @@ function Column({
 }
 
 export function App() {
-  const { state, command, connected, error, thread, setThread } = useBoard()
+  const { state, command, connected, error, thread, setThread, latest } = useBoard()
   const [page, setPage] = useState(restored.page ?? 'board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const notify = useCallback((text: string) => setNotice(text), [])
   const pendingScroll = useRef(restored.scroll)
   const view = viewFor(state)
   const columns = columnsFor(state)
-  const meaning = useMeaningCards(command, query, workspace)
-  const cards = findBoxCards(state, workspace, tag, query, meaning)
+  const found = useFoundCards(command, query, workspace)
+  const matches = new Map(found.map(h => [h.card, h]))
+  const cards = findBoxCards(state, workspace, tag, query, found.map(h => h.card))
   const card = selected ? state.cards[selected] : undefined
   const title = pageTitle(page, state.cards, selected)
   useEffect(() => {
@@ -349,6 +350,8 @@ export function App() {
                             <Fragment key={item.id}>
                               <BoardCard
                                 card={item}
+                                latest={latest[item.id]}
+                                match={matches.get(item.id)}
                                 visible={cards}
                                 selected={selected === item.id}
                                 view={view}

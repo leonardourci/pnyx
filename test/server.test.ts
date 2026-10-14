@@ -2,7 +2,7 @@ import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -14,6 +14,8 @@ import { startServer, type RunningServer, type ServerMessage } from '../src/serv
 import { infoPath, localToken, socketPath } from '../src/server/state.ts'
 import { boardDir, loadBoard, spoolDir, spoolWrite, withWriter } from '../src/store/board-store.ts'
 import { decidePush } from '../src/core/decide.ts'
+import { indexStatus, searchPath } from '../src/search/index.ts'
+import { writeSetting } from '../src/search/settings.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -24,6 +26,8 @@ const TIMEOUT_MS = 3000
 const CLI_TIMEOUT_MS = 30000
 
 let server: RunningServer | undefined
+// Every tab a test opens, closed after it even when it fails.
+const tabs = new Set<WebSocket>()
 
 beforeEach(() => {
   // Every test gets its own home; nothing touches the real ~/.pnyx.
@@ -31,6 +35,13 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+  for (const ws of tabs) {
+    // A refused handshake reports its own end as an error; that is expected here.
+    ws.on('error', () => {})
+    ws.terminate()
+  }
+
+  tabs.clear()
   await server?.close()
   server = undefined
 })
@@ -66,36 +77,77 @@ async function sendToSocket(path: string, text: string): Promise<void> {
   await once(conn, 'close')
 }
 
+function inbox<T>() {
+  const queue: T[] = []
+  const waiting: ((m: T) => void)[] = []
+
+  return {
+    queue,
+    put(message: T) {
+      const waiter = waiting.shift()
+
+      if (waiter) {
+        waiter(message)
+      } else {
+        queue.push(message)
+      }
+    },
+    next: () =>
+      queue.length > 0
+        ? Promise.resolve(queue.shift()!)
+        : new Promise<T>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            // A wait that timed out must not swallow the message that arrives after it.
+            waiting.splice(waiting.indexOf(waiter), 1)
+            reject(new Error('timed out waiting for a message'))
+          }, TIMEOUT_MS).unref()
+
+          const waiter = (m: T) => {
+            clearTimeout(timer)
+            resolve(m)
+          }
+
+          waiting.push(waiter)
+        }),
+  }
+}
+
+type LatestMessages = Extract<ServerMessage, { type: 'latest' }>['messages']
+
+// Last-message pushes arrive on their own queue, so the other messages keep their order.
 async function tab(query = '') {
   const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/ws?token=${localToken()}${query.replace('?', '&')}`)
-  const queue: ServerMessage[] = []
-  const waiting: ((m: ServerMessage) => void)[] = []
+  tabs.add(ws)
+  const main = inbox<ServerMessage>(), latest = inbox<LatestMessages>()
+  const queue = main.queue
   ws.on('message', data => {
     const message = JSON.parse(String(data)) as ServerMessage
-    const waiter = waiting.shift()
 
-    if (waiter) {
-      waiter(message)
+    if (message.type === 'latest') {
+      latest.put(message.messages)
     } else {
-      queue.push(message)
+      main.put(message)
     }
   })
   await once(ws, 'open')
-  const next = () =>
-    queue.length > 0
-      ? Promise.resolve(queue.shift()!)
-      : new Promise<ServerMessage>((resolve, reject) => {
-        waiting.push(resolve)
-        setTimeout(() => reject(new Error('timed out waiting for a message')), TIMEOUT_MS).unref()
-      })
   // Every connection opens with the server's build.
-  const hello = await next()
+  const hello = await main.next()
   assert.equal(hello.type, 'hello')
 
   return {
     ws,
     hello,
-    next,
+    next: main.next,
+    // The next last-message push that includes this card.
+    async latest(card: string) {
+      for (;;) {
+        const messages = await latest.next()
+
+        if (card in messages) {
+          return messages[card]
+        }
+      }
+    },
     command(id: string, name: string, args: string[]) {
       ws.send(JSON.stringify({ type: 'command', id, name, args }))
     },
@@ -128,6 +180,7 @@ async function handshakeStatus(
   headers: Record<string, string> = {},
 ): Promise<number> {
   const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/ws${query}`, { headers })
+  tabs.add(ws)
   const [, response] = await once(ws, 'unexpected-response')
 
   return response.statusCode
@@ -320,6 +373,7 @@ test('the WebSocket handshake needs the token, an exact host and an exact origin
   assert.equal(await handshakeStatus(token, { host: `evil.example:${server.port}` }), 403)
 
   const ok = new WebSocket(`ws://127.0.0.1:${server.port}/ws${token}`, { headers: { origin: `http://localhost:${server.port}` } })
+  tabs.add(ok)
   await once(ok, 'open')
   ok.close()
 })
@@ -502,4 +556,176 @@ test('browser reply delivery uses only configured fixture homes and never resend
   }
 
   t.ws.close()
+})
+
+const assistantLine = (text: string, at: string) => JSON.stringify({ type: 'assistant', timestamp: at, message: { content: [{ type: 'text', text }] } }) + '\n'
+
+test('the board search finds a card by a word only its transcript holds, including words a live session just wrote', async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  server = await startServer({ board: 'default' })
+  const t = await tab(); await t.next()
+
+  const search = async (id: string, text: string) => {
+    t.command(id, 'search', [text])
+
+    for (;;) {
+      const m = await t.next()
+
+      if ((m.type === 'receipt' || m.type === 'error') && m.id === id) {
+        return m
+      }
+    }
+  }
+
+  const cards = (m: ServerMessage) => (m.type === 'receipt' ? (m.hits as { card: string }[]).map(h => h.card) : m)
+  // "readable" is only in the transcript's first user message, not in any title, link or event.
+  assert.deepEqual(cards(await search('s1', 'readable')), [fixture.state.keys.layout])
+  appendFileSync(fixture.transcript, assistantLine('The flamingo rollout is staged behind the flag.', '2026-10-13T11:00:00Z'))
+  const byText = await search('s2', 'flamingo rollout')
+  assert.deepEqual(cards(byText), [fixture.state.keys.layout])
+  assert.equal(byText.type === 'receipt' && (byText.hits as { match: string }[])[0]!.match, 'lexical')
+  assert.deepEqual(cards(await search('s3', 'flamingo nowhere')), [])
+  t.ws.close()
+})
+
+test('a board search rebuilds a stale search index', async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  // An index another version left behind.
+  writeFileSync(searchPath('default'), 'not a database')
+  assert.equal(indexStatus('default')?.current, false)
+  server = await startServer({ board: 'default' })
+  const t = await tab(); await t.next()
+  t.command('s1', 'search', ['readable'])
+  let m = await t.next()
+
+  while (!((m.type === 'receipt' || m.type === 'error') && m.id === 's1')) {
+    m = await t.next()
+  }
+
+  assert.deepEqual(m.type === 'receipt' && (m.hits as { card: string }[]).map(h => h.card), [fixture.state.keys.layout])
+  const status = indexStatus('default')
+  assert.equal(status?.current, true)
+  assert.equal(status?.transcripts.tracked, 1)
+  t.ws.close()
+})
+
+test("each card gets its conversation's last message, pushed again as the transcript grows", async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  const card = fixture.state.keys.layout!
+  server = await startServer({ board: 'default' })
+  const t = await tab(); await t.next()
+  assert.deepEqual(await t.latest(card), { role: 'assistant', text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.', at: '2026-10-13T10:49:00Z' })
+  // Tool calls and thinking never replace the last message; a newer typed user message does.
+  appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: '2026-10-13T11:00:00Z', message: { content: [{ type: 'thinking', thinking: 'hidden' }, { type: 'tool_use', name: 'Bash', input: {} }] } }) + '\n')
+  appendFileSync(fixture.transcript, JSON.stringify({ type: 'user', timestamp: '2026-10-13T11:01:00Z', message: { content: 'Ship   it\nnow.' } }) + '\n')
+  assert.deepEqual(await t.latest(card), { role: 'user', text: 'Ship it now.', at: '2026-10-13T11:01:00Z' })
+  appendFileSync(fixture.transcript, assistantLine('Shipped.', '2026-10-13T11:02:00Z'))
+  assert.deepEqual(await t.latest(card), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
+  // A tab that connects later gets every card's last message at once.
+  const later = await tab(); await later.next()
+  assert.deepEqual(await later.latest(card), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
+  // A tab that resyncs, such as one dropped while lagging, gets them again after its snapshot.
+  t.ws.send(JSON.stringify({ type: 'resync' }))
+  assert.equal((await t.next()).type, 'snapshot')
+  assert.deepEqual(await t.latest(card), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
+  t.ws.close(); later.ws.close()
+})
+
+test("a tab whose snapshot alone fills its send buffer still gets every card's last message", async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  server = await startServer({ board: 'default' })
+  const card = fixture.state.keys.layout!, message = { role: 'assistant', text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.', at: '2026-10-13T10:49:00Z' }
+  const first = await tab(); await first.next()
+  assert.deepEqual(await first.latest(card), message)
+  withWriter('default', w => {
+    const d = decidePush(w.state, 'big', { title: 'x'.repeat(4 << 20) }, { actor: 'test', at: '2026-10-14T10:00:00Z' }); assert.ok('event' in d); w.append(d.event)
+  })
+  assert.equal((await first.next()).type, 'event')
+  // The card's message is read already, so a later tab gets it only right after its snapshot.
+  const t = await tab()
+  assert.equal((await t.next()).type, 'snapshot')
+  assert.deepEqual(await t.latest(card), message)
+  first.ws.close(); t.ws.close()
+})
+
+test('with semantic search on, the board search finds a transcript-only card by meaning when its words do not all match', async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  appendFileSync(fixture.transcript, assistantLine('Flamingo rollout staged.', '2026-10-13T11:00:00Z'))
+  // The stub worker embeds with hashed word vectors, so no model is fetched or loaded.
+  delete process.env.PNYX_SEMANTIC
+  process.env.PNYX_SEMANTIC_STUB = '1'
+  writeSetting('search.rerank', 'off')
+
+  try {
+    server = await startServer({ board: 'default' })
+    const t = await tab(); await t.next()
+    // "dinosaur" is nowhere, so full text finds nothing; the transcript holds the other words.
+    // The first search waits for the worker to start and embed the board, so receipts may be slow:
+    // wait longer than the server's own worst case (10s index request plus 30s embed request).
+    const deadline = Date.now() + 60_000
+
+    const receipt = async (id: string): Promise<ServerMessage> => {
+      for (;;) {
+        try {
+          const m = await t.next()
+
+          if ((m.type === 'receipt' || m.type === 'error') && m.id === id) {
+            return m
+          }
+        } catch (error) {
+          if (Date.now() > deadline) {
+            throw error
+          }
+        }
+      }
+    }
+
+    let hits: { card: string; match: string; weak?: true }[] = []
+
+    for (let n = 0; !hits.some(h => h.match === 'semantic') && Date.now() < deadline; n++) {
+      t.command(`m${n}`, 'search', ['flamingo rollout staged dinosaur'])
+      const m = await receipt(`m${n}`)
+      assert.equal(m.type, 'receipt', JSON.stringify(m))
+      hits = m.type === 'receipt' ? m.hits as typeof hits : []
+    }
+
+    assert.deepEqual(hits.filter(h => !h.weak).map(h => [h.card, h.match]), [[fixture.state.keys.layout, 'semantic']])
+    t.ws.close()
+  } finally {
+    // Stops the worker for this home within seconds.
+    writeSetting('search.semantic', 'off')
+    process.env.PNYX_SEMANTIC = 'off'
+    delete process.env.PNYX_SEMANTIC_STUB
+  }
+})
+
+test('a stopped server leaves no open handles, even with board and transcript changes still in flight', async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  const card = fixture.state.keys.layout!
+  const settle = () => new Promise(r => setTimeout(r, 300))
+  // Resources this process held before the server, such as the test runner's own.
+  await settle()
+  const before = process.getActiveResourcesInfo().sort()
+  server = await startServer({ board: 'default' })
+  const t = await tab(); await t.next()
+  assert.ok(await t.latest(card))
+  t.command('thread-1', 'thread', [card])
+  t.command('search-1', 'search', ['readable'])
+
+  for (let n = 0; n < 2;) {
+    const m = await t.next()
+
+    if (m.type === 'receipt') {
+      n++
+    }
+  }
+
+  // Changes that land just before the stop schedule more work: a log append, a spool
+  // drain and a transcript write that the folder watchers see.
+  appendFileSync(fixture.transcript, assistantLine('Still writing.', '2026-10-13T11:05:00Z'))
+  cli('move', card, 'review')
+  await server.close()
+  server = undefined
+  await settle()
+  assert.deepEqual(process.getActiveResourcesInfo().sort(), before)
 })

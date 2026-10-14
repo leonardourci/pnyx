@@ -9,6 +9,13 @@ The local server started by `pnyx-axi serve` and stopped by `pnyx-axi stop`, SIG
 
 The server reads the log for appends from any writer, including the CLI, and pushes them.
 
+Each card's last conversation message (the last typed user message or assistant reply in
+its recorded transcript, without tool calls, thinking or injected text, cut to 280
+characters) is pushed as `{"type":"latest","messages":{"<cardId>":{role,text,at}|null}}`:
+every card's on connect and after each snapshot, then the ones that changed. A card is read again when it gets an
+event or its transcript folder changes: only the lines appended since its last read, or
+back from the transcript's end when the file is new, shrank or was replaced.
+
 Files: `server.json` (pid, port, url, socket) and `server.sock` in the board folder while it runs, and the per-install token at `$PNYX_HOME/token` (mode 0600), which local programs read for the handshake. `server.json` counts only while its port answers `/health` with the same board and pid.
 
 The same authenticated socket also accepts these commands:
@@ -18,7 +25,10 @@ The same authenticated socket also accepts these commands:
   Passing an empty card ID unsubscribes. Missing files and unsupported providers are
   explicit. Reads use complete JSONL records, a 10 MB window, up to 60 entries and
   long messages split into complete, paged chunks. Cursors retain separate transcript and reply positions, including chunk ordinals, so no message tail is silently discarded. Directory watches handle native file replacement.
-- `search`, args `[text, optionalWorkspace]`: full-text results from the derived index.
+- `search`, args `[text, optionalWorkspace]`: the hybrid search (`searchBoard`: full-text,
+  transcripts included, plus meaning when semantic search is on), up to 100 matching
+  cards; the board's card search box, History and the palette all use it. Each
+  search first catches the index up, and rebuilds an index that another version built.
 - `catalog`, args `[cardId]`: a receipt with local harness command metadata. The
   recorded working folder determines project scope; the browser cannot supply a
   path. Reads are bounded and only one catalog read per socket runs at a time:

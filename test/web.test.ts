@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, mkdtempSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -9,7 +9,7 @@ import { BoardError, type BoardEvent, type BoardState } from '../src/core/model.
 import { clampViewSize, patchView, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
 import { columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
-import { readThread, recordEntries } from '../src/thread/read.ts'
+import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -211,4 +211,47 @@ test('a tab reloads only when it reconnects to a server serving another build', 
   assert.equal(shouldReload('', 'bbb222'), false)
   // A server with nothing built cannot name a newer page.
   assert.equal(shouldReload('aaa111', ''), false)
+})
+
+test("a card's last message comes from the transcript tail, without tool calls, thinking, injected or torn text", () => {
+  const fixture = (name: string) => join(import.meta.dirname, 'fixtures/transcripts', name)
+  const claude = latestMessage(fixture('claude-session.jsonl')).message!
+  // The summary record and the torn last line are skipped; long text is cut to two card lines.
+  assert.equal(claude.role, 'assistant')
+  assert.equal(claude.at, '2026-10-11T09:02:00.000Z')
+  assert.match(claude.text, /^Paragraph 0 about the orders table backfill\. Rows are copied/)
+  assert.ok(claude.text.length <= 280 && claude.text.endsWith('…'))
+  assert.deepEqual(latestMessage(fixture('codex-session.jsonl')).message, { role: 'assistant', text: 'The export query scans every invoice without an index.', at: '2026-10-12T10:00:07.000Z' })
+  // A newer Codex user message wins over the reply, its injected context stripped, even
+  // when tool output after it overflows the first read window.
+  const dir = mkdtempSync(join(tmpdir(), 'pnyx-latest-')), path = join(dir, 'codex.jsonl')
+  const line = (payload: unknown) => JSON.stringify({ timestamp: '2026-10-12T10:01:00.000Z', type: 'response_item', payload }) + '\n'
+  writeFileSync(path, readFileSync(fixture('codex-session.jsonl'), 'utf8') + line({ type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>\n<cwd>/work</cwd>\n</environment_context>Now add the index.' }] }) + line({ type: 'function_call_output', call_id: 'c2', output: 'x'.repeat(200_000) }))
+  assert.deepEqual(latestMessage(path).message, { role: 'user', text: 'Now add the index.', at: '2026-10-12T10:01:00.000Z' })
+  assert.equal(latestMessage(join(dir, 'missing.jsonl')).message, null)
+  writeFileSync(path, line({ type: 'reasoning', summary: [] }))
+  assert.equal(latestMessage(path).message, null)
+})
+
+test("a card's last message is read again from only what its transcript gained", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pnyx-latest-')), path = join(dir, 'claude.jsonl')
+  const line = (type: string, text: string, at: string) => JSON.stringify({ type, timestamp: at, message: { content: [{ type: 'text', text }] } }) + '\n'
+  const tool = JSON.stringify({ type: 'assistant', timestamp: '2026-10-12T10:02:00.000Z', message: { content: [{ type: 'tool_use', name: 'Bash', input: {} }] } }) + '\n'
+  writeFileSync(path, line('assistant', 'First reply.', '2026-10-12T10:00:00.000Z'))
+  const first = latestMessage(path)
+  assert.equal(first.message?.text, 'First reply.')
+  // Appended tool calls and a torn line hold no message: the previous one stays, and the torn line is read once complete.
+  const torn = line('user', 'Ship it.', '2026-10-12T10:03:00.000Z')
+  appendFileSync(path, tool + torn.slice(0, 20))
+  const second = latestMessage(path, first)
+  assert.equal(second.message?.text, 'First reply.')
+  assert.equal(second.size, first.size + tool.length)
+  appendFileSync(path, torn.slice(20))
+  // The earlier bytes are never read again: overwriting them in place changes nothing.
+  const fd = openSync(path, 'r+'); writeSync(fd, 'x', 0); closeSync(fd)
+  const third = latestMessage(path, second)
+  assert.equal(third.message?.text, 'Ship it.')
+  // A file replaced or cut short is read back from its end.
+  writeFileSync(path, line('assistant', 'Fresh.', '2026-10-12T11:00:00.000Z'))
+  assert.equal(latestMessage(path, third).message?.text, 'Fresh.')
 })
