@@ -46,7 +46,9 @@ export function Switch({
       aria-busy={busy}
       onClick={() => run(() => onChange(!checked))}
     >
-      <span className="switch-track"><span /></span>
+      <span className="switch-track">
+        <span />
+      </span>
       {label}
     </Button>
   )

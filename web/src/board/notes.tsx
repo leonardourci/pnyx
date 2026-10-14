@@ -39,7 +39,11 @@ export function Notes({
   }, [card.id, card.notes?.length, command, notify])
 
   if (!notes) {
-    return <div className="detail-content"><p className="empty">Loading notes…</p></div>
+    return (
+      <div className="detail-content">
+        <p className="empty">Loading notes…</p>
+      </div>
+    )
   }
 
   return (

@@ -104,7 +104,9 @@ export function Detail({
             {' '}
             {card.agent?.provider ?? 'Agent session'}
           </span>
-          <Button aria-label="Close detail" onClick={close}><Icon name="close" /></Button>
+          <Button aria-label="Close detail" onClick={close}>
+            <Icon name="close" />
+          </Button>
         </div>
         <h2>{card.title}</h2>
         <Tags tags={card.tags} />

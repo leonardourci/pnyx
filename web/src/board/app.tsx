@@ -359,7 +359,9 @@ export function App() {
         {notice && (
           <div role="status" className="notice">
             <span>{notice}</span>
-            <Button aria-label="Dismiss notification" onClick={() => setNotice('')}><Icon name="close" size={14} /></Button>
+            <Button aria-label="Dismiss notification" onClick={() => setNotice('')}>
+              <Icon name="close" size={14} />
+            </Button>
           </div>
         )}
         <KeyboardLayers keyboard={keyboard} state={state} connected={connected} />

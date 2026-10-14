@@ -83,7 +83,7 @@ export default tseslint.config(
         logical: 'parens-new-line',
         prop: 'parens-new-line',
       }],
-      '@stylistic/jsx-one-expression-per-line': ['error', { allow: 'single-child' }],
+      '@stylistic/jsx-one-expression-per-line': ['error', { allow: 'non-jsx' }],
     },
   },
 )
