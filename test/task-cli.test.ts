@@ -1,0 +1,90 @@
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { test } from 'node:test'
+
+const bin = join(import.meta.dirname, '../dist/cli/pnyx-axi.js')
+
+function fixture() {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-task-cli-'))
+  const dir = join(home, 'boards/default')
+  const env = { ...process.env, PNYX_HOME: home, PNYX_SEMANTIC: 'off' }
+  const run = (...args: string[]) => execFileSync(process.execPath, [bin, ...args], { env, encoding: 'utf8' })
+
+  const push = ({ key, input }: { key: string; input: object }) => {
+    const path = join(home, 'push.json')
+    writeFileSync(path, JSON.stringify(input))
+
+    return run('push', '--key', key, '--file', path)
+  }
+
+  let seq = 0
+
+  const hook = ({ session, event, interactive = true }: {
+    session: string
+    event: string
+    interactive?: boolean
+  }) => {
+    seq++
+    const spool = join(dir, 'spool')
+    mkdirSync(spool, { recursive: true })
+    writeFileSync(join(spool, `${String(seq).padStart(4, '0')}.json`), JSON.stringify({
+      id: `task-hook-${seq}`,
+      at: `2026-10-14T12:00:${String(seq).padStart(2, '0')}Z`,
+      harness: 'claude',
+      event,
+      ...(interactive ? { terminal: { tty: '/dev/ttys123', pid: '123' } } : {}),
+      payload: { session_id: session, cwd: '/task-lab', prompt: `Work ${session}` },
+    }))
+    push({ key: 'probe', input: {} })
+  }
+
+  const state = () => JSON.parse(readFileSync(join(dir, 'snapshot.json'), 'utf8')).state
+
+  return { home, dir, run, push, hook, state }
+}
+
+test('attach pins one session, follows subsequent hooks, and preserves outcomes after moving', () => {
+  const f = fixture()
+  f.run('task', 'create', '--key', 'work', '--title', 'A piece of work', '--folder', '/task-lab')
+  f.hook({ session: 'a', event: 'SessionStart' })
+  f.hook({ session: 'b', event: 'SessionStart' })
+  const first = f.state()
+  const task = first.keys.work
+  assert.equal(first.cards[task].agent.sessionId, 'a')
+  assert.equal(first.cards[first.keys['claude:b']].agent.sessionId, 'b')
+  f.run('task', 'create', '--key', 'other', '--title', 'Continue here')
+  f.run('attach', 'other', '--session', 'claude-code:a', '--event-id', 'move-a')
+  const after = readFileSync(join(f.dir, 'events.jsonl'), 'utf8')
+  f.run('attach', 'other', '--session', 'claude-code:a', '--event-id', 'move-a', '--if-revision', '0')
+  assert.equal(readFileSync(join(f.dir, 'events.jsonl'), 'utf8'), after)
+  f.hook({ session: 'a', event: 'SessionEnd' })
+  const ended = f.state()
+  assert.equal(ended.cards[ended.keys.other].column, 'done')
+  assert.equal(ended.cards[task].agent, undefined)
+  f.run('detach', 'work')
+  assert.equal(f.state().cards[ended.keys.other].agent.sessionId, 'a')
+  f.run('detach', 'other')
+  f.hook({ session: 'a', event: 'UserPromptSubmit' })
+  assert.equal(f.state().sessions['claude-code:a'].taskId, null)
+  assert.equal(f.state().cards[f.state().keys['claude:a']].hidden, true)
+  assert.match(f.run('task', 'sessions'), /claude-code:a/)
+})
+
+test('background sessions remain in History and search while the live board excludes them', () => {
+  const f = fixture()
+  f.hook({ session: 'background', event: 'SessionStart', interactive: false })
+  const state = f.state()
+  const id = state.keys['claude:background']
+  assert.equal(state.cards[id].hidden, true)
+  assert.match(f.run('card', id), /visibility: history/)
+  assert.match(f.run('history', '--card', id, '--full'), /background/)
+  assert.doesNotMatch(f.run(), /task-lab/)
+  assert.match(f.run('search', 'task-lab'), new RegExp(id))
+  f.hook({ session: 'background', event: 'UserPromptSubmit' })
+  assert.equal(f.state().cards[id].hidden, false)
+  f.hook({ session: 'background', event: 'SessionStart', interactive: false })
+  assert.equal(f.state().cards[id].hidden, true)
+})

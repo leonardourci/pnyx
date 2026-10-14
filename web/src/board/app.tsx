@@ -1,3 +1,4 @@
+import { liveTask } from '../../../src/core/tasks.ts'
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
@@ -120,8 +121,10 @@ export function App() {
   useEffect(() => {
     document.title = title
   }, [title])
-  const workspaces = [...new Set(Object.values(state.cards).map(c => c.workspace))].sort()
-  const tags = [...new Set(Object.values(state.cards).flatMap(c => c.tags))].sort()
+  const workspaces = [...new Set(Object.values(state.cards).filter(c => liveTask({ card: c }))
+    .map(c => c.workspace))].sort()
+  const tags = [...new Set(Object.values(state.cards).filter(c => liveTask({ card: c }))
+    .flatMap(c => c.tags))].sort()
   const save = useCallback((patch: unknown) => command('view', ['set', '--json', JSON.stringify(patch), '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()]).then(() => {
     notify('Preferences saved')
 
@@ -282,13 +285,13 @@ export function App() {
                   <p>Follow the work. Keep the conversation in view.</p>
                 </div>
                 <div className="hero-stats">
-                  <strong>{Object.values(state.cards).filter(c => c.column === 'needs_you').length}</strong>
+                  <strong>{Object.values(state.cards).filter(c => liveTask({ card: c }) && c.column === 'needs_you').length}</strong>
                   {' '}
                   need your attention
                   <p>
-                    {Object.keys(state.cards).length}
+                    {Object.values(state.cards).filter(c => liveTask({ card: c })).length}
                     {' '}
-                    sessions ·
+                    tasks ·
                     {' '}
                     {state.seq}
                     {' '}

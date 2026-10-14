@@ -1,16 +1,17 @@
 import type { BoardState, Card, Column, Link } from '../../../src/core/model.ts'
+import { liveTask } from '../../../src/core/tasks.ts'
 import { viewFor } from '../../../src/core/view.ts'
 
 export const BUILTIN_COLUMNS: { id: Column; title: string; description: string }[] = [
   { id: 'needs_you', title: 'Needs you', description: 'Decisions & interruptions' },
   { id: 'workers_on_it', title: 'Workers on it', description: 'Open work, including idle agents' },
-  { id: 'review', title: 'Review', description: 'Linked change is open' },
+  { id: 'review', title: 'Waiting', description: 'Idle agents, unassigned tasks & open changes' },
   { id: 'done', title: 'Done', description: 'Confirmed outcomes, merges & ended sessions' },
 ]
 export const columnsFor = (state: BoardState) => [...BUILTIN_COLUMNS, ...viewFor(state).customColumns.map(c => ({ ...c, description: 'Manual placement' }))]
 
 export function pageTitle(page: string, cards: BoardState['cards'], selected: string | null = null): string {
-  const count = Object.values(cards).filter(c => c.column === 'needs_you').length
+  const count = Object.values(cards).filter(c => liveTask({ card: c }) && c.column === 'needs_you').length
   const label = page === 'history' ? 'History' : page === 'settings' ? 'Settings'
     : (selected && cards[selected]?.title) || 'Board'
 
@@ -22,7 +23,7 @@ export function filterCards(state: BoardState, workspace: string, tag: string, q
     .split(/\s+/)
     .filter(Boolean)
 
-  return Object.values(state.cards).filter(c => (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag)) && words.every(w => [c.title, c.key, ...c.tags, ...c.links.map(l => `${l.number ?? ''} ${l.title ?? ''}`)].join(' ').toLowerCase()
+  return Object.values(state.cards).filter(c => liveTask({ card: c }) && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag)) && words.every(w => [c.title, c.key, ...c.tags, ...c.links.map(l => `${l.number ?? ''} ${l.title ?? ''}`)].join(' ').toLowerCase()
     .includes(w)))
     .sort((a,b) => b.updatedSeq - a.updatedSeq || a.id.localeCompare(b.id))
 }
@@ -39,7 +40,7 @@ export function findBoxCards(
 ): Card[] {
   const local = filterCards(state, workspace, tag, query)
   const seen = new Set(local.map(c => c.id))
-  const added = (c: Card | undefined): c is Card => !!c && !seen.has(c.id)
+  const added = (c: Card | undefined): c is Card => !!c && liveTask({ card: c }) && !seen.has(c.id)
     && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag))
 
   return [...local, ...meaning.map(id => state.cards[id]).filter(added)]

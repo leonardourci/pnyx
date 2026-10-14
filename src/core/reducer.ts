@@ -10,6 +10,7 @@ import {
   type Link,
   type SourceRef,
 } from './model.ts'
+import { applyAttachment, observeSession } from './tasks.ts'
 
 export function emptyBoard(): BoardState {
   return { v: EVENT_VERSION, seq: 0, cards: {}, keys: {}, eventIds: {}, undone: {} }
@@ -40,12 +41,18 @@ export function columnFor(card: Card): Column {
     return 'needs_you'
   }
 
-  if (card.attention.length > 0) {
+  if (card.attention.some(a => a.kind !== 'idle')) {
     return 'needs_you'
   }
 
   if (card.outcome) {
     return card.outcome.state === 'failed' && !card.outcome.closed ? 'needs_you' : 'done'
+  }
+
+  // The legacy `review` column id remains replay-compatible; its live label is
+  // Waiting, including an idle attached session and tasks awaiting an agent.
+  if (card.activity === 'waiting' || card.activity?.startsWith('idle') || card.sessionIds?.length === 0) {
+    return 'review'
   }
 
   return 'workers_on_it'
@@ -141,6 +148,26 @@ function apply(state: BoardState, event: BoardEvent): boolean {
 
   let card = state.cards[event.cardId]
 
+  if (event.type === 'task.session') {
+    applyAttachment({ state, event })
+
+    if (event.undoes) {
+      state.undone[event.undoes] = event.id
+    }
+
+    for (const task of Object.values(state.cards)) {
+      task.column = columnFor(task)
+    }
+
+    if (card && event.data.before !== card.id) {
+      card.revision++
+      card.updatedSeq = event.seq
+      card.updatedAt = event.at
+    }
+
+    return true
+  }
+
   if (event.type === 'card.pushed') {
     const { key, source, ...fields } = event.data
     delete fields.before
@@ -159,6 +186,7 @@ function apply(state: BoardState, event: BoardEvent): boolean {
         attention: [],
         links: [],
         sourceRefs: [],
+        ...(fields.agent && (!source || source.adapter === 'hooks') ? { automaticTask: true } : {}),
         column: 'workers_on_it',
         revision: 0,
         createdSeq: event.seq,
@@ -263,7 +291,17 @@ function apply(state: BoardState, event: BoardEvent): boolean {
     state.undone[event.undoes] = event.id
   }
 
+  observeSession({ state, card, event })
   card.column = columnFor(card)
+
+  for (const session of Object.values(state.sessions ?? {})) {
+    const task = session.taskId && state.cards[session.taskId]
+
+    if (task && task.id !== card.id) {
+      task.column = columnFor(task)
+    }
+  }
+
   card.revision += 1
 
   if (event.type === 'card.noted') {

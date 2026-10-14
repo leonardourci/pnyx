@@ -320,9 +320,7 @@ export function observe(envelope: HookEnvelope): Observation[] {
   const agentId = str(p.agent_id)
   const found = signal(envelope.event, p)
 
-  // Claude Code runs helper agents with an empty agent type (session titles, prompt
-  // suggestions, compaction) that its own interface never shows.
-  if (!sessionId || !found || (agentId && envelope.harness === 'claude' && p.agent_type === '')) {
+  if (!sessionId || !found) {
     return []
   }
 
@@ -355,7 +353,10 @@ export function observe(envelope: HookEnvelope): Observation[] {
   const out: Observation[] = []
   let key = parentKey
   const terminal = terminalFacts(envelope.terminal)
-  let card: Record<string, unknown> = { ...session, ...activity, ...(terminal ? { terminal } : {}) }
+  const recordedTerminal = ['SessionStart', 'UserPromptSubmit'].includes(envelope.event)
+  let card: Record<string, unknown> = {
+    ...session, ...activity, ...(terminal || recordedTerminal ? { terminal: terminal ?? {} } : {}),
+  }
 
   if (agentId) {
     const clears = found.attend?.clear?.some(prefix => NOTIFICATION.startsWith(prefix))

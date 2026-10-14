@@ -225,6 +225,7 @@ test('a session event observes the session card with its folder and transcript',
       },
       autoTitle: { from: 'folder', text: 'repo' },
       activity: 'started',
+      terminal: {},
       settings: { model: 'claude-opus-5-5', mode: 'default' },
     },
     attend: { clear: ['hook:'] },
@@ -376,7 +377,7 @@ const CASES: (Case | [Case[0], string, string, typeof NOTHING])[] = [
   ['claude', 'ElicitationResult', 'claude-elicitation-result', 'working', []],
   ['claude', 'SubagentStart', 'claude-subagent-start', 'started'],
   ['claude', 'SubagentStop', 'claude-subagent-stop', 'stopped', []],
-  ['claude', 'SubagentStop', 'claude-subagent-stop-helper', NOTHING],
+  ['claude', 'SubagentStop', 'claude-subagent-stop-helper', 'stopped', []],
   ['claude', 'TaskCreated', 'claude-task-created', 'task: Implement user authentication'],
   ['claude', 'TaskCompleted', 'claude-task-completed', 'task done: Implement user authentication'],
   ['claude', 'TeammateIdle', 'claude-teammate-idle', 'teammate researcher idle'],
@@ -471,7 +472,7 @@ test('a permission prompt moves the session to Needs you with its reason, and th
   assert.match(ran, /^ {2}attention: none$/m)
   assert.match(send('Stop', 'claude-stop-background'), /idle, 2 background tasks running/)
   const idle = send('Notification', 'claude-notification-idle')
-  assert.match(idle, /^ {2}column: needs_you$/m)
+  assert.match(idle, /^ {2}column: review$/m)
   assert.match(idle, /Claude is waiting for your input/)
   assert.match(send('UserPromptSubmit', 'claude-user-prompt'), /^ {2}column: workers_on_it$/m)
   const failed = send('StopFailure', 'claude-stop-failure')
@@ -549,7 +550,7 @@ test('spooled hook events become cards on the next write, and a finished turn ne
 
   const session = run('card', `claude:${SESSION}`)
   // Same-second hooks may be ingested in either order, so only facts every order shares are checked.
-  assert.match(session, /^ {2}column: workers_on_it$/m)
+  assert.match(session, /^ {2}column: review$/m)
   assert.match(session, /^ {2}workspace: unassigned$/m)
   assert.match(session, /^ {2}title: Open a pull request$/m)
   assert.match(session, /^ {4}cwd: \/work\/repo$/m)
@@ -732,7 +733,7 @@ test('an ended session moves to Done, an open question still needs you, and a re
   send('SessionStart', 'claude-session-start')
   send('UserPromptSubmit', 'claude-user-prompt')
   send('Stop', 'claude-stop')
-  assert.match(card(), /^ {2}column: workers_on_it$/m)
+  assert.match(card(), /^ {2}column: review$/m)
   send('SessionEnd', 'claude-session-end')
   assert.match(card(), /^ {2}column: done$/m)
   assert.match(card(), /^ {2}outcome:\n {4}state: ended\n {4}source: hooks$/m)

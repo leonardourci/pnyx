@@ -1,6 +1,8 @@
 // pnyx-axi board commands. Every write goes through `commit`, which holds the
 // board's writer lock, ingests the hook spool, then appends at most one event.
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
+import { randomUUID } from 'node:crypto'
+import { findSession, liveTask } from '../core/tasks.ts'
 import { readFileSync, realpathSync, renameSync, rmSync } from 'node:fs'
 import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
@@ -11,6 +13,7 @@ import {
   decidePush,
   decideView,
   decideUndo,
+  decideSession,
   findCard,
   joinedKey,
   parseLink,
@@ -175,9 +178,7 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
 
   const harvest: string[] = []
   const folder = canonical((entry.payload as { cwd?: unknown } | null)?.cwd)
-  // A session (never a subagent, whose key has a /) started in a folder a source
-  // assigned, such as a Firstmate task's worktree, reports to that card.
-  const resolve = (key: string) => (key.includes('/') ? key : joinedKey(writer.state, key, folder))
+  const resolve = (key: string) => (key.includes('/') ? key : joinedKey(writer.state, key, entry.terminal ? folder : undefined))
 
   for (const o of observe(entry as unknown as HookEnvelope)) {
     const key = resolve(o.key)
@@ -201,7 +202,8 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
     // Firstmate task, or a Firstmate or manual outcome, keeps its own rule.
     const target = writer.state.cards[writer.state.keys[key] ?? '']
     const stale = 'skipped' in pushed && pushed.skipped === 'stale'
-    const owned = key === o.key && (!target?.outcome || target.outcome.source === HOOKS)
+    const owned = !target?.sourceRefs.some(r => r.adapter === 'firstmate')
+      && (!target?.outcome || target.outcome.source === HOOKS)
 
     if (o.outcome !== undefined && target && !stale && owned) {
       const outcome = o.outcome && { state: o.outcome }
@@ -358,7 +360,7 @@ export function guard<T = Output>(handler: (args: string[]) => T) {
 }
 
 function column(value: string): Column {
-  const c = value.startsWith('custom:') ? value : value.replace(/-/g, '_')
+  const c = value === 'waiting' ? 'review' : value.startsWith('custom:') ? value : value.replace(/-/g, '_')
 
   if (!(COLUMNS as readonly string[]).includes(c) && !/^custom:[a-z0-9-]{1,60}$/.test(c)) {
     throw new AxiError(`unknown column: ${value}`, 'VALIDATION_ERROR', [`Use one of ${COLUMNS.join(', ')}`])
@@ -399,6 +401,9 @@ function cardDetail(card: Card): Output {
     detail.agent = card.agent
   }
 
+  detail.sessions = card.sessionIds?.length ? card.sessionIds : 'none'
+  detail.visibility = card.hidden ? 'history' : 'board'
+
   if (card.settings) {
     detail.settings = card.settings
   }
@@ -424,7 +429,7 @@ function cardDetail(card: Card): Output {
 
 export async function home(): Promise<Output> {
   const { dir, state, tornBytes } = loadBoard(DEFAULT_BOARD)
-  const cards = Object.values(state.cards)
+  const cards = Object.values(state.cards).filter(card => liveTask({ card }))
   const columns = Object.fromEntries(
     COLUMNS.map(c => [c, cards.filter(card => card.column === c).length]),
   )
@@ -477,6 +482,50 @@ const push = guard(args => {
 
   return commit(board, m, { type: 'card.pushed', card: key }, state => decidePush(state, key, input, m))
 })
+
+function taskCommand({ args }: { args: string[] }): Output {
+  const { values, positionals, board } = parse(args, {
+    ...WRITE, title: { type: 'string' }, key: { type: 'string' }, folder: { type: 'string' }, session: { type: 'string' },
+  }, 2)
+  const action = positionals[0]
+  const m = meta(values)
+
+  if (action === 'sessions') {
+    const sessions = Object.values(loadBoard(board).state.sessions ?? {}).map(s => ({
+      id: s.id, provider: s.agent.provider, task: s.taskId ?? 'none', interactive: Boolean(s.terminal?.tty),
+    }))
+
+    return { sessions: sessions.length ? sessions : 'none: no sessions recorded' }
+  }
+
+  if (action === 'create') {
+    const title = required(values.title as string | undefined, '--title')
+    const key = values.key as string | undefined ?? `task:${m.id ?? randomUUID()}`
+    const folder = canonical(values.folder)
+
+    return commit(board, m, { type: 'card.pushed', card: key }, state => decidePush(state, key, { title, activity: 'waiting', ...(folder ? { folder } : {}) }, m))
+  }
+
+  if (action !== 'attach' && action !== 'detach') {
+    throw new AxiError('Use task create, sessions, attach or detach', 'VALIDATION_ERROR')
+  }
+
+  const ref = required(positionals[1], 'task id')
+
+  return commit(board, m, { type: 'task.session', card: ref }, state => {
+    if (action === 'detach' && !findCard(state, ref).sessionIds?.length) {
+      return { skipped: 'unchanged' }
+    }
+
+    const session = action === 'attach'
+      ? required(values.session as string | undefined, '--session')
+      : findSession({ state, ref }).id
+
+    return decideSession({ state, ref: session, task: action === 'attach' ? ref : null, meta: m })
+  })
+}
+
+const task = guard(args => taskCommand({ args }))
 
 // Notes shown per section by default, and the text length each is cut to.
 const NOTES_SHOWN = 3
@@ -632,6 +681,7 @@ function summarize(event: BoardEvent): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
+    case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
     case 'card.pushed':
       return `${undo}${Object.keys(event.data).filter(k => k !== 'key' && k !== 'before')
@@ -661,12 +711,13 @@ const history = guard(args => {
     workspace: { type: 'string' },
     before: { type: 'string' },
     limit: { type: 'string' },
+    full: { type: 'boolean' },
   }
   const { values, board } = parse(args, options, 0)
   const limit = Math.min(integer(values.limit, '--limit') ?? HISTORY_LIMIT, HISTORY_MAX)
   const before = integer(values.before, '--before')
   const kind = values.kind as string | undefined
-  const type = kind && (kind.startsWith('card.') ? kind : `card.${kind}`)
+  const type = kind && (kind.includes('.') ? kind : `card.${kind}`)
 
   if (type && !(EVENT_TYPES as readonly string[]).includes(type)) {
     throw new AxiError(`unknown kind: ${kind}`, 'VALIDATION_ERROR', ['Use one of pushed, moved, linked, outcome, replied, noted'])
@@ -698,6 +749,7 @@ const history = guard(args => {
       card: e.cardId,
       actor: e.actor,
       summary: summarize(e),
+      ...(values.full ? { data: e.data } : {}),
     })),
   }
 
@@ -811,6 +863,9 @@ const view = guard(args => {
 })
 
 export const commands = {
+  task,
+  attach: guard(args => taskCommand({ args: ['attach', ...args] })),
+  detach: guard(args => taskCommand({ args: ['detach', ...args] })),
   view,
   push,
   card,
@@ -828,6 +883,10 @@ export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Deterministic board of every agent and its work
 commands:
   pnyx-axi                                   Show the board summary
+  task create --title <title> [--folder <path>] Create a task
+  task sessions                              List recorded sessions, including background runs
+  attach <task> --session <session>           Move an interactive session onto a task
+  detach <task>                              Detach its agent without stopping the session
   push --key <key> --file <card.json|->      Create or update the card with this key
   card <id|key> [--full]                     Show one card with its summary, decisions and context
   harvest [--card <id>]                      Collect summaries and decisions sources already recorded
@@ -853,6 +912,20 @@ flags:
 `
 
 const COMMAND_HELP: Record<string, string> = {
+  task: `usage: pnyx-axi task create --title <title> [--key <key>] [--folder <path>]
+pnyx-axi task sessions
+pnyx-axi task attach <task> --session <session-id|card-id|key>
+pnyx-axi task detach <task>
+Tasks accept one attached session. A second session cannot replace the recipient.
+attach and detach are also top-level commands. Writes accept --if-revision and --event-id.
+`,
+  attach: `usage: pnyx-axi attach <task> --session <session-id|card-id|key> [--if-revision <n>] [--event-id <id>]
+Moves the named interactive session to the task. An occupied destination is rejected.
+Use task sessions to list candidates. No process is started, stopped or typed into.
+`,
+  detach: `usage: pnyx-axi detach <task> [--if-revision <n>] [--event-id <id>]
+Removes the task attachment without stopping the session. It stays available in task sessions and History.
+`,
   push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
 card.json fields (all optional): title, autoTitle {from: session|prompt|agent|folder, text} (used only while no title is set), workspace, tags[], parent (card id or key, null to clear), activity,
@@ -883,7 +956,7 @@ all linked pull requests merged puts it in done.
 `,
   outcome: `usage: pnyx-axi outcome <id> done|failed|cancelled [--note <text>] | --clear [--event-id <id>] [--if-revision <n>]
 `,
-  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome|replied|noted] [--workspace <name>] [--before <seq>] [--limit <n>]
+  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome|replied|noted] [--workspace <name>] [--before <seq>] [--limit <n>] [--full]
 Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
 `,
   undo: `usage: pnyx-axi undo <event-id> [--event-id <id>] [--if-revision <n>]

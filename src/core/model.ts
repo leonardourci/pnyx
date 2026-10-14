@@ -148,6 +148,11 @@ export interface Card {
   parentId?: string
   activity?: string
   agent?: AgentRef
+  // Task membership is a list for future compatibility; v1 permits at most one.
+  sessionIds?: string[]
+  // Session-only records remain addressable in History, outside the live board.
+  hidden?: boolean
+  automaticTask?: boolean
   settings?: AgentSettings
   terminal?: TerminalFacts
   // The working folder a source assigned, such as a Firstmate task's worktree; a
@@ -261,6 +266,24 @@ export type ViewEvent = EventBase & {
 // same record again appends nothing.
 export type NotedEvent = EventBase & { type: 'card.noted'; data: Note }
 
+export interface AgentSession {
+  id: string
+  agent: AgentRef
+  originCardId: string
+  taskId: string | null
+  terminal?: TerminalFacts
+  settings?: AgentSettings
+  activity?: string
+  attention: Attention[]
+  outcome?: Outcome
+  sourceRefs: SourceRef[]
+}
+
+export type SessionEvent = EventBase & {
+  type: 'task.session'
+  data: { session: string; before: string | null; after: string | null }
+}
+
 export type BoardEvent =
   | PushedEvent
   | MovedEvent
@@ -269,8 +292,9 @@ export type BoardEvent =
   | RepliedEvent
   | NotedEvent
   | ViewEvent
+  | SessionEvent
 export type EventType = BoardEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view']
+export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session']
 
 export interface BoardState {
   view?: ViewPreferences
@@ -278,6 +302,7 @@ export interface BoardState {
   v: typeof EVENT_VERSION
   seq: number
   cards: Record<string, Card>
+  sessions?: Record<string, AgentSession>
   // card key -> card id
   keys: Record<string, string>
   // event id -> seq, so a retried or respooled event is applied once.

@@ -39,9 +39,10 @@ A post-tool hook that sees a recognized `gh pr create`/`merge`, its `gh-axi` equ
 ```text
 Board {id, name, schemaVersion, ruleVersion, sources, workspaceMappings,
        manualMovePolicy, viewPreferences, sessionStartSummary:false}
-Card {id, key, title, workspace, tags[], parentId?, sourceRefs[], agentRef?,
+Task/Card {id, key, title, workspace, tags[], parentId?, sourceRefs[], sessionIds[], agentRef?,
       settings?, terminalRef?, folder?, links[], taskOutcome, activity, attention[], notes[], freshness,
       manualColumn?, revision}
+Session {id, agent, originCardId, taskId?, terminal?, settings?, activity?, attention[], outcome?, sourceRefs[]}
 Note {kind:summary|decision|context, source, text, at?}
 SourceRef {adapter, instanceId, objectId, generation, cursor?, observedAt}
 AgentRef {hostId, provider, sessionId, childAgentId?, parentEvidence?, cwd}
@@ -52,15 +53,19 @@ Settings {model?, effort?, mode?, fast?, <harness-specific>?}
 
 A card's settings are what its harness already reports, never asked for: hook payloads carry the permission mode, effort and (Codex on every hook, Claude Code at session start) the model; the transcript read after each turn adds each turn's model, effort and speed, Claude Code's 1M context and Codex's approval policy, sandbox, collaboration mode and reasoning summary. A push merges settings by name, so a mid-session change shows up on the next hook or turn. Only known values are shown; Pnyx never changes them.
 
-Observations of the same agent join by **same session ID or same working folder**, applied across all sources rather than as rules per adapter pair. IDs are namespaced by host and provider, and folder paths are canonicalized on the same host. Both observations and their provenance are kept: Firstmate supplies backlog titles and task decisions, hooks add native session identity. Event IDs and source generations handle replay and process reuse.
+A card is a task, with at most one attached session today. Session identity is separate from task membership: a session keeps its provider/session id (and child id), native transcript, terminal and source facts, while the task keeps its title, links, workspace, pins and source-owned decisions. `sessionIds` is a list so a later version can add several recipients with an explicit ownership protocol; this version rejects an occupied attachment instead of replacing it.
 
-A source can assign a card its working folder: an open Firstmate task records its worktree, and a hook session started there reports to that task card, so the card has one composer. Folder equality is a fallback match, not proof that every process in a repository is one agent. Distinct known session or child IDs stay distinct, and several folder-only candidates stay ambiguous until identity resolves them. Joins are recorded as reversible aliases so a wrong join can be corrected without deleting source history. Two agents and nested children sharing one folder must be tested before shipping.
+An interactive session automatically creates its task with the same title rules as before. A session without a recorded interactive TTY is a background run: it remains in the session registry, History and search but its automatic card is hidden from the live board, counts and live search results. A later interactive resume can make it visible, and a headless resume clears an earlier terminal. The terminal collector stops at the harness process; it cannot borrow a TTY from an unrelated ancestor. No command-name or validation-tool exceptions classify background work. A Firstmate task remains one task, even while no worker is attached.
+
+Membership pins the reply recipient by session identity. The first interactive session in exactly one source-assigned working folder can join that task. Once occupied, another session in that folder creates its own task. Known session identity and explicit attachment take precedence over folder matching. `pnyx-axi attach <task> --session <session>` moves a session, and `detach <task>` removes its membership without stopping or typing into it. Future hooks follow the attachment. Detaching stays explicit until another attach; it cannot silently join by folder again. Explicit tasks remain when their session moves away, and automatic session cards fold out of view while their session belongs elsewhere.
+
+The migration is the pure replay of existing version-1 events into task and session records; existing ids and event bytes remain unchanged. An older snapshot is invalidated by the reducer rule version and rebuilt. If a legacy card contains observations from several sessions, the first recorded session stays attached and the others remain individually addressable in the registry. `task.session` events record the old and new task ids. Attachments support revisions, idempotency and conflict-checked undo.
 
 Each card has exactly one coarse workspace, free tags, an optional parent ID, and explicit workspace mappings with `unassigned` for gaps. Parents may cross workspaces; filters do not expose an excluded parent's details. Parent cycles are rejected. Titles are literal source or backlog titles, never model-generated. A card that only hooks report takes the first available of the harness's own session title (Claude Code's custom or AI title from the transcript, Codex's thread name from its `session_index.jsonl`), the session's first prompt cut to one line, or the working folder's name, and its key when none is known. A subagent's card takes its agent type and the last 4 characters of its agent id (`Explore 3f2a`, `Subagent` when the type is missing), so sibling subagents stay apart; the hook payload carries no task description. That title is re-derived as a better source appears (a later session title replaces an earlier one; the first prompt stays) and never replaces a title a person or agent set through the CLI or UI; undoing that set title returns the card to its derived one.
 
 A session that ends (SessionEnd, or SubagentStop for a subagent) records a hooks-owned outcome `ended`, which places the card in Done. A pending question or permission still shows Needs you, and new work in the same session (a resume, a prompt or a tool call) clears the outcome and returns it to Workers on it. Hooks never infer completion from idle or a finished turn, and never change an outcome another source or a person recorded; a person may record their own outcome over `ended`. Firstmate tasks, including a session joined to one by its folder, are Done when Firstmate closes them in its backlog.
 
-The board has four automatic columns: Needs you, Workers on it, Review, Done. An open linked change moves a card to Review; a confirmed merge moves it to Done. Precedence: sticky manual pin, blocking source request, linked-change facts, other explicit attention or completion (including an ended session), then ongoing work. With several tracked links, any open one means Review, and all must be confirmed merged for automatic Done. Closed-unmerged needs attention; a stale refresh keeps the last known facts. Moving or merging a card does not resolve a source decision. Users may create named custom columns inline; these accept manual placement only. Manual placement is sticky by default, with an alternate policy that expires it on the next distinct accepted observation and a per-card return-to-auto command.
+The board has four automatic columns: Needs you, Workers on it, Waiting, Done. Waiting retains the version-1 `review` id for replay and CLI compatibility; `move waiting` is an alias. An idle session or a task without an attached agent waits there. An open linked change moves a task to Waiting; a confirmed merge moves it to Done. Precedence: sticky manual pin, blocking source request, linked-change facts, other explicit attention (excluding an idle notification) or completion (including an ended session), then ongoing work. With several tracked links, any open one means Waiting, and all must be confirmed merged for automatic Done. Closed-unmerged needs attention; a stale refresh keeps the last known facts. Moving or merging a card does not resolve a source decision. Users may create named custom columns inline; these accept manual placement only. Manual placement is sticky by default, with an alternate policy that expires it on the next distinct accepted observation and a per-card return-to-auto command.
 
 ## Events, snapshot, replay and undo
 
@@ -105,7 +110,11 @@ Listener presence, source freshness and working/idle are distinct facts. Socket 
 pnyx-axi
 pnyx-axi board open <board>
 pnyx-axi push --key <key> --file card.json
-pnyx-axi card <id> [--thread|--history|--full]
+pnyx-axi card <id> [--full]
+pnyx-axi task create --title <title> [--key <key>] [--folder <path>]
+pnyx-axi task sessions
+pnyx-axi attach <task> --session <session-id|card-id|key>
+pnyx-axi detach <task>
 pnyx-axi harvest [--card <id>]
 pnyx-axi move <id> review | --auto
 pnyx-axi link <id> --kind github_pr --url <url>
@@ -113,7 +122,7 @@ pnyx-axi reply <id> --file reply.txt --idempotency-key <key>
 pnyx-axi watch --after <seq>
 pnyx-axi poll --consumer <id> --after <seq>
 pnyx-axi ack <action> --state applied --receipt <ref>
-pnyx-axi history --workspace <workspace> --kind outcome --before <seq> --limit 50
+pnyx-axi history --workspace <workspace> --kind outcome --before <seq> --limit 50 [--full]
 pnyx-axi search "<words>" [--workspace <w>] [--kind event|note|transcript] [--card <id>] [--limit 20]
 pnyx-axi search status | rebuild
 pnyx-axi search setup --semantic
@@ -129,7 +138,7 @@ pnyx-axi refresh <id> --links
 pnyx-axi ping <id> | attach <id>
 ```
 
-The CLI follows [AXI](https://axi.md/): a no-argument scoped summary, compact TOON output, optional JSON, minimal default fields, bounded pages, explicit empty, stale and error states, examples and executable next steps, and no prompts. `poll` is a consumer queue read and long-poll contract, not a source inventory timer. The no-argument summary never silently starts infrastructure.
+The CLI follows [AXI](https://axi.md/): a no-argument scoped summary, compact TOON output, optional JSON, minimal default fields, bounded pages, explicit empty, stale and error states, examples and executable next steps, and no prompts. `history --full` includes the recorded event data, including literal queued owner messages. `poll` is a consumer queue read and long-poll contract, not a source inventory timer. The no-argument summary never silently starts infrastructure.
 
 Pnyx ships an installable setup and usage skill, optional AGENTS.md/CLAUDE.md snippets, adapter examples, schema fixtures, and scripts for hook setup, normalization, socket and spool ingestion and source-specific validation. No project instruction file is edited by default, and there is no helper-agent spawning skill. The Firstmate integration needs no Firstmate changes. All UI preferences live in the versioned CLI schema; the local service owns the single writer, validation and revision checks. The service binds loopback, checks Origin and Host, authenticates writes, renders text safely and validates links and paths. Captured tool text is data, never shell input.
 

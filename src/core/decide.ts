@@ -28,6 +28,7 @@ import {
 import { TERMINAL_FIELDS } from './route.ts'
 import { DEFAULT_VIEW, patchView, viewFor } from './view.ts'
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from './reducer.ts'
+import { findSession } from './tasks.ts'
 
 export interface Meta {
   at: string
@@ -96,9 +97,10 @@ function decided(state: BoardState, meta: Meta, event: BoardEvent): Decision {
 
   checkRevision(state.cards[event.cardId], meta.ifRevision)
   const before = strip(state.cards[event.cardId])
-  const after = strip(reduce(state, event).cards[event.cardId])
+  const reduced = reduce(state, event)
+  const after = strip(reduced.cards[event.cardId])
 
-  return before && isDeepStrictEqual(before, after) ? { skipped: 'unchanged' } : { event }
+  return before && isDeepStrictEqual(before, after) && isDeepStrictEqual(state.sessions, reduced.sessions) ? { skipped: 'unchanged' } : { event }
 }
 
 function checkRevision(card: Card | undefined, ifRevision: number | undefined): void {
@@ -287,8 +289,15 @@ function parseTerminal(value: unknown): TerminalFacts {
 // once it has a card, else the card it already joined, else the one card whose
 // source assigned the session's working folder, such as the Firstmate task running
 // there. Several such cards stay ambiguous, so the session keeps its own card.
-// ponytail: a second session in the same folder joins too; record join aliases if that bites.
+// Membership pins the recipient; an occupied folder match never takes another session.
 export function joinedKey(state: BoardState, key: string, folder: string | undefined): string {
+  const session = Object.values(state.sessions ?? {}).find(s => s.sourceRefs.some(r =>
+    r.adapter === 'hooks' && `${r.instanceId}:${r.objectId}` === key))
+
+  if (session) {
+    return session.taskId ? state.cards[session.taskId]!.key : key
+  }
+
   if (key in state.keys) {
     return key
   }
@@ -305,9 +314,47 @@ export function joinedKey(state: BoardState, key: string, folder: string | undef
     return key
   }
 
-  const matches = Object.values(state.cards).filter(c => c.folder === folder)
+  const matches = Object.values(state.cards).filter(c => c.folder === folder
+    && !c.sessionIds?.length)
 
   return matches.length === 1 ? matches[0]!.key : key
+}
+
+export function decideSession({ state, ref, task, meta }: {
+  state: BoardState
+  ref: string
+  task: string | null
+  meta: Meta
+}): Decision {
+  if (meta.id && meta.id in state.eventIds) {
+    return { skipped: 'duplicate' }
+  }
+
+  const session = findSession({ state, ref })
+  const target = task === null ? null : findCard(state, task)
+  const current = session.taskId ? state.cards[session.taskId] : state.cards[session.originCardId]
+  const card = target ?? current!
+  checkRevision(card, meta.ifRevision)
+
+  if (target?.sessionIds?.some(id => id !== session.id)) {
+    throw new BoardError(`task ${target.id} already has an attached agent; detach it first`, 'SESSION_CONFLICT')
+  }
+
+  if (target && !session.terminal?.tty) {
+    throw new BoardError('A background session has no interactive terminal and cannot be attached to a task', 'NO_TERMINAL')
+  }
+
+  if (session.taskId === (target?.id ?? null)) {
+    return { skipped: 'unchanged' }
+  }
+
+  return {
+    event: {
+      ...base(state, meta, card.id),
+      type: 'task.session',
+      data: { session: session.id, before: session.taskId, after: target?.id ?? null },
+    },
+  }
 }
 
 // Upserts the card with this key. `input` is the untrusted card JSON; `parent`
@@ -645,6 +692,18 @@ function afterValue(target: BoardEvent): unknown {
 // whether a person or an agent made it. A sent reply cannot be unsent, and a
 // harvested note is a source observation.
 export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): Decision {
+  if (target.type === 'task.session') {
+    const session = findSession({ state, ref: target.data.session })
+
+    if (state.undone[target.id] || session.taskId !== target.data.after) {
+      throw new BoardError('session attachment changed since this event', 'CONFLICT')
+    }
+
+    const decision = decideSession({ state, ref: session.id, task: target.data.before, meta })
+
+    return 'event' in decision ? { event: { ...decision.event, undoes: target.id } } : decision
+  }
+
   if (target.type === 'board.view') {
     if (
       state.undone[target.id]
