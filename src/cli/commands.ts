@@ -33,7 +33,7 @@ import { emptyBoard, replay } from '../core/reducer.ts'
 import { readServer } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
-import { HARNESSES, isHookEnvelope, observe, type Harness, type HookEnvelope } from '../integrations/hooks/observe.ts'
+import { HARNESSES, attend, isHookEnvelope, observe, type Harness, type HookEnvelope } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from '../store/board-store.ts'
 
@@ -119,7 +119,7 @@ export function meta(values: Record<string, string | boolean | undefined>): Meta
 }
 
 // Hook events after which a session's transcript has turns worth harvesting.
-const HARVEST_AFTER = ['Stop', 'SubagentStop', 'SessionEnd']
+const HARVEST_AFTER = ['Stop', 'SubagentStop', 'PostCompact', 'SessionEnd']
 
 // Appends what one spool entry reports: a raw harness hook payload becomes card
 // observations, anything else is a push with an explicit key. Returns the cards
@@ -165,7 +165,9 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
     }
 
     const m: Meta = { id: o.id ? `${entry.id}:${o.id}` : entry.id, at: entry.at, actor: `hook:${entry.harness}` }
-    apply(decidePush(writer.state, o.key, o.card, m))
+    const current = writer.state.cards[writer.state.keys[o.key] ?? '']?.attention ?? []
+    const card = o.attend ? { ...o.card, attention: attend(current, o.attend) } : o.card
+    apply(decidePush(writer.state, o.key, card, m))
 
     if (o.link) {
       apply(decideLink(writer.state, o.key, o.link, parseLink({ url: o.link }), { ...m, id: `${m.id}:link` }))

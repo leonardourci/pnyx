@@ -1,0 +1,1 @@
+{"session_id":"019a0000-0000-7000-8000-000000000001","transcript_path":null,"cwd":"/work/other","turn_id":"turn-1","hook_event_name":"PostToolUse","model":"gpt-6","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"touch hello.txt && echo made"},"tool_response":"made\n","tool_use_id":"exec-1"}
