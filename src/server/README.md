@@ -1,6 +1,6 @@
 # server
 
-The local server started by `pnyx-axi serve` and stopped by `pnyx-axi stop`, SIGINT or SIGTERM. One per board.
+The local server started by `pnyx-axi serve` and stopped by `pnyx-axi stop`, SIGINT or SIGTERM. One per board. Each repeatable `--home` is a Firstmate home the server also watches into the board, as `pnyx-axi firstmate watch` would, and the only homes it accepts replies for.
 
 - HTTP on 127.0.0.1, on `--port` or a random port, for the built web board from `dist/web` and `GET /health` (`{"board","pid"}`). Every request must name the server by an exact `Host`, and a browser `Origin` must match it exactly. The served `index.html` carries the per-install token in `<meta name="pnyx-token">`.
 - Browsers: one WebSocket at `/ws?token=<token>`, for updates, commands and receipts. A snapshot on connect, then events by sequence. `&after=<seq>` resumes; a cursor the server cannot continue from, or a `{"type":"resync"}` message, gets a fresh snapshot.
