@@ -30,16 +30,17 @@ fact() {
 }
 case $event in
 SessionStart | UserPromptSubmit)
-  # The harness is the nearest ancestor with a TTY, past any wrapper shell; the
-  # hook itself may run detached from the terminal.
+  # Stop at the first non-shell ancestor. A headless harness must not borrow a
+  # terminal from an unrelated ancestor further up the process tree.
   pid=$PPID
   for _ in 1 2 3 4; do
     # shellcheck disable=SC2046
     set -- $(ps -o ppid= -o tty= -o comm= -p "$pid")
     [ $# -ge 3 ] || break
-    case $2:${3##*/} in
-    '?:'* | '??:'* | *:sh | *:bash | *:zsh | *:dash | *:-*) ;;
+    case ${3##*/} in
+    sh | bash | zsh | dash | -*) ;;
     *)
+      case $2 in '?' | '??' | '-') break ;; esac
       fact tty "/dev/$2"
       fact pid "$pid"
       break
