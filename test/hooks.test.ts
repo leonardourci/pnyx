@@ -449,6 +449,7 @@ test('an ended session moves to Done, an open question still needs you, and a re
 
   send('SessionStart', 'claude-session-start', { ...JSON.parse(fixture('claude-session-start')), source: 'resume' })
   assert.match(card(), /^ {2}column: workers_on_it$/m)
+  assert.throws(() => run('undo', `hook-${n}:outcome`), (error: { stdout: string }) => /^code: NOT_UNDOABLE$/m.test(error.stdout), "a hook's reopen cannot be undone")
   assert.doesNotMatch(card(), /outcome/)
   assert.match(card(), /^ {2}title: Open a pull request$/m, "a resume keeps the first prompt's title")
 
@@ -460,9 +461,10 @@ test('an ended session moves to Done, an open question still needs you, and a re
   send('SessionEnd', 'claude-session-end')
   run('outcome', `claude:${SESSION}`, 'failed', '--event-id', 'manual-failed')
   assert.match(card(), /^ {2}outcome:\n {4}state: failed$/m, "a person's outcome replaces an observed end")
-  run('undo', 'manual-failed')
+  run('undo', 'manual-failed', '--event-id', 'undo-failed')
   assert.match(card(), /^ {2}outcome:\n {4}state: ended\n {4}source: hooks$/m, "undoing a person's outcome restores the observed end")
-  run('outcome', `claude:${SESSION}`, 'failed')
+  run('undo', 'undo-failed')
+  assert.match(card(), /^ {2}outcome:\n {4}state: failed$/m, 'a person can redo their own undo')
   send('UserPromptSubmit', 'claude-user-prompt')
   assert.match(card(), /^ {2}outcome:\n {4}state: failed$/m, "a later hook leaves a person's outcome alone")
 })

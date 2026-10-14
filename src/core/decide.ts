@@ -618,8 +618,9 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
     throw notUndoable(`${target.id} created card ${target.cardId} and cannot be undone`)
   }
 
+  const after = target.type === 'card.outcome' && !target.undoes && target.data.after?.source
   const before = target.type === 'card.outcome' && target.data.before?.source
-  const observedBy = target.type === 'card.outcome' && (target.data.after?.source ?? (before === 'hooks' ? undefined : before))
+  const observedBy = after || (before && (before !== 'hooks' || target.actor.startsWith('hook:')) && before)
 
   if (observedBy) {
     throw notUndoable(`${target.id} records an outcome observed by ${observedBy} and cannot be undone`)
