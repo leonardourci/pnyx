@@ -120,7 +120,7 @@ try {
   await click('button', 'Back to board'); await focus(cardSelector); await findPrevented(false)
   await click('button', 'Settings'); await click('button', 'Rebind Find in current view'); await fill('textbox', 'One binding per line', 'Mod+f'); await click('button', 'Save binding'); await browser('wait', 'Preferences saved')
   await click('button', 'Rebind Focus reply composer'); await fill('textbox', 'One binding per line', 'j'); await click('button', 'Save binding'); await browser('wait', 'Shortcut conflicts')
-  await focus("[aria-label='Font size']"); await press('Escape'); await check(active("[aria-label='Font size']") + " && document.querySelector('.keyboard-settings')", 'Escape in a number field stays in Settings')
+  await focus("[aria-label='UI font size']"); await press('Escape'); await check(active("[aria-label='UI font size']") + " && document.querySelector('.keyboard-settings')", 'Escape in a number field stays in Settings')
   await focus('.binding-editor textarea'); await press('Escape'); await check("!document.querySelector('.binding-editor') && document.querySelector('.keyboard-settings')", 'Escape closes only the binding editor')
   await click('button', 'Rebind Focus reply composer')
   await fill('textbox', 'One binding per line', 'g r'); await click('button', 'Save binding'); await browser('wait', 'Preferences saved'); assert.deepEqual(board().view!.keyboard.bindings.reply, ['g r'])

@@ -132,6 +132,25 @@ function apply(state: BoardState, event: BoardEvent): boolean {
     state.view = structuredClone(event.data.after)
     state.viewRevision = (state.viewRevision ?? 0) + 1
 
+    for (const placement of event.data.placements ?? []) {
+      const placed = state.cards[placement.cardId]
+
+      if (!placed) {
+        continue
+      }
+
+      if (placement.after) {
+        placed.manualColumn = placement.after
+      } else {
+        delete placed.manualColumn
+      }
+
+      placed.column = columnFor(placed)
+      placed.revision += 1
+      placed.updatedSeq = event.seq
+      placed.updatedAt = event.at
+    }
+
     if (event.undoes) {
       state.undone[event.undoes] = event.id
     }
@@ -207,6 +226,10 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       delete card.activity
     } else if (activity !== undefined) {
       card.activity = activity
+    }
+
+    if (source?.adapter === 'hooks' && typeof activity === 'string') {
+      card.sessionActivity = activity
     }
 
     if (parentId === null) {

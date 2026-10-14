@@ -1,26 +1,38 @@
 @import "tailwindcss";
+/* Bundled under the SIL Open Font License (see each folder's OFL.txt), so the board reads the same everywhere. */
+@font-face { font-family: "Inter"; src: url("/fonts/inter/Inter-Variable.ttf") format("truetype"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("/fonts/source-serif-4/SourceSerif4-Variable.ttf") format("truetype"); font-weight: 200 900; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono/JetBrainsMono-Variable.ttf") format("truetype"); font-weight: 100 800; font-display: swap; }
+/* Light by default; dark comes from the Dark theme or, under System, the operating system. */
 @theme {
-  --color-background: #0e0f11;
-  --color-surface: #151619;
-  --color-raised: #1d1e22;
-  --color-hover: #292a30;
-  --color-line: #303136;
-  --color-subtle: #232429;
-  --color-ink: #e9e6df;
-  --color-muted: #a5a29c;
-  --color-gold: #d5b678;
-  --color-gold-line: #655333;
-  --color-gold-wash: #27221a;
-  --color-blue: #94b5dc;
-  --color-green: #91bba3;
-  --color-purple: #bba4e2;
-  --color-red: #dfaaa0;
-  --color-shadow: #0008;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, monospace;
+  --color-background: #f5f4f0;
+  --color-surface: #ffffff;
+  --color-raised: #eeede8;
+  --color-hover: #e4e2db;
+  --color-line: #d5d2ca;
+  --color-subtle: #e9e7df;
+  --color-ink: #242621;
+  --color-muted: #595b54;
+  --color-gold: #72500e;
+  --color-gold-line: #a38956;
+  --color-gold-wash: #f3ead7;
+  --color-blue: #345e88;
+  --color-green: #386149;
+  --color-purple: #6e4f91;
+  --color-red: #9b4238;
+  --color-shadow: #26282026;
+  --color-control: #827f77;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-chat: "Source Serif 4", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-brand: Georgia, serif;
+  --text-ui: 14px;
+  --text-chat: 16px;
+  --text-code: 13px;
 }
-:root { color-scheme: dark; font-family: var(--font-sans); background: var(--color-background); color: var(--color-ink); }
+:root { color-scheme: light; font-family: var(--font-sans); background: var(--color-background); color: var(--color-ink); }
+:root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; } }
 * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--color-line) transparent; }
 html, body, #root { margin: 0; height: 100%; overflow: hidden; }
 button, input, textarea { font: inherit; color: inherit; }
@@ -32,7 +44,7 @@ h1, h2, h3, p { margin: 0; overflow-wrap: anywhere; }
 h1 { font-size: 1.65em; font-weight: 560; letter-spacing: -.035em; }
 h2 { font-size: 1.15em; font-weight: 550; } h3 { font-weight: 550; }
 :focus-visible { outline: 2px solid var(--color-gold); outline-offset: 3px; }
-.app { display: flex; flex-direction: column; height: 100dvh; line-height: 1.5; }
+.app { display: flex; flex-direction: column; height: 100dvh; line-height: 1.5; font-size: var(--text-ui); }
 .topbar { height: 57px; flex-shrink: 0; padding: 0 22px; border-bottom: 1px solid var(--color-line); display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .brand { display: flex; align-items: center; gap: 9px; font-size: 22px; font-weight: 600; letter-spacing: -.06em; }
 .mark { width: 29px; height: 29px; border: 1px solid var(--color-gold-line); border-radius: 8px; display: grid; place-items: center; font: 23px var(--font-brand); color: var(--color-gold); }
@@ -87,3 +99,24 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .last-message { margin-top: 8px; padding: 6px 8px; border-left: 2px solid var(--color-line); background: var(--color-background); border-radius: 0 4px 4px 0; font-size: .7em; }.last-message strong { color: var(--color-ink); font-weight: 550; }.last-message p { margin-top: 3px; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 .search-match { margin-top: 8px; font-size: .7em; color: var(--color-muted); line-height: 1.5; overflow-wrap: anywhere; }
 .agent-controls { display: flex; flex-direction: column; gap: 12px; padding-top: 14px; border-top: 1px solid var(--color-line); }.agent-controls h3 { font-size: .82em; }.agent-controls > p { font-size: .7em; }.control-row { display: flex; flex-direction: column; gap: 6px; min-width: 0; }.control-row .row { font-size: .78em; }.control-row > p { font-size: .68em; }.control-name { display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted); }.segmented { display: flex; flex-wrap: wrap; gap: 4px; }.segmented .button { font-size: .72em; padding: 4px 10px; min-height: 26px; }.segmented .button[aria-pressed=true] { border-color: var(--color-gold-line); color: var(--color-gold); background: var(--color-gold-wash); }
+.input, .button.surface, .switch-track { border-color: var(--color-control); }
+.card { cursor: pointer; }
+.message p { font: var(--text-chat)/1.7 var(--font-chat); }.message.tool p { font: var(--text-code)/1.65 var(--font-mono); }
+.agent-activity i { width: 7px; height: 7px; border-radius: 50%; border: 1px solid currentColor; flex-shrink: 0; }
+.activity-working { color: var(--color-green); }.activity-working i { background: currentColor; animation: activity-pulse 1.8s ease-in-out infinite; }
+@keyframes activity-pulse { 50% { box-shadow: 0 0 0 3px var(--color-subtle); } }
+@media (prefers-reduced-motion: reduce) { .activity-working i { animation: none; } }
+.inline-confirm-trigger { color: var(--color-muted); padding: 2px 5px; min-height: 24px; font-size: .7em; }
+.column-header > div:has(> .inline-confirm-trigger) { margin-top: 6px; }
+.inline-confirm { margin-top: 8px; padding: 9px; border: 1px solid var(--color-gold-line); background: var(--color-gold-wash); border-radius: 6px; font-size: .75em; }.inline-confirm .row { margin-top: 8px; }
+.disclosure > summary { list-style: none; cursor: pointer; position: relative; padding-right: 20px; font-size: .78em; }.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure-chevron { position: absolute; right: 2px; top: 0; color: var(--color-muted); }.disclosure[open] > summary > .disclosure-chevron { transform: rotate(90deg); }
+.disclosure-body { padding-top: 8px; }
+.conversation-brief { margin: 8px 0; padding: 9px 0 3px; border-top: 1px solid var(--color-line); }
+.brief-line { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brief-item { padding: 9px 0; border-top: 1px solid var(--color-subtle); }.brief-item:first-child { border-top: 0; padding-top: 0; }
+.brief-item p { white-space: pre-wrap; font-size: .8em; line-height: 1.6; margin: 4px 0; }.brief-item .button { padding: 0; min-height: 22px; font-size: .7em; color: var(--color-gold); }
+.brief-meta { display: block; color: var(--color-muted); font-size: .68em; }
+.text-preview { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.detail-header:has(.conversation-brief[open]) { max-height: 45%; }
+.conversation-brief[open] .brief-line { display: none; }

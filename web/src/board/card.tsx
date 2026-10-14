@@ -7,7 +7,7 @@ import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { Harness, SettingChips } from './agent-settings.tsx'
-import { receiptLabel, safeLink, visibleParent } from './view.ts'
+import { agentActivity, receiptLabel, safeLink, shownActivity, visibleParent } from './view.ts'
 
 export function Links({ links }: { links: Link[] }) {
   return (
@@ -68,9 +68,23 @@ export function BoardCard({
   tabIndex: number
 }) {
   const [height, setHeight] = useState<number | null>(null), parent = visibleParent(card, visible)
+  const activity = agentActivity({ card })
 
   return (
-    <article className={`card ${selected ? 'selected' : ''} ${view.cardColors ? `accent-${card.column}` : ''}`} style={{ height: height ?? view.cardHeights[card.id] ?? view.cardHeight, minWidth: VIEW_SIZE_LIMITS.cardWidth.min, minHeight: VIEW_SIZE_LIMITS.cardHeight.min }}>
+    <article
+      className={`card ${selected ? 'selected' : ''} ${view.cardColors ? `accent-${card.column}` : ''}`}
+      style={{
+        height: height ?? view.cardHeights[card.id] ?? view.cardHeight,
+        minWidth: VIEW_SIZE_LIMITS.cardWidth.min,
+        minHeight: VIEW_SIZE_LIMITS.cardHeight.min,
+      }}
+      // Anywhere on the card opens it, except its own controls and a text selection.
+      onClick={e => {
+        if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, [role="separator"]') && !window.getSelection()?.toString()) {
+          open(card.id)
+        }
+      }}
+    >
       <div className="row between">
         <span className="workspace">{card.workspace}</span>
         <Harness card={card} />
@@ -107,9 +121,9 @@ export function BoardCard({
         )}
       </div>
       <div className="card-footer">
-        <span>
-          <Icon name={card.column} size={13} />
-          {card.activity ?? (card.outcome ? card.outcome.state : 'Activity unknown')}
+        <span className={activity ? `agent-activity activity-${activity}` : undefined}>
+          {activity ? <i aria-hidden="true" /> : <Icon name={card.column} size={13} />}
+          {shownActivity({ card }) ?? (card.outcome ? card.outcome.state : 'Activity unknown')}
         </span>
         {card.manualColumn ? (
           <span title="Manual placement">

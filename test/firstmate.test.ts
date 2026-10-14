@@ -290,9 +290,12 @@ test('serve --home folds the home into the board without a separate watch', asyn
     assert.match(out, /^firstmate: "watching 1 home"$/m)
     assert.equal(cardOf(home, 'api-v2').title, 'app: v2 API with (optional) pagination')
   } finally {
-    const exited = new Promise(resolve => server.once('exit', resolve))
-    server.kill('SIGTERM')
-    await exited
+    // A server that already exited has no exit event left to wait for.
+    if (server.exitCode === null && server.signalCode === null) {
+      const exited = new Promise(resolve => server.once('exit', resolve))
+      server.kill('SIGTERM')
+      await exited
+    }
   }
 })
 
