@@ -227,6 +227,8 @@ test("a bad command gets an error carrying its request id and writes nothing", a
     ["r3", "move", ["no-such-card", "review"], "NOT_FOUND"],
     ["r4", "move", [cardId, "review", "--board", "other"], "VALIDATION_ERROR"],
     ["r5", "move", [cardId, "review", "--board=other"], "VALIDATION_ERROR"],
+    ["r6", "catalog", [cardId, "/arbitrary/path"], "VALIDATION_ERROR"],
+    ["r7", "catalog", ["no-such-card"], "NOT_FOUND"],
   ];
   for (const [id, name, args, code] of cases) {
     t.ws.send(JSON.stringify({ type: "command", id, name, args }));

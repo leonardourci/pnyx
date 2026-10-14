@@ -181,6 +181,7 @@ export type RepliedEvent = EventBase & {
 };
 
 export interface ViewPreferences {
+  keyboard: import("./keyboard.ts").KeyboardPreferences;
   fontSize: number;
   panelPlacement: "right" | "inline";
   panelWidth: number;

@@ -83,7 +83,8 @@ try {
   await screenshot("settings.png"); await click("button", "Back to board");
   await check("document.querySelector(\"textarea\").value === \"First line\\n\"", "draft survives settings");
   await browser("fill", await ref("textbox", "Reply to Shape the first working board"), "/");
-  await check("document.querySelector(\".slash-menu\").textContent.includes(\"does not expose\")", "slash catalog absence is explicit");
+  await browser("wait", "No working folder is recorded");
+  await check("document.querySelector(\".slash-menu\").textContent.includes(\"No working folder\")", "slash catalog absence is explicit");
   await browser("press", "Escape"); await check("!document.querySelector(\".slash-menu\") && document.querySelector(\"textarea\").value === \"/\"", "Escape preserves literal draft");
   await browser("fill", await ref("textbox", "Reply to Shape the first working board"), "The fixture layout looks good."); await check("!document.querySelector(\".composer [type=submit]\").disabled", "configured fixture route is available"); await click("button", "Send reply"); await browser("wait", "Delivered");
   assert.equal(loadBoard("default").state.cards[fixture.state.keys.layout!]!.replies?.at(-1)?.state, "delivered");

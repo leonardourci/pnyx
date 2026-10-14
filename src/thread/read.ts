@@ -5,7 +5,7 @@ import { boardDir, readEventsFrom } from "../store/board-store.ts";
 import { redact, transcriptMessages } from "../search/text.ts";
 
 export interface ThreadEntry { id: string; role: string; kind: "message" | "tool" | "thinking"; text: string; at?: string; receipt?: ReplyState }
-export interface ThreadPage { card: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; watching: "unknown"; suggestions: { command: string; description: string }[]; suggestionsUnavailable: string }
+export interface ThreadPage { card: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; watching: "unknown" }
 const MAX_BYTES = 10 * 1024 * 1024;
 // Chunk long entries instead of losing their tail. Sixty bounded entries stay
 // below the socket budget even for JSON-escaped control characters.
@@ -65,7 +65,7 @@ function repliedEvents(board: string): RepliedEvent[] {
   return log.events;
 }
 export function readThread(board: string, state: BoardState, card: Card, homes: string[], before?: string): ThreadPage {
-  const result: ThreadPage = { card: card.id, entries: [], route: card.sourceRefs.some(r => r.adapter === "firstmate" && homes.includes(r.instanceId ?? "")), watching: "unknown", suggestions: [], suggestionsUnavailable: "This harness does not expose a command catalog. Slash commands stay literal." };
+  const result: ThreadPage = { card: card.id, entries: [], route: card.sourceRefs.some(r => r.adapter === "firstmate" && homes.includes(r.instanceId ?? "")), watching: "unknown" };
   const match = before === undefined ? null : THREAD_CURSOR.exec(before);
   const nativeCursor = match?.[1], replyCursor = match?.[2];
   const candidates: { item: ThreadEntry; native?: string; reply?: string }[] = [];

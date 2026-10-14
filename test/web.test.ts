@@ -69,7 +69,7 @@ test("thread reader ignores partial records, pages old messages, separates trace
   assert.equal(page.entries.length, 60); assert.equal(page.entries.at(-1)?.text, "message 89"); assert.ok(page.older);
   const older = readThread("default", state, state.cards.c1!, [], page.older);
   assert.equal(older.entries.length, 30); assert.equal(older.entries[0]?.text, "message 0"); assert.equal(older.older, undefined);
-  assert.equal(page.route, false); assert.deepEqual(page.suggestions, []); assert.equal(page.watching, "unknown");
+  assert.equal(page.route, false); assert.equal(page.watching, "unknown");
   const entries = recordEntries({ type: "assistant", message: { content: [{ type: "text", text: "hello" }, { type: "thinking", thinking: "thinking" }, { type: "tool_use", input: "sk-abcdefghijklmnop123456789" }] } }, 0);
   assert.deepEqual(entries.map(e => e.kind), ["message", "thinking", "tool"]); assert.equal(entries[2]?.text, "[redacted]");
   assert.deepEqual(recordEntries({ type: "user", isMeta: true, message: { content: "injected" } }, 0), []);

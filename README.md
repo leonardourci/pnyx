@@ -20,10 +20,15 @@ node dist/cli/pnyx-axi.js serve
 Open the local URL printed by `serve`. To enable replies, explicitly configure each
 Firstmate home with `serve --home <path>`; browser commands cannot add homes.
 Sessions without a configured input route remain readable and retain draft replies.
-Harness command catalogs and listener-presence signals are not exposed by the current
-adapters, so the board reports them unavailable instead of inventing them.
+Type / in the composer to browse local Claude Code or Codex skills and commands for
+the recorded working folder. Selection inserts literal text. Missing catalogs and
+listener-presence signals are reported explicitly. [Keyboard shortcuts and catalog
+scope](docs/keyboard.md) are documented, and every application binding can be changed
+in Settings.
 
 Run `pnpm run lint` and `pnpm test` for deterministic verification. `pnpm test:web`
 uses `chrome-devtools-axi` for a real browser smoke test with a temporary `PNYX_HOME`,
 a random port, synthetic transcripts and a fake Firstmate send script. Set
 `PNYX_EVIDENCE_DIR` to an outside-repository directory to keep its screenshots.
+`pnpm test:keyboard` exercises navigation, rebinding, hints and slash insertion with
+real browser keys and the same isolated fixture approach.

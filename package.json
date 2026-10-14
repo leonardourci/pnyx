@@ -17,11 +17,14 @@
     "lint": "pnpm run typecheck && eslint .",
     "test": "pnpm run build && node --test \"test/**/*.test.ts\"",
     "web:dev": "vite --config web/vite.config.ts",
-    "test:web": "pnpm run build && node test/web-smoke.ts"
+    "test:web": "pnpm run build && node test/web-smoke.ts",
+    "test:keyboard": "pnpm run build && node test/keyboard-smoke.ts"
   },
   "dependencies": {
     "axi-sdk-js": "^0.1.13",
-    "ws": "^8.22.0"
+    "tinykeys": "^4.0.1",
+    "ws": "^8.22.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

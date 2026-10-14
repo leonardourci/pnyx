@@ -1,11 +1,13 @@
 import { BoardError, COLUMNS, type BoardState, type ViewPreferences } from "./model.ts";
+import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from "./keyboard.ts";
 
 export const DEFAULT_VIEW: ViewPreferences = {
+  keyboard: DEFAULT_KEYBOARD,
   fontSize: 14, panelPlacement: "right", panelWidth: 440, composerHeight: 180,
   cardHeight: 250, cardColors: true, toolDetails: false, thinkingDetails: false,
   columnWidths: {}, cardHeights: {}, cardTraceOverrides: {}, customColumns: [],
 };
-export const viewFor = (state: BoardState): ViewPreferences => state.view ?? structuredClone(DEFAULT_VIEW);
+export const viewFor = (state: BoardState): ViewPreferences => ({ ...structuredClone(DEFAULT_VIEW), ...state.view });
 const invalid = (key: string): never => { throw new BoardError(`invalid view preference: ${key}`, "VALIDATION_ERROR"); };
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const safeKey = (key: string) => !["__proto__", "prototype", "constructor"].includes(key);
@@ -20,6 +22,26 @@ export function patchView(state: BoardState, input: unknown): ViewPreferences {
   const next = structuredClone(viewFor(state));
   for (const [key, value] of Object.entries(input).sort(([a], [b]) => a === "customColumns" ? -1 : b === "customColumns" ? 1 : a.localeCompare(b))) {
     switch (key) {
+      case "keyboard": {
+        if (!record(value) || Object.keys(value).some(k => !["characterShortcuts", "bindings"].includes(k))) return invalid(key);
+        if (value.characterShortcuts !== undefined) {
+          if (typeof value.characterShortcuts !== "boolean") return invalid(key);
+          next.keyboard.characterShortcuts = value.characterShortcuts;
+        }
+        if (value.bindings === null) next.keyboard.bindings = {};
+        else if (value.bindings !== undefined) {
+          if (!record(value.bindings)) return invalid(key);
+          for (const [id, keys] of Object.entries(value.bindings)) {
+            if (!safeKey(id) || !KEY_ACTIONS.some(action => action.id === id)) return invalid(key);
+            if (keys === null) delete next.keyboard.bindings[id];
+            else if (Array.isArray(keys) && keys.every(k => typeof k === "string")) next.keyboard.bindings[id] = keys;
+            else return invalid(key);
+          }
+        }
+        const error = keyboardError(next.keyboard);
+        if (error) return invalid(error);
+        break;
+      }
       case "fontSize": next.fontSize = size(value, 12, 20, key); break;
       case "panelWidth": next.panelWidth = size(value, 320, 720, key); break;
       case "composerHeight": next.composerHeight = size(value, 140, 420, key); break;
