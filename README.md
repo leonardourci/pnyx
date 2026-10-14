@@ -1,8 +1,10 @@
 # Pnyx
 
+Pnyx's AXI task model tracks explicit tasks on boards, each with one orchestrator called Hydra. Ad-hoc agent sessions stay in History without creating tasks. The task-focused web board follows in a separate change.
+
 A deterministic board of every agent and its work, with an [AXI](https://axi.md/) CLI named `pnyx-axi`.
 
-Pnyx shows your coding agents as cards on one board and queues your replies to them. It is a view over the tools you already use, not an orchestrator: Claude Code and Codex hooks report sessions, a Firstmate integration reads Firstmate's own records, and linked pull requests come from GitHub. Every change is an event in an append-only log, so the board can be replayed and audited. Pre-v1; see [docs/design.md](docs/design.md) for the design.
+Pnyx records tasks, attaches one agent session to each task, and queues your replies to that session. It is a view over the tools you already use, not an orchestrator: Claude Code and Codex hooks report sessions, a Firstmate integration reads Firstmate's own records, and linked pull requests come from GitHub. Every change is an event in an append-only log, so the board can be replayed and audited. Pre-v1; see [docs/design.md](docs/design.md) for the design.
 
 ![Pnyx demo](docs/media/demo.gif)
 
@@ -50,17 +52,32 @@ pnyx-axi setup hooks --preview          # show what would change
 pnyx-axi setup hooks --remove           # take Pnyx's hooks out again
 ```
 
-This adds a silent reporting hook to `~/.claude/settings.json` and `~/.codex/hooks.json` (`CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honored), keeping every other hook. New sessions show up on the board, and each records the terminal it runs in so the board can type your replies into it: a tmux pane, a Herdr pane, a Paseo terminal, or an iTerm2 or Terminal window (macOS asks once to let Pnyx control that app; the answer lives under System Settings > Privacy & Security > Automation). A card without a route says why in its composer and keeps the draft. Already had the hooks installed? Re-run `pnyx-axi setup hooks` to enable typing into sessions. Codex asks you to review and trust new hooks once: run `/hooks` in Codex after installing. Rerun `pnyx-axi setup hooks` after upgrading Pnyx so the hooks cover the events the new version reads.
+This adds a silent reporting hook to `~/.claude/settings.json` and `~/.codex/hooks.json` (`CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honored), keeping every other hook. Hooks record sessions for explicit attachment. Ad-hoc sessions never create tasks; sessions without an interactive terminal stay in History. Each interactive session records the terminal it runs in so the board can type your replies into it: a tmux pane, a Herdr pane, a Paseo terminal, or an iTerm2 or Terminal window (macOS asks once to let Pnyx control that app; the answer lives under System Settings > Privacy & Security > Automation). A task without a reply route explains why beside its message input and keeps the draft. Already had the hooks installed? Re-run `pnyx-axi setup hooks` to enable typing into sessions. Codex asks you to review and trust new hooks once: run `/hooks` in Codex after installing. Rerun `pnyx-axi setup hooks` after upgrading Pnyx so the hooks cover the events the new version reads.
 
 ## Firstmate
 
-Pass each Firstmate home to `serve` with `--home` (repeat it for several homes). The server then watches the home's `state/` and `data/` folders, turns each task into a card, and sends your replies through the home's own `bin/fm-send.sh`. It only reads the home. Without a server, `pnyx-axi firstmate sync --home <path>` folds a home in once and `pnyx-axi firstmate watch --home <path>` keeps doing so; `pnyx-axi reply <id> --text <text> --home <path>` replies from the terminal. A Claude Code or Codex session started in an open task's worktree joins that task's card, which keeps replying through Firstmate.
+Pass the board's Firstmate home to `serve` with `--home`; a board mirrors one Firstmate home, and `serve`, `firstmate sync` and `firstmate watch` name any other home they ignore. The server then watches the home's `state/` and `data/` folders, turns each task into a card, and sends your replies through the home's own `bin/fm-send.sh`. It only reads the home. Without a server, `pnyx-axi firstmate sync --home <path>` folds a home in once and `pnyx-axi firstmate watch --home <path>` keeps doing so; `pnyx-axi reply <id> --text <text> --home <path>` replies from the terminal. The first interactive Claude Code or Codex session in an open task's worktree joins that task; a later session in the same folder stays unassigned. The managed task keeps replying through Firstmate.
+
+## Task records
+
+Hydra can be Firstmate or an ordinary agent session. Each board has one Hydra, and each explicit task has zero or one attached worker. Tasks support one level of subtasks. Pnyx records work and queues messages; Hydra decides what to do and dispatches workers. Changing Hydra preserves tasks, earlier worker attachments and messages to previous Hydras.
+
+Use `board create|set|show|list` for boards, `column create|rename|delete|reorder|list` for their columns, and `task create|rename|status|list|show|history|chat` for work records. `task create --parent <task>` creates a subtask. Creating a task in a role column records that role's initial status; a custom column without a role pins placement. A manual move also pins placement. Deleting a column moves its tasks to a remaining column, and Undo refuses to overwrite later edits. The final column cannot be deleted.
+
+Tracking follows explicit declarations: working goes to Workers on it, needs_you and blocked to Needs you, paused to Parked, and done to Done. A confirmed PR merge also completes work. Silence, idle sessions and session exit do not complete tasks. Firstmate's backlog, status text and worker metadata are mirrored into retained task records, including backlog items without workers. A board stops mirroring a home when that home is no longer its Hydra.
+
+The append-only log preserves board, task, subtask, session, command and message identities. Replaying existing events migrates old session records without changing their event bytes or ids. Unattached and headless sessions remain available in History and search. Harvested user and assistant messages are redacted and copied into the log on turn end, attachment changes and explicit `harvest`, so observed conversations remain readable and searchable after a native transcript disappears. Search remains a derived, deletable index.
+
+`hydra send --text <message>` queues a board-level message with no task. `hydra send --task <task> [--action send|worker]` queues a task-specific message, and `hydra messages` reads the queue. These actions never launch a worker. Native launch integrations, several workers per task, automatic labels, settings and quota reporting, board tabs, inline questions and the left chat layout are later work.
 
 ## Using the board
 
-- **Columns:** Needs you (decisions, permission prompts, questions and idle sessions), Workers on it, Review (a linked pull request is open) and Done (every linked pull request merged, a recorded outcome, or an agent session that ended). A resumed session goes back to Workers on it; a Firstmate task is Done when Firstmate closes it. Cards move on their own from source facts; a manual move pins a card until you return it to automatic.
+The task model is available through AXI. Its task-focused web controls follow in a separate change; the current web interface continues to expose recorded conversations, settings, search and reply delivery.
+
+- **Columns:** Needs you, Workers on it, Done and Parked are the initial template. Use `pnyx-axi column create|rename|reorder|delete` to edit columns. Tasks move from declared status and confirmed merges; a manual card move pins placement. Silence, idle sessions and session exit never complete a task.
+- **Tasks and agents:** the task keeps its title, links and placement when a session moves. Use `task create --title "Work to do"`, `task sessions`, `task attach <task> --session <session>` and `task detach <task>`. Attachments never start or stop a process.
 - **Titles:** a card that only hooks report takes the harness's own session title, else its first prompt, else its folder name; a subagent takes its type and last 4 characters of its id (`Explore 3f2a`). A title you set is never replaced.
-- **Cards:** click a card or press Enter to open its conversation, notes, history and links. Type in the composer and press Mod+Enter to send a reply; type `/` there to insert a local Claude Code or Codex skill or command.
+- **Cards:** click a card or press Enter to open its conversation, notes, history and links. Type in the conversation input and press Mod+Enter to send a reply; type `/` there to insert a local Claude Code or Codex skill or command.
 - **Keyboard:** arrows or h/j/k/l move between cards, `m` moves the focused card, `/` searches history, Mod+K opens Commands, `?` shows help, `f` shows hints. Every binding can be changed in Settings. See [docs/keyboard.md](docs/keyboard.md).
 - **Search:** every search box (Find a card, History, the Cmd+K palette) and `pnyx-axi search "<words>"` find cards by meaning, in any language, as well as by their words, across titles, links, events, notes and transcripts. Semantic search runs local models on your machine; the first search downloads them in the background (about 1 GB with a GPU, 115 MB on CPU only), and searches are full-text until they are ready. `pnyx-axi search status` shows the progress.
 
