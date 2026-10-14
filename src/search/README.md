@@ -1,6 +1,6 @@
 # search
 
-Full-text history search: `pnyx-axi search "<words>"`, `search status` and `search rebuild`.
+Full-text history search: `pnyx-axi search "<words>"`, `search status`, `search rebuild` and `search setup --semantic` (below).
 
 - `search.db` in the board's folder is a derived index, not a store. It is deletable like `snapshot.json` and rebuilt from `events.jsonl` and the transcripts the hooks recorded; nothing reads it as board state.
 - `index.ts` is its only writer. Each search first folds in what the log and the transcripts gained since the `cursors` table (the event seq and byte offset; per transcript its device and inode and byte offset). A replaced or shortened transcript is read again. A `meta` table holds the schema and chunker versions; on mismatch the file is deleted and rebuilt. Building a new index first harvests every card's transcript (`pnyx-axi harvest`, transcripts only), so compaction summaries are notes before they are indexed.
