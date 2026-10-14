@@ -199,7 +199,7 @@ try {
   await resizeColumn('End'); await screenshot('columns-wide.png')
   await click('button', 'Settings'); await click('combobox', 'Conversation placement'); await click('option', 'Inline with cards'); await click('button', 'Back to board')
   await click('button', 'Check the empty-state experience')
-  await resizeColumn('Home'); await check(`document.querySelector('.column-needs_you').getBoundingClientRect().width === 240 && ${fits}`, 'inline detail respects narrow column resize')
+  await resizeColumn('Home'); await check(`document.querySelector('.column-needs_you').getBoundingClientRect().width === 340 && document.querySelector('.column-cards > .detail').getBoundingClientRect().width >= 320 && ${fits}`, 'inline detail keeps its readable minimum when the column is narrowed')
   await resizeColumn('End'); await check(`document.querySelector('.column-needs_you').getBoundingClientRect().width === 640 && ${fits}`, 'inline detail respects wide column resize')
   await browser('emulate', '--viewport', '390x844x1,mobile,touch'); await browser('wait', 'The working board')
   await check(`document.documentElement.scrollWidth === innerWidth && document.querySelector('.column-needs_you').getBoundingClientRect().width <= document.querySelector('.kanban').clientWidth && ${fits}`, 'wide column fits mobile viewport without internal horizontal scrolling')
