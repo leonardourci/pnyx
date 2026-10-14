@@ -15,286 +15,347 @@ import {
   statSync,
   writeFileSync,
   writeSync,
-} from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { BoardError, EVENT_TYPES, EVENT_VERSION, type BoardEvent, type BoardState } from "../core/model.ts";
-import { emptyBoard, reduce, replay } from "../core/reducer.ts";
+} from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { BoardError, EVENT_TYPES, EVENT_VERSION, type BoardEvent, type BoardState } from '../core/model.ts'
+import { emptyBoard, reduce, replay } from '../core/reducer.ts'
 
-const LOCK_TIMEOUT_MS = 5000;
-const STALE_EMPTY_LOCK_MS = 10_000;
+const LOCK_TIMEOUT_MS = 5000
+const STALE_EMPTY_LOCK_MS = 10_000
 
 export function pnyxHome(): string {
-  return process.env.PNYX_HOME || join(homedir(), ".pnyx");
+  return process.env.PNYX_HOME || join(homedir(), '.pnyx')
 }
 
 export function boardDir(board: string): string {
   if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(board)) {
-    throw new BoardError(`invalid board name: ${board}`, "VALIDATION_ERROR", [
-      "Use letters, digits, dot, dash or underscore",
-    ]);
+    throw new BoardError(`invalid board name: ${board}`, 'VALIDATION_ERROR', [
+      'Use letters, digits, dot, dash or underscore',
+    ])
   }
-  return join(pnyxHome(), "boards", board);
+
+  return join(pnyxHome(), 'boards', board)
 }
 
-const logPath = (dir: string) => join(dir, "events.jsonl");
-const snapshotPath = (dir: string) => join(dir, "snapshot.json");
-export const spoolDir = (dir: string) => join(dir, "spool");
+const logPath = (dir: string) => join(dir, 'events.jsonl')
+const snapshotPath = (dir: string) => join(dir, 'snapshot.json')
+export const spoolDir = (dir: string) => join(dir, 'spool')
 
 interface LogRead {
-  events: BoardEvent[];
+  events: BoardEvent[]
   // Byte offset just past the last complete line.
-  end: number;
-  size: number;
+  end: number
+  size: number
 }
 
 // Appended by repair after it closes a torn line with a newline. Readers skip the
 // line it names; it is not a board event and takes no sequence number.
 interface RepairMarker {
-  v: typeof EVENT_VERSION;
-  type: "log.repaired";
-  at: string;
-  data: { offset: number; length: number };
+  v: typeof EVENT_VERSION
+  type: 'log.repaired'
+  at: string
+  data: { offset: number; length: number }
 }
 
 function parseLine(line: string): unknown {
   try {
-    return JSON.parse(line);
+    return JSON.parse(line)
   } catch {
-    return undefined;
+    return undefined
   }
 }
 
 function isRepairMarker(value: unknown): value is RepairMarker {
-  const m = value as Partial<RepairMarker> | undefined;
-  return m?.type === "log.repaired" && Number.isInteger(m.data?.offset) && Number.isInteger(m.data?.length);
+  const m = value as Partial<RepairMarker> | undefined
+
+  return m?.type === 'log.repaired' && Number.isInteger(m.data?.offset) && Number.isInteger(m.data?.length)
 }
 
 function corrupt(offset: number): BoardError {
-  return new BoardError(`events.jsonl is corrupt at byte ${offset}`, "LOG_CORRUPT", [
-    "The log is never rewritten automatically; inspect that line by hand",
-  ]);
+  return new BoardError(`events.jsonl is corrupt at byte ${offset}`, 'LOG_CORRUPT', [
+    'The log is never rewritten automatically; inspect that line by hand',
+  ])
 }
 
 function toEvent(event: unknown, offset: number): BoardEvent {
-  const e = event as Partial<BoardEvent> | undefined;
+  const e = event as Partial<BoardEvent> | undefined
+
   if (
-    typeof e !== "object" ||
+    typeof e !== 'object' ||
     e === null ||
     !Number.isInteger(e.seq) ||
-    typeof e.id !== "string" ||
-    typeof e.cardId !== "string" ||
-    !EVENT_TYPES.includes(e.type as BoardEvent["type"])
+    typeof e.id !== 'string' ||
+    typeof e.cardId !== 'string' ||
+    !EVENT_TYPES.includes(e.type as BoardEvent['type'])
   ) {
-    throw corrupt(offset);
+    throw corrupt(offset)
   }
+
   if (e.v !== EVENT_VERSION) {
-    throw new BoardError(`event at byte ${offset} has schema v${e.v}; this pnyx-axi reads v${EVENT_VERSION}`, "UNSUPPORTED_VERSION");
+    throw new BoardError(`event at byte ${offset} has schema v${e.v}; this pnyx-axi reads v${EVENT_VERSION}`, 'UNSUPPORTED_VERSION')
   }
-  return e as BoardEvent;
+
+  return e as BoardEvent
 }
 
 // Reads complete lines from `from`. Bytes after the last newline are a torn tail
 // left by a crash mid-append: they are reported through `end` < `size`, never parsed.
 // A line named by the repair marker right after it is skipped, whatever it holds.
 function readLog(dir: string, from = 0): LogRead | null {
-  const path = logPath(dir);
-  if (!existsSync(path)) return from === 0 ? { events: [], end: 0, size: 0 } : null;
-  const fd = openSync(path, "r");
+  const path = logPath(dir)
+
+  if (!existsSync(path)) {
+    return from === 0 ? { events: [], end: 0, size: 0 } : null
+  }
+
+  const fd = openSync(path, 'r')
+
   try {
-    const size = fstatSync(fd).size;
-    if (from > size) return null;
-    const buf = Buffer.alloc(size - from);
-    readSync(fd, buf, 0, buf.length, from);
-    const complete = buf.lastIndexOf(10) + 1;
-    const events: BoardEvent[] = [];
-    let previous: { offset: number; length: number; event?: BoardEvent; error?: BoardError } | undefined;
+    const size = fstatSync(fd).size
+
+    if (from > size) {
+      return null
+    }
+
+    const buf = Buffer.alloc(size - from)
+    readSync(fd, buf, 0, buf.length, from)
+    const complete = buf.lastIndexOf(10) + 1
+    const events: BoardEvent[] = []
+    let previous: { offset: number; length: number; event?: BoardEvent; error?: BoardError } | undefined
+
     for (let start = 0; start < complete; ) {
-      const end = buf.indexOf(10, start);
-      const offset = from + start;
-      const line = buf.toString("utf8", start, end);
-      const length = end - start;
-      start = end + 1;
-      if (line.trim() === "") continue;
-      const value = parseLine(line);
-      if (isRepairMarker(value)) {
-        if (previous?.offset !== value.data.offset || previous.length !== value.data.length) throw corrupt(offset);
-        if (previous.event) events.pop();
-        previous = undefined;
-        continue;
+      const end = buf.indexOf(10, start)
+      const offset = from + start
+      const line = buf.toString('utf8', start, end)
+      const length = end - start
+      start = end + 1
+
+      if (line.trim() === '') {
+        continue
       }
-      if (previous?.error) throw previous.error;
-      previous = { offset, length };
+
+      const value = parseLine(line)
+
+      if (isRepairMarker(value)) {
+        if (previous?.offset !== value.data.offset || previous.length !== value.data.length) {
+          throw corrupt(offset)
+        }
+
+        if (previous.event) {
+          events.pop()
+        }
+
+        previous = undefined
+        continue
+      }
+
+      if (previous?.error) {
+        throw previous.error
+      }
+
+      previous = { offset, length }
+
       try {
-        previous.event = toEvent(value, offset);
-        events.push(previous.event);
+        previous.event = toEvent(value, offset)
+        events.push(previous.event)
       } catch (error) {
-        previous.error = error as BoardError;
+        previous.error = error as BoardError
       }
     }
-    if (previous?.error) throw previous.error;
-    return { events, end: from + complete, size };
+
+    if (previous?.error) {
+      throw previous.error
+    }
+
+    return { events, end: from + complete, size }
   } finally {
-    closeSync(fd);
+    closeSync(fd)
   }
 }
 
 export function readEvents(board: string): BoardEvent[] {
-  return readLog(boardDir(board))?.events ?? [];
+  return readLog(boardDir(board))?.events ?? []
 }
 
 // Complete events at or after byte `offset`, and the offset just past them.
 // Null when the log is now shorter than `offset`, so the reader must start over.
 export function readEventsFrom(board: string, offset: number): { events: BoardEvent[]; end: number } | null {
-  const log = readLog(boardDir(board), offset);
-  return log && { events: log.events, end: log.end };
+  const log = readLog(boardDir(board), offset)
+
+  return log && { events: log.events, end: log.end }
 }
 
 interface Snapshot {
-  v: typeof EVENT_VERSION;
-  offset: number;
-  state: BoardState;
+  v: typeof EVENT_VERSION
+  offset: number
+  state: BoardState
 }
 
 function readSnapshot(dir: string): Snapshot | null {
   try {
-    const snap = JSON.parse(readFileSync(snapshotPath(dir), "utf8")) as Snapshot;
-    return snap.v === EVENT_VERSION && Number.isInteger(snap.offset) && snap.state?.v === EVENT_VERSION ? snap : null;
+    const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8')) as Snapshot
+
+    return snap.v === EVENT_VERSION && Number.isInteger(snap.offset) && snap.state?.v === EVENT_VERSION ? snap : null
   } catch {
-    return null;
+    return null
   }
 }
 
 // Writes and flushes to disk before returning. flag "a" appends, "w" replaces.
-function writeDurably(path: string, data: string | Buffer, flag: "a" | "w"): void {
-  const fd = openSync(path, flag);
+function writeDurably(path: string, data: string | Buffer, flag: 'a' | 'w'): void {
+  const fd = openSync(path, flag)
+
   try {
-    writeSync(fd, typeof data === "string" ? Buffer.from(data) : data);
-    fsyncSync(fd);
+    writeSync(fd, typeof data === 'string' ? Buffer.from(data) : data)
+    fsyncSync(fd)
   } finally {
-    closeSync(fd);
+    closeSync(fd)
   }
 }
 
 function writeSnapshot(dir: string, state: BoardState, offset: number): void {
-  const tmp = `${snapshotPath(dir)}.tmp-${process.pid}`;
-  writeDurably(tmp, JSON.stringify({ v: EVENT_VERSION, offset, state } satisfies Snapshot), "w");
-  renameSync(tmp, snapshotPath(dir));
+  const tmp = `${snapshotPath(dir)}.tmp-${process.pid}`
+  writeDurably(tmp, JSON.stringify({ v: EVENT_VERSION, offset, state } satisfies Snapshot), 'w')
+  renameSync(tmp, snapshotPath(dir))
 }
 
 export interface Board {
-  dir: string;
-  state: BoardState;
+  dir: string
+  state: BoardState
   // Where the next append lands.
-  offset: number;
+  offset: number
   // Size of a torn tail, 0 when the log ends cleanly.
-  tornBytes: number;
+  tornBytes: number
 }
 
 // Loads the snapshot and folds in any events appended after it. Falls back to a
 // full replay when the snapshot is missing, unreadable or does not fit the log.
 export function loadBoard(board: string): Board {
-  const dir = boardDir(board);
-  const snap = readSnapshot(dir);
-  let log = snap ? readLog(dir, snap.offset) : null;
-  let start = snap?.state ?? emptyBoard();
+  const dir = boardDir(board)
+  const snap = readSnapshot(dir)
+  let log = snap ? readLog(dir, snap.offset) : null
+  let start = snap?.state ?? emptyBoard()
+
   if (!log || (snap && log.events.length > 0 && log.events[0]!.seq !== snap.state.seq + 1)) {
-    log = readLog(dir) as LogRead;
-    start = emptyBoard();
+    log = readLog(dir) as LogRead
+    start = emptyBoard()
   }
-  return { dir, state: replay(start, log.events), offset: log.end, tornBytes: log.size - log.end };
+
+  return { dir, state: replay(start, log.events), offset: log.end, tornBytes: log.size - log.end }
 }
 
 function lockIsStale(path: string): boolean {
   try {
-    const pid = Number(readFileSync(path, "utf8"));
-    if (!Number.isInteger(pid) || pid <= 0) return Date.now() - statSync(path).mtimeMs > STALE_EMPTY_LOCK_MS;
-    process.kill(pid, 0);
-    return false;
+    const pid = Number(readFileSync(path, 'utf8'))
+
+    if (!Number.isInteger(pid) || pid <= 0) {
+      return Date.now() - statSync(path).mtimeMs > STALE_EMPTY_LOCK_MS
+    }
+
+    process.kill(pid, 0)
+
+    return false
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "ESRCH";
+    return (error as NodeJS.ErrnoException).code === 'ESRCH'
   }
 }
 
 // O_EXCL lock file holding the writer's pid; a lock whose process is gone is taken over.
 // ponytail: two writers can both judge the same dead lock stale; a lock daemon fixes it if that ever matters.
 function acquireLock(dir: string): () => void {
-  const path = join(dir, "writer.lock");
-  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  const path = join(dir, 'writer.lock')
+  const deadline = Date.now() + LOCK_TIMEOUT_MS
+
   for (;;) {
     try {
-      const fd = openSync(path, "wx");
-      writeSync(fd, String(process.pid));
-      closeSync(fd);
-      return () => rmSync(path, { force: true });
+      const fd = openSync(path, 'wx')
+      writeSync(fd, String(process.pid))
+      closeSync(fd)
+
+      return () => rmSync(path, { force: true })
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+        throw error
+      }
     }
+
     if (lockIsStale(path)) {
-      rmSync(path, { force: true });
-      continue;
+      rmSync(path, { force: true })
+      continue
     }
+
     if (Date.now() > deadline) {
-      throw new BoardError("board is locked by another pnyx-axi writer", "LOCKED", [
+      throw new BoardError('board is locked by another pnyx-axi writer', 'LOCKED', [
         `Retry, or remove ${path} if no pnyx-axi process is running`,
-      ]);
+      ])
     }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)
   }
 }
 
 export interface Writer {
-  readonly state: BoardState;
-  readonly dir: string;
-  append(event: BoardEvent): void;
+  readonly state: BoardState
+  readonly dir: string
+  append(event: BoardEvent): void
 }
 
 // Runs `fn` as the board's single writer. Each append is flushed to disk before
 // the state advances; the snapshot is replaced afterwards.
 export function withWriter<T>(board: string, fn: (writer: Writer) => T): T {
-  const dir = boardDir(board);
-  mkdirSync(dir, { recursive: true });
-  const release = acquireLock(dir);
+  const dir = boardDir(board)
+  mkdirSync(dir, { recursive: true })
+  const release = acquireLock(dir)
+
   try {
-    let { state, offset } = loadTail(board);
-    let dirty = false;
+    let { state, offset } = loadTail(board)
+    let dirty = false
+
     try {
       return fn({
         dir,
         get state() {
-          return state;
+          return state
         },
         append(event) {
-          if (event.seq !== state.seq + 1) throw new Error(`append out of sequence: ${event.seq} after ${state.seq}`);
-          const line = `${JSON.stringify(event)}\n`;
-          writeDurably(logPath(dir), line, "a");
-          offset += Buffer.byteLength(line);
-          state = reduce(state, event);
-          dirty = true;
+          if (event.seq !== state.seq + 1) {
+            throw new Error(`append out of sequence: ${event.seq} after ${state.seq}`)
+          }
+
+          const line = `${JSON.stringify(event)}\n`
+          writeDurably(logPath(dir), line, 'a')
+          offset += Buffer.byteLength(line)
+          state = reduce(state, event)
+          dirty = true
         },
-      });
+      })
     } finally {
-      if (dirty) writeSnapshot(dir, state, offset);
+      if (dirty) {
+        writeSnapshot(dir, state, offset)
+      }
     }
   } finally {
-    release();
+    release()
   }
 }
 
 function loadTail(board: string): Board {
-  const loaded = loadBoard(board);
+  const loaded = loadBoard(board)
+
   if (loaded.tornBytes > 0) {
-    throw new BoardError(`events.jsonl ends with ${loaded.tornBytes} bytes of a torn append`, "TORN_TAIL", [
-      "Run `pnyx-axi repair` to set them aside and continue",
-    ]);
+    throw new BoardError(`events.jsonl ends with ${loaded.tornBytes} bytes of a torn append`, 'TORN_TAIL', [
+      'Run `pnyx-axi repair` to set them aside and continue',
+    ])
   }
-  return loaded;
+
+  return loaded
 }
 
 export interface Repair {
-  tornBytes: number;
-  preserved?: string;
-  seq: number;
+  tornBytes: number
+  preserved?: string
+  seq: number
 }
 
 // Copies a torn tail to a side file, then closes it with a newline and a repair
@@ -302,52 +363,61 @@ export interface Repair {
 // never acknowledged as written, so no accepted event is lost.
 // ponytail: a crash while appending the marker leaves a corrupt interior line; inspect it by hand.
 export function repairBoard(board: string): Repair {
-  const dir = boardDir(board);
-  mkdirSync(dir, { recursive: true });
-  const release = acquireLock(dir);
+  const dir = boardDir(board)
+  mkdirSync(dir, { recursive: true })
+  const release = acquireLock(dir)
+
   try {
-    let log = readLog(dir) as LogRead;
-    const tornBytes = log.size - log.end;
-    let preserved: string | undefined;
+    let log = readLog(dir) as LogRead
+    const tornBytes = log.size - log.end
+    let preserved: string | undefined
+
     if (tornBytes > 0) {
-      preserved = `${logPath(dir)}.torn-${log.end}`;
-      writeDurably(preserved, readFileSync(logPath(dir)).subarray(log.end), "w");
+      preserved = `${logPath(dir)}.torn-${log.end}`
+      writeDurably(preserved, readFileSync(logPath(dir)).subarray(log.end), 'w')
       const marker: RepairMarker = {
         v: EVENT_VERSION,
-        type: "log.repaired",
+        type: 'log.repaired',
         at: new Date().toISOString(),
         data: { offset: log.end, length: tornBytes },
-      };
-      writeDurably(logPath(dir), `\n${JSON.stringify(marker)}\n`, "a");
-      log = readLog(dir) as LogRead;
+      }
+      writeDurably(logPath(dir), `\n${JSON.stringify(marker)}\n`, 'a')
+      log = readLog(dir) as LogRead
     }
-    const state = replay(emptyBoard(), log.events);
-    writeSnapshot(dir, state, log.end);
-    return { tornBytes, ...(preserved ? { preserved } : {}), seq: state.seq };
+
+    const state = replay(emptyBoard(), log.events)
+    writeSnapshot(dir, state, log.end)
+
+    return { tornBytes, ...(preserved ? { preserved } : {}), seq: state.seq }
   } finally {
-    release();
+    release()
   }
 }
 
 // Writes one hook event to the spool without taking the writer lock. The next
 // writer ingests it; the spool is a buffer, never a second writer of the log.
 export function spoolWrite(board: string, entry: { id: string } & Record<string, unknown>): string {
-  const dir = spoolDir(boardDir(board));
-  mkdirSync(dir, { recursive: true });
+  const dir = spoolDir(boardDir(board))
+  mkdirSync(dir, { recursive: true })
   // Millisecond time orders files across processes; hrtime keeps same-millisecond writes apart.
-  const name = `${String(Date.now()).padStart(15, "0")}-${process.hrtime.bigint()}-${entry.id.replace(/[^A-Za-z0-9._-]/g, "_")}.json`;
-  const tmp = join(dir, `.tmp-${process.pid}-${name}`);
-  writeFileSync(tmp, JSON.stringify(entry));
-  renameSync(tmp, join(dir, name));
-  return join(dir, name);
+  const name = `${String(Date.now()).padStart(15, '0')}-${process.hrtime.bigint()}-${entry.id.replace(/[^A-Za-z0-9._-]/g, '_')}.json`
+  const tmp = join(dir, `.tmp-${process.pid}-${name}`)
+  writeFileSync(tmp, JSON.stringify(entry))
+  renameSync(tmp, join(dir, name))
+
+  return join(dir, name)
 }
 
 // Spooled files in arrival order.
 export function spoolFiles(dir: string): string[] {
-  const spool = spoolDir(dir);
-  if (!existsSync(spool)) return [];
+  const spool = spoolDir(dir)
+
+  if (!existsSync(spool)) {
+    return []
+  }
+
   return readdirSync(spool)
-    .filter((f) => f.endsWith(".json") && !f.startsWith("."))
+    .filter(f => f.endsWith('.json') && !f.startsWith('.'))
     .sort()
-    .map((f) => join(spool, f));
+    .map(f => join(spool, f))
 }

@@ -41,8 +41,9 @@ export default tseslint.config(
         ignoreRegExpLiterals: true,
         ignoreComments: true,
       }],
-      '@stylistic/newline-per-chained-call': ['error', { ignoreChainWithDepth: 1 }],
+      '@stylistic/newline-per-chained-call': ['error', { ignoreChainWithDepth: 2 }],
       '@stylistic/no-multiple-empty-lines': ['error', { max: 1, maxEOF: 0, maxBOF: 0 }],
+      '@stylistic/no-trailing-spaces': 'error',
       '@stylistic/padded-blocks': ['error', 'never'],
       '@stylistic/lines-between-class-members': ['error', 'always', { exceptAfterSingleLine: true }],
 
@@ -54,8 +55,7 @@ export default tseslint.config(
         { blankLine: 'always', prev: 'import', next: '*' },
         { blankLine: 'any', prev: 'import', next: 'import' },
         // Stacked case labels share one body, so keep them together.
-        { blankLine: 'any', prev: '*', next: ['case', 'default'] },
-      ],
+        { blankLine: 'any', prev: '*', next: ['case', 'default'] }],
 
       // Once an object, array or call spans lines, give each item its own line.
       '@stylistic/object-curly-newline': ['error', { multiline: true, consistent: true }],
@@ -70,7 +70,7 @@ export default tseslint.config(
     // The board reads best with one JSX prop per line once an element spans lines.
     files: ['web/**/*.tsx'],
     rules: {
-      '@stylistic/jsx-max-props-per-line': ['error', { maximum: 1, when: 'multiline' }],
+      '@stylistic/jsx-max-props-per-line': ['error', { maximum: { single: 3, multi: 1 } }],
       '@stylistic/jsx-first-prop-new-line': ['error', 'multiline'],
       '@stylistic/jsx-closing-bracket-location': ['error', 'line-aligned'],
       '@stylistic/jsx-closing-tag-location': 'error',
