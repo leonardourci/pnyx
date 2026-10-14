@@ -2,7 +2,7 @@
 
 A deterministic board of every agent and its work, with an [AXI](https://axi.md/) CLI named `pnyx-axi`.
 
-Pnyx shows your coding agents as cards on one board and queues your replies to them. It is a view over the tools you already use, not an orchestrator: Claude Code and Codex hooks report sessions, a Firstmate integration reads Firstmate's own records, and linked pull requests come from GitHub. Every change is an event in an append-only log, so the board can be replayed and audited. Pre-v1; see [docs/design.md](docs/design.md) for the design.
+Pnyx shows your coding agents as cards on one board and queues your replies to them. It is a view over the tools you already use, not an orchestrator: Claude Code and Codex hooks report sessions, a Firstmate integration reads Firstmate's own records, and linked pull requests come from GitHub. Every change is an event in an append-only log, so the board can be replayed and audited. Pre-v1.
 
 ![Pnyx demo](docs/media/demo.gif)
 
@@ -61,7 +61,12 @@ Pass each Firstmate home to `serve` with `--home` (repeat it for several homes).
 - **Columns:** Needs you (decisions, permission prompts, questions and idle sessions), Workers on it, Review (a linked pull request is open) and Done (every linked pull request merged, a recorded outcome, or an agent session that ended). A resumed session goes back to Workers on it; a Firstmate task is Done when Firstmate closes it. Cards move on their own from source facts; a manual move pins a card until you return it to automatic.
 - **Titles:** a card that only hooks report takes the harness's own session title, else its first prompt, else its folder name; a subagent takes its type and last 4 characters of its id (`Explore 3f2a`). A title you set is never replaced.
 - **Cards:** click a card or press Enter to open its conversation, notes, history and links. Type in the composer and press Mod+Enter to send a reply; type `/` there to insert a local Claude Code or Codex skill or command.
-- **Keyboard:** arrows or h/j/k/l move between cards, `m` moves the focused card, `/` searches history, Mod+K opens Commands, `?` shows help, `f` shows hints. Every binding can be changed in Settings. See [docs/keyboard.md](docs/keyboard.md).
+- **Keyboard:** Mod is Command on macOS and Control elsewhere. Every binding can be changed in Settings, and the Character shortcuts switch there turns off the single-key ones.
+  - Arrows or h/j/k/l: move between cards and columns; Home/End: first or last card
+  - Enter: open the card's conversation; `r`: focus its composer; Mod+Enter: send (plain Enter adds a newline)
+  - Escape: dismiss suggestions, leave the composer, then close the card
+  - `m`: move the focused card; `/`: search history; Mod+F: find a card in the current view
+  - Mod+K: Commands; Mod+,: Settings; `?`: keyboard help; `f`: label visible controls, then type a label to jump to it
 - **Search:** every search box (Find a card, History, the Cmd+K palette) and `pnyx-axi search "<words>"` find cards by meaning, in any language, as well as by their words, across titles, links, events, notes and transcripts. Semantic search runs local models on your machine; the first search downloads them in the background (about 1 GB with a GPU, 115 MB on CPU only), and searches are full-text until they are ready. `pnyx-axi search status` shows the progress.
 
 Run `pnyx-axi --help` for every command.
