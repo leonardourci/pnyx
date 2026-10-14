@@ -3,6 +3,7 @@ import type { Card as CardData, Link, ViewPreferences } from '../../../src/core/
 import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
+import { Harness, SettingChips } from './agent-settings.tsx'
 import { receiptLabel, safeLink, visibleParent } from './view.ts'
 
 export function Links({ links }: { links: Link[] }) {
@@ -55,8 +56,9 @@ export function BoardCard({
     <article className={`card ${selected ? 'selected' : ''} ${view.cardColors ? `accent-${card.column}` : ''}`} style={{ height: height ?? view.cardHeights[card.id] ?? view.cardHeight }}>
       <div className="row between">
         <span className="workspace">{card.workspace}</span>
-        <span className="source">{card.agent?.provider ?? card.sourceRefs[0]?.adapter ?? 'Manual'}</span>
+        <Harness card={card} />
       </div>
+      <SettingChips settings={card.settings} />
       <div className="card-content">
         <Button
           className="card-open"

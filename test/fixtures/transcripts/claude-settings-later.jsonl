@@ -1,0 +1,3 @@
+{"type":"permission-mode","permissionMode":"plan","sessionId":"s1"}
+{"type":"user","uuid":"u2","timestamp":"2026-10-14T09:10:00.000Z","sessionId":"s1","permissionMode":"plan","message":{"role":"user","content":"Plan the fix."}}
+{"type":"assistant","uuid":"a4","timestamp":"2026-10-14T09:10:05.000Z","sessionId":"s1","version":"2.1.299","entrypoint":"cli","isSidechain":false,"effort":"xhigh","perTurnEffort":"xhigh","requestedModel":"claude-opus-5-5","message":{"role":"assistant","model":"claude-opus-5-5","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":10,"output_tokens":5,"service_tier":"standard","speed":"fast"}}}

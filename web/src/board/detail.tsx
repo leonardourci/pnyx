@@ -4,6 +4,7 @@ import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Select, Switch } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
+import { SettingChips, SettingList, harnessName } from './agent-settings.tsx'
 import { Links, Tags } from './card.tsx'
 import { Composer } from './composer.tsx'
 import { Notes } from './notes.tsx'
@@ -102,7 +103,7 @@ export function Detail({
             {' '}
             ·
             {' '}
-            {card.agent?.provider ?? 'Agent session'}
+            {card.agent ? harnessName(card.agent.provider) : 'Agent session'}
           </span>
           <Button aria-label="Close detail" onClick={close}>
             <Icon name="close" />
@@ -111,11 +112,12 @@ export function Detail({
         <h2>{card.title}</h2>
         <Tags tags={card.tags} />
         <Links links={card.links} />
+        <SettingChips settings={card.settings} />
         {outside && <p className="small gold">Outside current filters</p>}
         {card.attention.map(a => <p className="request" key={a.key}>{a.text ?? a.kind}</p>)}
       </header>
       <nav className="detail-tabs" aria-label="Card detail">
-        {[['thread', 'Conversation'], ['notes', 'Notes'], ['history', 'History'], ['move', 'Why here / move']].map(([id,label]) => (
+        {[['thread', 'Conversation'], ['notes', 'Notes'], ['agent', 'Agent'], ['history', 'History'], ['move', 'Why here / move']].map(([id,label]) => (
           <Button
             key={id}
             data-conversation-tab={id === 'thread' ? '' : undefined}
@@ -226,7 +228,12 @@ export function Detail({
             notify={notify}
           />
         </>
-      ) : tab === 'notes' ? <Notes card={card} command={command} notify={notify} /> : tab === 'history' ? (
+      ) : tab === 'notes' ? <Notes card={card} command={command} notify={notify} /> : tab === 'agent' ? (
+        <div className="detail-content">
+          <SettingList settings={card.settings} />
+          {!card.settings && <p className="empty">No settings reported yet. Claude Code and Codex report theirs as the session runs.</p>}
+        </div>
+      ) : tab === 'history' ? (
         <div className="detail-content">
           {history.length ? history.map(e => (
             <article key={e.id} className="history-entry">

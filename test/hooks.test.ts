@@ -181,6 +181,7 @@ test('a session event observes the session card with its folder and transcript',
         cwd: '/work/repo',
       },
       activity: 'started',
+      settings: { model: 'claude-opus-5-5', mode: 'default' },
     },
   })
 })

@@ -357,6 +357,10 @@ function cardDetail(card: Card): Output {
     detail.agent = card.agent
   }
 
+  if (card.settings) {
+    detail.settings = card.settings
+  }
+
   detail.attention = card.attention.length ? card.attention : 'none'
   detail.links = card.links.length
     ? card.links.map(l => ({ kind: l.kind, number: l.number ?? '', title: l.title ?? '', state: l.state ?? 'unknown', url: l.url }))
@@ -811,6 +815,7 @@ const COMMAND_HELP: Record<string, string> = {
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
 card.json fields (all optional): title, workspace, tags[], parent (card id or key, null to clear), activity,
   agent {provider, sessionId, agentId, agentType, cwd, transcriptPath}, attention[] {kind, key, blocking, text},
+  settings {<name>: <value>, or null to remove it} merged into the card's settings, such as model, effort, mode, fast,
   source {adapter, objectId, instanceId, generation, cursor, observedAt}
 An observation older than the card's latest one from the same source is ignored.
 `,

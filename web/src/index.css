@@ -79,3 +79,6 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .work-area > .detail { max-width: 70%; }
 @media (max-width: 760px) { .work-area > .detail { max-width: 100%; } }
+.harness { display: inline-flex; align-items: center; gap: 5px; }
+.setting-chips { display: flex; margin-top: 2px; flex-wrap: wrap; gap: 4px; min-width: 0; }.setting-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 150px; padding: 1px 6px; border-radius: 4px; background: var(--color-subtle); color: var(--color-muted); font-size: .65em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.setting-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px 18px; margin: 0; font-size: .78em; }.setting-list div { min-width: 0; }.setting-list dt { display: flex; align-items: center; gap: 5px; color: var(--color-muted); }.setting-list dd { margin: 1px 0 0 17px; overflow-wrap: anywhere; }

@@ -1,6 +1,7 @@
 // Turns one spooled Claude Code or Codex hook payload into card observations.
 // Pure: the envelope carries the time, and captured command text is only matched,
 // never run.
+import { hookSettings } from './settings.ts'
 
 export const HARNESSES = ['claude', 'codex'] as const
 export type Harness = (typeof HARNESSES)[number]
@@ -171,6 +172,12 @@ export function observe(envelope: HookEnvelope): Observation[] {
       parent: parentKey,
       activity: doing,
     }
+  }
+
+  const settings = hookSettings(p)
+
+  if (settings) {
+    card.settings = settings
   }
 
   const observation: Observation = { id: '', key, card }
