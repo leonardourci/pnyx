@@ -85,8 +85,13 @@ test("an event's text is what it changed", () => {
   assert.equal(eventText(moved), "Keep in review");
 });
 
+test("query words and phrases in a synonym group match the whole group", () => {
+  assert.equal(ftsQuery("Rollback the pull request"), '("rollback" OR "revert") AND "the" AND ("pr" OR "pull request")');
+  assert.equal(ftsQuery("ship*"), '"ship"*');
+});
+
 test("query words are quoted so punctuation is never FTS5 syntax", () => {
-  assert.equal(ftsQuery('deploy "AND" -x pull/7 deplo* :'), '"deploy" """AND""" "-x" "pull/7" "deplo"*');
+  assert.equal(ftsQuery('fix "AND" -x pull/7 deplo* :'), '"fix" AND """AND""" AND "-x" AND "pull/7" AND "deplo"*');
   assert.equal(ftsQuery(" - : "), "");
 });
 
@@ -121,10 +126,10 @@ test("search finds titles, links, notes and transcript text, ranked one per card
   const { run, home } = board();
   assert.match(run("search", "status"), /^index: "none: not built yet"$/m);
 
-  const deploy = run("search", "deploy");
-  assert.match(deploy, /^mode: lexical$/m);
-  assert.match(deploy, /^results\[1\]:\n {2}- card: c1\n {4}title: Orders migration\n {4}match: lexical\n {4}snippets\[\d\]\{kind,at,snippet\}:$/m);
-  assert.match(deploy, /^ {6}transcript,"2026-10-11T09:00:00.000Z","Why did the \[deploy\] get reverted/m);
+  const reverted = run("search", "reverted");
+  assert.match(reverted, /^mode: lexical$/m);
+  assert.match(reverted, /^results\[1\]:\n {2}- card: c1\n {4}title: Orders migration\n {4}match: lexical\n {4}snippets\[\d\]\{kind,at,snippet\}:$/m);
+  assert.match(reverted, /^ {6}transcript,"2026-10-11T09:00:00.000Z","Why did the deploy get \[reverted\]/m);
   assert.match(run("search", "42"), /^ {6}event,.*#\[42\] Fix checkout retry/m);
   assert.deepEqual(cards(run("search", "rolled", "back")), ["c2", "c1"]);
   assert.deepEqual(cards(run("search", "rolled", "back", "--kind", "event")), ["c2"]);
@@ -196,7 +201,7 @@ test("words from different entries of one card match the card, and --card matche
 
 test("each search indexes what the log and transcripts gained", () => {
   const { run, push, transcript } = board();
-  run("search", "deploy");
+  run("search", "reverted");
   assert.match(run("search", "status"), /^index: current through seq 4$/m);
   push("claude:s3", { title: "Canary rollout" });
   assert.match(run("search", "status"), /^index: "behind: through seq 4 of 5; the next search catches up"$/m);
@@ -209,11 +214,11 @@ test("each search indexes what the log and transcripts gained", () => {
 
 test("a replaced or shortened transcript is read again from the start", () => {
   const { run, transcript, home } = board();
-  assert.match(run("search", "deploy"), /^results\[1\]/m);
+  assert.match(run("search", "reverted"), /^results\[1\]/m);
   const replacement = join(home, "new.jsonl");
   writeFileSync(replacement, `${JSON.stringify({ type: "user", message: { content: "compacted summary of the outage" } })}\n`);
   renameSync(replacement, transcript);
-  assert.match(run("search", "deploy"), /^results: "none: /m);
+  assert.match(run("search", "reverted"), /^results: "none: /m);
   assert.match(run("search", "outage"), /^results\[1\]/m);
   writeFileSync(transcript, "");
   assert.match(run("search", "outage"), /^results: "none: /m);
@@ -221,13 +226,13 @@ test("a replaced or shortened transcript is read again from the start", () => {
 
 test("rebuild recreates the index from the sources", () => {
   const { run, home } = board();
-  run("search", "deploy");
+  run("search", "reverted");
   const db = join(home, "boards", "default", "search.db");
   writeFileSync(db, "not a database");
   assert.match(run("search", "status"), /^index: "stale: /m);
-  assert.match(run("search", "deploy"), /^results\[1\]/m);
+  assert.match(run("search", "reverted"), /^results\[1\]/m);
   assert.match(run("search", "rebuild"), /^ {2}docs: 14$/m);
-  assert.match(run("search", "deploy"), /^results\[1\]/m);
+  assert.match(run("search", "reverted"), /^results\[1\]/m);
 });
 
 test("search refuses bad input with structured errors", () => {
@@ -237,4 +242,41 @@ test("search refuses bad input with structured errors", () => {
   fails(["search", "x", "--kind", "title"], "VALIDATION_ERROR");
   fails(["search", "x", "--limit", "0"], "VALIDATION_ERROR");
   fails(["search", "x", "--card", "nope"], "NOT_FOUND");
+});
+
+test("words match by stem, ignoring case and accents", () => {
+  const { run, push } = board();
+  assert.deepEqual(cards(run("search", "deploying", "migrations")), ["c1"]);
+  push("claude:s3", { title: "Migração do banco" });
+  assert.deepEqual(cards(run("search", "migracao")), ["c5"]);
+  assert.deepEqual(cards(run("search", "MIGRAÇÃO")), ["c5"]);
+});
+
+test("a word matches its synonyms", () => {
+  const { run, push } = board();
+  push("claude:s3", { title: "Review the PR before lunch" });
+  push("claude:s4", { title: "Issue triage" });
+  // deploy, release and ship are one group: the transcript's deploy and the note's release.
+  assert.deepEqual(cards(run("search", "ship")).sort(), ["c1", "c2"]);
+  assert.match(run("search", "rollback", "--card", "c1"), /get \[reverted\] after/);
+  assert.deepEqual(cards(run("search", "pull", "request", "lunch")), ["c5"]);
+  assert.deepEqual(cards(run("search", "ticket")), ["c6"]);
+  assert.match(run("search", "status"), /^synonyms: "v1, 4 groups"$/m);
+});
+
+test("when nothing matches, typos and partial words match the nearest indexed words", () => {
+  const { run } = board();
+  const typo = run("search", "chekout");
+  assert.match(typo, /^mode: fuzzy$/m);
+  assert.match(typo, /^results\[1\]:\n {2}- card: c2\n {4}title: Checkout flake\n {4}match: fuzzy$/m);
+  assert.match(typo, /\[checkout\] retry/);
+  // A partial word matches the words containing it and the words near it: checkout, and check in c1's transcript.
+  assert.deepEqual(cards(run("search", "checko")).sort(), ["c1", "c2"]);
+  assert.deepEqual(cards(run("search", "ckout")), ["c2"]);
+  // Every word must still match: a typo next to a word on another card finds nothing.
+  assert.deepEqual(cards(run("search", "chekout", "migratoin")), []);
+  assert.deepEqual(cards(run("search", "chekout", "relese")), ["c2"]);
+  // An exact match wins: no fuzzy expansion when the words match as typed.
+  assert.match(run("search", "checkout"), /^mode: lexical$/m);
+  assert.match(run("search", "zzqqxx"), /^results: "none: /m);
 });

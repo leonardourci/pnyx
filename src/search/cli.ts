@@ -3,6 +3,7 @@ import { AxiError } from "axi-sdk-js";
 import { findCard } from "../core/decide.ts";
 import { COMMON, guard, parse, type Options, type Output } from "../cli/commands.ts";
 import { loadBoard } from "../store/board-store.ts";
+import { SYNONYMS, SYNONYMS_VERSION } from "./synonyms.ts";
 import { KINDS, SNIPPETS, indexStatus, rebuildIndex, search, updateIndex, type IndexResult, type Kind } from "./index.ts";
 
 const LIMIT = 20;
@@ -28,7 +29,8 @@ function status(board: string): Output {
   if (!s.current) return { index: "stale: built by another version; the next search rebuilds it", bytes: s.bytes };
   return {
     index: s.builtThrough === seq ? `current through seq ${seq}` : `behind: through seq ${s.builtThrough} of ${seq}; the next search catches up`,
-    mode: "lexical",
+    mode: "lexical, fuzzy when nothing matches",
+    synonyms: `v${SYNONYMS_VERSION}, ${SYNONYMS.length} groups`,
     semantic: "planned, not built",
     docs: s.docs,
     transcripts: s.transcripts,
@@ -57,7 +59,7 @@ const searchCommand = guard((args) => {
   if (rawLimit !== undefined && !/^[1-9]\d*$/.test(rawLimit)) throw new AxiError("--limit must be a positive integer", "VALIDATION_ERROR");
   const card = values.card === undefined ? undefined : findCard(loadBoard(board).state, values.card as string).id;
   updateIndex(board);
-  const { hits, total } = search(board, {
+  const { hits, total, match } = search(board, {
     text,
     limit: Math.min(rawLimit ? Number(rawLimit) : LIMIT, MAX),
     ...(kind ? { kind: kind as Kind } : {}),
@@ -66,12 +68,12 @@ const searchCommand = guard((args) => {
   });
   if (hits.length === 0) {
     return {
-      mode: "lexical",
+      mode: match,
       results: `none: no matches for ${JSON.stringify(text)}`,
       help: [card || kind ? "Every word must match in one entry; try fewer words or a prefix like `deplo*`" : "Every word must match on one card; try fewer words or a prefix like `deplo*`"],
     };
   }
-  const out: Output = { mode: "lexical", results: hits };
+  const out: Output = { mode: match, results: hits };
   const help = card ? [`Run \`pnyx-axi history --card ${card}\` for its events`] : [`Run \`pnyx-axi card ${hits[0]!.card}\` to open the top match`];
   const shown = card ? hits[0]!.snippets.length : hits.length;
   if (total > shown) help.push(`${total - shown} more ${card ? "matches" : "matching cards"}; raise --limit (max ${MAX}) or narrow with --kind, --card or --workspace`);
@@ -85,8 +87,11 @@ export const SEARCH_HELP = `usage: pnyx-axi search "<words>" [--kind event|trans
        pnyx-axi search status | rebuild [--board <name>]
 Full-text search over card titles, links, event text and the session transcripts hooks recorded.
 Every word must match somewhere on one card: its title, link titles or any entry. With --card or
---kind, every word must match in one entry of that card or kind. End a word with * to match a prefix;
-\`search -- status\` searches for that word.
+--kind, every word must match in one entry of that card or kind. Words match by stem, ignoring case
+and accents ("deploying" finds "deploy", "migracao" finds "migração"), and with their synonyms:
+${SYNONYMS.map((g) => g.join(" / ")).join(", ")}. When nothing matches, words also match the
+indexed words nearest them, so typos and partial words still find results (mode: fuzzy).
+End a word with * to match a prefix; \`search -- status\` searches for that word.
 Results are ranked by BM25, best first, one per card with its ${SNIPPETS} best-matching entries as
 snippets (with --card, its matching entries up to --limit); ${LIMIT} cards by default (max ${MAX}).
 Each search first indexes what the log and transcripts gained. The index, search.db in the board's
