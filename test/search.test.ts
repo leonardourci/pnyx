@@ -8,6 +8,9 @@ import type { BoardEvent } from '../src/core/model.ts'
 import { ftsQuery } from '../src/search/index.ts'
 import { chunk, eventText, redact, transcriptMessages } from '../src/search/text.ts'
 
+// Semantic search is on by default; these tests never start its worker or fetch models.
+process.env.PNYX_SEMANTIC = 'off'
+
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 const TRANSCRIPT = join(import.meta.dirname, 'fixtures', 'transcripts', 'claude-session.jsonl')
 const CODEX = join(import.meta.dirname, 'fixtures', 'transcripts', 'codex-session.jsonl')
@@ -168,7 +171,7 @@ test('search finds titles, links, notes and transcript text, ranked one per card
 
   const status = run('search', 'status')
   assert.match(status, /^index: current through seq 5$/m)
-  assert.match(status, /^semantic: "planned, not built"$/m)
+  assert.match(status, /^semantic: "off: run `pnyx-axi settings set search.semantic on` to turn it on"$/m)
   assert.match(status, /^ {2}tracked: 1$/m)
   assert.equal(statSync(join(home, 'boards', 'default', 'search.db')).mode & 0o777, 0o600)
 })

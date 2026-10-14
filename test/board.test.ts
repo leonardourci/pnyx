@@ -8,6 +8,9 @@ import { test } from 'node:test'
 import { promisify } from 'node:util'
 import { boardDir, spoolWrite } from '../src/store/board-store.ts'
 
+// Semantic search is on by default; these tests never start its worker or fetch models.
+process.env.PNYX_SEMANTIC = 'off'
+
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 
 function board() {

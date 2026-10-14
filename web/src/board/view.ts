@@ -19,6 +19,24 @@ export function filterCards(state: BoardState, workspace: string, tag: string, q
     .sort((a,b) => b.updatedSeq - a.updatedSeq || a.id.localeCompare(b.id))
 }
 
+// The "Find a card" box: every card the filter above matches, in its order, then
+// the cards a search found strongly by meaning alone, best first, within the same
+// workspace and tag filters.
+export function findBoxCards(
+  state: BoardState,
+  workspace: string,
+  tag: string,
+  query: string,
+  meaning: string[],
+): Card[] {
+  const local = filterCards(state, workspace, tag, query)
+  const seen = new Set(local.map(c => c.id))
+  const added = (c: Card | undefined): c is Card => !!c && !seen.has(c.id)
+    && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag))
+
+  return [...local, ...meaning.map(id => state.cards[id]).filter(added)]
+}
+
 export function visibleParent(card: Card, visible: Card[]): Card | undefined {
   return visible.find(c => c.id === card.parentId)
 }
@@ -37,3 +55,7 @@ export const receiptLabel = (state: string) => ({ queued: 'Queued', delivered: '
 export const slashPrefix = (text: string, cursor: number) => /^\/[a-z0-9_.:-]*$/i.test(text.slice(0, cursor)) ? text.slice(0, cursor) : null
 export const slashMatches = (command: string, prefix: string) => command.replace(/^[$/]/, '').toLowerCase()
   .startsWith(prefix.replace(/^\//, '').toLowerCase())
+// A tab reloads when the server it reconnected to serves another build than the page it loaded.
+// A page without a build (the Vite dev server) or a server without one never reloads.
+export const shouldReload = (loaded: string | undefined, server: string) =>
+  Boolean(loaded && server && loaded !== server)

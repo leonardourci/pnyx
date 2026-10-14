@@ -9,6 +9,9 @@ import { emptyBoard, replay } from '../src/core/reducer.ts'
 import { boardDir, loadBoard, repairBoard, withWriter } from '../src/store/board-store.ts'
 import { STREAMS, assertGolden, readStream } from './streams.ts'
 
+// Semantic search is on by default; these tests never start its worker or fetch models.
+process.env.PNYX_SEMANTIC = 'off'
+
 beforeEach(() => {
   // Every test gets its own home; nothing touches the real ~/.pnyx.
   process.env.PNYX_HOME = mkdtempSync(join(tmpdir(), 'pnyx-store-'))

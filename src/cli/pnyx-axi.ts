@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { AxiError, runAxiCli } from 'axi-sdk-js'
 import { serve, stop } from '../server/server.ts'
 import { firstmateCommands, firstmateHelp } from '../integrations/firstmate/cli.ts'
-import { SEARCH_HELP, searchCommands } from '../search/cli.ts'
+import { SEARCH_HELP, SETTINGS_HELP, searchCommands } from '../search/cli.ts'
 import { TOP_LEVEL_HELP, commandHelp, commands, home } from './commands.ts'
 
 // Same relative path from src/cli and dist/cli.
@@ -14,7 +14,7 @@ await runAxiCli({
   version,
   topLevelHelp: TOP_LEVEL_HELP,
   home,
-  getCommandHelp: command => commandHelp(command) ?? firstmateHelp(command) ?? (command === 'search' ? SEARCH_HELP : undefined),
+  getCommandHelp: command => commandHelp(command) ?? firstmateHelp(command) ?? (command === 'search' ? SEARCH_HELP : command === 'settings' ? SETTINGS_HELP : undefined),
   commands: {
     ...commands,
     serve,

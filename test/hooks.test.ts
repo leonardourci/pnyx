@@ -21,6 +21,9 @@ import { test } from 'node:test'
 import { promisify } from 'node:util'
 import { DEPLOY_COMMANDS, PR_COMMANDS, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
 
+// Semantic search is on by default; these tests never start its worker or fetch models.
+process.env.PNYX_SEMANTIC = 'off'
+
 const ROOT = join(import.meta.dirname, '..')
 const BIN = join(ROOT, 'dist', 'cli', 'pnyx-axi.js')
 const SCRIPT = join(ROOT, 'setup', 'hooks', 'pnyx-hook.sh')

@@ -11,6 +11,9 @@ import { captainsIntent, homeKey, parseBacklog, resolveHome } from '../src/integ
 import { latestActivity, openDecisions, parseStatusLine, statusNotes } from '../src/integrations/firstmate/status.ts'
 import { syncHome, watchHome, type SyncResult } from '../src/integrations/firstmate/sync.ts'
 
+// Semantic search is on by default; these tests never start its worker or fetch models.
+process.env.PNYX_SEMANTIC = 'off'
+
 const FIXTURE = join(import.meta.dirname, 'fixtures', 'firstmate-home')
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 
@@ -267,7 +270,7 @@ test('firstmate sync through the CLI', () => {
 
 test('serve --home folds the home into the board without a separate watch', async () => {
   const { home, env } = copyFixture()
-  const server = spawn(process.execPath, [BIN, 'serve', '--home', home], { env, stdio: ['ignore', 'pipe', 'inherit'] })
+  const server = spawn(process.execPath, [BIN, 'serve', '--port', '0', '--home', home], { env, stdio: ['ignore', 'pipe', 'inherit'] })
 
   try {
     let out = ''

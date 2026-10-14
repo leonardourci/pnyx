@@ -10,6 +10,9 @@ import { loadBoard, withWriter } from '../src/store/board-store.ts'
 import { decideMove, decidePush, decideView } from '../src/core/decide.ts'
 import { seedWebFixture } from './web-fixture.ts'
 
+// Semantic search is on by default; these tests never start its worker or fetch models.
+process.env.PNYX_SEMANTIC = 'off'
+
 const exec = promisify(execFile), home = mkdtempSync(join(tmpdir(), 'pnyx-keyboard-smoke-'))
 process.env.PNYX_HOME = home
 const fixture = seedWebFixture(home), cwd = join(home, 'project'), skill = join(cwd, '.claude/skills/review-local')

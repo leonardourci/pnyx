@@ -794,6 +794,7 @@ commands:
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
   search "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
+  settings [set <key> <value>]               Search settings: semantic search, reranker and model
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   view show|schema|set                        Inspect or save board view preferences
   repair                                     Set aside a torn log tail and rebuild the snapshot
@@ -857,7 +858,7 @@ A crash mid-append can leave a torn last line; writes refuse until it is repaire
 Repair copies the torn bytes to a side file and appends a marker so readers skip them; the log is never cut.
 `,
   serve: `usage: pnyx-axi serve [--port <n>] [--board <name>] [--home <Firstmate path>]...
-Serves the board on 127.0.0.1 (a random port unless --port is given) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
+Serves the board on 127.0.0.1 port 4747 (--port overrides it; 0 picks a random one) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
 Each --home is a Firstmate home: replies to its cards go through it, and its tasks are folded into the board
 as \`pnyx-axi firstmate watch\` would, so no second process is needed.
 Hook events arrive on the board's server.sock or through its spool. Browsers get one WebSocket at /ws:
