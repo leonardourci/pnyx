@@ -49,6 +49,10 @@ const screenshot = async (name: string) => {
   }
 }
 
+const eventually = async (condition: string, label: string) => {
+  const out = await browser('eval', `async () => { for (let i = 0; i < 50; i++) { if (${condition}) return "passed"; await new Promise(r => setTimeout(r, 100)); } throw new Error(${JSON.stringify(label)}); }`); assert.match(out, /passed/, label)
+}
+
 const check = async (condition: string, label: string) => {
   const out = await browser('eval', `async () => { if (!(${condition})) throw new Error(${JSON.stringify(label)}); return "passed"; }`); assert.match(out, /passed/, label)
 }
@@ -87,6 +91,12 @@ try {
   await check('await Promise.all([...document.querySelectorAll(\'link[rel="icon"],link[rel="apple-touch-icon"]\')].map(async link => { const response = await fetch(link.href); const blob = await response.blob(); const image = new Image(); image.src = URL.createObjectURL(blob); try { await image.decode(); return response.ok && (link.type === \'image/svg+xml\' ? blob.type === link.type : image.width === Number(link.sizes.value.split(\'x\')[0]) && image.height === image.width); } finally { URL.revokeObjectURL(image.src); } })).then(results => results.length === 4 && results.every(Boolean))', 'favicon and apple-touch assets load at their declared sizes')
   await check('parseFloat(getComputedStyle(document.querySelector(".column-needs_you")).minWidth) >= 240 && parseFloat(getComputedStyle(document.querySelector(".card")).minWidth) >= 200 && parseFloat(getComputedStyle(document.querySelector(".card")).minHeight) >= 200', 'columns and cards keep readable minimum dimensions')
   await screenshot('board.png')
+  // "readable" is only in the card's transcript, so only the server's full-text search finds it.
+  await browser('fill', await ref('searchbox', 'Find a card'), 'readable')
+  await eventually('document.querySelectorAll("[data-card]").length === 1 && document.querySelector("[data-card]").textContent.includes("Shape the first working board")', 'the board search finds a card by its transcript')
+  await screenshot('board-search.png')
+  await browser('press', 'Escape')
+  await eventually('document.querySelectorAll("[data-card]").length === 6', 'clearing the search shows every card')
   const beforeResize = loadBoard('default').state.seq
   await browser('eval', '() => { document.querySelector("[aria-label=\\"Resize Needs you column\\"]").focus(); return true; }')
   await browser('press', 'ArrowRight')

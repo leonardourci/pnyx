@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Card as CardData, Link, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
+import type { HybridHit } from '../../../src/search/semantic.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
@@ -36,6 +37,7 @@ export function Tags({ tags }: { tags: string[] }) {
 
 export function BoardCard({
   card,
+  match,
   visible,
   selected,
   view,
@@ -44,6 +46,7 @@ export function BoardCard({
   tabIndex,
 }: {
   card: CardData
+  match?: HybridHit
   visible: CardData[]
   selected: boolean
   view: ViewPreferences
@@ -78,6 +81,7 @@ export function BoardCard({
         )}
         {!parent && card.parentId && <span className="muted small">Child task</span>}
         {card.attention.slice(0, 1).map(a => <div key={a.key} className="request">{a.text ?? a.kind}</div>)}
+        {match?.snippets[0] && <p className="search-match">{match.snippets[0].snippet}</p>}
         <Tags tags={card.tags} />
         <Links links={card.links} />
         {visible.some(c => c.parentId === card.id) && (
