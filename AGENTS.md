@@ -4,7 +4,7 @@ Pnyx is a deterministic board of every agent and its work, with an AXI CLI named
 
 ## Build and test
 
-Node 22 or newer and pnpm (the version is pinned in `package.json`).
+Node 22.13 or newer (for the built-in `node:sqlite`) and pnpm (the version is pinned in `package.json`).
 
 ```sh
 pnpm install
@@ -24,7 +24,7 @@ One folder per feature. Code for a feature lives in its folder; a folder without
 | `src/cli/` | the `pnyx-axi` entry and its commands |
 | `src/core/` | event schema, board rules and the pure reducer |
 | `src/store/` | `events.jsonl`, `snapshot.json`, the writer lock and the hook spool |
-| `src/search/` | the planned history search index, derived from the event log |
+| `src/search/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
 | `src/server/` | the local daemon and its WebSocket |
 | `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`); each keeps both its reading side and its reply delivery |
 | `web/` | the React + Vite + Tailwind board; its own UI primitives in `web/src/components/ui/` |
@@ -40,7 +40,7 @@ Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links t
 - Pnyx is a view plus a reply queue over existing tools. It does not orchestrate, dispatch or supervise agents.
 - `pnyx-axi` is the only writer of board state. Every change is an event appended to the board's `events.jsonl`, which is append-only and never rewritten. `snapshot.json` is a cache rebuilt from the log and replaced atomically.
 - The reducer is pure and deterministic: no I/O, clock or randomness inside it. Replaying the same log gives the same board.
-- No database, and no AI model calls or model tokens anywhere in the board's logic. The server's only token is a local per-install auth token for writes. Updates are pushed, and the browser uses one WebSocket.
+- No database for board state, and no AI model calls or model tokens anywhere in the board's logic. `search.db` is a derived, deletable full-text index (SQLite FTS5 through `node:sqlite`), not a store: it is rebuilt from the log and transcripts and never read as board state. Semantic search is planned on top of it. The server's only token is a local per-install auth token for writes. Updates are pushed, and the browser uses one WebSocket.
 - Hooks are silent (no stdout or stderr), fast, and always exit 0. They never wait on a network call, browser or model.
 - The Firstmate integration only reads a Firstmate home's files and replies through Firstmate's own send command.
 - GitHub pull request state comes from `gh-axi`.
@@ -48,4 +48,4 @@ Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links t
 
 ## Runtime data
 
-Boards live in `~/.pnyx/boards/<board>/` (`$PNYX_HOME/boards/<board>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock and the spool. Nothing at runtime writes inside the repository.
+Boards live in `~/.pnyx/boards/<board>/` (`$PNYX_HOME/boards/<board>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock, the spool and the `search.db` index. Nothing at runtime writes inside the repository.

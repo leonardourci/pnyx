@@ -1,0 +1,10 @@
+{"timestamp":"2026-10-12T10:00:00.000Z","type":"session_meta","payload":{"id":"x1","cwd":"/work","instructions":"sessionmetaword"}}
+{"timestamp":"2026-10-12T10:00:01.000Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"developerword instructions"}]}}
+{"timestamp":"2026-10-12T10:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n  <cwd>/work/envcontextword</cwd>\n</environment_context>"}]}}
+{"timestamp":"2026-10-12T10:00:02.500Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions for /work\n\n<INSTRUCTIONS>\nRun agentsmdword before committing.\n</INSTRUCTIONS>"}]}}
+{"timestamp":"2026-10-12T10:00:03.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Why is the invoice export timing out?"}]}}
+{"timestamp":"2026-10-12T10:00:03.500Z","type":"event_msg","payload":{"type":"user_message","message":"Why is the invoice export timing out?"}}
+{"timestamp":"2026-10-12T10:00:04.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"codexthoughtword"}]}}
+{"timestamp":"2026-10-12T10:00:05.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"grep\",\"codexcallword\"]}","call_id":"c1"}}
+{"timestamp":"2026-10-12T10:00:06.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"codexoutputword"}}
+{"timestamp":"2026-10-12T10:00:07.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The export query scans every invoice without an index."}]}}
