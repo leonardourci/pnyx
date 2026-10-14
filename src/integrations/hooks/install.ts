@@ -13,7 +13,8 @@ const SCRIPT = 'pnyx-hook.sh'
 // Same relative path from src/integrations/hooks and dist/integrations/hooks.
 const SCRIPT_SOURCE = join(import.meta.dirname, '..', '..', '..', 'setup', 'hooks', SCRIPT)
 // Every event each harness's own interface reacts to, for every tool. Claude Code
-// events left out, and why, are listed in src/integrations/hooks/README.md.
+// worktree events are left out because a command hook there replaces its own worktree
+// handling; MessageDisplay, PostToolBatch, model switches and environment changes are not agent state.
 const EVENTS: Record<Harness, string[]> = {
   claude: [
     'SessionStart',
