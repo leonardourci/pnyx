@@ -24,8 +24,9 @@ function sync(board: string, list: string[]): Output {
   return { synced: results, help: ['Run `pnyx-axi` to see the board'] }
 }
 
-// Runs until SIGINT or SIGTERM, then reports what it folded in.
-async function watch(board: string, list: string[]): Promise<Output> {
+// Watches each home, counting what it folds in, until closed. Shared by
+// `firstmate watch` and `serve --home`.
+export function watchHomes(board: string, list: string[]): { close(): Output } {
   const totals = { syncs: 0, appended: 0, errors: 0 }
   let lastError: string | undefined
 
@@ -42,16 +43,27 @@ async function watch(board: string, list: string[]): Promise<Output> {
   }
 
   const watches = list.map(home => watchHome(board, home, onSync))
+
+  return {
+    close() {
+      for (const w of watches) {
+        w.close()
+      }
+
+      return { watched: list, ...totals, ...(lastError ? { lastError } : {}) }
+    },
+  }
+}
+
+// Runs until SIGINT or SIGTERM, then reports what it folded in.
+async function watch(board: string, list: string[]): Promise<Output> {
+  const watches = watchHomes(board, list)
   await new Promise<void>(resolve => {
     process.once('SIGINT', resolve)
     process.once('SIGTERM', resolve)
   })
 
-  for (const w of watches) {
-    w.close()
-  }
-
-  return { watched: list, ...totals, ...(lastError ? { lastError } : {}) }
+  return watches.close()
 }
 
 const firstmate = guard<Output | Promise<Output>>(args => {

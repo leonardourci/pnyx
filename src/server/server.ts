@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process'
 import { readThread, threadPath, THREAD_CURSOR, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
 import { findCard } from '../core/decide.ts'
+import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
 import { search, updateIndex } from '../search/index.ts'
 import { timingSafeEqual } from 'node:crypto'
@@ -646,15 +647,20 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     throw error
   }
 
+  // Each --home both takes replies and feeds the board, as `firstmate watch` would.
+  const homes = (values.home ?? []).map(resolveHome)
+  const firstmate = homes.length > 0 ? watchHomes(board, homes) : undefined
   // TOON for a flat object is `key: value`; JSON quoting keeps the values valid TOON.
-  process.stdout.write(`server: running\nboard: ${board}\nurl: ${JSON.stringify(server.url)}\nhelp[1]: Run \`pnyx-axi stop\` to stop it\n`)
+  const watching = homes.length > 0 ? `firstmate: ${JSON.stringify(`watching ${homes.length} home${homes.length === 1 ? '' : 's'}`)}\n` : ''
+  process.stdout.write(`server: running\nboard: ${board}\nurl: ${JSON.stringify(server.url)}\n${watching}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
   await new Promise(resolve => {
     process.once('SIGINT', resolve)
     process.once('SIGTERM', resolve)
   })
+  const watched = firstmate?.close()
   await server.close()
 
-  return { server: 'stopped', board }
+  return { server: 'stopped', board, ...(watched ? { firstmate: watched } : {}) }
 }
 
 // `pnyx-axi stop`: signals the board's server and waits until it no longer answers.

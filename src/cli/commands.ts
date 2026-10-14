@@ -793,7 +793,7 @@ commands:
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   view show|schema|set                        Inspect or save board view preferences
   repair                                     Set aside a torn log tail and rebuild the snapshot
-  serve [--port <n>]                         Run the board server in the foreground until stopped
+  serve [--port <n>] [--home <path>]         Run the board server until stopped; --home also watches Firstmate
   stop                                       Stop the board's running server
   setup hooks [--harness claude|codex]       Install the silent reporting hooks (--remove, --preview)
   reply <id> --text <text> --home <path>     Send a reply or decision answer through the card's Firstmate home
@@ -853,6 +853,8 @@ Repair copies the torn bytes to a side file and appends a marker so readers skip
 `,
   serve: `usage: pnyx-axi serve [--port <n>] [--board <name>] [--home <Firstmate path>]...
 Serves the board on 127.0.0.1 (a random port unless --port is given) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
+Each --home is a Firstmate home: replies to its cards go through it, and its tasks are folded into the board
+as \`pnyx-axi firstmate watch\` would, so no second process is needed.
 Hook events arrive on the board's server.sock or through its spool. Browsers get one WebSocket at /ws:
 a snapshot on connect, then events by sequence; /ws?after=<seq> resumes, a gap gets a fresh snapshot.
 The handshake needs ?token=<token>: the board page served here carries it, local programs read $PNYX_HOME/token.
