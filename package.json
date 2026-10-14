@@ -21,6 +21,7 @@
     "dev:server": "node --watch src/cli/pnyx-axi.ts serve --board dev --port ${PNYX_DEV_PORT:-4319}",
     "test:web": "pnpm run build && node test/web-smoke.ts",
     "test:keyboard": "pnpm run build && node test/keyboard-smoke.ts",
+    "test:chat": "pnpm run build && node test/chat-smoke.ts",
     "lint:fix": "eslint --fix .",
     "test:semantic": "pnpm run build && node test/semantic-golden.ts"
   },
@@ -45,6 +46,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
+    "marked": "^18.1.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",

@@ -4,8 +4,10 @@ import type { BoardEvent, BoardState, Card, ReplyState } from '../core/model.ts'
 import { boardDir, readEventsFrom } from '../store/board-store.ts'
 import { redact, transcriptMessages } from '../search/text.ts'
 import { HOST_LABEL, replyRoute } from '../core/route.ts'
+import { traces, viewFor } from '../core/view.ts'
 
-export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState }
+// messageId and part let the board rejoin a long message split into transport chunks.
+export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; messageId?: string; part?: number }
 // route: a reply can be sent; via names the route, or noRoute says why there is none.
 export interface ThreadPage { card: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; noRoute?: string; watching: 'unknown' }
 const MAX_BYTES = 10 * 1024 * 1024
@@ -30,7 +32,7 @@ const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => {
       end--
     }
 
-    parts.push({ ...entry, id: `${entry.id}.${start}`, text: text.slice(start, end), role: start ? `${entry.role} · continued` : entry.role })
+    parts.push({ ...entry, id: `${entry.id}.${start}`, messageId: entry.id, part: start, text: text.slice(start, end), role: start ? `${entry.role} · continued` : entry.role })
     start = end
   }
 
@@ -39,9 +41,11 @@ const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => {
 
 const obj = ({ value: v }: { value: unknown }): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string, unknown> : {}
 
-export function recordEntries({ record, offset }: {
+export function recordEntries({ record, offset, tools = true, thinking = true }: {
   record: unknown
   offset: number
+  tools?: boolean
+  thinking?: boolean
 }): ThreadEntry[] {
   const r = obj({ value: record })
 
@@ -59,7 +63,7 @@ export function recordEntries({ record, offset }: {
     const b = obj({ value: raw })
     const kind = ['tool_use', 'tool_result', 'function_call', 'function_call_output'].includes(String(b.type)) ? 'tool' : ['thinking', 'reasoning'].includes(String(b.type)) ? 'thinking' : null
 
-    if (!kind) {
+    if (!kind || (kind === 'tool' && !tools) || (kind === 'thinking' && !thinking)) {
       continue
     }
 
@@ -226,9 +230,10 @@ export function readThread(
   }
   const match = before === undefined ? null : THREAD_CURSOR.exec(before)
   const nativeCursor = match?.[1], replyCursor = match?.[2]
-  const candidates: { item: ThreadEntry; native?: string; reply?: string }[] = []
+  let candidates: { item: ThreadEntry; native?: string; reply?: string }[] = []
   let earlierNative = false, emptyNativeCursor: string | undefined
   const path = threadPath({ card })
+  const { tools, thinking } = traces({ view: viewFor({ state }), card: card.id })
 
   if (path) {
     let fd: number | undefined
@@ -255,14 +260,16 @@ export function readThread(
         end += newline < 0 ? tail.length : newline + 1
       }
 
-      let start = end
+      let start = end, parsed = end
 
+      // Each doubling parses only the bytes before the lines already parsed.
       for (let size = 64 * 1024; ; size *= 2) {
-        candidates.length = 0
         start = Math.max(0, end - Math.min(size, MAX_BYTES))
-        const buf = Buffer.alloc(end - start)
+        const buf = Buffer.alloc(parsed - start)
         readSync(fd, buf, 0, buf.length, start)
-        let cursor = start ? buf.indexOf(10) + 1 : 0
+        const first = start ? buf.indexOf(10) + 1 : 0
+        const found: typeof candidates = []
+        let cursor = first
 
         while (cursor >= 0 && cursor < buf.length) {
           const newline = buf.indexOf(10, cursor)
@@ -273,19 +280,26 @@ export function readThread(
 
           try {
             const offset = start + cursor
-            const parsed = JSON.parse(buf.subarray(cursor, newline).toString())
-            recordEntries({ record: parsed, offset }).forEach((item, index) => {
+            const record = JSON.parse(buf.subarray(cursor, newline).toString())
+            // Hidden traces must not use up the conversation page.
+            recordEntries({ record, offset, tools, thinking }).forEach((item, index) => {
               if (
                 beforeItem === undefined
                 || offset < beforeOffset
                 || (offset === beforeOffset && index < beforeItem)
               ) {
-                candidates.push({ native: `${offset}:${index}`, item })
+                found.push({ native: `${offset}:${index}`, item })
               }
             })
           } catch { /* Unsupported or incomplete records are not messages. */ }
 
           cursor = newline + 1
+        }
+
+        candidates = found.concat(candidates)
+
+        if (first || !start) {
+          parsed = start + first
         }
 
         if (!start || candidates.length >= PAGE || size >= MAX_BYTES) {
