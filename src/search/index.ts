@@ -3,18 +3,19 @@
 // cache, never board state; the indexer below is its only writer and rebuilds it
 // from the sources.
 import { createHash } from 'node:crypto'
-import { chmodSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, fstatSync, openSync, readSync, rmSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { isAbsolute, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { BoardError } from '../core/model.ts'
+import { sessionId } from '../core/tasks.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
-import { boardDir, loadBoard, readEventsFrom, withWriter } from '../store/board-store.ts'
+import { boardDir, loadBoard, privateDir, readEventsFrom, withWriter } from '../store/board-store.ts'
 import { synonymGroup } from './synonyms.ts'
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from './text.ts'
 
 // Bump when the tables change; the index rebuilds on mismatch.
-export const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 7
 export const KINDS = ['event', 'note', 'transcript'] as const
 export type Kind = (typeof KINDS)[number]
 
@@ -25,8 +26,7 @@ const NOTE_WEIGHT = 2
 // A chunk's BM25 rank, lower is better, with notes weighted up.
 const RANK = `bm25(docs_fts) * CASE d.kind WHEN 'note' THEN ${NOTE_WEIGHT} ELSE 1 END`
 
-// pos is the event seq for an event, or the byte offset of the JSONL line for a
-// transcript; part numbers the chunks taken from it. Vectors can later key on docs.id.
+// Chunks key by event seq or native line offset; session identity deduplicates copied messages.
 // card_fts holds one row per card, keyed by cards.n: its title and link titles, its
 // notes and all its other chunks, so the words of one query can match anywhere on a card. Both
 // stem words (Porter) and fold case and accents, so "deploying" finds "deploy".
@@ -44,9 +44,12 @@ CREATE TABLE IF NOT EXISTS docs (
   at TEXT NOT NULL,
   body TEXT NOT NULL,
   content_hash TEXT NOT NULL,
+  session TEXT NOT NULL DEFAULT '',
+  line INTEGER NOT NULL DEFAULT -1,
   UNIQUE (source, pos, part)
 );
 CREATE INDEX IF NOT EXISTS docs_card ON docs (card);
+CREATE INDEX IF NOT EXISTS docs_line ON docs (session, line);
 CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5 (body, content='docs', content_rowid='id', tokenize='porter unicode61 remove_diacritics 2');
 CREATE TRIGGER IF NOT EXISTS docs_ai AFTER INSERT ON docs BEGIN
   INSERT INTO docs_fts (rowid, body) VALUES (new.id, new.body);
@@ -61,7 +64,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS terms_tri USING fts5 (term, tokenize='trigram
 CREATE TRIGGER IF NOT EXISTS terms_ai AFTER INSERT ON terms BEGIN
   INSERT INTO terms_tri (term) VALUES (new.term);
 END;
-CREATE TABLE IF NOT EXISTS cursors (source TEXT PRIMARY KEY, card TEXT NOT NULL, identity TEXT NOT NULL, pos INTEGER NOT NULL, seq INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS cursors (source TEXT PRIMARY KEY, card TEXT NOT NULL, identity TEXT NOT NULL, pos INTEGER NOT NULL, seq INTEGER NOT NULL, session TEXT NOT NULL DEFAULT '');
 `
 
 const require = createRequire(import.meta.url)
@@ -108,7 +111,7 @@ function isCurrent({ db }: { db: DatabaseSync }): boolean {
 function openWriter({ board, fresh = false }: { board: string; fresh?: boolean }): DatabaseSync {
   const { DatabaseSync } = sqlite()
   const path = searchPath({ board })
-  mkdirSync(boardDir({ board }), { recursive: true })
+  privateDir({ dir: boardDir({ board }) })
 
   if (fresh) {
     removeIndex({ path })
@@ -153,6 +156,7 @@ interface Cursor {
   identity: string
   pos: number
   seq: number
+  session: string
 }
 
 function transaction<T>({ db, fn }: { db: DatabaseSync; fn: () => T }): T {
@@ -179,8 +183,11 @@ export interface IndexResult {
 // the index, in one transaction. SQLite's write lock keeps two indexers apart.
 function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResult {
   const insert = db.prepare(
-    'INSERT OR IGNORE INTO docs (card, kind, source, pos, part, at, body, content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT OR IGNORE INTO docs (card, kind, source, pos, part, at, body, content_hash, session, line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   )
+  const archived = db.prepare('SELECT 1 FROM docs WHERE session = ? AND line = ? AND source = ? LIMIT 1')
+  const nativeCopies = db.prepare('SELECT id, card FROM docs WHERE session = ? AND line = ? AND source <> ?')
+  const dropDoc = db.prepare('DELETE FROM docs WHERE id = ?')
   // Cards whose card_fts row no longer matches their chunks, title or link titles.
   const dirty = new Set<string>()
   // ponytail: words of dropped chunks stay in terms; a typo may expand to a word that no longer matches.
@@ -201,7 +208,7 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
   let docs = 0
 
   const add = (
-    { card, kind, source, pos, at, text, firstPart = 0 }: {
+    { card, kind, source, pos, at, text, firstPart = 0, session = '', line = -1 }: {
       card: string
       kind: Kind
       source: string
@@ -209,14 +216,30 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
       at: string
       text: string
       firstPart?: number
+      session?: string
+      line?: number
     },
   ): number => {
     let part = firstPart
 
+    if (session && source !== EVENTS && archived.get(session, line, EVENTS)) {
+      return part
+    }
+
+    if (session && source === EVENTS) {
+      const copies = nativeCopies.all(session, line, EVENTS) as { id: number; card: string }[]
+
+      for (const copy of copies) {
+        dropDoc.run(copy.id)
+        dirty.add(copy.card)
+      }
+    }
+
     for (const body of chunk({ text: redact({ text }) })) {
       const hash = createHash('sha256').update(body)
         .digest('hex')
-      const changes = Number(insert.run(card, kind, source, pos, part, at, body, hash).changes)
+      const row = [card, kind, source, pos, part, at, body, hash, session, line] as const
+      const changes = Number(insert.run(...row).changes)
 
       if (changes) {
         dirty.add(card)
@@ -232,15 +255,15 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
 
   const getCursor = db.prepare('SELECT * FROM cursors WHERE source = ?')
   const putCursor = db.prepare(
-    'INSERT INTO cursors (source, card, identity, pos, seq) VALUES (:source, :card, :identity, :pos, :seq) ' +
+    'INSERT INTO cursors (source, card, identity, pos, seq, session) VALUES (:source, :card, :identity, :pos, :seq, :session) ' +
       'ON CONFLICT (source) DO UPDATE SET identity = :identity, pos = :pos, seq = :seq',
   )
-  const track = db.prepare("INSERT OR IGNORE INTO cursors (source, card, identity, pos, seq) VALUES (?, ?, '', 0, 0)")
+  const track = db.prepare("INSERT OR IGNORE INTO cursors (source, card, identity, pos, seq, session) VALUES (?, ?, '', 0, 0, ?)")
 
   return transaction({
     db,
     fn: () => {
-      let cursor = (getCursor.get(EVENTS) as Cursor | undefined) ?? { source: EVENTS, card: '', identity: '', pos: 0, seq: 0 }
+      let cursor = (getCursor.get(EVENTS) as Cursor | undefined) ?? { source: EVENTS, card: '', identity: '', pos: 0, seq: 0, session: '' }
       let read = readEventsFrom({ board, offset: cursor.pos })
 
       // The log never shrinks or reorders, so a mismatch means the index is from another log: start over.
@@ -252,16 +275,19 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
 
       for (const event of read.events) {
       // A note carries the time its source recorded it, when known.
-        if (event.type === 'card.noted') {
+        if (event.type === 'chat.message') {
+          add({ card: event.cardId, kind: 'transcript', source: EVENTS, pos: event.seq, at: event.at, text: event.data.text, session: event.data.session, line: Number.parseInt(event.data.nativeId) })
+        } else if (event.type === 'card.noted') {
           add({ card: event.cardId, kind: 'note', source: EVENTS, pos: event.seq, at: event.data.at ?? event.at, text: eventText({ event }) })
         } else {
           add({ card: event.cardId, kind: 'event', source: EVENTS, pos: event.seq, at: event.at, text: eventText({ event }) })
         }
 
-        const path = event.type === 'card.pushed' ? event.data.agent?.transcriptPath : undefined
+        const agent = event.type === 'card.pushed' ? event.data.agent : undefined
+        const path = agent?.transcriptPath
 
-        if (path && isAbsolute(path) && path.endsWith('.jsonl')) {
-          track.run(path, event.cardId)
+        if (agent && path && isAbsolute(path) && path.endsWith('.jsonl')) {
+          track.run(path, event.cardId, sessionId({ agent }))
         }
       }
 
@@ -285,7 +311,7 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
           let part = 0
 
           for (const m of transcriptMessages({ record: line.record })) {
-            part = add({ card: t.card, kind: 'transcript', source: t.source, pos: line.pos, at: m.at ?? '', text: m.text, firstPart: part })
+            part = add({ card: t.card, kind: 'transcript', source: t.source, pos: line.pos, at: m.at ?? '', text: m.text, firstPart: part, session: t.session, line: line.pos })
           }
         }
 
