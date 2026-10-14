@@ -46,6 +46,7 @@
       "createdSeq": 1,
       "updatedSeq": 8,
       "updatedAt": "2026-10-13T10:08:00Z",
+      "titleSet": true,
       "activity": "working"
     },
     "c2": {
@@ -70,6 +71,7 @@
       "createdSeq": 2,
       "updatedSeq": 7,
       "updatedAt": "2026-10-13T10:07:00Z",
+      "titleSet": true,
       "parentId": "c1",
       "outcome": {
         "state": "done",

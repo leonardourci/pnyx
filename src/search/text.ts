@@ -139,7 +139,7 @@ export function eventText(event: BoardEvent): string {
       const changed = (field: string) => !data.before || field in data.before
 
       if (changed('title')) {
-        parts.push(data.title)
+        parts.push(data.title ?? undefined)
       }
 
       if (changed('tags')) {

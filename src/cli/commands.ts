@@ -120,6 +120,8 @@ export function meta(values: Record<string, string | boolean | undefined>): Meta
 
 // Hook events after which a session's transcript has turns worth harvesting.
 const HARVEST_AFTER = ['Stop', 'SubagentStop', 'SessionEnd']
+// The source of the "ended" outcome a hook records.
+const HOOKS = 'hooks'
 
 // Appends what one spool entry reports: a raw harness hook payload becomes card
 // observations, anything else is a push with an explicit key. Returns the cards
@@ -165,7 +167,17 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
     }
 
     const m: Meta = { id: o.id ? `${entry.id}:${o.id}` : entry.id, at: entry.at, actor: `hook:${entry.harness}` }
-    apply(decidePush(writer.state, o.key, o.card, m))
+    const pushed = decidePush(writer.state, o.key, o.card, m)
+    apply(pushed)
+    // Hooks own only the outcome they recorded: a Firstmate or manual outcome stays.
+    const card = writer.state.cards[writer.state.keys[o.key] ?? '']
+    const stale = 'skipped' in pushed && pushed.skipped === 'stale'
+    const owned = !card?.outcome || card.outcome.source === HOOKS
+
+    if (o.outcome !== undefined && card && !stale && owned) {
+      const outcome = o.outcome && { state: o.outcome }
+      apply(decideOutcome(writer.state, o.key, outcome, { ...m, id: `${m.id}:outcome` }, HOOKS))
+    }
 
     if (o.link) {
       apply(decideLink(writer.state, o.key, o.link, parseLink({ url: o.link }), { ...m, id: `${m.id}:link` }))
@@ -813,7 +825,7 @@ flags:
 const COMMAND_HELP: Record<string, string> = {
   push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
-card.json fields (all optional): title, workspace, tags[], parent (card id or key, null to clear), activity,
+card.json fields (all optional): title, autoTitle {from: session|prompt|folder, text} (used only while no title is set), workspace, tags[], parent (card id or key, null to clear), activity,
   agent {provider, sessionId, agentId, agentType, cwd, transcriptPath}, attention[] {kind, key, blocking, text},
   settings {<name>: <value>, or null to remove it} merged into the card's settings, such as model, effort, mode, fast,
   source {adapter, objectId, instanceId, generation, cursor, observedAt}

@@ -3,7 +3,7 @@
 // records and session titles, the questions it asked through AskUserQuestion with
 // the user's answers, and Codex's compaction summaries. Pure: one record in, its
 // notes out.
-import type { Note, SourceNote } from '../../core/model.ts'
+import { SESSION_TITLE, type Note, type SourceNote } from '../../core/model.ts'
 
 // The fixed opening Claude Code puts before a compaction summary.
 const COMPACT_PREAMBLE = /^This session is being continued from a previous conversation[^\n]*\n+(?:Summary:\s*\n)?/
@@ -109,7 +109,7 @@ export function transcriptNotes(record: unknown): SourceNote[] {
     case 'ai-title': {
       const title = str(r.customTitle) ?? str(r.aiTitle)
 
-      return note('context', 'claude-code', title && `Session title: ${title}`, `title:${title}`)
+      return note('context', 'claude-code', title && `${SESSION_TITLE}${title}`, `title:${title}`)
     }
     case 'compacted': {
       // Codex's local compaction keeps its summary here; a remote one is encrypted and leaves it empty.
@@ -120,4 +120,28 @@ export function transcriptNotes(record: unknown): SourceNote[] {
     default:
       return []
   }
+}
+
+// The thread name Codex last recorded for this session in its session_index.jsonl,
+// one {id, thread_name, updated_at} record per line, later lines newer.
+export function codexThreadTitle(index: string, sessionId: string): SourceNote[] {
+  let title: string | undefined
+  let at: string | undefined
+
+  for (const line of index.split('\n')) {
+    try {
+      const r = JSON.parse(line) as { id?: unknown; thread_name?: unknown; updated_at?: unknown }
+
+      if (r.id === sessionId && str(r.thread_name)) {
+        title = str(r.thread_name)
+        at = str(r.updated_at)
+      }
+    } catch {
+      // A torn or foreign line names no thread.
+    }
+  }
+
+  return title
+    ? [{ kind: 'context', source: 'codex', text: `${SESSION_TITLE}${title}`, ref: `title:${title}`, ...(at ? { at } : {}) }]
+    : []
 }

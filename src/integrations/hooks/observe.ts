@@ -1,6 +1,7 @@
 // Turns one spooled Claude Code or Codex hook payload into card observations.
 // Pure: the envelope carries the time, and captured command text is only matched,
 // never run.
+import { basename } from 'node:path'
 import { hookSettings } from './settings.ts'
 
 export const HARNESSES = ['claude', 'codex'] as const
@@ -25,6 +26,8 @@ export interface Observation {
   ifMissing?: boolean
   // A pull request URL seen in a command's output: a refresh hint, not its state.
   link?: string
+  // "ended" when the session or subagent closed; null when new work reopens it.
+  outcome?: 'ended' | null
 }
 
 const PROVIDER: Record<Harness, string> = { claude: 'claude-code', codex: 'codex' }
@@ -118,6 +121,19 @@ function activity(event: string, payload: Record<string, unknown>): string | und
   }
 }
 
+// Events that start new work in a session, so an ended session that sends one was resumed.
+const REOPENS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'SubagentStart']
+const TITLE_MAX = 100
+
+// The prompt's first non-empty line, cut to TITLE_MAX characters.
+function promptTitle(prompt: unknown): string | undefined {
+  const line = str(prompt)?.split('\n')
+    .map(l => l.trim())
+    .find(l => l !== '')
+
+  return line && line.length > TITLE_MAX ? `${line.slice(0, TITLE_MAX - 1)}…` : line
+}
+
 // Returns no observations for a payload without a session id or an event Pnyx does
 // not report. A subagent's events go to its own card, keyed under its parent
 // session, after making sure the parent card exists.
@@ -145,15 +161,22 @@ export function observe(envelope: HookEnvelope): Observation[] {
     objectId,
     observedAt: envelope.at,
   })
+  const cwd = str(p.cwd)
   const agent = (extra: Record<string, unknown>) =>
     Object.fromEntries(
-      Object.entries({ provider, sessionId, ...extra, cwd: str(p.cwd) })
+      Object.entries({ provider, sessionId, ...extra, cwd })
         .filter(([, v]) => v !== undefined),
     )
 
+  const prompt = envelope.event === 'UserPromptSubmit' ? promptTitle(p.prompt) : undefined
+  const folder = cwd && basename(cwd)
+  const autoTitle = prompt
+    ? { from: 'prompt', text: prompt }
+    : folder ? { from: 'folder', text: folder } : undefined
   const session = {
     source: source(sessionId),
     agent: agent({ transcriptPath: str(p.transcript_path) }),
+    ...(autoTitle ? { autoTitle } : {}),
   }
   const out: Observation[] = []
   let key = parentKey
@@ -169,6 +192,7 @@ export function observe(envelope: HookEnvelope): Observation[] {
         agentType: str(p.agent_type),
         transcriptPath: str(p.agent_transcript_path),
       }),
+      ...(autoTitle ? { autoTitle } : {}),
       parent: parentKey,
       activity: doing,
     }
@@ -181,6 +205,12 @@ export function observe(envelope: HookEnvelope): Observation[] {
   }
 
   const observation: Observation = { id: '', key, card }
+
+  if (envelope.event === 'SessionEnd' || envelope.event === 'SubagentStop') {
+    observation.outcome = 'ended'
+  } else if (REOPENS.includes(envelope.event)) {
+    observation.outcome = null
+  }
 
   if (envelope.event === 'PostToolUse' && doing === 'ran gh pr create') {
     const url = PR_URL.exec(JSON.stringify(p.tool_response ?? ''))?.[0]

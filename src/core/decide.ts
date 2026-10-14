@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import {
+  AUTO_TITLE_SOURCES,
   BoardError,
   EVENT_VERSION,
   LINK_KINDS,
@@ -11,6 +12,7 @@ import {
   type AgentRef,
   type AgentSettings,
   type Attention,
+  type AutoTitle,
   type BoardEvent,
   type BoardState,
   type Card,
@@ -202,6 +204,20 @@ function parseSource(value: unknown): SourceRef {
   return source
 }
 
+function parseAutoTitle(value: unknown): AutoTitle {
+  if (!isRecord(value)) {
+    throw invalid('autoTitle must be an object')
+  }
+
+  onlyKeys(value, ['from', 'text'], 'autoTitle')
+
+  if (!(AUTO_TITLE_SOURCES as readonly unknown[]).includes(value.from)) {
+    throw invalid(`autoTitle.from must be one of ${AUTO_TITLE_SOURCES.join(', ')}`)
+  }
+
+  return { from: value.from as AutoTitle['from'], text: text(value.text, 'autoTitle.text') }
+}
+
 function parseAgent(value: unknown): AgentRef {
   if (!isRecord(value)) {
     throw invalid('agent must be an object')
@@ -258,7 +274,7 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
     throw invalid('card must be a JSON object')
   }
 
-  onlyKeys(input, ['title', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'attention', 'source'], 'card')
+  onlyKeys(input, ['title', 'autoTitle', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'attention', 'source'], 'card')
 
   const cardId = state.keys[key] ?? `c${state.seq + 1}`
   const fields: PushFields = {}
@@ -284,6 +300,10 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
     }
 
     fields.tags = [...new Set(input.tags.map((t, i) => text(t, `tags[${i}]`)))]
+  }
+
+  if (input.autoTitle !== undefined) {
+    fields.autoTitle = parseAutoTitle(input.autoTitle)
   }
 
   if (input.agent !== undefined) {
@@ -334,8 +354,12 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
   })
 }
 
-// The card's value for a push field, null when absent.
+// The card's value for a push field, null when absent. An auto title counts as absent.
 function pushedValue(card: Card, field: string): unknown {
+  if (field === 'title' && !card.titleSet) {
+    return null
+  }
+
   return (card as unknown as Record<string, unknown>)[field] ?? null
 }
 

@@ -11,8 +11,10 @@ export type LinkKind = (typeof LINK_KINDS)[number]
 export const LINK_STATES = ['open', 'merged', 'closed'] as const
 export type LinkState = (typeof LINK_STATES)[number]
 
+// The outcomes a person or agent records. "ended" is observed only: a harness
+// reporting its session closed.
 export const OUTCOME_STATES = ['done', 'failed', 'cancelled'] as const
-export type OutcomeState = (typeof OUTCOME_STATES)[number]
+export type OutcomeState = (typeof OUTCOME_STATES)[number] | 'ended'
 
 // queued: recorded before the send. delivery_unknown: the route could not confirm
 // the send either way, so it is never resent blindly.
@@ -23,6 +25,18 @@ export type ReplyState = (typeof REPLY_STATES)[number]
 // question and answer, or context such as a session title or a brief's intent.
 export const NOTE_KINDS = ['summary', 'decision', 'context'] as const
 export type NoteKind = (typeof NOTE_KINDS)[number]
+
+// How a harvested context note names the harness's own session title.
+export const SESSION_TITLE = 'Session title: '
+
+// A title a source offers for a card nobody titled, best first: the harness's own
+// session title, the session's first prompt, then its working folder.
+export const AUTO_TITLE_SOURCES = ['session', 'prompt', 'folder'] as const
+
+export interface AutoTitle {
+  from: (typeof AUTO_TITLE_SOURCES)[number]
+  text: string
+}
 
 // Where an observation came from. generation and observedAt order observations of
 // the same source object so a late, older observation cannot overwrite a newer one.
@@ -110,6 +124,9 @@ export interface Card {
   id: string
   key: string
   title: string
+  // Set once a push gives an explicit title; an auto title never replaces it.
+  titleSet?: boolean
+  autoTitle?: AutoTitle
   workspace: string
   tags: string[]
   parentId?: string
@@ -133,7 +150,9 @@ export interface Card {
 
 // Fields a push may set. Omitted fields keep their current value.
 export interface PushFields {
-  title?: string
+  // null, written only by undo, returns the card to its auto title.
+  title?: string | null
+  autoTitle?: AutoTitle
   workspace?: string
   tags?: string[]
   parentId?: string | null

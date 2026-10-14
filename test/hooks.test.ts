@@ -180,10 +180,23 @@ test('a session event observes the session card with its folder and transcript',
         transcriptPath: `/work/home/.claude/projects/-work-repo/${SESSION}.jsonl`,
         cwd: '/work/repo',
       },
+      autoTitle: { from: 'folder', text: 'repo' },
       activity: 'started',
       settings: { model: 'claude-opus-5-5', mode: 'default' },
     },
+    outcome: null,
   })
+})
+
+test('a prompt offers its first line as the title, cut to one line; a session end records the ended outcome', () => {
+  const [prompt] = observe(envelope('claude', 'UserPromptSubmit', 'claude-user-prompt'))
+  assert.deepEqual(prompt!.card.autoTitle, { from: 'prompt', text: 'Open a pull request' })
+  assert.equal(prompt!.outcome, null, 'a new prompt reopens an ended session')
+  const long = { ...envelope('claude', 'UserPromptSubmit', 'claude-user-prompt'), payload: { session_id: SESSION, prompt: `\n  ${'x'.repeat(150)}\nmore` } }
+  assert.equal((observe(long)[0]!.card.autoTitle as { text: string }).text, `${'x'.repeat(99)}…`)
+  assert.equal(observe(envelope('claude', 'SessionEnd', 'claude-session-end'))[0]!.outcome, 'ended')
+  assert.equal(observe(envelope('claude', 'SubagentStop', 'claude-subagent-stop'))[1]!.outcome, 'ended')
+  assert.equal(observe(envelope('claude', 'Stop', 'claude-stop'))[0]!.outcome, undefined, 'a finished turn is not an ended session')
 })
 
 test('a subagent event makes sure the parent exists, then observes the child under it', () => {
@@ -239,7 +252,7 @@ test('codex payloads map the same way; unknown events and payloads without a ses
   assert.deepEqual(observe({ ...envelope('claude', 'Stop', 'claude-stop'), payload: null }), [])
 })
 
-test('spooled hook events become cards on the next write, and never mark a task done', async () => {
+test('spooled hook events become cards on the next write, and a finished turn never marks a task done', async () => {
   const { script, run, home, spooled } = sandbox()
   const events: [string, string][] = [
     ['SessionStart', 'claude-session-start'],
@@ -249,25 +262,25 @@ test('spooled hook events become cards on the next write, and never mark a task 
     ['PreToolUse', 'claude-pre-tool-ls'],
     ['PostToolUse', 'claude-post-tool-pr-create'],
     ['Stop', 'claude-stop'],
-    ['SessionEnd', 'claude-session-end'],
   ]
 
   for (const [event, name] of events) {
     await hook(script, ['claude', event], fixture(name))
   }
 
-  assert.equal(spooled().length, 7)
-  assert.match(run(), /^spool: 7 hook events waiting; the next write ingests them$/m)
+  assert.equal(spooled().length, 6)
+  assert.match(run(), /^spool: 6 hook events waiting; the next write ingests them$/m)
 
   const probe = join(home, 'probe.json')
   writeFileSync(probe, '{}')
-  assert.match(run('push', '--key', 'probe', '--file', probe), /^ {2}ingested: 7$/m)
+  assert.match(run('push', '--key', 'probe', '--file', probe), /^ {2}ingested: 6$/m)
   assert.equal(spooled().length, 0)
 
   const session = run('card', `claude:${SESSION}`)
   // Same-second hooks may be ingested in either order, so only facts every order shares are checked.
   assert.match(session, /^ {2}column: workers_on_it$/m)
   assert.match(session, /^ {2}workspace: unassigned$/m)
+  assert.match(session, /^ {2}title: Open a pull request$/m)
   assert.match(session, /^ {4}cwd: \/work\/repo$/m)
   assert.match(session, /^ {4}transcriptPath: /m)
   assert.match(session, /https:\/\/github\.com\/example\/repo\/pull\/42/)
@@ -394,4 +407,70 @@ test('setup hooks writes through a symlinked config and refuses invalid JSON', (
   assert.throws(() => run('setup', 'hooks', '--harness', 'claude'), (error: { stdout: string }) =>
     /^code: VALIDATION_ERROR$/m.test(error.stdout))
   assert.equal(readFileSync(real, 'utf8'), '{ not json')
+})
+
+test('an ended session moves to Done, an open question still needs you, and a resumed one is back at work', () => {
+  const { run, home } = sandbox()
+  const spool = join(home, 'boards', 'default', 'spool')
+  mkdirSync(spool, { recursive: true })
+  const probe = join(home, 'probe.json')
+  writeFileSync(probe, '{}')
+  let n = 0
+
+  // Explicit, ordered names: each step is ingested on the next write.
+  const send = (event: string, name: string, payload?: object) => {
+    n += 1
+    const line = { ...envelope('claude', event, name), id: `hook-${n}`, at: `2026-10-13T14:00:${String(n).padStart(2, '0')}Z`, ...(payload ? { payload } : {}) }
+    writeFileSync(join(spool, `${String(n).padStart(15, '0')}-1-a.json`), JSON.stringify(line))
+    run('push', '--key', 'probe', '--file', probe)
+  }
+
+  const card = () => run('card', `claude:${SESSION}`)
+
+  send('SessionStart', 'claude-session-start')
+  send('UserPromptSubmit', 'claude-user-prompt')
+  send('Stop', 'claude-stop')
+  assert.match(card(), /^ {2}column: workers_on_it$/m)
+  send('SessionEnd', 'claude-session-end')
+  assert.match(card(), /^ {2}column: done$/m)
+  assert.match(card(), /^ {2}outcome:\n {4}state: ended\n {4}source: hooks$/m)
+  assert.match(run('history', '--kind', 'outcome'), /ended/)
+  assert.throws(() => run('outcome', 'c1', 'done'), (error: { stdout: string }) => /^code: SOURCE_OWNED$/m.test(error.stdout))
+
+  const question = join(home, 'question.json')
+  writeFileSync(question, JSON.stringify({ attention: [{ kind: 'permission', key: 'p1', blocking: true }] }))
+  run('push', '--key', `claude:${SESSION}`, '--file', question)
+  assert.match(card(), /^ {2}column: needs_you$/m)
+  writeFileSync(question, JSON.stringify({ attention: [] }))
+  run('push', '--key', `claude:${SESSION}`, '--file', question)
+  assert.match(card(), /^ {2}column: done$/m)
+
+  send('SessionStart', 'claude-session-start', { ...JSON.parse(fixture('claude-session-start')), source: 'resume' })
+  assert.match(card(), /^ {2}column: workers_on_it$/m)
+  assert.doesNotMatch(card(), /outcome/)
+  assert.match(card(), /^ {2}title: Open a pull request$/m, "a resume keeps the first prompt's title")
+
+  send('SubagentStart', 'claude-subagent-start')
+  send('SubagentStop', 'claude-subagent-stop')
+  assert.match(run('card', `claude:${SESSION}/agent-a1`), /^ {2}column: done$/m)
+  assert.match(card(), /^ {2}column: workers_on_it$/m, 'a subagent ending leaves its parent at work')
+})
+
+test('a hook never changes an outcome another source or a person recorded', () => {
+  const { run, home } = sandbox()
+  const spool = join(home, 'boards', 'default', 'spool')
+  mkdirSync(spool, { recursive: true })
+  const file = join(home, 'card.json')
+  writeFileSync(file, JSON.stringify({ title: 'Mine' }))
+  run('push', '--key', `claude:${SESSION}`, '--file', file)
+  run('outcome', 'c1', 'cancelled')
+
+  for (const [i, [event, name]] of [['SessionEnd', 'claude-session-end'], ['UserPromptSubmit', 'claude-user-prompt']].entries()) {
+    writeFileSync(join(spool, `00000000000000${i}-1-a.json`), JSON.stringify({ ...envelope('claude', event!, name!), id: `hook-${i}` }))
+  }
+
+  run('push', '--key', 'probe', '--file', file)
+  const card = run('card', `claude:${SESSION}`)
+  assert.match(card, /^ {2}outcome:\n {4}state: cancelled$/m)
+  assert.match(card, /^ {2}title: Mine$/m, 'a set title is never replaced by the prompt')
 })

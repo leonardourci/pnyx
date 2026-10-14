@@ -24,6 +24,7 @@
       "createdSeq": 1,
       "updatedSeq": 3,
       "updatedAt": "2026-10-13T15:03:00Z",
+      "titleSet": true,
       "manualColumn": "review"
     }
   },

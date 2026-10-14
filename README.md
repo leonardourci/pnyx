@@ -58,7 +58,8 @@ Pass each Firstmate home to `serve` with `--home` (repeat it for several homes).
 
 ## Using the board
 
-- **Columns:** Needs you (decisions and interruptions), Workers on it, Review (a linked pull request is open) and Done. Cards move on their own from source facts; a manual move pins a card until you return it to automatic.
+- **Columns:** Needs you (a pending question or permission, a closed unmerged pull request or a failed task), Workers on it (open work, including sessions between turns), Review (a linked pull request is open) and Done (every linked pull request merged, a recorded outcome, or an agent session that ended). A resumed session goes back to Workers on it; a Firstmate task is Done when Firstmate closes it. Cards move on their own from source facts; a manual move pins a card until you return it to automatic.
+- **Titles:** a card that only hooks report takes the harness's own session title, else its first prompt, else its folder name. A title you set is never replaced.
 - **Cards:** click a card or press Enter to open its conversation, notes, history and links. Type in the composer and press Mod+Enter to send a reply; type `/` there to insert a local Claude Code or Codex skill or command.
 - **Keyboard:** arrows or h/j/k/l move between cards, `m` moves the focused card, `/` searches history, Mod+K opens Commands, `?` shows help, `f` shows hints. Every binding can be changed in Settings. See [docs/keyboard.md](docs/keyboard.md).
 - **Search:** every search box (Find a card, History, the Cmd+K palette) and `pnyx-axi search "<words>"` find cards by meaning, in any language, as well as by their words, across titles, links, events, notes and transcripts. Semantic search runs local models on your machine; the first search downloads them in the background (about 1 GB with a GPU, 115 MB on CPU only), and searches are full-text until they are ready. `pnyx-axi search status` shows the progress.
