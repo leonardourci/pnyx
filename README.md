@@ -60,11 +60,12 @@ Pass each Firstmate home to `serve` with `--home` (repeat it for several homes).
 
 - **Columns:** Needs you (decisions, permission prompts, questions and idle sessions), Workers on it, Review (a linked pull request is open) and Done (every linked pull request merged, a recorded outcome, or an agent session that ended). A resumed session goes back to Workers on it; a Firstmate task is Done when Firstmate closes it. Cards move on their own from source facts; a manual move pins a card until you return it to automatic.
 - **Titles:** a card that only hooks report takes the harness's own session title, else its first prompt, else its folder name; a subagent takes its type and last 4 characters of its id (`Explore 3f2a`). A title you set is never replaced.
-- **Cards:** click a card or press Enter to open its conversation, notes, history and links. Type in the composer and press Mod+Enter to send a reply; type `/` there to insert a local Claude Code or Codex skill or command.
+- **Cards:** click a card or press Enter to open its conversation, notes, history and links; the reply input at the end of the conversation takes focus. Type a reply and press Mod+Enter to send it; type `/` there to insert a local Claude Code or Codex skill or command. Select text in a message, or press `c` on a selected block, to add an inline comment; comments go out with the next reply. Focus, on by default, shows only prompts and agent messages; turn it off to see tool calls and thinking.
 - **Keyboard:** Mod is Command on macOS and Control elsewhere. Every binding can be changed in Settings, and the Character shortcuts switch there turns off the single-key ones.
   - Arrows or h/j/k/l: move between cards and columns; Home/End: first or last card
-  - Enter: open the card's conversation; `r`: focus its composer; Mod+Enter: send (plain Enter adds a newline)
-  - Escape: dismiss suggestions, leave the composer, then close the card
+  - Enter: open the card's conversation at its reply input; `r`: focus the reply input; Mod+Enter: send (plain Enter adds a newline)
+  - In the conversation: Escape moves into the transcript, arrows or j/k select message blocks, `c` comments on the selected block, Enter returns to the reply input
+  - Escape: dismiss suggestions, leave the reply input, then close the card
   - `m`: move the focused card; `/`: search history; Mod+F: find a card in the current view
   - Mod+K: Commands; Mod+,: Settings; `?`: keyboard help; `f`: label visible controls, then type a label to jump to it
 - **Search:** every search box (Find a card, History, the Cmd+K palette) and `pnyx-axi search "<words>"` find cards by meaning, in any language, as well as by their words, across titles, links, events, notes and transcripts. Semantic search runs local models on your machine; the first search downloads them in the background (about 1 GB with a GPU, 115 MB on CPU only), and searches are full-text until they are ready. `pnyx-axi search status` shows the progress.
