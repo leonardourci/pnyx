@@ -49,4 +49,4 @@ Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links t
 
 ## Runtime data
 
-Boards live in `~/.pnyx/boards/<board>/` (`$PNYX_HOME/boards/<board>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock, the spool and the `search.db` index. Nothing at runtime writes inside the repository.
+Boards live in `~/.pnyx/boards/<board>/` (`$PNYX_HOME/boards/<board>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock, the spool, the `search.db` index and the `harvest.json` transcript cursors. Nothing at runtime writes inside the repository.

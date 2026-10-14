@@ -26,12 +26,15 @@ import {
   type Card,
   type EventType,
   type Column,
+  type NotedEvent,
   type OutcomeState,
 } from "../core/model.ts";
 import { emptyBoard, replay } from "../core/reducer.ts";
 import { readServer } from "../server/state.ts";
 import { detectedHarnesses, setupHooks } from "../integrations/hooks/install.ts";
+import { appendNote, harvestTranscripts } from "../integrations/hooks/harvest.ts";
 import { HARNESSES, isHookEnvelope, observe, type Harness, type HookEnvelope } from "../integrations/hooks/observe.ts";
+import { pullRequestNote } from "../integrations/github/pull-request.ts";
 import { loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from "../store/board-store.ts";
 
 const DEFAULT_BOARD = "default";
@@ -89,9 +92,13 @@ export function meta(values: Record<string, string | boolean | undefined>): Meta
   return m;
 }
 
+// Hook events after which a session's transcript has turns worth harvesting.
+const HARVEST_AFTER = ["Stop", "SubagentStop", "SessionEnd"];
+
 // Appends what one spool entry reports: a raw harness hook payload becomes card
-// observations, anything else is a push with an explicit key.
-function ingest(writer: Writer, entry: Record<string, unknown>): void {
+// observations, anything else is a push with an explicit key. Returns the cards
+// whose transcripts to harvest.
+function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
   if (typeof entry?.id !== "string" || typeof entry.at !== "string") {
     throw new BoardError("spool entry needs id and at", "VALIDATION_ERROR");
   }
@@ -103,28 +110,34 @@ function ingest(writer: Writer, entry: Record<string, unknown>): void {
     const actor = typeof entry.actor === "string" ? entry.actor : "hook";
     const card = (entry.card ?? {}) as Record<string, unknown>;
     const source = card.source ?? { adapter: actor, objectId: entry.key, observedAt: entry.at };
-    return apply(decidePush(writer.state, entry.key, { ...card, source }, { id: entry.id, at: entry.at, actor }));
+    apply(decidePush(writer.state, entry.key, { ...card, source }, { id: entry.id, at: entry.at, actor }));
+    return [];
   }
   if (!(HARNESSES as readonly string[]).includes(entry.harness as string) || typeof entry.event !== "string") {
     throw new BoardError("hook entry needs a known harness and an event", "VALIDATION_ERROR");
   }
+  const harvest: string[] = [];
   for (const o of observe(entry as unknown as HookEnvelope)) {
     if (o.ifMissing && o.key in writer.state.keys) continue;
     const m: Meta = { id: o.id ? `${entry.id}:${o.id}` : entry.id, at: entry.at, actor: `hook:${entry.harness}` };
     apply(decidePush(writer.state, o.key, o.card, m));
     if (o.link) apply(decideLink(writer.state, o.key, o.link, parseLink({ url: o.link }), { ...m, id: `${m.id}:link` }));
+    if (!o.ifMissing && HARVEST_AFTER.includes(entry.event) && o.key in writer.state.keys) harvest.push(writer.state.keys[o.key]!);
   }
+  return harvest;
 }
 
 // Folds spooled hook events into the log, oldest first. Each push is recorded as a
 // source observation, so it can never be undone. A file that cannot be read is
-// renamed to *.rejected so it is not retried forever.
-export function drainSpool(writer: Writer): { ingested: number; rejected: number } {
+// renamed to *.rejected so it is not retried forever. Then harvests the notes in
+// the transcripts of sessions that finished a turn.
+export function drainSpool(writer: Writer): { ingested: number; rejected: number; notes?: number } {
   let ingested = 0;
   let rejected = 0;
+  const harvest = new Set<string>();
   for (const file of spoolFiles(writer.dir)) {
     try {
-      ingest(writer, JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>);
+      for (const id of ingest(writer, JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>)) harvest.add(id);
     } catch (error) {
       if (!(error instanceof BoardError || error instanceof SyntaxError)) throw error;
       renameSync(file, `${file}.rejected`);
@@ -134,11 +147,12 @@ export function drainSpool(writer: Writer): { ingested: number; rejected: number
     rmSync(file);
     ingested += 1;
   }
-  return { ingested, rejected };
+  const notes = harvest.size ? harvestTranscripts(writer, harvest, new Date().toISOString()) : 0;
+  return { ingested, rejected, ...(notes ? { notes } : {}) };
 }
 
 // The server's way into the same writer: drain the spool under the writer lock.
-export function ingestSpool(board: string): { ingested: number; rejected: number } {
+export function ingestSpool(board: string): { ingested: number; rejected: number; notes?: number } {
   return withWriter(board, drainSpool);
 }
 
@@ -281,13 +295,63 @@ const push = guard((args) => {
   return commit(board, m, { type: "card.pushed", card: key }, (state) => decidePush(state, key, input, m));
 });
 
+// Notes shown per section by default, and the text length each is cut to.
+const NOTES_SHOWN = 3;
+const NOTE_CUT = 280;
+const NOTE_SECTIONS = { summary: "summary", decision: "decisions", context: "context" } as const;
+
+// The card's Summary, Decisions and Context notes, newest first. The text comes
+// from the log, where each noted event keeps it.
+function cardNotes(board: string, card: Card, full: boolean): { notes: Output; cut: boolean } {
+  const ids = new Set((card.notes ?? []).map((n) => n.id));
+  const events = ids.size ? readEvents(board).filter((e): e is NotedEvent => e.type === "card.noted" && ids.has(e.id)) : [];
+  let cut = false;
+  const notes: Output = {};
+  for (const [kind, section] of Object.entries(NOTE_SECTIONS)) {
+    const all = events.filter((e) => e.data.kind === kind).map((e) => ({ at: e.data.at ?? e.at, source: e.data.source, text: e.data.text }));
+    all.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    const shown = full ? all : all.slice(0, NOTES_SHOWN).map((n) => (n.text.length > NOTE_CUT ? { ...n, text: `${n.text.slice(0, NOTE_CUT)}…` } : n));
+    if (shown.length < all.length || shown.some((n, i) => n.text !== all[i]!.text)) cut = true;
+    notes[section] = shown.length ? shown : "none";
+    if (shown.length < all.length) notes[`${section}More`] = all.length - shown.length;
+  }
+  return { notes, cut };
+}
+
 const card = guard((args) => {
-  const { positionals, board } = parse(args, COMMON, 1);
+  const { values, positionals, board } = parse(args, { ...COMMON, full: { type: "boolean" } }, 1);
   const found = findCard(loadBoard(board).state, required(positionals[0], "card id"));
-  return {
-    card: cardDetail(found),
-    help: [`Run \`pnyx-axi history --card ${found.id}\` for its events`],
-  };
+  const { notes, cut } = cardNotes(board, found, Boolean(values.full));
+  const help = [`Run \`pnyx-axi history --card ${found.id}\` for its events`];
+  if (cut) help.unshift(`Run \`pnyx-axi card ${found.id} --full\` for every note in full`);
+  if (!found.notes?.length) help.push(`Run \`pnyx-axi harvest --card ${found.id}\` to collect its summaries, decisions and context`);
+  return { card: cardDetail(found), notes, help };
+});
+
+// Collects the notes sources already recorded: the cards' transcripts from where
+// the last read stopped, and each linked pull request's title and description.
+// ponytail: reads every linked pull request on each run; skip merged ones already noted if boards grow.
+const harvest = guard((args) => {
+  const { values, board } = parse(args, { ...COMMON, card: { type: "string" } }, 0);
+  const { state } = loadBoard(board);
+  const cards = values.card ? [findCard(state, values.card as string)] : Object.values(state.cards);
+  // Read before taking the writer lock: gh-axi can be slow and must not block other writers.
+  const prs = cards.flatMap((c) => c.links.filter((l) => l.kind === "github_pr").map((l) => ({ card: c.id, url: l.url, note: pullRequestNote(l.url) })));
+  return withWriter(board, (writer) => {
+    const spool = drainSpool(writer);
+    const at = new Date().toISOString();
+    let notes = harvestTranscripts(writer, cards.map((c) => c.id), at);
+    for (const pr of prs) if (pr.note) notes += appendNote(writer, pr.card, pr.note, at);
+    const unread = prs.filter((pr) => !pr.note).map((pr) => pr.url);
+    const out: Output = { harvested: { cards: cards.length, notes: notes ? `${notes} new` : "none: nothing new", pullRequests: prs.length - unread.length } };
+    if (unread.length) out.unread = unread;
+    if (spool.ingested || spool.rejected) out.spool = spool;
+    out.help = [
+      ...(unread.length ? ["gh-axi could not read those pull requests; check `gh-axi pr view <number> --repo <owner/repo>`"] : []),
+      values.card ? `Run \`pnyx-axi card ${cards[0]!.id}\` to see its notes` : "Run `pnyx-axi card <id>` to see a card's notes",
+    ];
+    return out;
+  });
 });
 
 const move = guard((args) => {
@@ -355,6 +419,8 @@ function summarize(event: BoardEvent): string {
       return `${undo}${event.data.after ? `${event.data.after.state}${event.data.after.note ? `: ${event.data.after.note}` : ""}` : "cleared"}`;
     case "card.replied":
       return `reply ${event.data.reply} ${event.data.state}${event.data.detail ? `: ${event.data.detail}` : ""}`;
+    case "card.noted":
+      return `${event.data.kind} from ${event.data.source}`;
   }
 }
 
@@ -373,7 +439,7 @@ const history = guard((args) => {
   const kind = values.kind as string | undefined;
   const type = kind && (kind.startsWith("card.") ? kind : `card.${kind}`);
   if (type && !(EVENT_TYPES as readonly string[]).includes(type)) {
-    throw new AxiError(`unknown kind: ${kind}`, "VALIDATION_ERROR", ["Use one of pushed, moved, linked, outcome, replied"]);
+    throw new AxiError(`unknown kind: ${kind}`, "VALIDATION_ERROR", ["Use one of pushed, moved, linked, outcome, replied, noted"]);
   }
   const { state } = loadBoard(board);
   const cardId = values.card ? findCard(state, values.card as string).id : undefined;
@@ -455,14 +521,15 @@ const view = guard((args) => {
   return commit(board, m, { type: "board.view", card: "$board" }, s => decideView(s, patch, m));
 });
 
-export const commands = { view, push, card, move, link, outcome, history, undo, repair, setup };
+export const commands = { view, push, card, harvest, move, link, outcome, history, undo, repair, setup };
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Deterministic board of every agent and its work
 commands:
   pnyx-axi                                   Show the board summary
   push --key <key> --file <card.json|->      Create or update the card with this key
-  card <id|key>                              Show one card
+  card <id|key> [--full]                     Show one card with its summary, decisions and context
+  harvest [--card <id>]                      Collect summaries and decisions sources already recorded
   move <id> <column> | --auto                Pin a card to a column, or return it to automatic placement
   link <id> --url <url> [--state open]       Add, update or --remove a link
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
@@ -491,7 +558,16 @@ card.json fields (all optional): title, workspace, tags[], parent (card id or ke
   source {adapter, objectId, instanceId, generation, cursor, observedAt}
 An observation older than the card's latest one from the same source is ignored.
 `,
-  card: `usage: pnyx-axi card <id|key> [--board <name>]
+  card: `usage: pnyx-axi card <id|key> [--full] [--board <name>]
+Shows the card and its notes in three sections, summary, decisions and context, newest first:
+${NOTES_SHOWN} per section with text cut at ${NOTE_CUT} characters, or every note in full with --full.
+`,
+  harvest: `usage: pnyx-axi harvest [--card <id>] [--board <name>]
+Collects notes that sources already recorded, with no model and nothing asked of agents: Claude Code
+compaction summaries, session titles and AskUserQuestion answers, Codex compaction summaries, and each
+linked pull request's title and description through gh-axi. Sessions are also harvested whenever a
+turn ends; Firstmate decisions, reports and Captain's intent arrive through \`firstmate sync\`.
+Sources are only read. Each note is kept once, so running it again appends only what is new.
 `,
   move: `usage: pnyx-axi move <id> <needs_you|workers_on_it|review|done> | --auto [--event-id <id>] [--if-revision <n>] [--reason <text>]
 A manual move pins the card until \`move <id> --auto\`. Attention on a pinned card stays visible.
@@ -502,7 +578,7 @@ all linked pull requests merged puts it in done.
 `,
   outcome: `usage: pnyx-axi outcome <id> done|failed|cancelled [--note <text>] | --clear [--event-id <id>] [--if-revision <n>]
 `,
-  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome|replied] [--workspace <name>] [--before <seq>] [--limit <n>]
+  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome|replied|noted] [--workspace <name>] [--before <seq>] [--limit <n>]
 Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
 `,
   undo: `usage: pnyx-axi undo <event-id> [--event-id <id>] [--if-revision <n>]

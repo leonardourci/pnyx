@@ -1,12 +1,13 @@
 // Reads one Firstmate home's files and turns them into card observations. Read-only:
 // it never writes the home, and it never looks at the home's backends (Paseo,
 // Herdr, tmux). Files read: state/<task>.meta, state/<task>.status and the
-// markdown backlog at data/backlog.md.
+// markdown backlog at data/backlog.md, plus each task's data/<task>/brief.md for its
+// Captain's intent.
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { basename, join } from "node:path";
-import { BoardError } from "../../core/model.ts";
-import { latestActivity, latestLine, openDecisions, type OpenDecision } from "./status.ts";
+import { BoardError, type SourceNote } from "../../core/model.ts";
+import { latestActivity, latestLine, openDecisions, statusNotes, type OpenDecision } from "./status.ts";
 
 export const ADAPTER = "firstmate";
 // objectId of the home's own card; task ids start with a letter or digit.
@@ -29,6 +30,8 @@ export interface TaskObservation {
   decisions: OpenDecision[];
   // The latest status line, when it is failed: or blocked:.
   stalled?: { verb: string; note: string };
+  // Decisions and reports from the status log, and the brief's Captain's intent.
+  notes: SourceNote[];
 }
 
 export interface HomeObservation {
@@ -122,6 +125,23 @@ export function parseBacklog(text: string): Map<string, BacklogRow> {
   return rows;
 }
 
+// The body of a brief's `## Captain's intent` section, up to the next heading of
+// the same or a higher level.
+export function captainsIntent(brief: string): string | undefined {
+  const lines = brief.split("\n");
+  const start = lines.findIndex((l) => /^##\s+Captain'?s intent\s*$/i.test(l));
+  if (start < 0) return undefined;
+  const end = lines.findIndex((l, i) => i > start && /^#{1,2}\s/.test(l));
+  return lines.slice(start + 1, end < 0 ? undefined : end).join("\n").trim() || undefined;
+}
+
+function taskNotes(home: string, task: string, log: string): SourceNote[] {
+  const notes: SourceNote[] = statusNotes(log).map(({ line, ...note }) => ({ ...note, source: ADAPTER, ref: `status:${line}` }));
+  const intent = captainsIntent(readRegular(join(home, "data", task, "brief.md")) ?? "");
+  if (intent) notes.push({ kind: "context", source: ADAPTER, text: `Captain's intent:\n${intent}`, ref: `brief:${intent}` });
+  return notes;
+}
+
 // Every task with a meta record, in id order. The pull request comes only from the
 // meta's pr= field, which Firstmate records when the pull request is ready.
 export function readHome(home: string): HomeObservation {
@@ -149,6 +169,7 @@ export function readHome(home: string): HomeObservation {
       ...(activity ? { activity } : {}),
       decisions: openDecisions(log, meta.kind || "ship"),
       ...(last && (last.verb === "failed" || last.verb === "blocked") ? { stalled: { verb: last.verb, note: last.note } } : {}),
+      notes: taskNotes(home, task, log),
     });
   }
   return { path: home, key: homeKey(home), title: basename(home), tasks };

@@ -103,11 +103,13 @@ export const firstmateCommands = { firstmate, reply };
 
 const HELP: Record<string, string> = {
   firstmate: `usage: pnyx-axi firstmate sync|watch --home <path> [--home <path>]... [--board <name>]
-Reads each Firstmate home's state/<task>.meta, state/<task>.status and data/backlog.md, never writing them.
-Each task becomes a card under the home's card: backlog title, repo tag, pull request link, and open
-needs-decision or blocked keys, or a latest failed: or blocked: line, as Needs you attention. A task
-under the backlog's Done section is recorded as done (a closed failure after a failed: line). sync folds the files once; watch syncs, then
-again on every change until SIGINT or SIGTERM.
+Reads each Firstmate home's state/<task>.meta, state/<task>.status, data/backlog.md and
+data/<task>/brief.md, never writing them. Each task becomes a card under the home's card: backlog
+title, repo tag, pull request link, and open needs-decision or blocked keys, or a latest failed: or
+blocked: line, as Needs you attention. Its needs-decision, resolved and done lines and the brief's
+Captain's intent become the card's notes, each kept once. A task under the backlog's Done section
+is recorded as done (a closed failure after a failed: line). sync folds the files once; watch syncs,
+then again on every change until SIGINT or SIGTERM.
 `,
   reply: `usage: pnyx-axi reply <id> --text <text> | --file <file|-> --home <path> [--resolve-key <key>] [--idempotency-key <key>]
 Sends the text to the card's Firstmate task through the home's bin/fm-send.sh, with FM_HOME set.

@@ -8,4 +8,5 @@ Per-board files under `~/.pnyx/boards/<board>/` (or `$PNYX_HOME/boards/<board>/`
 - the writer lock that keeps `pnyx-axi` the only writer.
 - the hook spool (`spool/`): an ingress buffer for events sent while the service is down, one JSON file each, either a raw hook payload or a push with an explicit key. It is not a second writer of `events.jsonl`; a file that cannot be ingested is renamed `*.rejected`.
 - `search.db`: the derived full-text search index; see [../search/README.md](../search/README.md).
+- `harvest.json`: how far each card's transcript was read for notes, a deletable cache; see [../integrations/hooks/README.md](../integrations/hooks/README.md).
 - `server.json` and `server.sock` while a board server runs; see [../server/README.md](../server/README.md).

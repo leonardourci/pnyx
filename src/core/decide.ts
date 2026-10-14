@@ -1,11 +1,13 @@
 // Turns a requested change into the event to append, validated against the current
 // board. Pure: the caller supplies the time and actor.
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
   BoardError,
   EVENT_VERSION,
   LINK_KINDS,
   LINK_STATES,
+  NOTE_KINDS,
   type AgentRef,
   type Attention,
   type BoardEvent,
@@ -13,6 +15,7 @@ import {
   type Card,
   type Column,
   type Link,
+  type Note,
   type Outcome,
   type PushFields,
   type RepliedEvent,
@@ -293,7 +296,24 @@ export function decideReply(state: BoardState, ref: string, data: RepliedEvent["
   return decided(state, meta, { ...base(state, meta, card.id), type: "card.replied", data });
 }
 
+// The event id of a harvested note: the same card and source record always give
+// the same id, so a note is appended once however often its source is read.
+export function noteId(cardKey: string, ref: string): string {
+  return `note_${createHash("sha256").update(`${cardKey}\n${ref}`).digest("hex").slice(0, 20)}`;
+}
+
+// Records one harvested note. meta.id is the note's stable id, so the same source
+// record harvested again is a duplicate and appends nothing.
+export function decideNote(state: BoardState, ref: string, note: Note, meta: Meta & { id: string }): Decision {
+  const card = findCard(state, ref);
+  if (!(NOTE_KINDS as readonly string[]).includes(note.kind)) throw invalid(`note kind must be one of ${NOTE_KINDS.join(", ")}`);
+  const data: Note = { kind: note.kind, source: text(note.source, "note source"), text: text(note.text, "note text") };
+  if (note.at) data.at = note.at;
+  return decided(state, meta, { ...base(state, meta, card.id), type: "card.noted", data });
+}
+
 function currentValue(card: Card, target: Exclude<BoardEvent, { type: "board.view" }>): unknown {
+
   if (target.type === "card.pushed") {
     return Object.fromEntries(Object.keys(target.data.before ?? {}).map((field) => [field, pushedValue(card, field)]));
   }
@@ -303,7 +323,7 @@ function currentValue(card: Card, target: Exclude<BoardEvent, { type: "board.vie
 }
 
 function afterValue(target: BoardEvent): unknown {
-  if (target.type === "card.replied") return null;
+  if (target.type === "card.replied" || target.type === "card.noted") return null;
   if (target.type !== "card.pushed") return target.data.after;
   const after = target.data as unknown as Record<string, unknown>;
   return Object.fromEntries(Object.keys(target.data.before ?? {}).map((field) => [field, after[field] ?? null]));
@@ -313,7 +333,8 @@ function afterValue(target: BoardEvent): unknown {
 // undo never silently overwrites a later edit. Source observations, card creation
 // and merges are facts, not edits, and cannot be undone. Only a source makes a push
 // an observation: --actor is attribution, so a direct CLI or UI write stays undoable
-// whether a person or an agent made it. A sent reply cannot be unsent.
+// whether a person or an agent made it. A sent reply cannot be unsent, and a
+// harvested note is a source observation.
 export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): Decision {
   if (target.type === "board.view") {
     if (state.undone[target.id] || !isDeepStrictEqual(viewFor(state), target.data.after)) throw new BoardError("preferences changed since this event", "CONFLICT");
@@ -323,6 +344,9 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
   }
   if (target.type === "card.replied") {
     throw notUndoable(`${target.id} records a reply, which cannot be unsent`);
+  }
+  if (target.type === "card.noted") {
+    throw notUndoable(`${target.id} records a note harvested from ${target.data.source} and cannot be undone`);
   }
   if (target.type === "card.pushed" && target.data.source) {
     throw notUndoable(`${target.id} records a source observation and cannot be undone`);

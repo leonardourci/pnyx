@@ -118,6 +118,9 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       const reply = { id: event.data.reply, state: event.data.state };
       const replies = card.replies ?? [];
       card.replies = replies.some((r) => r.id === reply.id) ? replies.map((r) => (r.id === reply.id ? reply : r)) : [...replies, reply];
+    } else if (event.type === "card.noted") {
+      const { kind, source, at } = event.data;
+      card.notes = [...(card.notes ?? []), { id: event.id, kind, source, ...(at ? { at } : {}) }];
     } else {
       if (event.data.after) card.outcome = event.data.after;
       else delete card.outcome;

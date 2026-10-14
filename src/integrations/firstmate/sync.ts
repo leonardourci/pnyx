@@ -2,7 +2,7 @@
 // them current with fs.watch. Every write goes through the board's single writer.
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
-import { decideLink, decideOutcome, decidePush, parseLink, type Decision, type Meta } from "../../core/decide.ts";
+import { decideLink, decideNote, decideOutcome, decidePush, noteId, parseLink, type Decision, type Meta } from "../../core/decide.ts";
 import type { Attention, BoardState, Card, SourceRef } from "../../core/model.ts";
 import { drainSpool } from "../../cli/commands.ts";
 import { withWriter, type Writer } from "../../store/board-store.ts";
@@ -82,6 +82,7 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
         const outcome = !task.done ? null : task.stalled?.verb === "failed" ? { state: "failed" as const, note: "closed after failure", closed: true } : { state: "done" as const };
         appended += apply(writer, decideOutcome(writer.state, key, outcome, meta, ADAPTER));
       }
+      for (const { ref, ...note } of task.notes) appended += apply(writer, decideNote(writer.state, key, note, { ...meta, id: noteId(key, ref) }));
     }
     const live = new Set(observed.tasks.map((t) => t.task));
     for (const card of Object.values(writer.state.cards)) {

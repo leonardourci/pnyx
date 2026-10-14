@@ -3,7 +3,7 @@
 import type { Attention, BoardEvent } from "../core/model.ts";
 
 // Bump when chunk() or the filters change what is indexed; the index rebuilds on mismatch.
-export const CHUNKER_VERSION = 3;
+export const CHUNKER_VERSION = 4;
 
 // About 256 tokens at 3 characters a token.
 const CHUNK_MAX = 768;
@@ -119,6 +119,9 @@ export function eventText(event: BoardEvent): string {
     case "card.replied":
       parts.push(event.data.text);
       break;
+    case "card.noted":
+      parts.push(event.data.text);
+      break;
     case "card.moved":
       break;
   }
@@ -134,11 +137,12 @@ const TEXT_BLOCKS = ["text", "input_text", "output_text"];
 
 // The typed user messages and assistant text blocks of one Claude Code or Codex
 // transcript record. Tool calls and results, thinking, images, meta records,
-// developer messages and injected text are left out.
+// developer messages and injected text are left out, and so is a compaction
+// summary, which is harvested as a note instead.
 export function transcriptMessages(record: unknown): Message[] {
-  type Record = { type?: unknown; isMeta?: unknown; timestamp?: unknown; message?: { content?: unknown }; payload?: { type?: unknown; role?: unknown; content?: unknown } };
+  type Record = { type?: unknown; isMeta?: unknown; isCompactSummary?: unknown; timestamp?: unknown; message?: { content?: unknown }; payload?: { type?: unknown; role?: unknown; content?: unknown } };
   const r = record as Record | null;
-  if (typeof r !== "object" || r === null || r.isMeta === true) return [];
+  if (typeof r !== "object" || r === null || r.isMeta === true || r.isCompactSummary === true) return [];
   const codex = r.type === "response_item" && r.payload?.type === "message" && (r.payload.role === "user" || r.payload.role === "assistant");
   if (!codex && r.type !== "user" && r.type !== "assistant") return [];
   const content = codex ? r.payload!.content : r.message?.content;
