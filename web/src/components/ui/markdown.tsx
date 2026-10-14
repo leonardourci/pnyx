@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
 
 const markdown = new Marked({ gfm: true })
@@ -88,6 +88,7 @@ export function Markdown({ text, block }: {
   text: string
   block?(info: MarkdownBlock & { children: ReactNode }): ReactNode
 }) {
+  const tokens = useMemo(() => markdown.lexer(text), [text])
   let index = 0
 
   const wrap = ({ offset, quote, children }: Omit<MarkdownBlock, 'index'> & { children: ReactNode }) =>
@@ -165,5 +166,5 @@ export function Markdown({ text, block }: {
     )
   }
 
-  return <div className="markdown">{render({ tokens: markdown.lexer(text) })}</div>
+  return <div className="markdown">{render({ tokens })}</div>
 }

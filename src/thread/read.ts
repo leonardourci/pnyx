@@ -41,9 +41,11 @@ const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => {
 
 const obj = ({ value: v }: { value: unknown }): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string, unknown> : {}
 
-export function recordEntries({ record, offset }: {
+export function recordEntries({ record, offset, tools = true, thinking = true }: {
   record: unknown
   offset: number
+  tools?: boolean
+  thinking?: boolean
 }): ThreadEntry[] {
   const r = obj({ value: record })
 
@@ -61,7 +63,7 @@ export function recordEntries({ record, offset }: {
     const b = obj({ value: raw })
     const kind = ['tool_use', 'tool_result', 'function_call', 'function_call_output'].includes(String(b.type)) ? 'tool' : ['thinking', 'reasoning'].includes(String(b.type)) ? 'thinking' : null
 
-    if (!kind) {
+    if (!kind || (kind === 'tool' && !tools) || (kind === 'thinking' && !thinking)) {
       continue
     }
 
@@ -279,12 +281,8 @@ export function readThread(
           try {
             const offset = start + cursor
             const record = JSON.parse(buf.subarray(cursor, newline).toString())
-            recordEntries({ record, offset }).forEach((item, index) => {
-              // Hidden traces must not use up the conversation page.
-              if ((item.kind === 'tool' && !tools) || (item.kind === 'thinking' && !thinking)) {
-                return
-              }
-
+            // Hidden traces must not use up the conversation page.
+            recordEntries({ record, offset, tools, thinking }).forEach((item, index) => {
               if (
                 beforeItem === undefined
                 || offset < beforeOffset

@@ -42,7 +42,7 @@ const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) =>
   return `${tools}:${thinking}`
 }
 
-// How often a live transcript's card is read again at most while the session writes.
+// How often a live transcript's card and open conversation are read again at most while the session writes.
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
 const CLI_COMMANDS = ['move', 'link', 'outcome', 'undo', 'view', 'history', 'card'] as const
@@ -95,18 +95,17 @@ export async function startServer({
 
   homes = homes.map(path => resolveHome({ path }))
   const subscriptions = new Map<WebSocket, { card: string; watcher?: FSWatcher }>()
-  const threadScheduled = new WeakSet<WebSocket>()
+  const threadTimers = new Map<WebSocket, ReturnType<typeof setTimeout>>()
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
 
   const refreshThread = ({ ws }: { ws: WebSocket }) => {
-    if (closed || threadScheduled.has(ws)) {
+    if (closed || threadTimers.has(ws)) {
       return
     }
 
-    threadScheduled.add(ws)
-    setImmediate(() => {
-      threadScheduled.delete(ws)
+    threadTimers.set(ws, setTimeout(() => {
+      threadTimers.delete(ws)
 
       if (ws.readyState !== ws.OPEN) {
         return
@@ -123,7 +122,7 @@ export async function startServer({
       } catch {
         send({ ws, message: { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' } })
       }
-    })
+    }, LATEST_DELAY_MS))
   }
 
   const dir = boardDir({ board })
@@ -661,6 +660,12 @@ export async function startServer({
       folders.clear()
       subscriptions.clear()
       clearTimeout(latestTimer)
+
+      for (const timer of threadTimers.values()) {
+        clearTimeout(timer)
+      }
+
+      threadTimers.clear()
 
       for (const ws of wss.clients) {
         ws.terminate()
