@@ -14,6 +14,8 @@ const exec = promisify(execFile), home = mkdtempSync(join(tmpdir(), 'pnyx-chat-'
 process.env.PNYX_HOME = home
 const fixture = seedWebFixture({ home })
 const markdown = readFileSync(join(import.meta.dirname, 'fixtures/web/chat.md'), 'utf8')
+// Enough earlier messages that the first one is on an older page.
+appendFileSync(fixture.transcript, Array.from({ length: 70 }, (_, i) => JSON.stringify({ type: 'assistant', timestamp: `2026-10-01T10:00:${String(i).padStart(2, '0')}Z`, message: { content: `Earlier note ${i}` } }) + '\n').join(''))
 appendFileSync(fixture.transcript, JSON.stringify({ type: 'user', timestamp: '2026-10-13T10:50:00Z', message: { content: '**Review** this plan and `safe links`.' } }) + '\n')
 appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: '2026-10-13T10:51:00Z', message: { content: markdown } }) + '\n')
 const meta = { actor: 'fixture', at: '2026-10-14T10:00:00Z' }
@@ -155,6 +157,10 @@ try {
   assert.match(sent, /> Final step: preserve the reply/); assert.match(sent, /Keep this final step explicit/)
   assert.match(sent, /> readable paragraph/); assert.match(sent, /Explain this selected phrase/)
   await check('!document.querySelector(".inline-comment") && document.querySelector(".composer textarea").value === ""', 'successful delivery clears only the submitted draft and comments')
+  await click('button', 'Load older messages'); await browser('wait', 'Earlier note 0')
+  await browser('eval', '() => { [...document.querySelectorAll(".detail-tabs button")].find(b => b.textContent === "Agent").click(); return true; }')
+  await browser('eval', '() => { document.querySelector("[data-conversation-tab]").click(); return true; }')
+  await check('[...document.querySelectorAll(".message p")].some(p => p.textContent === "Earlier note 0")', 'older pages survive switching tabs')
   step = 'Switch to mobile emulation (reloads the document), then reopen the card'
   await browser('emulate', '--viewport', '390x844x1,mobile,touch')
   await browser('wait', 'The working board')

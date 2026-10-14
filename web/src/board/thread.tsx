@@ -23,6 +23,8 @@ export function Thread({
   thread,
   kept,
   setKept,
+  older,
+  setOlder,
   command,
   connected,
   save,
@@ -37,6 +39,8 @@ export function Thread({
   thread: ThreadPage | null
   kept: ThreadEntry[]
   setKept(update: (kept: ThreadEntry[]) => ThreadEntry[]): void
+  older: ThreadPage | null
+  setOlder(page: ThreadPage): void
   command: Command
   connected: boolean
   save(patch: unknown): Promise<boolean>
@@ -46,16 +50,11 @@ export function Thread({
   setComments(comments: ChatComment[]): void
   notify(text: string): void
 }) {
-  const [older, setOlder] = useState<ThreadPage | null>(null)
   const [latest, setLatest] = useState(false)
   const scroller = useRef<HTMLDivElement>(null), atBottom = useRef(true)
   const { tools, thinking, focus, overrides } = traces({ view, card: card.id })
   const page = thread?.card === card.id ? thread : null
   const olderCursor = older ? older.older : page?.older
-  // The server pages only the traces on show, so a switch starts the pages over.
-  useEffect(() => {
-    setKept(() => []); setOlder(null)
-  }, [tools, thinking, setKept])
   useEffect(() => {
     if (page) {
       setKept(k => merge({ kept: k, page: page.entries }))
