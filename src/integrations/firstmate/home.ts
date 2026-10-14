@@ -8,6 +8,7 @@ import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { canonical } from '../../cli/commands.ts'
 import { basename, join } from 'node:path'
 import { BoardError, type SourceNote } from '../../core/model.ts'
+import { TERMINAL_FIELDS } from '../../core/route.ts'
 import { latestActivity, latestLine, openDecisions, statusNotes, type OpenDecision } from './status.ts'
 
 export const ADAPTER = 'firstmate'
@@ -30,6 +31,9 @@ export interface TaskObservation {
   activity?: string
   // Canonical path of the task's worktree from its meta, where its agent runs.
   worktree?: string
+  // The Paseo terminal the task's agent was launched in, from its meta, which tells
+  // tasks sharing a worktree apart.
+  paseoTerminal?: string
   decisions: OpenDecision[]
   // The latest status line, when it is failed: or blocked:.
   stalled?: { verb: string; note: string }
@@ -208,6 +212,7 @@ export function readHome({ home }: { home: string }): HomeObservation {
     const activity = latestActivity({ log })
     const last = latestLine({ log })
     const worktree = canonical({ path: meta.worktree })
+    const paseoTerminal = meta.paseo_terminal_id
     tasks.push({
       task,
       title: row?.title ?? task,
@@ -217,6 +222,7 @@ export function readHome({ home }: { home: string }): HomeObservation {
       merged: row?.merged ?? false,
       ...(activity ? { activity } : {}),
       ...(worktree ? { worktree } : {}),
+      ...(TERMINAL_FIELDS.paseoTerminal.test(paseoTerminal ?? '') ? { paseoTerminal } : {}),
       decisions: openDecisions({ log, kind: meta.kind || 'ship' }),
       ...(last && (last.verb === 'failed' || last.verb === 'blocked') ? { stalled: { verb: last.verb, note: last.note } } : {}),
       notes: taskNotes({ home, task, log }),
@@ -224,4 +230,21 @@ export function readHome({ home }: { home: string }): HomeObservation {
   }
 
   return { path: home, key: homeKey({ home }), title: basename(home), tasks }
+}
+
+// Why fm-send would not type a harness command into this task's session: a remote
+// task takes only inbox records, and a secondmate's input arrives as a marked message.
+export function typingReason({ home, task }: { home: string; task: string }): string | undefined {
+  const text = TASK_ID.test(task) ? readRegular({ path: join(home, 'state', `${task}.meta`) }) : undefined
+  const meta = text === undefined ? {} : parseMeta({ text })
+
+  if (meta.remote_host) {
+    return 'This Firstmate task runs on another machine, where fm-send only records messages, so a command cannot reach its session.'
+  }
+
+  if (meta.kind === 'secondmate') {
+    return "Firstmate's send marks a secondmate's input as a message, so a command would arrive as chat."
+  }
+
+  return undefined
 }

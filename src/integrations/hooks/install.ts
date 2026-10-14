@@ -36,6 +36,7 @@ const EVENTS: Record<Harness, string[]> = {
     'Stop',
     'StopFailure',
     'SessionEnd',
+    'PostModelSwitch',
   ],
   codex: [
     'SessionStart',

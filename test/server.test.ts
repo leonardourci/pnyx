@@ -468,6 +468,21 @@ test('web preferences, custom moves and read queries share the authenticated soc
     assert.equal(reply.code, 'NO_ROUTE')
   }
 
+  // A setting change takes the reply's route, so it is refused the same way.
+  t.command('agent-1', 'agent', [card, 'effort', 'high', 'id'])
+  const agent = await t.next(); assert.equal(agent.type, 'error')
+
+  if (agent.type === 'error') {
+    assert.equal(agent.code, 'NO_ROUTE')
+  }
+
+  t.command('agent-2', 'agent', [card, 'effort', 'high'])
+  const short = await t.next(); assert.equal(short.type, 'error')
+
+  if (short.type === 'error') {
+    assert.equal(short.code, 'VALIDATION_ERROR')
+  }
+
   t.command('history-1', 'history', ['--card', card]); assert.equal((await t.next()).type, 'receipt')
   t.command('escape-board', 'history', ['--board', 'other']); assert.equal((await t.next()).type, 'error')
   t.command('card-1', 'card', [card, '--full'])
@@ -560,6 +575,23 @@ test('browser reply delivery uses only configured fixture homes and never resend
   }
 
   assert.equal(loadBoard({ board: 'default' }).state.cards[card]?.attention.length, 1)
+
+  // A setting change goes through the same worker: the command, then Enter for a confirmation.
+  writeFileSync(join(fixture.nativeHome, 'send-exit'), '0')
+  withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      const d = decidePush({ state: w.state, key: 'layout', input: { agent: { provider: 'claude-code', sessionId: 'fixture-layout' } }, meta: { actor: 'test', at: '2026-10-14T17:00:00Z' } }); assert.ok('event' in d); w.append({ event: d.event })
+    },
+  })
+  t.command('agent-1', 'agent', [card, 'effort', 'high', 'effort-1'])
+  const changed = await receipt('agent-1'); assert.equal(changed.type, 'receipt', JSON.stringify(changed))
+
+  if (changed.type === 'receipt') {
+    assert.equal((changed.agent as { sent: string }).sent, 'delivered')
+  }
+
+  assert.match(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), /arg=\/effort high\n---\n[^]*arg=--key\narg=Enter\n---\n$/)
   t.command('search-1', 'search', ['conversation readable'])
   const found = await receipt('search-1'); assert.equal(found.type, 'receipt')
 

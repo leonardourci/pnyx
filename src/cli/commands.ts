@@ -31,6 +31,7 @@ import {
   type OutcomeState,
 } from '../core/model.ts'
 import { emptyBoard, replay } from '../core/reducer.ts'
+import { terminalFacts } from '../core/route.ts'
 import { readServer } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
@@ -193,9 +194,10 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
 
   const harvest: string[] = []
   const folder = canonical({ path: (entry.payload as { cwd?: unknown } | null)?.cwd })
+  const terminal = terminalFacts({ value: entry.terminal })
   // A session (never a subagent, whose key has a /) started in a folder a source
   // assigned, such as a Firstmate task's worktree, reports to that card.
-  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder }))
+  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder, terminal }))
 
   for (const o of observe({ envelope: entry as unknown as HookEnvelope })) {
     const key = resolve({ key: o.key })
@@ -953,6 +955,7 @@ commands:
   stop                                       Stop the board's running server
   setup hooks [--harness claude|codex]       Install the silent reporting hooks (--remove, --preview)
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
+  agent <id> [<setting> <value>]             List or change a session's model, effort, mode or fast mode from its card
   firstmate sync|watch --home <path>         Fold a Firstmate home's tasks into the board, once or on every change
 flags:
   --board <name>     Board to use (default: default)

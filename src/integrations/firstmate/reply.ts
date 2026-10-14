@@ -8,8 +8,8 @@ import type { ReplyState } from '../../core/model.ts'
 const SEND_TIMEOUT_MS = 120_000
 const DETAIL_MAX = 300
 
-// fm-send's exit contract as read here: 0 delivered; 1 and 3 may have landed (a
-// remote send that lost its transport exits 1); any other status nothing delivered.
+type Sent = { state: ReplyState; detail?: string }
+
 export function fmSend(
   { route, text, resolveKey }: {
     route: {
@@ -20,9 +20,19 @@ export function fmSend(
     resolveKey: string | undefined
   },
 ): { state: ReplyState; detail?: string } {
-  const args = [route.task, ...(resolveKey ? ['--resolve-key', resolveKey] : []), text]
-  const result = spawnSync(join(route.home, 'bin', 'fm-send.sh'), args, {
-    env: { ...process.env, FM_HOME: route.home },
+  return runSend({ home: route.home, args: [route.task, ...(resolveKey ? ['--resolve-key', resolveKey] : []), text] })
+}
+
+// Presses Enter in the task's session through fm-send's `--key Enter`.
+export function fmEnter({ route }: { route: { home: string; task: string } }): Sent {
+  return runSend({ home: route.home, args: [route.task, '--key', 'Enter'] })
+}
+
+// fm-send's exit contract as read here: 0 delivered; 1 and 3 may have landed (a
+// remote send that lost its transport exits 1); any other status nothing delivered.
+function runSend({ home, args }: { home: string; args: string[] }): Sent {
+  const result = spawnSync(join(home, 'bin', 'fm-send.sh'), args, {
+    env: { ...process.env, FM_HOME: home },
     encoding: 'utf8',
     timeout: SEND_TIMEOUT_MS,
   })

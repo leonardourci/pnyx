@@ -1,5 +1,10 @@
+import { useEffect, useState } from 'react'
+import { KEY_LABEL, confirms, harnessControls, inputReason, type Control, type ControlOption } from '../../../src/core/control.ts'
 import type { Card } from '../../../src/core/model.ts'
+import type { ThreadPage } from '../../../src/thread/read.ts'
+import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import type { Command } from './connection.ts'
 
 // Harnesses with their own mark; any other provider shows its name alone.
 const HARNESSES: Record<string, string> = { 'claude-code': 'Claude Code', codex: 'Codex' }
@@ -86,5 +91,164 @@ export function SettingList({ settings }: { settings?: Record<string, string> })
         </div>
       ))}
     </dl>
+  )
+}
+
+// What typing an option does, in the harness's own words.
+const typedAs = ({ option }: { option: ControlOption }) =>
+  'key' in option.input ? `Presses ${KEY_LABEL[option.input.key]} in the session` : `Types ${option.input.text} in the session`
+
+// Why the route cannot press this control's keys, if it cannot.
+const keyReason = ({ control, kind }: { control: Control; kind?: ThreadPage['routeKind'] }) =>
+  kind && control.options.map(o => inputReason({ kind, input: o.input })).find(Boolean)
+
+// A change sent and not yet reported back by the session; sending while the command
+// itself is still on its way.
+interface Pending { value: string; before?: string; sending: boolean }
+
+function ControlRow({
+  control,
+  now,
+  pending,
+  sending,
+  blocked,
+  why,
+  send,
+}: {
+  control: Control
+  now?: string
+  pending?: Pending
+  // A change, to this or another setting, is on its way: one at a time.
+  sending: boolean
+  blocked?: string
+  // Why this route cannot press this control's keys, shown under it.
+  why?: string
+  send({ option }: { option: ControlOption }): void
+}) {
+  const sent = pending && control.options.find(o => o.value === pending.value)
+
+  return (
+    <div className="control-row" role="group" aria-label={label(control.setting)}>
+      <div className="row between">
+        <span className="control-name">
+          <Icon name={control.setting} size={12} />
+          {label(control.setting)}
+        </span>
+        <span className="small muted">{now === undefined ? 'not reported' : shown(control.setting, now)}</span>
+      </div>
+      <div className="segmented">
+        {control.options.map(option => (
+          <Button
+            key={option.value}
+            variant="surface"
+            title={blocked ?? typedAs({ option })}
+            aria-pressed={control.confirm !== 'changes' && now !== undefined && confirms({ control, option, before: undefined, after: now })}
+            disabled={!!blocked || sending}
+            onClick={() => send({ option })}
+          >
+            {option.label}
+          </Button>
+        ))}
+      </div>
+      {why && <p className="small muted">{why}</p>}
+      {sent && (
+        <p className="small gold" role="status">
+          {pending.sending ? `Sending ${sent.label}…` : `Sent ${sent.label}. Waiting for the session to report its ${label(control.setting).toLowerCase()}; it does on its next hook or turn.`}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// Changes the session's settings by typing what its harness takes, on the card's
+// reply route, and shows each change as pending until the session reports it.
+export function AgentControls({
+  card,
+  thread,
+  command,
+  connected,
+  notify,
+}: {
+  card: Card
+  thread: ThreadPage | null
+  command: Command
+  connected: boolean
+  notify(text: string): void
+}) {
+  const [pending, setPending] = useState<Record<string, Pending>>({})
+  const provider = card.agent?.provider
+  const harness = harnessControls({ provider })
+  useEffect(() => {
+    setPending({})
+  }, [card.id])
+  useEffect(() => {
+    setPending(current => {
+      const left = Object.fromEntries(Object.entries(current).filter(([setting, p]) => {
+        const control = harness?.controls.find(c => c.setting === setting)
+        const option = control?.options.find(o => o.value === p.value)
+
+        const after = card.settings?.[setting]
+
+        return control && option && !confirms({ control, option, before: p.before, after })
+      }))
+
+      return Object.keys(left).length === Object.keys(current).length ? current : left
+    })
+  }, [card.settings, harness])
+
+  if (!harness) {
+    return (
+      <p className="empty">
+        {provider ? `Pnyx changes settings only for Claude Code and Codex sessions, not ${harnessName(provider)}.` : 'No agent session has joined this card yet, so there is nothing to change.'}
+      </p>
+    )
+  }
+
+  const page = thread?.card === card.id ? thread : null
+  const route = !connected ? 'Reconnect to change settings.' : !page ? 'Loading the route…' : page.route ? undefined : page.noRoute
+
+  const settle = ({ setting }: { setting: string }) =>
+    setPending(p => Object.fromEntries(Object.entries(p).filter(([name]) => name !== setting)))
+
+  const send = ({ control, option }: { control: Control; option: ControlOption }) => {
+    const before = card.settings?.[control.setting]
+    const sent = { value: option.value, ...(before === undefined ? {} : { before }) }
+    setPending(p => ({ ...p, [control.setting]: { ...sent, sending: true } }))
+    void command('agent', [card.id, control.setting, option.value, crypto.randomUUID()]).then(r => {
+      const result = r.agent as { sent: string; confirmed: boolean; now: string } | undefined
+      const help = (r.help as string[] | undefined)?.[0]
+
+      if (result?.sent !== 'delivered' || result.confirmed) {
+        settle({ setting: control.setting })
+      } else {
+        const waiting = { ...sent, sending: false }
+        setPending(p => (p[control.setting] ? { ...p, [control.setting]: waiting } : p))
+      }
+
+      notify(result?.confirmed ? `${label(control.setting)} is now ${shown(control.setting, result.now)}.` : help ?? `Sent ${option.label}.`)
+    })
+      .catch((e: Error) => {
+        settle({ setting: control.setting }); notify(e.message)
+      })
+  }
+
+  return (
+    <section className="agent-controls" aria-label="Change settings">
+      <h3>Change from here</h3>
+      <p className="small muted">{route ?? `Typed into the session through ${page?.via ?? 'its route'}, as its own commands and keys.`}</p>
+      {harness.controls.map(control => (
+        <ControlRow
+          key={control.setting}
+          control={control}
+          now={card.settings?.[control.setting]}
+          pending={pending[control.setting]}
+          sending={Object.values(pending).some(p => p.sending)}
+          blocked={route ?? keyReason({ control, kind: page?.routeKind })}
+          why={route ? undefined : keyReason({ control, kind: page?.routeKind })}
+          send={({ option }) => send({ control, option })}
+        />
+      ))}
+      {harness.note && <p className="small muted">{harness.note}</p>}
+    </section>
   )
 }
