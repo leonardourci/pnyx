@@ -261,6 +261,12 @@ export function decideLink(state: BoardState, ref: string, url: string, link: Li
 
 export function decideOutcome(state: BoardState, ref: string, outcome: Outcome | null, meta: Meta): Decision {
   const card = findCard(state, ref);
+  const observed = card.outcome?.source;
+  if (observed && outcome?.source !== observed) {
+    throw new BoardError(`card ${card.id}'s outcome comes from ${observed} and cannot be changed here`, "SOURCE_OWNED", [
+      `Run \`pnyx-axi move ${card.id} <column>\` to pin the card instead`,
+    ]);
+  }
   return decided(state, meta, {
     ...base(state, meta, card.id),
     type: "card.outcome",
@@ -309,6 +315,9 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
   }
   if (target.type === "card.pushed" && !target.data.before) {
     throw notUndoable(`${target.id} created card ${target.cardId} and cannot be undone`);
+  }
+  if (target.type === "card.outcome" && target.data.after?.source) {
+    throw notUndoable(`${target.id} records an outcome observed by ${target.data.after.source} and cannot be undone`);
   }
   if (target.type === "card.linked" && target.data.after?.state === "merged") {
     throw notUndoable(`${target.id} records a merge, which cannot be undone`);

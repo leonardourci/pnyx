@@ -6,8 +6,9 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { decideReply, findCard, type Meta } from "../../core/decide.ts";
 import { BoardError, type ReplyState } from "../../core/model.ts";
+import { drainSpool } from "../../cli/commands.ts";
 import { withWriter } from "../../store/board-store.ts";
-import { ADAPTER, HOME_OBJECT, STATUS_KEY, resolveHome } from "./home.ts";
+import { ADAPTER, STATUS_KEY, TASK_ID, resolveHome } from "./home.ts";
 import { firstmateRef } from "./sync.ts";
 
 const SEND_TIMEOUT_MS = 120_000;
@@ -74,9 +75,10 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
   const meta = (): Meta => ({ at: new Date().toISOString(), actor: request.actor ?? "cli" });
 
   const queued = withWriter(board, (writer) => {
+    drainSpool(writer);
     const card = findCard(writer.state, request.card);
     const ref = firstmateRef(card);
-    if (!ref?.instanceId || ref.objectId === HOME_OBJECT) {
+    if (!ref?.instanceId || !TASK_ID.test(ref.objectId)) {
       throw new BoardError(`card ${card.id} has no reply route`, "NO_ROUTE", ["Reply to a Firstmate task card"]);
     }
     const homes = request.homes.map(resolveHome);
@@ -105,6 +107,7 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
   const receipt = { card: queued.card, reply: queued.reply, sent: true, ...outcome };
   try {
     withWriter(board, (writer) => {
+      drainSpool(writer);
       const data = { reply: queued.reply, route: ADAPTER, ...outcome };
       const decision = decideReply(writer.state, queued.card, data, meta());
       if ("event" in decision) writer.append(decision.event);

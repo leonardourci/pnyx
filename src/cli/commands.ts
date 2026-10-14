@@ -117,7 +117,7 @@ function ingest(writer: Writer, entry: Record<string, unknown>): void {
 // Folds spooled hook events into the log, oldest first. Each push is recorded as a
 // source observation, so it can never be undone. A file that cannot be read is
 // renamed to *.rejected so it is not retried forever.
-function drainSpool(writer: Writer): { ingested: number; rejected: number } {
+export function drainSpool(writer: Writer): { ingested: number; rejected: number } {
   let ingested = 0;
   let rejected = 0;
   for (const file of spoolFiles(writer.dir)) {

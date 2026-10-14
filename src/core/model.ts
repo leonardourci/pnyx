@@ -59,10 +59,12 @@ export interface Attention {
 }
 
 // closed: the source closed the task, so even a failure is final and needs no one.
+// source: the adapter that observed the outcome; only that source may change it.
 export interface Outcome {
   state: OutcomeState;
   note?: string;
   closed?: boolean;
+  source?: string;
 }
 
 // A reply's latest receipt. The text stays in the log, on its queued event.

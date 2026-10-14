@@ -6,7 +6,7 @@ import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { loadBoard, readEvents } from "../src/store/board-store.ts";
+import { loadBoard, readEvents, spoolWrite } from "../src/store/board-store.ts";
 import { homeKey, parseBacklog, resolveHome } from "../src/integrations/firstmate/home.ts";
 import { latestActivity, openDecisions, parseStatusLine } from "../src/integrations/firstmate/status.ts";
 import { syncHome, watchHome, type SyncResult } from "../src/integrations/firstmate/sync.ts";
@@ -107,7 +107,7 @@ test("sync turns each task into a card under the home's card", () => {
   // records it as done with no pull request.
   const scout = cardOf(home, "docs-scout");
   assert.deepEqual(scout.attention, []);
-  assert.deepEqual(scout.outcome, { state: "done" });
+  assert.deepEqual(scout.outcome, { state: "done", source: "firstmate" });
   assert.equal(scout.column, "done");
   // A failed: line closes the ship's decisions but asks for the owner.
   const hotfix = cardOf(home, "hotfix-2");
@@ -134,7 +134,7 @@ test("a failed task closed in the backlog lands in Done as a closed failure", ()
   syncHome("default", home);
   const hotfix = cardOf(home, "hotfix-2");
   assert.deepEqual(hotfix.attention, []);
-  assert.deepEqual(hotfix.outcome, { state: "failed", note: "closed after failure", closed: true });
+  assert.deepEqual(hotfix.outcome, { state: "failed", note: "closed after failure", closed: true, source: "firstmate" });
   assert.equal(hotfix.column, "done");
 });
 
@@ -152,7 +152,7 @@ test("a blocked task closed in the backlog leaves Needs you", () => {
   syncHome("default", home);
   const hotfix = cardOf(home, "hotfix-2");
   assert.deepEqual(hotfix.attention, []);
-  assert.deepEqual(hotfix.outcome, { state: "done" });
+  assert.deepEqual(hotfix.outcome, { state: "done", source: "firstmate" });
   assert.equal(hotfix.column, "done");
 });
 
@@ -233,6 +233,28 @@ test("firstmate sync through the CLI", () => {
   fails(["firstmate", "sync", "--home", join(home, "data")], "VALIDATION_ERROR");
 });
 
+test("a Firstmate outcome is a source observation: undo and clear refuse it", () => {
+  const { home, env } = copyFixture();
+  const { run, fails } = cli(env);
+  run("firstmate", "sync", "--home", home);
+  const scout = cardOf(home, "docs-scout");
+  const recorded = readEvents("default").find((e) => e.type === "card.outcome" && e.cardId === scout.id)!;
+  fails(["undo", recorded.id], "NOT_UNDOABLE");
+  fails(["outcome", scout.id, "--clear"], "SOURCE_OWNED");
+  fails(["outcome", scout.id, "cancelled"], "SOURCE_OWNED");
+  run("move", scout.id, "needs_you");
+  run("firstmate", "sync", "--home", home);
+  assert.deepEqual(cardOf(home, "docs-scout").outcome, { state: "done", source: "firstmate" });
+  assert.equal(cardOf(home, "docs-scout").column, "needs_you");
+});
+
+test("firstmate sync ingests the hook spool", () => {
+  const { home } = copyFixture();
+  spoolWrite("default", { id: "s1", key: "spooled", at: "2026-01-01T00:00:00.000Z", card: { title: "from a hook" } });
+  syncHome("default", home);
+  assert.equal(loadBoard("default").state.cards[loadBoard("default").state.keys["spooled"]!]!.title, "from a hook");
+});
+
 test("reply sends through the home's fm-send with FM_HOME and records receipts", () => {
   const { home, env } = copyFixture();
   const { run, fails } = cli(env);
@@ -298,6 +320,11 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   fails(["reply", cardOf(home, "hotfix-2").id, "--text", "x", "--resolve-key", "@status", "--home", home], "VALIDATION_ERROR");
   fails(["reply", api.id, "--text=--resolve-key x", "--home", home], "VALIDATION_ERROR");
   fails(["reply", cardOf(home).id, "--text", "x", "--home", home], "NO_ROUTE");
+  // A task id that is not Firstmate's would reach fm-send as an option.
+  const crafted = join(home, "crafted.json");
+  writeFileSync(crafted, JSON.stringify({ title: "crafted", source: { adapter: "firstmate", instanceId: home, objectId: "--resolve-key" } }));
+  run("push", "--key", "crafted", "--file", crafted);
+  fails(["reply", "crafted", "--text", "x", "--home", home], "NO_ROUTE");
   fails(["undo", readEvents("default").find((e) => e.type === "card.replied")!.id], "NOT_UNDOABLE");
   // The card's home must be configured for this send.
   const other = copyFixture();

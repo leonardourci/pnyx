@@ -4,6 +4,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import { decideLink, decideOutcome, decidePush, parseLink, type Decision, type Meta } from "../../core/decide.ts";
 import type { Attention, BoardState, Card, SourceRef } from "../../core/model.ts";
+import { drainSpool } from "../../cli/commands.ts";
 import { withWriter, type Writer } from "../../store/board-store.ts";
 import { ADAPTER, HOME_OBJECT, STATUS_KEY, readHome, type HomeObservation, type TaskObservation } from "./home.ts";
 
@@ -66,6 +67,7 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
   const observed = readHome(home);
   const meta: Meta = { at, actor: ADAPTER };
   return withWriter(board, (writer) => {
+    drainSpool(writer);
     let appended = apply(writer, decidePush(writer.state, observed.key, { title: observed.title, tags: [ADAPTER], source: source(home, HOME_OBJECT) }, meta));
     for (const task of observed.tasks) {
       const key = `${observed.key}:${task.task}`;
@@ -76,7 +78,7 @@ export function syncHome(board: string, home: string, at = new Date().toISOStrin
       // A done: status line alone is often a handoff.
       if (task.done && !writer.state.cards[writer.state.keys[key]!]!.outcome) {
         const outcome = task.stalled?.verb === "failed" ? { state: "failed" as const, note: "closed after failure", closed: true } : { state: "done" as const };
-        appended += apply(writer, decideOutcome(writer.state, key, outcome, meta));
+        appended += apply(writer, decideOutcome(writer.state, key, { ...outcome, source: ADAPTER }, meta));
       }
     }
     const live = new Set(observed.tasks.map((t) => t.task));
