@@ -2,6 +2,7 @@
 // the choices each one offers, and the check of an answer before anything is typed.
 // Pure; the keys each harness expects are in integrations/hooks/answer.ts.
 import type { Attention, Card, FormField } from './model.ts'
+import { replyRoute } from './route.ts'
 
 // One question's answer: the 1-based numbers of the options picked, or free text
 // typed into the prompt's own "Type something" line (single-choice questions only).
@@ -50,25 +51,53 @@ const CODEX_PERMISSION: Choice[] = [
   { choice: 'deny', label: 'No', text: 'optional' },
 ]
 
+// A question is answered with one digit per option, and its last line takes text.
+const MAX_OPTIONS = 8
+
+// Names one request exactly as it was shown, so an answer lands only on the prompt
+// it was written for: a later request under the same key with other text,
+// questions or fields is a different prompt.
+export function requestId({ request }: { request: Attention }): string {
+  const { kind, key, text, questions, form } = request
+
+  return JSON.stringify({ kind, key, text, questions, form })
+}
+
+// Whether the card's recorded route can press keys: a session's own terminal, not
+// Firstmate's send command, a subagent (which takes input through its parent) or
+// Terminal (which cannot type a key without Return).
+function takesKeys({ card }: { card: Card }): boolean {
+  const found = replyRoute(card, [])
+
+  return 'route' in found && found.route.kind !== 'firstmate' && found.route.kind !== 'terminal-app'
+}
+
 // The prompt behind an open request, or undefined when only the terminal can answer
 // it: a request another source opened, one already answered, a notification that
-// does not say which prompt is showing, or a harness whose keys were not verified.
+// does not say which prompt is showing, a harness whose keys were not verified, or
+// a card whose route cannot press keys.
 export function answerPrompt(
   { card, request }: { card: Card; request: Attention },
 ): Prompt | undefined {
+  if (request.answered || !takesKeys({ card })) {
+    return undefined
+  }
+
   const provider = card.agent?.provider
 
   if (request.key === ELICITATION && request.form?.length && provider === 'claude-code' && !request.answered) {
     return { kind: 'form' }
   }
 
-  if (request.answered || !request.key.startsWith(TOOL_REQUEST)) {
+  if (!request.key.startsWith(TOOL_REQUEST)) {
     return undefined
   }
 
   if (provider === 'claude-code') {
     if (request.kind === 'question') {
-      return request.questions?.length ? { kind: 'questions' } : undefined
+      const fits = request.questions?.length && request.questions.every(q => q.options.length <= MAX_OPTIONS)
+
+      return fits ? { kind: 'questions' } : undefined
     }
 
     if (request.kind === 'plan') {
@@ -81,8 +110,13 @@ export function answerPrompt(
   return provider === 'codex' && request.kind === 'permission' ? { kind: 'choices', choices: CODEX_PERMISSION } : undefined
 }
 
+// One line of text to type into a prompt. A control character would be typed as a
+// key (Ctrl-C, Escape, an arrow), so text holding one is refused.
 function line({ value }: { value: unknown }): string | undefined {
-  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() || undefined : undefined
+  const text = typeof value === 'string' ? value.replace(/[ \t\r\n]+/g, ' ').trim() : ''
+
+  // eslint-disable-next-line no-control-regex
+  return text && !/[\u0000-\u001f\u007f-\u009f]/.test(text) ? text : undefined
 }
 
 function record({ value }: { value: unknown }): Record<string, unknown> | undefined {
