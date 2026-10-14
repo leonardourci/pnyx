@@ -143,6 +143,13 @@ export function readEvents(board: string): BoardEvent[] {
   return readLog(boardDir(board))?.events ?? [];
 }
 
+// Complete events at or after byte `offset`, and the offset just past them.
+// Null when the log is now shorter than `offset`, so the reader must start over.
+export function readEventsFrom(board: string, offset: number): { events: BoardEvent[]; end: number } | null {
+  const log = readLog(boardDir(board), offset);
+  return log && { events: log.events, end: log.end };
+}
+
 interface Snapshot {
   v: typeof EVENT_VERSION;
   offset: number;
