@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 import type { Card } from '../src/core/model.ts'
-import { confirms, findOption } from '../src/core/control.ts'
+import { confirms, findOption, inputReason } from '../src/core/control.ts'
 import { replyRoute, terminalFacts } from '../src/core/route.ts'
 import { loadBoard } from '../src/store/board-store.ts'
 
@@ -284,7 +284,7 @@ test('agent types a Claude Code command, answers its confirmation and presses ke
 })
 
 test('agent reads a Codex change back from the transcript at once', () => {
-  const { root, run, calls, set } = hosts()
+  const { root, run, calls, set, fails } = hosts()
   const transcript = join(root, 'rollout.jsonl')
   writeFileSync(transcript, `${JSON.stringify({ type: 'session_meta', payload: { originator: 'codex_cli_rs' } })}\n`)
   const file = join(root, 'codex.json')
@@ -294,6 +294,8 @@ test('agent reads a Codex change back from the transcript at once', () => {
     terminal: { tty: TTY, pid: '4242', program: 'kitty', paseoTerminal: 'term-1' },
   }))
   run('push', '--key', 'x1', '--file', file)
+  fails(['agent', 'x1', 'model', 'gpt-6.1-sol'], 'VALIDATION_ERROR')
+  fails(['agent', 'x1', 'approval', 'on-request'], 'VALIDATION_ERROR')
   assert.match(run('agent', 'x1'), /harness: codex[\s\S]*picks its model and approval mode only[\s\S]*effort,medium,lower raise,yes/)
 
   // The fake host stands in for Codex: the change lands in its rollout as it is sent.
@@ -347,6 +349,18 @@ test("a session's report confirms a change the way its control reads back", () =
   assert.equal(check('codex', 'effort', 'raise', 'medium', 'medium'), false)
   assert.equal(check('codex', 'fast', 'toggle', 'off', undefined), false)
   assert.equal(findOption({ provider: 'codex', setting: 'model', value: 'gpt-6' }), undefined)
+
+  for (const [setting, value] of [['model', 'gpt-6.1-sol'], ['approval', 'on-request']]) {
+    assert.equal(findOption({ provider: 'codex', setting: setting!, value: value! }), undefined)
+    const picked = findOption({ provider: 'codex', setting: setting!, value: value!, firstmate: true })
+    assert.ok(picked, `${setting} must be requestable on a Firstmate Codex card`)
+    assert.deepEqual(picked.option.input, { request: true })
+    assert.equal(inputReason({ kind: 'firstmate', input: picked.option.input }), undefined)
+    assert.match(inputReason({ kind: 'tmux', input: picked.option.input })!, /only be requested through Firstmate/)
+    assert.equal(confirms({ ...picked, before: undefined, after: value }), true)
+    assert.equal(confirms({ ...picked, before: 'old', after: 'different' }), false)
+  }
+
   assert.equal(findOption({ provider: 'opencode', setting: 'effort', value: 'high' }), undefined)
 })
 

@@ -6,9 +6,9 @@
 //
 // | Setting | Claude Code | Codex |
 // |---|---|---|
-// | model | `/model <alias>` | only in its /model picker: not offered |
+// | model | `/model <alias>` | /model picker directly; Firstmate request otherwise |
 // | effort | `/effort <level>` | Shift+Up and Shift+Down step it for this session |
-// | mode | Shift+Tab cycles manual, accept edits and plan, then bypass permissions and auto where enabled | only in its /permissions picker: not offered |
+// | mode | Shift+Tab cycles manual, accept edits and plan, then bypass permissions and auto where enabled | /permissions picker directly; Firstmate approval request otherwise |
 // | fast | `/fast on`, `/fast off` | `/fast` toggles the model's Fast tier |
 // | collaboration | | Shift+Tab toggles Plan |
 //
@@ -22,8 +22,8 @@ export const KEYS = ['shift-tab', 'shift-up', 'shift-down'] as const
 export type Key = (typeof KEYS)[number]
 export const KEY_LABEL: Record<Key, string> = { 'shift-tab': 'Shift+Tab', 'shift-up': 'Shift+Up', 'shift-down': 'Shift+Down' }
 
-// What is typed: a command submitted with Enter (confirm adds one more Enter), or one key.
-export type ControlInput = { text: string; confirm?: boolean } | { key: Key }
+// Request-only options carry no text or key that could reach a terminal.
+export type ControlInput = { text: string; confirm?: boolean } | { key: Key } | { request: true }
 
 // ask is the change in words for a Firstmate request, `<worker>` standing for the task's worker.
 export interface ControlOption { value: string; label: string; input: ControlInput; ask: string }
@@ -81,17 +81,49 @@ const HARNESS_CONTROLS: Record<string, Controls> = {
   },
 }
 
+const CODEX_REQUESTS: Control[] = [
+  {
+    setting: 'model',
+    confirm: 'equals',
+    options: ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'].map(value => ({
+      value,
+      label: value,
+      input: { request: true },
+      ask: `switch <worker> to model ${value}`,
+    })),
+  },
+  {
+    setting: 'approval',
+    confirm: 'equals',
+    options: ['untrusted', 'on-request', 'never'].map(value => ({
+      value,
+      label: value,
+      input: { request: true },
+      ask: `switch <worker> to approval policy ${value}`,
+    })),
+  },
+]
+
 // The controls a session of this harness offers; none for a harness Pnyx has not checked.
-export function harnessControls({ provider }: { provider?: string }): Controls | undefined {
-  return provider === undefined ? undefined : HARNESS_CONTROLS[provider]
+export function harnessControls({ provider, firstmate = false }: {
+  provider?: string
+  firstmate?: boolean
+}): Controls | undefined {
+  const harness = provider === undefined ? undefined : HARNESS_CONTROLS[provider]
+
+  return provider === 'codex' && firstmate && harness
+    ? { ...harness, controls: [...CODEX_REQUESTS, ...harness.controls], note: 'Every change asks Firstmate’s orchestrator in a request note. The worker reports the applied setting on its next hook or turn.' }
+    : harness
 }
 
-export function findOption({ provider, setting, value }: {
+export function findOption({ provider, setting, value, firstmate = false }: {
   provider: string | undefined
   setting: string
   value: string
+  firstmate?: boolean
 }): { control: Control; option: ControlOption } | undefined {
-  const control = harnessControls({ provider })?.controls.find(c => c.setting === setting)
+  const harness = harnessControls({ provider, firstmate })
+  const control = harness?.controls.find(c => c.setting === setting)
   const option = control?.options.find(o => o.value === value)
 
   return control && option ? { control, option } : undefined
@@ -101,6 +133,10 @@ export function findOption({ provider, setting, value }: {
 // a reply goes and a key needs a host that presses keys; a Firstmate task gets every
 // change as a request note, so it takes any input.
 export function inputReason({ kind, input }: { kind: ReplyRoute['kind']; input: ControlInput }): string | undefined {
+  if ('request' in input) {
+    return kind === 'firstmate' ? undefined : 'This setting can only be requested through Firstmate.'
+  }
+
   if (!('key' in input)) {
     return undefined
   }
