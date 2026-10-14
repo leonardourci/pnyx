@@ -71,8 +71,17 @@ function readConfig(path: string): Config {
   return config as Config;
 }
 
-// The config with every Pnyx handler taken out, and Pnyx's entries added back unless removing.
+// The config with each event's first Pnyx handler updated in place and any other Pnyx
+// handler taken out; Pnyx entries still missing are appended. Removing takes them all out.
 function merged(config: Config, harness: Harness, remove: boolean): Config {
+  const wanted = new Map(
+    remove
+      ? []
+      : EVENTS.map(({ event, matcher }) => [
+          event,
+          { matcher, handler: { type: "command", command: `${quote(scriptPath())} ${harness} ${event}`, timeout: TIMEOUT_SECONDS } },
+        ]),
+  );
   const hooks: Record<string, Group[]> = {};
   for (const [event, groups] of Object.entries(config.hooks ?? {})) {
     if (!Array.isArray(groups)) {
@@ -81,16 +90,19 @@ function merged(config: Config, harness: Harness, remove: boolean): Config {
     }
     const kept = groups.flatMap((group) => {
       if (!Array.isArray(group?.hooks) || !group.hooks.some(isPnyx)) return [group];
-      const others = group.hooks.filter((h) => !isPnyx(h));
-      return others.length ? [{ ...group, hooks: others }] : [];
+      const handlers = group.hooks.flatMap((h) => {
+        if (!isPnyx(h)) return [h];
+        const want = wanted.get(event);
+        if (!want || group.matcher !== want.matcher) return [];
+        wanted.delete(event);
+        return [{ ...h, ...want.handler }];
+      });
+      return handlers.length ? [{ ...group, hooks: handlers }] : [];
     });
     if (kept.length) hooks[event] = kept;
   }
-  if (!remove) {
-    for (const { event, matcher } of EVENTS) {
-      const handler = { type: "command", command: `${quote(scriptPath())} ${harness} ${event}`, timeout: TIMEOUT_SECONDS };
-      hooks[event] = [...(hooks[event] ?? []), { ...(matcher ? { matcher } : {}), hooks: [handler] }];
-    }
+  for (const [event, { matcher, handler }] of wanted) {
+    hooks[event] = [...(hooks[event] ?? []), { ...(matcher ? { matcher } : {}), hooks: [handler] }];
   }
   const next: Config = { ...config, hooks };
   if (Object.keys(hooks).length === 0) delete next.hooks;

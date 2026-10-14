@@ -297,6 +297,28 @@ test("setup hooks merges into Claude settings, keeps other hooks, and is idempot
   assert.match(run("setup", "hooks", "--harness", "claude", "--remove"), /unchanged/);
 });
 
+test("rerunning setup hooks keeps Pnyx groups in place and updates a changed handler there", () => {
+  const { run, claude } = sandbox();
+  mkdirSync(claude);
+  const settings = join(claude, "settings.json");
+  run("setup", "hooks", "--harness", "claude");
+  const config = readJson(settings);
+  config.hooks.Stop.push({ hooks: [{ type: "command", command: "/usr/local/bin/notify" }] });
+  writeFileSync(settings, JSON.stringify(config, null, 2));
+  const bytes = readFileSync(settings, "utf8");
+
+  assert.match(run("setup", "hooks", "--harness", "claude"), /unchanged/);
+  assert.equal(readFileSync(settings, "utf8"), bytes);
+
+  config.hooks.Stop[0].hooks[0].timeout = 30;
+  writeFileSync(settings, JSON.stringify(config, null, 2));
+  assert.match(run("setup", "hooks", "--harness", "claude"), /installed/);
+  const stop = readJson(settings).hooks.Stop;
+  assert.equal(stop.length, 2);
+  assert.equal(stop[0].hooks[0].timeout, 3);
+  assert.equal(stop[1].hooks[0].command, "/usr/local/bin/notify");
+});
+
 test("an installed hook command runs silently and spools", () => {
   const { run, claude, spooled } = sandbox();
   run("setup", "hooks", "--harness", "claude");
