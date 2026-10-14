@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decision } from '../src/core/decide.ts'
 import { emptyBoard, reduce } from '../src/core/reducer.ts'
 import { BoardError, type BoardEvent, type BoardState } from '../src/core/model.ts'
-import { patchView, viewFor } from '../src/core/view.ts'
+import { clampViewSize, patchView, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
 import { columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { readThread, recordEntries } from '../src/thread/read.ts'
@@ -59,6 +59,32 @@ test('preferences replay deterministically, guard revisions, and undo removes ma
   assert.deepEqual(viewFor(undone), viewFor(initial))
   assert.throws(() => patchView(state, { fontSize: 100 }), BoardError)
   assert.throws(() => patchView(state, JSON.parse('{"columnWidths":{"__proto__":300}}')), BoardError)
+})
+
+test('saved resize preferences load within readable size limits', () => {
+  const initial = push(emptyBoard(), 'a', { title: 'A' })
+  const view = viewFor(initial)
+  const loaded = viewFor({
+    ...initial,
+    view: {
+      ...view,
+      panelWidth: 1,
+      composerHeight: 999,
+      cardHeight: 1,
+      columnWidths: { needs_you: 1, review: 900 },
+      cardHeights: { c1: 1 },
+    },
+  })
+
+  assert.equal(loaded.panelWidth, VIEW_SIZE_LIMITS.panelWidth.min)
+  assert.equal(loaded.composerHeight, VIEW_SIZE_LIMITS.composerHeight.max)
+  assert.equal(loaded.cardHeight, VIEW_SIZE_LIMITS.cardHeight.min)
+  assert.equal(loaded.columnWidths.needs_you, VIEW_SIZE_LIMITS.columnWidth.min)
+  assert.equal(loaded.columnWidths.review, VIEW_SIZE_LIMITS.columnWidth.max)
+  assert.equal(loaded.cardHeights.c1, VIEW_SIZE_LIMITS.cardHeight.min)
+  assert.equal(clampViewSize(100, 320, 720), 320)
+  assert.equal(clampViewSize(800, 320, 720), 720)
+  assert.equal(clampViewSize(320.5, 320, 720), 321)
 })
 
 test('custom columns accept manual placement and cannot strand existing cards', () => {

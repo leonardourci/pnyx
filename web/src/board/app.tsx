@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
+import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { viewFor } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Input, Select } from '../components/ui/controls.tsx'
@@ -64,6 +65,8 @@ function Column({
       style={{
         width: width ?? view.columnWidths[id] ?? 290,
         flexBasis: width ?? view.columnWidths[id] ?? 290,
+        minWidth: VIEW_SIZE_LIMITS.columnWidth.min,
+        minHeight: VIEW_SIZE_LIMITS.columnHeight.min,
       }}
     >
       <header className="column-header">
@@ -93,8 +96,8 @@ function Column({
       <Resize
         label={`Resize ${title} column`}
         value={view.columnWidths[id] ?? 290}
-        min={240}
-        max={640}
+        min={VIEW_SIZE_LIMITS.columnWidth.min}
+        max={VIEW_SIZE_LIMITS.columnWidth.max}
         onPreview={setWidth}
         onCommit={n => save({ columnWidths: { [id]: n } })}
       />

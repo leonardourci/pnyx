@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import type { Catalog } from '../../../src/thread/catalog.ts'
+import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
@@ -130,8 +131,8 @@ export function Composer({
         axis="y"
         reverse
         value={height}
-        min={140}
-        max={420}
+        min={VIEW_SIZE_LIMITS.composerHeight.min}
+        max={VIEW_SIZE_LIMITS.composerHeight.max}
         onPreview={setPreview}
         onCommit={n => save({ composerHeight: n })}
       />

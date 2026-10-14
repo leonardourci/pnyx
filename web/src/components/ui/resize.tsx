@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { clampViewSize } from '../../../../src/core/view.ts'
 import { useBusy } from './controls.tsx'
 
 export function Resize({ label, value, min, max, axis = 'x', reverse = false, onPreview, onCommit }: { label: string; value: number; min: number; max: number; axis?: 'x' | 'y'; reverse?: boolean; onPreview(value: number | null): void; onCommit(value: number): unknown }) {
@@ -7,7 +8,7 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
   const drag = useRef<{ start: number; value: number } | null>(null)
 
   const previewAt = (n: number) => {
-    const next = Math.round(Math.max(min, Math.min(max, n)))
+    const next = clampViewSize(n, min, max)
     current.current = next
     setPreview(next)
     onPreview(next)
@@ -21,7 +22,7 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
     onPreview(null)
 
     if (!cancel && n !== null && n !== value) {
-      run(() => onCommit(n))
+      run(() => onCommit(clampViewSize(n, min, max)))
     }
   }
 

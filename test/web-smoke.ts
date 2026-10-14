@@ -85,6 +85,7 @@ try {
   await check('document.querySelectorAll("[data-card]").length === 6', 'fixture cards appear')
   await check('document.title === "(2) Board · Pnyx"', 'board tab title includes attention count')
   await check('await Promise.all([...document.querySelectorAll(\'link[rel="icon"],link[rel="apple-touch-icon"]\')].map(async link => { const response = await fetch(link.href); const blob = await response.blob(); const image = new Image(); image.src = URL.createObjectURL(blob); try { await image.decode(); return response.ok && (link.type === \'image/svg+xml\' ? blob.type === link.type : image.width === Number(link.sizes.value.split(\'x\')[0]) && image.height === image.width); } finally { URL.revokeObjectURL(image.src); } })).then(results => results.length === 4 && results.every(Boolean))', 'favicon and apple-touch assets load at their declared sizes')
+  await check('parseFloat(getComputedStyle(document.querySelector(".column-needs_you")).minWidth) >= 240 && parseFloat(getComputedStyle(document.querySelector(".card")).minWidth) >= 200 && parseFloat(getComputedStyle(document.querySelector(".card")).minHeight) >= 200', 'columns and cards keep readable minimum dimensions')
   await screenshot('board.png')
   const beforeResize = loadBoard('default').state.seq
   await browser('eval', '() => { document.querySelector("[aria-label=\\"Resize Needs you column\\"]").focus(); return true; }')
@@ -95,8 +96,13 @@ try {
   await rapid('[aria-label="Resize Needs you column"]', JSON.stringify(['keydown:ArrowRight', 'keyup:ArrowRight', 'keydown:ArrowRight', 'keyup:ArrowRight']))
   await oneEvent(from, 'a busy resize ignores a second press')
   assert.equal(view()?.columnWidths.needs_you, 306)
+  from = seq()
+  await browser('eval', '() => { const el = document.querySelector("[aria-label=\\"Resize Needs you column\\"]"); el.setPointerCapture = () => {}; el.dispatchEvent(new PointerEvent("pointerdown", { button: 0, pointerId: 7, clientX: 400, bubbles: true })); el.dispatchEvent(new PointerEvent("pointermove", { pointerId: 7, clientX: 0, bubbles: true })); el.dispatchEvent(new PointerEvent("pointerup", { pointerId: 7, bubbles: true })); return true; }')
+  await oneEvent(from, 'drag resize clamps to the column minimum')
+  await check('document.querySelector("[aria-label=\\"Resize Needs you column\\"]").getAttribute("aria-valuenow") === "240"', 'drag resize cannot pass the column minimum')
   await click('button', 'Shape the first working board'); await browser('wait', 'The first pass is ready to review.')
   await check('document.title === "(2) Shape the first working board · Pnyx"', 'open card appears in tab title')
+  await check('parseFloat(getComputedStyle(document.querySelector(".detail")).minWidth) >= 320 && parseFloat(getComputedStyle(document.querySelector(".detail")).minHeight) >= 280', 'conversation panel keeps readable minimum dimensions')
   await check('!document.querySelector(".message.tool p") && document.querySelectorAll(".message.message p").length >= 3', 'messages visible and traces collapsed')
   await click('switch', 'Tool details'); await check('!!document.querySelector(".message.tool p")', 'tool switch expands details')
   const tools = () => view()?.cardTraceOverrides[fixture.state.keys.layout!]?.tools
