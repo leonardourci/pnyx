@@ -11,6 +11,7 @@ import { STATUS_KEY, TASK_ID, resolveHome } from '../integrations/firstmate/home
 import { fmSend } from '../integrations/firstmate/reply.ts'
 import { HOOK } from '../integrations/hooks/observe.ts'
 import { typeInto } from '../integrations/hooks/terminal.ts'
+import { paseoReply } from '../integrations/paseo/reply.ts'
 import { withWriter } from '../store/board-store.ts'
 import { COMMON, drainSpool, guard, meta, parse, required, type Options, type Output } from './commands.ts'
 
@@ -43,14 +44,20 @@ function invalid(message: string, help: string[] = []): BoardError {
 
 // The route name kept on each receipt.
 function routeName(route: ReplyRoute): string {
-  return route.kind === 'firstmate' ? 'firstmate' : `terminal:${route.kind}`
+  return route.kind === 'firstmate' || route.kind === 'paseo-agent' ? route.kind : `terminal:${route.kind}`
 }
 
-function deliver(route: ReplyRoute, text: string, resolveKey: string | undefined) {
-  return route.kind === 'firstmate' ? fmSend(route, text, resolveKey) : typeInto(route, text)
+function deliver({ route, text, resolveKey, id }: {
+  route: ReplyRoute
+  text: string
+  resolveKey?: string
+  id: string
+}) {
+  return route.kind === 'firstmate' ? fmSend(route, text, resolveKey)
+    : route.kind === 'paseo-agent' ? paseoReply({ route, text, id }) : typeInto(route, text)
 }
 
-export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
+export async function sendReply(board: string, request: ReplyRequest): Promise<ReplyReceipt> {
   const { text, resolveKey } = request
 
   if (text.trim() === '') {
@@ -89,7 +96,7 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
         throw invalid('reply text cannot start with --')
       }
     } else if (resolveKey !== undefined) {
-      throw invalid('--resolve-key answers Firstmate decisions; this card replies through its terminal')
+      throw invalid('--resolve-key answers Firstmate decisions; this card replies through its agent session')
     }
 
     const reply = request.id ?? `r${writer.state.seq + 1}`
@@ -126,7 +133,7 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
   }
 
   // Sent outside the writer lock: a send can take a while and must not block other writers.
-  const outcome = deliver(queued.route, text, resolveKey)
+  const outcome = await deliver({ route: queued.route, text, resolveKey, id: queued.reply })
   const receipt = { card: queued.card, reply: queued.reply, sent: true, ...outcome }
 
   try {
@@ -146,7 +153,7 @@ export function sendReply(board: string, request: ReplyRequest): ReplyReceipt {
   return receipt
 }
 
-export const reply = guard(args => {
+export const reply = guard(async args => {
   const options: Options = {
     ...COMMON,
     home: { type: 'string', multiple: true },
@@ -174,7 +181,7 @@ export const reply = guard(args => {
     }
   }
 
-  const receipt = sendReply(board, {
+  const receipt = await sendReply(board, {
     card: ref,
     text: text!,
     homes: (values.home as string[] | undefined) ?? [],

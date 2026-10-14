@@ -10,6 +10,7 @@ import { Resize } from '../components/ui/resize.tsx'
 import { useBoard } from './connection.ts'
 import { BoardCard } from './card.tsx'
 import { Detail } from './detail.tsx'
+import { StartAgent } from './start-agent.tsx'
 import { Settings } from './settings.tsx'
 import { History } from './history.tsx'
 import { columnsFor, findBoxCards, pageTitle } from './view.ts'
@@ -109,7 +110,7 @@ function Column({
 export function App() {
   const { state, command, connected, error, thread, setThread } = useBoard()
   const [page, setPage] = useState(restored.page ?? 'board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null), [newTask, setNewTask] = useState(false)
   const notify = useCallback((text: string) => setNotice(text), [])
   const pendingScroll = useRef(restored.scroll)
   const view = viewFor(state)
@@ -314,6 +315,13 @@ export function App() {
                     options={[{ value: '', label: 'All tags' }, ...tags.map(t => ({ value: t, label: t }))]}
                     onChange={setTag}
                   />
+                  <Button
+                    aria-expanded={newTask}
+                    onClick={() => setNewTask(!newTask)}
+                    disabled={!connected}
+                  >
+                    + New task
+                  </Button>
                   {(workspace || tag) && (
                     <Button
                       onClick={() => {
@@ -335,6 +343,18 @@ export function App() {
                   />
                 </div>
               </div>
+              {newTask && (
+                <div className="new-task">
+                  <StartAgent
+                    command={command}
+                    connected={connected}
+                    notify={notify}
+                    started={task => {
+                      setNewTask(false); open(task)
+                    }}
+                  />
+                </div>
+              )}
               <div className={`work-area ${view.panelPlacement}`}>
                 <div className="board-space">
                   <div className="kanban" aria-label="Work columns">

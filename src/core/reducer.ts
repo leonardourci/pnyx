@@ -186,7 +186,7 @@ function apply(state: BoardState, event: BoardEvent): boolean {
         attention: [],
         links: [],
         sourceRefs: [],
-        ...(fields.agent && (!source || source.adapter === 'hooks') ? { automaticTask: true } : {}),
+        ...(fields.agent && (!source || source.adapter === 'hooks' || source.adapter === 'paseo') ? { automaticTask: true } : {}),
         column: 'workers_on_it',
         revision: 0,
         createdSeq: event.seq,

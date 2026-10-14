@@ -3,7 +3,7 @@ import { AxiError } from 'axi-sdk-js'
 import { reply } from './reply.ts'
 
 try {
-  process.stdout.write(JSON.stringify(reply(process.argv.slice(2))))
+  process.stdout.write(JSON.stringify(await reply(process.argv.slice(2))))
 } catch (error) {
   if (error instanceof AxiError) {
     process.stdout.write(JSON.stringify({

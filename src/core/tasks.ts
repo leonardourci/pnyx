@@ -5,6 +5,11 @@ export function sessionId({ agent }: { agent: AgentRef }): string {
   return `${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}`
 }
 
+// A session a person can keep talking to: a terminal hooks recorded, or a Paseo agent.
+export function interactive({ session }: { session: AgentSession }): boolean {
+  return Boolean(session.terminal?.tty || session.agent.paseoAgentId)
+}
+
 export function liveTask({ card }: { card: Card }): boolean {
   return card.hidden !== true
 }
@@ -37,8 +42,7 @@ export function projectSession({ state, session }: {
   const origin = state.cards[session.originCardId]
 
   if (origin?.automaticTask && !firstmate({ card: origin })) {
-    const interactive = Boolean(session.terminal?.tty)
-    origin.hidden = session.taskId !== origin.id || !interactive
+    origin.hidden = session.taskId !== origin.id || !interactive({ session })
   }
 
   const task = session.taskId && state.cards[session.taskId]
@@ -50,7 +54,7 @@ export function projectSession({ state, session }: {
   task.sessionIds = [session.id]
 
   if (task.automaticTask) {
-    task.hidden = !session.terminal?.tty
+    task.hidden = !interactive({ session })
   }
 
   task.agent = structuredClone(session.agent)
@@ -136,7 +140,8 @@ export function observeSession({ state, card, event }: {
     session.attention = card.attention.filter(a => a.key.startsWith('hook:'))
     const objectId = `${session.agent.sessionId}${session.agent.agentId ? `/${session.agent.agentId}` : ''}`
     session.sourceRefs = card.sourceRefs.filter(r => (r.adapter === 'hooks' && r.objectId === objectId)
-      || (r.adapter === 'transcript' && r.objectId === session.agent.transcriptPath))
+      || (r.adapter === 'transcript' && r.objectId === session.agent.transcriptPath)
+      || (r.adapter === 'paseo' && r.objectId === session.agent.paseoAgentId))
   }
 
   if (event.type === 'card.outcome' && (event.data.after?.source === 'hooks' || event.data.before?.source === 'hooks')) {

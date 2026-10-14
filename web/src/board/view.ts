@@ -68,3 +68,6 @@ export const slashMatches = (command: string, prefix: string) => command.replace
 // A page without a build (the Vite dev server) or a server without one never reloads.
 export const shouldReload = (loaded: string | undefined, server: string) =>
   Boolean(loaded && server && loaded !== server)
+
+// A task with no agent and no Firstmate route starts one instead of showing a conversation.
+export const needsAgent = ({ card }: { card: Card }) => !card.agent && !card.sourceRefs.some(r => r.adapter === 'firstmate')

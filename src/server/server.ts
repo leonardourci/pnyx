@@ -8,6 +8,7 @@ import { readThread, threadPath, THREAD_CURSOR, type ThreadPage } from '../threa
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
 import { findCard } from '../core/decide.ts'
 import { replyRoute } from '../core/route.ts'
+import { PASEO_CURSOR, paseoConversation, type PaseoConversation } from '../integrations/paseo/thread.ts'
 import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
 import { searchBoard } from '../search/semantic.ts'
@@ -78,7 +79,15 @@ export async function startServer({
   }
 
   homes = homes.map(resolveHome)
-  const subscriptions = new Map<WebSocket, { card: string; path?: string; watcher?: FSWatcher }>()
+  // A tab's open conversation: a transcript file it watches, or a Paseo agent's live timeline.
+  type Subscription = {
+    card: string
+    path?: string
+    paseo?: string
+    watcher?: { close(): unknown }
+    native?: Promise<PaseoConversation>
+  }
+  const subscriptions = new Map<WebSocket, Subscription>()
   const threadScheduled = new WeakSet<WebSocket>()
 
   const refreshThread = (ws: WebSocket) => {
@@ -100,20 +109,56 @@ export async function startServer({
         return
       }
 
+      const unavailable = () => send(ws, { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' })
+
+      if (sub.native) {
+        void sub.native.then(n => n.read({})).then(thread => {
+          if (subscriptions.get(ws) === sub && ws.readyState === ws.OPEN) {
+            send(ws, { type: 'thread', thread })
+          }
+        }, unavailable)
+
+        return
+      }
+
       try {
         send(ws, { type: 'thread', thread: readThread(board, state, card, homes) })
       } catch {
-        send(ws, { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' })
+        unavailable()
       }
     })
+  }
+
+  // The first page of a conversation, or of an older one before the cursor.
+  const threadPage = async ({ sub, card, before }: {
+    sub: Subscription
+    card: Card
+    before?: string
+  }): Promise<ThreadPage> => {
+    if (!sub.native) {
+      return readThread(board, state, card, homes, before)
+    }
+
+    try {
+      return await (await sub.native).read({ before })
+    } catch (error) {
+      // Replies sent from here still show while Paseo cannot be read.
+      return { ...readThread(board, state, card, homes), unavailable: `${error instanceof BoardError ? error.message : 'Paseo could not read this conversation'}; it shows again once Paseo answers.` }
+    }
   }
 
   const bindThread = ({ ws, card }: { ws: WebSocket; card: Card }) => {
     subscriptions.get(ws)?.watcher?.close()
     const path = threadPath(card)
-    const sub: { card: string; path?: string; watcher?: FSWatcher } = { card: card.id, path }
+    const sub: Subscription = { card: card.id, path }
+    const paseo = card.agent?.paseoAgentId
 
-    if (path) {
+    if (paseo) {
+      const native = paseoConversation({ card, changed: () => refreshThread(ws) })
+      native.catch(() => undefined)
+      const watcher = { close: () => void native.then(n => n.close(), () => undefined) }
+      Object.assign(sub, { paseo, native, watcher })
+    } else if (path) {
       try {
         sub.watcher = watch(dirname(path), (_event, filename) => {
           if (!filename || String(filename) === basename(path)) {
@@ -163,7 +208,7 @@ export async function startServer({
         || (event.type === 'task.session' && sub.card === event.data.before))) {
         const card = state.cards[sub.card]
 
-        if (card && sub.path !== threadPath(card)) {
+        if (card && (sub.path !== threadPath(card) || sub.paseo !== card.agent?.paseoAgentId)) {
           bindThread({ ws, card })
         }
 
@@ -331,12 +376,19 @@ export async function startServer({
 
           const card = findCard(state, args[0])
 
-          if (args[1] !== undefined && (args[1].length > 100 || !THREAD_CURSOR.test(args[1]))) {
+          const cursor = card.agent?.paseoAgentId ? PASEO_CURSOR : THREAD_CURSOR
+
+          if (args[1] !== undefined && (args[1].length > 200 || !cursor.test(args[1]))) {
             throw new BoardError('invalid thread cursor', 'VALIDATION_ERROR')
           }
 
           bindThread({ ws, card })
-          send(ws, { type: 'receipt', id, thread: readThread(board, state, card, homes, args[1]) })
+          const sub = subscriptions.get(ws)!
+          void threadPage({ sub, card, before: args[1] }).then(thread => {
+            if (ws.readyState === ws.OPEN) {
+              send(ws, { type: 'receipt', id, thread })
+            }
+          }, (error: Error) => fail(error.message, error instanceof BoardError ? error.code : 'UNKNOWN'))
         } else {
           if (args.length !== 3 || !args[2] || args[1].length > 32000) {
             throw new BoardError('reply expects card, text and idempotency key', 'VALIDATION_ERROR')
@@ -402,22 +454,23 @@ export async function startServer({
 
     const actor = name === 'history' || name === 'card' || args.some(a => a === '--actor' || a.startsWith('--actor=')) ? [] : ['--actor', 'web']
 
+    const failed = (error: unknown) => error instanceof AxiError
+      ? fail(error.message, error.code, error.suggestions)
+      : fail((error as Error).message, 'UNKNOWN')
+
     try {
-      const result = commands[name as (typeof CLI_COMMANDS)[number]]([...args, ...actor, '--board', board])
+      // task start waits on the Paseo daemon; every other command answers at once.
+      void Promise.resolve(commands[name as (typeof CLI_COMMANDS)[number]]([...args, ...actor, '--board', board])).then(result => {
+        try {
+          pump()
+        } catch {
+          kick()
+        }
 
-      try {
-        pump()
-      } catch {
-        kick()
-      }
-
-      send(ws, { ...result, type: 'receipt', id })
+        send(ws, { ...result, type: 'receipt', id })
+      }, failed)
     } catch (error) {
-      if (!(error instanceof AxiError)) {
-        return fail((error as Error).message, 'UNKNOWN')
-      }
-
-      fail(error.message, error.code, error.suggestions)
+      failed(error)
     }
   }
 

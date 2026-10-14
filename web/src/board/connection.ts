@@ -131,7 +131,7 @@ export function useBoard() {
     const id = crypto.randomUUID()
     const timer = setTimeout(() => {
       pending.current.delete(id); reject(new Error('No receipt yet. Check history before retrying.'))
-    }, name === 'reply' ? 140000 : 15000)
+    }, name === 'reply' ? 140000 : name === 'task' ? 60000 : 15000)
     pending.current.set(id, { resolve, reject, timer })
     socket.current.send(JSON.stringify({ type: 'command', id, name, args }))
   }), [])

@@ -11,7 +11,8 @@ import { Links, Tags } from './card.tsx'
 import { Composer } from './composer.tsx'
 import { Notes } from './notes.tsx'
 import { TaskSession } from './task-session.tsx'
-import { columnsFor, receiptLabel } from './view.ts'
+import { StartAgent } from './start-agent.tsx'
+import { columnsFor, needsAgent, receiptLabel } from './view.ts'
 import type { Command } from './connection.ts'
 
 const merge = (a: ThreadEntry[], b: ThreadEntry[]) => {
@@ -141,7 +142,14 @@ export function Detail({
           </Button>
         ))}
       </nav>
-      {tab === 'thread' ? (
+      {tab === 'thread' && needsAgent({ card }) ? (
+        <StartAgent
+          card={card}
+          command={command}
+          connected={connected}
+          notify={notify}
+        />
+      ) : tab === 'thread' ? (
         <>
           <div className="thread-controls">
             <div className="row wrap">

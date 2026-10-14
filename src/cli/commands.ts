@@ -2,7 +2,8 @@
 // board's writer lock, ingests the hook spool, then appends at most one event.
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
 import { randomUUID } from 'node:crypto'
-import { findSession, liveTask } from '../core/tasks.ts'
+import { findSession, interactive, liveTask } from '../core/tasks.ts'
+import { paseoStatus, startAgent } from '../integrations/paseo/launch.ts'
 import { readFileSync, realpathSync, renameSync, rmSync } from 'node:fs'
 import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
@@ -346,15 +347,21 @@ function commit(
 
 // Maps core and store errors onto AXI's structured errors.
 export function guard<T = Output>(handler: (args: string[]) => T) {
+  const mapped = (error: unknown): never => {
+    if (error instanceof BoardError) {
+      throw new AxiError(error.message, error.code, error.help)
+    }
+
+    throw error
+  }
+
   return (args: string[]): T => {
     try {
-      return handler(args)
-    } catch (error) {
-      if (error instanceof BoardError) {
-        throw new AxiError(error.message, error.code, error.help)
-      }
+      const result = handler(args)
 
-      throw error
+      return result instanceof Promise ? result.catch(mapped) as T : result
+    } catch (error) {
+      return mapped(error)
     }
   }
 }
@@ -483,16 +490,40 @@ const push = guard(args => {
   return commit(board, m, { type: 'card.pushed', card: key }, state => decidePush(state, key, input, m))
 })
 
-function taskCommand({ args }: { args: string[] }): Output {
+function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   const { values, positionals, board } = parse(args, {
-    ...WRITE, title: { type: 'string' }, key: { type: 'string' }, folder: { type: 'string' }, session: { type: 'string' },
+    ...WRITE,
+    title: { type: 'string' },
+    key: { type: 'string' },
+    folder: { type: 'string' },
+    session: { type: 'string' },
+    harness: { type: 'string' },
+    prompt: { type: 'string' },
+    'paseo-url': { type: 'string' },
   }, 2)
   const action = positionals[0]
   const m = meta(values)
+  const url = values['paseo-url'] as string | undefined
+
+  if (action === 'paseo') {
+    return paseoStatus({ url })
+  }
+
+  if (action === 'start') {
+    return startAgent({
+      board,
+      task: required(positionals[1], 'task id'),
+      harness: required(values.harness as string | undefined, '--harness'),
+      prompt: required(values.prompt as string | undefined, '--prompt'),
+      ...(values.folder ? { folder: values.folder as string } : {}),
+      ...(url ? { url } : {}),
+      meta: m,
+    })
+  }
 
   if (action === 'sessions') {
     const sessions = Object.values(loadBoard(board).state.sessions ?? {}).map(s => ({
-      id: s.id, provider: s.agent.provider, task: s.taskId ?? 'none', interactive: Boolean(s.terminal?.tty),
+      id: s.id, provider: s.agent.provider, task: s.taskId ?? 'none', interactive: interactive({ session: s }),
     }))
 
     return { sessions: sessions.length ? sessions : 'none: no sessions recorded' }
@@ -507,7 +538,7 @@ function taskCommand({ args }: { args: string[] }): Output {
   }
 
   if (action !== 'attach' && action !== 'detach') {
-    throw new AxiError('Use task create, sessions, attach or detach', 'VALIDATION_ERROR')
+    throw new AxiError('Use task create, start, paseo, sessions, attach or detach', 'VALIDATION_ERROR')
   }
 
   const ref = required(positionals[1], 'task id')
@@ -884,6 +915,8 @@ description: Deterministic board of every agent and its work
 commands:
   pnyx-axi                                   Show the board summary
   task create --title <title> [--folder <path>] Create a task
+  task start <task> --harness claude|codex --prompt <text> [--folder <path>]
+                                             Start an agent for the task in Paseo and attach it
   task sessions                              List recorded sessions, including background runs
   attach <task> --session <session>           Move an interactive session onto a task
   detach <task>                              Detach its agent without stopping the session
@@ -913,10 +946,16 @@ flags:
 
 const COMMAND_HELP: Record<string, string> = {
   task: `usage: pnyx-axi task create --title <title> [--key <key>] [--folder <path>]
+pnyx-axi task start <task> --harness claude|codex --prompt <text> [--folder <path>] [--paseo-url <url>]
+pnyx-axi task paseo [--paseo-url <url>]
 pnyx-axi task sessions
 pnyx-axi task attach <task> --session <session-id|card-id|key>
 pnyx-axi task detach <task>
 Tasks accept one attached session. A second session cannot replace the recipient.
+task start asks the local Paseo daemon (PNYX_PASEO_URL, default ws://127.0.0.1:6767/ws) to start a
+Claude Code or Codex agent in the task's folder with the opening message, then attaches it. --folder
+also records the task's folder. Replies and the conversation then go through Paseo; the agent stays
+in Paseo too. Repeating the same --event-id never starts a second agent. task paseo checks the daemon.
 attach and detach are also top-level commands. Writes accept --if-revision and --event-id.
 `,
   attach: `usage: pnyx-axi attach <task> --session <session-id|card-id|key> [--if-revision <n>] [--event-id <id>]

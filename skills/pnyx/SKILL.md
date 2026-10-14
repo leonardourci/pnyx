@@ -15,7 +15,7 @@ pnyx-axi task sessions
 pnyx-axi attach work:example --session <session-id-or-session-card-key>
 ```
 
-Use the exact identity from `task sessions`. An occupied task rejects another attachment. `pnyx-axi detach <task>` removes the attachment without stopping the agent; attach it elsewhere to continue. Attachment writes accept `--if-revision <revision>` and `--event-id <unique-id>`. A repeated event id returns its original receipt. A rejected revision means reread the task before retrying.
+To start a new agent for a task in Paseo instead, run `pnyx-axi task start <task> --harness claude|codex --prompt "<opening message>" --folder <absolute folder>`; it attaches the agent, and `pnyx-axi task paseo` checks that the Paseo daemon is running. Use the exact identity from `task sessions`. An occupied task rejects another attachment. `pnyx-axi detach <task>` removes the attachment without stopping the agent; attach it elsewhere to continue. Attachment writes accept `--if-revision <revision>` and `--event-id <unique-id>`. A repeated event id returns its original receipt. A rejected revision means reread the task before retrying.
 
 Report progress through `pnyx-axi push --key <task-key> --file <json-file-or->`, using fields such as `activity`, `workspace` and `tags`. Keep the task's key stable and let hooks supply native session, terminal and settings facts. For example, the JSON `{"activity":"Checking the migration"}` changes the status without renaming the task. Add evidence with `pnyx-axi link <task> --url <url>`. Use `pnyx-axi outcome <task> done --note "What finished"` for an explicit completion. A manual move pins placement; it does not answer a source request or complete the work.
 

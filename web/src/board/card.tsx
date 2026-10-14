@@ -5,7 +5,7 @@ import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { Harness, SettingChips } from './agent-settings.tsx'
-import { receiptLabel, safeLink, visibleParent } from './view.ts'
+import { needsAgent, receiptLabel, safeLink, visibleParent } from './view.ts'
 
 export function Links({ links }: { links: Link[] }) {
   return (
@@ -77,6 +77,7 @@ export function BoardCard({
           </Button>
         )}
         {!parent && card.parentId && <span className="muted small">Child task</span>}
+        {needsAgent({ card }) && <Button className="start" onClick={() => open(card.id)}>Start agent</Button>}
         {card.attention.slice(0, 1).map(a => <div key={a.key} className="request">{a.text ?? a.kind}</div>)}
         <Tags tags={card.tags} />
         <Links links={card.links} />

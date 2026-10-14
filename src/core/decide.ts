@@ -28,7 +28,7 @@ import {
 import { TERMINAL_FIELDS } from './route.ts'
 import { DEFAULT_VIEW, patchView, viewFor } from './view.ts'
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from './reducer.ts'
-import { findSession } from './tasks.ts'
+import { findSession, interactive } from './tasks.ts'
 
 export interface Meta {
   at: string
@@ -227,7 +227,7 @@ function parseAgent(value: unknown): AgentRef {
     throw invalid('agent must be an object')
   }
 
-  const fields = ['agentId', 'agentType', 'cwd', 'transcriptPath'] as const
+  const fields = ['agentId', 'agentType', 'cwd', 'transcriptPath', 'paseoAgentId', 'paseoUrl'] as const
   onlyKeys(value, ['provider', 'sessionId', ...fields], 'agent')
   const agent: AgentRef = { provider: text(value.provider, 'agent.provider'), sessionId: text(value.sessionId, 'agent.sessionId') }
 
@@ -340,7 +340,7 @@ export function decideSession({ state, ref, task, meta }: {
     throw new BoardError(`task ${target.id} already has an attached agent; detach it first`, 'SESSION_CONFLICT')
   }
 
-  if (target && !session.terminal?.tty) {
+  if (target && !interactive({ session })) {
     throw new BoardError('A background session has no interactive terminal and cannot be attached to a task', 'NO_TERMINAL')
   }
 

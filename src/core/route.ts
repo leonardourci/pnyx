@@ -3,6 +3,7 @@
 // session through the terminal its hooks found. Pure: delivery and the live
 // checks before it happen in the integrations.
 import type { Card, TerminalFacts } from './model.ts'
+import { localPaseoUrl } from './paseo.ts'
 
 const SAFE = /^[A-Za-z0-9_.:%,@+=][A-Za-z0-9_./:%,@+=-]{0,255}$/
 const PATH = /^\/[A-Za-z0-9_./:%,@+=-]{1,1023}$/
@@ -45,13 +46,14 @@ export type TerminalHost =
 // tty and pid name the harness process that owned the terminal, checked again
 // before anything is typed.
 export type TerminalRoute = TerminalHost & { tty: string; pid: number }
-export type ReplyRoute = { kind: 'firstmate'; home: string; task: string } | TerminalRoute
+export type ReplyRoute = { kind: 'firstmate'; home: string; task: string } | { kind: 'paseo-agent'; agent: string; url: string } | TerminalRoute
 
 export const HOST_LABEL: Record<ReplyRoute['kind'], string> = {
   'firstmate': 'Firstmate',
   'tmux': 'tmux',
   'herdr': 'Herdr',
   'paseo': 'Paseo',
+  'paseo-agent': 'Paseo',
   'iterm2': 'iTerm2',
   'terminal-app': 'Terminal',
 }
@@ -111,6 +113,15 @@ export function replyRoute(
 
   if (card.agent.agentId) {
     return { reason: "A subagent takes input through its parent session's card." }
+  }
+
+  // A Paseo agent takes messages through its daemon, like Paseo's own composer.
+  if (card.agent.paseoAgentId && card.agent.paseoUrl) {
+    try {
+      return { route: { kind: 'paseo-agent', agent: card.agent.paseoAgentId, url: localPaseoUrl({ url: card.agent.paseoUrl }) } }
+    } catch {
+      return { reason: 'The recorded Paseo daemon address is not a local one.' }
+    }
   }
 
   if (card.activity === 'ended') {
