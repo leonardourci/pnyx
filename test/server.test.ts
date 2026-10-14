@@ -207,7 +207,7 @@ test('serve runs until stop, and the summary reports it without starting it', as
   const before = cli()
   assert.match(before, /^server: not running$/m)
   assert.match(before, /pnyx-axi serve/)
-  assert.equal(existsSync(infoPath('default')), false)
+  assert.equal(existsSync(infoPath({ board: 'default' })), false)
 
   const child = spawn(process.execPath, [BIN, 'serve', '--port', '0'], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
   // A failed assertion must not leave the piped child keeping this test file alive.
@@ -215,16 +215,16 @@ test('serve runs until stop, and the summary reports it without starting it', as
   let out = ''
   child.stdout.on('data', chunk => (out += chunk))
   const url = await until(() => /^url: "(http:\/\/127\.0\.0\.1:\d+)"$/m.exec(out)?.[1], 'serve to start')
-  await until(() => (existsSync(infoPath('default')) ? true : undefined), 'server.json')
+  await until(() => (existsSync(infoPath({ board: 'default' })) ? true : undefined), 'server.json')
   assert.match(cli(), new RegExp(`^server: "running at ${url}"$`, 'm'))
-  assert.ok(existsSync(socketPath('default')))
+  assert.ok(existsSync(socketPath({ board: 'default' })))
 
   assert.match(cli('stop'), /^server: stopped$/m)
   const [code] = await once(child, 'exit')
   assert.equal(code, 0)
   assert.match(out, /^server: stopped$/m)
-  assert.equal(existsSync(infoPath('default')), false)
-  assert.equal(existsSync(socketPath('default')), false)
+  assert.equal(existsSync(infoPath({ board: 'default' })), false)
+  assert.equal(existsSync(socketPath({ board: 'default' })), false)
   assert.match(cli(), /^server: not running$/m)
   assert.match(cli('stop'), /^server: "none: not running"$/m)
 })
@@ -425,7 +425,7 @@ test('a server.json left by a dead server is not trusted, even when its pid was 
 
   try {
     mkdirSync(boardDir({ board: 'default' }), { recursive: true })
-    writeFileSync(infoPath('default'), JSON.stringify({ pid: other.pid, port, url: `http://127.0.0.1:${port}`, socket: null }))
+    writeFileSync(infoPath({ board: 'default' }), JSON.stringify({ pid: other.pid, port, url: `http://127.0.0.1:${port}`, socket: null }))
 
     assert.match(cli(), /^server: not running$/m)
     assert.match(cli('stop'), /^server: "none: not running"$/m)

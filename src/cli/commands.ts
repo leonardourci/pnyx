@@ -488,7 +488,7 @@ export async function home(): Promise<Output> {
     COLUMNS.map(c => [c, cards.filter(card => card.column === c).length]),
   )
   // Reports the server; never starts it.
-  const server = await readServer(DEFAULT_BOARD)
+  const server = await readServer({ board: DEFAULT_BOARD })
   const out: Output = { board: DEFAULT_BOARD, server: server ? `running at ${server.url}` : 'not running', columns }
 
   if (tornBytes > 0) {
