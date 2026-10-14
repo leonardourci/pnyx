@@ -9,6 +9,12 @@ The local server started by `pnyx-axi serve` and stopped by `pnyx-axi stop`, SIG
 
 The server reads the log for appends from any writer, including the CLI, and pushes them.
 
+Each card's last conversation message (the last typed user message or assistant reply in
+its recorded transcript, without tool calls, thinking or injected text, cut to 280
+characters) is pushed as `{"type":"latest","messages":{"<cardId>":{role,text,at}|null}}`:
+every card's on connect, then the ones that changed. A card is read again from its
+transcript tail when it gets an event or its transcript folder changes.
+
 Files: `server.json` (pid, port, url, socket) and `server.sock` in the board folder while it runs, and the per-install token at `$PNYX_HOME/token` (mode 0600), which local programs read for the handshake. `server.json` counts only while its port answers `/health` with the same board and pid.
 
 The same authenticated socket also accepts these commands:

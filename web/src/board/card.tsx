@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Card as CardData, Link, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { HybridHit } from '../../../src/search/semantic.ts'
+import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { Harness, SettingChips } from './agent-settings.tsx'
-import { receiptLabel, safeLink, visibleParent } from './view.ts'
+import { receiptLabel, relativeTime, safeLink, visibleParent } from './view.ts'
 
 export function Links({ links }: { links: Link[] }) {
   return (
@@ -35,8 +36,38 @@ export function Tags({ tags }: { tags: string[] }) {
   return <div className="tags">{tags.map(t => <span key={t} className={`tag tone-${[...t].reduce((n,c) => n + c.charCodeAt(0), 0) % 4}`}>{t}</span>)}</div>
 }
 
+// How long ago, rendered again only when the label changes.
+function Ago({ at }: { at: string }) {
+  const [label, setLabel] = useState(() => relativeTime(at, Date.now()))
+
+  useEffect(() => {
+    const tick = () => setLabel(relativeTime(at, Date.now()))
+
+    tick()
+    const timer = setInterval(tick, 30000)
+
+    return () => clearInterval(timer)
+  }, [at])
+
+  return <time dateTime={at} title={new Date(at).toLocaleString()}>{label}</time>
+}
+
+// The last message of the card's conversation, two lines at most.
+function LastMessage({ message }: { message: LatestMessage }) {
+  return (
+    <div className="last-message" title={message.text}>
+      <div className="row between">
+        <strong>{message.role === 'user' ? 'You' : 'Agent'}</strong>
+        {message.at && <Ago at={message.at} />}
+      </div>
+      <p>{message.text}</p>
+    </div>
+  )
+}
+
 export function BoardCard({
   card,
+  latest,
   match,
   visible,
   selected,
@@ -46,6 +77,7 @@ export function BoardCard({
   tabIndex,
 }: {
   card: CardData
+  latest?: LatestMessage
   match?: HybridHit
   visible: CardData[]
   selected: boolean
@@ -82,6 +114,7 @@ export function BoardCard({
         {!parent && card.parentId && <span className="muted small">Child task</span>}
         {card.attention.slice(0, 1).map(a => <div key={a.key} className="request">{a.text ?? a.kind}</div>)}
         {match?.snippets[0] && <p className="search-match">{match.snippets[0].snippet}</p>}
+        {latest && <LastMessage message={latest} />}
         <Tags tags={card.tags} />
         <Links links={card.links} />
         {visible.some(c => c.parentId === card.id) && (

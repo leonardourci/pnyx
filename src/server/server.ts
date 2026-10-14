@@ -4,7 +4,7 @@
 // It writes only through the CLI's own commands and spool drain, so the board
 // keeps a single writer whether a change comes from here or from the CLI.
 import { execFile, type ChildProcess } from 'node:child_process'
-import { readThread, threadPath, THREAD_CURSOR, type ThreadPage } from '../thread/read.ts'
+import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
 import { findCard } from '../core/decide.ts'
 import { replyRoute } from '../core/route.ts'
@@ -36,6 +36,8 @@ const STOP_TIMEOUT_MS = 5000
 const INDEX_TIMEOUT_MS = 120_000
 // Matching cards a search returns, enough to filter the whole board.
 const SEARCH_LIMIT = 100
+// How often a live transcript's card is read again at most while the session writes.
+const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
 const CLI_COMMANDS = ['move', 'link', 'outcome', 'undo', 'view', 'history', 'card'] as const
 // Same relative path from src/server and dist/server.
@@ -56,6 +58,8 @@ export type ServerMessage =
   | { type: 'thread'; thread: ThreadPage }
   | { type: 'snapshot'; seq: number; state: BoardState }
   | { type: 'event'; event: BoardEvent }
+  // Last conversation messages by card: all of them on connect, then the ones that changed (null when gone).
+  | { type: 'latest'; messages: Record<string, LatestMessage | null> }
   | { type: 'receipt'; id: string; [field: string]: unknown }
   | { type: 'error'; id: string | null; error: string; code: string; help?: string[] }
 
@@ -156,6 +160,86 @@ export async function startServer({
     for (const ws of wss.clients) {
       sendSnapshot(ws)
     }
+
+    touchLatest(Object.keys(state.cards))
+  }
+
+  // Each card's last conversation message, read from its transcript tail and pushed
+  // to every tab. A card is read again when it gets an event or its transcript
+  // changes: transcript folders are watched, as a live session writes between hook events.
+  // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
+  const latest: Record<string, LatestMessage> = {}
+  const folders = new Map<string, FSWatcher>()
+  const unread = new Set<string>()
+  let latestTimer: ReturnType<typeof setTimeout> | undefined
+
+  const watchFolder = (dir: string) => {
+    if (folders.has(dir)) {
+      return
+    }
+
+    try {
+      const watcher = watch(dir, (_event, filename) => {
+        const changed = filename ? join(dir, String(filename)) : undefined
+        touchLatest(Object.values(state.cards).filter(c => {
+          const path = threadPath(c)
+
+          return path && (changed ? path === changed : dirname(path) === dir)
+        })
+          .map(c => c.id))
+      })
+      watcher.on('error', () => {
+        watcher.close(); folders.delete(dir)
+      })
+      folders.set(dir, watcher)
+    } catch {
+      // A missing folder is watched once the card's next event reads it again.
+    }
+  }
+
+  const readLatest = () => {
+    latestTimer = undefined
+    const changed: Record<string, LatestMessage | null> = {}
+
+    for (const id of unread) {
+      const card = state.cards[id], path = card && threadPath(card)
+
+      if (path) {
+        watchFolder(dirname(path))
+      }
+
+      const message = path ? latestMessage(path) : null
+
+      if (JSON.stringify(message) === JSON.stringify(latest[id] ?? null)) {
+        continue
+      }
+
+      if (message) {
+        latest[id] = message
+      } else {
+        delete latest[id]
+      }
+
+      changed[id] = message
+    }
+
+    unread.clear()
+
+    if (Object.keys(changed).length) {
+      for (const ws of wss.clients) {
+        send(ws, { type: 'latest', messages: changed })
+      }
+    }
+  }
+
+  function touchLatest(ids: Iterable<string>) {
+    for (const id of ids) {
+      unread.add(id)
+    }
+
+    if (unread.size) {
+      latestTimer ??= setTimeout(readLatest, LATEST_DELAY_MS)
+    }
   }
 
   // Keeps search.db current in a child process, never on this event loop: at start
@@ -201,6 +285,7 @@ export async function startServer({
       state = reduce(state, event)
       recent.push(event)
       broadcast(event)
+      touchLatest([event.cardId])
     }
 
     offset = read.end
@@ -476,6 +561,7 @@ export async function startServer({
       })
       send(ws, { type: 'hello', build: buildId() })
       resume(ws, url.searchParams.get('after'))
+      send(ws, { type: 'latest', messages: latest })
     })
   })
 
@@ -539,6 +625,7 @@ export async function startServer({
   renameSync(tmp, infoPath(board))
   // Events spooled while no server ran.
   kick()
+  touchLatest(Object.keys(state.cards))
   let closing = false
   void index().catch((error: Error) => {
     if (!closing) {
@@ -553,10 +640,11 @@ export async function startServer({
     async close() {
       closing = true
 
-      for (const w of watchers) {
+      for (const w of [...watchers, ...folders.values()]) {
         w.close()
       }
 
+      clearTimeout(latestTimer)
       indexer?.kill()
 
       for (const ws of wss.clients) {

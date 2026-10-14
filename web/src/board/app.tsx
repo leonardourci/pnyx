@@ -106,7 +106,7 @@ function Column({
 }
 
 export function App() {
-  const { state, command, connected, error, thread, setThread } = useBoard()
+  const { state, command, connected, error, thread, setThread, latest } = useBoard()
   const [page, setPage] = useState(restored.page ?? 'board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const notify = useCallback((text: string) => setNotice(text), [])
@@ -350,6 +350,7 @@ export function App() {
                             <Fragment key={item.id}>
                               <BoardCard
                                 card={item}
+                                latest={latest[item.id]}
                                 match={matches.get(item.id)}
                                 visible={cards}
                                 selected={selected === item.id}
