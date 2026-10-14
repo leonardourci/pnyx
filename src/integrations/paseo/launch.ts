@@ -8,7 +8,7 @@ import { BoardError } from '../../core/model.ts'
 import { paseoUrl } from '../../core/paseo.ts'
 import { sessionId } from '../../core/tasks.ts'
 import { canonical, drainSpool, type Output } from '../../cli/commands.ts'
-import { withWriter } from '../../store/board-store.ts'
+import { pnyxHome, withWriter } from '../../store/board-store.ts'
 import { openPaseo, type Connect } from './client.ts'
 
 export const HARNESSES = { claude: 'claude-code', codex: 'codex' } as const
@@ -94,6 +94,8 @@ export async function startAgent({
       prompt,
       idempotencyKey: id,
       labels: { 'pnyx.task': claimed.card.id },
+      // The agent's own hooks report to this home and board, not the default ones.
+      env: { PNYX_HOME: pnyxHome(), PNYX_BOARD: board },
     })
   } catch (error) {
     if (error instanceof BoardError) {

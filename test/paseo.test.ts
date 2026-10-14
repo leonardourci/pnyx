@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, realpathSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -113,6 +113,7 @@ for (const harness of ['claude', 'codex']) {
       prompt: 'Do the lab work',
       idempotencyKey: 'start-1',
       labels: { 'pnyx.task': 'c1' },
+      env: { PNYX_HOME: process.env.PNYX_HOME, PNYX_BOARD: 'lab' },
     })
     assert.equal(paseo.calls.closed, 1)
 
@@ -213,4 +214,25 @@ test('pnyx-axi task start and task paseo report a stopped daemon as structured e
   assert.notEqual(start.status, 0)
   assert.match(start.stdout, /PASEO_UNAVAILABLE/)
   assert.match(run('task', '--help').stdout, /task start <task> --harness claude\|codex --prompt <text>/)
+})
+
+test('an agent started from a lab home reports its hooks to that home, never to the installed one', async () => {
+  // The owner's installed hook lives in its own home, as `setup hooks` puts it.
+  const installed = mkdtempSync(join(tmpdir(), 'pnyx-real-home-'))
+  const script = join(installed, 'hooks', 'pnyx-hook.sh')
+  mkdirSync(join(installed, 'hooks'))
+  copyFileSync(join(import.meta.dirname, '../setup/hooks/pnyx-hook.sh'), script)
+  const { folder } = board()
+  const lab = process.env.PNYX_HOME!
+  const paseo = fakePaseo()
+  await startAgent({ board: 'lab', task: 'work', harness: 'claude', prompt: 'Go', folder, url, meta: { at, actor: 'test' }, connect: paseo.connect })
+
+  // The agent's harness runs the installed hook with the environment Paseo was given.
+  const env = paseo.calls.create[0]!.env as Record<string, string>
+  const payload = JSON.stringify({ session_id: 'lab-session', hook_event_name: 'UserPromptSubmit', cwd: folder, prompt: 'Go' })
+  const ran = spawnSync('/bin/sh', [script, 'claude', 'UserPromptSubmit'], { input: payload, env: { PATH: process.env.PATH, ...env } })
+  assert.equal(ran.status, 0)
+
+  assert.equal(readdirSync(join(lab, 'boards', 'lab', 'spool')).filter(f => f.endsWith('.json')).length, 1)
+  assert.deepEqual(readdirSync(installed), ['hooks'])
 })
