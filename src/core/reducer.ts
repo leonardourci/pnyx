@@ -1,5 +1,8 @@
 import {
+  AUTO_TITLE_SOURCES,
   EVENT_VERSION,
+  SESSION_TITLE,
+  type AutoTitle,
   type BoardEvent,
   type BoardState,
   type Card,
@@ -46,6 +49,27 @@ export function columnFor(card: Card): Column {
   }
 
   return 'workers_on_it'
+}
+
+// Keeps the best auto title seen: a better source replaces a worse one, a later
+// session title or folder replaces an earlier one, and the first prompt stays. It
+// becomes the title only while no push has set one.
+function offerTitle(card: Card, next: AutoTitle): void {
+  const current = card.autoTitle
+
+  if (current) {
+    const rank = AUTO_TITLE_SOURCES.indexOf(next.from) - AUTO_TITLE_SOURCES.indexOf(current.from)
+
+    if (rank > 0 || (rank === 0 && next.from === 'prompt')) {
+      return
+    }
+  }
+
+  card.autoTitle = next
+
+  if (!card.titleSet) {
+    card.title = next.text
+  }
 }
 
 function sameSource(a: SourceRef, b: SourceRef): boolean {
@@ -153,13 +177,24 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       card.sourceRefs = [...card.sourceRefs.filter(r => !sameSource(r, source)), source]
     }
 
-    const { parentId, activity, settings, folder, ...rest } = fields
+    const { parentId, activity, settings, folder, autoTitle, ...rest } = fields
     Object.assign(card, rest)
 
     if (settings === null) {
       delete card.settings
     } else if (settings !== undefined) {
       card.settings = settings
+    }
+
+    if (rest.title === null) {
+      delete card.titleSet
+      card.title = card.autoTitle?.text ?? key
+    } else if (rest.title !== undefined) {
+      card.titleSet = true
+    }
+
+    if (autoTitle) {
+      offerTitle(card, autoTitle)
     }
 
     if (folder === null) {
@@ -209,8 +244,12 @@ function apply(state: BoardState, event: BoardEvent): boolean {
         ? replies.map(r => (r.id === reply.id ? reply : r))
         : [...replies, reply]
     } else if (event.type === 'card.noted') {
-      const { kind, source, at } = event.data
+      const { kind, source, at, text } = event.data
       card.notes = [...(card.notes ?? []), { id: event.id, kind, source, ...(at ? { at } : {}) }]
+
+      if (kind === 'context' && text.startsWith(SESSION_TITLE)) {
+        offerTitle(card, { from: 'session', text: text.slice(SESSION_TITLE.length) })
+      }
     } else {
       if (event.data.after) {
         card.outcome = event.data.after

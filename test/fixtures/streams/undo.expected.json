@@ -15,7 +15,8 @@
       "revision": 7,
       "createdSeq": 1,
       "updatedSeq": 7,
-      "updatedAt": "2026-10-13T14:07:00Z"
+      "updatedAt": "2026-10-13T14:07:00Z",
+      "titleSet": true
     }
   },
   "keys": {

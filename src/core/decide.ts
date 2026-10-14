@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import {
+  AUTO_TITLE_SOURCES,
   BoardError,
   EVENT_VERSION,
   LINK_KINDS,
@@ -11,6 +12,7 @@ import {
   type AgentRef,
   type AgentSettings,
   type Attention,
+  type AutoTitle,
   type BoardEvent,
   type BoardState,
   type Card,
@@ -204,6 +206,20 @@ function parseSource(value: unknown): SourceRef {
   return source
 }
 
+function parseAutoTitle(value: unknown): AutoTitle {
+  if (!isRecord(value)) {
+    throw invalid('autoTitle must be an object')
+  }
+
+  onlyKeys(value, ['from', 'text'], 'autoTitle')
+
+  if (!(AUTO_TITLE_SOURCES as readonly unknown[]).includes(value.from)) {
+    throw invalid(`autoTitle.from must be one of ${AUTO_TITLE_SOURCES.join(', ')}`)
+  }
+
+  return { from: value.from as AutoTitle['from'], text: text(value.text, 'autoTitle.text') }
+}
+
 function parseAgent(value: unknown): AgentRef {
   if (!isRecord(value)) {
     throw invalid('agent must be an object')
@@ -303,7 +319,7 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
     throw invalid('card must be a JSON object')
   }
 
-  onlyKeys(input, ['title', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'terminal', 'folder', 'attention', 'source'], 'card')
+  onlyKeys(input, ['title', 'autoTitle', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'terminal', 'folder', 'attention', 'source'], 'card')
 
   const cardId = state.keys[key] ?? `c${state.seq + 1}`
   const fields: PushFields = {}
@@ -340,6 +356,10 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
     }
 
     fields.tags = [...new Set(input.tags.map((t, i) => text(t, `tags[${i}]`)))]
+  }
+
+  if (input.autoTitle !== undefined) {
+    fields.autoTitle = parseAutoTitle(input.autoTitle)
   }
 
   if (input.agent !== undefined) {
@@ -394,8 +414,12 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
   })
 }
 
-// The card's value for a push field, null when absent.
+// The card's value for a push field, null when absent. An auto title counts as absent.
 function pushedValue(card: Card, field: string): unknown {
+  if (field === 'title' && !card.titleSet) {
+    return null
+  }
+
   return (card as unknown as Record<string, unknown>)[field] ?? null
 }
 
@@ -513,7 +537,7 @@ export function decideLink(
 }
 
 // source: the adapter observing this outcome. An observed outcome changes or
-// clears only through the same source.
+// clears only through the same source; a person may replace one hooks observed.
 export function decideOutcome(
   state: BoardState,
   ref: string,
@@ -524,7 +548,7 @@ export function decideOutcome(
   const card = findCard(state, ref)
   const observed = card.outcome?.source
 
-  if (observed && source !== observed) {
+  if (observed && source !== observed && !(source === undefined && observed === 'hooks')) {
     throw new BoardError(`card ${card.id}'s outcome comes from ${observed} and cannot be changed here`, 'SOURCE_OWNED', [
       `Run \`pnyx-axi move ${card.id} <column>\` to pin the card instead`,
     ])
@@ -654,7 +678,9 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
     throw notUndoable(`${target.id} created card ${target.cardId} and cannot be undone`)
   }
 
-  const observedBy = target.type === 'card.outcome' && (target.data.after?.source ?? target.data.before?.source)
+  const after = target.type === 'card.outcome' && !target.undoes && target.data.after?.source
+  const before = target.type === 'card.outcome' && target.data.before?.source
+  const observedBy = after || (before && (before !== 'hooks' || target.actor.startsWith('hook:')) && before)
 
   if (observedBy) {
     throw notUndoable(`${target.id} records an outcome observed by ${observedBy} and cannot be undone`)

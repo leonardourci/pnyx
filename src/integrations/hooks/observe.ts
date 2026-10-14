@@ -2,6 +2,7 @@
 // Pure: the envelope carries the time, and captured command text is only matched,
 // never run. Every mapping is a fixed rule on fields the harness sends; nothing
 // is classified by a model.
+import { basename } from 'node:path'
 import type { Attention } from '../../core/model.ts'
 import { terminalFacts } from '../../core/route.ts'
 import { hookSettings } from './settings.ts'
@@ -43,6 +44,8 @@ export interface Observation {
   ifChanged?: boolean
   // A pull request URL seen in a command's output: a refresh hint, not its state.
   link?: string
+  // "ended" when the session or subagent closed; null when new work reopens it.
+  outcome?: 'ended' | null
 }
 
 const PROVIDER: Record<Harness, string> = { claude: 'claude-code', codex: 'codex' }
@@ -272,6 +275,19 @@ function signal(event: string, payload: Record<string, unknown>): Signal | undef
   }
 }
 
+// Events that start new work in a session, so an ended session that sends one was resumed.
+const REOPENS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'SubagentStart']
+const TITLE_MAX = 100
+
+// The prompt's first non-empty line, cut to TITLE_MAX characters.
+function promptTitle(prompt: unknown): string | undefined {
+  const line = str(prompt)?.split('\n')
+    .map(l => l.trim())
+    .find(l => l !== '')
+
+  return line && line.length > TITLE_MAX ? `${line.slice(0, TITLE_MAX - 1)}…` : line
+}
+
 // The card's requests after one event's change; pure.
 export function attend(current: Attention[], change: Attend): Attention[] {
   const kept = current.filter(a => !change.clear?.some(prefix => a.key.startsWith(prefix)))
@@ -318,15 +334,22 @@ export function observe(envelope: HookEnvelope): Observation[] {
     objectId,
     observedAt: envelope.at,
   })
+  const cwd = str(p.cwd)
   const agent = (extra: Record<string, unknown>) =>
     Object.fromEntries(
-      Object.entries({ provider, sessionId, ...extra, cwd: str(p.cwd) })
+      Object.entries({ provider, sessionId, ...extra, cwd })
         .filter(([, v]) => v !== undefined),
     )
 
+  const prompt = envelope.event === 'UserPromptSubmit' ? promptTitle(p.prompt) : undefined
+  const folder = cwd && basename(cwd)
+  const autoTitle = prompt
+    ? { from: 'prompt', text: prompt }
+    : folder ? { from: 'folder', text: folder } : undefined
   const session = {
     source: source(sessionId),
     agent: agent({ transcriptPath: str(p.transcript_path) }),
+    ...(autoTitle ? { autoTitle } : {}),
   }
   const activity = found.activity ? { activity: found.activity } : {}
   const out: Observation[] = []
@@ -340,13 +363,15 @@ export function observe(envelope: HookEnvelope): Observation[] {
       ? { id: 'parent', key: parentKey, card: session, attend: { clear: [NOTIFICATION] }, ifChanged: true }
       : { id: 'parent', key: parentKey, card: session, ifMissing: true })
     key = `${parentKey}/${agentId}`
+    const agentType = str(p.agent_type)
     card = {
       source: source(`${sessionId}/${agentId}`),
       agent: agent({
         agentId,
-        agentType: str(p.agent_type),
+        agentType,
         transcriptPath: str(p.agent_transcript_path),
       }),
+      autoTitle: { from: 'agent', text: `${agentType ?? 'Subagent'} ${agentId.slice(-4)}` },
       parent: parentKey,
       ...activity,
     }
@@ -359,6 +384,12 @@ export function observe(envelope: HookEnvelope): Observation[] {
   }
 
   const observation: Observation = { id: '', key, card }
+
+  if (envelope.event === 'SessionEnd' || (envelope.event === 'SubagentStop' && agentId)) {
+    observation.outcome = 'ended'
+  } else if (REOPENS.includes(envelope.event)) {
+    observation.outcome = null
+  }
 
   if (found.attend) {
     observation.attend = found.attend

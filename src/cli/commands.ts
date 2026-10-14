@@ -134,6 +134,8 @@ export function canonical(path: unknown): string | undefined {
 
 // Hook events after which a session's transcript has turns worth harvesting.
 const HARVEST_AFTER = ['Stop', 'SubagentStop', 'PostCompact', 'SessionEnd']
+// The source of the "ended" outcome a hook records.
+const HOOKS = 'hooks'
 
 // Appends what one spool entry reports: a raw harness hook payload becomes card
 // observations, anything else is a push with an explicit key. Returns the cards
@@ -193,7 +195,18 @@ function ingest(writer: Writer, entry: Record<string, unknown>): string[] {
       continue
     }
 
-    apply(decidePush(writer.state, key, attention ? { ...card, attention } : card, m))
+    const pushed = decidePush(writer.state, key, attention ? { ...card, attention } : card, m)
+    apply(pushed)
+    // Hooks own only the outcome they recorded on the session's own card: a joined
+    // Firstmate task, or a Firstmate or manual outcome, keeps its own rule.
+    const target = writer.state.cards[writer.state.keys[key] ?? '']
+    const stale = 'skipped' in pushed && pushed.skipped === 'stale'
+    const owned = key === o.key && (!target?.outcome || target.outcome.source === HOOKS)
+
+    if (o.outcome !== undefined && target && !stale && owned) {
+      const outcome = o.outcome && { state: o.outcome }
+      apply(decideOutcome(writer.state, key, outcome, { ...m, id: `${m.id}:outcome` }, HOOKS))
+    }
 
     if (o.link) {
       apply(decideLink(writer.state, key, o.link, parseLink({ url: o.link }), { ...m, id: `${m.id}:link` }))
@@ -842,7 +855,7 @@ flags:
 const COMMAND_HELP: Record<string, string> = {
   push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
-card.json fields (all optional): title, workspace, tags[], parent (card id or key, null to clear), activity,
+card.json fields (all optional): title, autoTitle {from: session|prompt|agent|folder, text} (used only while no title is set), workspace, tags[], parent (card id or key, null to clear), activity,
   agent {provider, sessionId, agentId, agentType, cwd, transcriptPath}, attention[] {kind, key, blocking, text},
   settings {<name>: <value>, or null to remove it} merged into the card's settings, such as model, effort, mode, fast,
   terminal {tty, pid, program, tmux, tmuxPane, paseoTerminal, paseoHome, herdrSession, herdrPane},

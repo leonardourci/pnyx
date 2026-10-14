@@ -467,6 +467,11 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   assert.equal(asks[0]!.blocking, true)
   fails(['reply', api.id, '--text', 'x', '--resolve-key', asks[0]!.key, '--home', home], 'VALIDATION_ERROR')
 
+  // The joined session ending leaves the task's outcome to Firstmate.
+  hook('h2e', 'SessionEnd', { session_id: 'fm-s', cwd: worktree })
+  syncHome('default', home)
+  assert.equal(cardOf(home, 'api-v2').outcome, undefined)
+
   // A closed task gives its worktree up, so the next session there keeps its own card.
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')

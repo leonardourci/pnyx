@@ -5,12 +5,12 @@
 // costs one full re-read. The settings a transcript gained, such as a model switch
 // or a new effort, update the card as an observation of the transcript.
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { basename, dirname, isAbsolute, join } from 'node:path'
 import { decideNote, decidePush, noteId } from '../../core/decide.ts'
-import type { SourceNote } from '../../core/model.ts'
+import { SESSION_TITLE, type SourceNote } from '../../core/model.ts'
 import type { Writer } from '../../store/board-store.ts'
 import { readTranscript } from '../../search/index.ts'
-import { transcriptNotes } from './notes.ts'
+import { codexThreadTitle, transcriptNotes } from './notes.ts'
 import { transcriptSettings, type FoundSettings } from './settings.ts'
 
 const CURSORS = 'harvest.json'
@@ -53,6 +53,32 @@ export function appendNote(
   return 1
 }
 
+// Codex writes a session's thread name to session_index.jsonl in its home, not to
+// the transcript at <home>/sessions/YYYY/MM/DD/rollout-*.jsonl.
+// ponytail: reads the whole index each time; it is one short line per named thread.
+function codexTitle(writer: Writer, cardId: string, path: string, at: string): number {
+  const card = writer.state.cards[cardId]!
+  const sessions = dirname(dirname(dirname(dirname(path))))
+
+  if (card.agent?.provider !== 'codex' || card.agent.agentId || basename(sessions) !== 'sessions') {
+    return 0
+  }
+
+  let index: string
+
+  try {
+    index = readFileSync(join(dirname(sessions), 'session_index.jsonl'), 'utf8')
+  } catch {
+    return 0
+  }
+
+  const shown = card.autoTitle?.from === 'session' ? `${SESSION_TITLE}${card.autoTitle.text}` : undefined
+
+  return codexThreadTitle(index, card.agent.sessionId)
+    .filter(note => note.text !== shown)
+    .reduce((n, note) => n + appendNote(writer, cardId, note, at), 0)
+}
+
 // Harvests the transcripts of these cards from where the last read stopped, and
 // returns how many notes were appended. A missing transcript waits for its file.
 export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at: string): number {
@@ -67,6 +93,7 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
       continue
     }
 
+    appended += codexTitle(writer, id, path, at)
     const name = `${id}\n${path}`
     const tail = readTranscript({ source: path, ...(cursors[name] ?? { identity: '', pos: 0 }) })
 
@@ -75,11 +102,19 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
     }
 
     const settings: FoundSettings = {}
-    const subagent = writer.state.cards[id]!.agent!.agentId !== undefined
+    const { agent, autoTitle } = writer.state.cards[id]!
+    const subagent = agent!.agentId !== undefined
+    // The session title the transcript named last before this read.
+    let title = tail.reset || !cursors[name]?.pos || autoTitle?.from !== 'session' ? undefined : `${SESSION_TITLE}${autoTitle.text}`
 
     for (const line of tail.lines) {
       for (const note of transcriptNotes(line.record)) {
-        appended += appendNote(writer, id, note, at)
+        if (note.kind !== 'context' || !note.text.startsWith(SESSION_TITLE)) {
+          appended += appendNote(writer, id, note, at)
+        } else if (note.text !== title) {
+          title = note.text
+          appended += appendNote(writer, id, { ...note, ref: `${note.ref}@${line.pos}` }, at)
+        }
       }
 
       Object.assign(settings, transcriptSettings(line.record, subagent))

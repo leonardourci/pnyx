@@ -3,11 +3,11 @@
 // PNYX_HOME only; gh-axi is a fake.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { transcriptNotes } from '../src/integrations/hooks/notes.ts'
+import { codexThreadTitle, transcriptNotes } from '../src/integrations/hooks/notes.ts'
 import { transcriptMessages } from '../src/search/text.ts'
 import { loadBoard, readEvents, spoolWrite } from '../src/store/board-store.ts'
 
@@ -200,4 +200,74 @@ test('building the search index first harvests every transcript, so compaction s
   assert.match(run('search', 'rebuild'), /rebuilt:/)
   assert.equal(noted().length, 7)
   assert.match(run('search', 'quokka', '--kind', 'note'), /^ {2}- card: c1$/m)
+})
+
+test("Codex's session index yields the session's latest thread name", () => {
+  const index = [
+    JSON.stringify({ id: 'x2', thread_name: 'Ledger drift', updated_at: '2026-10-12T10:00:00Z' }),
+    'not json',
+    JSON.stringify({ id: 'other', thread_name: 'Other work' }),
+    JSON.stringify({ id: 'x2', thread_name: 'Ledger rounding fix', updated_at: '2026-10-12T11:00:00Z' }),
+  ].join('\n')
+  assert.deepEqual(codexThreadTitle(index, 'x2'), [
+    { kind: 'context', source: 'codex', text: 'Session title: Ledger rounding fix', ref: 'title:2026-10-12T11:00:00Z:Ledger rounding fix', at: '2026-10-12T11:00:00Z' },
+  ])
+  assert.deepEqual(codexThreadTitle(index, 'missing'), [])
+})
+
+test("a hook-only card takes the harness's own session title over its first prompt", () => {
+  const { home, run, push } = board()
+
+  const hookCard = (key: string, provider: string, transcriptPath: string) => {
+    const at = '2026-10-11T11:00:00.000Z'
+    push(key, { autoTitle: { from: 'prompt', text: 'fix the ledger please' }, agent: { provider, sessionId: key.split(':')[1], transcriptPath }, source: { adapter: 'hooks', objectId: key, observedAt: at } })
+  }
+
+  hookCard('claude:s1', 'claude-code', join(home, 's1.jsonl'))
+  writeFileSync(join(home, 's1.jsonl'), `${JSON.stringify({ type: 'ai-title', aiTitle: 'Ledger rounding', sessionId: 's1' })}\n`)
+
+  // Codex keeps thread names in session_index.jsonl in its home, beside sessions/.
+  const codexHome = join(home, 'codex')
+  const rollout = join(codexHome, 'sessions', '2026', '10', '12', 'rollout-x2.jsonl')
+  mkdirSync(join(rollout, '..'), { recursive: true })
+  copyFileSync(CODEX, rollout)
+  writeFileSync(join(codexHome, 'session_index.jsonl'), `${JSON.stringify({ id: 'x2', thread_name: 'Ledger sync drift' })}\n`)
+  hookCard('codex:x2', 'codex', rollout)
+  assert.match(run('card', 'c2'), /^ {2}title: fix the ledger please$/m)
+
+  run('harvest')
+  assert.match(run('card', 'c1'), /^ {2}title: Ledger rounding$/m)
+  assert.match(run('card', 'c2'), /^ {2}title: Ledger sync drift$/m)
+  assert.match(run('harvest'), /none: nothing new/)
+})
+
+test('a session renamed back to an earlier title takes that title again', () => {
+  const { home, run, push } = board()
+  const path = join(home, 's1.jsonl')
+  writeFileSync(path, '')
+  push('claude:s1', { agent: { provider: 'claude-code', sessionId: 's1', transcriptPath: path } })
+
+  const codexHome = join(home, 'codex')
+  const rollout = join(codexHome, 'sessions', '2026', '10', '12', 'rollout-x2.jsonl')
+  mkdirSync(join(rollout, '..'), { recursive: true })
+  writeFileSync(rollout, '')
+  push('codex:x2', { agent: { provider: 'codex', sessionId: 'x2', transcriptPath: rollout } })
+  const index = join(codexHome, 'session_index.jsonl')
+
+  for (const [i, title] of ['Alpha', 'Beta', 'Alpha'].entries()) {
+    appendFileSync(path, `${JSON.stringify({ type: 'custom-title', customTitle: title, sessionId: 's1' })}\n`)
+    appendFileSync(index, `${JSON.stringify({ id: 'x2', thread_name: title, updated_at: `2026-10-12T1${i}:00:00Z` })}\n`)
+    assert.match(run('harvest'), /^ {2}notes: 2 new$/m)
+    assert.match(run('card', 'c1'), new RegExp(`^ {2}title: ${title}$`, 'm'))
+    assert.match(run('card', 'c2'), new RegExp(`^ {2}title: ${title}$`, 'm'))
+  }
+
+  // A Codex index entry bumped without a rename appends nothing.
+  appendFileSync(index, `${JSON.stringify({ id: 'x2', thread_name: 'Alpha', updated_at: '2026-10-12T13:00:00Z' })}\n`)
+  // The same records read again, even from the start, append nothing.
+  appendFileSync(path, `${JSON.stringify({ type: 'custom-title', customTitle: 'Alpha', sessionId: 's1' })}\n`)
+  assert.match(run('harvest'), /none: nothing new/)
+  writeFileSync(join(home, 'boards', 'default', 'harvest.json'), 'not json')
+  assert.match(run('harvest'), /none: nothing new/)
+  assert.match(run('card', 'c1'), /^ {2}title: Alpha$/m)
 })

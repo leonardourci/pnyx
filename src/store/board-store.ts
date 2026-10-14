@@ -194,8 +194,12 @@ export function readEventsFrom(
   return log && { events: log.events, end: log.end }
 }
 
+// Bumped when the reducer derives cards differently, so an older cache is replayed.
+const RULES = 2
+
 interface Snapshot {
   v: typeof EVENT_VERSION
+  rules?: number
   offset: number
   state: BoardState
 }
@@ -205,6 +209,7 @@ function readSnapshot(dir: string): Snapshot | null {
     const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8')) as Snapshot
 
     return snap.v === EVENT_VERSION
+      && snap.rules === RULES
       && Number.isInteger(snap.offset)
       && snap.state?.v === EVENT_VERSION
       ? snap
@@ -228,7 +233,7 @@ function writeDurably(path: string, data: string | Buffer, flag: 'a' | 'w'): voi
 
 function writeSnapshot(dir: string, state: BoardState, offset: number): void {
   const tmp = `${snapshotPath(dir)}.tmp-${process.pid}`
-  writeDurably(tmp, JSON.stringify({ v: EVENT_VERSION, offset, state } satisfies Snapshot), 'w')
+  writeDurably(tmp, JSON.stringify({ v: EVENT_VERSION, rules: RULES, offset, state } satisfies Snapshot), 'w')
   renameSync(tmp, snapshotPath(dir))
 }
 

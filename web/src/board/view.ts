@@ -5,7 +5,7 @@ export const BUILTIN_COLUMNS: { id: Column; title: string; description: string }
   { id: 'needs_you', title: 'Needs you', description: 'Decisions & interruptions' },
   { id: 'workers_on_it', title: 'Workers on it', description: 'Open work, including idle agents' },
   { id: 'review', title: 'Review', description: 'Linked change is open' },
-  { id: 'done', title: 'Done', description: 'Confirmed outcomes & merges' },
+  { id: 'done', title: 'Done', description: 'Confirmed outcomes, merges & ended sessions' },
 ]
 export const columnsFor = (state: BoardState) => [...BUILTIN_COLUMNS, ...viewFor(state).customColumns.map(c => ({ ...c, description: 'Manual placement' }))]
 

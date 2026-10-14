@@ -133,10 +133,38 @@ test('column rules follow the settled precedence', () => {
     ['cancelled outcome', { outcome: { state: 'cancelled' } }, 'done'],
     ['failed outcome', { outcome: { state: 'failed' } }, 'needs_you'],
     ['closed failed outcome', { outcome: { state: 'failed', closed: true } }, 'done'],
+    ['ended session', { outcome: { state: 'ended', source: 'hooks' } }, 'done'],
+    ['ended session with an open question', { outcome: { state: 'ended', source: 'hooks' }, attention: [blocking] }, 'needs_you'],
     ['non-PR links do not place', { links: [{ kind: 'linear', url: 'https://linear.app/x' }] }, 'workers_on_it'],
   ]
 
   for (const [name, overrides, expected] of cases) {
     assert.equal(columnFor(card(overrides)), expected, name)
   }
+})
+
+test('an auto title fills an untitled card, best source first, and never replaces a set title', () => {
+  let state = emptyBoard()
+
+  const apply = (type: string, data: object) => {
+    const seq = state.seq + 1
+    state = reduce(state, { v: 1, seq, id: `e${seq}`, at: '2026-10-13T00:00:00Z', actor: 'test', cardId: 'c1', type, data } as BoardEvent)
+
+    return state.cards.c1!.title
+  }
+
+  const push = (fields: object) => apply('card.pushed', { key: 'claude:s1', ...fields })
+  const sessionTitle = (title: string) => apply('card.noted', { kind: 'context', source: 'claude-code', text: `Session title: ${title}` })
+
+  assert.equal(push({}), 'claude:s1')
+  assert.equal(push({ autoTitle: { from: 'folder', text: 'repo' } }), 'repo')
+  assert.equal(push({ autoTitle: { from: 'prompt', text: 'Fix the login bug' } }), 'Fix the login bug')
+  assert.equal(push({ autoTitle: { from: 'prompt', text: 'And add a test' } }), 'Fix the login bug', 'the first prompt stays')
+  assert.equal(push({ autoTitle: { from: 'folder', text: 'repo' } }), 'Fix the login bug', 'a worse source never replaces a better one')
+  assert.equal(sessionTitle('Login bug'), 'Login bug')
+  assert.equal(sessionTitle('Login bug and tests'), 'Login bug and tests', 'a later session title wins')
+  assert.equal(apply('card.noted', { kind: 'context', source: 'firstmate', text: "Captain's intent: ship it" }), 'Login bug and tests')
+  assert.equal(push({ title: 'Mine' }), 'Mine')
+  assert.equal(sessionTitle('Renamed'), 'Mine', 'a set title is never replaced')
+  assert.equal(push({ title: null }), 'Renamed', 'undoing the set title returns to the auto title')
 })
