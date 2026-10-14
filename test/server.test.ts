@@ -96,8 +96,16 @@ function inbox<T>() {
       queue.length > 0
         ? Promise.resolve(queue.shift()!)
         : new Promise<T>((resolve, reject) => {
-          waiting.push(resolve)
-          setTimeout(() => reject(new Error('timed out waiting for a message')), TIMEOUT_MS).unref()
+          const timer = setTimeout(() => {
+            // A wait that timed out must not swallow the message that arrives after it.
+            waiting.splice(waiting.indexOf(waiter), 1)
+            reject(new Error('timed out waiting for a message'))
+          }, TIMEOUT_MS).unref()
+          const waiter = (m: T) => {
+            clearTimeout(timer)
+            resolve(m)
+          }
+          waiting.push(waiter)
         }),
   }
 }
@@ -650,8 +658,9 @@ test('with semantic search on, the board search finds a transcript-only card by 
     server = await startServer({ board: 'default' })
     const t = await tab(); await t.next()
     // "dinosaur" is nowhere, so full text finds nothing; the transcript holds the other words.
-    // The first search waits for the worker to start and embed the board, so receipts may be slow.
-    const deadline = Date.now() + 30_000
+    // The first search waits for the worker to start and embed the board, so receipts may be slow:
+    // wait longer than the server's own worst case (10s index request plus 30s embed request).
+    const deadline = Date.now() + 60_000
 
     const receipt = async (id: string): Promise<ServerMessage> => {
       for (;;) {
