@@ -6,7 +6,7 @@ import { syncHome, watchHome, type SyncResult } from './sync.ts'
 
 const HOMES: Options = { ...COMMON, home: { type: 'string', multiple: true } }
 
-function homes({ values } : { values: Record<string, unknown> }): string[] {
+function homes({ values }: { values: Record<string, unknown> }): string[] {
   const list = (values.home as string[] | undefined) ?? []
 
   if (list.length === 0) {
@@ -16,7 +16,7 @@ function homes({ values } : { values: Record<string, unknown> }): string[] {
   return list.map(path => resolveHome({ path }))
 }
 
-function sync({ board, list } : { board: string; list: string[] }): Output {
+function sync({ board, list }: { board: string; list: string[] }): Output {
   const results = list.map(home => ({ home, ...syncHome({ board, home }) }))
 
   return { synced: results, help: ['Run `pnyx-axi` to see the board'] }
@@ -24,7 +24,7 @@ function sync({ board, list } : { board: string; list: string[] }): Output {
 
 // Watches each home, counting what it folds in, until closed. Shared by
 // `firstmate watch` and `serve --home`.
-export function watchHomes({ board, list } : {
+export function watchHomes({ board, list }: {
   board: string
   list: string[]
 }): {
@@ -33,7 +33,7 @@ export function watchHomes({ board, list } : {
   const totals = { syncs: 0, appended: 0, errors: 0 }
   let lastError: string | undefined
 
-  const onSync = ({ result } : { result: SyncResult | Error }) => {
+  const onSync = ({ result }: { result: SyncResult | Error }) => {
     if (result instanceof Error) {
       totals.errors += 1
       lastError = result.message
@@ -59,7 +59,7 @@ export function watchHomes({ board, list } : {
 }
 
 // Runs until SIGINT or SIGTERM, then reports what it folded in.
-async function watch({ board, list } : { board: string; list: string[] }): Promise<Output> {
+async function watch({ board, list }: { board: string; list: string[] }): Promise<Output> {
   const watches = watchHomes({ board, list })
   await new Promise<void>(resolve => {
     process.once('SIGINT', resolve)
@@ -100,6 +100,6 @@ then again on every change until SIGINT or SIGTERM.
 `,
 }
 
-export function firstmateHelp({ command } : { command: string }): string | undefined {
+export function firstmateHelp({ command }: { command: string }): string | undefined {
   return HELP[command]
 }

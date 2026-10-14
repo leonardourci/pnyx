@@ -91,7 +91,7 @@ export async function startServer({
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
 
-  const refreshThread = ({ ws } : { ws: WebSocket }) => {
+  const refreshThread = ({ ws }: { ws: WebSocket }) => {
     if (closed || threadScheduled.has(ws)) {
       return
     }
@@ -125,7 +125,7 @@ export async function startServer({
   let recent: BoardEvent[] = []
   const resyncing = new WeakSet<WebSocket>()
 
-  const send = ({ ws, message } : { ws: WebSocket; message: ServerMessage }) => {
+  const send = ({ ws, message }: { ws: WebSocket; message: ServerMessage }) => {
     if (ws.bufferedAmount > MAX_BUFFERED) {
       resyncing.add(ws)
 
@@ -136,14 +136,14 @@ export async function startServer({
   }
 
   // A snapshot is always followed by every card's last message, which the tab takes in place of its own.
-  const sendSnapshot = ({ ws } : { ws: WebSocket }) => {
+  const sendSnapshot = ({ ws }: { ws: WebSocket }) => {
     resyncing.delete(ws)
     send({ ws, message: { type: 'snapshot', seq: state.seq, state } })
     ws.send(JSON.stringify({ type: 'latest', messages: latest } satisfies ServerMessage))
   }
 
   // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.
-  const broadcast = ({ event } : { event: BoardEvent }) => {
+  const broadcast = ({ event }: { event: BoardEvent }) => {
     for (const ws of wss.clients) {
       if (!resyncing.has(ws)) {
         send({ ws, message: { type: 'event', event } })
@@ -178,7 +178,7 @@ export async function startServer({
   const unread = new Set<string>()
   let latestTimer: ReturnType<typeof setTimeout> | undefined
 
-  const watchFolder = ({ dir } : { dir: string }) => {
+  const watchFolder = ({ dir }: { dir: string }) => {
     if (closed || folders.has(dir)) {
       return
     }
@@ -247,7 +247,7 @@ export async function startServer({
     }
   }
 
-  function touchLatest({ ids } : { ids: Iterable<string> }) {
+  function touchLatest({ ids }: { ids: Iterable<string> }) {
     if (closed) {
       return
     }
@@ -320,10 +320,10 @@ export async function startServer({
   // that send no Origin are local programs, not pages; writes still need the token.
   const hosts = new Set<string>()
   const origins = new Set<string>()
-  const allowed = ({ req } : { req: IncomingMessage }) =>
+  const allowed = ({ req }: { req: IncomingMessage }) =>
     hosts.has(req.headers.host ?? '') && (req.headers.origin === undefined || origins.has(req.headers.origin))
 
-  const authorized = ({ given } : { given: string | null }) => {
+  const authorized = ({ given }: { given: string | null }) => {
     const bytes = Buffer.from(given ?? '')
 
     return token.length > 0 && bytes.length === token.length && timingSafeEqual(bytes, token)
@@ -350,7 +350,7 @@ export async function startServer({
   // A tab's write: the same CLI command, pinned to this board, under the same writer lock.
   const catalogReads = new WeakMap<WebSocket, { card: string; read: Promise<Catalog> }>()
 
-  const runCommand = ({ ws, message } : {
+  const runCommand = ({ ws, message }: {
     ws: WebSocket
     message: {
       id?: unknown
@@ -359,7 +359,7 @@ export async function startServer({
     }
   }) => {
     const id = typeof message.id === 'string' ? message.id : null
-    const fail = ({ error, code, help } : { error: string; code: string; help?: string[] }) => send({ ws, message: { type: 'error', id, error, code, help } })
+    const fail = ({ error, code, help }: { error: string; code: string; help?: string[] }) => send({ ws, message: { type: 'error', id, error, code, help } })
     const { name, args } = message
 
     if (id === null) {
@@ -574,7 +574,7 @@ export async function startServer({
   // A cursor this server can continue from gets only the events after it; any
   // other cursor (ahead of the board, older than the kept events, or none) gets a snapshot.
   // Either way the tab then gets every card's last message.
-  const resume = ({ ws, after } : { ws: WebSocket; after: string | null }) => {
+  const resume = ({ ws, after }: { ws: WebSocket; after: string | null }) => {
     const seq = after !== null && /^\d+$/.test(after) ? Number(after) : undefined
     const first = recent[0]?.seq ?? state.seq + 1
 
@@ -673,7 +673,7 @@ export async function startServer({
 // Hook events, one JSON object per line. Null when the socket cannot be bound
 // (a path too long for a Unix socket, say); hooks then spool and the watcher drains it.
 async function listenIngest(
-  { board, onLine } : { board: string; onLine: ({ line } : { line: string }) => void },
+  { board, onLine }: { board: string; onLine: ({ line }: { line: string }) => void },
 ): Promise<SocketServer | null> {
   const path = socketPath({ board })
   // Left by a server that did not stop cleanly; startServer already checked none is running.
@@ -719,7 +719,7 @@ async function listenIngest(
 
 type ClientMessage = { type?: unknown; id?: unknown; name?: unknown; args?: unknown }
 
-function parseMessage({ text } : { text: string }): ClientMessage | undefined {
+function parseMessage({ text }: { text: string }): ClientMessage | undefined {
   try {
     const message = JSON.parse(text) as unknown
 
@@ -731,7 +731,7 @@ function parseMessage({ text } : { text: string }): ClientMessage | undefined {
 
 // Names the built web board: index.html links the content-hashed assets, so its
 // hash changes with every rebuild. Empty when nothing is built (the Vite dev server).
-const buildOf = ({ html } : { html: string }) => createHash('sha256').update(html)
+const buildOf = ({ html }: { html: string }) => createHash('sha256').update(html)
   .digest('hex')
   .slice(0, 12)
 
@@ -743,7 +743,7 @@ function buildId(): string {
   }
 }
 
-function reply({ res, status, body } : {
+function reply({ res, status, body }: {
   res: ServerResponse
   status: number
   body: unknown
@@ -755,7 +755,7 @@ function reply({ res, status, body } : {
 // index.html carries the token for the WebSocket handshake; the caller has already
 // checked Host and Origin, so only this server's own page gets it. It also carries
 // its build, so an open tab can tell when a restarted server serves a newer one.
-function serveStatic({ res, path, token } : {
+function serveStatic({ res, path, token }: {
   res: ServerResponse
   path: string
   token: string
@@ -785,7 +785,7 @@ function serveStatic({ res, path, token } : {
   reply({ res, status: 404, body: { error: 'not found; run `pnpm run build` for the web board', code: 'NOT_FOUND' } })
 }
 
-function boardFlag({ args, options = {} } : { args: string[]; options?: { port?: { type: 'string' }; home?: { type: 'string'; multiple: true } } }) {
+function boardFlag({ args, options = {} }: { args: string[]; options?: { port?: { type: 'string' }; home?: { type: 'string'; multiple: true } } }) {
   try {
     const { values } = parseArgs({ args, options: { board: { type: 'string' }, ...options }, strict: true })
 

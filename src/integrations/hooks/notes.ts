@@ -22,9 +22,9 @@ type Rec = {
   payload?: { message?: unknown }
 }
 
-const str = ({ value } : { value: unknown }): string | undefined => (typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined)
+const str = ({ value }: { value: unknown }): string | undefined => (typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined)
 
-function contentText({ content } : { content: unknown }): string {
+function contentText({ content }: { content: unknown }): string {
   if (typeof content === 'string') {
     return content
   }
@@ -37,7 +37,7 @@ function contentText({ content } : { content: unknown }): string {
 }
 
 // The user's answers to one AskUserQuestion call, one decision per answered question.
-function answers({ r, at } : { r: Rec; at: string | undefined }): SourceNote[] {
+function answers({ r, at }: { r: Rec; at: string | undefined }): SourceNote[] {
   const result = r.toolUseResult as {
     questions?: unknown
     answers?: unknown
@@ -80,7 +80,7 @@ function answers({ r, at } : { r: Rec; at: string | undefined }): SourceNote[] {
   })
 }
 
-export function transcriptNotes({ record } : { record: unknown }): SourceNote[] {
+export function transcriptNotes({ record }: { record: unknown }): SourceNote[] {
   const r = record as Rec | null
 
   if (typeof r !== 'object' || r === null) {
@@ -88,7 +88,7 @@ export function transcriptNotes({ record } : { record: unknown }): SourceNote[] 
   }
 
   const at = str({ value: r.timestamp })
-  const note = ({ kind, source, text, ref } : { kind: Note['kind']; source: string; text: string | undefined; ref: string }): SourceNote[] =>
+  const note = ({ kind, source, text, ref }: { kind: Note['kind']; source: string; text: string | undefined; ref: string }): SourceNote[] =>
     text ? [{ kind, source, text, ref, ...(at ? { at } : {}) }] : []
 
   switch (r.type) {
@@ -124,7 +124,7 @@ export function transcriptNotes({ record } : { record: unknown }): SourceNote[] 
 
 // The thread name Codex last recorded for this session in its session_index.jsonl,
 // one {id, thread_name, updated_at} record per line, later lines newer.
-export function codexThreadTitle({ index, sessionId } : {
+export function codexThreadTitle({ index, sessionId }: {
   index: string
   sessionId: string
 }): SourceNote[] {

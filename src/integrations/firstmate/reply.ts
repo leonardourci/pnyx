@@ -11,7 +11,7 @@ const DETAIL_MAX = 300
 // fm-send's exit contract as read here: 0 delivered; 1 and 3 may have landed (a
 // remote send that lost its transport exits 1); any other status nothing delivered.
 export function fmSend(
-  { route, text, resolveKey } : {
+  { route, text, resolveKey }: {
     route: {
       home: string
       task: string

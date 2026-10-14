@@ -67,7 +67,7 @@ interface Group {
 }
 type Config = { hooks?: Record<string, Group[]> } & Record<string, unknown>
 
-export function configPath({ harness } : { harness: Harness }): string {
+export function configPath({ harness }: { harness: Harness }): string {
   if (harness === 'claude') {
     return join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'settings.json')
   }
@@ -79,15 +79,15 @@ export function scriptPath(): string {
   return join(pnyxHome(), 'hooks', SCRIPT)
 }
 
-function quote({ value } : { value: string }): string {
+function quote({ value }: { value: string }): string {
   return `'${value.replace(/'/g, '\'\\\'\'')}'`
 }
 
-function isPnyx({ handler } : { handler: Handler }): boolean {
+function isPnyx({ handler }: { handler: Handler }): boolean {
   return typeof handler.command === 'string' && handler.command.includes(`/${SCRIPT}`)
 }
 
-function readConfig({ path } : { path: string }): Config {
+function readConfig({ path }: { path: string }): Config {
   if (!existsSync(path)) {
     return {}
   }
@@ -101,7 +101,7 @@ function readConfig({ path } : { path: string }): Config {
   }
 
   const hooks = (config as Config | null)?.hooks
-  const isObject = ({ value: v } : { value: unknown }) => typeof v === 'object' && v !== null && !Array.isArray(v)
+  const isObject = ({ value: v }: { value: unknown }) => typeof v === 'object' && v !== null && !Array.isArray(v)
 
   if (!isObject({ value: config }) || (hooks !== undefined && !isObject({ value: hooks }))) {
     throw new BoardError({ message: `${path} is not a hook config object`, code: 'VALIDATION_ERROR', help: ['Fix it by hand, then rerun'] })
@@ -112,7 +112,7 @@ function readConfig({ path } : { path: string }): Config {
 
 // The config with each event's first Pnyx handler updated in place and any other Pnyx
 // handler taken out; Pnyx entries still missing are appended. Removing takes them all out.
-function merged({ config, harness, remove } : {
+function merged({ config, harness, remove }: {
   config: Config
   harness: Harness
   remove: boolean
@@ -185,7 +185,7 @@ export interface SetupResult {
 // Applies the change unless previewing. The config is replaced atomically and only
 // when its content changes; a symlinked config is written through the link.
 export function setupHooks(
-  { harness, opts } : { harness: Harness; opts: { remove: boolean; preview: boolean } },
+  { harness, opts }: { harness: Harness; opts: { remove: boolean; preview: boolean } },
 ): SetupResult {
   const path = configPath({ harness })
   const config = readConfig({ path })

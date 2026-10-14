@@ -37,7 +37,7 @@ const RESERVED_PREFIXES = ['pending-reply-']
 
 // Drops the worker-written `[at=...]` stamp runs that sit before the first colon,
 // so a readable time like [at=10:30] cannot move the head/note boundary.
-function unstamped({ line } : { line: string }): string {
+function unstamped({ line }: { line: string }): string {
   let keep = ''
   let rest = line
 
@@ -61,7 +61,7 @@ function unstamped({ line } : { line: string }): string {
   return keep + rest
 }
 
-function verbOf({ head } : { head: string }): string {
+function verbOf({ head }: { head: string }): string {
   const words = head.split('[')[0]!.trim()
 
   if (!words.includes('corr=')) {
@@ -73,11 +73,11 @@ function verbOf({ head } : { head: string }): string {
   return [first, ...others.filter(w => !CORR.test(w))].join(' ')
 }
 
-function noteHeadKey({ note } : { note: string }): string | undefined {
+function noteHeadKey({ note }: { note: string }): string | undefined {
   return /^\[key=([^\]]*)\]/.exec(note)?.[1]
 }
 
-export function parseStatusLine({ line } : { line: string }): StatusLine {
+export function parseStatusLine({ line }: { line: string }): StatusLine {
   const text = unstamped({ line })
   const colon = text.includes(':')
   const head = colon ? text.slice(0, text.indexOf(':')) : text
@@ -104,7 +104,7 @@ export function parseStatusLine({ line } : { line: string }): StatusLine {
   return { verb: verbOf({ head }), note, key, declares: colon || /\[key=.*\]/.test(text), colon }
 }
 
-function transitionAllowed({ key, note } : { key: string; note: string }): boolean {
+function transitionAllowed({ key, note }: { key: string; note: string }): boolean {
   const prefix = RESERVED_PREFIXES.find(p => key.startsWith(p))
 
   return prefix === undefined || (note.startsWith(prefix) && note.includes(':'))
@@ -112,7 +112,7 @@ function transitionAllowed({ key, note } : { key: string; note: string }): boole
 
 // The decisions still open after the whole log, oldest-opened first. kind is the
 // task's meta kind; only ship and scout terminal lines close every decision.
-export function openDecisions({ log, kind } : { log: string; kind: string }): OpenDecision[] {
+export function openDecisions({ log, kind }: { log: string; kind: string }): OpenDecision[] {
   const open = new Map<string, OpenDecision>()
 
   for (const raw of log.split('\n')) {
@@ -148,7 +148,7 @@ export function openDecisions({ log, kind } : { log: string; kind: string }): Op
 }
 
 // The latest line with a verb and a colon.
-export function latestLine({ log } : { log: string }): StatusLine | undefined {
+export function latestLine({ log }: { log: string }): StatusLine | undefined {
   const lines = log.split('\n')
 
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -163,7 +163,7 @@ export function latestLine({ log } : { log: string }): StatusLine | undefined {
 }
 
 // The latest declared line as `<verb>: <note>`, for the card's activity.
-export function latestActivity({ log } : { log: string }): string | undefined {
+export function latestActivity({ log }: { log: string }): string | undefined {
   const line = latestLine({ log })
 
   return line && (line.note ? `${line.verb}: ${line.note}` : line.verb)
@@ -173,7 +173,7 @@ const NOTE_VERBS: Record<string, StatusNote['kind']> = { 'needs-decision': 'deci
 
 // needs-decision, resolved and done lines with their text, oldest first. A
 // numeric [at=<epoch>] stamp gives the note its time.
-export function statusNotes({ log } : { log: string }): StatusNote[] {
+export function statusNotes({ log }: { log: string }): StatusNote[] {
   const notes: StatusNote[] = []
 
   for (const raw of log.split('\n')) {

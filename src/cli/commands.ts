@@ -55,7 +55,7 @@ const WRITE: Options = {
   'if-revision': { type: 'string' },
 }
 
-export function parse({ args, options, positionals } : {
+export function parse({ args, options, positionals }: {
   args: string[]
   options: Options
   positionals: number
@@ -83,7 +83,7 @@ export function parse({ args, options, positionals } : {
   }
 }
 
-export function required({ value, what } : { value: string | undefined; what: string }): string {
+export function required({ value, what }: { value: string | undefined; what: string }): string {
   if (!value) {
     throw new AxiError(`missing ${what}`, 'VALIDATION_ERROR', ['Run the command with --help'])
   }
@@ -91,7 +91,7 @@ export function required({ value, what } : { value: string | undefined; what: st
   return value
 }
 
-function integer({ value, flag } : {
+function integer({ value, flag }: {
   value: string | boolean | undefined
   flag: string
 }): number | undefined {
@@ -106,7 +106,7 @@ function integer({ value, flag } : {
   return Number(value)
 }
 
-export function meta({ values } : { values: Record<string, string | boolean | undefined> }): Meta {
+export function meta({ values }: { values: Record<string, string | boolean | undefined> }): Meta {
   const m: Meta = { at: new Date().toISOString(), actor: (values.actor as string | undefined) ?? 'cli' }
 
   if (typeof values.reason === 'string') {
@@ -127,7 +127,7 @@ export function meta({ values } : { values: Record<string, string | boolean | un
 }
 
 // The folder's canonical path, or the path as given when it cannot be resolved.
-export function canonical({ path } : { path: unknown }): string | undefined {
+export function canonical({ path }: { path: unknown }): string | undefined {
   if (typeof path !== 'string' || !path.startsWith('/')) {
     return undefined
   }
@@ -147,12 +147,12 @@ const HOOKS = 'hooks'
 // Appends what one spool entry reports: a raw harness hook payload becomes card
 // observations, anything else is a push with an explicit key. Returns the cards
 // whose transcripts to harvest.
-function ingest({ writer, entry } : { writer: Writer; entry: Record<string, unknown> }): string[] {
+function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unknown> }): string[] {
   if (typeof entry?.id !== 'string' || typeof entry.at !== 'string') {
     throw new BoardError({ message: 'spool entry needs id and at', code: 'VALIDATION_ERROR' })
   }
 
-  const apply = ({ decision } : { decision: Decision }) => {
+  const apply = ({ decision }: { decision: Decision }) => {
     if ('event' in decision) {
       writer.append({ event: decision.event })
     }
@@ -195,7 +195,7 @@ function ingest({ writer, entry } : { writer: Writer; entry: Record<string, unkn
   const folder = canonical({ path: (entry.payload as { cwd?: unknown } | null)?.cwd })
   // A session (never a subagent, whose key has a /) started in a folder a source
   // assigned, such as a Firstmate task's worktree, reports to that card.
-  const resolve = ({ key } : { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder }))
+  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder }))
 
   for (const o of observe({ envelope: entry as unknown as HookEnvelope })) {
     const key = resolve({ key: o.key })
@@ -251,7 +251,7 @@ function ingest({ writer, entry } : { writer: Writer; entry: Record<string, unkn
 // source observation, so it can never be undone. A file that cannot be read is
 // renamed to *.rejected so it is not retried forever. Then harvests the notes in
 // the transcripts of sessions that finished a turn.
-export function drainSpool({ writer } : {
+export function drainSpool({ writer }: {
   writer: Writer
 }): {
   ingested: number
@@ -291,7 +291,7 @@ export function drainSpool({ writer } : {
 }
 
 // The server's way into the same writer: drain the spool under the writer lock.
-export function ingestSpool({ board } : {
+export function ingestSpool({ board }: {
   board: string
 }): {
   ingested: number
@@ -301,7 +301,7 @@ export function ingestSpool({ board } : {
   return withWriter({ board, fn: ({ writer }) => drainSpool({ writer }) })
 }
 
-function receipt({ state, event } : { state: BoardState; event: BoardEvent }): Output {
+function receipt({ state, event }: { state: BoardState; event: BoardEvent }): Output {
   if (event.type === 'board.view') {
     return {
       event: { seq: event.seq, id: event.id, type: event.type },
@@ -326,7 +326,7 @@ interface Intent {
 // The receipt the event with this id got when it was appended. An id already used
 // for another card or event type is a conflict, not a retry.
 function originalReceipt(
-  { board, state, id, seq, intent } : {
+  { board, state, id, seq, intent }: {
     board: string
     state: BoardState
     id: string
@@ -362,12 +362,12 @@ function originalReceipt(
 // A repeated --event-id answers with the original receipt before any other check,
 // so a retry of a write that already landed never reports a conflict.
 function commit(
-  { board, meta, intent, decide } : {
+  { board, meta, intent, decide }: {
     board: string
     meta: Meta
     intent: Intent
     decide: (
-      { state } : {
+      { state }: {
         state: BoardState
       },
     ) => Decision
@@ -402,7 +402,7 @@ function commit(
 }
 
 // Maps core and store errors onto AXI's structured errors.
-export function guard<T = Output>({ handler } : { handler: ({ args } : { args: string[] }) => T }) {
+export function guard<T = Output>({ handler }: { handler: ({ args }: { args: string[] }) => T }) {
   return (args: string[]): T => {
     try {
       return handler({ args })
@@ -416,7 +416,7 @@ export function guard<T = Output>({ handler } : { handler: ({ args } : { args: s
   }
 }
 
-function column({ value } : { value: string }): Column {
+function column({ value }: { value: string }): Column {
   const c = value.startsWith('custom:') ? value : value.replace(/-/g, '_')
 
   if (!(COLUMNS as readonly string[]).includes(c) && !/^custom:[a-z0-9-]{1,60}$/.test(c)) {
@@ -426,7 +426,7 @@ function column({ value } : { value: string }): Column {
   return c as Column
 }
 
-function cardRow({ card } : { card: Card }) {
+function cardRow({ card }: { card: Card }) {
   return {
     id: card.id,
     title: card.title,
@@ -435,7 +435,7 @@ function cardRow({ card } : { card: Card }) {
   }
 }
 
-function cardDetail({ card } : { card: Card }): Output {
+function cardDetail({ card }: { card: Card }): Output {
   const detail: Output = {
     id: card.id,
     key: card.key,
@@ -509,7 +509,7 @@ export async function home(): Promise<Output> {
     return out
   }
 
-  const order = ({ card: c } : { card: Card }) => (COLUMNS as readonly string[]).indexOf(c.column)
+  const order = ({ card: c }: { card: Card }) => (COLUMNS as readonly string[]).indexOf(c.column)
   const sorted = cards.sort((a, b) =>
     order({
       card: a,
@@ -551,7 +551,7 @@ const NOTE_SECTIONS = { summary: 'summary', decision: 'decisions', context: 'con
 
 // The card's Summary, Decisions and Context notes, newest first. The text comes
 // from the log, where each noted event keeps it.
-function cardNotes({ board, card, full } : {
+function cardNotes({ board, card, full }: {
   board: string
   card: Card
   full: boolean
@@ -684,7 +684,7 @@ const link = guard({
     const m = meta({ values })
     const ref = required({ value: positionals[0], what: 'card id' })
     const url = required({ value: values.url as string | undefined, what: '--url' })
-    const s = ({ name } : { name: string }) => values[name] as string | undefined
+    const s = ({ name }: { name: string }) => values[name] as string | undefined
     const parsed = values.remove
       ? null
       : parseLink({ input: { url, kind: s({ name: 'kind' }), number: s({ name: 'number' }), title: s({ name: 'title' }), state: s({ name: 'state' }), checkedAt: s({ name: 'state' }) && new Date().toISOString() } })
@@ -717,7 +717,7 @@ const outcome = guard({
   },
 })
 
-function summarize({ event } : { event: BoardEvent }): string {
+function summarize({ event }: { event: BoardEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
@@ -766,7 +766,7 @@ const history = guard({
     const cardId = values.card ? findCard({ state, ref: values.card as string }).id : undefined
     const workspace = values.workspace as string | undefined
     // An outcome keeps the workspace it was recorded under; other events use the card's current one.
-    const inWorkspace = ({ e } : { e: BoardEvent }) =>
+    const inWorkspace = ({ e }: { e: BoardEvent }) =>
       (e.type === 'card.outcome' ? e.data.card.workspace : state.cards[e.cardId]?.workspace) === workspace
 
     const matches = readEvents({ board })
@@ -1025,7 +1025,7 @@ gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. The
 `,
 }
 
-export function commandHelp({ command } : { command: string }): string | undefined {
+export function commandHelp({ command }: { command: string }): string | undefined {
   if (command === 'view') {
     return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--board <name>]'
   }

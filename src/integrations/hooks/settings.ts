@@ -17,17 +17,17 @@
 // A setting found in a record; null clears one the harness no longer reports.
 export type FoundSettings = Record<string, string | null>
 
-function str({ value } : { value: unknown }): string | undefined {
+function str({ value }: { value: unknown }): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined
 }
 
-function obj({ value } : { value: unknown }): Record<string, unknown> {
+function obj({ value }: { value: unknown }): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {}
 }
 
-function known({ settings } : {
+function known({ settings }: {
   settings: Record<string, string | null | undefined>
 }): FoundSettings | undefined {
   const entries = Object.entries(settings).filter(([, v]) => v !== undefined)
@@ -36,11 +36,11 @@ function known({ settings } : {
   return Object.keys(found).length ? found : undefined
 }
 
-const onOff = ({ fast } : { fast: boolean | undefined }) => (fast === undefined ? undefined : fast ? 'on' : 'off')
+const onOff = ({ fast }: { fast: boolean | undefined }) => (fast === undefined ? undefined : fast ? 'on' : 'off')
 
 // Settings a hook payload carries: Claude Code sends the model only on SessionStart
 // and effort only around tool use and Stop; Codex sends the model on every hook.
-export function hookSettings({ payload } : {
+export function hookSettings({ payload }: {
   payload: Record<string, unknown>
 }): FoundSettings | undefined {
   return known({
@@ -59,14 +59,14 @@ export function hookSettings({ payload } : {
 }
 
 // Codex's service tier: fast is requested as priority; any other tier is not fast.
-function codexFast({ tier } : { tier: unknown }): string | undefined {
+function codexFast({ tier }: { tier: unknown }): string | undefined {
   const value = str({ value: tier })
 
   return onOff({ fast: value === undefined ? undefined : value === 'fast' || value === 'priority' })
 }
 
 // A granular approval policy is an object of switches, shown by its kind.
-function approval({ value } : { value: unknown }): string | undefined {
+function approval({ value }: { value: unknown }): string | undefined {
   return str({
     value,
   }) ?? (Object.keys(obj({
@@ -77,7 +77,7 @@ function approval({ value } : { value: unknown }): string | undefined {
 }
 
 function claudeSettings(
-  { record, subagent } : { record: Record<string, unknown>; subagent: boolean },
+  { record, subagent }: { record: Record<string, unknown>; subagent: boolean },
 ): FoundSettings | undefined {
   if (record.type === 'permission-mode') {
     return known({ settings: { mode: str({ value: record.permissionMode }) } })
@@ -107,9 +107,7 @@ function claudeSettings(
   })
 }
 
-function codexSettings({ record } : {
-  record: Record<string, unknown>
-}): FoundSettings | undefined {
+function codexSettings({ record }: { record: Record<string, unknown> }): FoundSettings | undefined {
   const payload = obj({ value: record.payload })
 
   if (record.type === 'session_meta') {
@@ -160,7 +158,7 @@ function codexSettings({ record } : {
 // The settings one transcript record reports, or undefined for a record that holds
 // none, read from a subagent's own transcript when subagent is set. Claude Code and
 // Codex records are told apart by their shape.
-export function transcriptSettings({ record, subagent = false } : {
+export function transcriptSettings({ record, subagent = false }: {
   record: unknown
   subagent?: boolean
 }): FoundSettings | undefined {

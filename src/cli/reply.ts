@@ -37,16 +37,16 @@ export interface ReplyReceipt {
   recordError?: string
 }
 
-function invalid({ message, help = [] } : { message: string; help?: string[] }): BoardError {
+function invalid({ message, help = [] }: { message: string; help?: string[] }): BoardError {
   return new BoardError({ message, code: 'VALIDATION_ERROR', help })
 }
 
 // The route name kept on each receipt.
-function routeName({ route } : { route: ReplyRoute }): string {
+function routeName({ route }: { route: ReplyRoute }): string {
   return route.kind === 'firstmate' ? 'firstmate' : `terminal:${route.kind}`
 }
 
-function deliver({ route, text, resolveKey } : {
+function deliver({ route, text, resolveKey }: {
   route: ReplyRoute
   text: string
   resolveKey: string | undefined
@@ -54,7 +54,7 @@ function deliver({ route, text, resolveKey } : {
   return route.kind === 'firstmate' ? fmSend({ route, text, resolveKey }) : typeInto({ route, text })
 }
 
-export function sendReply({ board, request } : {
+export function sendReply({ board, request }: {
   board: string
   request: ReplyRequest
 }): ReplyReceipt {

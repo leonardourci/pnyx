@@ -8,24 +8,24 @@ import type { Card } from '../core/model.ts'
 export interface Suggestion { command: string; description: string; source: string }
 export interface Catalog { suggestions: Suggestion[]; unavailable?: string; note?: string }
 export interface CatalogLocations { home: string; claude: string; codex: string }
-const object = ({ value: v } : { value: unknown }): Record<string, unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}
+const object = ({ value: v }: { value: unknown }): Record<string, unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}
 const validName = ({ value }: { value: unknown }): string | undefined =>
   typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$/.test(value) ? value : undefined
 
-const within = ({ root, path } : { root: string; path: string }) => {
+const within = ({ root, path }: { root: string; path: string }) => {
   const part = relative(root, path)
 
   return part !== '..' && !part.startsWith('../') && !isAbsolute(part)
 }
 
-const sort = ({ a, b } : { a: string; b: string }) => a < b ? -1 : a > b ? 1 : 0
+const sort = ({ a, b }: { a: string; b: string }) => a < b ? -1 : a > b ? 1 : 0
 
 // Only metadata is returned. File contents are never expanded or executed.
 // Budgets also bound symlink cycles and unusually large installations.
 class Reader {
   remaining = 1000
   partial = false
-  async text({ path } : { path: string }): Promise<string | undefined> {
+  async text({ path }: { path: string }): Promise<string | undefined> {
     if (--this.remaining < 0) {
       this.partial = true
 
@@ -57,7 +57,7 @@ class Reader {
     }
   }
 
-  async json({ path } : { path: string }) {
+  async json({ path }: { path: string }) {
     const text = await this.text({ path })
 
     if (!text) {
@@ -73,7 +73,7 @@ class Reader {
     }
   }
 
-  async list({ path } : { path: string }): Promise<string[]> {
+  async list({ path }: { path: string }): Promise<string[]> {
     if (--this.remaining < 0) {
       this.partial = true
 
@@ -97,7 +97,7 @@ class Reader {
     }
   }
 
-  async metadata({ path } : { path: string }) {
+  async metadata({ path }: { path: string }) {
     const text = await this.text({ path })
 
     if (text === undefined) {
@@ -130,7 +130,7 @@ class Reader {
   }
 }
 
-async function projectFolders({ cwd } : { cwd: string }): Promise<string[]> {
+async function projectFolders({ cwd }: { cwd: string }): Promise<string[]> {
   const folders = [cwd]
 
   for (let here = cwd, depth = 0; depth < 40; depth++) {
@@ -157,7 +157,7 @@ export async function readCatalog({
   card, locations = {
     home: homedir(), claude: process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), codex: process.env.CODEX_HOME || join(homedir(), '.codex'),
   },
-} : { card: Card; locations?: CatalogLocations }): Promise<Catalog> {
+}: { card: Card; locations?: CatalogLocations }): Promise<Catalog> {
   if (!card.agent?.cwd || !isAbsolute(card.agent.cwd)) {
     return { suggestions: [], unavailable: 'No working folder is recorded for this session. Commands stay literal.' }
   }
@@ -184,7 +184,7 @@ export async function readCatalog({
   const folders = await projectFolders({ cwd })
   const suggestions = new Map<string, Suggestion>()
 
-  const add = ({ command, meta, source } : {
+  const add = ({ command, meta, source }: {
     command: string
     meta: Record<string, unknown>
     source: string
@@ -203,7 +203,7 @@ export async function readCatalog({
   }
 
   const skills = async (
-    { root, source, prefix, disabled = {} } : {
+    { root, source, prefix, disabled = {} }: {
       root: string
       source: string
       prefix: string
@@ -230,7 +230,7 @@ export async function readCatalog({
   }
 
   const commands = async (
-    { root, source, prefix, recursive, depth = 0, seen = new Set<string>() } : {
+    { root, source, prefix, recursive, depth = 0, seen = new Set<string>() }: {
       root: string
       source: string
       prefix: string
@@ -348,7 +348,7 @@ export async function readCatalog({
         continue
       }
 
-      const paths = ({ field } : { field: string }) => [field, ...(typeof manifest[field] === 'string' ? [manifest[field]] : Array.isArray(manifest[field]) ? manifest[field] : [])].filter((p): p is string => typeof p === 'string').map(p => resolve(root, p))
+      const paths = ({ field }: { field: string }) => [field, ...(typeof manifest[field] === 'string' ? [manifest[field]] : Array.isArray(manifest[field]) ? manifest[field] : [])].filter((p): p is string => typeof p === 'string').map(p => resolve(root, p))
         .filter(p => within({ root, path: p }))
 
       for (const path of [...new Set(paths({ field: 'skills' }))]) {

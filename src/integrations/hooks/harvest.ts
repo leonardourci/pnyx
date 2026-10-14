@@ -18,7 +18,7 @@ const CURSORS = 'harvest.json'
 // "<card id>\n<transcript path>" -> how far it was read.
 type Cursors = Record<string, { identity: string; pos: number }>
 
-function readCursors({ dir } : { dir: string }): Cursors {
+function readCursors({ dir }: { dir: string }): Cursors {
   try {
     const value = JSON.parse(readFileSync(join(dir, CURSORS), 'utf8')) as unknown
 
@@ -28,7 +28,7 @@ function readCursors({ dir } : { dir: string }): Cursors {
   }
 }
 
-function writeCursors({ dir, cursors } : { dir: string; cursors: Cursors }): void {
+function writeCursors({ dir, cursors }: { dir: string; cursors: Cursors }): void {
   const tmp = join(dir, `.${CURSORS}.tmp-${process.pid}`)
   writeFileSync(tmp, JSON.stringify(cursors))
   renameSync(tmp, join(dir, CURSORS))
@@ -36,7 +36,7 @@ function writeCursors({ dir, cursors } : { dir: string; cursors: Cursors }): voi
 
 // Appends one harvested note to a card; returns 1 when it was new.
 export function appendNote(
-  { writer, cardId, note: { ref, ...note }, at } : {
+  { writer, cardId, note: { ref, ...note }, at }: {
     writer: Writer
     cardId: string
     note: SourceNote
@@ -58,7 +58,7 @@ export function appendNote(
 // Codex writes a session's thread name to session_index.jsonl in its home, not to
 // the transcript at <home>/sessions/YYYY/MM/DD/rollout-*.jsonl.
 // ponytail: reads the whole index each time; it is one short line per named thread.
-function codexTitle({ writer, cardId, path, at } : {
+function codexTitle({ writer, cardId, path, at }: {
   writer: Writer
   cardId: string
   path: string
@@ -88,7 +88,7 @@ function codexTitle({ writer, cardId, path, at } : {
 
 // Harvests the transcripts of these cards from where the last read stopped, and
 // returns how many notes were appended. A missing transcript waits for its file.
-export function harvestTranscripts({ writer, cardIds, at } : {
+export function harvestTranscripts({ writer, cardIds, at }: {
   writer: Writer
   cardIds: Iterable<string>
   at: string

@@ -79,22 +79,22 @@ const ASKING: Record<string, string> = {
   ExitPlanMode: 'waiting for plan approval',
 }
 
-export function isHookEnvelope({ value } : { value: Record<string, unknown> }): boolean {
+export function isHookEnvelope({ value }: { value: Record<string, unknown> }): boolean {
   return 'harness' in value
 }
 
-function str({ value } : { value: unknown }): string | undefined {
+function str({ value }: { value: unknown }): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined
 }
 
 // One line of at most 200 characters, for a request or activity shown on a card.
-function short({ value } : { value: string | undefined }): string | undefined {
+function short({ value }: { value: string | undefined }): string | undefined {
   const line = value?.replace(/\s+/g, ' ').trim()
 
   return line && (line.length > 200 ? `${line.slice(0, 199)}…` : line)
 }
 
-function commandText({ input } : { input: unknown }): string | undefined {
+function commandText({ input }: { input: unknown }): string | undefined {
   const command = (input as { command?: unknown } | null)?.command
 
   if (!Array.isArray(command)) {
@@ -110,10 +110,10 @@ function commandText({ input } : { input: unknown }): string | undefined {
 
 // "gh pr create", "gh pr merge" or "deploy" when a listed command starts the command
 // text or follows &&, ||, ;, | or a newline, else undefined.
-function commandLabel({ payload } : { payload: Record<string, unknown> }): string | undefined {
+function commandLabel({ payload }: { payload: Record<string, unknown> }): string | undefined {
   for (const part of (commandText({ input: payload.tool_input }) ?? '').split(/&&|\|\||[;|\n]/)) {
     const words = part.trim().replace(/\s+/g, ' ')
-    const starts = ({ command: c } : { command: string }) => words === c || words.startsWith(`${c} `)
+    const starts = ({ command: c }: { command: string }) => words === c || words.startsWith(`${c} `)
     const pr = PR_COMMANDS.find(command => starts({ command }))
 
     if (pr) {
@@ -131,7 +131,7 @@ function commandLabel({ payload } : { payload: Record<string, unknown> }): strin
 // The request a tool call puts to the user: its question, a plan to approve, or
 // permission to run it with what it would run.
 function request(
-  { tool, payload, permission } : {
+  { tool, payload, permission }: {
     tool: string
     payload: Record<string, unknown>
     permission: boolean
@@ -155,13 +155,9 @@ function request(
   }
 
   const detail = commandText({ input })
-    ?? str({
-      value: input.file_path,
-    }) ?? str({
-    value: input.url,
-  }) ?? str({
-    value: input.description,
-  })
+    ?? str({ value: input.file_path })
+    ?? str({ value: input.url })
+    ?? str({ value: input.description })
 
   return { kind: 'permission', key, blocking: true, text: short({ value: detail ? `Allow ${tool}: ${detail}` : `Allow ${tool}` }) }
 }
@@ -173,11 +169,11 @@ interface Signal {
 }
 
 // A tool call that ended or was refused no longer waits on the user.
-function toolDone({ tool } : { tool: string }): Attend {
+function toolDone({ tool }: { tool: string }): Attend {
   return { clear: [`${HOOK}tool:${tool}`, NOTIFICATION, ...RESUMED] }
 }
 
-function notification({ payload } : { payload: Record<string, unknown> }): Signal | undefined {
+function notification({ payload }: { payload: Record<string, unknown> }): Signal | undefined {
   const message = short({ value: str({ value: payload.message }) })
 
   switch (str({ value: payload.notification_type })) {
@@ -208,7 +204,7 @@ function notification({ payload } : { payload: Record<string, unknown> }): Signa
 
 // The card's activity and the change to its requests for one event. Returns
 // undefined for an event Pnyx does not report.
-function signal({ event, payload } : {
+function signal({ event, payload }: {
   event: string
   payload: Record<string, unknown>
 }): Signal | undefined {
@@ -291,7 +287,7 @@ const REOPENS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse'
 const TITLE_MAX = 100
 
 // The prompt's first non-empty line, cut to TITLE_MAX characters.
-function promptTitle({ prompt } : { prompt: unknown }): string | undefined {
+function promptTitle({ prompt }: { prompt: unknown }): string | undefined {
   const line = str({ value: prompt })?.split('\n')
     .map(l => l.trim())
     .find(l => l !== '')
@@ -300,10 +296,7 @@ function promptTitle({ prompt } : { prompt: unknown }): string | undefined {
 }
 
 // The card's requests after one event's change; pure.
-export function attend({ current, change } : {
-  current: Attention[]
-  change: Attend
-}): Attention[] {
+export function attend({ current, change }: { current: Attention[]; change: Attend }): Attention[] {
   const kept = current.filter(a => !change.clear?.some(prefix => a.key.startsWith(prefix)))
   const add = change.add
 
@@ -322,7 +315,7 @@ export function attend({ current, change } : {
 // session, after making sure the parent card exists. A subagent's permission prompt
 // notifies on the parent card, so a subagent event that ends its requests also
 // clears that notification there.
-export function observe({ envelope } : { envelope: HookEnvelope }): Observation[] {
+export function observe({ envelope }: { envelope: HookEnvelope }): Observation[] {
   const payload = envelope.payload
 
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -342,14 +335,14 @@ export function observe({ envelope } : { envelope: HookEnvelope }): Observation[
 
   const provider = PROVIDER[envelope.harness]
   const parentKey = `${envelope.harness}:${sessionId}`
-  const source = ({ objectId } : { objectId: string }) => ({
+  const source = ({ objectId }: { objectId: string }) => ({
     adapter: 'hooks',
     instanceId: envelope.harness,
     objectId,
     observedAt: envelope.at,
   })
   const cwd = str({ value: p.cwd })
-  const agent = ({ extra } : { extra: Record<string, unknown> }) =>
+  const agent = ({ extra }: { extra: Record<string, unknown> }) =>
     Object.fromEntries(
       Object.entries({ provider, sessionId, ...extra, cwd })
         .filter(([, v]) => v !== undefined),

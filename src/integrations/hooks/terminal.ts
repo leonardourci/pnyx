@@ -21,13 +21,13 @@ export interface Delivery {
   detail?: string
 }
 
-function sleep({ ms } : { ms: number }): void {
+function sleep({ ms }: { ms: number }): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
 type RunOptions = { input?: string; env?: NodeJS.ProcessEnv }
 
-function run({ command, args, options = {} } : {
+function run({ command, args, options = {} }: {
   command: string
   args: string[]
   options?: RunOptions
@@ -35,7 +35,7 @@ function run({ command, args, options = {} } : {
   return spawnSync(command, args, { encoding: 'utf8', timeout: STEP_TIMEOUT_MS, ...options })
 }
 
-function lastLine({ result } : { result: SpawnSyncReturns<string> }): string | undefined {
+function lastLine({ result }: { result: SpawnSyncReturns<string> }): string | undefined {
   return `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim().split('\n')
     .at(-1)
     ?.slice(0, DETAIL_MAX) || undefined
@@ -44,11 +44,7 @@ function lastLine({ result } : { result: SpawnSyncReturns<string> }): string | u
 // What a failed step means: before the text went in nothing was delivered; once it
 // was typed, a failure leaves it unconfirmed, never something to resend.
 function outcome(
-  { result, command, typed } : {
-    result: SpawnSyncReturns<string>
-    command: string
-    typed: boolean
-  },
+  { result, command, typed }: { result: SpawnSyncReturns<string>; command: string; typed: boolean },
 ): Delivery | undefined {
   const code = (result.error as NodeJS.ErrnoException | undefined)?.code
 
@@ -71,7 +67,7 @@ function outcome(
 }
 
 // The session's process still runs on the recorded TTY.
-function checkProcess({ route } : { route: TerminalRoute }): Delivery | undefined {
+function checkProcess({ route }: { route: TerminalRoute }): Delivery | undefined {
   const result = run({ command: 'ps', args: ['-o', 'tty=', '-p', String(route.pid)] })
   const failed = outcome({ result, command: 'ps', typed: false })
 
@@ -94,17 +90,17 @@ function checkProcess({ route } : { route: TerminalRoute }): Delivery | undefine
 
 // A multi-line reply goes in as one bracketed paste, so its newlines do not submit
 // early; Claude Code and Codex both read bracketed paste.
-function pasted({ text } : { text: string }): string {
+function pasted({ text }: { text: string }): string {
   return text.includes('\n') ? `\u001b[200~${text}\u001b[201~` : text
 }
 
-function settle({ text } : { text: string }): number {
+function settle({ text }: { text: string }): number {
   return /^[/$]/.test(text) ? POPUP_SETTLE_MS : SETTLE_MS
 }
 
 // Two steps, typing then Enter, each through the host's CLI.
 function typeThenEnter(
-  { command, type, enter, options, text } : {
+  { command, type, enter, options, text }: {
     command: string
     type: string[]
     enter: string[]
@@ -137,7 +133,7 @@ function typeThenEnter(
     : { state: 'delivered' }
 }
 
-function tmux({ route, text } : { route: Extract<TerminalRoute, { kind: 'tmux' }>; text: string }): Delivery {
+function tmux({ route, text }: { route: Extract<TerminalRoute, { kind: 'tmux' }>; text: string }): Delivery {
   const sock = ['-S', route.socket]
   const shown = run({ command: 'tmux', args: [...sock, 'display-message', '-p', '-t', route.pane, '#{pane_tty}'] })
   const missing = outcome({ result: shown, command: 'tmux', typed: false })
@@ -161,7 +157,7 @@ function tmux({ route, text } : { route: Extract<TerminalRoute, { kind: 'tmux' }
   return typeThenEnter({ command: 'tmux', type: [...sock, 'paste-buffer', '-p', '-d', '-b', buffer, '-t', route.pane], enter: [...sock, 'send-keys', '-t', route.pane, 'Enter'], options: {}, text })
 }
 
-function paseo({ route, text } : { route: Extract<TerminalRoute, { kind: 'paseo' }>; text: string }): Delivery {
+function paseo({ route, text }: { route: Extract<TerminalRoute, { kind: 'paseo' }>; text: string }): Delivery {
   const home = route.home ? ['--home', route.home] : []
 
   return typeThenEnter(
@@ -169,7 +165,7 @@ function paseo({ route, text } : { route: Extract<TerminalRoute, { kind: 'paseo'
   )
 }
 
-function herdr({ route, text } : { route: Extract<TerminalRoute, { kind: 'herdr' }>; text: string }): Delivery {
+function herdr({ route, text }: { route: Extract<TerminalRoute, { kind: 'herdr' }>; text: string }): Delivery {
   const body = pasted({ text })
 
   // ponytail: herdr's send-text takes the text as a bare argument, so a leading -
@@ -223,7 +219,7 @@ end run`,
 end run`,
 }
 
-function appleScript({ route, text } : { route: Extract<TerminalRoute, { kind: 'iterm2' | 'terminal-app' }>; text: string }): Delivery {
+function appleScript({ route, text }: { route: Extract<TerminalRoute, { kind: 'iterm2' | 'terminal-app' }>; text: string }): Delivery {
   const result = run({ command: 'osascript', args: ['-e', SCRIPTS[route.kind], route.tty, pasted({ text }), String(settle({ text }) / 1000)] })
   const failed = outcome({ result, command: 'osascript', typed: true })
 
@@ -246,7 +242,7 @@ function appleScript({ route, text } : { route: Extract<TerminalRoute, { kind: '
   return failed
 }
 
-export function typeInto({ route, text } : { route: TerminalRoute; text: string }): Delivery {
+export function typeInto({ route, text }: { route: TerminalRoute; text: string }): Delivery {
   const gone = checkProcess({ route })
 
   if (gone) {

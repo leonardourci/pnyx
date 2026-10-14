@@ -13,7 +13,7 @@ const MAX_BYTES = 10 * 1024 * 1024
 // below the socket budget even for JSON-escaped control characters.
 const MAX_TEXT = 1000
 
-const splitEntry = ({ entry } : { entry: ThreadEntry }): ThreadEntry[] => {
+const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => {
   const text = redact({ text: entry.text })
 
   if (text.length <= MAX_TEXT) {
@@ -37,9 +37,9 @@ const splitEntry = ({ entry } : { entry: ThreadEntry }): ThreadEntry[] => {
   return parts
 }
 
-const obj = ({ value: v } : { value: unknown }): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string, unknown> : {}
+const obj = ({ value: v }: { value: unknown }): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string, unknown> : {}
 
-export function recordEntries({ record, offset } : {
+export function recordEntries({ record, offset }: {
   record: unknown
   offset: number
 }): ThreadEntry[] {
@@ -70,7 +70,7 @@ export function recordEntries({ record, offset } : {
   return entries.flatMap(entry => splitEntry({ entry }))
 }
 
-export function threadPath({ card } : { card: Card }): string | undefined {
+export function threadPath({ card }: { card: Card }): string | undefined {
   const path = card.agent?.transcriptPath
 
   return path && isAbsolute(path) && path.endsWith('.jsonl') && ['claude', 'claude-code', 'codex'].includes(card.agent!.provider) ? path : undefined
@@ -82,7 +82,7 @@ const LATEST_TEXT = 280
 const LATEST_WINDOW = 64 * 1024
 
 // Cut to LATEST_TEXT, never inside a surrogate pair.
-function clip({ text } : { text: string }): string {
+function clip({ text }: { text: string }): string {
   if (text.length <= LATEST_TEXT) {
     return text
   }
@@ -94,7 +94,7 @@ function clip({ text } : { text: string }): string {
 
 // The last typed user message or assistant reply among complete transcript lines;
 // tool calls and output, thinking and injected text are skipped.
-function lastMessage({ lines } : { lines: string[] }): LatestMessage | null {
+function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
   for (let i = lines.length - 1; i >= 0; i--) {
     let record: unknown
 
@@ -137,7 +137,7 @@ export interface LatestRead {
 // appended since and keeps the previous message when they hold none. Otherwise reads
 // back from the end: a window of tool output doubles until a message turns up or
 // MAX_BYTES is read. message is null when the file holds no message or is unreadable.
-export function latestMessage({ path, prev } : { path: string; prev?: LatestRead }): LatestRead {
+export function latestMessage({ path, prev }: { path: string; prev?: LatestRead }): LatestRead {
   let fd: number | undefined
 
   try {
@@ -145,7 +145,7 @@ export function latestMessage({ path, prev } : { path: string; prev?: LatestRead
     const { size, ino } = fstatSync(fd)
 
     // Complete lines from start: the last may still be written.
-    const read = ({ start } : { start: number }) => {
+    const read = ({ start }: { start: number }) => {
       const buf = Buffer.alloc(size - start)
       readSync(fd!, buf, 0, buf.length, start)
       const end = buf.lastIndexOf(10) + 1
@@ -191,7 +191,7 @@ const PAGE = 60
 type RepliedEvent = Extract<BoardEvent, { type: 'card.replied' }>
 const replyLogs = new Map<string, { end: number; events: RepliedEvent[] }>()
 
-function repliedEvents({ board } : { board: string }): RepliedEvent[] {
+function repliedEvents({ board }: { board: string }): RepliedEvent[] {
   const dir = boardDir({ board })
   let log = replyLogs.get(dir) ?? { end: 0, events: [] }
   let read = readEventsFrom({ board, offset: log.end })
@@ -208,7 +208,7 @@ function repliedEvents({ board } : { board: string }): RepliedEvent[] {
 }
 
 export function readThread(
-  { board, state, card, homes, before } : {
+  { board, state, card, homes, before }: {
     board: string
     state: BoardState
     card: Card

@@ -15,13 +15,13 @@ export interface ServerInfo {
   socket: string | null
 }
 
-export const infoPath = ({ board } : { board: string }) => join(boardDir({ board }), 'server.json')
-export const socketPath = ({ board } : { board: string }) => join(boardDir({ board }), 'server.sock')
+export const infoPath = ({ board }: { board: string }) => join(boardDir({ board }), 'server.json')
+export const socketPath = ({ board }: { board: string }) => join(boardDir({ board }), 'server.sock')
 
 // The board's server, or null when none is running. Trusted only when the
 // recorded port answers /health with this board and pid, so a server.json left
 // by a server that died (its pid or port since reused) counts as not running.
-export async function readServer({ board } : { board: string }): Promise<ServerInfo | null> {
+export async function readServer({ board }: { board: string }): Promise<ServerInfo | null> {
   let info: ServerInfo
 
   try {

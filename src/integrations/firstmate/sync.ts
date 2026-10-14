@@ -30,21 +30,21 @@ export interface SyncResult {
   appended: number
 }
 
-const source = ({ home, objectId } : { home: string; objectId: string }): SourceRef => ({
+const source = ({ home, objectId }: { home: string; objectId: string }): SourceRef => ({
   adapter: ADAPTER,
   instanceId: home,
   objectId,
 })
 
 // The Firstmate source ref of a card, if it has one.
-export function firstmateRef({ card } : { card: Card }): SourceRef | undefined {
+export function firstmateRef({ card }: { card: Card }): SourceRef | undefined {
   return card.sourceRefs.find(r => r.adapter === ADAPTER)
 }
 
 // Open decisions, plus the latest status line when it says the task failed or is
 // blocked and no open decision carries it. A task closed in the backlog drops the
 // latest line's attention, even when it is an open decision.
-function attention({ task } : { task: TaskObservation }): Attention[] {
+function attention({ task }: { task: TaskObservation }): Attention[] {
   const open = task.decisions.map(d => ({
     kind: d.verb,
     key: d.key,
@@ -57,7 +57,7 @@ function attention({ task } : { task: TaskObservation }): Attention[] {
     return open
   }
 
-  const carries = ({ attention: a } : { attention: Attention }) =>
+  const carries = ({ attention: a }: { attention: Attention }) =>
     a.kind === stalled.verb && a.text === (stalled.note || undefined)
 
   if (task.done) {
@@ -80,12 +80,12 @@ function attention({ task } : { task: TaskObservation }): Attention[] {
 }
 
 // The attention a joined hook session opened on the card, which sync leaves alone.
-function hookAttention({ state, key } : { state: BoardState; key: string }): Attention[] {
+function hookAttention({ state, key }: { state: BoardState; key: string }): Attention[] {
   return state.cards[state.keys[key] ?? '']?.attention.filter(a => a.key.startsWith(HOOK)) ?? []
 }
 
 function taskCard(
-  { home, task, kept } : { home: HomeObservation; task: TaskObservation; kept: Attention[] },
+  { home, task, kept }: { home: HomeObservation; task: TaskObservation; kept: Attention[] },
 ): Record<string, unknown> {
   return {
     title: task.title,
@@ -102,7 +102,7 @@ function taskCard(
 // The link to record for the task's pull request, or null when the card already
 // has what Firstmate knows. Firstmate adds the link as open and later marks it
 // merged from the backlog; it never overwrites a state another source refreshed.
-function prLink({ state, key, task, at } : {
+function prLink({ state, key, task, at }: {
   state: BoardState
   key: string
   task: TaskObservation
@@ -121,7 +121,7 @@ function prLink({ state, key, task, at } : {
   return parseLink({ input: { url: task.pr, state: task.merged ? 'merged' : 'open', checkedAt: at } })
 }
 
-function apply({ writer, decision } : { writer: Writer; decision: Decision }): number {
+function apply({ writer, decision }: { writer: Writer; decision: Decision }): number {
   if (!('event' in decision)) {
     return 0
   }
@@ -134,7 +134,7 @@ function apply({ writer, decision } : { writer: Writer; decision: Decision }): n
 // Reconciles the board with the home's current files. Unchanged facts append
 // nothing, so syncing twice is a no-op. A task whose records are gone keeps its
 // card but drops its open decisions, since nothing can answer them any more.
-export function syncHome({ board, home, at = new Date().toISOString() } : {
+export function syncHome({ board, home, at = new Date().toISOString() }: {
   board: string
   home: string
   at?: string
@@ -295,11 +295,11 @@ const RETRY_MS = 1000
 // Bursts coalesce into one sync. A watcher error re-creates the watchers and
 // resyncs, so a dropped event cannot leave the board behind. No polling.
 export function watchHome(
-  { board, home, onSync } : {
+  { board, home, onSync }: {
     board: string
     home: string
     onSync: (
-      { result } : {
+      { result }: {
         result: SyncResult | Error
       },
     ) => void
@@ -325,7 +325,7 @@ export function watchHome(
     }
   }
 
-  const schedule = ({ ms = SETTLE_MS } : { ms?: number } = {}) => {
+  const schedule = ({ ms = SETTLE_MS }: { ms?: number } = {}) => {
     if (!closed && !timer) {
       timer = setTimeout(sync, ms)
     }
