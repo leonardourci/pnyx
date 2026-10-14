@@ -38,3 +38,7 @@ review:
     - path: "test/**"
       instructions: |
         Tests must not touch the real ~/.pnyx, real Firstmate homes, Paseo, Herdr, tmux or any real terminal. They use a temporary PNYX_HOME, a random port and test/fixtures/.
+
+pr:
+  template: .github/pull_request_template.md
+  publish_intent: false
