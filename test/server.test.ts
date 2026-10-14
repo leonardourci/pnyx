@@ -12,7 +12,8 @@ import { WebSocket } from "ws";
 import { BoardError } from "../src/core/model.ts";
 import { startServer, type RunningServer, type ServerMessage } from "../src/server/server.ts";
 import { infoPath, localToken, socketPath } from "../src/server/state.ts";
-import { boardDir, loadBoard, spoolDir, spoolWrite } from "../src/store/board-store.ts";
+import { boardDir, loadBoard, spoolDir, spoolWrite, withWriter } from "../src/store/board-store.ts";
+import { decidePush } from "../src/core/decide.ts";
 
 const BIN = join(import.meta.dirname, "..", "dist", "cli", "pnyx-axi.js");
 const TIMEOUT_MS = 3000;
@@ -336,6 +337,27 @@ test("web preferences, custom moves and read queries share the authenticated soc
   t.ws.close();
 });
 
+test("overlapping catalog requests share or queue the socket's read and answer each with its own card", async () => {
+  const home = process.env.PNYX_HOME!, locations = { home, claude: join(home, "claude"), codex: join(home, "codex") };
+  for (const key of ["one", "two"]) {
+    const cwd = join(home, key); mkdirSync(join(cwd, ".git"), { recursive: true }); mkdirSync(join(cwd, ".claude/skills", `skill-${key}`), { recursive: true });
+    writeFileSync(join(cwd, ".claude/skills", `skill-${key}`, "SKILL.md"), `---\nname: skill-${key}\ndescription: ${key}\n---\n`);
+    withWriter("default", w => { const d = decidePush(w.state, key, { title: key, agent: { provider: "claude", sessionId: key, cwd } }, { actor: "test", at: "2026-10-14T10:00:00Z" }); assert.ok("event" in d); w.append(d.event); });
+  }
+  const { one, two } = loadBoard("default").state.keys;
+  server = await startServer({ board: "default", catalogLocations: locations });
+  const t = await tab(); await t.next();
+  const requests = [["c1", one], ["c2", one], ["c3", two], ["c4", one]] as const;
+  for (const [id, card] of requests) t.command(id, "catalog", [card!]);
+  const replies = new Map<string, ServerMessage>();
+  for (let n = 0; n < requests.length; n++) { const reply = await t.next(); replies.set((reply as { id: string }).id, reply); }
+  for (const [id, card] of requests) {
+    const reply = replies.get(id)!; assert.equal(reply.type, "receipt", `${id}: ${JSON.stringify(reply)}`);
+    const commands = (reply as unknown as { catalog: { suggestions: { command: string }[] } }).catalog.suggestions.map(s => s.command);
+    assert.deepEqual(commands, [card === one ? "/skill-one" : "/skill-two"]);
+  }
+  t.ws.close();
+});
 
 test("browser reply delivery uses only configured fixture homes and never resends an unknown result", async () => {
   const fixture = seedWebFixture(process.env.PNYX_HOME!);

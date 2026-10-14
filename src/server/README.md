@@ -21,7 +21,9 @@ The same authenticated socket also accepts these commands:
 - `search`, args `[text, optionalWorkspace]`: full-text results from the derived index.
 - `catalog`, args `[cardId]`: a receipt with local harness command metadata. The
   recorded working folder determines project scope; the browser cannot supply a
-  path. Reads are bounded and only one catalog read per socket runs at a time.
+  path. Reads are bounded and only one catalog read per socket runs at a time:
+  a repeated request for the same card shares the pending read, and a request for
+  another card waits for it.
   Missing folders, unsupported harnesses and partial discovery are explicit.
 - `reply`, args `[cardId, literalText, idempotencyKey]`: calls the CLI reply path in a
   child process so native delivery does not block the socket. It accepts only homes

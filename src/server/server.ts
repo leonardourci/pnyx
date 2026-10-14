@@ -5,7 +5,7 @@
 // keeps a single writer whether a change comes from here or from the CLI.
 import { execFile } from "node:child_process";
 import { readThread, threadPath, THREAD_CURSOR, type ThreadPage } from "../thread/read.ts";
-import { readCatalog, type CatalogLocations } from "../thread/catalog.ts";
+import { readCatalog, type Catalog, type CatalogLocations } from "../thread/catalog.ts";
 import { findCard } from "../core/decide.ts";
 import { resolveHome } from "../integrations/firstmate/home.ts";
 import { search, updateIndex } from "../search/index.ts";
@@ -160,7 +160,7 @@ export async function startServer({ board, port = 0, homes = [], catalogLocation
   });
 
   // A tab's write: the same CLI command, pinned to this board, under the same writer lock.
-  const readingCatalog = new WeakSet<WebSocket>();
+  const catalogReads = new WeakMap<WebSocket, { card: string; read: Promise<Catalog> }>();
   const runCommand = (ws: WebSocket, message: { id?: unknown; name?: unknown; args?: unknown }) => {
     const id = typeof message.id === "string" ? message.id : null;
     const fail = (error: string, code: string, help?: string[]) => send(ws, { type: "error", id, error, code, help });
@@ -172,9 +172,14 @@ export async function startServer({ board, port = 0, homes = [], catalogLocation
         if (name === "catalog") {
           if (args.length !== 1) throw new BoardError("catalog expects a card", "VALIDATION_ERROR");
           const card = findCard(state, args[0]);
-          if (readingCatalog.has(ws)) throw new BoardError("Catalog is loading; try again shortly", "BUSY");
-          readingCatalog.add(ws);
-          void readCatalog(card, catalogLocations).then(catalog => send(ws, { type: "receipt", id, catalog })).catch(() => fail("Local catalog unavailable", "CATALOG_UNAVAILABLE")).finally(() => readingCatalog.delete(ws));
+          let entry = catalogReads.get(ws);
+          if (entry?.card !== card.id) {
+            const previous = entry?.read.catch(() => undefined);
+            const next = { card: card.id, read: Promise.resolve(previous).then(() => readCatalog(card, catalogLocations)) };
+            catalogReads.set(ws, entry = next);
+            void next.read.catch(() => undefined).finally(() => { if (catalogReads.get(ws) === next) catalogReads.delete(ws); });
+          }
+          void entry.read.then(catalog => send(ws, { type: "receipt", id, catalog })).catch(() => fail("Local catalog unavailable", "CATALOG_UNAVAILABLE"));
         } else if (name === "search") {
           if (args.length > 2) throw new BoardError("search expects text and optional workspace", "VALIDATION_ERROR");
           updateIndex(board);
