@@ -328,9 +328,10 @@ function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
 // tty), even on a card with no session yet, or a session in another or an unknown
 // terminal, keeps its own card and never takes over the task's agent, terminal or
 // reply route. A card with a recorded Paseo terminal takes only an interactive
-// session in that terminal; one with none takes any interactive or non-Paseo session. When several cards remain, the one
-// launched in the session's own terminal wins; otherwise they stay ambiguous and
-// the session keeps its own card.
+// session in that terminal, or an event that carries no terminal at all (hooks
+// trusted mid-session); one with none takes any interactive or non-Paseo session.
+// When several cards remain, the one launched in the session's own terminal wins;
+// otherwise they stay ambiguous and the session keeps its own card.
 export function joinedKey({ state, key, folder, terminal }: {
   state: BoardState
   key: string
@@ -362,7 +363,7 @@ export function joinedKey({ state, key, folder, terminal }: {
   const matches = Object.values(state.cards).filter(c => c.folder === folder
     && (c.agent
       ? ownTerminal(c) && succeeds(c)
-      : c.terminal?.paseoTerminal ? ownTerminal(c) && !!tty : !session || !!tty))
+      : c.terminal?.paseoTerminal ? !terminal || (ownTerminal(c) && !!tty) : !session || !!tty))
   const own = matches.filter(ownTerminal)
 
   return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key

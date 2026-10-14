@@ -649,6 +649,50 @@ test('a task launched in a Paseo terminal takes only a session from that termina
   assert.equal(loadBoard({ board: 'default' }).state.keys['claude:s-worker'], undefined)
 })
 
+test('a Paseo task takes a worker whose first event shows no terminal, not one in another terminal', () => {
+  const { home } = copyFixture()
+  const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
+  writeFileSync(join(home, 'state', 'wt-q.meta'), `task=wt-q\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-q\n`)
+  syncHome({ board: 'default', home })
+  const hook = ({ id, session, event, terminal }: {
+    id: string
+    session: string
+    event: string
+    terminal?: object
+  }) =>
+    spoolWrite({
+      board: 'default',
+      entry: {
+        v: 1,
+        id,
+        at: '2026-10-14T00:00:00Z',
+        harness: 'codex',
+        event,
+        payload: { session_id: session, cwd: worktree, tool_name: 'Bash', tool_input: { command: 'ls' }, prompt: 'x' },
+        ...(terminal ? { terminal } : {}),
+      },
+    })
+  const own = ({ session }: { session: string }) => !!loadBoard({ board: 'default' }).state.keys[`codex:${session}`]
+
+  // A session in another Paseo terminal keeps its own card.
+  hook({ id: 'h1', session: 's-other', event: 'SessionStart', terminal: { tty: '/dev/ttys050', pid: '5050', paseoTerminal: 'term-elsewhere' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf(home, 'wt-q').agent, undefined)
+  assert.equal(own({ session: 's-other' }), true)
+
+  // A worker already running when its hooks were trusted first reports a tool call,
+  // which carries no terminal; it joins, and its later events from the task's terminal follow.
+  hook({ id: 'h2', session: 's-worker', event: 'PreToolUse' })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf(home, 'wt-q').agent?.sessionId, 's-worker')
+  assert.equal(own({ session: 's-worker' }), false)
+  hook({ id: 'h3', session: 's-worker', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys051', pid: '5151', paseoTerminal: 'term-q' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf(home, 'wt-q').agent?.sessionId, 's-worker')
+  assert.equal(cardOf(home, 'wt-q').terminal?.paseoTerminal, 'term-q')
+  assert.equal(own({ session: 's-worker' }), false)
+})
+
 test("a task card's setting changes go to the orchestrator as request notes, never into the worker", () => {
   const { home, env } = copyFixture()
   const worktree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
