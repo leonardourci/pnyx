@@ -21,7 +21,7 @@ function eventOf({ decision }: { decision: Decision }): BoardEvent {
 const rejects = ({ fn, code }: { fn: () => unknown; code: string }) =>
   assert.throws(fn, (error: unknown) => error instanceof BoardError && error.code === code)
 
-const source = ({ observedAt, generation = 1 }: { observedAt: string; generation?: number }) => ({ adapter: 'claude', objectId: 's1', generation, observedAt })
+const source = ({ observedAt, generation = 1 }: { observedAt: string; generation?: unknown }) => ({ adapter: 'claude', objectId: 's1', generation, observedAt })
 
 test('push upserts by key and repeats are no-ops', () => {
   let state = apply({ state: emptyBoard(), decision: decidePush({ state: emptyBoard(), key: 'k1', input: { title: 'One', source: source({ observedAt: '2026-10-13T10:00:00Z' }) }, meta }) })
@@ -70,7 +70,7 @@ test('parseLink fills GitHub pull request details and validates', () => {
 
 test('undo reverses a move unless the card changed since', () => {
   let state = apply({ state: emptyBoard(), decision: decidePush({ state: emptyBoard(), key: 'k1', input: {}, meta }) })
-  const move = eventOf({ decision: decideMove({ state, ref: 'c1', column: 'review', meta }) })
+  const move = eventOf({ decision: decideMove({ state, ref: 'c1', column: 'parked', meta }) })
   state = reduce({ state, event: move })
   const undo = eventOf({ decision: decideUndo({ state, target: move, meta }) })
   assert.equal(undo.undoes, move.id)
@@ -88,16 +88,10 @@ test('undo reverses a link update but never a merge', () => {
   const url = 'https://github.com/o/r/pull/3'
   const open = eventOf({ decision: decideLink({ state, ref: 'c1', url, link: parseLink({ input: { url, state: 'open' } }), meta }) })
   state = reduce({ state, event: open })
-  assert.equal(state.cards.c1!.column, 'review')
+  assert.equal(state.cards.c1!.column, 'parked')
   const reverted = reduce({
     state,
-    event: eventOf({
-      decision: decideUndo({
-        state,
-        target: open,
-        meta,
-      }),
-    }),
+    event: eventOf({ decision: decideUndo({ state, target: open, meta }) }),
   })
   assert.deepEqual(reverted.cards.c1!.links, [])
 

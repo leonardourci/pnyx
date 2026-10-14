@@ -6,23 +6,25 @@ import { assertGolden, readStream } from './streams.ts'
 
 for (const name of ['lifecycle', 'duplicates', 'pinned-attention', 'undo']) {
   test(`golden replay: ${name}`, () => {
-    assertGolden({ name, actual: replay({ state: emptyBoard(), events: readStream({ name }) }) })
+    assertGolden({
+      name,
+      actual: replay({ state: emptyBoard(), events: readStream({ name }) }),
+    })
   })
 }
 
-test('lifecycle: open pull request is review, all merged is done, outcome places the child', () => {
+test('lifecycle: an open pull request waits in Parked, all merged is done, outcome places the child', () => {
   const events = readStream({ name: 'lifecycle' })
   const at = ({ seq }: {
     seq: number
-  }) =>
-    replay({
-      state: emptyBoard(),
-      events: events.slice(0, seq),
-    })
+  }) => replay({
+    state: emptyBoard(),
+    events: events.slice(0, seq),
+  })
   assert.equal(at({ seq: 1 }).cards.c1!.column, 'workers_on_it')
-  assert.equal(at({ seq: 3 }).cards.c1!.column, 'review')
-  // One of two pull requests merged: still review.
-  assert.equal(at({ seq: 5 }).cards.c1!.column, 'review')
+  assert.equal(at({ seq: 3 }).cards.c1!.column, 'parked')
+  // One of two pull requests merged: still waiting.
+  assert.equal(at({ seq: 5 }).cards.c1!.column, 'parked')
   assert.equal(at({ seq: 6 }).cards.c1!.column, 'done')
   const end = at({ seq: events.length })
   assert.equal(end.cards.c2!.parentId, 'c1')
@@ -48,7 +50,7 @@ test('duplicates and out-of-order observations are ignored', () => {
 test('a pinned card keeps its column and shows new attention', () => {
   const state = replay({ state: emptyBoard(), events: readStream({ name: 'pinned-attention' }) })
   const card = state.cards.c1!
-  assert.equal(card.column, 'review')
+  assert.equal(card.column, 'parked')
   assert.equal(card.manualColumn, 'review')
   assert.deepEqual(card.attention.map(a => a.kind), ['permission_needed'])
 
@@ -128,7 +130,7 @@ function card({ overrides }: { overrides: Partial<Card> }): Card {
   }
 }
 
-const pr = ({ state }: { state?: 'open' | 'merged' | 'closed' } = {}) => ({ kind: 'github_pr' as const, url: `https://github.com/o/r/pull/${state}`, ...(state ? { state } : {}) })
+const pr = ({ state }: { state?: 'open' | 'merged' | 'closed' }) => ({ kind: 'github_pr' as const, url: `https://github.com/o/r/pull/${state}`, ...(state ? { state } : {}) })
 const blocking = { kind: 'reply_needed', key: 'q1', blocking: true }
 const note = { kind: 'check_this', key: 'n1', blocking: false }
 
@@ -140,7 +142,7 @@ test('column rules follow the settled precedence', () => {
     ['open pull request', { links: [pr({ state: 'open' })] }, 'review'],
     ['any open pull request means review', { links: [pr({ state: 'merged' }), pr({ state: 'open' })] }, 'review'],
     ['all merged means done', { links: [pr({ state: 'merged' }), pr({ state: 'merged' })] }, 'done'],
-    ['merged plus unchecked is not done', { links: [pr({ state: 'merged' }), pr({ })] }, 'workers_on_it'],
+    ['merged plus unchecked is not done', { links: [pr({ state: 'merged' }), pr({})] }, 'workers_on_it'],
     ['closed unmerged needs you', { links: [pr({ state: 'merged' }), pr({ state: 'closed' })] }, 'needs_you'],
     ['open pull request beats non-blocking attention', { attention: [note], links: [pr({ state: 'open' })] }, 'review'],
     ['non-blocking attention', { attention: [note] }, 'needs_you'],
