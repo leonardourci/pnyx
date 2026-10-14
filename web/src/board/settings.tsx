@@ -77,7 +77,7 @@ export function Settings({
         </section>
         <section className="settings-box">
           <h2>Cards & details</h2>
-          <p className="muted">Resize an individual card on the board. Trace defaults apply unless a card has an override.</p>
+          <p className="muted">Resize an individual card on the board. Focus shows only prompts and agent messages, unless a card has an override.</p>
           <NumberField
             label="Default card height"
             value={view.cardHeight}
@@ -86,8 +86,7 @@ export function Settings({
             onChange={cardHeight => save({ cardHeight })}
           />
           <Switch label="Card accent colors" checked={view.cardColors} onChange={cardColors => save({ cardColors })} />
-          <Switch label="Tool details by default" checked={view.toolDetails} onChange={toolDetails => save({ toolDetails })} />
-          <Switch label="Thinking by default" checked={view.thinkingDetails} onChange={thinkingDetails => save({ thinkingDetails })} />
+          <Switch label="Focus by default" checked={!view.toolDetails && !view.thinkingDetails} onChange={focus => save({ toolDetails: !focus, thinkingDetails: !focus })} />
         </section>
         <section className="settings-box">
           <h2>Column widths</h2>

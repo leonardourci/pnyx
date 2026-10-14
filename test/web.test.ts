@@ -7,7 +7,7 @@ import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decis
 import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
 import { BoardError, COLUMNS, type BoardEvent, type BoardState } from '../src/core/model.ts'
 import { clampViewSize, patchView, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
-import { agentActivity, columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
+import { agentActivity, columnsFor, filterCards, findBoxCards, focusedActivity, pageTitle, traces, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 import { observe } from '../src/integrations/hooks/observe.ts'
@@ -179,6 +179,26 @@ test('thread reader ignores partial records, pages old messages, separates trace
   const entries = recordEntries({ type: 'assistant', message: { content: [{ type: 'text', text: 'hello' }, { type: 'thinking', thinking: 'thinking' }, { type: 'tool_use', input: 'sk-abcdefghijklmnop123456789' }] } }, 0)
   assert.deepEqual(entries.map(e => e.kind), ['message', 'thinking', 'tool']); assert.equal(entries[2]?.text, '[redacted]')
   assert.deepEqual(recordEntries({ type: 'user', isMeta: true, message: { content: 'injected' } }, 0), [])
+})
+
+test('Focus hides traces before paging so tool-heavy output cannot push replies off the page', () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-focus-')); process.env.PNYX_HOME = home
+  const path = join(home, 'session.jsonl')
+  const replies = Array.from({ length: 3 }, (_, i) => ({ type: 'assistant', message: { content: `reply ${i}` } }))
+  const tools = Array.from({ length: 120 }, (_, i) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', input: `tool ${i}` }] } }))
+  writeFileSync(path, [...replies, ...tools].map(r => JSON.stringify(r)).join('\n') + '\n')
+  let state = push(emptyBoard(), 'a', { activity: 'running git status', agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } })
+  const focused = readThread('default', state, state.cards.c1!, [])
+  assert.deepEqual(focused.entries.map(e => e.text), ['reply 0', 'reply 1', 'reply 2'])
+  assert.ok(traces({ view: viewFor({ state }), card: 'c1' }).focus)
+  assert.equal(focusedActivity({ activity: state.cards.c1!.activity, focus: true }), 'working')
+  const showTools = { cardTraceOverrides: { c1: { tools: true } } }
+  state = reduce({ state, event: event(decideView({ state, patch: showTools, meta })) })
+  const full = readThread('default', state, state.cards.c1!, [])
+  assert.equal(full.entries.length, 60); assert.ok(full.entries.every(e => e.kind === 'tool'))
+  const { focus } = traces({ view: viewFor({ state }), card: 'c1' })
+  assert.equal(focusedActivity({ activity: 'running git status', focus }), 'running git status')
+  assert.equal(focusedActivity({ activity: 'idle', focus: true }), 'idle')
 })
 
 test('long transcript messages and reply history page without losing text or duplicating entries', () => {

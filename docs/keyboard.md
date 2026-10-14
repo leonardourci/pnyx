@@ -3,13 +3,20 @@
 Pnyx uses the focused area, not a global typing mode. Card buttons have one Tab
 stop per column. Arrows and h/j/k/l move between cards and columns, stopping at the
 edges and remembering each column's last card. Empty columns remain reachable.
-Home/End reach the first/last card. Enter opens the conversation; r focuses its
-composer. In the conversation, arrows and j/k scroll, PageUp/PageDown move a page,
-and Home/End reach the first/latest loaded content.
+Home/End reach the first/last card. Enter opens the conversation at its reply
+input, the end of the thread; r also focuses it. Escape moves into the transcript,
+and Enter there returns to the input. In the transcript, arrows and j/k select
+paragraphs, list items and code blocks, Home/End select the first/latest loaded
+block, and PageUp/PageDown scroll a page. c opens a comment on the selected block.
+Selecting text with the mouse offers Comment, and typing starts a comment with that
+text, keeping the first character. A typing icon marks the reply input and each
+commentable block. Comments keep their quoted text and go with the next reply in
+`pnyx-comment` fenced blocks. Escape leaves a comment editor without losing its text.
 
 Enter in the composer adds a newline. Mod+Enter sends once, using the existing
 reply queue and receipts. Escape dismisses suggestions first, leaves the composer
-next, then closes the detail and returns to the board. Drafts survive that loop.
+next, then closes the detail and returns to the board. Drafts and comments survive
+that loop and navigation to Settings or History.
 Text fields do not trigger board shortcuts, including Mod+K, except for finding
 in the current view. Mod+F focuses Find a card on the board or Search history in
 History, including from a text field. It leaves browser find available in Settings
@@ -75,6 +82,7 @@ contain command names, descriptions and scope labels, never file paths or bodies
 typing/IME protection, event replay/undo, focus destinations and catalog fixtures.
 `pnpm test:keyboard` uses chrome-devtools-axi with an isolated PNYX_HOME and a fake
 delivery route for actual key presses, remapping/reload, focus restoration,
-slash insertion, placement and hints. `pnpm test:web` retains the board smoke.
+slash insertion, placement and hints. `pnpm test:chat` checks Markdown, inline
+comments, Focus and the reply input. `pnpm test:web` retains the board smoke.
 Set PNYX_EVIDENCE_DIR to save screenshots outside the temporary fixture folder.
 These checks do not substitute for manual screen-reader and other-browser testing.

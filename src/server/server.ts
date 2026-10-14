@@ -151,7 +151,8 @@ export async function startServer({
         sendSnapshot(ws)
       }
 
-      if (subscriptions.get(ws)?.card === event.cardId) {
+      // A view change can switch traces on or off, which changes the page.
+      if (event.type === 'board.view' || subscriptions.get(ws)?.card === event.cardId) {
         refreshThread(ws)
       }
     }

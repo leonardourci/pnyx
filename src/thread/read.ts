@@ -4,8 +4,10 @@ import type { BoardEvent, BoardState, Card, ReplyState } from '../core/model.ts'
 import { boardDir, readEventsFrom } from '../store/board-store.ts'
 import { redact, transcriptMessages } from '../search/text.ts'
 import { HOST_LABEL, replyRoute } from '../core/route.ts'
+import { viewFor } from '../core/view.ts'
 
-export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState }
+// messageId and part let the board rejoin a long message split into transport chunks.
+export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; messageId?: string; part?: number }
 // route: a reply can be sent; via names the route, or noRoute says why there is none.
 export interface ThreadPage { card: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; noRoute?: string; watching: 'unknown' }
 const MAX_BYTES = 10 * 1024 * 1024
@@ -30,7 +32,7 @@ const splitEntry = (entry: ThreadEntry): ThreadEntry[] => {
       end--
     }
 
-    parts.push({ ...entry, id: `${entry.id}.${start}`, text: text.slice(start, end), role: start ? `${entry.role} · continued` : entry.role })
+    parts.push({ ...entry, id: `${entry.id}.${start}`, messageId: entry.id, part: start, text: text.slice(start, end), role: start ? `${entry.role} · continued` : entry.role })
     start = end
   }
 
@@ -224,6 +226,9 @@ export function readThread(
   const candidates: { item: ThreadEntry; native?: string; reply?: string }[] = []
   let earlierNative = false, emptyNativeCursor: string | undefined
   const path = threadPath(card)
+  const view = viewFor({ state }), overrides = view.cardTraceOverrides[card.id]
+  const tools = overrides?.tools ?? view.toolDetails
+  const thinking = overrides?.thinking ?? view.thinkingDetails
 
   if (path) {
     let fd: number | undefined
@@ -270,6 +275,11 @@ export function readThread(
             const offset = start + cursor
             const parsed = JSON.parse(buf.subarray(cursor, newline).toString())
             recordEntries(parsed, offset).forEach((item, index) => {
+              // Hidden traces must not use up the conversation page.
+              if ((item.kind === 'tool' && !tools) || (item.kind === 'thinking' && !thinking)) {
+                return
+              }
+
               if (
                 beforeItem === undefined
                 || offset < beforeOffset

@@ -6,6 +6,7 @@ import { Button, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { slashMatches, slashPrefix } from './view.ts'
+import { commentReply, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 
@@ -14,6 +15,8 @@ export function Composer({
   title,
   draft,
   setDraft,
+  comments,
+  setComments,
   thread,
   height,
   command,
@@ -25,6 +28,8 @@ export function Composer({
   title: string
   draft: string
   setDraft(text: string): void
+  comments: ChatComment[]
+  setComments(comments: ChatComment[]): void
   thread: ThreadPage | null
   height: number
   command: Command
@@ -38,8 +43,11 @@ export function Composer({
   const [active, setActive] = useState(-1)
   const input = useRef<HTMLTextAreaElement>(null)
   const attempt = useRef<{ text: string; id: string } | null>(null)
-  const currentDraft = useRef(draft)
-  currentDraft.current = draft
+  // Comments travel with the draft as one reply, and stay until it is delivered.
+  const outgoing = commentReply({ draft, comments })
+  const commented = comments.filter(c => c.text.trim()).length
+  const current = useRef({ draft, comments })
+  current.current = { draft, comments }
   const { label } = useKeyboard(), [catalog, setCatalog] = useState<Catalog | null>(null)
   const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches(s.command, prefix ?? ''))
   const catalogOpen = prefix !== null
@@ -75,23 +83,30 @@ export function Composer({
   }
 
   const send = async () => {
-    if (sending || !draft.trim() || !connected || !thread?.route) {
+    if (sending || !outgoing.trim() || !connected || !thread?.route) {
       return
     }
 
-    if (attempt.current?.text !== draft) {
-      attempt.current = { text: draft, id: crypto.randomUUID() }
+    if (attempt.current?.text !== outgoing) {
+      attempt.current = { text: outgoing, id: crypto.randomUUID() }
     }
 
     setSending(true)
 
     try {
-      const r = await command('reply', [card, draft, attempt.current.id]); const receipt = r.reply as { state: string; detail?: string } | undefined
+      const r = await command('reply', [card, outgoing, attempt.current.id]); const receipt = r.reply as { state: string; detail?: string } | undefined
       const why = receipt?.detail ? ` (${receipt.detail})` : ''
       notify(receipt?.state === 'delivery_unknown' ? `Delivery unknown${why}. Check the native session before sending again.` : receipt?.state === 'failed' ? `Delivery failed${why}. Your draft is retained.` : 'Reply delivered to the route. This does not confirm it was handled.')
 
-      if (receipt?.state === 'delivered' && currentDraft.current === draft) {
-        setDraft(''); attempt.current = null
+      if (receipt?.state === 'delivered') {
+        // Keep anything typed or commented while the reply was in flight.
+        if (current.current.draft === draft) {
+          setDraft('')
+        }
+
+        const sent = new Set(comments.map(c => `${c.id}\n${c.text}`))
+        setComments(current.current.comments.filter(c => !sent.has(`${c.id}\n${c.text}`)))
+        attempt.current = null
       }
     } catch (e) {
       notify((e as Error).message)
@@ -137,11 +152,13 @@ export function Composer({
         onPreview={setPreview}
         onCommit={n => save({ composerHeight: n })}
       />
-      <label htmlFor={`reply-${card}`} className="small muted">
+      <label htmlFor={`reply-${card}`} className="small muted reply-label">
+        <Icon name="typing" size={14} />
         Reply to
         {' '}
         {title}
       </label>
+      {commented > 0 && <p className="small gold">{commented === 1 ? '1 comment goes' : `${commented} comments go`} with this reply</p>}
       <div className="composer-input">
         {prefix !== null && (
           <div className="slash-menu">
@@ -218,7 +235,7 @@ export function Composer({
           {' '}
           leave
         </span>
-        <Button type="submit" variant="primary" disabled={sending || !draft.trim() || !connected || !thread?.route}>
+        <Button type="submit" variant="primary" disabled={sending || !outgoing.trim() || !connected || !thread?.route}>
           {sending ? 'Sending…' : 'Send reply'}
           <Icon name="send" size={14} />
         </Button>

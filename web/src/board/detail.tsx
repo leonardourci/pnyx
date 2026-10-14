@@ -1,22 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { BoardState, Card, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
-import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
-import { Button, Select, Switch } from '../components/ui/controls.tsx'
+import type { ThreadPage } from '../../../src/thread/read.ts'
+import { Button, Select } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { SettingChips, SettingList, harnessName } from './agent-settings.tsx'
 import { Links, Tags } from './card.tsx'
-import { Composer } from './composer.tsx'
 import { ConversationBrief } from './notes.tsx'
-import { columnsFor, receiptLabel } from './view.ts'
+import { columnsFor } from './view.ts'
+import { Thread } from './thread.tsx'
+import type { ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
-
-const merge = (a: ThreadEntry[], b: ThreadEntry[]) => {
-  const ids = new Set(b.map(e => e.id))
-
-  return [...a.filter(e => !ids.has(e.id)), ...b]
-}
 
 export function Detail({
   card,
@@ -29,6 +24,8 @@ export function Detail({
   save,
   draft,
   setDraft,
+  comments,
+  setComments,
   outside,
   notify,
 }: {
@@ -42,34 +39,18 @@ export function Detail({
   save(patch: unknown): Promise<boolean>
   draft: string
   setDraft(text: string): void
+  comments: ChatComment[]
+  setComments(comments: ChatComment[]): void
   outside: boolean
   notify(text: string): void
 }) {
-  const [width, setWidth] = useState<number | null>(null), [tab, setTab] = useState('thread'), [older, setOlder] = useState<ThreadPage | null>(null), [kept, setKept] = useState<ThreadEntry[]>([]), [latest, setLatest] = useState(false)
-  const scroller = useRef<HTMLDivElement>(null), atBottom = useRef(true)
+  const [width, setWidth] = useState<number | null>(null), [tab, setTab] = useState('thread')
   const [history, setHistory] = useState<{
     seq: number
     id: string
     at: string
     summary: string
   }[]>([])
-  const overrides = view.cardTraceOverrides[card.id]
-  const tools = overrides?.tools ?? view.toolDetails
-  const thinking = overrides?.thinking ?? view.thinkingDetails
-  const page = thread?.card === card.id ? thread : null
-  const olderCursor = older ? older.older : page?.older
-  useEffect(() => {
-    if (page) {
-      setKept(k => merge(k, page.entries))
-    }
-  }, [page])
-  useEffect(() => {
-    if (atBottom.current && scroller.current) {
-      scroller.current.scrollTop = scroller.current.scrollHeight
-    } else {
-      setLatest(true)
-    }
-  }, [page])
   useEffect(() => {
     if (tab === 'history') {
       void command('history', ['--card', card.id, '--limit', '50']).then(r => setHistory(Array.isArray(r.events) ? r.events : []))
@@ -81,8 +62,6 @@ export function Detail({
     void command('move', [card.id, ...(to === 'auto' ? ['--auto'] : [to]), '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()]).then(() => notify('Placement updated. Source requests are unchanged.'))
       .catch(e => notify(e.message))
   }
-
-  const entries = merge(kept, page?.entries ?? [])
 
   return (
     <aside
@@ -122,7 +101,7 @@ export function Detail({
         <h2>{card.title}</h2>
         <ConversationBrief
           card={card}
-          entries={entries}
+          entries={thread?.card === card.id ? thread.entries : []}
           command={command}
           notify={notify}
         />
@@ -145,105 +124,19 @@ export function Detail({
         ))}
       </nav>
       {tab === 'thread' ? (
-        <>
-          <div className="thread-controls">
-            <div className="row wrap">
-              <Switch label="Tool details" checked={tools} onChange={tools => save({ cardTraceOverrides: { [card.id]: { tools } } })} />
-              <Switch label="Thinking" checked={thinking} onChange={thinking => save({ cardTraceOverrides: { [card.id]: { thinking } } })} />
-            </div>
-            <div className="row between small muted">
-              <span>{overrides ? 'This card has overrides' : 'Following board defaults'}</span>
-              <Button
-                disabled={!overrides}
-                onClick={() => save({ cardTraceOverrides: { [card.id]: null } })}
-              >
-                Use defaults
-              </Button>
-            </div>
-          </div>
-          <div
-            className="thread"
-            data-key-scope="thread"
-            role="region"
-            aria-label="Agent conversation"
-            tabIndex={0}
-            ref={scroller}
-            onScroll={e => {
-              const el = e.currentTarget
-              atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-
-              if (atBottom.current) {
-                setLatest(false)
-              }
-            }}
-          >
-            {olderCursor !== undefined && (
-              <Button
-                onClick={() => {
-                  void command('thread', [card.id, String(olderCursor)]).then(r => {
-                    const p = r.thread as ThreadPage; setOlder(p); setKept(k => merge(p.entries, k))
-                  })
-                    .catch(e => notify(e.message))
-                }}
-              >
-                Load older messages
-              </Button>
-            )}
-            {page?.unavailable && <p className="empty">{page.unavailable}</p>}
-            {!page && <p className="empty">{connected ? 'Loading conversation…' : 'Reconnect to load conversation.'}</p>}
-            {entries.map(e => {
-              const expanded = e.kind === 'message' || (e.kind === 'tool' ? tools : thinking)
-
-              return (
-                <article key={e.id} className={`message ${e.kind}`}>
-                  <div className="message-head">
-                    <strong>
-                      <Icon name={e.kind === 'message' ? 'agent' : e.kind} size={14} />
-                      {e.role === 'assistant' ? 'Agent' : e.role === 'user' ? 'You' : e.role}
-                    </strong>
-                    <time>{e.at ? new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</time>
-                    {!expanded && <Button onClick={() => save({ cardTraceOverrides: { [card.id]: { [e.kind === 'tool' ? 'tools' : 'thinking']: true } } })}>Show</Button>}
-                  </div>
-                  {expanded && <p>{e.text}</p>}
-                  {e.receipt && <span className={`receipt receipt-${e.receipt}`}>{receiptLabel(e.receipt)}</span>}
-                </article>
-              )
-            })}
-            {page && entries.length === 0 && !page.unavailable && <p className="empty">No recorded messages yet.</p>}
-          </div>
-          {latest && (
-            <Button
-              className="jump"
-              onClick={() => {
-                if (scroller.current) {
-                  scroller.current.scrollTop = scroller.current.scrollHeight
-                }
-
-                atBottom.current = true; setLatest(false)
-              }}
-            >
-              Jump to latest ↓
-            </Button>
-          )}
-          <div className="watch-banner">
-            <strong>Not watching · presence unverified</strong>
-            <p>
-              The source has no listener signal. Activity alone does not confirm it is watching.
-            </p>
-          </div>
-          <Composer
-            card={card.id}
-            title={card.title}
-            draft={draft}
-            setDraft={setDraft}
-            thread={page}
-            height={view.composerHeight}
-            command={command}
-            save={save}
-            connected={connected}
-            notify={notify}
-          />
-        </>
+        <Thread
+          card={card}
+          view={view}
+          thread={thread}
+          command={command}
+          connected={connected}
+          save={save}
+          draft={draft}
+          setDraft={setDraft}
+          comments={comments}
+          setComments={setComments}
+          notify={notify}
+        />
       ) : tab === 'agent' ? (
         <div className="detail-content">
           <SettingList settings={card.settings} />
