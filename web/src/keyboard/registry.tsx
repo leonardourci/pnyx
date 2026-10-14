@@ -19,7 +19,12 @@ export function KeyboardProvider({ prefs, onAction, leaveField, hints, hintKey, 
     const keydown = (event: KeyboardEvent) => {
       const { prefs, onAction, leaveField, hints, hintKey } = current.current;
       const target = event.target instanceof HTMLElement ? event.target : document.body;
-      if (!hints && target instanceof HTMLInputElement && target.type === "search") { if (event.key === "Escape" && !event.isComposing && !target.value) { target.blur(); leaveField(); } return; }
+      if (!hints && target instanceof HTMLInputElement && target.type === "search") {
+        if (event.key !== "Escape" || event.isComposing) return;
+        if (!target.value) { target.blur(); leaveField(); return; }
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(target, "");
+        target.dispatchEvent(new Event("input", { bubbles: true })); return;
+      }
       const overlay = target.closest("[data-key-scope=overlay]");
       const scope = hints ? "hints" : overlay ? "overlay" : (target.dataset.keyScope ?? "navigation") as KeyScope;
       // These controls own their standard navigation and selection keys.

@@ -88,7 +88,7 @@ export function resolveKey(event: KeyInput, context: KeyContext, prefs: Keyboard
   const empty = { consume: false, progress: emptyProgress() };
   if (event.defaultPrevented || event.isComposing || event.altGraph || ["Process", "Dead", "Unidentified"].includes(event.key)) return empty;
   if (modifiers.includes(event.key)) return { consume: false, progress };
-  const available = KEY_ACTIONS.filter(a => a.scopes.includes(context.scope) && (!context.editing || a.id === "send" || a.id === "cancel"));
+  const available = KEY_ACTIONS.filter(a => a.scopes.includes(context.scope) && (!context.editing || a.id === "send" || (a.id === "cancel" && context.scope !== "navigation")));
   const candidates = progress.scope === context.scope && context.now <= progress.until ? progress.candidates : [];
   const pending: KeyProgress["candidates"] = [];
   for (const a of available) for (const binding of bindingsFor(prefs, a.id)) {

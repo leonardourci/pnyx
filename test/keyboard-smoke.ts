@@ -61,9 +61,15 @@ try {
   await press(`${mod}+k`); await browser("wait", "Search Commands"); await screenshot("keyboard-palette.png");
   await fill("combobox", "Search Commands", "settings"); await press("Enter"); await browser("wait", "Keyboard shortcuts");
   await click("button", "Rebind Focus reply composer"); await fill("textbox", "One binding per line", "j"); await click("button", "Save binding"); await browser("wait", "Shortcut conflicts");
+  await focus("[aria-label='Font size']"); await press("Escape"); await check(active("[aria-label='Font size']") + " && document.querySelector('.keyboard-settings')", "Escape in a number field stays in Settings");
+  await focus(".binding-editor textarea"); await press("Escape"); await check("!document.querySelector('.binding-editor') && document.querySelector('.keyboard-settings')", "Escape closes only the binding editor");
+  await click("button", "Rebind Focus reply composer");
   await fill("textbox", "One binding per line", "g r"); await click("button", "Save binding"); await browser("wait", "Preferences saved"); assert.deepEqual(board().view!.keyboard.bindings.reply, ["g r"]);
   await fill("searchbox", "Filter shortcuts", "reply"); await browser("eval", "() => { document.querySelector('.keyboard-settings').scrollIntoView(); return true; }"); await screenshot("keyboard-settings.png"); await click("button", "Back to board"); await focus(cardSelector); await press("r"); await check("!document.querySelector('.detail')", "old binding is disabled");
   await press("g"); await press("r"); await browser("wait", "Reply to Shape the first working board"); await check(active("textarea"), "rebound sequence focuses reply");
+  await fill("searchbox", "Find a card", "Shape");
+  await browser("eval", `() => { document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); return true; }`);
+  await check(`document.querySelector("[aria-label='Find a card']").value === "" && ${active("[aria-label='Find a card']")} && document.querySelector(".detail")`, "Escape clears card search without native clearing");
   await fill("searchbox", "Find a card", "Shape"); await press("Escape");
   await check(`document.querySelector("[aria-label='Find a card']").value === "" && ${active("[aria-label='Find a card']")} && document.querySelector(".detail")`, "Escape clears card search and keeps the detail open");
   await press("Escape"); await check(active(cardSelector) + " && document.querySelector('.detail')", "Escape in an empty card search returns to the board");

@@ -29,6 +29,9 @@ test("typing, IME, dead keys, AltGraph and repeats cannot activate board command
   for (const scope of ["composer", "navigation"] as const) for (const key of ["j", "k", "/", "?", "m", "r", "f", "Enter"]) assert.equal(resolve({ key }, { scope, editing: true }).action, undefined);
   assert.equal(resolve({ key: "k", metaKey: true }, { scope: "composer", editing: true }).action, undefined);
   assert.equal(resolve({ key: "Enter", metaKey: true }, { scope: "composer", editing: true }).action, "send");
+  for (const scope of ["composer", "overlay"] as const) assert.equal(resolve({ key: "Escape" }, { scope, editing: true }).action, "cancel");
+  assert.equal(resolve({ key: "Escape" }, { scope: "navigation", editing: true }).consume, false);
+  assert.equal(resolve({ key: "Escape" }, { scope: "navigation" }).action, "cancel");
   for (const event of [{ key: "Enter", isComposing: true, metaKey: true }, { key: "Process" }, { key: "Dead" }, { key: "Enter", metaKey: true, altGraph: true }, { key: "Enter", metaKey: true, repeat: true }, { key: "Enter", metaKey: true, defaultPrevented: true }]) assert.equal(resolve(event, { scope: "composer", editing: true }).action, undefined);
   assert.equal(resolve({ key: "m", repeat: true }).action, undefined);
   assert.equal(resolve({ key: "ArrowDown", repeat: true }).action, "board.down");
