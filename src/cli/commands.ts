@@ -1,5 +1,6 @@
 // pnyx-axi board commands. Every write goes through `commit`, which holds the
 // board's writer lock, ingests the hook spool, then appends at most one event.
+import { DEFAULT_VIEW, viewFor } from "../core/view.ts";
 import { readFileSync, renameSync, rmSync } from "node:fs";
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import { AxiError } from "axi-sdk-js";
@@ -8,6 +9,7 @@ import {
   decideMove,
   decideOutcome,
   decidePush,
+  decideView,
   decideUndo,
   findCard,
   parseLink,
@@ -141,6 +143,7 @@ export function ingestSpool(board: string): { ingested: number; rejected: number
 }
 
 function receipt(state: BoardState, event: BoardEvent): Output {
+  if (event.type === "board.view") return { event: { seq: event.seq, id: event.id, type: event.type }, viewRevision: state.viewRevision };
   const card = state.cards[event.cardId]!;
   return {
     event: { seq: event.seq, id: event.id, type: event.type },
@@ -200,8 +203,8 @@ export function guard<T = Output>(handler: (args: string[]) => T) {
 }
 
 function column(value: string): Column {
-  const c = value.replace(/-/g, "_");
-  if (!(COLUMNS as readonly string[]).includes(c)) {
+  const c = value.startsWith("custom:") ? value : value.replace(/-/g, "_");
+  if (!(COLUMNS as readonly string[]).includes(c) && !/^custom:[a-z0-9-]{1,60}$/.test(c)) {
     throw new AxiError(`unknown column: ${value}`, "VALIDATION_ERROR", [`Use one of ${COLUMNS.join(", ")}`]);
   }
   return c as Column;
@@ -256,7 +259,7 @@ export async function home(): Promise<Output> {
     out.help = ["Run `pnyx-axi push --key <key> --file card.json` to add a card", ...serveHint];
     return out;
   }
-  const order = (c: Card) => COLUMNS.indexOf(c.column);
+  const order = (c: Card) => (COLUMNS as readonly string[]).indexOf(c.column);
   const sorted = cards.sort((a, b) => order(a) - order(b) || b.updatedSeq - a.updatedSeq);
   out.cards = sorted.slice(0, HOME_LIMIT).map(cardRow);
   out.help = ["Run `pnyx-axi card <id>` for details", "Run `pnyx-axi history` for recent events", ...serveHint];
@@ -338,6 +341,7 @@ const outcome = guard((args) => {
 function summarize(event: BoardEvent): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : "";
   switch (event.type) {
+    case "board.view": return "View preferences changed";
     case "card.pushed":
       return `${undo}${Object.keys(event.data).filter((k) => k !== "key" && k !== "before").join(" ") || "no fields"}`;
     case "card.moved":
@@ -439,7 +443,19 @@ const setup = guard((args) => {
   return out;
 });
 
-export const commands = { push, card, move, link, outcome, history, undo, repair, setup };
+const view = guard((args) => {
+  const [sub, ...rest] = args;
+  const { values, board } = parse(rest, { ...WRITE, json: { type: "string" } }, 0);
+  if (sub === "show") { const { state } = loadBoard(board); return { view: viewFor(state), revision: state.viewRevision ?? 0 }; }
+  if (sub === "schema") return { defaults: DEFAULT_VIEW, help: ["view set --json <patch> --if-revision <revision>"] };
+  if (sub !== "set") throw new AxiError("use view show, schema or set", "VALIDATION_ERROR");
+  let patch: unknown;
+  try { patch = JSON.parse(required(values.json as string, "--json")); } catch { throw new AxiError("--json must contain a preference object", "VALIDATION_ERROR"); }
+  const m = meta(values);
+  return commit(board, m, { type: "board.view", card: "$board" }, s => decideView(s, patch, m));
+});
+
+export const commands = { view, push, card, move, link, outcome, history, undo, repair, setup };
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Deterministic board of every agent and its work
@@ -453,6 +469,7 @@ commands:
   history [--card <id>] [--before <seq>]     Page through past events, newest first
   search "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
+  view show|schema|set                        Inspect or save board view preferences
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the board server in the foreground until stopped
   stop                                       Stop the board's running server
@@ -463,8 +480,7 @@ flags:
   --board <name>     Board to use (default: default)
   --event-id <id>    On writes: idempotency key; a repeat returns the original receipt
   --if-revision <n>  On writes: expected card revision (0 for a new card)
-  --help             Show help for a command
-  --version          Show the version
+  --help | --version Show command help or the installed version
 `;
 
 const COMMAND_HELP: Record<string, string> = {
@@ -504,7 +520,7 @@ Hook events go to the default board.
 A crash mid-append can leave a torn last line; writes refuse until it is repaired.
 Repair copies the torn bytes to a side file and appends a marker so readers skip them; the log is never cut.
 `,
-  serve: `usage: pnyx-axi serve [--port <n>] [--board <name>]
+  serve: `usage: pnyx-axi serve [--port <n>] [--board <name>] [--home <Firstmate path>]...
 Serves the board on 127.0.0.1 (a random port unless --port is given) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
 Hook events arrive on the board's server.sock or through its spool. Browsers get one WebSocket at /ws:
 a snapshot on connect, then events by sequence; /ws?after=<seq> resumes, a gap gets a fresh snapshot.
@@ -518,5 +534,6 @@ gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. The
 };
 
 export function commandHelp(command: string): string | undefined {
+  if (command === "view") return "usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--board <name>]";
   return COMMAND_HELP[command];
 }

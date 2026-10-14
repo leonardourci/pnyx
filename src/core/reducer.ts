@@ -62,6 +62,13 @@ function apply(state: BoardState, event: BoardEvent): boolean {
   state.seq = event.seq;
   state.eventIds[event.id] = event.seq;
 
+  if (event.type === "board.view") {
+    state.view = structuredClone(event.data.after);
+    state.viewRevision = (state.viewRevision ?? 0) + 1;
+    if (event.undoes) state.undone[event.undoes] = event.id;
+    return true;
+  }
+
   let card = state.cards[event.cardId];
   if (event.type === "card.pushed") {
     const { key, source, ...fields } = event.data;

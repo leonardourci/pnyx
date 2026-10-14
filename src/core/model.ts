@@ -3,7 +3,7 @@
 export const EVENT_VERSION = 1 as const;
 
 export const COLUMNS = ["needs_you", "workers_on_it", "review", "done"] as const;
-export type Column = (typeof COLUMNS)[number];
+export type Column = (typeof COLUMNS)[number] | `custom:${string}`;
 
 export const LINK_KINDS = ["github_pr", "linear", "url"] as const;
 export type LinkKind = (typeof LINK_KINDS)[number];
@@ -151,11 +151,33 @@ export type RepliedEvent = EventBase & {
   data: { reply: string; state: ReplyState; route: string; text?: string; resolveKey?: string; detail?: string };
 };
 
-export type BoardEvent = PushedEvent | MovedEvent | LinkedEvent | OutcomeEvent | RepliedEvent;
+export interface ViewPreferences {
+  fontSize: number;
+  panelPlacement: "right" | "inline";
+  panelWidth: number;
+  composerHeight: number;
+  cardHeight: number;
+  cardColors: boolean;
+  toolDetails: boolean;
+  thinkingDetails: boolean;
+  columnWidths: Record<string, number>;
+  cardHeights: Record<string, number>;
+  cardTraceOverrides: Record<string, { tools?: boolean; thinking?: boolean }>;
+  customColumns: { id: `custom:${string}`; title: string }[];
+}
+
+export type ViewEvent = EventBase & {
+  type: "board.view";
+  data: { before: ViewPreferences; after: ViewPreferences };
+};
+
+export type BoardEvent = PushedEvent | MovedEvent | LinkedEvent | OutcomeEvent | RepliedEvent | ViewEvent;
 export type EventType = BoardEvent["type"];
-export const EVENT_TYPES: readonly EventType[] = ["card.pushed", "card.moved", "card.linked", "card.outcome", "card.replied"];
+export const EVENT_TYPES: readonly EventType[] = ["card.pushed", "card.moved", "card.linked", "card.outcome", "card.replied", "board.view"];
 
 export interface BoardState {
+  view?: ViewPreferences;
+  viewRevision?: number;
   v: typeof EVENT_VERSION;
   seq: number;
   cards: Record<string, Card>;

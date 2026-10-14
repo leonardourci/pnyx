@@ -3,11 +3,16 @@
 // changes and the tab's commands.
 // It writes only through the CLI's own commands and spool drain, so the board
 // keeps a single writer whether a change comes from here or from the CLI.
+import { execFile } from "node:child_process";
+import { readThread, threadPath, THREAD_CURSOR, type ThreadPage } from "../thread/read.ts";
+import { findCard } from "../core/decide.ts";
+import { resolveHome } from "../integrations/firstmate/home.ts";
+import { search, updateIndex } from "../search/index.ts";
 import { timingSafeEqual } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createSocketServer, type Server as SocketServer } from "node:net";
-import { extname, join, normalize } from "node:path";
+import { basename, dirname, extname, join, normalize } from "node:path";
 import { parseArgs } from "node:util";
 import { AxiError } from "axi-sdk-js";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -23,8 +28,8 @@ const RESUME_LIMIT = 1000;
 const MAX_BUFFERED = 1 << 20;
 const MAX_BODY = 1 << 20;
 const STOP_TIMEOUT_MS = 5000;
-// Writes a browser may make. push and repair stay CLI-only: push reads a file path, repair is maintenance.
-const WRITE_COMMANDS = ["move", "link", "outcome", "undo"] as const;
+// CLI commands exposed to the browser. push and repair stay CLI-only: push reads a file path, repair is maintenance.
+const CLI_COMMANDS = ["move", "link", "outcome", "undo", "view", "history"] as const;
 // Same relative path from src/server and dist/server.
 const WEB_ROOT = join(import.meta.dirname, "..", "..", "dist", "web");
 const MIME: Record<string, string> = {
@@ -39,6 +44,7 @@ const MIME: Record<string, string> = {
 // Server to browser. A snapshot replaces whatever the tab held; events then follow in sequence.
 // Each command gets a receipt or an error carrying its id.
 export type ServerMessage =
+  | { type: "thread"; thread: ThreadPage }
   | { type: "snapshot"; seq: number; state: BoardState }
   | { type: "event"; event: BoardEvent }
   | { type: "receipt"; id: string; [field: string]: unknown }
@@ -51,10 +57,25 @@ export interface RunningServer {
   close(): Promise<void>;
 }
 
-export async function startServer({ board, port = 0 }: { board: string; port?: number }): Promise<RunningServer> {
+export async function startServer({ board, port = 0, homes = [] }: { board: string; port?: number; homes?: string[] }): Promise<RunningServer> {
   if (await readServer(board)) {
     throw new BoardError(`a server is already running for board ${board}`, "ALREADY_RUNNING", ["Run `pnyx-axi` to see its address"]);
   }
+  homes = homes.map(resolveHome);
+  const subscriptions = new Map<WebSocket, { card: string; watcher?: FSWatcher }>();
+  const threadScheduled = new WeakSet<WebSocket>();
+  const refreshThread = (ws: WebSocket) => {
+    if (threadScheduled.has(ws)) return;
+    threadScheduled.add(ws);
+    setImmediate(() => {
+      threadScheduled.delete(ws);
+      if (ws.readyState !== ws.OPEN) return;
+      const sub = subscriptions.get(ws), card = sub && state.cards[sub.card];
+      if (!card) return;
+      try { send(ws, { type: "thread", thread: readThread(board, state, card, homes) }); }
+      catch { send(ws, { type: "error", id: null, code: "THREAD_UNAVAILABLE", error: "Conversation could not be refreshed" }); }
+    });
+  };
   const dir = boardDir(board);
   mkdirSync(spoolDir(dir), { recursive: true });
   const token = Buffer.from(localToken());
@@ -78,6 +99,7 @@ export async function startServer({ board, port = 0 }: { board: string; port?: n
     for (const ws of wss.clients) {
       if (!resyncing.has(ws)) send(ws, { type: "event", event });
       else if (ws.bufferedAmount <= MAX_BUFFERED) sendSnapshot(ws);
+      if (subscriptions.get(ws)?.card === event.cardId) refreshThread(ws);
     }
   };
   const reload = () => {
@@ -142,16 +164,48 @@ export async function startServer({ board, port = 0 }: { board: string; port?: n
     const fail = (error: string, code: string, help?: string[]) => send(ws, { type: "error", id, error, code, help });
     const { name, args } = message;
     if (id === null) return fail("command needs a string id", "VALIDATION_ERROR");
-    if (typeof name !== "string" || !(WRITE_COMMANDS as readonly string[]).includes(name)) {
-      return fail(`unknown command: ${String(name)}`, "NOT_FOUND", [`Use one of ${WRITE_COMMANDS.join(", ")}`]);
+    if (["thread", "search", "reply"].includes(String(name))) {
+      if (!Array.isArray(args) || !args.every(a => typeof a === "string")) return fail("args must be strings", "VALIDATION_ERROR");
+      try {
+        if (name === "search") {
+          if (args.length > 2) throw new BoardError("search expects text and optional workspace", "VALIDATION_ERROR");
+          updateIndex(board);
+          send(ws, { type: "receipt", id, ...search(board, { text: args[0] ?? "", workspace: args[1] || undefined, limit: 30 }) });
+        } else if (name === "thread") {
+          const old = subscriptions.get(ws); old?.watcher?.close(); subscriptions.delete(ws);
+          if (!args[0]) { send(ws, { type: "receipt", id }); return; }
+          const card = findCard(state, args[0]);
+          if (args[1] !== undefined && (args[1].length > 100 || !THREAD_CURSOR.test(args[1]))) throw new BoardError("invalid thread cursor", "VALIDATION_ERROR");
+          const sub: { card: string; watcher?: FSWatcher } = { card: card.id };
+          const path = threadPath(card);
+          if (path) { try { sub.watcher = watch(dirname(path), (_event, filename) => { if (!filename || String(filename) === basename(path)) refreshThread(ws); }); } catch { /* Missing transcript remains explicit. */ } }
+          subscriptions.set(ws, sub);
+          send(ws, { type: "receipt", id, thread: readThread(board, state, card, homes, args[1]) });
+        } else {
+          if (args.length !== 3 || !args[2] || args[1].length > 32000) throw new BoardError("reply expects card, text and idempotency key", "VALIDATION_ERROR");
+          const card = findCard(state, args[0]);
+          if (!card.sourceRefs.some(r => r.adapter === "firstmate" && homes.includes(r.instanceId ?? ""))) throw new BoardError("No configured reply route; draft retained", "NO_ROUTE");
+          // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.
+          execFile(process.execPath, [join(import.meta.dirname, "..", "cli", import.meta.url.endsWith(".ts") ? "reply-worker.ts" : "reply-worker.js"), card.id, "--text", args[1], "--idempotency-key", args[2], "--board", board, "--actor", "web", ...homes.flatMap(h => ["--home", h])], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {
+            kick();
+            if (ws.readyState !== ws.OPEN) return;
+            if (error) fail("Reply could not be confirmed; check receipts before sending again", "DELIVERY_UNKNOWN");
+            else { try { send(ws, { type: "receipt", id, ...JSON.parse(stdout) }); } catch { fail("Reply receipt unavailable; check history", "DELIVERY_UNKNOWN"); } }
+          });
+        }
+      } catch (error) { fail((error as Error).message, error instanceof BoardError ? error.code : "UNKNOWN"); }
+      return;
+    }
+    if (typeof name !== "string" || !(CLI_COMMANDS as readonly string[]).includes(name)) {
+      return fail(`unknown command: ${String(name)}`, "NOT_FOUND", [`Use one of ${CLI_COMMANDS.join(", ")}`]);
     }
     if (!Array.isArray(args) || !args.every((a) => typeof a === "string")) return fail("args must be [string, ...]", "VALIDATION_ERROR");
     if (args.some((a) => a === "--board" || a.startsWith("--board="))) {
       return fail(`--board is not allowed; this server writes board ${board}`, "VALIDATION_ERROR");
     }
-    const actor = args.some((a) => a === "--actor" || a.startsWith("--actor=")) ? [] : ["--actor", "web"];
+    const actor = name === "history" || args.some((a) => a === "--actor" || a.startsWith("--actor=")) ? [] : ["--actor", "web"];
     try {
-      send(ws, { ...commands[name as (typeof WRITE_COMMANDS)[number]]([...args, ...actor, "--board", board]), type: "receipt", id });
+      send(ws, { ...commands[name as (typeof CLI_COMMANDS)[number]]([...args, ...actor, "--board", board]), type: "receipt", id });
       kick();
     } catch (error) {
       if (!(error instanceof AxiError)) return fail((error as Error).message, "UNKNOWN");
@@ -171,6 +225,7 @@ export async function startServer({ board, port = 0 }: { board: string; port?: n
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
+      ws.on("close", () => { subscriptions.get(ws)?.watcher?.close(); subscriptions.delete(ws); });
       ws.on("message", (data) => {
         const message = parseMessage(data.toString());
         if (message?.type === "resync") sendSnapshot(ws);
@@ -311,10 +366,10 @@ function serveStatic(res: ServerResponse, path: string, token: string): void {
   reply(res, 404, { error: "not found; run `pnpm run build` for the web board", code: "NOT_FOUND" });
 }
 
-function boardFlag(args: string[], options: { port?: { type: "string" } } = {}) {
+function boardFlag(args: string[], options: { port?: { type: "string" }; home?: { type: "string"; multiple: true } } = {}) {
   try {
     const { values } = parseArgs({ args, options: { board: { type: "string" }, ...options }, strict: true });
-    return values as { board?: string; port?: string };
+    return values as { board?: string; port?: string; home?: string[] };
   } catch (error) {
     throw new AxiError((error as Error).message, "VALIDATION_ERROR", ["Run the command with --help"]);
   }
@@ -322,14 +377,14 @@ function boardFlag(args: string[], options: { port?: { type: "string" } } = {}) 
 
 // `pnyx-axi serve`: runs in the foreground until SIGINT, SIGTERM or `pnyx-axi stop`.
 export async function serve(args: string[]): Promise<Record<string, unknown>> {
-  const values = boardFlag(args, { port: { type: "string" } });
+  const values = boardFlag(args, { port: { type: "string" }, home: { type: "string", multiple: true } });
   const board = values.board ?? "default";
   if (values.port !== undefined && !/^\d+$/.test(values.port)) {
     throw new AxiError("--port must be a number", "VALIDATION_ERROR");
   }
   let server: RunningServer;
   try {
-    server = await startServer({ board, port: values.port === undefined ? 0 : Number(values.port) });
+    server = await startServer({ board, port: values.port === undefined ? 0 : Number(values.port), homes: values.home });
   } catch (error) {
     if (error instanceof BoardError) throw new AxiError(error.message, error.code, error.help);
     if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
