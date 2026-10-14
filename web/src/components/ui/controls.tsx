@@ -5,8 +5,14 @@ export function Button({ className = "", variant = "quiet", ...props }: Componen
 }
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) { return <input {...props} className={`input ${props.className ?? ""}`} />; }
 export function Textarea(props: ComponentProps<"textarea">) { return <textarea {...props} className={`input textarea ${props.className ?? ""}`} />; }
-export function Switch({ label, checked, onChange }: { label: string; checked: boolean; onChange(value: boolean): void }) {
-  return <Button className="switch-label" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}><span className="switch-track"><span /></span>{label}</Button>;
+export function usePending<T>(value: T): [T, (next: T) => void] {
+  const [pending, setPending] = useState<{ value: T } | null>(null);
+  useEffect(() => setPending(p => p && Object.is(p.value, value) ? null : p), [value]);
+  return [pending ? pending.value : value, next => setPending({ value: next })];
+}
+export function Switch({ label, checked: saved, onChange }: { label: string; checked: boolean; onChange(value: boolean): void }) {
+  const [checked, setChecked] = usePending(saved);
+  return <Button className="switch-label" role="switch" aria-checked={checked} onClick={() => { setChecked(!checked); onChange(!checked); }}><span className="switch-track"><span /></span>{label}</Button>;
 }
 export interface Option { value: string; label: string }
 export function Select({ label, value, options, onChange, disabled = false }: { label: string; value: string; options: Option[]; onChange(value: string): void; disabled?: boolean }) {
@@ -28,8 +34,9 @@ export function Select({ label, value, options, onChange, disabled = false }: { 
     {open && <div id={id} role="listbox" aria-label={label} className="select-menu">{options.map((o, n) => <div key={o.value} id={`${id}-${n}`} role="option" tabIndex={-1} aria-selected={o.value === value} className={active === n ? "active" : ""} onPointerMove={() => setActive(n)} onClick={() => choose(n)}>{o.label}<span aria-hidden="true">{o.value === value ? "✓" : ""}</span></div>)}</div>}
   </div>;
 }
-export function NumberField({ label, value, min, max, step = 8, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange(value: number): void }) {
-  const id = useId();
+export function NumberField({ label, value: saved, min, max, step = 8, onChange: save }: { label: string; value: number; min: number; max: number; step?: number; onChange(value: number): void }) {
+  const id = useId(), [value, setValue] = usePending(saved);
+  const onChange = (n: number) => { setValue(n); save(n); };
   const [draft, setDraft] = useState(String(value));
   useEffect(() => setDraft(String(value)), [value]);
   return <div className="number-field"><label htmlFor={id}>{label}</label><span className="number-control"><Button aria-label={`Decrease ${label}`} disabled={value <= min} onClick={() => onChange(Math.max(min, value - step))}>−</Button><Input id={id} aria-label={label} inputMode="numeric" value={draft} onChange={e => setDraft(e.target.value)} onBlur={() => { const n = Number(draft); if (Number.isInteger(n) && n >= min && n <= max && n !== value) onChange(n); else setDraft(String(value)); }} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} /><span>px</span><Button aria-label={`Increase ${label}`} disabled={value >= max} onClick={() => onChange(Math.min(max, value + step))}>+</Button></span></div>;

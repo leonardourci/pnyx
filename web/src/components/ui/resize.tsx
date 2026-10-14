@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { usePending } from "./controls.tsx";
 
-export function Resize({ label, value, min, max, axis = "x", reverse = false, onPreview, onCommit }: { label: string; value: number; min: number; max: number; axis?: "x" | "y"; reverse?: boolean; onPreview(value: number | null): void; onCommit(value: number): void }) {
-  const [preview, setPreview] = useState<number | null>(null);
+export function Resize({ label, value: saved, min, max, axis = "x", reverse = false, onPreview, onCommit }: { label: string; value: number; min: number; max: number; axis?: "x" | "y"; reverse?: boolean; onPreview(value: number | null): void; onCommit(value: number): void }) {
+  const [preview, setPreview] = useState<number | null>(null), [value, setValue] = usePending(saved);
   const current = useRef<number | null>(null), drag = useRef<{ start: number; value: number } | null>(null);
   const previewAt = (n: number) => { const next = Math.round(Math.max(min, Math.min(max, n))); current.current = next; setPreview(next); onPreview(next); };
-  const finish = (cancel = false) => { const n = current.current; current.current = null; drag.current = null; setPreview(null); onPreview(null); if (!cancel && n !== null && n !== value) onCommit(n); };
+  const finish = (cancel = false) => { const n = current.current; current.current = null; drag.current = null; setPreview(null); onPreview(null); if (!cancel && n !== null && n !== value) { setValue(n); onCommit(n); } };
   useEffect(() => () => { current.current = null; }, []);
   return <div role="separator" tabIndex={0} aria-label={label} aria-orientation={axis === "x" ? "vertical" : "horizontal"} aria-valuemin={min} aria-valuemax={max} aria-valuenow={preview ?? value} className={`resize resize-${axis}`}
     onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId); drag.current = { start: axis === "x" ? e.clientX : e.clientY, value }; }}
