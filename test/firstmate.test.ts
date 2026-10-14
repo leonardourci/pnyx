@@ -496,7 +496,13 @@ test('a session joins the task launched in its worktree; only a session in its t
   const meta = (task: string, terminal: string) =>
     writeFileSync(join(home, 'state', `${task}.meta`), `task=${task}\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=${terminal}\n`)
   const tty = { tty: '/dev/ttys042', pid: '4242' }
-  const hook = (id: string, session: string, paseoTerminal?: string, facts: object = tty, extra: object = {}) =>
+  const hook = (
+    id: string,
+    session: string,
+    paseoTerminal?: string,
+    facts: object = tty,
+    extra: object = {},
+  ) =>
     spoolWrite('default', {
       v: 1,
       id,
