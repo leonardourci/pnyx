@@ -9,6 +9,7 @@ import { SettingChips, SettingList, harnessName } from './agent-settings.tsx'
 import { Links, Tags } from './card.tsx'
 import { Composer } from './composer.tsx'
 import { Notes } from './notes.tsx'
+import { InlineQuestions } from './questions.tsx'
 import { columnsFor, receiptLabel } from './view.ts'
 import type { Command } from './connection.ts'
 
@@ -204,6 +205,12 @@ export function Detail({
               )
             })}
             {page && entries.length === 0 && !page.unavailable && <p className="empty">No recorded messages yet.</p>}
+            <InlineQuestions
+              card={card}
+              command={command}
+              connected={connected}
+              notify={notify}
+            />
           </div>
           {latest && (
             <Button

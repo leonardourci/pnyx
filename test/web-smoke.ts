@@ -206,6 +206,18 @@ try {
   await screenshot('columns-mobile.png')
   await browser('emulate', '--viewport', '320x640x1,mobile,touch'); await browser('wait', 'The working board')
   await check(`document.documentElement.scrollWidth === innerWidth && document.querySelector('.column-needs_you').getBoundingClientRect().width <= document.querySelector('.kanban').clientWidth && ${fits}`, 'inline detail column fits a 320px viewport without horizontal scrolling')
+  // An agent's own question shows inline in its conversation with the options its terminal shows.
+  await browser('emulate', '--viewport', '1440x900x1'); await browser('wait', 'The working board')
+  withWriter('default', w => {
+    const questions = [{ question: 'Which database?', header: 'DB', options: [{ label: 'Postgres', description: 'relational' }, { label: 'SQLite' }] }]
+    const d = decidePush(w.state, 'claude:ask', { title: 'Inline question', agent: { provider: 'claude-code', sessionId: 'ask' }, attention: [{ kind: 'question', key: 'hook:tool:AskUserQuestion', blocking: true, text: 'Which database?', questions }] }, layoutMeta)
+    assert.ok('event' in d); w.append(d.event)
+  })
+  await browser('wait', 'Inline question'); await click('button', 'Inline question'); await browser('wait', 'Asking you')
+  await check('document.querySelector(".message.ask legend").textContent.includes("Which database?") && document.querySelectorAll(".message.ask .ask-option").length === 2 && document.querySelector(".message.ask button[type=submit]").disabled', 'an agent question shows inline with its options')
+  await click('button', 'Postgres relational')
+  await check('document.querySelector(".message.ask .ask-option[aria-pressed=true]").textContent.startsWith("Postgres") && !document.querySelector(".message.ask button[type=submit]").disabled', 'picking an option enables the answer')
+  await screenshot('inline-question.png')
   const consoleOutput = await browser('console'); assert.doesNotMatch(consoleOutput, /(?:TypeError|ReferenceError|Uncaught)/)
   process.stdout.write(`Browser smoke passed; screenshots: ${evidence}\n`)
 } finally {
