@@ -10,7 +10,7 @@ import {
   type Link,
   type SourceRef,
 } from './model.ts'
-import { applyAttachment, observeSession } from './tasks.ts'
+import { applyAttachment, observeSession, sessionId } from './tasks.ts'
 import { applyHydra, refreshTasks } from './hydra.ts'
 
 export function emptyBoard(): BoardState {
@@ -190,11 +190,17 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
       state.undone[event.undoes] = event.id
     }
 
-    for (const task of Object.values(state.cards)) {
-      task.column = columnFor({ card: task })
+    const touched = [event.cardId, event.data.before, event.data.after]
+
+    for (const id of touched) {
+      const task = id && state.cards[id]
+
+      if (task) {
+        task.column = columnFor({ card: task })
+      }
     }
 
-    refreshTasks({ state })
+    refreshTasks({ state, ids: touched })
 
     if (card && event.data.before !== card.id) {
       card.revision++
@@ -370,16 +376,14 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
 
   observeSession({ state, card, event })
   card.column = columnFor({ card })
+  const task = card.agent && state.sessions?.[sessionId({ agent: card.agent })]?.taskId
+  const worker = task && task !== card.id ? state.cards[task] : undefined
 
-  for (const session of Object.values(state.sessions ?? {})) {
-    const task = session.taskId && state.cards[session.taskId]
-
-    if (task && task.id !== card.id) {
-      task.column = columnFor({ card: task })
-    }
+  if (worker) {
+    worker.column = columnFor({ card: worker })
   }
 
-  refreshTasks({ state })
+  refreshTasks({ state, ids: [card.id, worker?.id] })
 
   card.revision += 1
 

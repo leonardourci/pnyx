@@ -17,9 +17,7 @@ export function boardConfig({ state, id = 'default' }: { state: BoardState; id?:
   return state.board ?? { id, name: id, hydra: { id: 'hydra', kind: 'agent', name: 'Hydra' }, columns: [...structuredClone(TEMPLATE_COLUMNS), ...(state.view?.customColumns ?? [])] }
 }
 
-export function taskColumn({ state, card }: { state: BoardState; card: Card }): Column {
-  const columns = boardConfig({ state }).columns
-
+function taskColumn({ columns, card }: { columns: BoardColumn[]; card: Card }): Column {
   if (card.manualColumn && columns.some(c => c.id === card.manualColumn)) {
     return card.manualColumn
   }
@@ -40,10 +38,17 @@ export function taskColumn({ state, card }: { state: BoardState; card: Card }): 
   return (columns.find(c => c.role === role) ?? columns.find(c => c.role === 'parked') ?? columns[0]!).id
 }
 
-export function refreshTasks({ state }: { state: BoardState }): void {
+// Refreshes the given cards, or every card when a board-wide event changed the rules.
+export function refreshTasks({ state, ids }: {
+  state: BoardState
+  ids?: (string | null | undefined)[]
+}): void {
   const columns = boardConfig({ state }).columns
+  const cards = ids
+    ? [...new Set(ids)].flatMap(id => (id && state.cards[id] ? [state.cards[id]] : []))
+    : Object.values(state.cards)
 
-  for (const card of Object.values(state.cards)) {
+  for (const card of cards) {
     if (card.automaticTask || card.sourceRefs.some(r => r.adapter === 'firstmate' && r.objectId === '@home')) {
       card.hidden = true
     }
@@ -59,7 +64,7 @@ export function refreshTasks({ state }: { state: BoardState }): void {
     }
 
     if (card.tracking === 'declared') {
-      card.column = taskColumn({ state, card })
+      card.column = taskColumn({ columns, card })
     } else if (!columns.some(c => c.id === card.column)) {
       card.column = (columns.find(c => c.role === 'parked') ?? columns[0]!).id
     }
@@ -216,7 +221,7 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
       id: event.cardId, key, title, titleSet: true, workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], sessionIds: [], tracking: 'declared', statusLog: initial ? [initial] : [], ...(initial ? { status: initial } : {}), ...(parentId ? { parentId } : {}), ...(column && !role ? { manualColumn: column } : {}), ...(folder ? { folder } : {}), column: column ?? 'parked', revision: 1, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
     }
     state.keys[key] = event.cardId
-    refreshTasks({ state })
+    refreshTasks({ state, ids: [event.cardId] })
 
     return true
   }
@@ -238,7 +243,7 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
       card.revision++
       card.updatedSeq = event.seq
       card.updatedAt = event.at
-      refreshTasks({ state })
+      refreshTasks({ state, ids: [card.id] })
     }
 
     return true
