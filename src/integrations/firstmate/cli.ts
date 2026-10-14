@@ -69,19 +69,21 @@ async function watch({ board, list } : { board: string; list: string[] }): Promi
   return watches.close()
 }
 
-const firstmate = guard<Output | Promise<Output>>(args => {
-  const [sub, ...rest] = args
+const firstmate = guard<Output | Promise<Output>>({
+  handler: ({ args }) => {
+    const [sub, ...rest] = args
 
-  if (sub !== 'sync' && sub !== 'watch') {
-    throw new AxiError(`unknown firstmate command: ${sub ?? '(none)'}`, 'VALIDATION_ERROR', [
-      'Run `pnyx-axi firstmate sync --home <path>` or `pnyx-axi firstmate watch --home <path>`',
-    ])
-  }
+    if (sub !== 'sync' && sub !== 'watch') {
+      throw new AxiError(`unknown firstmate command: ${sub ?? '(none)'}`, 'VALIDATION_ERROR', [
+        'Run `pnyx-axi firstmate sync --home <path>` or `pnyx-axi firstmate watch --home <path>`',
+      ])
+    }
 
-  const { values, board } = parse(rest, HOMES, 0)
-  const list = homes({ values })
+    const { values, board } = parse({ args: rest, options: HOMES, positionals: 0 })
+    const list = homes({ values })
 
-  return sub === 'sync' ? sync({ board, list }) : watch({ board, list })
+    return sub === 'sync' ? sync({ board, list }) : watch({ board, list })
+  },
 })
 
 export const firstmateCommands = { firstmate }

@@ -303,7 +303,7 @@ export async function startServer({
 
       try {
         if (spoolFiles({ dir }).length > 0) {
-          ingestSpool(board)
+          ingestSpool({ board })
         }
 
         pump()

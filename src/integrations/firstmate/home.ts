@@ -211,7 +211,7 @@ export function readHome({ home } : { home: string }): HomeObservation {
     const pr = meta.pr
     const activity = latestActivity({ log })
     const last = latestLine({ log })
-    const worktree = canonical(meta.worktree)
+    const worktree = canonical({ path: meta.worktree })
     tasks.push({
       task,
       title: row?.title ?? task,

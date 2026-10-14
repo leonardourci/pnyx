@@ -145,7 +145,7 @@ export function syncHome({ board, home, at = new Date().toISOString() } : {
   return withWriter({
     board,
     fn: ({ writer }) => {
-      drainSpool(writer)
+      drainSpool({ writer })
       let appended = apply({
         writer,
         decision: decidePush(
