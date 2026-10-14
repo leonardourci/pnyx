@@ -94,9 +94,13 @@ export function SettingList({ settings }: { settings?: Record<string, string> })
   )
 }
 
-// What typing an option does, in the harness's own words.
-const typedAs = ({ option }: { option: ControlOption }) =>
-  'key' in option.input ? `Presses ${KEY_LABEL[option.input.key]} in the session` : `Types ${option.input.text} in the session`
+// What typing an option does, in the harness's own words; a Firstmate task gets a key as a request.
+const typedAs = ({ option, kind }: { option: ControlOption; kind?: ThreadPage['routeKind'] }) =>
+  !('key' in option.input)
+    ? `Types ${option.input.text} in the session`
+    : kind === 'firstmate'
+      ? `Asks Firstmate to press ${KEY_LABEL[option.input.key]} in the session`
+      : `Presses ${KEY_LABEL[option.input.key]} in the session`
 
 // Why the route cannot press this control's keys, if it cannot.
 const keyReason = ({ control, kind }: { control: Control; kind?: ThreadPage['routeKind'] }) =>
@@ -113,6 +117,7 @@ function ControlRow({
   sending,
   blocked,
   why,
+  kind,
   send,
 }: {
   control: Control
@@ -123,6 +128,7 @@ function ControlRow({
   blocked?: string
   // Why this route cannot press this control's keys, shown under it.
   why?: string
+  kind?: ThreadPage['routeKind']
   send({ option }: { option: ControlOption }): void
 }) {
   const sent = pending && control.options.find(o => o.value === pending.value)
@@ -141,7 +147,7 @@ function ControlRow({
           <Button
             key={option.value}
             variant="surface"
-            title={blocked ?? typedAs({ option })}
+            title={blocked ?? typedAs({ option, kind })}
             aria-pressed={control.confirm !== 'changes' && now !== undefined && confirms({ control, option, before: undefined, after: now })}
             disabled={!!blocked || sending}
             onClick={() => send({ option })}
@@ -235,7 +241,11 @@ export function AgentControls({
   return (
     <section className="agent-controls" aria-label="Change settings">
       <h3>Change from here</h3>
-      <p className="small muted">{route ?? `Typed into the session through ${page?.via ?? 'its route'}, as its own commands and keys.`}</p>
+      <p className="small muted">
+        {route ?? `Typed into the session through ${page?.via ?? 'its route'}, as its own commands and keys.`}
+        {!route && page?.routeKind === 'firstmate' && harness.controls.some(c => c.options.some(o => 'key' in o.input))
+          && " A change that needs a key goes to Firstmate as a request to press it in the worker's session."}
+      </p>
       {harness.controls.map(control => (
         <ControlRow
           key={control.setting}
@@ -245,6 +255,7 @@ export function AgentControls({
           sending={Object.values(pending).some(p => p.sending)}
           blocked={route ?? keyReason({ control, kind: page?.routeKind })}
           why={route ? undefined : keyReason({ control, kind: page?.routeKind })}
+          kind={page?.routeKind}
           send={({ option }) => send({ control, option })}
         />
       ))}

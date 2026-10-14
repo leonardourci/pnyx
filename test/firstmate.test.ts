@@ -579,6 +579,11 @@ test('a session joins the task launched in its worktree; only a session in its t
   meta('wt-c', 'term-c')
   syncHome('default', home)
   assert.deepEqual(cardOf(home, 'wt-c').terminal, { paseoTerminal: 'term-c' })
+  // A headless child in the task's terminal never joins a task card with no session yet.
+  hook('h3h', 's-d-child', 'term-d', {})
+  syncHome('default', home)
+  assert.equal(cardOf(home, 'wt-d').agent, undefined)
+  assert.equal(own('s-d-child'), true)
   hook('h3', 's-d', 'term-d')
   hook('h4', 's-other', 'term-elsewhere')
   syncHome('default', home)
@@ -608,7 +613,7 @@ test('a joined session outside Paseo keeps its terminal facts across syncs', () 
   assert.equal(syncHome('default', home).appended, 0)
 })
 
-test('settings change through fm-send on a joined task card; keys it cannot press are refused', () => {
+test('settings change through fm-send on a joined task card; a key goes to Firstmate as a request', () => {
   const { home, env } = copyFixture()
   const worktree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
   const meta = join(home, 'state', 'api-v2.meta')
@@ -619,12 +624,32 @@ test('settings change through fm-send on a joined task card; keys it cannot pres
   const api = cardOf(home, 'api-v2')
   const { run, fails } = cli(env)
 
-  assert.match(run('agent', api.id, '--home', home), /harness: claude-code\n {2}route: firstmate[\s\S]*mode,unknown,next,"Firstmate's send command presses only Enter/)
+  assert.match(run('agent', api.id, '--home', home), /harness: claude-code\n {2}route: firstmate[\s\S]*mode,unknown,next,yes/)
   assert.match(run('agent', api.id, 'model', 'opus', '--home', home), /sent: delivered/)
   // The command is typed through Firstmate, then one Enter answers a confirmation.
   assert.equal(readFileSync(join(home, 'sent.log'), 'utf8'), `FM_HOME=${home}\narg=api-v2\narg=/model opus\n---\nFM_HOME=${home}\narg=api-v2\narg=--key\narg=Enter\n---\n`)
-  fails(['agent', api.id, 'mode', 'next', '--home', home], 'NO_ROUTE')
-  assert.equal(readFileSync(join(home, 'sent.log'), 'utf8').split('---').length - 1, 2)
+  // fm-send presses no Shift+Tab, so Firstmate gets a plain request: no slash, no key,
+  // no confirming Enter. It stays pending until the session reports its new mode.
+  const log = () => readFileSync(join(home, 'sent.log'), 'utf8').split('---\n')
+  const request = 'Please switch the worker on api-v2 to the next permission mode (Shift+Tab in its session).'
+  assert.match(run('agent', api.id, 'mode', 'next', '--home', home), /sent: delivered[\s\S]*confirmed: false[\s\S]*has not reported its new mode yet/)
+  assert.deepEqual(log().slice(-2), [`FM_HOME=${home}\narg=api-v2\narg=${request}\n`, ''])
+  assert.equal(cardOf(home, 'api-v2').replies?.at(-1)?.state, 'delivered')
+  spoolWrite('default', { v: 1, id: 'h2', at: '2026-10-14T00:01:00Z', harness: 'claude', event: 'UserPromptSubmit', payload: { session_id: 'fm-s', cwd: worktree, prompt: 'x', permission_mode: 'acceptEdits' } })
+  syncHome('default', home)
+  assert.match(run('agent', api.id, '--home', home), /mode,acceptEdits,next,yes/)
+
+  // A Codex worker's effort steps the same way.
+  const fix = join(home, 'state', 'hotfix-2.meta')
+  const codexTree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
+  writeFileSync(fix, `${readFileSync(fix, 'utf8')}worktree=${codexTree}\n`)
+  syncHome('default', home)
+  spoolWrite('default', { v: 1, id: 'h3', at: '2026-10-14T00:00:00Z', harness: 'codex', event: 'SessionStart', payload: { session_id: 'cx-s', cwd: codexTree } })
+  syncHome('default', home)
+  const hotfix = cardOf(home, 'hotfix-2')
+  assert.equal(hotfix.agent?.provider, 'codex')
+  assert.match(run('agent', hotfix.id, 'effort', 'raise', '--home', home), /sent: delivered[\s\S]*confirmed: false/)
+  assert.deepEqual(log().slice(-2), [`FM_HOME=${home}\narg=hotfix-2\narg=Please raise the reasoning effort of the worker on hotfix-2 by one step (Shift+Up in its Codex session).\n`, ''])
   // A failed send changes nothing.
   writeFileSync(join(home, 'send-exit'), '2')
   assert.match(run('agent', api.id, 'fast', 'on', '--home', home), /sent: failed[\s\S]*Nothing was changed/)
