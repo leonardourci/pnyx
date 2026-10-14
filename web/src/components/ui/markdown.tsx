@@ -50,24 +50,14 @@ const inline = ({ tokens }: { tokens: Token[] }): ReactNode => tokens.map((token
   }
 })
 
-const LANGUAGES = /^(js|jsx|javascript|ts|tsx|typescript|json|py|python|sh|bash|shell|sql|css|diff)$/
-// ponytail: one regex for comments, strings, keywords and numbers; a real grammar
-// (for example Shiki) if this ever misleads.
-const SYNTAX = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:const|let|var|function|return|if|else|for|while|class|import|export|from|async|await|new|throw|try|catch|true|false|null|undefined|def|in|None|True|False|select|where|insert|into|values)\b|\b\d+(?:\.\d+)?\b)/gi
-const syntaxClass = ({ part }: { part: string }) => /^(\/\/|#|\/\*)/.test(part) ? 'comment'
-  : /^["'`]/.test(part) ? 'string' : /^\d/.test(part) ? 'number' : 'keyword'
-
 function Code({ text, language }: { text: string; language?: string }) {
   const lang = language?.split(/\s/)[0]?.toLowerCase() ?? ''
-  const parts = LANGUAGES.test(lang) ? text.split(SYNTAX) : [text]
 
   return (
     <div className="code-block">
       {lang && <span className="code-language">{lang}</span>}
       <pre>
-        <code>
-          {parts.map((part, i) => i % 2 ? <span key={i} className={`syntax-${syntaxClass({ part })}`}>{part}</span> : part)}
-        </code>
+        <code>{text}</code>
       </pre>
     </div>
   )

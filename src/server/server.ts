@@ -21,8 +21,9 @@ import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { commands, ingestSpool } from '../cli/commands.ts'
-import { BoardError, type BoardEvent, type BoardState } from '../core/model.ts'
+import { BoardError, type BoardEvent, type BoardState, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
+import { traces, viewFor } from '../core/view.ts'
 import { boardDir, loadBoard, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/board-store.ts'
 import { infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 
@@ -34,6 +35,13 @@ const MAX_BODY = 1 << 20
 const STOP_TIMEOUT_MS = 5000
 // Matching cards a search returns, enough to filter the whole board.
 const SEARCH_LIMIT = 100
+
+const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) => {
+  const { tools, thinking } = traces({ view: viewFor({ state: { view } }), card })
+
+  return `${tools}:${thinking}`
+}
+
 // How often a live transcript's card is read again at most while the session writes.
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
@@ -151,8 +159,10 @@ export async function startServer({
         sendSnapshot({ ws })
       }
 
-      // A view change can switch traces on or off, which changes the page.
-      if (event.type === 'board.view' || subscriptions.get(ws)?.card === event.cardId) {
+      const card = subscriptions.get(ws)?.card
+
+      // A view change that switches this card's traces on or off changes its page.
+      if (card && (card === event.cardId || (event.type === 'board.view' && shownTraces({ view: event.data.before, card }) !== shownTraces({ view: event.data.after, card })))) {
         refreshThread({ ws })
       }
     }

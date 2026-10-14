@@ -69,7 +69,7 @@ export function traces({ view, card }: { view: ViewPreferences; card: string }) 
   return { tools, thinking, focus: !tools && !thinking, overrides }
 }
 
-export const viewFor = ({ state }: { state: BoardState }): ViewPreferences => {
+export const viewFor = ({ state }: { state: Pick<BoardState, 'view'> }): ViewPreferences => {
   const view = { ...structuredClone(DEFAULT_VIEW), ...state.view }
 
   return {

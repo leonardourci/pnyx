@@ -129,7 +129,6 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .code-block { background: var(--color-background); border: 1px solid var(--color-line); border-radius: 6px; margin: 8px 0; min-width: 0; }.code-language { display: block; padding: 6px 10px 0; font: .7rem var(--font-mono); color: var(--color-muted); }
 .code-block pre, .trace-text { margin: 0; overflow: auto; max-width: 100%; padding: 10px; font: var(--text-code)/1.65 var(--font-mono); white-space: pre; }.markdown .code-block code { padding: 0; font-size: 1em; background: transparent; }
 .trace-text { background: var(--color-background); border-radius: 5px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; }
-.syntax-comment { color: var(--color-muted); }.syntax-string { color: var(--color-green); }.syntax-keyword { color: var(--color-purple); }.syntax-number { color: var(--color-blue); }
 .markdown-table { overflow: auto; max-width: 100%; margin: 8px 0; }.markdown table { border-collapse: collapse; width: max-content; min-width: 100%; }.markdown th, .markdown td { border: 1px solid var(--color-line); padding: 5px 9px; max-width: 360px; text-align: left; }.markdown th { background: var(--color-raised); font-weight: 600; }
 .task-marker { margin-right: 6px; color: var(--color-green); }
 .message-block { position: relative; min-width: 0; border-radius: 3px; }.message-block[data-active=true] { box-shadow: -3px 0 var(--color-gold-line); }.message-block:focus-visible { outline-offset: 1px; }

@@ -210,6 +210,26 @@ test('Focus hides traces before paging so tool-heavy output cannot push replies 
   const { focus } = traces({ view: viewFor({ state }), card: 'c1' })
   assert.equal(focusedActivity({ activity: 'running git status', focus }), 'running git status')
   assert.equal(focusedActivity({ activity: 'idle', focus: true }), 'idle')
+
+  for (const activity of ['ran git status', 'task: review the diff', 'task done: review the diff', 'Bash failed', 'Edit denied']) {
+    assert.equal(focusedActivity({ activity, focus: true }), 'working')
+  }
+})
+
+test('Focus pages messages from a tool-heavy tail larger than the first read window', () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-focus-window-')); process.env.PNYX_HOME = home
+  const path = join(home, 'session.jsonl'), padding = 'x'.repeat(4000)
+  const records = Array.from({ length: 90 }, (_, i) => [
+    { type: 'assistant', message: { content: `message ${i}` } },
+    { type: 'assistant', message: { content: [{ type: 'tool_use', input: `${padding} ${i}` }] } },
+  ]).flat()
+  writeFileSync(path, records.map(r => JSON.stringify(r)).join('\n') + '\n')
+  const state = push(emptyBoard(), 'a', { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } })
+  const page = readThread('default', state, state.cards.c1!, [])
+  assert.deepEqual(page.entries.map(e => e.text), Array.from({ length: 60 }, (_, i) => `message ${i + 30}`))
+  const older = readThread('default', state, state.cards.c1!, [], page.older)
+  assert.deepEqual(older.entries.map(e => e.text), Array.from({ length: 30 }, (_, i) => `message ${i}`))
+  assert.equal(older.older, undefined)
 })
 
 test('long transcript messages and reply history page without losing text or duplicating entries', () => {
