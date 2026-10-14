@@ -638,7 +638,7 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
   const note = (id: string, text: string) =>
     `FM_HOME=${home}\narg=note\narg=--request-id\narg=pnyx:default:${api.id}:${id}\narg=--json\narg=--\narg=${text}\n`
 
-  assert.match(run('agent', api.id, '--home', home), /route: "firstmate:inbox"[\s\S]*mode,unknown,next,yes[\s\S]*requests: \[\]/)
+  assert.match(run('agent', api.id, '--home', home), /route: "firstmate:inbox"[\s\S]*mode,unknown,next,yes/)
   assert.match(run('agent', api.id, 'model', 'opus', '--home', home, '--idempotency-key', 'm1'), /sent: delivered[\s\S]*confirmed: false[\s\S]*Firstmate note n1 asks/)
   assert.deepEqual(notes(), [note('m1', 'Pnyx: please switch the worker on task api-v2 (Claude Code) to model opus.')])
   // A retry of the same change sends nothing again.
@@ -652,10 +652,7 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
   assert.equal(notes().at(-1), note('m2', 'Pnyx: please switch the worker on task api-v2 (Claude Code) to the next permission mode.'))
   assert.equal(existsSync(join(home, 'sent.log')), false)
 
-  // The summary shows each note's state from fm-inbox's receipts, and the worker's
-  // own report confirms the setting.
-  writeFileSync(join(home, 'inbox-handled'), 'n1\n')
-  assert.match(run('agent', api.id, '--home', home), /requests\[2\]\{note,state,asked\}:\n {2}n2,queued,[^\n]*next permission mode[^\n]*\n {2}n1,handled,[^\n]*model opus/)
+  // The worker's own report confirms the setting.
   spoolWrite({ board: 'default', entry: { v: 1, id: 'h3', at: '2026-10-14T00:02:00Z', harness: 'claude', event: 'UserPromptSubmit', payload: { session_id: 'fm-s', cwd: worktree, prompt: 'x', permission_mode: 'acceptEdits' } } })
   syncHome({ board: 'default', home })
   assert.match(run('agent', api.id, '--home', home), /mode,acceptEdits,next,yes/)

@@ -112,9 +112,6 @@ const keyReason = ({ control, kind }: { control: Control; kind?: ThreadPage['rou
 // itself is still on its way.
 interface Pending { value: string; before?: string; sending: boolean }
 
-// A request note a Firstmate task's change left with its orchestrator, as fm-inbox reports it.
-interface Request { note: string; state: string; asked: string }
-
 function ControlRow({
   control,
   now,
@@ -189,30 +186,13 @@ export function AgentControls({
   notify(text: string): void
 }) {
   const [pending, setPending] = useState<Record<string, Pending>>({})
-  const [requests, setRequests] = useState<Request[] | string>([])
   const provider = card.agent?.provider
   const page = thread?.card === card.id ? thread : null
   const firstmate = connected && page?.routeKind === 'firstmate'
   const harness = harnessControls({ provider, firstmate })
   useEffect(() => {
     setPending({})
-    setRequests([])
   }, [card.id])
-  // A new note is a new reply: its receipts, not each settings report, reload the notes.
-  const replies = card.replies?.map(r => `${r.id}:${r.state}`).join(' ')
-  useEffect(() => {
-    let latest = true
-
-    if (firstmate) {
-      void command('agent', [card.id])
-        .then(r => latest && setRequests(r.requests as Request[] | string))
-        .catch((e: Error) => latest && setRequests(e.message))
-    }
-
-    return () => {
-      latest = false
-    }
-  }, [firstmate, card.id, replies, command])
   useEffect(() => {
     setPending(current => {
       const left = Object.fromEntries(Object.entries(current).filter(([setting, p]) => {
@@ -285,26 +265,6 @@ export function AgentControls({
         />
       ))}
       {harness.note && <p className="small muted">{harness.note}</p>}
-      {firstmate && (
-        <div className="agent-requests" aria-label="Requests to Firstmate">
-          <h3>Requests to Firstmate</h3>
-          {typeof requests === 'string'
-            ? <p className="small muted">{requests}</p>
-            : requests.length === 0
-              ? <p className="small muted">No request notes yet.</p>
-              : (
-                <ul>
-                  {requests.map(r => (
-                    <li key={r.note} className="small">
-                      {r.asked}
-                      {' '}
-                      <span className="muted">{r.state}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-        </div>
-      )}
     </section>
   )
 }

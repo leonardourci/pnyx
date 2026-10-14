@@ -594,14 +594,6 @@ test('browser reply delivery uses only configured fixture homes and never resend
 
   assert.match(readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8'), /arg=pnyx:default:c\d+:effort-1\narg=--json\narg=--\narg=Pnyx: please switch the worker on task api-v2 \(Claude Code\) to effort high\.\n---\n$/)
   assert.equal(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), sends)
-  // A card alone reads the summary with its request notes.
-  t.command('agent-2', 'agent', [card])
-  const summary = await receipt('agent-2'); assert.equal(summary.type, 'receipt', JSON.stringify(summary))
-
-  if (summary.type === 'receipt') {
-    assert.deepEqual(summary.requests, [{ note: 'n1', state: 'queued', asked: 'Pnyx: please switch the worker on task api-v2 (Claude Code) to effort high.' }])
-  }
-
   t.command('search-1', 'search', ['conversation readable'])
   const found = await receipt('search-1'); assert.equal(found.type, 'receipt')
 

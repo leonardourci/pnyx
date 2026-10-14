@@ -10,7 +10,7 @@ import { BoardError, type Card, type ReplyState } from '../core/model.ts'
 import { KEY_LABEL, confirms, findOption, harnessControls, inputReason, settingRequest, type Key } from '../core/control.ts'
 import { replyRoute, type ReplyRoute } from '../core/route.ts'
 import { STATUS_KEY, TASK_ID, resolveHome } from '../integrations/firstmate/home.ts'
-import { fmNote, fmReceipts, fmSend } from '../integrations/firstmate/reply.ts'
+import { fmNote, fmSend } from '../integrations/firstmate/reply.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { HOOK } from '../integrations/hooks/observe.ts'
 import { pressKey, typeInto, type Delivery } from '../integrations/hooks/terminal.ts'
@@ -301,8 +301,7 @@ export const reply = guard({
 const READBACK_MS = 1000
 
 // The card's harness, settings and the controls its Agent tab offers, each with the
-// reason it cannot be sent when the route cannot carry it, and on a Firstmate task the
-// request notes its changes left with the orchestrator.
+// reason it cannot be sent when the route cannot carry it.
 function agentSummary({ board, ref, homes }: {
   board: string
   ref: string
@@ -331,17 +330,11 @@ function agentSummary({ board, ref, homes }: {
     route: 'route' in found ? routeName({ route: found.route, control: true }) : `none: ${found.reason}`,
     ...(harness?.note ? { note: harness.note } : {}),
   }
-  const prefix = notePrefix({ board, card: card.id })
-  const notes = firstmate && fmReceipts({ home: firstmate.home, prefix })
-  const requests = firstmate
-    ? { requests: notes?.map(({ note, state, asked }) => ({ note, state, asked })) ?? 'unavailable: fm-inbox.sh receipts could not be read' }
-    : {}
 
   if (!harness) {
     return {
       agent,
       controls: [],
-      ...requests,
       help: [provider ? `Pnyx changes settings only for Claude Code and Codex sessions, not ${provider}` : 'This card has no agent session joined yet, so there is nothing to change'],
     }
   }
@@ -351,7 +344,6 @@ function agentSummary({ board, ref, homes }: {
   return {
     agent,
     controls,
-    ...requests,
     help: ready ? [`Run \`pnyx-axi agent ${card.id} ${ready.setting} ${ready.options.split(' ')[0]}\` to change it`] : ['No setting can be changed on this route'],
   }
 }
@@ -448,7 +440,7 @@ export const agent = guard({
     } else if (receipt.state !== 'delivered') {
       out.help = [`The change may have landed${receipt.detail ? ` (${receipt.detail})` : ''}; check the session before sending again`]
     } else if (!confirmed && firstmate) {
-      out.help = [`${receipt.detail ?? 'The request note'} asks Firstmate's orchestrator for it; the worker's next hook or turn confirms its new ${setting}. Run \`pnyx-axi agent ${card.id} --home ${firstmate.home}\` to see the request's state`]
+      out.help = [`${receipt.detail ?? 'The request note'} asks Firstmate's orchestrator for it; the worker's next hook or turn confirms its new ${setting}`]
     } else if (!confirmed) {
       out.help = [`The session has not reported its new ${setting} yet; it does on its next hook or turn. Run \`pnyx-axi card ${card.id}\` to check`]
     }
@@ -472,8 +464,7 @@ A Firstmate task's worker is never typed into: every change goes to its orchestr
 note. Codex task cards also offer model gpt-6.1-sol|gpt-6-astra|gpt-6-sol|gpt-6-luna and
 approval untrusted|on-request|never as request-only settings, without any typed input. Notes go
 through the home's bin/fm-inbox.sh note --request-id <id> (a retry with the same
---idempotency-key replays that note), and the summary lists the card's notes as queued, handled
-or replied from fm-inbox.sh receipts.
+--idempotency-key replays that note).
 A setting the session has not reported yet is confirmed by its next hook or turn.
 `
 
