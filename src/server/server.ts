@@ -137,7 +137,7 @@ export async function startServer({
   const sendSnapshot = (ws: WebSocket) => {
     resyncing.delete(ws)
     send(ws, { type: 'snapshot', seq: state.seq, state })
-    send(ws, { type: 'latest', messages: latest })
+    ws.send(JSON.stringify({ type: 'latest', messages: latest } satisfies ServerMessage))
   }
 
   // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.

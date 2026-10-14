@@ -621,6 +621,23 @@ test("each card gets its conversation's last message, pushed again as the transc
   t.ws.close(); later.ws.close()
 })
 
+test("a tab whose snapshot alone fills its send buffer still gets every card's last message", async () => {
+  const fixture = seedWebFixture(process.env.PNYX_HOME!)
+  server = await startServer({ board: 'default' })
+  const card = fixture.state.keys.layout!, message = { role: 'assistant', text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.', at: '2026-10-13T10:49:00Z' }
+  const first = await tab(); await first.next()
+  assert.deepEqual(await first.latest(card), message)
+  withWriter('default', w => {
+    const d = decidePush(w.state, 'big', { title: 'x'.repeat(4 << 20) }, { actor: 'test', at: '2026-10-14T10:00:00Z' }); assert.ok('event' in d); w.append(d.event)
+  })
+  assert.equal((await first.next()).type, 'event')
+  // The card's message is read already, so a later tab gets it only right after its snapshot.
+  const t = await tab()
+  assert.equal((await t.next()).type, 'snapshot')
+  assert.deepEqual(await t.latest(card), message)
+  first.ws.close(); t.ws.close()
+})
+
 test('with semantic search on, the board search finds a transcript-only card by meaning when its words do not all match', async () => {
   const fixture = seedWebFixture(process.env.PNYX_HOME!)
   appendFileSync(fixture.transcript, assistantLine('Flamingo rollout staged.', '2026-10-13T11:00:00Z'))
