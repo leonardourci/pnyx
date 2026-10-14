@@ -8,10 +8,11 @@ import { isAbsolute, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { BoardError } from "../core/model.ts";
 import { boardDir, loadBoard, readEventsFrom } from "../store/board-store.ts";
+import { synonymGroup } from "./synonyms.ts";
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from "./text.ts";
 
 // Bump when the tables change; the index rebuilds on mismatch.
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export const KINDS = ["event", "transcript"] as const;
 export type Kind = (typeof KINDS)[number];
 
@@ -20,7 +21,10 @@ const EVENTS = "events";
 // pos is the event seq for an event, or the byte offset of the JSONL line for a
 // transcript; part numbers the chunks taken from it. Vectors can later key on docs.id.
 // card_fts holds one row per card, keyed by cards.n: its title and link titles, and
-// all its chunks, so the words of one query can match anywhere on a card.
+// all its chunks, so the words of one query can match anywhere on a card. Both
+// stem words (Porter) and fold case and accents, so "deploying" finds "deploy".
+// terms holds every distinct word indexed, unstemmed and folded; terms_tri splits
+// them into trigrams so a query word with a typo or cut short finds the real word.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS docs (
@@ -36,7 +40,7 @@ CREATE TABLE IF NOT EXISTS docs (
   UNIQUE (source, pos, part)
 );
 CREATE INDEX IF NOT EXISTS docs_card ON docs (card);
-CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5 (body, content='docs', content_rowid='id', tokenize='unicode61 remove_diacritics 2');
+CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5 (body, content='docs', content_rowid='id', tokenize='porter unicode61 remove_diacritics 2');
 CREATE TRIGGER IF NOT EXISTS docs_ai AFTER INSERT ON docs BEGIN
   INSERT INTO docs_fts (rowid, body) VALUES (new.id, new.body);
 END;
@@ -44,7 +48,12 @@ CREATE TRIGGER IF NOT EXISTS docs_ad AFTER DELETE ON docs BEGIN
   INSERT INTO docs_fts (docs_fts, rowid, body) VALUES ('delete', old.id, old.body);
 END;
 CREATE TABLE IF NOT EXISTS cards (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, workspace TEXT NOT NULL, context TEXT NOT NULL);
-CREATE VIRTUAL TABLE IF NOT EXISTS card_fts USING fts5 (context, body, content='', contentless_delete=1, tokenize='unicode61 remove_diacritics 2');
+CREATE VIRTUAL TABLE IF NOT EXISTS card_fts USING fts5 (context, body, content='', contentless_delete=1, tokenize='porter unicode61 remove_diacritics 2');
+CREATE TABLE IF NOT EXISTS terms (term TEXT PRIMARY KEY) WITHOUT ROWID;
+CREATE VIRTUAL TABLE IF NOT EXISTS terms_tri USING fts5 (term, tokenize='trigram');
+CREATE TRIGGER IF NOT EXISTS terms_ai AFTER INSERT ON terms BEGIN
+  INSERT INTO terms_tri (term) VALUES (new.term);
+END;
 CREATE TABLE IF NOT EXISTS cursors (source TEXT PRIMARY KEY, card TEXT NOT NULL, identity TEXT NOT NULL, pos INTEGER NOT NULL, seq INTEGER NOT NULL);
 `;
 
@@ -141,13 +150,26 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
   );
   // Cards whose card_fts row no longer matches their chunks, title or link titles.
   const dirty = new Set<string>();
+  // ponytail: words of dropped chunks stay in terms; a typo may expand to a word that no longer matches.
+  const putTerm = db.prepare("INSERT OR IGNORE INTO terms (term) VALUES (?)");
+  const seen = new Set<string>();
+  const addTerms = (text: string) => {
+    for (const term of words(text)) {
+      if (seen.has(term)) continue;
+      seen.add(term);
+      putTerm.run(term);
+    }
+  };
   let docs = 0;
   const add = (card: string, kind: Kind, source: string, pos: number, at: string, text: string, firstPart = 0): number => {
     let part = firstPart;
     for (const body of chunk(redact(text))) {
       const hash = createHash("sha256").update(body).digest("hex");
       const changes = Number(insert.run(card, kind, source, pos, part, at, body, hash).changes);
-      if (changes) dirty.add(card);
+      if (changes) {
+        dirty.add(card);
+        addTerms(body);
+      }
       docs += changes;
       part += 1;
     }
@@ -165,7 +187,7 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
     let read = readEventsFrom(board, cursor.pos);
     // The log never shrinks or reorders, so a mismatch means the index is from another log: start over.
     if (!read || (read.events.length > 0 && read.events[0]!.seq !== cursor.seq + 1)) {
-      db.exec("DELETE FROM docs; DELETE FROM cursors; DELETE FROM cards; DELETE FROM card_fts;");
+      db.exec("DELETE FROM docs; DELETE FROM cursors; DELETE FROM cards; DELETE FROM card_fts; DELETE FROM terms; DELETE FROM terms_tri;");
       cursor = { ...cursor, pos: 0, seq: 0 };
       read = readEventsFrom(board, 0)!;
     }
@@ -197,7 +219,10 @@ function catchUp(db: DatabaseSync, board: string): IndexResult {
     );
     for (const card of Object.values(loadBoard(board).state.cards)) {
       const context = redact([card.title, ...card.links.map((l) => l.title)].filter(Boolean).join("\n"));
-      if ((getContext.get(card.id) as { context: string } | undefined)?.context !== context) dirty.add(card.id);
+      if ((getContext.get(card.id) as { context: string } | undefined)?.context !== context) {
+        dirty.add(card.id);
+        addTerms(context);
+      }
       putCard.run({ id: card.id, title: card.title, workspace: card.workspace, context });
     }
     // ponytail: a changed card's row is rebuilt from all its chunks; append-only rows if long sessions make that slow.
@@ -293,81 +318,171 @@ export interface Snippet {
   snippet: string;
 }
 
+// lexical: the words as typed, stemmed and with synonyms; fuzzy: nothing matched
+// that way, so words with typos or cut short matched the indexed words nearest them.
+export type Match = "lexical" | "fuzzy";
+
 export interface Hit {
   card: string;
   title: string;
-  match: "lexical";
+  match: Match;
   snippets: Snippet[];
 }
 
-// The user's words as FTS5 terms, each quoted so punctuation is never read as
-// query syntax; a trailing * keeps prefix matching.
-function ftsTerms(text: string): string[] {
-  return text
-    .split(/\s+/)
-    .filter((term) => /[\p{L}\p{N}]/u.test(term))
-    .map((term) => {
-      const prefix = term.endsWith("*") ? "*" : "";
-      return `"${(prefix ? term.slice(0, -1) : term).replace(/"/g, '""')}"${prefix}`;
-    });
+// Case and accents folded, as the index folds them.
+const fold = (text: string) => text.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+
+// The distinct words of a text, folded, as typo matching looks them up. Words under
+// three letters have no trigram; longer than 32 are mostly hashes and ids.
+function words(text: string): Set<string> {
+  return new Set((fold(text).match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => w.length >= 3 && w.length <= 32));
 }
 
-// Every term must match (FTS5's default AND).
-export const ftsQuery = (text: string): string => ftsTerms(text).join(" ");
+const quote = (phrase: string) => `"${phrase.replace(/"/g, '""')}"`;
+
+// A query word without the punctuation around it, as synonyms and typo matching look it up.
+const bare = (token: string) => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+
+// One query word, or a synonym phrase, and what it may match: its synonym group,
+// or the word itself. A trailing * matches the word as a prefix, and the indexed
+// words starting with it, and skips synonyms and typos.
+interface Term {
+  alts: readonly string[];
+  prefix: boolean;
+  typo: boolean;
+}
+
+function queryTerms(text: string): Term[] {
+  const tokens = text.split(/\s+/).filter((token) => /[\p{L}\p{N}]/u.test(token));
+  const terms: Term[] = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i]!;
+    if (token.endsWith("*")) {
+      terms.push({ alts: [token.slice(0, -1)], prefix: true, typo: false });
+      continue;
+    }
+    const pair = i + 1 < tokens.length ? synonymGroup.get(`${bare(token)} ${bare(tokens[i + 1]!)}`.toLowerCase()) : undefined;
+    if (pair) i += 1;
+    const group = pair ?? synonymGroup.get(bare(token).toLowerCase());
+    terms.push(group ? { alts: group, prefix: false, typo: false } : { alts: [token], prefix: false, typo: true });
+  }
+  return terms;
+}
+
+// A term as an FTS5 expression, each phrase quoted so punctuation is never read as
+// query syntax. A prefix term's first alternative is the prefix.
+function termExpr(term: Term): string {
+  const alts = term.alts.map((alt, i) => `${quote(alt)}${term.prefix && i === 0 ? "*" : ""}`);
+  return alts.length === 1 ? alts[0]! : `(${alts.join(" OR ")})`;
+}
+
+// Every term must match.
+export const ftsQuery = (text: string): string => queryTerms(text).map(termExpr).join(" AND ");
+
+const trigrams = (word: string) => Array.from({ length: Math.max(word.length - 2, 0) }, (_, i) => word.slice(i, i + 3));
+
+// Trigram similarity of two words, padded so their first and last letters weigh in.
+function similarity(a: string, b: string): number {
+  const x = new Set(trigrams(` ${a} `));
+  const y = new Set(trigrams(` ${b} `));
+  const shared = [...x].filter((t) => y.has(t)).length;
+  return shared / (x.size + y.size - shared);
+}
+
+const SIMILAR = 0.4;
+const NEAREST = 5;
+
+// The indexed words nearest a query word: similar by trigrams, or containing it.
+function nearest(db: DatabaseSync, word: string): string[] {
+  const w = fold(bare(word));
+  if (!/^[\p{L}\p{N}]{3,}$/u.test(w)) return [];
+  const candidates = db
+    .prepare("SELECT term FROM terms_tri WHERE terms_tri MATCH ? ORDER BY rank LIMIT 200")
+    .all(trigrams(w).map(quote).join(" OR ")) as { term: string }[];
+  return candidates
+    .map(({ term }) => ({ term, score: term.includes(w) && w.length >= 4 ? 1 : similarity(w, term) }))
+    .filter((c) => c.term !== w && c.score >= SIMILAR)
+    .sort((a, b) => b.score - a.score || a.term.localeCompare(b.term))
+    .slice(0, NEAREST)
+    .map((c) => c.term);
+}
+
+const PREFIXED = 50;
+
+// The indexed words starting with a prefix. FTS5 stems a prefix query ("retry"* looks
+// for retri*), so a prefix also matches these words, each stemmed as the index stems it.
+// ponytail: the first PREFIXED words in order; a short prefix may miss later ones.
+function prefixed(db: DatabaseSync, prefix: string): string[] {
+  const p = fold(bare(prefix));
+  if (!p) return [];
+  const rows = db.prepare("SELECT term FROM terms WHERE term >= ? AND term < ? ORDER BY term LIMIT ?").all(p, `${p}\u{10FFFF}`, PREFIXED) as { term: string }[];
+  return rows.map((r) => r.term).filter((term) => term !== p);
+}
 
 // One hit per card, best first by BM25. Without --card or --kind every word must
 // match somewhere on the card: its title, link titles or any chunk, the title and
 // link titles weighing half; the snippets are its chunks matching the most words.
 // With --card or --kind every word must match in one chunk of that card or kind.
-export function search(board: string, query: Query): { hits: Hit[]; total: number } {
-  const terms = ftsTerms(query.text);
-  if (!terms.length) throw new BoardError("query has no words to search for", "VALIDATION_ERROR", ['Run `pnyx-axi search "<words>"`']);
-  const match = terms.join(" ");
+// Words match stemmed, case and accent folded, and with their synonyms; when that
+// finds nothing, words also match the indexed words nearest them.
+export function search(board: string, query: Query): { hits: Hit[]; total: number; match: Match } {
+  const typed = queryTerms(query.text);
+  if (!typed.length) throw new BoardError("query has no words to search for", "VALIDATION_ERROR", ['Run `pnyx-axi search "<words>"`']);
   const { DatabaseSync } = sqlite();
   const db = new DatabaseSync(searchPath(board), { readOnly: true });
   try {
     db.exec("PRAGMA busy_timeout = 5000");
-    const filters = { match, workspace: query.workspace ?? null };
-    const chunks = `SELECT d.id, d.card, bm25(docs_fts) AS rank FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid JOIN cards c ON c.id = d.card
-      WHERE docs_fts MATCH :match AND (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace)`;
-    type Row = { card: string; title: string; total: number };
-    const cards = (
-      query.card
-        ? db
-            .prepare(`WITH h AS MATERIALIZED (${chunks} AND d.card = :card) SELECT h.card, c.title, count(*) AS total FROM h JOIN cards c ON c.id = h.card GROUP BY h.card`)
-            .all({ ...filters, kind: query.kind ?? null, card: query.card })
-        : query.kind
-          ? db
-              .prepare(
-                `WITH h AS MATERIALIZED (${chunks}) SELECT h.card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.id = h.card
-                 GROUP BY h.card ORDER BY min(h.rank), min(h.id) LIMIT :limit`,
-              )
-              .all({ ...filters, kind: query.kind, limit: query.limit })
-          : db
-              .prepare(
-                `WITH h AS MATERIALIZED (SELECT rowid AS n, bm25(card_fts, 0.5, 1.0) AS rank FROM card_fts WHERE card_fts MATCH :match)
-                 SELECT c.id AS card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.n = h.n
-                 WHERE :workspace IS NULL OR c.workspace = :workspace ORDER BY h.rank, c.n LIMIT :limit`,
-              )
-              .all({ ...filters, limit: query.limit })
-    ) as Row[];
-    const top = db.prepare(
-      `SELECT d.kind, d.at, snippet(docs_fts, 0, '[', ']', '…', 16) AS s FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid
-       WHERE docs_fts MATCH :match AND d.card = :card AND (:kind IS NULL OR d.kind = :kind) ORDER BY bm25(docs_fts), d.id LIMIT :n`,
-    );
-    const snippetMatch = query.card || query.kind ? match : terms.join(" OR ");
-    const hits = cards.map((r) => ({
-      card: r.card,
-      title: r.title,
-      match: "lexical" as const,
-      snippets: (
-        top.all({ match: snippetMatch, card: r.card, kind: query.kind ?? null, n: query.card ? query.limit : SNIPPETS }) as { kind: Kind; at: string; s: string }[]
-      ).map((t) => ({ kind: t.kind, at: t.at || "unknown", snippet: t.s.replace(/\s+/g, " ") })),
-    }));
-    return { hits, total: cards[0]?.total ?? 0 };
+    const terms = typed.map((t) => (t.prefix ? { ...t, alts: [...t.alts, ...prefixed(db, t.alts[0]!)] } : t));
+    const lexical = run(db, query, terms, "lexical");
+    if (lexical.hits.length) return lexical;
+    const fuzzy = terms.map((t) => (t.typo ? { ...t, alts: [...t.alts, ...nearest(db, t.alts[0]!)] } : t));
+    return fuzzy.some((t, i) => t.alts.length !== terms[i]!.alts.length) ? run(db, query, fuzzy, "fuzzy") : lexical;
   } finally {
     db.close();
   }
+}
+
+function run(db: DatabaseSync, query: Query, terms: Term[], mode: Match): { hits: Hit[]; total: number; match: Match } {
+  const exprs = terms.map(termExpr);
+  const match = exprs.join(" AND ");
+  const filters = { match, workspace: query.workspace ?? null };
+  const chunks = `SELECT d.id, d.card, bm25(docs_fts) AS rank FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid JOIN cards c ON c.id = d.card
+    WHERE docs_fts MATCH :match AND (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace)`;
+  type Row = { card: string; title: string; total: number };
+  const cards = (
+    query.card
+      ? db
+          .prepare(`WITH h AS MATERIALIZED (${chunks} AND d.card = :card) SELECT h.card, c.title, count(*) AS total FROM h JOIN cards c ON c.id = h.card GROUP BY h.card`)
+          .all({ ...filters, kind: query.kind ?? null, card: query.card })
+      : query.kind
+        ? db
+            .prepare(
+              `WITH h AS MATERIALIZED (${chunks}) SELECT h.card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.id = h.card
+               GROUP BY h.card ORDER BY min(h.rank), min(h.id) LIMIT :limit`,
+            )
+            .all({ ...filters, kind: query.kind, limit: query.limit })
+        : db
+            .prepare(
+              `WITH h AS MATERIALIZED (SELECT rowid AS n, bm25(card_fts, 0.5, 1.0) AS rank FROM card_fts WHERE card_fts MATCH :match)
+               SELECT c.id AS card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.n = h.n
+               WHERE :workspace IS NULL OR c.workspace = :workspace ORDER BY h.rank, c.n LIMIT :limit`,
+            )
+            .all({ ...filters, limit: query.limit })
+  ) as Row[];
+  const top = db.prepare(
+    `SELECT d.kind, d.at, snippet(docs_fts, 0, '[', ']', '…', 16) AS s FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid
+     WHERE docs_fts MATCH :match AND d.card = :card AND (:kind IS NULL OR d.kind = :kind) ORDER BY bm25(docs_fts), d.id LIMIT :n`,
+  );
+  const snippetMatch = query.card || query.kind ? match : exprs.join(" OR ");
+  const hits = cards.map((r) => ({
+    card: r.card,
+    title: r.title,
+    match: mode,
+    snippets: (
+      top.all({ match: snippetMatch, card: r.card, kind: query.kind ?? null, n: query.card ? query.limit : SNIPPETS }) as { kind: Kind; at: string; s: string }[]
+    ).map((t) => ({ kind: t.kind, at: t.at || "unknown", snippet: t.s.replace(/\s+/g, " ") })),
+  }));
+  return { hits, total: cards[0]?.total ?? 0, match: mode };
 }
 
 export interface IndexStatus {
