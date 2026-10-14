@@ -177,7 +177,7 @@ function apply(state: BoardState, event: BoardEvent): boolean {
       card.sourceRefs = [...card.sourceRefs.filter(r => !sameSource(r, source)), source]
     }
 
-    const { parentId, activity, settings, autoTitle, ...rest } = fields
+    const { parentId, activity, settings, folder, autoTitle, ...rest } = fields
     Object.assign(card, rest)
 
     if (settings === null) {
@@ -195,6 +195,12 @@ function apply(state: BoardState, event: BoardEvent): boolean {
 
     if (autoTitle) {
       offerTitle(card, autoTitle)
+    }
+
+    if (folder === null) {
+      delete card.folder
+    } else if (folder !== undefined) {
+      card.folder = folder
     }
 
     if (activity === null) {

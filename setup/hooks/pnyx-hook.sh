@@ -7,6 +7,9 @@
 # and Codex add some hook output to the agent's context, and a hook must never
 # block the agent. Normalizing the payload into a card happens later, in pnyx-axi.
 exec >/dev/null 2>&1
+# Bytes, not characters: tr and grep must not stop at invalid UTF-8 in a payload.
+export LC_ALL=C
+set -f
 
 harness=$1
 event=$2
@@ -17,43 +20,80 @@ case $event in '' | *[!A-Za-z]*) exit 0 ;; esac
 home=${0%/*}
 home=${home%/hooks}
 
-# JSON strings cannot hold raw newlines, so flattening keeps the payload valid on one line.
-payload=$(tr '\n\r' '  ')
-
-# Tool hooks fire for every shell command; only the pull request and deploy commands
-# listed in observe.ts (PR_COMMANDS, DEPLOY_COMMANDS) are reported. This passes any
-# payload containing one; pnyx-axi then checks the command is in command position.
+# Where the session's terminal is, so a reply can be typed into it: the harness
+# process and its TTY, and the host around it from the environment. Recorded when
+# a session starts or takes a prompt; a value outside the safe characters is left out.
+terminal=
+fact() {
+  case $2 in '' | -* | *[!A-Za-z0-9_./:%,@+=-]*) return ;; esac
+  terminal="$terminal${terminal:+,}\"$1\":\"$2\""
+}
 case $event in
-PreToolUse | PostToolUse)
-  case $payload in
-  *'gh pr create'* | *'gh pr merge'* | *'gh-axi pr create'* | *'gh-axi pr merge'*) ;;
-  *'wrangler deploy'* | *'railway up'* | *'vercel deploy'* | *'vercel --prod'* | *'netlify deploy'* | *'fly deploy'*) ;;
-  *'eas update'* | *'eas submit'* | *'npm run deploy'* | *'pnpm run deploy'* | *'yarn run deploy'* | *'bun run deploy'*) ;;
-  *) exit 0 ;;
-  esac
+SessionStart | UserPromptSubmit)
+  # The harness is the nearest ancestor with a TTY, past any wrapper shell; the
+  # hook itself may run detached from the terminal.
+  pid=$PPID
+  for _ in 1 2 3 4; do
+    # shellcheck disable=SC2046
+    set -- $(ps -o ppid= -o tty= -o comm= -p "$pid")
+    [ $# -ge 3 ] || break
+    case $2:${3##*/} in
+    '?:'* | '??:'* | *:sh | *:bash | *:zsh | *:dash | *:-*) ;;
+    *)
+      fact tty "/dev/$2"
+      fact pid "$pid"
+      break
+      ;;
+    esac
+    [ "$1" -gt 1 ] || break
+    pid=$1
+  done
+  fact program "${TERM_PROGRAM:-}"
+  [ -z "${TMUX:-}" ] || fact tmux "${TMUX%%,*}"
+  fact tmuxPane "${TMUX_PANE:-}"
+  fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
+  fact paseoHome "${PASEO_HOME:-}"
+  fact herdrSession "${HERDR_SESSION:-}"
+  fact herdrPane "${HERDR_PANE_ID:-}"
   ;;
 esac
+[ -z "$terminal" ] || terminal="\"terminal\":{$terminal},"
 
-case $payload in '' | *[!\ ]*) ;; *) payload= ;; esac
 # One date call gives both the epoch ($1) and the ISO time ($2).
 # shellcheck disable=SC2046
 set -- $(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
 id="hook-$1-$$"
-line="{\"v\":1,\"id\":\"$id\",\"at\":\"$2\",\"harness\":\"$harness\",\"event\":\"$event\",\"payload\":${payload:-null}}"
+board=$home/boards/default
+spool=$board/spool
+[ -d "$spool" ] || mkdir -p "$spool" || exit 0
+# ponytail: names order by whole seconds, then by the zero-padded process id, which
+# keeps one session's same-second hooks in order (each runs after the last) until the
+# process ids wrap; a sub-second clock needs more than POSIX date.
+name=$(printf '%012d000-%010d' "$1" $$)-$id.json
+tmp=$spool/.tmp-$name
+
+# The payload streams through tr into the line without the shell holding it, so a
+# large tool output costs little. JSON strings cannot hold raw newlines, so
+# flattening keeps the payload valid on one line.
+{
+  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s"payload":' "$id" "$2" "$harness" "$event" "$terminal"
+  tr '\n\r' '  '
+  printf '}\n'
+} >"$tmp" || exit 0
+
+# Empty input has nothing after the envelope's own "payload": key.
+if ! grep -q '"payload": *[^ }]' "$tmp"; then
+  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s"payload":null}\n' "$id" "$2" "$harness" "$event" "$terminal" >"$tmp" || exit 0
+fi
 
 # The default board's server handles each line as soon as its newline arrives and
 # replies nothing, so nothing here relies on nc half-closing; -w 1 bounds the wait
 # for an nc that keeps the connection open. Without a running server there is no
 # socket file, so the common path never starts nc.
-board=$home/boards/default
-if [ -S "$board/server.sock" ] && printf '%s\n' "$line" | nc -U -w 1 "$board/server.sock"; then
+if [ -S "$board/server.sock" ] && nc -U -w 1 "$board/server.sock" <"$tmp"; then
+  rm -f "$tmp"
   exit 0
 fi
 
-# ponytail: names order by whole seconds, so two hooks in the same second may be
-# ingested in either order; a sub-second clock needs more than POSIX date.
-spool=$board/spool
-[ -d "$spool" ] || mkdir -p "$spool" || exit 0
-name=$(printf '%012d000' "$1")-$$-$id.json
-printf '%s\n' "$line" >"$spool/.tmp-$name" && mv "$spool/.tmp-$name" "$spool/$name"
+mv "$tmp" "$spool/$name" || rm -f "$tmp"
 exit 0

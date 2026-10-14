@@ -1,0 +1,1 @@
+{"session_id":"019a0000-0000-7000-8000-000000000001","transcript_path":null,"cwd":"/work/other","turn_id":"turn-2","agent_transcript_path":"/work/home/.codex/sessions/2026/10/14/rollout-child-1.jsonl","hook_event_name":"SubagentStop","model":"gpt-6","permission_mode":"default","stop_hook_active":false,"agent_id":"child-1","agent_type":"worker","last_assistant_message":"hi"}
