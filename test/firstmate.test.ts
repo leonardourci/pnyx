@@ -599,10 +599,10 @@ test('a session joins the task launched in its worktree; only a session in its t
   assert.equal(own('s-other'), true)
 })
 
-test('a joined session outside Paseo keeps its terminal facts across syncs', () => {
+test('a session outside Paseo joins a task with no recorded terminal and keeps its facts', () => {
   const { home } = copyFixture()
   const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
-  writeFileSync(join(home, 'state', 'wt-t.meta'), `task=wt-t\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-t\n`)
+  writeFileSync(join(home, 'state', 'wt-t.meta'), `task=wt-t\nkind=ship\nworktree=${worktree}\n`)
   syncHome({ board: 'default', home })
   spoolWrite({
     board: 'default',
@@ -621,6 +621,32 @@ test('a joined session outside Paseo keeps its terminal facts across syncs', () 
   assert.equal(cardOf(home, 'wt-t').agent?.sessionId, 's-tmux')
   assert.deepEqual(cardOf(home, 'wt-t').terminal, { tty: '/dev/ttys042', pid: '4242', program: 'tmux' })
   assert.equal(syncHome({ board: 'default', home }).appended, 0)
+})
+
+test('a task launched in a Paseo terminal takes only a session from that terminal', () => {
+  const { home } = copyFixture()
+  const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
+  writeFileSync(join(home, 'state', 'wt-p.meta'), `task=wt-p\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-p\n`)
+  syncHome({ board: 'default', home })
+  const start = ({ id, session, terminal }: { id: string; session: string; terminal: object }) =>
+    spoolWrite({
+      board: 'default',
+      entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'claude', event: 'SessionStart', payload: { session_id: session, cwd: worktree }, terminal },
+    })
+
+  // The owner's session in tmux, in the same worktree, keeps its own card.
+  start({ id: 'h1', session: 's-tmux', terminal: { tty: '/dev/ttys042', pid: '4242', program: 'tmux' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf(home, 'wt-p').agent, undefined)
+  assert.deepEqual(cardOf(home, 'wt-p').terminal, { paseoTerminal: 'term-p' })
+  assert.ok(loadBoard({ board: 'default' }).state.keys['claude:s-tmux'])
+
+  // The worker in the task's own terminal still joins it.
+  start({ id: 'h2', session: 's-worker', terminal: { tty: '/dev/ttys043', pid: '4343', program: 'kitty', paseoTerminal: 'term-p' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf(home, 'wt-p').agent?.sessionId, 's-worker')
+  assert.equal(cardOf(home, 'wt-p').terminal?.paseoTerminal, 'term-p')
+  assert.equal(loadBoard({ board: 'default' }).state.keys['claude:s-worker'], undefined)
 })
 
 test("a task card's setting changes go to the orchestrator as request notes, never into the worker", () => {
