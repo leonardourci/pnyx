@@ -107,6 +107,7 @@ try {
   await check('document.querySelectorAll(".markdown h1").length === 1 && !!document.querySelector(".markdown ul li") && !!document.querySelector(".markdown ol li") && !!document.querySelector(".markdown table") && !!document.querySelector(".syntax-keyword") && !!document.querySelector(".task-marker")', 'GFM headings, lists, tables, task lists and highlighted code render')
   await check('!window.pnyxUnsafe && !document.querySelector(".messages script,.messages img,.messages iframe,.messages [onclick],.messages a[href^=javascript],.messages a[href^=data]") && [...document.querySelectorAll(".messages a")].some(a => a.href === "https://example.com/plan")', 'HTML cannot execute and only safe links render')
   await check('[...document.querySelectorAll(".code-block code")].some(el => el.textContent.includes("// END LONG CODE")) && document.querySelectorAll(".code-block").length === 1', 'chunked code stays in one Markdown block')
+  await check('[...document.querySelectorAll(".markdown p")].some(p => p.textContent.startsWith("Fish & chips, escaped as &amp; in HTML.") && p.querySelector("code").textContent === "&amp;")', 'entities decode in text but stay literal in inline code')
   await browser('eval', '() => { window.replyInputNode = document.querySelector(".composer textarea"); window.replyInputRemovals = 0; window.replyObserver = new MutationObserver(records => { for (const record of records) for (const removed of record.removedNodes) if (removed === window.replyInputNode || removed.contains(window.replyInputNode)) window.replyInputRemovals++; }); window.replyObserver.observe(document.querySelector(".detail"), {childList:true,subtree:true}); return true; }')
   await press('Escape'); await press('Enter')
   await check('document.activeElement === window.replyInputNode', 'Enter focuses the existing reply input')
@@ -134,6 +135,7 @@ try {
 
   await click('button', 'Settings'); await click('button', 'Back to board')
   await check('document.querySelectorAll(".inline-comment").length === 3 && document.querySelector(".composer textarea").value === "Please apply these comments."', 'comments and reply survive navigation')
+  await check('document.querySelectorAll(".composer .pending-comments li").length === 3 && document.querySelector(".composer .pending-comments").textContent.includes("Explain this selected phrase.")', 'the composer lists every comment that goes with the reply')
 
   {
     const theme = 'dark'

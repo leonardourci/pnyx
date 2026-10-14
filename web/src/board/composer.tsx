@@ -158,7 +158,23 @@ export function Composer({
         {' '}
         {title}
       </label>
-      {commented > 0 && <p className="small gold">{commented === 1 ? '1 comment goes' : `${commented} comments go`} with this reply</p>}
+      {commented > 0 && (
+        <div className="pending-comments small">
+          <p className="gold">{commented === 1 ? '1 comment goes' : `${commented} comments go`} with this reply</p>
+          <ul>
+            {comments.filter(c => c.text.trim()).map(c => (
+              <li key={c.id}>
+                <span>
+                  <q className="muted">{c.quote}</q>
+                  {' '}
+                  {c.text.trim()}
+                </span>
+                <Button aria-label="Remove comment" onClick={() => setComments(comments.filter(x => x.id !== c.id))}>Remove</Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="composer-input">
         {prefix !== null && (
           <div className="slash-menu">

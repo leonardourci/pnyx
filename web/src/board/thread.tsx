@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
+import { traces } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Switch } from '../components/ui/controls.tsx'
 import { joinMessageParts, type ChatComment } from './chat.ts'
 import { Composer } from './composer.tsx'
 import { Messages } from './messages.tsx'
-import { agentActivity, traces } from './view.ts'
+import { agentActivity } from './view.ts'
 import type { Command } from './connection.ts'
 
 const merge = ({ kept, page }: { kept: ThreadEntry[]; page: ThreadEntry[] }) => {

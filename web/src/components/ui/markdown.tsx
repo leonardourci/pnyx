@@ -30,7 +30,7 @@ const inline = ({ tokens }: { tokens: Token[] }): ReactNode => tokens.map((token
     case 'strong': return <strong key={i}>{children}</strong>
     case 'em': return <em key={i}>{children}</em>
     case 'del': return <del key={i}>{children}</del>
-    case 'codespan': return <code key={i}>{decodeEntities({ text: token.text })}</code>
+    case 'codespan': return <code key={i}>{token.text}</code>
     case 'br': return <br key={i} />
     case 'link': case 'image': {
       const href = markdownHref({ href: token.href })

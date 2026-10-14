@@ -4,7 +4,7 @@ import type { BoardEvent, BoardState, Card, ReplyState } from '../core/model.ts'
 import { boardDir, readEventsFrom } from '../store/board-store.ts'
 import { redact, transcriptMessages } from '../search/text.ts'
 import { HOST_LABEL, replyRoute } from '../core/route.ts'
-import { viewFor } from '../core/view.ts'
+import { traces, viewFor } from '../core/view.ts'
 
 // messageId and part let the board rejoin a long message split into transport chunks.
 export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; messageId?: string; part?: number }
@@ -226,9 +226,7 @@ export function readThread(
   const candidates: { item: ThreadEntry; native?: string; reply?: string }[] = []
   let earlierNative = false, emptyNativeCursor: string | undefined
   const path = threadPath(card)
-  const view = viewFor({ state }), overrides = view.cardTraceOverrides[card.id]
-  const tools = overrides?.tools ?? view.toolDetails
-  const thinking = overrides?.thinking ?? view.thinkingDetails
+  const { tools, thinking } = traces({ view: viewFor({ state }), card: card.id })
 
   if (path) {
     let fd: number | undefined
