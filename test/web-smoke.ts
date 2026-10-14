@@ -50,7 +50,7 @@ const screenshot = async (name: string) => {
 }
 
 const check = async (condition: string, label: string) => {
-  const out = await browser('eval', `() => { if (!(${condition})) throw new Error(${JSON.stringify(label)}); return "passed"; }`); assert.match(out, /passed/, label)
+  const out = await browser('eval', `async () => { if (!(${condition})) throw new Error(${JSON.stringify(label)}); return "passed"; }`); assert.match(out, /passed/, label)
 }
 
 const ref = async (role: string, name: string) => {
@@ -83,6 +83,8 @@ const view = () => loadBoard('default').state.view
 try {
   await browser('open', server.url); await browser('resize', '1440', '900'); await browser('wait', 'The working board')
   await check('document.querySelectorAll("[data-card]").length === 6', 'fixture cards appear')
+  await check('document.title === "(2) Board · Pnyx"', 'board tab title includes attention count')
+  await check('await Promise.all([...document.querySelectorAll(\'link[rel="icon"],link[rel="apple-touch-icon"]\')].map(async link => { const response = await fetch(link.href); const blob = await response.blob(); const image = new Image(); image.src = URL.createObjectURL(blob); try { await image.decode(); return response.ok && (link.type === \'image/svg+xml\' ? blob.type === link.type : image.width === Number(link.sizes.value.split(\'x\')[0]) && image.height === image.width); } finally { URL.revokeObjectURL(image.src); } })).then(results => results.length === 4 && results.every(Boolean))', 'favicon and apple-touch assets load at their declared sizes')
   await screenshot('board.png')
   const beforeResize = loadBoard('default').state.seq
   await browser('eval', '() => { document.querySelector("[aria-label=\\"Resize Needs you column\\"]").focus(); return true; }')
@@ -94,6 +96,7 @@ try {
   await oneEvent(from, 'a busy resize ignores a second press')
   assert.equal(view()?.columnWidths.needs_you, 306)
   await click('button', 'Shape the first working board'); await browser('wait', 'The first pass is ready to review.')
+  await check('document.title === "(2) Shape the first working board · Pnyx"', 'open card appears in tab title')
   await check('!document.querySelector(".message.tool p") && document.querySelectorAll(".message.message p").length >= 3', 'messages visible and traces collapsed')
   await click('switch', 'Tool details'); await check('!!document.querySelector(".message.tool p")', 'tool switch expands details')
   const tools = () => view()?.cardTraceOverrides[fixture.state.keys.layout!]?.tools
@@ -106,6 +109,7 @@ try {
   await browser('fill', await ref('textbox', 'Reply to Shape the first working board'), 'First line'); await browser('press', 'Enter')
   await check('document.querySelector("textarea").value === "First line\\n"', 'Enter inserts a newline')
   await click('button', 'Settings')
+  await check('document.title === "(2) Settings · Pnyx"', 'settings tab title replaces selected card')
   from = seq()
   await rapid('[aria-label="Increase Panel width"]', JSON.stringify(['click', 'click']))
   await oneEvent(from, 'a busy number field ignores a quick second step')
@@ -151,6 +155,7 @@ try {
   await check('innerWidth === 390 && document.documentElement.scrollWidth === innerWidth && document.querySelector(".composer").getBoundingClientRect().bottom <= innerHeight', 'mobile composer stays in viewport')
   await screenshot('mobile.png')
   await click('button', 'History'); await browser('fill', await ref('searchbox', 'Search history'), 'conversation readable'); await browser('wait', 'Shape the first working board')
+  await check('document.title === "(1) History · Pnyx"', 'history tab title uses the updated attention count')
   await check('document.querySelectorAll(".result-title").length === 1', 'full-text transcript search works')
   await browser('emulate', '--viewport', '1440x900x1'); await browser('wait', 'The working board'); await click('button', 'History'); await browser('fill', await ref('searchbox', 'Search history'), 'conversation readable'); await browser('wait', 'Shape the first working board'); await screenshot('history.png')
   await browser('open', server.url); await browser('wait', 'Later')

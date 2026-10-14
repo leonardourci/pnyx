@@ -7,7 +7,7 @@ import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decis
 import { emptyBoard, reduce } from '../src/core/reducer.ts'
 import { BoardError, type BoardEvent, type BoardState } from '../src/core/model.ts'
 import { patchView, viewFor } from '../src/core/view.ts'
-import { columnsFor, filterCards, findBoxCards, safeLink, shouldReload, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
+import { columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { readThread, recordEntries } from '../src/thread/read.ts'
 
@@ -24,6 +24,26 @@ const event = (d: Decision): BoardEvent => {
 
 const push = (state: BoardState, key: string, fields: unknown) =>
   reduce(state, event(decidePush(state, key, fields, meta)))
+
+test('tab titles follow the view, selected card and current needs-you count', () => {
+  for (const [page, label] of [['board', 'Board'], ['history', 'History'], ['settings', 'Settings']] as const) {
+    assert.equal(pageTitle(page, {}), `${label} · Pnyx`)
+  }
+
+  let state = push(emptyBoard(), 'a', { title: 'Review <literal> changes', attention: [{ kind: 'question', key: 'q', blocking: true }] })
+  state = push(state, 'b', { title: 'Another decision', attention: [{ kind: 'question', key: 'q', blocking: true }] })
+  state = push(state, 'c', { title: 'Still working', activity: 'working' })
+  assert.equal(pageTitle('board', state.cards), '(2) Board · Pnyx')
+  assert.equal(pageTitle('board', state.cards, 'c1'), '(2) Review <literal> changes · Pnyx')
+  assert.equal(pageTitle('board', state.cards, 'missing'), '(2) Board · Pnyx')
+  assert.equal(pageTitle('history', state.cards, 'c1'), '(2) History · Pnyx')
+  assert.equal(pageTitle('settings', state.cards, 'c1'), '(2) Settings · Pnyx')
+  state = push(state, 'a', { title: 'Updated card title' })
+  state = reduce(state, event(decideMove(state, 'b', 'done', meta)))
+  assert.equal(pageTitle('board', state.cards, 'c1'), '(1) Updated card title · Pnyx')
+  state = reduce(state, event(decideMove(state, 'a', 'done', meta)))
+  assert.equal(pageTitle('board', state.cards, 'c1'), 'Updated card title · Pnyx')
+})
 
 test('preferences replay deterministically, guard revisions, and undo removes map overrides', () => {
   const initial = push(emptyBoard(), 'a', { title: 'A' })
