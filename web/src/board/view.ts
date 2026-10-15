@@ -103,3 +103,6 @@ export function taskLabel({ card }: { card: Card }): string {
   return shownActivity({ card })
     ?? card.outcome?.state ?? (card.tracking ? 'No status' : 'Activity unknown')
 }
+
+// A task with no agent and no Firstmate route starts one instead of showing a conversation.
+export const needsAgent = ({ card }: { card: Card }) => !card.agent && !card.sourceRefs.some(r => r.adapter === 'firstmate')

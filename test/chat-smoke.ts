@@ -18,6 +18,8 @@ const markdown = readFileSync(join(import.meta.dirname, 'fixtures/web/chat.md'),
 appendFileSync(fixture.transcript, Array.from({ length: 70 }, (_, i) => JSON.stringify({ type: 'assistant', timestamp: `2026-10-01T10:00:${String(i).padStart(2, '0')}Z`, message: { content: `Earlier note ${i}` } }) + '\n').join(''))
 appendFileSync(fixture.transcript, JSON.stringify({ type: 'user', timestamp: '2026-10-13T10:50:00Z', message: { content: '**Review** this plan and `safe links`.' } }) + '\n')
 appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: '2026-10-13T10:51:00Z', message: { content: markdown } }) + '\n')
+// A trailing tool call, so with Focus off a trace is the last row.
+appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: '2026-10-13T10:52:00Z', message: { content: [{ type: 'tool_use', name: 'Run checks', input: { command: 'pnpm test' } }] } }) + '\n')
 const meta = { actor: 'fixture', at: '2026-10-14T10:00:00Z' }
 withWriter({
   board: 'default',
@@ -68,6 +70,9 @@ const focus = ({ selector }: { selector: string }) => {
   return browser({ args: ['eval', `() => { document.querySelector(${JSON.stringify(selector)}).focus(); return true; }`] })
 }
 
+// The caret is in the messages and inside `block`, an element expression.
+const caretIn = ({ block }: { block: string }) => `document.activeElement.matches("[data-caret-host]") && getSelection().isCollapsed && (${block}).contains(getSelection().focusNode)`
+
 const changeView = async ({ patch }: { patch: unknown }) => {
   withWriter({
     board: 'default',
@@ -103,6 +108,11 @@ try {
   await check({ condition: 'document.querySelector(".card-footer").textContent.includes("needs you") && !!document.querySelector(".card-footer .activity-working")', label: 'the declared task status stays visible beside the working indicator' })
   await click({ role: 'switch', name: 'Focus' }); await browser({ args: ['wait', 'Showing tool calls and thinking'] })
   await check({ condition: '!!document.querySelector(".message.tool pre") && !!document.querySelector(".message.thinking pre")', label: 'Focus off shows both trace kinds' })
+  await focus({ selector: '.composer textarea' }); await press({ key: 'Escape' })
+  await check({ condition: `document.querySelector(".messages > .message:last-child").matches(".tool") && ${caretIn({ block: '[...document.querySelectorAll(".message:not(.mine, .tool, .thinking)")].at(-1)' })}`, label: 'with a trace last, Escape still puts the caret in the latest reply' })
+  await press({ key: 'Shift+ArrowDown' }); await press({ key: 'Shift+ArrowDown' }); await press({ key: 'Shift+Enter' })
+  await check({ condition: 'document.activeElement.matches(".composer textarea") && document.activeElement.value.startsWith("> Thread plan\\n> A readable") && !/Comment|Enter|type/.test(document.activeElement.value)', label: 'a quote across blocks carries only message text' })
+  await browser({ args: ['eval', '() => { const input = document.querySelector(".composer textarea"); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(input, ""); input.dispatchEvent(new Event("input", { bubbles: true })); return true; }'] })
   await click({ role: 'switch', name: 'Focus' }); await browser({ args: ['wait', 'Prompts and agent messages only'] })
   await browser({ args: ['open', server.url] }); await browser({ args: ['wait', 'The working board'] }); await click({ role: 'button', name: 'Open conversation for Shape the first working board' }); await browser({ args: ['wait', 'Thread plan'] })
   await check({ condition: 'document.querySelector("[role=switch]").getAttribute("aria-checked") === "true"', label: 'Focus survives reload' })
@@ -111,26 +121,27 @@ try {
   await check({ condition: '[...document.querySelectorAll(".code-block code")].some(el => el.textContent.includes("// END LONG CODE")) && document.querySelectorAll(".code-block").length === 1', label: 'chunked code stays in one Markdown block' })
   await check({ condition: '[...document.querySelectorAll(".markdown p")].some(p => p.textContent.startsWith("Fish & chips, escaped as &amp; in HTML.") && p.querySelector("code").textContent === "&amp;")', label: 'entities decode in text but stay literal in inline code' })
   await browser({ args: ['eval', '() => { window.replyInputNode = document.querySelector(".composer textarea"); window.replyInputRemovals = 0; window.replyObserver = new MutationObserver(records => { for (const record of records) for (const removed of record.removedNodes) if (removed === window.replyInputNode || removed.contains(window.replyInputNode)) window.replyInputRemovals++; }); window.replyObserver.observe(document.querySelector(".detail"), {childList:true,subtree:true}); return true; }'] })
+  await check({ condition: '[...document.querySelectorAll(".messages a")].every(a => getComputedStyle(a).webkitUserModify === "read-only")', label: 'links stay read-only in the caret host so they still open' })
   await press({ key: 'Escape' }); await press({ key: 'Enter' })
   await check({ condition: 'document.activeElement === window.replyInputNode', label: 'Enter focuses the existing reply input' })
-  await press({ key: 'Escape' }); await press({ key: 'Home' })
-  await check({ condition: 'document.activeElement.matches("[data-message-block]")', label: 'Home selects first block' })
-  await press({ key: 'j' }); await check({ condition: 'document.querySelectorAll("[data-active=true]").length === 1', label: 'j advances selected block' })
-  await press({ key: 'End' }); await press({ key: 'c' }); await fill({ name: 'Comment on selected text', text: 'Keep this final step explicit.' }); await press({ key: 'Escape' })
-  await check({ condition: 'document.activeElement.matches("[data-message-block]") && !document.querySelector(".inline-comment textarea")', label: 'Escape leaves comment text attached to its block' })
+  await press({ key: 'Escape' }); await press({ key: 'Escape' }); await press({ key: 'Home' })
+  await check({ condition: `${caretIn({ block: 'document.querySelector("[data-message-block]")' })}`, label: 'Home puts the caret in the first block' })
+  await press({ key: 'j' }); await check({ condition: 'document.querySelectorAll("[data-active=true]").length === 1 && document.querySelector("[data-active=true]") !== document.querySelector("[data-message-block]")', label: 'j moves the caret to the next block' })
+  await press({ key: 'Escape' }); await press({ key: 'End' }); await press({ key: 'c' }); await fill({ name: 'Comment on selected text', text: 'Keep this final step explicit.' }); await press({ key: 'Escape' })
+  await check({ condition: `${caretIn({ block: '[...document.querySelectorAll("[data-message-block]")].at(-1)' })} && !document.querySelector(".inline-comment textarea")`, label: 'Escape leaves comment text attached to its block and the caret on it' })
   await press({ key: 'Enter' })
   await check({ condition: 'document.querySelectorAll(".composer textarea").length === 1 && document.activeElement === window.replyInputNode && window.replyInputRemovals === 0', label: 'comment Escape/Enter keeps exactly one mounted reply input' })
   await fill({ name: 'Reply to Shape the first working board', text: 'Regression: send after commenting.' })
   await press({ key: `${mod}+Enter` }); await browser({ args: ['wait', 'Delivered'] })
   assert.match(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), /Regression: send after commenting/)
   await check({ condition: 'document.querySelector(".composer textarea") === window.replyInputNode && window.replyInputRemovals === 0 && !document.querySelector(".inline-comment")', label: 'typing and sending after comment navigation keeps the input mounted' })
-  await browser({ args: ['eval', '() => { [...document.querySelectorAll("[data-message-block]")].find(el => el.dataset.quote.startsWith("Final step:")).focus(); return true; }'] }); await press({ key: 'c' })
+  await browser({ args: ['eval', '() => { const block = [...document.querySelectorAll("[data-message-block]")].find(el => el.dataset.quote.startsWith("Final step:")); document.querySelector("[data-caret-host]").focus(); getSelection().collapse(block.querySelector("p").firstChild, 0); return true; }'] }); await press({ key: 'c' })
   await fill({ name: 'Comment on selected text', text: 'Keep this final step explicit.' }); await press({ key: 'Escape' }); await press({ key: 'Enter' })
   await fill({ name: 'Reply to Shape the first working board', text: 'Please apply these comments.' })
   await browser({ args: ['eval', '() => { const p = [...document.querySelectorAll(\'.message-block p\')].find(p => p.textContent.startsWith(\'A readable paragraph\')); const range = document.createRange(); range.setStart(p.firstChild, 2); range.setEnd(p.firstChild, 20); const s=window.getSelection(); s.removeAllRanges(); s.addRange(range); p.dispatchEvent(new MouseEvent(\'mouseup\',{bubbles:true})); return true; }'] })
   await browser({ args: ['eval', '() => { document.querySelector(".block-comment-action.has-selection").click(); return true; }'] }); await fill({ name: 'Comment on selected text', text: 'Explain this selected phrase.' }); await press({ key: 'Escape' })
   await check({ condition: 'document.querySelectorAll(".inline-comment").length === 2 && document.querySelector(".composer").textContent.includes("2 comments go with this reply")', label: 'text selection adds another quoted comment' })
-  await browser({ args: ['eval', '() => { const p = [...document.querySelectorAll(\'.message-block p\')].find(p => p.textContent.startsWith(\'A readable paragraph\')); p.closest(\'[data-message-block]\').focus(); const range=document.createRange(); range.selectNodeContents(p); const s=window.getSelection(); s.removeAllRanges(); s.addRange(range); p.dispatchEvent(new MouseEvent(\'mouseup\',{bubbles:true})); return true; }'] })
+  await browser({ args: ['eval', '() => { const p = [...document.querySelectorAll(\'.message-block p\')].find(p => p.textContent.startsWith(\'A readable paragraph\')); document.querySelector(\'[data-caret-host]\').focus(); const range=document.createRange(); range.selectNodeContents(p); const s=window.getSelection(); s.removeAllRanges(); s.addRange(range); p.dispatchEvent(new MouseEvent(\'mouseup\',{bubbles:true})); return true; }'] })
   await press({ key: 'j' }); await check({ condition: 'document.activeElement.matches(".inline-comment textarea") && document.activeElement.value === "j"', label: 'typing on a selection starts a comment and preserves the first character' })
   await press({ key: 'u' }); await press({ key: 's' }); await press({ key: 't' }); await press({ key: 'Escape' })
   await check({ condition: 'document.querySelectorAll(".inline-comment").length === 3 && [...document.querySelectorAll(".inline-comment p")].some(p => p.textContent === "just")', label: 'subsequent typing stays in the comment' })
@@ -145,7 +156,7 @@ try {
     await check({ condition: '[...document.querySelectorAll(".code-block pre,.markdown-table")].some(el => el.scrollWidth > el.clientWidth)', label: 'wide code or tables scroll within their block' })
     await browser({ args: ['eval', '() => { document.querySelector(".inline-comment").scrollIntoView({block:"center"}); return true; }'] })
     await screenshot({ name: `chat-comments-${theme}.png` })
-    await focus({ selector: '.composer textarea' }); await press({ key: 'Escape' }); await check({ condition: 'document.activeElement.matches(".thread")', label: 'Escape returns to transcript' }); await press({ key: 'Enter' })
+    await focus({ selector: '.composer textarea' }); await press({ key: 'Escape' }); await check({ condition: caretIn({ block: '[...document.querySelectorAll(".message:not(.mine) [data-message-block]")].at(-1).closest(".message")' }), label: 'Escape puts the caret in the latest reply' }); await press({ key: 'Enter' })
     await check({ condition: 'document.activeElement.matches(".composer textarea")', label: 'Enter returns to inline reply' })
     await screenshot({ name: `chat-reply-${theme}.png` })
   }

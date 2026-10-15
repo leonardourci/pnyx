@@ -14,6 +14,7 @@ import { fmNote, fmSend } from '../integrations/firstmate/reply.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { HOOK } from '../integrations/hooks/observe.ts'
 import { pressKey, typeInto, type Delivery } from '../integrations/hooks/terminal.ts'
+import { paseoReply } from '../integrations/paseo/reply.ts'
 import { loadBoard, withWriter } from '../store/board-store.ts'
 import { COMMON, drainSpool, guard, meta, parse, required, type Options, type Output } from './commands.ts'
 
@@ -54,7 +55,8 @@ function invalid({ message, help = [] }: { message: string; help?: string[] }): 
 
 // The route name kept on each receipt.
 function routeName({ route, control }: { route: ReplyRoute; control?: boolean }): string {
-  return route.kind === 'firstmate' ? (control ? 'firstmate:inbox' : 'firstmate') : `terminal:${route.kind}`
+  return route.kind === 'firstmate' ? (control ? 'firstmate:inbox' : 'firstmate')
+    : route.kind === 'paseo-agent' ? route.kind : `terminal:${route.kind}`
 }
 
 // The request id of a setting change's note: per board, card and change, so a retry
@@ -76,13 +78,17 @@ function deliver({ board, card, reply, route, request }: {
   reply: string
   route: ReplyRoute
   request: ReplyRequest
-}): Delivery {
+}): Delivery | Promise<Delivery> {
   const { text, key, confirm, resolveKey } = request
 
   if (route.kind === 'firstmate') {
     return request.control
       ? fmNote({ home: route.home, requestId: noteId({ board, card, reply }), text })
       : fmSend({ route, text, resolveKey })
+  }
+
+  if (route.kind === 'paseo-agent') {
+    return paseoReply({ route, text, id: reply })
   }
 
   const sent = key ? pressKey({ route, key }) : typeInto({ route, text })
@@ -114,10 +120,10 @@ function deliver({ board, card, reply, route, request }: {
     : { state: 'delivery_unknown', detail: `the command was sent, but the Enter that answers its confirmation was not${answered.detail ? ` (${answered.detail})` : ''}; check the session` }
 }
 
-export function sendReply({ board, request }: {
+export async function sendReply({ board, request }: {
   board: string
   request: ReplyRequest
-}): ReplyReceipt {
+}): Promise<ReplyReceipt> {
   const { text, resolveKey } = request
 
   if (text.trim() === '') {
@@ -172,7 +178,7 @@ export function sendReply({ board, request }: {
           throw invalid({ message: 'reply text cannot start with --' })
         }
       } else if (resolveKey !== undefined) {
-        throw invalid({ message: '--resolve-key answers Firstmate decisions; this card replies through its terminal' })
+        throw invalid({ message: '--resolve-key answers Firstmate decisions; this card replies through its agent session' })
       }
 
       const reply = request.id ?? `r${writer.state.seq + 1}`
@@ -211,7 +217,7 @@ export function sendReply({ board, request }: {
 
   // Sent outside the writer lock: a send can take a while and must not block other writers.
   const { card, reply, route } = queued
-  const outcome = deliver({ board, card, reply, route, request })
+  const outcome = await deliver({ board, card, reply, route, request })
   const receipt = { card, reply, sent: true, ...outcome }
 
   try {
@@ -235,7 +241,7 @@ export function sendReply({ board, request }: {
 }
 
 export const reply = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const options: Options = {
       ...COMMON,
       home: { type: 'string', multiple: true },
@@ -263,7 +269,7 @@ export const reply = guard({
       }
     }
 
-    const receipt = sendReply({
+    const receipt = await sendReply({
       board,
       request: {
         card: ref,
@@ -349,7 +355,7 @@ function agentSummary({ board, ref, homes }: {
 }
 
 export const agent = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const options: Options = {
       ...COMMON,
       home: { type: 'string', multiple: true },
@@ -408,7 +414,7 @@ export const agent = guard({
       throw new AxiError('this setting requires a Firstmate request route', 'NO_ROUTE')
     }
 
-    const receipt = sendReply({
+    const receipt = await sendReply({
       board,
       request: {
         card: card.id,

@@ -181,6 +181,15 @@ export interface SetupResult {
 
 // Applies the change unless previewing. The config is replaced atomically and only
 // when its content changes; a symlinked config is written through the link.
+// Whether this home's hook script is the one this version installs.
+export function hookStatus(): 'current' | 'outdated' | 'missing' {
+  if (!existsSync(scriptPath())) {
+    return 'missing'
+  }
+
+  return readFileSync(scriptPath()).equals(readFileSync(SCRIPT_SOURCE)) ? 'current' : 'outdated'
+}
+
 export function setupHooks(
   { harness, opts }: { harness: Harness; opts: { remove: boolean; preview: boolean } },
 ): SetupResult {

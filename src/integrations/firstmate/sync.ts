@@ -100,7 +100,8 @@ function taskCard(
   return {
     title: task.title,
     tags: task.repo ? [task.repo] : [],
-    parent: null,
+    // Hydra may nest the task under the board task it serves; that placement stays.
+    ...(current?.parentId ? {} : { parent: null }),
     ...(task.activity ? { activity: task.activity } : {}),
     // A pool reuses worktrees, so a closed task gives its folder up for the next one.
     folder: task.worktree && !task.done ? task.worktree : null,

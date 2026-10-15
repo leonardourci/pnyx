@@ -30,7 +30,7 @@ One folder per feature. Code for a feature lives in its folder. There are no per
 | `src/search/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
 | `src/server/` | the local daemon and its WebSocket |
 | `src/thread/` | the transcript and reply thread reader |
-| `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`); each keeps both its reading side and its reply delivery |
+| `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery |
 | `web/` | the React + Vite + Tailwind board; its own UI primitives in `web/src/components/ui/` |
 | `setup/` | hook templates per harness |
 | `skills/pnyx/` | the agent skill shipped with the CLI |
@@ -41,12 +41,12 @@ Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links t
 
 ## Design rules
 
-- Pnyx is a view plus a reply queue over existing tools. It does not orchestrate, dispatch or supervise agents.
+- Pnyx is a view plus a reply queue over existing tools. It does not orchestrate or supervise agents; on request it starts one for a task or as a board's Hydra through the local Paseo daemon, a Firstmate home or the board's own command, and never watches over it.
 - `pnyx-axi` is the only writer of board state. Every change is an event appended to the board's `events.jsonl`, which is append-only and never rewritten. `snapshot.json` is a cache rebuilt from the log and replaced atomically.
 - The reducer is pure and deterministic: no I/O, clock or randomness inside it. Replaying the same log gives the same board.
 - No database for board state, and no AI model calls or model tokens anywhere in the board's logic. `search.db` is a derived, deletable full-text index (SQLite FTS5 through `node:sqlite`), not a store: it is rebuilt from the log and transcripts and never read as board state. Semantic search (on by default, through optional dependencies) adds vectors to it from local, open-weight models that run in `src/search`'s own worker process (`search setup` also loads them once, in its own process, for their golden check), never in the reducer, hooks or the server. The server's only token is a local per-install auth token for writes. Updates are pushed, and the browser uses one WebSocket.
 - Hooks are silent (no stdout or stderr), fast, and always exit 0. They never wait on a network call, browser or model.
-- The Firstmate integration only reads a Firstmate home's files and replies through Firstmate's own send command.
+- The Firstmate integration only reads a Firstmate home's files and replies through Firstmate's own send and inbox commands. The one write is `setup hydra`, which adds the `pnyx-hydra` skill as a local, git-excluded skill in the home; Firstmate's tracked files never change.
 - GitHub pull request state comes from `gh-axi`.
 - The CLI follows [AXI](https://axi.md/): compact TOON output, minimal default fields, explicit empty states, structured errors, no prompts and next-step hints.
 

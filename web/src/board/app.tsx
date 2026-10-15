@@ -16,6 +16,7 @@ import { BoardCard } from './card.tsx'
 import { Detail } from './detail.tsx'
 import type { ChatComment } from './chat.ts'
 import { Settings } from './settings.tsx'
+import { BoardTabs } from './boards.tsx'
 import { History } from './history.tsx'
 import { columnsFor, dropBefore, findBoxCards, pageTitle } from './view.ts'
 import { useFoundCards } from './card-search.ts'
@@ -391,6 +392,7 @@ export function App() {
               </Button>
             ))}
           </nav>
+          <BoardTabs command={command} connected={connected} notify={notify} />
           <KeyboardToolbar action={keyboard.onAction} />
           <span className={`connection ${connected ? 'online' : ''}`}>
             <i />

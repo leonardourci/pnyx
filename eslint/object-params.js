@@ -123,6 +123,11 @@ const boundary = ({ node, filename, sourceCode }) => {
     }
   }
 
+  if (['/test/paseo.test.ts', '/test/start.test.ts'].some(test => filename.endsWith(test))
+    && owner({ node, types: ['VariableDeclarator'] })?.id.name === 'client') {
+    return true // The fake implements the Paseo SDK client's signatures.
+  }
+
   if (filename.endsWith('/test/catalog.test.ts') && node.type === 'TSMethodSignature'
     && node.key.name === 'after') {
     return true // The node:test context's cleanup hook.
