@@ -21,7 +21,7 @@ import { HydraError, EVENT_TYPES, EVENT_VERSION, type HydraEvent, type HydraStat
 import { emptyHydra, reduce, replay } from '../core/reducer.ts'
 import { hydraDir, pnyxHome } from './paths.ts'
 
-export { hydraDir, pnyxHome } from './paths.ts'
+export { hydraDir, hydraIds, hydrasDir, pnyxHome } from './paths.ts'
 
 const LOCK_TIMEOUT_MS = 5000
 const STALE_EMPTY_LOCK_MS = 10_000

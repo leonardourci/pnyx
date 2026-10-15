@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import { HydraError, type HydraEvent } from '../src/core/model.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
-import { hydraDir, loadHydra, repairHydra, withWriter } from '../src/store/hydra-store.ts'
+import { hydraDir, hydraIds, loadHydra, repairHydra, withWriter } from '../src/store/hydra-store.ts'
 import { STREAMS, assertGolden, readStream } from './streams.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
@@ -187,9 +187,10 @@ test('two writers racing to take over a dead lock never hold it together', async
   }
 })
 
-test('existing board directories and events replay after the naming change', () => {
-  const dir = join(process.env.PNYX_HOME!, 'boards', 'existing')
-  mkdirSync(dir, { recursive: true })
+test('a Hydra in the old boards folder moves to hydras and its events replay', () => {
+  const old = join(process.env.PNYX_HOME!, 'boards', 'existing')
+  const dir = join(process.env.PNYX_HOME!, 'hydras', 'existing')
+  mkdirSync(old, { recursive: true })
   const config = {
     id: 'existing',
     name: 'Existing work',
@@ -201,8 +202,8 @@ test('existing board directories and events replay after the naming change', () 
     { v: 1, seq: 2, id: 'task', at: '2026-10-01T00:00:01Z', actor: 'cli', cardId: 't1', boardId: 'existing', type: 'task.created', data: { key: 'work', title: 'Keep this task' } },
     { v: 1, seq: 3, id: 'memory', at: '2026-10-01T00:00:02Z', actor: 'cli', cardId: '$board', boardId: 'existing', type: 'hydra.memory', data: { key: 'rule', before: null, after: 'Keep this fact' } },
   ].map(event => JSON.stringify(event)).join('\n') + '\n'
-  writeFileSync(join(dir, 'events.jsonl'), log)
-  writeFileSync(join(dir, 'snapshot.json'), JSON.stringify({
+  writeFileSync(join(old, 'events.jsonl'), log)
+  writeFileSync(join(old, 'snapshot.json'), JSON.stringify({
     v: 1,
     rules: 7,
     offset: Buffer.byteLength(log),
@@ -211,6 +212,7 @@ test('existing board directories and events replay after the naming change', () 
 
   const loaded = loadHydra({ hydraId: 'existing' })
   assert.equal(loaded.dir, dir)
+  assert.equal(existsSync(join(process.env.PNYX_HOME!, 'boards')), false)
   assert.equal(loaded.state.config?.name, 'Existing work')
   assert.equal(loaded.state.config?.hydra.id, 'lead')
   assert.equal(loaded.state.config?.columns[0]?.title, 'Later')
@@ -220,4 +222,40 @@ test('existing board directories and events replay after the naming change', () 
   repairHydra({ hydraId: 'existing' })
   assert.equal(readFileSync(join(dir, 'events.jsonl'), 'utf8'), log)
   assert.deepEqual(loadHydra({ hydraId: 'existing' }).state, loaded.state)
+})
+
+const seed = ({ files }: { files: Record<string, string> }) => {
+  for (const [name, text] of Object.entries(files)) {
+    mkdirSync(join(process.env.PNYX_HOME!, name, '..'), { recursive: true })
+    writeFileSync(join(process.env.PNYX_HOME!, name), text)
+  }
+}
+
+test('a Hydra in both folders is refused and nothing moves', () => {
+  seed({ files: { 'boards/default/events.jsonl': 'old\n', 'hydras/default/events.jsonl': 'new\n' } })
+
+  rejects({ fn: () => hydraDir({ hydraId: 'default' }), code: 'CONFLICT' })
+  assert.equal(readFileSync(join(process.env.PNYX_HOME!, 'boards/default/events.jsonl'), 'utf8'), 'old\n')
+  assert.equal(readFileSync(join(process.env.PNYX_HOME!, 'hydras/default/events.jsonl'), 'utf8'), 'new\n')
+})
+
+test('hook spools left on either side of the move are folded in without overwriting', () => {
+  seed({ files: { 'boards/default/events.jsonl': 'log\n', 'boards/default/spool/1.json': 'old', 'hydras/default/spool/2.json': 'new' } })
+  seed({ files: { 'boards/other/spool/3.json': 'late', 'hydras/other/events.jsonl': 'log\n' } })
+
+  const home = process.env.PNYX_HOME!
+  assert.equal(hydraDir({ hydraId: 'default' }), join(home, 'hydras/default'))
+  assert.equal(readFileSync(join(home, 'hydras/default/events.jsonl'), 'utf8'), 'log\n')
+  assert.deepEqual(['1', '2'].map(n => readFileSync(join(home, `hydras/default/spool/${n}.json`), 'utf8')), ['old', 'new'])
+  assert.equal(readFileSync(join(home, 'hydras/other/spool/3.json'), 'utf8'), 'late')
+  assert.equal(existsSync(join(home, 'boards')), false)
+})
+
+test('a Hydra an older server still runs stays in boards until that server exits', () => {
+  seed({ files: { 'boards/busy/events.jsonl': '', 'boards/busy/server.lock': JSON.stringify({ pid: process.ppid }), 'boards/idle/events.jsonl': '' } })
+
+  const home = process.env.PNYX_HOME!
+  assert.equal(hydraDir({ hydraId: 'busy' }), join(home, 'boards/busy'))
+  assert.equal(hydraDir({ hydraId: 'idle' }), join(home, 'hydras/idle'))
+  assert.deepEqual(hydraIds(), ['busy', 'idle'])
 })
