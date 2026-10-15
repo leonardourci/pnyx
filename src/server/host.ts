@@ -38,8 +38,7 @@ export interface Host {
 export const SETTINGS = ['model', 'effort', 'mode']
 // An idle session's process is closed after this long; its next message resumes it.
 const IDLE_MS = 10 * 60 * 1000
-// The server's own launch context, which would make the agent report the server's
-// terminal, task or actor as its own.
+// The agent must not inherit the server's terminal, task or actor.
 const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
 function isFolder({ path }: { path: string }): boolean {
@@ -156,8 +155,7 @@ export function createHost({ board, query, spawnCodex, changed }: {
     input: Record<string, unknown>
     actor: string
   }) => {
-    // As hooks do, a push goes to the card that holds the session now, its task once
-    // attached, so the session keeps the task's view of its settings and terminal.
+    // Sessions may move between tasks while their process keeps running.
     const session = writer.state.sessions?.[sessionId({ agent })]
     const card = session && writer.state.cards[session.taskId ?? session.originCardId]
 
@@ -182,8 +180,7 @@ export function createHost({ board, query, spawnCodex, changed }: {
     return card as Card & { agent: AgentRef }
   }
 
-  // The task waits on its owner or Hydra: Claude Code keeps no turn half done, so the
-  // next message continues the conversation.
+  // Interrupted turns wait for a new message from the owner or Hydra.
   const interrupt = ({ writer, agent, note }: {
     writer: Writer
     agent: AgentRef
@@ -475,8 +472,7 @@ export function createHost({ board, query, spawnCodex, changed }: {
 
         await running.session.set({ setting, value })
       } catch {
-        // Refused by the running process (bypass needs a session started for it): the
-        // recorded setting applies from a new process once this turn is over.
+        // Some settings require replacing the process after its current turn.
         running.stale = true
 
         if (running.activity !== 'working') {
