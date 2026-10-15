@@ -76,8 +76,7 @@ const set = ({ values, name }: {
   ask: `switch <worker> to ${name} ${value}`,
 }))
 
-// Settings the host passes to Claude Code itself; each applies at once and is recorded on the task.
-const HOSTED_CONTROLS: Controls = {
+const HOSTED_CLAUDE: Controls = {
   name: 'Claude Code',
   controls: [
     { setting: 'model', confirm: 'includes', options: set({ values: ['opus', 'sonnet', 'haiku', 'fable'], name: 'model' }) },
@@ -85,6 +84,16 @@ const HOSTED_CONTROLS: Controls = {
     { setting: 'mode', confirm: 'equals', options: set({ values: ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'], name: 'permission mode' }) },
   ],
   note: 'Pnyx runs this agent, so a change applies to this session only and is kept for its next turns. Permission requests appear on the task with Allow and Deny.',
+}
+
+const HOSTED_CODEX: Controls = {
+  name: 'Codex',
+  controls: [
+    { setting: 'model', confirm: 'equals', options: set({ values: ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'], name: 'model' }) },
+    { setting: 'effort', confirm: 'equals', options: set({ values: ['low', 'medium', 'high', 'xhigh'], name: 'effort' }) },
+    { setting: 'mode', confirm: 'equals', options: set({ values: ['untrusted', 'on-request', 'never'], name: 'approval policy' }) },
+  ],
+  note: 'Pnyx keeps these settings for the next turn. Permission requests appear on the task with Allow and Deny; the sandbox follows your Codex configuration.',
 }
 
 const CODEX_REQUESTS: Control[] = [
@@ -116,7 +125,11 @@ export function harnessControls({ provider, firstmate = false, hosted = false }:
   hosted?: boolean
 }): Controls | undefined {
   if (hosted && provider === 'claude-code') {
-    return HOSTED_CONTROLS
+    return HOSTED_CLAUDE
+  }
+
+  if (hosted && provider === 'codex') {
+    return HOSTED_CODEX
   }
 
   const harness = provider === undefined ? undefined : HARNESS_CONTROLS[provider]

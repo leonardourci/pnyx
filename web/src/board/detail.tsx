@@ -130,6 +130,7 @@ export function Detail({
         <StartAgent
           card={card}
           firstmate={state.board?.hydra.kind === 'firstmate'}
+          defaultHarness={state.board?.agents?.default?.harness}
           command={command}
           connected={connected}
           notify={notify}
