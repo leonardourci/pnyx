@@ -381,6 +381,33 @@ interface Intent {
   card: string
 }
 
+function confirmationPreview({ state, event }: { state: BoardState; event: BoardEvent }): Output {
+  if (event.type === 'card.moved') {
+    return {
+      task: event.cardId,
+      title: state.cards[event.cardId]?.title,
+      from: event.data.before,
+      to: event.data.after,
+      rank: event.data.rank,
+    }
+  }
+
+  if (event.type === 'board.columns') {
+    const { columns, placements, fallback } = event.data
+    const before = boardConfig({ state }).columns
+
+    return {
+      from: before.map(c => c.id),
+      to: columns.map(c => c.id),
+      removed: before.filter(c => !columns.some(next => next.id === c.id)).map(c => c.id),
+      affectedCards: Object.keys(placements ?? {}).length,
+      ...(fallback ? { fallback } : {}),
+    }
+  }
+
+  return { type: event.type, target: event.cardId }
+}
+
 // The receipt the event with this id got when it was appended. An id already used
 // for another card or event type is a conflict, not a retry.
 function originalReceipt(
@@ -457,7 +484,7 @@ export function commit(
               .slice(0, 24)
 
             if (confirmation.token !== token) {
-              return { confirmation: 'needed', token, action: summarize({ event: decision.event }), help: ['Repeat the same command with --confirm <token>; a changed target needs a new confirmation'] }
+              return { confirmation: 'needed', token, action: summarize({ event: decision.event }), preview: confirmationPreview({ state: writer.state, event: decision.event }), help: ['Repeat the same command with --confirm <token>; a changed target needs a new confirmation'] }
             }
           }
 
