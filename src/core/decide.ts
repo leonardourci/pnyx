@@ -509,7 +509,12 @@ export function decideSession({ state, ref, task, meta }: {
     event: {
       ...base({ state, meta, cardId: card.id }),
       type: 'task.session',
-      data: { session: session.id, before: session.taskId, after: target?.id ?? null },
+      data: {
+        session: session.id,
+        before: session.taskId,
+        after: target?.id ?? null,
+        ...(target?.brief?.trim() ? { brief: target.brief } : {}),
+      },
     },
   }
 }

@@ -4,10 +4,10 @@ import { assignDefined } from './tasks.ts'
 
 export const HYDRA_CARD = '$hydra'
 export const TEMPLATE_COLUMNS: BoardColumn[] = [
-  { id: 'needs_you', title: 'Needs you', role: 'needs_you' },
-  { id: 'workers_on_it', title: 'Workers on it', role: 'workers_on_it' },
-  { id: 'done', title: 'Done', role: 'done' },
-  { id: 'parked', title: 'Parked', role: 'parked' },
+  { id: 'needs_you', title: 'Needs you', role: 'needs_you', description: 'Work that needs the owner to answer a question, grant permission or make a decision.' },
+  { id: 'workers_on_it', title: 'Workers on it', role: 'workers_on_it', description: 'Work an attached agent is actively carrying forward.' },
+  { id: 'done', title: 'Done', role: 'done', description: 'Work whose result has been checked and is complete.' },
+  { id: 'parked', title: 'Parked', role: 'parked', description: 'Work kept for later, without an agent currently taking it forward.' },
 ]
 
 const ROLE_STATUS = { needs_you: 'needs_you', workers_on_it: 'working', done: 'done', parked: 'paused' } as const satisfies Record<NonNullable<BoardColumn['role']>, TaskStatus>
@@ -112,6 +112,10 @@ export function validateColumns({ columns }: { columns: BoardColumn[] }): void {
     if (!column.title.trim() || column.title.length > 100) {
       throw new BoardError({ message: 'column titles must have 1–100 characters', code: 'VALIDATION_ERROR' })
     }
+
+    if (column.description !== undefined && (typeof column.description !== 'string' || column.description.length > 4000)) {
+      throw new BoardError({ message: 'column descriptions must be text of up to 4000 characters', code: 'VALIDATION_ERROR' })
+    }
   }
 }
 
@@ -140,6 +144,36 @@ export function declareTask({ state, ref, status, note, meta, source, raw }: {
 }
 
 export function applyHydra({ state, event }: { state: BoardState; event: BoardEvent }): boolean {
+  if (event.type === 'hydra.memory') {
+    state.hydraMemory ??= {}
+
+    if (event.data.after === null) {
+      delete state.hydraMemory[event.data.key]
+    } else {
+      state.hydraMemory[event.data.key] = { text: event.data.after, at: event.at }
+    }
+
+    return true
+  }
+
+  if (event.type === 'task.brief' || event.type === 'task.visibility') {
+    const card = state.cards[event.cardId]
+
+    if (card) {
+      if (event.type === 'task.brief') {
+        card.brief = event.data.after
+      } else {
+        card.hidden = event.data.after
+      }
+
+      card.revision++
+      card.updatedSeq = event.seq
+      card.updatedAt = event.at
+    }
+
+    return true
+  }
+
   if (event.type === 'board.configured') {
     state.board = structuredClone(event.data)
     state.configured = true
@@ -194,11 +228,11 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
   }
 
   if (event.type === 'task.created') {
-    const { key, title, parentId, column, folder } = event.data
+    const { key, title, brief, parentId, column, folder } = event.data
     const role = boardConfig({ state }).columns.find(c => c.id === column)?.role
     const initial = role && { id: event.id, at: event.at, actor: event.actor, state: ROLE_STATUS[role], note: '' }
     state.cards[event.cardId] = {
-      id: event.cardId, key, title, titleSet: true, workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], sessionIds: [], tracking: 'declared', statusLog: initial ? [initial] : [], ...(initial ? { status: initial } : {}), ...(parentId ? { parentId } : {}), ...(folder ? { folder } : {}), column: column ?? 'parked', revision: 1, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
+      id: event.cardId, key, title, ...(brief !== undefined ? { brief } : {}), titleSet: true, workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], sessionIds: [], tracking: 'declared', statusLog: initial ? [initial] : [], ...(initial ? { status: initial } : {}), ...(parentId ? { parentId } : {}), ...(folder ? { folder } : {}), column: column ?? 'parked', revision: 1, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
     }
     state.keys[key] = event.cardId
     refreshTasks({ state, ids: [event.cardId] })

@@ -1,4 +1,4 @@
-import { BoardError, type AgentRef, type AgentSession, type BoardEvent, type BoardState, type Card, type TerminalFacts } from './model.ts'
+import { BoardError, type AgentRef, type AgentSession, type BoardEvent, type BoardState, type Card, type TerminalFacts, type SessionEvent } from './model.ts'
 
 export function sessionId({ agent }: { agent: AgentRef }): string {
   return `${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}`
@@ -199,4 +199,25 @@ export function observeSession({ state, card, event }: {
       projectSession({ state, session: attached })
     }
   }
+}
+
+export function taskForMessage({ memberships, at, fallback }: {
+  memberships: SessionEvent[]
+  at?: string
+  fallback: string
+}): string {
+  let task = memberships.find(e => e.data.after)?.data.after ?? fallback
+  const stamp = Date.parse(at ?? '')
+
+  if (!Number.isFinite(stamp)) {
+    return fallback
+  }
+
+  for (const event of memberships) {
+    if (Date.parse(event.at) <= stamp && event.data.after) {
+      task = event.data.after
+    }
+  }
+
+  return task
 }
