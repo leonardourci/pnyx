@@ -12,9 +12,9 @@ import type { Harness } from './observe.ts'
 const SCRIPT = 'pnyx-hook.sh'
 // Same relative path from src/integrations/hooks and dist/integrations/hooks.
 const SCRIPT_SOURCE = join(import.meta.dirname, '..', '..', '..', 'setup', 'hooks', SCRIPT)
-// Every event each harness's own interface reacts to, for every tool. Claude Code
-// worktree events are left out because a command hook there replaces its own worktree
-// handling; MessageDisplay, PostToolBatch, model switches and environment changes are not agent state.
+// The events Pnyx reads, for every tool: turn starts and ends, open requests, session
+// start and end, compaction for harvesting, and model switches. Claude Code worktree
+// events are left out because a command hook there replaces its own worktree handling.
 const EVENTS: Record<Harness, string[]> = {
   claude: [
     'SessionStart',
@@ -29,10 +29,6 @@ const EVENTS: Record<Harness, string[]> = {
     'ElicitationResult',
     'SubagentStart',
     'SubagentStop',
-    'TaskCreated',
-    'TaskCompleted',
-    'TeammateIdle',
-    'PreCompact',
     'PostCompact',
     'Stop',
     'StopFailure',
@@ -47,7 +43,6 @@ const EVENTS: Record<Harness, string[]> = {
     'PostToolUse',
     'SubagentStart',
     'SubagentStop',
-    'PreCompact',
     'PostCompact',
     'Stop',
     'Interrupt',

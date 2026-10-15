@@ -145,17 +145,20 @@ test('harvest reads only what a transcript gained, and a lost cursor appends not
   assert.equal(noted().length, 7)
 })
 
-test('a session that ends a turn is harvested when its hook event is ingested', () => {
-  const { run, transcript } = board()
-  const path = transcript({ name: 's9.jsonl', from: CLAUDE })
-  const payload = { session_id: 's9', transcript_path: path, cwd: '/work' }
-  spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-11T11:00:00.000Z', harness: 'claude', event: 'Stop', payload } })
-  writeFileSync(join(process.env.PNYX_HOME!, 'other.json'), '{}')
-  // Any write drains the spool first.
-  assert.match(run({ args: ['push', '--key', 'other', '--file', join(process.env.PNYX_HOME!, 'other.json')] }), /^ {2}notes: 6$/m)
-  const { state } = loadBoard({ board: 'default' })
-  assert.equal(state.cards[state.keys['claude:s9']!]!.notes?.length, 6)
-})
+for (const event of ['Stop', 'PostCompact']) {
+  test(`a session is harvested when its ${event} hook event is ingested`, () => {
+    const { run, transcript } = board()
+    const path = transcript({ name: 's9.jsonl', from: CLAUDE })
+    const payload = { session_id: 's9', transcript_path: path, cwd: '/work' }
+    spoolWrite({ board: 'default', entry: { v: 1, id: 'h0', at: '2026-10-11T10:59:00.000Z', harness: 'claude', event: 'SessionStart', payload } })
+    spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-11T11:00:00.000Z', harness: 'claude', event, payload } })
+    writeFileSync(join(process.env.PNYX_HOME!, 'other.json'), '{}')
+    // Any write drains the spool first.
+    assert.match(run({ args: ['push', '--key', 'other', '--file', join(process.env.PNYX_HOME!, 'other.json')] }), /^ {2}notes: 6$/m)
+    const { state } = loadBoard({ board: 'default' })
+    assert.equal(state.cards[state.keys['claude:s9']!]!.notes?.length, 6)
+  })
+}
 
 test('search finds notes and ranks them above the same words in a transcript', () => {
   const { home, run, push } = board()

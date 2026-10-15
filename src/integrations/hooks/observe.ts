@@ -217,7 +217,8 @@ function signal({ event, payload }: {
     case 'SessionEnd':
       return { activity: 'ended', attend: all }
     case 'PostModelSwitch':
-      // Only the new model, read by hookSettings; nothing changes in the session's work.
+    case 'PostCompact':
+      // No turn change: the new model is read by hookSettings, and a compaction queues a harvest.
       return {}
     default:
       return undefined
