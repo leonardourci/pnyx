@@ -107,6 +107,7 @@ test('the innermost recorded host is the route', () => {
   const fm = card({ fields: { sourceRefs: [{ adapter: 'firstmate', instanceId: '/fm', objectId: 'task' }], terminal: { ...base, program: 'Apple_Terminal' } } })
   assert.match(reason({ c: fm }), /not configured/)
   assert.deepEqual(replyRoute({ card: fm, homes: ['/fm'] }), { route: { kind: 'firstmate', home: '/fm', task: 'task' } })
+  assert.deepEqual(replyRoute({ card: { ...fm, agent: { provider: 'claude-code', sessionId: 's', host: 'pnyx', resume: true } }, homes: [] }), { route: { kind: 'pnyx' } })
   assert.deepEqual(terminalFacts({ value: { tty: TTY, tmuxPane: '-t', program: 'a b', pid: '0', paseoTerminal: '--x', extra: 'y' } }), { tty: TTY })
 })
 

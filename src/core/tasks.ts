@@ -180,6 +180,10 @@ export function observeSession({ state, card, event }: {
   }
 
   if (event.type === 'card.pushed') {
+    if (event.data.agent?.host === 'pnyx' && session.launch?.via !== 'pnyx') {
+      session.launch = { via: 'pnyx', at: event.at, folder: card.agent.cwd, harness: card.agent.provider }
+    }
+
     session.launch ??= card.launch ?? { via: card.agent.paseoAgentId ? 'paseo' : card.agent.host ? 'pnyx' : 'hooks', at: event.at, folder: card.agent.cwd, harness: card.agent.provider }
 
     if (!session.lastSeen || event.data.source?.adapter === 'hooks' || event.data.source?.adapter === 'paseo' || event.data.source?.adapter === 'transcript') {
