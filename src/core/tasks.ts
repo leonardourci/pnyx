@@ -1,5 +1,9 @@
 import { BoardError, type AgentRef, type AgentSession, type BoardEvent, type BoardState, type Card, type TerminalFacts, type SessionEvent } from './model.ts'
 
+// The open request marking a hosted agent's turn cut off by a server stop; it belongs
+// to that agent, so it goes when the agent leaves the task.
+export const INTERRUPTED = 'pnyx:interrupted'
+
 export function sessionId({ agent }: { agent: AgentRef }): string {
   return `${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}`
 }
@@ -133,7 +137,7 @@ export function applyAttachment({ state, event }: {
     delete old.terminal
     delete old.activity
     delete old.sessionActivity
-    old.attention = old.attention.filter(a => !a.key.startsWith('hook:'))
+    old.attention = old.attention.filter(a => !a.key.startsWith('hook:') && a.key !== INTERRUPTED)
 
     if (old.outcome?.source === 'hooks') {
       delete old.outcome
@@ -176,7 +180,7 @@ export function observeSession({ state, card, event }: {
   }
 
   if (event.type === 'card.pushed') {
-    session.launch ??= card.launch ?? { via: card.agent.paseoAgentId ? 'paseo' : 'hooks', at: event.at, folder: card.agent.cwd, harness: card.agent.provider }
+    session.launch ??= card.launch ?? { via: card.agent.paseoAgentId ? 'paseo' : card.agent.host ? 'pnyx' : 'hooks', at: event.at, folder: card.agent.cwd, harness: card.agent.provider }
 
     if (!session.lastSeen || event.data.source?.adapter === 'hooks' || event.data.source?.adapter === 'paseo' || event.data.source?.adapter === 'transcript') {
       session.lastSeen = event.at

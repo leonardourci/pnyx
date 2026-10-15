@@ -381,7 +381,7 @@ export type ViewEvent = EventBase & {
 export type NotedEvent = EventBase & { type: 'card.noted'; data: Note }
 
 export interface AgentLaunch {
-  via: 'paseo' | 'command' | 'hooks'
+  via: 'paseo' | 'command' | 'hooks' | 'pnyx'
   at: string
   folder?: string
   command?: string
