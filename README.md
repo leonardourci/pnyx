@@ -52,11 +52,10 @@ Sharing a folder between Hydras requires an explicit confirmation naming the oth
 ## Run
 
 ```sh
-pnyx-axi serve                              # Hydra only
-pnyx-axi serve --home ~/path/to/firstmate   # also shows and replies to Firstmate tasks
+pnyx-axi serve
 ```
 
-Open the `url` it prints, http://127.0.0.1:4747 unless `--port` says otherwise; if that port is taken, `serve` exits with `PORT_IN_USE` rather than picking another. `pnyx-axi` with no arguments shows the Hydra summary and the running server's address. Stop a foreground server with Ctrl+C or `pnyx-axi stop`. The login service uses the Node executable and Pnyx installation that ran setup, reaching Node through a link on `PATH` such as `/opt/homebrew/bin/node` when one points to it, so a Homebrew upgrade keeps the service starting; keep that installation in place and rerun setup after moving it or switching Node. Rerunning setup on a running service replaces it in place: it waits for launchd to finish stopping the old job before starting the new one. Each Hydra permits one server even when two starts race. A service-managed Hydra restarts after `stop`; use `setup service --remove` to keep it stopped.
+One server runs every Hydra in the Pnyx data folder (`~/.pnyx`, or `PNYX_HOME`): one port, each Hydra at its own path, http://127.0.0.1:4747/hydra/<id>/, with http://127.0.0.1:4747 opening the default Hydra. Open the `url` it prints; `--port` picks another port, and if that port is taken, `serve` exits with `PORT_IN_USE` rather than picking another. The Hydra menu in the top bar switches between Hydras on the same server, and a Hydra created while the server runs is served as soon as its folder appears. A Hydra that fails to load is skipped and reported (in the `serve` output and at `/health`), and the others keep working. Each Hydra keeps its own hook socket, its linked Firstmate home and the agents Pnyx started for it, all inside that one process. `pnyx-axi` with no arguments shows the Hydra summary and the running server's address. Stop a foreground server with Ctrl+C or `pnyx-axi stop`, which stops the server of every Hydra. The login service uses the Node executable and Pnyx installation that ran setup, reaching Node through a link on `PATH` such as `/opt/homebrew/bin/node` when one points to it, so a Homebrew upgrade keeps the service starting; keep that installation in place and rerun setup after moving it or switching Node. Rerunning setup on a running service replaces it in place: it waits for launchd to finish stopping the old job before starting the new one. Each Hydra permits one server even when two starts race. A service-managed server restarts after `stop`; use `setup service --remove` to keep it stopped.
 
 The browser reconnects automatically with capped backoff and a heartbeat, resumes Hydra events and restores the open conversation subscription. Composers stay usable during an outage; submitting a message keeps its draft and sends it when the connection returns, using the same delivery key on retries. A failed send leaves one short line in the conversation. The top-bar mark is the connection indicator. Session identities and attachments live in the event log and survive browser reloads and server restarts.
 
@@ -67,10 +66,12 @@ To keep it running in the background:
 ```sh
 mkdir -p ~/.pnyx
 pnyx-axi setup service                     # macOS: start now and at login, restart after exit
-pnyx-axi setup service --hydra work --port 4748 --home ~/path/to/firstmate
+pnyx-axi setup service --port 4748         # on another port
 pnyx-axi setup service --preview           # inspect the launchd configuration
-pnyx-axi setup service --remove            # stop and uninstall the default Hydra's service
+pnyx-axi setup service --remove            # stop and uninstall the service
 ```
+
+There is one login service for every Hydra. Setting it up replaces the one-per-Hydra services older versions installed for the same data folder.
 
 ## Add your agents
 
@@ -87,7 +88,7 @@ This adds a silent reporting hook to `~/.claude/settings.json` and `~/.codex/hoo
 
 Each Firstmate home gets its own Hydra. `pnyx-axi hydra homes` lists the homes beside each other, as `new-firstmate` makes them (in `FIRSTMATE_FACTORY_BASE`, by default `~/projects/agentic-engineering-workflow`; `--base` picks another folder), and the Hydra each one has; `pnyx-axi hydra create --firstmate <home>` creates a Hydra named after the home. `pnyx-axi setup hydra --home <home> --hydra <id>` makes the home that Hydra: it copies the `pnyx-hydra` skill into the home's `.agents/skills/` as a local skill (listed in the clone's `.git/info/exclude`, so Firstmate's tracked files never change) and leaves Firstmate an inbox note pointing at it. A Hydra run by a Firstmate home watches that home when served, without `--home`.
 
-Pass the Hydra's Firstmate home to `serve` with `--home`; a Hydra mirrors one Firstmate home, and `serve`, `firstmate sync` and `firstmate watch` name any other home they ignore. The server then watches the home's `state/` and `data/` folders, turns each task into a card, and sends your replies through the home's own `bin/fm-send.sh`. Apart from `setup hydra` adding its local skill, it only reads the home. Without a server, `pnyx-axi firstmate sync --home <path>` folds a home in once and `pnyx-axi firstmate watch --home <path>` keeps doing so; `pnyx-axi reply <id> --text <text> --home <path>` replies from the terminal. The first interactive Claude Code or Codex session in an open task's worktree joins that task; a later session in the same folder stays unassigned. The managed task keeps replying through Firstmate. A setting change from a task card's Agent tab goes to the orchestrator as a request note through the home's `bin/fm-inbox.sh note --request-id <id>`, with the same request id retained on retries. When Firstmate records a Paseo terminal, only sessions in that terminal can join or replace its worker; a replacement on the same terminal continues the task while earlier sessions remain in History.
+`serve --hydra <id> --home <home>` uses a home that Hydra has not recorded; a Hydra mirrors one Firstmate home, and `serve`, `firstmate sync` and `firstmate watch` name any other home they ignore. The server watches the home's `state/` and `data/` folders, turns each task into a card, and sends your replies through the home's own `bin/fm-send.sh`. Apart from `setup hydra` adding its local skill, it only reads the home. Without a server, `pnyx-axi firstmate sync --home <path>` folds a home in once and `pnyx-axi firstmate watch --home <path>` keeps doing so; `pnyx-axi reply <id> --text <text> --home <path>` replies from the terminal. The first interactive Claude Code or Codex session in an open task's worktree joins that task; a later session in the same folder stays unassigned. The managed task keeps replying through Firstmate. A setting change from a task card's Agent tab goes to the orchestrator as a request note through the home's `bin/fm-inbox.sh note --request-id <id>`, with the same request id retained on retries. When Firstmate records a Paseo terminal, only sessions in that terminal can join or replace its worker; a replacement on the same terminal continues the task while earlier sessions remain in History.
 
 ## Task records
 
@@ -173,7 +174,7 @@ On a slow laptop, or to keep search full-text only:
 
 ## Where data lives
 
-Everything is in `~/.pnyx/` (or `$PNYX_HOME`): the hook script in `hooks/`, the local write token, `settings.json`, the semantic search models in `models/` with the worker's `semantic.log`, and one folder per Hydra in `boards/<hydra>/` with `events.jsonl` (the append-only log), `snapshot.json`, `search.db` and `harvest.json`. Existing Hydras keep the `boards/` directories, `search.db` caches and event vocabulary, saved search settings and service identities on disk. Snapshots from an older version rebuild from the unchanged event log. The CLI uses `hydra`, `--hydra` and `oracle`; old command names and flags have no aliases. Rerun `pnyx-axi setup hooks` and `pnyx-axi setup service` after upgrading so installed hooks and services use `PNYX_HYDRA` and `--hydra`. Restart agents started before upgrading so their hooks inherit `PNYX_HYDRA`; their recorded tasks and conversations remain in the log. Nothing at runtime writes inside the repository.
+Everything is in `~/.pnyx/` (or `$PNYX_HOME`): the hook script in `hooks/`, the local write token, `settings.json`, the semantic search models in `models/` with the worker's `semantic.log`, and one folder per Hydra in `boards/<hydra>/` with `events.jsonl` (the append-only log), `snapshot.json`, `search.db` and `harvest.json`. Existing Hydras keep the `boards/` directories, `search.db` caches and event vocabulary, saved search settings and service identities on disk. Snapshots from an older version rebuild from the unchanged event log. The CLI uses `hydra`, `--hydra` and `oracle`; old command names and flags have no aliases. Rerun `pnyx-axi setup hooks` and `pnyx-axi setup service` after upgrading so installed hooks use `PNYX_HYDRA` and one login service runs every Hydra. Restart agents started before upgrading so their hooks inherit `PNYX_HYDRA`; their recorded tasks and conversations remain in the log. Nothing at runtime writes inside the repository.
 
 To start a Hydra over, stop the server and delete its folder: `pnyx-axi stop && rm -rf ~/.pnyx/boards/default`. `pnyx-axi oracle rebuild` rebuilds only the search index.
 
@@ -197,7 +198,7 @@ See [AGENTS.md](AGENTS.md) for the layout and design rules. `pnpm run lint` and 
 pnpm dev
 ```
 
-`pnpm dev` runs the Hydra server for a separate `dev` Hydra under `node --watch`, which restarts it when server code changes, and the Vite dev server, which updates the web app in place as you edit `web/`. Open the URL Vite prints; it forwards the Hydra's WebSocket to the dev server on port 4319 (set `PNYX_DEV_PORT` to change it).
+`pnpm dev` runs a Pnyx server with its own data folder (`~/.pnyx-dev`, or `PNYX_DEV_HOME`), so it never competes with your installed server for your Hydras, opening its `dev` Hydra under `node --watch`, which restarts it when server code changes, and the Vite dev server, which updates the web app in place as you edit `web/`. Open the URL Vite prints; it forwards the Hydra's WebSocket to the dev server on port 4319 (set `PNYX_DEV_PORT` to change it).
 
 Done cards are hidden from their Hydra after 24 continuous hours in Done. They are never deleted: their tasks, events and conversations stay in History and Oracle. Set the delay for each Hydra in Settings or with `pnyx-axi hydra set --hydra <id> --done-after-hours <hours>`; `0` keeps Done cards visible. Other columns never fade. Use the task menu in History to **Bring back to Hydra**, or run `pnyx-axi task unhide <id> --hydra <id>`; a restored card stays visible until it leaves Done and enters again. A reopened expired card returns automatically.
 

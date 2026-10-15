@@ -11,6 +11,7 @@ import { captainsIntent, homeKey, parseBacklog, resolveHome } from '../src/integ
 import { latestActivity, openDecisions, parseStatusLine, statusNotes } from '../src/integrations/firstmate/status.ts'
 import { syncHome, watchHome, type SyncResult } from '../src/integrations/firstmate/sync.ts'
 import { stopAll, track } from './processes.ts'
+import { startServer } from '../src/server/server.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -363,6 +364,23 @@ test('serve --home folds the home into the Hydra without a separate watch', asyn
     assert.equal(cardOf({ home, task: 'api-v2' }).title, 'v2 API with (optional) pagination')
   } finally {
     await stopAll()
+  }
+})
+
+test('a running server watches a Firstmate home linked to its Hydra after it started', async () => {
+  const { home, env } = copyFixture()
+  const server = await startServer({ hydraId: 'default' })
+
+  try {
+    execFileSync(process.execPath, [BIN, 'hydra', 'set', '--hydra', 'default', '--firstmate', home], { env, encoding: 'utf8' })
+
+    // Resolves as soon as the server folds the home in; the bound only has to outlast a heavily loaded machine.
+    for (const end = Date.now() + 30000; !loadHydra({ hydraId: 'default' }).state.keys[`${homeKey({ home })}:api-v2`];) {
+      assert.ok(Date.now() < end, 'the linked home was not watched')
+      await new Promise(r => setTimeout(r, 50))
+    }
+  } finally {
+    await server.close()
   }
 })
 

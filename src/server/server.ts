@@ -13,9 +13,10 @@ import { resolveHome } from '../integrations/firstmate/home.ts'
 import { queryOracle, matchActions } from '../oracle/semantic.ts'
 import { readSettings, settingEntries, writeSetting } from '../oracle/settings.ts'
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { chmodSync, existsSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
+import type { Duplex } from 'node:stream'
 import { basename, dirname, extname, join, normalize } from 'node:path'
 import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
@@ -27,9 +28,9 @@ import { workerCommands } from '../cli/workers.ts'
 import { HydraError, type HydraEvent, type HydraState, type Card, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
-import { hydraDir, loadHydra, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
+import { hydraDir, loadHydra, pnyxHome, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
 import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
-import { createHydra, listHydras, openHydra, renameHydra } from './hydras.ts'
+import { createHydra, hydraIds, listHydras, renameHydra } from './hydras.ts'
 import { createHost, hostRequest, type QueryFn } from './host.ts'
 import type { SpawnCodex } from './codex.ts'
 
@@ -79,13 +80,32 @@ export type ServerMessage =
 
 export interface RunningServer {
   port: number
+  // The address of the Hydra startServer was asked for.
   url: string
   socket: string | null
+  // Hydras that could not be loaded, with the reason; the others keep working.
+  skipped: Record<string, string>
   close(): Promise<void>
 }
 
-export async function startServer({ hydraId, ...options }: {
-  hydraId: string
+// One request handler, WebSocket and hook socket per Hydra, all inside this server.
+interface MountedHydra {
+  url: string
+  socket: string | null
+  request({ req, res, path }: HydraRequest): void
+  upgrade({ req, socket, head, url }: HydraUpgrade): void
+  close(): Promise<void>
+}
+
+type HydraRequest = { req: IncomingMessage; res: ServerResponse; path: string }
+type HydraUpgrade = { req: IncomingMessage; socket: Duplex; head: Buffer; url: URL }
+
+const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
+const RETRY_MS = 60_000
+
+// Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
+export async function startServer({ hydraId = 'default', port = 0, homes, ...options }: {
+  hydraId?: string
   port?: number
   homes?: string[]
   catalogLocations?: CatalogLocations
@@ -93,46 +113,213 @@ export async function startServer({ hydraId, ...options }: {
   query?: QueryFn
   spawnCodex?: SpawnCodex
 }): Promise<RunningServer> {
+  const mounts = new Map<string, Promise<MountedHydra>>()
+  const served = new Map<string, MountedHydra>()
+  const skipped: Record<string, string> = {}
+  let closed = false
+
+  // Exact matches only, so another site or a rebound DNS name is refused. Clients
+  // that send no Origin are local programs, not pages; writes still need the token.
+  const hosts = new Set<string>()
+  const origins = new Set<string>()
+  const allowed = ({ req }: { req: IncomingMessage }) =>
+    hosts.has(req.headers.host ?? '') && (req.headers.origin === undefined || origins.has(req.headers.origin))
+
+  const http = createServer((req, res) => {
+    if (!allowed({ req })) {
+      return reply({ res, status: 403, body: { error: 'origin or host not allowed', code: 'FORBIDDEN' } })
+    }
+
+    const path = new URL(req.url ?? '/', 'http://localhost').pathname
+    const [, id, rest] = HYDRA_PATH.exec(path) ?? []
+
+    if (id !== undefined) {
+      const mount = served.get(id)
+
+      if (!mount) {
+        return reply({ res, status: 404, body: { error: `Hydra not served: ${id}`, code: 'NOT_FOUND', ...(skipped[id] ? { reason: skipped[id] } : {}) } })
+      }
+
+      if (rest === undefined) {
+        return void res.writeHead(308, { location: `/hydra/${id}/` }).end()
+      }
+
+      return mount.request({ req, res, path: rest })
+    }
+
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return reply({ res, status: 405, body: { error: 'method not allowed', code: 'METHOD_NOT_ALLOWED' } })
+    }
+
+    if (path === '/health') {
+      const hydras = [...served.keys()].sort()
+      const body = { pid: process.pid, build: buildId(), hydras, skipped }
+
+      return reply({ res, status: 200, body })
+    }
+
+    if (path === '/') {
+      return void res.writeHead(302, { location: `/hydra/${hydraId}/` }).end()
+    }
+
+    serveStatic({ res, path })
+  })
+
+  http.on('upgrade', (req, socket, head) => {
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    // ponytail: /ws, like /, is the named Hydra's, for tabs from before one server and the Vite dev page.
+    const [, id, rest] = url.pathname === '/ws' ? ['', hydraId, '/ws'] : HYDRA_PATH.exec(url.pathname) ?? []
+    const mount = id === undefined ? undefined : served.get(id)
+
+    if (!mount || rest !== '/ws' || !allowed({ req })) {
+      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+
+      return
+    }
+
+    mount.upgrade({ req, socket, head, url })
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    http.once('error', reject)
+    http.listen(port, '127.0.0.1', () => resolve())
+  })
+  const bound = (http.address() as { port: number }).port
+
+  for (const host of [`127.0.0.1:${bound}`, `localhost:${bound}`]) {
+    hosts.add(host)
+    origins.add(`http://${host}`)
+  }
+
+  const mount = ({ id }: { id: string }): Promise<MountedHydra> => {
+    const known = mounts.get(id)
+
+    if (known) {
+      return known
+    }
+
+    if (closed) {
+      return Promise.reject(new HydraError({ message: 'the server is stopping', code: 'NOT_RUNNING' }))
+    }
+
+    const started = mountHydra({ hydraId: id, url: `http://127.0.0.1:${bound}/hydra/${id}/`, homes: id === hydraId ? homes : undefined, open, ...options })
+    mounts.set(id, started)
+    started.then(m => {
+      if (closed) {
+        void m.close()
+      } else {
+        served.set(id, m)
+        delete skipped[id]
+      }
+    }, (error: Error) => {
+      mounts.delete(id)
+      skipped[id] = error.message
+    })
+
+    return started
+  }
+
+  async function open({ id }: { id: string }): Promise<string> {
+    if (!hydraIds().includes(id)) {
+      throw new HydraError({ message: `Hydra not found: ${id}`, code: 'NOT_FOUND' })
+    }
+
+    return (await mount({ id })).url
+  }
+
+  let named: MountedHydra
+
+  // An older server may let go of a skipped Hydra, so it is retried; its reason is logged once.
+  const mountAll = () => {
+    for (const id of hydraIds()) {
+      const before = skipped[id]
+
+      if (!closed && !mounts.has(id)) {
+        mount({ id }).catch((error: Error) => error.message !== before && console.error(`pnyx-axi serve: skipped Hydra ${id}: ${error.message}`))
+      }
+    }
+  }
+
+  const boards = join(pnyxHome(), 'boards')
+  mkdirSync(boards, { recursive: true })
+  const watcher = watch(boards, mountAll)
+  const retry = setInterval(mountAll, RETRY_MS).unref()
+
+  const close = async () => {
+    closed = true
+    watcher.close()
+    clearInterval(retry)
+    const all = await Promise.allSettled(mounts.values())
+    await Promise.all(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
+    http.closeAllConnections()
+    await new Promise(r => http.close(r))
+  }
+
+  try {
+    named = await mount({ id: hydraId })
+    await mount({ id: 'default' })
+  } catch (error) {
+    await close()
+    throw error
+  }
+
+  await Promise.allSettled(hydraIds().map(id => mount({ id })))
+
+  return { port: bound, url: named.url, socket: named.socket, skipped: { ...skipped }, close }
+}
+
+async function mountHydra({
+  hydraId,
+  url,
+  homes,
+  catalogLocations,
+  query, spawnCodex,
+  open,
+}: {
+  hydraId: string
+  url: string
+  // Firstmate homes for replies; without them, the Hydra's recorded home, which is also watched.
+  homes?: string[]
+  catalogLocations?: CatalogLocations
+  query?: QueryFn
+  spawnCodex?: SpawnCodex
+  open({ id }: { id: string }): Promise<string>
+}): Promise<MountedHydra> {
   const release = claimServer({ hydraId })
 
   try {
-    const server = await startOwnedServer({ hydraId, ...options })
-
-    return {
-      ...server,
-      async close() {
-        try {
-          await server.close()
-        } finally {
-          release()
-        }
-      },
-    }
+    return await mountOwnedHydra({
+      hydraId, url, homes, catalogLocations, query, spawnCodex, open, release,
+    })
   } catch (error) {
     release()
     throw error
   }
 }
 
-async function startOwnedServer({
+async function mountOwnedHydra({
   hydraId,
-  port = 0,
-  homes = [],
+  url,
+  homes: given,
   catalogLocations,
   query, spawnCodex,
+  open,
+  release,
 }: {
   hydraId: string
-  port?: number
+  url: string
   homes?: string[]
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
-}): Promise<RunningServer> {
+  open({ id }: { id: string }): Promise<string>
+  release(): void
+}): Promise<MountedHydra> {
   if (await readServer({ hydraId })) {
     throw new HydraError({ message: `a server is already running for Hydra ${hydraId}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
   }
 
-  homes = homes.map(path => resolveHome({ path }))
+  let homes = (given ?? []).map(path => resolveHome({ path }))
   type Subscription = {
     card: string
     path?: string
@@ -236,6 +423,25 @@ async function startOwnedServer({
   const token = Buffer.from(localToken())
   const identity = hydraIdentity({ hydraId })
   let { state, offset } = loadHydra({ hydraId })
+  // The recorded Firstmate home is watched, and followed when it changes; given homes stay fixed.
+  let firstmate: ReturnType<typeof watchHomes> | undefined
+  let watchedHome: string | undefined
+
+  const followHome = () => {
+    const hydra = state.config?.hydra
+    // A recorded home that has since moved is skipped, so the Hydra still opens.
+    const home = hydra?.kind === 'firstmate' && hydra.home && existsSync(join(hydra.home, 'state')) ? hydra.home : undefined
+
+    if (given || closed || home === watchedHome) {
+      return
+    }
+
+    firstmate?.close()
+    watchedHome = home
+    homes = home ? [resolveHome({ path: home })] : []
+    firstmate = home ? watchHomes({ hydraId, list: homes }) : undefined
+  }
+
   let recent: HydraEvent[] = []
   const resyncing = new WeakSet<WebSocket>()
 
@@ -292,6 +498,7 @@ async function startOwnedServer({
     ({ state, offset } = loadHydra({ hydraId }))
     recent = []
     agents.reconcile({ state })
+    followHome()
 
     for (const ws of wss.clients) {
       sendSnapshot({ ws })
@@ -413,6 +620,7 @@ async function startOwnedServer({
 
     offset = read.end
     agents.reconcile({ state })
+    followHome()
 
     if (recent.length > RESUME_LIMIT) {
       recent = recent.slice(-RESUME_LIMIT)
@@ -462,13 +670,6 @@ async function startOwnedServer({
     })
   }
 
-  // Exact matches only, so another site or a rebound DNS name is refused. Clients
-  // that send no Origin are local programs, not pages; writes still need the token.
-  const hosts = new Set<string>()
-  const origins = new Set<string>()
-  const allowed = ({ req }: { req: IncomingMessage }) =>
-    hosts.has(req.headers.host ?? '') && (req.headers.origin === undefined || origins.has(req.headers.origin))
-
   const authorized = ({ given }: { given: string | null }) => {
     const bytes = Buffer.from(given ?? '')
 
@@ -477,14 +678,11 @@ async function startOwnedServer({
 
   const agents = createHost({ hydraId, query, spawnCodex, changed: () => kick() })
 
-  const http = createServer((req, res) => {
-    if (!allowed({ req })) {
-      return reply({ res, status: 403, body: { error: 'origin or host not allowed', code: 'FORBIDDEN' } })
-    }
-
+  // The server has already checked Host and Origin.
+  const request = ({ req, res, path }: HydraRequest) => {
     // The CLI asks here to start or message an agent this server runs. A page cannot
     // send this header cross-origin without a preflight, which this server never answers.
-    if (req.method === 'POST' && new URL(req.url ?? '/', 'http://localhost').pathname === '/host') {
+    if (req.method === 'POST' && path === '/host') {
       if (!authorized({ given: req.headers.authorization?.replace(/^Bearer /, '') ?? null })) {
         return reply({ res, status: 401, body: { error: 'missing or wrong token', code: 'UNAUTHORIZED' } })
       }
@@ -500,14 +698,13 @@ async function startOwnedServer({
       return reply({ res, status: 405, body: { error: 'method not allowed', code: 'METHOD_NOT_ALLOWED' } })
     }
 
-    const path = new URL(req.url ?? '/', 'http://localhost').pathname
-
     if (path === '/health') {
       return reply({ res, status: 200, body: { hydraId, pid: process.pid, build: buildId() } })
     }
 
-    serveStatic({ res, path, token: token.toString(), identity })
-  })
+    const page = { token: token.toString(), identity, base: new URL(url).pathname }
+    serveStatic({ res, path, page })
+  }
 
   const catalogReads = new WeakMap<WebSocket, { card: string; read: Promise<Catalog> }>()
 
@@ -596,9 +793,9 @@ async function startOwnedServer({
           const reply = ({ open }: { open?: string } = {}) => send({ ws, message: { type: 'receipt', id, hydraId, hydras: listHydras(), ...(open ? { url: open } : {}) } })
 
           if (action === 'create' && first?.trim()) {
-            void openHydra({ id: createHydra({ name: first.trim().slice(0, 100) }) }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
+            void open({ id: createHydra({ name: first.trim().slice(0, 100) }) }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
           } else if (action === 'open' && first) {
-            void openHydra({ id: first }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
+            void open({ id: first }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
           } else if (action === 'rename' && first && second?.trim() && listHydras().some(b => b.id === first)) {
             renameHydra({ id: first, name: second.trim().slice(0, 100) })
             reply()
@@ -741,15 +938,9 @@ async function startOwnedServer({
   }
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 })
-  http.on('upgrade', (req, socket, head) => {
-    const url = new URL(req.url ?? '/', 'http://localhost')
 
-    if (url.pathname !== '/ws' || !allowed({ req })) {
-      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
-
-      return
-    }
-
+  // The server has already checked the path, Host and Origin.
+  const upgrade = ({ req, socket, head, url }: HydraUpgrade) => {
     if (!authorized({ given: url.searchParams.get('token') })) {
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
 
@@ -778,7 +969,7 @@ async function startOwnedServer({
       send({ ws, message: { type: 'hello', build: buildId(), hydraId: identity } })
       resume({ ws, after: url.searchParams.get('after') })
     })
-  })
+  }
 
   // A cursor this server can continue from gets only the events after it; any
   // other cursor (ahead of the Hydra, older than the kept events, or none) gets a snapshot.
@@ -800,17 +991,6 @@ async function startOwnedServer({
     send({ ws, message: { type: 'latest', messages: latest } })
   }
 
-  await new Promise<void>((resolve, reject) => {
-    http.once('error', reject)
-    http.listen(port, '127.0.0.1', () => resolve())
-  })
-  const bound = (http.address() as { port: number }).port
-
-  for (const host of [`127.0.0.1:${bound}`, `localhost:${bound}`]) {
-    hosts.add(host)
-    origins.add(`http://${host}`)
-  }
-
   const ingest = await listenIngest({
     hydraId,
     onLine: ({ line }) => {
@@ -828,17 +1008,62 @@ async function startOwnedServer({
     },
   })
 
-  const watchers: FSWatcher[] = [watch(dir, kick), watch(spoolDir({ dir }), kick)]
-  const url = `http://127.0.0.1:${bound}`
+  const watchers: FSWatcher[] = []
+
+  const stop = async () => {
+    closed = true
+    firstmate?.close()
+    agents.close()
+
+    const threads = threadSubscriptions.flatMap(map =>
+      [...map.values()].flatMap(sub => sub.watcher ?? []))
+
+    for (const w of [...watchers, ...folders.values(), ...threads]) {
+      w.close()
+    }
+
+    folders.clear()
+    threadSubscriptions.forEach(map => map.clear())
+    clearTimeout(latestTimer)
+    clearTimeout(expiryTimer)
+
+    for (const timer of threadTimers.values()) {
+      clearTimeout(timer)
+    }
+
+    threadTimers.clear()
+
+    for (const ws of wss.clients) {
+      ws.terminate()
+    }
+
+    wss.close()
+    await (ingest && new Promise(r => ingest.close(r)))
+    rmSync(infoPath({ hydraId }), { force: true })
+
+    if (ingest) {
+      rmSync(socketPath({ hydraId }), { force: true })
+    }
+  }
+
   const info: ServerInfo = {
     pid: process.pid,
-    port: bound,
+    port: Number(new URL(url).port),
     url,
     socket: ingest && socketPath({ hydraId }),
   }
-  const tmp = `${infoPath({ hydraId })}.tmp-${process.pid}`
-  writeFileSync(tmp, JSON.stringify(info))
-  renameSync(tmp, infoPath({ hydraId }))
+
+  // A mount that fails partway stops what it started; the caller releases the claim.
+  try {
+    watchers.push(watch(dir, kick), watch(spoolDir({ dir }), kick))
+    followHome()
+    const tmp = `${infoPath({ hydraId })}.tmp-${process.pid}`
+    writeFileSync(tmp, JSON.stringify(info))
+    renameSync(tmp, infoPath({ hydraId }))
+  } catch (error) {
+    await stop()
+    throw error
+  }
 
   try {
     agents.recover()
@@ -850,46 +1075,17 @@ async function startOwnedServer({
   touchLatest({ ids: Object.keys(state.cards) })
 
   return {
-    port: bound,
     url,
     socket: info.socket,
+    request,
+    upgrade,
     async close() {
-      closed = true
-      agents.close()
-
-      const threads = threadSubscriptions.flatMap(map =>
-        [...map.values()].flatMap(sub => sub.watcher ?? []))
-
-      for (const w of [...watchers, ...folders.values(), ...threads]) {
-        w.close()
+      if (closed) {
+        return
       }
 
-      folders.clear()
-      threadSubscriptions.forEach(map => map.clear())
-      clearTimeout(latestTimer)
-      clearTimeout(expiryTimer)
-
-      for (const timer of threadTimers.values()) {
-        clearTimeout(timer)
-      }
-
-      threadTimers.clear()
-
-      for (const ws of wss.clients) {
-        ws.terminate()
-      }
-
-      wss.close()
-      http.closeAllConnections()
-      await Promise.all([
-        new Promise(r => http.close(r)),
-        ingest && new Promise(r => ingest.close(r)),
-      ])
-      rmSync(infoPath({ hydraId }), { force: true })
-
-      if (ingest) {
-        rmSync(socketPath({ hydraId }), { force: true })
-      }
+      await stop()
+      release()
     },
   }
 }
@@ -998,24 +1194,21 @@ function reply({ res, status, body }: {
   res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body))
 }
 
-// The built web app from dist/web; any unknown path falls back to its index.html.
-// index.html carries the token for the WebSocket handshake; the caller has already
-// checked Host and Origin, so only this server's own page gets it. It also carries
-// its build, so an open tab can tell when a restarted server serves a newer one.
-function serveStatic({ res, path, token, identity }: {
+// Only a Hydra's page carries the token; its base points the page at its own Hydra's WebSocket.
+function serveStatic({ res, path, page }: {
   res: ServerResponse
   path: string
-  token: string
-  identity: string
+  page?: { token: string; identity: string; base: string }
 }): void {
   const index = join(WEB_ROOT, 'index.html')
   const file = normalize(join(WEB_ROOT, path === '/' ? 'index.html' : path))
+  const candidates = !file.startsWith(`${WEB_ROOT}/`) ? [] : page ? [file, index] : file === index ? [] : [file]
 
-  for (const candidate of file.startsWith(`${WEB_ROOT}/`) ? [file, index] : []) {
+  for (const candidate of candidates) {
     try {
-      if (candidate === index) {
+      if (candidate === index && page) {
         const raw = readFileSync(index, 'utf8')
-        const html = raw.replace('</head>', `<meta name="pnyx-token" content="${token}" />\n<meta name="pnyx-build" content="${buildOf({ html: raw })}" />\n<meta name="pnyx-hydra" content="${identity}" />\n</head>`)
+        const html = raw.replace('</head>', `<base href="${page.base}" />\n<meta name="pnyx-token" content="${page.token}" />\n<meta name="pnyx-build" content="${buildOf({ html: raw })}" />\n<meta name="pnyx-hydra" content="${page.identity}" />\n</head>`)
         res.writeHead(200, { 'content-type': MIME['.html'], 'cache-control': 'no-store' }).end(html)
 
         return
@@ -1033,21 +1226,21 @@ function serveStatic({ res, path, token, identity }: {
   reply({ res, status: 404, body: { error: 'not found; run `pnpm run build` for the web Hydra', code: 'NOT_FOUND' } })
 }
 
-function hydraFlag({ args, options = {} }: { args: string[]; options?: { port?: { type: 'string' }; home?: { type: 'string'; multiple: true } } }) {
+function serveFlags({ args }: { args: string[] }) {
   try {
-    const { values } = parseArgs({ args, options: { hydra: { type: 'string' }, ...options }, strict: true })
+    const { values } = parseArgs({ args, options: { hydra: { type: 'string' }, port: { type: 'string' }, home: { type: 'string', multiple: true } }, strict: true })
 
-    return values as { hydra?: string; port?: string; home?: string[] }
+    return values
   } catch (error) {
     throw new AxiError((error as Error).message, 'VALIDATION_ERROR', ['Run the command with --help'])
   }
 }
 
-// A fixed default keeps one Hydra at one address, so an open tab finds a restarted server again.
+// A fixed default keeps every Hydra at one address, so an open tab finds a restarted server again.
 export { DEFAULT_PORT } from './state.ts'
 
 export async function serve(args: string[]): Promise<Record<string, unknown>> {
-  const values = hydraFlag({ args, options: { port: { type: 'string' }, home: { type: 'string', multiple: true } } })
+  const values = serveFlags({ args })
   const hydraId = values.hydra ?? 'default'
 
   if (values.port !== undefined && !/^\d+$/.test(values.port)) {
@@ -1055,18 +1248,10 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   }
 
   const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
-  const hydra = loadHydra({ hydraId }).state.config?.hydra
-  // A recorded home that has since moved is skipped, so the Hydra still opens.
-  const recorded = hydra?.kind === 'firstmate' && hydra.home && existsSync(join(hydra.home, 'state')) ? [hydra.home] : []
-  const given = values.home ?? recorded
   let server: RunningServer
 
   try {
-    server = await startServer({
-      hydraId,
-      port,
-      homes: given,
-    })
+    server = await startServer({ hydraId, port, homes: values.home })
   } catch (error) {
     if (error instanceof HydraError) {
       throw new AxiError(error.message, error.code, error.help)
@@ -1079,10 +1264,13 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     throw error
   }
 
-  const homes = given.map(path => resolveHome({ path }))
+  // Homes given here are watched for this Hydra; a Hydra's recorded home is watched by the server itself.
+  const homes = (values.home ?? []).map(path => resolveHome({ path }))
   const firstmate = homes.length > 0 ? watchHomes({ hydraId, list: homes }) : undefined
   const watching = homes.length > 0 ? `firstmate: ${JSON.stringify(`watching ${homes.length} home${homes.length === 1 ? '' : 's'}`)}\n` : ''
-  process.stdout.write(`server: running\nhydra: ${hydraId}\nurl: ${JSON.stringify(server.url)}\n${watching}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
+  const skipped = Object.entries(server.skipped).map(([id, reason]) => `skipped: ${JSON.stringify(`Hydra ${id}: ${reason}`)}\n`)
+    .join('')
+  process.stdout.write(`server: running\nhydra: ${hydraId}\nurl: ${JSON.stringify(server.url)}\n${watching}${skipped}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
   await new Promise(resolve => {
     process.once('SIGINT', resolve)
     process.once('SIGTERM', resolve)
@@ -1090,27 +1278,40 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const watched = firstmate?.close()
   await server.close()
 
-  return { server: 'stopped', hydraId, ...(watched ? { firstmate: watched } : {}) }
+  return { server: 'stopped', ...(watched ? { firstmate: watched } : {}) }
 }
 
 export async function stop(args: string[]): Promise<Record<string, unknown>> {
-  const hydraId = hydraFlag({ args }).hydra ?? 'default'
-  const info = await readServer({ hydraId })
+  if (args.length > 0) {
+    throw new AxiError(`unexpected argument: ${args[0]}`, 'VALIDATION_ERROR', ['Run `pnyx-axi stop`; it stops the one server of every Hydra'])
+  }
 
-  if (!info) {
+  // Usually one process; a server an older version started for a single Hydra is stopped too.
+  const running = async () => {
+    const found = await Promise.all(hydraIds().map(hydraId => readServer({ hydraId })))
+
+    return [...new Set(found.flatMap(info => info ? [info.pid] : []))]
+  }
+
+  const pids = await running()
+
+  if (pids.length === 0) {
     return { server: 'none: not running', help: ['Run `pnyx-axi serve` to start it'] }
   }
 
-  process.kill(info.pid, 'SIGTERM')
+  for (const pid of pids) {
+    process.kill(pid, 'SIGTERM')
+  }
+
   const deadline = Date.now() + STOP_TIMEOUT_MS
 
-  while (await readServer({ hydraId })) {
+  for (let left = pids; left.length > 0; left = await running()) {
     if (Date.now() > deadline) {
-      throw new AxiError(`server pid ${info.pid} did not stop`, 'TIMEOUT', [`Check process ${info.pid}`])
+      throw new AxiError(`server pid ${left.join(', ')} did not stop`, 'TIMEOUT', [`Check process ${left.join(', ')}`])
     }
 
     await new Promise(r => setTimeout(r, 25))
   }
 
-  return { server: 'stopped', hydraId }
+  return { server: 'stopped' }
 }

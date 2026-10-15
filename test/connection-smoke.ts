@@ -98,6 +98,8 @@ try {
   await fill({ selector: '.detail .composer textarea', text: 'Only for the original Hydra' })
   await server.close()
   server = await startServer({ hydraId: 'other', port, homes: [fixture.nativeHome] })
+  // Both Hydras share the server's address; the other one's page keeps none of this one's tab state.
+  await browser({ args: ['open', new URL('/hydra/other/', url).href] })
   await browser({ args: ['wait', 'Different Hydra'] })
   await until({ condition: '!document.body.textContent.includes("Recovered task") && !document.querySelector(".detail .composer textarea") && document.querySelector(".connection").classList.contains("online")' })
   process.stdout.write('Connection smoke passed: offline sends, event resync, subscription restore, reload and heartbeat recovery\n')
