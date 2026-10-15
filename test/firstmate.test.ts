@@ -2,7 +2,7 @@
 // fm-send. Never points at a real Firstmate home.
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -154,7 +154,7 @@ test('sync mirrors Firstmate tasks under its Hydra', () => {
       ['blocked', 'ci-token', true],
     ],
   )
-  assert.equal(api.column, 'workers_on_it', 'a synced task stays where it was created')
+  assert.equal(api.column, 'needs_you', 'an open decision needs the owner')
   assert.equal(api.activity, 'working: PR https://github.com/example/app/pull/41 opened')
   assert.deepEqual(api.links, [])
   assert.deepEqual(api.sourceRefs, [{ adapter: 'firstmate', instanceId: home, objectId: 'api-v2' }])
@@ -162,14 +162,18 @@ test('sync mirrors Firstmate tasks under its Hydra', () => {
   const scout = cardOf({ home, task: 'docs-scout' })
   assert.deepEqual(scout.attention, [])
   assert.deepEqual(scout.outcome, { state: 'done', source: 'firstmate' })
-  assert.equal(scout.column, 'workers_on_it')
+  assert.equal(scout.column, 'done')
   const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [{ kind: 'failed', key: '@status', blocking: true, text: 'tests red after patch' }])
   assert.equal(hotfix.outcome, undefined)
-  assert.equal(hotfix.column, 'workers_on_it')
+  assert.equal(hotfix.column, 'needs_you', 'a failed latest line needs the owner')
   const release = cardOf({ home, task: 'release-1' })
   assert.deepEqual(release.links.map(l => [l.number, l.state]), [[40, 'merged']])
-  assert.equal(release.column, 'workers_on_it')
+  assert.equal(release.column, 'done')
+  assert.equal(cardOf({ home, task: 'later-1' }).column, 'queued')
+  const moves = readEvents({ hydraId: 'default' }).filter(e => e.type === 'card.moved')
+  assert.equal(moves.find(e => e.cardId === api.id)?.reason, 'working: PR https://github.com/example/app/pull/41 opened', "a move carries Firstmate's status line")
+  assert.equal(moves.find(e => e.cardId === cardOf({ home, task: 'later-1' }).id)?.reason, 'Queued in the Firstmate backlog')
 
   assert.deepEqual(syncHome({ hydraId: 'default', home }), { tasks: 5, appended: 0 })
 })
@@ -195,17 +199,24 @@ test('a session Hydra keeps its Firstmate home, and another home is named when i
   assert.match(out, new RegExp(`${home},5,0$`, 'm'))
 })
 
-test('a column edit before sync does not stand in for the Firstmate Hydra', () => {
+test('a column edit before sync does not stand in for the Firstmate Hydra, whose default columns are locked', () => {
   const { home, env } = copyFixture()
   execFileSync(process.execPath, [BIN, 'column', 'rename', 'needs_you', '--title', 'Your turn'], { env })
+  execFileSync(process.execPath, [BIN, 'column', 'create', '--id', 'custom:mine', '--title', 'Mine'], { env })
   assert.equal(syncHome({ hydraId: 'default', home }).tasks, 5)
-  const hydraId = loadHydra({ hydraId: 'default' }).state.config!
-  assert.equal(hydraId.hydra.home, home)
-  assert.equal(hydraId.columns[0]!.title, 'Your turn')
-  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'workers_on_it')
+  const config = loadHydra({ hydraId: 'default' }).state.config!
+  assert.equal(config.hydra.home, home)
+  assert.deepEqual(config.columns.map(c => c.title), ['Queued', 'In progress', 'Needs you', 'Parked', 'Done', 'Mine'])
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'done')
+  const { fails, run } = cli({ env })
+  fails({ args: ['column', 'rename', 'needs_you', '--title', 'Your turn'], code: 'VALIDATION_ERROR' })
+  fails({ args: ['column', 'delete', 'parked', '--actor', 'web'], code: 'VALIDATION_ERROR' })
+  run({ args: ['column', 'rename', 'custom:mine', '--title', 'Ideas'] })
+  run({ args: ['column', 'reorder', 'done', '--before', 'queued', '--actor', 'web'] })
+  assert.equal(loadHydra({ hydraId: 'default' }).state.config!.columns[0]!.id, 'done')
 })
 
-test('a failed task closed in the backlog records a closed failure in place', () => {
+test('a failed task closed in the backlog records a closed failure and moves to Done', () => {
   const { home } = copyFixture()
   syncHome({ hydraId: 'default', home })
   const backlog = join(home, 'data', 'backlog.md')
@@ -217,10 +228,10 @@ test('a failed task closed in the backlog records a closed failure in place', ()
   const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [])
   assert.deepEqual(hotfix.outcome, { state: 'failed', note: 'closed after failure', closed: true, source: 'firstmate' })
-  assert.equal(hotfix.column, 'workers_on_it')
+  assert.equal(hotfix.column, 'done')
 })
 
-test('a blocked task closed in the backlog clears its request and records done in place', () => {
+test('a blocked task closed in the backlog clears its request, records done and moves to Done', () => {
   const { home } = copyFixture()
   writeFileSync(join(home, 'state', 'hotfix-2.status'), 'working: reproducing\nblocked: waiting for CI token\n')
   syncHome({ hydraId: 'default', home })
@@ -234,7 +245,7 @@ test('a blocked task closed in the backlog clears its request and records done i
   const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [])
   assert.deepEqual(hotfix.outcome, { state: 'done', source: 'firstmate' })
-  assert.equal(hotfix.column, 'workers_on_it')
+  assert.equal(hotfix.column, 'done')
 })
 
 test('a done declaration neither moves Hydra work nor closes its backlog record', () => {
@@ -248,7 +259,7 @@ test('a done declaration neither moves Hydra work nor closes its backlog record'
   syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home, task: 'docs-scout' }).outcome, undefined)
   assert.equal(cardOf({ home, task: 'docs-scout' }).status?.state, 'done')
-  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'workers_on_it')
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'in_progress')
 })
 
 test('sync never overwrites a link state another source refreshed', () => {
@@ -322,7 +333,7 @@ test('firstmate sync through the CLI', () => {
   const { home, env } = copyFixture()
   const { run, fails } = cli({ env })
   assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,5,[1-9]\d*$/m)
-  assert.match(run({ args: [] }), /workers_on_it: 5/)
+  assert.match(run({ args: [] }), /queued: 1\n {2}in_progress: 0\n {2}needs_you: 2\n {2}parked: 0\n {2}done: 2/)
   fails({ args: ['firstmate', 'sync'], code: 'VALIDATION_ERROR' })
   fails({ args: ['firstmate', 'sync', '--home', join(home, 'data')], code: 'VALIDATION_ERROR' })
 })
@@ -365,7 +376,71 @@ test('a Firstmate outcome is a source observation: undo and clear refuse it', ()
   run({ args: ['move', scout.id, 'needs_you', '--actor', 'web'] })
   run({ args: ['firstmate', 'sync', '--home', home] })
   assert.deepEqual(cardOf({ home, task: 'docs-scout' }).outcome, { state: 'done', source: 'firstmate' })
-  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'needs_you')
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'done', 'a default column follows the record')
+})
+
+test("a card in the owner's own column stays there until its Firstmate record changes", () => {
+  const { home, env } = copyFixture()
+  const { run } = cli({ env })
+  run({ args: ['firstmate', 'sync', '--home', home] })
+  run({ args: ['column', 'create', '--id', 'custom:mine', '--title', 'Mine'] })
+  const scout = cardOf({ home, task: 'docs-scout' })
+  run({ args: ['move', scout.id, 'custom:mine', '--actor', 'web'] })
+  assert.deepEqual(syncHome({ hydraId: 'default', home }).appended, 0)
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'custom:mine')
+  appendFileSync(join(home, 'state', 'docs-scout.status'), 'done: survey refreshed\n')
+  syncHome({ hydraId: 'default', home })
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'done')
+  const moved = readEvents({ hydraId: 'default' }).filter(e => e.type === 'card.moved')
+    .at(-1)!
+  assert.equal(moved.reason, 'done: survey refreshed')
+})
+
+test('backlog holds park a task or wait on the owner the way Firstmate classifies them', () => {
+  const { home } = copyFixture()
+  const backlog = join(home, 'data', 'backlog.md')
+  const queued = [
+    '- [ ] held-1 - app: waiting on the owner (repo: app) (hold: fm-hold-v1:eA==) (hold-kind: captain)',
+    '  Captain hold set: 2026-10-10',
+    '- [ ] held-2 - app: parked until next month (repo: app) (hold: fm-hold-v1:eA==) (hold-kind: captain) (hold-until: 2026-11-08)',
+    '- [ ] held-3 - app: an old idea (repo: app) (hold: fm-hold-v1:eA==) (hold-kind: captain) (since 2026-09-01)',
+    '- [ ] held-4 - app: after api blocked-by: api-v2 (repo: app) (hold: fm-hold-v1:eA==) (hold-kind: captain)',
+    '- [ ] held-5 - app: deferred (repo: app) (hold: fm-hold-v1:eA==) (hold-kind: release)',
+    '- [ ] held-6 - app: a hold that lapsed (repo: app) (hold: fm-hold-v1:eA==) (hold-kind: release) (hold-until: 2026-10-01)',
+  ]
+  const rows = readFileSync(backlog, 'utf8').split('\n')
+  rows.splice(rows.indexOf('## Queued') + 1, 0, ...queued)
+  writeFileSync(backlog, rows.join('\n'))
+  syncHome({ hydraId: 'default', home, at: '2026-10-15T10:00:00.000Z' })
+  const columns = Object.fromEntries([1, 2, 3, 4, 5, 6].map(n => [`held-${n}`, cardOf({ home, task: `held-${n}` }).column]))
+  assert.deepEqual(columns, { 'held-1': 'needs_you', 'held-2': 'parked', 'held-3': 'parked', 'held-4': 'parked', 'held-5': 'parked', 'held-6': 'queued' })
+  const reasons = readEvents({ hydraId: 'default' }).filter(e => e.type === 'card.moved' && e.cardId === cardOf({ home, task: 'held-2' }).id)
+  assert.equal(reasons[0]?.reason, 'Held in the Firstmate backlog until 2026-11-08')
+})
+
+test('a Firstmate Hydra on the older layout moves onto the default columns, placing cards by status', () => {
+  const { home } = copyFixture()
+  const dir = join(process.env.PNYX_HOME!, 'boards', 'default')
+  mkdirSync(dir, { recursive: true })
+  const legacy = [{ id: 'needs_you', title: 'Needs you', role: 'needs_you' }, { id: 'workers_on_it', title: 'Workers on it', role: 'workers_on_it' }, { id: 'done', title: 'Done', role: 'done' }, { id: 'custom:x', title: 'Mine' }]
+  const base = { v: 1, at: '2026-10-01T00:00:00.000Z', actor: 'cli' }
+  const events = [
+    { ...base, seq: 1, id: 'evt_1', cardId: '$board', type: 'board.configured', data: { id: 'default', name: 'default', hydra: { id: homeKey({ home }), name: 'Hydra', kind: 'firstmate', home }, columns: legacy } },
+    { ...base, seq: 2, id: 'evt_2', cardId: 'c1', type: 'card.pushed', data: { key: 'old-done', title: 'Old done' } },
+    { ...base, seq: 3, id: 'evt_3', cardId: 'c1', type: 'task.declared', data: { state: 'done', note: 'Finished' } },
+    { ...base, seq: 4, id: 'evt_4', cardId: 'c2', type: 'card.pushed', data: { key: 'old-paused', title: 'Old paused' } },
+    { ...base, seq: 5, id: 'evt_5', cardId: 'c2', type: 'task.declared', data: { state: 'paused', note: 'Later' } },
+    { ...base, seq: 6, id: 'evt_6', cardId: 'c3', type: 'card.pushed', data: { key: 'old-mine', title: 'Old mine' } },
+    { ...base, seq: 7, id: 'evt_7', cardId: 'c3', type: 'card.moved', data: { before: 'workers_on_it', after: 'custom:x' } },
+  ]
+  writeFileSync(join(dir, 'events.jsonl'), events.map(e => `${JSON.stringify(e)}\n`).join(''))
+  assert.equal(loadHydra({ hydraId: 'default' }).state.cards.c1!.column, 'workers_on_it', 'loading alone rewrites nothing')
+  syncHome({ hydraId: 'default', home })
+  const { state } = loadHydra({ hydraId: 'default' })
+  assert.deepEqual(state.config!.columns.map(c => c.id), ['queued', 'in_progress', 'needs_you', 'parked', 'done', 'custom:x'])
+  assert.deepEqual(['c1', 'c2', 'c3'].map(id => state.cards[id]!.column), ['done', 'parked', 'custom:x'])
+  const migration = readEvents({ hydraId: 'default' }).find(e => e.type === 'board.columns')!
+  assert.equal(migration.reason, 'Moved onto the default Hydra columns')
 })
 
 test("a task's decisions, reports and Captain's intent show on its card", () => {
@@ -398,7 +473,7 @@ test('a Firstmate outcome follows the backlog on every sync', () => {
   writeFileSync(backlog, rows.join('\n'))
   syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home, task: 'docs-scout' }).outcome, undefined)
-  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'workers_on_it')
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'needs_you', 'a reopened task whose last line failed needs the owner')
   const cleared = readEvents({ hydraId: 'default' }).filter(e => e.type === 'card.outcome')
     .at(-1)!
   cli({ env: process.env }).fails({ args: ['undo', cleared.id], code: 'NOT_UNDOABLE' })
