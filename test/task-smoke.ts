@@ -148,7 +148,6 @@ try {
   assert.equal(hydraId().cards.c1?.agent?.sessionId, oldSession)
   assert.equal(received.length, 1)
 
-
   process.stdout.write('Task, brief, attachment and column browser smoke passed.\n')
 } finally {
   await server.close(); await close(); rmSync(home, { recursive: true, force: true })
