@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { commands } from '../src/cli/commands.ts'
+import { hydraCheck } from '../src/cli/workers.ts'
+import { decidePush } from '../src/core/decide.ts'
 import { startServer } from '../src/server/server.ts'
-import { loadBoard } from '../src/store/board-store.ts'
+import { loadBoard, withWriter } from '../src/store/board-store.ts'
 
 const home = mkdtempSync(join(tmpdir(), 'pnyx-context-smoke-'))
 process.env.PNYX_HOME = home
@@ -68,6 +70,27 @@ try {
   assert.equal(state.cards[state.keys.work!]!.hidden, false)
   assert.equal(state.board?.columns[0]?.description, 'Questions requiring an owner answer.')
   assert.equal(state.hydraMemory?.['review-policy']?.text, 'Check the canary.')
+  commands.task(['create', '--key', 'digest', '--title', 'Digest smoke task'])
+  const transcript = join(home, 'worker.jsonl')
+  writeFileSync(transcript, '')
+  withWriter({
+    board: 'default',
+    fn: ({ writer }) => {
+      const d = decidePush({ state: writer.state, key: 'worker', input: { agent: { provider: 'claude-code', sessionId: 'worker', transcriptPath: transcript }, terminal: { tty: '/dev/ttys123' } }, meta: { at: new Date().toISOString(), actor: 'fixture' } })
+      assert.ok('event' in d)
+      writer.append({ event: d.event })
+    },
+  })
+  await commands.task(['attach', 'digest', '--session', 'claude-code:worker'])
+  const after = loadBoard({ board: 'default' }).state.seq
+  writeFileSync(transcript, ['user', 'assistant'].map((role, i) => JSON.stringify({ type: role, timestamp: new Date().toISOString(), message: { content: i ? 'The rollout can wait.' : 'Move this to next week.' } })).join('\n') + '\n')
+  const digest = await hydraCheck({ args: ['check', '--after', String(after)] })
+  assert.match(JSON.stringify(digest.conversations), /Move this to next week/)
+  assert.match(JSON.stringify(digest.conversations), /The rollout can wait/)
+  await browser({ args: ['wait', 'Digest smoke task'] })
+  await browser({ args: ['eval', '() => { document.querySelector(\'[aria-label="Open conversation for Digest smoke task"]\').click(); return true; }'] })
+  await browser({ args: ['wait', 'Move this to next week.'] })
+  await browser({ args: ['wait', 'The rollout can wait.'] })
   const screenshot = join(evidence, 'context-smoke.png')
   rmSync(screenshot, { force: true })
   await browser({ args: ['screenshot', screenshot] })
