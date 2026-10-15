@@ -162,12 +162,19 @@ export type PermissionEvent = EventBase & {
   data: PermissionRequest
 }
 
+export interface TaskReminder {
+  id: string
+  at: string
+  dueAt?: string
+}
+
 export interface Card {
   id: string
   key: string
   title: string
   brief?: string
   project?: string
+  reminder?: TaskReminder
   doneAt?: string
   keepDone?: boolean
   expired?: boolean
@@ -322,6 +329,8 @@ export type HydraChange = EventBase & (
   | { type: 'hydra.project'; data: { before: HydraProject | null; after: HydraProject; sharedWith: { id: string; name: string; url: string }[] } }
   | { type: 'task.project'; data: { before: string | null; after: string | null } }
   | { type: 'task.created'; data: { key: string; title: string; brief?: string; parentId?: string; column?: Column; folder?: string; project?: string } }
+  | { type: 'task.reminder'; data: { before: string | null; after: string | null } }
+  | { type: 'task.reminder-due'; data: { reminder: string; column: Column; message: Omit<HydraMessage, 'id' | 'at' | 'actor'> } }
   | { type: 'task.brief'; data: { before: string; after: string } }
   | { type: 'task.visibility'; data: { before: boolean; after: boolean; automatic?: boolean } }
   | { type: 'hydra.memory'; data: { key: string; before: string | null; after: string | null } }
@@ -459,7 +468,7 @@ export type HydraEvent =
   | ChatEvent
   | PermissionEvent
 export type EventType = HydraEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched', 'task.permission', 'hydra.project', 'task.project']
+export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched', 'task.permission', 'hydra.project', 'task.project', 'task.reminder', 'task.reminder-due']
 
 export interface HydraState {
   projects?: HydraProject[]

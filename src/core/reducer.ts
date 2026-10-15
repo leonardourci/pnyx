@@ -13,6 +13,7 @@ import { applyAttachment, cardSessionId, observeSession, sessionId } from './tas
 import { applyHydra, refreshTasks } from './hydra.ts'
 import { applyPermission } from './permissions.ts'
 import { refreshDone } from './retention.ts'
+import { applyReminder } from '../reminders/state.ts'
 import { requestId } from './answer.ts'
 
 export function emptyHydra(): HydraState {
@@ -99,7 +100,9 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
   state.seq = event.seq
   state.eventIds[event.id] = event.seq
 
-  if (applyPermission({ state, event }) || applyHydra({ state, event })) {
+  if (applyReminder({ state, event })
+    || applyPermission({ state, event })
+    || applyHydra({ state, event })) {
     if (event.undoes) {
       state.undone[event.undoes] = event.id
     }
