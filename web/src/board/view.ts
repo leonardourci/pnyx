@@ -74,6 +74,18 @@ export function agentActivity({ card }: { card: Card }): 'working' | 'finished' 
   return (card.sessionActivity ?? card.activity) === 'working' ? 'working' : 'finished'
 }
 
+// The card a dragged task goes above when dropped on `over`: `over` itself, or the
+// next card when dropped on its lower half. Undefined means the end of the column.
+export function dropBefore({ cards, over, below }: {
+  cards: Card[]
+  over?: string
+  below: boolean
+}): string | undefined {
+  const index = cards.findIndex(c => c.id === over)
+
+  return index < 0 ? undefined : cards[below ? index + 1 : index]?.id
+}
+
 export const receiptLabel = ({ state }: { state: string }) => ({ queued: 'Queued', delivered: 'Delivered', delivery_unknown: 'Delivery unknown', failed: 'Delivery failed' }[state] ?? state)
 export const slashPrefix = ({ text, cursor }: { text: string; cursor: number }) => /^\/[a-z0-9_.:-]*$/i.test(text.slice(0, cursor)) ? text.slice(0, cursor) : null
 export const slashMatches = ({ command, prefix }: { command: string; prefix: string }) => command.replace(/^[$/]/, '').toLowerCase()

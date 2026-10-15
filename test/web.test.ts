@@ -7,7 +7,7 @@ import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decis
 import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
 import { BoardError, COLUMNS, type BoardEvent, type BoardState } from '../src/core/model.ts'
 import { clampViewSize, patchView, traces, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
-import { agentActivity, columnsFor, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, taskLabel, visibleParent } from '../web/src/board/view.ts'
+import { agentActivity, columnsFor, dropBefore, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, taskLabel, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 import { observe } from '../src/integrations/hooks/observe.ts'
@@ -459,6 +459,20 @@ test('the turn indicator follows the joined session: working from a prompt or to
   state = push({ state, key: 'task', fields: { ...firstmate, activity: 'working: new step' } })
   assert.equal(shownActivity({ card: state.cards.c1! }), 'working: new step')
   assert.equal(agentActivity({ card: state.cards.c1! }), 'finished')
+})
+
+test('a dropped card goes above the card it lands on, or below it on its lower half', () => {
+  let state = emptyBoard()
+
+  for (const key of ['a', 'b']) {
+    state = push({ state, key, fields: {} })
+  }
+
+  const cards = filterCards({ state, workspace: '', tag: '' })
+  assert.equal(dropBefore({ cards, over: 'c1', below: false }), 'c1')
+  assert.equal(dropBefore({ cards, over: 'c1', below: true }), 'c2')
+  assert.equal(dropBefore({ cards, over: 'c2', below: true }), undefined, 'below the last card is the end')
+  assert.equal(dropBefore({ cards, below: false }), undefined, 'empty column space is the end')
 })
 
 test('only a working turn shows as working; any other session state is finished', () => {

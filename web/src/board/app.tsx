@@ -17,7 +17,7 @@ import { Detail } from './detail.tsx'
 import type { ChatComment } from './chat.ts'
 import { Settings } from './settings.tsx'
 import { History } from './history.tsx'
-import { columnsFor, findBoxCards, pageTitle } from './view.ts'
+import { columnsFor, dropBefore, findBoxCards, pageTitle } from './view.ts'
 import { useFoundCards } from './card-search.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { KeyboardFooter, KeyboardLayers, KeyboardToolbar, useBoardKeyboard } from '../keyboard/board.tsx'
@@ -97,12 +97,10 @@ function Column({
           const before = columnIds.indexOf(source as ColumnId) < target ? columnIds[target + 1] : id
           void edit({ args: ['reorder', source, ...(before ? ['--before', before] : [])] }).catch(e => notify({ text: e.message }))
         } else if (task) {
-          // Dropped on a card's lower half, the task goes below it, so above the next card.
           const over = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-task]') : null
           const rect = over?.getBoundingClientRect()
-          const index = cards.findIndex(c => c.id === over?.dataset.task)
-          const below = rect && e.clientY > rect.top + rect.height / 2
-          const before = index < 0 ? undefined : cards[below ? index + 1 : index]?.id
+          const below = !!rect && e.clientY > rect.top + rect.height / 2
+          const before = dropBefore({ cards, over: over?.dataset.task, below })
 
           if (before !== task) {
             void command({ name: 'move', args: [task, id, ...(before ? ['--before', before] : []), '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
