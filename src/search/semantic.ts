@@ -120,7 +120,6 @@ function once({ req, ms }: { req: Request; ms: number }): Promise<Reply> {
   })
 }
 
-// Sends one request to the worker, starting one when none listens.
 async function request({ req, timeoutMs }: { req: Request; timeoutMs: number }): Promise<Reply> {
   const deadline = Date.now() + timeoutMs
   let spawned = 0
@@ -185,7 +184,6 @@ type Phase = { phase: string; done?: number; total?: number; message?: string }
 
 const describe = ({ key }: { key: string }) => key.replace(/@[^/]*\//, ' on ')
 
-// A model that is not ready yet, as a status line.
 function phaseText({ what, p }: { what: string; p: Phase }): string {
   if (p.phase === 'downloading') {
     return `downloading the ${what}, ${Math.floor(((p.done ?? 0) / (p.total ?? 1)) * 100)}% of ${((p.total ?? 0) / 1e6).toFixed(0)} MB`
@@ -325,7 +323,6 @@ function readiness({ key, v }: { key: string; v: { embedded: number; total: numb
     : `indexing: ${v.embedded} of ${v.total} entries embedded with ${describe({ key })}; the rest match by words only`
 }
 
-// Cards: the full-text card ranking fused with each card's nearest chunk.
 async function boardSearch({ board, query, leg }: {
   board: string
   query: Query
@@ -456,8 +453,6 @@ export interface SemanticStatus {
   vectors?: string
 }
 
-// What semantic search is doing on this machine: off, not installed, preparing
-// its models, or the active mode and model and how much of the board is embedded.
 export async function semanticStatus({ board }: { board: string }): Promise<SemanticStatus> {
   const s = readSettings({ })
 
@@ -504,11 +499,6 @@ export interface SetupFile {
   status: 'present' | 'downloaded' | 'stub'
 }
 
-// Fetches the models now, in the foreground, instead of on the first search:
-// detects the mode, downloads what the settings need (with auto, the 311m embedder
-// and the reranker with a GPU, the 97m embedder alone on CPU), checks each model
-// against its golden values, turns semantic search on and
-// starts embedding the board. Clears a recorded failure.
 export async function setupSemantic(
   { board, progress }: { board: string; progress: ({ line }: { line: string }) => void },
 ): Promise<{ mode: string; choice: Choice; files: SetupFile[] }> {

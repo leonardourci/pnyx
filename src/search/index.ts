@@ -1,7 +1,3 @@
-// search.db: a derived full-text index over a board's event log, the notes
-// harvested into it and the transcripts its hooks recorded. It is a deletable
-// cache, never board state; the indexer below is its only writer and rebuilds it
-// from the sources.
 import { createHash } from 'node:crypto'
 import { chmodSync, closeSync, existsSync, fstatSync, openSync, readSync, rmSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -20,8 +16,6 @@ export const KINDS = ['event', 'note', 'transcript'] as const
 export type Kind = (typeof KINDS)[number]
 
 const EVENTS = 'events'
-// A harvested note (a summary, decision or context a source recorded) ranks as if
-// it matched this many times more than raw transcript or event text.
 const NOTE_WEIGHT = 2
 // A chunk's BM25 rank, lower is better, with notes weighted up.
 const RANK = `bm25(docs_fts) * CASE d.kind WHEN 'note' THEN ${NOTE_WEIGHT} ELSE 1 END`
@@ -274,7 +268,6 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
       }
 
       for (const event of read.events) {
-      // A note carries the time its source recorded it, when known.
         if (event.type === 'chat.message') {
           add({ card: event.cardId, kind: 'transcript', source: EVENTS, pos: event.seq, at: event.at, text: event.data.text, session: event.data.session, line: Number.parseInt(event.data.nativeId) })
         } else if (event.type === 'card.noted') {
@@ -336,7 +329,6 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
         putCard.run({ id: card.id, title: card.title, workspace: card.workspace, context })
       }
 
-      // ponytail: a changed card's row is rebuilt from all its chunks; append-only rows if long sessions make that slow.
       const getCard = db.prepare('SELECT n, context FROM cards WHERE id = ?')
       const cardBody = db.prepare(
         "SELECT coalesce(group_concat(body, char(10)), '') AS body FROM (SELECT body FROM docs WHERE card = ? AND (kind = 'note') = ? ORDER BY id)",
@@ -445,7 +437,6 @@ export interface Query {
   withIds?: boolean
 }
 
-// A card's best-matching chunks shown with a hit; with --card, up to --limit of them.
 export const SNIPPETS = 3
 
 export interface Snippet {
@@ -466,7 +457,6 @@ export interface Hit {
   snippets: Snippet[]
 }
 
-// Case and accents folded, as the index folds them.
 const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
   .replace(/\p{M}/gu, '')
 
@@ -478,7 +468,6 @@ function words({ text }: { text: string }): Set<string> {
 
 const quote = ({ phrase }: { phrase: string }) => `"${phrase.replace(/"/g, '""')}"`
 
-// A query word without the punctuation around it, as synonyms and typo matching look it up.
 const bare = ({ token }: { token: string }) => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
 
 // One query word, or a synonym phrase, and what it may match: its synonym group,
@@ -527,7 +516,6 @@ function termExpr({ term }: { term: Term }): string {
   return alts.length === 1 ? alts[0]! : `(${alts.join(' OR ')})`
 }
 
-// Every term must match.
 export const ftsQuery = ({ text }: {
   text: string
 }): string => queryTerms({
@@ -550,7 +538,6 @@ function similarity({ a, b }: { a: string; b: string }): number {
 const SIMILAR = 0.4
 const NEAREST = 5
 
-// The indexed words nearest a query word: similar by trigrams, or containing it.
 function nearest({ db, word }: { db: DatabaseSync; word: string }): string[] {
   const w = fold({ text: bare({ token: word }) })
 

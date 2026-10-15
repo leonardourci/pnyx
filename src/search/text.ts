@@ -1,5 +1,3 @@
-// What goes into the search index: the text an event or a transcript record
-// carries, run through one redaction filter and one deterministic chunker.
 import type { Attention, BoardEvent } from '../core/model.ts'
 
 // Bump when chunk() or the filters change what is indexed; the index rebuilds on mismatch.
@@ -54,7 +52,6 @@ function paragraphs({ text }: { text: string }): string[] {
   return out
 }
 
-// A paragraph over the limit splits on lines; a line over it, at the last space before the limit.
 function pieces({ paragraph }: { paragraph: string }): string[] {
   if (paragraph.length <= CHUNK_MAX) {
     return [paragraph]
@@ -127,9 +124,6 @@ export function chunk({ text }: { text: string }): string[] {
 
 const attentionText = ({ list }: { list: Attention[] | undefined }) => (list ?? []).map(a => a.text)
 
-// The text an event carries: titles, tags, attention questions, link titles and
-// numbers, outcome notes, replies and reasons. Status flips carry none; a push
-// or link update repeats only what it changed.
 export function eventText({ event }: { event: BoardEvent }): string {
   const parts: (string | undefined)[] = [event.reason]
 
