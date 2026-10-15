@@ -157,6 +157,7 @@ export interface Card {
   // The hook session's own latest activity, which a task source's status line does not replace.
   sessionActivity?: string
   agent?: AgentRef
+  launch?: AgentLaunch
   // Task membership is a list for future compatibility; v1 permits at most one.
   sessionIds?: string[]
   // Session-only records remain addressable in History, outside the live board.
@@ -286,6 +287,7 @@ export type HydraEvent = EventBase & (
   | { type: 'task.created'; data: { key: string; title: string; parentId?: string; column?: Column; folder?: string } }
   | { type: 'task.declared'; data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> }
   | { type: 'task.mirrored'; data: FirstmateRecord }
+  | { type: 'task.launched'; data: AgentLaunch }
   | { type: 'hydra.message'; data: Omit<HydraMessage, 'id' | 'at' | 'actor'> }
   | { type: 'board.agents'; data: { agents: Record<string, AgentConfig>; before: Record<string, AgentConfig> } }
 )
@@ -363,9 +365,20 @@ export type ViewEvent = EventBase & {
 
 export type NotedEvent = EventBase & { type: 'card.noted'; data: Note }
 
+export interface AgentLaunch {
+  via: 'paseo' | 'command' | 'hooks'
+  at: string
+  folder?: string
+  command?: string
+  pid?: number
+  harness?: string
+}
+
 export interface AgentSession {
   id: string
   agent: AgentRef
+  launch?: AgentLaunch
+  lastSeen?: string
   originCardId: string
   taskId: string | null
   terminal?: TerminalFacts
@@ -399,7 +412,7 @@ export type BoardEvent =
   | HydraEvent
   | ChatEvent
 export type EventType = BoardEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents']
+export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched']
 
 export interface BoardState {
   board?: BoardConfig
