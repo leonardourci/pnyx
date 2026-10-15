@@ -4,8 +4,9 @@ import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, st
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { loadBoard, withWriter } from '../src/store/board-store.ts'
 import type { BoardEvent } from '../src/core/model.ts'
-import { ftsQuery } from '../src/search/index.ts'
+import { ftsQuery, search, updateIndex } from '../src/search/index.ts'
 import { chunk, eventText, redact, transcriptMessages } from '../src/search/text.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
@@ -304,4 +305,95 @@ test('a word ending in * matches the indexed words starting with it', () => {
   assert.deepEqual(cards({ out: run({ args: ['search', 'retry*'] }) }).sort(), ['c2', 'c5'])
   assert.deepEqual(cards({ out: run({ args: ['search', 'deploy*'] }) }).sort(), ['c1', 'c6'])
   assert.deepEqual(cards({ out: run({ args: ['search', 'deplo*'] }) }).sort(), ['c1', 'c6'])
+})
+
+test('Hydra board messages are searchable without a task, including after rebuild', () => {
+  const { run, home } = board()
+  const previous = process.env.PNYX_HOME
+  process.env.PNYX_HOME = home
+
+  try {
+    withWriter({
+      board: 'default',
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'hydra-lunch',
+            at: '2026-10-15T10:00:00Z',
+            actor: 'user',
+            cardId: '$board',
+            type: 'hydra.message',
+            data: { action: 'send', text: 'I will review the layout after lunch.', hydra: 'hydra' },
+          },
+        })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'hydra-reply',
+            at: '2026-10-15T10:01:00Z',
+            actor: 'hooks',
+            cardId: '$hydra',
+            type: 'chat.message',
+            data: { session: 'hydra', nativeId: '0', role: 'assistant', text: 'The lunchtime review is ready.' },
+          },
+        })
+      },
+    })
+    const lunch = run({ args: ['search', 'lunch'] })
+    assert.match(lunch, /card: \$board\n {4}title: Hydra\n {4}kind: hydra/)
+    assert.match(lunch, /after \[lunch\]/)
+    assert.doesNotMatch(lunch, /pnyx-axi card \$board/)
+    assert.match(run({ args: ['search', 'lunchtime', '--kind', 'transcript'] }), /kind: hydra/)
+    assert.match(run({ args: ['search', 'lunch', '--workspace', 'work'] }), /^results: "none: /m)
+    run({ args: ['search', 'rebuild'] })
+    assert.match(run({ args: ['search', 'lunch'] }), /kind: hydra/)
+  } finally {
+    if (previous === undefined) {
+      delete process.env.PNYX_HOME
+    } else {
+      process.env.PNYX_HOME = previous
+    }
+  }
+})
+
+test('live board searches exclude hidden sessions before applying the result limit', () => {
+  const { run, home, push } = board()
+  run({ args: ['board', 'create', 'default'] })
+  push({ key: 'claude:hidden', card: { title: 'Hidden flamingo session', agent: { provider: 'claude-code', sessionId: 'hidden' }, source: { adapter: 'hooks', objectId: 'hidden' } } })
+  run({ args: ['task', 'create', '--title', 'Visible flamingo task'] })
+  const previous = process.env.PNYX_HOME
+  process.env.PNYX_HOME = home
+
+  try {
+    assert.ok(Object.values(loadBoard({ board: 'default' }).state.cards).some(card => card.hidden && card.title === 'Hidden flamingo session'))
+    updateIndex({ board: 'default' })
+    const hits = search({ board: 'default', query: { text: 'flamingo', live: true, limit: 1 } }).hits
+    assert.deepEqual(hits.map(hit => hit.title), ['Visible flamingo task'])
+    assert.match(run({ args: ['search', 'flamingo'] }), /Hidden flamingo session/)
+  } finally {
+    if (previous === undefined) {
+      delete process.env.PNYX_HOME
+    } else {
+      process.env.PNYX_HOME = previous
+    }
+  }
+})
+
+test('a live Hydra transcript joins its board conversation before a turn-end hook', () => {
+  const { run, home, push } = board()
+  run({ args: ['board', 'create', 'default'] })
+  const transcript = join(home, 'hydra.jsonl')
+  writeFileSync(transcript, '')
+  push({ key: 'claude:hydra-live', card: { agent: { provider: 'claude-code', sessionId: 'hydra-live', transcriptPath: transcript }, source: { adapter: 'hooks', objectId: 'hydra-live' } } })
+  run({ args: ['search', 'rebuild'] })
+  run({ args: ['board', 'set', '--session', 'claude-code:hydra-live'] })
+  appendFileSync(transcript, `${JSON.stringify({ type: 'assistant', message: { content: 'The flamingo investigation is ready.' } })}\n`)
+  const found = run({ args: ['search', 'flamingo'] })
+  assert.match(found, /card: \$board\n {4}title: Hydra\n {4}kind: hydra/)
+  writeFileSync(transcript, `${JSON.stringify({ type: 'assistant', message: { content: 'The canary review is ready.' } })}\n`)
+  assert.match(run({ args: ['search', 'flamingo'] }), /^results: "none: /m)
+  assert.match(run({ args: ['search', 'canary'] }), /kind: hydra/)
 })

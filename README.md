@@ -119,7 +119,7 @@ Create a task in any column with **+ Add task**, or add a column with **+ Add co
   - Escape: dismiss suggestions, leave the reply input for the caret, hide the caret, then close the card
   - Mod+arrows: move the highlighted card or column; `/`: search history; Mod+F: focus search
   - Mod+K: focus the top-bar search; Mod+,: Settings; `?`: keyboard shortcuts in Settings
-- **Search:** the top-bar search, History and `pnyx-axi search "<words>"` find cards by meaning, in any language, as well as by their words, across titles, links, events, notes and transcripts. Semantic search runs local models on your machine; the first search downloads them in the background (about 1 GB with a GPU, 115 MB on CPU only), and searches are full-text until they are ready. `pnyx-axi search status` shows the progress.
+- **Search:** the top-bar search, History and `pnyx-axi search "<words>"` find cards by meaning, in any language, as well as by their words, across titles, links, events, notes and transcripts. Semantic search runs local models on your machine; the first search downloads them in the background (about 1 GB with a GPU, 115 MB on CPU only), and searches are full-text until they are ready. `pnyx-axi search status` shows the progress. The top-bar field filters tasks in place and lists matching task conversations and Hydra's board chat beneath it. Settings change directly in their result rows, and layout actions are available there too; start a query with `>` to show only settings and actions. Hidden sessions stay in History, reached through the “Search history” row. ⌘K (Ctrl+K elsewhere) focuses the same field, including from a reply composer and when the top bar is hidden.
 
 Run `pnyx-axi --help` for every command.
 

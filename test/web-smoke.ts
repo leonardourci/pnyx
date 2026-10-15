@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startServer } from '../src/server/server.ts'
-import { loadBoard } from '../src/store/board-store.ts'
+import { loadBoard, withWriter } from '../src/store/board-store.ts'
+import { hydraEvent } from '../src/core/hydra.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import { smokeBrowser } from './browser.ts'
 
@@ -11,6 +12,13 @@ process.env.PNYX_SEMANTIC = 'off'
 const home = mkdtempSync(join(tmpdir(), 'pnyx-layout-smoke-'))
 process.env.PNYX_HOME = home
 const fixture = seedWebFixture({ home })
+withWriter({
+  board: 'default',
+  fn: ({ writer }) => {
+    const decision = hydraEvent({ state: writer.state, meta: { actor: 'fixture', at: '2026-10-15T10:00:00Z' }, cardId: '$board', change: { type: 'hydra.message', data: { action: 'send', text: 'Review the layout after lunch.', hydra: 'hydra' } } })
+    assert.ok('event' in decision); writer.append({ event: decision.event })
+  },
+})
 const server = await startServer({ board: 'default', homes: [fixture.nativeHome] })
 const { browser, check, eventually, click, text, fill, press, focus, screenshot, close, evaluate } = smokeBrowser({ home, session: 'pnyx-layout' })
 const state = () => loadBoard({ board: 'default' }).state
@@ -27,14 +35,30 @@ try {
   await click({ selector: '[aria-label="Switch board"]' }); await click({ selector: '[aria-current="page"]' })
   await eventually({ condition: '!!document.querySelector(".last-message")', label: 'optional last message displayed' })
   await check({ condition: '!!document.querySelector("[data-search-slot] input") && !document.querySelector(".board-list")', label: 'board switcher returns to the board' })
-  await fill({ label: 'Find a card', value: 'readable' })
+  await fill({ label: 'Search board', value: 'readable' })
   await eventually({ condition: 'document.querySelectorAll("[data-card]").length === 1', label: 'search filters board from transcript matches' })
-  await text({ label: 'History' }); await fill({ label: 'Search history', value: 'Document the reply receipts' })
+  await fill({ label: 'Search board', value: 'lunch' })
+  await eventually({ condition: 'document.querySelector(".search-hit")?.textContent.includes("Hydra conversation") && document.querySelectorAll("[data-card]").length === 0', label: 'search includes the board Hydra conversation' })
+  await screenshot({ name: 'hydra-search.png' })
+  await click({ selector: '.search-hit' })
+  await check({ condition: 'document.activeElement.matches(".hydra-chat textarea")', label: 'Hydra search result focuses its composer' })
+  await fill({ label: 'Search board', value: '> theme' })
+  await check({ condition: 'document.querySelectorAll("[data-card]").length === 6 && !document.querySelector(".search-hit") && !!document.querySelector(".search-results [aria-label=Theme]")', label: 'command search leaves the board intact' })
+  await click({ selector: '.search-results [aria-label="Theme"]' }); await click({ selector: '[role=listbox][aria-label=Theme] > [role=option]:nth-child(3)' })
+  await eventually({ condition: 'document.documentElement.dataset.theme === "dark" && !!document.querySelector(".search-results")', label: 'search changes settings in place' })
+  await screenshot({ name: 'search-setting.png' })
+  await click({ selector: '.search-results [aria-label="Theme"]' }); await click({ selector: '[role=listbox][aria-label=Theme] > [role=option]:first-child' })
+  await fill({ label: 'Search board', value: 'readable' }); await text({ label: 'Search history' })
+  await eventually({ condition: 'document.querySelector(".history-page input")?.value === "readable" && document.querySelectorAll(".result-title").length === 1', label: 'search passes its query into History' })
+  await fill({ label: 'Search history', value: 'no matching fixture phrase' })
+  await fill({ label: 'Search board', value: 'readable' }); await text({ label: 'Search history' })
+  await eventually({ condition: 'document.querySelector(".history-page input")?.value === "readable" && document.querySelectorAll(".result-title").length === 1', label: 'a repeated History handoff replaces its query' })
+  await fill({ label: 'Search history', value: 'Document the reply receipts' })
   await eventually({ condition: '!!document.querySelector(".history-page .result-title")', label: 'History result loaded outside the board filter' })
   await click({ selector: '.history-page .result-title' })
   await check({ condition: 'document.querySelector(".card.selected").textContent.includes("Document the reply receipts") && !!document.querySelector(".card.selected .detail")', label: 'opening a History result reveals it despite a conflicting board query' })
   await click({ selector: '[aria-label="Close detail"]' })
-  await focus({ selector: '[aria-label="Find a card"]' }); await press({ key: 'Escape' })
+  await focus({ selector: '[aria-label="Search board"]' }); await press({ key: 'Escape' })
   await eventually({ condition: 'document.querySelectorAll("[data-card]").length === 6', label: 'Escape restores unfiltered board' })
   await evaluate({ code: 'window.columnWidth = document.querySelector(".column").getBoundingClientRect().width; return true;' })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
@@ -65,6 +89,12 @@ try {
   await fill({ label: 'Reply to Shape the first working board', value: 'Retain this failed reply' }); await click({ selector: '.detail .composer-send' })
   await eventually({ condition: '!!document.querySelector(".detail .reply-failure")', label: 'failed reply shows a short line in the conversation' })
   await check({ condition: 'document.querySelector(".detail .composer textarea").value === "Retain this failed reply"', label: 'failed reply keeps the draft' })
+  await text({ label: 'History' }); await fill({ label: 'Search board', value: '> New task in Parked' }); await text({ label: 'New task in Parked' })
+  await eventually({ condition: '!!document.querySelector(".board-page") && document.activeElement.getAttribute("aria-label") === "Rename task New task"', label: 'search creates a task from History and focuses its title' })
+  await press({ key: 'Escape' })
+  await text({ label: 'Settings' }); await fill({ label: 'Search board', value: '> New column' }); await text({ label: 'New column' })
+  await eventually({ condition: '!!document.querySelector(".board-page") && document.activeElement.getAttribute("aria-label") === "Rename New column column"', label: 'search creates a column from Settings and focuses its title' })
+  await press({ key: 'Escape' })
   await browser({ args: ['emulate', '--color-scheme', 'dark'] }); await screenshot({ name: 'board-dark.png' })
   await browser({ args: ['resize', '700', '800'] })
   await check({ condition: 'document.querySelector(".hydra-chat").getBoundingClientRect().height > 600 && document.querySelector(".kanban").scrollWidth > document.querySelector(".kanban").clientWidth', label: 'narrow windows keep Hydra docked with horizontal overflow' })

@@ -4,14 +4,15 @@ import { createRequire } from 'node:module'
 import { isAbsolute, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { BoardError } from '../core/model.ts'
-import { sessionId } from '../core/tasks.ts'
+import { HYDRA_CARD } from '../core/hydra.ts'
+import { cardSessionId, liveTask, sessionId } from '../core/tasks.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { boardDir, loadBoard, privateDir, readEventsFrom, withWriter } from '../store/board-store.ts'
 import { synonymGroup } from './synonyms.ts'
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from './text.ts'
 
 // Bump when the tables change; the index rebuilds on mismatch.
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 8
 export const KINDS = ['event', 'note', 'transcript'] as const
 export type Kind = (typeof KINDS)[number]
 
@@ -51,7 +52,7 @@ END;
 CREATE TRIGGER IF NOT EXISTS docs_ad AFTER DELETE ON docs BEGIN
   INSERT INTO docs_fts (docs_fts, rowid, body) VALUES ('delete', old.id, old.body);
 END;
-CREATE TABLE IF NOT EXISTS cards (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, workspace TEXT NOT NULL, context TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS cards (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, workspace TEXT NOT NULL, context TEXT NOT NULL, live INTEGER NOT NULL);
 CREATE VIRTUAL TABLE IF NOT EXISTS card_fts USING fts5 (context, notes, body, content='', contentless_delete=1, tokenize='porter unicode61 remove_diacritics 2');
 CREATE TABLE IF NOT EXISTS terms (term TEXT PRIMARY KEY) WITHOUT ROWID;
 CREATE VIRTUAL TABLE IF NOT EXISTS terms_tri USING fts5 (term, tokenize='trigram');
@@ -214,6 +215,7 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
       line?: number
     },
   ): number => {
+    card = card === HYDRA_CARD ? '$board' : card
     let part = firstPart
 
     if (session && source !== EVENTS && archived.get(session, line, EVENTS)) {
@@ -286,10 +288,20 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
 
       putCursor.run({ ...cursor, pos: read.end, seq: read.events.at(-1)?.seq ?? cursor.seq })
 
+      const state = loadBoard({ board }).state
+      const hydra = state.cards[HYDRA_CARD]
+      const hydraSession = hydra ? cardSessionId({ card: hydra }) : undefined
       let transcripts = 0
       const dropSource = db.prepare('DELETE FROM docs WHERE source = ?')
 
       for (const t of db.prepare('SELECT * FROM cursors WHERE source <> ?').all(EVENTS) as unknown as Cursor[]) {
+        const target = t.card === HYDRA_CARD || (hydraSession && t.session === hydraSession) ? '$board' : t.card
+
+        if (target !== t.card) {
+          db.prepare('UPDATE docs SET card = ? WHERE source = ?').run(target, t.source)
+          dirty.add(t.card); dirty.add(target)
+        }
+
         const tail = readTranscript({ cursor: t })
 
         if (!tail) {
@@ -297,14 +309,14 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
         }
 
         if (tail.reset && Number(dropSource.run(t.source).changes)) {
-          dirty.add(t.card)
+          dirty.add(target)
         }
 
         for (const line of tail.lines) {
           let part = 0
 
           for (const m of transcriptMessages({ record: line.record })) {
-            part = add({ card: t.card, kind: 'transcript', source: t.source, pos: line.pos, at: m.at ?? '', text: m.text, firstPart: part, session: t.session, line: line.pos })
+            part = add({ card: target, kind: 'transcript', source: t.source, pos: line.pos, at: m.at ?? '', text: m.text, firstPart: part, session: t.session, line: line.pos })
           }
         }
 
@@ -314,19 +326,27 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
 
       const getContext = db.prepare('SELECT context FROM cards WHERE id = ?')
       const putCard = db.prepare(
-        'INSERT INTO cards (id, title, workspace, context) VALUES (:id, :title, :workspace, :context) ' +
-        'ON CONFLICT (id) DO UPDATE SET title = :title, workspace = :workspace, context = :context',
+        'INSERT INTO cards (id, title, workspace, context, live) VALUES (:id, :title, :workspace, :context, :live) ' +
+        'ON CONFLICT (id) DO UPDATE SET title = :title, workspace = :workspace, context = :context, live = :live',
       )
 
-      for (const card of Object.values(loadBoard({ board }).state.cards)) {
-        const context = redact({ text: [card.title, ...card.links.map(l => l.title)].filter(Boolean).join('\n') })
+      const targets = [
+        ...Object.values(state.cards).filter(card => card.id !== HYDRA_CARD)
+          .map(card => ({ ...card, live: liveTask({ card }) ? 1 : 0 })),
+        { id: '$board', title: 'Hydra', workspace: '', links: [], live: 1 },
+      ]
+
+      for (const card of targets) {
+        const context = card.id === '$board' ? '' : redact({ text: [card.title, ...card.links.map(l => l.title)].filter(Boolean).join('\n') })
 
         if ((getContext.get(card.id) as { context: string } | undefined)?.context !== context) {
           dirty.add(card.id)
           addTerms({ text: context })
         }
 
-        putCard.run({ id: card.id, title: card.title, workspace: card.workspace, context })
+        putCard.run({
+          id: card.id, title: card.title, workspace: card.workspace, context, live: card.live,
+        })
       }
 
       const getCard = db.prepare('SELECT n, context FROM cards WHERE id = ?')
@@ -433,6 +453,7 @@ export interface Query {
   card?: string
   workspace?: string
   limit: number
+  live?: boolean
   // Also return each snippet's docs.id, for semantic search to fuse entries by.
   withIds?: boolean
 }
@@ -453,6 +474,7 @@ export type Match = 'lexical' | 'fuzzy'
 export interface Hit {
   card: string
   title: string
+  kind?: 'hydra'
   match: Match
   snippets: Snippet[]
 }
@@ -627,9 +649,9 @@ function run(
 ): { hits: Hit[]; total: number; match: Match } {
   const exprs = terms.map(term => termExpr({ term }))
   const match = exprs.join(' AND ')
-  const filters = { match, workspace: query.workspace ?? null }
+  const filters = { match, workspace: query.workspace ?? null, live: query.live ? 1 : 0 }
   const chunks = `SELECT d.id, d.card, ${RANK} AS rank FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid JOIN cards c ON c.id = d.card
-    WHERE docs_fts MATCH :match AND (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace)`
+    WHERE docs_fts MATCH :match AND (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1)`
   type Row = { card: string; title: string; total: number }
   const cards = (
     query.card
@@ -647,7 +669,7 @@ function run(
           .prepare(
             `WITH h AS MATERIALIZED (SELECT rowid AS n, bm25(card_fts, 0.5, ${NOTE_WEIGHT}, 1.0) AS rank FROM card_fts WHERE card_fts MATCH :match)
                SELECT c.id AS card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.n = h.n
-               WHERE :workspace IS NULL OR c.workspace = :workspace ORDER BY h.rank, c.n LIMIT :limit`,
+               WHERE (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1) ORDER BY h.rank, c.n LIMIT :limit`,
           )
           .all({ ...filters, limit: query.limit })
   ) as Row[]
@@ -659,6 +681,7 @@ function run(
   const hits = cards.map(r => ({
     card: r.card,
     title: r.title,
+    ...(r.card === '$board' ? { kind: 'hydra' as const } : {}),
     match: mode,
     snippets: (
       top.all({

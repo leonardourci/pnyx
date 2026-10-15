@@ -3,7 +3,7 @@ import { cardSessionId } from '../../../src/core/tasks.ts'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { viewFor } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
-import { Button, Input } from '../components/ui/controls.tsx'
+import { Button } from '../components/ui/controls.tsx'
 import { HydraChat } from './hydra-chat.tsx'
 import { useBoard } from './connection.ts'
 import { BoardCard } from './card.tsx'
@@ -14,6 +14,8 @@ import { Settings } from './settings.tsx'
 import { BoardTabs } from './boards.tsx'
 import { History } from './history.tsx'
 import { columnsFor, findBoxCards, pageTitle } from './view.ts'
+import { Search } from './search.tsx'
+import { commandQuery } from './search-catalog.ts'
 import { useFoundCards } from './card-search.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { useBoardKeyboard } from '../keyboard/board.tsx'
@@ -48,6 +50,7 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
   const [editingTask, setEditingTask] = useState<string | null>(null)
+  const [historyQuery, setHistoryQuery] = useState('')
   const [topbar, setTopbar] = useState(restored.topbar ?? true)
   const notify = useCallback(({ text }: { text: string }) => {
     setNotice(text)
@@ -88,12 +91,12 @@ export function App() {
     return () => dark.removeEventListener('change', apply)
   }, [view.theme])
   const columns = columnsFor({ state })
-  const found = useFoundCards({ command, query, workspace })
+  const found = useFoundCards({ command, query: commandQuery({ query }) ? '' : query, workspace, revision: state.seq })
   const filteredCards = findBoxCards({
     state,
     workspace,
     tag,
-    query,
+    query: commandQuery({ query }) ? '' : query,
     meaning: found.map(h => h.card),
   })
   const card = selected ? state.cards[selected] : undefined
@@ -164,7 +167,18 @@ export function App() {
     }
   }, [page, selected])
 
+  const openHydra = () => {
+    setPage('board')
+    requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
+  }
+
   const open = ({ id }: { id: string }) => {
+    if (id === '$board') {
+      openHydra()
+
+      return
+    }
+
     if (state.cards[id]) {
       setSelected(id); setPage('board')
       requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.detail .composer textarea' })))
@@ -177,7 +191,7 @@ export function App() {
 
   const createTask = ({ column, parent }: { column: string; parent?: string }) => {
     void command({ name: 'task', args: ['create', '--title', parent ? 'New subtask' : 'New task', '--column', column, ...(parent ? ['--parent', parent] : []), '--event-id', crypto.randomUUID()] }).then(receipt => {
-      setWorkspace(''); setTag(''); setQuery('')
+      setPage('board'); setWorkspace(''); setTag(''); setQuery('')
       const id = (receipt.card as { id: string }).id
       const first = cards.find(c => c.column === column)
       setEditingTask(id)
@@ -185,6 +199,14 @@ export function App() {
       if (first) {
         void command({ name: 'move', args: [id, column, '--before', first.id, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
       }
+    })
+      .catch(e => notify({ text: e.message }))
+  }
+
+  const createColumn = () => {
+    const id = `custom:${crypto.randomUUID()}`
+    void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--if-revision', String(state.boardRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => {
+      setPage('board'); setNewColumn(id)
     })
       .catch(e => notify({ text: e.message }))
   }
@@ -264,20 +286,28 @@ export function App() {
               </Button>
             ))}
           </nav>
-          <div className="topbar-search" data-search-slot>
-            <Input
-              aria-label="Find a card"
-              type="search"
-              placeholder="Search…  ⌘K"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Escape') {
-                  setQuery(''); e.currentTarget.blur()
-                }
-              }}
-            />
-          </div>
+          <Search
+            selected={selected}
+            page={page}
+            state={state}
+            view={view}
+            command={command}
+            query={query}
+            setQuery={({ query }) => setQuery(query)}
+            hits={found}
+            save={save}
+            openTask={open}
+            openHydra={openHydra}
+            history={() => {
+              setHistoryQuery(query); setPage('history')
+            }}
+            showTopbar={() => setTopbar(true)}
+            createTask={createTask}
+            createColumn={createColumn}
+            action={keyboard.onAction}
+            notify={notify}
+            connected={connected}
+          />
           {!connected && (
             <span
               className="connection"
@@ -302,6 +332,8 @@ export function App() {
             <History
               command={command}
               workspace={workspace}
+              query={historyQuery}
+              setQuery={({ query }) => setHistoryQuery(query)}
               open={open}
               notify={notify}
             />
@@ -372,11 +404,7 @@ export function App() {
                         <div className="add-column">
                           <Button
                             disabled={!connected}
-                            onClick={() => {
-                              const id = `custom:${crypto.randomUUID()}`
-                              void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--event-id', crypto.randomUUID()] }).then(() => setNewColumn(id))
-                                .catch(e => notify({ text: e.message }))
-                            }}
+                            onClick={createColumn}
                           >+ Add column
                           </Button>
                         </div>

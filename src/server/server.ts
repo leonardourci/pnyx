@@ -7,7 +7,7 @@ import { replyRoute } from '../core/route.ts'
 import { PASEO_CURSOR, paseoConversation, type PaseoConversation } from '../integrations/paseo/thread.ts'
 import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
-import { searchBoard } from '../search/semantic.ts'
+import { searchBoard, searchCommands } from '../search/semantic.ts'
 import { readSettings, settingEntries, writeSetting } from '../search/settings.ts'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
@@ -447,7 +447,7 @@ export async function startServer({
       return fail({ error: 'command needs a string id', code: 'VALIDATION_ERROR' })
     }
 
-    if (['thread', 'search', 'reply', 'answer', 'agent', 'catalog', 'settings', 'boards'].includes(String(name))) {
+    if (['thread', 'search', 'search-commands', 'reply', 'answer', 'agent', 'catalog', 'settings', 'boards'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail({ error: 'args must be strings', code: 'VALIDATION_ERROR' })
       }
@@ -480,15 +480,31 @@ export async function startServer({
 
           void entry.read.then(catalog => send({ ws, message: { type: 'receipt', id, catalog } })).catch(() => fail({ error: 'Local catalog unavailable', code: 'CATALOG_UNAVAILABLE' }))
         } else if (name === 'search') {
-          if (args.length > 2) {
-            throw new BoardError({ message: 'search expects text and optional workspace', code: 'VALIDATION_ERROR' })
+          if (args.length > 3 || (args[2] !== undefined && args[2] !== 'board')) {
+            throw new BoardError({ message: 'search expects text, optional workspace and optional board scope', code: 'VALIDATION_ERROR' })
           }
 
-          const query = { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), limit: SEARCH_LIMIT }
+          const query = { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), ...(args[2] === 'board' ? { live: true } : {}), limit: SEARCH_LIMIT }
 
           void searchBoard({ board, query })
             .then(result => send({ ws, message: { type: 'receipt', id, ...result } }))
             .catch((error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
+        } else if (name === 'search-commands') {
+          let entries: unknown
+
+          try {
+            entries = JSON.parse(args[1] ?? '[]')
+          } catch {
+            throw new BoardError({ message: 'search-commands expects a JSON list of named entries', code: 'VALIDATION_ERROR' })
+          }
+
+          if (args.length !== 2 || !args[0]?.trim() || args[0].length > 500
+            || !Array.isArray(entries) || entries.length > 256
+            || !entries.every((entry: unknown): entry is { id: string; text: string } => !!entry && typeof entry === 'object' && 'id' in entry && typeof entry.id === 'string' && entry.id.length <= 160 && 'text' in entry && typeof entry.text === 'string' && entry.text.length <= 500)) {
+            throw new BoardError({ message: 'search-commands expects a query and up to 256 named entries', code: 'VALIDATION_ERROR' })
+          }
+
+          void searchCommands({ query: args[0], entries }).then(matches => send({ ws, message: { type: 'receipt', id, matches } }))
         } else if (name === 'settings') {
           if (args.length && (args.length !== 3 || args[0] !== 'set')) {
             throw new BoardError({ message: 'settings expects nothing, or set, a key and a value', code: 'VALIDATION_ERROR' })

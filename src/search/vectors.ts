@@ -149,6 +149,7 @@ export function nearestCards(
     filters: {
       kind?: Kind
       workspace?: string
+      live?: boolean
     }
     limit: number
   },
@@ -166,10 +167,10 @@ export function nearestCards(
         .prepare(
           `SELECT d.card, c.title, d.kind, d.at, d.body, min(vec_distance_cosine(v.embedding, :q)) AS distance
          FROM docs d JOIN vectors v ON v.hash = d.content_hash JOIN cards c ON c.id = d.card
-         WHERE (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace)
+         WHERE (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1)
          GROUP BY d.card ORDER BY distance, d.card LIMIT :limit`,
         )
-        .all({ q: blob({ vector: query }), kind: filters.kind ?? null, workspace: filters.workspace ?? null, limit }) as (Omit<Nearest, 'similarity'> & { distance: number })[]
+        .all({ q: blob({ vector: query }), kind: filters.kind ?? null, workspace: filters.workspace ?? null, live: filters.live ? 1 : 0, limit }) as (Omit<Nearest, 'similarity'> & { distance: number })[]
 
       const nearest = rows.map(({ distance, ...r }) => ({ ...r, similarity: 1 - distance }))
 

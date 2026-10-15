@@ -1,10 +1,11 @@
 import type { BoardState, ViewPreferences } from '../../../src/core/model.ts'
-import { DEFAULT_COLUMN_WIDTH, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
+import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { boardConfig } from '../../../src/core/hydra.ts'
 import { Button, Input, NumberField, Select, Switch } from '../components/ui/controls.tsx'
 import { KeyboardSettings } from '../keyboard/settings.tsx'
 import { columnsFor } from './view.ts'
 import type { Command } from './connection.ts'
+import { resetWidths } from './search-catalog.ts'
 import { SearchSettings } from './search-settings.tsx'
 import { AgentKinds } from './agent-kinds.tsx'
 
@@ -69,7 +70,7 @@ export function Settings({ state, view, save, command, notify }: {
               />
             </div>
           ))}
-          <Button variant="surface" onClick={() => save({ patch: { hydraWidth: view.defaultHydraWidth, columnWidths: Object.fromEntries(columnsFor({ state }).map(c => [c.id, view.defaultColumnWidths[c.id] ?? DEFAULT_COLUMN_WIDTH])) } })}>Reset widths to defaults</Button>
+          <Button variant="surface" onClick={() => save({ patch: resetWidths({ view }) })}>Reset widths to defaults</Button>
         </section>
         <section className="settings-box">
           <h2>Hydra</h2>

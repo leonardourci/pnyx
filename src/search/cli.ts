@@ -159,7 +159,7 @@ function present(
     }
   }
 
-  const help = card ? [`Run \`pnyx-axi history --card ${card}\` for its events`] : [`Run \`pnyx-axi card ${hits[0]!.card}\` to open the top match`]
+  const help = card ? [`Run \`pnyx-axi history --card ${card}\` for its events`] : [hits[0]!.kind === 'hydra' ? 'Open Hydra on the board to read this conversation' : `Run \`pnyx-axi card ${hits[0]!.card}\` to open the top match`]
   const shown = card ? hits[0]!.snippets.length : hits.length
 
   if (total > shown) {
