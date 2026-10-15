@@ -1,3 +1,5 @@
+import { MAX_DONE_HOURS } from '../core/retention.ts'
+import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
 import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths, viewFor } from '../core/view.ts'
 import { createHash, randomUUID } from 'node:crypto'
@@ -23,6 +25,7 @@ import {
   decideSession,
   findCard,
   parseLink,
+  projectLabel,
   type Decision,
   type Meta,
 } from '../core/decide.ts'
@@ -402,6 +405,7 @@ function cardRow({ card }: { card: Card }) {
   return {
     id: card.id,
     title: card.title,
+    ...(card.project ? { project: card.project } : {}),
     column: card.column,
     attention: card.attention.map(a => a.kind).join(' ') || 'none',
   }
@@ -412,6 +416,7 @@ function cardDetail({ card }: { card: Card }): Output {
     id: card.id,
     key: card.key,
     title: card.title,
+    ...(card.project ? { project: card.project } : {}),
     ...(card.brief !== undefined ? { brief: card.brief } : {}),
     workspace: card.workspace,
     column: card.column,
@@ -458,6 +463,7 @@ function cardDetail({ card }: { card: Card }): Output {
 }
 
 export async function home(): Promise<Output> {
+  hideDone({ hydraId: DEFAULT_HYDRA })
   const { dir, state, tornBytes } = loadHydra({ hydraId: DEFAULT_HYDRA })
   const cards = Object.values(state.cards).filter(card => liveTask({ card }))
   const config = hydraConfig({ state })
@@ -525,6 +531,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     options: {
       ...WRITE,
       title: { type: 'string' },
+      project: { type: 'string' },
       brief: { type: 'string' },
       key: { type: 'string' },
       folder: { type: 'string' },
@@ -641,6 +648,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       throw new HydraError({ message: 'task keys beginning with $ are reserved', code: 'VALIDATION_ERROR' })
     }
 
+    const project = values.project === undefined ? null : projectLabel({ value: values.project })
     const folder = canonical({ path: values.folder })
     const brief = taskBrief({ value: values.brief })
 
@@ -667,12 +675,13 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           throw new HydraError({ message: 'unknown Hydra column', code: 'VALIDATION_ERROR' })
         }
 
-        return hydraEvent({ state, meta: m, cardId: `c${state.seq + 1}`, change: { type: 'task.created', data: { key, title, ...(brief !== undefined ? { brief } : {}), ...(folder ? { folder } : {}), ...(parent ? { parentId: parent.id } : {}), ...(selected ? { column: selected.id } : {}) } } })
+        return hydraEvent({ state, meta: m, cardId: `c${state.seq + 1}`, change: { type: 'task.created', data: { key, title, ...(project ? { project } : {}), ...(brief !== undefined ? { brief } : {}), ...(folder ? { folder } : {}), ...(parent ? { parentId: parent.id } : {}), ...(selected ? { column: selected.id } : {}) } } })
       },
     })
   }
 
   if (action === 'list') {
+    hideDone({ hydraId })
     const state = loadHydra({ hydraId }).state
 
     const tasks = Object.values(state.cards).filter(c => liveTask({ card: c }))
@@ -760,9 +769,13 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (action === 'rename') {
+    if (values.title === undefined && values.project === undefined) {
+      throw new HydraError({ message: 'pass --title or --project (empty text clears the label)', code: 'VALIDATION_ERROR' })
+    }
+
     const ref = required({ value: positionals[1], what: 'task id' })
 
-    return commit({ hydraId, meta: m, intent: { type: 'card.pushed', card: ref }, decide: ({ state }) => decidePush({ state, key: findCard({ state, ref }).key, input: { title: required({ value: values.title as string, what: '--title' }) }, meta: m }) })
+    return commit({ hydraId, meta: m, intent: { type: 'card.pushed', card: ref }, decide: ({ state }) => decidePush({ state, key: findCard({ state, ref }).key, input: { ...(values.title !== undefined ? { title: required({ value: values.title as string, what: '--title' }) } : {}), ...(values.project !== undefined ? { project: values.project } : {}) }, meta: m }) })
   }
 
   if (action !== 'attach' && action !== 'detach') {
@@ -887,7 +900,7 @@ function taskSessions({ hydraId, ids }: { hydraId: string; ids: Set<string> }): 
 }
 
 function hydraConfigCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, name: { type: 'string' }, identity: { type: 'string' }, session: { type: 'string' }, firstmate: { type: 'string' }, command: { type: 'string' }, base: { type: 'string' } }, positionals: 2 })
+  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, name: { type: 'string' }, identity: { type: 'string' }, session: { type: 'string' }, firstmate: { type: 'string' }, command: { type: 'string' }, base: { type: 'string' }, 'done-after-hours': { type: 'string' } }, positionals: 2 })
   const action = positionals[0]
 
   if (action === 'homes') {
@@ -908,6 +921,7 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
 
     return {
       hydras: hydras.map(id => {
+        hideDone({ hydraId: id })
         const state = loadHydra({ hydraId: id }).state
         const config = hydraConfig({ state, id })
 
@@ -967,6 +981,18 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
 
       const command = values.command === undefined ? current.command : String(values.command).trim()
       const data: HydraConfig = { ...current, id, name: String(values.name ?? current.name), hydra }
+
+      if (values['done-after-hours'] !== undefined) {
+        const raw = String(values['done-after-hours']).trim()
+        const hours = Number(raw)
+
+        if (!raw || !Number.isFinite(hours) || hours < 0 || hours > MAX_DONE_HOURS) {
+          throw new HydraError({ message: `--done-after-hours must be a number from 0 to ${MAX_DONE_HOURS} (0 keeps Done cards visible)`, code: 'VALIDATION_ERROR' })
+        }
+
+        data.doneAfterHours = hours
+      }
+
       delete data.command
 
       if (command) {
@@ -1752,11 +1778,12 @@ const COMMAND_HELP: Record<string, string> = {
 pnyx-axi hydra create --firstmate <home>
 pnyx-axi hydra list
 pnyx-axi hydra homes [--base <folder>]
-pnyx-axi hydra show|set --hydra <id> [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>]
+pnyx-axi hydra show|set --hydra <id> [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--done-after-hours <hours>]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
 --session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
 in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's Hydra.
+--done-after-hours hides cards after continuous time in Done (default 24); 0 keeps them visible. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
 pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--details <text>]
 pnyx-axi hydra send --text <message> [--details <text>]
@@ -1788,11 +1815,12 @@ the final column cannot be deleted. Reorder and delete first return confirmation
 repeat the same command with --confirm <token>. Browser actions already carry the owner’s intent.
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
-  task: `usage: pnyx-axi task create --title <title> [--brief <text>] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+  task: `usage: pnyx-axi task create --title <title> [--project <name>] [--brief <text>] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
 pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list | show <id> [--full]
-pnyx-axi task rename <id> --title <title>
+pnyx-axi task rename <id> [--title <title>] [--project <name>]
+--project adds a compact project label; an empty value clears it.
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
