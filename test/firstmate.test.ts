@@ -249,14 +249,16 @@ test('sync never overwrites a link state another source refreshed', () => {
   assert.equal(cardOf({ home, task: 'api-v2' }).links[0]!.state, 'closed')
 })
 
-test('a task whose records are gone drops its open decisions', () => {
+test('a task whose records are gone drops its open decisions and its folder', () => {
   const { home } = copyFixture()
   syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'api-v2' }).folder, '/tmp/fixture-worktree/api-v2')
   rmSync(join(home, 'state', 'api-v2.meta'))
   rmSync(join(home, 'state', 'api-v2.status'))
   syncHome({ board: 'default', home })
   const api = cardOf({ home, task: 'api-v2' })
   assert.deepEqual(api.attention, [])
+  assert.equal(api.folder, undefined)
   assert.equal(api.title, 'app: v2 API with (optional) pagination')
 })
 
@@ -535,4 +537,318 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   syncHome({ board: 'default', home })
   assert.equal(loadBoard({ board: 'default' }).state.keys['claude:fm-s'], undefined)
   assert.ok(loadBoard({ board: 'default' }).state.keys['claude:next'])
+})
+
+test('a session joins the task launched in its worktree; only a session in its terminal takes over', () => {
+  const { home } = copyFixture()
+  const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
+  const meta = ({ task, terminal }: { task: string; terminal: string }) =>
+    writeFileSync(join(home, 'state', `${task}.meta`), `task=${task}\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=${terminal}\n`)
+  const tty = { tty: '/dev/ttys042', pid: '4242' }
+  const hook = ({ id, session, paseoTerminal, facts = tty, extra = {} }: {
+    id: string
+    session: string
+    paseoTerminal?: string
+    facts?: object
+    extra?: object
+  }) =>
+    spoolWrite({
+      board: 'default',
+      entry: {
+        v: 1,
+        id,
+        at: '2026-10-14T00:00:00Z',
+        harness: 'claude',
+        event: 'SessionStart',
+        payload: { session_id: session, cwd: worktree, ...extra },
+        terminal: { ...facts, program: 'kitty', ...(paseoTerminal ? { paseoTerminal } : {}) },
+      },
+    })
+  const own = ({ session }: { session: string }) => !!loadBoard({ board: 'default' }).state.keys[`claude:${session}`]
+
+  // The pool hands the worktree from a finished task, whose records are gone, to the next.
+  meta({ task: 'wt-a', terminal: 'term-a' })
+  syncHome({ board: 'default', home })
+  rmSync(join(home, 'state', 'wt-a.meta'))
+  meta({ task: 'wt-b', terminal: 'term-b' })
+  syncHome({ board: 'default', home })
+  assert.deepEqual(cardOf({ home: home, task: 'wt-b' }).terminal, { paseoTerminal: 'term-b' })
+  const transcript = join(worktree, 's-b.jsonl')
+  writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Retain before clear' }] } }) + '\n')
+  hook({ id: 'h1', session: 's-b', paseoTerminal: 'term-b', extra: { transcript_path: transcript } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b')
+  assert.equal(cardOf({ home: home, task: 'wt-b' }).terminal?.pid, '4242')
+  assert.equal(own({ session: 's-b' }), false)
+
+  // A second session in the folder, in another or an unknown terminal, never replaces it.
+  hook({ id: 'h2', session: 's-twin', paseoTerminal: 'term-elsewhere' })
+  hook({ id: 'h2b', session: 's-bare' })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b')
+  assert.equal(cardOf({ home: home, task: 'wt-b' }).terminal?.pid, '4242')
+  assert.equal(own({ session: 's-twin' }), true)
+  assert.equal(own({ session: 's-bare' }), true)
+
+  // A headless run the worker starts in its worktree inherits the task's terminal
+  // but has no tty of its own, so it keeps its own card.
+  hook({ id: 'h2h', session: 's-child', paseoTerminal: 'term-b', facts: {} })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b')
+  assert.equal(own({ session: 's-child' }), true)
+
+  // Claude Code's /clear starts a new session on the same tty, which continues the
+  // card, and its later events reach it.
+  hook({ id: 'h2c', session: 's-b2', paseoTerminal: 'term-b', facts: tty, extra: { source: 'clear' } })
+  syncHome({ board: 'default', home })
+  hook({ id: 'h2d', session: 's-b2', paseoTerminal: 'term-b' })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b2')
+  assert.equal(own({ session: 's-b2' }), false)
+  const continued = loadBoard({ board: 'default' }).state
+  assert.equal(continued.sessions?.['claude-code:s-b']?.taskId, null)
+  assert.equal(continued.sessions?.['claude-code:s-b2']?.taskId, cardOf({ home, task: 'wt-b' }).id)
+  assert.deepEqual(cardOf({ home, task: 'wt-b' }).sessionIds, ['claude-code:s-b2'])
+  rmSync(transcript)
+  assert.ok(readEvents({ board: 'default' }).some(e => e.type === 'chat.message'
+    && e.data.session === 'claude-code:s-b' && e.data.text === 'Retain before clear'))
+
+  // The session it replaced reports to its own card from then on.
+  hook({ id: 'h2s', session: 's-b', paseoTerminal: 'term-b' })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b2')
+  assert.equal(own({ session: 's-b' }), true)
+
+  // Firstmate respawns the worker in a new terminal; its session continues the card.
+  meta({ task: 'wt-b', terminal: 'term-b3' })
+  syncHome({ board: 'default', home })
+  assert.deepEqual(cardOf({ home: home, task: 'wt-b' }).terminal, { paseoTerminal: 'term-b3' })
+  hook({ id: 'h2e', session: 's-b3', paseoTerminal: 'term-b3' })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b3')
+  assert.equal(own({ session: 's-b3' }), false)
+
+  // Follow-up tasks launched into the same worktree: each session's own Paseo
+  // terminal tells them apart, and one launched elsewhere joins neither.
+  meta({ task: 'wt-c', terminal: 'term-c0' })
+  meta({ task: 'wt-d', terminal: 'term-d' })
+  syncHome({ board: 'default', home })
+  // A task respawned before its session joined records its new terminal.
+  meta({ task: 'wt-c', terminal: 'term-c' })
+  syncHome({ board: 'default', home })
+  assert.deepEqual(cardOf({ home: home, task: 'wt-c' }).terminal, { paseoTerminal: 'term-c' })
+  // A headless child in the task's terminal never joins a task card with no session yet.
+  hook({ id: 'h3h', session: 's-d-child', paseoTerminal: 'term-d', facts: {} })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-d' }).agent, undefined)
+  assert.equal(own({ session: 's-d-child' }), true)
+  hook({ id: 'h3', session: 's-d', paseoTerminal: 'term-d' })
+  hook({ id: 'h4', session: 's-other', paseoTerminal: 'term-elsewhere' })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-d' }).agent?.sessionId, 's-d')
+  assert.equal(cardOf({ home: home, task: 'wt-c' }).agent, undefined)
+  assert.equal(own({ session: 's-other' }), true)
+})
+
+test('a session outside Paseo joins a task with no recorded terminal and keeps its facts', () => {
+  const { home } = copyFixture()
+  const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
+  writeFileSync(join(home, 'state', 'wt-t.meta'), `task=wt-t\nkind=ship\nworktree=${worktree}\n`)
+  syncHome({ board: 'default', home })
+  spoolWrite({
+    board: 'default',
+    entry: {
+      v: 1,
+      id: 'h1',
+      at: '2026-10-14T00:00:00Z',
+      harness: 'claude',
+      event: 'SessionStart',
+      payload: { session_id: 's-tmux', cwd: worktree },
+      terminal: { tty: '/dev/ttys042', pid: '4242', program: 'tmux' },
+    },
+  })
+  syncHome({ board: 'default', home })
+
+  assert.equal(cardOf({ home: home, task: 'wt-t' }).agent?.sessionId, 's-tmux')
+  assert.deepEqual(cardOf({ home: home, task: 'wt-t' }).terminal, { tty: '/dev/ttys042', pid: '4242', program: 'tmux' })
+  assert.equal(syncHome({ board: 'default', home }).appended, 0)
+})
+
+test('a task launched in a Paseo terminal takes only a session from that terminal', () => {
+  const { home } = copyFixture()
+  const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
+  writeFileSync(join(home, 'state', 'wt-p.meta'), `task=wt-p\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-p\n`)
+  syncHome({ board: 'default', home })
+  const start = ({ id, session, terminal }: { id: string; session: string; terminal: object }) =>
+    spoolWrite({
+      board: 'default',
+      entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'claude', event: 'SessionStart', payload: { session_id: session, cwd: worktree }, terminal },
+    })
+
+  // The owner's session in tmux, in the same worktree, keeps its own card.
+  start({ id: 'h1', session: 's-tmux', terminal: { tty: '/dev/ttys042', pid: '4242', program: 'tmux' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-p' }).agent, undefined)
+  assert.deepEqual(cardOf({ home: home, task: 'wt-p' }).terminal, { paseoTerminal: 'term-p' })
+  assert.ok(loadBoard({ board: 'default' }).state.keys['claude:s-tmux'])
+
+  // The worker in the task's own terminal still joins it.
+  start({ id: 'h2', session: 's-worker', terminal: { tty: '/dev/ttys043', pid: '4343', program: 'kitty', paseoTerminal: 'term-p' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-p' }).agent?.sessionId, 's-worker')
+  assert.equal(cardOf({ home: home, task: 'wt-p' }).terminal?.paseoTerminal, 'term-p')
+  assert.equal(loadBoard({ board: 'default' }).state.keys['claude:s-worker'], undefined)
+})
+
+test('a Paseo task takes only events from its terminal, whatever event comes first', () => {
+  const { home } = copyFixture()
+  const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
+  writeFileSync(join(home, 'state', 'wt-q.meta'), `task=wt-q\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-q\n`)
+  syncHome({ board: 'default', home })
+  const hook = ({ id, session, event, terminal }: {
+    id: string
+    session: string
+    event: string
+    terminal?: object
+  }) =>
+    spoolWrite({
+      board: 'default',
+      entry: {
+        v: 1,
+        id,
+        at: '2026-10-14T00:00:00Z',
+        harness: 'codex',
+        event,
+        payload: { session_id: session, cwd: worktree, tool_name: 'Bash', tool_input: { command: 'ls' }, prompt: 'x' },
+        ...(terminal ? { terminal } : {}),
+      },
+    })
+  const own = ({ session }: { session: string }) => !!loadBoard({ board: 'default' }).state.keys[`codex:${session}`]
+
+  // A session in another Paseo terminal keeps its own card.
+  hook({ id: 'h1', session: 's-other', event: 'SessionStart', terminal: { tty: '/dev/ttys050', pid: '5050', paseoTerminal: 'term-elsewhere' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-q' }).agent, undefined)
+  assert.equal(own({ session: 's-other' }), true)
+
+  // An event that shows no Paseo terminal keeps its own card too.
+  hook({ id: 'h1b', session: 's-bare', event: 'PreToolUse' })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-q' }).agent, undefined)
+  assert.equal(own({ session: 's-bare' }), true)
+
+  // A worker already running when its hooks were trusted first reports a tool call,
+  // which shows only its Paseo terminal; it joins, and its later events follow.
+  hook({ id: 'h2', session: 's-worker', event: 'PreToolUse', terminal: { paseoTerminal: 'term-q' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-q' }).agent?.sessionId, 's-worker')
+  assert.deepEqual(cardOf({ home: home, task: 'wt-q' }).terminal, { paseoTerminal: 'term-q' })
+  assert.equal(own({ session: 's-worker' }), false)
+  hook({ id: 'h3', session: 's-worker', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys051', pid: '5151', paseoTerminal: 'term-q' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-q' }).agent?.sessionId, 's-worker')
+  assert.equal(cardOf({ home: home, task: 'wt-q' }).terminal?.paseoTerminal, 'term-q')
+  assert.equal(own({ session: 's-worker' }), false)
+})
+
+test('a session that joined a Paseo task and then shows another terminal reports to its own card', () => {
+  const { home } = copyFixture()
+  const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
+  writeFileSync(join(home, 'state', 'wt-r.meta'), `task=wt-r\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-r\n`)
+  syncHome({ board: 'default', home })
+  const hook = ({ id, session, event, terminal }: {
+    id: string
+    session: string
+    event: string
+    terminal: object
+  }) =>
+    spoolWrite({
+      board: 'default',
+      entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'codex', event, payload: { session_id: session, cwd: worktree, prompt: 'x' }, terminal },
+    })
+  const own = ({ session }: { session: string }) => !!loadBoard({ board: 'default' }).state.keys[`codex:${session}`]
+
+  hook({ id: 'h1', session: 's-a', event: 'PreToolUse', terminal: { paseoTerminal: 'term-r' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-r' }).agent?.sessionId, 's-a')
+
+  // Its next prompt comes from tmux: that goes to its own card, and the task keeps its terminal.
+  hook({ id: 'h2', session: 's-a', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys060', pid: '6060', program: 'tmux' } })
+  syncHome({ board: 'default', home })
+  assert.equal(own({ session: 's-a' }), true)
+  assert.deepEqual(cardOf({ home: home, task: 'wt-r' }).terminal, { paseoTerminal: 'term-r' })
+
+  // The worker in the task's terminal still takes the card over.
+  hook({ id: 'h3', session: 's-worker', event: 'SessionStart', terminal: { tty: '/dev/ttys061', pid: '6161', paseoTerminal: 'term-r' } })
+  syncHome({ board: 'default', home })
+  assert.equal(cardOf({ home: home, task: 'wt-r' }).agent?.sessionId, 's-worker')
+  assert.equal(own({ session: 's-worker' }), false)
+})
+
+test("a task card's setting changes go to the orchestrator as request notes, never into the worker", () => {
+  const { home, env } = copyFixture()
+  const worktree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
+  const meta = join(home, 'state', 'api-v2.meta')
+  writeFileSync(meta, readFileSync(meta, 'utf8').replace(/^worktree=.*$/m, `worktree=${worktree}`))
+  syncHome({ board: 'default', home })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-14T00:00:00Z', harness: 'claude', event: 'SessionStart', terminal: { tty: '/dev/ttys042', pid: '4242' }, payload: { session_id: 'fm-s', cwd: worktree, model: 'claude-sonnet-5-5' } } })
+  syncHome({ board: 'default', home })
+  const api = cardOf({ home: home, task: 'api-v2' })
+  const { run } = cli({ env: env })
+  const notes = () => readFileSync(join(home, 'inbox.log'), 'utf8').split('---\n')
+    .filter(n => n.includes('arg=note'))
+  const note = ({ id, text }: { id: string; text: string }) =>
+    `FM_HOME=${home}\narg=note\narg=--request-id\narg=pnyx:default:${api.id}:${id}\narg=--json\narg=--\narg=${text}\n`
+
+  assert.match(run({ args: ['agent', api.id, '--home', home] }), /route: "firstmate:inbox"[\s\S]*mode,unknown,next,yes/)
+  assert.match(run({ args: ['agent', api.id, 'model', 'opus', '--home', home, '--idempotency-key', 'm1'] }), /sent: delivered[\s\S]*confirmed: false[\s\S]*Firstmate note n1 asks/)
+  assert.deepEqual(notes(), [note({ id: 'm1', text: 'Pnyx: please switch the worker on task api-v2 (Claude Code) to model opus.' })])
+  // A retry of the same change sends nothing again.
+  run({ args: ['agent', api.id, 'model', 'opus', '--home', home, '--idempotency-key', 'm1'] })
+  assert.equal(notes().length, 1)
+
+  // A key change is a request too, even while the worker waits on its own prompt:
+  // nothing reaches the worker's session, so fm-send never runs.
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h2', at: '2026-10-14T00:01:00Z', harness: 'claude', event: 'PermissionRequest', payload: { session_id: 'fm-s', cwd: worktree, tool_name: 'Bash', tool_input: { command: 'ls' } } } })
+  assert.match(run({ args: ['agent', api.id, 'mode', 'next', '--home', home, '--idempotency-key', 'm2'] }), /sent: delivered/)
+  assert.equal(notes().at(-1), note({ id: 'm2', text: 'Pnyx: please switch the worker on task api-v2 (Claude Code) to the next permission mode.' }))
+  assert.equal(existsSync(join(home, 'sent.log')), false)
+
+  // The worker's own report confirms the setting.
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h3', at: '2026-10-14T00:02:00Z', harness: 'claude', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys042', pid: '4242' }, payload: { session_id: 'fm-s', cwd: worktree, prompt: 'x', permission_mode: 'acceptEdits' } } })
+  syncHome({ board: 'default', home })
+  assert.match(run({ args: ['agent', api.id, '--home', home] }), /mode,acceptEdits,next,yes/)
+
+  // A note saved but not announced may still reach the orchestrator; one not saved fails.
+  writeFileSync(join(home, 'inbox-exit'), '3')
+  assert.match(run({ args: ['agent', api.id, 'effort', 'high', '--home', home, '--idempotency-key', 'm3'] }), /sent: delivery_unknown[\s\S]*fm-inbox.sh announce n3/)
+  writeFileSync(join(home, 'inbox-exit'), '1')
+  assert.match(run({ args: ['agent', api.id, 'fast', 'on', '--home', home, '--idempotency-key', 'm4'] }), /sent: failed[\s\S]*Nothing was changed: fm-inbox: fake note failed/)
+  writeFileSync(join(home, 'inbox-exit'), '0')
+
+  // A secondmate and a remote task take requests the same way, since nothing is typed.
+  writeFileSync(meta, `${readFileSync(meta, 'utf8').replace(/^kind=.*$/m, 'kind=secondmate')}remote_host=box\n`)
+  assert.match(run({ args: ['agent', api.id, 'effort', 'low', '--home', home, '--idempotency-key', 'm5'] }), /sent: delivered/)
+
+  // A Codex worker's changes are requests as well.
+  const fix = join(home, 'state', 'hotfix-2.meta')
+  const codexTree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
+  writeFileSync(fix, `${readFileSync(fix, 'utf8')}worktree=${codexTree}\n`)
+  syncHome({ board: 'default', home })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h4', at: '2026-10-14T00:00:00Z', harness: 'codex', event: 'SessionStart', terminal: { tty: '/dev/ttys043', pid: '4343' }, payload: { session_id: 'cx-s', cwd: codexTree } } })
+  syncHome({ board: 'default', home })
+  const hotfix = cardOf({ home: home, task: 'hotfix-2' })
+  assert.equal(hotfix.agent?.provider, 'codex')
+  assert.match(run({ args: ['agent', hotfix.id, '--home', home] }), /model,unknown,gpt-6.1-sol gpt-6-astra gpt-6-sol gpt-6-luna,yes/)
+  assert.match(run({ args: ['agent', hotfix.id, '--home', home] }), /approval,unknown,untrusted on-request never,yes/)
+  assert.match(run({ args: ['agent', hotfix.id, 'model', 'gpt-6.1-sol', '--home', home, '--idempotency-key', 'cx-model'] }), /sent: delivered[\s\S]*confirmed: false/)
+  assert.match(notes().at(-1)!, /arg=Pnyx: please switch the worker on task hotfix-2 \(Codex\) to model gpt-6.1-sol\.\n$/)
+  const count = notes().length
+  run({ args: ['agent', hotfix.id, 'model', 'gpt-6.1-sol', '--home', home, '--idempotency-key', 'cx-model'] })
+  assert.equal(notes().length, count)
+  assert.match(run({ args: ['agent', hotfix.id, 'approval', 'on-request', '--home', home] }), /sent: delivered[\s\S]*confirmed: false/)
+  assert.match(notes().at(-1)!, /arg=Pnyx: please switch the worker on task hotfix-2 \(Codex\) to approval policy on-request\.\n$/)
+  assert.match(run({ args: ['agent', hotfix.id, 'effort', 'raise', '--home', home] }), /sent: delivered/)
+  assert.match(notes().at(-1)!, /arg=Pnyx: please raise the reasoning effort of the worker on task hotfix-2 \(Codex\) by one step\.\n$/)
+  assert.equal(existsSync(join(home, 'sent.log')), false)
 })

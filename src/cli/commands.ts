@@ -2,7 +2,7 @@
 // board's writer lock, ingests the hook spool, then appends at most one event.
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
 import { randomUUID } from 'node:crypto'
-import { cardSessionId, findSession, liveTask } from '../core/tasks.ts'
+import { cardSessionId, findSession, liveTask, sessionId } from '../core/tasks.ts'
 import { readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { boardConfig, declareTask, hydraEvent, HYDRA_CARD, validateColumns } from '../core/hydra.ts'
@@ -28,6 +28,7 @@ import {
   BoardError,
   EVENT_TYPES,
   OUTCOME_STATES,
+  type AgentRef,
   type BoardEvent,
   type BoardState,
   type Card,
@@ -37,10 +38,11 @@ import {
   type OutcomeState,
 } from '../core/model.ts'
 import { emptyBoard, replay } from '../core/reducer.ts'
+import { terminalFacts } from '../core/route.ts'
 import { readServer } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
-import { HARNESSES, attend, isHookEnvelope, observe, type Harness, type HookEnvelope } from '../integrations/hooks/observe.ts'
+import { HARNESSES, TERMINAL_EVENTS, attend, isHookEnvelope, observe, type Harness, type HookEnvelope } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { boardDir, pnyxHome, loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from '../store/board-store.ts'
 
@@ -199,8 +201,11 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
 
   const harvest: string[] = []
   const folder = canonical({ path: (entry.payload as { cwd?: unknown } | null)?.cwd })
-  const interactive = (entry.terminal as { tty?: string } | undefined)?.tty
-  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder: interactive ? folder : undefined }))
+  const terminal = terminalFacts({ value: entry.terminal })
+  const probed = TERMINAL_EVENTS.includes(entry.event)
+  // A session (never a subagent, whose key has a /) started in a folder a source
+  // assigned, such as a Firstmate task's worktree, reports to that card.
+  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder, terminal, probed }))
 
   for (const o of observe({ envelope: entry as unknown as HookEnvelope })) {
     const key = resolve({ key: o.key })
@@ -218,7 +223,7 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
       continue
     }
 
-    const pushed = decidePush({
+    let pushed = decidePush({
       state: writer.state,
       key,
       input: attention ? {
@@ -227,6 +232,32 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
       } : card,
       meta: m,
     })
+
+    if ('event' in pushed && o.card.agent) {
+      const existing = Object.values(writer.state.sessions ?? {}).find(s => s.sourceRefs.some(r =>
+        r.adapter === 'hooks' && `${r.instanceId}:${r.objectId}` === o.key))
+      const previous = existing?.taskId ? writer.state.cards[existing.taskId] : undefined
+      const target = writer.state.cards[writer.state.keys[key] ?? '']
+      const replaced = target?.sessionIds?.[0]
+      const moving = previous && previous.key !== key
+        && previous.sourceRefs.some(r => r.adapter === 'firstmate')
+      const incoming = sessionId({ agent: o.card.agent as AgentRef })
+      const replacing = key !== o.key && replaced && replaced !== incoming
+
+      if (moving || replacing) {
+        const ref = moving ? existing!.id : replaced!
+        harvestTranscripts({ writer, cardIds: [(moving ? previous : target)!.id], at: m.at })
+        apply({
+          decision: decideSession({
+            state: writer.state, ref, task: null, meta: { ...m, id: `${m.id}:detach:${ref}` },
+          }),
+        })
+        pushed = decidePush({
+          state: writer.state, key, input: attention ? { ...card, attention } : card, meta: m,
+        })
+      }
+    }
+
     apply({ decision: pushed })
     // Hooks own only the outcome they recorded on the session's own card: a joined
     // Firstmate task, or a Firstmate or manual outcome, keeps its own rule.
@@ -1425,6 +1456,7 @@ commands:
   stop                                       Stop the board's running server
   setup hooks [--harness claude|codex]       Install the silent reporting hooks (--remove, --preview)
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
+  agent <id> [<setting> <value>]             List or change a session's model, effort, mode or fast mode from its card
   firstmate sync|watch --home <path>         Fold a Firstmate home's tasks into the board, once or on every change
 flags:
   --board <name>     Board to use (default: default)

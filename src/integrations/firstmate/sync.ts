@@ -90,7 +90,12 @@ function hookAttention({ state, key }: { state: BoardState; key: string }): Atte
 }
 
 function taskCard(
-  { home, task, kept }: { home: HomeObservation; task: TaskObservation; kept: Attention[] },
+  { home, task, kept, current }: {
+    home: HomeObservation
+    task: TaskObservation
+    kept: Attention[]
+    current: Card | undefined
+  },
 ): Record<string, unknown> {
   return {
     title: task.title,
@@ -99,6 +104,13 @@ function taskCard(
     ...(task.activity ? { activity: task.activity } : {}),
     // A pool reuses worktrees, so a closed task gives its folder up for the next one.
     folder: task.worktree && !task.done ? task.worktree : null,
+    // The task's own terminal tells it apart from another task in the same worktree
+    // and lets the session in it join, including a respawned worker's. A joined
+    // session's own facts stay unless its Paseo terminal is no longer the task's.
+    ...(task.paseoTerminal && task.paseoTerminal !== current?.terminal?.paseoTerminal
+      && (!current?.agent || current.terminal?.paseoTerminal)
+      ? { terminal: { paseoTerminal: task.paseoTerminal } }
+      : {}),
     attention: [...attention({ task }), ...kept],
     source: source({ home: home.path, objectId: task.task }),
   }
@@ -138,7 +150,8 @@ function apply({ writer, decision }: { writer: Writer; decision: Decision }): nu
 
 // Reconciles the board with the home's current files. Unchanged facts append
 // nothing, so syncing twice is a no-op. A task whose records are gone keeps its
-// card but drops its open decisions, since nothing can answer them any more.
+// card but drops its open decisions, since nothing can answer them any more, and
+// its folder.
 export function syncHome({ board, home, at = new Date().toISOString() }: {
   board: string
   home: string
@@ -185,7 +198,11 @@ export function syncHome({ board, home, at = new Date().toISOString() }: {
         const card = taskCard({
           home: observed,
           task,
-          kept: hookAttention({ state: writer.state, key }),
+          kept: hookAttention({
+            state: writer.state,
+            key,
+          }),
+          current: writer.state.cards[writer.state.keys[key] ?? ''],
         })
         appended += apply({
           writer,
@@ -336,10 +353,11 @@ export function syncHome({ board, home, at = new Date().toISOString() }: {
 
         const kept = hookAttention({ state: writer.state, key: card.key })
 
-        if (card.attention.length === kept.length) {
+        if (card.attention.length === kept.length && !card.folder) {
           continue
         }
 
+        // Its worktree goes back to the pool too, so the next task there can claim it.
         appended += apply(
           {
             writer,
@@ -348,6 +366,7 @@ export function syncHome({ board, home, at = new Date().toISOString() }: {
               key: card.key,
               input: {
                 attention: kept,
+                folder: null,
                 source: ref,
               },
               meta,

@@ -118,6 +118,7 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .text-preview { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .detail-header:has(.conversation-brief[open]) { max-height: 45%; }
 .conversation-brief[open] .brief-line { display: none; }
+.agent-controls { display: flex; flex-direction: column; gap: 12px; padding-top: 14px; border-top: 1px solid var(--color-line); }.agent-controls h3 { font-size: .82em; }.agent-controls > p { font-size: .7em; }.control-row { display: flex; flex-direction: column; gap: 6px; min-width: 0; }.control-row .row { font-size: .78em; }.control-row > p { font-size: .68em; }.control-name { display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted); }.segmented { display: flex; flex-wrap: wrap; gap: 4px; }.segmented .button { font-size: .72em; padding: 4px 10px; min-height: 26px; }.segmented .button[aria-pressed=true] { border-color: var(--color-gold-line); color: var(--color-gold); background: var(--color-gold-wash); }
 
 .markdown { font: var(--text-chat)/1.7 var(--font-chat); overflow-wrap: anywhere; }.markdown p { margin: .45em 0; }
 .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { font-size: 1.1em; font-weight: 600; line-height: 1.35; margin: .8em 0 .4em; }.markdown h1 { font-size: 1.35em; }.markdown h2 { font-size: 1.2em; }

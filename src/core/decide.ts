@@ -320,21 +320,26 @@ function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
   return value as TerminalFacts
 }
 
-// The key a hook session's observation (key `<harness>:<session>`) goes to: its own
-// once it has a card, else the card it already joined, else the one card whose
-// source assigned the session's working folder, such as the Firstmate task running
-// there. Several such cards stay ambiguous, so the session keeps its own card.
-// Membership pins the recipient; an occupied folder match never takes another session.
-export function joinedKey({ state, key, folder }: {
+// Explicit attachments survive folder changes; Firstmate joins also honor its recorded terminal.
+export function joinedKey({ state, key, folder, terminal, probed = false }: {
   state: BoardState
   key: string
   folder: string | undefined
+  terminal?: TerminalFacts
+  probed?: boolean
 }): string {
-  const session = Object.values(state.sessions ?? {}).find(s => s.sourceRefs.some(r =>
+  const recorded = Object.values(state.sessions ?? {}).find(s => s.sourceRefs.some(r =>
     r.adapter === 'hooks' && `${r.instanceId}:${r.objectId}` === key))
 
-  if (session) {
-    return session.taskId ? state.cards[session.taskId]!.key : key
+  if (recorded) {
+    const task = recorded.taskId ? state.cards[recorded.taskId] : undefined
+    const managed = task?.sourceRefs.some(r => r.adapter === 'firstmate')
+
+    const matchesTerminal = !task?.terminal?.paseoTerminal
+      || task.terminal.paseoTerminal === terminal?.paseoTerminal
+
+    return task && (!managed || matchesTerminal)
+      ? task.key : key
   }
 
   if (key in state.keys) {
@@ -342,21 +347,35 @@ export function joinedKey({ state, key, folder }: {
   }
 
   const colon = key.indexOf(':')
+  const sessionId = key.slice(colon + 1)
   const joined = Object.values(state.cards).find(c => c.sourceRefs.some(r =>
-    r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === key.slice(colon + 1)))
+    r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === sessionId))
+
+  const session = terminal?.paseoTerminal
 
   if (joined) {
-    return joined.key
+    return (!joined.agent || joined.agent.sessionId === sessionId)
+      && (!joined.terminal?.paseoTerminal || joined.terminal.paseoTerminal === session)
+      ? joined.key
+      : key
   }
 
-  if (!folder) {
+  if (!folder || (probed && !terminal?.tty)) {
     return key
   }
 
+  const tty = terminal?.tty
+  const ownTerminal = ({ card: c }: { card: Card }) =>
+    !!session && c.terminal?.paseoTerminal === session
+  const succeeds = ({ card: c }: { card: Card }) => !!tty
+    && (c.activity === 'ended' || !c.terminal?.tty || c.terminal.tty === tty)
   const matches = Object.values(state.cards).filter(c => c.folder === folder
-    && !c.sessionIds?.length)
+    && (c.agent
+      ? ownTerminal({ card: c }) && succeeds({ card: c })
+      : !c.terminal?.paseoTerminal || ownTerminal({ card: c })))
+  const own = matches.filter(card => ownTerminal({ card }))
 
-  return matches.length === 1 ? matches[0]!.key : key
+  return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key
 }
 
 export function decideSession({ state, ref, task, meta }: {

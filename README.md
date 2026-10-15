@@ -4,7 +4,7 @@ Pnyx's AXI task model tracks explicit tasks on boards, each with one orchestrato
 
 A deterministic board of every agent and its work, with an [AXI](https://axi.md/) CLI named `pnyx-axi`.
 
-Pnyx records tasks, attaches one agent session to each task, and queues your replies to that session. It is a view over the tools you already use, not an orchestrator: Claude Code and Codex hooks report sessions, a Firstmate integration reads Firstmate's own records, and linked pull requests come from GitHub. Every change is an event in an append-only log, so the board can be replayed and audited. Pre-v1; see [docs/design.md](docs/design.md) for the design.
+Pnyx records tasks, attaches one agent session to each task, and queues your replies to that session. It is a view over the tools you already use, not an orchestrator: Claude Code and Codex hooks report sessions, a Firstmate integration reads Firstmate's own records, and linked pull requests come from GitHub. Every change is an event in an append-only log, so the board can be replayed and audited. Pre-v1.
 
 ![Pnyx demo](docs/media/demo.gif)
 
@@ -56,7 +56,7 @@ This adds a silent reporting hook to `~/.claude/settings.json` and `~/.codex/hoo
 
 ## Firstmate
 
-Pass the board's Firstmate home to `serve` with `--home`; a board mirrors one Firstmate home, and `serve`, `firstmate sync` and `firstmate watch` name any other home they ignore. The server then watches the home's `state/` and `data/` folders, turns each task into a card, and sends your replies through the home's own `bin/fm-send.sh`. It only reads the home. Without a server, `pnyx-axi firstmate sync --home <path>` folds a home in once and `pnyx-axi firstmate watch --home <path>` keeps doing so; `pnyx-axi reply <id> --text <text> --home <path>` replies from the terminal. The first interactive Claude Code or Codex session in an open task's worktree joins that task; a later session in the same folder stays unassigned. The managed task keeps replying through Firstmate.
+Pass the board's Firstmate home to `serve` with `--home`; a board mirrors one Firstmate home, and `serve`, `firstmate sync` and `firstmate watch` name any other home they ignore. The server then watches the home's `state/` and `data/` folders, turns each task into a card, and sends your replies through the home's own `bin/fm-send.sh`. It only reads the home. Without a server, `pnyx-axi firstmate sync --home <path>` folds a home in once and `pnyx-axi firstmate watch --home <path>` keeps doing so; `pnyx-axi reply <id> --text <text> --home <path>` replies from the terminal. The first interactive Claude Code or Codex session in an open task's worktree joins that task; a later session in the same folder stays unassigned. The managed task keeps replying through Firstmate. A setting change from a task card's Agent tab goes to the orchestrator as a request note through the home's `bin/fm-inbox.sh note --request-id <id>`, with the same request id retained on retries. When Firstmate records a Paseo terminal, only sessions in that terminal can join or replace its worker; a replacement on the same terminal continues the task while earlier sessions remain in History.
 
 ## Task records
 
@@ -68,7 +68,7 @@ Tracking follows explicit declarations: working goes to Workers on it, needs_you
 
 The append-only log preserves board, task, subtask, session, command and message identities. Replaying existing events migrates old session records without changing their event bytes or ids. Unattached and headless sessions remain available in History and search. Harvested user and assistant messages are redacted and copied into the log on turn end, attachment changes and explicit `harvest`, so observed conversations remain readable and searchable after a native transcript disappears. Search remains a derived, deletable index.
 
-`hydra send --text <message>` queues a board-level message with no task. `hydra send --task <task> [--action send|worker]` queues a task-specific message, and `hydra messages` reads the queue. These actions never launch a worker. Native launch integrations, several workers per task, automatic labels, settings and quota reporting, board tabs, inline questions and the left chat layout are later work.
+`hydra send --text <message>` queues a board-level message with no task. `hydra send --task <task> [--action send|worker]` queues a task-specific message, and `hydra messages` reads the queue. These actions never launch a worker. Native launch integrations, several workers per task, automatic labels, quota reporting, board tabs, inline questions and the left chat layout are later work.
 
 ## Using the board
 
@@ -77,8 +77,15 @@ The task model is available through AXI. Its task-focused web controls follow in
 - **Columns:** Needs you, Workers on it, Done and Parked are the initial template. Use `pnyx-axi column create|rename|reorder|delete` to edit columns. Tasks move from declared status and confirmed merges; a manual card move pins placement. Silence, idle sessions and session exit never complete a task.
 - **Tasks and agents:** the task keeps its title, links and placement when a session moves. Use `task create --title "Work to do"`, `task sessions`, `task attach <task> --session <session>` and `task detach <task>`. Attachments never start or stop a process.
 - **Titles:** a card that only hooks report takes the harness's own session title, else its first prompt, else its folder name; a subagent takes its type and last 4 characters of its id (`Explore 3f2a`). A title you set is never replaced.
-- **Cards:** click a card or press Enter to open its conversation, notes, history and links. Type in the conversation input and press Mod+Enter to send a reply; type `/` there to insert a local Claude Code or Codex skill or command.
-- **Keyboard:** arrows or h/j/k/l move between cards, `m` moves the focused card, `/` searches history, Mod+K opens Commands, `?` shows help, `f` shows hints. Every binding can be changed in Settings. See [docs/keyboard.md](docs/keyboard.md).
+- **Cards:** click a card or press Enter to open its conversation, notes, history and links; the reply input at the end of the conversation takes focus. Type a reply and press Mod+Enter to send it; type `/` there to insert a local Claude Code or Codex skill or command. Select text in a message, or press `c` on a selected block, to add an inline comment; comments go out with the next reply. Focus, on by default, shows only prompts and agent messages; turn it off to see tool calls and thinking.
+- **Agent settings:** a card's Agent tab shows the session's model, effort, mode and fast mode, and changes them through the same route as a reply, with the harness's own commands and keys, or on a Firstmate task card as a request to its orchestrator (see Firstmate); `pnyx-axi agent <id>` does the same from the terminal. A change shows as pending until the session reports it. Claude Code saves a model, effort or fast mode set this way as your default for new sessions. A direct Codex session offers effort, fast mode and Plan mode here; Codex picks its model and approval mode only in its own `/model` and `/permissions` pickers.
+- **Keyboard:** Mod is Command on macOS and Control elsewhere. Every binding can be changed in Settings, and the Character shortcuts switch there turns off the single-key ones.
+  - Arrows or h/j/k/l: move between cards and columns; Home/End: first or last card
+  - Enter: open the card's conversation at its reply input; `r`: focus the reply input; Mod+Enter: send (plain Enter adds a newline)
+  - In the conversation: Escape moves into the transcript, arrows or j/k select message blocks, `c` comments on the selected block, Enter returns to the reply input
+  - Escape: dismiss suggestions, leave the reply input, then close the card
+  - `m`: move the focused card; `/`: search history; Mod+F: find a card in the current view
+  - Mod+K: Commands; Mod+,: Settings; `?`: keyboard help; `f`: label visible controls, then type a label to jump to it
 - **Search:** every search box (Find a card, History, the Cmd+K palette) and `pnyx-axi search "<words>"` find cards by meaning, in any language, as well as by their words, across titles, links, events, notes and transcripts. Semantic search runs local models on your machine; the first search downloads them in the background (about 1 GB with a GPU, 115 MB on CPU only), and searches are full-text until they are ready. `pnyx-axi search status` shows the progress.
 
 Run `pnyx-axi --help` for every command.

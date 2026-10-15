@@ -398,7 +398,7 @@ export async function startServer({
       return fail({ error: 'command needs a string id', code: 'VALIDATION_ERROR' })
     }
 
-    if (['thread', 'search', 'reply', 'catalog', 'settings'].includes(String(name))) {
+    if (['thread', 'search', 'reply', 'agent', 'catalog', 'settings'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail({ error: 'args must be strings', code: 'VALIDATION_ERROR' })
       }
@@ -470,8 +470,14 @@ export async function startServer({
           bindThread({ ws, card })
           send({ ws, message: { type: 'receipt', id, thread: readThread({ board, state, card, homes, before: args[1] }) } })
         } else {
-          if (args.length !== 3 || !args[2] || args[1].length > 32000) {
-            throw new BoardError({ message: 'reply expects card, text and idempotency key', code: 'VALIDATION_ERROR' })
+          const agent = name === 'agent'
+
+          const valid = agent
+            ? args.length === 4 && !!args[3]
+            : args.length === 3 && !!args[2] && args[1].length <= 32000
+
+          if (!valid) {
+            throw new BoardError({ message: agent ? 'agent expects card, setting, value and idempotency key' : 'reply expects card, text and idempotency key', code: 'VALIDATION_ERROR' })
           }
 
           const card = findCard({ state, ref: args[0] })
@@ -479,11 +485,17 @@ export async function startServer({
           const found = replyRoute({ card, homes })
 
           if ('reason' in found) {
-            throw new BoardError({ message: `${found.reason} Your draft stays here.`, code: 'NO_ROUTE' })
+            throw new BoardError({ message: `${found.reason}${agent ? '' : ' Your draft stays here.'}`, code: 'NO_ROUTE' })
           }
 
+          // A setting change is sent like a reply: `pnyx-axi agent` picks the harness's command and reads
+          // it back. Its setting and value come last, after --, so neither can read as a flag.
+          const [command, rest] = agent
+            ? [['agent', card.id, '--idempotency-key', args[3]!], ['--', args[1]!, args[2]!]]
+            : [['reply', card.id, '--text', args[1], '--idempotency-key', args[2]], []]
+
           // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.
-          execFile(process.execPath, [join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js'), card.id, '--text', args[1], '--idempotency-key', args[2], '--board', board, '--actor', 'web', ...homes.flatMap(h => ['--home', h])], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {
+          execFile(process.execPath, [join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js'), ...command, '--board', board, '--actor', 'web', ...homes.flatMap(h => ['--home', h]), ...rest], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {
             kick()
 
             if (ws.readyState !== ws.OPEN) {

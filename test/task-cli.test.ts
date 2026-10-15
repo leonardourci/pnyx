@@ -77,10 +77,12 @@ test('attach pins one session, follows subsequent hooks, and preserves outcomes 
 
 test('background sessions remain in History and search while the live board excludes them', () => {
   const f = fixture()
+  f.run({ args: ['task', 'create', '--key', 'empty-task', '--title', 'Waiting task', '--folder', '/task-lab'] })
   f.hook({ session: 'background', event: 'SessionStart', interactive: false })
   const state = f.state()
   const id = state.keys['claude:background']
   assert.equal(state.cards[id].hidden, true)
+  assert.equal(state.cards[state.keys['empty-task']].agent, undefined)
   assert.match(f.run({ args: ['card', id] }), /visibility: history/)
   assert.match(f.run({ args: ['history', '--card', id, '--full'] }), /background/)
   assert.doesNotMatch(f.run({ args: [] }), /task-lab/)
