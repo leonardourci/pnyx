@@ -6,6 +6,7 @@ import { firstmateCommands, firstmateHelp } from '../integrations/firstmate/cli.
 import { SEARCH_HELP, SETTINGS_HELP, searchCommands } from '../search/cli.ts'
 import { TOP_LEVEL_HELP, commandHelp, commands, home } from './commands.ts'
 import { AGENT_HELP, REPLY_HELP, agent, reply } from './reply.ts'
+import { WORKER_HELP, workerCommands } from './workers.ts'
 import { INTEGRATIONS_HELP, integrationsCommand } from './integrations.ts'
 
 // Same relative path from src/cli and dist/cli.
@@ -15,6 +16,7 @@ const HELP: Record<string, string> = {
   settings: SETTINGS_HELP,
   reply: REPLY_HELP,
   agent: AGENT_HELP,
+  ...WORKER_HELP,
   integrations: INTEGRATIONS_HELP,
 }
 
@@ -27,6 +29,7 @@ await runAxiCli({
     ?? firstmateHelp({ command }) ?? HELP[command],
   commands: {
     ...commands,
+    ...workerCommands,
     serve,
     stop,
     ...firstmateCommands,

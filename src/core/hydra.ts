@@ -178,6 +178,15 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
     return true
   }
 
+  // Kinds are board settings; saving one does not choose the board's Hydra.
+  if (event.type === 'board.agents') {
+    state.board = structuredClone(boardConfig({ state, id: event.boardId }))
+    state.board.agents = structuredClone(event.data.agents)
+    state.boardRevision = (state.boardRevision ?? 0) + 1
+
+    return true
+  }
+
   if (event.type === 'board.columns') {
     state.board = structuredClone(boardConfig({ state, id: event.boardId }))
     state.board.columns = structuredClone(event.data.columns)

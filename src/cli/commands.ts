@@ -2,7 +2,7 @@
 // board's writer lock, ingests the hook spool, then appends at most one event.
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
 import { randomUUID } from 'node:crypto'
-import { cardSessionId, findSession, interactive, liveTask, sessionId } from '../core/tasks.ts'
+import { cardSessionId, findSession, interactive, liveTask, selfSession, sessionId } from '../core/tasks.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import { setupHydra, startHydra, startTask } from './start.ts'
 import { existsSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs'
@@ -59,7 +59,7 @@ export type Output = Record<string, unknown>
 export type Options = NonNullable<ParseArgsConfig['options']>
 
 export const COMMON: Options = { board: { type: 'string' } }
-const WRITE: Options = {
+export const WRITE: Options = {
   ...COMMON,
   actor: { type: 'string' },
   reason: { type: 'string' },
@@ -103,7 +103,7 @@ export function required({ value, what }: { value: string | undefined; what: str
   return value
 }
 
-function integer({ value, flag }: {
+export function integer({ value, flag }: {
   value: string | boolean | undefined
   flag: string
 }): number | undefined {
@@ -119,7 +119,8 @@ function integer({ value, flag }: {
 }
 
 export function meta({ values }: { values: Record<string, string | boolean | undefined> }): Meta {
-  const m: Meta = { at: new Date().toISOString(), actor: (values.actor as string | undefined) ?? 'cli' }
+  // PNYX_ACTOR names the agent Pnyx launched, such as hydra or worker:<task>.
+  const m: Meta = { at: new Date().toISOString(), actor: (values.actor as string | undefined) ?? (process.env.PNYX_ACTOR || 'cli') }
 
   if (typeof values.reason === 'string') {
     m.reason = values.reason
@@ -357,7 +358,7 @@ export function ingestSpool({ board }: {
 }
 
 function receipt({ state, event }: { state: BoardState; event: BoardEvent }): Output {
-  if (event.type === 'board.configured' || event.type === 'board.columns') {
+  if (event.type === 'board.configured' || event.type === 'board.columns' || event.type === 'board.agents') {
     return {
       event: { seq: event.seq, id: event.id, type: event.type },
       board: state.board,
@@ -425,7 +426,7 @@ function originalReceipt(
 
 // A repeated --event-id answers with the original receipt before any other check,
 // so a retry of a write that already landed never reports a conflict.
-function commit(
+export function commit(
   { board, meta, intent, decide }: {
     board: string
     meta: Meta
@@ -646,6 +647,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       prompt: { type: 'string' },
       'paseo-url': { type: 'string' },
       via: { type: 'string' },
+      kind: { type: 'string' },
     },
     positionals: 3,
   })
@@ -662,6 +664,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       board,
       task: required({ value: positionals[1], what: 'task id' }),
       via: values.via as string | undefined,
+      kind: values.kind as string | undefined,
       harness: values.harness as string | undefined,
       prompt: values.prompt as string | undefined,
       folder: values.folder as string | undefined,
@@ -795,7 +798,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       }
 
       const session = action === 'attach'
-        ? required({ value: values.session as string | undefined, what: '--session' })
+        ? sessionRef({ state, ref: required({ value: values.session as string | undefined, what: '--session' }) })
         : findSession({ state, ref }).id
 
       return decideSession({ state, ref: session, task: action === 'attach' ? ref : null, meta: current })
@@ -804,6 +807,20 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
 }
 
 const task = guard({ handler: ({ args }) => taskCommand({ args }) })
+
+// `self` is the session running in the caller's own terminal.
+function sessionRef({ state, ref }: { state: BoardState; ref: string }): string {
+  return ref === 'self'
+    ? selfSession({
+      state,
+      here: {
+        paseoTerminal: process.env.PASEO_TERMINAL_ID,
+        tmuxPane: process.env.TMUX_PANE,
+        herdrPane: process.env.HERDR_PANE_ID,
+      },
+    }).id
+    : ref
+}
 
 function taskHistory({ board, ref, before, limit, full }: {
   board: string
@@ -928,7 +945,7 @@ function boardCommand({ args }: { args: string[] }): Output {
 
       const session = values.session ? findSession({
         state,
-        ref: String(values.session),
+        ref: sessionRef({ state, ref: String(values.session) }),
       }) : undefined
 
       if (session && session.taskId && !state.cards[session.taskId]?.automaticTask) {
@@ -1075,12 +1092,13 @@ function columnCommand({ args }: { args: string[] }): Output {
 const columnCommandHandler = guard({ handler: ({ args }) => columnCommand({ args }) })
 
 function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
-  const { values, positionals, board } = parse({ args, options: { ...WRITE, task: { type: 'string' }, action: { type: 'string' }, text: { type: 'string' }, after: { type: 'string' }, limit: { type: 'string' }, full: { type: 'boolean' }, via: { type: 'string' }, harness: { type: 'string' }, prompt: { type: 'string' }, folder: { type: 'string' }, home: { type: 'string' }, 'paseo-url': { type: 'string' } }, positionals: 1 })
+  const { values, positionals, board } = parse({ args, options: { ...WRITE, task: { type: 'string' }, action: { type: 'string' }, text: { type: 'string' }, after: { type: 'string' }, limit: { type: 'string' }, full: { type: 'boolean' }, via: { type: 'string' }, kind: { type: 'string' }, harness: { type: 'string' }, prompt: { type: 'string' }, folder: { type: 'string' }, home: { type: 'string' }, 'paseo-url': { type: 'string' } }, positionals: 1 })
 
   if (positionals[0] === 'start') {
     return startHydra({
       board,
       via: values.via as string | undefined,
+      kind: values.kind as string | undefined,
       harness: values.harness as string | undefined,
       prompt: values.prompt as string | undefined,
       folder: values.folder as string | undefined,
@@ -1335,7 +1353,7 @@ const outcome = guard({
   },
 })
 
-function summarize({ event }: { event: BoardEvent }): string {
+export function summarize({ event }: { event: BoardEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
@@ -1346,6 +1364,7 @@ function summarize({ event }: { event: BoardEvent }): string {
     case 'task.declared': return `${event.data.state}: ${event.data.note}`
     case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
     case 'hydra.message': return `${event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}`
+    case 'board.agents': return `Agent kinds: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
     case 'card.pushed':
@@ -1568,9 +1587,9 @@ commands:
   board create|list|homes|show|set            Configure boards, one per Firstmate home, each with one Hydra
   column create|rename|delete|reorder|list    Edit the column template
   task create|list|show|rename|status|history Tasks and one level of subtasks (--parent <id>)
-  task start <task> [--via paseo|firstmate|command]
-                                             Start a worker for the task and attach it
-  hydra start|send|messages                  Start the board's Hydra, queue task context in its chat, or read it
+  task start <task> [--via paseo|firstmate|command] [--kind <kind>]  Start a worker for the task and attach it
+  hydra start|send|messages|check            Start the board's Hydra, queue task context in its chat, read it, or wait for changes
+  kind list|set|remove                       The agent (harness, model, effort, mode, quota) each task kind starts on
   task sessions                              List recorded sessions, including background runs
   task attach <task> --session <session>      Move an interactive session onto a task
   task detach <task>                         Detach its agent without stopping the session
@@ -1608,7 +1627,7 @@ pnyx-axi board list
 pnyx-axi board homes [--base <folder>]
 pnyx-axi board show|set --board <id> [--hydra <identity>] [--session <session>] [--firstmate <home>] [--command <shell>]
 Each board has exactly one Hydra identity. Changing Hydra preserves tasks, history and old messages.
-No process is launched. A session used as Hydra cannot also be a task worker.
+--session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 board create --firstmate names the board after the home's folder. board homes lists the Firstmate homes
 in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's board.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
@@ -1624,13 +1643,16 @@ the final column cannot be deleted. Use --if-revision for the board revision.
   hydra: `usage: pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>]
 pnyx-axi hydra send --text <message>
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
-pnyx-axi hydra start [--via paseo|command] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
+pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
+pnyx-axi hydra start [--via paseo|command] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
 pnyx-axi hydra start --via firstmate --home <firstmate home>
 hydra start starts the board's Hydra: in Paseo (Claude Code by default) or with the board command, its
-session becomes the board's Hydra; a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
+session becomes the board's Hydra (in Paseo on the hydra kind's agent unless --kind names another); a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
 prompt points Hydra at the pnyx-hydra skill.
 Messages are durable entries in Hydra's board chat; one without --task is about the board, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
+check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, declarations, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra),
+and with --wait it blocks up to that many seconds until one appears. Pass the printed through as the next --after.
 `,
   task: `usage: pnyx-axi task create --title <title> [--key <key>] [--folder <path>] [--column <id>] [--parent <task>]
 pnyx-axi task list | show <id> [--full]
@@ -1638,12 +1660,12 @@ pnyx-axi task rename <id> --title <title>
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
-pnyx-axi task start <task> [--via paseo] --harness claude|codex --prompt <text> [--folder <path>] [--paseo-url <url>]
+pnyx-axi task start <task> [--via paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--prompt <text>] [--harness <name>] [--folder <path>]
 pnyx-axi task paseo [--paseo-url <url>]
 pnyx-axi task sessions
-pnyx-axi task attach <task> --session <session-id|card-id|key>
+pnyx-axi task attach <task> --session <session-id|card-id|key|self>
 pnyx-axi task detach <task>
 Tasks accept one attached session. A second session cannot replace the recipient.
 attach moves an interactive session to the task; an occupied destination is rejected.
@@ -1653,6 +1675,8 @@ task start asks the local Paseo daemon (PNYX_PASEO_URL, default ws://127.0.0.1:6
 Claude Code or Codex agent in the task's folder with the opening message, then attaches it. --folder
 also records the task's folder. Replies and the conversation then go through Paseo; the agent stays
 in Paseo too. Repeating the same --event-id never starts a second agent. task paseo checks the daemon.
+--kind picks the agent (see pnyx-axi kind; default: the default kind, else Claude Code); --harness overrides its harness and
+--prompt its opening message, which otherwise names the task and the pnyx-worker skill.
 --via firstmate puts a worker request in Hydra's chat and sends it to the board's Firstmate home as an inbox note.
 --via command runs the board command in the task's folder with PNYX_TASK and the rest of its context in the
 environment; the session it starts attaches to the task when its hooks first report.
@@ -1717,7 +1741,7 @@ as \`pnyx-axi firstmate watch\` would, so no second process is needed.
 Hook events arrive on the board's server.sock or through its spool. Browsers get one WebSocket at /ws:
 a snapshot on connect, then events by sequence; /ws?after=<seq> resumes, a gap gets a fresh snapshot.
 The handshake needs ?token=<token>: the board page served here carries it, local programs read $PNYX_HOME/token.
-Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo","args":[...]}
+Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo|kind","args":[...]}
 gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write this board;
 --board is refused and the actor defaults to web. GET /health answers {"board","pid"}.
 `,

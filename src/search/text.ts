@@ -153,6 +153,9 @@ export function eventText({ event }: { event: BoardEvent }): string {
     case 'hydra.message':
       parts.push(event.data.text)
       break
+    case 'board.agents':
+      parts.push(...Object.keys(event.data.agents))
+      break
     case 'board.configured':
       parts.push(event.data.name, event.data.hydra.name)
       break
