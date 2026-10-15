@@ -366,10 +366,11 @@ export function observe({ envelope }: { envelope: HookEnvelope }): Observation[]
   const activity = found.activity ? { activity: found.activity } : {}
   const out: Observation[] = []
   let key = parentKey
-  const terminal = TERMINAL_EVENTS.includes(envelope.event)
-    ? terminalFacts({ value: envelope.terminal })
-    : undefined
-  let card: Record<string, unknown> = { ...session, ...activity, ...(terminal ? { terminal } : {}) }
+  const recordedTerminal = TERMINAL_EVENTS.includes(envelope.event)
+  const terminal = recordedTerminal ? terminalFacts({ value: envelope.terminal }) : undefined
+  let card: Record<string, unknown> = {
+    ...session, ...activity, ...(terminal || recordedTerminal ? { terminal: terminal ?? {} } : {}),
+  }
 
   if (agentId) {
     const clears = found.attend?.clear?.some(prefix => NOTIFICATION.startsWith(prefix))

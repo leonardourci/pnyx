@@ -10,6 +10,8 @@ import {
   type Link,
   type SourceRef,
 } from './model.ts'
+import { applyAttachment, observeSession, sessionId } from './tasks.ts'
+import { applyHydra, refreshTasks } from './hydra.ts'
 
 export function emptyBoard(): BoardState {
   return { v: EVENT_VERSION, seq: 0, cards: {}, keys: {}, eventIds: {}, undone: {} }
@@ -40,7 +42,7 @@ export function columnFor({ card }: { card: Card }): Column {
     return 'needs_you'
   }
 
-  if (card.attention.length > 0) {
+  if (card.attention.some(a => a.kind !== 'idle')) {
     return 'needs_you'
   }
 
@@ -135,6 +137,18 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
   state.seq = event.seq
   state.eventIds[event.id] = event.seq
 
+  if (applyHydra({ state, event })) {
+    if (event.undoes) {
+      state.undone[event.undoes] = event.id
+    }
+
+    return true
+  }
+
+  if (event.type === 'chat.message') {
+    return true
+  }
+
   if (event.type === 'board.view') {
     state.view = structuredClone(event.data.after)
     state.viewRevision = (state.viewRevision ?? 0) + 1
@@ -158,6 +172,8 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
       placed.updatedAt = event.at
     }
 
+    refreshTasks({ state })
+
     if (event.undoes) {
       state.undone[event.undoes] = event.id
     }
@@ -166,6 +182,34 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
   }
 
   let card = state.cards[event.cardId]
+
+  if (event.type === 'task.session') {
+    applyAttachment({ state, event })
+
+    if (event.undoes) {
+      state.undone[event.undoes] = event.id
+    }
+
+    const touched = [event.cardId, event.data.before, event.data.after]
+
+    for (const id of touched) {
+      const task = id && state.cards[id]
+
+      if (task) {
+        task.column = columnFor({ card: task })
+      }
+    }
+
+    refreshTasks({ state, ids: touched })
+
+    if (card && event.data.before !== card.id) {
+      card.revision++
+      card.updatedSeq = event.seq
+      card.updatedAt = event.at
+    }
+
+    return true
+  }
 
   if (event.type === 'card.pushed') {
     const { key, source, ...fields } = event.data
@@ -185,6 +229,7 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
         attention: [],
         links: [],
         sourceRefs: [],
+        ...(fields.agent && (!source || source.adapter === 'hooks') ? { automaticTask: true } : {}),
         column: 'workers_on_it',
         revision: 0,
         createdSeq: event.seq,
@@ -284,11 +329,43 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
       if (kind === 'context' && text.startsWith(SESSION_TITLE)) {
         offerTitle({ card, next: { from: 'session', text: text.slice(SESSION_TITLE.length) } })
       }
-    } else {
+    } else if (event.type === 'card.outcome') {
       if (event.data.after) {
         card.outcome = event.data.after
       } else {
         delete card.outcome
+      }
+
+      const before = event.data.before, after = event.data.after
+      const changed = before?.state !== after?.state || before?.note !== after?.note
+        || before?.closed !== after?.closed || before?.source !== after?.source
+      const manual = !after?.source && before?.source !== 'firstmate'
+        && !(!after && before?.source === 'hooks')
+
+      const undone = event.undoes ? card.statusLog?.findIndex(d => d.id === event.undoes) ?? -1 : -1
+
+      if (undone >= 0) {
+        if (card.status?.id === event.undoes) {
+          const previous = card.statusLog![undone - 1]
+
+          if (previous) {
+            card.status = previous
+          } else {
+            delete card.status
+          }
+        }
+      } else if (card.tracking && changed && manual) {
+        const declaration = {
+          id: event.id,
+          at: event.at,
+          actor: event.actor,
+          state: !event.data.after ? 'paused' as const
+            : event.data.after.state === 'failed' && !event.data.after.closed
+              ? 'blocked' as const : 'done' as const,
+          note: event.data.after?.note ?? 'Task outcome updated',
+        }
+        card.status = declaration
+        card.statusLog = [...(card.statusLog ?? []), declaration]
       }
     }
   }
@@ -297,7 +374,17 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
     state.undone[event.undoes] = event.id
   }
 
+  observeSession({ state, card, event })
   card.column = columnFor({ card })
+  const task = card.agent && state.sessions?.[sessionId({ agent: card.agent })]?.taskId
+  const worker = task && task !== card.id ? state.cards[task] : undefined
+
+  if (worker) {
+    worker.column = columnFor({ card: worker })
+  }
+
+  refreshTasks({ state, ids: [card.id, worker?.id] })
+
   card.revision += 1
 
   if (event.type === 'card.noted') {

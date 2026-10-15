@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { startServer } from '../src/server/server.ts'
 import { loadBoard, withWriter } from '../src/store/board-store.ts'
-import { decideLink, decidePush } from '../src/core/decide.ts'
+import { decideLink, decidePush, decideSession } from '../src/core/decide.ts'
 import { seedWebFixture } from './web-fixture.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
@@ -21,7 +21,7 @@ const server = await startServer({ board: 'default', homes: [fixture.nativeHome]
 const env = { ...process.env, CHROME_DEVTOOLS_AXI_SESSION: `pnyx-smoke-${process.pid}` }
 const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(home, 'evidence'); mkdirSync(evidence, { recursive: true })
 
-const browser = async ({ args = [] }: { args?: string[] } = {}) => {
+const browser = async ({ args }: { args: string[] }) => {
   const { stdout } = await exec('chrome-devtools-axi', args, { env, timeout: 45000, maxBuffer: 2 * 1024 * 1024 })
 
   if (/^error:/m.test(stdout)) {
@@ -58,7 +58,7 @@ const check = async ({ condition, label }: { condition: string; label: string })
 }
 
 const ref = async ({ role, name }: { role: string; name: string }) => {
-  const snapshot = await browser({ args: ['snapshot'] }); const line = snapshot.split('\n').find(l => l.includes(`${role} ${JSON.stringify(name)}`)); assert.ok(line, `missing ${role}: ${name}`)
+  const snapshot = await browser({ args: ['snapshot', '--full'] }); const line = snapshot.split('\n').find(l => l.includes(`${role} ${JSON.stringify(name)}`)); assert.ok(line, `missing ${role}: ${name}`)
 
   return '@' + /uid=([^ ]+)/.exec(line)![1]
 }
@@ -94,7 +94,7 @@ try {
   await screenshot({ name: 'board.png' })
   // "readable" is only in the card's transcript, so only the server's full-text search finds it.
   await browser({ args: ['fill', await ref({ role: 'searchbox', name: 'Find a card' }), 'readable'] })
-  await eventually({ condition: 'document.querySelectorAll("[data-card]").length === 1 && document.querySelector("[data-card]").textContent.includes("Shape the first working board")', label: 'the board search finds a card by its transcript' })
+  await eventually({ condition: 'document.querySelectorAll("[data-card]").length === 1 && document.querySelector("[data-card]").closest(".card").textContent.includes("Shape the first working board")', label: 'the board search finds a card by its transcript' })
   await screenshot({ name: 'board-search.png' })
   await browser({ args: ['press', 'Escape'] })
   await eventually({ condition: 'document.querySelectorAll("[data-card]").length === 6', label: 'clearing the search shows every card' })
@@ -117,7 +117,7 @@ try {
   await browser({ args: ['eval', '() => { const el = document.querySelector("[aria-label=\\"Resize Needs you column\\"]"); el.setPointerCapture = () => {}; el.dispatchEvent(new PointerEvent("pointerdown", { button: 0, pointerId: 7, clientX: 400, bubbles: true })); el.dispatchEvent(new PointerEvent("pointermove", { pointerId: 7, clientX: 0, bubbles: true })); el.dispatchEvent(new PointerEvent("pointerup", { pointerId: 7, bubbles: true })); return true; }'] })
   await oneEvent({ from, label: 'drag resize clamps to the column minimum' })
   await check({ condition: 'document.querySelector("[aria-label=\\"Resize Needs you column\\"]").getAttribute("aria-valuenow") === "240"', label: 'drag resize cannot pass the column minimum' })
-  await click({ role: 'button', name: 'Shape the first working board' }); await browser({ args: ['wait', 'Keep the conversation readable'] })
+  await click({ role: 'button', name: 'Open conversation for Shape the first working board' }); await browser({ args: ['wait', 'Keep the conversation readable'] })
   await check({ condition: 'document.title === "(2) Shape the first working board · Pnyx"', label: 'open card appears in tab title' })
   await check({ condition: 'parseFloat(getComputedStyle(document.querySelector(".detail")).minWidth) >= 320 && parseFloat(getComputedStyle(document.querySelector(".detail")).minHeight) >= 280', label: 'conversation panel keeps readable minimum dimensions' })
   await check({ condition: '!document.querySelector(".message.tool, .message.thinking") && document.querySelectorAll(".message.message p").length >= 3', label: 'Focus shows messages and hides traces' })
@@ -180,6 +180,18 @@ try {
   const report = ({ settings, provider = 'claude-code' }: { settings: Record<string, string>; provider?: string }) => withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
+      const task = w.state.cards[fixture.state.keys.layout!]!
+
+      if (task.agent && task.agent.provider !== provider) {
+        const detached = decideSession({
+          state: w.state,
+          ref: task.sessionIds![0]!,
+          task: null,
+          meta: { actor: 'fixture', at: '2026-10-14T16:30:00Z' },
+        })
+        assert.ok('event' in detached); w.append({ event: detached.event })
+      }
+
       const d = decidePush({ state: w.state, key: 'layout', input: { agent: { provider, sessionId: 'fixture-layout', transcriptPath: fixture.transcript }, settings }, meta: { actor: 'fixture', at: '2026-10-14T16:30:00Z' } })
       assert.ok('event' in d); w.append({ event: d.event })
     },
@@ -205,7 +217,9 @@ try {
   }
 
   report({ provider: 'codex', settings: { model: 'gpt-6-astra', approval: 'untrusted' } })
-  await browser({ args: ['wait', 'gpt-6.1-sol'] })
+  await eventually({ condition: 'document.querySelector(".detail-header").textContent.includes("Codex")', label: 'the replacement Codex session appears' })
+  await click({ role: 'button', name: 'Agent' })
+  await eventually({ condition: 'document.querySelectorAll(".control-row[aria-label=\'Model\'] button").length > 0', label: 'Codex model requests load for the new session' })
   await check({ condition: '[...document.querySelectorAll(".control-row[aria-label=\'Model\'] button, .control-row[aria-label=\'Approval policy\'] button")].every(b => !b.disabled && b.title.includes("request note"))', label: 'Codex model and approval options are requests to Firstmate' })
   await screenshot({ name: 'codex-firstmate-settings.png' })
   const sentBefore = readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8')
@@ -228,11 +242,15 @@ try {
   await check({ condition: '!!document.querySelector(".column-cards > .detail") && document.querySelector("textarea").value === "Keep this draft"', label: 'inline placement preserves drafts' })
   await screenshot({ name: 'inline.png' })
   await click({ role: 'button', name: 'Settings' }); await click({ role: 'combobox', name: 'Conversation placement' }); await click({ role: 'option', name: 'Right panel' }); await click({ role: 'button', name: 'Back to board' })
-  await click({ role: 'button', name: 'Close detail' }); await click({ role: 'button', name: '+ Add column' }); await browser({ args: ['fill', await ref({ role: 'textbox', name: 'New column name' }), 'Discard me'] }); await browser({ args: ['press', 'Escape'] })
-  await check({ condition: "!document.querySelector(\"[aria-label='New column name']\") && [...document.querySelectorAll(\"button\")].some(b => b.textContent === \"+ Add column\")", label: 'Escape dismisses the inline column form' })
-  await click({ role: 'button', name: '+ Add column' }); await browser({ args: ['fill', await ref({ role: 'textbox', name: 'New column name' }), 'Later'] }); await click({ role: 'button', name: 'Create column' }); await browser({ args: ['wait', 'Later'] })
-  assert.equal(loadBoard({ board: 'default' }).state.view?.customColumns.at(-1)?.title, 'Later')
-  await click({ role: 'button', name: 'Shape the first working board' }); await click({ role: 'button', name: 'Why here / move' }); await click({ role: 'combobox', name: 'Move card' }); await click({ role: 'option', name: 'Later' })
+  await click({ role: 'button', name: 'Close detail' }); await click({ role: 'button', name: '+ Add column' })
+  await eventually({ condition: 'document.activeElement.tagName === "INPUT" && document.activeElement.getAttribute("aria-label") === "Rename New column column"', label: 'real new column focuses its title' })
+  await browser({ args: ['fill', await ref({ role: 'textbox', name: 'Rename New column column' }), 'Discard me'] }); await browser({ args: ['press', 'Escape'] })
+  assert.equal(loadBoard({ board: 'default' }).state.board?.columns.at(-1)?.title, 'New column')
+  await click({ role: 'button', name: 'Delete New column column' }); await click({ role: 'button', name: 'Delete column' }); await browser({ args: ['wait', 'Column deleted'] })
+  await click({ role: 'button', name: '+ Add column' }); await browser({ args: ['fill', await ref({ role: 'textbox', name: 'Rename New column column' }), 'Later'] }); await click({ role: 'button', name: 'Save title' }); await browser({ args: ['wait', 'Later'] })
+  const later = loadBoard({ board: 'default' }).state.board?.columns.at(-1)
+  assert.equal(later?.title, 'Later')
+  await click({ role: 'button', name: 'Open conversation for Shape the first working board' }); await click({ role: 'button', name: 'Why here / move' }); await click({ role: 'combobox', name: 'Move card' }); await click({ role: 'option', name: 'Later' })
   await check({ condition: 'document.querySelector(".detail-content").textContent.includes("Pinned manually")', label: 'custom column move persists' })
   assert.equal(loadBoard({ board: 'default' }).state.cards[fixture.state.keys.layout!]!.attention.length, 1)
   await click({ role: 'button', name: 'Conversation' }); await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] }); await browser({ args: ['wait', 'Later'] })
@@ -246,7 +264,7 @@ try {
   // The viewport change reloads the tab, which restores the open page.
   await browser({ args: ['emulate', '--viewport', '1440x900x1'] }); await browser({ args: ['wait', 'History'] }); await click({ role: 'button', name: 'History' }); await browser({ args: ['fill', await ref({ role: 'searchbox', name: 'Search history' }), 'conversation readable'] }); await browser({ args: ['wait', 'Shape the first working board'] }); await screenshot({ name: 'history.png' }); await click({ role: 'button', name: 'Board' })
   await browser({ args: ['open', server.url] }); await browser({ args: ['wait', 'Later'] })
-  assert.equal(loadBoard({ board: 'default' }).state.view?.customColumns.length, 1)
+  assert.equal(loadBoard({ board: 'default' }).state.board?.columns.filter(c => c.id.startsWith('custom:')).length, 1)
   // Long unbroken metadata must reflow as the actual resize controls change size.
   const long = 'veryLongUnbrokenPathSegment'.repeat(8)
   const layoutMeta = { actor: 'fixture', at: '2026-10-14T11:00:00Z' }
@@ -281,7 +299,7 @@ try {
   await browser({ args: ['press', 'End'] }); await check({ condition: fits, label: 'tall cards only scroll vertically' })
   await resizeColumn({ key: 'End' }); await screenshot({ name: 'columns-wide.png' })
   await click({ role: 'button', name: 'Settings' }); await click({ role: 'combobox', name: 'Conversation placement' }); await click({ role: 'option', name: 'Inline with cards' }); await click({ role: 'button', name: 'Back to board' })
-  await click({ role: 'button', name: 'Check the empty-state experience' })
+  await click({ role: 'button', name: 'Open conversation for Check the empty-state experience' })
   await resizeColumn({ key: 'Home' }); await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === 340 && document.querySelector('.column-cards > .detail').getBoundingClientRect().width >= 320 && ${fits}`, label: 'inline detail keeps its readable minimum when the column is narrowed' })
   await resizeColumn({ key: 'End' }); await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === 640 && ${fits}`, label: 'inline detail respects wide column resize' })
   await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] }); await browser({ args: ['wait', 'The working board'] })
@@ -293,10 +311,14 @@ try {
   from = seq()
   await click({ role: 'button', name: 'Delete Later column' }); await screenshot({ name: 'column-delete.png' }); await click({ role: 'button', name: 'Delete column' }); await browser({ args: ['wait', 'Column deleted'] })
   await oneEvent({ from, label: 'deleting a column is one event' })
-  assert.equal(loadBoard({ board: 'default' }).state.view?.customColumns.length, 0)
-  assert.equal(loadBoard({ board: 'default' }).state.cards[fixture.state.keys.layout!]!.manualColumn, undefined)
+  assert.equal(loadBoard({ board: 'default' }).state.board?.columns.filter(c => c.id.startsWith('custom:')).length, 0)
+  const deleted = loadBoard({ board: 'default' }).state
+  const moved = deleted.cards[fixture.state.keys.layout!]!
+  assert.notEqual(moved.manualColumn, later!.id)
+  assert.ok(deleted.board?.columns.some(c => c.id === moved.column))
   await click({ role: 'button', name: 'Undo' }); await browser({ args: ['wait', 'Column and its cards restored.'] })
-  assert.equal(loadBoard({ board: 'default' }).state.cards[fixture.state.keys.layout!]!.manualColumn, loadBoard({ board: 'default' }).state.view?.customColumns[0]?.id)
+  const restored = loadBoard({ board: 'default' }).state
+  assert.equal(restored.cards[fixture.state.keys.layout!]!.manualColumn, later!.id)
   const consoleOutput = await browser({ args: ['console'] }); assert.doesNotMatch(consoleOutput, /(?:TypeError|ReferenceError|Uncaught)/)
   process.stdout.write(`Browser smoke passed; screenshots: ${evidence}\n`)
 } finally {

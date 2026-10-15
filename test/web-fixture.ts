@@ -1,6 +1,7 @@
 import { cpSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
-import { decideLink, decideNote, decidePush, type Decision } from '../src/core/decide.ts'
+import { decideLink, decideNote, decidePush, decideView, type Decision } from '../src/core/decide.ts'
+import { hydraEvent } from '../src/core/hydra.ts'
 import type { Note } from '../src/core/model.ts'
 import { loadBoard, withWriter } from '../src/store/board-store.ts'
 
@@ -23,7 +24,11 @@ export function seedWebFixture({ home }: { home: string }) {
       }
 
       for (const { key, ...fields } of rows) {
-        append({ d: decidePush({ state: w.state, key, input: { ...fields, ...(key === 'layout' ? { source: { adapter: 'firstmate', instanceId: nativeHome, objectId: 'api-v2' }, agent: { provider: 'claude', sessionId: 'fixture-layout', transcriptPath: transcript } } : {}) }, meta }) })
+        const column = key === 'layout' || key === 'coverage' ? 'needs_you'
+          : key === 'review' ? 'parked' : key === 'docs' ? 'done' : 'workers_on_it'
+        const parentId = typeof fields.parent === 'string' ? w.state.keys[fields.parent] : undefined
+        append({ d: hydraEvent({ state: w.state, meta, cardId: `c${w.state.seq + 1}`, change: { type: 'task.created', data: { key, title: String(fields.title), column, ...(parentId ? { parentId } : {}) } } }) })
+        append({ d: decidePush({ state: w.state, key, input: { ...fields, ...(key === 'layout' ? { source: { adapter: 'firstmate', instanceId: nativeHome, objectId: 'api-v2' }, agent: { provider: 'claude-code', sessionId: 'fixture-layout', transcriptPath: transcript } } : {}) }, meta }) })
       }
 
       for (const [key, number, state] of [['layout', 42, 'open'], ['review', 321, 'open'], ['docs', 309, 'merged']] as const) {
@@ -35,6 +40,7 @@ export function seedWebFixture({ home }: { home: string }) {
 
       const url = 'https://linear.app/example/issue/UI-42'
       append({ d: decideLink({ state: w.state, ref: 'layout', url, link: { kind: 'linear', url, title: 'Design the agent board' }, meta }) })
+      append({ d: decideView({ state: w.state, patch: { panelPlacement: 'right' }, meta }) })
     },
   })
 

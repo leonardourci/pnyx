@@ -7,7 +7,7 @@ export const DEFAULT_VIEW: ViewPreferences = {
   fontSize: 14,
   chatFontSize: 16,
   codeFontSize: 13,
-  panelPlacement: 'right',
+  panelPlacement: 'inline',
   panelWidth: 440,
   composerHeight: 180,
   cardHeight: 250,
@@ -174,6 +174,7 @@ export function patchView({ state, input: rawInput }: {
   }
 
   const next = structuredClone(viewFor({ state }))
+  const boardColumnIds = state.board?.columns.map(c => c.id) ?? []
 
   for (const [key, value] of Object.entries(input).sort(([a], [b]) => a === 'customColumns' ? -1 : b === 'customColumns' ? 1 : a.localeCompare(b))) {
     switch (key) {
@@ -268,7 +269,7 @@ export function patchView({ state, input: rawInput }: {
             return invalid({ detail: id })
           }
 
-          if (key === 'columnWidths' && ![...COLUMNS, ...next.customColumns.map(c => c.id)].includes(id as never)) {
+          if (key === 'columnWidths' && ![...COLUMNS, ...boardColumnIds, ...next.customColumns.map(c => c.id)].includes(id as never)) {
             return invalid({ detail: id })
           }
 
@@ -328,9 +329,9 @@ export function patchView({ state, input: rawInput }: {
           return { id: c.id as `custom:${string}`, title: c.title.trim() }
         })
 
-        // A deleted column's cards return to automatic placement (see decideView); its width goes.
+        // Legacy view edits leave board-owned column widths intact.
         for (const id of Object.keys(next.columnWidths)) {
-          if (id.startsWith('custom:') && !ids.has(id)) {
+          if (id.startsWith('custom:') && !ids.has(id) && !boardColumnIds.includes(id as `custom:${string}`)) {
             delete next.columnWidths[id]
           }
         }

@@ -134,6 +134,31 @@ export function eventText({ event }: { event: BoardEvent }): string {
   const parts: (string | undefined)[] = [event.reason]
 
   switch (event.type) {
+    case 'chat.message':
+      parts.push(event.data.text)
+      break
+    case 'task.created':
+      parts.push(event.data.title)
+      break
+    case 'task.declared':
+      parts.push(event.data.state, event.data.note, event.data.raw)
+      break
+    case 'task.mirrored':
+      parts.push(
+        event.data.status,
+        JSON.stringify(event.data.meta),
+        JSON.stringify(event.data.backlog),
+      )
+      break
+    case 'hydra.message':
+      parts.push(event.data.text)
+      break
+    case 'board.configured':
+      parts.push(event.data.name, event.data.hydra.name)
+      break
+    case 'board.columns':
+      parts.push(...event.data.columns.map(c => c.title))
+      break
     case 'card.pushed': {
       const { data } = event
       const changed = ({ field }: { field: string }) => !data.before || field in data.before

@@ -30,6 +30,8 @@ import {
 import { TERMINAL_FIELDS } from './route.ts'
 import { DEFAULT_VIEW, patchView, viewFor } from './view.ts'
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from './reducer.ts'
+import { findSession } from './tasks.ts'
+import { boardConfig, hydraEvent } from './hydra.ts'
 
 export interface Meta {
   at: string
@@ -102,9 +104,10 @@ function decided({ state, meta, event }: {
 
   checkRevision({ card: state.cards[event.cardId], ifRevision: meta.ifRevision })
   const before = strip({ card: state.cards[event.cardId] })
-  const after = strip({ card: reduce({ state, event }).cards[event.cardId] })
+  const reduced = reduce({ state, event })
+  const after = strip({ card: reduced.cards[event.cardId] })
 
-  return before && isDeepStrictEqual(before, after) ? { skipped: 'unchanged' } : { event }
+  return before && isDeepStrictEqual(before, after) && isDeepStrictEqual(state.sessions, reduced.sessions) ? { skipped: 'unchanged' } : { event }
 }
 
 function checkRevision({ card, ifRevision }: {
@@ -317,30 +320,28 @@ function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
   return value as TerminalFacts
 }
 
-// The key a hook session's observation (key `<harness>:<session>`) goes to: its own
-// once it has a card, else the card it joined while that card's agent is still this
-// session (a superseded session reports to its own card), else the one card whose
-// source assigned the session's working folder, such as the Firstmate task running
-// there. A card that already holds a session passes to a new session only in the
-// card's own Paseo terminal, and only to an interactive one (it has a tty) once the
-// card's session ended, on the same tty (/clear, /new), or after the source
-// recorded a new terminal for a respawn; a headless run in a Paseo terminal (no
-// tty), even on a card with no session yet, or a session in another or an unknown
-// terminal, keeps its own card and never takes over the task's agent, terminal or
-// reply route. A card with a recorded Paseo terminal takes, and keeps, only events
-// from that terminal, which hooks record on every event; a session it took that
-// shows another terminal reports to its own card. One with none takes any session
-// but a headless run in Paseo. probed says the hook looked for the session's tty,
-// which it does only when a session starts or takes a prompt. When several cards
-// remain, the one launched in the session's own terminal wins; otherwise they stay
-// ambiguous and the session keeps its own card.
-export function joinedKey({ state, key, folder, terminal, probed }: {
+// Explicit attachments survive folder changes; Firstmate joins also honor its recorded terminal.
+export function joinedKey({ state, key, folder, terminal, probed = false }: {
   state: BoardState
   key: string
   folder: string | undefined
   terminal?: TerminalFacts
-  probed: boolean
+  probed?: boolean
 }): string {
+  const recorded = Object.values(state.sessions ?? {}).find(s => s.sourceRefs.some(r =>
+    r.adapter === 'hooks' && `${r.instanceId}:${r.objectId}` === key))
+
+  if (recorded) {
+    const task = recorded.taskId ? state.cards[recorded.taskId] : undefined
+    const managed = task?.sourceRefs.some(r => r.adapter === 'firstmate')
+
+    const matchesTerminal = !task?.terminal?.paseoTerminal
+      || task.terminal.paseoTerminal === terminal?.paseoTerminal
+
+    return task && (!managed || matchesTerminal)
+      ? task.key : key
+  }
+
   if (key in state.keys) {
     return key
   }
@@ -359,12 +360,11 @@ export function joinedKey({ state, key, folder, terminal, probed }: {
       : key
   }
 
-  if (!folder) {
+  if (!folder || (probed && !terminal?.tty)) {
     return key
   }
 
   const tty = terminal?.tty
-  const headless = probed && !tty
   const ownTerminal = ({ card: c }: { card: Card }) =>
     !!session && c.terminal?.paseoTerminal === session
   const succeeds = ({ card: c }: { card: Card }) => !!tty
@@ -372,10 +372,51 @@ export function joinedKey({ state, key, folder, terminal, probed }: {
   const matches = Object.values(state.cards).filter(c => c.folder === folder
     && (c.agent
       ? ownTerminal({ card: c }) && succeeds({ card: c })
-      : c.terminal?.paseoTerminal ? ownTerminal({ card: c }) && !headless : !session || !headless))
+      : !c.terminal?.paseoTerminal || ownTerminal({ card: c })))
   const own = matches.filter(card => ownTerminal({ card }))
 
   return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key
+}
+
+export function decideSession({ state, ref, task, meta }: {
+  state: BoardState
+  ref: string
+  task: string | null
+  meta: Meta
+}): Decision {
+  if (meta.id && meta.id in state.eventIds) {
+    return { skipped: 'duplicate' }
+  }
+
+  const session = findSession({ state, ref })
+  const target = task === null ? null : findCard({ state, ref: task })
+  const current = session.taskId ? state.cards[session.taskId] : state.cards[session.originCardId]
+  const card = target ?? current!
+  checkRevision({ card, ifRevision: meta.ifRevision })
+
+  if (target?.sessionIds?.some(id => id !== session.id)) {
+    throw new BoardError({ message: `task ${target.id} already has an attached agent; detach it first`, code: 'SESSION_CONFLICT' })
+  }
+
+  if (target && state.board?.hydra.session === session.id) {
+    throw new BoardError({ message: 'Hydra cannot also be a task worker', code: 'CONFLICT' })
+  }
+
+  if (target && !session.terminal?.tty) {
+    throw new BoardError({ message: 'A background session has no interactive terminal and cannot be attached to a task', code: 'NO_TERMINAL' })
+  }
+
+  if (session.taskId === (target?.id ?? null)) {
+    return { skipped: 'unchanged' }
+  }
+
+  return {
+    event: {
+      ...base({ state, meta, cardId: card.id }),
+      type: 'task.session',
+      data: { session: session.id, before: session.taskId, after: target?.id ?? null },
+    },
+  }
 }
 
 // Upserts the card with this key. `input` is the untrusted card JSON; `parent`
@@ -465,6 +506,15 @@ export function decidePush({ state, key, input: rawInput, meta }: {
       throw invalid({ message: `parent ${parent.id} would make a cycle` })
     }
 
+    const hasChildren = Object.values(state.cards).some(c => c.parentId === cardId)
+
+    const declared = state.configured || state.cards[cardId]?.tracking || parent.tracking
+    const hookSession = asRecord({ value: input.source })?.adapter === 'hooks' && input.agent
+
+    if (declared && !hookSession && (parent.parentId || hasChildren)) {
+      throw invalid({ message: 'subtasks have one level; a subtask cannot have children' })
+    }
+
     fields.parentId = parent.id
   }
 
@@ -506,8 +556,8 @@ function pushedValue({ card, field }: { card: Card; field: string }): unknown {
 }
 
 function checkColumn({ state, column }: { state: BoardState; column: Column | null }): void {
-  if (column?.startsWith('custom:') && !viewFor({ state }).customColumns.some(c => c.id === column)) {
-    throw invalid({ message: 'unknown custom column' })
+  if (column && !boardConfig({ state }).columns.some(c => c.id === column)) {
+    throw invalid({ message: `unknown board column: ${column}` })
   }
 }
 
@@ -737,8 +787,12 @@ function afterValue({ target }: { target: BoardEvent }): unknown {
     return null
   }
 
-  if (target.type !== 'card.pushed') {
+  if (target.type !== 'card.pushed' && 'after' in target.data) {
     return target.data.after
+  }
+
+  if (target.type !== 'card.pushed') {
+    return null
   }
 
   const after = target.data as unknown as Record<string, unknown>
@@ -759,6 +813,47 @@ export function decideUndo({ state, target, meta }: {
   target: BoardEvent
   meta: Meta
 }): Decision {
+  if (target.type === 'board.columns') {
+    const unchanged = isDeepStrictEqual(boardConfig({ state }).columns, target.data.columns)
+
+    if (!target.data.before || state.undone[target.id] || !unchanged) {
+      throw new BoardError({ message: 'columns changed since this event', code: 'CONFLICT' })
+    }
+
+    const pins = Object.entries(target.data.placements ?? {})
+    const placements = Object.fromEntries(pins.map(([id, pin]) => {
+      const card = state.cards[id]
+
+      if (!card || (card.manualColumn ?? null) !== pin.after) {
+        throw new BoardError({ message: `task ${id} moved after the column edit`, code: 'CONFLICT' })
+      }
+
+      return [id, { before: pin.after, after: pin.before }]
+    }))
+    const decision = hydraEvent({ state, meta, cardId: '$board', change: { type: 'board.columns', data: { columns: target.data.before, before: target.data.columns, placements } } })
+
+    return 'event' in decision ? { event: { ...decision.event, undoes: target.id } } : decision
+  }
+
+  if (['board.configured', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message'].includes(target.type)) {
+    throw notUndoable({ message: `${target.id} records durable work history; append a correction instead` })
+  }
+
+  if (target.type === 'task.session') {
+    const session = findSession({ state, ref: target.data.session })
+
+    if (state.undone[target.id] || session.taskId !== target.data.after) {
+      throw new BoardError({ message: 'session attachment changed since this event', code: 'CONFLICT' })
+    }
+
+    checkRevision({ card: findCard({ state, ref: target.cardId }), ifRevision: meta.ifRevision })
+    const decision = decideSession({
+      state, ref: session.id, task: target.data.before, meta: { ...meta, ifRevision: undefined },
+    })
+
+    return 'event' in decision ? { event: { ...decision.event, undoes: target.id } } : decision
+  }
+
   if (target.type === 'board.view') {
     if (
       state.undone[target.id]
@@ -893,6 +988,10 @@ export function decideUndo({ state, target, meta }: {
     return decided({ state, meta, event: { ...head, type: 'card.linked', data } })
   }
 
+  if (target.type !== 'card.outcome') {
+    throw notUndoable({ message: `${target.id} cannot be undone` })
+  }
+
   return decided({
     state,
     meta,
@@ -938,12 +1037,15 @@ export function decideView({ state, patch, meta }: {
   }
 }
 
-// Cards pinned to a custom column the new view drops, returned to automatic placement.
+// Legacy view-column deletion must not remove pins owned by board columns.
 function removedColumnPlacements({ state, after }: {
   state: BoardState
   after: ViewPreferences
 }): NonNullable<ViewEvent['data']['placements']> {
-  const kept = new Set<Column>(after.customColumns.map(c => c.id))
+  const kept = new Set<Column>([
+    ...after.customColumns.map(c => c.id),
+    ...(state.board?.columns.map(c => c.id) ?? []),
+  ])
 
   return Object.values(state.cards)
     .filter(c => c.manualColumn?.startsWith('custom:') && !kept.has(c.manualColumn))

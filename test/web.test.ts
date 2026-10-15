@@ -7,7 +7,7 @@ import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decis
 import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
 import { BoardError, COLUMNS, type BoardEvent, type BoardState } from '../src/core/model.ts'
 import { clampViewSize, patchView, traces, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
-import { agentActivity, columnsFor, filterCards, findBoxCards, focusedActivity, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, visibleParent } from '../web/src/board/view.ts'
+import { agentActivity, columnsFor, filterCards, findBoxCards, focusedActivity, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, taskLabel, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 import { observe } from '../src/integrations/hooks/observe.ts'
@@ -26,6 +26,59 @@ const event = ({ d }: { d: Decision }): BoardEvent => {
 
 const push = ({ state, key, fields }: { state: BoardState; key: string; fields: unknown }) =>
   reduce({ state, event: event({ d: decidePush({ state, key, input: fields, meta }) }) })
+
+test('the task board and its semantic matches exclude ad-hoc sessions', () => {
+  let state = push({ state: emptyBoard(), key: 'work', fields: { title: 'Shared work', attention: [{ key: 'task-question', kind: 'question', blocking: true }] } })
+
+  for (const key of ['interactive', 'background']) {
+    state = push({
+      state,
+      key,
+      fields: {
+        title: 'Shared run',
+        agent: { provider: 'claude-code', sessionId: key },
+        ...(key === 'interactive' ? { terminal: { tty: '/dev/ttys123' } } : {}),
+        attention: [{ key: 'hook:question', kind: 'question', blocking: true }],
+      },
+    })
+  }
+
+  const visible = filterCards({ state, workspace: '', tag: '', query: 'Shared' })
+  assert.deepEqual(visible.map(c => c.key), ['work'])
+  assert.deepEqual(findBoxCards({
+    state,
+    workspace: '',
+    tag: '',
+    query: 'Shared',
+    meaning: [state.keys.interactive!, state.keys.background!],
+  }).map(c => c.key), ['work'])
+  assert.equal(pageTitle({ page: 'board', cards: state.cards }), '(1) Board · Pnyx')
+  assert.ok(state.cards[state.keys.background!])
+})
+
+test('task labels retain legacy source status instead of claiming every tracked task is parked', () => {
+  const state = push({
+    state: emptyBoard(),
+    key: 'fm:legacy',
+    fields: {
+      title: 'Legacy work',
+      activity: 'working: step one',
+      source: { adapter: 'firstmate', instanceId: '/fixture', objectId: 'legacy' },
+    },
+  })
+  const card = state.cards.c1!
+  assert.equal(card.tracking, 'declared')
+  assert.equal(card.column, 'workers_on_it')
+  assert.equal(card.status, undefined)
+  assert.equal(taskLabel({ card, focus: true }), 'working: step one')
+  const pinned = reduce({ state, event: event({ d: decideMove({ state, ref: card.id, column: 'done', meta }) }) })
+  assert.equal(taskLabel({ card: pinned.cards.c1!, focus: true }), 'working: step one')
+  assert.equal(taskLabel({ card: { ...card, activity: undefined, sourceRefs: [] }, focus: true }), 'Parked')
+  assert.equal(taskLabel({
+    card: { ...card, status: { id: 'd1', at: meta.at, actor: 'test', state: 'needs_you', note: 'Review' } },
+    focus: true,
+  }), 'needs you: Review')
+})
 
 test('tab titles follow the view, selected card and current needs-you count', () => {
   for (const [page, label] of [['board', 'Board'], ['history', 'History'], ['settings', 'Settings']] as const) {
@@ -116,17 +169,9 @@ test('custom columns accept manual placement and return their cards to auto when
   assert.equal(state.cards.c1!.attention.length, 1)
   state = reduce({
     state,
-    event: event({
-      d: decideView({
-        state,
-        patch: {
-          customColumns: [],
-        },
-        meta,
-      }),
-    }),
+    event: event({ d: decideView({ state, patch: { customColumns: [] }, meta }) }),
   })
-  assert.throws(() => decideUndo({ state, target: toAuto, meta }), /unknown custom column/)
+  assert.throws(() => decideUndo({ state, target: toAuto, meta }), /unknown board column/)
 })
 
 test('filters do not expose excluded parent details, and links/slashes stay literal', () => {
@@ -353,14 +398,7 @@ test('deleting a populated column is atomic, replayable, undoable and guarded', 
   const later = reduce({ state, event: event({ d: decideMove({ state, ref: 'worker', column: 'done', meta }) }) })
   assert.throws(() => decideUndo({ state: later, target: deletion, meta }), /moved since/)
   const undo = apply({
-    d: decideUndo({
-      state,
-      target: deletion,
-      meta: {
-        ...meta,
-        ifRevision: 2,
-      },
-    }),
+    d: decideUndo({ state, target: deletion, meta: { ...meta, ifRevision: 2 } }),
   })
   assert.deepEqual(viewFor({ state }), viewFor({ state: before }))
   assert.equal(state.cards.c1!.manualColumn, 'custom:later')

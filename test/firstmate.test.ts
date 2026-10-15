@@ -96,7 +96,12 @@ test('decisions, answers and reports in a status log become notes', () => {
 })
 
 test('backlog rows give titles, repo tags and merged state', () => {
-  const rows = parseBacklog({ text: readFileSync(join(FIXTURE, 'data', 'backlog.md'), 'utf8') })
+  const parsed = parseBacklog({ text: readFileSync(join(FIXTURE, 'data', 'backlog.md'), 'utf8') })
+  const rows = new Map([...parsed].map(([id, { raw, section, ...fields }]) => {
+    assert.ok(raw.includes(id) && section)
+
+    return [id, fields]
+  }))
   assert.deepEqual(rows.get('api-v2'), { title: 'app: v2 API with (optional) pagination', repo: 'app', done: false, merged: false })
   assert.deepEqual(rows.get('release-1'), {
     title: 'app: cut release 1 https://github.com/example/app/pull/40',
@@ -108,17 +113,18 @@ test('backlog rows give titles, repo tags and merged state', () => {
   assert.deepEqual(rows.get('docs-scout'), { title: 'app: survey the docs', repo: 'docs', done: true, merged: false })
 })
 
-test("sync turns each task into a card under the home's card", () => {
+test('sync mirrors Firstmate tasks under its board Hydra', () => {
   const { home } = copyFixture()
   const result = syncHome({ board: 'default', home, at: '2026-10-13T10:00:00.000Z' })
-  assert.equal(result.tasks, 4)
+  assert.equal(result.tasks, 5)
 
   const parent = cardOf({ home })
   assert.equal(parent.tags[0], 'firstmate')
   const api = cardOf({ home, task: 'api-v2' })
   assert.equal(api.title, 'app: v2 API with (optional) pagination')
   assert.deepEqual(api.tags, ['app'])
-  assert.equal(api.parentId, parent.id)
+  assert.equal(api.parentId, undefined)
+  assert.equal(parent.hidden, true)
   assert.deepEqual(
     api.attention.map(a => [a.kind, a.key, a.blocking]),
     [
@@ -148,7 +154,38 @@ test("sync turns each task into a card under the home's card", () => {
   assert.deepEqual(release.links.map(l => [l.number, l.state]), [[40, 'merged']])
   assert.equal(release.column, 'done')
 
-  assert.deepEqual(syncHome({ board: 'default', home }), { tasks: 4, appended: 0 })
+  assert.deepEqual(syncHome({ board: 'default', home }), { tasks: 5, appended: 0 })
+})
+
+test('a session Hydra keeps its Firstmate home, and another home is named when ignored', () => {
+  const { home, env } = copyFixture()
+  syncHome({ board: 'default', home })
+  const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
+  const input = join(home, '..', 'hydra.json')
+  writeFileSync(input, JSON.stringify({ agent: { provider: 'claude-code', sessionId: 'fm-hydra' }, terminal: { tty: '/dev/ttys126', pid: '126' } }))
+  run({ args: ['push', '--key', 'fm-hydra', '--file', input] })
+  run({ args: ['board', 'set', '--session', 'claude-code:fm-hydra'] })
+  const hydra = loadBoard({ board: 'default' }).state.board!.hydra
+  assert.equal(hydra.kind, 'firstmate')
+  assert.equal(hydra.home, home)
+  assert.equal(hydra.session, 'claude-code:fm-hydra')
+  assert.equal(syncHome({ board: 'default', home }).ignored, undefined)
+
+  const other = join(home, '..', 'other-home')
+  cpSync(FIXTURE, other, { recursive: true })
+  const out = run({ args: ['firstmate', 'sync', '--home', home, '--home', other] })
+  assert.match(out, new RegExp(`Ignored ${resolveHome({ path: other })}`))
+  assert.match(out, new RegExp(`${home},5,0$`, 'm'))
+})
+
+test('a column edit before sync does not stand in for the Firstmate Hydra', () => {
+  const { home, env } = copyFixture()
+  execFileSync(process.execPath, [BIN, 'column', 'rename', 'needs_you', '--title', 'Your turn'], { env })
+  assert.equal(syncHome({ board: 'default', home }).tasks, 5)
+  const board = loadBoard({ board: 'default' }).state.board!
+  assert.equal(board.hydra.home, home)
+  assert.equal(board.columns[0]!.title, 'Your turn')
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'done')
 })
 
 test('a failed task closed in the backlog lands in Done as a closed failure', () => {
@@ -185,7 +222,7 @@ test('a blocked task closed in the backlog leaves Needs you', () => {
   assert.equal(hotfix.column, 'done')
 })
 
-test('a done: status line alone is not completion', () => {
+test('a done declaration moves Hydra work to Done without closing its backlog record', () => {
   const { home } = copyFixture()
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
@@ -195,7 +232,7 @@ test('a done: status line alone is not completion', () => {
   writeFileSync(backlog, rows.join('\n'))
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home, task: 'docs-scout' }).outcome, undefined)
-  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'workers_on_it')
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'done')
 })
 
 test('sync never overwrites a link state another source refreshed', () => {
@@ -243,7 +280,7 @@ test('watch reconciles on start and folds each change', async () => {
   })
 
   try {
-    assert.equal(results[0]!.tasks, 4)
+    assert.equal(results[0]!.tasks, 5)
     const changed = new Promise<void>(resolve => (wake = resolve))
     appendFileSync(join(home, 'state', 'api-v2.status'), 'resolved [key=api-shape]: REST\n')
     await Promise.race([changed, new Promise((_, reject) => setTimeout(() => reject(new Error('no sync after change')), 5000))])
@@ -254,7 +291,7 @@ test('watch reconciles on start and folds each change', async () => {
 })
 
 function cli({ env }: { env: NodeJS.ProcessEnv }) {
-  const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
+  const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
   const fails = ({ args, code }: { args: string[]; code: string }) =>
     assert.throws(() => run({ args: [...args] }), (error: { stdout: string }) => {
       assert.match(error.stdout, new RegExp(`^code: ${code}$`, 'm'))
@@ -268,8 +305,8 @@ function cli({ env }: { env: NodeJS.ProcessEnv }) {
 test('firstmate sync through the CLI', () => {
   const { home, env } = copyFixture()
   const { run, fails } = cli({ env })
-  assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,4,13$/m)
-  assert.match(run({ }), /needs_you: 2/)
+  assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,5,[1-9]\d*$/m)
+  assert.match(run({ args: [] }), /needs_you: 2/)
   fails({ args: ['firstmate', 'sync'], code: 'VALIDATION_ERROR' })
   fails({ args: ['firstmate', 'sync', '--home', join(home, 'data')], code: 'VALIDATION_ERROR' })
 })
@@ -329,8 +366,8 @@ test("a task's decisions, reports and Captain's intent show on its card", () => 
   assert.match(run({ args: ['card', cardOf({ home, task: 'release-1' }).id] }), /^ {2}summary\[1\]\{at,source,text\}:\n {4}"2026-10-13T14:06:40.000Z",firstmate,"done: PR https:\/\/github.com\/example\/app\/pull\/40 checks green"$/m)
   // New lines add notes; a re-sync adds nothing twice.
   appendFileSync(join(home, 'state', 'api-v2.status'), 'resolved [key=api-shape] [at=1791900700]: REST\n')
-  assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,4,2$/m)
-  assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,4,0$/m)
+  assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,5,3$/m)
+  assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,5,0$/m)
   assert.match(run({ args: ['search', 'partners', 'page'] }), /^ {6}note,"[^"]+","…Ship the v2 API so \[partners\] can \[page\]/m)
   fails({ args: ['undo', readEvents({ board: 'default' }).find(e => e.type === 'card.noted')!.id], code: 'NOT_UNDOABLE' })
 })
@@ -536,7 +573,9 @@ test('a session joins the task launched in its worktree; only a session in its t
   meta({ task: 'wt-b', terminal: 'term-b' })
   syncHome({ board: 'default', home })
   assert.deepEqual(cardOf({ home: home, task: 'wt-b' }).terminal, { paseoTerminal: 'term-b' })
-  hook({ id: 'h1', session: 's-b', paseoTerminal: 'term-b' })
+  const transcript = join(worktree, 's-b.jsonl')
+  writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Retain before clear' }] } }) + '\n')
+  hook({ id: 'h1', session: 's-b', paseoTerminal: 'term-b', extra: { transcript_path: transcript } })
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b')
   assert.equal(cardOf({ home: home, task: 'wt-b' }).terminal?.pid, '4242')
@@ -566,6 +605,13 @@ test('a session joins the task launched in its worktree; only a session in its t
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b2')
   assert.equal(own({ session: 's-b2' }), false)
+  const continued = loadBoard({ board: 'default' }).state
+  assert.equal(continued.sessions?.['claude-code:s-b']?.taskId, null)
+  assert.equal(continued.sessions?.['claude-code:s-b2']?.taskId, cardOf({ home, task: 'wt-b' }).id)
+  assert.deepEqual(cardOf({ home, task: 'wt-b' }).sessionIds, ['claude-code:s-b2'])
+  rmSync(transcript)
+  assert.ok(readEvents({ board: 'default' }).some(e => e.type === 'chat.message'
+    && e.data.session === 'claude-code:s-b' && e.data.text === 'Retain before clear'))
 
   // The session it replaced reports to its own card from then on.
   hook({ id: 'h2s', session: 's-b', paseoTerminal: 'term-b' })
@@ -745,7 +791,7 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
   const meta = join(home, 'state', 'api-v2.meta')
   writeFileSync(meta, readFileSync(meta, 'utf8').replace(/^worktree=.*$/m, `worktree=${worktree}`))
   syncHome({ board: 'default', home })
-  spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-14T00:00:00Z', harness: 'claude', event: 'SessionStart', payload: { session_id: 'fm-s', cwd: worktree, model: 'claude-sonnet-5-5' } } })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-14T00:00:00Z', harness: 'claude', event: 'SessionStart', terminal: { tty: '/dev/ttys042', pid: '4242' }, payload: { session_id: 'fm-s', cwd: worktree, model: 'claude-sonnet-5-5' } } })
   syncHome({ board: 'default', home })
   const api = cardOf({ home: home, task: 'api-v2' })
   const { run } = cli({ env: env })
@@ -769,7 +815,7 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
   assert.equal(existsSync(join(home, 'sent.log')), false)
 
   // The worker's own report confirms the setting.
-  spoolWrite({ board: 'default', entry: { v: 1, id: 'h3', at: '2026-10-14T00:02:00Z', harness: 'claude', event: 'UserPromptSubmit', payload: { session_id: 'fm-s', cwd: worktree, prompt: 'x', permission_mode: 'acceptEdits' } } })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h3', at: '2026-10-14T00:02:00Z', harness: 'claude', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys042', pid: '4242' }, payload: { session_id: 'fm-s', cwd: worktree, prompt: 'x', permission_mode: 'acceptEdits' } } })
   syncHome({ board: 'default', home })
   assert.match(run({ args: ['agent', api.id, '--home', home] }), /mode,acceptEdits,next,yes/)
 
@@ -789,7 +835,7 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
   const codexTree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
   writeFileSync(fix, `${readFileSync(fix, 'utf8')}worktree=${codexTree}\n`)
   syncHome({ board: 'default', home })
-  spoolWrite({ board: 'default', entry: { v: 1, id: 'h4', at: '2026-10-14T00:00:00Z', harness: 'codex', event: 'SessionStart', payload: { session_id: 'cx-s', cwd: codexTree } } })
+  spoolWrite({ board: 'default', entry: { v: 1, id: 'h4', at: '2026-10-14T00:00:00Z', harness: 'codex', event: 'SessionStart', terminal: { tty: '/dev/ttys043', pid: '4343' }, payload: { session_id: 'cx-s', cwd: codexTree } } })
   syncHome({ board: 'default', home })
   const hotfix = cardOf({ home: home, task: 'hotfix-2' })
   assert.equal(hotfix.agent?.provider, 'codex')

@@ -6,8 +6,10 @@ import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
+import { InlineTitle } from '../components/ui/inline-title.tsx'
+import type { Command } from './connection.ts'
 import { Harness, SettingChips } from './agent-settings.tsx'
-import { agentActivity, focusedActivity, receiptLabel, safeLink, shownActivity, visibleParent } from './view.ts'
+import { agentActivity, receiptLabel, safeLink, taskLabel, visibleParent } from './view.ts'
 
 export function Links({ links }: { links: Link[] }) {
   return (
@@ -56,6 +58,12 @@ export function BoardCard({
   open,
   save,
   tabIndex,
+  command,
+  connected,
+  notify,
+  editingTitle,
+  titleFinished,
+  createTask,
 }: {
   card: CardData
   latest?: LatestMessage
@@ -66,6 +74,12 @@ export function BoardCard({
   open({ id }: { id: string }): void
   save({ patch }: { patch: unknown }): Promise<boolean>
   tabIndex: number
+  command: Command
+  connected: boolean
+  notify({ text }: { text: string }): void
+  editingTitle: boolean
+  titleFinished(): void
+  createTask({ column, parent }: { column: string; parent?: string }): void
 }) {
   const [height, setHeight] = useState<number | null>(null), parent = visibleParent({
     card,
@@ -75,17 +89,20 @@ export function BoardCard({
 
   return (
     <article
-      className={`card ${selected ? 'selected' : ''} ${view.cardColors ? `accent-${card.column}` : ''}`}
+      className={`card ${card.parentId ? 'subtask' : ''} ${selected ? 'selected' : ''} ${view.cardColors ? `accent-${card.column}` : ''}`}
       style={{
         height: height ?? view.cardHeights[card.id] ?? view.cardHeight,
         minWidth: VIEW_SIZE_LIMITS.cardWidth.min,
         minHeight: VIEW_SIZE_LIMITS.cardHeight.min,
       }}
-      // Anywhere on the card opens it, except its own controls and a text selection.
       onClick={e => {
         if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, [role="separator"]') && !window.getSelection()?.toString()) {
           open({ id: card.id })
         }
+      }}
+      draggable={connected}
+      onDragStart={e => {
+        e.stopPropagation(); e.dataTransfer.setData('application/pnyx-task', card.id)
       }}
     >
       <div className="row between">
@@ -94,14 +111,21 @@ export function BoardCard({
       </div>
       <SettingChips settings={card.settings} />
       <div className="card-content">
+        <InlineTitle
+          value={card.title}
+          label={`Rename task ${card.title}`}
+          startEditing={editingTitle}
+          save={({ title }) => command({ name: 'task', args: ['rename', card.id, `--title=${title}`, '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] }).then(() => titleFinished())}
+        />
         <Button
           className="card-open"
+          aria-label={`Open conversation for ${card.title}`}
           onClick={() => open({ id: card.id })}
           data-card={card.id}
           data-key-scope="board"
           tabIndex={tabIndex}
         >
-          <h3>{card.title}</h3>
+          <span>Open conversation</span>
         </Button>
         {parent && (
           <Button className="parent" onClick={() => open({ id: parent.id })}>
@@ -122,11 +146,35 @@ export function BoardCard({
             child tasks
           </span>
         )}
+        <div className="row wrap task-actions">
+          <Button
+            disabled={!connected}
+            onClick={() => void command({ name: 'hydra', args: ['send', '--task', card.id, '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Task posted in Hydra’s chat' }))
+              .catch(e => notify({ text: e.message }))}
+          >Send to Hydra
+          </Button>
+          <Button
+            disabled={!connected}
+            onClick={() => void command({ name: 'hydra', args: ['send', '--task', card.id, '--action', 'worker', '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Worker request posted in Hydra’s chat' }))
+              .catch(e => notify({ text: e.message }))}
+          >Create a worker
+          </Button>
+          {!card.parentId && (
+            <Button
+              disabled={!connected}
+              onClick={() => createTask({ column: card.column, parent: card.id })}
+            >+ Subtask
+            </Button>
+          )}
+        </div>
       </div>
       <div className="card-footer">
-        <span className={activity ? `agent-activity activity-${activity}` : undefined}>
+        <span
+          className={activity ? `agent-activity activity-${activity}` : undefined}
+          title={card.status?.note}
+        >
           {activity ? <i aria-hidden="true" /> : <Icon name={card.column} size={13} />}
-          {focusedActivity({ activity: shownActivity({ card }), focus: traces({ view, card: card.id }).focus }) ?? (card.outcome ? card.outcome.state : 'Activity unknown')}
+          {taskLabel({ card, focus: traces({ view, card: card.id }).focus })}
         </span>
         {card.manualColumn ? (
           <span title="Manual placement">
