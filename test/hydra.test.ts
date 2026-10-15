@@ -256,7 +256,7 @@ test('Hydra’s chat drained from turn-end hooks stays in history after its tran
   }
 })
 
-test('role columns record a declaration, column edits keep the hydraId unconfigured and outcome undo restores status', () => {
+test('role columns record a declaration, column edits keep the Hydra unconfigured and outcome undo restores status', () => {
   const f = fixture({ hydraId: 'work' })
 
   try {
@@ -339,7 +339,7 @@ test('detach after new transcript settings, strict column ids and compact task o
 
   try {
     f.run({ args: ['hydra', 'create', 'default'] })
-    assert.match(f.run({ args: ['task', 'list'] }), /none: no tasks on this hydraId/)
+    assert.match(f.run({ args: ['task', 'list'] }), /none: no tasks on this Hydra/)
     assert.match(f.run({ args: ['hydra', 'messages'] }), /none: no messages after seq 0/)
     f.run({ args: ['task', 'create', '--title', 'Ship it', '--key', 'ship'] })
     const transcript = join(f.root, 'detach.jsonl')
@@ -375,7 +375,7 @@ test('detach after new transcript settings, strict column ids and compact task o
   }
 })
 
-test('hydraId folders and the files holding copied chat stay private to the owner', () => {
+test('Hydra folders and the files holding copied chat stay private to the owner', () => {
   const f = fixture()
 
   try {
@@ -429,7 +429,7 @@ test('search keeps one copy of each archived native line, long or repeated', () 
   }
 })
 
-test('saving view preferences keeps cards in hydraId columns', () => {
+test('saving view preferences keeps cards in Hydra columns', () => {
   const f = fixture()
 
   try {

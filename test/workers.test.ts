@@ -71,7 +71,7 @@ test('kinds configure the agent each kind launches on and validate their flags',
   f.run({ args: ['kind', 'set', 'review', '--quota', 'off'] })
   assert.deepEqual(f.state().config!.agents!.review, { harness: 'codex', model: 'gpt-5.5', effort: 'high' })
   assert.match(f.run({ args: ['kind', 'set', 'review', '--effort', 'high'] }), /none: unchanged/)
-  assert.match(f.run({ args: ['history'] }), /hydraId\.agents/)
+  assert.match(f.run({ args: ['history'] }), /board\.agents/)
 })
 
 test('Hydra set --session self binds the session running in the caller\'s Paseo terminal', () => {

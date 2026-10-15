@@ -41,7 +41,7 @@ test('login service starts the same Hydra, survives exit and uninstalls through 
   assert.match(plist, /<string>serve<\/string><string>--hydra<\/string><string>default<\/string>/)
   assert.match(plist, /49123/)
   assert.match(plist, /home &amp; space/)
-  assert.match(plist, /pnyx &amp; hydraId/)
+  assert.match(plist, /pnyx &amp; Hydra/)
   assert.equal(calls.at(-1)?.[0], 'bootstrap')
   setupService(options)
   assert.deepEqual(calls.slice(-3).map(args => args[0]), ['bootout', 'print', 'bootstrap'])

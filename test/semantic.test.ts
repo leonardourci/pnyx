@@ -300,7 +300,7 @@ test('a changed model drops the vectors and embeds again; the worker answers eve
     assert.match(run({ args: ['oracle', 'status'] }), /^vectors: 0 of \d+ entries embedded$/m)
     run({ args: ['oracle', 'orders'] })
     await embedded({ run })
-    const other = await run$(process.execPath, [BIN, 'search', 'anything', '--hydra', 'second'], { env })
+    const other = await run$(process.execPath, [BIN, 'oracle', 'anything', '--hydra', 'second'], { env })
     assert.match(other.stdout, /^results: "none: /m)
   } finally {
     stop()
