@@ -17,16 +17,16 @@ import {
   writeSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import { BoardError, EVENT_TYPES, EVENT_VERSION, type BoardEvent, type BoardState } from '../core/model.ts'
-import { emptyBoard, reduce, replay } from '../core/reducer.ts'
-import { boardDir } from './paths.ts'
+import { HydraError, EVENT_TYPES, EVENT_VERSION, type HydraEvent, type HydraState } from '../core/model.ts'
+import { emptyHydra, reduce, replay } from '../core/reducer.ts'
+import { hydraDir } from './paths.ts'
 
-export { boardDir, pnyxHome } from './paths.ts'
+export { hydraDir, pnyxHome } from './paths.ts'
 
 const LOCK_TIMEOUT_MS = 5000
 const STALE_EMPTY_LOCK_MS = 10_000
 
-// Board files hold copied transcript text, which is as private as the transcripts.
+// HydraSnapshot files hold copied transcript text, which is as private as the transcripts.
 export function privateDir({ dir }: { dir: string }): void {
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   chmodSync(dir, 0o700)
@@ -37,14 +37,14 @@ const snapshotPath = ({ dir }: { dir: string }) => join(dir, 'snapshot.json')
 export const spoolDir = ({ dir }: { dir: string }) => join(dir, 'spool')
 
 interface LogRead {
-  events: BoardEvent[]
+  events: HydraEvent[]
   // Byte offset just past the last complete line.
   end: number
   size: number
 }
 
 // Appended by repair after it closes a torn line with a newline. Readers skip the
-// line it names; it is not a board event and takes no sequence number.
+// line it names; it is not a Hydra event and takes no sequence number.
 interface RepairMarker {
   v: typeof EVENT_VERSION
   type: 'log.repaired'
@@ -68,8 +68,8 @@ function repairMarker({ value }: { value: unknown }): RepairMarker | undefined {
     : undefined
 }
 
-function corrupt({ offset }: { offset: number }): BoardError {
-  return new BoardError({
+function corrupt({ offset }: { offset: number }): HydraError {
+  return new HydraError({
     message: `events.jsonl is corrupt at byte ${offset}`,
     code: 'LOG_CORRUPT',
     help: [
@@ -78,8 +78,8 @@ function corrupt({ offset }: { offset: number }): BoardError {
   })
 }
 
-function toEvent({ event, offset }: { event: unknown; offset: number }): BoardEvent {
-  const e = event as Partial<BoardEvent> | undefined
+function toEvent({ event, offset }: { event: unknown; offset: number }): HydraEvent {
+  const e = event as Partial<HydraEvent> | undefined
 
   if (
     typeof e !== 'object' ||
@@ -87,16 +87,16 @@ function toEvent({ event, offset }: { event: unknown; offset: number }): BoardEv
     !Number.isInteger(e.seq) ||
     typeof e.id !== 'string' ||
     typeof e.cardId !== 'string' ||
-    !EVENT_TYPES.includes(e.type as BoardEvent['type'])
+    !EVENT_TYPES.includes(e.type as HydraEvent['type'])
   ) {
     throw corrupt({ offset })
   }
 
   if (e.v !== EVENT_VERSION) {
-    throw new BoardError({ message: `event at byte ${offset} has schema v${e.v}; this pnyx-axi reads v${EVENT_VERSION}`, code: 'UNSUPPORTED_VERSION' })
+    throw new HydraError({ message: `event at byte ${offset} has schema v${e.v}; this pnyx-axi reads v${EVENT_VERSION}`, code: 'UNSUPPORTED_VERSION' })
   }
 
-  return e as BoardEvent
+  return e as HydraEvent
 }
 
 // Reads complete lines from `from`. Bytes after the last newline are a torn tail
@@ -121,12 +121,12 @@ function readLog({ dir, from = 0 }: { dir: string; from?: number }): LogRead | n
     const buf = Buffer.alloc(size - from)
     readSync(fd, buf, 0, buf.length, from)
     const complete = buf.lastIndexOf(10) + 1
-    const events: BoardEvent[] = []
+    const events: HydraEvent[] = []
     let previous: {
       offset: number
       length: number
-      event?: BoardEvent
-      error?: BoardError
+      event?: HydraEvent
+      error?: HydraError
     } | undefined
 
     for (let start = 0; start < complete; ) {
@@ -167,7 +167,7 @@ function readLog({ dir, from = 0 }: { dir: string; from?: number }): LogRead | n
         previous.event = toEvent({ event: value, offset })
         events.push(previous.event)
       } catch (error) {
-        previous.error = error as BoardError
+        previous.error = error as HydraError
       }
     }
 
@@ -181,28 +181,28 @@ function readLog({ dir, from = 0 }: { dir: string; from?: number }): LogRead | n
   }
 }
 
-export function readEvents({ board }: { board: string }): BoardEvent[] {
-  return readLog({ dir: boardDir({ board }) })?.events ?? []
+export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
+  return readLog({ dir: hydraDir({ hydraId }) })?.events ?? []
 }
 
 // Complete events at or after byte `offset`, and the offset just past them.
 // Null when the log is now shorter than `offset`, so the reader must start over.
 export function readEventsFrom(
-  { board, offset }: { board: string; offset: number },
-): { events: BoardEvent[]; end: number } | null {
-  const log = readLog({ dir: boardDir({ board }), from: offset })
+  { hydraId, offset }: { hydraId: string; offset: number },
+): { events: HydraEvent[]; end: number } | null {
+  const log = readLog({ dir: hydraDir({ hydraId }), from: offset })
 
   return log && { events: log.events, end: log.end }
 }
 
 // Bumped when the reducer derives cards differently, so an older cache is replayed.
-const RULES = 7
+const RULES = 8
 
 interface Snapshot {
   v: typeof EVENT_VERSION
   rules?: number
   offset: number
-  state: BoardState
+  state: HydraState
 }
 
 function readSnapshot({ dir }: { dir: string }): Snapshot | null {
@@ -234,7 +234,7 @@ function writeDurably({ path, data, flag }: { path: string; data: string | Buffe
 
 function writeSnapshot({ dir, state, offset }: {
   dir: string
-  state: BoardState
+  state: HydraState
   offset: number
 }): void {
   const tmp = `${snapshotPath({ dir })}.tmp-${process.pid}`
@@ -242,22 +242,22 @@ function writeSnapshot({ dir, state, offset }: {
   renameSync(tmp, snapshotPath({ dir }))
 }
 
-export interface Board {
+export interface HydraSnapshot {
   dir: string
-  state: BoardState
+  state: HydraState
   offset: number
   tornBytes: number
 }
 
-export function loadBoard({ board }: { board: string }): Board {
-  const dir = boardDir({ board })
+export function loadHydra({ hydraId }: { hydraId: string }): HydraSnapshot {
+  const dir = hydraDir({ hydraId })
   const snap = readSnapshot({ dir })
   let log = snap ? readLog({ dir, from: snap.offset }) : null
-  let start = snap?.state ?? emptyBoard()
+  let start = snap?.state ?? emptyHydra()
 
   if (!log || (snap && log.events.length > 0 && log.events[0]!.seq !== snap.state.seq + 1)) {
     log = readLog({ dir }) as LogRead
-    start = emptyBoard()
+    start = emptyHydra()
   }
 
   return {
@@ -335,8 +335,8 @@ function acquireLock({ dir }: { dir: string }): () => void {
     }
 
     if (Date.now() > deadline) {
-      throw new BoardError({
-        message: 'board is locked by another pnyx-axi writer',
+      throw new HydraError({
+        message: 'Hydra is locked by another pnyx-axi writer',
         code: 'LOCKED',
         help: [
           `Retry, or remove ${path} and ${takeover} if no pnyx-axi process is running`,
@@ -349,27 +349,27 @@ function acquireLock({ dir }: { dir: string }): () => void {
 }
 
 export interface Writer {
-  readonly state: BoardState
+  readonly state: HydraState
   readonly dir: string
-  append({ event }: { event: BoardEvent }): void
+  append({ event }: { event: HydraEvent }): void
 }
 
-// Runs `fn` as the board's single writer. Each append is flushed to disk before
+// Runs `fn` as the Hydra's single writer. Each append is flushed to disk before
 // the state advances; the snapshot is replaced afterwards.
-export function withWriter<T>({ board, fn }: {
-  board: string
+export function withWriter<T>({ hydraId, fn }: {
+  hydraId: string
   fn: (
     { writer }: {
       writer: Writer
     },
   ) => T
 }): T {
-  const dir = boardDir({ board })
+  const dir = hydraDir({ hydraId })
   privateDir({ dir })
   const release = acquireLock({ dir })
 
   try {
-    let { state, offset } = loadTail({ board })
+    let { state, offset } = loadTail({ hydraId })
     let dirty = false
 
     try {
@@ -392,7 +392,7 @@ export function withWriter<T>({ board, fn }: {
             const observedSession = agent
               ? `${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}` : session
             event = {
-              boardId: board,
+              boardId: hydraId,
               ...(event.cardId !== '$board' ? { taskId: parent ?? event.cardId } : {}),
               ...(parent ? { subtaskId: event.cardId } : {}),
               ...(agent ? { agentId: `${agent.provider}:${agent.agentId ?? agent.sessionId}` } : {}),
@@ -419,11 +419,11 @@ export function withWriter<T>({ board, fn }: {
   }
 }
 
-function loadTail({ board }: { board: string }): Board {
-  const loaded = loadBoard({ board })
+function loadTail({ hydraId }: { hydraId: string }): HydraSnapshot {
+  const loaded = loadHydra({ hydraId })
 
   if (loaded.tornBytes > 0) {
-    throw new BoardError({
+    throw new HydraError({
       message: `events.jsonl ends with ${loaded.tornBytes} bytes of a torn append`,
       code: 'TORN_TAIL',
       help: [
@@ -445,8 +445,8 @@ export interface Repair {
 // marker so readers skip that line; the log itself is never cut. A torn tail was
 // never acknowledged as written, so no accepted event is lost.
 // ponytail: a crash while appending the marker leaves a corrupt interior line; inspect it by hand.
-export function repairBoard({ board }: { board: string }): Repair {
-  const dir = boardDir({ board })
+export function repairHydra({ hydraId }: { hydraId: string }): Repair {
+  const dir = hydraDir({ hydraId })
   privateDir({ dir })
   const release = acquireLock({ dir })
 
@@ -468,7 +468,7 @@ export function repairBoard({ board }: { board: string }): Repair {
       log = readLog({ dir }) as LogRead
     }
 
-    const state = replay({ state: emptyBoard(), events: log.events })
+    const state = replay({ state: emptyHydra(), events: log.events })
     writeSnapshot({ dir, state, offset: log.end })
 
     return { tornBytes, ...(preserved ? { preserved } : {}), seq: state.seq }
@@ -479,13 +479,13 @@ export function repairBoard({ board }: { board: string }): Repair {
 
 // Writes one hook event to the spool without taking the writer lock. The next
 // writer ingests it; the spool is a buffer, never a second writer of the log.
-export function spoolWrite({ board, entry }: {
-  board: string
+export function spoolWrite({ hydraId, entry }: {
+  hydraId: string
   entry: {
     id: string
   } & Record<string, unknown>
 }): string {
-  const dir = spoolDir({ dir: boardDir({ board }) })
+  const dir = spoolDir({ dir: hydraDir({ hydraId }) })
   privateDir({ dir })
   // Millisecond time orders files across processes; hrtime keeps same-millisecond writes apart.
   const name = `${String(Date.now()).padStart(15, '0')}-${process.hrtime.bigint()}-${entry.id.replace(/[^A-Za-z0-9._-]/g, '_')}.json`
