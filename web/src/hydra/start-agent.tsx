@@ -7,7 +7,7 @@ const HARNESSES = [{ value: 'claude', label: 'Claude Code' }, { value: 'codex', 
 const ROUTES = [
   { value: 'pnyx', label: 'Pnyx (Claude Code)' },
   { value: 'paseo', label: 'Paseo' },
-  { value: 'firstmate', label: 'Firstmate (this Hydra\'s Hydra)' },
+  { value: 'firstmate', label: 'Firstmate' },
   { value: 'command', label: 'Hydra command' },
 ]
 const STARTED: Record<string, string> = {

@@ -113,7 +113,7 @@ h3 { font-weight: 550; }
 
 .input::placeholder { color: var(--color-muted); opacity: .85; }
 
-.input::-webkit-oracle-cancel-button { appearance: none; }
+.input::-webkit-search-cancel-button { appearance: none; }
 
 .select { position: relative; min-width: 100px; }
 
