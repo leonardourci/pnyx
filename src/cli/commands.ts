@@ -1542,7 +1542,7 @@ Adds Pnyx's reporting hook to the user-level Claude Code settings.json or Codex 
 every other hook. Without --harness it sets up each harness whose config folder exists. Rerunning
 changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,
 so they never add to the agent's context: no session-start board summary is installed.
-Hook events go to the default board.
+Hook events go to the board named by $PNYX_BOARD, else the default board.
 `,
   repair: `usage: pnyx-axi repair [--board <name>]
 A crash mid-append can leave a torn last line; writes refuse until it is repaired.

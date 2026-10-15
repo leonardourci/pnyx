@@ -1,7 +1,7 @@
 #!/bin/sh
 # Pnyx reporting hook, installed by `pnyx-axi setup hooks` as
 #   <PNYX_HOME>/hooks/pnyx-hook.sh <claude|codex> <HookEventName>
-# Reads the harness payload on stdin and hands one JSON line to the default board's
+# Reads the harness payload on stdin and hands one JSON line to the board's ($PNYX_BOARD, else default)
 # server socket or, when that fails, to its spool. It prints nothing, never waits
 # on a network call, browser or model, and always exits 0: Claude Code
 # and Codex add some hook output to the agent's context, and a hook must never
@@ -66,7 +66,8 @@ fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
 # shellcheck disable=SC2046
 set -- $(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
 id="hook-$1-$$"
-board=$home/boards/default
+# A worker or Hydra that Pnyx launched reports to its own board.
+case ${PNYX_BOARD:-default} in [A-Za-z0-9]*[!A-Za-z0-9._-]* | [!A-Za-z0-9]*) board=$home/boards/default ;; *) board=$home/boards/${PNYX_BOARD:-default} ;; esac
 spool=$board/spool
 [ -d "$spool" ] || mkdir -p "$spool" || exit 0
 # ponytail: names order by whole seconds, then by the zero-padded process id, which
