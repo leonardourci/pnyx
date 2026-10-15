@@ -6,6 +6,7 @@ import { CommandMenu, type MenuItem } from '../components/ui/command-menu.tsx'
 import type { Command } from '../board/connection.ts'
 import { columnsFor } from '../board/view.ts'
 import { findCards } from '../board/card-search.ts'
+import { caretInto, hostOf, latestReply } from '../board/caret.ts'
 import { focusElement, useKeyboard, type ActionContext } from './registry.tsx'
 import { navigate, restoreAnchor, type BoardAnchor, type ColumnCards } from './navigation.ts'
 import { hintLabels, visibleTargets, type Hint } from './hints.ts'
@@ -157,7 +158,11 @@ export function useBoardKeyboard({
       } else if (newColumn) {
         cancelColumn()
       } else if (context.scope === 'composer') {
-        focusDetail({ composer: false })
+        const host = hostOf({ from: context.target })
+
+        if (!host || !caretInto({ host, target: latestReply({ host }), edge: 'start' })) {
+          focusDetail({ composer: false })
+        }
       } else if (selected && page === 'board') {
         close()
       } else if (page !== 'board') {

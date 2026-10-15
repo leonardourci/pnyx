@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
+import { CARET_HOST, CARET_KEY } from '../board/caret.ts'
 import { bindingsFor, characterBinding, emptyProgress, keyLabel, resolveKey, type KeyboardPreferences, type KeyPlatform, type KeyScope } from '../../../src/core/keyboard.ts'
 
 export interface ActionContext { scope: KeyScope; target: HTMLElement }
@@ -10,7 +11,13 @@ interface KeyboardContext {
   handlers: Map<string, Handler>
 }
 const Context = createContext<KeyboardContext | null>(null)
-export const isEditing = ({ target }: { target: HTMLElement }) => !!target.closest('input,textarea,[contenteditable]:not([contenteditable=false])')
+
+// The caret host is editable only to draw a caret, so its keys are not typing.
+export const isEditing = ({ target }: { target: Element }) => {
+  const field = target.closest('input,textarea,[contenteditable]:not([contenteditable=false])')
+
+  return !!field && !field.hasAttribute(CARET_HOST)
+}
 
 export function focusElement({ selector }: { selector: string }) {
   const element = document.querySelector<HTMLElement>(selector)
@@ -69,6 +76,10 @@ export function KeyboardProvider({
       // links in the conversation keep Enter.
       const owned = target.closest('[role=combobox],[role=listbox],[role=separator]')
         || (scope === 'thread' && event.key === 'Enter' && target.closest('button,a'))
+
+      if (!hints && target.hasAttribute(CARET_HOST) && CARET_KEY.test(event.key)) {
+        return
+      }
 
       if (!hints && !event.ctrlKey && !event.metaKey && !event.altKey && owned && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', ' '].includes(event.key)) {
         return
