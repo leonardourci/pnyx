@@ -24,6 +24,12 @@ export default defineConfig({
     host: '127.0.0.1',
     strictPort: true,
     proxy: {
+      '/folders': {
+        target: SERVER,
+        changeOrigin: true,
+        // eslint-disable-next-line pnyx/object-params
+        rewrite: path => `/hydra/dev${path}`,
+      },
       '/ws': {
         target: SERVER,
         ws: true,

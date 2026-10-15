@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { HydraProject, HydraState } from '../../../src/core/model.ts'
+import { AddProject, ProjectSharing } from './add-project.tsx'
 import { Button, Input, Switch, Textarea } from '../components/ui/controls.tsx'
-import { ConfirmationDialog } from '../components/ui/confirmation-dialog.tsx'
 import type { Command } from './connection.ts'
 
 type ProjectRow = { name: string; path: string; state: string; startCommand?: HydraProject['startCommand'] }
 type Confirmation = {
   token: string
   path: string
+  name: string
   hydras: { id: string; name: string; url: string }[]
 }
 
@@ -71,7 +72,6 @@ export function Projects({ state, connected, command, notify }: {
 }) {
   const [projects, setProjects] = useState<ProjectRow[]>([])
   const [readonly, setReadonly] = useState(false)
-  const [path, setPath] = useState(''), [url, setUrl] = useState(''), [into, setInto] = useState('')
   const [busy, setBusy] = useState(false), [loading, setLoading] = useState(true)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   const refresh = useCallback(() => command({ name: 'project', args: ['list'] }).then(r => {
@@ -101,14 +101,15 @@ export function Projects({ state, connected, command, notify }: {
     setBusy(true)
     void command({ name: 'project', args }).then(async r => {
       if (r.confirmation === 'needed') {
-        const preview = r.preview as { project: { path: string }; hydras: Confirmation['hydras'] }
+        const preview = r.preview as { project: { path: string; name: string }; hydras: Confirmation['hydras'] }
         setConfirmation({
           token: r.token as string,
           path: preview.project.path,
+          name: preview.project.name,
           hydras: preview.hydras,
         })
       } else {
-        setConfirmation(null); setPath(''); setUrl(''); setInto(''); await refresh()
+        setConfirmation(null); await refresh()
         const text = args[0] === 'remove'
           ? 'Project detached. Tasks and history stay.' : 'Project attached.'
         notify({ text })
@@ -158,66 +159,24 @@ export function Projects({ state, connected, command, notify }: {
           <ul className="project-list">{projects.filter(p => p.state === 'attached').map(p => row({ project: p }))}</ul>
           {projects.some(p => p.state === 'detached') && <><h3>Detached</h3><ul className="project-list">{projects.filter(p => p.state === 'detached').map(p => row({ project: p }))}</ul></>}
           {!readonly && (
-            <>
-              <form
-                className="project-form"
-                onSubmit={e => {
-                  e.preventDefault(); run({ args: ['add', path.trim()] })
-                }}
-              >
-                <label className="setting-label" htmlFor="project-path">Folder path</label>
-                <Input
-                  id="project-path"
-                  aria-label="Project folder path"
-                  value={path}
-                  onChange={e => setPath(e.target.value)}
-                  placeholder="/path/to/project"
-                  disabled={busy || !connected}
-                  required
-                />
-                <Button type="submit" variant="surface" disabled={busy || !connected || !path.trim()}>Add project</Button>
-              </form>
-              <form
-                className="project-form"
-                onSubmit={e => {
-                  e.preventDefault(); run({ args: ['add', '--clone', url.trim(), '--into', into.trim()] })
-                }}
-              >
-                <label className="setting-label" htmlFor="project-url">Clone URL</label>
-                <Input
-                  id="project-url"
-                  aria-label="Project clone URL"
-                  value={url}
-                  onChange={e => setUrl(e.target.value)}
-                  disabled={busy || !connected}
-                  required
-                />
-                <label className="setting-label" htmlFor="project-into">Destination folder</label>
-                <Input
-                  id="project-into"
-                  aria-label="Project clone destination"
-                  value={into}
-                  onChange={e => setInto(e.target.value)}
-                  disabled={busy || !connected}
-                  required
-                />
-                <Button type="submit" variant="surface" disabled={busy || !connected || !url.trim() || !into.trim()}>Clone and attach</Button>
-              </form>
-            </>
+            <AddProject
+              command={command}
+              connected={connected}
+              notify={notify}
+              attached={() => {
+                void refresh().catch((error: Error) => notify({ text: error.message }))
+              }}
+            />
           )}
         </>
       )}
       {confirmation && (
-        <ConfirmationDialog
-          title="Share project with another Hydra?"
-          busy={busy || !connected}
+        <ProjectSharing
+          confirmation={confirmation}
+          disabled={busy || !connected}
           cancel={() => setConfirmation(null)}
           confirm={() => run({ args: ['add', confirmation.path, '--confirm', confirmation.token] })}
-        >
-          <p>This folder is already attached to:</p>
-          <ul>{confirmation.hydras.map(h => <li key={h.id}><a href={h.url} target="_blank" rel="noreferrer">{h.name}</a></li>)}</ul>
-          <p>Attach it to this Hydra too?</p>
-        </ConfirmationDialog>
+        />
       )}
     </section>
   )
