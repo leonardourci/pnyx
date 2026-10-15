@@ -19,6 +19,7 @@ import {
 import { join } from 'node:path'
 import { HydraError, EVENT_TYPES, EVENT_VERSION, type HydraEvent, type HydraState } from '../core/model.ts'
 import { emptyHydra, reduce, replay } from '../core/reducer.ts'
+import { migrateColumns } from '../core/hydra.ts'
 import { hydraDir } from './paths.ts'
 
 export { hydraDir, pnyxHome } from './paths.ts'
@@ -196,7 +197,7 @@ export function readEventsFrom(
 }
 
 // Bumped when the reducer derives cards differently, so an older cache is replayed.
-const RULES = 8
+const RULES = 9
 
 interface Snapshot {
   v: typeof EVENT_VERSION
@@ -373,42 +374,48 @@ export function withWriter<T>({ hydraId, fn }: {
     let dirty = false
 
     try {
-      return fn({
-        writer: {
-          dir,
-          get state() {
-            return state
-          },
-          append({ event }) {
-            if (event.seq !== state.seq + 1) {
-              throw new Error(`append out of sequence: ${event.seq} after ${state.seq}`)
-            }
-
-            const card = state.cards[event.cardId]
-            const parent = event.type === 'task.created' ? event.data.parentId : card?.parentId
-            const session = event.type === 'task.session' ? event.data.session : card?.sessionIds?.[0]
-            const agent = event.type === 'card.pushed' && event.data.agent
-              ? event.data.agent : session ? state.sessions?.[session]?.agent : card?.agent
-            const observedSession = agent
-              ? `${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}` : session
-            event = {
-              boardId: hydraId,
-              ...(event.cardId !== '$board' ? { taskId: parent ?? event.cardId } : {}),
-              ...(parent ? { subtaskId: event.cardId } : {}),
-              ...(agent ? { agentId: `${agent.provider}:${agent.agentId ?? agent.sessionId}` } : {}),
-              ...(observedSession ? { sessionId: observedSession } : {}),
-              commandId: event.id,
-              ...(event.type === 'card.replied' ? { messageId: event.data.reply } : {}),
-              ...event,
-            }
-            const line = `${JSON.stringify(event)}\n`
-            writeDurably({ path: logPath({ dir }), data: line, flag: 'a' })
-            offset += Buffer.byteLength(line)
-            state = reduce({ state, event })
-            dirty = true
-          },
+      const writer: Writer = {
+        dir,
+        get state() {
+          return state
         },
-      })
+        append({ event }) {
+          if (event.seq !== state.seq + 1) {
+            throw new Error(`append out of sequence: ${event.seq} after ${state.seq}`)
+          }
+
+          const card = state.cards[event.cardId]
+          const parent = event.type === 'task.created' ? event.data.parentId : card?.parentId
+          const session = event.type === 'task.session' ? event.data.session : card?.sessionIds?.[0]
+          const agent = event.type === 'card.pushed' && event.data.agent
+            ? event.data.agent : session ? state.sessions?.[session]?.agent : card?.agent
+          const observedSession = agent
+            ? `${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}` : session
+          event = {
+            boardId: hydraId,
+            ...(event.cardId !== '$board' ? { taskId: parent ?? event.cardId } : {}),
+            ...(parent ? { subtaskId: event.cardId } : {}),
+            ...(agent ? { agentId: `${agent.provider}:${agent.agentId ?? agent.sessionId}` } : {}),
+            ...(observedSession ? { sessionId: observedSession } : {}),
+            commandId: event.id,
+            ...(event.type === 'card.replied' ? { messageId: event.data.reply } : {}),
+            ...event,
+          }
+          const line = `${JSON.stringify(event)}\n`
+          writeDurably({ path: logPath({ dir }), data: line, flag: 'a' })
+          offset += Buffer.byteLength(line)
+          state = reduce({ state, event })
+          dirty = true
+        },
+      }
+      // A Hydra still on an older layout moves onto the default columns before its next write.
+      const migrated = migrateColumns({ state, meta: { at: new Date().toISOString(), actor: 'pnyx' } })
+
+      if ('event' in migrated) {
+        writer.append({ event: migrated.event })
+      }
+
+      return fn({ writer })
     } finally {
       if (dirty) {
         writeSnapshot({ dir, state, offset })
