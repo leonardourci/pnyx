@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { commands } from '../src/cli/commands.ts'
@@ -68,6 +68,16 @@ try {
   await browser({ args: ['wait', 'Settings'] })
   await text({ label: 'Settings' })
   await eventually({ condition: 'document.querySelectorAll(\'.project-row [aria-label^=Detach]\').length === 2', label: 'projects survive a server restart' })
+  const nativeHome = join(home, 'firstmate')
+  mkdirSync(join(nativeHome, 'state'), { recursive: true })
+  mkdirSync(join(nativeHome, 'projects'))
+  symlinkSync(folder, join(nativeHome, 'projects', 'sample'))
+  commands.hydra(['set', '--firstmate', nativeHome])
+  await eventually({ condition: 'document.querySelector(\'[aria-label=Projects]\')?.textContent.includes(\'Managed by Firstmate\') && !document.querySelector(\'[aria-label=Projects] form\') && document.querySelectorAll(\'.project-row\').length === 1', label: 'Firstmate projects are read-only' })
+  symlinkSync(into, join(nativeHome, 'projects', 'cloned'))
+  await text({ label: 'Refresh projects' })
+  await eventually({ condition: 'document.querySelectorAll(\'.project-row\').length === 2', label: 'Firstmate project refresh reads external changes' })
+  await screenshot({ name: 'projects-firstmate.png' })
   process.stdout.write('Projects browser smoke passed.\n')
 } catch (error) {
   process.stdout.write(JSON.stringify({ persistedProjects: loadHydra({ hydraId: 'default' }).state.projects }) + '\n')

@@ -78,7 +78,18 @@ export function Projects({ state, connected, command, notify }: {
       <h2>Projects</h2>
       {loading ? <p className="muted">Loading projects…</p> : (
         <>
-          {readonly && <p className="muted">Managed by Firstmate. Projects are read-only here.</p>}
+          {readonly && (
+            <>
+              <p className="muted">Managed by Firstmate. Projects are read-only here.</p>
+              <Button
+                disabled={busy || !connected}
+                onClick={() => {
+                  void refresh().catch((e: Error) => notify({ text: e.message }))
+                }}
+              >Refresh projects
+              </Button>
+            </>
+          )}
           {!projects.some(p => p.state === 'attached') && <p className="muted">No projects attached.</p>}
           <ul className="project-list">{projects.filter(p => p.state === 'attached').map(p => row({ project: p }))}</ul>
           {projects.some(p => p.state === 'detached') && <><h3>Detached</h3><ul className="project-list">{projects.filter(p => p.state === 'detached').map(p => row({ project: p }))}</ul></>}
