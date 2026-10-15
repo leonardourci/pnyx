@@ -13,7 +13,7 @@ export function seedWebFixture({ home }: { home: string }) {
   const transcript = join(home, 'transcripts/session.jsonl')
   cpSync(join(import.meta.dirname, 'fixtures/web/thread.jsonl'), transcript)
   const rows = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/web/hydra.json'), 'utf8')) as { key: string; [key: string]: unknown }[]
-  const meta = { actor: 'fixture', at: '2026-10-13T10:50:00Z' }
+  const meta = { actor: 'fixture', at: new Date().toISOString() }
   withWriter({
     hydraId: 'default',
     fn: ({ writer: w }) => {

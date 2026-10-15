@@ -1,3 +1,4 @@
+import { projectRows } from '../projects/read.ts'
 import { checkAttachments } from '../integrations/presence/check.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -96,7 +97,7 @@ function kindCommand({ args }: { args: string[] }): Output {
   })
 }
 
-const TRACKED: readonly EventType[] = ['task.permission', 'hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked', 'task.launched']
+const TRACKED: readonly EventType[] = ['hydra.project', 'task.project', 'task.permission', 'hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked', 'task.launched']
 const CHECK_LIMIT = 20
 const POLL_MS = 2000
 
@@ -247,6 +248,7 @@ export async function hydraCheck({ args, connect }: {
 
   return {
     hydraId,
+    projects: projectRows({ state: loadHydra({ hydraId }).state }),
     changes: page.length ? page.map(e => row({ e })) : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
     agents: await checkAttachments({ state: loadHydra({ hydraId }).state, connect }),

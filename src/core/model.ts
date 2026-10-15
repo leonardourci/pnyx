@@ -169,6 +169,10 @@ export interface Card {
   key: string
   title: string
   brief?: string
+  project?: string
+  doneAt?: string
+  keepDone?: boolean
+  expired?: boolean
   // Set once a push gives an explicit title; an auto title never replaces it.
   titleSet?: boolean
   autoTitle?: AutoTitle
@@ -215,6 +219,7 @@ export interface PushFields {
   // null, written only by undo, returns the card to its auto title.
   title?: string | null
   autoTitle?: AutoTitle
+  project?: string | null
   workspace?: string
   tags?: string[]
   parentId?: string | null
@@ -287,6 +292,12 @@ export interface AgentConfig {
   mode?: string
   quota?: (typeof QUOTA_BUCKETS)[number]
 }
+export interface HydraProject {
+  path: string
+  name: string
+  detached: boolean
+}
+
 export interface HydraConfig {
   id: string
   name: string
@@ -295,6 +306,7 @@ export interface HydraConfig {
   // Task kind -> agent; `hydra` is the kind Hydra itself starts on.
   agents?: Record<string, AgentConfig>
   command?: string
+  doneAfterHours?: number
 }
 export interface HydraMessage {
   id: string
@@ -309,9 +321,11 @@ export interface HydraMessage {
 export type HydraChange = EventBase & (
   | { type: 'board.configured'; data: HydraConfig }
   | { type: 'board.columns'; data: { columns: HydraColumn[]; before?: HydraColumn[]; fallback?: Column; placements?: Record<string, { before: Column | null; after: Column | null }> } }
-  | { type: 'task.created'; data: { key: string; title: string; brief?: string; parentId?: string; column?: Column; folder?: string } }
+  | { type: 'hydra.project'; data: { before: HydraProject | null; after: HydraProject; sharedWith: { id: string; name: string; url: string }[] } }
+  | { type: 'task.project'; data: { before: string | null; after: string | null } }
+  | { type: 'task.created'; data: { key: string; title: string; brief?: string; parentId?: string; column?: Column; folder?: string; project?: string } }
   | { type: 'task.brief'; data: { before: string; after: string } }
-  | { type: 'task.visibility'; data: { before: boolean; after: boolean } }
+  | { type: 'task.visibility'; data: { before: boolean; after: boolean; automatic?: boolean } }
   | { type: 'hydra.memory'; data: { key: string; before: string | null; after: string | null } }
   | { type: 'task.declared'; data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> }
   | { type: 'task.mirrored'; data: FirstmateRecord }
@@ -447,9 +461,11 @@ export type HydraEvent =
   | ChatEvent
   | PermissionEvent
 export type EventType = HydraEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched', 'task.permission']
+export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched', 'task.permission', 'hydra.project', 'task.project']
 
 export interface HydraState {
+  projects?: HydraProject[]
+  projectsRevision?: number
   config?: HydraConfig
   // Set once a board.configured event applies; a column edit alone does not configure Hydra.
   configured?: boolean

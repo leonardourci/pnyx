@@ -1,16 +1,20 @@
+import { Projects } from './projects.tsx'
 import type { HydraState, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 import { Button, Input, NumberField, Select, Switch } from '../components/ui/controls.tsx'
+import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '../../../src/core/retention.ts'
 import { KeyboardSettings } from '../keyboard/settings.tsx'
 import { columnsFor } from './view.ts'
 import type { Command } from './connection.ts'
 import { resetWidths } from './oracle-catalog.ts'
 import { OracleSettings } from './oracle-settings.tsx'
 import { AgentKinds } from './agent-kinds.tsx'
+import { IntegrationSettings } from './integrations.tsx'
 
-export function Settings({ state, view, save, command, notify }: {
+export function Settings({ state, connected, view, save, command, notify }: {
   state: HydraState
+  connected: boolean
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
   close(): void
@@ -74,6 +78,22 @@ export function Settings({ state, view, save, command, notify }: {
         </section>
         <section className="settings-box">
           <h2>Hydra</h2>
+          <label className="setting-label">Hide Done cards after (hours)</label>
+          <Input
+            key={config.doneAfterHours ?? DEFAULT_DONE_HOURS}
+            aria-label="Hide Done cards after hours"
+            type="number"
+            min="0"
+            max={MAX_DONE_HOURS}
+            step="any"
+            defaultValue={config.doneAfterHours ?? DEFAULT_DONE_HOURS}
+            onBlur={e => {
+              if (e.target.value !== String(config.doneAfterHours ?? DEFAULT_DONE_HOURS)) {
+                void command({ name: 'hydra', args: ['set', '--done-after-hours', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+              }
+            }}
+          />
+          <p className="muted small">0 keeps Done cards visible. Hidden cards stay in History and Oracle and can be brought back.</p>
           <label className="setting-label">Identity</label>
           <Input
             aria-label="Hydra identity"
@@ -96,8 +116,15 @@ export function Settings({ state, view, save, command, notify }: {
             }}
           />
         </section>
+        <Projects
+          state={state}
+          connected={connected}
+          command={command}
+          notify={notify}
+        />
         <AgentKinds state={state} command={command} notify={notify} />
         <OracleSettings command={command} notify={notify} />
+        <IntegrationSettings command={command} notify={notify} />
       </div>
       <KeyboardSettings prefs={view.keyboard} save={save} />
     </section>

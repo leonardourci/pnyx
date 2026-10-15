@@ -4,7 +4,7 @@ import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
-import { agentActivity } from './view.ts'
+import { agentActivity, projectTitle } from './view.ts'
 
 function LastMessage({ message }: { message: LatestMessage }) {
   return (
@@ -56,6 +56,7 @@ export function HydraCard({
         e.stopPropagation(); e.dataTransfer.setData('application/pnyx-task', card.id)
       }}
     >
+      {card.project && <span className="project-label" title={card.project}>{projectTitle({ project: card.project })}</span>}
       {editingTitle ? (
         <InlineTitle
           value={card.title}

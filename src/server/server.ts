@@ -1,3 +1,6 @@
+import { project } from '../projects/cli.ts'
+import { doneDeadline } from '../core/retention.ts'
+import { hideDone } from '../store/retention.ts'
 import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
@@ -31,7 +34,7 @@ import { createHost, hostRequest, type QueryFn } from './host.ts'
 import type { SpawnCodex } from './codex.ts'
 
 // The browser edits kinds; Hydra's check and start stay in the CLI.
-const commands = { ...cliCommands, kind: workerCommands.kind }
+const commands = { ...cliCommands, project, kind: workerCommands.kind }
 // Events kept in memory for cursor resume; an older cursor gets a snapshot instead.
 const RESUME_LIMIT = 1000
 // A tab with more than this unsent is dropped from the event stream and resynced with a snapshot.
@@ -48,7 +51,7 @@ const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) =>
 
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
-const CLI_COMMANDS = ['task', 'column', 'hydra', 'layout', 'kind', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card', 'integrations'] as const
+const CLI_COMMANDS = ['project', 'task', 'column', 'hydra', 'layout', 'kind', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card', 'integrations'] as const
 const WEB_ROOT = join(import.meta.dirname, '..', '..', 'dist', 'web')
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -416,6 +419,7 @@ async function startOwnedServer({
     }
   }
 
+  let expiryTimer: ReturnType<typeof setTimeout> | undefined
   let scheduled = false
 
   const kick = () => {
@@ -437,9 +441,23 @@ async function startOwnedServer({
         }
 
         pump()
+
+        const deadline = doneDeadline({ state })
+
+        if (deadline !== undefined && deadline <= Date.now()) {
+          hideDone({ hydraId })
+          pump()
+        }
       } catch (error) {
         // A held lock or a damaged log; the next change retries.
         console.error(`pnyx-axi serve: ${(error as Error).message}`)
+      } finally {
+        clearTimeout(expiryTimer)
+        const deadline = doneDeadline({ state })
+
+        if (deadline !== undefined) {
+          expiryTimer = setTimeout(kick, Math.max(100, Math.min(60_000, deadline - Date.now())))
+        }
       }
     })
   }
@@ -849,6 +867,7 @@ async function startOwnedServer({
       folders.clear()
       threadSubscriptions.forEach(map => map.clear())
       clearTimeout(latestTimer)
+      clearTimeout(expiryTimer)
 
       for (const timer of threadTimers.values()) {
         clearTimeout(timer)

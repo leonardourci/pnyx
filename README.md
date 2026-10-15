@@ -1,6 +1,6 @@
 # Pnyx
 
-Pnyx is the app, each board is a **Hydra**, and search is the **Oracle**. Everything else uses its plain name.
+Pnyx is the app, a **Hydra** holds its tasks, and search is the **Oracle**. Everything else uses its plain name.
 
 Pnyx tracks explicit tasks in Hydras, each an orchestrator and its tasks. Create tasks and columns inline, attach an interactive agent session, and continue its conversation from the card. Ad-hoc agent sessions stay in History without creating tasks.
 
@@ -23,9 +23,31 @@ pnpm install
 pnpm run build
 pnpm add -g "$PWD"
 pnyx-axi --version
+pnyx-axi setup skills
 ```
 
 `pnpm add -g` links the clone, so after a `git pull` you only rerun `pnpm install && pnpm run build`. `pnpm link --global` does not work with this pnpm; use `pnpm add -g "$PWD"` (or `npm install -g .`). Without a global install, run `./dist/cli/pnyx-axi.js` from the clone.
+
+`pnyx-axi setup skills` installs `pnyx-hydra` and `pnyx-worker` once as links into `~/.claude/skills/` (or `$CLAUDE_CONFIG_DIR/skills/`) and `~/.agents/skills/`. Workers in any project or copy can load the worker skill and report to their card. The links point to this installation, so skill updates apply without copying them into projects. Keep the installation in place; rerun setup if a link is missing. Existing files and unrelated links are preserved; move a conflicting skill aside before installing. Use `pnyx-axi setup skills --preview` to inspect the links and `pnyx-axi setup skills --remove` to remove only this installation's links. Check readiness with `pnyx-axi integrations` or Settings > Integrations.
+
+User data lives in `~/.pnyx` by default. Set `PNYX_HOME` to keep it anywhere else; the clone holds only code.
+
+## Projects
+
+A Hydra can work across several projects. Each project is a folder on your laptop, shown by its folder name. Attach an existing folder or clone code into a destination you choose:
+
+```sh
+pnyx-axi project add /path/to/project --hydra work
+pnyx-axi project add --clone https://example.com/team/project.git --into /path/to/new-project --hydra work
+pnyx-axi project list --hydra work
+pnyx-axi task create --title "Ship the change" --project project --hydra work
+pnyx-axi task project <task> --project project --hydra work
+pnyx-axi project remove project --hydra work
+```
+
+Clone runs ordinary git directly, without sending the URL to an agent. `--into` is required. Relative paths are resolved from the CLI's working folder; in Settings, use an absolute laptop path. Removing a project only detaches it: tasks, history and the project record stay. Add its path again, or choose Re-attach under Settings → Projects → Detached, to bring it back. Use a full path when folder names are ambiguous.
+
+Sharing a folder between Hydras requires an explicit confirmation naming the other Hydras. The CLI returns a token; repeat the attachment with `--confirm <token>`. Settings shows a confirmation dialog with links to those Hydras. Hydra's summary and light check include its projects. On a Firstmate-linked Hydra, the home’s project folders appear read-only and are managed by Firstmate.
 
 ## Run
 
@@ -94,7 +116,7 @@ The append-only log preserves Hydra, task, subtask, session, command and message
 - **Firstmate:** on a Hydra run by a Firstmate home (the default route there), `--via firstmate [--prompt "..."]` puts a worker request in Hydra's chat and hands it to Firstmate as an inbox note. Firstmate dispatches the worker; its mirrored task can be nested under the Hydra task.
 - **Your own command:** `pnyx-axi hydra set --hydra <id> --command '<shell command>'` sets a command, run in the task's folder with `PNYX_HOME`, `PNYX_HYDRA`, `PNYX_TASK`, `PNYX_ROLE` (`worker` or `hydra`), `PNYX_TASK_TITLE`, `PNYX_PROMPT`, `PNYX_HARNESS` and `PNYX_FOLDER` in its environment. The session it starts attaches to its task, or becomes Hydra, when its hooks first report.
 
-Every agent Pnyx starts carries `PNYX_HOME` and `PNYX_HYDRA`, so its hooks report to the Hydra that started it, even from a separate Pnyx home, once `pnyx-axi setup hooks` has installed this version's hook. `pnyx-axi integrations` shows which of hooks, Paseo, Firstmate, the configured command and GitHub are ready, with the command that sets each up; the same list is under Settings > Integrations.
+Every agent Pnyx starts carries `PNYX_HOME` and `PNYX_HYDRA`, so its hooks report to the Hydra that started it, even from a separate Pnyx home, once `pnyx-axi setup hooks` has installed this version's hook. `pnyx-axi integrations` shows which of global skills, hooks, Paseo, Firstmate, the configured command and GitHub are ready, with the command that sets each up; the same list is under Settings > Integrations.
 
 ### Kinds, the light check and the worker contract
 
@@ -109,7 +131,7 @@ pnyx-axi hydra check --after <seq> --wait 1800
 - **Kinds:** `kind set` records the agent each kind of task starts on: harness, model, effort and mode. Agents that Pnyx runs take their own model and effort; mode is Claude Code’s permission mode (such as `acceptEdits` or `bypassPermissions`) or Codex’s approval policy (`untrusted`, `on-request` or `never`); in Paseo, effort is Paseo's thinking option and mode is Paseo's mode. `--quota high|medium|low` picks, at start, the model with the most runway in that intelligence bucket for the harness through `quota-axi`, falling back to `--model` or Paseo's default. `task start` uses `--kind` or the `default` kind, and `hydra start` the `hydra` kind; without one, Claude Code with its default model. `--harness` on a start overrides the kind's; switching providers uses the chosen provider's model, effort and mode defaults and resolves quota for that provider, and without `--prompt` a worker opens with a message naming its task and the `pnyx-worker` skill. Set a flag to an empty value, or `--quota off`, to clear it. Settings → Agents on the Hydra edits the same kinds, and each change is its own event in the log; saving a kind never chooses the Hydra.
 - **Direct conversations:** every owner message sent through a task card is already recorded with its send receipt. The light check also archives native transcript messages and completed Paseo replies into the same event log, including chats retained after detach and messages from an earlier task attachment. It returns a compact `conversations` digest grouped by task; Hydra treats the owner’s direct words as instructions and decides whether to act or take note. Excerpts point back to full task history, and the `through` cursor pages every event without dropping the rest. Echoes of Hydra sends and Hydra’s own answers are excluded from the digest. Unavailable native sources are reported for a later retry. Workers can escalate directly with `hydra send --task <task> --text "<question and context>"`.
 - **Light check:** `hydra check` also returns an `agents` list with each attachment’s session, harness, launch route, folder, start time, last observation and current presence. A terminal observed before this boot or a process that exited is `gone`; a daemon or process that cannot be queried is `unknown`. These are observations for Hydra to inspect with `task history` and `task show --full`; Pnyx never relaunches agents. `hydra check` prints only what Hydra tracks (messages, task creation, brief and visibility changes, declarations, open agent questions, attachments, column changes, manual moves and links) after `--after`, with each event's id, task and message action, and skips Hydra's own writes (actor `hydra`, from `PNYX_ACTOR` or `--actor`). With `--wait` it blocks until one appears, so a background command or monitor wakes Hydra only when something changed, without loading the Hydra.
-- **Workers:** a worker follows the `pnyx-worker` skill and reports with `task status <task> working|needs_you|paused|blocked|done --note <text>`; silence, idling and exit change nothing. To make the skills available to a Claude Code session outside a Firstmate home, link them from the clone: `ln -s "$PWD/skills/pnyx-hydra" "$PWD/skills/pnyx-worker" ~/.claude/skills/`.
+- **Workers:** a worker follows the `pnyx-worker` skill and reports with `task status <task> working|needs_you|paused|blocked|done --note <text>`; silence, idling and exit change nothing. Run `pnyx-axi setup skills` once to make both skills available globally in any project or copy.
 - **Binding a session yourself:** `hydra set --session self` and `task attach <task> --session self` pick the session running in the caller's own Paseo terminal, tmux pane or Herdr pane.
 
 
@@ -162,6 +184,7 @@ Remove the hooks first, since they point at the script in `~/.pnyx/hooks/`:
 ```sh
 pnyx-axi stop
 pnyx-axi setup hooks --remove
+pnyx-axi setup skills --remove
 rm -rf ~/.pnyx
 pnpm remove -g pnyx-axi
 ```
@@ -175,3 +198,7 @@ pnpm dev
 ```
 
 `pnpm dev` runs the Hydra server for a separate `dev` Hydra under `node --watch`, which restarts it when server code changes, and the Vite dev server, which updates the web app in place as you edit `web/`. Open the URL Vite prints; it forwards the Hydra's WebSocket to the dev server on port 4319 (set `PNYX_DEV_PORT` to change it).
+
+Done cards are hidden from their Hydra after 24 continuous hours in Done. They are never deleted: their tasks, events and conversations stay in History and Oracle. Set the delay for each Hydra in Settings or with `pnyx-axi hydra set --hydra <id> --done-after-hours <hours>`; `0` keeps Done cards visible. Other columns never fade. Use the task menu in History to **Bring back to Hydra**, or run `pnyx-axi task unhide <id> --hydra <id>`; a restored card stays visible until it leaves Done and enters again. A reopened expired card returns automatically.
+
+Cards show a compact project label beside their short title. Firstmate tasks use the item's project and omit a matching leading `<project>:` from the displayed title. Other tasks accept `pnyx-axi task create --title <title> --project <name>` or `pnyx-axi task rename <id> --project <name>`; an empty project value clears the label. Labels are searchable in the Hydra and Oracle.

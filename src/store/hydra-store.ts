@@ -20,7 +20,7 @@ import { join } from 'node:path'
 import { HydraError, EVENT_TYPES, EVENT_VERSION, type HydraEvent, type HydraState } from '../core/model.ts'
 import { emptyHydra, reduce, replay } from '../core/reducer.ts'
 import { migrateColumns } from '../core/hydra.ts'
-import { hydraDir } from './paths.ts'
+import { hydraDir, pnyxHome } from './paths.ts'
 
 export { hydraDir, pnyxHome } from './paths.ts'
 
@@ -197,7 +197,7 @@ export function readEventsFrom(
 }
 
 // Bumped when the reducer derives cards differently, so an older cache is replayed.
-const RULES = 9
+const RULES = 10
 
 interface Snapshot {
   v: typeof EVENT_VERSION
@@ -346,6 +346,18 @@ function acquireLock({ dir }: { dir: string }): () => void {
     }
 
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)
+  }
+}
+
+export function withRegistryLock<T>({ fn }: { fn(): T }): T {
+  const dir = pnyxHome()
+  privateDir({ dir })
+  const release = acquireLock({ dir })
+
+  try {
+    return fn()
+  } finally {
+    release()
   }
 }
 
