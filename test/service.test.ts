@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
@@ -67,7 +67,7 @@ test('reinstalling a running service waits for launchd to finish the bootout and
     if (args[0] === 'print') {
       if (unloading > 0) {
         unloading--
-      } else if (unloading === 0 && !listed) {
+      } else if (!listed) {
         throw new Error('Could not find service')
       }
 
@@ -106,6 +106,15 @@ test('reinstalling a running service waits for launchd to finish the bootout and
 
   refusals = 2
   assert.throws(() => setupService(options), (error: Error & { code?: string }) => error.code === 'SERVICE_ERROR' && error.message.includes('Bootstrap failed: 5: Input/output error'))
+
+  const plist = readFileSync(join(root, 'Library', 'LaunchAgents', readdirSync(join(root, 'Library', 'LaunchAgents'))[0]), 'utf8')
+  const stuck = { ...options, run: ({ args }: { args: string[] }) => args[0] === 'bootstrap' ? assert.fail('a stuck job must not be replaced') : '' }
+
+  for (const remove of [false, true]) {
+    assert.throws(() => setupService({ ...stuck, remove }), (error: Error & { code?: string }) => error.code === 'SERVICE_ERROR' && /did not stop/.test(error.message))
+  }
+
+  assert.equal(readFileSync(join(root, 'Library', 'LaunchAgents', readdirSync(join(root, 'Library', 'LaunchAgents'))[0]), 'utf8'), plist)
 })
 
 test('login service runs Node through a PATH link that survives a Homebrew upgrade', () => {

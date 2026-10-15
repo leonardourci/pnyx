@@ -92,10 +92,14 @@ export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = 
   if (listed()) {
     try {
       run({ args: ['bootout', target] })
-    } catch { /* The job may exit on its own between print and bootout. */ }
+    } catch { /* A concurrent setup may have booted it out already; the listing below decides. */ }
 
     // launchd finishes a bootout asynchronously, and bootstrapping the same label before it is gone fails with an I/O error.
-    for (let attempt = 0; attempt < 50 && listed(); attempt++) {
+    for (let attempt = 0; listed(); attempt++) {
+      if (attempt === 50) {
+        throw new BoardError({ message: `launchd did not stop the running service ${label}`, code: 'SERVICE_ERROR', help: [`Run \`launchctl print ${target}\` to inspect it`, 'Rerun setup once it has stopped'] })
+      }
+
       sleep({ ms: 100 })
     }
   }
