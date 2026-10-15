@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BoardState } from '../../../src/core/model.ts'
 import type { Command } from '../board/connection.ts'
-import { caretInto, hostOf, latestReply } from '../board/caret.ts'
+import { placeMessageCaret, conversationMessages, latestAgentMessage } from '../board/caret.ts'
 import { focusElement, type ActionContext } from './registry.tsx'
 import { navigate, restoreAnchor, type BoardAnchor, type ColumnCards } from './navigation.ts'
 
@@ -148,10 +148,10 @@ export function useBoardKeyboard({
       if (newColumn) {
         cancelColumn()
       } else if (context.scope === 'composer') {
-        const host = hostOf({ from: context.target })
+        const host = conversationMessages({ from: context.target })
 
         if (host) {
-          caretInto({ host, target: latestReply({ host }), edge: 'start' })
+          placeMessageCaret({ host, target: latestAgentMessage({ host }), edge: 'start' })
         }
       } else if (selected && page === 'board') {
         close()

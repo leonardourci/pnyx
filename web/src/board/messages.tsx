@@ -1,18 +1,18 @@
 import { useEffect, useRef, useState, type KeyboardEvent as KeyEvent } from 'react'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
-import { Button, Textarea } from '../components/ui/controls.tsx'
+import { Button } from '../components/ui/controls.tsx'
 import { Markdown } from '../components/ui/markdown.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import {
   CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED,
-  caretBox, caretInto, focusReply, latestReply, reveal,
+  caretBounds, placeMessageCaret, focusComposer, latestAgentMessage, revealCaret,
 } from './caret.ts'
 import type { ChatComment } from './chat.ts'
+import { MessageComment } from './message-comment.tsx'
+import { blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage } from './message-selection.ts'
 import { receiptLabel } from './view.ts'
 
-type Quote = Omit<ChatComment, 'id' | 'text'>
-const blockKey = ({ messageId, offset }: { messageId: string; offset: number }) => `${messageId}/block-${offset}`
 const roleLabel = ({ role }: { role: string }) => role === 'assistant' ? 'Agent' : role === 'user' ? 'You' : role
 
 export function Messages({
@@ -27,7 +27,7 @@ export function Messages({
 }) {
   const root = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState<string | null>(null)
-  const [selection, setSelection] = useState<Quote | null>(null)
+  const [selection, setSelection] = useState<CommentPassage | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const { label, platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
@@ -36,40 +36,16 @@ export function Messages({
 
   const focusBlock = ({ element }: { element?: HTMLElement }) => {
     if (element && root.current) {
-      setActive(element.dataset.messageBlock!); caretInto({ host: root.current, target: element, edge: 'start' })
+      setActive(element.dataset.messageBlock!); placeMessageCaret({ host: root.current, target: element, edge: 'start' })
     }
   }
 
-  const quoteFrom = ({ element }: { element: HTMLElement }): Quote => ({
-    messageId: element.dataset.messageId!,
-    block: Number(element.dataset.blockIndex),
-    offset: Number(element.dataset.blockOffset),
-    quote: element.dataset.quote!,
-    paragraph: element.dataset.quote!,
-    at: element.dataset.messageAt,
-  })
-
-  const blockOf = ({ node }: { node?: Node | null }) =>
-    (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>('[data-message-block]')
-
-  const readSelection = (): Quote | null => {
-    const selected = window.getSelection()
-    const range = selected?.rangeCount ? selected.getRangeAt(0) : null
-    const text = selected?.toString().trim(), element = blockOf({ node: range?.startContainer })
-
-    return text && element && range && root.current?.contains(range.endContainer) && !document.activeElement?.closest('.inline-comment')
-      ? { ...quoteFrom({ element }), quote: text }
-      : null
-  }
-
-  const addComment = ({ quote, text = '' }: { quote: Quote; text?: string }) => {
+  const addComment = ({ quote, text = '' }: { quote: CommentPassage; text?: string }) => {
     const comment = { ...quote, id: crypto.randomUUID(), text }
     setComments({ items: [...comments, comment] }); setEditing(comment.id); setSelection(null)
     window.getSelection()?.removeAllRanges()
   }
 
-  // With text selected in the thread, the first typed character opens a comment
-  // on that selection and becomes its first character.
   useEffect(() => {
     if (!selection) {
       return
@@ -104,17 +80,14 @@ export function Messages({
       }
 
       const focusNode = window.getSelection()?.focusNode ?? null
-      const block = root.current?.contains(focusNode) ? blockOf({ node: focusNode }) : null
-      const next = readSelection()
-      const same = ({ prior }: { prior: Quote | null }) =>
-        prior?.quote === next?.quote && prior?.offset === next?.offset
-        && prior?.messageId === next?.messageId
+      const block = root.current?.contains(focusNode) ? messageBlock({ node: focusNode }) : null
+      const next = selectedPassage({ messages: root.current })
 
       if (block && !document.activeElement?.closest('.inline-comment')) {
         setActive(block.dataset.messageBlock!)
       }
 
-      setSelection(prior => same({ prior }) ? prior : next)
+      setSelection(prior => samePassage({ before: prior, after: next }) ? prior : next)
     }
 
     let buttons = 0
@@ -144,7 +117,6 @@ export function Messages({
     }
   }, [])
 
-  // Nothing typed, pasted, dropped or undone changes the messages.
   useEffect(() => {
     const host = root.current
 
@@ -170,9 +142,9 @@ export function Messages({
       }
 
       if (focused === host) {
-        event.preventDefault(); focusReply({ host })
+        event.preventDefault(); focusComposer({ host })
       } else if (focused?.matches('.composer textarea') && focused.closest('.detail, .hydra-chat')?.contains(host)) {
-        event.preventDefault(); caretInto({ host, target: latestReply({ host }), edge: 'start' })
+        event.preventDefault(); placeMessageCaret({ host, target: latestAgentMessage({ host }), edge: 'start' })
       }
     }
 
@@ -194,7 +166,7 @@ export function Messages({
       return
     }
 
-    const selected = readSelection()
+    const selected = selectedPassage({ messages: root.current })
 
     if (key === 'Enter' && selected && !altKey && !ctrlKey && !metaKey) {
       event.preventDefault()
@@ -202,7 +174,7 @@ export function Messages({
       if (shiftKey) {
         quote({ text: selected.quote }); setSelection(null)
         window.getSelection()?.removeAllRanges()
-        requestAnimationFrame(() => focusReply({ host }))
+        requestAnimationFrame(() => focusComposer({ host }))
       } else {
         addComment({ quote: selected })
       }
@@ -220,16 +192,16 @@ export function Messages({
       return
     }
 
-    const before = caretBox(), top = (before?.top ?? 0) + scroller.scrollTop
+    const before = caretBounds(), top = (before?.top ?? 0) + scroller.scrollTop
     setTimeout(() => {
-      const after = caretBox()
+      const after = caretBounds()
       const moved = after ? Math.abs(after.top + scroller.scrollTop - top) : 0
       const stuck = !after || moved < (before?.height ?? 0) / 2
 
       if (key === 'ArrowDown' && before && stuck && !shiftKey && !altKey && !ctrlKey && !metaKey) {
-        focusReply({ host })
+        focusComposer({ host })
       } else {
-        reveal({ host })
+        revealCaret({ host })
       }
     })
   }
@@ -279,7 +251,8 @@ export function Messages({
         return false
       }
 
-      setActive(element.dataset.messageBlock!); addComment({ quote: quoteFrom({ element }) })
+      setActive(element.dataset.messageBlock!)
+      addComment({ quote: blockPassage({ block: element }) })
 
       return true
     },
@@ -292,7 +265,7 @@ export function Messages({
       setComments({ items: comments.filter(c => c.id !== comment.id) })
     }
 
-    focusBlock({ element: blockFor({ key: blockKey(comment) }) })
+    focusBlock({ element: blockFor({ key: messageBlockKey(comment) }) })
   }
 
   return (
@@ -319,7 +292,7 @@ export function Messages({
         }}
         onCompositionStart={event => {
           if (event.target === event.currentTarget) {
-            focusReply({ host: event.currentTarget })
+            focusComposer({ host: event.currentTarget })
           }
         }}
       >
@@ -336,9 +309,9 @@ export function Messages({
                 block={({ index, offset: local, quote, children }) => {
                   const messageId = entry.messageId ?? entry.id
                   const offset = (entry.part ?? 0) + local
-                  const key = blockKey({ messageId, offset })
+                  const key = messageBlockKey({ messageId, offset })
                   const selected = selection?.messageId === messageId && selection.offset === offset
-                  const whole: Quote = {
+                  const whole: CommentPassage = {
                     messageId, block: index, offset, quote, paragraph: quote, at: entry.at,
                   }
                   const own = comments.filter(c => c.messageId === messageId && c.offset === offset)
@@ -376,7 +349,7 @@ export function Messages({
                           : active === key && <kbd>{label({ id: 'thread.comment' })}</kbd>}
                       </Button>
                       {own.map(comment => (
-                        <InlineComment
+                        <MessageComment
                           key={comment.id}
                           comment={comment}
                           editing={editing === comment.id}
@@ -411,41 +384,4 @@ function Trace({ entry, details }: { entry: ThreadEntry; details: boolean }) {
 
   return details ? <details className="trace" data-expandable="true"><summary>{summary}</summary><pre className="trace-text">{entry.text}</pre></details>
     : <div className="trace" data-expandable="false"><div className="trace-summary">{summary}</div></div>
-}
-
-function InlineComment({ comment, editing, edit, change, finish, remove }: {
-  comment: ChatComment
-  editing: boolean
-  edit(): void
-  change({ text }: { text: string }): void
-  finish(): void
-  remove(): void
-}) {
-  return (
-    <div className="inline-comment">
-      <span className="eyebrow">Your comment · included in next reply</span>
-      <blockquote>{comment.quote}</blockquote>
-      {editing ? (
-        <Textarea
-          autoFocus
-          onFocus={e => {
-            const end = e.currentTarget.value.length
-            e.currentTarget.setSelectionRange(end, end)
-          }}
-          aria-label="Comment on selected text"
-          value={comment.text}
-          onChange={e => change({ text: e.target.value })}
-          onKeyDown={e => {
-            if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
-              e.preventDefault(); e.stopPropagation(); finish()
-            }
-          }}
-        />
-      ) : <p>{comment.text || 'Empty comment'}</p>}
-      <div className="row">
-        <Button onClick={editing ? finish : edit}>{editing ? 'Done' : 'Edit comment'}</Button>
-        <Button onClick={remove}>Remove comment</Button>
-      </div>
-    </div>
-  )
 }

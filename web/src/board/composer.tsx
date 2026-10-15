@@ -9,7 +9,7 @@ import { slashMatches, slashPrefix } from './view.ts'
 import { commentReply, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
-import { caretInto, hostOf, latestReply } from './caret.ts'
+import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
 
 export function Composer({
   card,
@@ -269,10 +269,10 @@ export function Composer({
               return
             }
 
-            const host = hostOf({ from: e.currentTarget })
+            const host = conversationMessages({ from: e.currentTarget })
 
             if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && prefix === null &&
-              e.currentTarget.selectionEnd === 0 && host && caretInto({ host, target: latestReply({ host }), edge: 'end' })) {
+              e.currentTarget.selectionEnd === 0 && host && placeMessageCaret({ host, target: latestAgentMessage({ host }), edge: 'end' })) {
               e.preventDefault()
             }
           }}
