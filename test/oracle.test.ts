@@ -307,7 +307,7 @@ test('a word ending in * matches the indexed words starting with it', () => {
   assert.deepEqual(cards({ out: run({ args: ['oracle', 'deplo*'] }) }).sort(), ['c1', 'c6'])
 })
 
-test('Hydra Hydra messages are searchable without a task, including after rebuild', () => {
+test('Hydra messages are searchable without a task, including after rebuild', () => {
   const { run, home } = hydraId()
   const previous = process.env.PNYX_HOME
   process.env.PNYX_HOME = home

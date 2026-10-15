@@ -39,7 +39,7 @@ try {
   await fill({ label: 'Oracle', value: 'readable' })
   await eventually({ condition: 'document.querySelectorAll("[data-card]").length === 1', label: 'search filters Hydra from transcript matches' })
   await fill({ label: 'Oracle', value: 'lunch' })
-  await eventually({ condition: 'document.querySelector(".oracle-hit")?.textContent.includes("Hydra conversation") && document.querySelectorAll("[data-card]").length === 0', label: 'search includes the Hydra Hydra conversation' })
+  await eventually({ condition: 'document.querySelector(".oracle-hit")?.textContent.includes("Hydra conversation") && document.querySelectorAll("[data-card]").length === 0', label: 'search includes the Hydra conversation' })
   await screenshot({ name: 'oracle.png' })
   await click({ selector: '.oracle-hit' })
   await check({ condition: 'document.activeElement.matches(".hydra-chat textarea")', label: 'Hydra search result focuses its composer' })

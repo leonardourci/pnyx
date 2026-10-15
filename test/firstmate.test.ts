@@ -135,7 +135,7 @@ test('backlog rows give titles, repo tags and merged state', () => {
   assert.deepEqual(rows.get('docs-scout'), { title: 'app: survey the docs', repo: 'docs', done: true, merged: false })
 })
 
-test('sync mirrors Firstmate tasks under its Hydra Hydra', () => {
+test('sync mirrors Firstmate tasks under its Hydra', () => {
   const { home } = copyFixture()
   const result = syncHome({ hydraId: 'default', home, at: '2026-10-13T10:00:00.000Z' })
   assert.equal(result.tasks, 5)

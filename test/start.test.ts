@@ -94,7 +94,7 @@ test('task start --via command runs the Hydra command once and its session joins
   await assert.rejects(startTask({ hydraId: 'lab', task, via: 'command', meta }), /no start command/)
 })
 
-test('hydra start --via command makes its first session the Hydra Hydra, never a worker', async () => {
+test('hydra start --via command makes its first session the Hydra, never a worker', async () => {
   const { root, folder, run, state } = lab()
   const out = join(root, 'env.txt')
   run({ args: ['hydra', 'set', '--command', captureEnvironment({ path: out })] })
@@ -112,7 +112,7 @@ test('hydra start --via command makes its first session the Hydra Hydra, never a
   assert.deepEqual(Object.values(state().cards).find(c => c.title === 'Same folder')!.sessionIds, [])
 })
 
-test('hydra start --via paseo records the Paseo agent as the Hydra Hydra', async () => {
+test('hydra start --via paseo records the Paseo agent as the Hydra', async () => {
   const { folder, state } = lab()
   const created: Record<string, unknown>[] = []
   const client = {
