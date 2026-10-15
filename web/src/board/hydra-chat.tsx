@@ -1,3 +1,4 @@
+import { readAttempt, saveAttempt } from './outbox.ts'
 import { useEffect, useRef, useState } from 'react'
 import type { BoardState } from '../../../src/core/model.ts'
 import { HYDRA_CARD, boardConfig } from '../../../src/core/hydra.ts'
@@ -12,7 +13,18 @@ export function HydraChat({ state, command, connected, openTask, notify }: {
   openTask({ id }: { id: string }): void
   notify({ text }: { text: string }): void
 }) {
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useState(() => {
+    try {
+      return sessionStorage.getItem('pnyx-hydra-draft') ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const attempt = useRef(readAttempt({ key: '$hydra' }))
+  const [failure, setFailure] = useState('')
+  useEffect(() => {
+    sessionStorage.setItem('pnyx-hydra-draft', draft)
+  }, [draft])
   const [busy, run] = useBusy()
   const end = useRef<HTMLDivElement>(null)
   const hydra = boardConfig({ state }).hydra
@@ -26,13 +38,42 @@ export function HydraChat({ state, command, connected, openTask, notify }: {
       return
     }
 
+    if (busy) {
+      return
+    }
+
+    setFailure('')
     const submitted = draft
+
+    if (attempt.current?.text !== submitted) {
+      attempt.current = { text: submitted, id: crypto.randomUUID(), pending: true }
+    }
+
+    attempt.current.pending = true
+    saveAttempt({ key: '$hydra', attempt: attempt.current })
+    const id = attempt.current.id
     run({
-      save: () => command({ name: 'hydra', args: ['send', `--text=${submitted}`, '--event-id', crypto.randomUUID()] })
-        .then(() => setDraft(current => current === submitted ? '' : current))
-        .catch(e => notify({ text: e.message })),
+      save: () => command({ name: 'hydra', args: ['send', `--text=${submitted}`, '--event-id', id] })
+        .then(() => {
+          attempt.current = null
+          setDraft(current => current === submitted ? '' : current)
+        })
+        .catch(e => setFailure(e.message))
+        .finally(() => {
+          if (attempt.current) {
+            attempt.current.pending = false
+          }
+
+          saveAttempt({ key: '$hydra', attempt: attempt.current })
+        }),
     })
   }
+
+  useEffect(() => {
+    if (attempt.current?.pending && attempt.current.text === draft) {
+      send()
+    }
+  }, [])
 
   return (
     <aside className="hydra-chat" aria-label="Hydra chat">
@@ -63,6 +104,7 @@ export function HydraChat({ state, command, connected, openTask, notify }: {
         )}
         <div ref={end} />
       </div>
+      {failure && <p className="small" role="status">{failure}</p>}
       <form
         className="hydra-composer"
         aria-busy={busy}
@@ -81,9 +123,8 @@ export function HydraChat({ state, command, connected, openTask, notify }: {
               e.preventDefault(); send()
             }
           }}
-          disabled={!connected}
         />
-        <Button type="submit" variant="primary" disabled={!connected || busy || !draft.trim()}>Send</Button>
+        <Button type="submit" variant="primary" disabled={busy || !draft.trim()}>Send</Button>
       </form>
     </aside>
   )

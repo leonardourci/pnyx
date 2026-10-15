@@ -201,7 +201,7 @@ function Column({
 }
 
 export function App() {
-  const { state, command, connected, error, thread, setThread, latest } = useBoard()
+  const { state, command, connected, thread, setThread, latest } = useBoard()
   const [page, setPage] = useState(restored.page ?? 'board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
@@ -259,7 +259,7 @@ export function App() {
       return
     }
 
-    let cancelled = false; setThread(null); void command({ name: 'thread', args: [selected ?? ''] }).then(r => {
+    let cancelled = false; void command({ name: 'thread', args: [selected ?? ''] }).then(r => {
       if (!cancelled && r.thread) {
         setThread(r.thread as ThreadPage)
       }
@@ -396,13 +396,16 @@ export function App() {
           </nav>
           <BoardTabs command={command} connected={connected} notify={notify} />
           <KeyboardToolbar action={keyboard.onAction} />
-          <span className={`connection ${connected ? 'online' : ''}`}>
+          <span
+            className={`connection ${connected ? 'online' : ''}`}
+            role="status"
+            aria-label={connected ? 'Connected' : 'Reconnecting'}
+            title={connected ? 'Connected' : 'Reconnecting'}
+          >
             <i />
-            {connected ? 'Connected' : 'Offline'}
           </span>
         </header>
         <main className="shell">
-          {error && <div role="alert" className="error-banner">{error}</div>}
           {page === 'settings' ? (
             <Settings
               state={state}

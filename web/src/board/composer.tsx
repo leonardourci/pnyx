@@ -1,3 +1,4 @@
+import { readAttempt, saveAttempt } from './outbox.ts'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import type { Catalog } from '../../../src/thread/catalog.ts'
@@ -41,11 +42,12 @@ export function Composer({
   settings?: ReactNode
 }) {
   const [preview, setPreview] = useState<number | null>(null)
+  const [failure, setFailure] = useState('')
   const [sending, setSending] = useState(false)
   const [prefix, setPrefix] = useState<string | null>(null)
   const [active, setActive] = useState(-1)
   const input = useRef<HTMLTextAreaElement>(null)
-  const attempt = useRef<{ text: string; id: string } | null>(null)
+  const attempt = useRef(readAttempt({ key: card }))
   // Comments travel with the draft as one reply, and stay until it is delivered.
   const outgoing = commentReply({ draft, comments })
   const commented = comments.filter(c => c.text.trim()).length
@@ -86,20 +88,29 @@ export function Composer({
   }
 
   const send = async () => {
-    if (sending || !outgoing.trim() || !connected || !thread?.route) {
+    if (sending || !outgoing.trim()) {
       return
     }
 
     if (attempt.current?.text !== outgoing) {
-      attempt.current = { text: outgoing, id: crypto.randomUUID() }
+      attempt.current = { text: outgoing, id: crypto.randomUUID(), pending: true }
     }
 
-    setSending(true)
+    attempt.current.pending = true
+    saveAttempt({ key: card, attempt: attempt.current })
+    setFailure(''); setSending(true)
 
     try {
       const r = await command({ name: 'reply', args: [card, outgoing, attempt.current.id] }); const receipt = r.reply as { state: string; detail?: string } | undefined
       const why = receipt?.detail ? ` (${receipt.detail})` : ''
-      notify({ text: receipt?.state === 'delivery_unknown' ? `Delivery unknown${why}. Check the native session before sending again.` : receipt?.state === 'failed' ? `Delivery failed${why}. Your draft is retained.` : 'Reply delivered to the route. This does not confirm it was handled.' })
+
+      if (receipt?.state !== 'delivered') {
+        setFailure(receipt?.state === 'delivery_unknown' ? 'Send could not be confirmed. Check the conversation before retrying.' : `Could not send${why}. Draft kept.`)
+      }
+
+      if (receipt?.state === 'delivered') {
+        notify({ text: 'Reply delivered to the route. This does not confirm it was handled.' })
+      }
 
       if (receipt?.state === 'delivered') {
         // Keep anything typed or commented while the reply was in flight.
@@ -112,11 +123,22 @@ export function Composer({
         attempt.current = null
       }
     } catch (e) {
-      notify({ text: (e as Error).message })
+      setFailure((e as Error).message)
     } finally {
+      if (attempt.current) {
+        attempt.current.pending = false
+      }
+
+      saveAttempt({ key: card, attempt: attempt.current })
       setSending(false)
     }
   }
+
+  useEffect(() => {
+    if (attempt.current?.pending && attempt.current.text === outgoing) {
+      void send()
+    }
+  }, [])
 
   useKeyAction({
     id: 'send',
@@ -201,7 +223,7 @@ export function Composer({
                 </Button>
               ))}
             </div>
-            {!suggestions.length && <p role="status">{!connected ? 'Reconnect to load commands.' : !catalog ? 'Loading local commands…' : catalog.unavailable ?? 'No matching local command.'}</p>}
+            {!suggestions.length && <p role="status">{!catalog ? 'Loading local commands…' : catalog.unavailable ?? 'No matching local command.'}</p>}
             {catalog?.note && <p>{catalog.note}</p>}
           </div>
         )}
@@ -258,12 +280,13 @@ export function Composer({
           className="composer-send"
           aria-label="Send reply"
           title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
-          disabled={sending || !outgoing.trim() || !connected || !thread?.route}
+          disabled={sending || !outgoing.trim()}
         >
           <Icon name="send" size={14} />
         </Button>
       </div>
-      {!thread?.route && (
+      {failure && <p className="small" role="status">{failure}</p>}
+      {!thread?.route && connected && (
         <p id={`reply-note-${card}`} className="small muted">
           {`${thread?.noRoute ?? 'Reply route unavailable.'} Your draft stays here.`}
         </p>

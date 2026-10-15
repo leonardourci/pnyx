@@ -21,6 +21,7 @@
     "dev:server": "node --watch src/cli/pnyx-axi.ts serve --board dev --port ${PNYX_DEV_PORT:-4319}",
     "test:web": "pnpm run build && node test/web-smoke.ts && node test/task-smoke.ts",
     "test:keyboard": "pnpm run build && node test/keyboard-smoke.ts",
+    "test:connection": "pnpm run build && node test/connection-smoke.ts",
     "test:chat": "pnpm run build && node test/chat-smoke.ts",
     "lint:fix": "eslint --fix .",
     "test:semantic": "pnpm run build && node test/semantic-golden.ts"
