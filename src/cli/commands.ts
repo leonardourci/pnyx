@@ -2,7 +2,7 @@
 // board's writer lock, ingests the hook spool, then appends at most one event.
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
 import { randomUUID } from 'node:crypto'
-import { cardSessionId, findSession, interactive, liveTask, selfSession, sessionId } from '../core/tasks.ts'
+import { cardSessionId, findSession, interactive, liveTask, rankOf, selfSession, sessionId } from '../core/tasks.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import { setupHydra, startHydra, startTask } from './start.ts'
 import { existsSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs'
@@ -523,7 +523,6 @@ function cardDetail({ card }: { card: Card }): Output {
     title: card.title,
     workspace: card.workspace,
     column: card.column,
-    placement: card.manualColumn ? 'manual' : 'auto',
     tags: card.tags.length ? card.tags : 'none',
   }
 
@@ -599,7 +598,7 @@ export async function home(): Promise<Output> {
     c: a,
   }) - order({
     c: b,
-  }) || b.updatedSeq - a.updatedSeq)
+  }) || rankOf({ card: a }) - rankOf({ card: b }))
   out.cards = sorted.slice(0, HOME_LIMIT).map(card => cardRow({ card }))
   out.help = ['Run `pnyx-axi card <id>` for details', 'Run `pnyx-axi history` for recent events', ...serveHint]
 
@@ -1080,9 +1079,8 @@ function columnCommand({ args }: { args: string[] }): Output {
       const gone = ({ id }: { id?: Column }) =>
         id !== undefined && !columns.some(column => column.id === id)
       const placements = Object.fromEntries(Object.values(state.cards)
-        .filter(c => gone({ id: c.manualColumn })
-          || (c.tracking === 'declared' && gone({ id: c.column })))
-        .map(c => [c.id, { before: c.manualColumn ?? null, after: fallback ?? columns[0]!.id }]))
+        .filter(c => gone({ id: c.column }))
+        .map(c => [c.id, { before: c.column, after: fallback ?? columns[0]!.id }]))
 
       return hydraEvent({ state, meta: m, cardId: '$board', change: { type: 'board.columns', data: { columns, before, placements, ...(fallback ? { fallback } : {}) } } })
     },
@@ -1291,17 +1289,13 @@ const harvest = guard({
 
 const move = guard({
   handler: ({ args }) => {
-    const { values, positionals, board } = parse({ args, options: { ...WRITE, auto: { type: 'boolean' } }, positionals: 2 })
+    const { values, positionals, board } = parse({ args, options: { ...WRITE, before: { type: 'string' } }, positionals: 2 })
     const m = meta({ values })
     const ref = required({ value: positionals[0], what: 'card id' })
+    const target = column({ value: required({ value: positionals[1], what: 'column' }) })
+    const before = values.before as string | undefined
 
-    if (Boolean(values.auto) === (positionals[1] !== undefined)) {
-      throw new AxiError('give either a column or --auto', 'VALIDATION_ERROR', ['Run `pnyx-axi column list` for the board columns'])
-    }
-
-    const target = values.auto ? null : column({ value: required({ value: positionals[1], what: 'column' }) })
-
-    return commit({ board, meta: m, intent: { type: 'card.moved', card: ref }, decide: ({ state }) => decideMove({ state, ref, column: target, meta: m }) })
+    return commit({ board, meta: m, intent: { type: 'card.moved', card: ref }, decide: ({ state }) => decideMove({ state, ref, column: target, before, meta: m }) })
   },
 })
 
@@ -1371,7 +1365,7 @@ export function summarize({ event }: { event: BoardEvent }): string {
       return `${undo}${Object.keys(event.data).filter(k => k !== 'key' && k !== 'before')
         .join(' ') || 'no fields'}`
     case 'card.moved':
-      return `${undo}${event.data.before ?? 'auto'} -> ${event.data.after ?? 'auto'}`
+      return `${undo}${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'card.linked': {
       const l = event.data.after ?? event.data.before
       const label = l ? `${l.kind}${l.number ? ` #${l.number}` : ''}` : event.data.url
@@ -1596,7 +1590,7 @@ commands:
   push --key <key> --file <card.json|->      Create or update the card with this key
   card <id|key> [--full]                     Show one card with its summary, decisions and context
   harvest [--card <id>]                      Collect summaries and decisions sources already recorded
-  move <id> <column> | --auto                Pin a card to a column, or return it to automatic placement
+  move <id> <column> [--before <id>]         Put a card in a column, above another card or at its end
   link <id> --url <url> [--state open]       Add, update or --remove a link
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
@@ -1703,12 +1697,12 @@ linked pull request's title and description through gh-axi. Sessions are also ha
 turn ends; Firstmate decisions, reports and Captain's intent arrive through \`firstmate sync\`.
 Sources are only read. Each note is kept once, so running it again appends only what is new.
 `,
-  move: `usage: pnyx-axi move <id> <column-id> | --auto [--event-id <id>] [--if-revision <n>] [--reason <text>]
-A manual move pins the card until \`move <id> --auto\`. Columns come from \`pnyx-axi column list\`.
-Attention on a pinned card stays visible.
+  move: `usage: pnyx-axi move <id> <column-id> [--before <id>] [--event-id <id>] [--if-revision <n>] [--reason <text>]
+Puts the card in the column just above the --before card, or at the end of the column without it.
+Cards never move on their own: a card stays where it was created or last moved. Columns come from \`pnyx-axi column list\`.
 `,
   link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove] [--event-id <id>] [--if-revision <n>]
-GitHub pull request URLs get kind and number filled in. All linked pull requests merged puts the card in done.
+GitHub pull request URLs get kind and number filled in. A link never moves the card.
 `,
   outcome: `usage: pnyx-axi outcome <id> done|failed|cancelled [--note <text>] | --clear [--event-id <id>] [--if-revision <n>]
 `,

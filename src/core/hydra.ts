@@ -1,5 +1,5 @@
 // Hydra's work records. No I/O, timers or inferred state transitions.
-import { BoardError, EVENT_VERSION, TASK_STATES, type BoardColumn, type BoardConfig, type BoardEvent, type BoardState, type Card, type Column, type HydraEvent, type TaskStatus } from './model.ts'
+import { BoardError, EVENT_VERSION, TASK_STATES, type BoardColumn, type BoardConfig, type BoardEvent, type BoardState, type Column, type HydraEvent, type TaskStatus } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { assignDefined } from './tasks.ts'
 
@@ -17,25 +17,8 @@ export function boardConfig({ state, id = 'default' }: { state: BoardState; id?:
   return state.board ?? { id, name: id, hydra: { id: 'hydra', kind: 'agent', name: 'Hydra' }, columns: [...structuredClone(TEMPLATE_COLUMNS), ...(state.view?.customColumns ?? [])] }
 }
 
-function taskColumn({ columns, card }: { columns: BoardColumn[]; card: Card }): Column {
-  if (card.manualColumn && columns.some(c => c.id === card.manualColumn)) {
-    return card.manualColumn
-  }
-
-  const prs = card.links.filter(l => l.kind === 'github_pr')
-  const merged = prs.length > 0 && prs.every(l => l.state === 'merged')
-  // Preserve legacy Firstmate status until its full mirror is imported.
-  const legacyVerb = card.activity?.split(':')[0]?.trim()
-  const legacy: TaskStatus = card.outcome?.source === 'firstmate' ? 'done'
-    : card.attention.some(a => !a.key.startsWith('hook:')) ? 'needs_you'
-      : legacyVerb === 'working' ? 'working' : legacyVerb === 'done' ? 'done'
-        : legacyVerb === 'failed' || legacyVerb === 'blocked' ? 'blocked' : 'paused'
-  const firstmate = card.sourceRefs.some(r => r.adapter === 'firstmate')
-  const status = card.status?.state ?? (firstmate ? legacy : 'paused')
-  const role = merged || status === 'done' ? 'done' : status === 'working' ? 'workers_on_it'
-    : status === 'needs_you' || status === 'blocked' ? 'needs_you' : 'parked'
-
-  return (columns.find(c => c.role === role) ?? columns.find(c => c.role === 'parked') ?? columns[0]!).id
+export function fallbackColumn({ columns }: { columns: BoardColumn[] }): Column {
+  return (columns.find(c => c.role === 'parked') ?? columns[0]!).id
 }
 
 // Refreshes the given cards, or every card when a board-wide event changed the rules.
@@ -63,10 +46,8 @@ export function refreshTasks({ state, ids }: {
       delete card.parentId
     }
 
-    if (card.tracking === 'declared') {
-      card.column = taskColumn({ columns, card })
-    } else if (!columns.some(c => c.id === card.column)) {
-      card.column = (columns.find(c => c.role === 'parked') ?? columns[0]!).id
+    if (!columns.some(c => c.id === card.column)) {
+      card.column = fallbackColumn({ columns })
     }
   }
 
@@ -195,27 +176,18 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
     for (const card of Object.values(state.cards)) {
       const placement = event.data.placements?.[card.id]
 
-      if (placement) {
-        if (placement.after) {
-          card.manualColumn = placement.after
-        } else {
-          delete card.manualColumn
-        }
-
-        card.revision++
-        card.updatedSeq = event.seq
-        card.updatedAt = event.at
-      }
-
-      if (card.manualColumn && !event.data.columns.some(c => c.id === card.manualColumn)) {
-        card.manualColumn = event.data.fallback ?? event.data.columns[0]!.id
-        card.revision++
-        card.updatedSeq = event.seq
-        card.updatedAt = event.at
+      if (placement?.after) {
+        card.column = placement.after
       }
 
       if (!event.data.columns.some(c => c.id === card.column)) {
         card.column = event.data.fallback ?? event.data.columns[0]!.id
+      }
+
+      if (placement) {
+        card.revision++
+        card.updatedSeq = event.seq
+        card.updatedAt = event.at
       }
     }
 
@@ -229,7 +201,7 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
     const role = boardConfig({ state }).columns.find(c => c.id === column)?.role
     const initial = role && { id: event.id, at: event.at, actor: event.actor, state: ROLE_STATUS[role], note: '' }
     state.cards[event.cardId] = {
-      id: event.cardId, key, title, titleSet: true, workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], sessionIds: [], tracking: 'declared', statusLog: initial ? [initial] : [], ...(initial ? { status: initial } : {}), ...(parentId ? { parentId } : {}), ...(column && !role ? { manualColumn: column } : {}), ...(folder ? { folder } : {}), column: column ?? 'parked', revision: 1, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
+      id: event.cardId, key, title, titleSet: true, workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], sessionIds: [], tracking: 'declared', statusLog: initial ? [initial] : [], ...(initial ? { status: initial } : {}), ...(parentId ? { parentId } : {}), ...(folder ? { folder } : {}), column: column ?? 'parked', revision: 1, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
     }
     state.keys[key] = event.cardId
     refreshTasks({ state, ids: [event.cardId] })

@@ -18,7 +18,6 @@ const paths: Record<string, string> = {
   link: 'm9 15 6-6M8 17l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m2-1 2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0',
   linear: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M5 6l13 13M3 11l10 10M11 3l10 10',
   github_pr: 'M6 8v12M18 20V9a3 3 0 0 0-3-3h-3m3-3-3 3 3 3M8 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0M8 20a2 2 0 1 1-4 0 2 2 0 0 1 4 0M20 20a2 2 0 1 1-4 0 2 2 0 0 1 4 0',
-  pin: 'm9 3 9 3-3 5 1 5-5-1-6 6m3-8L5 8z',
   // Agent settings.
   model: 'M7 7h10v10H7zM10 3v4m4-4v4m-4 10v4m4-4v4M3 10h4m-4 4h4m10-4h4m-4 4h4',
   effort: 'M4 17a8 8 0 0 1 16 0M12 17l4-5',

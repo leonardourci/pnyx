@@ -6,7 +6,6 @@ import {
   type BoardEvent,
   type BoardState,
   type Card,
-  type Column,
   type Link,
   type SourceRef,
 } from './model.ts'
@@ -16,45 +15,6 @@ import { requestId } from './answer.ts'
 
 export function emptyBoard(): BoardState {
   return { v: EVENT_VERSION, seq: 0, cards: {}, keys: {}, eventIds: {}, undone: {} }
-}
-
-// Placement rules, highest precedence first: a manual move, a blocking source
-// request, linked pull requests, other attention or a recorded outcome, then ongoing work.
-export function columnFor({ card }: { card: Card }): Column {
-  if (card.manualColumn) {
-    return card.manualColumn
-  }
-
-  // A request answered from the board waits on the session, not on anyone.
-  const open = card.attention.filter(a => !a.answered)
-
-  if (open.some(a => a.blocking)) {
-    return 'needs_you'
-  }
-
-  const prs = card.links.filter(l => l.kind === 'github_pr')
-
-  if (prs.some(l => l.state === 'open')) {
-    return 'review'
-  }
-
-  if (prs.length > 0 && prs.every(l => l.state === 'merged')) {
-    return 'done'
-  }
-
-  if (prs.some(l => l.state === 'closed')) {
-    return 'needs_you'
-  }
-
-  if (open.some(a => a.kind !== 'idle')) {
-    return 'needs_you'
-  }
-
-  if (card.outcome) {
-    return card.outcome.state === 'failed' && !card.outcome.closed ? 'needs_you' : 'done'
-  }
-
-  return 'workers_on_it'
 }
 
 // Keeps the best auto title seen: a better source replaces a worse one, a later
@@ -165,12 +125,9 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
       }
 
       if (placement.after) {
-        placed.manualColumn = placement.after
-      } else {
-        delete placed.manualColumn
+        placed.column = placement.after
       }
 
-      placed.column = columnFor({ card: placed })
       placed.revision += 1
       placed.updatedSeq = event.seq
       placed.updatedAt = event.at
@@ -194,17 +151,7 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
       state.undone[event.undoes] = event.id
     }
 
-    const touched = [event.cardId, event.data.before, event.data.after]
-
-    for (const id of touched) {
-      const task = id && state.cards[id]
-
-      if (task) {
-        task.column = columnFor({ card: task })
-      }
-    }
-
-    refreshTasks({ state, ids: touched })
+    refreshTasks({ state, ids: [event.cardId, event.data.before, event.data.after] })
 
     if (card && event.data.before !== card.id) {
       card.revision++
@@ -304,9 +251,11 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
 
     if (event.type === 'card.moved') {
       if (event.data.after) {
-        card.manualColumn = event.data.after
-      } else {
-        delete card.manualColumn
+        card.column = event.data.after
+      }
+
+      if (event.data.rank !== undefined) {
+        card.rank = event.data.rank
       }
     } else if (event.type === 'card.linked') {
       const { url, after } = event.data
@@ -397,15 +346,8 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
   }
 
   observeSession({ state, card, event })
-  card.column = columnFor({ card })
   const task = card.agent && state.sessions?.[sessionId({ agent: card.agent })]?.taskId
-  const worker = task && task !== card.id ? state.cards[task] : undefined
-
-  if (worker) {
-    worker.column = columnFor({ card: worker })
-  }
-
-  refreshTasks({ state, ids: [card.id, worker?.id] })
+  refreshTasks({ state, ids: [card.id, task] })
 
   card.revision += 1
 

@@ -64,7 +64,7 @@ test('attach pins one session, follows subsequent hooks, and preserves outcomes 
   const ended = f.state()
   assert.equal(ended.cards[ended.keys.other].column, 'parked')
   f.run({ args: ['task', 'status', 'other', 'done', '--note', 'Work complete'] })
-  assert.equal(f.state().cards[ended.keys.other].column, 'done')
+  assert.equal(f.state().cards[ended.keys.other].column, 'parked')
   assert.equal(ended.cards[task].agent, undefined)
   f.run({ args: ['task', 'detach', 'work'] })
   assert.equal(f.state().cards[ended.keys.other].agent.sessionId, 'a')

@@ -163,7 +163,7 @@ try {
   await evaluate({ code: 'const task = [...document.querySelectorAll(\'.card .inline-title\')].find(c => c.textContent.trim() === \'Hydra browser task\').closest(\'.card\'); const dest = [...document.querySelectorAll(\'.column\')].find(c => c.getAttribute(\'aria-label\') === \'Research\'); const dt = new DataTransfer(); task.dispatchEvent(new DragEvent(\'dragstart\', {bubbles: true, dataTransfer: dt})); dest.dispatchEvent(new DragEvent(\'drop\', {bubbles: true, dataTransfer: dt})); return true;' })
   await browser({ args: ['wait', '150'] })
   const moved = Object.values(loadBoard({ board: 'default' }).state.cards).find(c => c.title === 'Hydra browser task')!
-  assert.equal(moved.manualColumn, loadBoard({ board: 'default' }).state.board?.columns[3]?.id)
+  assert.equal(moved.column, loadBoard({ board: 'default' }).state.board?.columns[3]?.id)
   await evaluate({ code: 'document.querySelector(\'[aria-label="Delete Research column"]\').click(); return true;' })
   await click({ text: 'Delete column' })
   await browser({ args: ['wait', '150'] })
@@ -171,7 +171,7 @@ try {
   await click({ text: 'Undo' })
   await wait({ text: 'Column and its cards restored.' })
   assert.equal(loadBoard({ board: 'default' }).state.board?.columns.length, 5)
-  assert.equal(loadBoard({ board: 'default' }).state.cards[moved.id]?.manualColumn, moved.manualColumn)
+  assert.equal(loadBoard({ board: 'default' }).state.cards[moved.id]?.column, moved.column)
   await evaluate({ code: 'document.querySelector(\'[aria-label="Delete Research column"]\').click(); return true;' })
   await click({ text: 'Delete column' })
   await browser({ args: ['wait', '150'] })

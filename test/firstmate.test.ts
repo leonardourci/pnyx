@@ -132,7 +132,7 @@ test('sync mirrors Firstmate tasks under its board Hydra', () => {
       ['blocked', 'ci-token', true],
     ],
   )
-  assert.equal(api.column, 'needs_you')
+  assert.equal(api.column, 'workers_on_it', 'a synced task stays where it was created')
   assert.equal(api.activity, 'working: PR https://github.com/example/app/pull/41 opened')
   // A pull request named only in the status log is not the task's own.
   assert.deepEqual(api.links, [])
@@ -143,16 +143,16 @@ test('sync mirrors Firstmate tasks under its board Hydra', () => {
   const scout = cardOf({ home, task: 'docs-scout' })
   assert.deepEqual(scout.attention, [])
   assert.deepEqual(scout.outcome, { state: 'done', source: 'firstmate' })
-  assert.equal(scout.column, 'done')
+  assert.equal(scout.column, 'workers_on_it')
   // A failed: line closes the ship's decisions but asks for the owner.
   const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [{ kind: 'failed', key: '@status', blocking: true, text: 'tests red after patch' }])
   assert.equal(hotfix.outcome, undefined)
-  assert.equal(hotfix.column, 'needs_you')
-  // meta pr= plus a merged backlog row: Done.
+  assert.equal(hotfix.column, 'workers_on_it')
+  // meta pr= plus a merged backlog row: a merged link, and the card stays put.
   const release = cardOf({ home, task: 'release-1' })
   assert.deepEqual(release.links.map(l => [l.number, l.state]), [[40, 'merged']])
-  assert.equal(release.column, 'done')
+  assert.equal(release.column, 'workers_on_it')
 
   assert.deepEqual(syncHome({ board: 'default', home }), { tasks: 5, appended: 0 })
 })
@@ -185,13 +185,12 @@ test('a column edit before sync does not stand in for the Firstmate Hydra', () =
   const board = loadBoard({ board: 'default' }).state.board!
   assert.equal(board.hydra.home, home)
   assert.equal(board.columns[0]!.title, 'Your turn')
-  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'done')
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'workers_on_it')
 })
 
-test('a failed task closed in the backlog lands in Done as a closed failure', () => {
+test('a failed task closed in the backlog records a closed failure in place', () => {
   const { home } = copyFixture()
   syncHome({ board: 'default', home })
-  assert.equal(cardOf({ home, task: 'hotfix-2' }).column, 'needs_you')
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] hotfix-2')), 1)
@@ -201,15 +200,14 @@ test('a failed task closed in the backlog lands in Done as a closed failure', ()
   const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [])
   assert.deepEqual(hotfix.outcome, { state: 'failed', note: 'closed after failure', closed: true, source: 'firstmate' })
-  assert.equal(hotfix.column, 'done')
+  assert.equal(hotfix.column, 'workers_on_it')
 })
 
-test('a blocked task closed in the backlog leaves Needs you', () => {
+test('a blocked task closed in the backlog clears its request and records done in place', () => {
   const { home } = copyFixture()
   writeFileSync(join(home, 'state', 'hotfix-2.status'), 'working: reproducing\nblocked: waiting for CI token\n')
   syncHome({ board: 'default', home })
   assert.deepEqual(cardOf({ home, task: 'hotfix-2' }).attention.map(a => [a.kind, a.key]), [['blocked', 'default']])
-  assert.equal(cardOf({ home, task: 'hotfix-2' }).column, 'needs_you')
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] hotfix-2')), 1)
@@ -219,10 +217,10 @@ test('a blocked task closed in the backlog leaves Needs you', () => {
   const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [])
   assert.deepEqual(hotfix.outcome, { state: 'done', source: 'firstmate' })
-  assert.equal(hotfix.column, 'done')
+  assert.equal(hotfix.column, 'workers_on_it')
 })
 
-test('a done declaration moves Hydra work to Done without closing its backlog record', () => {
+test('a done declaration neither moves Hydra work nor closes its backlog record', () => {
   const { home } = copyFixture()
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
@@ -232,7 +230,8 @@ test('a done declaration moves Hydra work to Done without closing its backlog re
   writeFileSync(backlog, rows.join('\n'))
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home, task: 'docs-scout' }).outcome, undefined)
-  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'done')
+  assert.equal(cardOf({ home, task: 'docs-scout' }).status?.state, 'done')
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'workers_on_it')
 })
 
 test('sync never overwrites a link state another source refreshed', () => {
@@ -306,7 +305,7 @@ test('firstmate sync through the CLI', () => {
   const { home, env } = copyFixture()
   const { run, fails } = cli({ env })
   assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,5,[1-9]\d*$/m)
-  assert.match(run({ args: [] }), /needs_you: 2/)
+  assert.match(run({ args: [] }), /workers_on_it: 5/)
   fails({ args: ['firstmate', 'sync'], code: 'VALIDATION_ERROR' })
   fails({ args: ['firstmate', 'sync', '--home', join(home, 'data')], code: 'VALIDATION_ERROR' })
 })
@@ -388,7 +387,7 @@ test('a Firstmate outcome follows the backlog on every sync', () => {
   writeFileSync(backlog, rows.join('\n'))
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home, task: 'docs-scout' }).outcome, undefined)
-  assert.notEqual(cardOf({ home, task: 'docs-scout' }).column, 'done')
+  assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'workers_on_it')
   const cleared = readEvents({ board: 'default' }).filter(e => e.type === 'card.outcome')
     .at(-1)!
   cli({ env: process.env }).fails({ args: ['undo', cleared.id], code: 'NOT_UNDOABLE' })
