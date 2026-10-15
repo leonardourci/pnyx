@@ -1,6 +1,6 @@
 # Pnyx contributor guide
 
-Pnyx is a deterministic Hydra of every agent and its work, with an AXI CLI named `pnyx-axi`.
+Pnyx is a deterministic view of every agent and its work in Hydras, with an AXI CLI named `pnyx-axi`.
 
 ## Build and test
 
