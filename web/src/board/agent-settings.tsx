@@ -178,21 +178,17 @@ function ControlRow({
   )
 }
 
-// Changes the session's settings by typing what its harness takes, on the card's
-// reply route, and shows each change as pending until the session reports it.
-export function AgentControls({
-  card,
-  thread,
-  command,
-  connected,
-  notify,
-}: {
+interface AgentControlsInput {
   card: Card
   thread: ThreadPage | null
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
-}) {
+}
+
+// Changes the session's settings by typing what its harness takes, on the card's
+// reply route, and tracks each change as pending until the session reports it.
+function useAgentControls({ card, thread, command, connected, notify }: AgentControlsInput) {
   const [pending, setPending] = useState<Record<string, Pending>>({})
   const provider = card.agent?.provider
   const page = thread?.card === card.id ? thread : null
@@ -215,14 +211,6 @@ export function AgentControls({
       return Object.keys(left).length === Object.keys(current).length ? current : left
     })
   }, [card.settings, harness])
-
-  if (!harness) {
-    return (
-      <p className="empty">
-        {provider ? `Pnyx changes settings only for Claude Code and Codex sessions, not ${harnessName({ provider: provider })}.` : 'No agent session has joined this card yet, so there is nothing to change.'}
-      </p>
-    )
-  }
 
   const route = !connected ? 'Reconnect to change settings.' : !page ? 'Loading the route…' : page.route ? undefined : page.noRoute
 
@@ -251,6 +239,24 @@ export function AgentControls({
       })
   }
 
+  const sending = Object.values(pending).some(p => p.sending)
+
+  return { provider, page, firstmate, harness, route, pending, send, sending }
+}
+
+export function AgentControls({ card, thread, command, connected, notify }: AgentControlsInput) {
+  const {
+    provider, page, firstmate, harness, route, pending, send, sending,
+  } = useAgentControls({ card, thread, command, connected, notify })
+
+  if (!harness) {
+    return (
+      <p className="empty">
+        {provider ? `Pnyx changes settings only for Claude Code and Codex sessions, not ${harnessName({ provider: provider })}.` : 'No agent session has joined this card yet, so there is nothing to change.'}
+      </p>
+    )
+  }
+
   return (
     <section className="agent-controls" aria-label="Change settings">
       <h3>Change from here</h3>
@@ -265,7 +271,7 @@ export function AgentControls({
           control={control}
           now={card.settings?.[control.setting]}
           pending={pending[control.setting]}
-          sending={Object.values(pending).some(p => p.sending)}
+          sending={sending}
           blocked={route ?? keyReason({ control, kind: page?.routeKind })}
           why={route ? undefined : keyReason({ control, kind: page?.routeKind })}
           kind={page?.routeKind}
