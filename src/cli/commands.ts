@@ -3,11 +3,13 @@
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
 import { randomUUID } from 'node:crypto'
 import { cardSessionId, findSession, interactive, liveTask, sessionId } from '../core/tasks.ts'
-import { paseoStatus, startAgent } from '../integrations/paseo/launch.ts'
-import { readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { paseoStatus } from '../integrations/paseo/launch.ts'
+import { setupHydra, startHydra, startTask } from './start.ts'
+import { existsSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { basename, join } from 'node:path'
 import { boardConfig, declareTask, hydraEvent, HYDRA_CARD, validateColumns } from '../core/hydra.ts'
-import type { HydraIdentity } from '../core/model.ts'
+import type { BoardConfig, HydraIdentity } from '../core/model.ts'
 import { readThread } from '../thread/read.ts'
 import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
@@ -642,6 +644,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       harness: { type: 'string' },
       prompt: { type: 'string' },
       'paseo-url': { type: 'string' },
+      via: { type: 'string' },
     },
     positionals: 3,
   })
@@ -654,13 +657,14 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (action === 'start') {
-    return startAgent({
+    return startTask({
       board,
       task: required({ value: positionals[1], what: 'task id' }),
-      harness: required({ value: values.harness as string | undefined, what: '--harness' }),
-      prompt: required({ value: values.prompt as string | undefined, what: '--prompt' }),
-      ...(values.folder ? { folder: values.folder as string } : {}),
-      ...(url ? { url } : {}),
+      via: values.via as string | undefined,
+      harness: values.harness as string | undefined,
+      prompt: values.prompt as string | undefined,
+      folder: values.folder as string | undefined,
+      url,
       meta: m,
     })
   }
@@ -854,8 +858,12 @@ function taskSessions({ board, ids }: { board: string; ids: Set<string> }): Set<
 }
 
 function boardCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, board } = parse({ args, options: { ...WRITE, name: { type: 'string' }, hydra: { type: 'string' }, session: { type: 'string' }, firstmate: { type: 'string' } }, positionals: 2 })
+  const { values, positionals, board } = parse({ args, options: { ...WRITE, name: { type: 'string' }, hydra: { type: 'string' }, session: { type: 'string' }, firstmate: { type: 'string' }, command: { type: 'string' }, base: { type: 'string' } }, positionals: 2 })
   const action = positionals[0]
+
+  if (action === 'homes') {
+    return firstmateHomes({ base: values.base as string | undefined })
+  }
 
   if (action === 'list') {
     let boards: string[] = []
@@ -882,7 +890,8 @@ function boardCommand({ args }: { args: string[] }): Output {
     }
   }
 
-  const id = action === 'create' ? required({ value: positionals[1], what: 'board id' }) : board
+  const id = action !== 'create' ? board
+    : positionals[1] ?? (values.firstmate ? homeBoardId({ home: String(values.firstmate) }) : required({ value: undefined, what: 'board id' }))
   boardDir({ board: id })
 
   if (action === 'show') {
@@ -892,7 +901,7 @@ function boardCommand({ args }: { args: string[] }): Output {
   }
 
   if (action !== 'create' && action !== 'set') {
-    throw new BoardError({ message: 'Use board create <id>, list, show or set', code: 'VALIDATION_ERROR' })
+    throw new BoardError({ message: 'Use board create <id>, list, homes, show or set', code: 'VALIDATION_ERROR' })
   }
 
   const m = meta({ values })
@@ -927,9 +936,57 @@ function boardCommand({ args }: { args: string[] }): Output {
 
       const hydra: HydraIdentity = { name: 'Hydra', kind: 'agent', ...kept, id: identity, ...(home ? { kind: 'firstmate', home } : {}), ...(session ? { session: session.id } : {}) }
 
-      return hydraEvent({ state, meta: m, cardId: '$board', change: { type: 'board.configured', data: { ...current, id, name: String(values.name ?? current.name), hydra } } })
+      const command = values.command === undefined ? current.command : String(values.command).trim()
+      const data: BoardConfig = { ...current, id, name: String(values.name ?? current.name), hydra }
+      delete data.command
+
+      if (command) {
+        data.command = command
+      }
+
+      return hydraEvent({ state, meta: m, cardId: '$board', change: { type: 'board.configured', data } })
     },
   })
+}
+
+// A board id from a Firstmate home's folder name, such as fm-god-father.
+function homeBoardId({ home }: { home: string }): string {
+  return basename(home).toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[^a-z0-9]+/, '')
+    .slice(0, 64) || 'firstmate'
+}
+
+// Firstmate homes beside each other, as new-firstmate makes them, and the board each has.
+function firstmateHomes({ base }: { base?: string }): Output {
+  const root = base ?? process.env.FIRSTMATE_FACTORY_BASE ?? join(homedir(), 'projects', 'agentic-engineering-workflow')
+  let names: string[] = []
+
+  try {
+    names = readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory())
+      .map(d => d.name)
+  } catch { /* No such folder: no homes. */ }
+
+  const homes = names.map(name => join(root, name)).filter(path =>
+    ['state', 'config'].every(dir => existsSync(join(path, dir))) && existsSync(join(path, 'bin', 'fm-send.sh')))
+  let boards: { id: string; home?: string }[] = []
+
+  try {
+    boards = readdirSync(join(pnyxHome(), 'boards')).map(id => ({ id, home: loadBoard({ board: id }).state.board?.hydra.home }))
+  } catch { /* No boards yet. */ }
+
+  if (!homes.length) {
+    return { base: root, homes: 'none: no Firstmate homes found', help: ['Pass --base <folder holding the homes>'] }
+  }
+
+  const rows = homes.map(home => {
+    const real = canonical({ path: home }) ?? home
+    const board = boards.find(b => b.home === real)?.id
+
+    return { home: real, board: board ?? 'none', ...(board ? {} : { create: `pnyx-axi board create --firstmate ${real}` }) }
+  })
+
+  return { base: root, homes: rows, help: ['Each home gets its own board; run the create command of a home without one'] }
 }
 
 const boardCommandHandler = guard({ handler: ({ args }) => boardCommand({ args }) })
@@ -1016,8 +1073,21 @@ function columnCommand({ args }: { args: string[] }): Output {
 
 const columnCommandHandler = guard({ handler: ({ args }) => columnCommand({ args }) })
 
-function hydraCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, board } = parse({ args, options: { ...WRITE, task: { type: 'string' }, action: { type: 'string' }, text: { type: 'string' }, after: { type: 'string' }, limit: { type: 'string' }, full: { type: 'boolean' } }, positionals: 1 })
+function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
+  const { values, positionals, board } = parse({ args, options: { ...WRITE, task: { type: 'string' }, action: { type: 'string' }, text: { type: 'string' }, after: { type: 'string' }, limit: { type: 'string' }, full: { type: 'boolean' }, via: { type: 'string' }, harness: { type: 'string' }, prompt: { type: 'string' }, folder: { type: 'string' }, home: { type: 'string' }, 'paseo-url': { type: 'string' } }, positionals: 1 })
+
+  if (positionals[0] === 'start') {
+    return startHydra({
+      board,
+      via: values.via as string | undefined,
+      harness: values.harness as string | undefined,
+      prompt: values.prompt as string | undefined,
+      folder: values.folder as string | undefined,
+      home: values.home as string | undefined,
+      url: values['paseo-url'] as string | undefined,
+      meta: meta({ values }),
+    })
+  }
 
   if (positionals[0] === 'messages') {
     const state = loadBoard({ board }).state
@@ -1388,11 +1458,15 @@ const repair = guard({
 
 const setup = guard({
   handler: ({ args }) => {
-    const options: Options = { harness: { type: 'string' }, remove: { type: 'boolean' }, preview: { type: 'boolean' } }
-    const { values, positionals } = parse({ args, options, positionals: 1 })
+    const options: Options = { ...WRITE, harness: { type: 'string' }, remove: { type: 'boolean' }, preview: { type: 'boolean' }, home: { type: 'string' } }
+    const { values, positionals, board } = parse({ args, options, positionals: 1 })
+
+    if (positionals[0] === 'hydra') {
+      return setupHydra({ board, home: required({ value: values.home as string | undefined, what: '--home' }), meta: meta({ values }) })
+    }
 
     if (positionals[0] !== 'hooks') {
-      throw new AxiError(`unknown setup target: ${positionals[0] ?? '(none)'}`, 'VALIDATION_ERROR', ['Run `pnyx-axi setup hooks`'])
+      throw new AxiError(`unknown setup target: ${positionals[0] ?? '(none)'}`, 'VALIDATION_ERROR', ['Run `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'])
     }
 
     const harness = values.harness as string | undefined
@@ -1484,12 +1558,12 @@ export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Task boards, each with one Hydra orchestrator
 commands:
   pnyx-axi                                   Show the board summary
-  board create|list|show|set                  Configure boards and their single Hydra
+  board create|list|homes|show|set            Configure boards, one per Firstmate home, each with one Hydra
   column create|rename|delete|reorder|list    Edit the column template
   task create|list|show|rename|status|history Tasks and one level of subtasks (--parent <id>)
-  task start <task> --harness claude|codex --prompt <text> [--folder <path>]
-                                             Start an agent for the task in Paseo and attach it
-  hydra send|messages                        Queue task context in Hydra's chat, or read it
+  task start <task> [--via paseo|firstmate|command]
+                                             Start a worker for the task and attach it
+  hydra start|send|messages                  Start the board's Hydra, queue task context in its chat, or read it
   task sessions                              List recorded sessions, including background runs
   task attach <task> --session <session>      Move an interactive session onto a task
   task detach <task>                         Detach its agent without stopping the session
@@ -1508,6 +1582,8 @@ commands:
   serve [--port <n>] [--home <path>]         Run the board server until stopped; --home also watches Firstmate
   stop                                       Stop the board's running server
   setup hooks [--harness claude|codex]       Install the silent reporting hooks (--remove, --preview)
+  setup hydra --home <firstmate home>        Make a Firstmate home the board's Hydra and give it the pnyx-hydra skill
+  integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
   agent <id> [<setting> <value>]             List or change a session's model, effort, mode or fast mode from its card
   firstmate sync|watch --home <path>         Fold a Firstmate home's tasks into the board, once or on every change
@@ -1520,10 +1596,15 @@ flags:
 
 const COMMAND_HELP: Record<string, string> = {
   board: `usage: pnyx-axi board create <id> [--name <name>] [--hydra <identity>] [--session <session>] [--firstmate <home>]
+pnyx-axi board create --firstmate <home>
 pnyx-axi board list
-pnyx-axi board show|set --board <id> [--hydra <identity>] [--session <session>] [--firstmate <home>]
+pnyx-axi board homes [--base <folder>]
+pnyx-axi board show|set --board <id> [--hydra <identity>] [--session <session>] [--firstmate <home>] [--command <shell>]
 Each board has exactly one Hydra identity. Changing Hydra preserves tasks, history and old messages.
 No process is launched. A session used as Hydra cannot also be a task worker.
+board create --firstmate names the board after the home's folder. board homes lists the Firstmate homes
+in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's board.
+--command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
 `,
   column: `usage: pnyx-axi column list
 pnyx-axi column create --title <title> [--id custom:<id>]
@@ -1536,6 +1617,11 @@ the final column cannot be deleted. Use --if-revision for the board revision.
   hydra: `usage: pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>]
 pnyx-axi hydra send --text <message>
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
+pnyx-axi hydra start [--via paseo|command] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
+pnyx-axi hydra start --via firstmate --home <firstmate home>
+hydra start starts the board's Hydra: in Paseo (Claude Code by default) or with the board command, its
+session becomes the board's Hydra; a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
+prompt points Hydra at the pnyx-hydra skill.
 Messages are durable entries in Hydra's board chat; one without --task is about the board, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
 `,
@@ -1545,7 +1631,9 @@ pnyx-axi task rename <id> --title <title>
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
-pnyx-axi task start <task> --harness claude|codex --prompt <text> [--folder <path>] [--paseo-url <url>]
+pnyx-axi task start <task> [--via paseo] --harness claude|codex --prompt <text> [--folder <path>] [--paseo-url <url>]
+pnyx-axi task start <task> --via firstmate [--prompt <text>]
+pnyx-axi task start <task> --via command [--prompt <text>] [--harness <name>] [--folder <path>]
 pnyx-axi task paseo [--paseo-url <url>]
 pnyx-axi task sessions
 pnyx-axi task attach <task> --session <session-id|card-id|key>
@@ -1558,6 +1646,10 @@ task start asks the local Paseo daemon (PNYX_PASEO_URL, default ws://127.0.0.1:6
 Claude Code or Codex agent in the task's folder with the opening message, then attaches it. --folder
 also records the task's folder. Replies and the conversation then go through Paseo; the agent stays
 in Paseo too. Repeating the same --event-id never starts a second agent. task paseo checks the daemon.
+--via firstmate puts a worker request in Hydra's chat and sends it to the board's Firstmate home as an inbox note.
+--via command runs the board command in the task's folder with PNYX_TASK and the rest of its context in the
+environment; the session it starts attaches to the task when its hooks first report.
+The default route is firstmate for a board whose Hydra is a Firstmate home, otherwise paseo.
 `,
   push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
@@ -1597,11 +1689,15 @@ Appends an event that reverses a manual push edit, move, link or outcome. Refuse
 Source observations, card creation and merges cannot be undone.
 `,
   setup: `usage: pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
+pnyx-axi setup hydra --home <firstmate home> [--board <id>]
 Adds Pnyx's reporting hook to the user-level Claude Code settings.json or Codex hooks.json, keeping
 every other hook. Without --harness it sets up each harness whose config folder exists. Rerunning
 changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,
 so they never add to the agent's context: no session-start board summary is installed.
-Hook events go to the default board.
+Hook events go to the default board, or to PNYX_HOME and PNYX_BOARD when a session has them.
+setup hydra makes the Firstmate home the board's Hydra, copies the pnyx-hydra skill into the home's
+.agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
+Firstmate's own files are not changed.
 `,
   repair: `usage: pnyx-axi repair [--board <name>]
 A crash mid-append can leave a torn last line; writes refuse until it is repaired.

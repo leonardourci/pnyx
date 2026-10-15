@@ -897,13 +897,16 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   }
 
   const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
+  // Without --home, a board whose Hydra is a Firstmate home watches that home.
+  const hydra = loadBoard({ board }).state.board?.hydra
+  const given = values.home ?? (hydra?.kind === 'firstmate' && hydra.home ? [hydra.home] : [])
   let server: RunningServer
 
   try {
     server = await startServer({
       board,
       port,
-      homes: values.home,
+      homes: given,
     })
   } catch (error) {
     if (error instanceof BoardError) {
@@ -918,7 +921,7 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   }
 
   // Each --home both takes replies and feeds the board, as `firstmate watch` would.
-  const homes = (values.home ?? []).map(path => resolveHome({ path }))
+  const homes = given.map(path => resolveHome({ path }))
   const firstmate = homes.length > 0 ? watchHomes({ board, list: homes }) : undefined
   // TOON for a flat object is `key: value`; JSON quoting keeps the values valid TOON.
   const watching = homes.length > 0 ? `firstmate: ${JSON.stringify(`watching ${homes.length} home${homes.length === 1 ? '' : 's'}`)}\n` : ''

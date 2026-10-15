@@ -116,7 +116,7 @@ for (const harness of ['claude', 'codex']) {
       prompt: 'Do the lab work',
       idempotencyKey: 'start-1',
       labels: { 'pnyx.task': 'c1' },
-      env: { PNYX_HOME: process.env.PNYX_HOME, PNYX_BOARD: 'lab' },
+      env: { PNYX_HOME: process.env.PNYX_HOME, PNYX_BOARD: 'lab', PNYX_TASK: 'c1' },
     })
     assert.equal(paseo.calls.closed, 1)
 
@@ -217,7 +217,7 @@ test('pnyx-axi task start and task paseo report a stopped daemon as structured e
   const start = run({ args: ['task', 'start', 'work', '--harness', 'claude', '--prompt', 'Go', '--folder', folder] })
   assert.notEqual(start.status, 0)
   assert.match(start.stdout, /PASEO_UNAVAILABLE/)
-  assert.match(run({ args: ['task', '--help'] }).stdout, /task start <task> --harness claude\|codex --prompt <text>/)
+  assert.match(run({ args: ['task', '--help'] }).stdout, /task start <task> \[--via paseo\] --harness claude\|codex --prompt <text>/)
 })
 
 test('an agent started from a lab home reports its hooks to that home, never to the installed one', async () => {

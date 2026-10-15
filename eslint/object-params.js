@@ -123,7 +123,7 @@ const boundary = ({ node, filename, sourceCode }) => {
     }
   }
 
-  if (filename.endsWith('/test/paseo.test.ts')
+  if (['/test/paseo.test.ts', '/test/start.test.ts'].some(test => filename.endsWith(test))
     && owner({ node, types: ['VariableDeclarator'] })?.id.name === 'client') {
     return true // The fake implements the Paseo SDK client's signatures.
   }

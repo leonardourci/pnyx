@@ -256,6 +256,8 @@ export interface BoardConfig {
   name: string
   hydra: HydraIdentity
   columns: BoardColumn[]
+  // The shell command `task start --via command` and `hydra start --via command` run.
+  command?: string
 }
 export interface HydraMessage {
   id: string

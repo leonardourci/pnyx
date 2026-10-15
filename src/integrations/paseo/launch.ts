@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { decidePush, decideSession, findCard, type Meta } from '../../core/decide.ts'
-import { BoardError } from '../../core/model.ts'
+import { BoardError, type AgentRef } from '../../core/model.ts'
 import { paseoUrl } from '../../core/paseo.ts'
 import { sessionId } from '../../core/tasks.ts'
 import { canonical, drainSpool, type Output } from '../../cli/commands.ts'
@@ -79,44 +79,17 @@ export async function startAgent({
     return { task: claimed.card.id, event: 'none: duplicate', help: ['This start was already recorded; nothing was started again'] }
   }
 
-  const client = await connect({ url: endpoint })
-  let agent: { id: string }
-
-  try {
-    const { models } = await client.providers.listModels(harness as Harness, { cwd: claimed.cwd })
-    const model = models?.find(m => m.isDefault) ?? models?.[0]
-
-    if (!model) {
-      throw new BoardError({ message: `Paseo has no ${harness} model available`, code: 'PASEO_ERROR', help: [`Check \`paseo status\` for the ${harness} provider`] })
-    }
-
-    agent = await client.agents.create({
-      config: { provider: `${harness}/${model.id}` },
-      cwd: claimed.cwd,
-      title: claimed.card.title,
-      prompt,
-      idempotencyKey: id,
-      labels: { 'pnyx.task': claimed.card.id },
-      // The agent's own hooks report to this home and board, not the default ones.
-      env: { PNYX_HOME: pnyxHome(), PNYX_BOARD: board },
-    })
-  } catch (error) {
-    if (error instanceof BoardError) {
-      throw error
-    }
-
-    throw new BoardError({ message: `Paseo did not start the agent: ${(error as Error).message}`.slice(0, 500), code: 'PASEO_ERROR', help: ['Check the Paseo app before retrying'] })
-  } finally {
-    await client.close().catch(() => undefined)
-  }
-
-  const ref = {
-    provider: HARNESSES[harness as Harness],
-    sessionId: agent.id,
-    paseoAgentId: agent.id,
-    paseoUrl: endpoint,
+  const { agent, ref } = await createPaseoAgent({
+    harness: harness as Harness,
+    prompt,
     cwd: claimed.cwd,
-  }
+    title: claimed.card.title,
+    id,
+    env: { PNYX_HOME: pnyxHome(), PNYX_BOARD: board, PNYX_TASK: claimed.card.id },
+    labels: { 'pnyx.task': claimed.card.id },
+    url: endpoint,
+    connect,
+  })
 
   try {
     return withWriter({
@@ -166,6 +139,51 @@ export async function startAgent({
       help: [`Run \`pnyx-axi attach ${claimed.card.id} --session ${sessionId({ agent: ref })}\` once the task is free`],
     })
   }
+}
+
+// Asks the daemon for one agent. The idempotency key makes a retried create return
+// the agent the first one made. env reaches the agent's own hooks, so they report to
+// this Pnyx home, board and task rather than the installed defaults.
+export async function createPaseoAgent({
+  harness, prompt, cwd, title, id, env, labels, url, connect = openPaseo,
+}: {
+  harness: Harness
+  prompt: string
+  cwd: string
+  title: string
+  id: string
+  env: Record<string, string>
+  labels: Record<string, string>
+  url: string
+  connect?: Connect
+}): Promise<{ agent: { id: string }; ref: AgentRef }> {
+  const client = await connect({ url })
+  let agent: { id: string }
+
+  try {
+    const { models } = await client.providers.listModels(harness, { cwd })
+    const model = models?.find(m => m.isDefault) ?? models?.[0]
+
+    if (!model) {
+      throw new BoardError({ message: `Paseo has no ${harness} model available`, code: 'PASEO_ERROR', help: [`Check \`paseo status\` for the ${harness} provider`] })
+    }
+
+    agent = await client.agents.create({ config: { provider: `${harness}/${model.id}` }, cwd, title, prompt, idempotencyKey: id, labels, env })
+  } catch (error) {
+    if (error instanceof BoardError) {
+      throw error
+    }
+
+    throw new BoardError({ message: `Paseo did not start the agent: ${(error as Error).message}`.slice(0, 500), code: 'PASEO_ERROR', help: ['Check the Paseo app before retrying'] })
+  } finally {
+    await client.close().catch(() => undefined)
+  }
+
+  const ref = {
+    provider: HARNESSES[harness], sessionId: agent.id, paseoAgentId: agent.id, paseoUrl: url, cwd,
+  }
+
+  return { agent, ref }
 }
 
 function isFolder({ path }: { path: string }): boolean {
