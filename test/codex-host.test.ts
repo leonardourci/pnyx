@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
@@ -7,9 +7,10 @@ import { commands } from '../src/cli/commands.ts'
 import { agent, sendReply } from '../src/cli/reply.ts'
 import { startTask } from '../src/cli/start.ts'
 import { workerCommands } from '../src/cli/workers.ts'
+import { harvestTranscripts } from '../src/integrations/hooks/harvest.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
-import { loadBoard, spoolWrite } from '../src/store/board-store.ts'
+import { loadBoard, spoolWrite, withWriter } from '../src/store/board-store.ts'
 import { fakeCodex } from './codex-fixture.ts'
 
 const meta = { at: '2026-10-15T00:00:00Z', actor: 'test', id: 'start-1' }
@@ -206,4 +207,45 @@ printf '%s\\n' '{"models":[{"provider":"codex","id":"gpt-6-luna"}]}'
   assert.match(readFileSync(args, 'utf8'), /--provider\ncodex\n/)
   assert.equal(fixture.messages().find(m => m.method === 'thread/start')!.params!.model, 'gpt-6-luna')
   assert.deepEqual(task().settings, { model: 'gpt-6-luna' })
+})
+
+test('native hook and transcript settings preserve hosted picker changes across restart', async () => {
+  const { root, fixture, task, send } = await lab()
+  await startTask({ board: 'lab', task: 'ship', meta })
+  await until({ check: () => task().sessionActivity === 'finished' })
+  await send({ text: 'HOLD' })
+  await until({ check: () => fixture.messages().filter(m => m.method === 'turn/start').length === 2 })
+  await agent(['ship', 'model', 'gpt-6-luna', '--board', 'lab'])
+  await agent(['ship', 'effort', 'low', '--board', 'lab'])
+  await agent(['ship', 'mode', 'never', '--board', 'lab'])
+  const desired = { model: 'gpt-6-luna', effort: 'low', mode: 'never' }
+  spoolWrite({
+    board: 'lab',
+    entry: {
+      v: 1,
+      id: 'native-settings',
+      at: new Date().toISOString(),
+      harness: 'codex',
+      event: 'PreToolUse',
+      payload: {
+        session_id: task().agent!.sessionId, cwd: root, model: 'gpt-6.1-sol', effort: 'high', permission_mode: 'on-request', tool_name: 'shell', tool_input: { command: 'true' },
+      },
+    },
+  })
+  ingestSpool({ board: 'lab' })
+  assert.deepEqual(task().settings, desired)
+  appendFileSync(fixture.transcript, `${JSON.stringify({ type: 'turn_context', timestamp: new Date().toISOString(), payload: { model: 'gpt-6.1-sol', effort: 'high', approval_policy: 'on-request' } })}\n`)
+  withWriter({ board: 'lab', fn: ({ writer }) => harvestTranscripts({ writer, cardIds: [task().id], at: new Date().toISOString() }) })
+  assert.equal(task().settings?.model, desired.model)
+  assert.equal(task().settings?.effort, desired.effort)
+  assert.equal(task().settings?.mode, desired.mode)
+  await server!.close()
+  server = await startServer({ board: 'lab', spawnCodex: fixture.spawnCodex })
+  await send({ text: 'Continue with selected settings' })
+  await until({ check: () => fixture.children.length === 2 && task().sessionActivity === 'finished' })
+  const turn = fixture.messages().filter(m => m.method === 'turn/start')
+    .at(-1)!.params!
+  assert.equal(turn.model, desired.model)
+  assert.equal(turn.effort, desired.effort)
+  assert.equal(turn.approvalPolicy, desired.mode)
 })
