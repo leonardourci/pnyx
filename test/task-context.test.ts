@@ -73,6 +73,8 @@ test('descriptions and widths persist, resetting widths preserves the rest of th
     await f.run({ name: 'hydra', args: ['resize', '--width', '480'] })
     assert.equal(viewFor({ state: f.state() }).columnWidths['custom:review'], 420)
     assert.equal(viewFor({ state: f.state() }).hydraWidth, 480)
+    const deletion = await f.run({ name: 'column', args: ['delete', 'custom:review'] })
+    await f.run({ name: 'column', args: ['delete', 'custom:review', '--confirm', String(deletion.token)] })
     assert.throws(() => f.run({ name: 'column', args: ['resize', 'missing', '--width', '400'] }))
     assert.throws(() => f.run({ name: 'hydra', args: ['resize', '--width', '20'] }))
     await f.run({ name: 'layout', args: ['reset'] })
