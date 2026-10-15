@@ -93,7 +93,6 @@ export function wouldCycle({ cards, cardId, parentId }: {
   return false
 }
 
-// An older layout still has its own `workers_on_it` column.
 function newCardColumn({ state }: { state: HydraState }): Column {
   const columns = hydraConfig({ state }).columns
 

@@ -33,7 +33,6 @@ export function lockedColumn({ state, id }: { state: HydraState; id: string }): 
   return state.config?.hydra.kind === 'firstmate' && DEFAULT_COLUMNS.some(c => c.role === role)
 }
 
-// The column a role names on this Hydra, when it still has one.
 export function roleColumn({ columns, role }: {
   columns: HydraColumn[]
   role: Role
@@ -41,7 +40,6 @@ export function roleColumn({ columns, role }: {
   return columns.find(c => c.role === role)?.id
 }
 
-// The default column a card's latest status belongs in.
 function statusRole({ card }: { card: Card }): Role | undefined {
   const state = card.outcome?.state === 'done' ? 'done' : card.status?.state
 
@@ -51,8 +49,7 @@ function statusRole({ card }: { card: Card }): Role | undefined {
         : state === 'working' || card.column === LEGACY_IN_PROGRESS ? 'in_progress' : undefined
 }
 
-// A legacy layout, or a Firstmate-linked Hydra missing a default role, moves onto the five
-// defaults in order, keeping the ones it has, followed by the owner's own columns.
+// Rebuilt only for a legacy layout, or a Firstmate-linked Hydra missing a default role; the owner's own columns follow.
 function withDefaultColumns({ columns, locked }: {
   columns: HydraColumn[]
   locked: boolean
@@ -73,8 +70,7 @@ function withDefaultColumns({ columns, locked }: {
   ]
 }
 
-// Moves a Hydra still on an older layout onto the default columns once, placing each
-// card whose column goes away by its status.
+// Cards whose column goes away are placed by status, so this runs once per older layout.
 export function migrateColumns({ state, meta }: { state: HydraState; meta: Meta }): Decision {
   const before = hydraConfig({ state }).columns
   const columns = withDefaultColumns({ columns: before, locked: state.config?.hydra.kind === 'firstmate' })

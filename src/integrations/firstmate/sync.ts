@@ -140,11 +140,7 @@ function prLink({ state, key, task, at }: {
 // Firstmate's own aging rule: an undated captain hold this old no longer waits on the owner.
 const UNDATED_HOLD_DAYS = 14
 
-// The default column a task's records put it in, with the reason the move records:
-// its latest status line, or what the backlog says when it has none. An open decision
-// or a failed or blocked latest line needs the owner. A captain hold
-// waits on the owner unless it is blocked, dated ahead or aged; any other hold parks
-// the task until its date.
+// Captain holds use Firstmate's own buckets: only a live one waits on the owner.
 function firstmatePlace({ task, today }: {
   task: TaskObservation
   today: string
@@ -217,7 +213,7 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         configured = apply({ writer, decision: hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data: { ...config, hydra: { id: observed.key, name: 'Hydra', kind: 'firstmate', home } } } }) })
       }
 
-      // Linking a Hydra to Firstmate locks its default columns, restoring any it renamed or deleted.
+      // A Firstmate-linked Hydra always has every default role, so linking restores a missing one.
       configured += apply({ writer, decision: migrateColumns({ state: writer.state, meta }) })
 
       let appended = apply({
@@ -362,8 +358,7 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
           })
         }
 
-        // The default columns follow the record. A card the owner put in a column of
-        // his own stays there until the record changes.
+        // A card in the owner's own column stays until its Firstmate record changes.
         const placed = writer.state.cards[mirrored.id]!
         const columns = hydraConfig({ state: writer.state }).columns
         // UTC, the day Firstmate itself compares hold dates against.

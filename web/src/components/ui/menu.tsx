@@ -55,7 +55,6 @@ export function Menu({ label, children }: { label: string; children: ReactNode }
   )
 }
 
-// refusal, when set, is shown in place of the confirmation.
 export function DeleteItem({ label, disabled, refusal, confirm }: {
   label: string
   disabled?: boolean

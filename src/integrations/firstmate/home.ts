@@ -45,8 +45,7 @@ export interface HomeObservation {
   tasks: TaskObservation[]
 }
 
-// A row's hold facts. blockers lists the ids its title says it is blocked by whose
-// rows are not Done; a missing row stays a blocker.
+// blockers keeps only ids whose rows are not Done; a missing row stays a blocker.
 export interface Hold {
   reason?: string
   kind?: string
