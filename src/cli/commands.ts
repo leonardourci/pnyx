@@ -2,7 +2,7 @@
 // board's writer lock, ingests the hook spool, then appends at most one event.
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
 import { randomUUID } from 'node:crypto'
-import { cardSessionId, findSession, liveTask, sessionId } from '../core/tasks.ts'
+import { cardSessionId, findSession, liveTask, selfSession, sessionId } from '../core/tasks.ts'
 import { readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { boardConfig, declareTask, hydraEvent, HYDRA_CARD, validateColumns } from '../core/hydra.ts'
@@ -55,7 +55,7 @@ export type Output = Record<string, unknown>
 export type Options = NonNullable<ParseArgsConfig['options']>
 
 export const COMMON: Options = { board: { type: 'string' } }
-const WRITE: Options = {
+export const WRITE: Options = {
   ...COMMON,
   actor: { type: 'string' },
   reason: { type: 'string' },
@@ -99,7 +99,7 @@ export function required({ value, what }: { value: string | undefined; what: str
   return value
 }
 
-function integer({ value, flag }: {
+export function integer({ value, flag }: {
   value: string | boolean | undefined
   flag: string
 }): number | undefined {
@@ -115,7 +115,8 @@ function integer({ value, flag }: {
 }
 
 export function meta({ values }: { values: Record<string, string | boolean | undefined> }): Meta {
-  const m: Meta = { at: new Date().toISOString(), actor: (values.actor as string | undefined) ?? 'cli' }
+  // PNYX_ACTOR names the agent Pnyx launched, such as hydra or worker:<task>.
+  const m: Meta = { at: new Date().toISOString(), actor: (values.actor as string | undefined) ?? (process.env.PNYX_ACTOR || 'cli') }
 
   if (typeof values.reason === 'string') {
     m.reason = values.reason
@@ -407,7 +408,7 @@ function originalReceipt(
 
 // A repeated --event-id answers with the original receipt before any other check,
 // so a retry of a write that already landed never reports a conflict.
-function commit(
+export function commit(
   { board, meta, intent, decide }: {
     board: string
     meta: Meta
@@ -739,7 +740,7 @@ function taskCommand({ args }: { args: string[] }): Output {
       }
 
       const session = action === 'attach'
-        ? required({ value: values.session as string | undefined, what: '--session' })
+        ? sessionRef({ state, ref: required({ value: values.session as string | undefined, what: '--session' }) })
         : findSession({ state, ref }).id
 
       return decideSession({ state, ref: session, task: action === 'attach' ? ref : null, meta: current })
@@ -748,6 +749,20 @@ function taskCommand({ args }: { args: string[] }): Output {
 }
 
 const task = guard({ handler: ({ args }) => taskCommand({ args }) })
+
+// `self` is the session running in the caller's own terminal.
+function sessionRef({ state, ref }: { state: BoardState; ref: string }): string {
+  return ref === 'self'
+    ? selfSession({
+      state,
+      here: {
+        paseoTerminal: process.env.PASEO_TERMINAL_ID,
+        tmuxPane: process.env.TMUX_PANE,
+        herdrPane: process.env.HERDR_PANE_ID,
+      },
+    }).id
+    : ref
+}
 
 function taskHistory({ board, ref, before, limit, full }: {
   board: string
@@ -867,7 +882,7 @@ function boardCommand({ args }: { args: string[] }): Output {
 
       const session = values.session ? findSession({
         state,
-        ref: String(values.session),
+        ref: sessionRef({ state, ref: String(values.session) }),
       }) : undefined
 
       if (session && session.taskId && !state.cards[session.taskId]?.automaticTask) {
@@ -1207,7 +1222,7 @@ const outcome = guard({
   },
 })
 
-function summarize({ event }: { event: BoardEvent }): string {
+export function summarize({ event }: { event: BoardEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
@@ -1437,7 +1452,9 @@ commands:
   board create|list|show|set                  Configure boards and their single Hydra
   column create|rename|delete|reorder|list    Edit the column template
   task create|list|show|rename|status|history Tasks and one level of subtasks (--parent <id>)
-  hydra send|messages                        Queue task context in Hydra's chat, or read it
+  hydra send|messages|check|start            Queue task context in Hydra's chat, read it, wait for changes, or launch Hydra
+  kind list|set|remove                       The agent (harness, model, effort, mode, quota) each task kind launches on
+  worker create <task> [--kind <kind>]       Launch a worker in a Paseo terminal and attach it to the task
   task sessions                              List recorded sessions, including background runs
   task attach <task> --session <session>      Move an interactive session onto a task
   task detach <task>                         Detach its agent without stopping the session
@@ -1471,7 +1488,7 @@ const COMMAND_HELP: Record<string, string> = {
 pnyx-axi board list
 pnyx-axi board show|set --board <id> [--hydra <identity>] [--session <session>] [--firstmate <home>]
 Each board has exactly one Hydra identity. Changing Hydra preserves tasks, history and old messages.
-No process is launched. A session used as Hydra cannot also be a task worker.
+--session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 `,
   column: `usage: pnyx-axi column list
 pnyx-axi column create --title <title> [--id custom:<id>]
@@ -1484,8 +1501,13 @@ the final column cannot be deleted. Use --if-revision for the board revision.
   hydra: `usage: pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>]
 pnyx-axi hydra send --text <message>
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
-Messages are durable entries in Hydra's board chat; one without --task is about the board, not a task. No worker is launched or native terminal typed into.
+pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
+pnyx-axi hydra start [--cwd <dir>] [--preview]
+Messages are durable entries in Hydra's board chat; one without --task is about the board, not a task. Sending one launches nothing.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
+check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, declarations, attachments, columns, moves, links, launches) after --after (default: now), skipping Hydra's own writes (actor hydra),
+and with --wait it blocks up to that many seconds until one appears. Pass the printed through as the next --after.
+start opens a Paseo terminal and launches Hydra on the hydra kind's agent (see pnyx-axi kind); Hydra then binds itself with board set --session self.
 `,
   task: `usage: pnyx-axi task create --title <title> [--key <key>] [--folder <path>] [--column <id>] [--parent <task>]
 pnyx-axi task list | show <id> [--full]
@@ -1494,7 +1516,7 @@ pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
 pnyx-axi task sessions
-pnyx-axi task attach <task> --session <session-id|card-id|key>
+pnyx-axi task attach <task> --session <session-id|card-id|key|self>
 pnyx-axi task detach <task>
 Tasks accept one attached session. A second session cannot replace the recipient.
 attach moves an interactive session to the task; an occupied destination is rejected.
