@@ -1,3 +1,4 @@
+import { storageKey } from './outbox.ts'
 import { cardSessionId, liveTask } from '../../../src/core/tasks.ts'
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Card, Column as ColumnId, ViewPreferences } from '../../../src/core/model.ts'
@@ -27,7 +28,7 @@ import { KeyboardLayers, KeyboardToolbar, useBoardKeyboard } from '../keyboard/b
 
 // What a reload (by hand, or after the server serves a new build) would otherwise lose:
 // the open card, the page, unsent drafts and how far the board was scrolled. Kept per tab.
-const RESTORE_KEY = 'pnyx-restore'
+const RESTORE_KEY = storageKey({ key: 'restore' })
 type Restore = {
   selected?: string | null
   page?: string

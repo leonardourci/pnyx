@@ -1,4 +1,4 @@
-import { readAttempt, saveAttempt } from './outbox.ts'
+import { readAttempt, saveAttempt, storageKey } from './outbox.ts'
 import { useEffect, useRef, useState } from 'react'
 import type { BoardState } from '../../../src/core/model.ts'
 import { HYDRA_CARD, boardConfig } from '../../../src/core/hydra.ts'
@@ -14,7 +14,7 @@ export function HydraChat({ state, command, openTask, notify }: {
 }) {
   const [draft, setDraft] = useState(() => {
     try {
-      return sessionStorage.getItem('pnyx-hydra-draft') ?? ''
+      return sessionStorage.getItem(storageKey({ key: 'hydra-draft' })) ?? ''
     } catch {
       return ''
     }
@@ -23,7 +23,7 @@ export function HydraChat({ state, command, openTask, notify }: {
   const [failure, setFailure] = useState('')
   useEffect(() => {
     try {
-      sessionStorage.setItem('pnyx-hydra-draft', draft)
+      sessionStorage.setItem(storageKey({ key: 'hydra-draft' }), draft)
     } catch { /* Retained in memory when storage is unavailable. */ }
   }, [draft])
   const [busy, run] = useBusy()
@@ -60,8 +60,8 @@ export function HydraChat({ state, command, openTask, notify }: {
           attempt.current = null
 
           try {
-            if (sessionStorage.getItem('pnyx-hydra-draft') === submitted) {
-              sessionStorage.removeItem('pnyx-hydra-draft')
+            if (sessionStorage.getItem(storageKey({ key: 'hydra-draft' })) === submitted) {
+              sessionStorage.removeItem(storageKey({ key: 'hydra-draft' }))
             }
           } catch { /* Retained in memory when storage is unavailable. */ }
 

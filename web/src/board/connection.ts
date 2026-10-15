@@ -1,3 +1,4 @@
+import { storageKey } from './outbox.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardState } from '../../../src/core/model.ts'
 import { emptyBoard, reduce } from '../../../src/core/reducer.ts'
@@ -8,7 +9,7 @@ import { shouldReload } from './view.ts'
 export type Receipt = Record<string, unknown>
 export type Command = ({ name, args }: { name: string; args: string[] }) => Promise<Receipt>
 
-const CACHE_KEY = 'pnyx-board-state'
+const CACHE_KEY = storageKey({ key: 'board-state' })
 export const reconnectDelay = ({ attempt }: { attempt: number }) =>
   Math.min(500 * 2 ** Math.min(attempt, 5), 10000)
 export const retryable = ({ name, args }: { name: string; args: string[] }) =>
@@ -31,7 +32,7 @@ export function useBoard() {
   const [latest, setLatest] = useState<Record<string, LatestMessage>>({})
   const stateRef = useRef(state)
   const socket = useRef<WebSocket | null>(null)
-  const hasSnapshot = useRef(state.seq > 0)
+  const hasSnapshot = useRef(false)
   const ready = useRef(false)
   const pending = useRef(new Map<string, {
     resolve({ receipt }: { receipt: Receipt }): void
@@ -133,7 +134,7 @@ export function useBoard() {
           const m = JSON.parse(e.data) as ServerMessage
 
           if (m.type === 'hello') {
-            if (shouldReload({ loaded: document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content, server: m.build })) {
+            if (m.board !== document.querySelector<HTMLMetaElement>('meta[name=pnyx-board]')?.content || shouldReload({ loaded: document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content, server: m.build })) {
               closed = true; ws.close(); location.reload()
             }
           } else if (m.type === 'snapshot') {

@@ -7,7 +7,7 @@ import { promisify } from 'node:util'
 import { startServer } from '../src/server/server.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import { decidePush } from '../src/core/decide.ts'
-import { loadBoard, withWriter } from '../src/store/board-store.ts'
+import { loadBoard, readEvents, withWriter } from '../src/store/board-store.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 const home = mkdtempSync(join(tmpdir(), 'pnyx-connection-'))
@@ -79,6 +79,27 @@ try {
   await evaluate({ code: '() => { window.connectionMarker = \'heartbeat\'; const send = WebSocket.prototype.send; WebSocket.prototype.send = function(data) { if (JSON.parse(data).type !== \'ping\') send.call(this, data); }; const Native = WebSocket; window.reconnects = 0; window.WebSocket = class extends Native { constructor(...args) { super(...args); window.reconnects++; } }; return true; }' })
   await evaluate({ code: 'async () => { for (let i = 0; i < 380; i++) { if (window.reconnects > 0 && document.querySelector(\'.connection\').classList.contains(\'online\')) return true; await new Promise(r => setTimeout(r, 100)); } throw new Error(\'heartbeat did not recover a silent socket\'); }' })
   await until({ condition: 'window.connectionMarker === "heartbeat" && !!document.querySelector(".composer textarea:not(:disabled)")' })
+  const events = readEvents({ board: 'default' })
+  withWriter({
+    board: 'other',
+    fn: ({ writer }) => {
+      for (const event of events) {
+        const copy = structuredClone(event)
+
+        if ((copy.type === 'task.created' || copy.type === 'card.pushed') && copy.data.title === 'Recovered task') {
+          copy.data.title = 'Different board'
+        }
+
+        writer.append({ event: copy })
+      }
+    },
+  })
+  assert.equal(loadBoard({ board: 'other' }).state.seq, loadBoard({ board: 'default' }).state.seq)
+  await fill({ selector: '.composer textarea', text: 'Only for the original board' })
+  await server.close()
+  server = await startServer({ board: 'other', port, homes: [fixture.nativeHome] })
+  await browser({ args: ['wait', 'Different board'] })
+  await until({ condition: '!document.body.textContent.includes("Recovered task") && !document.querySelector(".composer textarea") && document.querySelector(".connection").classList.contains("online")' })
   process.stdout.write('Connection smoke passed: offline sends, event resync, subscription restore, reload and heartbeat recovery\n')
 } catch (error) {
   const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(tmpdir(), 'pnyx-connection-evidence')
