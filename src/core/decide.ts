@@ -578,11 +578,16 @@ export function decideMove(
   const above = before === undefined ? undefined : findCard({ state, ref: before }).id
   const at = above === undefined ? others.length : others.findIndex(c => c.id === above)
 
+  if (above === card.id) {
+    throw invalid({ message: 'a card cannot go before itself' })
+  }
+
   if (at < 0) {
     throw invalid({ message: `card ${before} is not in column ${column}` })
   }
 
   const next = others[at], previous = others[at - 1]
+  // ponytail: midpoint ranks run out of float precision after ~50 drops into one gap; renumber the column if that ever bites.
   const rank = next && previous ? (rankOf({ card: previous }) + rankOf({ card: next })) / 2
     : next ? rankOf({ card: next }) - 1
       : previous ? rankOf({ card: previous }) + 1 : rankOf({ card })
