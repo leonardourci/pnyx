@@ -86,7 +86,7 @@ export function sharingHydras({ hydraId, path }: { hydraId: string; path: string
         return []
       }
 
-      return [{ id, name: hydraConfig({ state, id }).name, url: `/?open-hydra=${encodeURIComponent(id)}` }]
+      return [{ id, name: hydraConfig({ state, id }).name, url: `/hydra/${encodeURIComponent(id)}/` }]
     })
 }
 
