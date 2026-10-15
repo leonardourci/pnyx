@@ -128,6 +128,11 @@ const boundary = ({ node, filename, sourceCode }) => {
     return true // The fake implements the Paseo SDK client's signatures.
   }
 
+  if (filename.endsWith('/test/host.test.ts')
+    && owner({ node, types: ['VariableDeclarator'] })?.id.name === 'query') {
+    return true // The fake implements the Agent SDK's query signatures.
+  }
+
   if (filename.endsWith('/test/catalog.test.ts') && node.type === 'TSMethodSignature'
     && node.key.name === 'after') {
     return true // The node:test context's cleanup hook.

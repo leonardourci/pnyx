@@ -41,7 +41,7 @@ export type TerminalHost =
 // tty and pid name the harness process that owned the terminal, checked again
 // before anything is typed.
 export type TerminalRoute = TerminalHost & { tty: string; pid: number }
-export type ReplyRoute = { kind: 'firstmate'; home: string; task: string } | { kind: 'paseo-agent'; agent: string; url: string } | TerminalRoute
+export type ReplyRoute = { kind: 'firstmate'; home: string; task: string } | { kind: 'paseo-agent'; agent: string; url: string } | { kind: 'pnyx' } | TerminalRoute
 
 export const HOST_LABEL: Record<ReplyRoute['kind'], string> = {
   'firstmate': 'Firstmate',
@@ -49,6 +49,7 @@ export const HOST_LABEL: Record<ReplyRoute['kind'], string> = {
   'herdr': 'Herdr',
   'paseo': 'Paseo',
   'paseo-agent': 'Paseo',
+  'pnyx': 'Pnyx',
   'iterm2': 'iTerm2',
   'terminal-app': 'Terminal',
 }
@@ -105,6 +106,11 @@ export function replyRoute(
 
   if (card.agent.agentId) {
     return { reason: "A subagent takes input through its parent session's card." }
+  }
+
+  // The Pnyx server runs this agent, so a message reaches it whether or not its process is up.
+  if (card.agent.host === 'pnyx') {
+    return { route: { kind: 'pnyx' } }
   }
 
   if (card.agent.paseoAgentId && card.agent.paseoUrl) {

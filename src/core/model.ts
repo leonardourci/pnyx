@@ -52,6 +52,8 @@ export interface AgentRef {
   transcriptPath?: string
   paseoAgentId?: string
   paseoUrl?: string
+  // Set when the Pnyx server runs this agent itself instead of a terminal.
+  host?: 'pnyx'
 }
 
 export type AgentSettings = Record<string, string>
@@ -379,7 +381,7 @@ export type ViewEvent = EventBase & {
 export type NotedEvent = EventBase & { type: 'card.noted'; data: Note }
 
 export interface AgentLaunch {
-  via: 'paseo' | 'command' | 'hooks'
+  via: 'paseo' | 'command' | 'hooks' | 'pnyx'
   at: string
   folder?: string
   command?: string

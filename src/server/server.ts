@@ -27,6 +27,7 @@ import { traces, viewFor } from '../core/view.ts'
 import { boardDir, loadBoard, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/board-store.ts'
 import { DEFAULT_PORT, boardIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 import { createBoard, listBoards, openBoard, renameBoard } from './boards.ts'
+import { createHost, hostRequest, type QueryFn } from './host.ts'
 
 // The browser edits kinds; Hydra's check and start stay in the CLI.
 const commands = { ...cliCommands, kind: workerCommands.kind }
@@ -84,6 +85,8 @@ export async function startServer({ board, ...options }: {
   port?: number
   homes?: string[]
   catalogLocations?: CatalogLocations
+  // The Agent SDK's query; tests pass a fake.
+  query?: QueryFn
 }): Promise<RunningServer> {
   const release = claimServer({ board })
 
@@ -111,11 +114,13 @@ async function startOwnedServer({
   port = 0,
   homes = [],
   catalogLocations,
+  query,
 }: {
   board: string
   port?: number
   homes?: string[]
   catalogLocations?: CatalogLocations
+  query?: QueryFn
 }): Promise<RunningServer> {
   if (await readServer({ board })) {
     throw new BoardError({ message: `a server is already running for board ${board}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
@@ -447,9 +452,25 @@ async function startOwnedServer({
     return token.length > 0 && bytes.length === token.length && timingSafeEqual(bytes, token)
   }
 
+  const agents = createHost({ board, query, changed: () => kick() })
+
   const http = createServer((req, res) => {
     if (!allowed({ req })) {
       return reply({ res, status: 403, body: { error: 'origin or host not allowed', code: 'FORBIDDEN' } })
+    }
+
+    // The CLI asks here to start or message an agent this server runs. A page cannot
+    // send this header cross-origin without a preflight, which this server never answers.
+    if (req.method === 'POST' && new URL(req.url ?? '/', 'http://localhost').pathname === '/host') {
+      if (!authorized({ given: req.headers.authorization?.replace(/^Bearer /, '') ?? null })) {
+        return reply({ res, status: 401, body: { error: 'missing or wrong token', code: 'UNAUTHORIZED' } })
+      }
+
+      return void readBody({ req }).then(body => hostRequest({ host: agents, body }))
+        .then(
+          answer => reply({ res, status: 200, body: answer }),
+          (error: Error) => reply({ res, status: 400, body: { error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN', help: error instanceof BoardError ? error.help : [] } }),
+        )
     }
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -795,6 +816,13 @@ async function startOwnedServer({
   const tmp = `${infoPath({ board })}.tmp-${process.pid}`
   writeFileSync(tmp, JSON.stringify(info))
   renameSync(tmp, infoPath({ board }))
+
+  try {
+    agents.recover()
+  } catch (error) {
+    console.error(`pnyx-axi serve: ${(error as Error).message}`)
+  }
+
   kick()
   touchLatest({ ids: Object.keys(state.cards) })
 
@@ -804,6 +832,7 @@ async function startOwnedServer({
     socket: info.socket,
     async close() {
       closed = true
+      agents.close()
 
       const threads = threadSubscriptions.flatMap(map =>
         [...map.values()].flatMap(sub => sub.watcher ?? []))
@@ -886,6 +915,29 @@ async function listenIngest(
   chmodSync(path, 0o600)
 
   return server
+}
+
+function readBody({ req }: { req: IncomingMessage }): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let text = ''
+    req.setEncoding('utf8')
+    req.on('data', (chunk: string) => {
+      text += chunk
+
+      if (text.length > MAX_BODY) {
+        reject(new BoardError({ message: 'request too large', code: 'VALIDATION_ERROR' }))
+        req.destroy()
+      }
+    })
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(text))
+      } catch {
+        reject(new BoardError({ message: 'request must be JSON', code: 'VALIDATION_ERROR' }))
+      }
+    })
+    req.on('error', reject)
+  })
 }
 
 type ClientMessage = { type?: unknown; id?: unknown; name?: unknown; args?: unknown }

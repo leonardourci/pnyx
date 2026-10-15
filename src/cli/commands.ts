@@ -1765,7 +1765,7 @@ pnyx-axi task rename <id> --title <title>
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
-pnyx-axi task start <task> [--via paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
+pnyx-axi task start <task> [--via pnyx|paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--prompt <text>] [--harness <name>] [--folder <path>]
 Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide and start, as to move. Pnyx keeps it on the event,
@@ -1778,16 +1778,22 @@ Tasks accept one attached session. A second session cannot replace the recipient
 attach moves an interactive session to the task; an occupied destination is rejected.
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
-task start asks the local Paseo daemon (PNYX_PASEO_URL, default ws://127.0.0.1:6767/ws) to start a
-Claude Code or Codex agent in the task's folder with the opening message, then attaches it. --folder
-also records the task's folder. Replies and the conversation then go through Paseo; the agent stays
-in Paseo too. Repeating the same --event-id never starts a second agent. task paseo checks the daemon.
+task start runs Claude Code in the task's folder with the opening message through the board's Pnyx server
+(\`pnyx-axi serve\`), with your own Claude Code settings, skills and hooks, and records its session, folder
+and settings on the task. Replies and setting changes from the board or \`pnyx-axi reply\` and \`pnyx-axi agent\`
+go straight to it; after a server restart the next message resumes the same session. A turn that was
+running when the server stopped is marked interrupted and waits for a message. Permission prompts are
+refused for now, so pick a mode that allows what the task needs.
+--via paseo asks the local Paseo daemon (PNYX_PASEO_URL, default ws://127.0.0.1:6767/ws) to start a
+Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
+and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.
+Repeating the same --event-id never starts a second agent.
 --kind picks the agent (see pnyx-axi kind; default: the default kind, else Claude Code); --harness overrides its harness and
 --prompt its opening message, which otherwise names the task and the pnyx-worker skill.
 --via firstmate puts a worker request in Hydra's chat and sends it to the board's Firstmate home as an inbox note.
 --via command runs the board command in the task's folder with PNYX_TASK and the rest of its context in the
 environment; the session it starts attaches to the task when its hooks first report.
-The default route is firstmate for a board whose Hydra is a Firstmate home, otherwise paseo.
+The default route is firstmate for a board whose Hydra is a Firstmate home, otherwise pnyx (paseo for a Codex agent).
 `,
   push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.

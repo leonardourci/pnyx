@@ -176,7 +176,7 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
         attention: [],
         links: [],
         sourceRefs: [],
-        ...(fields.agent && (!source || source.adapter === 'hooks' || source.adapter === 'paseo') ? { automaticTask: true } : {}),
+        ...(fields.agent && (!source || ['hooks', 'paseo', 'pnyx'].includes(source.adapter)) ? { automaticTask: true } : {}),
         column: 'workers_on_it',
         revision: 0,
         createdSeq: event.seq,
@@ -227,7 +227,8 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
       card.activity = activity
     }
 
-    if (source?.adapter === 'hooks' && typeof activity === 'string') {
+    // A hosted agent's activity comes from the host as its session's own.
+    if ((source?.adapter === 'hooks' || source?.adapter === 'pnyx') && typeof activity === 'string') {
       card.sessionActivity = activity
     }
 

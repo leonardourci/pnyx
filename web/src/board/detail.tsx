@@ -88,13 +88,13 @@ export function Detail({
   return (
     <section aria-label={`Details for ${card.title}`} className="detail inline">
       <header className="detail-header">
-        {card.agent && <span className="agent-chip">{harnessName({ provider: card.agent.provider })}</span>}
+        {card.agent && <span className="agent-chip">{`${harnessName({ provider: card.agent.provider })}${card.agent.host === 'pnyx' ? ' · Pnyx' : ''}`}</span>}
         <div className="row">
           <Menu label="Task menu">
             <Button onClick={() => setRenaming(true)}>Rename task</Button>
             <Button onClick={() => setAttaching(value => !value)}>{card.agent ? 'Change agent' : 'Attach agent'}</Button>
             {needsAgent({ card }) && (
-              <Button onClick={() => setStarting(value => !value)}>Start worker</Button>
+              <Button onClick={() => setStarting(value => !value)}>Start agent</Button>
             )}
             {!card.parentId && (
               <Button

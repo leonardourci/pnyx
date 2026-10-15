@@ -62,6 +62,37 @@ export function localToken(): string {
   return readFileSync(path, 'utf8').trim()
 }
 
+const HOST_TIMEOUT_MS = 30000
+
+// Asks the board's running server to act on an agent it hosts. Throws NOT_RUNNING when
+// no server answers, so nothing was sent; any other failure after the request left may
+// or may not have reached the agent.
+export async function askHost({ board, body }: {
+  board: string
+  body: Record<string, unknown>
+}): Promise<Record<string, unknown>> {
+  const info = await readServer({ board })
+
+  if (!info) {
+    throw new BoardError({ message: `the Pnyx server for board ${board} is not running`, code: 'NOT_RUNNING', help: [`Run \`pnyx-axi serve --board ${board}\`; it runs the agents Pnyx starts`] })
+  }
+
+  const res = await fetch(`http://127.0.0.1:${info.port}/host`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'authorization': `Bearer ${localToken()}` },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(HOST_TIMEOUT_MS),
+  })
+  type Answer = Record<string, unknown> & { error?: string; code?: string; help?: string[] }
+  const answer = (await res.json()) as Answer
+
+  if (!res.ok) {
+    throw new BoardError({ message: answer.error ?? `the server answered ${res.status}`, code: answer.code ?? 'UNKNOWN', help: answer.help ?? [] })
+  }
+
+  return answer
+}
+
 export function boardIdentity({ board }: { board: string }): string {
   return createHash('sha256').update(localToken())
     .update(board)
