@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { hydraConfig } from '../src/core/hydra.ts'
 import { commands } from '../src/cli/commands.ts'
 import { startServer } from '../src/server/server.ts'
 import { loadHydra } from '../src/store/hydra-store.ts'
@@ -11,13 +12,16 @@ const home = mkdtempSync(join(tmpdir(), 'pnyx-reminders-smoke-'))
 process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
 commands.hydra(['create', 'default'])
 commands.hydra(['resize', '--width', '280'])
+const state = () => loadHydra({ hydraId: 'default' }).state
+const columns = hydraConfig({ state: state() }).columns
+const parked = columns.find(column => column.role === 'parked')!.id
+const needsYou = columns.find(column => column.role === 'needs_you')!.id
 
-for (const id of ['needs_you', 'workers_on_it', 'done', 'parked']) {
-  commands.column(['resize', id, '--width', '240'])
+for (const column of columns) {
+  commands.column(['resize', column.id, '--width', '240'])
 }
 
-commands.task(['create', '--key', 'review', '--title', 'Review cursor pagination', '--column', 'parked'])
-const state = () => loadHydra({ hydraId: 'default' }).state
+commands.task(['create', '--key', 'review', '--title', 'Review cursor pagination', '--column', parked])
 const id = state().keys.review!
 const server = await startServer({ hydraId: 'default' })
 const { browser, eventually, check, click, text, fill, screenshot, close } = smokeBrowser({ home, session: 'pnyx-reminders' })
@@ -25,7 +29,7 @@ const menu = () => click({ selector: '[aria-label="Task menu for Review cursor p
 
 try {
   await browser({ args: ['open', server.url] })
-  await browser({ args: ['resize', '1440', '900'] })
+  await browser({ args: ['resize', '1600', '900'] })
   await browser({ args: ['wait', 'Review cursor pagination'] })
   await screenshot({ name: 'reminder-before.png' })
   await menu(); await text({ label: 'Remind me…' })
@@ -46,7 +50,7 @@ try {
   await click({ selector: '[aria-label="Task menu"]' }); await text({ label: 'Remind me…' })
   await check({ condition: '!!document.querySelector(".detail .reminder-editor")', label: 'task detail offers the same reminder editor' })
   await fill({ label: 'Reminder time', value: new Date(Date.now() + 2000).toISOString() }); await text({ label: 'Set reminder' })
-  await eventually({ condition: `!!document.querySelector('[data-column=needs_you] [data-task="${id}"]')`, label: 'due reminder moves its card to Needs you' })
+  await eventually({ condition: `!!document.querySelector('[data-column="${needsYou}"] [data-task="${id}"]')`, label: 'due reminder moves its card to Needs you' })
   await eventually({ condition: 'document.querySelector(".hydra-messages").textContent.includes("Reminder: Review cursor pagination")', label: 'due reminder appears in Hydra chat' })
   assert.equal(state().cards[id]?.status?.state, 'needs_you')
   assert.equal((await commands.task(['reminders'])).count, 0)
