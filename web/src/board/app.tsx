@@ -48,7 +48,6 @@ const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [da
 function Column({
   id,
   title,
-  description,
   cards,
   view,
   save,
@@ -65,7 +64,6 @@ function Column({
 }: {
   id: string
   title: string
-  description: string
   cards: Card[]
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
@@ -99,7 +97,16 @@ function Column({
           const before = columnIds.indexOf(source as ColumnId) < target ? columnIds[target + 1] : id
           void edit({ args: ['reorder', source, ...(before ? ['--before', before] : [])] }).catch(e => notify({ text: e.message }))
         } else if (task) {
-          void command({ name: 'move', args: [task, id, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+          // Dropped on a card's lower half, the task goes below it, so above the next card.
+          const over = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-task]') : null
+          const rect = over?.getBoundingClientRect()
+          const index = cards.findIndex(c => c.id === over?.dataset.task)
+          const below = rect && e.clientY > rect.top + rect.height / 2
+          const before = index < 0 ? undefined : cards[below ? index + 1 : index]?.id
+
+          if (before !== task) {
+            void command({ name: 'move', args: [task, id, ...(before ? ['--before', before] : []), '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+          }
         }
       }}
       style={{
@@ -127,7 +134,6 @@ function Column({
           </h2>
           <span className="count">{String(cards.length).padStart(2,'0')}</span>
         </div>
-        <p>{description}</p>
         <div className="row">
           <Button
             aria-label={`Move ${title} left`}

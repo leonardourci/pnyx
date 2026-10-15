@@ -312,7 +312,7 @@ export function useBoardKeyboard({
 
     const { card, revision } = overlay
     closeOverlay()
-    void command({ name: 'move', args: [card, ...(to === 'auto' ? ['--auto'] : [to]), '--if-revision', String(revision), '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Placement updated. Source requests are unchanged.' }))
+    void command({ name: 'move', args: [card, to, '--if-revision', String(revision), '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Placement updated. Source requests are unchanged.' }))
       .catch(e => notify({ text: e.message }))
   }
 
@@ -410,7 +410,7 @@ export function KeyboardLayers({
 
   if (overlay) {
     const card = overlay.card ? state.cards[overlay.card] : undefined
-    items = overlay.kind === 'move' ? [{ id: 'auto', title: 'Return to auto' }, ...columnsFor({ state })].map(c => ({ id: c.id, label: c.title, detail: c.id === 'auto' ? 'Follow source facts' : 'Manual placement', disabled: !connected || !card, run: () => move({ to: c.id }) })) : KEY_ACTIONS.filter(a => overlay.kind === 'help' || !['cancel', 'send', 'palette'].includes(a.id)).map(a => ({
+    items = overlay.kind === 'move' ? columnsFor({ state }).map(c => ({ id: c.id, label: c.title, disabled: !connected || !card, run: () => move({ to: c.id }) })) : KEY_ACTIONS.filter(a => overlay.kind === 'help' || !['cancel', 'send', 'palette'].includes(a.id)).map(a => ({
       id: a.id,
       label: a.label,
       keyLabel: label({ id: a.id }),

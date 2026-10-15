@@ -105,7 +105,7 @@ export function Settings({
         <SearchSettings command={command} notify={notify} />
         <section className="settings-box">
           <h2>About this board</h2>
-          <p className="muted">Every saved preference is part of the board history. Source facts and manual placement stay separate.</p>
+          <p className="muted">Every saved preference is part of the board history. Cards stay where they are created or moved.</p>
           <dl>
             <dt>Last event</dt>
             <dd>{state.seq}</dd>

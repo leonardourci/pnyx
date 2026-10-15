@@ -22,7 +22,7 @@ const meta = { actor: 'fixture', at: '2026-10-14T10:00:00Z' }
 withWriter({
   board: 'default',
   fn: ({ writer: w }) => {
-    const d = decidePush({ state: w.state, key: 'layout', input: { activity: 'running git status', tags: ['an-unbroken-tag-that-needs-to-wrap-inside-a-narrow-card'] }, meta })
+    const d = decidePush({ state: w.state, key: 'layout', input: { activity: 'working', tags: ['an-unbroken-tag-that-needs-to-wrap-inside-a-narrow-card'] }, meta })
     assert.ok('event' in d); w.append({ event: d.event })
   },
 })
@@ -100,7 +100,7 @@ try {
   await browser({ args: ['wait', 'Thread plan'] })
   await check({ condition: 'document.activeElement.matches(".composer textarea") && document.querySelector(".thread").lastElementChild.matches(".composer")', label: 'opening a card focuses the reply input at the end of the thread' })
   await check({ condition: 'document.querySelector("[role=switch]").getAttribute("aria-checked") === "true" && !document.querySelector(".message.tool, .message.thinking") && document.querySelectorAll(".running").length === 1', label: 'Focus starts on with one running indicator' })
-  await check({ condition: 'document.querySelector(".card-footer").textContent.includes("needs you") && !document.querySelector(".card-footer").textContent.includes("running ")', label: 'the declared task status stays visible and Focus hides the running tool' })
+  await check({ condition: 'document.querySelector(".card-footer").textContent.includes("needs you") && !!document.querySelector(".card-footer .activity-working")', label: 'the declared task status stays visible beside the working indicator' })
   await click({ role: 'switch', name: 'Focus' }); await browser({ args: ['wait', 'Showing tool calls and thinking'] })
   await check({ condition: '!!document.querySelector(".message.tool pre") && !!document.querySelector(".message.thinking pre")', label: 'Focus off shows both trace kinds' })
   await click({ role: 'switch', name: 'Focus' }); await browser({ args: ['wait', 'Prompts and agent messages only'] })
