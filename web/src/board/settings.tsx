@@ -5,6 +5,7 @@ import { KeyboardSettings } from '../keyboard/settings.tsx'
 import { columnsFor } from './view.ts'
 import type { Command } from './connection.ts'
 import { SearchSettings } from './search-settings.tsx'
+import { AgentKinds } from './agent-kinds.tsx'
 
 export function Settings({
   state,
@@ -102,6 +103,7 @@ export function Settings({
             />
           ))}
         </section>
+        <AgentKinds state={state} command={command} notify={notify} />
         <SearchSettings command={command} notify={notify} />
         <section className="settings-box">
           <h2>About this board</h2>
