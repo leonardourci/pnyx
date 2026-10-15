@@ -84,7 +84,7 @@ const HOSTED_CONTROLS: Controls = {
     { setting: 'effort', confirm: 'equals', options: set({ values: ['low', 'medium', 'high', 'xhigh', 'max'], name: 'effort' }) },
     { setting: 'mode', confirm: 'equals', options: set({ values: ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'], name: 'permission mode' }) },
   ],
-  note: 'Pnyx runs this agent, so a change applies to this session only and is kept for its next turns. A request the agent would ask permission for is refused until Pnyx can answer permission prompts; pick a mode that allows it.',
+  note: 'Pnyx runs this agent, so a change applies to this session only and is kept for its next turns. Permission requests appear on the task with Allow and Deny.',
 }
 
 const CODEX_REQUESTS: Control[] = [

@@ -11,6 +11,7 @@ import {
 } from './model.ts'
 import { applyAttachment, cardSessionId, observeSession, sessionId } from './tasks.ts'
 import { applyHydra, refreshTasks } from './hydra.ts'
+import { applyPermission } from './permissions.ts'
 import { requestId } from './answer.ts'
 
 export function emptyBoard(): BoardState {
@@ -97,7 +98,7 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
   state.seq = event.seq
   state.eventIds[event.id] = event.seq
 
-  if (applyHydra({ state, event })) {
+  if (applyPermission({ state, event }) || applyHydra({ state, event })) {
     if (event.undoes) {
       state.undone[event.undoes] = event.id
     }

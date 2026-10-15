@@ -146,6 +146,20 @@ export interface NoteRef {
   at?: string
 }
 
+export interface PermissionRequest {
+  id: string
+  session: string
+  tool: string
+  input: Record<string, unknown>
+  description?: string
+  status: 'pending' | 'allow' | 'deny' | 'expired'
+}
+
+export type PermissionEvent = EventBase & {
+  type: 'task.permission'
+  data: PermissionRequest
+}
+
 export interface Card {
   id: string
   key: string
@@ -177,6 +191,7 @@ export interface Card {
   // hook session started in it joins this card.
   folder?: string
   attention: Attention[]
+  permissions?: PermissionRequest[]
   links: Link[]
   sourceRefs: SourceRef[]
   outcome?: Outcome
@@ -426,8 +441,9 @@ export type BoardEvent =
   | SessionEvent
   | HydraEvent
   | ChatEvent
+  | PermissionEvent
 export type EventType = BoardEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched']
+export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched', 'task.permission']
 
 export interface BoardState {
   board?: BoardConfig
