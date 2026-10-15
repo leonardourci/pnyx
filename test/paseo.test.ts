@@ -245,7 +245,7 @@ test('task start uses the task kind\'s model, effort and mode, and opens with th
   workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'codex-small', '--effort', 'high', '--mode', 'full-access', '--board', 'lab'])
   commands.task(['brief', 'work', '--brief', 'Verify the canary.', '--board', 'lab'])
   const paseo = fakePaseo()
-  await startTask({ board: 'lab', task: 'work', kind: 'review', folder, url, meta: { at, actor: 'test', id: 'kind-1' }, connect: paseo.connect })
+  await startTask({ board: 'lab', task: 'work', via: 'paseo', kind: 'review', folder, url, meta: { at, actor: 'test', id: 'kind-1' }, connect: paseo.connect })
   const created = paseo.calls.create[0]!
   assert.deepEqual(created.config, { provider: 'codex/codex-small', thinkingOptionId: 'high', modeId: 'full-access' })
   assert.match(String(created.prompt), /^Verify the canary\.\n\n/)
@@ -254,6 +254,6 @@ test('task start uses the task kind\'s model, effort and mode, and opens with th
   const other = board()
   workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'missing', '--board', 'lab'])
   const refused = fakePaseo()
-  await assert.rejects(startTask({ board: 'lab', task: 'work', kind: 'review', folder: other.folder, url, meta: { at, actor: 'test', id: 'kind-2' }, connect: refused.connect }), /no codex model missing/)
+  await assert.rejects(startTask({ board: 'lab', task: 'work', via: 'paseo', kind: 'review', folder: other.folder, url, meta: { at, actor: 'test', id: 'kind-2' }, connect: refused.connect }), /no codex model missing/)
   assert.equal(refused.calls.create.length, 0)
 })
