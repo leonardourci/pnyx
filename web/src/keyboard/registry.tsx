@@ -8,7 +8,7 @@ interface KeyboardContext {
   prefs: KeyboardPreferences
   platform: KeyPlatform
   label({ id }: { id: string }): string
-  handlers: Map<string, Handler>
+  handlers: Map<string, Set<Handler>>
 }
 const Context = createContext<KeyboardContext | null>(null)
 
@@ -42,7 +42,7 @@ export function KeyboardProvider({
   children: ReactNode
 }) {
   const platform: KeyPlatform = /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other'
-  const handlers = useRef(new Map<string, Handler>())
+  const handlers = useRef(new Map<string, Set<Handler>>())
   const current = useRef({ prefs, onAction, leaveField, hints, hintKey })
   current.current = { prefs, onAction, leaveField, hints, hintKey }
   useEffect(() => {
@@ -91,9 +91,10 @@ export function KeyboardProvider({
       if (result.action) {
         const context = { scope, target }
 
-        if (handlers.current.get(result.action)?.({
-          context,
-        }) || onAction({
+        const handled = [...(handlers.current.get(result.action) ?? [])].reverse()
+          .some(run => run({ context }))
+
+        if (handled || onAction({
           id: result.action,
           context,
         })) {
@@ -152,10 +153,14 @@ export function useKeyboard() {
 export function useKeyAction({ id, handler }: { id: string; handler: Handler }) {
   const { handlers } = useKeyboard(), current = useRef(handler); current.current = handler
   useEffect(() => {
-    const run: Handler = ({ context }) => current.current({ context }); handlers.set(id, run)
+    const run: Handler = ({ context }) => current.current({ context })
+    const registered = handlers.get(id) ?? new Set<Handler>()
+    registered.add(run); handlers.set(id, registered)
 
     return () => {
-      if (handlers.get(id) === run) {
+      registered.delete(run)
+
+      if (!registered.size) {
         handlers.delete(id)
       }
     }

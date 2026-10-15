@@ -15,7 +15,11 @@ type Quote = Omit<ChatComment, 'id' | 'text'>
 const blockKey = ({ messageId, offset }: { messageId: string; offset: number }) => `${messageId}/block-${offset}`
 const roleLabel = ({ role }: { role: string }) => role === 'assistant' ? 'Agent' : role === 'user' ? 'You' : role
 
-export function Messages({ entries, comments, setComments, quote }: {
+export function Messages({
+  entries, comments, setComments, quote, toolDetails = true, thinkingDetails = true,
+}: {
+  toolDetails?: boolean
+  thinkingDetails?: boolean
   entries: ThreadEntry[]
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
@@ -41,6 +45,8 @@ export function Messages({ entries, comments, setComments, quote }: {
     block: Number(element.dataset.blockIndex),
     offset: Number(element.dataset.blockOffset),
     quote: element.dataset.quote!,
+    paragraph: element.dataset.quote!,
+    at: element.dataset.messageAt,
   })
 
   const blockOf = ({ node }: { node?: Node | null }) =>
@@ -165,7 +171,7 @@ export function Messages({ entries, comments, setComments, quote }: {
 
       if (focused === host) {
         event.preventDefault(); focusReply({ host })
-      } else if (focused?.matches('.composer textarea') && focused.closest('.thread')?.contains(host)) {
+      } else if (focused?.matches('.composer textarea') && focused.closest('.detail, .hydra-chat')?.contains(host)) {
         event.preventDefault(); caretInto({ host, target: latestReply({ host }), edge: 'start' })
       }
     }
@@ -243,13 +249,17 @@ export function Messages({ entries, comments, setComments, quote }: {
     return true
   }
 
-  useKeyAction({ id: 'thread.up', handler: () => step({ to: 'up' }) })
-  useKeyAction({ id: 'thread.down', handler: () => step({ to: 'down' }) })
-  useKeyAction({ id: 'thread.first', handler: () => step({ to: 'first' }) })
-  useKeyAction({ id: 'thread.last', handler: () => step({ to: 'last' }) })
+  useKeyAction({ id: 'thread.up', handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'up' }) })
+  useKeyAction({ id: 'thread.down', handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'down' }) })
+  useKeyAction({ id: 'thread.first', handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'first' }) })
+  useKeyAction({ id: 'thread.last', handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'last' }) })
   useKeyAction({
     id: 'thread.comment',
-    handler: () => {
+    handler: ({ context }) => {
+      if (!root.current?.closest('.thread')?.contains(context.target)) {
+        return false
+      }
+
       const element = blockFor({ key: active }) ?? blocks().at(-1)
 
       if (!element) {
@@ -315,7 +325,9 @@ export function Messages({ entries, comments, setComments, quote }: {
                   const offset = (entry.part ?? 0) + local
                   const key = blockKey({ messageId, offset })
                   const selected = selection?.messageId === messageId && selection.offset === offset
-                  const whole: Quote = { messageId, block: index, offset, quote }
+                  const whole: Quote = {
+                    messageId, block: index, offset, quote, paragraph: quote, at: entry.at,
+                  }
                   const own = comments.filter(c => c.messageId === messageId && c.offset === offset)
 
                   return (
@@ -323,6 +335,7 @@ export function Messages({ entries, comments, setComments, quote }: {
                       className="message-block"
                       data-message-block={key}
                       data-message-id={messageId}
+                      data-message-at={entry.at}
                       data-block-index={index}
                       data-block-offset={offset}
                       data-quote={quote}
@@ -370,14 +383,7 @@ export function Messages({ entries, comments, setComments, quote }: {
                 }}
               />
             ) : (
-              <details className="trace">
-                <summary>
-                  <Icon name={entry.kind} size={14} />
-                  <strong>{entry.kind === 'thinking' ? 'Thinking' : roleLabel(entry)}</strong>
-                  <span>{entry.text.split('\n', 1)[0]?.slice(0, 200)}</span>
-                </summary>
-                <pre className="trace-text">{entry.text}</pre>
-              </details>
+              <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
             )}
             {entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
           </article>
@@ -385,6 +391,13 @@ export function Messages({ entries, comments, setComments, quote }: {
       </div>
     </>
   )
+}
+
+function Trace({ entry, details }: { entry: ThreadEntry; details: boolean }) {
+  const summary = <><Icon name={entry.kind} size={14} /><strong>{entry.kind === 'thinking' ? 'Thinking' : roleLabel(entry)}</strong><span>{entry.text.split('\n', 1)[0]?.slice(0, 200)}</span></>
+
+  return details ? <details className="trace" data-expandable="true"><summary>{summary}</summary><pre className="trace-text">{entry.text}</pre></details>
+    : <div className="trace" data-expandable="false"><div className="trace-summary">{summary}</div></div>
 }
 
 function InlineComment({ comment, editing, edit, change, finish, remove }: {

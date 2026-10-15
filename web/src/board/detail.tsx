@@ -1,19 +1,47 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { BoardState, Card, ViewPreferences } from '../../../src/core/model.ts'
-import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
-import { Button, Select } from '../components/ui/controls.tsx'
-import { Icon } from '../components/ui/icon.tsx'
-import { Resize } from '../components/ui/resize.tsx'
+import { Button, Textarea } from '../components/ui/controls.tsx'
 import { TaskSession } from './task-session.tsx'
-import { AgentControls, SettingChips, SettingList, harnessName } from './agent-settings.tsx'
-import { Links, Tags } from './card.tsx'
-import { ConversationBrief } from './notes.tsx'
+import { InlineTitle } from '../components/ui/inline-title.tsx'
+import { Menu } from '../components/ui/menu.tsx'
+import { Icon } from '../components/ui/icon.tsx'
+import { harnessName } from './agent-settings.tsx'
 import { StartAgent } from './start-agent.tsx'
-import { columnsFor, needsAgent } from './view.ts'
+import { needsAgent } from './view.ts'
 import { merge, Thread } from './thread.tsx'
 import type { ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
+
+function TaskBrief({ card, command, notify }: {
+  card: Card
+  command: Command
+  notify({ text }: { text: string }): void
+}) {
+  const [draft, setDraft] = useState(card.brief ?? ''), [busy, setBusy] = useState(false)
+
+  return (
+    <form
+      className="task-brief"
+      onSubmit={e => {
+        e.preventDefault(); setBusy(true)
+        void command({ name: 'task', args: ['brief', card.id, '--text', draft, '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] })
+          .catch(e => notify({ text: e.message }))
+          .finally(() => setBusy(false))
+      }}
+    >
+      <label htmlFor={`brief-${card.id}`}>Brief</label>
+      <Textarea
+        id={`brief-${card.id}`}
+        aria-label="Task brief"
+        placeholder="What should the agent work on?"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+      />
+      <Button type="submit" disabled={busy || draft === (card.brief ?? '')}>Save brief</Button>
+    </form>
+  )
+}
 
 export function Detail({
   card,
@@ -28,7 +56,7 @@ export function Detail({
   setDraft,
   comments,
   setComments,
-  outside,
+  createTask,
   notify,
 }: {
   card: Card
@@ -43,107 +71,62 @@ export function Detail({
   setDraft({ text }: { text: string }): void
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
-  outside: boolean
+  createTask({ column, parent }: { column: string; parent?: string }): void
   notify({ text }: { text: string }): void
 }) {
-  const [width, setWidth] = useState<number | null>(null), [tab, setTab] = useState('thread')
-  // Every loaded conversation entry, older pages included, so the brief skips notes any of them repeat.
   const [kept, setKept] = useState<ThreadEntry[]>([])
   const [older, setOlder] = useState<ThreadPage | null>(null)
-  const { tools, thinking } = traces({ view, card: card.id })
-  const [pagedFor, setPagedFor] = useState(`${tools}:${thinking}`)
-
-  // The server pages only the traces on show, so a switch starts the pages over.
-  if (pagedFor !== `${tools}:${thinking}`) {
-    setPagedFor(`${tools}:${thinking}`); setKept([]); setOlder(null)
-  }
-
-  // Stable, so the thread's page effect runs only when a new page arrives.
+  const [attaching, setAttaching] = useState(false)
+  const [starting, setStarting] = useState(false), [renaming, setRenaming] = useState(false)
   const keep = useCallback(({ entries }: { entries: ThreadEntry[] }) =>
     setKept(k => merge({ kept: k, page: entries })), [])
   const keepOlder = useCallback(({ page }: { page: ThreadPage }) => {
     setOlder(page); setKept(k => merge({ kept: page.entries, page: k }))
   }, [])
-
-  const [history, setHistory] = useState<{
-    seq: number
-    id: string
-    at: string
-    summary: string
-  }[]>([])
-  useEffect(() => {
-    if (tab === 'history') {
-      void command({ name: 'history', args: ['--card', card.id, '--limit', '50'] }).then(r => setHistory(Array.isArray(r.events) ? r.events : []))
-        .catch(e => notify({ text: e.message }))
-    }
-  }, [tab, card.id, card.revision, command, notify])
-
-  const move = ({ to }: { to: string }) => {
-    void command({ name: 'move', args: [card.id, to, '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Placement updated. Source requests are unchanged.' }))
-      .catch(e => notify({ text: e.message }))
-  }
+  const empty = needsAgent({ card }) || (thread && !thread.entries.length && !kept.length)
 
   return (
-    <aside
-      aria-label={`Details for ${card.title}`}
-      className={`detail ${view.panelPlacement}`}
-      style={{
-        width: width ?? view.panelWidth,
-        flexBasis: width ?? view.panelWidth,
-        minWidth: view.panelPlacement === 'right' ? VIEW_SIZE_LIMITS.panelWidth.min : 0,
-        minHeight: view.panelPlacement === 'right' ? VIEW_SIZE_LIMITS.panelHeight.min : undefined,
-      }}
-    >
-      {view.panelPlacement === 'right' && (
-        <Resize
-          label="Resize conversation panel"
-          reverse
-          value={view.panelWidth}
-          min={VIEW_SIZE_LIMITS.panelWidth.min}
-          max={VIEW_SIZE_LIMITS.panelWidth.max}
-          onPreview={({ value }) => setWidth(value)}
-          onCommit={({ value: n }) => save({ patch: { panelWidth: n } })}
+    <section aria-label={`Details for ${card.title}`} className="detail inline">
+      <header className="detail-header">
+        {card.agent && <span className="agent-chip">{harnessName({ provider: card.agent.provider })}</span>}
+        <div className="row">
+          <Menu label="Task menu">
+            <Button onClick={() => setRenaming(true)}>Rename task</Button>
+            <Button onClick={() => setAttaching(value => !value)}>{card.agent ? 'Change agent' : 'Attach agent'}</Button>
+            {needsAgent({ card }) && (
+              <Button onClick={() => setStarting(value => !value)}>Start worker</Button>
+            )}
+            {!card.parentId && (
+              <Button
+                disabled={!connected}
+                onClick={() => createTask({ column: card.column, parent: card.id })}
+              >Add subtask
+              </Button>
+            )}
+          </Menu>
+          <Button aria-label="Close detail" onClick={close}><Icon name="close" size={14} /></Button>
+        </div>
+      </header>
+      {renaming && (
+        <InlineTitle
+          value={card.title}
+          label="Task title"
+          finished={() => setRenaming(false)}
+          startEditing
+          save={({ title }) => command({ name: 'task', args: ['rename', card.id, '--title', title, '--event-id', crypto.randomUUID()] }).then(() => setRenaming(false))}
         />
       )}
-      <header className="detail-header">
-        <div className="row between">
-          <span className="eyebrow">
-            {card.workspace}
-            {' '}
-            ·
-            {' '}
-            {card.agent ? harnessName({ provider: card.agent.provider }) : 'Agent session'}
-          </span>
-          <Button aria-label="Close detail" onClick={close}>
-            <Icon name="close" />
-          </Button>
-        </div>
-        <h2>{card.title}</h2>
-        <ConversationBrief
+      {attaching && (
+        <TaskSession
           card={card}
-          entries={merge({ kept, page: thread?.card === card.id ? thread.entries : [] })}
+          state={state}
           command={command}
+          connected={connected}
           notify={notify}
         />
-        <Tags tags={card.tags} />
-        <Links links={card.links} />
-        <SettingChips settings={card.settings} />
-        {outside && <p className="small gold">Outside current filters</p>}
-        {card.attention.map(a => <p className="request" key={a.key}>{a.text ?? a.kind}</p>)}
-      </header>
-      <nav className="detail-tabs" aria-label="Card detail">
-        {[['thread', 'Conversation'], ['agent', 'Agent'], ['history', 'History'], ['move', 'Why here / move']].map(([id,label]) => (
-          <Button
-            key={id}
-            data-conversation-tab={id === 'thread' ? '' : undefined}
-            aria-pressed={tab === id}
-            onClick={() => setTab(id)}
-          >
-            {label}
-          </Button>
-        ))}
-      </nav>
-      {tab === 'thread' && needsAgent({ card }) ? (
+      )}
+      {empty && <TaskBrief card={card} command={command} notify={notify} />}
+      {needsAgent({ card }) ? starting && (
         <StartAgent
           card={card}
           firstmate={state.board?.hydra.kind === 'firstmate'}
@@ -151,7 +134,7 @@ export function Detail({
           connected={connected}
           notify={notify}
         />
-      ) : tab === 'thread' ? (
+      ) : (
         <Thread
           card={card}
           view={view}
@@ -169,72 +152,7 @@ export function Detail({
           setComments={setComments}
           notify={notify}
         />
-      ) : tab === 'agent' ? (
-        <div className="detail-content">
-          <TaskSession
-            card={card}
-            state={state}
-            command={command}
-            connected={connected}
-            notify={notify}
-          />
-          <SettingList settings={card.settings} />
-          {!card.settings && <p className="empty">No settings reported yet. Claude Code and Codex report theirs as the session runs.</p>}
-          <AgentControls
-            card={card}
-            thread={thread}
-            command={command}
-            connected={connected}
-            notify={notify}
-          />
-        </div>
-      ) : tab === 'history' ? (
-        <div className="detail-content">
-          {history.length ? history.map(e => (
-            <article key={e.id} className="history-entry">
-              <span className="eyebrow">
-                Event
-                {' '}
-                {e.seq}
-              </span>
-              <p>{e.summary}</p>
-              <time className="small muted">{new Date(e.at).toLocaleString()}</time>
-            </article>
-          )) : <p className="empty">No recorded history.</p>}
-        </div>
-      ) : (
-        <div className="detail-content">
-          <h3>Placement</h3>
-          <p className="muted">The card stays where you put it. Agent work and pull requests never move it.</p>
-          <Select
-            label="Move card"
-            value={card.column}
-            options={columnsFor({ state }).map(c => ({ value: c.id, label: c.title }))}
-            onChange={({ value }) => move({ to: value })}
-            disabled={!connected}
-          />
-          <p className="small muted">Moving to Done does not complete the task or resolve a source decision.</p>
-          <Button
-            onClick={() => {
-              void command({ name: 'history', args: ['--card', card.id, '--kind', 'moved', '--limit', '1'] }).then(async r => {
-                const events = r.events as { id: string }[]
-
-                if (!Array.isArray(events) || !events.length) {
-                  return notify({ text: 'No placement to undo.' })
-                }
-
-                await command({ name: 'undo', args: [events[0].id, '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] }); notify({ text: 'Placement undone.' })
-              })
-                .catch(e => notify({ text: e.message }))
-            }}
-          >
-            Undo last placement
-          </Button>
-          <Button onClick={() => save({ patch: { cardHeights: { [card.id]: null } } })}>
-            Use default card height
-          </Button>
-        </div>
       )}
-    </aside>
+    </section>
   )
 }

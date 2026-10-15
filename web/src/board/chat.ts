@@ -8,6 +8,8 @@ export interface ChatComment {
   offset: number
   quote: string
   text: string
+  paragraph?: string
+  at?: string
 }
 
 // The transport chunks large messages to stay inside the socket budget. Join
@@ -29,22 +31,36 @@ export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): Threa
   return result
 }
 
-// Each comment becomes a fenced pnyx-comment block quoting its text, with a fence
-// longer than any backtick run inside so quoted code cannot close it early.
-export function commentReply({ draft, comments }: {
+export const COMMENT_NOTE = '> Internal note — no reply needed: numbered comments refer to passages in your earlier reply. Short quotes include their paragraph for context. Address the comments together with the message below.'
+
+export function commentReply({ draft, comments, firstComment = false }: {
   draft: string
   comments: ChatComment[]
+  firstComment?: boolean
 }): string {
-  const blocks = comments.filter(c => c.text.trim()).map(c => {
-    const body = c.quote.split('\n').map(line => `> ${line}`)
-      .join('\n') + '\n\n' + c.text.trim()
-    const longest = Math.max(2, ...(body.match(/`+/g) ?? []).map(run => run.length))
-    const fence = '`'.repeat(longest + 1)
+  const filled = comments.filter(c => c.text.trim())
 
-    return `${fence}pnyx-comment block=${c.block + 1} msg=${JSON.stringify(c.messageId)} offset=${c.offset}\n${body}\n${fence}`
-  })
+  if (!filled.length) {
+    return draft
+  }
 
-  return [draft, ...blocks].filter(text => text.trim()).join('\n\n')
+  const groups = new Map<string, ChatComment[]>()
+
+  for (const comment of filled) {
+    const key = comment.at ?? comment.messageId
+    groups.set(key, [...(groups.get(key) ?? []), comment])
+  }
+
+  const quote = ({ text }: { text: string }) => text.split('\n').map(line => `> ${line}`)
+    .join('\n')
+  const blocks = [...groups.entries()].map(([time, items]) => `## Comments on your reply from ${time}\n\n` + items.map((c, n) => {
+    const context = c.quote.trim().split(/\s+/).length <= 3 && c.paragraph && c.paragraph !== c.quote
+      ? `\n\nParagraph:\n\n${quote({ text: c.paragraph })}` : ''
+
+    return `${n + 1}. ${quote({ text: c.quote })}${context}\n\n${c.text.trim()}`
+  }).join('\n\n'))
+
+  return [...(firstComment ? [COMMENT_NOTE] : []), ...blocks, `## Message\n\n${draft}`].join('\n\n')
 }
 
 // Trailing blank line leaves room to answer under the quote.

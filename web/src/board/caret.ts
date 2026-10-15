@@ -37,7 +37,7 @@ const textAfter = ({ host, node }: { host: Element; node: Node }) => {
   return null
 }
 
-export const hostOf = ({ from }: { from: Element }) => from.closest('.thread')?.querySelector<HTMLElement>(`[${CARET_HOST}]`) ?? null
+export const hostOf = ({ from }: { from: Element }) => from.closest('.detail, .hydra-chat')?.querySelector<HTMLElement>(`[${CARET_HOST}]`) ?? null
 
 export const latestReply = ({ host }: { host: HTMLElement }) =>
   [...host.querySelectorAll('.message:not(.mine, .tool, .thinking)')].at(-1) ?? null
@@ -70,7 +70,7 @@ export function caretBox(): DOMRect | null {
 }
 
 export function reveal({ host }: { host: HTMLElement }) {
-  const scroller = host.closest('.thread'), box = caretBox()
+  const scroller = host.closest('.hydra-messages, .column-cards'), box = caretBox()
 
   if (!scroller || !box) {
     return
@@ -96,7 +96,7 @@ export function caretInto({ host, target, edge }: { host: HTMLElement; target: E
 }
 
 export function focusReply({ host }: { host: HTMLElement }) {
-  const input = host.closest('.thread')?.querySelector<HTMLTextAreaElement>('.composer textarea')
+  const input = host.closest('.detail, .hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
   input?.focus(); input?.setSelectionRange(input.value.length, input.value.length)
 
   return !!input

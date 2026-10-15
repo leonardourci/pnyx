@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
 import { traces } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
-import { Button, Switch } from '../components/ui/controls.tsx'
+import { Button } from '../components/ui/controls.tsx'
 import { joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 import { ComposerSettings } from './agent-settings.tsx'
 import { Composer } from './composer.tsx'
@@ -52,7 +52,7 @@ export function Thread({
 }) {
   const [latest, setLatest] = useState(false)
   const scroller = useRef<HTMLDivElement>(null), atBottom = useRef(true)
-  const { tools, thinking, focus, overrides } = traces({ view, card: card.id })
+  const { tools, thinking } = traces({ view, card: card.id })
   const page = thread?.card === card.id ? thread : null
   const olderCursor = older ? older.older : page?.older
   useEffect(() => {
@@ -74,11 +74,6 @@ export function Thread({
 
   return (
     <>
-      <div className="thread-controls row">
-        <Switch label="Focus" checked={focus} onChange={({ value: focus }) => save({ patch: { cardTraceOverrides: { [card.id]: { tools: !focus, thinking: !focus } } } })} />
-        <span className="small muted">{focus ? 'Prompts and agent messages only' : 'Showing tool calls and thinking'}</span>
-        {overrides && <Button className="small" onClick={() => save({ patch: { cardTraceOverrides: { [card.id]: null } } })}>Use defaults</Button>}
-      </div>
       <div
         className="thread"
         data-key-scope="thread"
@@ -113,6 +108,8 @@ export function Thread({
           comments={comments}
           setComments={setComments}
           quote={({ text }) => setDraft({ text: quoteInto({ draft, text }) })}
+          toolDetails={view.toolDetails}
+          thinkingDetails={view.thinkingDetails}
         />
         {page && entries.length === 0 && !page.unavailable && <p className="empty">No recorded messages yet.</p>}
         {agentActivity({ card }) === 'working' && (
