@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import type { BoardState, Card, ViewPreferences } from '../../../src/core/model.ts'
+import type { HydraState, Card, ViewPreferences } from '../../../src/core/model.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 import { TaskSession } from './task-session.tsx'
@@ -60,7 +60,7 @@ export function Detail({
   notify,
 }: {
   card: Card
-  state: BoardState
+  state: HydraState
   view: ViewPreferences
   thread: ThreadPage | null
   command: Command
@@ -129,7 +129,7 @@ export function Detail({
       {needsAgent({ card }) ? starting && (
         <StartAgent
           card={card}
-          firstmate={state.board?.hydra.kind === 'firstmate'}
+          firstmate={state.config?.hydra.kind === 'firstmate'}
           command={command}
           connected={connected}
           notify={notify}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Command } from './connection.ts'
-import type { HybridHit as Hit } from '../../../src/search/semantic.ts'
+import type { HybridHit as Hit } from '../../../src/oracle/semantic.ts'
 import { Button, Input, Select } from '../components/ui/controls.tsx'
 
 interface EventRow {
@@ -65,13 +65,13 @@ export function History({
       <div>
         <span className="eyebrow">THE RECORDED WORK</span>
         <h1>History</h1>
-        <p className="muted">Search card facts and recorded conversations.</p>
+        <p className="muted">Oracle card facts and recorded conversations.</p>
       </div>
       <div className="row wrap">
         <Input
           type="search"
           aria-label="Search history"
-          placeholder="Search messages, links and decisions…"
+          placeholder="Oracle messages, links and decisions…"
           value={query}
           onChange={e => {
             setQuery({ query: e.target.value }); setBefore(null)

@@ -7,14 +7,14 @@ const HARNESSES = [{ value: 'claude', label: 'Claude Code' }, { value: 'codex', 
 const ROUTES = [
   { value: 'pnyx', label: 'Pnyx (Claude Code)' },
   { value: 'paseo', label: 'Paseo' },
-  { value: 'firstmate', label: 'Firstmate (this board\'s Hydra)' },
-  { value: 'command', label: 'Board command' },
+  { value: 'firstmate', label: 'Firstmate (this Hydra\'s Hydra)' },
+  { value: 'command', label: 'Hydra command' },
 ]
 const STARTED: Record<string, string> = {
   pnyx: 'Agent started. Pnyx runs it; continue here.',
   paseo: 'Agent started in Paseo. Continue here or in Paseo.',
   firstmate: 'Sent to Firstmate; it dispatches the worker.',
-  command: 'Board command started; its agent attaches when it reports.',
+  command: 'Hydra command started; its agent attaches when it reports.',
 }
 
 export function StartAgent({ card, firstmate, command, connected, notify }: {

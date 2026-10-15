@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react'
-import type { AgentConfig, BoardState } from '../../../src/core/model.ts'
+import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
 import { Button, Input, Select } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
 
@@ -12,7 +12,7 @@ const QUOTA = [
 ]
 const FIELDS = [['model', 'Model'], ['effort', 'Effort'], ['mode', 'Mode']] as const
 
-// Flags for `kind set`: every field, so a cleared one is cleared on the board too.
+// Flags for `kind set`: every field, so a cleared one is cleared on the Hydra too.
 function flags({ agent }: { agent: AgentConfig }): string[] {
   return [
     '--harness',
@@ -24,11 +24,11 @@ function flags({ agent }: { agent: AgentConfig }): string[] {
 }
 
 export function AgentKinds({ state, command, notify }: {
-  state: BoardState
+  state: HydraState
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const agents = state.board?.agents ?? {}
+  const agents = state.config?.agents ?? {}
   const [name, setName] = useState('')
   const run = ({ args, done }: { args: string[]; done: string }) =>
     command({ name: 'kind', args }).then(() => {

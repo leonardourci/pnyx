@@ -1,33 +1,33 @@
 import { useEffect, useState } from 'react'
-import type { BoardTab } from '../../../src/server/boards.ts'
+import type { HydraTab } from '../../../src/server/hydras.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
 
-const RENAME = 'rename-board'
+const RENAME = 'rename-hydra'
 
-export function BoardTabs({ command, connected, notify, active, showBoard }: {
+export function HydraTabs({ command, connected, notify, active, showHydra }: {
   active: boolean
-  showBoard(): void
+  showHydra(): void
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
-  const [boards, setBoards] = useState<BoardTab[]>([]), [current, setCurrent] = useState('')
+  const [hydras, setHydras] = useState<HydraTab[]>([]), [current, setCurrent] = useState('')
   const [busy, setBusy] = useState(false), [open, setOpen] = useState(false)
   const renaming = new URLSearchParams(location.search).has(RENAME)
 
   useEffect(() => {
     if (connected) {
-      void command({ name: 'boards', args: [] }).then(r => {
-        setBoards(r.boards as BoardTab[]); setCurrent(r.board as string)
+      void command({ name: 'hydras', args: [] }).then(r => {
+        setHydras(r.hydras as HydraTab[]); setCurrent(r.hydraId as string)
       }, (e: Error) => notify({ text: e.message }))
     }
   }, [connected, command, notify])
 
   const go = ({ args, rename }: { args: string[]; rename?: boolean }) => {
     setBusy(true)
-    void command({ name: 'boards', args }).then(r => {
+    void command({ name: 'hydras', args }).then(r => {
       const url = new URL(r.url as string)
 
       if (rename) {
@@ -40,11 +40,11 @@ export function BoardTabs({ command, connected, notify, active, showBoard }: {
     })
   }
 
-  const board = boards.find(b => b.id === current)
+  const currentHydra = hydras.find(b => b.id === current)
 
   return (
     <div
-      className="board-switcher"
+      className="hydra-switcher"
       onBlur={e => {
         if (!e.currentTarget.contains(e.relatedTarget)) {
           setOpen(false)
@@ -57,34 +57,34 @@ export function BoardTabs({ command, connected, notify, active, showBoard }: {
       }}
     >
       <Button
-        aria-label="Switch board"
+        aria-label="Switch Hydra"
         aria-pressed={active}
         aria-expanded={open}
         onClick={() => {
-          showBoard(); setOpen(value => !value)
+          showHydra(); setOpen(value => !value)
         }}
-      >{board?.name ?? 'Board'} <span aria-hidden="true">▾</span>
+      >{currentHydra?.name ?? 'Hydra'} <span aria-hidden="true">▾</span>
       </Button>
-      {renaming && board && (
+      {renaming && currentHydra && (
         <InlineTitle
-          value={board.name}
-          label={`Rename board ${board.name}`}
+          value={currentHydra.name}
+          label={`Rename Hydra ${currentHydra.name}`}
           startEditing
-          save={({ title }) => command({ name: 'boards', args: ['rename', board.id, title] }).then(r => {
-            setBoards(r.boards as BoardTab[]); history.replaceState(null, '', location.pathname)
+          save={({ title }) => command({ name: 'hydras', args: ['rename', currentHydra.id, title] }).then(r => {
+            setHydras(r.hydras as HydraTab[]); history.replaceState(null, '', location.pathname)
           })}
         />
       )}
       {open && (
-        <div className="board-list" aria-label="Boards">
-          {boards.map(b => (
+        <div className="hydra-list" aria-label="Hydras">
+          {hydras.map(b => (
             <Button
               key={b.id}
               aria-current={b.id === current ? 'page' : undefined}
               disabled={busy}
               onClick={() => {
                 if (b.id === current) {
-                  showBoard(); setOpen(false)
+                  showHydra(); setOpen(false)
                 } else {
                   go({ args: ['open', b.id] })
                 }
@@ -92,7 +92,7 @@ export function BoardTabs({ command, connected, notify, active, showBoard }: {
             >{b.name}
             </Button>
           ))}
-          <Button disabled={!connected || busy} onClick={() => go({ args: ['create', 'New board'], rename: true })}>＋ New board</Button>
+          <Button disabled={!connected || busy} onClick={() => go({ args: ['create', 'New Hydra'], rename: true })}>＋ New Hydra</Button>
         </div>
       )}
     </div>

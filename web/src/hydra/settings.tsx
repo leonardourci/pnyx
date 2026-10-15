@@ -1,23 +1,23 @@
-import type { BoardState, ViewPreferences } from '../../../src/core/model.ts'
+import type { HydraState, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
-import { boardConfig } from '../../../src/core/hydra.ts'
+import { hydraConfig } from '../../../src/core/hydra.ts'
 import { Button, Input, NumberField, Select, Switch } from '../components/ui/controls.tsx'
 import { KeyboardSettings } from '../keyboard/settings.tsx'
 import { columnsFor } from './view.ts'
 import type { Command } from './connection.ts'
-import { resetWidths } from './search-catalog.ts'
-import { SearchSettings } from './search-settings.tsx'
+import { resetWidths } from './oracle-catalog.ts'
+import { OracleSettings } from './oracle-settings.tsx'
 import { AgentKinds } from './agent-kinds.tsx'
 
 export function Settings({ state, view, save, command, notify }: {
-  state: BoardState
+  state: HydraState
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
   close(): void
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const board = boardConfig({ state })
+  const config = hydraConfig({ state })
 
   return (
     <section className="settings" aria-label="Settings">
@@ -77,27 +77,27 @@ export function Settings({ state, view, save, command, notify }: {
           <label className="setting-label">Identity</label>
           <Input
             aria-label="Hydra identity"
-            defaultValue={board.hydra.id}
+            defaultValue={config.hydra.id}
             onBlur={e => {
-              if (e.target.value !== board.hydra.id) {
-                void command({ name: 'board', args: ['set', '--hydra', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+              if (e.target.value !== config.hydra.id) {
+                void command({ name: 'hydra', args: ['set', '--identity', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
               }
             }}
           />
           <label className="setting-label">Default model</label>
           <Input
             aria-label="Hydra default model"
-            defaultValue={board.agents?.hydra?.model ?? ''}
+            defaultValue={config.agents?.hydra?.model ?? ''}
             placeholder="Harness default"
             onBlur={e => {
-              if (e.target.value !== (board.agents?.hydra?.model ?? '')) {
-                void command({ name: 'kind', args: ['set', 'hydra', '--harness', board.agents?.hydra?.harness ?? 'claude', '--model', e.target.value] }).catch(e => notify({ text: e.message }))
+              if (e.target.value !== (config.agents?.hydra?.model ?? '')) {
+                void command({ name: 'kind', args: ['set', 'hydra', '--harness', config.agents?.hydra?.harness ?? 'claude', '--model', e.target.value] }).catch(e => notify({ text: e.message }))
               }
             }}
           />
         </section>
         <AgentKinds state={state} command={command} notify={notify} />
-        <SearchSettings command={command} notify={notify} />
+        <OracleSettings command={command} notify={notify} />
       </div>
       <KeyboardSettings prefs={view.keyboard} save={save} />
     </section>

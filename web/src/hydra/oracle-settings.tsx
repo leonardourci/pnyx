@@ -10,7 +10,7 @@ const RERANK = [
   { value: 'off', label: 'Off' },
 ]
 
-export function SearchSettings({ command, notify }: {
+export function OracleSettings({ command, notify }: {
   command: Command
   notify({ text }: { text: string }): void
 }) {
@@ -20,25 +20,25 @@ export function SearchSettings({ command, notify }: {
       .catch(e => notify({ text: e.message }))
   }, [command, notify])
   const set = ({ key, value }: { key: string; value: string }) => command({ name: 'settings', args: ['set', key, value] }).then(r => {
-    setSettings(r.settings as Entries); notify({ text: 'Search settings saved' })
+    setSettings(r.settings as Entries); notify({ text: 'Oracle settings saved' })
   }, e => notify({ text: e.message }))
 
   return (
-    <section className="settings-box" aria-label="Search">
-      <h2>Search</h2>
+    <section className="settings-box" aria-label="Oracle">
+      <h2>Oracle</h2>
       <p className="muted">
         Every search finds cards by meaning, in any language, as well as by words. It runs
         local models on this machine, downloaded on first use. Turn it off on a slow laptop.
       </p>
       {settings && (
         <>
-          <Switch label="Semantic search" checked={settings['search.semantic'] === 'on'} onChange={({ value: on }) => set({ key: 'search.semantic', value: on ? 'on' : 'off' })} />
+          <Switch label="Semantic search" checked={settings['oracle.semantic'] === 'on'} onChange={({ value: on }) => set({ key: 'oracle.semantic', value: on ? 'on' : 'off' })} />
           <label className="setting-label">Rerank top results</label>
           <Select
             label="Rerank top results"
-            value={settings['search.rerank'] ?? 'auto'}
+            value={settings['oracle.rerank'] ?? 'auto'}
             options={RERANK}
-            onChange={({ value }) => set({ key: 'search.rerank', value })}
+            onChange={({ value }) => set({ key: 'oracle.rerank', value })}
           />
         </>
       )}

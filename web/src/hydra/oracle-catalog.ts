@@ -1,7 +1,7 @@
-import type { BoardState, ViewPreferences } from '../../../src/core/model.ts'
+import type { HydraState, ViewPreferences } from '../../../src/core/model.ts'
 import { resetLayoutWidths, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 
-export type SearchSetting = {
+export type OracleSetting = {
   id: string
   label: string
   words: string
@@ -11,10 +11,10 @@ export type SearchSetting = {
   | { type: 'number'; value: number; min: number; max: number; patch({ value }: { value: number }): unknown }
 )
 
-export function searchSettings({ view }: {
-  state: BoardState
+export function oracleSettings({ view }: {
+  state: HydraState
   view: ViewPreferences
-}): SearchSetting[] {
+}): OracleSetting[] {
   const numberKeys = [
     ['fontSize', 'UI font size'],
     ['chatFontSize', 'Chat font size'],
@@ -23,13 +23,13 @@ export function searchSettings({ view }: {
 
   return [
     { id: 'theme', label: 'Theme', words: 'appearance dark light system night color', type: 'choice', value: view.theme, options: ['system', 'light', 'dark'].map(value => ({ value, label: value })), patch: ({ value }) => ({ theme: value }) },
-    ...numberKeys.map(([id, label]): SearchSetting => ({ id, label, words: 'reading text size zoom width height', type: 'number', value: view[id], ...VIEW_SIZE_LIMITS[id], patch: ({ value }) => ({ [id]: value }) })),
+    ...numberKeys.map(([id, label]): OracleSetting => ({ id, label, words: 'reading text size zoom width height', type: 'number', value: view[id], ...VIEW_SIZE_LIMITS[id], patch: ({ value }) => ({ [id]: value }) })),
     ...([
       ['focusMode', 'Focus mode', 'hide tools thinking distraction quiet reading'],
       ['lastMessageOnCards', 'Last message on cards', 'preview latest reply cards'],
       ['toolDetails', 'Tool call details', 'tool calls expand traces'],
       ['thinkingDetails', 'Thinking details', 'reasoning expand traces'],
-    ] as const).map(([id, label, words]): SearchSetting => ({ id, label, words, type: 'toggle', value: view[id], patch: ({ value }) => ({ [id]: value }) })),
+    ] as const).map(([id, label, words]): OracleSetting => ({ id, label, words, type: 'toggle', value: view[id], patch: ({ value }) => ({ [id]: value }) })),
     { id: 'characterShortcuts', label: 'Character shortcuts', words: 'keyboard keys typing', type: 'toggle', value: view.keyboard.characterShortcuts, patch: ({ value }) => ({ keyboard: { characterShortcuts: value } }) },
 
   ]
@@ -51,10 +51,10 @@ const CONCEPTS = [
 ]
 
 export const commandQuery = ({ query }: { query: string }) => query.trimStart().startsWith('>')
-export const searchWords = ({ query }: { query: string }) => query.replace(/^\s*>/, '').trim()
+export const queryWords = ({ query }: { query: string }) => query.replace(/^\s*>/, '').trim()
 
 export function matchesCommand({ query, text }: { query: string; text: string }): boolean {
-  const words = searchWords({ query }).toLowerCase()
+  const words = queryWords({ query }).toLowerCase()
     .match(/[\p{L}\p{N}]+/gu) ?? []
   const haystack = text.toLowerCase()
 

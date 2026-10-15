@@ -1,25 +1,25 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { AgentConfig, BoardState, ViewPreferences } from '../../../src/core/model.ts'
+import type { AgentConfig, HydraState, ViewPreferences } from '../../../src/core/model.ts'
 import { KEY_ACTIONS, bindingsFor } from '../../../src/core/keyboard.ts'
-import type { HybridHit } from '../../../src/search/semantic.ts'
+import type { HybridHit } from '../../../src/oracle/semantic.ts'
 import { Button, Input, NumberField, Select, Switch } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import { InlineConfirm } from '../components/ui/inline-confirm.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { focusElement, useKeyboard, useKeyAction, type ActionContext } from '../keyboard/registry.tsx'
 import type { Command } from './connection.ts'
-import { boardConfig } from '../../../src/core/hydra.ts'
+import { hydraConfig } from '../../../src/core/hydra.ts'
 import { AgentKinds } from './agent-kinds.tsx'
 import { columnsFor } from './view.ts'
-import { commandQuery, matchesCommand, resetWidths, searchSettings, searchWords } from './search-catalog.ts'
+import { commandQuery, matchesCommand, resetWidths, oracleSettings, queryWords } from './oracle-catalog.ts'
 
-export function Search({
+export function Oracle({
   state, view, command, query, setQuery, hits, save, openTask, openHydra, history,
   showTopbar, createTask, createColumn, action, notify, connected, page,
 }: {
   page: string
   selected: string | null
-  state: BoardState
+  state: HydraState
   view: ViewPreferences
   command: Command
   query: string
@@ -67,7 +67,7 @@ export function Search({
     }
   }, [expanded, connected, command, notify])
   const persist = ({ key, value }: { key: string; value: string }) => command({ name: 'settings', args: ['set', key, value] }).then(r => setSettings(r.settings as Record<string, string>), (e: Error) => notify({ text: e.message }))
-  const editColumn = ({ args }: { args: string[] }) => command({ name: 'column', args: [...args, '--if-revision', String(state.boardRevision ?? 0), '--event-id', crypto.randomUUID()] })
+  const editColumn = ({ args }: { args: string[] }) => command({ name: 'column', args: [...args, '--if-revision', String(state.configRevision ?? 0), '--event-id', crypto.randomUUID()] })
 
   const run = ({ work }: { work: () => unknown }) => {
     setExpanded(false); setQuery({ query: '' })
@@ -85,7 +85,7 @@ export function Search({
     rows.push({ id, text: `${label} ${words}`, content })
   }
 
-  for (const setting of searchSettings({ state, view })) {
+  for (const setting of oracleSettings({ state, view })) {
     const control = setting.type === 'toggle'
       ? (
         <Switch
@@ -118,9 +118,9 @@ export function Search({
   }
 
   for (const [key, label, options] of [
-    ['search.semantic', 'Semantic search', ['on', 'off']],
-    ['search.rerank', 'Rerank top results', ['auto', 'on', 'off']],
-    ['search.model', 'Search model', ['auto', 'granite-97m', 'granite-311m']],
+    ['oracle.semantic', 'Semantic search', ['on', 'off']],
+    ['oracle.rerank', 'Rerank top results', ['auto', 'on', 'off']],
+    ['oracle.model', 'Oracle model', ['auto', 'granite-97m', 'granite-311m']],
   ] as const) {
     add({
       id: key,
@@ -154,7 +154,7 @@ export function Search({
           <span>{column.title} description</span>
           <Input
             key={column.description ?? ''}
-            aria-label={`${column.title} description from search`}
+            aria-label={`${column.title} description from Oracle`}
             defaultValue={column.description ?? ''}
             onBlur={e => {
               if (e.target.value !== (column.description ?? '')) {
@@ -165,13 +165,13 @@ export function Search({
         </>
       ),
     })
-    add({ id: `rename:${column.id}`, label: `Rename ${column.title} column`, words: 'layout title name', content: <><span>Rename column</span><InlineTitle value={column.title} label={`Rename ${column.title} column from search`} save={({ title }) => editColumn({ args: ['rename', column.id, `--title=${title}`] })} /></> })
+    add({ id: `rename:${column.id}`, label: `Rename ${column.title} column`, words: 'layout title name', content: <><span>Rename column</span><InlineTitle value={column.title} label={`Rename ${column.title} column from Oracle`} save={({ title }) => editColumn({ args: ['rename', column.id, `--title=${title}`] })} /></> })
     add({
       id: `delete:${column.id}`,
       label: `Delete ${column.title} column`,
       words: 'layout remove',
       content: <InlineConfirm
-        label={`Delete ${column.title} column from search`}
+        label={`Delete ${column.title} column from Oracle`}
         action="Delete column"
         message={`Delete “${column.title}”? Its tasks move to a remaining column.`}
         disabled={!connected || columnsFor({ state }).length === 1}
@@ -239,7 +239,7 @@ export function Search({
     })
   }
 
-  const hydra = boardConfig({ state }).hydra
+  const hydra = hydraConfig({ state }).hydra
   add({
     id: 'hydra-identity',
     label: 'Hydra identity',
@@ -253,7 +253,7 @@ export function Search({
           defaultValue={hydra.id}
           onBlur={e => {
             if (e.target.value.trim() && e.target.value.trim() !== hydra.id) {
-              void command({ name: 'board', args: ['set', '--hydra', e.target.value.trim(), '--if-revision', String(state.boardRevision ?? 0), '--event-id', crypto.randomUUID()] }).catch((e: Error) => notify({ text: e.message }))
+              void command({ name: 'hydra', args: ['set', '--identity', e.target.value.trim(), '--if-revision', String(state.configRevision ?? 0), '--event-id', crypto.randomUUID()] }).catch((e: Error) => notify({ text: e.message }))
             }
           }}
           onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()}
@@ -261,7 +261,7 @@ export function Search({
       </>
     ),
   })
-  const agent = state.board?.agents?.hydra ?? { harness: 'claude' }
+  const agent = state.config?.agents?.hydra ?? { harness: 'claude' }
 
   const saveAgent = ({ patch }: { patch: Partial<AgentConfig> }) => {
     const next = { ...agent, ...patch }
@@ -312,9 +312,9 @@ export function Search({
     })
   }
 
-  add({ id: 'agents', label: 'Hydra identity and default model; agent kinds', words: `harness effort mode quota launch worker ${Object.keys(state.board?.agents ?? {}).join(' ')}`, content: <AgentKinds state={state} command={command} notify={notify} /> })
+  add({ id: 'agents', label: 'Hydra identity and default model; agent kinds', words: `harness effort mode quota launch worker ${Object.keys(state.config?.agents ?? {}).join(' ')}`, content: <AgentKinds state={state} command={command} notify={notify} /> })
   const catalog = JSON.stringify(rows.map(row => ({ id: row.id, text: row.text.slice(0, 500) })))
-  const words = searchWords({ query })
+  const words = queryWords({ query })
   useEffect(() => {
     if (!expanded || !words || !connected) {
       return
@@ -322,7 +322,7 @@ export function Search({
 
     let live = true
     const timer = setTimeout(() => {
-      void command({ name: 'search-commands', args: [words, catalog] }).then(receipt => {
+      void command({ name: 'oracle-commands', args: [words, catalog] }).then(receipt => {
         if (live) {
           setSemantic({ query: words, catalog, matches: receipt.matches as string[] })
         }
@@ -341,8 +341,8 @@ export function Search({
 
   return (
     <div
-      className="board-search"
-      data-search-slot
+      className="oracle"
+      data-oracle-slot
       ref={root}
       onKeyDown={e => {
         if (e.key === 'Escape' && !e.nativeEvent.isComposing && !e.defaultPrevented) {
@@ -380,11 +380,11 @@ export function Search({
       <Icon name="search" size={15} />
       <Input
         ref={input}
-        aria-label="Search board"
+        aria-label="Oracle"
         aria-expanded={expanded}
-        aria-controls={expanded ? 'board-search-results' : undefined}
+        aria-controls={expanded ? 'hydra-oracle-results' : undefined}
         type="search"
-        placeholder="Search… ⌘K"
+        placeholder="Oracle… ⌘K"
         value={query}
         onChange={e => {
           setQuery({ query: e.target.value }); setExpanded(true)
@@ -409,27 +409,27 @@ export function Search({
               }
             }
           } else if (e.key === 'ArrowDown' || e.key === 'Enter') {
-            e.preventDefault(); root.current?.querySelector<HTMLElement>('.search-results button:not(:disabled), .search-results input')?.focus()
+            e.preventDefault(); root.current?.querySelector<HTMLElement>('.oracle-results button:not(:disabled), .oracle-results input')?.focus()
           }
         }}
       />
       {expanded && (
         <div
-          className="search-results"
-          id="board-search-results"
+          className="oracle-results"
+          id="hydra-oracle-results"
           role="region"
-          aria-label="Search results"
+          aria-label="Oracle results"
         >
           {!commandQuery({ query }) && query.trim() && (
             <>
-              {visibleHits.map(hit => <div className="search-row" key={hit.card}><Button className="search-hit" onClick={() => run({ work: () => hit.kind === 'hydra' ? openHydra() : openTask({ id: hit.card }) })}><strong>{hit.title}</strong><small>{hit.kind === 'hydra' ? 'Hydra conversation' : 'Task'}{hit.match === 'semantic' ? ' · similar meaning' : ''}</small>{hit.snippets.map((snippet, index) => <span key={index}>{snippet.snippet}</span>)}</Button></div>)}
-              {!visibleHits.length && <p className="muted search-row">No matching tasks or messages.</p>}
-              <div className="search-row"><Button onClick={() => run({ work: history })}>Search history</Button><small className="muted">Hidden tasks and recorded history</small></div>
+              {visibleHits.map(hit => <div className="oracle-row" key={hit.card}><Button className="oracle-hit" onClick={() => run({ work: () => hit.kind === 'hydra' ? openHydra() : openTask({ id: hit.card }) })}><strong>{hit.title}</strong><small>{hit.kind === 'hydra' ? 'Hydra conversation' : 'Task'}{hit.match === 'semantic' ? ' · similar meaning' : ''}</small>{hit.snippets.map((snippet, index) => <span key={index}>{snippet.snippet}</span>)}</Button></div>)}
+              {!visibleHits.length && <p className="muted oracle-row">No matching tasks or messages.</p>}
+              <div className="oracle-row"><Button onClick={() => run({ work: history })}>Search history</Button><small className="muted">Hidden tasks and recorded history</small></div>
             </>
           )}
-          <div className="search-caption">Settings & actions</div>
-          {matchingRows.map(row => <div className="search-row" key={row.id}>{row.content}</div>)}
-          {!matchingRows.length && <p className="muted search-row">No matching settings or actions.</p>}
+          <div className="oracle-caption">Settings & actions</div>
+          {matchingRows.map(row => <div className="oracle-row" key={row.id}>{row.content}</div>)}
+          {!matchingRows.length && <p className="muted oracle-row">No matching settings or actions.</p>}
         </div>
       )}
     </div>

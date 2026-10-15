@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import type { BoardColumn, Card, Column as ColumnId, ViewPreferences } from '../../../src/core/model.ts'
+import type { HydraColumn, Card, Column as ColumnId, ViewPreferences } from '../../../src/core/model.ts'
 import { DEFAULT_COLUMN_WIDTH, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
@@ -24,7 +24,7 @@ export function Column({
   editingTitle,
   titleFinished,
   createTask,
-}: BoardColumn & {
+}: HydraColumn & {
   cards: Card[]
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
@@ -96,7 +96,7 @@ export function Column({
         <h2
           title={description || undefined}
           data-column-heading={id}
-          data-key-scope="board"
+          data-key-scope="hydra"
           tabIndex={0}
         >
           <InlineTitle
@@ -156,7 +156,7 @@ export function Column({
           <p
             className="empty"
             data-empty-column={id}
-            data-key-scope="board"
+            data-key-scope="hydra"
             aria-label={`${title}: no cards`}
             tabIndex={0}
           >No tasks here

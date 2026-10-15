@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { HYDRA_ACTOR, type BoardState, type ViewPreferences } from '../../../src/core/model.ts'
-import { HYDRA_CARD, boardConfig } from '../../../src/core/hydra.ts'
+import { HYDRA_ACTOR, type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
+import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Resize } from '../components/ui/resize.tsx'
@@ -15,7 +15,7 @@ export function HydraChat({
   state, command, connected, notify, view, save, draft, setDraft, comments, setComments, liveThread,
 }: {
   liveThread: ThreadPage | null
-  state: BoardState
+  state: HydraState
   command: Command
   connected: boolean
   openTask({ id }: { id: string }): void
@@ -30,7 +30,7 @@ export function HydraChat({
   const [page, setPage] = useState<ThreadPage | null>(null)
   const [width, setWidth] = useState<number | null>(null)
   const stream = useRef<HTMLDivElement>(null), follow = useRef(true)
-  const hydra = boardConfig({ state }).hydra, card = state.cards[HYDRA_CARD]
+  const hydra = hydraConfig({ state }).hydra, card = state.cards[HYDRA_CARD]
   const { tools, thinking } = traces({ view, card: HYDRA_CARD })
   useEffect(() => {
     if (!connected || !card) {
@@ -83,7 +83,7 @@ export function HydraChat({
   const route: ThreadPage = { ...page, card: HYDRA_CARD, entries, route: true, watching: 'unknown' }
 
   return (
-    <aside className="hydra-chat" aria-label="Hydra chat" style={{ width: width ?? view.hydraWidth, flexBasis: width ?? view.hydraWidth }}>
+    <aside className="hydra-chat" aria-label="Hydra’s chat" style={{ width: width ?? view.hydraWidth, flexBasis: width ?? view.hydraWidth }}>
       <header className="hydra-head"><strong>Hydra</strong></header>
       <div
         className="hydra-messages thread"

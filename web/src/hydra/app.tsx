@@ -6,23 +6,23 @@ import { viewFor } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { HydraChat } from './hydra-chat.tsx'
-import { useBoard } from './connection.ts'
-import { BoardCard } from './card.tsx'
+import { useHydra } from './connection.ts'
+import { HydraCard } from './card.tsx'
 import { Column } from './column.tsx'
 import { Detail } from './detail.tsx'
 import type { ChatComment } from './chat.ts'
 import { Settings } from './settings.tsx'
-import { BoardTabs } from './boards.tsx'
+import { HydraTabs } from './hydras.tsx'
 import { History } from './history.tsx'
 import { columnsFor, findBoxCards, pageTitle } from './view.ts'
-import { Search } from './search.tsx'
-import { commandQuery } from './search-catalog.ts'
-import { useFoundCards } from './card-search.ts'
+import { Oracle } from './oracle.tsx'
+import { commandQuery } from './oracle-catalog.ts'
+import { useFoundCards } from './card-oracle.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
-import { useBoardKeyboard } from '../keyboard/board.tsx'
+import { useHydraKeyboard } from '../keyboard/hydra.tsx'
 
 // What a reload (by hand, or after the server serves a new build) would otherwise lose:
-// the open card, the page, unsent drafts and how far the board was scrolled. Kept per tab.
+// the open card, the page, unsent drafts and how far the Hydra was scrolled. Kept per tab.
 const RESTORE_KEY = storageKey({ key: 'restore' })
 type Restore = {
   selected?: string | null
@@ -46,8 +46,8 @@ const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [da
   .map(el => [el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban', el] as const)
 
 export function App() {
-  const { state, command, connected, thread, setThread, hydraThread, latest } = useBoard()
-  const [page, setPage] = useState(restored.page ?? 'board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
+  const { state, command, connected, thread, setThread, hydraThread, latest } = useHydra()
+  const [page, setPage] = useState(restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
   const [editingTask, setEditingTask] = useState<string | null>(null)
@@ -163,13 +163,13 @@ export function App() {
     }
   }, [state.seq])
   useEffect(() => {
-    if (page === 'board' && selected) {
+    if (page === 'hydra' && selected) {
       requestAnimationFrame(() => document.querySelector('.card.selected')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }))
     }
   }, [page, selected])
 
   const openHydra = () => {
-    setPage('board')
+    setPage('hydra')
     requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
   }
 
@@ -181,7 +181,7 @@ export function App() {
     }
 
     if (state.cards[id]) {
-      setSelected(id); setPage('board')
+      setSelected(id); setPage('hydra')
       requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.detail .composer textarea' })))
     }
   }
@@ -192,7 +192,7 @@ export function App() {
 
   const createTask = ({ column, parent }: { column: string; parent?: string }) => {
     void command({ name: 'task', args: ['create', '--title', parent ? 'New subtask' : 'New task', '--column', column, ...(parent ? ['--parent', parent] : []), '--event-id', crypto.randomUUID()] }).then(receipt => {
-      setPage('board'); setWorkspace(''); setTag(''); setQuery('')
+      setPage('hydra'); setWorkspace(''); setTag(''); setQuery('')
       const id = (receipt.card as { id: string }).id
       const first = cards.find(c => c.column === column)
       setEditingTask(id)
@@ -206,13 +206,13 @@ export function App() {
 
   const createColumn = () => {
     const id = `custom:${crypto.randomUUID()}`
-    void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--if-revision', String(state.boardRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => {
-      setPage('board'); setNewColumn(id)
+    void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--if-revision', String(state.configRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => {
+      setPage('hydra'); setNewColumn(id)
     })
       .catch(e => notify({ text: e.message }))
   }
 
-  const keyboard = useBoardKeyboard({
+  const keyboard = useHydraKeyboard({
     state,
     groups: columns.map(c => ({
       id: c.id,
@@ -274,12 +274,12 @@ export function App() {
             <span>pnyx</span>
           </div>
           <nav aria-label="Main pages">
-            <BoardTabs
+            <HydraTabs
               command={command}
               connected={connected}
               notify={notify}
-              active={page === 'board'}
-              showBoard={() => setPage('board')}
+              active={page === 'hydra'}
+              showHydra={() => setPage('hydra')}
             />
             {[['history', 'History'], ['settings', 'Settings']].map(([id,label]) => (
               <Button key={id} aria-pressed={page === id} onClick={() => setPage(id)}>
@@ -287,7 +287,7 @@ export function App() {
               </Button>
             ))}
           </nav>
-          <Search
+          <Oracle
             selected={selected}
             page={page}
             state={state}
@@ -324,7 +324,7 @@ export function App() {
               state={state}
               view={view}
               save={save}
-              close={() => setPage('board')}
+              close={() => setPage('hydra')}
               command={command}
               notify={notify}
             />
@@ -339,7 +339,7 @@ export function App() {
             />
           ) : (
             <>
-              <div className="board-page">
+              <div className="hydra-page">
                 <HydraChat
                   state={state}
                   liveThread={hydraThread}
@@ -354,9 +354,9 @@ export function App() {
                   comments={comments[HYDRA_CARD] ?? []}
                   setComments={({ items }) => setComments(c => ({ ...c, [HYDRA_CARD]: items }))}
                 />
-                <div className="board-main">
+                <div className="hydra-main">
                   <div className="work-area inline">
-                    <div className="board-space">
+                    <div className="hydra-space">
                       <div className="kanban" aria-label="Work columns">
                         {columns.map(c => {
                           const items = cards.filter(card => card.column === c.id)
@@ -370,7 +370,7 @@ export function App() {
                               save={save}
                               command={command}
                               notify={notify}
-                              revision={state.boardRevision ?? 0}
+                              revision={state.configRevision ?? 0}
                               connected={connected}
                               columnIds={columns.map(c => c.id)}
                               editingTitle={newColumn === c.id}
@@ -378,7 +378,7 @@ export function App() {
                               createTask={createTask}
                             >
                               {items.map(item => (
-                                <BoardCard
+                                <HydraCard
                                   key={item.id}
                                   card={item}
                                   latest={latest[item.id]}
@@ -396,7 +396,7 @@ export function App() {
                                   }
                                 >
                                   {selected === item.id && detail}
-                                </BoardCard>
+                                </HydraCard>
                               ))}
                             </Column>
                           )

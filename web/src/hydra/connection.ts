@@ -1,8 +1,8 @@
 import { storageKey } from './outbox.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HYDRA_CARD } from '../../../src/core/hydra.ts'
-import type { BoardState } from '../../../src/core/model.ts'
-import { emptyBoard, reduce } from '../../../src/core/reducer.ts'
+import type { HydraState } from '../../../src/core/model.ts'
+import { emptyHydra, reduce } from '../../../src/core/reducer.ts'
 import type { ServerMessage } from '../../../src/server/server.ts'
 import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
 import { shouldReload } from './view.ts'
@@ -10,24 +10,24 @@ import { shouldReload } from './view.ts'
 export type Receipt = Record<string, unknown>
 export type Command = ({ name, args }: { name: string; args: string[] }) => Promise<Receipt>
 
-const CACHE_KEY = storageKey({ key: 'board-state' })
+const CACHE_KEY = storageKey({ key: 'hydra-state' })
 export const reconnectDelay = ({ attempt }: { attempt: number }) =>
   Math.min(500 * 2 ** Math.min(attempt, 5), 10000)
 export const retryable = ({ name, args }: { name: string; args: string[] }) =>
   ['reply', 'answer', 'agent'].includes(name) || (name === 'hydra' && args[0] === 'send' && args.includes('--event-id'))
 
-function restoredBoard(): BoardState {
+function restoredHydra(): HydraState {
   try {
-    const state = JSON.parse(sessionStorage.getItem(CACHE_KEY) ?? 'null') as BoardState | null
+    const state = JSON.parse(sessionStorage.getItem(CACHE_KEY) ?? 'null') as HydraState | null
 
-    return state?.v === 1 && typeof state.seq === 'number' && state.cards ? state : emptyBoard()
+    return state?.v === 1 && typeof state.seq === 'number' && state.cards ? state : emptyHydra()
   } catch {
-    return emptyBoard()
+    return emptyHydra()
   }
 }
 
-export function useBoard() {
-  const [state, setState] = useState<BoardState>(restoredBoard)
+export function useHydra() {
+  const [state, setState] = useState<HydraState>(restoredHydra)
   const [connected, setConnected] = useState(false)
   const [thread, setThread] = useState<ThreadPage | null>(null)
   const [hydraThread, setHydraThread] = useState<ThreadPage | null>(null)
@@ -136,7 +136,7 @@ export function useBoard() {
           const m = JSON.parse(e.data) as ServerMessage
 
           if (m.type === 'hello') {
-            if (m.board !== document.querySelector<HTMLMetaElement>('meta[name=pnyx-board]')?.content || shouldReload({ loaded: document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content, server: m.build })) {
+            if (m.hydraId !== document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content || shouldReload({ loaded: document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content, server: m.build })) {
               closed = true; ws.close(); location.reload()
             }
           } else if (m.type === 'snapshot') {
@@ -239,7 +239,7 @@ export function useBoard() {
     }
 
     if (!document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content) {
-      reject(new Error('Open this board through pnyx-axi serve to send. Draft kept.'))
+      reject(new Error('Open this Hydra through pnyx-axi serve to send. Draft kept.'))
 
       return
     }

@@ -1,20 +1,20 @@
-import type { BoardState, Card, Link } from '../../../src/core/model.ts'
+import type { HydraState, Card, Link } from '../../../src/core/model.ts'
 import { liveTask, rankOf } from '../../../src/core/tasks.ts'
-import { boardConfig } from '../../../src/core/hydra.ts'
+import { hydraConfig } from '../../../src/core/hydra.ts'
 
-export const columnsFor = ({ state }: { state: BoardState }) => {
-  return boardConfig({ state }).columns
+export const columnsFor = ({ state }: { state: HydraState }) => {
+  return hydraConfig({ state }).columns
 }
 
-export function pageTitle({ page, cards, selected = null }: { page: string; cards: BoardState['cards']; selected?: string | null }): string {
+export function pageTitle({ page, cards, selected = null }: { page: string; cards: HydraState['cards']; selected?: string | null }): string {
   const count = Object.values(cards).filter(c => liveTask({ card: c }) && c.column === 'needs_you').length
   const label = page === 'history' ? 'History' : page === 'settings' ? 'Settings'
-    : (selected && cards[selected]?.title) || 'Board'
+    : (selected && cards[selected]?.title) || 'Hydra'
 
   return `${count > 0 ? `(${count}) ` : ''}${label} · Pnyx`
 }
 
-export function filterCards({ state, workspace, tag, query = '' }: { state: BoardState; workspace: string; tag: string; query?: string }): Card[] {
+export function filterCards({ state, workspace, tag, query = '' }: { state: HydraState; workspace: string; tag: string; query?: string }): Card[] {
   const words = query.toLowerCase().trim()
     .split(/\s+/)
     .filter(Boolean)
@@ -25,11 +25,11 @@ export function filterCards({ state, workspace, tag, query = '' }: { state: Boar
 }
 
 // The "Find a card" box: every card the filter above matches, in its order, then
-// the other cards the board's search found, best first, within the same workspace
+// the other cards the Hydra's search found, best first, within the same workspace
 // and tag filters.
 export function findBoxCards(
   { state, workspace, tag, query, meaning: found }: {
-    state: BoardState
+    state: HydraState
     workspace: string
     tag: string
     query: string

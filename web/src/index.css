@@ -1,5 +1,5 @@
 @import "tailwindcss";
-/* Bundled under the SIL Open Font License (see each folder's OFL.txt), so the board reads the same everywhere. */
+/* Bundled under the SIL Open Font License (see each folder's OFL.txt), so the Hydra reads the same everywhere. */
 @font-face { font-family: "Inter"; src: url("/fonts/inter/Inter-Variable.ttf") format("truetype"); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono/JetBrainsMono-Variable.ttf") format("truetype"); font-weight: 100 800; font-display: swap; }
 @theme {
@@ -113,7 +113,7 @@ h3 { font-weight: 550; }
 
 .input::placeholder { color: var(--color-muted); opacity: .85; }
 
-.input::-webkit-search-cancel-button { appearance: none; }
+.input::-webkit-oracle-cancel-button { appearance: none; }
 
 .select { position: relative; min-width: 100px; }
 
@@ -127,7 +127,7 @@ h3 { font-weight: 550; }
 
 .work-area { display: flex; flex: 1; gap: 14px; min-height: 0; min-width: 0; position: relative; overflow: hidden; }
 
-.board-space { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.hydra-space { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 
 .kanban { display: flex; gap: 12px; overflow: auto hidden; flex: 1; min-height: 0; padding: 1px 1px 8px; }
 
@@ -430,18 +430,18 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .topbar[hidden] { display: none; }
 
-.board-page { --hydra-width: 360px; display: flex; gap: 14px; flex: 1; min-height: 0; min-width: 0; }
+.hydra-page { --identity-width: 360px; display: flex; gap: 14px; flex: 1; min-height: 0; min-width: 0; }
 
-.board-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 13px; }
+.hydra-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 13px; }
 
-.hydra-chat { width: var(--hydra-width); flex: 0 0 var(--hydra-width); min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--color-line); border-radius: 9px; background: var(--color-surface); overflow: hidden; }
+.hydra-chat { width: var(--identity-width); flex: 0 0 var(--identity-width); min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--color-line); border-radius: 9px; background: var(--color-surface); overflow: hidden; }
 
 .hydra-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 11px 14px; border-bottom: 1px solid var(--color-line); flex-shrink: 0; }
 
 .hydra-messages { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
 @media (max-width: 760px) {
 
-.board-page { flex-direction: column; }
+.hydra-page { flex-direction: column; }
 
 .hydra-chat { width: 100%; flex: 0 0 auto; max-height: 38%; } }
 
@@ -611,12 +611,12 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .ask-label { font-size: .78em; }
 
 .ask-description { font-size: .68em; color: var(--color-muted); }
-/* The board keeps one viewport; each conversation and column owns its scrolling. */
+/* The Hydra keeps one viewport; each conversation and column owns its scrolling. */
 .topbar { height: 52px; padding: 0 18px; justify-content: flex-start; gap: 26px; background: var(--color-surface); }
 
 .topbar nav { align-self: center; gap: 4px; align-items: center; }
 
-.topbar nav > .button, .board-switcher > .button { border: 0; border-radius: 8px; padding: 6px 12px; font-size: 1em; text-transform: lowercase; }
+.topbar nav > .button, .hydra-switcher > .button { border: 0; border-radius: 8px; padding: 6px 12px; font-size: 1em; text-transform: lowercase; }
 
 .topbar nav > .button[aria-pressed=true] { background: var(--color-raised); }
 
@@ -634,9 +634,9 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .shell { padding: 12px; gap: 0; }
 
-.board-page { gap: 12px; }
+.hydra-page { gap: 12px; }
 
-.board-main, .board-space { gap: 0; }
+.hydra-main, .hydra-space { gap: 0; }
 
 .work-area { gap: 0; }
 
@@ -746,19 +746,19 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .settings-box p { margin-bottom: 12px; }
 
-.board-switcher { position: relative; }
+.hydra-switcher { position: relative; }
 
-.board-list, .menu-items { position: absolute; top: calc(100% + 5px); min-width: 180px; padding: 4px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-raised); box-shadow: 0 8px 24px var(--color-shadow); z-index: 30; }
+.hydra-list, .menu-items { position: absolute; top: calc(100% + 5px); min-width: 180px; padding: 4px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-raised); box-shadow: 0 8px 24px var(--color-shadow); z-index: 30; }
 
-.board-list { left: 0; }
+.hydra-list { left: 0; }
 
 .menu { position: relative; }
 
 .menu-items { right: 0; }
 
-.board-list .button, .menu-items > .button, .delete-confirm .button { display: flex; width: 100%; min-height: 34px; padding: 7px 10px; font-size: 13px; justify-content: flex-start; text-align: left; border: 0; border-radius: 4px; color: var(--color-ink); text-transform: none; }
+.hydra-list .button, .menu-items > .button, .delete-confirm .button { display: flex; width: 100%; min-height: 34px; padding: 7px 10px; font-size: 13px; justify-content: flex-start; text-align: left; border: 0; border-radius: 4px; color: var(--color-ink); text-transform: none; }
 
-.board-list > .button:last-child { border-top: 1px solid var(--color-line); border-radius: 0; margin-top: 4px; }
+.hydra-list > .button:last-child { border-top: 1px solid var(--color-line); border-radius: 0; margin-top: 4px; }
 
 .delete-confirm { display: flex; }
 
@@ -787,7 +787,7 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .topbar nav { height: auto; gap: 0; }
 
-.topbar nav > .button, .board-switcher > .button { padding: 6px; font-size: 12px; }
+.topbar nav > .button, .hydra-switcher > .button { padding: 6px; font-size: 12px; }
 
 .brand { font-size: 18px; }
 
@@ -799,11 +799,11 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .shell { padding: 8px; }
 
-.board-page { flex-direction: row; overflow-x: auto; gap: 8px; }
+.hydra-page { flex-direction: row; overflow-x: auto; gap: 8px; }
 
 .hydra-chat { width: 280px; flex-basis: 280px; max-height: none; }
 
-.board-main { flex: 1 0 280px; }
+.hydra-main { flex: 1 0 280px; }
 }
 
 .fast-toggle { font-size: 12px; color: var(--color-muted); padding: 3px 6px; min-height: 26px; }
@@ -811,17 +811,17 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .fast-toggle[aria-checked=true] { color: var(--color-gold); background: var(--color-gold-wash); }
 .detail > .jump { position: sticky; bottom: 12px; }
 
-.board-search { position: relative; display: flex; align-items: center; gap: 7px; flex: 1; max-width: 380px; min-width: 140px; }
-.board-search > .input { width: 100%; }
-.search-results { position: absolute; top: calc(100% + 12px); right: 0; width: min(560px, calc(100vw - 24px)); max-height: min(70dvh, 650px); overflow: auto; background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 8px; box-shadow: 0 12px 32px var(--color-shadow); z-index: 65; padding: 6px; }
-.search-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 8px; border-bottom: 1px solid var(--color-subtle); font-size: .85em; }
-.search-row > span { flex: 1; }
-.search-row > .button { text-align: left; justify-content: flex-start; }
-.search-row .number-field { width: 100%; }
-.search-row .switch-label { margin: 0; }
-.search-row > .input { max-width: 220px; }
-.search-hit { display: flex; flex-direction: column; align-items: flex-start; width: 100%; gap: 3px; }
-.search-hit strong { font-weight: 550; }
-.search-hit span, .search-hit small { color: var(--color-muted); white-space: normal; overflow-wrap: anywhere; }
-.search-caption { padding: 12px 8px 4px; font-size: .75em; color: var(--color-muted); }
-@media (max-width: 760px) { .board-search { order: 5; max-width: none; flex-basis: 100%; }.search-results { width: calc(100vw - 24px); }.search-row { flex-wrap: wrap; } }
+.oracle { position: relative; display: flex; align-items: center; gap: 7px; flex: 1; max-width: 380px; min-width: 140px; }
+.oracle > .input { width: 100%; }
+.oracle-results { position: absolute; top: calc(100% + 12px); right: 0; width: min(560px, calc(100vw - 24px)); max-height: min(70dvh, 650px); overflow: auto; background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 8px; box-shadow: 0 12px 32px var(--color-shadow); z-index: 65; padding: 6px; }
+.oracle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 8px; border-bottom: 1px solid var(--color-subtle); font-size: .85em; }
+.oracle-row > span { flex: 1; }
+.oracle-row > .button { text-align: left; justify-content: flex-start; }
+.oracle-row .number-field { width: 100%; }
+.oracle-row .switch-label { margin: 0; }
+.oracle-row > .input { max-width: 220px; }
+.oracle-hit { display: flex; flex-direction: column; align-items: flex-start; width: 100%; gap: 3px; }
+.oracle-hit strong { font-weight: 550; }
+.oracle-hit span, .oracle-hit small { color: var(--color-muted); white-space: normal; overflow-wrap: anywhere; }
+.oracle-caption { padding: 12px 8px 4px; font-size: .75em; color: var(--color-muted); }
+@media (max-width: 760px) { .oracle { order: 5; max-width: none; flex-basis: 100%; }.oracle-results { width: calc(100vw - 24px); }.oracle-row { flex-wrap: wrap; } }

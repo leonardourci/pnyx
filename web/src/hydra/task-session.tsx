@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import type { BoardState, Card } from '../../../src/core/model.ts'
+import type { HydraState, Card } from '../../../src/core/model.ts'
 import { interactive } from '../../../src/core/tasks.ts'
 import { Button, Select, useBusy } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
 
 export function TaskSession({ card, state, command, connected, notify }: {
   card: Card
-  state: BoardState
+  state: HydraState
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void

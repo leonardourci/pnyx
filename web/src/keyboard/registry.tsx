@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
-import { CARET_HOST, CARET_KEY } from '../board/caret.ts'
+import { CARET_HOST, CARET_KEY } from '../hydra/caret.ts'
 import { bindingsFor, characterBinding, emptyProgress, keyLabel, resolveKey, type KeyboardPreferences, type KeyPlatform, type KeyScope } from '../../../src/core/keyboard.ts'
 
 export interface ActionContext { scope: KeyScope; target: HTMLElement }

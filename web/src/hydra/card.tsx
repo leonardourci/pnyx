@@ -15,7 +15,7 @@ function LastMessage({ message }: { message: LatestMessage }) {
   )
 }
 
-export function BoardCard({
+export function HydraCard({
   card,
   latest,
   selected,
@@ -72,7 +72,7 @@ export function BoardCard({
             aria-expanded={selected}
             onClick={() => open({ id: card.id })}
             data-card={card.id}
-            data-key-scope="board"
+            data-key-scope="hydra"
             tabIndex={tabIndex}
           >{card.title}
           </Button>

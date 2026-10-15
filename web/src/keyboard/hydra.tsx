@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BoardState } from '../../../src/core/model.ts'
-import type { Command } from '../board/connection.ts'
-import { placeMessageCaret, conversationMessages, latestAgentMessage } from '../board/caret.ts'
+import type { HydraState } from '../../../src/core/model.ts'
+import type { Command } from '../hydra/connection.ts'
+import { placeMessageCaret, conversationMessages, latestAgentMessage } from '../hydra/caret.ts'
 import { focusElement, type ActionContext } from './registry.tsx'
-import { navigate, restoreAnchor, type BoardAnchor, type ColumnCards } from './navigation.ts'
+import { navigate, restoreAnchor, type HydraAnchor, type ColumnCards } from './navigation.ts'
 
-const anchorElement = ({ anchor }: { anchor: BoardAnchor }) => anchor.card
+const anchorElement = ({ anchor }: { anchor: HydraAnchor }) => anchor.card
   ? `[data-card="${CSS.escape(anchor.card)}"]`
   : `[data-column-heading="${CSS.escape(anchor.column)}"]`
 
-const readAnchor = ({ target }: { target: HTMLElement }): BoardAnchor | undefined => {
+const readAnchor = ({ target }: { target: HTMLElement }): HydraAnchor | undefined => {
   const column = target.closest<HTMLElement>('[data-column]')?.dataset.column
 
   if (!column) {
@@ -21,7 +21,7 @@ const readAnchor = ({ target }: { target: HTMLElement }): BoardAnchor | undefine
   return { column, ...(card ? { card } : {}) }
 }
 
-export function useBoardKeyboard({
+export function useHydraKeyboard({
   state,
   groups,
   page,
@@ -37,7 +37,7 @@ export function useBoardKeyboard({
   toggleTopbar,
   showTopbar,
 }: {
-  state: BoardState
+  state: HydraState
   groups: ColumnCards[]
   page: string
   setPage({ page }: { page: string }): void
@@ -53,7 +53,7 @@ export function useBoardKeyboard({
   showTopbar(): void
 }) {
   const [remembered, setRemembered] = useState<Record<string, string>>({})
-  const focus = useRef<BoardAnchor | undefined>(undefined)
+  const focus = useRef<HydraAnchor | undefined>(undefined)
   const moving = useRef(false)
   useEffect(() => {
     const track = (event: FocusEvent) => {
@@ -76,13 +76,13 @@ export function useBoardKeyboard({
   const focusComposer = () => requestAnimationFrame(() => focusElement({ selector: '.detail .composer textarea' }))
 
   const leaveField = () => {
-    if (page === 'board' && focus.current) {
+    if (page === 'hydra' && focus.current) {
       const anchor = restoreAnchor({ columns: groups, previous: groups, anchor: focus.current })
       focusElement({ selector: anchorElement({ anchor }) })
     }
   }
 
-  const move = ({ direction, anchor }: { direction: string; anchor: BoardAnchor }) => {
+  const move = ({ direction, anchor }: { direction: string; anchor: HydraAnchor }) => {
     if (moving.current || !connected) {
       return
     }
@@ -120,7 +120,7 @@ export function useBoardKeyboard({
       }
 
       const before = groups[index + (direction === 'left' ? -1 : 2)]?.id
-      name = 'column'; args = ['reorder', column.id, ...(before ? ['--before', before] : []), '--if-revision', String(state.boardRevision ?? 0)]
+      name = 'column'; args = ['reorder', column.id, ...(before ? ['--before', before] : []), '--if-revision', String(state.configRevision ?? 0)]
     }
 
     moving.current = true
@@ -153,10 +153,10 @@ export function useBoardKeyboard({
         if (host) {
           placeMessageCaret({ host, target: latestAgentMessage({ host }), edge: 'start' })
         }
-      } else if (selected && page === 'board') {
+      } else if (selected && page === 'hydra') {
         close()
-      } else if (page !== 'board') {
-        setPage({ page: 'board' })
+      } else if (page !== 'hydra') {
+        setPage({ page: 'hydra' })
       } else {
         return false
       }
@@ -171,7 +171,7 @@ export function useBoardKeyboard({
       return true
     }
 
-    if (['thread.reply', 'reply'].includes(id) && context.scope !== 'board') {
+    if (['thread.reply', 'reply'].includes(id) && context.scope !== 'hydra') {
       const input = context.target.closest('.detail, .hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea'); input?.focus()
 
       return !!input
@@ -190,7 +190,7 @@ export function useBoardKeyboard({
     }
 
     if (id === 'palette' || id === 'find') {
-      showTopbar(); requestAnimationFrame(() => focusElement({ selector: '[data-search-slot] input' }))
+      showTopbar(); requestAnimationFrame(() => focusElement({ selector: '[data-oracle-slot] input' }))
 
       return true
     }

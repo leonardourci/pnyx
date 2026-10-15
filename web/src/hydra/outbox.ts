@@ -1,7 +1,7 @@
 export function storageKey({ key }: { key: string }): string {
-  const board = typeof document === 'undefined' ? '' : document.querySelector<HTMLMetaElement>('meta[name=pnyx-board]')?.content
+  const hydraId = typeof document === 'undefined' ? '' : document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content
 
-  return `pnyx:${board ?? ''}:${key}`
+  return `pnyx:${hydraId ?? ''}:${key}`
 }
 
 export interface MessageAttempt { text: string; id: string; pending: boolean }
