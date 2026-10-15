@@ -55,14 +55,15 @@ export function Menu({ label, children }: { label: string; children: ReactNode }
   )
 }
 
-export function DeleteItem({ label, disabled, confirm }: {
+export function DeleteItem({ label, disabled, refusal, confirm }: {
   label: string
   disabled?: boolean
+  refusal?: string
   confirm(): Promise<unknown>
 }) {
   const [asking, setAsking] = useState(false), [busy, setBusy] = useState(false)
 
-  return asking ? (
+  return asking && refusal ? <p className="delete-refused" role="status">{refusal}</p> : asking ? (
     <div className="delete-confirm" aria-label={`Confirm ${label}`}>
       <Button
         data-menu-keep
