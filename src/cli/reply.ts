@@ -588,6 +588,8 @@ route (receipts as for reply), then reads the setting back from the transcript:
     mode as the default for new sessions; one more Enter answers its confirmation, if shown.
   Direct Codex sessions: effort lower|raise (Shift+Down, Shift+Up), fast toggle (/fast), collaboration toggle
     (Shift+Tab, Plan or Default). Codex picks model and approval mode only in its own pickers.
+An agent Pnyx runs (task start) takes model opus|sonnet|haiku|fable, effort low|medium|high|xhigh|max
+and mode default|acceptEdits|plan|auto|bypassPermissions directly through the board's server, nothing typed.
 Terminal and Herdr press only Enter and refuse the keys. Nothing is typed while the session
 waits on a permission prompt or question.
 A Firstmate task's worker is never typed into: every change goes to its orchestrator as a request

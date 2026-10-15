@@ -80,7 +80,9 @@ export async function checkAttachments({ state, connect = openPaseo, probe = ter
   return Promise.all(sessions.map(async session => {
     let presence: Presence
 
-    if (session.agent.paseoUrl && session.agent.paseoAgentId) {
+    if (session.agent.host === 'pnyx') {
+      presence = { state: 'present', detail: 'Pnyx runs this agent; its next message resumes the session.' }
+    } else if (session.agent.paseoUrl && session.agent.paseoAgentId) {
       try {
         presence = (await paseo({ url: session.agent.paseoUrl })).get(session.id) ?? { state: 'unknown', detail: 'Paseo did not answer for this agent.' }
       } catch {

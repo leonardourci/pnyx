@@ -347,7 +347,7 @@ export async function startHydra({
   }
 
   if (how !== 'paseo') {
-    throw new BoardError({ message: `unknown start route: ${how}`, code: 'VALIDATION_ERROR', help: [`Use --via ${VIAS.join('|')}`] })
+    throw new BoardError({ message: `unknown start route: ${how}`, code: 'VALIDATION_ERROR', help: ['Use --via paseo|firstmate|command'] })
   }
 
   const agent = agentFor({ state: loadBoard({ board }).state, board, kind: kind ?? 'hydra' })
