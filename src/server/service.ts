@@ -130,5 +130,5 @@ export function setupService({ hydraId, port = DEFAULT_PORT, homes = [], remove 
     }
   }
 
-  return { service: 'installed', hydraId, path, log, help: ['The hydraId starts at login and restarts after exit', `Run \`pnyx-axi setup service --remove --hydra ${hydraId}\` to stop and uninstall it`] }
+  return { service: 'installed', hydraId, path, log, help: ['The Hydra starts at login and restarts after exit', `Run \`pnyx-axi setup service --remove --hydra ${hydraId}\` to stop and uninstall it`] }
 }
