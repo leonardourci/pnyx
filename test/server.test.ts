@@ -44,10 +44,10 @@ afterEach(async () => {
   }
 
   tabs.clear()
-  await server?.close()
-  server = undefined
   // A spawned server must not outlive its test, even one that failed or timed out.
   await stopAll()
+  await server?.close()
+  server = undefined
 })
 
 const cli = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { encoding: 'utf8', timeout: CLI_TIMEOUT_MS })
