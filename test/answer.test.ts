@@ -187,6 +187,23 @@ test('an MCP form keeps its fields, is checked, and is filled with the keys its 
   assert.equal(answerText({ prompt: { kind: 'form' }, request: elicitation, answer }), 'Accept\nName: Ada\nAgree: yes')
 })
 
+test('a form field the board cannot fill as the terminal would leaves the whole form to the terminal', () => {
+  const base = fixture({ name: 'claude-elicitation-form' })
+
+  const formWith = ({ property }: { property: Record<string, unknown> }) => {
+    const payload = { ...base, requested_schema: { type: 'object', properties: { pick: property } } }
+    const envelope: HookEnvelope = { v: 1, id: 'hook-4', at: '2026-10-14T17:00:00Z', harness: 'claude', event: 'Elicitation', payload }
+
+    return attend({ current: [], change: observe({ envelope })[0]!.attend! })[0]!.form
+  }
+
+  assert.deepEqual(formWith({ property: { type: 'string', title: 'Pick', enum: ['a', 'b'] } }), [{ name: 'pick', title: 'Pick', type: 'string', options: ['a', 'b'] }])
+  assert.equal(formWith({ property: { type: 'string', default: 'a' } }), undefined, 'a default prefills the field')
+  assert.equal(formWith({ property: { type: 'string', oneOf: [{ const: 'a', title: 'A' }] } }), undefined)
+  assert.equal(formWith({ property: { type: 'integer', minimum: 1 } }), undefined)
+  assert.equal(formWith({ property: { type: 'string', enum: 'abcdefghi'.split('') } }), undefined, 'a long choice list')
+})
+
 test('a delivered answer marks its request answered and frees the card until the session moves on', () => {
   const event = ({ seq, type, data }: { seq: number; type: string; data: unknown }): BoardEvent =>
     ({ v: 1, seq, id: `e${seq}`, at: `2026-10-14T17:00:0${seq}Z`, actor: 'cli', cardId: 'c1', type, data }) as BoardEvent

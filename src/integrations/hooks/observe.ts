@@ -155,10 +155,14 @@ function questions({ value }: { value: unknown }): Question[] | undefined {
 }
 
 const FIELD_TYPES = ['string', 'number', 'integer', 'boolean']
+// What the board can fill as the terminal would: anything else (a default, a format,
+// titled choices, limits) changes what the prompt shows, so it is left to the terminal.
+const FIELD_KEYS = ['type', 'title', 'description', 'enum']
+// Each choice is a Down keystroke away, so a long list is left to the terminal.
+const MAX_CHOICES = 8
 
 // An MCP form's fields in the order its prompt lists them; undefined for a URL
-// elicitation or a field the board cannot fill (a list, an object, a format it
-// does not know), so the form is filled in the terminal.
+// elicitation or a field the board cannot fill, so the form is filled in the terminal.
 function form({ payload }: { payload: Record<string, unknown> }): FormField[] | undefined {
   const schema = (payload.requested_schema ?? {}) as { properties?: unknown; required?: unknown }
   type Property = Record<string, unknown> | null
@@ -169,7 +173,9 @@ function form({ payload }: { payload: Record<string, unknown> }): FormField[] | 
     const options = Array.isArray(p?.enum) && p.enum.every(o => typeof o === 'string') ? p.enum as string[] : undefined
     const title = str({ value: p?.title })
 
-    if (!type || !FIELD_TYPES.includes(type) || (options && type !== 'string') || p?.format !== undefined) {
+    if (!p || !type || !FIELD_TYPES.includes(type)
+      || Object.keys(p).some(k => !FIELD_KEYS.includes(k))
+      || (p.enum !== undefined && (!options || type !== 'string' || options.length > MAX_CHOICES))) {
       return []
     }
 
