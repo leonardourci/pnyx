@@ -56,6 +56,7 @@ export function HydraCard({
         e.stopPropagation(); e.dataTransfer.setData('application/pnyx-task', card.id)
       }}
     >
+      {card.project && <span className="project-label" title={card.project}>{card.project}</span>}
       {editingTitle ? (
         <InlineTitle
           value={card.title}

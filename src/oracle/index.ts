@@ -335,11 +335,11 @@ function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexR
       const targets = [
         ...Object.values(state.cards).filter(card => card.id !== HYDRA_CARD)
           .map(card => ({ ...card, live: liveTask({ card }) ? 1 : 0 })),
-        { id: '$board', title: 'Hydra', workspace: '', links: [], live: 1 },
+        { id: '$board', title: 'Hydra', workspace: '', links: [], live: 1, project: undefined },
       ]
 
       for (const card of targets) {
-        const context = card.id === '$board' ? '' : redact({ text: [card.title, ...card.links.map(l => l.title)].filter(Boolean).join('\n') })
+        const context = card.id === '$board' ? '' : redact({ text: [card.title, card.project, ...card.links.map(l => l.title)].filter(Boolean).join('\n') })
 
         if ((getContext.get(card.id) as { context: string } | undefined)?.context !== context) {
           dirty.add(card.id)

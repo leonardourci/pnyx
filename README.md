@@ -180,3 +180,7 @@ pnpm dev
 ```
 
 `pnpm dev` runs the Hydra server for a separate `dev` Hydra under `node --watch`, which restarts it when server code changes, and the Vite dev server, which updates the web app in place as you edit `web/`. Open the URL Vite prints; it forwards the Hydra's WebSocket to the dev server on port 4319 (set `PNYX_DEV_PORT` to change it).
+
+Done cards are hidden from their Hydra after 24 continuous hours in Done. They are never deleted: their tasks, events and conversations stay in History and Oracle. Set the delay for each Hydra in Settings or with `pnyx-axi hydra set --hydra <id> --done-after-hours <hours>`; `0` keeps Done cards visible. Other columns never fade. Use the task menu in History to **Bring back to Hydra**, or run `pnyx-axi task unhide <id> --hydra <id>`; a restored card stays visible until it leaves Done and enters again. A reopened expired card returns automatically.
+
+Cards show a compact project label beside their short title. Firstmate tasks use the item's project and omit a matching leading `<project>:` from the displayed title. Other tasks accept `pnyx-axi task create --title <title> --project <name>` or `pnyx-axi task rename <id> --project <name>`; an empty project value clears the label. Labels are searchable in the Hydra and Oracle.
