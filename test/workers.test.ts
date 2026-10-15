@@ -88,12 +88,13 @@ test('hydra check lists only tracked changes by others and waits for the next on
   f.run({ args: ['task', 'create', '--key', 'a', '--title', 'First'] })
   const start = f.state().seq
   assert.match(f.run({ args: ['hydra', 'check'] }), new RegExp(`none: nothing Hydra tracks changed after seq ${start}`))
-  f.run({ args: ['task', 'create', '--key', 'b', '--title', 'By Hydra'], extra: { PNYX_ACTOR: 'hydra' } })
+  f.run({ args: ['task', 'create', '--key', 'b', '--title', 'By Hydra', '--reason', 'split out the docs'], extra: { PNYX_ACTOR: 'hydra' } })
   f.run({ args: ['task', 'rename', 'a', '--title', 'First, renamed'] })
   f.run({ args: ['task', 'status', 'a', 'needs_you', '--note', 'which db?'], extra: { PNYX_ACTOR: 'worker:c1' } })
   const out = f.run({ args: ['hydra', 'check', '--after', String(start)] })
   assert.match(out, /evt_\d+,task\.declared,c1,none,"worker:c1","needs_you: which db\?"/)
-  assert.doesNotMatch(out, /By Hydra|card\.pushed/)
+  assert.doesNotMatch(out, /task\.created,c\d+,none,hydra|card\.pushed/)
+  assert.match(out, /hydra\.message,c\d+,send,hydra,"Hydra: Created By Hydra: split out the docs"/)
   const through = Number(/through: (\d+)/.exec(out)![1])
   assert.equal(through, f.state().seq)
 
@@ -114,4 +115,11 @@ test('hydra check lists only tracked changes by others and waits for the next on
   const next = Number(/through: (\d+)/.exec(first)![1])
   assert.equal(next, before + 20)
   assert.match(f.run({ args: ['hydra', 'check', '--after', String(next)] }), /note 20.*\n.*note 21/)
+
+  const quiet = f.state().seq
+  f.run({ args: ['task', 'hide', 'b', '--reason', 'the owner closed it'], extra: { PNYX_ACTOR: 'hydra' } })
+  const started = Date.now()
+  const own = f.run({ args: ['hydra', 'check', '--after', String(quiet), '--wait', '1'] })
+  assert.ok(Date.now() - started >= 900, 'Hydra\'s own line must not end the wait')
+  assert.match(own, /"Hydra: Hid By Hydra: the owner closed it"/)
 })
