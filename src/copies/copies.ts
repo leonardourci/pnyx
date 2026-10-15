@@ -127,9 +127,7 @@ function commandCopy({ hydraId, card, project, command }: {
   return { path: realpathSync(printed), project: project.path, via: 'command', state: 'active' }
 }
 
-// The folder a worker starts in. A task with an attached project works in its own
-// copy unless the start passes --in-place, names a folder or uses a command that
-// makes its own; a Firstmate Hydra makes its own copies.
+// A project task works in its own copy unless the start says otherwise; Firstmate Hydras make their own.
 export function taskFolder({ hydraId, task, folder, inPlace, ownFolder, meta }: {
   hydraId: string
   task: string
@@ -213,8 +211,7 @@ export function taskFolder({ hydraId, task, folder, inPlace, ownFolder, meta }: 
 export type CopyCheck = { gone?: boolean; clean: true; landed: true }
   | { gone?: undefined; clean: boolean; landed: boolean; reason: string }
 
-// No uncommitted changes, and the copy's commit is on the default branch or its
-// linked pull request merged.
+// Landed: on the default branch, or its linked pull request merged.
 export function checkCopy({ card, copy }: { card: Card; copy: TaskCopy }): CopyCheck {
   if (!isFolder({ path: copy.path })) {
     return { gone: true, clean: true, landed: true }
@@ -260,9 +257,7 @@ function removeCopy({ copy, force }: { copy: TaskCopy; force: boolean }): string
 
 export type Settle = 'check' | 'safe' | 'discard'
 
-// Removes a task's copy once its work has landed; otherwise flags the task and
-// asks Hydra to resolve it. Hydra may confirm a clean copy is safe; only the owner
-// discards work that never landed. The branch always stays.
+// Only the owner discards work that never landed; anything else unsafe is flagged for Hydra.
 export function settleCopy({ hydraId, ref, mode = 'check', meta }: {
   hydraId: string
   ref: string
@@ -324,7 +319,6 @@ export function settleCopy({ hydraId, ref, mode = 'check', meta }: {
 // A task in Done whose agent is still working keeps its copy until the agent stops.
 export const settles = ({ card }: { card: Card }) => Boolean(card.doneAt) && card.copy?.state === 'active' && card.activity !== 'working'
 
-// Settles the copy of every task that reached Done.
 export function settleDone({ hydraId, at = new Date().toISOString() }: {
   hydraId: string
   at?: string
