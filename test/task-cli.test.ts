@@ -75,7 +75,7 @@ test('attach pins one session, follows subsequent hooks, and preserves outcomes 
   assert.match(f.run({ args: ['task', 'sessions'] }), /claude-code:a/)
 })
 
-test('background sessions remain in History and search while the live board excludes them', () => {
+test('background sessions remain in History and search while the live Hydra excludes them', () => {
   const f = fixture()
   f.run({ args: ['task', 'create', '--key', 'empty-task', '--title', 'Waiting task', '--folder', '/task-lab'] })
   f.hook({ session: 'background', event: 'SessionStart', interactive: false })
@@ -86,7 +86,7 @@ test('background sessions remain in History and search while the live board excl
   assert.match(f.run({ args: ['card', id] }), /visibility: history/)
   assert.match(f.run({ args: ['history', '--card', id, '--full'] }), /background/)
   assert.doesNotMatch(f.run({ args: [] }), /task-lab/)
-  assert.match(f.run({ args: ['search', 'task-lab'] }), new RegExp(id))
+  assert.match(f.run({ args: ['oracle', 'task-lab'] }), new RegExp(id))
   f.hook({ session: 'background', event: 'UserPromptSubmit' })
   assert.equal(f.state().cards[id].hidden, true)
   f.hook({ session: 'background', event: 'SessionStart', interactive: false })

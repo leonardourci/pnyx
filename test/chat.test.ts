@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { recordEntries } from '../src/thread/read.ts'
-import { commentReply, joinMessageParts, quoteInto } from '../web/src/board/chat.ts'
+import { commentReply, joinMessageParts, quoteInto } from '../web/src/hydra/chat.ts'
 import { DEFAULT_KEYBOARD, keyboardError, resolveKey } from '../src/core/keyboard.ts'
 
 test('Markdown messages split for transport reassemble across older pages without losing text', () => {
@@ -41,7 +41,7 @@ test('Enter replies and c comments in the thread without consuming typed text', 
   const context = { scope: 'thread' as const, platform: 'mac' as const, characterShortcuts: true, now: 1 }
   assert.equal(keyboardError({ prefs: DEFAULT_KEYBOARD }), undefined)
   assert.equal(resolveKey({ event: { key: 'Enter' }, context, prefs: DEFAULT_KEYBOARD }).action, 'thread.reply')
-  assert.equal(resolveKey({ event: { key: 'Enter' }, context: { ...context, scope: 'board' }, prefs: DEFAULT_KEYBOARD }).action, 'board.open')
+  assert.equal(resolveKey({ event: { key: 'Enter' }, context: { ...context, scope: 'hydra' }, prefs: DEFAULT_KEYBOARD }).action, 'board.open')
   assert.equal(resolveKey({ event: { key: 'c' }, context, prefs: DEFAULT_KEYBOARD }).action, 'thread.comment')
   assert.equal(resolveKey({ event: { key: 'c' }, context: { ...context, editing: true }, prefs: DEFAULT_KEYBOARD }).consume, false)
   assert.equal(keyboardError({ prefs: { ...DEFAULT_KEYBOARD, bindings: { 'thread.comment': ['n'] } } }), undefined)

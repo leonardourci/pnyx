@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { codexThreadTitle, transcriptNotes } from '../src/integrations/hooks/notes.ts'
-import { transcriptMessages } from '../src/search/text.ts'
-import { loadBoard, readEvents, spoolWrite } from '../src/store/board-store.ts'
+import { transcriptMessages } from '../src/oracle/text.ts'
+import { loadHydra, readEvents, spoolWrite } from '../src/store/hydra-store.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -62,7 +62,7 @@ test('a Codex transcript yields its readable compaction summaries', () => {
   )
 })
 
-function board() {
+function hydraId() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-notes-'))
   process.env.PNYX_HOME = home
   const env = { ...process.env, PNYX_HOME: home, PNYX_GH_AXI: GH_AXI }
@@ -90,10 +90,10 @@ function board() {
   return { home, run, fails, push, transcript }
 }
 
-const noted = () => readEvents({ board: 'default' }).filter(e => e.type === 'card.noted')
+const noted = () => readEvents({ hydraId: 'default' }).filter(e => e.type === 'card.noted')
 
 test('harvest folds transcript notes and pull requests into cards once', () => {
-  const { run, fails, push, transcript } = board()
+  const { run, fails, push, transcript } = hydraId()
   push({ key: 'claude:s1', card: { title: 'Invoices', agent: { provider: 'claude-code', sessionId: 's1', transcriptPath: transcript({ name: 's1.jsonl', from: CLAUDE }) } } })
   push({ key: 'codex:x2', card: { title: 'Ledger', agent: { provider: 'codex', sessionId: 'x2', transcriptPath: transcript({ name: 'x2.jsonl', from: CODEX }) } } })
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/42'] })
@@ -126,7 +126,7 @@ test('harvest folds transcript notes and pull requests into cards once', () => {
 })
 
 test('harvest reads only what a transcript gained, and a lost cursor appends nothing twice', () => {
-  const { home, run, push } = board()
+  const { home, run, push } = hydraId()
   const path = join(home, 's1.jsonl')
   writeFileSync(path, '')
   push({ key: 'claude:s1', card: { agent: { provider: 'claude-code', sessionId: 's1', transcriptPath: path } } })
@@ -142,20 +142,20 @@ test('harvest reads only what a transcript gained, and a lost cursor appends not
 
 for (const event of ['Stop', 'PostCompact']) {
   test(`a session is harvested when its ${event} hook event is ingested`, () => {
-    const { run, transcript } = board()
+    const { run, transcript } = hydraId()
     const path = transcript({ name: 's9.jsonl', from: CLAUDE })
     const payload = { session_id: 's9', transcript_path: path, cwd: '/work' }
-    spoolWrite({ board: 'default', entry: { v: 1, id: 'h0', at: '2026-10-11T10:59:00.000Z', harness: 'claude', event: 'SessionStart', payload } })
-    spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-11T11:00:00.000Z', harness: 'claude', event, payload } })
+    spoolWrite({ hydraId: 'default', entry: { v: 1, id: 'h0', at: '2026-10-11T10:59:00.000Z', harness: 'claude', event: 'SessionStart', payload } })
+    spoolWrite({ hydraId: 'default', entry: { v: 1, id: 'h1', at: '2026-10-11T11:00:00.000Z', harness: 'claude', event, payload } })
     writeFileSync(join(process.env.PNYX_HOME!, 'other.json'), '{}')
     assert.match(run({ args: ['push', '--key', 'other', '--file', join(process.env.PNYX_HOME!, 'other.json')] }), /^ {2}notes: 6$/m)
-    const { state } = loadBoard({ board: 'default' })
+    const { state } = loadHydra({ hydraId: 'default' })
     assert.equal(state.cards[state.keys['claude:s9']!]!.notes?.length, 6)
   })
 }
 
 test('search finds notes and ranks them above the same words in a transcript', () => {
-  const { home, run, push } = board()
+  const { home, run, push } = hydraId()
   const raw = join(home, 'raw.jsonl')
   const summary = join(home, 'summary.jsonl')
   const text = 'Zebrafish pipeline stalled overnight.'
@@ -165,38 +165,38 @@ test('search finds notes and ranks them above the same words in a transcript', (
   push({ key: 'claude:sum', card: { title: 'Second', agent: { provider: 'claude-code', sessionId: 'sum', transcriptPath: summary } } })
   run({ args: ['harvest'] })
   const cards = ({ out }: { out: string }) => [...out.matchAll(/^ {2}- card: (\S+)$/gm)].map(m => m[1])
-  assert.deepEqual(cards({ out: run({ args: ['search', 'zebrafish', 'pipeline'] }) }), ['c2', 'c1'])
-  assert.match(run({ args: ['search', 'zebrafish', '--kind', 'note'] }), /^ {6}note,"[^"]+","\[Zebrafish\] pipeline stalled overnight\."$/m)
-  assert.deepEqual(cards({ out: run({ args: ['search', 'zebrafish', '--kind', 'transcript'] }) }), ['c1'])
-  assert.match(run({ args: ['search', 'status'] }), /^ {2}note: 1$/m)
+  assert.deepEqual(cards({ out: run({ args: ['oracle', 'zebrafish', 'pipeline'] }) }), ['c2', 'c1'])
+  assert.match(run({ args: ['oracle', 'zebrafish', '--kind', 'note'] }), /^ {6}note,"[^"]+","\[Zebrafish\] pipeline stalled overnight\."$/m)
+  assert.deepEqual(cards({ out: run({ args: ['oracle', 'zebrafish', '--kind', 'transcript'] }) }), ['c1'])
+  assert.match(run({ args: ['oracle', 'status'] }), /^ {2}note: 1$/m)
 })
 
 test('a harvested note neither reorders cards nor changes when they were updated', () => {
-  const { run, push, transcript } = board()
+  const { run, push, transcript } = hydraId()
   push({ key: 'claude:s1', card: { title: 'Invoices', agent: { provider: 'claude-code', sessionId: 's1', transcriptPath: transcript({ name: 's1.jsonl', from: CLAUDE }) } } })
   push({ key: 'other', card: { title: 'Other' } })
-  const before = loadBoard({ board: 'default' }).state.cards.c1!
+  const before = loadHydra({ hydraId: 'default' }).state.cards.c1!
   assert.match(run({ args: ['harvest'] }), /^ {2}notes: 6 new$/m)
-  const after = loadBoard({ board: 'default' }).state.cards.c1!
+  const after = loadHydra({ hydraId: 'default' }).state.cards.c1!
   assert.equal(after.notes?.length, 6)
   assert.equal(after.revision, before.revision + 6)
   assert.equal(after.updatedSeq, before.updatedSeq)
   assert.equal(after.updatedAt, before.updatedAt)
-  assert.ok(after.updatedSeq < loadBoard({ board: 'default' }).state.cards.c2!.updatedSeq)
+  assert.ok(after.updatedSeq < loadHydra({ hydraId: 'default' }).state.cards.c2!.updatedSeq)
 })
 
 test('building the search index first harvests every transcript, so compaction summaries stay searchable', () => {
-  const { home, run, push } = board()
+  const { home, run, push } = hydraId()
   const path = join(home, 's1.jsonl')
   writeFileSync(path, readFileSync(CLAUDE, 'utf8'))
   push({ key: 'claude:s1', card: { title: 'Invoices', agent: { provider: 'claude-code', sessionId: 's1', transcriptPath: path } } })
   assert.equal(noted().length, 0)
-  assert.match(run({ args: ['search', 'zebrafish', '--kind', 'note'] }), /^ {2}- card: c1$/m)
+  assert.match(run({ args: ['oracle', 'zebrafish', '--kind', 'note'] }), /^ {2}- card: c1$/m)
   assert.equal(noted().length, 6)
   appendFileSync(path, `${JSON.stringify({ type: 'user', isCompactSummary: true, uuid: 'z2', message: { content: 'Quokka migration paused.' } })}\n`)
-  assert.match(run({ args: ['search', 'rebuild'] }), /rebuilt:/)
+  assert.match(run({ args: ['oracle', 'rebuild'] }), /rebuilt:/)
   assert.equal(noted().length, 7)
-  assert.match(run({ args: ['search', 'quokka', '--kind', 'note'] }), /^ {2}- card: c1$/m)
+  assert.match(run({ args: ['oracle', 'quokka', '--kind', 'note'] }), /^ {2}- card: c1$/m)
 })
 
 test("Codex's session index yields the session's latest thread name", () => {
@@ -213,7 +213,7 @@ test("Codex's session index yields the session's latest thread name", () => {
 })
 
 test("a hook-only card takes the harness's own session title over its first prompt", () => {
-  const { home, run, push } = board()
+  const { home, run, push } = hydraId()
 
   const hookCard = ({ key, provider, transcriptPath }: {
     key: string
@@ -243,7 +243,7 @@ test("a hook-only card takes the harness's own session title over its first prom
 })
 
 test('a session renamed back to an earlier title takes that title again', () => {
-  const { home, run, push } = board()
+  const { home, run, push } = hydraId()
   const path = join(home, 's1.jsonl')
   writeFileSync(path, '')
   push({ key: 'claude:s1', card: { agent: { provider: 'claude-code', sessionId: 's1', transcriptPath: path } } })

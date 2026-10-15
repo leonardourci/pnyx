@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { commands } from '../src/cli/commands.ts'
 import { workerCommands } from '../src/cli/workers.ts'
 import { startServer } from '../src/server/server.ts'
-import { loadBoard } from '../src/store/board-store.ts'
+import { loadHydra } from '../src/store/hydra-store.ts'
 import { smokeBrowser } from './browser.ts'
 import { fakeCodex } from './codex-fixture.ts'
 
@@ -13,16 +13,16 @@ const root = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-codex-smoke-')))
 process.env.PNYX_HOME = join(root, 'pnyx')
 process.env.CODEX_HOME = join(root, 'codex')
 process.env.PNYX_SEMANTIC = 'off'
-await commands.board(['create', 'default'])
+await commands.hydra(['create', 'default'])
 await workerCommands.kind(['set', 'default', '--harness', 'codex', '--model', 'gpt-6.1-sol', '--effort', 'high', '--mode', 'on-request'])
 await commands.task(['create', '--title', 'Hosted Codex smoke', '--key', 'smoke', '--folder', root])
 await commands.task(['brief', 'smoke', '--brief', 'Explain the provider boundary.'])
 const fixture = fakeCodex({ root })
-const server = await startServer({ board: 'default', spawnCodex: fixture.spawnCodex })
+const server = await startServer({ hydraId: 'default', spawnCodex: fixture.spawnCodex })
 const { browser, evaluate, text, click, fill, check, eventually, screenshot, close } = smokeBrowser({ home: root, session: 'pnyx-codex' })
 
 const task = () => {
-  const state = loadBoard({ board: 'default' }).state
+  const state = loadHydra({ hydraId: 'default' }).state
 
   return state.cards[state.keys.smoke!]!
 }

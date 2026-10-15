@@ -1,5 +1,5 @@
 // Inline answers to an agent's own question, permission or plan prompt: which
-// requests the board can answer, the keys each harness's prompt expects, and the
+// requests the Hydra can answer, the keys each harness's prompt expects, and the
 // delivery through the session's terminal. Every host is the fake in
 // test/fixtures/hosts on PATH: tests never type into a real session.
 import assert from 'node:assert/strict'
@@ -9,8 +9,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { answerPrompt, answerText, checkAnswer, requestId, type Answer, type Prompt } from '../src/core/answer.ts'
-import type { Attention, BoardEvent, Card } from '../src/core/model.ts'
-import { emptyBoard, replay } from '../src/core/reducer.ts'
+import type { Attention, HydraEvent, Card } from '../src/core/model.ts'
+import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { KEY, answerKeys } from '../src/integrations/hooks/answer.ts'
 import { attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
 
@@ -188,7 +188,7 @@ test('an MCP form keeps its fields, is checked, and is filled with the keys its 
   assert.equal(answerText({ prompt: { kind: 'form' }, request: elicitation, answer }), 'Accept\nName: Ada\nAgree: yes')
 })
 
-test('a form field the board cannot fill as the terminal would leaves the whole form to the terminal', () => {
+test('a form field the Hydra cannot fill as the terminal would leaves the whole form to the terminal', () => {
   const base = fixture({ name: 'claude-elicitation-form' })
 
   const formWith = ({ property }: { property: Record<string, unknown> }) => {
@@ -214,13 +214,13 @@ test('an answered request no longer holds back a new one', () => {
 })
 
 test('a delivered answer marks its request answered and frees the card until the session moves on', () => {
-  const event = ({ seq, type, data }: { seq: number; type: string; data: unknown }): BoardEvent =>
-    ({ v: 1, seq, id: `e${seq}`, at: `2026-10-14T17:00:0${seq}Z`, actor: 'cli', cardId: 'c1', type, data }) as BoardEvent
+  const event = ({ seq, type, data }: { seq: number; type: string; data: unknown }): HydraEvent =>
+    ({ v: 1, seq, id: `e${seq}`, at: `2026-10-14T17:00:0${seq}Z`, actor: 'cli', cardId: 'c1', type, data }) as HydraEvent
   const pushed = event({ seq: 1, type: 'card.pushed', data: { key: 'claude:s', agent: { provider: 'claude-code', sessionId: 's' }, attention: [permission] } })
   type Receipt = { seq: number; state: string; answers?: string }
   const reply = ({ seq, state, answers = requestId({ request: permission }) }: Receipt) =>
     event({ seq, type: 'card.replied', data: { reply: `r${seq}`, state, route: 'terminal:tmux', answers } })
-  const queued = replay({ state: emptyBoard(), events: [pushed, reply({ seq: 2, state: 'queued' })] })
+  const queued = replay({ state: emptyHydra(), events: [pushed, reply({ seq: 2, state: 'queued' })] })
   assert.equal(queued.cards.c1!.attention[0]!.answered, undefined)
   // An answer written for an earlier request under the same key leaves this one open.
   const stale = replay({

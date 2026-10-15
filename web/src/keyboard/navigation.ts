@@ -1,14 +1,14 @@
 export interface ColumnCards { id: string; cards: string[] }
-export interface BoardAnchor { column: string; card?: string }
+export interface HydraAnchor { column: string; card?: string }
 
 export function navigate(
   { columns, current, action, remembered }: {
     columns: ColumnCards[]
-    current: BoardAnchor
+    current: HydraAnchor
     action: string
     remembered: Record<string, string>
   },
-): BoardAnchor {
+): HydraAnchor {
   const column = Math.max(0, columns.findIndex(c => c.id === current.column))
   const list = columns[column]
 
@@ -38,9 +38,9 @@ export function restoreAnchor(
   { columns, previous, anchor }: {
     columns: ColumnCards[]
     previous: ColumnCards[]
-    anchor: BoardAnchor
+    anchor: HydraAnchor
   },
-): BoardAnchor {
+): HydraAnchor {
   const same = columns.find(c => c.cards.includes(anchor.card ?? ''))
 
   if (same) {

@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, dirname, isAbsolute, join } from 'node:path'
-import { BoardError } from '../core/model.ts'
-import { boardDir, pnyxHome, privateDir } from '../store/board-store.ts'
+import { HydraError } from '../core/model.ts'
+import { hydraDir, pnyxHome, privateDir } from '../store/hydra-store.ts'
 import { DEFAULT_PORT } from './state.ts'
 
 const xml = ({ text }: { text: string }) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
@@ -29,8 +29,8 @@ const stableNode = ({ node, searchPath }: { node: string; searchPath: string }) 
     .find(candidate => resolve({ path: candidate }) === real)) || node
 }
 
-export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = false, preview = false, platform = process.platform, userHome = homedir(), node = process.execPath, searchPath = process.env.PATH ?? '/usr/bin:/bin', run = ({ args }) => execFileSync('launchctl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), sleep = ({ ms }) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) }: {
-  board: string
+export function setupService({ hydraId, port = DEFAULT_PORT, homes = [], remove = false, preview = false, platform = process.platform, userHome = homedir(), node = process.execPath, searchPath = process.env.PATH ?? '/usr/bin:/bin', run = ({ args }) => execFileSync('launchctl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), sleep = ({ ms }) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) }: {
+  hydraId: string
   port?: number
   homes?: string[]
   remove?: boolean
@@ -43,24 +43,24 @@ export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = 
   sleep?({ ms }: { ms: number }): unknown
 }) {
   if (platform !== 'darwin') {
-    throw new BoardError({ message: 'the login service requires macOS launchd', code: 'UNSUPPORTED_PLATFORM' })
+    throw new HydraError({ message: 'the login service requires macOS launchd', code: 'UNSUPPORTED_PLATFORM' })
   }
 
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new BoardError({ message: '--port must be 1 to 65535 for a login service', code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: '--port must be 1 to 65535 for a login service', code: 'VALIDATION_ERROR' })
   }
 
   const home = pnyxHome()
-  const key = createHash('sha256').update(`${home}/${board}`)
+  const key = createHash('sha256').update(`${home}/${hydraId}`)
     .digest('hex')
     .slice(0, 16)
   const label = `local.pnyx.board.${key}`
   const path = join(userHome, 'Library', 'LaunchAgents', `${label}.plist`)
   const domain = `gui/${process.getuid!()}`
   const target = `${domain}/${label}`
-  const log = join(boardDir({ board }), 'service.log')
+  const log = join(hydraDir({ hydraId }), 'service.log')
   const cli = join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'pnyx-axi.ts' : 'pnyx-axi.js')
-  const args = [stableNode({ node, searchPath }), cli, 'serve', '--board', board, '--port', String(port), ...homes.flatMap(h => ['--home', h])]
+  const args = [stableNode({ node, searchPath }), cli, 'serve', '--hydra', hydraId, '--port', String(port), ...homes.flatMap(h => ['--home', h])]
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -97,7 +97,7 @@ export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = 
     // launchd finishes a bootout asynchronously, and bootstrapping the same label before it is gone fails with an I/O error.
     for (let attempt = 0; listed(); attempt++) {
       if (attempt === 50) {
-        throw new BoardError({ message: `launchd did not stop the running service ${label}`, code: 'SERVICE_ERROR', help: [`Run \`launchctl print ${target}\` to inspect it`, 'Rerun setup once it has stopped'] })
+        throw new HydraError({ message: `launchd did not stop the running service ${label}`, code: 'SERVICE_ERROR', help: [`Run \`launchctl print ${target}\` to inspect it`, 'Rerun setup once it has stopped'] })
       }
 
       sleep({ ms: 100 })
@@ -107,14 +107,14 @@ export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = 
   if (remove) {
     rmSync(path, { force: true })
 
-    return { service: 'removed', board, path }
+    return { service: 'removed', hydraId, path }
   }
 
   if (!existsSync(cli)) {
-    throw new BoardError({ message: 'build Pnyx before installing its login service', code: 'NOT_BUILT' })
+    throw new HydraError({ message: 'build Pnyx before installing its login service', code: 'NOT_BUILT' })
   }
 
-  privateDir({ dir: boardDir({ board }) })
+  privateDir({ dir: hydraDir({ hydraId }) })
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, plist, { mode: 0o600 })
 
@@ -126,9 +126,9 @@ export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = 
     try {
       run({ args: ['bootstrap', domain, path] })
     } catch (error) {
-      throw new BoardError({ message: `launchd could not start the board: ${(error as Error).message}`, code: 'SERVICE_ERROR', help: [`Read ${log}`, 'Stop a manually started server before installing the service'] })
+      throw new HydraError({ message: `launchd could not start the Hydra: ${(error as Error).message}`, code: 'SERVICE_ERROR', help: [`Read ${log}`, 'Stop a manually started server before installing the service'] })
     }
   }
 
-  return { service: 'installed', board, path, log, help: ['The board starts at login and restarts after exit', `Run \`pnyx-axi setup service --remove --board ${board}\` to stop and uninstall it`] }
+  return { service: 'installed', hydraId, path, log, help: ['The Hydra starts at login and restarts after exit', `Run \`pnyx-axi setup service --remove --hydra ${hydraId}\` to stop and uninstall it`] }
 }

@@ -1,8 +1,8 @@
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { BoardError } from '../../core/model.ts'
-import { pnyxHome } from '../../store/board-store.ts'
+import { HydraError } from '../../core/model.ts'
+import { pnyxHome } from '../../store/hydra-store.ts'
 import type { Harness } from './observe.ts'
 
 const SCRIPT = 'pnyx-hook.sh'
@@ -89,14 +89,14 @@ function readConfig({ path }: { path: string }): Config {
   try {
     config = JSON.parse(readFileSync(path, 'utf8'))
   } catch (error) {
-    throw new BoardError({ message: `cannot read ${path}: ${(error as Error).message}`, code: 'VALIDATION_ERROR', help: ['Fix the JSON by hand, then rerun'] })
+    throw new HydraError({ message: `cannot read ${path}: ${(error as Error).message}`, code: 'VALIDATION_ERROR', help: ['Fix the JSON by hand, then rerun'] })
   }
 
   const hooks = (config as Config | null)?.hooks
   const isObject = ({ value: v }: { value: unknown }) => typeof v === 'object' && v !== null && !Array.isArray(v)
 
   if (!isObject({ value: config }) || (hooks !== undefined && !isObject({ value: hooks }))) {
-    throw new BoardError({ message: `${path} is not a hook config object`, code: 'VALIDATION_ERROR', help: ['Fix it by hand, then rerun'] })
+    throw new HydraError({ message: `${path} is not a hook config object`, code: 'VALIDATION_ERROR', help: ['Fix it by hand, then rerun'] })
   }
 
   return config as Config

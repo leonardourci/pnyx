@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
 import { answerPrompt, answerText, checkAnswer, requestId } from '../core/answer.ts'
 import { decideReply, findCard, type Meta } from '../core/decide.ts'
-import { BoardError, type Card, type ReplyState } from '../core/model.ts'
+import { HydraError, type Card, type ReplyState } from '../core/model.ts'
 import { KEY_LABEL, confirms, findOption, harnessControls, inputReason, settingRequest, type Key } from '../core/control.ts'
 import { replyRoute, type ReplyRoute } from '../core/route.ts'
 import { STATUS_KEY, TASK_ID, resolveHome } from '../integrations/firstmate/home.ts'
@@ -13,7 +13,7 @@ import { HOOK } from '../integrations/hooks/observe.ts'
 import { pressKey, pressKeys, typeInto, type Delivery } from '../integrations/hooks/terminal.ts'
 import { paseoReply } from '../integrations/paseo/reply.ts'
 import { askHost } from '../server/state.ts'
-import { loadBoard, withWriter } from '../store/board-store.ts'
+import { loadHydra, withWriter } from '../store/hydra-store.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { COMMON, guard, meta, parse, required, type Options, type Output } from './commands.ts'
 
@@ -47,13 +47,13 @@ export interface ReplyReceipt {
   state: ReplyState
   sent: boolean
   detail?: string
-  // Set when the send ran but its outcome could not be written; the board still
+  // Set when the send ran but its outcome could not be written; the Hydra still
   // shows the reply as queued.
   recordError?: string
 }
 
-function invalid({ message, help = [] }: { message: string; help?: string[] }): BoardError {
-  return new BoardError({ message, code: 'VALIDATION_ERROR', help })
+function invalid({ message, help = [] }: { message: string; help?: string[] }): HydraError {
+  return new HydraError({ message, code: 'VALIDATION_ERROR', help })
 }
 
 function routeName({ route, control }: { route: ReplyRoute; control?: boolean }): string {
@@ -61,9 +61,9 @@ function routeName({ route, control }: { route: ReplyRoute; control?: boolean })
     : route.kind === 'paseo-agent' || route.kind === 'pnyx' ? route.kind : `terminal:${route.kind}`
 }
 
-// The request id of a setting change's note: per board, card and change, so a retry
+// The request id of a setting change's note: per Hydra, card and change, so a retry
 // of the same change replays its note.
-const noteId = ({ board, card, reply }: { board: string; card: string; reply: string }) => `pnyx:${board}:${card}:${reply}`
+const noteId = ({ hydraId, card, reply }: { hydraId: string; card: string; reply: string }) => `pnyx:${hydraId}:${card}:${reply}`
 
 // Time for Claude Code to show its confirmation after a model or effort command.
 const CONFIRM_SETTLE_MS = 1500
@@ -74,8 +74,8 @@ function waiting({ card }: { card: Card | undefined }): boolean {
   return card?.attention.some(a => a.blocking && a.key.startsWith(HOOK)) ?? false
 }
 
-function deliver({ board, card, reply, route, request, keys }: {
-  board: string
+function deliver({ hydraId, card, reply, route, request, keys }: {
+  hydraId: string
   card: string
   reply: string
   route: ReplyRoute
@@ -90,7 +90,7 @@ function deliver({ board, card, reply, route, request, keys }: {
 
   if (route.kind === 'firstmate') {
     return request.control
-      ? fmNote({ home: route.home, requestId: noteId({ board, card, reply }), text })
+      ? fmNote({ home: route.home, requestId: noteId({ hydraId, card, reply }), text })
       : fmSend({ route, text, resolveKey })
   }
 
@@ -99,7 +99,7 @@ function deliver({ board, card, reply, route, request, keys }: {
   }
 
   if (route.kind === 'pnyx') {
-    return hostReply({ board, card, text, setting: request.setting, actor: request.actor })
+    return hostReply({ hydraId, card, text, setting: request.setting, actor: request.actor })
   }
 
   const sent = key ? pressKey({ route, key }) : typeInto({ route, text })
@@ -114,7 +114,7 @@ function deliver({ board, card, reply, route, request, keys }: {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, CONFIRM_SETTLE_MS)
 
   if (withWriter({
-    board,
+    hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
 
@@ -131,8 +131,8 @@ function deliver({ board, card, reply, route, request, keys }: {
     : { state: 'delivery_unknown', detail: `the command was sent, but the Enter that answers its confirmation was not${answered.detail ? ` (${answered.detail})` : ''}; check the session` }
 }
 
-async function hostReply({ board, card, text, setting, actor }: {
-  board: string
+async function hostReply({ hydraId, card, text, setting, actor }: {
+  hydraId: string
   card: string
   text: string
   setting?: ReplyRequest['setting']
@@ -140,7 +140,7 @@ async function hostReply({ board, card, text, setting, actor }: {
 }): Promise<Delivery> {
   try {
     await askHost({
-      board,
+      hydraId,
       body: setting
         ? { action: 'set', card, setting: setting.name, value: setting.value, ...(actor ? { actor } : {}) }
         : { action: 'send', card, text, ...(actor ? { actor } : {}) },
@@ -148,7 +148,7 @@ async function hostReply({ board, card, text, setting, actor }: {
 
     return { state: 'delivered' }
   } catch (error) {
-    const known = error instanceof BoardError
+    const known = error instanceof HydraError
 
     return known
       ? { state: 'failed', detail: `${error.message}; nothing was sent` }
@@ -156,8 +156,8 @@ async function hostReply({ board, card, text, setting, actor }: {
   }
 }
 
-export async function sendReply({ board, request }: {
-  board: string
+export async function sendReply({ hydraId, request }: {
+  hydraId: string
   request: ReplyRequest
 }): Promise<ReplyReceipt> {
   const { resolveKey, answer } = request
@@ -174,13 +174,13 @@ export async function sendReply({ board, request }: {
   const homes = request.homes.map(path => resolveHome({ path }))
 
   const queued = withWriter({
-    board,
+    hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
       const card = findCard({ state: writer.state, ref: request.card })
 
       if (request.expectedSession && card.sessionIds?.[0] !== request.expectedSession) {
-        throw new BoardError({ message: 'the attached agent changed before the brief could be sent', code: 'SESSION_CONFLICT' })
+        throw new HydraError({ message: 'the attached agent changed before the brief could be sent', code: 'SESSION_CONFLICT' })
       }
 
       const found = replyRoute({ card, homes })
@@ -197,7 +197,7 @@ export async function sendReply({ board, request }: {
           })
         }
 
-        throw new BoardError({ message: `card ${card.id} has no reply route: ${found.reason}`, code: 'NO_ROUTE' })
+        throw new HydraError({ message: `card ${card.id} has no reply route: ${found.reason}`, code: 'NO_ROUTE' })
       }
 
       const route = found.route
@@ -206,16 +206,16 @@ export async function sendReply({ board, request }: {
       const unpressable = key && inputReason({ kind: route.kind, input: { key } })
 
       if (unpressable) {
-        throw new BoardError({ message: `card ${card.id} cannot take ${KEY_LABEL[key!]}: ${unpressable}`, code: 'NO_ROUTE' })
+        throw new HydraError({ message: `card ${card.id} cannot take ${KEY_LABEL[key!]}: ${unpressable}`, code: 'NO_ROUTE' })
       }
 
       if (request.control && route.kind !== 'firstmate' && waiting({ card })) {
-        throw new BoardError({ message: `card ${card.id} is waiting on a request; answer it in the session before changing settings`, code: 'SESSION_WAITING' })
+        throw new HydraError({ message: `card ${card.id} is waiting on a request; answer it in the session before changing settings`, code: 'SESSION_WAITING' })
       }
 
       if (route.kind === 'firstmate') {
         if (!TASK_ID.test(route.task)) {
-          throw new BoardError({ message: `card ${card.id} has no reply route`, code: 'NO_ROUTE', help: ['Reply to a Firstmate task card'] })
+          throw new HydraError({ message: `card ${card.id} has no reply route`, code: 'NO_ROUTE', help: ['Reply to a Firstmate task card'] })
         }
 
         // fm-send has no `--` separator, so a leading flag would be read as an option.
@@ -251,7 +251,7 @@ export async function sendReply({ board, request }: {
         answers = requestId({ request: open })
 
         if (answer.seen !== undefined && answer.seen !== answers) {
-          throw new BoardError({
+          throw new HydraError({
             message: `the request ${answer.request} changed since it was shown; nothing was typed`,
             code: 'REVISION_CONFLICT',
             help: [`Run \`pnyx-axi card ${card.id}\` and answer the current request`],
@@ -261,7 +261,7 @@ export async function sendReply({ board, request }: {
         // Keys typed after the prompt closed would land on the next one, so an answer
         // still being typed, or one that may have landed, holds the request.
         if (card.replies?.some(r => r.answers === answers && (r.state === 'queued' || r.state === 'delivery_unknown'))) {
-          throw new BoardError({
+          throw new HydraError({
             message: `an answer to ${answer.request} is already being typed or may have landed; nothing was typed`,
             code: 'SESSION_WAITING',
             help: ['Check the session, and answer there if its prompt is still open'],
@@ -315,12 +315,12 @@ export async function sendReply({ board, request }: {
 
   // Sent outside the writer lock: a send can take a while and must not block other writers.
   const { card, reply, route, keys, answers } = queued
-  const outcome = await deliver({ board, card, reply, route, request, keys })
+  const outcome = await deliver({ hydraId, card, reply, route, request, keys })
   const receipt = { card, reply, sent: true, ...outcome }
 
   try {
     withWriter({
-      board,
+      hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         const data = {
@@ -357,7 +357,7 @@ export const reply = guard({
       json: { type: 'string' },
       seen: { type: 'string' },
     }
-    const { values, positionals, board } = parse({ args, options, positionals: 1 })
+    const { values, positionals, hydraId } = parse({ args, options, positionals: 1 })
     const ref = required({ value: positionals[0], what: 'card id' })
     const file = values.file as string | undefined
     const request = values.answer as string | undefined
@@ -392,7 +392,7 @@ export const reply = guard({
     }
 
     const receipt = await sendReply({
-      board,
+      hydraId,
       request: {
         card: ref,
         text: text!,
@@ -409,7 +409,7 @@ export const reply = guard({
       out.help = ['The send failed and nothing was delivered; once the cause is fixed, send again without --idempotency-key']
     } else if (receipt.recordError) {
       out.help = [
-        `The send ended ${receipt.state} but was not recorded, so the board still shows it queued; check the task's inbox or the session before sending again`,
+        `The send ended ${receipt.state} but was not recorded, so the Hydra still shows it queued; check the task's inbox or the session before sending again`,
       ]
     } else if (receipt.state === 'failed') {
       out.help = [`Fix the cause, then retry with --idempotency-key ${receipt.reply}`]
@@ -429,12 +429,12 @@ export const reply = guard({
 // the transcript is read back.
 const READBACK_MS = 1000
 
-function agentSummary({ board, ref, homes }: {
-  board: string
+function agentSummary({ hydraId, ref, homes }: {
+  hydraId: string
   ref: string
   homes: string[]
 }): Output {
-  const card = findCard({ state: loadBoard({ board }).state, ref })
+  const card = findCard({ state: loadHydra({ hydraId }).state, ref })
   const provider = card.agent?.provider
   const found = replyRoute({ card, homes: homes.map(path => resolveHome({ path })) })
   const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
@@ -483,7 +483,7 @@ export const agent = guard({
       actor: { type: 'string' },
       'idempotency-key': { type: 'string' },
     }
-    const { values, positionals, board } = parse({ args, options, positionals: 3 })
+    const { values, positionals, hydraId } = parse({ args, options, positionals: 3 })
     const ref = required({ value: positionals[0], what: 'card id' })
     const homes = (values.home as string[] | undefined) ?? []
 
@@ -492,11 +492,11 @@ export const agent = guard({
         throw new AxiError('give a setting and a value', 'VALIDATION_ERROR', [`Run \`pnyx-axi agent ${ref}\` to list them`])
       }
 
-      return agentSummary({ board, ref, homes })
+      return agentSummary({ hydraId, ref, homes })
     }
 
     const [, setting, value] = positionals as [string, string, string]
-    const card = findCard({ state: loadBoard({ board }).state, ref })
+    const card = findCard({ state: loadHydra({ hydraId }).state, ref })
     const provider = card.agent?.provider
     const found = replyRoute({ card, homes: homes.map(path => resolveHome({ path })) })
     const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
@@ -511,7 +511,7 @@ export const agent = guard({
     // What the session reported before, with everything it has recorded folded in,
     // so the readback compares like with like.
     const settled = () => withWriter({
-      board,
+      hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         harvestTranscripts({ writer, cardIds: [card.id], at: new Date().toISOString() })
@@ -538,7 +538,7 @@ export const agent = guard({
     }
 
     const receipt = await sendReply({
-      board,
+      hydraId,
       request: {
         card: card.id,
         ...typed,
@@ -590,7 +590,7 @@ route (receipts as for reply), then reads the setting back from the transcript:
 An agent Pnyx runs (task start) takes its provider’s model, effort and mode directly. Codex takes
 model gpt-6.1-sol|gpt-6-astra|gpt-6-sol|gpt-6-luna, effort low|medium|high|xhigh, and mode
 untrusted|on-request|never for its next turn. Claude Code takes model opus|sonnet|haiku|fable, effort low|medium|high|xhigh|max
-and mode default|acceptEdits|plan|auto|bypassPermissions directly through the board's server, nothing typed.
+and mode default|acceptEdits|plan|auto|bypassPermissions directly through the Hydra's server, nothing typed.
 Terminal and Herdr press only Enter and refuse the keys. Nothing is typed while the session
 waits on a permission prompt or question.
 A Firstmate task's worker is never typed into: every change goes to its orchestrator as a request
@@ -605,7 +605,7 @@ export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <fi
        pnyx-axi reply <id> --answer <request key> --json <answer> [--seen <request id>] [--idempotency-key <key>]
 A Firstmate task card replies through its home's bin/fm-send.sh, with FM_HOME set; its home must
 be passed with --home, and --resolve-key answers that open decision. An agent Pnyx runs (task start)
-gets the text straight through the board's server, which must be running. Any other agent session is
+gets the text straight through the Hydra's server, which must be running. Any other agent session is
 typed into the terminal its hooks recorded: a tmux pane, a Herdr pane, a Paseo terminal, or an
 iTerm2 or Terminal session found by its TTY (macOS asks once to allow controlling those apps).
 The session's process must still own that TTY; the text is typed once, then submitted with Enter.

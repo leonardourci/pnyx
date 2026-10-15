@@ -6,10 +6,10 @@ import type { HostedSession } from './provider.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { freeTask } from '../cli/start.ts'
 import { decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { BoardError, type AgentRef, type AgentSettings, type Attention, type Card } from '../core/model.ts'
+import { HydraError, type AgentRef, type AgentSettings, type Attention, type Card } from '../core/model.ts'
 import { harnessControls } from '../core/control.ts'
 import { INTERRUPTED, sessionId } from '../core/tasks.ts'
-import { pnyxHome, withWriter, type Writer } from '../store/board-store.ts'
+import { pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
 
 export type { QueryFn } from './claude.ts'
 
@@ -92,8 +92,8 @@ interface Live {
   idle?: ReturnType<typeof setTimeout>
 }
 
-export function createHost({ board, query, spawnCodex, changed }: {
-  board: string
+export function createHost({ hydraId, query, spawnCodex, changed }: {
+  hydraId: string
   query?: QueryFn
   spawnCodex?: SpawnCodex
   changed(): void
@@ -106,7 +106,7 @@ export function createHost({ board, query, spawnCodex, changed }: {
 
   const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
     const result = withWriter({
-      board,
+      hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
 
@@ -141,7 +141,7 @@ export function createHost({ board, query, spawnCodex, changed }: {
     const { cwd } = card.agent
 
     if (!cwd || !isFolder({ path: cwd })) {
-      throw new BoardError({ message: `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`, code: 'FOLDER_MISSING', help: [`Run \`pnyx-axi task detach ${card.id}\`, then \`pnyx-axi task start ${card.id}\` to start fresh from the brief`] })
+      throw new HydraError({ message: `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`, code: 'FOLDER_MISSING', help: [`Run \`pnyx-axi task detach ${card.id}\`, then \`pnyx-axi task start ${card.id}\` to start fresh from the brief`] })
     }
 
     return cwd
@@ -174,7 +174,7 @@ export function createHost({ board, query, spawnCodex, changed }: {
     const card = findCard({ state: writer.state, ref })
 
     if (card.agent?.host !== 'pnyx') {
-      throw new BoardError({ message: `card ${card.id} has no agent that Pnyx runs`, code: 'NO_ROUTE' })
+      throw new HydraError({ message: `card ${card.id} has no agent that Pnyx runs`, code: 'NO_ROUTE' })
     }
 
     return card as Card & { agent: AgentRef }
@@ -208,12 +208,12 @@ export function createHost({ board, query, spawnCodex, changed }: {
   const environment = () => ({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
     PNYX_HOME: pnyxHome(),
-    PNYX_BOARD: board,
+    PNYX_HYDRA: hydraId,
   })
 
   const providerOf = ({ provider }: { provider: string }) => {
     if (provider !== 'claude-code' && provider !== 'codex') {
-      throw new BoardError({ message: `unsupported hosted provider: ${provider}`, code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: `unsupported hosted provider: ${provider}`, code: 'VALIDATION_ERROR' })
     }
 
     return providers[provider]
@@ -343,13 +343,13 @@ export function createHost({ board, query, spawnCodex, changed }: {
       }
 
       if (starting.has(target.id)) {
-        throw new BoardError({ message: `task ${target.id} is already starting`, code: 'SESSION_CONFLICT' })
+        throw new HydraError({ message: `task ${target.id} is already starting`, code: 'SESSION_CONFLICT' })
       }
 
       const cwd = folder ?? target.folder
 
       if (!cwd || !isFolder({ path: cwd })) {
-        throw new BoardError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
+        throw new HydraError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
       }
 
       const provider = settings.provider ?? 'claude-code'
@@ -380,11 +380,11 @@ export function createHost({ board, query, spawnCodex, changed }: {
             freeTask({ state: writer.state, ref: task })
 
             if ((folder ?? card.folder) !== cwd) {
-              throw new BoardError({ message: 'the task folder changed while its agent was starting; retry the start', code: 'CONFLICT' })
+              throw new HydraError({ message: 'the task folder changed while its agent was starting; retry the start', code: 'CONFLICT' })
             }
 
             if (!isFolder({ path: cwd })) {
-              throw new BoardError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
+              throw new HydraError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
             }
 
             const meta = { at: at(), actor, ...(reason ? { reason } : {}) }
@@ -450,7 +450,7 @@ export function createHost({ board, query, spawnCodex, changed }: {
           const control = controls?.controls.find(c => c.setting === setting)
 
           if (!control || !control.options.some(o => o.value === value)) {
-            throw new BoardError({ message: `${setting} cannot be ${value}`, code: 'VALIDATION_ERROR' })
+            throw new HydraError({ message: `${setting} cannot be ${value}`, code: 'VALIDATION_ERROR' })
           }
 
           record({ writer, agent: card.agent, input: { settings: { [setting]: value } }, actor })
@@ -514,7 +514,7 @@ const field = ({ body, name, optional = false }: {
   }
 
   if (typeof value !== 'string' || !value.trim() || value.length > 32000) {
-    throw new BoardError({ message: `${name} must be a string of 1 to 32000 characters`, code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: `${name} must be a string of 1 to 32000 characters`, code: 'VALIDATION_ERROR' })
   }
 
   return value
@@ -535,7 +535,7 @@ export async function hostRequest({ host, body: raw }: {
       const folder = field({ body, name: 'folder', optional: true })
 
       if (folder !== undefined && !isAbsolute(folder)) {
-        throw new BoardError({ message: 'folder must be an absolute path', code: 'VALIDATION_ERROR' })
+        throw new HydraError({ message: 'folder must be an absolute path', code: 'VALIDATION_ERROR' })
       }
 
       return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
@@ -550,7 +550,7 @@ export async function hostRequest({ host, body: raw }: {
       const value = field({ body, name: 'value' })!
 
       if (!SETTINGS.includes(setting)) {
-        throw new BoardError({ message: `${setting} cannot be ${value}`, code: 'VALIDATION_ERROR', help: [`Settings: ${SETTINGS.join(', ')}`] })
+        throw new HydraError({ message: `${setting} cannot be ${value}`, code: 'VALIDATION_ERROR', help: [`Settings: ${SETTINGS.join(', ')}`] })
       }
 
       await host.set({ card: field({ body, name: 'card' })!, setting, value, actor })
@@ -559,6 +559,6 @@ export async function hostRequest({ host, body: raw }: {
     }
 
     default:
-      throw new BoardError({ message: 'action must be start, send or set', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'action must be start, send or set', code: 'VALIDATION_ERROR' })
   }
 }

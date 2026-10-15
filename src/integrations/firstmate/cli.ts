@@ -15,22 +15,22 @@ function homes({ values }: { values: Record<string, unknown> }): string[] {
   return list.map(path => resolveHome({ path }))
 }
 
-function sync({ board, list }: { board: string; list: string[] }): Output {
-  const results = list.map(home => ({ home, ...syncHome({ board, home }) }))
+function sync({ hydraId, list }: { hydraId: string; list: string[] }): Output {
+  const results = list.map(home => ({ home, ...syncHome({ hydraId, home }) }))
   const ignored = results.filter(r => r.ignored).map(r => r.home)
 
   return {
     synced: results.map(({ home, tasks, appended }) => ({ home, tasks, appended })),
     ...(ignored.length ? { ignored: results.filter(r => r.ignored).map(r => `${r.home}: ${r.ignored}`) } : {}),
     help: [
-      ...ignored.map(home => `Ignored ${home}: run \`pnyx-axi board set --firstmate ${home} --board ${board}\` to make it this board's Hydra, or sync it into another board`),
-      'Run `pnyx-axi` to see the board',
+      ...ignored.map(home => `Ignored ${home}: run \`pnyx-axi hydra set --firstmate ${home} --hydra ${hydraId}\` to make it this Hydra, or sync it into another Hydra`),
+      'Run `pnyx-axi` to see the Hydra',
     ],
   }
 }
 
-export function watchHomes({ board, list }: {
-  board: string
+export function watchHomes({ hydraId, list }: {
+  hydraId: string
   list: string[]
 }): { close(): Output } {
   const totals = { syncs: 0, appended: 0, errors: 0 }
@@ -55,7 +55,7 @@ export function watchHomes({ board, list }: {
   }
 
   const watches = list.map(home => watchHome({
-    board,
+    hydraId,
     home,
     onSync: onSync({ home }),
   }))
@@ -76,8 +76,8 @@ export function watchHomes({ board, list }: {
   }
 }
 
-async function watch({ board, list }: { board: string; list: string[] }): Promise<Output> {
-  const watches = watchHomes({ board, list })
+async function watch({ hydraId, list }: { hydraId: string; list: string[] }): Promise<Output> {
+  const watches = watchHomes({ hydraId, list })
   await new Promise<void>(resolve => {
     process.once('SIGINT', resolve)
     process.once('SIGTERM', resolve)
@@ -96,17 +96,17 @@ const firstmate = guard<Output | Promise<Output>>({
       ])
     }
 
-    const { values, board } = parse({ args: rest, options: HOMES, positionals: 0 })
+    const { values, hydraId } = parse({ args: rest, options: HOMES, positionals: 0 })
     const list = homes({ values })
 
-    return sub === 'sync' ? sync({ board, list }) : watch({ board, list })
+    return sub === 'sync' ? sync({ hydraId, list }) : watch({ hydraId, list })
   },
 })
 
 export const firstmateCommands = { firstmate }
 
 const HELP: Record<string, string> = {
-  firstmate: `usage: pnyx-axi firstmate sync|watch --home <path> [--home <path>]... [--board <name>]
+  firstmate: `usage: pnyx-axi firstmate sync|watch --home <path> [--home <path>]... [--hydra <name>]
 Reads each Firstmate home's state/<task>.meta, state/<task>.status, data/backlog.md and
 data/<task>/brief.md, never writing them. Each task becomes a card under the home's card: backlog
 title, repo tag, pull request link, and open needs-decision or blocked keys, or a latest failed: or

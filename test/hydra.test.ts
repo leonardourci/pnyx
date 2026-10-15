@@ -4,25 +4,25 @@ import { appendFileSync, chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import type { BoardState, BoardEvent } from '../src/core/model.ts'
-import { emptyBoard, replay } from '../src/core/reducer.ts'
+import type { HydraState, HydraEvent } from '../src/core/model.ts'
+import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { liveTask } from '../src/core/tasks.ts'
 
 const bin = join(import.meta.dirname, '../dist/cli/pnyx-axi.js')
 
-function fixture({ board = 'default' }: { board?: string } = {}) {
+function fixture({ hydraId = 'default' }: { hydraId?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'pnyx-hydra-'))
   const env = { ...process.env, PNYX_HOME: root, PNYX_SEMANTIC: 'off' }
 
   const run = ({ args }: { args: string[] }): string => {
-    const out = execFileSync(process.execPath, [bin, ...args, '--board', board], { env, encoding: 'utf8' })
+    const out = execFileSync(process.execPath, [bin, ...args, '--hydra', hydraId], { env, encoding: 'utf8' })
     const token = /^token: ([a-f0-9]+)$/m.exec(out)?.[1]
 
     return token ? run({ args: [...args, '--confirm', token] }) : out
   }
 
-  const state = ({ id = board }: { id?: string } = {}): BoardState => JSON.parse(readFileSync(join(root, 'boards', id, 'snapshot.json'), 'utf8')).state
-  const events = (): BoardEvent[] => readFileSync(join(root, 'boards', board, 'events.jsonl'), 'utf8').trim()
+  const state = ({ id = hydraId }: { id?: string } = {}): HydraState => JSON.parse(readFileSync(join(root, 'boards', id, 'snapshot.json'), 'utf8')).state
+  const events = (): HydraEvent[] => readFileSync(join(root, 'boards', hydraId, 'events.jsonl'), 'utf8').trim()
     .split('\n')
     .map(line => JSON.parse(line))
 
@@ -40,26 +40,26 @@ test('boards keep one Hydra, independent task lists, and durable history after s
   const f = fixture()
 
   try {
-    f.run({ args: ['board', 'create', 'default', '--hydra', 'first'] })
+    f.run({ args: ['hydra', 'create', 'default', '--identity', 'first'] })
     f.run({ args: ['task', 'create', '--key', 'work', '--title', 'Ship search'] })
     f.run({ args: ['hydra', 'send', '--task', 'work', '--action', 'worker', '--event-id', 'request-worker'] })
     const original = f.events().length
     f.run({ args: ['hydra', 'send', '--task', 'work', '--action', 'worker', '--event-id', 'request-worker'] })
     assert.equal(f.events().length, original)
     assert.throws(() => f.run({ args: ['hydra', 'send'] }))
-    f.run({ args: ['hydra', 'send', '--text', 'What is left on the board?', '--event-id', 'board-question'] })
+    f.run({ args: ['hydra', 'send', '--text', 'What is left in the Hydra?', '--event-id', 'hydra-question'] })
     const question = f.state().hydraMessages?.at(-1)
-    assert.equal(question?.text, 'What is left on the board?')
+    assert.equal(question?.text, 'What is left in the Hydra?')
     assert.equal(question?.task, undefined)
-    assert.doesNotMatch(f.run({ args: ['task', 'history', 'work'] }), /What is left on the board/)
-    f.run({ args: ['board', 'create', 'other', '--hydra', 'second'] })
-    assert.equal(f.state({ id: 'other' }).board?.hydra.id, 'second')
+    assert.doesNotMatch(f.run({ args: ['task', 'history', 'work'] }), /What is left in the Hydra/)
+    f.run({ args: ['hydra', 'create', 'other', '--identity', 'second'] })
+    assert.equal(f.state({ id: 'other' }).config?.hydra.id, 'second')
     assert.equal(Object.values(f.state({ id: 'other' }).cards).filter(card => liveTask({ card })).length, 0)
-    f.run({ args: ['board', 'set', '--hydra', 'replacement'] })
-    assert.equal(f.state().board?.hydra.id, 'replacement')
+    f.run({ args: ['hydra', 'set', '--identity', 'replacement'] })
+    assert.equal(f.state().config?.hydra.id, 'replacement')
     assert.equal(f.state().hydraMessages?.[0]?.hydra, 'first')
     assert.match(f.run({ args: ['task', 'history', 'work'] }), /request-worker|Create a worker/)
-    assert.match(f.run({ args: ['board', 'list'] }), /default|other/)
+    assert.match(f.run({ args: ['hydra', 'list'] }), /default|other/)
   } finally {
     rmSync(f.root, { recursive: true, force: true })
   }
@@ -69,7 +69,7 @@ test('declared status, hooks, outcomes and column edits never move a task; repla
   const f = fixture()
 
   try {
-    f.run({ args: ['board', 'create', 'default'] })
+    f.run({ args: ['hydra', 'create', 'default'] })
     f.run({ args: ['task', 'create', '--title', 'Root', '--key', 'root'] })
     f.run({ args: ['task', 'create', '--title', 'Child', '--key', 'child', '--parent', 'root'] })
     assert.throws(() => f.run({ args: ['task', 'create', '--title', 'Too deep', '--parent', 'child'] }))
@@ -86,10 +86,10 @@ test('declared status, hooks, outcomes and column edits never move a task; repla
     f.run({ args: ['task', 'status', 'root', 'needs-you', '--note', 'Choose a schema'] })
     assert.equal(f.state().cards[root]?.column, 'parked')
     f.run({ args: ['column', 'rename', 'needs_you', '--title', 'Your turn'] })
-    assert.equal(f.state().board?.columns[0]?.title, 'Your turn')
+    assert.equal(f.state().config?.columns[0]?.title, 'Your turn')
     f.run({ args: ['column', 'create', '--title', 'Research', '--id', 'custom:research'] })
     f.run({ args: ['column', 'reorder', 'custom:research', '--before', 'needs_you'] })
-    assert.equal(f.state().board?.columns[0]?.id, 'custom:research')
+    assert.equal(f.state().config?.columns[0]?.id, 'custom:research')
     const reordered = f.events().length
     f.run({ args: ['column', 'reorder', 'custom:research', '--before', 'needs_you'] })
     assert.equal(f.events().length, reordered)
@@ -108,11 +108,11 @@ test('declared status, hooks, outcomes and column edits never move a task; repla
     assert.ok(history.every(e => e.boardId === 'default' && e.commandId))
     assert.ok(history.some(e => e.subtaskId === child && e.taskId === root))
     const before = structuredClone(history)
-    const replayed = replay({ state: emptyBoard(), events: history })
+    const replayed = replay({ state: emptyHydra(), events: history })
     assert.deepEqual(JSON.parse(JSON.stringify(replayed)), f.state())
     assert.deepEqual(history, before)
     assert.match(f.run({ args: ['task', 'history', 'root', '--limit', '100'] }), /Waiting for review|Choose a schema|claude-code:worker/)
-    assert.match(f.run({ args: ['search', 'schema'] }), /root|Choose a \[schema\]/)
+    assert.match(f.run({ args: ['oracle', 'schema'] }), /root|Choose a \[schema\]/)
   } finally {
     rmSync(f.root, { recursive: true, force: true })
   }
@@ -122,14 +122,14 @@ test('ad-hoc sessions never become tasks, and a merge never moves declared work'
   const f = fixture()
 
   try {
-    f.run({ args: ['board', 'create', 'default'] })
+    f.run({ args: ['hydra', 'create', 'default'] })
     const adHoc = { title: 'Unassigned interactive session', agent: { provider: 'codex', sessionId: 's' }, terminal: { tty: '/dev/ttys123' } }
     f.push({ key: 'ad-hoc', input: adHoc })
     const pushed = f.events().length
     f.push({ key: 'ad-hoc', input: adHoc })
     assert.equal(f.events().length, pushed)
     assert.equal(Object.values(f.state().cards).filter(card => liveTask({ card })).length, 0)
-    f.run({ args: ['board', 'set', '--hydra', 'codex:s', '--session', 'codex:s'] })
+    f.run({ args: ['hydra', 'set', '--identity', 'codex:s', '--session', 'codex:s'] })
     f.run({ args: ['task', 'create', '--key', 'work', '--title', 'Work'] })
     assert.throws(() => f.run({ args: ['task', 'attach', 'work', '--session', 'codex:s'] }))
     f.run({ args: ['link', 'work', '--url', 'https://github.com/example/app/pull/1', '--state', 'merged'] })
@@ -141,7 +141,7 @@ test('ad-hoc sessions never become tasks, and a merge never moves declared work'
     }
 
     assert.throws(() => f.run({ args: ['column', 'delete', 'parked'] }))
-    assert.equal(f.state().board?.columns.length, 1)
+    assert.equal(f.state().config?.columns.length, 1)
   } finally {
     rmSync(f.root, { recursive: true, force: true })
   }
@@ -170,7 +170,7 @@ test('Firstmate mirror includes backlog-only tasks, complete status and metadata
     assert.match(f.state().cards[task.id]!.mirror!.status, /Waiting for release/)
     assert.ok(f.state().cards[task.id]!.mirror!.meta.worktree)
     assert.deepEqual(f.state().cards[task.id]!.mirror!.present, { meta: false, status: false })
-    f.run({ args: ['board', 'set', '--hydra', 'next-agent'] })
+    f.run({ args: ['hydra', 'set', '--identity', 'next-agent'] })
     appendFileSync(join(home, 'state/api-v2.status'), 'working: changed after switch\n')
     f.run({ args: ['firstmate', 'sync', '--home', home] })
     assert.doesNotMatch(f.state().cards[task.id]!.mirror!.status, /changed after switch/)
@@ -184,7 +184,7 @@ test('task messages remain in history and chat after the worker transcript is re
   const f = fixture()
 
   try {
-    f.run({ args: ['board', 'create', 'default'] })
+    f.run({ args: ['hydra', 'create', 'default'] })
     f.run({ args: ['task', 'create', '--title', 'Keep the context', '--key', 'context'] })
     const transcript = join(f.root, 'worker.jsonl')
     writeFileSync(transcript, `${JSON.stringify({ type: 'assistant', timestamp: '2026-10-14T19:00:00Z', message: { content: 'The rollout stopped at the canary gate. Key sk-live0123456789abcdefXYZ' } })}\n`)
@@ -202,8 +202,8 @@ test('task messages remain in history and chat after the worker transcript is re
     assert.match(f.run({ args: ['task', 'history', 'context'] }), /chat.message|canary gate/)
     f.run({ args: ['task', 'detach', 'context'] })
     assert.match(f.run({ args: ['task', 'chat', 'context', '--session', 'claude-code:context-worker'] }), /canary gate/)
-    f.run({ args: ['search', 'rebuild'] })
-    assert.match(f.run({ args: ['search', 'canary', '--kind', 'transcript'] }), /canary/)
+    f.run({ args: ['oracle', 'rebuild'] })
+    assert.match(f.run({ args: ['oracle', 'canary', '--kind', 'transcript'] }), /canary/)
   } finally {
     rmSync(f.root, { recursive: true, force: true })
   }
@@ -213,10 +213,10 @@ test("Hydra's own open prompt shows on its card, so its chat can answer it", () 
   const f = fixture()
 
   try {
-    f.run({ args: ['board', 'create', 'default'] })
+    f.run({ args: ['hydra', 'create', 'default'] })
     const session = { agent: { provider: 'claude-code', sessionId: 'hydra-q' }, terminal: { tty: '/dev/ttys123', pid: '123', program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%1' }, source: { adapter: 'hooks', instanceId: 'claude', objectId: 'hydra-q' } }
     f.push({ key: 'claude:hydra-q', input: session })
-    f.run({ args: ['board', 'set', '--session', 'claude-code:hydra-q'] })
+    f.run({ args: ['hydra', 'set', '--session', 'claude-code:hydra-q'] })
     const ask = { kind: 'permission', key: 'hook:tool:Bash', blocking: true, text: 'Allow Bash: ls' }
     f.push({ key: 'claude:hydra-q', input: { ...session, attention: [ask] } })
     assert.match(f.run({ args: ['card', '$hydra'] }), /reply \$hydra --answer hook:tool:Bash/)
@@ -227,15 +227,15 @@ test("Hydra's own open prompt shows on its card, so its chat can answer it", () 
   }
 })
 
-test('Hydra chat drained from turn-end hooks stays in history after its transcript is removed', () => {
+test('Hydra’s chat drained from turn-end hooks stays in history after its transcript is removed', () => {
   const f = fixture()
 
   try {
     const transcript = join(f.root, 'hydra.jsonl')
     writeFileSync(transcript, '')
-    f.run({ args: ['board', 'create', 'default'] })
+    f.run({ args: ['hydra', 'create', 'default'] })
     f.push({ key: 'claude:hydra-s', input: { agent: { provider: 'claude-code', sessionId: 'hydra-s', transcriptPath: transcript }, terminal: { tty: '/dev/ttys123', pid: '123' }, source: { adapter: 'hooks', instanceId: 'claude', objectId: 'hydra-s' } } })
-    f.run({ args: ['board', 'set', '--session', 'claude-code:hydra-s'] })
+    f.run({ args: ['hydra', 'set', '--session', 'claude-code:hydra-s'] })
     writeFileSync(transcript, `${JSON.stringify({ type: 'assistant', timestamp: '2026-10-14T19:00:00Z', message: { content: 'Hydra queued the migration audit.' } })}\n`)
     const spool = join(f.root, 'boards', 'default', 'spool')
     mkdirSync(spool, { recursive: true })
@@ -248,23 +248,23 @@ test('Hydra chat drained from turn-end hooks stays in history after its transcri
     assert.equal(chat[0]?.cardId, '$hydra')
     rmSync(transcript)
     assert.match(f.run({ args: ['history', '--kind', 'chat.message', '--full'] }), /migration audit/)
-    f.run({ args: ['search', 'rebuild'] })
-    assert.match(f.run({ args: ['search', 'migration', '--kind', 'transcript'] }), /migration/)
+    f.run({ args: ['oracle', 'rebuild'] })
+    assert.match(f.run({ args: ['oracle', 'migration', '--kind', 'transcript'] }), /migration/)
     assert.equal(f.events().filter(e => e.type === 'chat.message').length, 1)
   } finally {
     rmSync(f.root, { recursive: true, force: true })
   }
 })
 
-test('role columns record a declaration, column edits keep the board unconfigured and outcome undo restores status', () => {
-  const f = fixture({ board: 'work' })
+test('role columns record a declaration, column edits keep the Hydra unconfigured and outcome undo restores status', () => {
+  const f = fixture({ hydraId: 'work' })
 
   try {
     f.run({ args: ['column', 'rename', 'needs_you', '--title', 'Your turn'] })
-    assert.equal(f.state().board?.id, 'work')
+    assert.equal(f.state().config?.id, 'work')
     assert.equal(f.state().configured, undefined)
-    f.run({ args: ['board', 'create', 'work'] })
-    assert.equal(f.state().board?.columns[0]?.title, 'Your turn')
+    f.run({ args: ['hydra', 'create', 'work'] })
+    assert.equal(f.state().config?.columns[0]?.title, 'Your turn')
     f.run({ args: ['task', 'create', '--title', 'Ask', '--key', 'ask', '--column', 'needs_you'] })
     const ask = f.state().keys.ask!
     assert.equal(f.state().cards[ask]?.column, 'needs_you')
@@ -287,7 +287,7 @@ test('role columns record a declaration, column edits keep the board unconfigure
     f.run({ args: ['link', 'pushed', '--url', 'https://github.com/example/app/pull/2', '--state', 'open'] })
     const pushed = f.state().cards[f.state().keys.pushed!]!
     assert.equal(pushed.tracking, 'declared')
-    assert.ok(f.state().board?.columns.some(c => c.id === pushed.column))
+    assert.ok(f.state().config?.columns.some(c => c.id === pushed.column))
   } finally {
     rmSync(f.root, { recursive: true, force: true })
   }
@@ -297,7 +297,7 @@ test('a session moved between tasks keeps each retained message once', () => {
   const f = fixture()
 
   try {
-    f.run({ args: ['board', 'create', 'default'] })
+    f.run({ args: ['hydra', 'create', 'default'] })
     f.run({ args: ['task', 'create', '--title', 'First home', '--key', 'first'] })
     f.run({ args: ['task', 'create', '--title', 'Second home', '--key', 'second'] })
     const transcript = join(f.root, 'mover.jsonl')
@@ -308,26 +308,26 @@ test('a session moved between tasks keeps each retained message once', () => {
     f.push({ key: 'mover', input: { agent: { provider: 'claude-code', sessionId: 'mover', transcriptPath: transcript }, terminal: { tty: '/dev/ttys124', pid: '124' } } })
 
     const once = () => {
-      const found = f.run({ args: ['search', 'backfill', '--kind', 'transcript'] })
+      const found = f.run({ args: ['oracle', 'backfill', '--kind', 'transcript'] })
       assert.equal(found.split('[backfill] step').length - 1, 1, found)
       assert.match(found, /unattached \[backfill\] note/)
     }
 
-    f.run({ args: ['search', 'rebuild'] })
+    f.run({ args: ['oracle', 'rebuild'] })
     f.run({ args: ['task', 'attach', 'first', '--session', 'claude-code:mover'] })
     once()
-    f.run({ args: ['search', 'rebuild'] })
+    f.run({ args: ['oracle', 'rebuild'] })
     once()
     f.run({ args: ['task', 'detach', 'first'] })
     f.run({ args: ['task', 'attach', 'second', '--session', 'claude-code:mover'] })
     assert.equal(f.events().filter(e => e.type === 'chat.message').length, 1)
     once()
-    f.run({ args: ['search', 'rebuild'] })
+    f.run({ args: ['oracle', 'rebuild'] })
     once()
     rmSync(transcript)
     assert.equal(f.run({ args: ['task', 'chat', 'second'] }).split('backfill step').length - 1, 1)
     assert.match(f.run({ args: ['task', 'chat', 'first', '--session', 'claude-code:mover'] }), /backfill step/)
-    f.run({ args: ['search', 'rebuild'] })
+    f.run({ args: ['oracle', 'rebuild'] })
     once()
   } finally {
     rmSync(f.root, { recursive: true, force: true })
@@ -338,8 +338,8 @@ test('detach after new transcript settings, strict column ids and compact task o
   const f = fixture()
 
   try {
-    f.run({ args: ['board', 'create', 'default'] })
-    assert.match(f.run({ args: ['task', 'list'] }), /none: no tasks on this board/)
+    f.run({ args: ['hydra', 'create', 'default'] })
+    assert.match(f.run({ args: ['task', 'list'] }), /none: no tasks on this Hydra/)
     assert.match(f.run({ args: ['hydra', 'messages'] }), /none: no messages after seq 0/)
     f.run({ args: ['task', 'create', '--title', 'Ship it', '--key', 'ship'] })
     const transcript = join(f.root, 'detach.jsonl')
@@ -375,13 +375,13 @@ test('detach after new transcript settings, strict column ids and compact task o
   }
 })
 
-test('board folders and the files holding copied chat stay private to the owner', () => {
+test('Hydra folders and the files holding copied chat stay private to the owner', () => {
   const f = fixture()
 
   try {
     const dir = join(f.root, 'boards', 'default')
     const mode = ({ path }: { path: string }) => statSync(path).mode & 0o777
-    f.run({ args: ['board', 'create', 'default'] })
+    f.run({ args: ['hydra', 'create', 'default'] })
     assert.equal(mode({ path: dir }), 0o700)
     assert.equal(mode({ path: join(dir, 'events.jsonl') }), 0o600)
     assert.equal(mode({ path: join(dir, 'snapshot.json') }), 0o600)
@@ -401,27 +401,27 @@ test('search keeps one copy of each archived native line, long or repeated', () 
   const f = fixture()
 
   try {
-    f.run({ args: ['board', 'create', 'default'] })
+    f.run({ args: ['hydra', 'create', 'default'] })
     f.run({ args: ['task', 'create', '--title', 'Long task', '--key', 'long'] })
     const transcript = join(f.root, 'long.jsonl')
     const line = ({ text }: { text: string }) => `${JSON.stringify({ type: 'assistant', timestamp: '2026-10-14T19:00:00Z', message: { content: text } })}\n`
     writeFileSync(transcript, line({ text: `${'Padding words about the rollout. '.repeat(40)}The zebrafinch flag closed the loop.` }) + line({ text: 'Please verify the koala gate.' }))
     f.push({ key: 'long-session', input: { agent: { provider: 'claude-code', sessionId: 'long', transcriptPath: transcript }, terminal: { tty: '/dev/ttys128', pid: '128' } } })
-    const hits = ({ word }: { word: string }) => Number(/results\[(\d+)\]/.exec(f.run({ args: ['search', word, '--kind', 'transcript'] }))?.[1] ?? 0)
-    f.run({ args: ['search', 'rebuild'] })
+    const hits = ({ word }: { word: string }) => Number(/results\[(\d+)\]/.exec(f.run({ args: ['oracle', word, '--kind', 'transcript'] }))?.[1] ?? 0)
+    f.run({ args: ['oracle', 'rebuild'] })
     f.run({ args: ['task', 'attach', 'long', '--session', 'claude-code:long'] })
     assert.ok(f.events().filter(e => e.type === 'chat.message').length > 2)
     assert.equal(hits({ word: 'zebrafinch' }), 1)
-    f.run({ args: ['search', 'rebuild'] })
+    f.run({ args: ['oracle', 'rebuild'] })
     assert.equal(hits({ word: 'zebrafinch' }), 1)
     assert.equal(hits({ word: 'koala' }), 1)
     f.run({ args: ['task', 'detach', 'long'] })
     appendFileSync(transcript, line({ text: 'Please verify the koala gate.' }))
     assert.equal(hits({ word: 'koala' }), 2)
-    f.run({ args: ['search', 'rebuild'] })
+    f.run({ args: ['oracle', 'rebuild'] })
     assert.equal(hits({ word: 'koala' }), 2)
     rmSync(transcript)
-    f.run({ args: ['search', 'rebuild'] })
+    f.run({ args: ['oracle', 'rebuild'] })
     assert.equal(hits({ word: 'zebrafinch' }), 1)
     assert.equal(hits({ word: 'koala' }), 1)
   } finally {
@@ -429,7 +429,7 @@ test('search keeps one copy of each archived native line, long or repeated', () 
   }
 })
 
-test('saving view preferences keeps cards in board columns', () => {
+test('saving view preferences keeps cards in Hydra columns', () => {
   const f = fixture()
 
   try {
@@ -449,7 +449,7 @@ test('saving view preferences keeps cards in board columns', () => {
     f.run({ args: ['view', 'set', '--json', JSON.stringify({ customColumns: [] })] })
     assert.equal(f.state().view?.columnWidths['custom:research'], 400)
     assert.equal(f.state().cards[id]!.column, 'custom:research')
-    const replayed = replay({ state: emptyBoard(), events: f.events() })
+    const replayed = replay({ state: emptyHydra(), events: f.events() })
     assert.deepEqual(replayed.cards[id], f.state().cards[id])
   } finally {
     rmSync(f.root, { recursive: true, force: true })

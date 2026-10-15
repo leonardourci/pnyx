@@ -8,7 +8,7 @@ import { commands } from '../src/cli/commands.ts'
 import { sendReply } from '../src/cli/reply.ts'
 import { hydraCheck } from '../src/cli/workers.ts'
 import { decidePush } from '../src/core/decide.ts'
-import { loadBoard, readEvents, withWriter } from '../src/store/board-store.ts'
+import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
 function fixture() {
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-digest-')))
@@ -16,10 +16,10 @@ function fixture() {
   commands.task(['create', '--key', 'work', '--title', 'Conversation task'])
   const transcript = join(home, 'worker.jsonl')
   writeFileSync(transcript, '')
-  const state = () => loadBoard({ board: 'default' }).state
+  const state = () => loadHydra({ hydraId: 'default' }).state
   const task = state().keys.work!
   const push = ({ input }: { input: object }) => withWriter({
-    board: 'default',
+    hydraId: 'default',
     fn: ({ writer }) => {
       const d = decidePush({ state: writer.state, key: 'worker', input, meta: { at: '2026-10-15T12:00:00Z', actor: 'fixture' } })
 
@@ -83,14 +83,14 @@ test('the light check records direct conversation messages once, keeps repeated 
   }
 })
 
-test('board sends appear before a reply, consume one native echo, and keep a later repeated direct message', async () => {
+test('Hydra sends appear before a reply, consume one native echo, and keep a later repeated direct message', async () => {
   const f = fixture()
 
   try {
     const home = join(f.home, 'firstmate')
     cpSync(join(import.meta.dirname, 'fixtures/firstmate-home'), home, { recursive: true })
     withWriter({
-      board: 'default',
+      hydraId: 'default',
       fn: ({ writer }) => {
         const d = decidePush({ state: writer.state, key: 'work', input: { source: { adapter: 'firstmate', instanceId: home, objectId: 'api-v2' } }, meta: { at: '2026-10-15T12:00:00Z', actor: 'fixture' } })
         assert.ok('event' in d)
@@ -100,7 +100,7 @@ test('board sends appear before a reply, consume one native echo, and keep a lat
     f.push({ input: { agent: { provider: 'claude-code', sessionId: 'worker', transcriptPath: f.transcript }, terminal: { tty: '/dev/ttys123' } } })
     await commands.task(['attach', 'work', '--session', 'claude-code:worker'])
     const after = f.state().seq
-    await sendReply({ board: 'default', request: { card: f.task, text: 'continue', actor: 'web', homes: [home], id: 'owner-1' } })
+    await sendReply({ hydraId: 'default', request: { card: f.task, text: 'continue', actor: 'web', homes: [home], id: 'owner-1' } })
     const immediate = await f.check({ after })
     assert.equal((immediate.conversations as Digest)[0]?.messages[0]?.text, 'continue')
     f.message({ role: 'user', text: 'continue' })
@@ -109,8 +109,8 @@ test('board sends appear before a reply, consume one native echo, and keep a lat
     const next = await f.check({ after: Number(immediate.through) })
     assert.deepEqual((next.conversations as Digest)[0]?.messages.map(m => m.role), ['assistant', 'user'])
     assert.equal((next.conversations as Digest)[0]?.messages[1]?.text, 'continue')
-    assert.equal(readEvents({ board: 'default' }).filter(e => e.type === 'chat.message').length, 3)
-    await sendReply({ board: 'default', request: { card: f.task, text: 'Keep running.', actor: 'hydra', homes: [home], id: 'hydra-1' } })
+    assert.equal(readEvents({ hydraId: 'default' }).filter(e => e.type === 'chat.message').length, 3)
+    await sendReply({ hydraId: 'default', request: { card: f.task, text: 'Keep running.', actor: 'hydra', homes: [home], id: 'hydra-1' } })
     f.message({ role: 'user', text: 'Keep running.' })
     assert.equal((await f.check({ after: Number(next.through) })).conversations, undefined)
     assert.match(readFileSync(join(home, 'sent.log'), 'utf8'), /continue/)
@@ -187,7 +187,7 @@ test('Paseo messages are archived across pages and only completed assistant repl
       close: async () => undefined,
     }
     await hydraCheck({ args: ['check', '--after', String(done.through)], connect: async () => moreClient as unknown as PaseoClient })
-    const oldReply = readEvents({ board: 'default' }).find(e => e.type === 'chat.message' && e.data.text.includes('unchecked result'))
+    const oldReply = readEvents({ hydraId: 'default' }).find(e => e.type === 'chat.message' && e.data.text.includes('unchecked result'))
     assert.equal(oldReply?.cardId, f.task)
     const failure = await hydraCheck({
       args: ['check', '--after', String(done.through)],
