@@ -94,7 +94,8 @@ function taskCard(
   },
 ): Record<string, unknown> {
   return {
-    title: task.title,
+    title: task.repo && task.title.startsWith(`${task.repo}:`) ? task.title.slice(task.repo.length + 1).trimStart() || task.title : task.title,
+    project: task.repo ?? null,
     tags: task.repo ? [task.repo] : [],
     // Hydra may nest the task under the Hydra task it serves; that placement stays.
     ...(current?.parentId ? {} : { parent: null }),

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { HydraState, Card, ViewPreferences } from '../../../src/core/model.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
-import { Button, Textarea } from '../components/ui/controls.tsx'
+import { Button, Input, Textarea } from '../components/ui/controls.tsx'
 import { TaskSession } from './task-session.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import { Menu } from '../components/ui/menu.tsx'
@@ -93,6 +93,14 @@ export function Detail({
         <div className="row">
           <Menu label="Task menu">
             <Button onClick={() => setRenaming(true)}>Rename task</Button>
+            {!card.automaticTask && (
+              <Button
+                disabled={!connected}
+                onClick={() => void command({ name: 'task', args: [card.hidden ? 'unhide' : 'hide', card.id, '--event-id', crypto.randomUUID()] }).then(() => close())
+                  .catch(e => notify({ text: e.message }))}
+              >{card.hidden ? 'Bring back to Hydra' : 'Hide from Hydra'}
+              </Button>
+            )}
             <Button onClick={() => setAttaching(value => !value)}>{card.agent ? 'Change agent' : 'Attach agent'}</Button>
             {needsAgent({ card }) && (
               <Button onClick={() => setStarting(value => !value)}>Start agent</Button>
@@ -124,6 +132,18 @@ export function Detail({
           finished={() => setRenaming(false)}
           startEditing
           save={({ title }) => command({ name: 'task', args: ['rename', card.id, '--title', title, '--event-id', crypto.randomUUID()] }).then(() => setRenaming(false))}
+        />
+      )}
+      {renaming && (
+        <Input
+          aria-label="Task project label"
+          defaultValue={card.project ?? ''}
+          placeholder="Project label"
+          onBlur={e => {
+            if (e.target.value !== (card.project ?? '')) {
+              void command({ name: 'task', args: ['rename', card.id, '--project', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+            }
+          }}
         />
       )}
       {attaching && (

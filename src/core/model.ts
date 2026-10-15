@@ -168,6 +168,9 @@ export interface Card {
   title: string
   brief?: string
   project?: string
+  doneAt?: string
+  keepDone?: boolean
+  expired?: boolean
   // Set once a push gives an explicit title; an auto title never replaces it.
   titleSet?: boolean
   autoTitle?: AutoTitle
@@ -214,6 +217,7 @@ export interface PushFields {
   // null, written only by undo, returns the card to its auto title.
   title?: string | null
   autoTitle?: AutoTitle
+  project?: string | null
   workspace?: string
   tags?: string[]
   parentId?: string | null
@@ -300,6 +304,7 @@ export interface HydraConfig {
   // Task kind -> agent; `hydra` is the kind Hydra itself starts on.
   agents?: Record<string, AgentConfig>
   command?: string
+  doneAfterHours?: number
 }
 export interface HydraMessage {
   id: string
@@ -318,7 +323,7 @@ export type HydraChange = EventBase & (
   | { type: 'task.project'; data: { before: string | null; after: string | null } }
   | { type: 'task.created'; data: { key: string; title: string; brief?: string; parentId?: string; column?: Column; folder?: string; project?: string } }
   | { type: 'task.brief'; data: { before: string; after: string } }
-  | { type: 'task.visibility'; data: { before: boolean; after: boolean } }
+  | { type: 'task.visibility'; data: { before: boolean; after: boolean; automatic?: boolean } }
   | { type: 'hydra.memory'; data: { key: string; before: string | null; after: string | null } }
   | { type: 'task.declared'; data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> }
   | { type: 'task.mirrored'; data: FirstmateRecord }

@@ -164,6 +164,20 @@ function text({ value, what }: { value: unknown; what: string }): string {
   return value
 }
 
+export function projectLabel({ value }: { value: unknown }): string | null {
+  if (value === null || value === '') {
+    return null
+  }
+
+  const label = text({ value, what: 'project' }).trim()
+
+  if (label.length > 100 || /[\r\n]/.test(label)) {
+    throw invalid({ message: 'project must be a single line of up to 100 characters' })
+  }
+
+  return label
+}
+
 function optionalText({ value, what }: { value: unknown; what: string }): string | undefined {
   return value === undefined ? undefined : text({ value, what })
 }
@@ -551,7 +565,7 @@ export function decidePush({ state, key, input: rawInput, meta }: {
     throw invalid({ message: 'card must be a JSON object' })
   }
 
-  onlyKeys({ value: input, allowed: ['title', 'autoTitle', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'terminal', 'folder', 'attention', 'source'], what: 'card' })
+  onlyKeys({ value: input, allowed: ['title', 'autoTitle', 'project', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'terminal', 'folder', 'attention', 'source'], what: 'card' })
 
   const cardId = state.keys[key] ?? `c${state.seq + 1}`
   const fields: PushFields = {}
@@ -562,6 +576,10 @@ export function decidePush({ state, key, input: rawInput, meta }: {
 
   if (title) {
     fields.title = title
+  }
+
+  if (input.project !== undefined) {
+    fields.project = projectLabel({ value: input.project })
   }
 
   if (workspace) {

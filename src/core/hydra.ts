@@ -199,6 +199,16 @@ export function applyHydra({ state, event }: { state: HydraState; event: HydraEv
         card.brief = event.data.after
       } else {
         card.hidden = event.data.after
+
+        if (event.data.automatic) {
+          card.expired = true
+        } else {
+          delete card.expired
+
+          if (!event.data.after && card.doneAt) {
+            card.keepDone = true
+          }
+        }
       }
 
       card.revision++
@@ -263,11 +273,11 @@ export function applyHydra({ state, event }: { state: HydraState; event: HydraEv
   }
 
   if (event.type === 'task.created') {
-    const { key, title, brief, parentId, column, folder, project } = event.data
+    const { key, title, project, brief, parentId, column, folder } = event.data
     const role = hydraConfig({ state }).columns.find(c => c.id === column)?.role
     const initial = role && { id: event.id, at: event.at, actor: event.actor, state: ROLE_STATUS[role], note: '' }
     state.cards[event.cardId] = {
-      id: event.cardId, key, title, ...(brief !== undefined ? { brief } : {}), titleSet: true, workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], sessionIds: [], tracking: 'declared', statusLog: initial ? [initial] : [], ...(initial ? { status: initial } : {}), ...(parentId ? { parentId } : {}), ...(folder ? { folder } : {}), ...(project ? { project } : {}), column: column ?? 'parked', revision: 1, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
+      id: event.cardId, key, title, ...(project ? { project } : {}), ...(brief !== undefined ? { brief } : {}), titleSet: true, workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], sessionIds: [], tracking: 'declared', statusLog: initial ? [initial] : [], ...(initial ? { status: initial } : {}), ...(parentId ? { parentId } : {}), ...(folder ? { folder } : {}), column: column ?? 'parked', revision: 1, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
     }
     state.keys[key] = event.cardId
     refreshTasks({ state, ids: [event.cardId] })

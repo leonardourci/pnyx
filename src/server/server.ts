@@ -1,4 +1,6 @@
 import { project } from '../projects/cli.ts'
+import { doneDeadline } from '../core/retention.ts'
+import { hideDone } from '../store/retention.ts'
 import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
@@ -417,6 +419,7 @@ async function startOwnedServer({
     }
   }
 
+  let expiryTimer: ReturnType<typeof setTimeout> | undefined
   let scheduled = false
 
   const kick = () => {
@@ -438,9 +441,23 @@ async function startOwnedServer({
         }
 
         pump()
+
+        const deadline = doneDeadline({ state })
+
+        if (deadline !== undefined && deadline <= Date.now()) {
+          hideDone({ hydraId })
+          pump()
+        }
       } catch (error) {
         // A held lock or a damaged log; the next change retries.
         console.error(`pnyx-axi serve: ${(error as Error).message}`)
+      } finally {
+        clearTimeout(expiryTimer)
+        const deadline = doneDeadline({ state })
+
+        if (deadline !== undefined) {
+          expiryTimer = setTimeout(kick, Math.max(100, Math.min(60_000, deadline - Date.now())))
+        }
       }
     })
   }
@@ -850,6 +867,7 @@ async function startOwnedServer({
       folders.clear()
       threadSubscriptions.forEach(map => map.clear())
       clearTimeout(latestTimer)
+      clearTimeout(expiryTimer)
 
       for (const timer of threadTimers.values()) {
         clearTimeout(timer)
