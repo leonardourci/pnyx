@@ -36,7 +36,7 @@ function useAgentControls({ card, thread, command, connected, notify }: AgentCon
   const provider = card.agent?.provider
   const page = thread?.card === card.id ? thread : null
   const firstmate = connected && page?.routeKind === 'firstmate'
-  const harness = harnessControls({ provider, firstmate })
+  const harness = harnessControls({ provider, firstmate, hosted: card.agent?.host === 'pnyx' })
   useEffect(() => {
     setPending({})
   }, [card.id])

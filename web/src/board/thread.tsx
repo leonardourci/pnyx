@@ -133,7 +133,7 @@ export function Thread({
         />
         {page && entries.length === 0 && !page.unavailable && <p className="empty">No recorded messages yet.</p>}
         {agentActivity({ card }) === 'working' && (
-          <p className="running" role="status" title="Recorded activity; listener presence is unverified">
+          <p className="running" role="status" title={card.agent?.host === 'pnyx' ? 'Pnyx runs this agent' : 'Recorded activity; listener presence is unverified'}>
             <i aria-hidden="true" />
             Agent is running
           </p>

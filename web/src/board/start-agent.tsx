@@ -5,11 +5,13 @@ import type { Command } from './connection.ts'
 
 const HARNESSES = [{ value: 'claude', label: 'Claude Code' }, { value: 'codex', label: 'Codex' }]
 const ROUTES = [
+  { value: 'pnyx', label: 'Pnyx (Claude Code)' },
   { value: 'paseo', label: 'Paseo' },
   { value: 'firstmate', label: 'Firstmate (this board\'s Hydra)' },
   { value: 'command', label: 'Board command' },
 ]
 const STARTED: Record<string, string> = {
+  pnyx: 'Agent started. Pnyx runs it; continue here.',
   paseo: 'Agent started in Paseo. Continue here or in Paseo.',
   firstmate: 'Sent to Firstmate; it dispatches the worker.',
   command: 'Board command started; its agent attaches when it reports.',
@@ -22,7 +24,7 @@ export function StartAgent({ card, firstmate, command, connected, notify }: {
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
-  const [via, setVia] = useState(firstmate ? 'firstmate' : 'paseo'), [harness, setHarness] = useState('claude')
+  const [via, setVia] = useState(firstmate ? 'firstmate' : 'pnyx'), [harness, setHarness] = useState('claude')
   const [folder, setFolder] = useState(card.folder ?? ''), [message, setMessage] = useState(card.brief ?? '')
   const [paseo, setPaseo] = useState<{ ok: boolean; reason?: string } | null>(null)
   const [busy, run] = useBusy()
@@ -38,14 +40,16 @@ export function StartAgent({ card, firstmate, command, connected, notify }: {
     }
   }, [connected, check, via])
 
-  const ready = connected && (via === 'paseo' ? paseo?.ok && folder.trim().startsWith('/') && message.trim() : true)
+  const ready = connected && (via === 'paseo' ? paseo?.ok && folder.trim().startsWith('/') && message.trim()
+    : via === 'pnyx' ? folder.trim().startsWith('/') : true)
 
   const start = () => run({
     save: async () => {
       try {
         const args = ['start', card.id, '--via', via, '--event-id', attempt.current]
 
-        if (message.trim()) {
+        // The brief already opens the prompt, so an unchanged brief is not sent twice.
+        if (message.trim() && message !== card.brief) {
           args.push('--prompt', message)
         }
 
@@ -70,7 +74,7 @@ export function StartAgent({ card, firstmate, command, connected, notify }: {
   return (
     <form
       className="start-agent"
-      aria-label="Start a worker for this task"
+      aria-label="Start an agent for this task"
       onSubmit={e => {
         e.preventDefault()
 
@@ -79,7 +83,7 @@ export function StartAgent({ card, firstmate, command, connected, notify }: {
         }
       }}
     >
-      <h3>Start a worker</h3>
+      <h3>Start an agent</h3>
       <Select
         label="Start through"
         value={via}
@@ -134,7 +138,7 @@ export function StartAgent({ card, firstmate, command, connected, notify }: {
         disabled={!ready || busy}
         aria-busy={busy}
       >
-        {busy ? 'Starting…' : 'Start worker'}
+        {busy ? 'Starting…' : 'Start agent'}
       </Button>
     </form>
   )
