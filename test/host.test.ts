@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, test } from 'node:test'
@@ -12,6 +12,7 @@ import { workerCommands } from '../src/cli/workers.ts'
 import type { Card } from '../src/core/model.ts'
 import type { QueryFn } from '../src/server/host.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
+import { askHost } from '../src/server/state.ts'
 import { loadBoard, spoolWrite } from '../src/store/board-store.ts'
 
 const meta = { at: '2026-10-15T00:00:00Z', actor: 'test' }
@@ -213,4 +214,60 @@ test('pickers set a hosted agent directly, and a stopped server refuses the send
   const receipt = await sendReply({ board: 'lab', request: { card: 'ship', text: 'Anyone there?', homes: [], actor: 'test' } })
   assert.equal(receipt.state, 'failed')
   assert.match(receipt.detail!, /not running; nothing was sent/)
+})
+
+test('the host keeps the server\'s own context out of the agent, and refuses what it cannot run', async () => {
+  const { folder, task } = await lab()
+  const sdk = fakeSdk()
+  process.env.PNYX_ACTOR = 'hydra'
+  process.env.TMUX_PANE = '%9'
+
+  try {
+    server = await startServer({ board: 'lab', query: sdk.query })
+    await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
+  } finally {
+    delete process.env.PNYX_ACTOR
+    delete process.env.TMUX_PANE
+  }
+
+  await until({ check: () => sdk.calls[0]?.messages.length === 1, what: 'the opening prompt' })
+  const env = sdk.calls[0]!.options.env!
+  assert.equal(env.PNYX_ACTOR, undefined)
+  assert.equal(env.TMUX_PANE, undefined)
+  assert.equal(env.PNYX_BOARD, 'lab')
+
+  const port = new URL(server.url).port
+  const unauthorized = await fetch(`http://127.0.0.1:${port}/host`, { method: 'POST', body: JSON.stringify({ action: 'send', card: 'ship', text: 'hi' }) })
+  assert.equal(unauthorized.status, 401)
+  await assert.rejects(askHost({ board: 'lab', body: { action: 'set', card: 'ship', setting: 'effort', value: 'huge' } }), /effort cannot be huge/)
+  await assert.rejects(askHost({ board: 'lab', body: { action: 'start', task: 'ship', prompt: 'Go', id: 'rel', folder: 'work' } }), /absolute path/)
+
+  // A gone folder fails the send and leaves the task as it was.
+  await until({ check: () => task().sessionActivity === 'finished', what: 'the turn to finish' })
+  await server.close()
+  server = await startServer({ board: 'lab', query: sdk.query })
+  rmSync(folder, { recursive: true })
+  const lost = await sendReply({ board: 'lab', request: { card: 'ship', text: 'Still there?', homes: [], actor: 'test' } })
+  assert.equal(lost.state, 'failed')
+  assert.match(lost.detail!, /folder .* is gone/)
+  assert.equal(task().sessionActivity, 'finished')
+})
+
+test('a new agent on the task does not inherit the old one\'s interrupted turn', async () => {
+  const { folder, task } = await lab()
+  const sdk = fakeSdk()
+  sdk.control.hold = true
+  server = await startServer({ board: 'lab', query: sdk.query })
+  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
+  await until({ check: () => sdk.calls[0]?.messages.length === 1, what: 'the opening prompt' })
+  await server.close()
+  server = await startServer({ board: 'lab', query: sdk.query })
+  assert.equal(task().attention[0]?.key, 'pnyx:interrupted')
+
+  await commands.task(['detach', 'ship', '--board', 'lab'])
+  assert.equal(task().attention.some(a => a.key === 'pnyx:interrupted'), false)
+  sdk.control.hold = false
+  await startTask({ board: 'lab', task: 'ship', folder, meta: { ...meta, id: 'start-2' } })
+  await until({ check: () => sdk.calls.length === 2 && task().sessionActivity === 'finished', what: 'the new agent' })
+  assert.equal(task().attention.some(a => a.key === 'pnyx:interrupted'), false)
 })
