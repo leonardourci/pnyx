@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { once } from 'node:events'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -147,4 +148,42 @@ test('a lock left by a dead process is taken over', () => {
 test('board names cannot escape the boards folder', () => {
   rejects({ fn: () => boardDir({ board: '../etc' }), code: 'VALIDATION_ERROR' })
   rejects({ fn: () => boardDir({ board: 'a/b' }), code: 'VALIDATION_ERROR' })
+})
+
+test('two writers racing to take over a dead lock never hold it together', async () => {
+  const store = new URL('../src/store/board-store.ts', import.meta.url).href
+  // Each contender holds the lock for a moment and fails loudly if it finds the other inside.
+  const contender = `
+    import { closeSync, openSync, rmSync } from 'node:fs'
+    import { join } from 'node:path'
+    import { createInterface } from 'node:readline'
+    import { withWriter } from '${store}'
+    process.stdout.write('ready\\n')
+    await createInterface({ input: process.stdin })[Symbol.asyncIterator]().next()
+    withWriter({ board: 'default', fn: ({ writer }) => {
+      const inside = join(writer.dir, 'inside')
+      closeSync(openSync(inside, 'wx'))
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
+      rmSync(inside)
+    } })
+  `
+  const dir = boardDir({ board: 'default' })
+  mkdirSync(dir, { recursive: true })
+  const dead = spawnSync(process.execPath, ['-e', '']).pid!
+
+  for (let round = 0; round < 40; round++) {
+    writeFileSync(join(dir, 'writer.lock'), String(dead))
+    const children = [0, 1].map(() => {
+      const child = spawn(process.execPath, ['--input-type=module', '-e', contender], { env: process.env })
+      let stderr = ''
+      child.stderr.on('data', chunk => (stderr += chunk))
+
+      return { child, done: once(child, 'close').then(([code]) => ({ code, stderr })) }
+    })
+    await Promise.all(children.map(({ child, done }) => Promise.race([once(child.stdout, 'data'), done])))
+    children.forEach(({ child }) => child.stdin.end('go\n'))
+    const results = await Promise.all(children.map(({ done }) => done))
+    assert.deepEqual(results, [{ code: 0, stderr: '' }, { code: 0, stderr: '' }], `round ${round}`)
+    assert.equal(existsSync(join(dir, 'writer.lock')), false)
+  }
 })
