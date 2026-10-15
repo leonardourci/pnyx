@@ -59,6 +59,8 @@ Write your own chat message only when you need the owner's input: `pnyx-axi hydr
 - `--via command [--prompt "<text>"]` runs the Hydra's own start command in the task's folder.
 - `--via firstmate [--prompt "<text>"]` hands the request to the Firstmate home that is this Hydra.
 
+A task with an attached project starts in its own copy (a git worktree on branch `pnyx/<hydra>-<task>`, or the project's copy command); `--in-place` works in the project folder itself and is refused while another Hydra's worker runs there. When the task reaches Done, Pnyx removes a clean copy whose work landed. Otherwise it keeps the copy, flags it and sends you a message: land the work and run `pnyx-axi task copy <task> remove --hydra <hydra>`, or, when it already landed another way or is empty, `pnyx-axi task copy <task> remove --safe --reason "<why>" --hydra <hydra>`. Never discard work that never landed; ask the owner, who runs `--discard`.
+
 A task holds one worker; `task detach <task>` frees it without stopping the agent. A repeated `--event-id` never starts a second worker.
 
 ## When you are a Firstmate home
