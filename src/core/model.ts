@@ -52,6 +52,8 @@ export interface AgentRef {
   transcriptPath?: string
   paseoAgentId?: string
   paseoUrl?: string
+  // Set when the Pnyx server runs this agent itself instead of a terminal.
+  host?: 'pnyx'
 }
 
 export type AgentSettings = Record<string, string>

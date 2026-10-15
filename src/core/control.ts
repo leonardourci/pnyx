@@ -4,7 +4,12 @@ export const KEYS = ['shift-tab', 'shift-up', 'shift-down'] as const
 export type Key = (typeof KEYS)[number]
 export const KEY_LABEL: Record<Key, string> = { 'shift-tab': 'Shift+Tab', 'shift-up': 'Shift+Up', 'shift-down': 'Shift+Down' }
 
-export type ControlInput = { text: string; confirm?: boolean } | { key: Key } | { request: true }
+// set: a Pnyx-hosted agent takes the value directly, nothing typed.
+export type ControlInput =
+  | { text: string; confirm?: boolean }
+  | { key: Key }
+  | { request: true }
+  | { set: string }
 
 // ask is the change in words for a Firstmate request, `<worker>` standing for the task's worker.
 export interface ControlOption { value: string; label: string; input: ControlInput; ask: string }
@@ -61,6 +66,27 @@ const HARNESS_CONTROLS: Record<string, Controls> = {
   },
 }
 
+const set = ({ values, name }: {
+  values: string[]
+  name: string
+}): ControlOption[] => values.map(value => ({
+  value,
+  label: value,
+  input: { set: value },
+  ask: `switch <worker> to ${name} ${value}`,
+}))
+
+// Settings the host passes to Claude Code itself; each applies at once and is recorded on the task.
+const HOSTED_CONTROLS: Controls = {
+  name: 'Claude Code',
+  controls: [
+    { setting: 'model', confirm: 'includes', options: set({ values: ['opus', 'sonnet', 'haiku', 'fable'], name: 'model' }) },
+    { setting: 'effort', confirm: 'equals', options: set({ values: ['low', 'medium', 'high', 'xhigh', 'max'], name: 'effort' }) },
+    { setting: 'mode', confirm: 'equals', options: set({ values: ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'], name: 'permission mode' }) },
+  ],
+  note: 'Pnyx runs this agent, so a change applies to this session only and is kept for its next turns. A request the agent would ask permission for is refused until Pnyx can answer permission prompts; pick a mode that allows it.',
+}
+
 const CODEX_REQUESTS: Control[] = [
   {
     setting: 'model',
@@ -84,10 +110,15 @@ const CODEX_REQUESTS: Control[] = [
   },
 ]
 
-export function harnessControls({ provider, firstmate = false }: {
+export function harnessControls({ provider, firstmate = false, hosted = false }: {
   provider?: string
   firstmate?: boolean
+  hosted?: boolean
 }): Controls | undefined {
+  if (hosted && provider === 'claude-code') {
+    return HOSTED_CONTROLS
+  }
+
   const harness = provider === undefined ? undefined : HARNESS_CONTROLS[provider]
 
   return provider === 'codex' && firstmate && harness
@@ -95,13 +126,14 @@ export function harnessControls({ provider, firstmate = false }: {
     : harness
 }
 
-export function findOption({ provider, setting, value, firstmate = false }: {
+export function findOption({ provider, setting, value, firstmate = false, hosted = false }: {
   provider: string | undefined
   setting: string
   value: string
   firstmate?: boolean
+  hosted?: boolean
 }): { control: Control; option: ControlOption } | undefined {
-  const harness = harnessControls({ provider, firstmate })
+  const harness = harnessControls({ provider, firstmate, hosted })
   const control = harness?.controls.find(c => c.setting === setting)
   const option = control?.options.find(o => o.value === value)
 
@@ -111,6 +143,10 @@ export function findOption({ provider, setting, value, firstmate = false }: {
 export function inputReason({ kind, input }: { kind: ReplyRoute['kind']; input: ControlInput }): string | undefined {
   if (kind === 'paseo-agent') {
     return 'Change this agent\'s settings in Paseo.'
+  }
+
+  if ((kind === 'pnyx') !== ('set' in input)) {
+    return kind === 'pnyx' ? 'Pnyx sets this agent\'s settings directly.' : 'Only an agent Pnyx runs takes this setting directly.'
   }
 
   if ('request' in input) {

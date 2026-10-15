@@ -341,7 +341,7 @@ function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
   }
 
   const fields = ['agentId', 'agentType', 'cwd', 'transcriptPath', 'paseoAgentId', 'paseoUrl'] as const
-  onlyKeys({ value, allowed: ['provider', 'sessionId', ...fields], what: 'agent' })
+  onlyKeys({ value, allowed: ['provider', 'sessionId', 'host', ...fields], what: 'agent' })
   const agent: AgentRef = { provider: text({ value: value.provider, what: 'agent.provider' }), sessionId: text({ value: value.sessionId, what: 'agent.sessionId' }) }
 
   for (const field of fields) {
@@ -350,6 +350,14 @@ function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
     if (v) {
       agent[field] = v
     }
+  }
+
+  if (value.host !== undefined) {
+    if (value.host !== 'pnyx') {
+      throw invalid({ message: 'agent.host must be pnyx' })
+    }
+
+    agent.host = 'pnyx'
   }
 
   return agent

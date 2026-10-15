@@ -5,7 +5,7 @@ export function sessionId({ agent }: { agent: AgentRef }): string {
 }
 
 export function interactive({ session }: { session: AgentSession }): boolean {
-  return Boolean(session.terminal?.tty || session.agent.paseoAgentId)
+  return Boolean(session.terminal?.tty || session.agent.paseoAgentId || session.agent.host)
 }
 
 export function liveTask({ card }: { card: Card }): boolean {
