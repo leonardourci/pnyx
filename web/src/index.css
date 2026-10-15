@@ -94,6 +94,16 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .work-area > .detail { max-width: 70%; }
 @media (max-width: 760px) { .work-area > .detail { max-width: 100%; } }
 .harness { display: inline-flex; align-items: center; gap: 5px; }
+.inline-title { padding: 0; text-align: left; justify-content: flex-start; font-size: 1em; font-weight: 550; }
+.card .inline-title { font-size: .93em; }
+.card.subtask { margin-left: 12px; border-left-color: var(--color-gold-line); }
+.task-actions { margin-top: 10px; }
+.task-actions .button { border-color: var(--color-line); font-size: .65em; }
+.hydra-chat { flex-shrink: 0; border: 1px solid var(--color-line); border-radius: 7px; padding: 4px 9px; }
+.hydra-messages { max-height: 30dvh; overflow: auto; padding: 8px; }
+.hydra-messages form { display: flex; gap: 8px; margin-top: 8px; }
+.hydra-messages .input { flex: 1; }
+.hydra-messages time { display: block; font-size: .65em; color: var(--color-muted); }
 .setting-chips { display: flex; margin-top: 2px; flex-wrap: wrap; gap: 4px; min-width: 0; }.setting-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 150px; padding: 1px 6px; border-radius: 4px; background: var(--color-subtle); color: var(--color-muted); font-size: .65em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .setting-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px 18px; margin: 0; font-size: .78em; }.setting-list div { min-width: 0; }.setting-list dt { display: flex; align-items: center; gap: 5px; color: var(--color-muted); }.setting-list dd { margin: 1px 0 0 17px; overflow-wrap: anywhere; }
 .last-message { margin-top: 8px; padding: 6px 8px; border-left: 2px solid var(--color-line); background: var(--color-background); border-radius: 0 4px 4px 0; font-size: .7em; }.last-message strong { color: var(--color-ink); font-weight: 550; }.last-message p { margin-top: 3px; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }

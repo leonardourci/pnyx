@@ -1,6 +1,6 @@
 # Pnyx
 
-Pnyx's AXI task model tracks explicit tasks on boards, each with one orchestrator called Hydra. Ad-hoc agent sessions stay in History without creating tasks. The task-focused web board follows in a separate change.
+Pnyx tracks explicit tasks on boards, each with one orchestrator called Hydra. Create tasks and columns inline, attach an interactive agent session, and continue its conversation from the card. Ad-hoc agent sessions stay in History without creating tasks.
 
 A deterministic board of every agent and its work, with an [AXI](https://axi.md/) CLI named `pnyx-axi`.
 
@@ -72,12 +72,13 @@ The append-only log preserves board, task, subtask, session, command and message
 
 ## Using the board
 
-The task model is available through AXI. Its task-focused web controls follow in a separate change; the current web interface continues to expose recorded conversations, settings, search and reply delivery.
+Create a task in any column with **+ Add task**, or add a column with **+ Add column**. Each click creates the real item and focuses its placeholder title. Creating a task clears active filters so the title stays visible. Rename a task in place, double-click a column title to rename it, and drag cards or column headers to move them. Column deletion asks for inline confirmation and offers Undo.
 
 - **Columns:** Needs you, Workers on it, Done and Parked are the initial template. Use `pnyx-axi column create|rename|reorder|delete` to edit columns. Tasks move from declared status and confirmed merges; a manual card move pins placement. Silence, idle sessions and session exit never complete a task.
-- **Tasks and agents:** the task keeps its title, links and placement when a session moves. Use `task create --title "Work to do"`, `task sessions`, `task attach <task> --session <session>` and `task detach <task>`. Attachments never start or stop a process.
+- **Tasks and agents:** use a task’s Agent tab to attach or detach an existing interactive session. The task keeps its title, links and placement when a session moves. Use `task create --title "Work to do"`, `task sessions`, `task attach <task> --session <session>` and `task detach <task>`. Attachments never start or stop a process.
 - **Titles:** a card that only hooks report takes the harness's own session title, else its first prompt, else its folder name; a subagent takes its type and last 4 characters of its id (`Explore 3f2a`). A title you set is never replaced.
-- **Cards:** click a card or press Enter to open its conversation, notes, history and links; the reply input at the end of the conversation takes focus. Type a reply and press Mod+Enter to send it; type `/` there to insert a local Claude Code or Codex skill or command. Select text in a message, or press `c` on a selected block, to add an inline comment; comments go out with the next reply. Focus, on by default, shows only prompts and agent messages; turn it off to see tool calls and thinking.
+- **Hydra:** open the Hydra panel to send a board-level message. A task’s Send to Hydra or Create a worker button queues a task-specific request there; it never launches a process. Create a one-level subtask with **+ Subtask**.
+- **Cards:** click a card or press Enter to expand its conversation inline by default, with notes, history and links; the reply input at the end of the conversation takes focus. Type a reply and press Mod+Enter to send it; type `/` there to insert a local Claude Code or Codex skill or command. Select text in a message, or press `c` on a selected block, to add an inline comment; comments go out with the next reply. Focus, on by default, shows only prompts and agent messages; turn it off to see tool calls and thinking.
 - **Agent settings:** a card's Agent tab shows the session's model, effort, mode and fast mode, and changes them through the same route as a reply, with the harness's own commands and keys, or on a Firstmate task card as a request to its orchestrator (see Firstmate); `pnyx-axi agent <id>` does the same from the terminal. A change shows as pending until the session reports it. Claude Code saves a model, effort or fast mode set this way as your default for new sessions. A direct Codex session offers effort, fast mode and Plan mode here; Codex picks its model and approval mode only in its own `/model` and `/permissions` pickers.
 - **Keyboard:** Mod is Command on macOS and Control elsewhere. Every binding can be changed in Settings, and the Character shortcuts switch there turns off the single-key ones.
   - Arrows or h/j/k/l: move between cards and columns; Home/End: first or last card

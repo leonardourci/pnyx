@@ -1,4 +1,5 @@
 import type { BoardState, Card, Link } from '../../../src/core/model.ts'
+import { liveTask } from '../../../src/core/tasks.ts'
 import { boardConfig } from '../../../src/core/hydra.ts'
 
 export const columnsFor = ({ state }: { state: BoardState }) => {
@@ -8,7 +9,7 @@ export const columnsFor = ({ state }: { state: BoardState }) => {
 }
 
 export function pageTitle({ page, cards, selected = null }: { page: string; cards: BoardState['cards']; selected?: string | null }): string {
-  const count = Object.values(cards).filter(c => c.column === 'needs_you').length
+  const count = Object.values(cards).filter(c => liveTask({ card: c }) && c.column === 'needs_you').length
   const label = page === 'history' ? 'History' : page === 'settings' ? 'Settings'
     : (selected && cards[selected]?.title) || 'Board'
 
@@ -20,7 +21,7 @@ export function filterCards({ state, workspace, tag, query = '' }: { state: Boar
     .split(/\s+/)
     .filter(Boolean)
 
-  return Object.values(state.cards).filter(c => (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag)) && words.every(w => [c.title, c.key, ...c.tags, ...c.links.map(l => `${l.number ?? ''} ${l.title ?? ''}`)].join(' ').toLowerCase()
+  return Object.values(state.cards).filter(c => liveTask({ card: c }) && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag)) && words.every(w => [c.title, c.key, ...c.tags, ...c.links.map(l => `${l.number ?? ''} ${l.title ?? ''}`)].join(' ').toLowerCase()
     .includes(w)))
     .sort((a,b) => b.updatedSeq - a.updatedSeq || a.id.localeCompare(b.id))
 }
@@ -41,7 +42,7 @@ export function findBoxCards(
   const seen = new Set(local.map(c => c.id))
 
   return [...local, ...found.map(id => state.cards[id]).filter((c): c is Card =>
-    !!c && !seen.has(c.id)
+    !!c && liveTask({ card: c }) && !seen.has(c.id)
     && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag)))]
 }
 
@@ -104,3 +105,12 @@ export const shouldReload = ({ loaded, server }: { loaded: string | undefined; s
 // Under Focus a card only says the agent is working.
 export const focusedActivity = ({ activity, focus }: { activity?: string; focus: boolean }) =>
   focus && TOOL_ACTIVITY.test(activity ?? '') ? 'working' : activity
+
+export function taskLabel({ card, focus }: { card: Card; focus: boolean }): string {
+  if (card.status) {
+    return `${card.status.state.replaceAll('_', ' ')}${card.status.note ? `: ${card.status.note}` : ''}`
+  }
+
+  return focusedActivity({ activity: shownActivity({ card }), focus })
+    ?? card.outcome?.state ?? (card.tracking ? 'Parked' : 'Activity unknown')
+}
