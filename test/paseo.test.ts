@@ -242,12 +242,12 @@ test('an agent started from a lab home reports its hooks to that home, never to 
 
 test('task start uses the task kind\'s model, effort and mode, and opens with the worker prompt', async () => {
   const { folder } = hydraId()
-  workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'codex-small', '--effort', 'high', '--mode', 'full-access', '--hydra', 'lab'])
+  workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'codex-small', '--effort', 'high', '--mode', 'full-access', '--fast', 'off', '--hydra', 'lab'])
   commands.task(['brief', 'work', '--brief', 'Verify the canary.', '--hydra', 'lab'])
   const paseo = fakePaseo()
   await startTask({ hydraId: 'lab', task: 'work', via: 'paseo', kind: 'review', folder, url, meta: { at, actor: 'test', id: 'kind-1' }, connect: paseo.connect })
   const created = paseo.calls.create[0]!
-  assert.deepEqual(created.config, { provider: 'codex/codex-small', thinkingOptionId: 'high', modeId: 'full-access' })
+  assert.deepEqual(created.config, { provider: 'codex/codex-small', thinkingOptionId: 'high', modeId: 'full-access', featureValues: { fast_mode: false } })
   assert.match(String(created.prompt), /^Verify the canary\.\n\n/)
   assert.match(String(created.prompt), /Pnyx worker for task c1 "Lab task" on Hydra lab/)
 
