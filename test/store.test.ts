@@ -258,4 +258,25 @@ test('a Hydra an older server still runs stays in boards until that server exits
   assert.equal(hydraDir({ hydraId: 'busy' }), join(home, 'boards/busy'))
   assert.equal(hydraDir({ hydraId: 'idle' }), join(home, 'hydras/idle'))
   assert.deepEqual(hydraIds(), ['busy', 'idle'])
+
+  rmSync(join(home, 'boards/busy/server.lock'))
+  assert.equal(hydraDir({ hydraId: 'busy' }), join(home, 'hydras/busy'))
+  assert.equal(existsSync(join(home, 'boards')), false)
+})
+
+test('processes starting together move each Hydra once', async () => {
+  const home = process.env.PNYX_HOME!
+  seed({ files: Object.fromEntries(Array.from({ length: 100 }, (_, n) => [`boards/h${n}/events.jsonl`, `${n}\n`])) })
+  const store = join(import.meta.dirname, '../src/store/hydra-store.ts')
+  const runs = Array.from({ length: 6 }, () => new Promise<string>(resolve => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', `const { hydraIds } = await import(${JSON.stringify(store)}); console.log(hydraIds().length)`], { env: process.env })
+    let out = ''
+    child.stdout.on('data', data => (out += data))
+    child.stderr.on('data', data => (out += data))
+    child.on('close', () => resolve(out.trim()))
+  }))
+
+  assert.deepEqual(await Promise.all(runs), Array(6).fill('100'))
+  assert.equal(readFileSync(join(home, 'hydras/h42/events.jsonl'), 'utf8'), '42\n')
+  assert.equal(existsSync(join(home, 'boards')), false)
 })
