@@ -22,6 +22,8 @@ export interface HookEnvelope {
   event: string
   // Where the session's terminal is, on SessionStart and UserPromptSubmit.
   terminal?: unknown
+  // PNYX_TASK of a session Pnyx started: its task id, or $hydra for the board's Hydra.
+  task?: unknown
   payload: unknown
 }
 

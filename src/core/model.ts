@@ -58,6 +58,10 @@ export interface AgentRef {
   agentType?: string
   cwd?: string
   transcriptPath?: string
+  // A Paseo agent: its id on the local daemon at paseoUrl, which takes its replies
+  // and holds its conversation.
+  paseoAgentId?: string
+  paseoUrl?: string
 }
 
 // A harness session's settings as the harness itself recorded them, by name: model,
@@ -282,6 +286,8 @@ export interface BoardConfig {
   name: string
   hydra: HydraIdentity
   columns: BoardColumn[]
+  // The shell command `task start --via command` and `hydra start --via command` run.
+  command?: string
 }
 export interface HydraMessage {
   id: string

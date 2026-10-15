@@ -1,11 +1,11 @@
 #!/bin/sh
 # Pnyx reporting hook, installed by `pnyx-axi setup hooks` as
 #   <PNYX_HOME>/hooks/pnyx-hook.sh <claude|codex> <HookEventName>
-# Reads the harness payload on stdin and hands one JSON line to the default board's
-# server socket or, when that fails, to its spool. It prints nothing, never waits
-# on a network call, browser or model, and always exits 0: Claude Code
-# and Codex add some hook output to the agent's context, and a hook must never
-# block the agent. Normalizing the payload into a card happens later, in pnyx-axi.
+# Reads the harness payload on stdin and hands one JSON line to its board's server
+# socket (the default board unless PNYX_BOARD names another) or, when that fails,
+# to its spool. It prints nothing, never waits on a network call, browser or model,
+# and always exits 0: Claude Code and Codex add some hook output to the agent's
+# context, and a hook must never block the agent. Normalizing the payload into a card happens later, in pnyx-axi.
 exec >/dev/null 2>&1
 # Bytes, not characters: tr and grep must not stop at invalid UTF-8 in a payload.
 export LC_ALL=C
@@ -16,9 +16,17 @@ event=$2
 case $harness in claude | codex) ;; *) exit 0 ;; esac
 case $event in '' | *[!A-Za-z]*) exit 0 ;; esac
 
-# The script lives in <PNYX_HOME>/hooks/.
+# The script lives in <PNYX_HOME>/hooks/. A session started for another home or
+# board, such as a task's agent started in Paseo, carries PNYX_HOME and PNYX_BOARD
+# and reports there instead.
 home=${0%/*}
 home=${home%/hooks}
+case ${PNYX_HOME:-} in /*) home=$PNYX_HOME ;; esac
+board_name=${PNYX_BOARD:-default}
+case $board_name in [!A-Za-z0-9]* | *[!A-Za-z0-9._-]*) exit 0 ;; esac
+# A session Pnyx started for a task, or as the board's Hydra, carries PNYX_TASK.
+task=
+case ${PNYX_TASK:-} in '' | *[!A-Za-z0-9._:\$-]*) ;; *) task="\"task\":\"$PNYX_TASK\"," ;; esac
 
 # Where the session's terminal is, so a reply can be typed into it: the harness
 # process and its TTY, and the host around it from the environment. Recorded when
@@ -66,7 +74,7 @@ fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
 # shellcheck disable=SC2046
 set -- $(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
 id="hook-$1-$$"
-board=$home/boards/default
+board=$home/boards/$board_name
 spool=$board/spool
 [ -d "$spool" ] || mkdir -p "$spool" || exit 0
 # ponytail: names order by whole seconds, then by the zero-padded process id, which
@@ -79,17 +87,17 @@ tmp=$spool/.tmp-$name
 # large tool output costs little. JSON strings cannot hold raw newlines, so
 # flattening keeps the payload valid on one line.
 {
-  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s"payload":' "$id" "$2" "$harness" "$event" "$terminal"
+  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s%s"payload":' "$id" "$2" "$harness" "$event" "$terminal" "$task"
   tr '\n\r' '  '
   printf '}\n'
 } >"$tmp" || exit 0
 
 # Empty input has nothing after the envelope's own "payload": key.
 if ! grep -q '"payload": *[^ }]' "$tmp"; then
-  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s"payload":null}\n' "$id" "$2" "$harness" "$event" "$terminal" >"$tmp" || exit 0
+  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s%s"payload":null}\n' "$id" "$2" "$harness" "$event" "$terminal" "$task" >"$tmp" || exit 0
 fi
 
-# The default board's server handles each line as soon as its newline arrives and
+# The board's server handles each line as soon as its newline arrives and
 # replies nothing, so nothing here relies on nc half-closing; -w 1 bounds the wait
 # for an nc that keeps the connection open. Without a running server there is no
 # socket file, so the common path never starts nc.
