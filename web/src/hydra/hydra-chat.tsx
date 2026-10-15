@@ -8,7 +8,7 @@ import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
 import { Messages } from './messages.tsx'
 import { Composer } from './composer.tsx'
-import { ComposerSettings } from './agent-settings.tsx'
+import { HydraAgent } from './hydra-agent.tsx'
 import { joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 
 export function HydraChat({
@@ -127,10 +127,9 @@ export function HydraChat({
         save={save}
         connected={connected}
         notify={notify}
-        settings={card && (
-          <ComposerSettings
-            card={card}
-            thread={page}
+        settings={(
+          <HydraAgent
+            state={state}
             command={command}
             connected={connected}
             notify={notify}
