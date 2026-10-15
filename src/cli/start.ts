@@ -14,16 +14,22 @@ import { HARNESSES, createPaseoAgent, startAgent, type Harness } from '../integr
 import type { Connect } from '../integrations/paseo/client.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { canonical } from '../store/paths.ts'
+import { askHost } from '../server/state.ts'
 import { loadBoard, pnyxHome, withWriter, type Writer } from '../store/board-store.ts'
 import type { Output } from './commands.ts'
 
-export const VIAS = ['paseo', 'firstmate', 'command'] as const
+export const VIAS = ['pnyx', 'paseo', 'firstmate', 'command'] as const
 type Via = (typeof VIAS)[number]
 export const HYDRA_SKILL = join(import.meta.dirname, '..', '..', 'skills', 'pnyx-hydra', 'SKILL.md')
 export const HOME_SKILL = join('.agents', 'skills', 'pnyx-hydra')
 
-function chooseVia({ state, via }: { state: BoardState; via?: string }): Via {
-  const chosen = via ?? (state.board?.hydra.kind === 'firstmate' ? 'firstmate' : 'paseo')
+// Pnyx runs Claude Code itself; Codex still starts in Paseo.
+function chooseVia({ state, via, harness }: {
+  state: BoardState
+  via?: string
+  harness: string
+}): Via {
+  const chosen = via ?? (state.board?.hydra.kind === 'firstmate' ? 'firstmate' : harness === 'claude' ? 'pnyx' : 'paseo')
 
   if (!(VIAS as readonly string[]).includes(chosen)) {
     throw new BoardError({ message: `unknown start route: ${chosen}`, code: 'VALIDATION_ERROR', help: [`Use --via ${VIAS.join('|')}`] })
@@ -137,17 +143,39 @@ export async function startTask({
 }): Promise<Output> {
   const state = loadBoard({ board }).state
   const card = findCard({ state, ref: task })
-  const how = chooseVia({ state, via })
+  const agent = via === 'firstmate' || via === 'command' || (!via && state.board?.hydra.kind === 'firstmate')
+    ? undefined : agentFor({ state, board, kind: kind ?? 'default' })
+  const how = chooseVia({ state, via, harness: harness ?? agent?.harness ?? 'claude' })
 
   if (how === 'firstmate') {
     return askFirstmate({ board, task, prompt, meta })
   }
 
-  if (how === 'command') {
+  if (how === 'command' || !agent) {
     return startCommand({ board, role: 'worker', task, prompt, folder, harness, meta })
   }
 
-  const agent = agentFor({ state, board, kind: kind ?? 'default' })
+  if (how === 'pnyx') {
+    if ((harness ?? agent.harness) !== 'claude') {
+      throw new BoardError({ message: 'Pnyx runs Claude Code agents only so far', code: 'VALIDATION_ERROR', help: ['Start Codex with --via paseo'] })
+    }
+
+    const settings = { model: agent.model, effort: agent.effort, mode: agent.mode }
+
+    return askHost({
+      board,
+      body: {
+        action: 'start',
+        task: card.id,
+        prompt: taskPrompt({ board, card, prompt }),
+        ...(canonical({ path: folder }) ? { folder: canonical({ path: folder }) } : {}),
+        settings: Object.fromEntries(Object.entries(settings).filter(([, v]) => v)),
+        id: meta.id ?? randomUUID(),
+        actor: meta.actor,
+        ...(meta.reason ? { reason: meta.reason } : {}),
+      },
+    }) as Promise<Output>
+  }
 
   return startAgent({
     board,

@@ -67,6 +67,13 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
   const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder, terminal, probed, task }))
 
   for (const o of observe({ envelope: entry as unknown as HookEnvelope })) {
+    // A hosted session's process closes whenever the server stops; the session itself
+    // goes on with the next message, so it never ends.
+    if (entry.event === 'SessionEnd' && o.card.agent
+      && writer.state.sessions?.[sessionId({ agent: o.card.agent as AgentRef })]?.agent.host === 'pnyx') {
+      continue
+    }
+
     const key = resolve({ key: o.key })
 
     if (o.ifMissing && key in writer.state.keys) {

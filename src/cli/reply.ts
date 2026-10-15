@@ -12,6 +12,7 @@ import { answerKeys, type KeyStep } from '../integrations/hooks/answer.ts'
 import { HOOK } from '../integrations/hooks/observe.ts'
 import { pressKey, pressKeys, typeInto, type Delivery } from '../integrations/hooks/terminal.ts'
 import { paseoReply } from '../integrations/paseo/reply.ts'
+import { askHost } from '../server/state.ts'
 import { loadBoard, withWriter } from '../store/board-store.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { COMMON, guard, meta, parse, required, type Options, type Output } from './commands.ts'
@@ -36,6 +37,8 @@ export interface ReplyRequest {
   // session's own prompt instead of typed text. seen is the requestId the answer was
   // written for; a different request under the same key refuses it.
   answer?: { request: string; value: unknown; seen?: string }
+  // A setting a Pnyx-hosted agent takes directly, in place of typed text.
+  setting?: { name: string; value: string }
 }
 
 export interface ReplyReceipt {
@@ -55,7 +58,7 @@ function invalid({ message, help = [] }: { message: string; help?: string[] }): 
 
 function routeName({ route, control }: { route: ReplyRoute; control?: boolean }): string {
   return route.kind === 'firstmate' ? (control ? 'firstmate:inbox' : 'firstmate')
-    : route.kind === 'paseo-agent' ? route.kind : `terminal:${route.kind}`
+    : route.kind === 'paseo-agent' || route.kind === 'pnyx' ? route.kind : `terminal:${route.kind}`
 }
 
 // The request id of a setting change's note: per board, card and change, so a retry
@@ -95,6 +98,10 @@ function deliver({ board, card, reply, route, request, keys }: {
     return paseoReply({ route, text, id: reply })
   }
 
+  if (route.kind === 'pnyx') {
+    return hostReply({ board, card, text, setting: request.setting, actor: request.actor })
+  }
+
   const sent = key ? pressKey({ route, key }) : typeInto({ route, text })
 
   if (!confirm || sent.state !== 'delivered') {
@@ -122,6 +129,32 @@ function deliver({ board, card, reply, route, request, keys }: {
   return answered.state === 'delivered'
     ? sent
     : { state: 'delivery_unknown', detail: `the command was sent, but the Enter that answers its confirmation was not${answered.detail ? ` (${answered.detail})` : ''}; check the session` }
+}
+
+// Hands the message or setting to the board's server, which runs the agent.
+async function hostReply({ board, card, text, setting, actor }: {
+  board: string
+  card: string
+  text: string
+  setting?: ReplyRequest['setting']
+  actor?: string
+}): Promise<Delivery> {
+  try {
+    await askHost({
+      board,
+      body: setting
+        ? { action: 'set', card, setting: setting.name, value: setting.value, ...(actor ? { actor } : {}) }
+        : { action: 'send', card, text, ...(actor ? { actor } : {}) },
+    })
+
+    return { state: 'delivered' }
+  } catch (error) {
+    const known = error instanceof BoardError
+
+    return known
+      ? { state: 'failed', detail: `${error.message}; nothing was sent` }
+      : { state: 'delivery_unknown', detail: 'the Pnyx server did not confirm the message; check the conversation before retrying' }
+  }
 }
 
 export async function sendReply({ board, request }: {
@@ -406,7 +439,7 @@ function agentSummary({ board, ref, homes }: {
   const provider = card.agent?.provider
   const found = replyRoute({ card, homes: homes.map(path => resolveHome({ path })) })
   const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
-  const harness = harnessControls({ provider, firstmate: !!firstmate })
+  const harness = harnessControls({ provider, firstmate: !!firstmate, hosted: 'route' in found && found.route.kind === 'pnyx' })
   const controls = (harness?.controls ?? []).map(c => {
     const unavailable = 'reason' in found
       ? found.reason
@@ -468,7 +501,7 @@ export const agent = guard({
     const provider = card.agent?.provider
     const found = replyRoute({ card, homes: homes.map(path => resolveHome({ path })) })
     const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
-    const picked = findOption({ provider, setting, value, firstmate: !!firstmate })
+    const picked = findOption({ provider, setting, value, firstmate: !!firstmate, hosted: 'route' in found && found.route.kind === 'pnyx' })
 
     if (!picked) {
       throw new AxiError(`card ${card.id} offers no ${setting} ${value}`, 'VALIDATION_ERROR', [`Run \`pnyx-axi agent ${card.id}\` to list its settings and values`])
@@ -495,9 +528,11 @@ export const agent = guard({
       ? { text: settingRequest({ option, task: firstmate.task, harness }) }
       : 'request' in input
         ? undefined
-        : 'key' in input
-          ? { text: `[${KEY_LABEL[input.key]}]`, key: input.key }
-          : { text: input.text, confirm: input.confirm }
+        : 'set' in input
+          ? { text: `${setting} ${input.set}`, setting: { name: setting, value: input.set } }
+          : 'key' in input
+            ? { text: `[${KEY_LABEL[input.key]}]`, key: input.key }
+            : { text: input.text, confirm: input.confirm }
 
     if (!typed) {
       throw new AxiError('this setting requires a Firstmate request route', 'NO_ROUTE')
@@ -566,7 +601,8 @@ A setting the session has not reported yet is confirmed by its next hook or turn
 export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <file|-> [--home <path>]... [--resolve-key <key>] [--idempotency-key <key>]
        pnyx-axi reply <id> --answer <request key> --json <answer> [--seen <request id>] [--idempotency-key <key>]
 A Firstmate task card replies through its home's bin/fm-send.sh, with FM_HOME set; its home must
-be passed with --home, and --resolve-key answers that open decision. Any other agent session is
+be passed with --home, and --resolve-key answers that open decision. An agent Pnyx runs (task start)
+gets the text straight through the board's server, which must be running. Any other agent session is
 typed into the terminal its hooks recorded: a tmux pane, a Herdr pane, a Paseo terminal, or an
 iTerm2 or Terminal session found by its TTY (macOS asks once to allow controlling those apps).
 The session's process must still own that TTY; the text is typed once, then submitted with Enter.
