@@ -567,6 +567,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       'paseo-url': { type: 'string' },
       check: { type: 'boolean' },
       via: { type: 'string' },
+      command: { type: 'string' },
       kind: { type: 'string' },
       'in-place': { type: 'boolean' },
       safe: { type: 'boolean' },
@@ -615,6 +616,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       hydraId,
       task: ref,
       replacement: values['replace-session'] as string | undefined,
+      commandName: values.command as string | undefined,
       via: values.via as string | undefined,
       kind: values.kind as string | undefined,
       harness: values.harness as string | undefined,
@@ -1581,7 +1583,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'chat.message': return `${event.data.role}: ${event.data.text}`
     case 'board.configured': return `Hydra ${event.data.name}; Hydra ${event.data.hydra.id}`
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
-    case 'hydra.project': return `${event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Hydra ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
+    case 'hydra.project': return `${event.data.before && event.data.before.detached === event.data.after.detached ? 'Updated' : event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Hydra ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
     case 'task.project': return `Task project: ${event.data.after ?? 'none'}`
     case 'task.copy': return `Task copy ${event.data.after.state}: ${event.data.after.path}${event.data.after.reason ? ` (${event.data.after.reason})` : ''}`
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
@@ -1854,7 +1856,7 @@ description: Pnyx shows every agent and its work in Hydras
 commands:
   pnyx-axi                                   Show the Hydra summary
   hydra create|list|homes|show|set            Create, list or configure Hydras
-  project add|list|remove                   Attach, list or detach projects
+  project add|list|set|remove                   Attach, list or detach projects
   column create|rename|describe|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
   task start|continue <task>                  Start a worker or host an ended outside session
@@ -1947,7 +1949,7 @@ pnyx-axi task project <task> --project <name|path>
 pnyx-axi task continue <task> [--check]
 pnyx-axi task start <task> [--via pnyx|paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
-pnyx-axi task start <task> --via command [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
+pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
 pnyx-axi task copy <task> [remove [--safe | --discard]]
 Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start and permission, as to move. Pnyx keeps it on the event,
 posts "<what Hydra did>: <reason>" in Hydra’s chat with --details under it, and returns that line as posted.
@@ -1976,7 +1978,7 @@ Repeating the same --event-id never starts a second agent.
 --kind picks the agent (see pnyx-axi kind; default: the default kind, else Claude Code); --harness overrides its harness and
 --prompt its opening message, which otherwise names the task and the pnyx-worker skill.
 --via firstmate puts a worker request in Hydra's chat and sends it to the Hydra's Firstmate home as an inbox note.
---via command runs the configured command in the task's folder with PNYX_TASK and the rest of its context in the
+--via command --command <name> selects the assigned project’s named command (project list); without --command it runs the configured Hydra command. It runs in the task's folder with PNYX_TASK and the rest of its context in the
 environment; the session it starts attaches to the task when its hooks first report.
 The default route is firstmate for a Hydra run by a Firstmate home, otherwise pnyx.
 A task with an attached project starts in its own copy: a git worktree on branch pnyx/<hydra>-<task> (or the project's

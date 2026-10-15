@@ -10,7 +10,7 @@ import { Menu } from '../components/ui/menu.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { harnessName } from './agent-settings.tsx'
 import { ContinueAgent } from './continue-agent.tsx'
-import { StartAgent } from './start-agent.tsx'
+import { useStartRequest } from './start-request.ts'
 import { needsAgent } from './view.ts'
 import { merge, Thread } from './thread.tsx'
 import type { ChatComment } from './chat.ts'
@@ -80,7 +80,8 @@ export function Detail({
   const [kept, setKept] = useState<ThreadEntry[]>([])
   const [older, setOlder] = useState<ThreadPage | null>(null)
   const [attaching, setAttaching] = useState(false)
-  const [starting, setStarting] = useState(false), [renaming, setRenaming] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const { start, busy: starting } = useStartRequest({ card, firstmate: state.config?.hydra.kind === 'firstmate', command, notify })
   const keep = useCallback(({ entries }: { entries: ThreadEntry[] }) =>
     setKept(k => merge({ kept: k, page: entries })), [])
   const keepOlder = useCallback(({ page }: { page: ThreadPage }) => {
@@ -112,7 +113,7 @@ export function Detail({
             )}
             <Button onClick={() => setAttaching(value => !value)}>{card.agent ? 'Change agent' : 'Attach agent'}</Button>
             {needsAgent({ card }) && (
-              <Button onClick={() => setStarting(value => !value)}>Start agent</Button>
+              <Button disabled={!connected || starting} onClick={start}>{starting ? 'Requesting…' : 'Start'}</Button>
             )}
             {!card.parentId && (
               <Button
@@ -130,7 +131,7 @@ export function Detail({
           card={card}
           command={command}
           connected={connected}
-          fresh={() => setStarting(true)}
+          fresh={start}
           notify={notify}
         />
       )}
@@ -165,17 +166,6 @@ export function Detail({
         />
       )}
       {empty && <TaskBrief card={card} command={command} notify={notify} />}
-      {starting && (
-        <StartAgent
-          card={card}
-          replace={Boolean(card.agent)}
-          firstmate={state.config?.hydra.kind === 'firstmate'}
-          defaultHarness={state.config?.agents?.default?.harness}
-          command={command}
-          connected={connected}
-          notify={notify}
-        />
-      )}
       {!needsAgent({ card }) && (
         <Thread
           card={card}
