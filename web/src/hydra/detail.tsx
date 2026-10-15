@@ -1,3 +1,4 @@
+import { ReminderEditor } from './reminder.tsx'
 import { useCallback, useState } from 'react'
 import type { HydraState, Card, ViewPreferences } from '../../../src/core/model.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
@@ -80,6 +81,7 @@ export function Detail({
   const [kept, setKept] = useState<ThreadEntry[]>([])
   const [older, setOlder] = useState<ThreadPage | null>(null)
   const [attaching, setAttaching] = useState(false)
+  const [reminding, setReminding] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const { start, busy: starting } = useStartRequest({ card, firstmate: state.config?.hydra.kind === 'firstmate', command, notify })
   const keep = useCallback(({ entries }: { entries: ThreadEntry[] }) =>
@@ -103,6 +105,9 @@ export function Detail({
               notify={notify}
             />
             <Button onClick={() => setRenaming(true)}>Rename task</Button>
+            {!card.automaticTask && (
+              <Button disabled={!connected} onClick={() => setReminding(true)}>Remind me…</Button>
+            )}
             {!card.automaticTask && (
               <Button
                 disabled={!connected}
@@ -154,6 +159,14 @@ export function Detail({
               void command({ name: 'task', args: ['rename', card.id, '--project', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
             }
           }}
+        />
+      )}
+      {reminding && (
+        <ReminderEditor
+          card={card}
+          command={command}
+          connected={connected}
+          close={() => setReminding(false)}
         />
       )}
       {attaching && (

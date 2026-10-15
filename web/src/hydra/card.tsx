@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { ReminderEditor, ReminderLabel } from './reminder.tsx'
 import type { Card as CardData, ViewPreferences } from '../../../src/core/model.ts'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
@@ -47,6 +48,7 @@ export function HydraCard({
   titleFinished(): void
   children?: ReactNode
 }) {
+  const [reminding, setReminding] = useState(false)
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000)
@@ -60,17 +62,20 @@ export function HydraCard({
       className={`card ${selected ? 'selected' : ''}`}
       data-task={card.id}
       onClick={e => {
-        if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, .detail, .menu') && !window.getSelection()?.toString()) {
+        if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, form, .detail, .menu') && !window.getSelection()?.toString()) {
           open({ id: card.id })
         }
       }}
-      draggable={connected && !selected && !editingTitle}
+      draggable={connected && !selected && !editingTitle && !reminding}
       onDragStart={e => {
         e.stopPropagation(); e.dataTransfer.setData('application/pnyx-task', card.id)
       }}
     >
       <div className="card-menu">
         <Menu label={`Card menu for ${card.title}`}>
+          {!card.automaticTask && (
+            <Button disabled={!connected} onClick={() => setReminding(true)}>Remind me…</Button>
+          )}
           <CopyId id={card.id} notify={notify} />
           <HideAfter
             card={card}
@@ -118,6 +123,15 @@ export function HydraCard({
       {card.copy?.state === 'flagged' && <span className="copy-warning" title={card.copy.reason}>copy not cleaned</span>}
       {card.agent && view.lastMessageOnCards && latest && !selected && (
         <LastMessage message={latest} />
+      )}
+      <ReminderLabel card={card} />
+      {reminding && (
+        <ReminderEditor
+          card={card}
+          command={command}
+          connected={connected}
+          close={() => setReminding(false)}
+        />
       )}
       {children}
     </article>

@@ -107,7 +107,7 @@ function kindCommand({ args }: { args: string[] }): Output {
   })
 }
 
-const TRACKED: readonly EventType[] = ['hydra.project', 'task.project', 'task.permission', 'hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked', 'task.launched']
+const TRACKED: readonly EventType[] = ['task.reminder', 'task.reminder-due', 'hydra.project', 'task.project', 'task.permission', 'hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked', 'task.launched']
 const CHECK_LIMIT = 20
 const POLL_MS = 2000
 

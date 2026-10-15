@@ -97,7 +97,7 @@ try {
   await browser({ args: ['screenshot', screenshot] })
   console.log(`context smoke passed; evidence: ${evidence}`)
 } finally {
-  await browser({ args: ['close'] }).catch(() => undefined)
+  await browser({ args: ['stop'] }).catch(() => undefined)
   await server.close()
   rmSync(home, { recursive: true, force: true })
 }
