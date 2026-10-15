@@ -8,7 +8,7 @@ import { explained, postLine } from '../cli/commands.ts'
 import { permissionEvent } from '../core/permissions.ts'
 import { freeTask } from '../cli/start.ts'
 import { decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { BoardError, type AgentRef, type AgentSettings, type Attention, type Card, type PermissionRequest } from '../core/model.ts'
+import { BoardError, type AgentRef, type AgentSettings, type Attention, type BoardState, type Card, type PermissionRequest } from '../core/model.ts'
 import { INTERRUPTED, sessionId } from '../core/tasks.ts'
 import { pnyxHome, withWriter, type Writer } from '../store/board-store.ts'
 
@@ -40,6 +40,7 @@ export interface Host {
     reason?: string
     details?: string
   }): Record<string, unknown>
+  reconcile({ state }: { state: BoardState }): void
   // Marks a hosted turn that was running when the server last stopped as interrupted.
   recover(): void
   close(): void
@@ -380,18 +381,19 @@ export function createHost({ board, query, changed }: {
             status: 'pending',
             ...(decisionReason ? { description: decisionReason } : {}),
           }
-          pending.set(id, { card: card.id, entry, finish })
           signal.addEventListener('abort', abort, { once: true })
 
           try {
             write({
               fn: ({ writer }) => {
-                const current = writer.state.cards[card.id]
+                const session = writer.state.sessions?.[key]
+                const current = session?.taskId ? writer.state.cards[session.taskId] : undefined
 
                 if (!current || current.agent?.host !== 'pnyx' || sessionId({ agent: current.agent }) !== key) {
                   throw new BoardError({ message: 'the agent is no longer attached to this task', code: 'NO_ROUTE' })
                 }
 
+                pending.set(id, { card: current.id, entry, finish })
                 writer.append({ event: permissionEvent({ state: writer.state, card: current, request, meta: { at: at(), actor: 'pnyx' } }) })
               },
             })
@@ -518,7 +520,9 @@ export function createHost({ board, query, changed }: {
           }
 
           if (!waiting || waiting.card !== card.id || card.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
-            throw new BoardError({ message: 'the agent no longer waits for this request', code: 'PERMISSION_CLOSED' })
+            writer.append({ event: permissionEvent({ state: writer.state, card, request: { ...request, status: 'expired' }, meta: { at: at(), actor: 'pnyx' } }) })
+
+            return { expired: true as const }
           }
 
           writer.append({
@@ -539,12 +543,21 @@ export function createHost({ board, query, changed }: {
             }
           }
 
-          return { task: card.id, request: id, status: choice, ...(posted ? { posted } : {}) }
+          return {
+            expired: false as const,
+            receipt: { task: card.id, request: id, status: choice, ...(posted ? { posted } : {}) },
+          }
         },
       })
+
+      if (result.expired) {
+        waiting?.finish({ result: { behavior: 'deny', message: 'This permission request expired.' } })
+        throw new BoardError({ message: 'the agent no longer waits for this request', code: 'PERMISSION_CLOSED' })
+      }
+
       waiting?.finish({ result: choice === 'allow' ? { behavior: 'allow' } : { behavior: 'deny', message: why || 'Permission denied from Pnyx.' } })
 
-      return result
+      return result.receipt
     },
 
     set: async ({ card: ref, setting, value, actor }) => {
@@ -585,6 +598,17 @@ export function createHost({ board, query, changed }: {
 
         if (running.activity !== 'working') {
           retire({ key, entry: running })
+        }
+      }
+    },
+
+    reconcile: ({ state }) => {
+      for (const [id, waiting] of pending) {
+        const card = state.cards[waiting.card]
+        const request = card?.permissions?.find(p => p.id === id)
+
+        if (!request || request.status !== 'pending' || card?.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
+          expire({ id })
         }
       }
     },

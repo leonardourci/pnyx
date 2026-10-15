@@ -384,3 +384,42 @@ test('restart recovery expires a request left pending by a crash without startin
   assert.equal(task().permissions![0]!.status, 'expired')
   await assert.rejects(async () => commands.task(['permission', 'ship', 'left-pending', 'allow', '--board', 'lab']), /already expired/)
 })
+
+test('moving a live session expires its old permission and routes its next request to its current task', async () => {
+  const { task } = await lab()
+  const sdk = fakeSdk()
+  sdk.control.permission = true
+  server = await startServer({ board: 'lab', query: sdk.query })
+  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'move-start' } })
+  await until({ check: () => task().permissions?.length === 1, what: 'initial request' })
+  const request = task().permissions![0]!
+  const session = task().sessionIds![0]!
+  await commands.task(['create', '--title', 'Destination', '--key', 'destination', '--board', 'lab'])
+  await commands.task(['attach', 'destination', '--session', session, '--board', 'lab'])
+  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--board', 'lab']), /expired|no longer waits/)
+  await until({ check: () => sdk.permissions.length === 1, what: 'old request expires' })
+  assert.equal(sdk.permissions[0]!.behavior, 'deny')
+  assert.equal(task().permissions![0]!.status, 'expired')
+  assert.equal(task().attention.some(a => a.key.endsWith(request.id)), false)
+  await sendReply({ board: 'lab', request: { card: 'destination', text: 'Continue here', homes: [], actor: 'test' } })
+
+  const destination = () => {
+    const state = loadBoard({ board: 'lab' }).state
+
+    return state.cards[state.keys.destination!]!
+  }
+
+  await until({ check: () => destination().permissions?.length === 1, what: 'request on the destination task' })
+  const next = destination().permissions![0]!
+  assert.equal(next.session, session)
+  await commands.task(['permission', 'destination', next.id, 'allow', '--board', 'lab'])
+  await until({ check: () => sdk.permissions.length === 2, what: 'destination approval' })
+  assert.equal(sdk.permissions[1]!.behavior, 'allow')
+  await sendReply({ board: 'lab', request: { card: 'destination', text: 'Ask before detaching', homes: [], actor: 'test' } })
+  await until({ check: () => destination().permissions?.length === 2, what: 'request before detaching' })
+  await commands.task(['detach', 'destination', '--board', 'lab'])
+  await until({ check: () => sdk.permissions.length === 3, what: 'detaching releases the provider without an answer' })
+  assert.equal(destination().permissions![1]!.status, 'expired')
+  assert.equal(sdk.permissions[2]!.behavior, 'deny')
+  assert.equal(sdk.calls.length, 1)
+})
