@@ -58,6 +58,9 @@ test('task start --via command runs the board command once and its session joins
 
   const started = await startTask({ board: 'lab', task, via: 'command', prompt: 'Draft it', meta: { ...meta, id: 's1' } })
   assert.equal(started.via, 'command')
+  assert.equal(state().cards[task]?.launch?.via, 'command')
+  assert.equal(state().cards[task]?.launch?.pid, started.pid)
+  assert.equal(state().cards[task]?.launch?.folder, folder)
   const env = environment({ text: await written({ path: out }) })
   assert.equal(env.PNYX_TASK, task)
   assert.equal(env.PNYX_BOARD, 'lab')
@@ -75,6 +78,8 @@ test('task start --via command runs the board command once and its session joins
   hook({ env, session: 'cmd-1', event: 'SessionStart' })
   ingestSpool({ board: 'lab' })
   assert.deepEqual(state().cards[task]!.sessionIds, ['claude-code:cmd-1'])
+  assert.equal(state().sessions?.['claude-code:cmd-1']?.launch?.via, 'command')
+  assert.equal(state().sessions?.['claude-code:cmd-1']?.launch?.pid, started.pid)
   hook({ env, session: 'cmd-2', event: 'SessionStart' })
   ingestSpool({ board: 'lab' })
   assert.deepEqual(state().cards[task]!.sessionIds, ['claude-code:cmd-1'])

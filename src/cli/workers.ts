@@ -1,3 +1,4 @@
+import { checkAttachments } from '../integrations/presence/check.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
@@ -91,7 +92,7 @@ function kindCommand({ args }: { args: string[] }): Output {
 }
 
 // What Hydra tracks. Its own writes (actor hydra) and hook chatter never wake it.
-const TRACKED: readonly EventType[] = ['hydra.message', 'task.created', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked']
+const TRACKED: readonly EventType[] = ['hydra.message', 'task.created', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked', 'task.launched']
 const CHECK_LIMIT = 20
 const POLL_MS = 2000
 
@@ -148,6 +149,7 @@ async function hydraCheck({ args }: { args: string[] }): Promise<Output> {
     board,
     changes: page.length ? page.map(e => row({ e })) : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
+    agents: await checkAttachments({ state: loadBoard({ board }).state }),
     help: [`Run \`pnyx-axi hydra check --after ${through} --wait 1800 --board ${board}\` to wait for the next change`],
   }
 }
