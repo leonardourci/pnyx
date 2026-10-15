@@ -42,6 +42,8 @@ export interface Meta {
   // Expected card revision; 0 for a card that does not exist yet.
   ifRevision?: number
   reason?: string
+  // Longer context under the chat line a Hydra change posts.
+  details?: string
 }
 
 export type Decision = { event: BoardEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }

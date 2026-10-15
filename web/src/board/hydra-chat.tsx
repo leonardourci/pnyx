@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { BoardState, ViewPreferences } from '../../../src/core/model.ts'
+import { HYDRA_ACTOR, type BoardState, type ViewPreferences } from '../../../src/core/model.ts'
 import { HYDRA_CARD, boardConfig } from '../../../src/core/hydra.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
@@ -59,7 +59,7 @@ export function HydraChat({
     }
   }, [liveThread])
   const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
-  const recorded: ThreadEntry[] = messages.map(m => ({ id: m.id, kind: 'message', role: 'user', text: m.text, at: m.at }))
+  const recorded: ThreadEntry[] = messages.map(m => ({ id: m.id, kind: 'message', role: m.actor === HYDRA_ACTOR ? 'assistant' : 'user', text: m.details ? `${m.text}\n\n${m.details}` : m.text, at: m.at }))
   const transcript = joinMessageParts({ entries: page?.entries ?? [] })
   const entries = [...recorded.filter(m => !transcript.some(t => t.kind === 'message' && t.role === 'user' && t.text === m.text)), ...transcript]
     .filter(e => e.kind === 'message' || (e.kind === 'tool' ? tools : thinking))
