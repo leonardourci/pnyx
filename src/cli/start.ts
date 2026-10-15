@@ -38,7 +38,7 @@ function apply({ writer, decision }: { writer: Writer; decision: Decision }): vo
   }
 }
 
-function freeTask({ state, ref }: { state: BoardState; ref: string }): Card {
+export function freeTask({ state, ref }: { state: BoardState; ref: string }): Card {
   const card = findCard({ state, ref })
 
   if (!liveTask({ card }) || card.id === HYDRA_CARD) {
