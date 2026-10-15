@@ -134,6 +134,7 @@ export async function startTask({
   connect?: Connect
 }): Promise<Output> {
   const state = loadBoard({ board }).state
+  const card = findCard({ state, ref: task })
   const how = chooseVia({ state, via })
 
   if (how === 'firstmate') {
@@ -145,7 +146,6 @@ export async function startTask({
   }
 
   const agent = agentFor({ state, board, kind: kind ?? 'default' })
-  const card = findCard({ state, ref: task })
 
   return startAgent({
     board,

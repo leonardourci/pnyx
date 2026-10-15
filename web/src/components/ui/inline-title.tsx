@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Button, Input } from './controls.tsx'
 
-export function InlineTitle({ value, label, save, doubleClick = false, startEditing = false }: {
+export function InlineTitle({
+  value, label, save, doubleClick = false, startEditing = false, finished,
+}: {
   value: string
   label: string
   save({ title }: { title: string }): Promise<unknown>
   doubleClick?: boolean
   startEditing?: boolean
+  finished?(): void
 }) {
   const [editing, setEditing] = useState(startEditing)
   const [draft, setDraft] = useState(value)
@@ -28,7 +31,7 @@ export function InlineTitle({ value, label, save, doubleClick = false, startEdit
 
     try {
       await save({ title })
-      setEditing(false)
+      setEditing(false); finished?.()
       setError('')
     } catch (e) {
       setError((e as Error).message)
@@ -53,14 +56,15 @@ export function InlineTitle({ value, label, save, doubleClick = false, startEdit
         onChange={e => setDraft(e.target.value)}
         onKeyDown={e => {
           if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
-            e.preventDefault(); e.stopPropagation(); setDraft(value); setEditing(false)
+            e.preventDefault(); e.stopPropagation()
+            setDraft(value); setEditing(false); finished?.()
           }
         }}
       />
       <Button type="submit" disabled={busy || !draft.trim()}>Save title</Button>
       <Button
         onClick={() => {
-          setDraft(value); setEditing(false)
+          setDraft(value); setEditing(false); finished?.()
         }}
       >Cancel
       </Button>

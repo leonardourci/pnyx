@@ -1,5 +1,6 @@
 import { storageKey } from './outbox.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import type { BoardState } from '../../../src/core/model.ts'
 import { emptyBoard, reduce } from '../../../src/core/reducer.ts'
 import type { ServerMessage } from '../../../src/server/server.ts'
@@ -29,6 +30,7 @@ export function useBoard() {
   const [state, setState] = useState<BoardState>(restoredBoard)
   const [connected, setConnected] = useState(false)
   const [thread, setThread] = useState<ThreadPage | null>(null)
+  const [hydraThread, setHydraThread] = useState<ThreadPage | null>(null)
   const [latest, setLatest] = useState<Record<string, LatestMessage>>({})
   const stateRef = useRef(state)
   const socket = useRef<WebSocket | null>(null)
@@ -156,7 +158,11 @@ export function useBoard() {
               event: m.event,
             }); setState(stateRef.current)
           } else if (m.type === 'thread') {
-            setThread(m.thread)
+            if (m.thread.card === HYDRA_CARD) {
+              setHydraThread(m.thread)
+            } else {
+              setThread(m.thread)
+            }
           } else if (m.type === 'latest') {
             if (!ready.current) {
               ready.current = true; attempt = 0; setConnected(true); flush()
@@ -249,5 +255,5 @@ export function useBoard() {
     flush()
   }), [flush])
 
-  return { state, connected, command, thread, setThread, latest }
+  return { state, connected, command, thread, setThread, hydraThread, latest }
 }

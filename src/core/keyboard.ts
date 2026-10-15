@@ -31,12 +31,14 @@ export const KEY_ACTIONS = [
   action({ id: 'reply', label: 'Focus reply composer', keys: ['r'], scopes: ['board', 'thread'] }),
   action({ id: 'send', label: 'Send reply', keys: ['Mod+Enter'], scopes: ['composer'] }),
   action({ id: 'cancel', label: 'Close the current layer', keys: ['Escape'], scopes: [...navigation, 'composer', 'overlay', 'hints'] }),
-  action({ id: 'move', label: 'Move card', keys: ['m'], scopes: ['board', 'thread'] }),
+  action({ id: 'move.left', label: 'Move highlighted left', keys: ['Mod+ArrowLeft'], scopes: ['board'] }),
+  action({ id: 'move.right', label: 'Move highlighted right', keys: ['Mod+ArrowRight'], scopes: ['board'] }),
+  action({ id: 'move.up', label: 'Move highlighted up', keys: ['Mod+ArrowUp'], scopes: ['board'] }),
+  action({ id: 'move.down', label: 'Move highlighted down', keys: ['Mod+ArrowDown'], scopes: ['board'] }),
   action({ id: 'search', label: 'Search history', keys: ['/'], scopes: navigation }),
   action({ id: 'find', label: 'Find in current view', keys: ['Mod+f'], scopes: [...navigation, 'composer'] }),
   action({ id: 'palette', label: 'Focus search', keys: ['Mod+k'], scopes: [...navigation, 'composer'] }),
   action({ id: 'help', label: 'Keyboard help', keys: ['?'], scopes: navigation }),
-  action({ id: 'hints', label: 'Show target hints', keys: ['f'], scopes: navigation }),
   action({ id: 'settings', label: 'Open settings', keys: ['Mod+,'], scopes: navigation }),
   action({ id: 'topbar', label: 'Show or hide the top bar', keys: ['Mod+b'], scopes: [...navigation, 'composer'] }),
 ]
@@ -211,7 +213,7 @@ export function resolveKey(
 
   const available = KEY_ACTIONS.filter(a =>
     a.scopes.includes(context.scope)
-    && (!context.editing || a.id === 'find' || a.id === 'palette' || a.id === 'send' || (a.id === 'cancel' && context.scope !== 'navigation')))
+    && (!context.editing || ['find', 'send', 'palette', 'topbar'].includes(a.id) || (a.id === 'cancel' && context.scope !== 'navigation')))
   const candidates = progress.scope === context.scope && context.now <= progress.until
     ? progress.candidates
     : []

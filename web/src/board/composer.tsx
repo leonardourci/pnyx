@@ -10,7 +10,7 @@ import { slashMatches, slashPrefix } from './view.ts'
 import { commentReply, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
-import { caretInto, hostOf, latestReply } from './caret.ts'
+import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
 
 export function Composer({
   card,
@@ -49,7 +49,22 @@ export function Composer({
   const input = useRef<HTMLTextAreaElement>(null)
   const attempt = useRef(readAttempt({ key: card }))
   // Comments travel with the draft as one reply, and stay until it is delivered.
-  const outgoing = commentReply({ draft, comments })
+  const commentKey = `pnyx-comments:${card}:${thread?.session ?? ''}`
+  const [taught, setTaught] = useState(() => {
+    try {
+      return localStorage.getItem(commentKey) === 'sent'
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    try {
+      setTaught(localStorage.getItem(commentKey) === 'sent')
+    } catch {
+      setTaught(false)
+    }
+  }, [commentKey])
+  const outgoing = commentReply({ draft, comments, firstComment: !taught })
   const commented = comments.filter(c => c.text.trim()).length
   const current = useRef({ draft, comments })
   current.current = { draft, comments }
@@ -106,15 +121,23 @@ export function Composer({
       const r = await command({ name: 'reply', args: [card, text, attempt.current.id] }); const receipt = r.reply as { state: string; detail?: string } | undefined
       const why = receipt?.detail ? ` (${receipt.detail})` : ''
 
-      if (receipt?.state !== 'delivered') {
+      if (receipt?.state !== 'delivered' && receipt?.state !== 'queued') {
         setFailure(receipt?.state === 'delivery_unknown' ? 'Send could not be confirmed. Check the conversation before retrying.' : `Could not send${why}. Draft kept.`)
       }
 
-      if (receipt?.state === 'delivered') {
-        notify({ text: 'Reply delivered to the route. This does not confirm it was handled.' })
+      if (receipt?.state === 'delivered' || receipt?.state === 'queued') {
+        notify({ text: receipt.state === 'queued' ? 'Message queued for Hydra.' : 'Reply delivered to the route. This does not confirm it was handled.' })
       }
 
-      if (receipt?.state === 'delivered') {
+      if ((receipt?.state === 'delivered' || receipt?.state === 'queued')) {
+        if (commented) {
+          setTaught(true)
+
+          try {
+            localStorage.setItem(commentKey, 'sent')
+          } catch { /* Storage can be disabled. */ }
+        }
+
         // Keep anything typed or commented while the reply was in flight.
         if (text === outgoing && current.current.draft === draft) {
           setDraft({ text: '' })
@@ -147,8 +170,8 @@ export function Composer({
 
   useKeyAction({
     id: 'send',
-    handler: ({ context: { scope } }) => {
-      if (scope !== 'composer') {
+    handler: ({ context: { scope, target } }) => {
+      if (scope !== 'composer' || !input.current?.form?.contains(target)) {
         return false
       }
 
@@ -159,8 +182,8 @@ export function Composer({
   })
   useKeyAction({
     id: 'cancel',
-    handler: ({ context: { scope } }) => {
-      if (scope !== 'composer' || prefix === null) {
+    handler: ({ context: { scope, target } }) => {
+      if (scope !== 'composer' || !input.current?.form?.contains(target) || prefix === null) {
         return false
       }
 
@@ -172,6 +195,7 @@ export function Composer({
 
   return (
     <form
+      aria-busy={sending}
       className="composer"
       style={{ height: preview ?? height }}
       onSubmit={e => {
@@ -239,7 +263,6 @@ export function Composer({
           value={draft}
           placeholder={`Reply to the agent, type / for commands, or ${label({ id: 'cancel' })} or ↑ to comment above`}
           aria-label={`Reply to ${title}`}
-          aria-describedby={thread?.route ? undefined : `reply-note-${card}`}
           aria-controls={catalogOpen ? `suggestions-${card}` : undefined}
           aria-activedescendant={active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
           onChange={e => {
@@ -268,10 +291,10 @@ export function Composer({
               return
             }
 
-            const host = hostOf({ from: e.currentTarget })
+            const host = conversationMessages({ from: e.currentTarget })
 
             if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && prefix === null &&
-              e.currentTarget.selectionEnd === 0 && host && caretInto({ host, target: latestReply({ host }), edge: 'end' })) {
+              e.currentTarget.selectionEnd === 0 && host && placeMessageCaret({ host, target: latestAgentMessage({ host }), edge: 'end' })) {
               e.preventDefault()
             }
           }}
@@ -290,12 +313,7 @@ export function Composer({
           <Icon name="send" size={14} />
         </Button>
       </div>
-      {failure && <p className="small" role="status">{failure}</p>}
-      {!thread?.route && connected && (
-        <p id={`reply-note-${card}`} className="small muted">
-          {`${thread?.noRoute ?? 'Reply route unavailable.'} Your draft stays here.`}
-        </p>
-      )}
+      {failure && <p className="reply-failure" role="status">{failure}</p>}
     </form>
   )
 }

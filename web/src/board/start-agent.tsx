@@ -23,7 +23,7 @@ export function StartAgent({ card, firstmate, command, connected, notify }: {
   notify({ text }: { text: string }): void
 }) {
   const [via, setVia] = useState(firstmate ? 'firstmate' : 'paseo'), [harness, setHarness] = useState('claude')
-  const [folder, setFolder] = useState(card.folder ?? ''), [message, setMessage] = useState('')
+  const [folder, setFolder] = useState(card.folder ?? ''), [message, setMessage] = useState(card.brief ?? '')
   const [paseo, setPaseo] = useState<{ ok: boolean; reason?: string } | null>(null)
   const [busy, run] = useBusy()
   // One id per attempt, so a retried click never starts a second worker.

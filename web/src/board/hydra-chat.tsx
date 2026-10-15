@@ -1,139 +1,154 @@
-import { readAttempt, saveAttempt, storageKey } from './outbox.ts'
-import { useEffect, useRef, useState } from 'react'
-import type { BoardState } from '../../../src/core/model.ts'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { BoardState, ViewPreferences } from '../../../src/core/model.ts'
 import { HYDRA_CARD, boardConfig } from '../../../src/core/hydra.ts'
-import { Button, Textarea, useBusy } from '../components/ui/controls.tsx'
+import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
+import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
+import { Resize } from '../components/ui/resize.tsx'
 import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
+import { Messages } from './messages.tsx'
+import { Composer } from './composer.tsx'
+import { ComposerSettings } from './agent-settings.tsx'
+import { joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 
-export function HydraChat({ state, command, openTask, notify }: {
+export function HydraChat({
+  state, command, connected, notify, view, save, draft, setDraft, comments, setComments, liveThread,
+}: {
+  liveThread: ThreadPage | null
   state: BoardState
   command: Command
+  connected: boolean
   openTask({ id }: { id: string }): void
   notify({ text }: { text: string }): void
+  view: ViewPreferences
+  save({ patch }: { patch: unknown }): Promise<boolean>
+  draft: string
+  setDraft({ text }: { text: string }): void
+  comments: ChatComment[]
+  setComments({ items }: { items: ChatComment[] }): void
 }) {
-  const [draft, setDraft] = useState(() => {
-    try {
-      return sessionStorage.getItem(storageKey({ key: 'hydra-draft' })) ?? ''
-    } catch {
-      return ''
-    }
-  })
-  const attempt = useRef(readAttempt({ key: '$hydra' }))
-  const [failure, setFailure] = useState('')
+  const [page, setPage] = useState<ThreadPage | null>(null)
+  const [width, setWidth] = useState<number | null>(null)
+  const stream = useRef<HTMLDivElement>(null), follow = useRef(true)
+  const hydra = boardConfig({ state }).hydra, card = state.cards[HYDRA_CARD]
+  const { tools, thinking } = traces({ view, card: HYDRA_CARD })
   useEffect(() => {
-    try {
-      sessionStorage.setItem(storageKey({ key: 'hydra-draft' }), draft)
-    } catch { /* Retained in memory when storage is unavailable. */ }
-  }, [draft])
-  const [busy, run] = useBusy()
-  const end = useRef<HTMLDivElement>(null)
-  const hydra = boardConfig({ state }).hydra
-  const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
-  useEffect(() => {
-    end.current?.scrollIntoView({ block: 'end' })
-  }, [messages.length])
-
-  const send = ({ restore = false }: { restore?: boolean } = {}) => {
-    const submitted = restore && attempt.current ? attempt.current.text : draft
-
-    if (!submitted.trim()) {
+    if (!connected || !card) {
       return
     }
 
-    if (busy) {
-      return
-    }
-
-    setFailure('')
-
-    if (attempt.current?.text !== submitted) {
-      attempt.current = { text: submitted, id: crypto.randomUUID(), pending: true }
-    }
-
-    attempt.current.pending = true
-    saveAttempt({ key: '$hydra', attempt: attempt.current })
-    const id = attempt.current.id
-    run({
-      save: () => command({ name: 'hydra', args: ['send', `--text=${submitted}`, '--event-id', id] })
-        .then(() => {
-          attempt.current = null
-
-          try {
-            if (sessionStorage.getItem(storageKey({ key: 'hydra-draft' })) === submitted) {
-              sessionStorage.removeItem(storageKey({ key: 'hydra-draft' }))
-            }
-          } catch { /* Retained in memory when storage is unavailable. */ }
-
-          setDraft(current => current === submitted ? '' : current)
-        })
-        .catch(e => setFailure(e.message))
-        .finally(() => {
-          if (attempt.current) {
-            attempt.current.pending = false
-          }
-
-          saveAttempt({ key: '$hydra', attempt: attempt.current })
-        }),
+    let cancelled = false
+    void command({ name: 'thread', args: [HYDRA_CARD] }).then(result => {
+      if (!cancelled) {
+        setPage(result.thread as ThreadPage)
+      }
     })
-  }
+      .catch(() => {
+        if (!cancelled) {
+          setPage(null)
+        }
+      })
 
-  useEffect(() => {
-    if (attempt.current?.pending) {
-      send({ restore: true })
+    return () => {
+      cancelled = true
     }
-  }, [])
+  }, [connected, command, card?.agent?.sessionId, !!card])
+  useEffect(() => {
+    if (liveThread) {
+      setPage(liveThread)
+    }
+  }, [liveThread])
+  const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
+  const recorded: ThreadEntry[] = messages.map(m => ({ id: m.id, kind: 'message', role: 'user', text: m.text, at: m.at }))
+  const transcript = joinMessageParts({ entries: page?.entries ?? [] })
+  const entries = [...recorded.filter(m => !transcript.some(t => t.kind === 'message' && t.role === 'user' && t.text === m.text)), ...transcript]
+    .filter(e => e.kind === 'message' || (e.kind === 'tool' ? tools : thinking))
+    .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))
+  useEffect(() => {
+    if (follow.current && stream.current) {
+      stream.current.scrollTop = stream.current.scrollHeight
+    }
+  }, [messages.length, page])
+  const deliver = useCallback<Command>(async ({ name, args }) => {
+    if (name !== 'reply') {
+      return command({ name, args })
+    }
+
+    const result = await command({ name: 'hydra', args: ['send', `--text=${args[1] ?? ''}`, '--event-id', args[2] ?? crypto.randomUUID()] })
+
+    const queued = result.state === 'queued'
+
+    return { reply: { state: queued ? 'queued' : 'failed' } }
+  }, [command])
+  const route: ThreadPage = { ...page, card: HYDRA_CARD, entries, route: true, watching: 'unknown' }
 
   return (
-    <aside className="hydra-chat" aria-label="Hydra chat">
-      <header className="hydra-head">
-        <strong>{hydra.name}</strong>
-        <span className="muted small">{messages.length ? `${messages.length} messages` : 'orchestrator'}</span>
-      </header>
-      <div className="hydra-messages">
-        {messages.length ? messages.map(m => (
-          <article key={m.id} className="hydra-message">
-            {m.action === 'worker' && <span className="eyebrow">Create a worker</span>}
-            <p>{m.text}</p>
-            {m.task && (
-              <Button onClick={() => openTask({ id: m.task! })}>
-                {state.cards[m.task]?.title ?? m.task}
-              </Button>
-            )}
-            <time>{new Date(m.at).toLocaleString()}</time>
-          </article>
-        )) : <p className="empty">No messages yet. Write to Hydra here, or use Send to Hydra on a task.</p>}
-        {state.cards[HYDRA_CARD] && (
+    <aside className="hydra-chat" aria-label="Hydra chat" style={{ width: width ?? view.hydraWidth, flexBasis: width ?? view.hydraWidth }}>
+      <header className="hydra-head"><strong>Hydra</strong></header>
+      <div
+        className="hydra-messages thread"
+        ref={stream}
+        data-key-scope="thread"
+        role="region"
+        aria-label="Hydra conversation"
+        tabIndex={0}
+        onScroll={e => {
+          const el = e.currentTarget
+          follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+        }}
+      >
+        <Messages
+          entries={entries}
+          comments={comments}
+          setComments={setComments}
+          quote={({ text }) => setDraft({ text: quoteInto({ draft, text }) })}
+          toolDetails={view.toolDetails}
+          thinkingDetails={view.thinkingDetails}
+        />
+        {!entries.length && <p className="hydra-empty">What are we working on?</p>}
+        {card && (
           <InlineQuestions
-            card={state.cards[HYDRA_CARD]}
+            card={card}
             command={command}
             notify={notify}
           />
         )}
-        <div ref={end} />
       </div>
-      {failure && <p className="small" role="status">{failure}</p>}
-      <form
-        className="hydra-composer"
-        aria-busy={busy}
-        onSubmit={e => {
-          e.preventDefault(); send()
-        }}
-      >
-        <Textarea
-          aria-label="Message Hydra"
-          placeholder="Message Hydra…"
-          rows={3}
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault(); send()
-            }
-          }}
-        />
-        <Button type="submit" variant="primary" disabled={busy || !draft.trim()}>Send</Button>
-      </form>
+      <Composer
+        card={HYDRA_CARD}
+        title="Hydra"
+        draft={draft}
+        setDraft={setDraft}
+        comments={comments}
+        setComments={setComments}
+        thread={route}
+        height={view.composerHeight}
+        command={deliver}
+        save={save}
+        connected={connected}
+        notify={notify}
+        settings={card && (
+          <ComposerSettings
+            card={card}
+            thread={page}
+            command={command}
+            connected={connected}
+            notify={notify}
+          />
+        )}
+      />
+      <Resize
+        label="Resize Hydra panel"
+        value={view.hydraWidth}
+        min={VIEW_SIZE_LIMITS.hydraWidth.min}
+        max={VIEW_SIZE_LIMITS.hydraWidth.max}
+        onPreview={({ value }) => setWidth(value)}
+        onCommit={({ value }) => save({ patch: { hydraWidth: value } }).then(saved => {
+          setWidth(null)
+
+          return saved
+        })}
+      />
     </aside>
   )
 }

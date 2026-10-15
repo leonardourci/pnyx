@@ -45,18 +45,23 @@ function hook({ env, session, event }: {
   assert.equal(ran.status, 0)
 }
 
-const environment = ({ text }: { text: string }) =>
-  Object.fromEntries(text.trim().split('\n')
-    .map(line => line.split(/=(.*)/s).slice(0, 2) as [string, string]))
+const environment = ({ text }: { text: string }): Record<string, string> => JSON.parse(text)
+
+const captureEnvironment = ({ path }: { path: string }) => {
+  const script = `const fs = require('node:fs'); const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.startsWith('PNYX_'))); fs.writeFileSync(${JSON.stringify(path + '.tmp')}, JSON.stringify(env)); fs.renameSync(${JSON.stringify(path + '.tmp')}, ${JSON.stringify(path)});`
+
+  return `node -e '${script.replaceAll("'", "'\\''")}'`
+}
 
 test('task start --via command runs the board command once and its session joins the task', async () => {
   const { root, folder, run, state } = lab()
   const out = join(root, 'env.txt')
-  run({ args: ['board', 'set', '--command', `env | grep ^PNYX_ > ${out}.tmp && mv ${out}.tmp ${out}`] })
+  run({ args: ['board', 'set', '--command', captureEnvironment({ path: out })] })
   run({ args: ['task', 'create', '--title', 'Write the docs', '--folder', folder] })
   const task = Object.values(state().cards).find(c => c.title === 'Write the docs')!.id
 
-  const started = await startTask({ board: 'lab', task, via: 'command', prompt: 'Draft it', meta: { ...meta, id: 's1' } })
+  await run({ args: ['task', 'brief', task, '--brief', 'Draft it'] })
+  const started = await startTask({ board: 'lab', task, via: 'command', meta: { ...meta, id: 's1' } })
   assert.equal(started.via, 'command')
   assert.equal(state().cards[task]?.launch?.via, 'command')
   assert.equal(state().cards[task]?.launch?.pid, started.pid)
@@ -66,7 +71,7 @@ test('task start --via command runs the board command once and its session joins
   assert.equal(env.PNYX_BOARD, 'lab')
   assert.equal(env.PNYX_HOME, process.env.PNYX_HOME)
   assert.equal(env.PNYX_ROLE, 'worker')
-  assert.equal(env.PNYX_PROMPT, 'Draft it')
+  assert.match(env.PNYX_PROMPT!, /^Draft it\n\nYou are the Pnyx worker/)
   assert.equal(env.PNYX_FOLDER, folder)
   assert.equal(state().cards[task]!.notes?.at(-1)?.source, 'pnyx:start')
 
@@ -91,7 +96,7 @@ test('task start --via command runs the board command once and its session joins
 test('hydra start --via command makes its first session the board Hydra, never a worker', async () => {
   const { root, folder, run, state } = lab()
   const out = join(root, 'env.txt')
-  run({ args: ['board', 'set', '--command', `env | grep ^PNYX_ > ${out}.tmp && mv ${out}.tmp ${out}`] })
+  run({ args: ['board', 'set', '--command', captureEnvironment({ path: out })] })
   run({ args: ['task', 'create', '--title', 'Same folder', '--folder', folder] })
 
   await startHydra({ board: 'lab', via: 'command', folder, meta: { ...meta, id: 'h1' } })

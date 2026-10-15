@@ -1,21 +1,15 @@
 import type { BoardState, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
-import { Button, NumberField, Select, Switch } from '../components/ui/controls.tsx'
+import { boardConfig } from '../../../src/core/hydra.ts'
+import { Button, Input, NumberField, Select, Switch } from '../components/ui/controls.tsx'
 import { KeyboardSettings } from '../keyboard/settings.tsx'
 import { columnsFor } from './view.ts'
 import type { Command } from './connection.ts'
+import { resetWidths } from './search-catalog.ts'
 import { SearchSettings } from './search-settings.tsx'
 import { AgentKinds } from './agent-kinds.tsx'
-import { IntegrationSettings } from './integrations.tsx'
 
-export function Settings({
-  state,
-  view,
-  save,
-  close,
-  command,
-  notify,
-}: {
+export function Settings({ state, view, save, command, notify }: {
   state: BoardState
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
@@ -23,20 +17,14 @@ export function Settings({
   command: Command
   notify({ text }: { text: string }): void
 }) {
+  const board = boardConfig({ state })
+
   return (
     <section className="settings" aria-label="Settings">
-      <div className="row between">
-        <div>
-          <span className="eyebrow">MAKE ROOM FOR YOUR WORK</span>
-          <h1 data-settings-heading tabIndex={-1}>Settings</h1>
-          <p className="muted">Preferences follow this board across tabs.</p>
-        </div>
-        <Button variant="surface" onClick={close}>Back to board</Button>
-      </div>
+      <h1 data-settings-heading tabIndex={-1}>Settings</h1>
       <div className="settings-grid">
         <section className="settings-box">
-          <h2>Reading & conversation</h2>
-          <p className="muted">Keep the conversation beside your work, or open it in its column.</p>
+          <h2>Appearance</h2>
           <label className="setting-label">Theme</label>
           <Select
             label="Theme"
@@ -52,75 +40,64 @@ export function Settings({
               value={view[key]}
               min={VIEW_SIZE_LIMITS[key].min}
               max={VIEW_SIZE_LIMITS[key].max}
-              onChange={({ value: n }) => save({ patch: { [key]: n } })}
+              onChange={({ value }) => save({ patch: { [key]: value } })}
             />
           ))}
-          <label className="setting-label">Conversation placement</label>
-          <Select
-            label="Conversation placement"
-            value={view.panelPlacement}
-            options={[{ value: 'right', label: 'Right panel' }, { value: 'inline', label: 'Inline with cards' }]}
-            onChange={({ value: panelPlacement }) => save({ patch: { panelPlacement } })}
-          />
-          <NumberField
-            label="Panel width"
-            value={view.panelWidth}
-            min={VIEW_SIZE_LIMITS.panelWidth.min}
-            max={VIEW_SIZE_LIMITS.panelWidth.max}
-            onChange={({ value: panelWidth }) => save({ patch: { panelWidth } })}
-          />
-          <NumberField
-            label="Composer height"
-            value={view.composerHeight}
-            min={VIEW_SIZE_LIMITS.composerHeight.min}
-            max={VIEW_SIZE_LIMITS.composerHeight.max}
-            onChange={({ value: composerHeight }) => save({ patch: { composerHeight } })}
-          />
+          <Switch label="Last message on cards" checked={view.lastMessageOnCards} onChange={({ value }) => save({ patch: { lastMessageOnCards: value } })} />
         </section>
         <section className="settings-box">
-          <h2>Cards & details</h2>
-          <p className="muted">Resize an individual card on the board. Focus shows only prompts and agent messages, unless a card has an override.</p>
-          <NumberField
-            label="Default card height"
-            value={view.cardHeight}
-            min={VIEW_SIZE_LIMITS.cardHeight.min}
-            max={VIEW_SIZE_LIMITS.cardHeight.max}
-            onChange={({ value: cardHeight }) => save({ patch: { cardHeight } })}
-          />
-          <Switch label="Card accent colors" checked={view.cardColors} onChange={({ value: cardColors }) => save({ patch: { cardColors } })} />
-          <Switch label="Focus by default" checked={!view.toolDetails && !view.thinkingDetails} onChange={({ value: focus }) => save({ patch: { toolDetails: !focus, thinkingDetails: !focus } })} />
+          <h2>Conversations</h2>
+          <Switch label="Focus mode" checked={view.focusMode} onChange={({ value }) => save({ patch: { focusMode: value } })} />
+          <p className="muted">Hide tool calls and thinking.</p>
+          <Switch label="Tool call details" checked={view.toolDetails} onChange={({ value }) => save({ patch: { toolDetails: value } })} />
+          <p className="muted">Expand tool rows to read their details.</p>
+          <Switch label="Thinking details" checked={view.thinkingDetails} onChange={({ value }) => save({ patch: { thinkingDetails: value } })} />
+          <p className="muted">Expand thinking rows to read their details.</p>
         </section>
         <section className="settings-box">
-          <h2>Column widths</h2>
-          <p className="muted">Drag a boundary or focus it and use arrow keys. Shift moves in larger steps.</p>
-          {columnsFor({ state }).map(c => (
-            <NumberField
-              key={c.id}
-              label={c.title}
-              value={view.columnWidths[c.id] ?? 290}
-              min={VIEW_SIZE_LIMITS.columnWidth.min}
-              max={VIEW_SIZE_LIMITS.columnWidth.max}
-              onChange={({ value: n }) => save({ patch: { columnWidths: { [c.id]: n } } })}
-            />
+          <h2>Column template</h2>
+          {columnsFor({ state }).map(column => (
+            <div className="column-template" key={column.id}>
+              <label className="setting-label">{column.title}</label>
+              <Input
+                aria-label={`${column.title} description`}
+                defaultValue={column.description ?? ''}
+                onBlur={e => {
+                  if (e.target.value !== (column.description ?? '')) {
+                    void command({ name: 'column', args: ['describe', column.id, '--description', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+                  }
+                }}
+              />
+            </div>
           ))}
+          <Button variant="surface" onClick={() => save({ patch: resetWidths({ view }) })}>Reset widths to defaults</Button>
+        </section>
+        <section className="settings-box">
+          <h2>Hydra</h2>
+          <label className="setting-label">Identity</label>
+          <Input
+            aria-label="Hydra identity"
+            defaultValue={board.hydra.id}
+            onBlur={e => {
+              if (e.target.value !== board.hydra.id) {
+                void command({ name: 'board', args: ['set', '--hydra', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+              }
+            }}
+          />
+          <label className="setting-label">Default model</label>
+          <Input
+            aria-label="Hydra default model"
+            defaultValue={board.agents?.hydra?.model ?? ''}
+            placeholder="Harness default"
+            onBlur={e => {
+              if (e.target.value !== (board.agents?.hydra?.model ?? '')) {
+                void command({ name: 'kind', args: ['set', 'hydra', '--harness', board.agents?.hydra?.harness ?? 'claude', '--model', e.target.value] }).catch(e => notify({ text: e.message }))
+              }
+            }}
+          />
         </section>
         <AgentKinds state={state} command={command} notify={notify} />
-        <IntegrationSettings command={command} notify={notify} />
         <SearchSettings command={command} notify={notify} />
-        <section className="settings-box">
-          <h2>About this board</h2>
-          <p className="muted">Every saved preference is part of the board history. Cards stay where they are created or moved.</p>
-          <dl>
-            <dt>Last event</dt>
-            <dd>{state.seq}</dd>
-            <dt>View revision</dt>
-            <dd>{state.viewRevision ?? 0}</dd>
-            <dt>Keyboard</dt>
-            <dd>
-              Use Commands to discover actions and Keyboard shortcuts below to change bindings.
-            </dd>
-          </dl>
-        </section>
       </div>
       <KeyboardSettings prefs={view.keyboard} save={save} />
     </section>

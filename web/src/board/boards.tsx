@@ -6,13 +6,15 @@ import type { Command } from './connection.ts'
 
 const RENAME = 'rename-board'
 
-export function BoardTabs({ command, connected, notify }: {
+export function BoardTabs({ command, connected, notify, active, showBoard }: {
+  active: boolean
+  showBoard(): void
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
   const [boards, setBoards] = useState<BoardTab[]>([]), [current, setCurrent] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(false), [open, setOpen] = useState(false)
   const renaming = new URLSearchParams(location.search).has(RENAME)
 
   useEffect(() => {
@@ -38,38 +40,61 @@ export function BoardTabs({ command, connected, notify }: {
     })
   }
 
+  const board = boards.find(b => b.id === current)
+
   return (
-    <nav className="board-tabs" aria-label="Boards">
-      {boards.map(b => (b.id === current ? (
-        <span
-          key={b.id}
-          className="board-tab"
-          aria-current="page"
-          title={`Hydra: ${b.hydra}`}
-        >
-          <InlineTitle
-            value={b.name}
-            label={`Rename board ${b.name}`}
-            doubleClick
-            startEditing={renaming}
-            save={({ title }) => command({ name: 'boards', args: ['rename', b.id, title] }).then(r => {
-              setBoards(r.boards as BoardTab[])
-              history.replaceState(null, '', location.pathname)
-            })}
-          />
-        </span>
-      ) : (
-        <Button
-          key={b.id}
-          className="board-tab"
-          disabled={busy}
-          title={`Hydra: ${b.hydra}`}
-          onClick={() => go({ args: ['open', b.id] })}
-        >
-          {b.name}
-        </Button>
-      )))}
-      <Button disabled={!connected || busy} onClick={() => go({ args: ['create', 'New board'], rename: true })}>+ New board</Button>
-    </nav>
+    <div
+      className="board-switcher"
+      onBlur={e => {
+        if (!e.currentTarget.contains(e.relatedTarget)) {
+          setOpen(false)
+        }
+      }}
+      onKeyDown={e => {
+        if (e.key === 'Escape') {
+          e.stopPropagation(); setOpen(false)
+        }
+      }}
+    >
+      <Button
+        aria-label="Switch board"
+        aria-pressed={active}
+        aria-expanded={open}
+        onClick={() => {
+          showBoard(); setOpen(value => !value)
+        }}
+      >{board?.name ?? 'Board'} <span aria-hidden="true">▾</span>
+      </Button>
+      {renaming && board && (
+        <InlineTitle
+          value={board.name}
+          label={`Rename board ${board.name}`}
+          startEditing
+          save={({ title }) => command({ name: 'boards', args: ['rename', board.id, title] }).then(r => {
+            setBoards(r.boards as BoardTab[]); history.replaceState(null, '', location.pathname)
+          })}
+        />
+      )}
+      {open && (
+        <div className="board-list" aria-label="Boards">
+          {boards.map(b => (
+            <Button
+              key={b.id}
+              aria-current={b.id === current ? 'page' : undefined}
+              disabled={busy}
+              onClick={() => {
+                if (b.id === current) {
+                  showBoard(); setOpen(false)
+                } else {
+                  go({ args: ['open', b.id] })
+                }
+              }}
+            >{b.name}
+            </Button>
+          ))}
+          <Button disabled={!connected || busy} onClick={() => go({ args: ['create', 'New board'], rename: true })}>＋ New board</Button>
+        </div>
+      )}
+    </div>
   )
 }

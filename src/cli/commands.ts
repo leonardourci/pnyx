@@ -1,5 +1,5 @@
 import { setupService } from '../server/service.ts'
-import { DEFAULT_VIEW, DEFAULT_WIDTHS, viewFor } from '../core/view.ts'
+import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths, viewFor } from '../core/view.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { sendReply } from './reply.ts'
 import { cardSessionId, findSession, interactive, liveTask, rankOf, selfSession, sessionId } from '../core/tasks.ts'
@@ -1741,7 +1741,11 @@ const layout = guard({
 
       return {
         widths: { hydra: view.hydraWidth, columns: view.columnWidths },
-        defaults: DEFAULT_WIDTHS,
+        defaults: {
+          column: DEFAULT_WIDTHS.column,
+          hydra: view.defaultHydraWidth,
+          columns: view.defaultColumnWidths,
+        },
       }
     }
 
@@ -1751,7 +1755,7 @@ const layout = guard({
 
     const m = meta({ values })
 
-    return commit({ board, meta: m, intent: { type: 'board.view', card: '$board' }, decide: ({ state }) => decideView({ state, patch: { hydraWidth: DEFAULT_WIDTHS.hydra, columnWidths: Object.fromEntries(Object.keys(viewFor({ state }).columnWidths).map(id => [id, null])) }, meta: m }) })
+    return commit({ board, meta: m, intent: { type: 'board.view', card: '$board' }, decide: ({ state }) => decideView({ state, patch: resetLayoutWidths({ view: viewFor({ state }) }), meta: m }) })
   },
 })
 

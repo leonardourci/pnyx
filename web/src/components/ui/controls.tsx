@@ -42,6 +42,7 @@ export function Switch({
     <Button
       className="switch-label"
       role="switch"
+      aria-label={label}
       aria-checked={checked}
       aria-busy={busy}
       onClick={() => run({ save: () => onChange({ value: !checked }) })}

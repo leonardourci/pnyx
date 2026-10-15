@@ -341,6 +341,10 @@ export type RepliedEvent = EventBase & {
 }
 
 export interface ViewPreferences {
+  focusMode: boolean
+  lastMessageOnCards: boolean
+  defaultHydraWidth: number
+  defaultColumnWidths: Record<string, number>
   theme: 'light' | 'dark' | 'system'
   keyboard: import('./keyboard.ts').KeyboardPreferences
   fontSize: number
