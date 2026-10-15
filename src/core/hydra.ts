@@ -193,6 +193,19 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
     return true
   }
 
+  if (event.type === 'task.brief') {
+    const card = state.cards[event.cardId]
+
+    if (card) {
+      card.brief = event.data.text
+      card.revision++
+      card.updatedSeq = event.seq
+      card.updatedAt = event.at
+    }
+
+    return true
+  }
+
   if (event.type === 'task.created') {
     const { key, title, parentId, column, folder } = event.data
     const role = boardConfig({ state }).columns.find(c => c.id === column)?.role

@@ -47,7 +47,7 @@ test('typing, IME, dead keys, AltGraph and repeats cannot activate board command
     }
   }
 
-  assert.equal(resolve({ event: { key: 'k', metaKey: true }, change: { scope: 'composer', editing: true } }).action, undefined)
+  assert.equal(resolve({ event: { key: 'k', metaKey: true }, change: { scope: 'composer', editing: true } }).action, 'palette')
   assert.equal(resolve({ event: { key: 'Enter', metaKey: true }, change: { scope: 'composer', editing: true } }).action, 'send')
 
   for (const scope of ['composer', 'overlay'] as const) {
@@ -139,7 +139,7 @@ test('rebinding validates overlapping scopes and sequence prefixes on both platf
   assert.match(check({ bindings: { reply: ['j'] } })!, /conflicts/)
   assert.match(check({ bindings: { reply: ['Mod+k'] } })!, /conflicts/)
   assert.match(check({ bindings: { reply: ['Control+k'] } })!, /conflicts/)
-  assert.match(check({ bindings: { reply: ['g'], move: ['g m'] } })!, /conflicts/)
+  assert.match(check({ bindings: { reply: ['g'], 'move.left': ['g m'] } })!, /conflicts/)
   assert.match(check({ bindings: { send: ['Enter'] } })!, /Enter always adds a newline/)
   assert.match(check({ bindings: { cancel: ['q'] } })!, /Typing must remain literal/)
   assert.match(check({ bindings: { cancel: ['Backspace'] } })!, /keep editing keys available/)
@@ -148,9 +148,9 @@ test('rebinding validates overlapping scopes and sequence prefixes on both platf
   assert.match(check({ bindings: { reply: ['Mod+w'] } })!, /Reserved/)
   assert.match(check({ bindings: { reply: ['a b c d'] } })!, /three/)
   assert.match(check({ bindings: { madeup: [] } })!, /Unknown/)
-  assert.match(check({ bindings: { move: ['Meta+Mod+m'] } })!, /Invalid|modifier|logical/i)
+  assert.match(check({ bindings: { 'move.left': ['Meta+Mod+m'] } })!, /Invalid|modifier|logical/i)
   assert.equal(check({ bindings: { 'thread.down': ['n'], 'board.down': ['n'] } }), undefined)
-  assert.equal(check({ bindings: { reply: ['g r'], move: ['g m'], search: [] } }), undefined)
+  assert.equal(check({ bindings: { reply: ['g r'], 'move.left': ['g m'], search: [] } }), undefined)
   const prefs = { characterShortcuts: true, bindings: { settings: ['g s'], help: ['g h'] } }
   const first = resolve({ event: { key: 'g' }, change: {}, prefs }); assert.equal(first.consume, true); assert.equal(first.action, undefined)
   assert.equal(resolveKey({ event: { key: 's' }, context: { ...context, now: 500 }, prefs, progress: first.progress }).action, 'settings')
@@ -181,7 +181,7 @@ test('keyboard events replay, undo, merge and reset with revision checks and leg
       },
     },
   }).keyboard.bindings, {})
-  assert.throws(() => patchView({ state, input: { keyboard: { bindings: { reply: ['m'] } } } }), /conflicts/)
+  assert.throws(() => patchView({ state, input: { keyboard: { bindings: { reply: ['j'] } } } }), /conflicts/)
   assert.throws(() => patchView({ state, input: JSON.parse('{"keyboard":{"bindings":{"__proto__":[]}}}') }), /invalid/)
   const undone = reduce({ state, event: event({ d: decideUndo({ state, target: edit, meta: { actor: 'test', at: meta.at, ifRevision: 1 } }) }) })
   assert.deepEqual(viewFor({ state: undone }).keyboard, DEFAULT_KEYBOARD)
@@ -209,5 +209,12 @@ test('ragged columns remember positions, stop at ends, and recover moved or remo
     for (const label of labels) {
       assert.equal(labels.filter(other => other.startsWith(label)).length, 1)
     }
+  }
+})
+
+test('the highlighted task or column moves with the platform modifier and arrows', () => {
+  for (const direction of ['Left', 'Right', 'Up', 'Down']) {
+    assert.equal(resolve({ event: { key: `Arrow${direction}`, metaKey: true } }).action, `move.${direction.toLowerCase()}`)
+    assert.equal(resolve({ event: { key: `Arrow${direction}`, metaKey: true }, change: { editing: true } }).action, undefined)
   }
 })

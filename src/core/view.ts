@@ -1,8 +1,15 @@
 import { BoardError, COLUMNS, type BoardState, type ViewPreferences } from './model.ts'
 import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from './keyboard.ts'
 
+export const DEFAULT_COLUMN_WIDTH = 290
+
 export const DEFAULT_VIEW: ViewPreferences = {
   theme: 'system',
+  focusMode: true,
+  lastMessageOnCards: false,
+  hydraWidth: 380,
+  defaultHydraWidth: 380,
+  defaultColumnWidths: Object.fromEntries(COLUMNS.map(id => [id, DEFAULT_COLUMN_WIDTH])),
   keyboard: DEFAULT_KEYBOARD,
   fontSize: 14,
   chatFontSize: 16,
@@ -22,6 +29,7 @@ export const DEFAULT_VIEW: ViewPreferences = {
 
 export const VIEW_SIZE_LIMITS = {
   panelWidth: { min: 320, max: 720 },
+  hydraWidth: { min: 240, max: 720 },
   panelHeight: { min: 280 },
   composerHeight: { min: 140, max: 420 },
   fontSize: { min: 12, max: 20 },
@@ -59,21 +67,29 @@ const persistedMap = ({ values, min, max }: {
       })]),
   )
 
-// Focus shows only prompts and agent messages: on while a card shows neither tool
-// calls nor thinking, by its own override or the board default.
 export function traces({ view, card }: { view: ViewPreferences; card: string }) {
   const overrides = view.cardTraceOverrides[card]
-  const tools = overrides?.tools ?? view.toolDetails
-  const thinking = overrides?.thinking ?? view.thinkingDetails
+  const tools = !view.focusMode
+  const thinking = !view.focusMode
 
-  return { tools, thinking, focus: !tools && !thinking, overrides }
+  return { tools, thinking, focus: view.focusMode, overrides }
 }
 
-export const viewFor = ({ state }: { state: Pick<BoardState, 'view'> }): ViewPreferences => {
+export const viewFor = ({ state }: { state: Pick<BoardState, 'view' | 'board'> }): ViewPreferences => {
   const view = { ...structuredClone(DEFAULT_VIEW), ...state.view }
 
   return {
     ...view,
+    defaultHydraWidth: persistedSize({
+      value: view.defaultHydraWidth,
+      fallback: DEFAULT_VIEW.defaultHydraWidth,
+      ...VIEW_SIZE_LIMITS.hydraWidth,
+    }),
+    defaultColumnWidths: {
+      ...Object.fromEntries((state.board?.columns ?? view.customColumns)
+        .map(c => [c.id, DEFAULT_COLUMN_WIDTH])),
+      ...persistedMap({ values: view.defaultColumnWidths, ...VIEW_SIZE_LIMITS.columnWidth }),
+    },
     fontSize: persistedSize(
       {
         value: view.fontSize,
@@ -98,6 +114,12 @@ export const viewFor = ({ state }: { state: Pick<BoardState, 'view'> }): ViewPre
         max: VIEW_SIZE_LIMITS.codeFontSize.max,
       },
     ),
+    hydraWidth: persistedSize({
+      value: view.hydraWidth,
+      fallback: DEFAULT_VIEW.hydraWidth,
+      min: VIEW_SIZE_LIMITS.hydraWidth.min,
+      max: VIEW_SIZE_LIMITS.hydraWidth.max,
+    }),
     panelWidth: persistedSize(
       {
         value: view.panelWidth,
@@ -238,6 +260,8 @@ export function patchView({ state, input: rawInput }: {
           max: VIEW_SIZE_LIMITS[key].max,
           key,
         }); break
+      case 'defaultHydraWidth': next.defaultHydraWidth = size({ value, ...VIEW_SIZE_LIMITS.hydraWidth, key }); break
+      case 'hydraWidth': next.hydraWidth = size({ value, min: VIEW_SIZE_LIMITS.hydraWidth.min, max: VIEW_SIZE_LIMITS.hydraWidth.max, key }); break
       case 'panelWidth': next.panelWidth = size({ value, min: VIEW_SIZE_LIMITS.panelWidth.min, max: VIEW_SIZE_LIMITS.panelWidth.max, key }); break
       case 'composerHeight': next.composerHeight = size({ value, min: VIEW_SIZE_LIMITS.composerHeight.min, max: VIEW_SIZE_LIMITS.composerHeight.max, key }); break
       case 'cardHeight': next.cardHeight = size({ value, min: VIEW_SIZE_LIMITS.cardHeight.min, max: VIEW_SIZE_LIMITS.cardHeight.max, key }); break
@@ -247,13 +271,13 @@ export function patchView({ state, input: rawInput }: {
         }
 
         next.panelPlacement = value; break
-      case 'cardColors': case 'toolDetails': case 'thinkingDetails':
+      case 'cardColors': case 'toolDetails': case 'thinkingDetails': case 'focusMode': case 'lastMessageOnCards':
         if (typeof value !== 'boolean') {
           return invalid({ detail: key })
         }
 
         next[key] = value; break
-      case 'columnWidths': case 'cardHeights': {
+      case 'columnWidths': case 'cardHeights': case 'defaultColumnWidths': {
         const map = record({ value })
 
         if (!map) {
@@ -276,7 +300,7 @@ export function patchView({ state, input: rawInput }: {
           if (n === null) {
             delete next[key][id]
           } else {
-            const limits = key === 'columnWidths' ? VIEW_SIZE_LIMITS.columnWidth : VIEW_SIZE_LIMITS.cardHeight
+            const limits = key === 'cardHeights' ? VIEW_SIZE_LIMITS.cardHeight : VIEW_SIZE_LIMITS.columnWidth
             next[key][id] = size({ value: n, min: limits.min, max: limits.max, key })
           }
         }
