@@ -14,8 +14,8 @@ export function reminderTime({ when, now }: { when: string; now: string }): stri
     date.setDate(date.getDate() + 1)
     date.setHours(Number(tomorrow[1] ?? 9), Number(tomorrow[2] ?? 0), 0, 0)
     time = date.getTime()
-  } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/i.test(text)) {
-    const date = text.slice(0, 10)
+  } else if (/^(?:\d{4}|[+-]\d{6})-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/i.test(text)) {
+    const date = text.slice(0, text.search(/t/i))
     const calendar = new Date(`${date}T00:00:00Z`)
 
     if (Number.isFinite(calendar.getTime()) && calendar.toISOString().startsWith(date)) {

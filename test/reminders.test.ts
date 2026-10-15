@@ -190,3 +190,18 @@ test('a due reminder restores Needs you when its role column was deleted', () =>
   assert.equal(task().column, column.id)
   assert.deepEqual(replay({ state: emptyHydra(), events: readEvents({ hydraId }) }), state())
 })
+
+test('an expanded-year reminder cannot delay a nearer due reminder', () => {
+  const far = reminderTime({ when: 'in 4000000 days', now })
+  assert.match(far, /^\+/)
+  assert.equal(reminderTime({ when: far, now }), far)
+  run({ args: ['remind', 'work', far] })
+  run({ args: ['create', '--key', 'near', '--title', 'Near reminder'] })
+  run({ args: ['remind', 'near', later] })
+  assert.deepEqual(waitingReminders({ state: state() }).map(reminder => reminder.at), [later, far])
+  assert.equal(reminderDeadline({ state: state() }), Date.parse(later))
+  assert.equal(fireReminders({ hydraId, at: later }), 1)
+  assert.equal(state().cards[state().keys.near!]?.reminder?.dueAt, later)
+  assert.equal(task().reminder?.dueAt, undefined)
+  assert.equal(fireReminders({ hydraId, at: later }), 0)
+})

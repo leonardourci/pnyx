@@ -9,7 +9,7 @@ export function waitingReminders({ state }: { state: HydraState }) {
       at: card.reminder!.at,
       ...(card.project ? { project: card.project } : {}),
     }))
-    .sort((a, b) => a.at.localeCompare(b.at) || a.task.localeCompare(b.task))
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.task.localeCompare(b.task))
 }
 
 export function reminderDeadline({ state }: { state: HydraState }): number | undefined {
