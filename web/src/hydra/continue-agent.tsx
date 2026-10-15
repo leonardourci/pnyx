@@ -68,9 +68,9 @@ export function ContinueAgent({ card, command, connected, fresh, notify }: {
 
   return (
     <div className="request">
-      <p>{status.folderMissing ? 'The recorded folder is missing. Choose a folder to start fresh from the brief.' : 'The outside session has ended. Continue the same conversation in Pnyx.'}</p>
+      <p>{status.folderMissing ? 'The recorded folder is missing. Ask Hydra to start fresh from the brief.' : 'The outside session has ended. Continue the same conversation in Pnyx.'}</p>
       <Button disabled={!connected || busy} onClick={() => void run()}>
-        {status.folderMissing ? 'Start fresh from brief' : 'Continue in Pnyx'}
+        {status.folderMissing ? 'Ask Hydra to start fresh' : 'Continue in Pnyx'}
       </Button>
     </div>
   )

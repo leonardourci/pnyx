@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { decidePush } from '../src/core/decide.ts'
@@ -59,6 +59,14 @@ try {
   await fill({ label: 'Task brief', value: 'Read the component and explain the edge cases.' }); await text({ label: 'Save brief' })
   await eventually({ condition: 'document.querySelector(".task-brief button").disabled', label: 'brief saved' })
   assert.equal(hydraId().cards.c1?.brief, 'Read the component and explain the edge cases.')
+  await menu(); await text({ label: 'Start' })
+  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Create a worker for task")', label: 'Start posts the task request visibly in Hydra chat' })
+  assert.equal(hydraId().hydraMessages?.at(-1)?.task, 'c1')
+  assert.equal(hydraId().hydraMessages?.at(-1)?.action, 'worker')
+  assert.equal(hydraId().cards.c1?.agent, undefined)
+  assert.equal(received.length, 0)
+  await check({ condition: '!document.querySelector(".start-agent")', label: 'Start leaves worker choices to Hydra' })
+  await screenshot({ name: 'start-request-after.png' })
   await attach({ title: 'Alpha work' }); assert.equal(hydraId().cards.c1?.agent?.sessionId, 'a')
   await eventually({ condition: '[...document.querySelectorAll(".detail button")].some(b => b.textContent === "Continue in Pnyx")', label: 'ended outside session offers continuation' })
   await screenshot({ name: 'continue-before.png' })
@@ -82,21 +90,14 @@ try {
       assert.ok('event' in decision); writer.append({ event: decision.event })
     },
   })
-  await eventually({ condition: '[...document.querySelectorAll(".detail button")].some(b => b.textContent === "Start fresh from brief")', label: 'a missing folder offers a fresh start' })
-  await text({ label: 'Start fresh from brief' })
-  await eventually({ condition: '!!document.querySelector(".start-agent")', label: 'fresh start opens the folder and brief form' })
+  await eventually({ condition: '[...document.querySelectorAll(".detail button")].some(b => b.textContent === "Ask Hydra to start fresh")', label: 'a missing folder offers a fresh start' })
+  await text({ label: 'Ask Hydra to start fresh' })
+  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Create a worker for task")', label: 'fresh start requests a worker in Hydra chat' })
+  await check({ condition: '!document.querySelector(".start-agent")', label: 'start never opens a one-off form' })
   assert.equal(hydraId().cards.c1?.agent?.sessionId, 'b')
   assert.equal(received.length, 1)
-  await evaluate({ code: `const input = document.querySelector('.start-agent input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(join(home, 'missing'))}); input.dispatchEvent(new Event('input', { bubbles: true })); return true;` })
-  await text({ label: 'Start agent' })
-  await eventually({ condition: 'document.body.textContent.includes("folder not found") && !document.querySelector(".start-agent button[type=submit]").disabled', label: 'a rejected fresh start keeps its form' })
-  assert.equal(hydraId().cards.c1?.agent?.sessionId, 'b')
-  await evaluate({ code: `const input = document.querySelector('.start-agent input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(home)}); input.dispatchEvent(new Event('input', { bubbles: true })); return true;` })
-  await text({ label: 'Start agent' })
-  await eventually({ condition: 'document.querySelector(".detail .agent-chip")?.textContent === "Claude Code · Pnyx"', label: 'fresh start attaches a new hosted session' })
-  assert.notEqual(hydraId().cards.c1?.agent?.sessionId, 'b')
-  assert.equal(hydraId().sessions?.['claude-code:b']?.taskId, null)
-  assert.match(received[1]!, /^Read the component and explain the edge cases\./)
+  assert.equal(hydraId().hydraMessages?.at(-1)?.action, 'worker')
+  await screenshot({ name: 'start-after.png' })
 
   await menu(); await text({ label: 'Add subtask' }); await browser({ args: ['wait', 'New subtask'] })
   await fill({ label: 'Rename task New subtask', value: 'Browser subtask' }); await text({ label: 'Save title' }); await browser({ args: ['wait', 'Browser subtask'] })
@@ -124,6 +125,29 @@ try {
   await eventually({ condition: 'document.querySelector(".hydra-chat .composer textarea").value === ""', label: 'Hydra send clears the delivered draft' })
   assert.equal(hydraId().hydraMessages?.at(-1)?.text, 'Keep this Hydra focused.')
   await screenshot({ name: 'task-attachment.png' })
+  const firstmate = join(home, 'firstmate-fixture')
+  cpSync(join(import.meta.dirname, 'fixtures', 'firstmate-home'), firstmate, { recursive: true })
+  commands.hydra(['set', '--firstmate', firstmate])
+  commands.task(['create', '--title', 'Firstmate request', '--key', 'firstmate-request'])
+  await eventually({ condition: 'document.body.textContent.includes("Firstmate request")', label: 'Firstmate task arrives' })
+  const requested = hydraId().keys['firstmate-request']!
+  await click({ selector: `[data-task="${requested}"] .card-open` })
+  await menu(); await text({ label: 'Start' })
+  await eventually({ condition: 'document.body.textContent.includes("Sent to Firstmate")', label: 'Firstmate Start preserves inbox delivery' })
+  const notes = JSON.parse(readFileSync(join(firstmate, 'inbox.json'), 'utf8')) as { body: string }[]
+  assert.match(notes.at(-1)?.body ?? '', /asks for a worker on task/)
+  assert.equal(hydraId().hydraMessages?.at(-1)?.task, requested)
+  assert.equal(hydraId().cards[requested]?.agent, undefined)
+  await click({ selector: '[aria-label="Close detail"]' })
+  await click({ selector: '[data-task="c1"] .card-open' })
+  const oldSession = hydraId().cards.c1?.agent?.sessionId
+  await text({ label: 'Ask Hydra to start fresh' })
+  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Inspect its current attachment")', label: 'Firstmate fresh request appears in Hydra chat' })
+  const freshNotes = JSON.parse(readFileSync(join(firstmate, 'inbox.json'), 'utf8')) as { body: string }[]
+  assert.match(freshNotes.at(-1)?.body ?? '', /Start fresh from the brief.*Inspect its current attachment/)
+  assert.equal(hydraId().cards.c1?.agent?.sessionId, oldSession)
+  assert.equal(received.length, 1)
+
   process.stdout.write('Task, brief, attachment and column browser smoke passed.\n')
 } finally {
   await server.close(); await close(); rmSync(home, { recursive: true, force: true })
