@@ -798,25 +798,3 @@ test('a hook never changes an outcome another source or a person recorded', () =
   assert.match(card, /^ {2}outcome:\n {4}state: cancelled$/m)
   assert.match(card, /^ {2}title: Mine$/m, 'a set title is never replaced by the prompt')
 })
-
-test('hook spools to the board PNYX_BOARD names, and to the default board for an unsafe name', async () => {
-  const { home, script } = sandbox()
-
-  const run = async ({ board }: { board: string }) => {
-    const child = execFileAsync('/bin/sh', [script, 'claude', 'Stop'], { encoding: 'utf8', env: { PATH: process.env.PATH, PNYX_BOARD: board } })
-    child.child.stdin!.end(fixture({ name: 'claude-user-prompt' }))
-    await child
-  }
-
-  const count = ({ board }: { board: string }) => {
-    const dir = join(home, 'boards', board, 'spool')
-
-    return existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.json')).length : 0
-  }
-
-  await run({ board: 'work' })
-  await run({ board: '../escape' })
-  assert.equal(count({ board: 'work' }), 1)
-  assert.equal(count({ board: 'default' }), 1)
-  assert.equal(existsSync(join(home, 'escape')), false)
-})

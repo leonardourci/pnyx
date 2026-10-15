@@ -5,7 +5,7 @@ description: Use when you are a worker attached to a Pnyx task (your prompt name
 
 # Pnyx worker
 
-You work on one task of a Pnyx board. Hydra, the board's orchestrator, assigned it; the user and Hydra follow it on the board. Your task id is in your first prompt and in `$PNYX_TASK`, your board in `$PNYX_BOARD`; pass `--board <board>` on every command.
+You work on one task of a Pnyx board. Hydra, the board's orchestrator, assigned it; the user and Hydra follow it on the board. Your task id is in your first prompt (and in `$PNYX_TASK` when the board's own command started you), your board in `$PNYX_BOARD`; pass `--board <board>` on every command.
 
 ## Start
 

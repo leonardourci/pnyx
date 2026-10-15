@@ -26,6 +26,7 @@
     "test:semantic": "pnpm run build && node test/semantic-golden.ts"
   },
   "dependencies": {
+    "@getpaseo/client": "0.10.3",
     "axi-sdk-js": "^0.1.13",
     "tinykeys": "^4.0.1",
     "ws": "^8.22.0",

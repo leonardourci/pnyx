@@ -58,6 +58,10 @@ export interface AgentRef {
   agentType?: string
   cwd?: string
   transcriptPath?: string
+  // A Paseo agent: its id on the local daemon at paseoUrl, which takes its replies
+  // and holds its conversation.
+  paseoAgentId?: string
+  paseoUrl?: string
 }
 
 // A harness session's settings as the harness itself recorded them, by name: model,
@@ -240,8 +244,6 @@ export interface HydraIdentity {
   name: string
   session?: string
   home?: string
-  // The Paseo terminal `hydra start` opened, so Hydra's session never joins a task.
-  terminal?: string
 }
 export interface BoardColumn {
   id: Column
@@ -267,13 +269,8 @@ export interface BoardConfig {
   columns: BoardColumn[]
   // Task kind -> agent; `hydra` is the kind Hydra itself starts on.
   agents?: Record<string, AgentConfig>
-}
-export interface WorkerLaunch {
-  kind: string
-  agent: AgentConfig
-  folder: string
-  terminal: string
-  request?: string
+  // The shell command `task start --via command` and `hydra start --via command` run.
+  command?: string
 }
 export interface HydraMessage {
   id: string
@@ -291,7 +288,6 @@ export type HydraEvent = EventBase & (
   | { type: 'task.declared'; data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> }
   | { type: 'task.mirrored'; data: FirstmateRecord }
   | { type: 'hydra.message'; data: Omit<HydraMessage, 'id' | 'at' | 'actor'> }
-  | { type: 'worker.launched'; data: WorkerLaunch }
   | { type: 'board.agents'; data: { agents: Record<string, AgentConfig>; before: Record<string, AgentConfig> } }
 )
 
@@ -403,7 +399,7 @@ export type BoardEvent =
   | HydraEvent
   | ChatEvent
 export type EventType = BoardEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'worker.launched', 'board.agents']
+export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents']
 
 export interface BoardState {
   board?: BoardConfig

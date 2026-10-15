@@ -1,58 +1,52 @@
 ---
 name: pnyx-hydra
-description: Use when you are the Hydra (orchestrator) of a Pnyx board and are not Firstmate - reading Hydra's queue, creating and assigning tasks and subtasks, launching workers and tracking them with pnyx-axi.
+description: Use when you are Hydra, the orchestrator of a Pnyx board - creating its tasks, starting workers for them, keeping their status current and answering the owner's requests from the board.
 ---
 
-# Pnyx Hydra
+# Hydra on a Pnyx board
 
-You orchestrate one Pnyx board. The board is the record: every task, subtask, worker, request and declaration is an event in its log, so anyone can later ask what happened in a task and get the answer from `pnyx-axi task history`. You assign work; workers do it. Firstmate never loads this skill; it runs a board with its own mechanics.
+You are the board's Hydra: the one agent that owns its tasks. The owner reads the board to see what is happening, so every piece of work you take on is a task there, and every change in it is recorded through `pnyx-axi`. Pass `--board <board>` on every command; the board was named when you were started.
 
-Every command takes `--board <board>`; pass it on each call (it defaults to `default`). Writes made with `PNYX_ACTOR=hydra` in the environment (set when `pnyx-axi hydra start` launched you) are yours; otherwise add `--actor hydra` to each write so your own changes never wake you.
+## Read the board
 
-## Start
+- `pnyx-axi task list --board <board>` lists the tasks; `pnyx-axi task show <task> --board <board>` shows one.
+- `pnyx-axi hydra messages --board <board> --after <seq>` returns what the owner put in your chat: a task the owner sent you ("Send to Hydra") or asked a worker for ("Create a worker"). Keep the last `through` value and pass it as `--after` next time.
+- `pnyx-axi task history <task> --board <board>` returns everything that happened on a task, including past workers and their chats (`task chat <task> --session <session>`). Answer "what happened on X" from it instead of guessing.
 
-1. Bind yourself, once: `pnyx-axi board set --session self --board <board>` (or `--session <id>` from `pnyx-axi task sessions`).
-2. Read the state: `pnyx-axi hydra messages --board <board>` (keep its `through`), `pnyx-axi task list --board <board>` and `pnyx-axi kind list --board <board>`.
+## Wait for changes
 
-## Light check
-
-Do not reload the board to find out whether anything happened. Run
+Do not reread the board to find out whether anything happened. Run
 
 ```sh
 pnyx-axi hydra check --after <through> --wait 1800 --board <board>
 ```
 
-It prints only what you track (new messages, tasks created by someone else, worker declarations, attachments, column changes, manual moves, links, launches) and skips your own writes. Each row has the event `id`, its `type`, the `task` (`none` for the board), the message `action` (`send` or `worker`), the `actor` and a summary. With `--wait` it blocks until one appears or the time runs out; run it as a background command or monitor when your harness has one, so its exit wakes you. Pass its `through` to the next check. When it says `none`, nothing needs you.
+It prints only what you track (new messages, tasks created by someone else, worker declarations, attachments, column changes, manual moves and links), skipping your own writes. Each row has the event `id`, its `type`, the `task` (`none` for the board), the message `action` (`send` or `worker`), the `actor` and a summary. With `--wait` it blocks until a change appears or the time runs out; run it as a background command or monitor when your harness has one, so its exit wakes you, and pass its `through` to the next check. Your writes count as yours when `PNYX_ACTOR=hydra` is set or you pass `--actor hydra`.
 
-## Handle what changed
+## Keep tasks current
 
-- **A board message** (`task: none`): the user is talking to you. Plan the work and create tasks for it; answer in your own conversation.
-- **Send to Hydra** (`action: send` with a task): the user wants to talk about that task. Read `pnyx-axi task show <id>` and `pnyx-axi task history <id>` and continue the conversation about it.
-- **Create a worker** (`action: worker` with a task): launch one (below), passing `--request <message id>`.
-- **A declaration** from a worker: `needs_you` or `blocked` means it is waiting; answer it with `pnyx-axi reply <task> --text <text>` when you can, or leave the task in Needs you for the user. `done` closes the work; check the result, then pick up what it unblocks.
-- **A task or column the user created or moved**: it is context, not a command. Ask or plan, but never undo the user's edits.
+- New work: `pnyx-axi task create --title "<what>" --board <board>`; a piece of a larger task: add `--parent <task>` (one level only).
+- Status is what you declare, never inferred: `pnyx-axi task status <task> working|needs_you|paused|blocked|done --note "<one line>" --board <board>`. Silence changes nothing, so declare `needs_you` with the question in the note whenever the owner has to act, and `done` only when the work is finished.
+- Never move cards between columns; the owner arranges them.
+- Evidence: `pnyx-axi link <task> --url <pull request or ticket> --board <board>`.
 
-## Tasks
+## Start workers
 
-- Create: `pnyx-axi task create --title <title> [--column <id>] [--folder <dir>]`. A task in no particular column starts parked; a task can stay parked with no worker.
-- Subtasks: `pnyx-axi task create --title <title> --parent <task>`; only one level. Dispatch as many as the task needs and give each its own worker.
-- Rename with `task rename`. Columns are the user's; use `column` commands only when asked.
-- Record your own decisions on a task with `pnyx-axi task status <id> <state> --note <text>` only when the state really changed; silence never moves a task.
+`pnyx-axi task start <task> --board <board>` starts one worker for a task and attaches it:
 
-## Workers
+- `--via paseo [--kind <kind>] --folder <absolute path>` starts it in the local Paseo daemon on the kind's agent (`pnyx-axi kind list --board <board>`; the `default` kind when none is given). `--harness claude|codex` and `--prompt "<opening message>"` override the kind's harness and the default opening message, which names the task and the `pnyx-worker` skill workers follow.
+- `--via command [--prompt "<text>"]` runs the board's own start command in the task's folder.
+- `--via firstmate [--prompt "<text>"]` hands the request to the Firstmate home that is this board's Hydra.
+
+A task holds one worker; `task detach <task>` frees it without stopping the agent. A repeated `--event-id` never starts a second worker.
+
+## When you are a Firstmate home
+
+Your own tasks still come first: Firstmate's sync mirrors each of them onto this board as its own task. When the owner asks you for a worker on a board task, dispatch it the way you dispatch any task, then nest the mirrored task under the board task so the owner sees one piece of work:
 
 ```sh
-pnyx-axi worker create <task> [--kind <kind>] [--cwd <dir>] [--request <message id>] [--text "<instructions>"]
+pnyx-axi task list --board <board>          # find the mirrored task and its key
+printf '{"parent":"<board task>"}' | pnyx-axi push --key <mirrored key> --file - --board <board>
 ```
 
-This opens a Paseo terminal in `--cwd`, else the task's folder, else yours, starts the kind's agent with a first prompt that names the task, and records `worker.launched`. The agent's first session in that terminal joins the task. Pick the kind from `pnyx-axi kind list`; `default` is used when none fits. `--preview` prints the command line instead, for a terminal Pnyx cannot open.
-
-One task has at most one worker. To hand a task to someone else, `pnyx-axi task detach <task>` first; the previous worker stays in the task's history, and `pnyx-axi task chat <task> --session <session>` reads any past worker's conversation.
-
-## Answering "what happened in X"
-
-`pnyx-axi task history <task> [--full]` lists the task's and its subtasks' events and every session that worked on it, and `pnyx-axi search "<words>" --board <board>` finds older work across titles, events, notes and transcripts. Read those before answering; never guess.
-
-## Limits
-
-You do not supervise processes: Pnyx never stops, restarts or polls an agent. A worker that goes quiet stays where it is; ask it with `pnyx-axi reply` if you need to know.
+Keep both statuses honest: your Firstmate status feeds the mirrored task, and the board task gets your own `task status` declarations.

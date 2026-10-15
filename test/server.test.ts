@@ -845,7 +845,7 @@ test('the open task follows attachment identity and watches only its current tra
   }
 })
 
-test('the board edits task kinds over the socket but cannot check or launch Hydra', async () => {
+test('the board edits task kinds over the socket', async () => {
   await boardWithCard()
   const t = await tab(); await t.next()
   t.command({ id: 'kind-1', name: 'kind', args: ['set', 'review', '--harness', 'codex', '--quota', 'high'] })
@@ -856,7 +856,47 @@ test('the board edits task kinds over the socket but cannot check or launch Hydr
     .split('\n')
     .at(-1)!
   assert.equal(JSON.parse(last).actor, 'web')
-  t.command({ id: 'start-1', name: 'hydra', args: ['start', '--preview'] })
-  const refused = await t.next(); assert.equal(refused.type, 'error')
   t.ws.close()
+})
+
+test('board tabs list, create, rename and open boards, each on its own server', async () => {
+  cli({ args: ['board', 'create', 'default', '--name', 'Main'] })
+  server = await startServer({ board: 'default', port: 0 })
+  const t = await tab()
+
+  const receipt = async ({ id }: { id: string }) => {
+    for (;;) {
+      const message = await t.next()
+
+      if ((message.type === 'receipt' || message.type === 'error') && message.id === id) {
+        type Boards = { boards?: { id: string; name: string }[]; url?: string; error?: string }
+
+        return message as ServerMessage & Boards
+      }
+    }
+  }
+
+  t.command({ id: 'b1', name: 'boards', args: [] })
+  assert.deepEqual((await receipt({ id: 'b1' })).boards?.map(b => [b.id, b.name]), [['default', 'Main']])
+
+  t.command({ id: 'b2', name: 'boards', args: ['rename', 'default', 'Work'] })
+  assert.deepEqual((await receipt({ id: 'b2' })).boards?.map(b => b.name), ['Work'])
+
+  // A new board gets the next free id and its own running server.
+  t.command({ id: 'b3', name: 'boards', args: ['create', 'Side'] })
+  const created = await receipt({ id: 'b3' })
+
+  try {
+    assert.deepEqual(created.boards?.map(b => [b.id, b.name]), [['board-2', 'Side'], ['default', 'Work']])
+    assert.match(created.url!, /^http:\/\/127\.0\.0\.1:\d+$/)
+    assert.notEqual(created.url, `http://127.0.0.1:${server.port}`)
+    // Opening it again finds the same server.
+    t.command({ id: 'b4', name: 'boards', args: ['open', 'board-2'] })
+    assert.equal((await receipt({ id: 'b4' })).url, created.url)
+  } finally {
+    cli({ args: ['stop', '--board', 'board-2'] })
+  }
+
+  t.command({ id: 'b5', name: 'boards', args: ['open', 'missing'] })
+  assert.match((await receipt({ id: 'b5' })).error ?? '', /board not found/)
 })

@@ -154,3 +154,14 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .inline-comment { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; border-left: 2px solid var(--color-gold-line); background: var(--color-gold-wash); padding: 10px; margin: 8px 0; font-size: .8em; }.inline-comment blockquote { margin: 0; max-height: 100px; overflow: auto; white-space: pre-wrap; color: var(--color-muted); }.inline-comment p { white-space: pre-wrap; }.inline-comment .textarea { height: 84px; }.inline-comment .button { min-height: 26px; padding: 3px 7px; }
 .running { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; font-size: .72em; color: var(--color-blue); }.running i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .thread > .composer { margin: 16px 0 4px; padding: 12px 14px 10px; border: 1px solid var(--color-line); border-radius: 16px; max-height: none; }.thread > .composer:focus-within { border-color: var(--color-gold-line); }.thread > .composer .textarea { padding: 0; border: 0; background: transparent; outline: none; font-size: var(--text-chat); }
+.start-agent { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.start-agent h3 { margin: 0; }
+.start-agent label { display: flex; flex-direction: column; gap: 4px; color: var(--color-muted); font-size: .8em; }
+.start-agent label .input { font-size: 1.25em; color: var(--color-ink); }
+.start-agent .request p { margin: 0 0 6px; }
+.board-tabs { display: flex; align-items: center; gap: 4px; min-width: 0; overflow-x: auto; font-size: .8em; }
+.board-tabs .board-tab { padding: 4px 9px; border-radius: 6px; color: var(--color-muted); white-space: nowrap; }
+.board-tabs .board-tab[aria-current=page] { color: var(--color-ink); background: var(--color-raised); }
+.board-tabs form { display: flex; align-items: center; gap: 4px; }.board-tabs form .input { width: 140px; }
+.integrations dd { display: flex; flex-direction: column; gap: 3px; }.integrations dd .ok { color: var(--color-green); }.integrations code { overflow-wrap: anywhere; font-size: .95em; }
+.settings-box.integrations > .button { margin-top: 14px; }

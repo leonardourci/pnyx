@@ -7,6 +7,7 @@ import { SEARCH_HELP, SETTINGS_HELP, searchCommands } from '../search/cli.ts'
 import { TOP_LEVEL_HELP, commandHelp, commands, home } from './commands.ts'
 import { AGENT_HELP, REPLY_HELP, agent, reply } from './reply.ts'
 import { WORKER_HELP, workerCommands } from './workers.ts'
+import { INTEGRATIONS_HELP, integrationsCommand } from './integrations.ts'
 
 // Same relative path from src/cli and dist/cli.
 const { version } = createRequire(import.meta.url)('../../package.json') as { version: string }
@@ -16,6 +17,7 @@ const HELP: Record<string, string> = {
   reply: REPLY_HELP,
   agent: AGENT_HELP,
   ...WORKER_HELP,
+  integrations: INTEGRATIONS_HELP,
 }
 
 await runAxiCli({
@@ -33,6 +35,7 @@ await runAxiCli({
     ...firstmateCommands,
     reply,
     agent,
+    integrations: integrationsCommand,
     ...searchCommands,
     // Shadows the SDK's npm self-update: pnyx-axi is not published while pre-v1.
     update: () => {

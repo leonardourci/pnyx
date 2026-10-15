@@ -1,88 +1,233 @@
-// Starts an agent in a new Paseo terminal by typing its command line there, the
-// same way a person would. Pnyx never supervises the process afterwards.
-import { execFileSync } from 'node:child_process'
-import { BoardError, type AgentConfig } from '../../core/model.ts'
+// Starts a Claude Code or Codex agent for a task through the local Paseo daemon,
+// then attaches its session to the task through the board's own writer. Paseo runs
+// and keeps the agent; the conversation continues in Pnyx or in Paseo.
+import { randomUUID } from 'node:crypto'
+import { statSync } from 'node:fs'
+import { decidePush, decideSession, findCard, type Meta } from '../../core/decide.ts'
+import { BoardError, type AgentConfig, type AgentRef } from '../../core/model.ts'
+import { paseoUrl } from '../../core/paseo.ts'
+import { sessionId } from '../../core/tasks.ts'
+import { canonical, drainSpool, type Output } from '../../cli/commands.ts'
+import { pnyxHome, withWriter } from '../../store/board-store.ts'
+import { openPaseo, type Connect } from './client.ts'
 
-const TIMEOUT = 15000
+export const HARNESSES = { claude: 'claude-code', codex: 'codex' } as const
+export type Harness = keyof typeof HARNESSES
+const MAX_PROMPT = 32000
 
-function run({ command, args }: { command: string; args: string[] }): string {
-  try {
-    return execFileSync(command, args, { encoding: 'utf8', timeout: TIMEOUT, stdio: ['ignore', 'pipe', 'pipe'] })
-  } catch (error) {
-    const detail = (error as { stderr?: string }).stderr?.trim() || (error as Error).message
-
-    throw new BoardError({ message: `${command} ${args[0]} failed: ${detail}`, code: 'LAUNCH_FAILED', help: [`Check that \`${command}\` is installed and its daemon runs`] })
-  }
-}
-
-// Control characters are typed into a live shell, where its line editor would act on
-// them (Ctrl-U erases the line), so they become spaces before quoting.
-const quote = ({ text }: { text: string }) => `'${text.replace(/\p{Cc}+/gu, ' ').replace(/'/g, '\'\\\'\'')}'`
-
-export function commandLine({ agent, prompt, env }: {
-  agent: AgentConfig
+export async function startAgent({
+  board, task, harness, agent: chosen, prompt, folder, url, meta, connect = openPaseo,
+}: {
+  board: string
+  task: string
+  harness: string
+  agent?: AgentConfig
   prompt: string
-  env: Record<string, string>
-}): string {
-  const flags = agent.harness === 'claude'
-    ? [...(agent.model ? ['--model', agent.model] : []), ...(agent.effort ? ['--effort', agent.effort] : []), ...(agent.mode ? ['--permission-mode', agent.mode] : [])]
-    : [...(agent.model ? ['-m', agent.model] : []), ...(agent.effort ? ['-c', `model_reasoning_effort="${agent.effort}"`] : []), ...(agent.mode === 'bypass' ? ['--dangerously-bypass-approvals-and-sandbox'] : agent.mode ? ['-s', agent.mode] : [])]
+  folder?: string
+  url?: string
+  meta: Meta
+  connect?: Connect
+}): Promise<Output> {
+  if (!Object.hasOwn(HARNESSES, harness)) {
+    throw new BoardError({ message: `unknown harness: ${harness}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
+  }
 
-  return [
-    ...Object.entries(env).map(([key, value]) => `${key}=${quote({ text: value })}`),
-    agent.harness,
-    ...flags.map(text => quote({ text })),
-    quote({ text: prompt.replace(/\s+/g, ' ').trim() }),
-  ].join(' ')
+  if (!prompt.trim() || prompt.length > MAX_PROMPT) {
+    throw new BoardError({ message: `the opening message must be 1 to ${MAX_PROMPT} characters`, code: 'VALIDATION_ERROR' })
+  }
+
+  const endpoint = paseoUrl({ url })
+  // Paseo creates at most one agent per key, so a retried start never starts a second one.
+  const id = meta.id ?? randomUUID()
+  const attachId = `${id}:attach`
+  const claimed = withWriter({
+    board,
+    fn: ({ writer }) => {
+      drainSpool({ writer })
+      const card = findCard({ state: writer.state, ref: task })
+
+      if (attachId in writer.state.eventIds) {
+        return { card, cwd: '', duplicate: true }
+      }
+
+      if (meta.ifRevision !== undefined && meta.ifRevision !== card.revision) {
+        throw new BoardError({ message: `card ${card.id} is at revision ${card.revision}, not ${meta.ifRevision}`, code: 'REVISION_CONFLICT', help: [`Run \`pnyx-axi card ${card.id}\` and retry`] })
+      }
+
+      if (card.sessionIds?.length) {
+        throw new BoardError({ message: `task ${card.id} already has an attached agent; detach it first`, code: 'SESSION_CONFLICT' })
+      }
+
+      const cwd = canonical({ path: folder }) ?? card.folder
+
+      if (!cwd || !isFolder({ path: cwd })) {
+        throw new BoardError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
+      }
+
+      if (cwd !== card.folder) {
+        const decision = decidePush({ state: writer.state, key: card.key, input: { folder: cwd }, meta: { ...meta, id: `${id}:folder`, ifRevision: undefined } })
+
+        if ('event' in decision) {
+          writer.append({ event: decision.event })
+        }
+      }
+
+      return { card, cwd, duplicate: false }
+    },
+  })
+
+  if (claimed.duplicate) {
+    return { task: claimed.card.id, event: 'none: duplicate', help: ['This start was already recorded; nothing was started again'] }
+  }
+
+  const { agent, ref } = await createPaseoAgent({
+    harness: harness as Harness,
+    agent: chosen,
+    prompt,
+    cwd: claimed.cwd,
+    title: claimed.card.title,
+    id,
+    // No PNYX_TASK: the task attaches the Paseo session below, so the agent's own
+    // hooks must not race it onto the task.
+    env: { PNYX_HOME: pnyxHome(), PNYX_BOARD: board },
+    labels: { 'pnyx.task': claimed.card.id },
+    url: endpoint,
+    connect,
+  })
+
+  try {
+    return withWriter({
+      board,
+      fn: ({ writer }) => {
+        drainSpool({ writer })
+        // The session is recorded as its own observation, then attached like any other.
+        const pushed = decidePush({
+          state: writer.state,
+          key: `paseo:${agent.id}`,
+          input: {
+            title: claimed.card.title,
+            agent: ref,
+            activity: 'working',
+            source: { adapter: 'paseo', instanceId: endpoint, objectId: agent.id, observedAt: meta.at },
+          },
+          meta: { ...meta, id: `${id}:session`, ifRevision: undefined },
+        })
+
+        if ('event' in pushed) {
+          writer.append({ event: pushed.event })
+        }
+
+        const attached = decideSession({
+          state: writer.state,
+          ref: sessionId({ agent: ref }),
+          task: claimed.card.id,
+          meta: { ...meta, id: attachId, ifRevision: undefined },
+        })
+
+        if ('event' in attached) {
+          writer.append({ event: attached.event })
+        }
+
+        return {
+          task: claimed.card.id,
+          agent: { harness, paseo: agent.id, folder: claimed.cwd },
+          help: [`Run \`pnyx-axi reply ${claimed.card.id} --text <text>\` to continue, or open the agent in Paseo`],
+        }
+      },
+    })
+  } catch (error) {
+    const reason = error instanceof BoardError ? error.message : 'the board could not record it'
+    throw new BoardError({
+      message: `Paseo started agent ${agent.id}, but it was not attached: ${reason}`,
+      code: 'NOT_ATTACHED',
+      help: [`Run \`pnyx-axi attach ${claimed.card.id} --session ${sessionId({ agent: ref })}\` once the task is free`],
+    })
+  }
 }
 
-interface QuotaModel {
-  provider: string
+// Asks the daemon for one agent. The idempotency key makes a retried create return
+// the agent the first one made. env reaches the agent's own hooks, so they report to
+// this Pnyx home, board and task rather than the installed defaults.
+export async function createPaseoAgent({
+  harness, agent: chosen, prompt, cwd, title, id, env, labels, url, connect = openPaseo,
+}: {
+  harness: Harness
+  // A task kind's model, effort and mode, used when its harness is this one.
+  agent?: AgentConfig
+  prompt: string
+  cwd: string
+  title: string
   id: string
-  effective?: { effectivePercentRemaining?: number }
+  env: Record<string, string>
+  labels: Record<string, string>
+  url: string
+  connect?: Connect
+}): Promise<{ agent: { id: string }; ref: AgentRef }> {
+  const client = await connect({ url })
+  let agent: { id: string }
+
+  try {
+    const { models } = await client.providers.listModels(harness, { cwd })
+    const kind = chosen?.harness === harness ? chosen : undefined
+    const wanted = kind?.model ? models?.find(m => m.id === kind.model) : undefined
+
+    // A quota pick Paseo does not offer falls back to its default; a named model must exist.
+    if (kind?.model && !wanted && !kind.quota) {
+      throw new BoardError({
+        message: `Paseo has no ${harness} model ${kind.model}`,
+        code: 'VALIDATION_ERROR',
+        help: [`Use one of: ${(models ?? []).map(m => m.id).slice(0, 12)
+          .join(', ')}`],
+      })
+    }
+
+    const model = wanted ?? models?.find(m => m.isDefault) ?? models?.[0]
+
+    if (!model) {
+      throw new BoardError({ message: `Paseo has no ${harness} model available`, code: 'PASEO_ERROR', help: [`Check \`paseo status\` for the ${harness} provider`] })
+    }
+
+    const config = {
+      provider: `${harness}/${model.id}`,
+      ...(kind?.effort ? { thinkingOptionId: kind.effort } : {}),
+      ...(kind?.mode ? { modeId: kind.mode } : {}),
+    }
+    agent = await client.agents.create({
+      config, cwd, title, prompt, idempotencyKey: id, labels, env,
+    })
+  } catch (error) {
+    if (error instanceof BoardError) {
+      throw error
+    }
+
+    throw new BoardError({ message: `Paseo did not start the agent: ${(error as Error).message}`.slice(0, 500), code: 'PASEO_ERROR', help: ['Check the Paseo app before retrying'] })
+  } finally {
+    await client.close().catch(() => undefined)
+  }
+
+  const ref = {
+    provider: HARNESSES[harness], sessionId: agent.id, paseoAgentId: agent.id, paseoUrl: url, cwd,
+  }
+
+  return { agent, ref }
 }
 
-// The model with the most runway in the bucket for this harness, or undefined when
-// quota-axi cannot tell.
-export function quotaModel({ harness, quota }: {
-  harness: AgentConfig['harness']
-  quota: NonNullable<AgentConfig['quota']>
-}): string | undefined {
+function isFolder({ path }: { path: string }): boolean {
   try {
-    const out = execFileSync('quota-axi', ['models', '--intelligence', quota, '--sort', 'runway', '--json', '--max-age', '5m', '--provider', harness], { encoding: 'utf8', timeout: TIMEOUT, stdio: ['ignore', 'pipe', 'ignore'] })
-    const { models = [] } = JSON.parse(out) as { models?: QuotaModel[] }
-
-    return models.find(m => m.provider === harness
-      && (m.effective?.effectivePercentRemaining ?? 1) > 0)?.id
+    return statSync(path).isDirectory()
   } catch {
-    return undefined
+    return false
   }
 }
 
-// A new terminal in the caller's Paseo workspace when it runs inside one.
-export function createTerminal({ cwd, name }: { cwd: string; name: string }): string {
-  const workspace = process.env.PASEO_WORKSPACE_ID
-  const out = run({ command: 'paseo', args: ['terminal', 'create', '--cwd', cwd, '--name', name, '--json', ...(workspace ? ['--workspace', workspace] : [])] })
-  let id: unknown
+// Whether the daemon answers, for a form that should say why it cannot start yet.
+export async function paseoStatus({ url, connect = openPaseo }: {
+  url?: string
+  connect?: Connect
+}): Promise<Output> {
+  const endpoint = paseoUrl({ url })
+  const client = await connect({ url: endpoint })
+  await client.close().catch(() => undefined)
 
-  try {
-    id = (JSON.parse(out) as { id?: unknown }).id
-  } catch { /* Reported below. */ }
-
-  if (typeof id !== 'string' || !id) {
-    throw new BoardError({ message: `paseo terminal create returned no terminal id: ${out.trim()}`, code: 'LAUNCH_FAILED' })
-  }
-
-  return id
-}
-
-export function killTerminal({ terminal }: { terminal: string }): void {
-  try {
-    run({ command: 'paseo', args: ['terminal', 'kill', terminal] })
-  } catch { /* The launch error is the one to report. */ }
-}
-
-export function typeCommand({ terminal, command }: { terminal: string; command: string }): void {
-  run({ command: 'paseo', args: ['terminal', 'send-keys', terminal, '-l', '--', command] })
-  run({ command: 'paseo', args: ['terminal', 'send-keys', terminal, 'Enter'] })
+  return { paseo: 'running', url: endpoint }
 }
