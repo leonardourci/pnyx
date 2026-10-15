@@ -68,7 +68,7 @@ try {
   await browser({ args: ['wait', 'Context smoke task'] })
   const state = loadHydra({ hydraId: 'default' }).state
   assert.equal(state.cards[state.keys.work!]!.hidden, false)
-  assert.equal(state.config?.columns[0]?.description, 'Questions requiring an owner answer.')
+  assert.equal(state.config?.columns.find(c => c.id === 'needs_you')?.description, 'Questions requiring an owner answer.')
   assert.equal(state.hydraMemory?.['review-policy']?.text, 'Check the canary.')
   commands.task(['create', '--key', 'digest', '--title', 'Digest smoke task'])
   const transcript = join(home, 'worker.jsonl')

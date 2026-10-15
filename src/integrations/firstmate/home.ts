@@ -28,6 +28,9 @@ export interface TaskObservation {
   // The Paseo terminal the task's agent was launched in, from its meta, which tells
   // tasks sharing a worktree apart.
   paseoTerminal?: string
+  // The backlog section the task's row sits under, lower-cased; empty without a row.
+  section: string
+  hold?: Hold
   decisions: OpenDecision[]
   // The latest status line, when it is failed: or blocked:.
   stalled?: { verb: string; note: string }
@@ -42,6 +45,16 @@ export interface HomeObservation {
   tasks: TaskObservation[]
 }
 
+// blockers keeps only ids whose rows are not Done; a missing row stays a blocker.
+export interface Hold {
+  reason?: string
+  kind?: string
+  until?: string
+  // The day the hold was set, from the row's `Captain hold set:` line or its `since` fact.
+  set?: string
+  blockers: string[]
+}
+
 interface BacklogRow {
   title: string
   repo?: string
@@ -49,6 +62,7 @@ interface BacklogRow {
   merged: boolean
   raw: string
   section: string
+  hold?: Hold
 }
 
 export function resolveHome({ path }: { path: string }): string {
@@ -121,14 +135,21 @@ const ROW_FACTS = new Set(['repo', 'kind', 'priority', 'since', 'merged', 'repor
 export function parseBacklog({ text }: { text: string }): Map<string, BacklogRow> {
   const rows = new Map<string, BacklogRow>()
   let section = ''
+  let last: BacklogRow | undefined
 
   for (const line of text.split('\n')) {
     if (line.startsWith('## ')) {
       section = line.slice(3).trim()
         .toLowerCase()
+      last = undefined
     }
 
     const row = /^- \[[ xX]\] (\S+) - (.+)$/.exec(line)
+    const stamp = /^\s+Captain hold set:\s*(\d{4}-\d{2}-\d{2})/.exec(line)?.[1]
+
+    if (stamp && last?.hold) {
+      last.hold.set = stamp
+    }
 
     if (!row) {
       continue
@@ -142,14 +163,23 @@ export function parseBacklog({ text }: { text: string }): Map<string, BacklogRow
       title = title.slice(0, m.index)
     }
 
-    rows.set(row[1]!, {
+    const held = facts.hold !== undefined || facts['hold-kind'] !== undefined
+    last = {
       title: title || row[1]!,
       ...(facts.repo ? { repo: facts.repo } : {}),
       done: section === 'done',
       merged: section === 'done' && facts.merged !== undefined,
       raw: line,
       section,
-    })
+      ...(held ? { hold: { ...(facts.hold ? { reason: facts.hold } : {}), ...(facts['hold-kind'] ? { kind: facts['hold-kind'] } : {}), ...(facts['hold-until'] ? { until: facts['hold-until'] } : {}), ...(facts.since ? { set: facts.since } : {}), blockers: [...title.matchAll(/blocked-by:\s+([^\s)]+)/g)].map(m => m[1]!) } } : {}),
+    }
+    rows.set(row[1]!, last)
+  }
+
+  for (const row of rows.values()) {
+    if (row.hold) {
+      row.hold.blockers = row.hold.blockers.filter(id => !rows.get(id)?.done)
+    }
   }
 
   return rows
@@ -200,6 +230,9 @@ export function readHome({ home }: { home: string }): HomeObservation {
     const meta = parseMeta({ text: metaText ?? '' })
     const log = statusText ?? ''
     const row = backlog.get(task)
+    // The mirrored row keeps its shape: an extra field would read as a changed Firstmate record.
+    const mirroredRow = row && { ...row }
+    delete mirroredRow?.hold
     const pr = meta.pr
     const activity = latestActivity({ log })
     const last = latestLine({ log })
@@ -213,13 +246,17 @@ export function readHome({ home }: { home: string }): HomeObservation {
       ...(pr ? { pr } : {}),
       done: row?.done ?? false,
       merged: row?.merged ?? false,
+      section: row?.section ?? '',
+      ...(row?.hold ? { hold: row.hold } : {}),
       ...(activity ? { activity } : {}),
       ...(worktree ? { worktree } : {}),
       ...(TERMINAL_FIELDS.paseoTerminal.test(paseoTerminal ?? '') ? { paseoTerminal } : {}),
       decisions: openDecisions({ log, kind: meta.kind || 'ship' }),
       ...(last && (last.verb === 'failed' || last.verb === 'blocked') ? { stalled: { verb: last.verb, note: last.note } } : {}),
       notes: taskNotes({ home, task, log }),
-      record: { home, task, meta, status: log, present, ...(row ? { backlog: { ...row } } : {}) },
+      record: {
+        home, task, meta, status: log, present, ...(mirroredRow ? { backlog: mirroredRow } : {}),
+      },
     })
   }
 

@@ -141,7 +141,7 @@ h3 { font-weight: 550; }
 
 .column-needs_you h2 { color: var(--color-gold); }
 
-.column-workers_on_it h2, .column-done h2 { color: var(--color-green); }
+.column-in_progress h2, .column-done h2 { color: var(--color-green); }
 
 .column-review h2 { color: var(--color-purple); }
 
@@ -157,7 +157,7 @@ h3 { font-weight: 550; }
 
 .card.accent-needs_you { border-top-color: var(--color-gold); }
 
-.card.accent-workers_on_it { border-top-color: var(--color-blue); }
+.card.accent-in_progress { border-top-color: var(--color-blue); }
 
 .card.accent-review { border-top-color: var(--color-purple); }
 
@@ -460,6 +460,10 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .activity-working { color: var(--color-green); }
 
 .activity-working i { background: currentColor; animation: activity-pulse 1.8s ease-in-out infinite; }
+
+.activity-stopped { color: var(--color-red); }
+
+.activity-stopped i { border-radius: 1px; background: currentColor; }
 @keyframes activity-pulse { 50% { box-shadow: 0 0 0 3px var(--color-subtle); } }
 @media (prefers-reduced-motion: reduce) {
 
@@ -751,6 +755,8 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .hydra-list > .button:last-child { border-top: 1px solid var(--color-line); border-radius: 0; margin-top: 4px; }
 
 .delete-confirm { display: flex; }
+
+.column-header .delete-refused, .delete-refused { margin: 0; padding: 7px 10px; max-width: 260px; font-size: 13px; color: var(--color-muted); }
 
 .task-brief { display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
 

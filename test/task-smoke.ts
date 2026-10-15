@@ -120,7 +120,7 @@ try {
   await check({ condition: '!!document.querySelector(".delete-confirm") && !document.querySelector("[role=dialog]")', label: 'delete confirms in place with Yes and No' })
   await text({ label: 'No' }); await text({ label: 'Delete column' }); await text({ label: 'Yes' })
   await eventually({ condition: '!document.querySelector("[aria-label=Research]")', label: 'confirmed column deletion removes the column' })
-  assert.equal(hydraId().config?.columns.length, 4)
+  assert.equal(hydraId().config?.columns.length, 5)
   await fill({ label: 'Reply to Hydra', value: 'Keep this Hydra focused.' }); await click({ selector: '.hydra-chat .composer-send' })
   await eventually({ condition: 'document.querySelector(".hydra-chat .composer textarea").value === ""', label: 'Hydra send clears the delivered draft' })
   assert.equal(hydraId().hydraMessages?.at(-1)?.text, 'Keep this Hydra focused.')
