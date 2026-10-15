@@ -15,7 +15,7 @@ export function smokeBrowser({ home, session }: { home: string; session: string 
     CHROME_DEVTOOLS_AXI_HEADED: '0',
   }
 
-  for (const name of ['CHROME_DEVTOOLS_AXI_BROWSER_URL', 'CHROME_DEVTOOLS_AXI_USER_DATA_DIR', 'CHROME_DEVTOOLS_AXI_MCP_SERVER_URL', 'CHROME_DEVTOOLS_AXI_WS_HEADERS']) {
+  for (const name of ['CHROME_DEVTOOLS_AXI_BROWSER_URL', 'CHROME_DEVTOOLS_AXI_USER_DATA_DIR', 'CHROME_DEVTOOLS_AXI_MCP_SERVER_URL', 'CHROME_DEVTOOLS_AXI_WS_HEADERS', 'CHROME_DEVTOOLS_AXI_CHROME_ARGS']) {
     delete (env as NodeJS.ProcessEnv)[name]
   }
 
