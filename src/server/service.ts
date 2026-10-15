@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, isAbsolute, join } from 'node:path'
 import { BoardError } from '../core/model.ts'
 import { boardDir, pnyxHome, privateDir } from '../store/board-store.ts'
 import { DEFAULT_PORT } from './state.ts'
@@ -12,7 +12,24 @@ const xml = ({ text }: { text: string }) => text.replaceAll('&', '&amp;').replac
   .replaceAll('"', '&quot;')
   .replaceAll("'", '&apos;')
 
-export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = false, preview = false, platform = process.platform, userHome = homedir(), run = ({ args }) => execFileSync('launchctl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }: {
+const resolve = ({ path }: { path: string }) => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return undefined
+  }
+}
+
+// A versioned path such as Homebrew's Cellar disappears on upgrade, so prefer a PATH entry that links to the same Node.
+const stableNode = ({ node, searchPath }: { node: string; searchPath: string }) => {
+  const real = resolve({ path: node })
+
+  return (real && searchPath.split(delimiter).filter(dir => isAbsolute(dir))
+    .map(dir => join(dir, 'node'))
+    .find(candidate => resolve({ path: candidate }) === real)) || node
+}
+
+export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = false, preview = false, platform = process.platform, userHome = homedir(), node = process.execPath, searchPath = process.env.PATH ?? '/usr/bin:/bin', run = ({ args }) => execFileSync('launchctl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }: {
   board: string
   port?: number
   homes?: string[]
@@ -20,6 +37,8 @@ export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = 
   preview?: boolean
   platform?: NodeJS.Platform
   userHome?: string
+  node?: string
+  searchPath?: string
   run?({ args }: { args: string[] }): string
 }) {
   if (platform !== 'darwin') {
@@ -40,13 +59,13 @@ export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = 
   const target = `${domain}/${label}`
   const log = join(boardDir({ board }), 'service.log')
   const cli = join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'pnyx-axi.ts' : 'pnyx-axi.js')
-  const args = [process.execPath, cli, 'serve', '--board', board, '--port', String(port), ...homes.flatMap(h => ['--home', h])]
+  const args = [stableNode({ node, searchPath }), cli, 'serve', '--board', board, '--port', String(port), ...homes.flatMap(h => ['--home', h])]
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>${label}</string>
 <key>ProgramArguments</key><array>${args.map(arg => `<string>${xml({ text: arg })}</string>`).join('')}</array>
-<key>EnvironmentVariables</key><dict><key>PNYX_HOME</key><string>${xml({ text: home })}</string><key>PATH</key><string>${xml({ text: process.env.PATH ?? '/usr/bin:/bin' })}</string></dict>
+<key>EnvironmentVariables</key><dict><key>PNYX_HOME</key><string>${xml({ text: home })}</string><key>PATH</key><string>${xml({ text: searchPath })}</string></dict>
 <key>WorkingDirectory</key><string>${xml({ text: home })}</string>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
 <key>ThrottleInterval</key><integer>5</integer>
