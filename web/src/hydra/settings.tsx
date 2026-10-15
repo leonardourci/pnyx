@@ -1,3 +1,4 @@
+import { Projects } from './projects.tsx'
 import type { HydraState, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
@@ -9,8 +10,9 @@ import { resetWidths } from './oracle-catalog.ts'
 import { OracleSettings } from './oracle-settings.tsx'
 import { AgentKinds } from './agent-kinds.tsx'
 
-export function Settings({ state, view, save, command, notify }: {
+export function Settings({ state, connected, view, save, command, notify }: {
   state: HydraState
+  connected: boolean
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
   close(): void
@@ -96,6 +98,12 @@ export function Settings({ state, view, save, command, notify }: {
             }}
           />
         </section>
+        <Projects
+          state={state}
+          connected={connected}
+          command={command}
+          notify={notify}
+        />
         <AgentKinds state={state} command={command} notify={notify} />
         <OracleSettings command={command} notify={notify} />
       </div>

@@ -827,3 +827,12 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 @media (max-width: 760px) { .oracle { order: 5; max-width: none; flex-basis: 100%; }.oracle-results { width: calc(100vw - 24px); }.oracle-row { flex-wrap: wrap; } }
 
 .permission-input { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16rem; overflow: auto; }
+
+.project-list { list-style: none; padding: 0; margin: 0; }
+.project-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }
+.project-row > div { min-width: 0; }
+.project-path { display: block; color: var(--color-muted); font-size: .85em; overflow-wrap: anywhere; }
+.project-row.detached strong { color: var(--color-muted); }
+.project-form { display: grid; gap: 8px; margin-top: 16px; }
+.confirmation-dialog { background: var(--color-surface); color: var(--color-ink); border: 1px solid var(--color-line); border-radius: 12px; padding: 24px; max-width: 440px; }
+.confirmation-dialog::backdrop { background: var(--color-shadow); }
