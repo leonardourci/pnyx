@@ -3,12 +3,12 @@
 // starts: Paseo keeps its agents, Firstmate dispatches its own crew, and a command's
 // agent reports through its hooks like any other session.
 import { randomUUID } from 'node:crypto'
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { decideNote, decidePush, findCard, type Decision, type Meta } from '../core/decide.ts'
 import { boardConfig, hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
-import { BoardError, type BoardConfig, type BoardState, type Card } from '../core/model.ts'
+import { BoardError, type AgentConfig, type BoardConfig, type BoardState, type Card } from '../core/model.ts'
 import { paseoUrl } from '../core/paseo.ts'
 import { liveTask, sessionId } from '../core/tasks.ts'
 import { runCommand } from '../integrations/command/run.ts'
@@ -56,14 +56,75 @@ function freeTask({ state, ref }: { state: BoardState; ref: string }): Card {
   return card
 }
 
+interface QuotaModel {
+  provider: string
+  id: string
+  effective?: { effectivePercentRemaining?: number }
+}
+
+// The model with the most runway in the bucket for this harness, or undefined when
+// quota-axi cannot tell.
+function quotaModel({ harness, quota }: {
+  harness: AgentConfig['harness']
+  quota: NonNullable<AgentConfig['quota']>
+}): string | undefined {
+  try {
+    const out = execFileSync('quota-axi', ['models', '--intelligence', quota, '--sort', 'runway', '--json', '--max-age', '5m', '--provider', harness], { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] })
+    const { models = [] } = JSON.parse(out) as { models?: QuotaModel[] }
+
+    return models.find(m => m.provider === harness
+      && (m.effective?.effectivePercentRemaining ?? 1) > 0)?.id
+  } catch {
+    return undefined
+  }
+}
+
+// The agent a start uses: the named kind, else `default` (or `hydra`), else Claude Code's defaults.
+export function agentFor({ state, board, kind }: {
+  state: BoardState
+  board: string
+  kind: string
+}): AgentConfig {
+  const agents = boardConfig({ state, id: board }).agents ?? {}
+  const configured = Object.hasOwn(agents, kind) ? agents[kind] : undefined
+
+  if (!configured && kind !== 'default' && kind !== 'hydra') {
+    throw new BoardError({ message: `no agent configured for kind ${kind}`, code: 'NOT_FOUND', help: [`Run \`pnyx-axi kind set ${kind} --harness claude --board ${board}\``] })
+  }
+
+  const agent: AgentConfig = { ...(configured ?? { harness: 'claude' }) }
+
+  if (agent.quota) {
+    agent.model = quotaModel({ harness: agent.harness, quota: agent.quota }) ?? agent.model
+  }
+
+  return agent
+}
+
+// The opening message of a worker started without one.
+export function workerPrompt({ board, id, title }: {
+  board: string
+  id: string
+  title: string
+}): string {
+  return [
+    `You are the Pnyx worker for task ${id} "${title}" on board ${board}. Follow the pnyx-worker skill when it is installed.`,
+    `Start with \`pnyx-axi task show ${id} --board ${board}\` and \`pnyx-axi task history ${id} --board ${board}\`.`,
+    `Declare progress only with \`pnyx-axi task status ${id} working|needs_you|paused|blocked|done --note <text> --board ${board}\`; silence changes nothing.`,
+  ].join(' ')
+}
+
 const hydraPrompt = ({ board }: { board: string }) =>
   `You are Hydra, the orchestrator of the Pnyx board "${board}". Read ${HYDRA_SKILL} and follow it. `
   + `Start with \`pnyx-axi task list --board ${board}\` and \`pnyx-axi hydra messages --board ${board}\`.`
 
-export async function startTask({ board, task, via, harness, prompt, folder, url, meta, connect }: {
+export async function startTask({
+  board, task, via, kind, harness, prompt, folder, url, meta, connect,
+}: {
   board: string
   task: string
   via?: string
+  kind?: string
   harness?: string
   prompt?: string
   folder?: string
@@ -71,7 +132,8 @@ export async function startTask({ board, task, via, harness, prompt, folder, url
   meta: Meta
   connect?: Connect
 }): Promise<Output> {
-  const how = chooseVia({ state: loadBoard({ board }).state, via })
+  const state = loadBoard({ board }).state
+  const how = chooseVia({ state, via })
 
   if (how === 'firstmate') {
     return askFirstmate({ board, task, prompt, meta })
@@ -81,11 +143,20 @@ export async function startTask({ board, task, via, harness, prompt, folder, url
     return startCommand({ board, role: 'worker', task, prompt, folder, harness, meta })
   }
 
-  if (!harness || !prompt) {
-    throw new BoardError({ message: 'a Paseo start needs --harness and --prompt', code: 'VALIDATION_ERROR', help: ['Pass --harness claude|codex --prompt <opening message>'] })
-  }
+  const agent = agentFor({ state, board, kind: kind ?? 'default' })
+  const card = findCard({ state, ref: task })
 
-  return startAgent({ board, task, harness, prompt, folder, url, meta, connect })
+  return startAgent({
+    board,
+    task,
+    harness: harness ?? agent.harness,
+    agent,
+    prompt: prompt ?? workerPrompt({ board, id: card.id, title: card.title }),
+    folder,
+    url,
+    meta,
+    connect,
+  })
 }
 
 // Puts the request in Hydra's board chat, then hands it to the Firstmate home that is
@@ -210,10 +281,11 @@ function startCommand({ board, role, task, prompt, folder, harness, meta }: {
 }
 
 export async function startHydra({
-  board, via, harness, prompt, folder, home, url, meta, connect,
+  board, via, kind, harness, prompt, folder, home, url, meta, connect,
 }: {
   board: string
   via?: string
+  kind?: string
   harness?: string
   prompt?: string
   folder?: string
@@ -243,7 +315,8 @@ export async function startHydra({
     throw new BoardError({ message: `unknown start route: ${how}`, code: 'VALIDATION_ERROR', help: [`Use --via ${VIAS.join('|')}`] })
   }
 
-  const chosen = (harness ?? 'claude') as Harness
+  const agent = agentFor({ state: loadBoard({ board }).state, board, kind: kind ?? 'hydra' })
+  const chosen = (harness ?? agent.harness) as Harness
 
   if (!Object.hasOwn(HARNESSES, chosen)) {
     throw new BoardError({ message: `unknown harness: ${chosen}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
@@ -273,8 +346,9 @@ export async function startHydra({
     return { hydra: HYDRA_CARD, event: 'none: duplicate', help: ['This start was already recorded; nothing was started again'] }
   }
 
-  const { agent, ref } = await createPaseoAgent({
+  const { agent: started, ref } = await createPaseoAgent({
     harness: chosen,
+    agent,
     prompt: prompt ?? hydraPrompt({ board }),
     cwd,
     title: `Hydra · ${board}`,
@@ -294,8 +368,8 @@ export async function startHydra({
         writer,
         decision: decidePush({
           state: writer.state,
-          key: `paseo:${agent.id}`,
-          input: { title: `Hydra · ${board}`, agent: ref, activity: 'working', source: { adapter: 'paseo', instanceId: endpoint, objectId: agent.id, observedAt: meta.at } },
+          key: `paseo:${started.id}`,
+          input: { title: `Hydra · ${board}`, agent: ref, activity: 'working', source: { adapter: 'paseo', instanceId: endpoint, objectId: started.id, observedAt: meta.at } },
           meta: { ...meta, id: `${id}:session`, ifRevision: undefined },
         }),
       })
@@ -305,7 +379,7 @@ export async function startHydra({
       apply({ writer, decision: hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:hydra` }, cardId: '$board', change: { type: 'board.configured', data: { ...config, hydra } } }) })
 
       return {
-        hydra: { session: hydra.session, paseo: agent.id, folder: cwd },
+        hydra: { session: hydra.session, paseo: started.id, folder: cwd },
         help: [`Talk to Hydra in Paseo, or queue work with \`pnyx-axi hydra send --board ${board} --text <message>\``],
       }
     },

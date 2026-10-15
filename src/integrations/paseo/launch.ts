@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { decidePush, decideSession, findCard, type Meta } from '../../core/decide.ts'
-import { BoardError, type AgentRef } from '../../core/model.ts'
+import { BoardError, type AgentConfig, type AgentRef } from '../../core/model.ts'
 import { paseoUrl } from '../../core/paseo.ts'
 import { sessionId } from '../../core/tasks.ts'
 import { canonical, drainSpool, type Output } from '../../cli/commands.ts'
@@ -16,11 +16,12 @@ export type Harness = keyof typeof HARNESSES
 const MAX_PROMPT = 32000
 
 export async function startAgent({
-  board, task, harness, prompt, folder, url, meta, connect = openPaseo,
+  board, task, harness, agent: chosen, prompt, folder, url, meta, connect = openPaseo,
 }: {
   board: string
   task: string
   harness: string
+  agent?: AgentConfig
   prompt: string
   folder?: string
   url?: string
@@ -81,6 +82,7 @@ export async function startAgent({
 
   const { agent, ref } = await createPaseoAgent({
     harness: harness as Harness,
+    agent: chosen,
     prompt,
     cwd: claimed.cwd,
     title: claimed.card.title,
@@ -147,9 +149,11 @@ export async function startAgent({
 // the agent the first one made. env reaches the agent's own hooks, so they report to
 // this Pnyx home, board and task rather than the installed defaults.
 export async function createPaseoAgent({
-  harness, prompt, cwd, title, id, env, labels, url, connect = openPaseo,
+  harness, agent: chosen, prompt, cwd, title, id, env, labels, url, connect = openPaseo,
 }: {
   harness: Harness
+  // A task kind's model, effort and mode, used when its harness is this one.
+  agent?: AgentConfig
   prompt: string
   cwd: string
   title: string
@@ -164,13 +168,33 @@ export async function createPaseoAgent({
 
   try {
     const { models } = await client.providers.listModels(harness, { cwd })
-    const model = models?.find(m => m.isDefault) ?? models?.[0]
+    const kind = chosen?.harness === harness ? chosen : undefined
+    const wanted = kind?.model ? models?.find(m => m.id === kind.model) : undefined
+
+    // A quota pick Paseo does not offer falls back to its default; a named model must exist.
+    if (kind?.model && !wanted && !kind.quota) {
+      throw new BoardError({
+        message: `Paseo has no ${harness} model ${kind.model}`,
+        code: 'VALIDATION_ERROR',
+        help: [`Use one of: ${(models ?? []).map(m => m.id).slice(0, 12)
+          .join(', ')}`],
+      })
+    }
+
+    const model = wanted ?? models?.find(m => m.isDefault) ?? models?.[0]
 
     if (!model) {
       throw new BoardError({ message: `Paseo has no ${harness} model available`, code: 'PASEO_ERROR', help: [`Check \`paseo status\` for the ${harness} provider`] })
     }
 
-    agent = await client.agents.create({ config: { provider: `${harness}/${model.id}` }, cwd, title, prompt, idempotencyKey: id, labels, env })
+    const config = {
+      provider: `${harness}/${model.id}`,
+      ...(kind?.effort ? { thinkingOptionId: kind.effort } : {}),
+      ...(kind?.mode ? { modeId: kind.mode } : {}),
+    }
+    agent = await client.agents.create({
+      config, cwd, title, prompt, idempotencyKey: id, labels, env,
+    })
   } catch (error) {
     if (error instanceof BoardError) {
       throw error

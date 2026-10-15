@@ -76,11 +76,27 @@ The append-only log preserves board, task, subtask, session, command and message
 
 `pnyx-axi task start <task> --via paseo|firstmate|command` starts one worker for a task and attaches it; `pnyx-axi hydra start --via paseo|firstmate|command` starts the board's Hydra. Pnyx records each start on the board and never supervises what it started.
 
-- **Paseo:** with [Paseo](https://paseo.sh) running, `--via paseo --harness claude|codex --prompt "..." --folder <path>` asks the local daemon (`PNYX_PASEO_URL`, default `ws://127.0.0.1:6767/ws`) to start a Claude Code or Codex agent; the conversation and replies then go through Paseo, and the agent stays in Paseo too. Pnyx says so when Paseo is not running and never starts it. `task paseo` checks the daemon.
+- **Paseo:** with [Paseo](https://paseo.sh) running, `--via paseo [--kind <kind>] [--harness claude|codex] [--prompt "..."] --folder <path>` asks the local daemon (`PNYX_PASEO_URL`, default `ws://127.0.0.1:6767/ws`) to start a Claude Code or Codex agent; the conversation and replies then go through Paseo, and the agent stays in Paseo too. Pnyx says so when Paseo is not running and never starts it. `task paseo` checks the daemon.
 - **Firstmate:** on a board whose Hydra is a Firstmate home (the default route there), `--via firstmate [--prompt "..."]` puts a worker request in Hydra's chat and hands it to Firstmate as an inbox note. Firstmate dispatches the worker; its mirrored task can be nested under the board task.
 - **Your own command:** `pnyx-axi board set --board <id> --command '<shell command>'` sets a command, run in the task's folder with `PNYX_HOME`, `PNYX_BOARD`, `PNYX_TASK`, `PNYX_ROLE` (`worker` or `hydra`), `PNYX_TASK_TITLE`, `PNYX_PROMPT`, `PNYX_HARNESS` and `PNYX_FOLDER` in its environment. The session it starts attaches to its task, or becomes Hydra, when its hooks first report.
 
 Every agent Pnyx starts carries `PNYX_HOME` and `PNYX_BOARD`, so its hooks report to the board that started it, even from a separate Pnyx home, once `pnyx-axi setup hooks` has installed this version's hook. `pnyx-axi integrations` shows which of hooks, Paseo, Firstmate, the board command and GitHub are ready, with the command that sets each up; the same list is under Settings > Integrations.
+
+### Kinds, the light check and the worker contract
+
+```sh
+pnyx-axi kind set default --harness claude --model claude-opus-5-5 --effort high --mode acceptEdits
+pnyx-axi kind set review --harness codex --effort high --quota high
+pnyx-axi kind set hydra --harness claude --model claude-sonnet-5-5
+pnyx-axi task start <task> --kind review
+pnyx-axi hydra check --after <seq> --wait 1800
+```
+
+- **Kinds:** `kind set` records the agent each kind of task starts on in Paseo: harness, model, effort (Paseo's thinking option) and mode (Paseo's mode, such as `acceptEdits` or `bypassPermissions` for Claude Code). `--quota high|medium|low` picks, at start, the model with the most runway in that intelligence bucket for the harness through `quota-axi`, falling back to `--model` or Paseo's default. `task start` uses `--kind` or the `default` kind, and `hydra start` the `hydra` kind; without one, Claude Code with Paseo's default model. `--harness` on a start overrides the kind's, and without `--prompt` a worker opens with a message naming its task and the `pnyx-worker` skill. Set a flag to an empty value, or `--quota off`, to clear it. Settings → Agents on the board edits the same kinds, and each change is its own event in the log; saving a kind never chooses the board's Hydra.
+- **Light check:** `hydra check` prints only what Hydra tracks (messages, task creation, declarations, attachments, column changes, manual moves and links) after `--after`, with each event's id, task and message action, and skips Hydra's own writes (actor `hydra`, from `PNYX_ACTOR` or `--actor`). With `--wait` it blocks until one appears, so a background command or monitor wakes Hydra only when something changed, without loading the board.
+- **Workers:** a worker follows the `pnyx-worker` skill and reports with `task status <task> working|needs_you|paused|blocked|done --note <text>`; silence, idling and exit change nothing. To make the skills available to a Claude Code session outside a Firstmate home, link them from the clone: `ln -s "$PWD/skills/pnyx-hydra" "$PWD/skills/pnyx-worker" ~/.claude/skills/`.
+- **Binding a session yourself:** `board set --session self` and `task attach <task> --session self` pick the session running in the caller's own Paseo terminal, tmux pane or Herdr pane.
+
 
 ## Using the board
 

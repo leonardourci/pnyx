@@ -14,6 +14,8 @@ import { paseoStatus, startAgent } from '../src/integrations/paseo/launch.ts'
 import { paseoReply } from '../src/integrations/paseo/reply.ts'
 import { paseoConversation } from '../src/integrations/paseo/thread.ts'
 import { loadBoard, withWriter } from '../src/store/board-store.ts'
+import { startTask } from '../src/cli/start.ts'
+import { workerCommands } from '../src/cli/workers.ts'
 
 const at = '2026-10-14T12:00:00Z'
 const url = 'ws://127.0.0.1:16767/ws'
@@ -217,7 +219,7 @@ test('pnyx-axi task start and task paseo report a stopped daemon as structured e
   const start = run({ args: ['task', 'start', 'work', '--harness', 'claude', '--prompt', 'Go', '--folder', folder] })
   assert.notEqual(start.status, 0)
   assert.match(start.stdout, /PASEO_UNAVAILABLE/)
-  assert.match(run({ args: ['task', '--help'] }).stdout, /task start <task> \[--via paseo\] --harness claude\|codex --prompt <text>/)
+  assert.match(run({ args: ['task', '--help'] }).stdout, /task start <task> \[--via paseo\] \[--kind <kind>\] \[--harness claude\|codex\] \[--prompt <text>\]/)
 })
 
 test('an agent started from a lab home reports its hooks to that home, never to the installed one', async () => {
@@ -239,4 +241,21 @@ test('an agent started from a lab home reports its hooks to that home, never to 
 
   assert.equal(readdirSync(join(lab, 'boards', 'lab', 'spool')).filter(f => f.endsWith('.json')).length, 1)
   assert.deepEqual(readdirSync(installed), ['hooks'])
+})
+
+test('task start uses the task kind\'s model, effort and mode, and opens with the worker prompt', async () => {
+  const { folder } = board()
+  workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'codex-small', '--effort', 'high', '--mode', 'full-access', '--board', 'lab'])
+  const paseo = fakePaseo()
+  await startTask({ board: 'lab', task: 'work', kind: 'review', folder, url, meta: { at, actor: 'test', id: 'kind-1' }, connect: paseo.connect })
+  const created = paseo.calls.create[0]!
+  assert.deepEqual(created.config, { provider: 'codex/codex-small', thinkingOptionId: 'high', modeId: 'full-access' })
+  assert.match(String(created.prompt), /Pnyx worker for task c1 "Lab task" on board lab/)
+
+  // A named model Paseo does not offer is refused before anything starts.
+  const other = board()
+  workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'missing', '--board', 'lab'])
+  const refused = fakePaseo()
+  await assert.rejects(startTask({ board: 'lab', task: 'work', kind: 'review', folder: other.folder, url, meta: { at, actor: 'test', id: 'kind-2' }, connect: refused.connect }), /no codex model missing/)
+  assert.equal(refused.calls.create.length, 0)
 })
