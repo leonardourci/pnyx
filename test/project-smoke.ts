@@ -66,7 +66,7 @@ try {
   await fill({ label: 'Start command for sample-project', value: 'echo fixture' })
   await click({ selector: 'form[aria-label="Start settings for sample-project"] [role=switch]' })
   await click({ selector: 'form[aria-label="Start settings for sample-project"] button[type=submit]' })
-  await eventually({ condition: 'document.querySelector("[role=status]")?.textContent.includes("Project start command saved")', label: 'project start command saved' })
+  await eventually({ condition: '[...document.querySelectorAll("[role=status]")].some(el => el.textContent.trim() === "Project start command saved.")', label: 'project start command saved' })
   assert.deepEqual(loadHydra({ hydraId: 'default' }).state.projects?.find(p => p.path === folder)?.startCommand, { name: 'Local worker', command: 'echo fixture', bringsOwnFolder: true })
   await evaluate({ code: 'document.querySelector("[aria-label=Projects]").scrollIntoView(); return true;' })
   await screenshot({ name: 'project-command-after.png' })
