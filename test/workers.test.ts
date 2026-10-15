@@ -74,6 +74,19 @@ test('kinds configure the agent each kind launches on and validate their flags',
   assert.match(f.run({ args: ['history'] }), /board\.agents/)
 })
 
+test('Hydra Fast persists, rejects invalid values and can restore the harness default', () => {
+  const f = fixture()
+  f.run({ args: ['kind', 'set', 'hydra', '--fast', 'on'] })
+  assert.deepEqual(f.state().config?.agents?.hydra, { harness: 'claude', fast: true })
+  f.run({ args: ['kind', 'set', 'hydra', '--model', 'opus'] })
+  assert.equal(f.state().config?.agents?.hydra.fast, true)
+  f.run({ args: ['kind', 'set', 'hydra', '--fast', 'off'] })
+  assert.equal(f.state().config?.agents?.hydra.fast, false)
+  f.run({ args: ['kind', 'set', 'hydra', '--fast', 'default'] })
+  assert.deepEqual(f.state().config?.agents?.hydra, { harness: 'claude', model: 'opus' })
+  assert.match(f.fail({ args: ['kind', 'set', 'hydra', '--fast', 'maybe'] }), /--fast must be/)
+})
+
 test('Hydra set --session self binds the session running in the caller\'s Paseo terminal', () => {
   const f = fixture()
   f.hook({ session: 'hydra', cwd: f.folder, terminal: 'term-h' })

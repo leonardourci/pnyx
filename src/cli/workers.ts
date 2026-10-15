@@ -17,7 +17,7 @@ import { COMMON, WRITE, commit, commands, guard, integer, meta, parse, required,
 const SAFE = /^[\w.:/[\]-]{1,100}$/
 
 function kindCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, harness: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, mode: { type: 'string' }, quota: { type: 'string' } }, positionals: 2 })
+  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, harness: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, mode: { type: 'string' }, fast: { type: 'string' }, quota: { type: 'string' } }, positionals: 2 })
   const action = positionals[0] ?? 'list'
 
   if (action === 'list') {
@@ -25,8 +25,8 @@ function kindCommand({ args }: { args: string[] }): Output {
 
     return {
       hydraId,
-      kinds: Object.keys(agents).length ? Object.entries(agents).map(([kind, a]) => ({ kind, harness: a.harness, model: a.model ?? 'default', effort: a.effort ?? 'default', mode: a.mode ?? 'default', quota: a.quota ?? 'off' })) : 'none: workers launch on Claude Code with its own defaults',
-      help: [`Run \`pnyx-axi kind set <kind> --harness claude|codex [--model <m>] [--effort <e>] [--mode <m>] [--quota high|medium|low] --hydra ${hydraId}\``],
+      kinds: Object.keys(agents).length ? Object.entries(agents).map(([kind, a]) => ({ kind, harness: a.harness, model: a.model ?? 'default', effort: a.effort ?? 'default', mode: a.mode ?? 'default', quota: a.quota ?? 'off', fast: a.fast === undefined ? 'default' : a.fast ? 'on' : 'off' })) : 'none: workers launch on Claude Code with its own defaults',
+      help: [`Run \`pnyx-axi kind set <kind> --harness claude|codex [--model <m>] [--effort <e>] [--mode <m>] [--fast on|off|default] [--quota high|medium|low] --hydra ${hydraId}\``],
     }
   }
 
@@ -42,6 +42,10 @@ function kindCommand({ args }: { args: string[] }): Output {
 
   const harness = values.harness as string | undefined
   const quota = values.quota as string | undefined
+
+  if (values.fast !== undefined && !['on', 'off', 'default'].includes(String(values.fast))) {
+    throw new HydraError({ message: '--fast must be on, off or default', code: 'VALIDATION_ERROR' })
+  }
 
   if (harness !== undefined && !(HARNESS_NAMES as readonly string[]).includes(harness)) {
     throw new HydraError({ message: `--harness must be ${HARNESS_NAMES.join(' or ')}`, code: 'VALIDATION_ERROR' })
@@ -76,6 +80,12 @@ function kindCommand({ args }: { args: string[] }): Output {
         delete agents[kind]
       } else {
         const agent: AgentConfig = { ...existing, harness: (harness ?? existing?.harness ?? 'claude') as AgentConfig['harness'] }
+
+        if (values.fast === 'default') {
+          delete agent.fast
+        } else if (values.fast !== undefined) {
+          agent.fast = values.fast === 'on'
+        }
 
         for (const [flag, value] of [['model', values.model], ['effort', values.effort], ['mode', values.mode], ['quota', quota === 'off' ? '' : quota]] as const) {
           if (value === '') {
@@ -285,9 +295,9 @@ export const workerCommands = {
 
 export const WORKER_HELP: Record<string, string> = {
   kind: `usage: pnyx-axi kind list
-pnyx-axi kind set <kind> [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--quota high|medium|low|off]
+pnyx-axi kind set <kind> [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off|default] [--quota high|medium|low|off]
 pnyx-axi kind remove <kind>
-set changes only the flags given: an empty --model, --effort or --mode, or --quota off, clears that field; a new kind starts on claude.
+set changes only the flags given: an empty --model, --effort or --mode, or --quota off, clears that field; --fast default restores the harness default; a new kind starts on claude.
 The agent \`task start --via paseo\` starts for each kind of task. \`default\` is used when --kind is not given, and \`hydra\` is what \`hydra start --via paseo\` starts; both fall back to Claude Code with its own defaults.
 --effort is the Paseo thinking option and --mode the Paseo mode (for Claude Code: plan, default, acceptEdits, auto or bypassPermissions); --harness on a start overrides the kind's harness. --quota picks, at launch, the model with the most runway in that intelligence bucket for the harness through quota-axi, keeping --model when quota-axi cannot tell.
 `,

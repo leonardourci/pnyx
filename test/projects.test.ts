@@ -13,6 +13,7 @@ import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { firstmateProjects } from '../src/integrations/firstmate/projects.ts'
 import { project } from '../src/projects/cli.ts'
 import { findProject, projectsFor } from '../src/projects/read.ts'
+import { listHydras } from '../src/server/hydras.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
@@ -146,6 +147,12 @@ test('Firstmate project folders are canonical, read-only and refreshed from the 
   await assert.rejects(run({ args: ['add', folder] }), { code: 'READ_ONLY' })
   await assert.rejects(run({ args: ['remove', 'project'] }), { code: 'READ_ONLY' })
   assert.equal(readEvents({ hydraId: 'default' }).length, before)
+  commands.task(['create', '--title', 'Aliased work', '--key', 'alias-work'])
+  const input = join(root, 'aliased-task.json')
+  writeFileSync(input, JSON.stringify({ project: 'linked', agent: { provider: 'claude-code', sessionId: 'alias-worker' }, activity: 'working', attention: [{ key: 'question', kind: 'question', blocking: true }] }))
+  commands.push(['--key', 'alias-work', '--file', input])
+  const summary = listHydras().find(h => h.id === 'default')?.projects[0]
+  assert.deepEqual(summary, { name: 'project', path: folder, references: [folder, 'project', 'linked'], live: 1, asks: 1 })
   rmSync(join(home, 'projects', 'linked'))
   assert.deepEqual(firstmateProjects({ home }), [])
 })

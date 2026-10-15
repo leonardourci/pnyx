@@ -185,6 +185,7 @@ export async function createPaseoAgent({
       provider: `${harness}/${model.id}`,
       ...(kind?.effort ? { thinkingOptionId: kind.effort } : {}),
       ...(kind?.mode ? { modeId: kind.mode } : {}),
+      ...(kind?.fast === undefined ? {} : { featureValues: { fast_mode: kind.fast } }),
     }
     agent = await client.agents.create({
       config, cwd, title, prompt, idempotencyKey: id, labels, env,

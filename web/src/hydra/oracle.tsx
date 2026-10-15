@@ -15,7 +15,7 @@ import { commandQuery, matchesCommand, resetWidths, oracleSettings, queryWords }
 
 export function Oracle({
   state, view, command, query, setQuery, hits, save, openTask, openHydra, history,
-  showTopbar, createTask, createColumn, action, notify, connected, page,
+  showPanel, createTask, createColumn, action, notify, connected, page,
 }: {
   page: string
   selected: string | null
@@ -29,7 +29,7 @@ export function Oracle({
   openTask({ id }: { id: string }): void
   openHydra(): void
   history(): void
-  showTopbar(): void
+  showPanel(): void
   createTask({ column }: { column: string }): void
   createColumn(): void
   action({ id, context }: { id: string; context: ActionContext }): boolean
@@ -52,7 +52,7 @@ export function Oracle({
       return false
     }
 
-    showTopbar(); requestAnimationFrame(() => {
+    showPanel(); requestAnimationFrame(() => {
       input.current?.focus(); setExpanded(true)
     })
 
@@ -399,17 +399,12 @@ export function Oracle({
 
           if (e.key === 'Escape') {
             e.preventDefault(); e.stopPropagation()
+            setQuery({ query: '' }); setExpanded(false)
 
-            if (query) {
-              setQuery({ query: '' })
+            if (context.current.target.isConnected) {
+              context.current.target.focus()
             } else {
-              setExpanded(false)
-
-              if (context.current.target.isConnected) {
-                context.current.target.focus()
-              } else {
-                focusElement({ selector: '[data-card]' })
-              }
+              focusElement({ selector: '[data-card]' })
             }
           } else if (e.key === 'ArrowDown' || e.key === 'Enter') {
             e.preventDefault(); root.current?.querySelector<HTMLElement>('.oracle-results button:not(:disabled), .oracle-results input')?.focus()

@@ -9,11 +9,12 @@ import { hydraCheck } from '../src/cli/workers.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { startServer } from '../src/server/server.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { smokeEnvironment } from './browser.ts'
 
 const home = mkdtempSync(join(tmpdir(), 'pnyx-context-smoke-'))
 process.env.PNYX_HOME = home
 process.env.PNYX_SEMANTIC = 'off'
-const env = { ...process.env, CHROME_DEVTOOLS_AXI_SESSION: `pnyx-context-${process.pid}` }
+const env = await smokeEnvironment({ session: 'pnyx-context' })
 const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(home, 'evidence')
 mkdirSync(evidence, { recursive: true })
 const exec = promisify(execFile)

@@ -1,29 +1,48 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const exec = promisify(execFile)
 
-export function smokeBrowser({ home, session }: { home: string; session: string }) {
-  const env = {
+export async function smokeEnvironment(
+  { session }: { session: string },
+): Promise<NodeJS.ProcessEnv> {
+  const probe = createServer()
+  await new Promise<void>((resolve, reject) => {
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', resolve)
+  })
+  const address = probe.address()
+  await promisify(probe.close.bind(probe))()
+
+  if (!address || typeof address === 'string') {
+    throw new Error('No private browser port was allocated')
+  }
+
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
-    CHROME_DEVTOOLS_AXI_SESSION: `${session}-${process.pid}`,
-    CHROME_DEVTOOLS_AXI_PORT: String(20000 + process.pid % 30000),
-    CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '0',
-    CHROME_DEVTOOLS_AXI_HEADED: '0',
+    CHROME_DEVTOOLS_AXI_SESSION: `${session}-${process.pid}-${randomUUID().slice(0, 8)}`,
+    CHROME_DEVTOOLS_AXI_PORT: String(address.port),
   }
 
-  for (const name of ['CHROME_DEVTOOLS_AXI_BROWSER_URL', 'CHROME_DEVTOOLS_AXI_USER_DATA_DIR', 'CHROME_DEVTOOLS_AXI_MCP_SERVER_URL', 'CHROME_DEVTOOLS_AXI_WS_HEADERS', 'CHROME_DEVTOOLS_AXI_CHROME_ARGS']) {
-    delete (env as NodeJS.ProcessEnv)[name]
+  for (const key of ['AUTO_CONNECT', 'HEADED', 'BROWSER_URL', 'USER_DATA_DIR', 'MCP_SERVER_URL', 'WS_HEADERS', 'CHROME_ARGS']) {
+    delete env[`CHROME_DEVTOOLS_AXI_${key}`]
   }
 
+  return env
+}
+
+export function smokeBrowser({ home, session }: { home: string; session: string }) {
+  const environment = smokeEnvironment({ session })
   const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(home, 'evidence')
   mkdirSync(evidence, { recursive: true })
 
   const browser = async ({ args }: { args: string[] }) => {
-    const { stdout } = await exec('chrome-devtools-axi', args, { env, timeout: 45000, maxBuffer: 2 * 1024 * 1024 })
+    const { stdout } = await exec('chrome-devtools-axi', args, { env: await environment, timeout: 45000, maxBuffer: 2 * 1024 * 1024 })
     assert.doesNotMatch(stdout, /^error:/m)
 
     return stdout

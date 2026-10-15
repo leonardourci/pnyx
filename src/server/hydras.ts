@@ -1,18 +1,44 @@
 import { commands } from '../cli/commands.ts'
 import { hydraConfig } from '../core/hydra.ts'
 import { hydraIds, loadHydra } from '../store/hydra-store.ts'
+import { projectsFor } from '../projects/read.ts'
+import { liveTask } from '../core/tasks.ts'
 
-export interface HydraTab { id: string; name: string; hydra: string }
+export interface HydraProjectSummary {
+  name: string
+  path: string
+  references: string[]
+  live: number
+  asks: number
+}
+export interface HydraSummary {
+  id: string
+  name: string
+  hydra: string
+  projects: HydraProjectSummary[]
+}
 
-// A Hydra that cannot be read still gets a tab, so opening it reports why.
-export function listHydras(): HydraTab[] {
+// Unreadable Hydras remain reachable so opening one reports the error.
+export function listHydras(): HydraSummary[] {
   return hydraIds().map(id => {
     try {
-      const config = hydraConfig({ state: loadHydra({ hydraId: id }).state, id })
+      const state = loadHydra({ hydraId: id }).state
+      const config = hydraConfig({ state, id })
+      const cards = Object.values(state.cards).filter(c => liveTask({ card: c }))
+      const projects = projectsFor({ state, aliases: true }).filter(p => !p.detached)
+        .map(p => {
+          const references = [p.path, ...(config.hydra.kind === 'firstmate' ? [p.name, ...p.aliases ?? []] : [])]
+          const tasks = cards.filter(c => c.project && references.includes(c.project))
 
-      return { id, name: config.name, hydra: config.hydra.kind === 'firstmate' ? `Firstmate ${config.hydra.home}` : config.hydra.name }
+          const live = tasks.filter(c => c.agent && (c.sessionActivity ?? c.activity) === 'working')
+          const asks = tasks.flatMap(c => c.attention).filter(a => !a.answered)
+
+          return { name: p.name, path: p.path, references, live: live.length, asks: asks.length }
+        })
+
+      return { id, name: config.name, hydra: config.hydra.kind === 'firstmate' ? `Firstmate ${config.hydra.home}` : config.hydra.name, projects }
     } catch {
-      return { id, name: id, hydra: 'could not be loaded' }
+      return { id, name: id, hydra: 'could not be loaded', projects: [] }
     }
   })
 }

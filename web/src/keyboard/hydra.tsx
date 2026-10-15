@@ -34,8 +34,8 @@ export function useHydraKeyboard({
   notify,
   newColumn,
   cancelColumn,
-  toggleTopbar,
-  showTopbar,
+  togglePanel,
+  showPanel,
 }: {
   state: HydraState
   groups: ColumnCards[]
@@ -49,8 +49,8 @@ export function useHydraKeyboard({
   notify({ text }: { text: string }): void
   newColumn: boolean
   cancelColumn(): void
-  toggleTopbar(): void
-  showTopbar(): void
+  togglePanel(): void
+  showPanel(): void
 }) {
   const [remembered, setRemembered] = useState<Record<string, string>>({})
   const focus = useRef<HydraAnchor | undefined>(undefined)
@@ -184,13 +184,13 @@ export function useHydraKeyboard({
     }
 
     if (id === 'topbar') {
-      toggleTopbar()
+      togglePanel()
 
       return true
     }
 
     if (id === 'palette' || id === 'find') {
-      showTopbar(); requestAnimationFrame(() => focusElement({ selector: '[data-oracle-slot] input' }))
+      showPanel(); requestAnimationFrame(() => focusElement({ selector: '[data-oracle-slot] input' }))
 
       return true
     }

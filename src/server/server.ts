@@ -33,7 +33,7 @@ import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
 import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
-import { createHydra, listHydras, renameHydra } from './hydras.ts'
+import { createHydra, listHydras, renameHydra, type HydraSummary } from './hydras.ts'
 import { createHost, hostRequest, type QueryFn } from './host.ts'
 import type { SpawnCodex } from './codex.ts'
 
@@ -78,6 +78,7 @@ export type ServerMessage =
   | { type: 'event'; event: HydraEvent }
   // Last conversation messages by card: all of them on connect, then the ones that changed (null when gone).
   | { type: 'latest'; messages: Record<string, LatestMessage | null> }
+  | { type: 'hydras'; hydraId: string; hydras: HydraSummary[] }
   | { type: 'receipt'; id: string; [field: string]: unknown }
   | { type: 'error'; id: string | null; error: string; code: string; help?: string[] }
 
@@ -97,6 +98,7 @@ interface MountedHydra {
   socket: string | null
   request({ req, res, path }: HydraRequest): void
   upgrade({ req, socket, head, url }: HydraUpgrade): void
+  summaries({ hydras }: { hydras: HydraSummary[] }): void
   close(): Promise<void>
 }
 
@@ -120,6 +122,29 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
   const served = new Map<string, MountedHydra>()
   const skipped: Record<string, string> = {}
   let closed = false
+  let summariesQueued = false, summariesKey = ''
+
+  const hydrasChanged = () => {
+    if (closed || summariesQueued) {
+      return
+    }
+
+    summariesQueued = true
+    setImmediate(() => {
+      summariesQueued = false
+
+      if (closed) {
+        return
+      }
+
+      const hydras = listHydras(), key = JSON.stringify(hydras)
+
+      if (key !== summariesKey) {
+        summariesKey = key
+        served.forEach(m => m.summaries({ hydras }))
+      }
+    })
+  }
 
   // Exact matches only, so another site or a rebound DNS name is refused. Clients
   // that send no Origin are local programs, not pages; writes still need the token.
@@ -205,7 +230,7 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
       return Promise.reject(new HydraError({ message: 'the server is stopping', code: 'NOT_RUNNING' }))
     }
 
-    const started = mountHydra({ hydraId: id, url: `http://127.0.0.1:${bound}/hydra/${id}/`, homes: id === hydraId ? homes : undefined, open, ...options })
+    const started = mountHydra({ hydraId: id, url: `http://127.0.0.1:${bound}/hydra/${id}/`, homes: id === hydraId ? homes : undefined, open, hydrasChanged, ...options })
     mounts.set(id, started)
     started.then(m => {
       if (closed) {
@@ -213,6 +238,7 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
       } else {
         served.set(id, m)
         delete skipped[id]
+        hydrasChanged()
       }
     }, (error: Error) => {
       mounts.delete(id)
@@ -278,6 +304,7 @@ async function mountHydra({
   catalogLocations,
   query, spawnCodex,
   open,
+  hydrasChanged,
 }: {
   hydraId: string
   url: string
@@ -287,12 +314,13 @@ async function mountHydra({
   query?: QueryFn
   spawnCodex?: SpawnCodex
   open({ id }: { id: string }): Promise<string>
+  hydrasChanged(): void
 }): Promise<MountedHydra> {
   const release = claimServer({ hydraId })
 
   try {
     return await mountOwnedHydra({
-      hydraId, url, homes, catalogLocations, query, spawnCodex, open, release,
+      hydraId, url, homes, catalogLocations, query, spawnCodex, open, release, hydrasChanged,
     })
   } catch (error) {
     release()
@@ -308,6 +336,7 @@ async function mountOwnedHydra({
   query, spawnCodex,
   open,
   release,
+  hydrasChanged,
 }: {
   hydraId: string
   url: string
@@ -317,6 +346,7 @@ async function mountOwnedHydra({
   spawnCodex?: SpawnCodex
   open({ id }: { id: string }): Promise<string>
   release(): void
+  hydrasChanged(): void
 }): Promise<MountedHydra> {
   if (await readServer({ hydraId })) {
     throw new HydraError({ message: `a server is already running for Hydra ${hydraId}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
@@ -333,6 +363,7 @@ async function mountOwnedHydra({
   const subscriptions = new Map<WebSocket, Subscription>()
   const hydraSubscriptions = new Map<WebSocket, Subscription>()
   const threadSubscriptions = [subscriptions, hydraSubscriptions]
+  const hydraSubscribers = new WeakSet<WebSocket>()
   const subscriptionMap = ({ card }: { card: string }) =>
     card === HYDRA_CARD ? hydraSubscriptions : subscriptions
   const threadTimers = new Map<WebSocket, ReturnType<typeof setTimeout>>()
@@ -464,6 +495,10 @@ async function mountOwnedHydra({
     resyncing.delete(ws)
     send({ ws, message: { type: 'snapshot', seq: state.seq, state } })
     ws.send(JSON.stringify({ type: 'latest', messages: latest } satisfies ServerMessage))
+
+    if (hydraSubscribers.has(ws)) {
+      ws.send(JSON.stringify({ type: 'hydras', hydraId, hydras: listHydras() } satisfies ServerMessage))
+    }
   }
 
   // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.
@@ -508,6 +543,7 @@ async function mountOwnedHydra({
     }
 
     touchLatest({ ids: Object.keys(state.cards) })
+    hydrasChanged()
   }
 
   // Each card's last conversation message, read from its transcript tail and pushed
@@ -622,6 +658,7 @@ async function mountOwnedHydra({
     }
 
     offset = read.end
+    hydrasChanged()
     agents.reconcile({ state })
     followHome()
 
@@ -808,6 +845,7 @@ async function mountOwnedHydra({
           }) : readSettings({ })
           send({ ws, message: { type: 'receipt', id, settings: settingEntries({ settings }) } })
         } else if (name === 'hydras') {
+          hydraSubscribers.add(ws)
           const [action, first, second] = args
           const reply = ({ open }: { open?: string } = {}) => send({ ws, message: { type: 'receipt', id, hydraId, hydras: listHydras(), ...(open ? { url: open } : {}) } })
 
@@ -1098,6 +1136,13 @@ async function mountOwnedHydra({
     socket: info.socket,
     request,
     upgrade,
+    summaries({ hydras }) {
+      for (const ws of wss.clients) {
+        if (hydraSubscribers.has(ws)) {
+          send({ ws, message: { type: 'hydras', hydraId, hydras } })
+        }
+      }
+    },
     async close() {
       if (closed) {
         return

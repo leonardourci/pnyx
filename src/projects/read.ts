@@ -6,10 +6,13 @@ import { hydraConfig } from '../core/hydra.ts'
 import { hydraIds, loadHydra } from '../store/hydra-store.ts'
 import { firstmateProjects } from '../integrations/firstmate/projects.ts'
 
-export function projectsFor({ state }: { state: HydraState }): HydraProject[] {
+export function projectsFor({ state, aliases = false }: {
+  state: HydraState
+  aliases?: boolean
+}): (HydraProject & { aliases?: string[] })[] {
   const hydra = state.config?.hydra
   const projects = hydra?.kind === 'firstmate' && hydra.home
-    ? firstmateProjects({ home: hydra.home }) : state.projects ?? []
+    ? firstmateProjects({ home: hydra.home, aliases }) : state.projects ?? []
 
   return [...projects].sort((a, b) => Number(a.detached) - Number(b.detached)
     || a.name.localeCompare(b.name) || a.path.localeCompare(b.path))

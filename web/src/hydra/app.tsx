@@ -12,7 +12,8 @@ import { Column } from './column.tsx'
 import { Detail } from './detail.tsx'
 import type { ChatComment } from './chat.ts'
 import { Settings } from './settings.tsx'
-import { HydraTabs } from './hydras.tsx'
+import { Hydras } from './hydras.tsx'
+import { Panel } from './panel.tsx'
 import { History } from './history.tsx'
 import { columnsFor, findBoxCards, pageTitle } from './view.ts'
 import { Oracle } from './oracle.tsx'
@@ -27,7 +28,7 @@ const RESTORE_KEY = storageKey({ key: 'restore' })
 type Restore = {
   selected?: string | null
   page?: string
-  topbar?: boolean
+  panel?: boolean
   drafts?: Record<string, string>
   comments?: Record<string, ChatComment[]>
   scroll?: Record<string, [number, number]>
@@ -46,16 +47,58 @@ const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [da
   .map(el => [el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban', el] as const)
 
 export function App() {
-  const { state, command, connected, thread, setThread, hydraThread, latest } = useHydra()
-  const [page, setPage] = useState(restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
+  const {
+    state, command, connected, thread, setThread, hydraThread, latest, navigation,
+  } = useHydra()
+  const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') ? 'settings' : new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
+  const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
   const [editingTask, setEditingTask] = useState<string | null>(null)
   const [historyQuery, setHistoryQuery] = useState('')
-  const [topbar, setTopbar] = useState(restored.topbar ?? true)
+  const [panel, setPanel] = useState(restored.panel ?? true)
+  const [project, setProject] = useState(new URLSearchParams(location.search).get('open-project') ?? new URLSearchParams(location.search).get('project') ?? '')
+  const [projectReferences, setProjectReferences] = useState<string[]>([])
+  const resolveProject = useCallback(({ references }: { references: string[] }) => {
+    setProjectReferences(references)
+  }, [])
+  useEffect(() => {
+    const url = new URL(location.href)
+
+    if (url.searchParams.has('projects')) {
+      requestAnimationFrame(() => document.querySelector('[aria-label="Projects"]')?.scrollIntoView())
+      url.searchParams.delete('projects')
+    }
+
+    const project = url.searchParams.get('open-project')
+
+    if (project !== null) {
+      url.searchParams.delete('open-project'); url.searchParams.set('project', project)
+    }
+
+    history.replaceState(null, '', url)
+  }, [])
+
+  const filterProject = ({ path }: { path: string }) => {
+    setProject(path)
+    const url = new URL(location.href)
+
+    if (path) {
+      url.searchParams.set('project', path)
+    } else {
+      url.searchParams.delete('project')
+    }
+
+    history.replaceState(null, '', url)
+  }
+
   const notify = useCallback(({ text }: { text: string }) => {
     setNotice(text)
   }, [])
+  useEffect(() => {
+    if (connected) {
+      void command({ name: 'hydras', args: [] }).catch((error: Error) => notify({ text: error.message }))
+    }
+  }, [connected, command, notify])
   useEffect(() => {
     const timers = new Map<HTMLElement, ReturnType<typeof setTimeout>>()
 
@@ -99,7 +142,7 @@ export function App() {
     tag,
     query: commandQuery({ query }) ? '' : query,
     meaning: found.map(h => h.card),
-  })
+  }).filter(c => !project || c.project === project || projectReferences.includes(c.project ?? ''))
   const card = selected ? state.cards[selected] : undefined
   const cards = card && !filteredCards.some(item => item.id === card.id)
     ? [...filteredCards, card] : filteredCards
@@ -141,7 +184,7 @@ export function App() {
         const scroll = Object.fromEntries(scrollers()
           .map(([key, el]) => [key, [el.scrollLeft, el.scrollTop]]))
         sessionStorage.setItem(RESTORE_KEY, JSON.stringify({
-          selected, page, topbar, drafts, comments, scroll,
+          selected, page, panel, drafts, comments, scroll,
         }))
       } catch { /* Storage full or blocked: the reload starts fresh. */ }
     }
@@ -149,7 +192,7 @@ export function App() {
     addEventListener('pagehide', keep)
 
     return () => removeEventListener('pagehide', keep)
-  }, [selected, page, topbar, drafts, comments])
+  }, [selected, page, panel, drafts, comments])
   useEffect(() => {
     const scroll = pendingScroll.current
 
@@ -192,7 +235,7 @@ export function App() {
 
   const createTask = ({ column, parent }: { column: string; parent?: string }) => {
     void command({ name: 'task', args: ['create', '--title', parent ? 'New subtask' : 'New task', '--column', column, ...(parent ? ['--parent', parent] : []), '--event-id', crypto.randomUUID()] }).then(receipt => {
-      setPage('hydra'); setWorkspace(''); setTag(''); setQuery('')
+      setPage('hydra'); setWorkspace(''); setTag(''); setQuery(''); filterProject({ path: '' })
       const id = (receipt.card as { id: string }).id
       const first = cards.find(c => c.column === column)
       setEditingTask(id)
@@ -228,8 +271,8 @@ export function App() {
     notify,
     newColumn: newColumn !== null,
     cancelColumn: () => setNewColumn(null),
-    toggleTopbar: () => setTopbar(shown => !shown),
-    showTopbar: () => setTopbar(true),
+    togglePanel: () => setPanel(shown => !shown),
+    showPanel: () => setPanel(true),
   })
   const detail = card && (
     <Detail
@@ -262,62 +305,65 @@ export function App() {
       <div
         className="app"
         data-seq={state.seq}
+        data-connected={connected}
         style={{
           '--text-ui': `${view.fontSize}px`,
           '--text-chat': `${view.chatFontSize}px`,
           '--text-code': `${view.codeFontSize}px`,
         } as CSSProperties}
       >
-        <header className="topbar" hidden={!topbar}>
-          <div className="brand">
-            <span className="mark">π</span>
-            <span>pnyx</span>
-          </div>
-          <nav aria-label="Main pages">
-            <HydraTabs
+        <Panel
+          state={state}
+          openTask={open}
+          shown={panel}
+          connected={connected}
+          page={page}
+          navigate={({ page }) => setPage(page)}
+          oracle={(
+            <Oracle
+              selected={selected}
+              page={page}
+              state={state}
+              view={view}
               command={command}
-              connected={connected}
+              query={query}
+              setQuery={({ query }) => setQuery(query)}
+              hits={found}
+              save={save}
+              openTask={open}
+              openHydra={openHydra}
+              history={() => {
+                setHistoryQuery(query); setPage('history')
+              }}
+              showPanel={() => setPanel(true)}
+              createTask={createTask}
+              createColumn={createColumn}
+              action={keyboard.onAction}
               notify={notify}
-              active={page === 'hydra'}
-              showHydra={() => setPage('hydra')}
+              connected={connected}
             />
-            {[['history', 'History'], ['settings', 'Settings']].map(([id,label]) => (
-              <Button key={id} aria-pressed={page === id} onClick={() => setPage(id)}>
-                {label}
-              </Button>
-            ))}
-          </nav>
-          <Oracle
-            selected={selected}
-            page={page}
-            state={state}
-            view={view}
+          )}
+        >
+          <Hydras
             command={command}
-            query={query}
-            setQuery={({ query }) => setQuery(query)}
-            hits={found}
-            save={save}
-            openTask={open}
-            openHydra={openHydra}
-            history={() => {
-              setHistoryQuery(query); setPage('history')
-            }}
-            showTopbar={() => setTopbar(true)}
-            createTask={createTask}
-            createColumn={createColumn}
-            action={keyboard.onAction}
-            notify={notify}
             connected={connected}
+            notify={notify}
+            hydras={navigation.hydras}
+            current={navigation.hydraId}
+            project={project}
+            resolveProject={resolveProject}
+            selectProject={({ path }) => {
+              filterProject({ path: project === path ? '' : path }); setSelected(null); setPage('hydra')
+            }}
+            showHydra={() => {
+              setPage('hydra'); filterProject({ path: '' })
+            }}
+            addProject={() => {
+              setPage('settings')
+              requestAnimationFrame(() => document.querySelector('[aria-label="Projects"]')?.scrollIntoView())
+            }}
           />
-          <span
-            className={`connection ${connected ? 'online' : ''}`}
-            role="status"
-            aria-label={connected ? 'Connected' : 'Reconnecting'}
-            title={connected ? 'Connected' : 'Reconnecting'}
-          >
-            <i />
-          </span>
-        </header>
+        </Panel>
         <main className="shell">
           {page === 'settings' ? (
             <Settings
