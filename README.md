@@ -1,6 +1,6 @@
 # Pnyx
 
-Pnyx is the app, each board is a **Hydra**, and search is the **Oracle**. Everything else uses its plain name.
+Pnyx organizes work in **Hydras** and calls search the **Oracle**. Everything else uses its plain name.
 
 Pnyx tracks explicit tasks in Hydras, each an orchestrator and its tasks. Create tasks and columns inline, attach an interactive agent session, and continue its conversation from the card. Ad-hoc agent sessions stay in History without creating tasks.
 
@@ -26,6 +26,23 @@ pnyx-axi --version
 ```
 
 `pnpm add -g` links the clone, so after a `git pull` you only rerun `pnpm install && pnpm run build`. `pnpm link --global` does not work with this pnpm; use `pnpm add -g "$PWD"` (or `npm install -g .`). Without a global install, run `./dist/cli/pnyx-axi.js` from the clone.
+
+## Projects
+
+A Hydra can work across several projects. Each project is a folder on your laptop, shown by its folder name. Attach an existing folder or clone code into a destination you choose:
+
+```sh
+pnyx-axi project add /path/to/project --hydra work
+pnyx-axi project add --clone https://example.com/team/project.git --into /path/to/new-project --hydra work
+pnyx-axi project list --hydra work
+pnyx-axi task create --title "Ship the change" --project project --hydra work
+pnyx-axi task project <task> --project project --hydra work
+pnyx-axi project remove project --hydra work
+```
+
+Clone runs ordinary git directly, without sending the URL to an agent. `--into` is required. Relative paths are resolved from the CLI's working folder; in Settings, use an absolute laptop path. Removing a project only detaches it: tasks, history and the project record stay. Add its path again, or choose Re-attach under Settings → Projects → Detached, to bring it back. Use a full path when folder names are ambiguous.
+
+Sharing a folder between Hydras requires an explicit confirmation naming the other Hydras. The CLI returns a token; repeat the attachment with `--confirm <token>`. Settings shows a confirmation dialog with links to those Hydras. Hydra's summary and light check include its projects. On a Firstmate-linked Hydra, the home’s project folders appear read-only and are managed by Firstmate.
 
 ## Run
 
