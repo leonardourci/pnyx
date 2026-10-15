@@ -134,7 +134,7 @@ export function BoardCard({
           </Button>
         )}
         {!parent && card.parentId && <span className="muted small">Child task</span>}
-        {needsAgent({ card }) && <Button className="start" onClick={() => open({ id: card.id })}>Start agent</Button>}
+        {needsAgent({ card }) && <Button className="start" onClick={() => open({ id: card.id })}>Start worker</Button>}
         {card.attention.slice(0, 1).map(a => <div key={a.key} className="request">{a.text ?? a.kind}</div>)}
         {match?.snippets[0] && <p className="search-match">{match.snippets[0].snippet}</p>}
         {latest && <LastMessage message={latest} />}

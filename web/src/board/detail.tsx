@@ -146,6 +146,7 @@ export function Detail({
       {tab === 'thread' && needsAgent({ card }) ? (
         <StartAgent
           card={card}
+          firstmate={state.board?.hydra.kind === 'firstmate'}
           command={command}
           connected={connected}
           notify={notify}

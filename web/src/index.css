@@ -156,4 +156,9 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .start-agent label { display: flex; flex-direction: column; gap: 4px; color: var(--color-muted); font-size: .8em; }
 .start-agent label .input { font-size: 1.25em; color: var(--color-ink); }
 .start-agent .request p { margin: 0 0 6px; }
-.new-task { margin: 0 0 12px; max-width: 520px; background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 8px; }
+.board-tabs { display: flex; align-items: center; gap: 4px; min-width: 0; overflow-x: auto; font-size: .8em; }
+.board-tabs .board-tab { padding: 4px 9px; border-radius: 6px; color: var(--color-muted); white-space: nowrap; }
+.board-tabs .board-tab[aria-current=page] { color: var(--color-ink); background: var(--color-raised); }
+.board-tabs form { display: flex; align-items: center; gap: 4px; }.board-tabs form .input { width: 140px; }
+.integrations dd { display: flex; flex-direction: column; gap: 3px; }.integrations dd .ok { color: var(--color-green); }.integrations code { overflow-wrap: anywhere; font-size: .95em; }
+.settings-box.integrations > .button { margin-top: 14px; }
