@@ -200,8 +200,6 @@ export function isInstalled({ model }: { model: ModelFile }): boolean {
   }
 }
 
-// Partial downloads of this file left by processes that are gone (an interrupted
-// download, a worker that stopped when semantic search was turned off).
 function removeAbandoned({ model }: { model: ModelFile }): void {
   for (const name of readdirSync(modelsDir())) {
     const pid = Number(name.slice(model.file.length + 1, -'.part'.length))

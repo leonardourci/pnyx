@@ -1,5 +1,3 @@
-// Event schema and board model. Version 1 of the log format.
-
 export const EVENT_VERSION = 1 as const
 
 export const COLUMNS = ['needs_you', 'workers_on_it', 'review', 'done', 'parked'] as const
@@ -21,17 +19,11 @@ export type OutcomeState = (typeof OUTCOME_STATES)[number] | 'ended'
 export const REPLY_STATES = ['queued', 'delivered', 'delivery_unknown', 'failed'] as const
 export type ReplyState = (typeof REPLY_STATES)[number]
 
-// What a harvested note records: a summary of the work, a decision with its
-// question and answer, or context such as a session title or a brief's intent.
 export const NOTE_KINDS = ['summary', 'decision', 'context'] as const
 export type NoteKind = (typeof NOTE_KINDS)[number]
 
-// How a harvested context note names the harness's own session title.
 export const SESSION_TITLE = 'Session title: '
 
-// A title a source offers for a card nobody titled, best first: the harness's own
-// session title, the session's first prompt, a subagent's type and short id, then
-// its working folder.
 export const AUTO_TITLE_SOURCES = ['session', 'prompt', 'agent', 'folder'] as const
 
 export interface AutoTitle {
@@ -50,7 +42,6 @@ export interface SourceRef {
   observedAt?: string
 }
 
-// The harness session behind a card: a hook-reported session or one of its subagents.
 export interface AgentRef {
   provider: string
   sessionId: string
@@ -58,20 +49,12 @@ export interface AgentRef {
   agentType?: string
   cwd?: string
   transcriptPath?: string
-  // A Paseo agent: its id on the local daemon at paseoUrl, which takes its replies
-  // and holds its conversation.
   paseoAgentId?: string
   paseoUrl?: string
 }
 
-// A harness session's settings as the harness itself recorded them, by name: model,
-// effort, mode and fast, plus any setting only one harness has. Only known values
-// are kept. src/integrations/hooks/settings.ts lists where each one comes from.
 export type AgentSettings = Record<string, string>
 
-// Where a hook found the session's terminal, recorded from the environment it ran
-// in: the harness process and its TTY, the terminal program, and the tmux pane,
-// Paseo terminal or Herdr pane around it. A reply route reads it.
 export interface TerminalFacts {
   tty?: string
   pid?: string
@@ -93,8 +76,6 @@ export interface Link {
   checkedAt?: string
 }
 
-// One question an agent put with the options its own prompt shows, as Claude Code's
-// AskUserQuestion sends it. multiSelect takes several options instead of one.
 export interface Question {
   question: string
   header?: string
@@ -104,8 +85,6 @@ export interface Question {
 
 export const FORM_FIELD_TYPES = ['string', 'number', 'integer', 'boolean'] as const
 
-// One field of an MCP server's form, as its elicitation schema names it. options
-// lists the values of a choice field.
 export interface FormField {
   name: string
   title?: string
@@ -121,9 +100,7 @@ export interface Attention {
   key: string
   blocking: boolean
   text?: string
-  // The questions behind a question request, so the board can answer it inline.
   questions?: Question[]
-  // The fields of an MCP server's form, so the board can fill it in inline.
   form?: FormField[]
   // The reply that answered it from the board. The request stays until the session's
   // own hooks close it, but no longer counts as waiting on anyone.
@@ -143,12 +120,9 @@ export interface Outcome {
 export interface Reply {
   id: string
   state: ReplyState
-  // The request an inline answer answers, so a second answer to it is refused.
   answers?: string
 }
 
-// A note a source already recorded, harvested as it was written: never generated.
-// source names where it came from, such as claude-code, codex, firstmate or github.
 export interface Note {
   kind: NoteKind
   source: string
@@ -162,7 +136,6 @@ export interface SourceNote extends Note {
   ref: string
 }
 
-// A note on the card. The text stays in the log, on its noted event.
 export interface NoteRef {
   id: string
   kind: NoteKind
@@ -214,7 +187,6 @@ export interface Card {
   updatedAt: string
 }
 
-// Fields a push may set. Omitted fields keep their current value.
 export interface PushFields {
   // null, written only by undo, returns the card to its auto title.
   title?: string | null
@@ -224,7 +196,6 @@ export interface PushFields {
   parentId?: string | null
   activity?: string | null
   agent?: AgentRef
-  // The card's whole settings after the push; null when it has none.
   settings?: AgentSettings | null
   terminal?: TerminalFacts
   folder?: string | null
@@ -239,7 +210,6 @@ interface EventBase {
   actor: string
   cardId: string
   reason?: string
-  // Set on an event that reverses an earlier one.
   undoes?: string
   boardId?: string
   taskId?: string
@@ -283,8 +253,6 @@ export interface BoardColumn {
   // and a card whose column is deleted falls back to the parked one.
   role?: 'needs_you' | 'workers_on_it' | 'done' | 'parked'
 }
-// The agent a worker of one task kind launches on. quota picks the model with the
-// most runway in that intelligence bucket through quota-axi, within the harness.
 export const HARNESS_NAMES = ['claude', 'codex'] as const
 export const QUOTA_BUCKETS = ['high', 'medium', 'low'] as const
 export interface AgentConfig {
@@ -301,7 +269,6 @@ export interface BoardConfig {
   columns: BoardColumn[]
   // Task kind -> agent; `hydra` is the kind Hydra itself starts on.
   agents?: Record<string, AgentConfig>
-  // The shell command `task start --via command` and `hydra start --via command` run.
   command?: string
 }
 export interface HydraMessage {
@@ -360,7 +327,6 @@ export type RepliedEvent = EventBase & {
     route: string
     text?: string
     resolveKey?: string
-    // The request key an inline answer answers; its delivered receipt marks it answered.
     answers?: string
     detail?: string
   }
@@ -395,8 +361,6 @@ export type ViewEvent = EventBase & {
   }
 }
 
-// One harvested note. Its id is derived from the source record, so harvesting the
-// same record again appends nothing.
 export type NotedEvent = EventBase & { type: 'card.noted'; data: Note }
 
 export interface AgentSession {
@@ -449,7 +413,6 @@ export interface BoardState {
   seq: number
   cards: Record<string, Card>
   sessions?: Record<string, AgentSession>
-  // card key -> card id
   keys: Record<string, string>
   // event id -> seq, so a retried or respooled event is applied once.
   // ponytail: grows with the log; move to a per-segment index if snapshots get large.

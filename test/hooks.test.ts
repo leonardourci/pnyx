@@ -33,7 +33,6 @@ const SESSION = '11111111-2222-4333-8444-555555555555'
 const CODEX_SESSION = '019a0000-0000-7000-8000-000000000001'
 
 const fixture = ({ name }: { name: string }) => readFileSync(join(FIXTURES, `${name}.json`), 'utf8')
-// Every event each harness's own interface reacts to, checked against its hooks reference.
 const CLAUDE_EVENTS = [
   'SessionStart',
   'UserPromptSubmit',
@@ -83,7 +82,6 @@ function sandbox() {
   const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
   const spool = join(home, 'boards', 'default', 'spool')
   const spooled = () => (existsSync(spool) ? readdirSync(spool).filter(f => f.endsWith('.json') && !f.startsWith('.')) : [])
-  // Puts the script where setup installs it, so it finds PNYX_HOME from its own path.
   const script = join(home, 'hooks', 'pnyx-hook.sh')
   mkdirSync(join(home, 'hooks'), { recursive: true })
   copyFileSync(SCRIPT, script)
@@ -157,7 +155,6 @@ test('hook stays silent and exits 0 on bad arguments, bad input and unwritable s
   assert.equal(spooled().length, 0)
   await hook({ script, args: ['codex', 'Stop'], input: '' })
   assert.equal(JSON.parse(readFileSync(join(home, 'boards', 'default', 'spool', spooled()[0]!), 'utf8')).payload, null)
-  // A file where the boards folder should be makes the spool unwritable.
   const blocked = sandbox()
   writeFileSync(join(blocked.home, 'boards'), '')
   const { stdout, stderr } = await hook({ script: blocked.script, args: ['claude', 'Stop'], input: fixture({ name: 'claude-stop' }) })
@@ -169,7 +166,6 @@ test("hook sends the line to the board's server socket instead of the spool when
   const board = join(home, 'boards', 'default')
   mkdirSync(board, { recursive: true })
   const received: string[] = []
-  // Like the server: handles each line when its newline arrives and replies nothing.
   const server = createServer(socket => {
     let data = ''
     socket.on('data', chunk => {
@@ -309,8 +305,6 @@ const ask: Attention = {
 const allowTouch = ({ tool }: { tool: string }): Attention =>
   ({ kind: 'permission', key: `hook:tool:${tool}`, blocking: true, text: `Allow ${tool}: touch hello.txt && echo made` })
 const NOTHING = Symbol('no observation')
-// Every subscribed event of both harnesses: the activity it shows and the requests
-// it leaves open on a card that had none.
 const CASES: (Case | [Case[0], string, string, typeof NOTHING])[] = [
   ['claude', 'SessionStart', 'claude-session-start', 'finished', []],
   ['claude', 'SessionStart', 'claude-session-start-compact', undefined, []],
@@ -419,13 +413,9 @@ test('a request ends with its own tool call, the turn, or a newer request, and o
   const write: Attention = { kind: 'permission', key: 'hook:tool:Write', blocking: true, text: 'Allow Write' }
   const note: Attention = { kind: 'check', key: 'firstmate:note', blocking: false }
 
-  // A finished Bash call clears its own prompt, not a Write prompt still open.
   assert.deepEqual(attend({ current: [allowTouch({ tool: 'Bash' }), write], change: change({ event: 'PostToolUse', name: 'claude-post-tool-bash' }) }), [write])
-  // The generic notification repeats an open prompt, so it adds nothing then.
   assert.deepEqual(attend({ current: [write], change: change({ event: 'Notification', name: 'claude-notification-permission' }) }), [write])
-  // A blocking request goes before a non-blocking one, since the card shows the first.
   assert.deepEqual(attend({ current: [note], change: change({ event: 'PermissionRequest', name: 'claude-permission-request' }) }), [allowTouch({ tool: 'Bash' }), note])
-  // The end of a turn clears every hook request and keeps another source's.
   assert.deepEqual(attend({ current: [decision, write], change: change({ event: 'Stop', name: 'claude-stop' }) }), [decision])
   assert.deepEqual(attend({ current: [ask], change: change({ event: 'UserPromptSubmit', name: 'claude-user-prompt' }) }), [])
   assert.deepEqual(attend({ current: [ask], change: change({ event: 'PostToolUse', name: 'claude-post-tool-bash' }) }), [ask])
@@ -500,7 +490,6 @@ test('a subagent\'s permission prompt leaves both cards once its tool call ends 
   send({ event: 'PostToolUse', name: 'claude-post-tool-bash', extra: { agent_id: 'agent-a1', agent_type: 'Explore', tool_name: 'Write' } })
   assert.match(run({ args: ['card', parent] }), /^ {2}attention: none$/m)
   assert.match(run({ args: ['card', child] }), /^ {2}attention: none$/m)
-  // With nothing left to clear, a subagent's tool call records nothing on the parent.
   send({ event: 'PostToolUse', name: 'claude-post-tool-bash', extra: { agent_id: 'agent-a1', agent_type: 'Explore', tool_name: 'Write' } })
   const ids = readFileSync(join(home, 'boards', 'default', 'events.jsonl'), 'utf8').trimEnd()
     .split('\n')
@@ -711,7 +700,6 @@ test('an ended session records its outcome in place, and a resumed one is reopen
   writeFileSync(probe, '{}')
   let n = 0
 
-  // Explicit, ordered names: each step is ingested on the next write.
   const send = ({ event, name, payload }: { event: string; name: string; payload?: object }) => {
     n += 1
     const line = { ...envelope({ harness: 'claude', event, name }), id: `hook-${n}`, at: `2026-10-13T14:00:${String(n).padStart(2, '0')}Z`, ...(payload ? { payload } : {}) }

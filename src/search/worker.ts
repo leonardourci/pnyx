@@ -1,11 +1,3 @@
-// The semantic search worker: one process per Pnyx home, spawned on demand by
-// a search and run at low priority, never inside the board server or a hook. It
-// listens on a local socket. On start it picks the models for this machine,
-// downloads any that are missing (reporting progress; searches stay full-text
-// meanwhile), loads the embedder, then fetches and loads the reranker. It embeds
-// queries and reranks candidates for any client, and in between embeds the
-// entries each board's index gained, one at a time, newest first. After a minute
-// with nothing to do it exits and frees the models' memory.
 // Protocol: one JSON request line per connection, answered with one JSON line.
 import { createConnection, createServer, type Socket } from 'node:net'
 import type { DatabaseSync } from 'node:sqlite'
@@ -17,12 +9,10 @@ import { claimVectors, openVectors, pending, putVectors } from './vectors.ts'
 import { workerSocket } from './semantic.ts'
 
 const IDLE_MS = 60_000
-// How often the worker checks whether it is idle or semantic search was turned off.
 const TICK_MS = 2_000
 // Entries embedded between commits; a commit holds the write lock only briefly.
 const BATCH = 32
 const RETRY_MS = 5_000
-// After a failure, how long searches stay full-text before a worker tries again.
 const DOWNLOAD_COOLDOWN_MS = 10 * 60_000
 const BROKEN_COOLDOWN_MS = 24 * 60 * 60_000
 
@@ -32,7 +22,6 @@ export type Request =
   | { op: 'rerank'; query: string; docs: string[] }
   | { op: 'index'; board: string }
 
-// Where a model stands: being fetched (bytes so far of the total), loading, ready or failed.
 type Phase = { phase: 'downloading'; done: number; total: number } | { phase: 'loading' } | { phase: 'ready' } | { phase: 'failed'; message: string } | { phase: 'off' }
 
 const settings = readSettings({ })
@@ -113,7 +102,6 @@ async function fetchModel({ model, track }: {
   ) => void
 }): Promise<void> {
   if (stubbed()) {
-    // Tests stand in for a download's progress with PNYX_SEMANTIC_STUB_DOWNLOAD_MS.
     const ms = Number(process.env.PNYX_SEMANTIC_STUB_DOWNLOAD_MS) || 0
 
     for (let t = 0; t < ms; t += 100) {
@@ -142,7 +130,6 @@ function fail({ error, forMs }: { error: unknown; forMs: number }): never {
   throw error
 }
 
-// Picks the models, fetches the embedder and loads it; then the reranker, when on.
 async function prepare(): Promise<Backend> {
   try {
     mode = await detectMode()
@@ -362,7 +349,6 @@ async function indexBoard({ board, b }: { board: string; b: Backend }): Promise<
   }
 }
 
-// Binds the socket, unless another worker already answers on it.
 function listen(): void {
   const path = workerSocket()
   server.once('error', (error: NodeJS.ErrnoException) => {

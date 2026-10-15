@@ -1,8 +1,3 @@
-// Delivers a reply or decision answer to a Firstmate task through the home's own
-// send command, `bin/fm-send.sh <task> [--resolve-key <key>] <text>`, and a setting
-// change for its worker to the orchestrator as a request note through the home's
-// `bin/fm-inbox.sh`, each run with an explicit FM_HOME. The receipts around them are
-// written by `pnyx-axi reply` and `pnyx-axi agent`.
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import type { ReplyState } from '../../core/model.ts'

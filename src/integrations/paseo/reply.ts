@@ -1,4 +1,3 @@
-// Sends a reply to a Paseo agent through the daemon, the way Paseo's own composer does.
 import type { ReplyRoute } from '../../core/route.ts'
 import type { Delivery } from '../hooks/terminal.ts'
 import { openPaseo, type Connect } from './client.ts'

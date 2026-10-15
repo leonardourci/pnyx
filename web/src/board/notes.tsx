@@ -10,8 +10,6 @@ type Sections = Record<'summary' | 'decisions' | 'context', BriefNote[]>
 const list = ({ value }: { value: unknown }) => (Array.isArray(value) ? value as BriefNote[] : [])
 const STATUS = /^(?:done|resolved|needs-decision)(?: \[[^\]]+\])?:\s*/
 
-// The card's harvested notes, as `pnyx-axi card --full` reports them, folded into one
-// collapsed header: the latest summary on top, then decisions, context and earlier summaries.
 export function ConversationBrief({ card, entries, command, notify }: {
   card: Card
   entries: ThreadEntry[]

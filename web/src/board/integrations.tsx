@@ -5,8 +5,6 @@ import { safeLink } from './view.ts'
 
 type Integration = { name: string; status: string; setup: string; docs: string }
 
-// What each integration needs, read from `pnyx-axi integrations`; setting one up
-// stays a command the owner runs.
 export function IntegrationSettings({ command, notify }: {
   command: Command
   notify({ text }: { text: string }): void

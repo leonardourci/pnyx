@@ -1,5 +1,3 @@
-// Files that announce a running server and guard its writes: server.json and the
-// ingest socket per board, and one local write token per install.
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'

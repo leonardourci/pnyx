@@ -42,8 +42,6 @@ function sameSource({ a, b }: { a: SourceRef; b: SourceRef }): boolean {
   return a.adapter === b.adapter && a.instanceId === b.instanceId && a.objectId === b.objectId
 }
 
-// True when the card already holds a newer observation of the same source object:
-// a higher generation, or the same generation observed later.
 export function isStaleSource({ card, source }: {
   card: Card | undefined
   source: SourceRef
@@ -91,8 +89,6 @@ export function wouldCycle({ cards, cardId, parentId }: {
   return false
 }
 
-// Applies one event to a state the caller owns. Returns false when the event is
-// ignored: already applied, out of sequence, for an unknown card, or stale.
 function apply({ state, event }: { state: BoardState; event: BoardEvent }): boolean {
   if (event.seq <= state.seq || event.id in state.eventIds) {
     return false
@@ -361,7 +357,6 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
   return true
 }
 
-// Pure: returns a new state and leaves the input untouched.
 export function replay({ state, events }: {
   state: BoardState
   events: Iterable<BoardEvent>

@@ -1,5 +1,3 @@
-// Agent kinds and Hydra's light check. A kind is the agent `task start` and
-// `hydra start` use in Paseo; the check lets Hydra wait for changes cheaply.
 import { isDeepStrictEqual } from 'node:util'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
@@ -70,7 +68,6 @@ function kindCommand({ args }: { args: string[] }): Output {
 
         delete agents[kind]
       } else {
-        // A flag left out keeps its value; an empty value or --quota off clears it.
         const agent: AgentConfig = { ...existing, harness: (harness ?? existing?.harness ?? 'claude') as AgentConfig['harness'] }
 
         for (const [flag, value] of [['model', values.model], ['effort', values.effort], ['mode', values.mode], ['quota', quota === 'off' ? '' : quota]] as const) {

@@ -7,7 +7,6 @@ export const CARET_KEY = /^(Arrow(Up|Down|Left|Right)|Home|End|Page(Up|Down))$/
 const CHROME = '.block-comment-action, .inline-comment, .receipt, .code-language, .trace summary'
 const ISLANDS = `${CHROME}, .trace, a[href]`
 export const CARET_CSS = `[${CARET_HOST}] :is(${ISLANDS}) { -webkit-user-modify: read-only; } [${CARET_HOST}] :is(${CHROME}) { user-select: none; }`
-// Lines kept in view above and below the caret as it moves.
 const MARGIN_LINES = 3
 
 const isContent = ({ node }: { node: Node }) =>

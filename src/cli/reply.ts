@@ -1,8 +1,3 @@
-// `pnyx-axi reply`: sends text to a card's agent through the route its sources
-// recorded (core/route.ts): a Firstmate task through the home's fm-send (a setting
-// change as a request note to its orchestrator), any other session by typing into
-// its terminal. Each step is a receipt on the card: queued
-// before the send, then delivered, delivery_unknown or failed.
 import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
 import { answerPrompt, answerText, checkAnswer, requestId } from '../core/answer.ts'
@@ -22,9 +17,7 @@ import { COMMON, drainSpool, guard, meta, parse, required, type Options, type Ou
 
 export interface ReplyRequest {
   card: string
-  // What is typed, or for a key the name kept on its receipts.
   text: string
-  // A key pressed instead of typing text, where the route's host can press it.
   key?: Key
   // One more Enter after the text, for a command the harness may ask to confirm.
   confirm?: boolean
@@ -35,7 +28,6 @@ export interface ReplyRequest {
   // earlier send failed outright.
   id?: string
   resolveKey?: string
-  // Configured Firstmate homes; a Firstmate card's home must be one of them.
   homes: string[]
   actor?: string
   // An inline answer to the open request with this key, pressed as keys into the
@@ -59,7 +51,6 @@ function invalid({ message, help = [] }: { message: string; help?: string[] }): 
   return new BoardError({ message, code: 'VALIDATION_ERROR', help })
 }
 
-// The route name kept on each receipt.
 function routeName({ route, control }: { route: ReplyRoute; control?: boolean }): string {
   return route.kind === 'firstmate' ? (control ? 'firstmate:inbox' : 'firstmate')
     : route.kind === 'paseo-agent' ? route.kind : `terminal:${route.kind}`
@@ -398,8 +389,6 @@ export const reply = guard({
 // the transcript is read back.
 const READBACK_MS = 1000
 
-// The card's harness, settings and the controls its Agent tab offers, each with the
-// reason it cannot be sent when the route cannot carry it.
 function agentSummary({ board, ref, homes }: {
   board: string
   ref: string

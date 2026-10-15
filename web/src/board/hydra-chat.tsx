@@ -5,8 +5,6 @@ import { Button, Textarea, useBusy } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
 
-// The board's Hydra chat, docked beside the columns: what was sent to Hydra, newest
-// at the bottom, and the composer under it. Enter sends, Shift+Enter adds a line.
 export function HydraChat({ state, command, connected, openTask, notify }: {
   state: BoardState
   command: Command

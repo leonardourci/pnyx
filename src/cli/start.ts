@@ -1,7 +1,3 @@
-// Starts a task's worker or a board's Hydra through Paseo, Firstmate or the board's
-// own command, and records each start on the board. Pnyx never supervises what it
-// starts: Paseo keeps its agents, Firstmate dispatches its own crew, and a command's
-// agent reports through its hooks like any other session.
 import { randomUUID } from 'node:crypto'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -21,9 +17,7 @@ import { canonical, drainSpool, type Output } from './commands.ts'
 
 export const VIAS = ['paseo', 'firstmate', 'command'] as const
 type Via = (typeof VIAS)[number]
-// Same relative path from src/cli and dist/cli.
 export const HYDRA_SKILL = join(import.meta.dirname, '..', '..', 'skills', 'pnyx-hydra', 'SKILL.md')
-// Where a Firstmate home finds a skill of its own, outside Firstmate's tracked files.
 export const HOME_SKILL = join('.agents', 'skills', 'pnyx-hydra')
 
 function chooseVia({ state, via }: { state: BoardState; via?: string }): Via {
@@ -62,8 +56,6 @@ interface QuotaModel {
   effective?: { effectivePercentRemaining?: number }
 }
 
-// The model with the most runway in the bucket for this harness, or undefined when
-// quota-axi cannot tell.
 function quotaModel({ harness, quota }: {
   harness: AgentConfig['harness']
   quota: NonNullable<AgentConfig['quota']>
@@ -101,7 +93,6 @@ export function agentFor({ state, board, kind }: {
   return agent
 }
 
-// The opening message of a worker started without one.
 export function workerPrompt({ board, id, title }: {
   board: string
   id: string
@@ -235,7 +226,6 @@ function startCommand({ board, role, task, prompt, folder, harness, meta }: {
 
       const duplicate = `${id}:started` in writer.state.eventIds
 
-      // Hydra's own card exists once the board is configured; its start is noted there.
       if (!duplicate && role === 'hydra' && !writer.state.configured) {
         apply({ writer, decision: hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:board` }, cardId: '$board', change: { type: 'board.configured', data: config } }) })
       }
@@ -386,10 +376,6 @@ export async function startHydra({
   })
 }
 
-// Makes a Firstmate home this board's Hydra: the board names the home, the home gets
-// the pnyx-hydra skill as its own local skill (kept out of Firstmate's tracked files
-// through the clone's info/exclude), and Firstmate gets an inbox note pointing at it.
-// Nothing in Firstmate's own files changes.
 export function setupHydra({ board, home, meta }: {
   board: string
   home: string
@@ -434,7 +420,6 @@ export function setupHydra({ board, home, meta }: {
   }
 }
 
-// Adds the path to the clone's local exclude file once; false when the home is not a git clone.
 function exclude({ home, path }: { home: string; path: string }): boolean {
   const found = spawnSync('git', ['-C', home, 'rev-parse', '--git-path', 'info/exclude'], { encoding: 'utf8' })
 

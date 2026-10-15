@@ -1,6 +1,3 @@
-// Inline answers to an agent's own prompt: which open requests the board can answer,
-// the choices each one offers, and the check of an answer before anything is typed.
-// Pure; the keys each harness expects are in integrations/hooks/answer.ts.
 import type { Attention, Card, FormField } from './model.ts'
 import { replyRoute } from './route.ts'
 
@@ -11,12 +8,8 @@ export type QuestionAnswer = { pick: number[] } | { text: string }
 export const CHOICES = ['allow', 'deny', 'approve', 'revise', 'accept', 'decline'] as const
 export type ChoiceName = (typeof CHOICES)[number]
 
-// A form field's value: text for a text or choice field, a number, or true/false.
 export type FieldValue = string | number | boolean
 
-// A question request takes answers, one per question; a permission or plan request
-// takes a choice, with text where the choice asks for it; a form is accepted with
-// its values by field name, or declined.
 export interface Answer {
   answers?: QuestionAnswer[]
   choice?: ChoiceName
@@ -251,7 +244,6 @@ function checkForm({ fields, value }: Form): Checked {
   return { answer: { choice: 'accept', values } }
 }
 
-// The answer in its checked, normalized form, or why it does not fit the prompt.
 export function checkAnswer(
   { prompt, request, value: raw }: { prompt: Prompt; request: Attention; value: unknown },
 ): Checked {
@@ -292,7 +284,6 @@ export function checkAnswer(
   return { answer: { choice: choice.choice, ...(text ? { text } : {}) } }
 }
 
-// The answer in words, kept on its reply receipt: "Pick a color → Blue".
 export function answerText(
   { prompt, request, answer }: { prompt: Prompt; request: Attention; answer: Answer },
 ): string {

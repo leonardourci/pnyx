@@ -208,7 +208,6 @@ export function App() {
   // The deletion a notice can undo; any later notice replaces it.
   const [undoColumn, setUndoColumn] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState<string | null>(null)
-  // Mod+B hides the top bar to give the board the whole height.
   const [topbar, setTopbar] = useState(restored.topbar ?? true)
   const notify = useCallback(({ text }: { text: string }) => {
     setNotice(text); setUndoColumn(null)
@@ -216,7 +215,6 @@ export function App() {
   const pendingScroll = useRef(restored.scroll)
   const view = viewFor({ state })
   useEffect(() => {
-    // System follows the operating system and switches live with it.
     const root = document.documentElement, dark = matchMedia('(prefers-color-scheme: dark)')
 
     const apply = () => {
@@ -311,7 +309,6 @@ export function App() {
 
   const open = ({ id }: { id: string }) => {
     if (state.cards[id]) {
-      // The conversation opens at its reply input, the end of the thread.
       setSelected(id); setPage('board')
       requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.composer textarea' })))
     }

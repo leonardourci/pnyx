@@ -1,5 +1,3 @@
-// Turns a requested change into the event to append, validated against the current
-// board. Pure: the caller supplies the time and actor.
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import {
@@ -516,8 +514,6 @@ export function decideSession({ state, ref, task, meta }: {
   }
 }
 
-// Upserts the card with this key. `input` is the untrusted card JSON; `parent`
-// names the parent card by id or key, and null clears it.
 export function decidePush({ state, key, input: rawInput, meta }: {
   state: BoardState
   key: string
@@ -658,8 +654,6 @@ function checkColumn({ state, column }: { state: BoardState; column: Column | nu
   }
 }
 
-// Places the card in column just above the card `before`, or at the end of the
-// column without one. The rank falls between its new neighbours'.
 export function decideMove(
   { state, ref, column, before, meta }: {
     state: BoardState
@@ -700,8 +694,6 @@ export function decideMove(
   })
 }
 
-// Builds a link from CLI-style input, filling kind and number from a GitHub pull
-// request URL when they are not given.
 export function parseLink({ input }: {
   input: {
     url: string
@@ -763,8 +755,6 @@ export function parseLink({ input }: {
   return link
 }
 
-// Adds or updates a link (merged over the existing one with the same URL), or
-// removes it when link is null.
 export function decideLink(
   { state, ref, url, link, meta }: {
     state: BoardState
@@ -837,8 +827,6 @@ export function decideOutcome(
   })
 }
 
-// Records one receipt of a reply. A receipt that repeats the reply's current state
-// appends nothing.
 export function decideReply({ state, ref, data, meta }: { state: BoardState; ref: string; data: RepliedEvent['data']; meta: Meta }): Decision {
   const card = findCard({ state, ref })
 
@@ -853,8 +841,6 @@ export function noteId({ cardKey, ref }: { cardKey: string; ref: string }): stri
     .slice(0, 20)}`
 }
 
-// Records one harvested note. meta.id is the note's stable id, so the same source
-// record harvested again is a duplicate and appends nothing.
 export function decideNote(
   { state, ref, note, meta }: {
     state: BoardState

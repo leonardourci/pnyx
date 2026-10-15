@@ -1,6 +1,3 @@
-// node-llama-cpp and sqlite-vec, the packages semantic search runs on, are optional
-// dependencies: a normal install has them, and an install that skips optional
-// dependencies has full-text search only.
 import { realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'

@@ -48,10 +48,8 @@ test('a Claude Code transcript yields its titles, compaction summaries and answe
       { kind: 'summary', source: 'claude-code', text: 'Invoice export moved to a nightly batch' },
     ],
   )
-  // A repeated title names the same note; a declined question yields none.
   assert.equal(notes[0]!.ref, notes[1]!.ref)
   assert.equal(new Set(notes.map(n => n.ref)).size, notes.length - 1)
-  // The compaction summary is a note, not transcript text.
   assert.ok(!records({ path: CLAUDE }).flatMap(record => transcriptMessages({ record }))
     .some(m => m.text.includes('zebrafish')))
 })
@@ -65,7 +63,6 @@ test('a Codex transcript yields its readable compaction summaries', () => {
 })
 
 function board() {
-  // Tests never touch the real ~/.pnyx.
   const home = mkdtempSync(join(tmpdir(), 'pnyx-notes-'))
   process.env.PNYX_HOME = home
   const env = { ...process.env, PNYX_HOME: home, PNYX_GH_AXI: GH_AXI }
@@ -117,7 +114,6 @@ test('harvest folds transcript notes and pull requests into cards once', () => {
   assert.match(card, /^ {2}context\[3\]\{at,source,text\}:$/m)
   assert.match(card, /github,"Pull request #42: Nightly invoice export\\n\\nMoves the invoice export to a 2am UTC batch\."$/m)
   assert.doesNotMatch(card, /pipelineevidenceword|templatemarkerword/)
-  // Long text is cut by default and shown whole with --full.
   assert.match(card, /pnyx-axi card c1 --full/)
   const full = run({ args: ['card', 'c1', '--full'] })
   assert.match(full, /Pending: drop the on-demand export/)
@@ -125,7 +121,6 @@ test('harvest folds transcript notes and pull requests into cards once', () => {
   assert.match(run({ args: ['card', 'c2'] }), /^ {2}summary\[1\]\{at,source,text\}:\n {4}"2026-10-12T11:00:00.000Z",codex,The ledger sync drifts/m)
   assert.match(run({ args: ['history', '--kind', 'noted', '--card', 'c2'] }), /summary from codex/)
 
-  // A harvested note is a source observation.
   fails({ args: ['undo', noted()[0]!.id], code: 'NOT_UNDOABLE' })
   fails({ args: ['harvest', '--card', 'nope'], code: 'NOT_FOUND' })
 })
@@ -153,7 +148,6 @@ for (const event of ['Stop', 'PostCompact']) {
     spoolWrite({ board: 'default', entry: { v: 1, id: 'h0', at: '2026-10-11T10:59:00.000Z', harness: 'claude', event: 'SessionStart', payload } })
     spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-11T11:00:00.000Z', harness: 'claude', event, payload } })
     writeFileSync(join(process.env.PNYX_HOME!, 'other.json'), '{}')
-    // Any write drains the spool first.
     assert.match(run({ args: ['push', '--key', 'other', '--file', join(process.env.PNYX_HOME!, 'other.json')] }), /^ {2}notes: 6$/m)
     const { state } = loadBoard({ board: 'default' })
     assert.equal(state.cards[state.keys['claude:s9']!]!.notes?.length, 6)
@@ -269,9 +263,7 @@ test('a session renamed back to an earlier title takes that title again', () => 
     assert.match(run({ args: ['card', 'c2'] }), new RegExp(`^ {2}title: ${title}$`, 'm'))
   }
 
-  // A Codex index entry bumped without a rename appends nothing.
   appendFileSync(index, `${JSON.stringify({ id: 'x2', thread_name: 'Alpha', updated_at: '2026-10-12T13:00:00Z' })}\n`)
-  // The same records read again, even from the start, append nothing.
   appendFileSync(path, `${JSON.stringify({ type: 'custom-title', customTitle: 'Alpha', sessionId: 's1' })}\n`)
   assert.match(run({ args: ['harvest'] }), /none: nothing new/)
   writeFileSync(join(home, 'boards', 'default', 'harvest.json'), 'not json')

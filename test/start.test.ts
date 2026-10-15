@@ -1,6 +1,3 @@
-// Starting workers and Hydra through Paseo, Firstmate and the board command. Uses a
-// temporary PNYX_HOME, a fake Paseo client and a copy of the Firstmate fixture home;
-// the board command is a shell line that only writes a file.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
@@ -29,7 +26,6 @@ function lab() {
   return { root, folder, run, state: () => loadBoard({ board: 'lab' }).state }
 }
 
-// Waits for the detached command's file, which it renames into place whole.
 async function written({ path }: { path: string }): Promise<string> {
   for (let i = 0; i < 100 && !existsSync(path); i++) {
     await new Promise(resolve => setTimeout(resolve, 20))
@@ -71,13 +67,11 @@ test('task start --via command runs the board command once and its session joins
   assert.equal(env.PNYX_FOLDER, folder)
   assert.equal(state().cards[task]!.notes?.at(-1)?.source, 'pnyx:start')
 
-  // The same start again runs nothing.
   writeFileSync(out, '')
   assert.equal((await startTask({ board: 'lab', task, via: 'command', meta: { ...meta, id: 's1' } })).event, 'none: duplicate')
   await new Promise(resolve => setTimeout(resolve, 200))
   assert.equal(readFileSync(out, 'utf8'), '')
 
-  // The agent's hooks name the task, so its session attaches to it, and only there.
   hook({ env, session: 'cmd-1', event: 'SessionStart' })
   ingestSpool({ board: 'lab' })
   assert.deepEqual(state().cards[task]!.sessionIds, ['claude-code:cmd-1'])
@@ -85,7 +79,6 @@ test('task start --via command runs the board command once and its session joins
   ingestSpool({ board: 'lab' })
   assert.deepEqual(state().cards[task]!.sessionIds, ['claude-code:cmd-1'])
 
-  // Without a command the board says how to set one.
   run({ args: ['board', 'set', '--command', ''] })
   await assert.rejects(startTask({ board: 'lab', task, via: 'command', meta }), /no start command/)
 })
@@ -148,11 +141,9 @@ test('setup hydra gives a Firstmate home the skill and a note, and task start as
   assert.equal(spawnSync('git', ['-C', home, 'status', '--porcelain', '.agents']).stdout.toString(), '')
   assert.equal(out.note, 'delivered')
   assert.deepEqual(state().board?.hydra, { id: 'firstmate:home', kind: 'firstmate', name: 'Hydra', home })
-  // Running it again adds nothing.
   setupHydra({ board: 'lab', home, meta })
   assert.equal(readFileSync(join(home, '.git', 'info', 'exclude'), 'utf8').match(/pnyx-hydra/g)?.length, 1)
   assert.equal(JSON.parse(readFileSync(join(home, 'inbox.json'), 'utf8')).length, 1)
-  // Switching to another home and back makes the first home Hydra again.
   cpSync(join(ROOT, 'test', 'fixtures', 'firstmate-home'), join(root, 'other'), { recursive: true })
   setupHydra({ board: 'lab', home: join(root, 'other'), meta })
   assert.equal(state().board?.hydra.home, join(root, 'other'))
@@ -161,7 +152,6 @@ test('setup hydra gives a Firstmate home the skill and a note, and task start as
 
   run({ args: ['task', 'create', '--title', 'Fix login'] })
   const task = Object.values(state().cards).find(c => c.title === 'Fix login')!.id
-  // A Firstmate Hydra is the default route.
   const asked = await startTask({ board: 'lab', task, prompt: 'Only the API', meta: { ...meta, id: 'w1' } })
   assert.equal(asked.sent, 'delivered')
   assert.equal(state().hydraMessages?.at(-1)?.action, 'worker')

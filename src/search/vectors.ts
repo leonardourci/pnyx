@@ -27,7 +27,6 @@ function meta({ db, key }: { db: DatabaseSync; key: string }): string | undefine
   return (db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined)?.value
 }
 
-// Opens the board's index to write vectors, or null when it has not been built.
 export function openVectors({ board }: { board: string }): DatabaseSync | null {
   const { DatabaseSync } = sqlite()
 
@@ -89,7 +88,6 @@ export function claimVectors({ db, key, probes }: {
   }
 }
 
-// Distinct chunk texts with no vector yet, newest first, leaving out the hashes given.
 export function pending(
   { db, limit, skip = new Set() }: { db: DatabaseSync; limit: number; skip?: ReadonlySet<string> },
 ): { hash: string; body: string }[] {
@@ -135,7 +133,6 @@ export interface Nearest {
 
 export interface VectorRead {
   nearest: Nearest[]
-  // Entries with a vector from this backend, of all entries.
   embedded: number
   total: number
 }
@@ -188,7 +185,6 @@ export interface NearChunk {
   body: string
 }
 
-// One card's chunks nearest the query vector, best first, as `--card` ranks entries.
 export function nearestChunks(
   { board, key, query, card, kind, limit }: {
     board: string
@@ -227,7 +223,6 @@ function loadVec({ db }: { db: DatabaseSync }): void {
   db.enableLoadExtension(false)
 }
 
-// How many of the board's entries have a vector from this backend; null when the index is not built.
 type Counts = { embedded: number; total: number }
 
 export function vectorCounts({ board, key }: { board: string; key: string }): Counts | null {

@@ -1,8 +1,3 @@
-// What semantic search runs a text through: the pinned models through
-// node-llama-cpp, on the GPU where it has a backend (Metal, CUDA, Vulkan) and the
-// CPU otherwise, or, under PNYX_SEMANTIC_STUB=1 for tests, hash vectors and word
-// overlap that never touch a model file. The worker process loads models;
-// `search setup` also loads them once to run their golden check.
 import { createHash } from 'node:crypto'
 import { BoardError } from '../core/model.ts'
 import { EMBEDDERS, PROBES, RERANKER, RERANK_PROBE, modelPath, type EmbedderId, type ModelFile } from './models.ts'
@@ -167,7 +162,6 @@ async function realBackend({ id }: { id: EmbedderId }): Promise<Backend> {
       ranking ??= loadRanking()
       const ctx = await ranking
 
-      // A document too long for the context is scored by its best-scoring piece.
       return ctx.rankAll(query.slice(0, RERANK_QUERY_MAX), docs, { onOverflow: 'maxChunk' })
     },
     close: () => llama.dispose(),
@@ -181,7 +175,6 @@ const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
   .replace(/\p{M}/gu, '')
 const stubWords = ({ text }: { text: string }) => fold({ text }).match(/[\p{L}\p{N}]+/gu) ?? []
 
-// Bag of words hashed into 64 dimensions: texts sharing words are near.
 function stubVector({ text }: { text: string }): Float32Array {
   const v = new Float32Array(STUB_DIMS)
   v[0] = 0.01
@@ -203,7 +196,6 @@ function stubBackend({ id }: { id: EmbedderId }): Backend {
     floor: STUB_FLOOR,
     probes: PROBES.map(text => stubVector({ text })),
     embed: async ({ text }) => stubVector({ text }),
-    // The share of the query's words the document holds.
     rerank: async ({ query, docs }) => {
       const q = new Set(stubWords({ text: query }))
 

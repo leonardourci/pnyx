@@ -10,18 +10,15 @@ import type { BoardState } from '../src/core/model.ts'
 const bin = join(import.meta.dirname, '../dist/cli/pnyx-axi.js')
 const execFileAsync = promisify(execFile)
 
-// A board on a temporary PNYX_HOME, with the caller's terminal variables cleared.
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'pnyx-workers-'))
   mkdirSync(join(root, 'work'))
   const folder = realpathSync(join(root, 'work'))
   const env: NodeJS.ProcessEnv = { ...process.env, PNYX_HOME: root, PNYX_SEMANTIC: 'off', PASEO_TERMINAL_ID: '', PASEO_WORKSPACE_ID: '', TMUX_PANE: '', HERDR_PANE_ID: '', PNYX_ACTOR: '' }
-  // TOON escapes quotes and backslashes; tests read the plain text.
   const run = ({ args, extra = {} }: { args: string[]; extra?: NodeJS.ProcessEnv }) =>
     execFileSync(process.execPath, [bin, ...args], { env: { ...env, ...extra }, encoding: 'utf8' })
       .replace(/\\(["\\])/g, '$1')
 
-  // AXI prints structured errors on stdout.
   const fail = ({ args, extra = {} }: { args: string[]; extra?: NodeJS.ProcessEnv }): string => {
     try {
       run({ args, extra })
@@ -35,7 +32,6 @@ function fixture() {
   const state = (): BoardState => JSON.parse(readFileSync(join(root, 'boards/default/snapshot.json'), 'utf8')).state
   let n = 0
 
-  // One interactive Claude Code hook from a Paseo terminal, folded in by the next write.
   const hook = ({ session, cwd, terminal }: { session: string; cwd: string; terminal: string }) => {
     const spool = join(root, 'boards/default/spool')
     mkdirSync(spool, { recursive: true })

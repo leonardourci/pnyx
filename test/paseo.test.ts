@@ -129,12 +129,10 @@ for (const harness of ['claude', 'codex']) {
     assert.equal(task.agent?.paseoAgentId, 'lab-1')
     assert.equal(task.agent?.paseoUrl, url)
     assert.equal(task.column, 'workers_on_it')
-    // The session's own card is recorded but stays off the board.
     const origin = Object.values(state().cards).find(c => c.key === 'paseo:lab-1')!
     assert.equal(liveTask({ card: origin }), false)
     assert.equal(state().sessions?.[`${provider}:lab-1`]?.taskId, 'c1')
 
-    // The same start again is a no-op; a different one meets the attached agent.
     const again = await startAgent({ board: 'lab', task: 'work', harness, prompt: 'Do the lab work', url, meta, connect: paseo.connect })
     assert.equal(again.event, 'none: duplicate')
     assert.equal(paseo.calls.create.length, 1)
@@ -223,7 +221,6 @@ test('pnyx-axi task start and task paseo report a stopped daemon as structured e
 })
 
 test('an agent started from a lab home reports its hooks to that home, never to the installed one', async () => {
-  // The owner's installed hook lives in its own home, as `setup hooks` puts it.
   const installed = mkdtempSync(join(tmpdir(), 'pnyx-real-home-'))
   const script = join(installed, 'hooks', 'pnyx-hook.sh')
   mkdirSync(join(installed, 'hooks'))
@@ -233,7 +230,6 @@ test('an agent started from a lab home reports its hooks to that home, never to 
   const paseo = fakePaseo()
   await startAgent({ board: 'lab', task: 'work', harness: 'claude', prompt: 'Go', folder, url, meta: { at, actor: 'test' }, connect: paseo.connect })
 
-  // The agent's harness runs the installed hook with the environment Paseo was given.
   const env = paseo.calls.create[0]!.env as Record<string, string>
   const payload = JSON.stringify({ session_id: 'lab-session', hook_event_name: 'UserPromptSubmit', cwd: folder, prompt: 'Go' })
   const ran = spawnSync('/bin/sh', [script, 'claude', 'UserPromptSubmit'], { input: payload, env: { PATH: process.env.PATH, ...env } })
@@ -252,7 +248,6 @@ test('task start uses the task kind\'s model, effort and mode, and opens with th
   assert.deepEqual(created.config, { provider: 'codex/codex-small', thinkingOptionId: 'high', modeId: 'full-access' })
   assert.match(String(created.prompt), /Pnyx worker for task c1 "Lab task" on board lab/)
 
-  // A named model Paseo does not offer is refused before anything starts.
   const other = board()
   workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'missing', '--board', 'lab'])
   const refused = fakePaseo()

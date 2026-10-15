@@ -61,11 +61,9 @@ export function safeLink({ link }: { link: Link }): string | undefined {
   }
 }
 
-// The live hook session's activity while it runs, otherwise the latest status line.
 export const shownActivity = ({ card }: { card: Card }) =>
   card.sessionActivity && card.sessionActivity !== 'ended' ? card.sessionActivity : card.activity
 
-// A recorded session's turn: working until the harness reports the turn ended.
 export function agentActivity({ card }: { card: Card }): 'working' | 'finished' | undefined {
   if (!card.agent) {
     return undefined
@@ -90,8 +88,6 @@ export const receiptLabel = ({ state }: { state: string }) => ({ queued: 'Queued
 export const slashPrefix = ({ text, cursor }: { text: string; cursor: number }) => /^\/[a-z0-9_.:-]*$/i.test(text.slice(0, cursor)) ? text.slice(0, cursor) : null
 export const slashMatches = ({ command, prefix }: { command: string; prefix: string }) => command.replace(/^[$/]/, '').toLowerCase()
   .startsWith(prefix.replace(/^\//, '').toLowerCase())
-// A tab reloads when the server it reconnected to serves another build than the page it loaded.
-// A page without a build (the Vite dev server) or a server without one never reloads.
 export const shouldReload = ({ loaded, server }: { loaded: string | undefined; server: string }) =>
   Boolean(loaded && server && loaded !== server)
 
@@ -104,5 +100,4 @@ export function taskLabel({ card }: { card: Card }): string {
     ?? card.outcome?.state ?? (card.tracking ? 'No status' : 'Activity unknown')
 }
 
-// A task with no agent and no Firstmate route starts one instead of showing a conversation.
 export const needsAgent = ({ card }: { card: Card }) => !card.agent && !card.sourceRefs.some(r => r.adapter === 'firstmate')

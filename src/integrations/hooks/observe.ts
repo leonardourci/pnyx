@@ -1,7 +1,3 @@
-// Turns one spooled Claude Code or Codex hook payload into card observations.
-// Pure: the envelope carries the time, and captured command text is only matched,
-// never run. Every mapping is a fixed rule on fields the harness sends; nothing
-// is classified by a model.
 import { basename } from 'node:path'
 import { MAX_OPTIONS } from '../../core/answer.ts'
 import { FORM_FIELD_TYPES, type Attention, type FormField, type Question } from '../../core/model.ts'
@@ -13,14 +9,12 @@ export const HARNESSES = ['claude', 'codex'] as const
 export const TERMINAL_EVENTS = ['SessionStart', 'UserPromptSubmit']
 export type Harness = (typeof HARNESSES)[number]
 
-// What pnyx-hook.sh writes: one line per hook call.
 export interface HookEnvelope {
   v: 1
   id: string
   at: string
   harness: Harness
   event: string
-  // Where the session's terminal is, on SessionStart and UserPromptSubmit.
   terminal?: unknown
   // PNYX_TASK of a session Pnyx started: its task id, or $hydra for the board's Hydra.
   task?: unknown
@@ -43,7 +37,6 @@ export interface Observation {
   key: string
   card: Record<string, unknown>
   attend?: Attend
-  // Only create the card; an existing card is left as it is.
   ifMissing?: boolean
   // Only push when the card is missing or attend changes its requests.
   ifChanged?: boolean
@@ -54,7 +47,6 @@ export interface Observation {
 }
 
 const PROVIDER: Record<Harness, string> = { claude: 'claude-code', codex: 'codex' }
-// Shell commands whose output names the pull request they opened.
 export const PR_COMMANDS = ['gh pr create', 'gh-axi pr create']
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
@@ -63,8 +55,6 @@ export const HOOK = 'hook:'
 const ELICITATION = `${HOOK}elicitation`
 const NOTIFICATION = `${HOOK}notification`
 
-// The one thing Pnyx watches in an agent, as Paseo does: whether it is working on
-// a turn, or finished it so its messages are final. "ended" when the session closed.
 export type Turn = 'working' | 'finished' | 'ended'
 
 export function isHookEnvelope({ value }: { value: Record<string, unknown> }): boolean {
@@ -75,7 +65,6 @@ function str({ value }: { value: unknown }): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined
 }
 
-// One line of at most 200 characters, for a request or activity shown on a card.
 function short({ value }: { value: string | undefined }): string | undefined {
   const line = value?.replace(/\s+/g, ' ').trim()
 
@@ -96,7 +85,6 @@ function commandText({ input }: { input: unknown }): string | undefined {
   return flag >= 0 ? args[flag + 1] : args.join(' ')
 }
 
-// True when a PR command starts the command text or follows &&, ||, ;, | or a newline.
 function createsPr({ payload }: { payload: Record<string, unknown> }): boolean {
   return (commandText({ input: payload.tool_input }) ?? '').split(/&&|\|\||[;|\n]/).some(part => {
     const words = part.trim().replace(/\s+/g, ' ')
@@ -163,8 +151,6 @@ function form({ payload }: { payload: Record<string, unknown> }): FormField[] | 
   return str({ value: payload.mode }) !== 'url' && fields.length && fields.length === properties.length ? fields : undefined
 }
 
-// The request a tool call puts to the user: its question, a plan to approve, or
-// permission to run it with what it would run.
 function request(
   { tool, payload, permission }: {
     tool: string
@@ -204,14 +190,11 @@ function request(
   return { kind: 'permission', key, blocking: true, text: short({ value: detail ? `Allow ${tool}: ${detail}` : `Allow ${tool}` }) }
 }
 
-// What one hook event does to its card: the turn state it reports, if any, and the
-// change to its open requests.
 interface Signal {
   activity?: Turn
   attend?: Attend
 }
 
-// A tool call that ended or was refused no longer waits on the user.
 function toolDone({ tool }: { tool: string }): Attend {
   return { clear: [`${HOOK}tool:${tool}`, NOTIFICATION] }
 }
@@ -240,9 +223,6 @@ function notification({ payload }: { payload: Record<string, unknown> }): Signal
   }
 }
 
-// The turn state and the change to the card's requests for one event: a prompt or
-// a tool call means the agent is working, and Stop is the harness's own turn end.
-// Returns undefined for an event Pnyx does not report.
 function signal({ event, payload }: {
   event: string
   payload: Record<string, unknown>
@@ -295,11 +275,9 @@ function signal({ event, payload }: {
   }
 }
 
-// Events that start new work in a session, so an ended session that sends one was resumed.
 const REOPENS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'SubagentStart']
 const TITLE_MAX = 100
 
-// The prompt's first non-empty line, cut to TITLE_MAX characters.
 function promptTitle({ prompt }: { prompt: unknown }): string | undefined {
   const line = str({ value: prompt })?.split('\n')
     .map(l => l.trim())
@@ -308,7 +286,6 @@ function promptTitle({ prompt }: { prompt: unknown }): string | undefined {
   return line && line.length > TITLE_MAX ? `${line.slice(0, TITLE_MAX - 1)}…` : line
 }
 
-// The card's requests after one event's change; pure.
 export function attend({ current, change }: { current: Attention[]; change: Attend }): Attention[] {
   const kept = current.filter(a => !change.clear?.some(prefix => a.key.startsWith(prefix)))
   const add = change.add

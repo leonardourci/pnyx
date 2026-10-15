@@ -1,5 +1,3 @@
-// Each integration a board can use, whether it is ready, and the command that sets it
-// up. Reads only: nothing is installed or started from here.
 import { existsSync, readFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { boardConfig } from '../core/hydra.ts'

@@ -1,6 +1,3 @@
-// The keys each harness's own prompt expects for an inline answer, checked by hand
-// against scratch sessions of Claude Code 2.1.299 and Codex 0.160.1 in tmux. Each
-// entry is typed as keystrokes, never pasted, with a short settle after it.
 import type { Answer } from '../../core/answer.ts'
 import type { Attention } from '../../core/model.ts'
 import { SETTLE_MS, settle } from './terminal.ts'
@@ -81,7 +78,6 @@ function claudeForm({ request, answer }: { request: Attention; answer: Answer })
   return steps({ keys: [...keys, KEY.enter] })
 }
 
-// The keystrokes that answer request in the session's own prompt.
 export function answerKeys(
   { provider, request, answer }: { provider: string; request: Attention; answer: Answer },
 ): KeyStep[] {

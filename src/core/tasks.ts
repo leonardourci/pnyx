@@ -1,11 +1,9 @@
-// Session identity and task membership, derived only from recorded events.
 import { BoardError, type AgentRef, type AgentSession, type BoardEvent, type BoardState, type Card, type TerminalFacts } from './model.ts'
 
 export function sessionId({ agent }: { agent: AgentRef }): string {
   return `${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}`
 }
 
-// A session a person can keep talking to: a terminal hooks recorded, or a Paseo agent.
 export function interactive({ session }: { session: AgentSession }): boolean {
   return Boolean(session.terminal?.tty || session.agent.paseoAgentId)
 }
@@ -18,7 +16,6 @@ export function rankOf({ card }: { card: Card }): number {
   return card.rank ?? card.createdSeq
 }
 
-// The live tasks in one column, in the order the owner put them.
 export function columnCards({ state, column }: { state: BoardState; column: string }): Card[] {
   return Object.values(state.cards)
     .filter(c => liveTask({ card: c }) && c.column === column)

@@ -15,7 +15,6 @@ type Quote = Omit<ChatComment, 'id' | 'text'>
 const blockKey = ({ messageId, offset }: { messageId: string; offset: number }) => `${messageId}/block-${offset}`
 const roleLabel = ({ role }: { role: string }) => role === 'assistant' ? 'Agent' : role === 'user' ? 'You' : role
 
-// Thread messages: Markdown for prompts and replies, dim text for traces, with a keyboard caret.
 export function Messages({ entries, comments, setComments, quote }: {
   entries: ThreadEntry[]
   comments: ChatComment[]

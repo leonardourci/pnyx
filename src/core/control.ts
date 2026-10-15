@@ -1,28 +1,9 @@
-// The settings a card's Agent tab can change, by typing into the session what its
-// harness's own interface takes, on the card's reply route, or on a Firstmate task by
-// asking its orchestrator in a request note (settingRequest). Pure: delivery and the
-// readback of the new value happen elsewhere. Checked against each harness's docs
-// and a real session (Claude Code 2.1.299, Codex 0.160.1):
-//
-// | Setting | Claude Code | Codex |
-// |---|---|---|
-// | model | `/model <alias>` | /model picker directly; Firstmate request otherwise |
-// | effort | `/effort <level>` | Shift+Up and Shift+Down step it for this session |
-// | mode | Shift+Tab cycles manual, accept edits and plan, then bypass permissions and auto where enabled | /permissions picker directly; Firstmate approval request otherwise |
-// | fast | `/fast on`, `/fast off` | `/fast` toggles the model's Fast tier |
-// | collaboration | | Shift+Tab toggles Plan |
-//
-// Claude Code saves a typed model, effort or fast mode as the default for new
-// sessions, and Codex saves /fast. While its prompt cache is warm, Claude Code asks
-// to confirm a model or effort change with Yes selected, so those get one more Enter;
-// Enter on an empty prompt does nothing.
 import type { ReplyRoute } from './route.ts'
 
 export const KEYS = ['shift-tab', 'shift-up', 'shift-down'] as const
 export type Key = (typeof KEYS)[number]
 export const KEY_LABEL: Record<Key, string> = { 'shift-tab': 'Shift+Tab', 'shift-up': 'Shift+Up', 'shift-down': 'Shift+Down' }
 
-// Request-only options carry no text or key that could reach a terminal.
 export type ControlInput = { text: string; confirm?: boolean } | { key: Key } | { request: true }
 
 // ask is the change in words for a Firstmate request, `<worker>` standing for the task's worker.
@@ -42,7 +23,6 @@ export interface Controls { name: string; controls: Control[]; note?: string }
 const typed = ({ values, command, name, confirm }: {
   values: string[]
   command: string
-  // The setting as a request names it.
   name: string
   confirm?: boolean
 }): ControlOption[] => values.map(value => ({
@@ -104,7 +84,6 @@ const CODEX_REQUESTS: Control[] = [
   },
 ]
 
-// The controls a session of this harness offers; none for a harness Pnyx has not checked.
 export function harnessControls({ provider, firstmate = false }: {
   provider?: string
   firstmate?: boolean
@@ -129,9 +108,6 @@ export function findOption({ provider, setting, value, firstmate = false }: {
   return control && option ? { control, option } : undefined
 }
 
-// Why a route cannot carry this input, or undefined when it can. Text goes wherever
-// a reply goes and a key needs a host that presses keys; a Firstmate task gets every
-// change as a request note, so it takes any input.
 export function inputReason({ kind, input }: { kind: ReplyRoute['kind']; input: ControlInput }): string | undefined {
   if (kind === 'paseo-agent') {
     return 'Change this agent\'s settings in Paseo.'
@@ -154,8 +130,6 @@ export function inputReason({ kind, input }: { kind: ReplyRoute['kind']; input: 
   }
 }
 
-// The request note a Firstmate task's orchestrator gets for a change to its worker,
-// which Pnyx never types into: it names the task, the harness and the wanted setting.
 export function settingRequest({ option, task, harness }: {
   option: ControlOption
   task: string
@@ -164,7 +138,6 @@ export function settingRequest({ option, task, harness }: {
   return `Pnyx: please ${option.ask.replace('<worker>', `the worker on task ${task} (${harness})`)}.`
 }
 
-// Whether the session's reported value confirms the option sent while it reported before.
 export function confirms({ control, option, before, after }: {
   control: Control
   option: ControlOption

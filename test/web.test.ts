@@ -213,7 +213,6 @@ test('the Find box shows every card its filter matches, then the strong meaning-
   const id = ({ key }: { key: string }) => Object.values(state.cards).find(c => c.key === key)!.id
   const ids = ({ cards }: { cards: { id: string }[] }) => cards.map(c => c.id)
 
-  // Semantic search off (no meaning-only cards): exactly the filter, every match, partial words, tags and keys.
   for (const query of ['deploy', 'dep', 'infra', 'ops-rot', 'step 3', 'nothing like it', '']) {
     assert.deepEqual(findBoxCards({ state, workspace: '', tag: '', query, meaning: [] }), filterCards({ state, workspace: '', tag: '', query }))
   }
@@ -222,7 +221,6 @@ test('the Find box shows every card its filter matches, then the strong meaning-
   assert.deepEqual(ids({ cards: findBoxCards({ state, workspace: '', tag: '', query: 'infra', meaning: [] }) }), [id({ key: 'ops-rotation' })])
   assert.deepEqual(ids({ cards: findBoxCards({ state, workspace: '', tag: '', query: 'ops-rot', meaning: [] }) }), [id({ key: 'ops-rotation' })])
 
-  // Meaning-only cards come after, once each, within the workspace and tag filters.
   const found = findBoxCards({ state, workspace: '', tag: '', query: 'deploy', meaning: [id({ key: 'cookie' }), id({ key: 'deploy-0' }), 'gone'] })
   assert.deepEqual(ids({ cards: found }), [...ids({ cards: filterCards({ state, workspace: '', tag: '', query: 'deploy' }) }), id({ key: 'cookie' })])
   assert.equal(findBoxCards({ state, workspace: 'A', tag: '', query: 'deploy', meaning: [id({ key: 'cookie' })] }).length, 35)
@@ -326,14 +324,12 @@ test('a tab reloads only when it reconnects to a server serving another build', 
   // The Vite dev page has no build; hot module replacement updates it instead.
   assert.equal(shouldReload({ loaded: undefined, server: 'bbb222' }), false)
   assert.equal(shouldReload({ loaded: '', server: 'bbb222' }), false)
-  // A server with nothing built cannot name a newer page.
   assert.equal(shouldReload({ loaded: 'aaa111', server: '' }), false)
 })
 
 test("a card's last message comes from the transcript tail, without tool calls, thinking, injected or torn text", () => {
   const fixture = ({ name }: { name: string }) => join(import.meta.dirname, 'fixtures/transcripts', name)
   const claude = latestMessage({ path: fixture({ name: 'claude-session.jsonl' }) }).message!
-  // The summary record and the torn last line are skipped; long text is cut to two card lines.
   assert.equal(claude.role, 'assistant')
   assert.equal(claude.at, '2026-10-11T09:02:00.000Z')
   assert.match(claude.text, /^Paragraph 0 about the orders table backfill\. Rows are copied/)
@@ -364,11 +360,9 @@ test("a card's last message is read again from only what its transcript gained",
   assert.equal(second.message?.text, 'First reply.')
   assert.equal(second.size, first.size + tool.length)
   appendFileSync(path, torn.slice(20))
-  // The earlier bytes are never read again: overwriting them in place changes nothing.
   const fd = openSync(path, 'r+'); writeSync(fd, 'x', 0); closeSync(fd)
   const third = latestMessage({ path, prev: second })
   assert.equal(third.message?.text, 'Ship it.')
-  // A file replaced or cut short is read back from its end.
   writeFileSync(path, line({ type: 'assistant', text: 'Fresh.', at: '2026-10-12T11:00:00.000Z' }))
   assert.equal(latestMessage({ path, prev: third }).message?.text, 'Fresh.')
 })

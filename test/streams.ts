@@ -5,7 +5,6 @@ import type { BoardEvent } from '../src/core/model.ts'
 
 export const STREAMS = join(import.meta.dirname, 'fixtures', 'streams')
 
-// Complete lines of a recorded stream; a torn last line is left to the store.
 export function readStream({ name }: { name: string }): BoardEvent[] {
   const text = readFileSync(join(STREAMS, `${name}.jsonl`), 'utf8')
 

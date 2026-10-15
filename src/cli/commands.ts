@@ -1,5 +1,3 @@
-// pnyx-axi board commands. Every write goes through `commit`, which holds the
-// board's writer lock, ingests the hook spool, then appends at most one event.
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
 import { randomUUID } from 'node:crypto'
 import { cardSessionId, findSession, interactive, liveTask, rankOf, selfSession, sessionId } from '../core/tasks.ts'
@@ -119,7 +117,6 @@ export function integer({ value, flag }: {
 }
 
 export function meta({ values }: { values: Record<string, string | boolean | undefined> }): Meta {
-  // PNYX_ACTOR names the agent Pnyx launched, such as hydra or worker:<task>.
   const m: Meta = { at: new Date().toISOString(), actor: (values.actor as string | undefined) ?? (process.env.PNYX_ACTOR || 'cli') }
 
   if (typeof values.reason === 'string') {
@@ -139,7 +136,6 @@ export function meta({ values }: { values: Record<string, string | boolean | und
   return m
 }
 
-// The folder's canonical path, or the path as given when it cannot be resolved.
 export function canonical({ path }: { path: unknown }): string | undefined {
   if (typeof path !== 'string' || !path.startsWith('/')) {
     return undefined
@@ -152,14 +148,9 @@ export function canonical({ path }: { path: unknown }): string | undefined {
   }
 }
 
-// Hook events after which a session's transcript has turns worth harvesting.
 const HARVEST_AFTER = ['Stop', 'SubagentStop', 'PostCompact', 'SessionEnd']
-// The source of the "ended" outcome a hook records.
 const HOOKS = 'hooks'
 
-// Appends what one spool entry reports: a raw harness hook payload becomes card
-// observations, anything else is a push with an explicit key. Returns the cards
-// whose transcripts to harvest.
 function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unknown> }): string[] {
   if (typeof entry?.id !== 'string' || typeof entry.at !== 'string') {
     throw new BoardError({ message: 'spool entry needs id and at', code: 'VALIDATION_ERROR' })
@@ -286,7 +277,6 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
       harvest.push(writer.state.keys[key]!)
     }
 
-    // The first session started as Hydra becomes the board's Hydra.
     const config = writer.state.board
 
     if (task === HYDRA_CARD && o.card.agent && config && !config.hydra.session) {
@@ -303,10 +293,6 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
   return harvest
 }
 
-// Folds spooled hook events into the log, oldest first. Each push is recorded as a
-// source observation, so it can never be undone. A file that cannot be read is
-// renamed to *.rejected so it is not retried forever. Then harvests the notes in
-// the transcripts of sessions that finished a turn.
 export function drainSpool({ writer }: {
   writer: Writer
 }): { ingested: number; rejected: number; notes?: number } {
@@ -350,7 +336,6 @@ export function drainSpool({ writer }: {
   return { ingested, rejected, ...(notes ? { notes } : {}) }
 }
 
-// The server's way into the same writer: drain the spool under the writer lock.
 export function ingestSpool({ board }: {
   board: string
 }): { ingested: number; rejected: number; notes?: number } {
@@ -385,7 +370,6 @@ function receipt({ state, event }: { state: BoardState; event: BoardEvent }): Ou
   }
 }
 
-// What a write is about: its event type and the card's id or key.
 interface Intent {
   type: EventType
   card: string
@@ -482,7 +466,6 @@ export function commit(
   })
 }
 
-// Maps core and store errors onto AXI's structured errors.
 export function guard<T = Output>({ handler }: { handler: ({ args }: { args: string[] }) => T }) {
   const mapped = ({ error }: { error: unknown }): never => {
     if (error instanceof BoardError) {
@@ -571,7 +554,6 @@ export async function home(): Promise<Output> {
   const columns = Object.fromEntries(
     config.columns.map(c => [c.id, cards.filter(card => card.column === c.id).length]),
   )
-  // Reports the server; never starts it.
   const server = await readServer({ board: DEFAULT_BOARD })
   const out: Output = { board: DEFAULT_BOARD, hydra: config.hydra.id, server: server ? `running at ${server.url}` : 'not running', columns }
 
@@ -807,7 +789,6 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
 const task = guard({ handler: ({ args }) => taskCommand({ args }) })
 
-// `self` is the session running in the caller's own terminal.
 function sessionRef({ state, ref }: { state: BoardState; ref: string }): string {
   return ref === 'self'
     ? selfSession({
@@ -966,7 +947,6 @@ function boardCommand({ args }: { args: string[] }): Output {
   })
 }
 
-// A board id from a Firstmate home's folder name, such as fm-god-father.
 function homeBoardId({ home }: { home: string }): string {
   return basename(home).toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
@@ -974,7 +954,6 @@ function homeBoardId({ home }: { home: string }): string {
     .slice(0, 64) || 'firstmate'
 }
 
-// Firstmate homes beside each other, as new-firstmate makes them, and the board each has.
 function firstmateHomes({ base }: { base?: string }): Output {
   const root = base ?? process.env.FIRSTMATE_FACTORY_BASE ?? join(homedir(), 'projects', 'agentic-engineering-workflow')
   let names: string[] = []
@@ -1175,13 +1154,10 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
 const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
 
-// Notes shown per section by default, and the text length each is cut to.
 const NOTES_SHOWN = 3
 const NOTE_CUT = 280
 const NOTE_SECTIONS = { summary: 'summary', decision: 'decisions', context: 'context' } as const
 
-// The card's Summary, Decisions and Context notes, newest first. The text comes
-// from the log, where each noted event keeps it.
 function cardNotes({ board, card, full }: {
   board: string
   card: Card

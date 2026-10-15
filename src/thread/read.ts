@@ -9,7 +9,6 @@ import { cardSessionId } from '../core/tasks.ts'
 
 // messageId and part let the board rejoin a long message split into transport chunks.
 export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; messageId?: string; part?: number }
-// route: a reply can be sent; routeKind identifies delivery, or noRoute explains why it cannot.
 export interface ThreadPage { card: string; session?: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; routeKind?: ReplyRoute['kind']; noRoute?: string; watching: 'unknown' }
 const MAX_BYTES = 10 * 1024 * 1024
 // Chunk long entries instead of losing their tail. Sixty bounded entries stay
@@ -82,7 +81,6 @@ export function threadPath({ card }: { card: Card }): string | undefined {
 }
 
 export interface LatestMessage { role: 'user' | 'assistant'; text: string; at?: string }
-// Enough for two lines on a card; the card clamps what it shows.
 const LATEST_TEXT = 280
 const LATEST_WINDOW = 64 * 1024
 

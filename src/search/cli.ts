@@ -1,5 +1,3 @@
-// pnyx-axi search: full-text and, when turned on, semantic search over a board's
-// history, plus `search status|rebuild|setup` and the `settings` command.
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '../core/decide.ts'
 import { BoardError } from '../core/model.ts'
@@ -25,7 +23,6 @@ const SEARCH: Options = {
 
 const SETUP: Options = { ...COMMON, semantic: { type: 'boolean' } }
 
-// A rejected promise carries a BoardError the way guard() converts a thrown one.
 async function axi<T>({ work }: { work: Promise<T> }): Promise<T> {
   try {
     return await work
@@ -75,7 +72,6 @@ async function setup({ args }: { args: string[] }): Promise<Output> {
     throw new AxiError('search setup needs --semantic', 'VALIDATION_ERROR', ['Run `pnyx-axi search setup --semantic`'])
   }
 
-  // Download progress goes to stderr, and only to a terminal.
   const progress = ({ line }: { line: string }) => {
     if (process.stderr.isTTY) {
       process.stderr.write(`${line}\n`)
@@ -106,7 +102,6 @@ const searchCommand = guard<Output | Promise<Output>>({
       return axi({ work: setup({ args: args.slice(1) }) })
     }
 
-    // Unquoted words are one query.
     const { values, positionals, board } = parse({ args, options: SEARCH, positionals: Infinity })
     const text = positionals.join(' ')
 
@@ -174,7 +169,6 @@ function present(
   return { ...head, results: hits, help }
 }
 
-// pnyx-axi settings [set <key> <value>]: this machine's search settings.
 const settingsCommand = guard({
   handler: ({ args }) => {
     if (args[0] === 'set') {

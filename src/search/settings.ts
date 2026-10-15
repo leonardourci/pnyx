@@ -7,12 +7,9 @@ import { BoardError } from '../core/model.ts'
 import { pnyxHome } from '../store/board-store.ts'
 import { EMBEDDER_IDS, type EmbedderId } from './models.ts'
 
-// auto: decided by the machine. With a GPU backend the 311m embedder and the
-// reranker; on CPU only the 97m embedder without it.
 export type Auto<T> = T | 'auto'
 
 export interface SearchSettings {
-  // On by default; off makes search full-text only.
   semantic: boolean
   rerank: Auto<boolean>
   model: Auto<EmbedderId>
@@ -59,7 +56,6 @@ export function settingEntries({ settings }: {
   return { 'search.semantic': settings.semantic ? 'on' : 'off', 'search.rerank': word({ value: settings.rerank }), 'search.model': settings.model }
 }
 
-// Validates and saves one setting.
 export function writeSetting({ key, value }: { key: string; value: string }): SearchSettings {
   const next = readSettings({ applyEnv: false })
 

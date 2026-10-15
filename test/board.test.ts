@@ -1,4 +1,3 @@
-// End-to-end through the built pnyx-axi binary.
 import assert from 'node:assert/strict'
 import { execFile, execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -14,7 +13,6 @@ process.env.PNYX_SEMANTIC = 'off'
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 
 function board() {
-  // Tests never touch the real ~/.pnyx.
   const home = mkdtempSync(join(tmpdir(), 'pnyx-board-'))
   const env = { ...process.env, PNYX_HOME: home }
   const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
@@ -98,7 +96,6 @@ test('every write takes --event-id and --if-revision', () => {
   const url = 'https://github.com/o/r/pull/7'
   assert.match(run({ args: ['link', 'c1', '--url', url, '--state', 'open', '--event-id', 'l1', '--if-revision', '1'] }), /^ {2}revision: 2$/m)
   run({ args: ['outcome', 'c1', 'done', '--event-id', 'o1'] })
-  // A retried link reports what it got the first time, not a conflict.
   const retry = run({ args: ['link', 'c1', '--url', url, '--state', 'open', '--event-id', 'l1', '--if-revision', '1'] })
   assert.match(retry, /^ {2}seq: 2$/m)
   assert.match(retry, /^ {2}revision: 2$/m)

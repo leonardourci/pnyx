@@ -148,7 +148,6 @@ test('undo reverses a manual push edit, but not creation or source observations'
   assert.equal(undone.cards.c1!.title, 'One')
   assert.equal(undone.cards.c1!.activity, undefined)
   assert.deepEqual(undone.cards.c1!.tags, [])
-  // Undoing the undo redoes the edit.
   assert.equal(reduce({ state: undone, event: eventOf({ decision: decideUndo({ state: undone, target: undo, meta }) }) }).cards.c1!.title, 'Two')
 
   const observed = eventOf({ decision: decidePush({ state, key: 'k1', input: { activity: 'idle', source: source({ observedAt: '2026-10-13T10:00:00Z' }) }, meta }) })

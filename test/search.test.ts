@@ -23,7 +23,6 @@ test('a short message is one chunk; a long one splits on paragraphs, determinist
   assert.ok(chunks.length > 1)
   assert.ok(chunks.every(c => c.length <= 768))
   assert.deepEqual(chunk({ text: paragraphs.join('\n\n') }), chunks)
-  // Each chunk after the first starts with the previous chunk's last paragraph.
   assert.equal(chunks[1]!.split('\n\n')[0], chunks[0]!.split('\n\n').at(-1))
 
   for (const p of paragraphs) {
@@ -108,11 +107,9 @@ test('query words are quoted so punctuation is never FTS5 syntax', () => {
   assert.equal(ftsQuery({ text: ' - : ' }), '')
 })
 
-// The card ids of a search's results, best first.
 const cards = ({ out }: { out: string }) => [...out.matchAll(/^ {2}- card: (\S+)$/gm)].map(m => m[1])
 
 function board() {
-  // Tests never touch the real ~/.pnyx.
   const home = mkdtempSync(join(tmpdir(), 'pnyx-search-'))
   const env = { ...process.env, PNYX_HOME: home }
   const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
@@ -224,7 +221,6 @@ test('each search indexes what the log and transcripts gained', () => {
   assert.match(run({ args: ['search', 'status'] }), /^index: current through seq 5$/m)
   push({ key: 'claude:s3', card: { title: 'Canary rollout' } })
   assert.match(run({ args: ['search', 'status'] }), /^index: "behind: through seq 5 of 6; the next search catches up"$/m)
-  // The torn last line completes, and a new message lands.
   appendFileSync(transcript, `}}\n${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Canary is green' }] } })}\n`)
   assert.equal(cards({ out: run({ args: ['search', 'canary'] }) }).length, 2)
   assert.deepEqual(cards({ out: run({ args: ['search', 'torntailword'] }) }), ['c1'])
@@ -280,7 +276,6 @@ test('a word matches its synonyms', () => {
   assert.match(run({ args: ['search', 'rollback', '--card', 'c1'] }), /get \[reverted\] after/)
   assert.deepEqual(cards({ out: run({ args: ['search', 'pull', 'request', 'lunch'] }) }), ['c5'])
   assert.deepEqual(cards({ out: run({ args: ['search', 'ticket'] }) }), ['c6'])
-  // Punctuation around a word does not hide its synonyms.
   assert.deepEqual(cards({ out: run({ args: ['search', 'PR?'] }) }), ['c5'])
   assert.deepEqual(cards({ out: run({ args: ['search', '(pull', 'request),', 'lunch'] }) }), ['c5'])
   assert.match(run({ args: ['search', 'status'] }), /^synonyms: "v1, 4 groups"$/m)
@@ -292,16 +287,12 @@ test('when nothing matches, typos and partial words match the nearest indexed wo
   assert.match(typo, /^mode: fuzzy$/m)
   assert.match(typo, /^results\[1\]:\n {2}- card: c2\n {4}title: Checkout flake\n {4}match: fuzzy$/m)
   assert.match(typo, /\[checkout\] retry/)
-  // A partial word matches the words containing it and the words near it: checkout, and check in c1's transcript.
   assert.deepEqual(cards({ out: run({ args: ['search', 'checko'] }) }).sort(), ['c1', 'c2'])
   assert.deepEqual(cards({ out: run({ args: ['search', 'ckout'] }) }), ['c2'])
-  // Every word must still match: a typo next to a word on another card finds nothing.
   assert.deepEqual(cards({ out: run({ args: ['search', 'chekout', 'migratoin'] }) }), [])
   assert.deepEqual(cards({ out: run({ args: ['search', 'chekout', 'relese'] }) }), ['c2'])
-  // An exact match wins: no fuzzy expansion when the words match as typed.
   assert.match(run({ args: ['search', 'checkout'] }), /^mode: lexical$/m)
   assert.match(run({ args: ['search', 'zzqqxx'] }), /^results: "none: /m)
-  // Punctuation around a typo does not stop it matching the nearest words.
   assert.deepEqual(cards({ out: run({ args: ['search', 'chekout?'] }) }), ['c2'])
 })
 

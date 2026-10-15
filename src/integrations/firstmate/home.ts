@@ -1,8 +1,3 @@
-// Reads one Firstmate home's files and turns them into card observations. Read-only:
-// it never writes the home, and it never looks at the home's backends (Paseo,
-// Herdr, tmux). Files read: state/<task>.meta, state/<task>.status and the
-// markdown backlog at data/backlog.md, plus each task's data/<task>/brief.md for its
-// Captain's intent.
 import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { canonical } from '../../cli/commands.ts'
@@ -29,7 +24,6 @@ export interface TaskObservation {
   done: boolean
   merged: boolean
   activity?: string
-  // Canonical path of the task's worktree from its meta, where its agent runs.
   worktree?: string
   // The Paseo terminal the task's agent was launched in, from its meta, which tells
   // tasks sharing a worktree apart.
@@ -37,7 +31,6 @@ export interface TaskObservation {
   decisions: OpenDecision[]
   // The latest status line, when it is failed: or blocked:.
   stalled?: { verb: string; note: string }
-  // Decisions and reports from the status log, and the brief's Captain's intent.
   notes: SourceNote[]
   record: FirstmateRecord
 }
@@ -58,7 +51,6 @@ interface BacklogRow {
   section: string
 }
 
-// Canonical path of a configured home; refuses anything that is not a Firstmate home.
 export function resolveHome({ path }: { path: string }): string {
   let real: string
 
@@ -163,8 +155,6 @@ export function parseBacklog({ text }: { text: string }): Map<string, BacklogRow
   return rows
 }
 
-// The body of a brief's `## Captain's intent` section, up to the next heading of
-// the same or a higher level.
 export function captainsIntent({ brief }: { brief: string }): string | undefined {
   const lines = brief.split('\n')
   const start = lines.findIndex(l => /^##\s+Captain'?s intent\s*$/i.test(l))

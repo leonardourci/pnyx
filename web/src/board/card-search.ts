@@ -9,9 +9,6 @@ import type { Command } from './connection.ts'
 export const findCards = ({ command, query, workspace = '' }: { command: Command; query: string; workspace?: string }) =>
   command({ name: 'search', args: [query, workspace] }).then(r => (r.hits as HybridHit[]).filter(h => !h.weak))
 
-// The cards the search found strongly, by words anywhere on them (transcripts included)
-// or by meaning, best first, for the board's "Find a card" box to add after its own
-// matches; none with no query or before the server answers.
 export function useFoundCards({ command, query, workspace }: {
   command: Command
   query: string

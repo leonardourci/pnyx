@@ -1,7 +1,3 @@
-// Runs the board's own start command for a task's worker or for Hydra, detached:
-// Pnyx hands it the task and goes on. The command's agent reports through its own
-// hooks, which find the task by PNYX_TASK, and to the home and board in PNYX_HOME
-// and PNYX_BOARD rather than the installed defaults.
 import { spawn } from 'node:child_process'
 import { BoardError } from '../../core/model.ts'
 

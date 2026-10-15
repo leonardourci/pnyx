@@ -147,7 +147,6 @@ export function openDecisions({ log, kind }: { log: string; kind: string }): Ope
   return [...open.values()]
 }
 
-// The latest line with a verb and a colon.
 export function latestLine({ log }: { log: string }): StatusLine | undefined {
   const lines = log.split('\n')
 
@@ -162,7 +161,6 @@ export function latestLine({ log }: { log: string }): StatusLine | undefined {
   return undefined
 }
 
-// The latest declared line as `<verb>: <note>`, for the card's activity.
 export function latestActivity({ log }: { log: string }): string | undefined {
   const line = latestLine({ log })
 

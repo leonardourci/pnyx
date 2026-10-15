@@ -1,5 +1,3 @@
-// A Paseo agent's conversation, read from its daemon's timeline and followed live.
-// Paseo keeps the conversation; nothing here writes to it.
 import { HOST_LABEL, replyRoute } from '../../core/route.ts'
 import { BoardError, type Card } from '../../core/model.ts'
 import { localPaseoUrl } from '../../core/paseo.ts'
@@ -69,7 +67,6 @@ export async function paseoConversation({ card, changed, connect = openPaseo }: 
 
 type Item = { type: string; text?: unknown; message?: unknown; name?: unknown; detail?: unknown }
 
-// The timeline items the board shows, in its message, thinking and tool kinds.
 function timelineEntry({ item, id, at }: {
   item: Item
   id: string

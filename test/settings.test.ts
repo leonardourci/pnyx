@@ -16,7 +16,6 @@ const FIXTURES = join(import.meta.dirname, 'fixtures')
 const transcript = ({ name }: { name: string }) => join(FIXTURES, 'transcripts', `${name}.jsonl`)
 const payload = ({ name }: { name: string }) => JSON.parse(readFileSync(join(FIXTURES, 'hooks', `${name}.json`), 'utf8')) as Record<string, unknown>
 
-// What reading a whole transcript reports: later records win, null clears.
 function fold({ paths = [] }: { paths?: string[] } = {}): FoundSettings {
   const found: FoundSettings = {}
 
@@ -35,7 +34,6 @@ test('hook payloads report the model, effort and permission mode they carry', ()
   assert.deepEqual(hookSettings({ payload: payload({ name: 'claude-stop-effort' }) }), { effort: 'xhigh', mode: 'acceptEdits' })
   assert.deepEqual(hookSettings({ payload: payload({ name: 'codex-session-start' }) }), { model: 'gpt-6', mode: 'default' })
   assert.equal(hookSettings({ payload: payload({ name: 'claude-subagent-start' }) }), undefined)
-  // A model switch reports the new model at once, before the next turn.
   assert.deepEqual(hookSettings({ payload: payload({ name: 'claude-post-model-switch' }) }), { model: 'claude-haiku-5-5' })
 })
 
@@ -94,7 +92,6 @@ test('pushed settings merge into the card, null removes one, and bad names or va
 })
 
 function board() {
-  // Tests never touch the real ~/.pnyx.
   const home = mkdtempSync(join(tmpdir(), 'pnyx-settings-'))
   process.env.PNYX_HOME = home
   const env = { ...process.env, PNYX_HOME: home }
@@ -102,7 +99,6 @@ function board() {
 
   const nudge = () => {
     writeFileSync(join(home, 'other.json'), '{}')
-    // Any write drains the spool first.
     run({ args: ['push', '--key', 'other', '--file', join(home, 'other.json')] })
   }
 
@@ -124,7 +120,6 @@ test('hook events and the transcript keep a Claude Code card\'s settings current
   nudge()
   assert.deepEqual(settingsOf({ key: 'claude:s1' }), { model: 'claude-opus-5-5', mode: 'default' })
 
-  // The turn ends: the Stop hook and the transcript fill in the rest.
   spoolWrite({ board: 'default', entry: { v: 1, id: 'h2', at: '2026-10-14T09:00:10Z', harness: 'claude', event: 'Stop', payload: { ...base, permission_mode: 'default', effort: { level: 'high' } } } })
   nudge()
   assert.deepEqual(settingsOf({ key: 'claude:s1' }), {
@@ -139,7 +134,6 @@ test('hook events and the transcript keep a Claude Code card\'s settings current
   const card = run({ args: ['card', 'claude:s1'] })
   assert.match(card, /^ {2}settings:\n {4}model: claude-opus-5-5\n {4}mode: default\n {4}effort: high\n/m)
 
-  // The user switches to plan mode and fast mode; the next turn reports both.
   appendFileSync(path, readFileSync(transcript({ name: 'claude-settings-later' }), 'utf8'))
   spoolWrite({ board: 'default', entry: { v: 1, id: 'h3', at: '2026-10-14T09:10:10Z', harness: 'claude', event: 'Stop', payload: { ...base, permission_mode: 'plan', effort: { level: 'xhigh' } } } })
   nudge()
@@ -152,12 +146,10 @@ test('hook events and the transcript keep a Claude Code card\'s settings current
     version: '2.1.299',
   })
 
-  // Reading the transcript again, even from the start, changes nothing.
   const events = readEvents({ board: 'default' }).length
   writeFileSync(join(home, 'boards', 'default', 'harvest.json'), '{}')
   run({ args: ['harvest'] })
   assert.equal(readEvents({ board: 'default' }).length, events)
-  // Settings from a transcript are a source observation.
   const observed = readEvents({ board: 'default' }).findLast(e => e.type === 'card.pushed' && e.actor === 'harvest')!
   assert.throws(() => run({ args: ['undo', observed.id] }), (error: { stdout: string }) => /code: NOT_UNDOABLE/.test(error.stdout))
 })
@@ -173,12 +165,10 @@ test('a transcript record written before the latest hook never overrides what ho
     { type: 'user', timestamp: '2026-10-14T10:00:00.000Z', sessionId: 's2', permissionMode: 'auto', message: { role: 'user', content: 'Go.' } },
     { type: 'assistant', timestamp: '2026-10-14T10:00:05.000Z', sessionId: 's2', effort: 'medium', message: { model: 'claude-sonnet-5-5', role: 'assistant', content: [{ type: 'text', text: 'Done.' }], usage: { speed: 'standard' } } },
   ].map(r => `${JSON.stringify(r)}\n`).join(''))
-  // Hooks already reported the session in accept edits at high effort, after those records.
   spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-14T10:01:00Z', harness: 'claude', event: 'Stop', payload: { ...base, permission_mode: 'acceptEdits', effort: { level: 'high' } } } })
   nudge()
   assert.deepEqual(settingsOf({ key: 'claude:s2' }), { mode: 'acceptEdits', effort: 'high', model: 'claude-sonnet-5-5', fast: 'off' })
 
-  // A later turn's records are newer than every hook, so they count.
   appendFileSync(path, [
     { type: 'permission-mode', permissionMode: 'auto', sessionId: 's2' },
     { type: 'user', timestamp: '2026-10-14T10:02:00.000Z', sessionId: 's2', permissionMode: 'plan', message: { role: 'user', content: 'Plan it.' } },

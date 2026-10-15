@@ -17,7 +17,6 @@ export function Disclosure({ title, children, className = '' }: {
   )
 }
 
-// Long text shows its first lines until asked for the rest.
 export function CollapsibleText({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false), id = useId()
   const long = text.length > 240 || text.split('\n').length > 4

@@ -1,11 +1,5 @@
 #!/bin/sh
-# Pnyx reporting hook, installed by `pnyx-axi setup hooks` as
-#   <PNYX_HOME>/hooks/pnyx-hook.sh <claude|codex> <HookEventName>
-# Reads the harness payload on stdin and hands one JSON line to its board's server
-# socket (the default board unless PNYX_BOARD names another) or, when that fails,
-# to its spool. It prints nothing, never waits on a network call, browser or model,
-# and always exits 0: Claude Code and Codex add some hook output to the agent's
-# context, and a hook must never block the agent. Normalizing the payload into a card happens later, in pnyx-axi.
+# Hooks must stay silent and always exit 0 so reporting never blocks the agent.
 exec >/dev/null 2>&1
 # Bytes, not characters: tr and grep must not stop at invalid UTF-8 in a payload.
 export LC_ALL=C
@@ -16,23 +10,14 @@ event=$2
 case $harness in claude | codex) ;; *) exit 0 ;; esac
 case $event in '' | *[!A-Za-z]*) exit 0 ;; esac
 
-# The script lives in <PNYX_HOME>/hooks/. A session started for another home or
-# board, such as a task's agent started in Paseo, carries PNYX_HOME and PNYX_BOARD
-# and reports there instead.
 home=${0%/*}
 home=${home%/hooks}
 case ${PNYX_HOME:-} in /*) home=$PNYX_HOME ;; esac
 board_name=${PNYX_BOARD:-default}
 case $board_name in [!A-Za-z0-9]* | *[!A-Za-z0-9._-]*) exit 0 ;; esac
-# A session Pnyx started for a task, or as the board's Hydra, carries PNYX_TASK.
 task=
 case ${PNYX_TASK:-} in '' | *[!A-Za-z0-9._:\$-]*) ;; *) task="\"task\":\"$PNYX_TASK\"," ;; esac
 
-# Where the session's terminal is, so a reply can be typed into it: the harness
-# process and its TTY, and the host around it from the environment. Recorded when
-# a session starts or takes a prompt, except the Paseo terminal, which every event
-# records so each one shows the task it runs for; a value outside the safe
-# characters is left out.
 terminal=
 fact() {
   case $2 in '' | -* | *[!A-Za-z0-9_./:%,@+=-]*) return ;; esac
@@ -70,7 +55,6 @@ esac
 fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
 [ -z "$terminal" ] || terminal="\"terminal\":{$terminal},"
 
-# One date call gives both the epoch ($1) and the ISO time ($2).
 # shellcheck disable=SC2046
 set -- $(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
 id="hook-$1-$$"
@@ -92,7 +76,6 @@ tmp=$spool/.tmp-$name
   printf '}\n'
 } >"$tmp" || exit 0
 
-# Empty input has nothing after the envelope's own "payload": key.
 if ! grep -q '"payload": *[^ }]' "$tmp"; then
   printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s%s"payload":null}\n' "$id" "$2" "$harness" "$event" "$terminal" "$task" >"$tmp" || exit 0
 fi

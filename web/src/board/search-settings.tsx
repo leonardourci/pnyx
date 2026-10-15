@@ -10,7 +10,6 @@ const RERANK = [
   { value: 'off', label: 'Off' },
 ]
 
-// This machine's search settings, shared by every board.
 export function SearchSettings({ command, notify }: {
   command: Command
   notify({ text }: { text: string }): void

@@ -1,5 +1,3 @@
-// Per-board files: the append-only events.jsonl, the snapshot.json cache, the
-// writer lock and the hook spool.
 import {
   chmodSync,
   closeSync,
@@ -238,7 +236,6 @@ function readSnapshot({ dir }: { dir: string }): Snapshot | null {
   }
 }
 
-// Writes and flushes to disk before returning. flag "a" appends, "w" replaces.
 function writeDurably({ path, data, flag }: { path: string; data: string | Buffer; flag: 'a' | 'w' }): void {
   const fd = openSync(path, flag, 0o600)
 
@@ -264,14 +261,10 @@ function writeSnapshot({ dir, state, offset }: {
 export interface Board {
   dir: string
   state: BoardState
-  // Where the next append lands.
   offset: number
-  // Size of a torn tail, 0 when the log ends cleanly.
   tornBytes: number
 }
 
-// Loads the snapshot and folds in any events appended after it. Falls back to a
-// full replay when the snapshot is missing, unreadable or does not fit the log.
 export function loadBoard({ board }: { board: string }): Board {
   const dir = boardDir({ board })
   const snap = readSnapshot({ dir })
@@ -519,7 +512,6 @@ export function spoolWrite({ board, entry }: {
   return join(dir, name)
 }
 
-// Spooled files in arrival order.
 export function spoolFiles({ dir }: { dir: string }): string[] {
   const spool = spoolDir({ dir })
 

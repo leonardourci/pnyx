@@ -1,5 +1,3 @@
-// A short-lived connection to the local Paseo daemon through its public SDK.
-// The daemon owns the agents; Pnyx never starts, restarts or supervises it.
 import { createPaseoClient, type PaseoClient } from '@getpaseo/client'
 import { BoardError } from '../../core/model.ts'
 

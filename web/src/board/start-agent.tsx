@@ -15,8 +15,6 @@ const STARTED: Record<string, string> = {
   command: 'Board command started; its agent attaches when it reports.',
 }
 
-// Starts a worker for this task: a Claude Code or Codex agent in Paseo, a request
-// to the board's Firstmate Hydra, or the board's own start command.
 export function StartAgent({ card, firstmate, command, connected, notify }: {
   card: Card
   firstmate: boolean

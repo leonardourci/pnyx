@@ -11,7 +11,6 @@ process.env.PNYX_SEMANTIC = 'off'
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 
 function run({ args = [] }: { args?: string[] } = {}): string {
-  // Tests never touch the real ~/.pnyx.
   const env = { ...process.env, PNYX_HOME: mkdtempSync(join(tmpdir(), 'pnyx-test-')) }
 
   return execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })

@@ -44,7 +44,6 @@ const ids = CARDS.map(([title, note], i) => {
   return id
 })
 
-// Query, then the card (by CARDS index) it must rank first: across languages and by paraphrase.
 const QUERIES: [string, string][] = [
   ['rollback after a database schema change blocked writes', ids[0]!],
   ['intermittent test failure caused by timing', ids[1]!],
@@ -53,7 +52,6 @@ const QUERIES: [string, string][] = [
   ['phone emulator out of RAM', ids[4]!],
 ]
 
-// Searches until the models are fetched and loaded and every entry is embedded.
 async function embedded(): Promise<void> {
   let shown = ''
 
