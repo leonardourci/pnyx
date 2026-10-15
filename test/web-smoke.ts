@@ -301,7 +301,8 @@ try {
   await resizeColumn({ key: 'End' }); await screenshot({ name: 'columns-wide.png' })
   await click({ role: 'button', name: 'Settings' }); await click({ role: 'combobox', name: 'Conversation placement' }); await click({ role: 'option', name: 'Inline with cards' }); await click({ role: 'button', name: 'Back to board' })
   await click({ role: 'button', name: 'Open conversation for Check the empty-state experience' })
-  await resizeColumn({ key: 'Home' }); await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === 340 && document.querySelector('.column-cards > .detail').getBoundingClientRect().width >= 320 && ${fits}`, label: 'inline detail keeps its readable minimum when the column is narrowed' })
+  // An open card keeps its column's width: only the owner resizes columns.
+  await resizeColumn({ key: 'Home' }); await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === 240 && ${fits}`, label: 'inline detail keeps the column width the owner set' })
   await resizeColumn({ key: 'End' }); await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === 640 && ${fits}`, label: 'inline detail respects wide column resize' })
   await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] }); await browser({ args: ['wait', 'Needs you'] })
   await check({ condition: `document.documentElement.scrollWidth === innerWidth && document.querySelector('.column-needs_you').getBoundingClientRect().width <= document.querySelector('.kanban').clientWidth && ${fits}`, label: 'wide column fits mobile viewport without internal horizontal scrolling' })
