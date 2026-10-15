@@ -1081,6 +1081,22 @@ test('a server lock whose pid was reused is reclaimed', async () => {
   await assert.rejects(startServer({ hydraId: 'default' }), { code: 'ALREADY_RUNNING' })
 })
 
+test('a Hydra another live server holds is skipped, then served once that server is gone', async () => {
+  const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], { stdio: 'ignore' })
+  track({ child: other })
+  const dir = hydraDir({ hydraId: 'held' })
+  mkdirSync(dir, { recursive: true })
+  const started = execFileSync('ps', ['-o', 'lstart=', '-p', String(other.pid)], { encoding: 'utf8', env: { ...process.env, TZ: 'UTC', LC_ALL: 'C' } }).trim()
+  writeFileSync(join(dir, 'server.lock'), JSON.stringify({ pid: other.pid, processStart: started }))
+  server = await startServer({ hydraId: 'default' })
+  assert.match(server.skipped.held!, /already owns Hydra held/)
+  other.kill()
+  await once(other, 'exit')
+  // Any change to the Hydra folders, or the periodic retry, tries a skipped Hydra again.
+  mkdirSync(hydraDir({ hydraId: 'another' }))
+  await until({ check: () => (existsSync(infoPath({ hydraId: 'held' })) ? true : undefined), what: 'the freed Hydra to be served' })
+})
+
 test('idle Done expiry broadcasts hiding and survives a server restart', async () => {
   cli({ args: ['hydra', 'create', 'default', '--done-after-hours', '0'] })
   cli({ args: ['task', 'create', '--key', 'expire', '--title', 'Idle completion', '--column', 'done'] })

@@ -18,7 +18,15 @@ export interface ServerInfo {
 }
 
 // Only the path of the recorded address is used, so a request (and the token sent with it) never leaves this machine.
-const local = ({ info, path }: { info: ServerInfo; path: string }) => new URL(path, new URL(new URL(info.url).pathname, `http://127.0.0.1:${info.port}`))
+const local = ({ info, path }: { info: ServerInfo; path: string }) => {
+  const url = new URL(path, `http://127.0.0.1:${info.port}${new URL(info.url).pathname}`)
+
+  if (url.host !== `127.0.0.1:${info.port}`) {
+    throw new HydraError({ message: 'the recorded server address is not local', code: 'SERVER_UNAVAILABLE' })
+  }
+
+  return url
+}
 
 export const infoPath = ({ hydraId }: { hydraId: string }) => join(hydraDir({ hydraId }), 'server.json')
 export const socketPath = ({ hydraId }: { hydraId: string }) => join(hydraDir({ hydraId }), 'server.sock')

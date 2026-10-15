@@ -100,6 +100,7 @@ type HydraRequest = { req: IncomingMessage; res: ServerResponse; path: string }
 type HydraUpgrade = { req: IncomingMessage; socket: Duplex; head: Buffer; url: URL }
 
 const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
+const RETRY_MS = 60_000
 
 // Serves every Hydra under $PNYX_HOME on one port, each at /hydra/<id>/, and / opens the
 // named Hydra. It (with any homes given for it) and the default Hydra must load; any other
@@ -199,6 +200,10 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
       return known
     }
 
+    if (closed) {
+      return Promise.reject(new HydraError({ message: 'the server is stopping', code: 'NOT_RUNNING' }))
+    }
+
     const started = mountHydra({ hydraId: id, url: `http://127.0.0.1:${bound}/hydra/${id}/`, homes: id === hydraId ? homes : undefined, open, ...options })
     mounts.set(id, started)
     started.then(m => {
@@ -226,11 +231,14 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
 
   let named: MountedHydra
 
+  // A skipped Hydra is tried again, as one held by an older server is free once that server stops;
+  // its reason is logged only when it changes.
   const mountAll = () => {
-    // A skipped Hydra is tried again only when it is opened.
     for (const id of hydraIds()) {
-      if (!closed && !mounts.has(id) && !(id in skipped)) {
-        mount({ id }).catch((error: Error) => console.error(`pnyx-axi serve: skipped Hydra ${id}: ${error.message}`))
+      const before = skipped[id]
+
+      if (!closed && !mounts.has(id)) {
+        mount({ id }).catch((error: Error) => error.message !== before && console.error(`pnyx-axi serve: skipped Hydra ${id}: ${error.message}`))
       }
     }
   }
@@ -238,10 +246,12 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
   const boards = join(pnyxHome(), 'boards')
   mkdirSync(boards, { recursive: true })
   const watcher = watch(boards, mountAll)
+  const retry = setInterval(mountAll, RETRY_MS).unref()
 
   const close = async () => {
     closed = true
     watcher.close()
+    clearInterval(retry)
     const all = await Promise.allSettled(mounts.values())
     await Promise.all(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
     http.closeAllConnections()
@@ -312,10 +322,7 @@ async function mountOwnedHydra({
     throw new HydraError({ message: `a server is already running for Hydra ${hydraId}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
   }
 
-  const recorded = loadHydra({ hydraId }).state.config?.hydra
-  // A recorded home that has since moved is skipped, so the Hydra still opens.
-  const linked = recorded?.kind === 'firstmate' && recorded.home && existsSync(join(recorded.home, 'state')) ? [recorded.home] : []
-  const homes = (given ?? linked).map(path => resolveHome({ path }))
+  let homes = (given ?? []).map(path => resolveHome({ path }))
   type Subscription = {
     card: string
     path?: string
@@ -419,6 +426,25 @@ async function mountOwnedHydra({
   const token = Buffer.from(localToken())
   const identity = hydraIdentity({ hydraId })
   let { state, offset } = loadHydra({ hydraId })
+  // The recorded Firstmate home is watched, and followed when it changes; given homes stay fixed.
+  let firstmate: ReturnType<typeof watchHomes> | undefined
+  let watchedHome: string | undefined
+
+  const followHome = () => {
+    const hydra = state.config?.hydra
+    // A recorded home that has since moved is skipped, so the Hydra still opens.
+    const home = hydra?.kind === 'firstmate' && hydra.home && existsSync(join(hydra.home, 'state')) ? hydra.home : undefined
+
+    if (given || closed || home === watchedHome) {
+      return
+    }
+
+    firstmate?.close()
+    watchedHome = home
+    homes = home ? [resolveHome({ path: home })] : []
+    firstmate = home ? watchHomes({ hydraId, list: homes }) : undefined
+  }
+
   let recent: HydraEvent[] = []
   const resyncing = new WeakSet<WebSocket>()
 
@@ -475,6 +501,7 @@ async function mountOwnedHydra({
     ({ state, offset } = loadHydra({ hydraId }))
     recent = []
     agents.reconcile({ state })
+    followHome()
 
     for (const ws of wss.clients) {
       sendSnapshot({ ws })
@@ -596,6 +623,7 @@ async function mountOwnedHydra({
 
     offset = read.end
     agents.reconcile({ state })
+    followHome()
 
     if (recent.length > RESUME_LIMIT) {
       recent = recent.slice(-RESUME_LIMIT)
@@ -983,17 +1011,62 @@ async function mountOwnedHydra({
     },
   })
 
-  const watchers: FSWatcher[] = [watch(dir, kick), watch(spoolDir({ dir }), kick)]
-  const firstmate = given || homes.length === 0 ? undefined : watchHomes({ hydraId, list: homes })
+  const watchers: FSWatcher[] = []
+
+  const stop = async () => {
+    closed = true
+    firstmate?.close()
+    agents.close()
+
+    const threads = threadSubscriptions.flatMap(map =>
+      [...map.values()].flatMap(sub => sub.watcher ?? []))
+
+    for (const w of [...watchers, ...folders.values(), ...threads]) {
+      w.close()
+    }
+
+    folders.clear()
+    threadSubscriptions.forEach(map => map.clear())
+    clearTimeout(latestTimer)
+    clearTimeout(expiryTimer)
+
+    for (const timer of threadTimers.values()) {
+      clearTimeout(timer)
+    }
+
+    threadTimers.clear()
+
+    for (const ws of wss.clients) {
+      ws.terminate()
+    }
+
+    wss.close()
+    await (ingest && new Promise(r => ingest.close(r)))
+    rmSync(infoPath({ hydraId }), { force: true })
+
+    if (ingest) {
+      rmSync(socketPath({ hydraId }), { force: true })
+    }
+  }
+
   const info: ServerInfo = {
     pid: process.pid,
     port: Number(new URL(url).port),
     url,
     socket: ingest && socketPath({ hydraId }),
   }
-  const tmp = `${infoPath({ hydraId })}.tmp-${process.pid}`
-  writeFileSync(tmp, JSON.stringify(info))
-  renameSync(tmp, infoPath({ hydraId }))
+
+  // A mount that fails partway stops what it started; the caller releases the claim.
+  try {
+    watchers.push(watch(dir, kick), watch(spoolDir({ dir }), kick))
+    followHome()
+    const tmp = `${infoPath({ hydraId })}.tmp-${process.pid}`
+    writeFileSync(tmp, JSON.stringify(info))
+    renameSync(tmp, infoPath({ hydraId }))
+  } catch (error) {
+    await stop()
+    throw error
+  }
 
   try {
     agents.recover()
@@ -1014,40 +1087,7 @@ async function mountOwnedHydra({
         return
       }
 
-      closed = true
-      firstmate?.close()
-      agents.close()
-
-      const threads = threadSubscriptions.flatMap(map =>
-        [...map.values()].flatMap(sub => sub.watcher ?? []))
-
-      for (const w of [...watchers, ...folders.values(), ...threads]) {
-        w.close()
-      }
-
-      folders.clear()
-      threadSubscriptions.forEach(map => map.clear())
-      clearTimeout(latestTimer)
-      clearTimeout(expiryTimer)
-
-      for (const timer of threadTimers.values()) {
-        clearTimeout(timer)
-      }
-
-      threadTimers.clear()
-
-      for (const ws of wss.clients) {
-        ws.terminate()
-      }
-
-      wss.close()
-      await (ingest && new Promise(r => ingest.close(r)))
-      rmSync(infoPath({ hydraId }), { force: true })
-
-      if (ingest) {
-        rmSync(socketPath({ hydraId }), { force: true })
-      }
-
+      await stop()
       release()
     },
   }
@@ -1253,19 +1293,28 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
     throw new AxiError(`unexpected argument: ${args[0]}`, 'VALIDATION_ERROR', ['Run `pnyx-axi stop`; it stops the one server of every Hydra'])
   }
 
-  // Every server serves the default Hydra, so its record names the process.
-  const info = await readServer({ hydraId: 'default' })
+  // Usually one process; a server an older version started for a single Hydra is stopped too.
+  const running = async () => {
+    const found = await Promise.all(hydraIds().map(hydraId => readServer({ hydraId })))
 
-  if (!info) {
+    return [...new Set(found.flatMap(info => info ? [info.pid] : []))]
+  }
+
+  const pids = await running()
+
+  if (pids.length === 0) {
     return { server: 'none: not running', help: ['Run `pnyx-axi serve` to start it'] }
   }
 
-  process.kill(info.pid, 'SIGTERM')
+  for (const pid of pids) {
+    process.kill(pid, 'SIGTERM')
+  }
+
   const deadline = Date.now() + STOP_TIMEOUT_MS
 
-  while (await readServer({ hydraId: 'default' })) {
+  for (let left = pids; left.length > 0; left = await running()) {
     if (Date.now() > deadline) {
-      throw new AxiError(`server pid ${info.pid} did not stop`, 'TIMEOUT', [`Check process ${info.pid}`])
+      throw new AxiError(`server pid ${left.join(', ')} did not stop`, 'TIMEOUT', [`Check process ${left.join(', ')}`])
     }
 
     await new Promise(r => setTimeout(r, 25))
