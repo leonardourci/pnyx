@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { PaseoClient } from '@getpaseo/client'
+import { project } from '../src/projects/cli.ts'
 import { HYDRA_CARD } from '../src/core/hydra.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { commands } from '../src/cli/commands.ts'
@@ -212,4 +213,26 @@ test('a hook entry naming an occupied task keeps its session off that task', () 
   spoolWrite({ hydraId: 'lab', entry: entry({ session: 'b', id: 'e2' }) })
   ingestSpool({ hydraId: 'lab' })
   assert.deepEqual(state().cards[task]!.sessionIds, ['claude-code:a'])
+})
+
+test('Hydra can select its task project’s start command by name', async () => {
+  const { root, folder, run, state } = lab()
+  const out = join(root, 'project-command.txt')
+  await project(['add', folder, '--hydra', 'lab'])
+  await project(['set', 'work', '--command-name', 'fixture worker', '--command', captureEnvironment({ path: out }), '--brings-own-folder', 'true', '--hydra', 'lab'])
+  run({ args: ['task', 'create', '--title', 'Project work', '--key', 'ship', '--project', 'work'] })
+  await run({ args: ['task', 'start', 'ship', '--via', 'command', '--command', 'fixture worker', '--event-id', 'project-start'] })
+  const env = environment({ text: await written({ path: out }) })
+  assert.equal(env.PNYX_FOLDER, folder)
+  assert.equal(env.PNYX_TASK, state().keys.ship)
+  const task = state().cards[state().keys.ship!]!
+  assert.equal(task.launch?.command, captureEnvironment({ path: out }))
+  writeFileSync(out, '')
+  await run({ args: ['task', 'start', 'ship', '--via', 'command', '--command', 'fixture worker', '--event-id', 'project-start'] })
+  await new Promise(resolve => setTimeout(resolve, 100))
+  assert.equal(readFileSync(out, 'utf8'), '')
+  await assert.rejects(startTask({ hydraId: 'lab', task: 'ship', via: 'command', commandName: 'missing', meta }), /project command not found/)
+  await assert.rejects(startTask({ hydraId: 'lab', task: 'ship', via: 'pnyx', commandName: 'fixture worker', meta }), /--command needs --via command/)
+  run({ args: ['task', 'create', '--title', 'No project', '--key', 'other'] })
+  await assert.rejects(startTask({ hydraId: 'lab', task: 'other', via: 'command', commandName: 'fixture worker', meta }), /project command not found/)
 })

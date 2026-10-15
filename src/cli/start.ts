@@ -1,3 +1,4 @@
+import { findProject } from '../projects/read.ts'
 import { randomUUID } from 'node:crypto'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -134,11 +135,12 @@ const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
   + `Start with \`pnyx-axi task list --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`
 
 export async function startTask({
-  hydraId, task, via, kind, harness, prompt, folder, replacement, url, meta, connect,
+  hydraId, task, via, kind, harness, prompt, folder, replacement, commandName, url, meta, connect,
 }: {
   hydraId: string
   task: string
   replacement?: string
+  commandName?: string
   via?: string
   kind?: string
   harness?: string
@@ -154,6 +156,10 @@ export async function startTask({
     ? undefined : agentFor({ state, hydraId, kind: kind ?? 'default', harness })
   const how = chooseVia({ state, via })
 
+  if (commandName && how !== 'command') {
+    throw new HydraError({ message: '--command needs --via command', code: 'VALIDATION_ERROR' })
+  }
+
   if (replacement && how !== 'pnyx') {
     throw new HydraError({ message: 'starting fresh from an outside session uses Pnyx', code: 'VALIDATION_ERROR' })
   }
@@ -163,7 +169,7 @@ export async function startTask({
   }
 
   if (how === 'command' || !agent) {
-    return startCommand({ hydraId, role: 'worker', task, prompt, folder, harness, meta })
+    return startCommand({ hydraId, role: 'worker', task, prompt, folder, harness, commandName, meta })
   }
 
   if (how === 'pnyx') {
@@ -252,13 +258,14 @@ function askFirstmate({ hydraId, task, prompt, meta }: {
 
 // Runs the Hydra's command with the task in its environment, then notes the start;
 // a repeated event id runs nothing again.
-function startCommand({ hydraId, role, task, prompt, folder, harness, meta }: {
+function startCommand({ hydraId, role, task, prompt, folder, harness, commandName, meta }: {
   hydraId: string
   role: 'worker' | 'hydra'
   task?: string
   prompt?: string
   folder?: string
   harness?: string
+  commandName?: string
   meta: Meta
 }): Output {
   const id = meta.id ?? randomUUID()
@@ -268,12 +275,26 @@ function startCommand({ hydraId, role, task, prompt, folder, harness, meta }: {
       drainSpool({ writer })
       const config = hydraConfig({ state: writer.state, id: hydraId })
 
-      if (!config.command) {
+      if (!commandName && !config.command) {
         throw new HydraError({ message: `Hydra ${hydraId} has no start command`, code: 'NO_COMMAND', help: [`Run \`pnyx-axi hydra set --hydra ${hydraId} --command '<shell command>'\``] })
       }
 
       const card = role === 'worker' ? freeTask({ state: writer.state, ref: task! }) : undefined
-      const cwd = canonical({ path: folder }) ?? card?.folder ?? (role === 'hydra' ? process.cwd() : undefined)
+      const project = commandName && card?.project
+        ? findProject({ state: writer.state, ref: card.project, attached: true }) : undefined
+      const selected = project?.startCommand
+
+      if (commandName && selected?.name !== commandName) {
+        throw new HydraError({ message: `project command not found: ${commandName}; assign the task to its project and read project list`, code: 'NOT_FOUND' })
+      }
+
+      const command = commandName ? selected?.command : config.command
+
+      if (!command) {
+        throw new HydraError({ message: `Hydra ${hydraId} has no start command`, code: 'NO_COMMAND', help: [`Run \`pnyx-axi hydra set --hydra ${hydraId} --command '<shell command>'\``] })
+      }
+
+      const cwd = canonical({ path: folder }) ?? card?.folder ?? project?.path ?? (role === 'hydra' ? process.cwd() : undefined)
 
       if (!cwd || !existsSync(cwd)) {
         throw new HydraError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
@@ -285,7 +306,7 @@ function startCommand({ hydraId, role, task, prompt, folder, harness, meta }: {
         apply({ writer, decision: hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:config` }, cardId: '$board', change: { type: 'board.configured', data: config } }) })
       }
 
-      return { duplicate, command: config.command, cwd, card }
+      return { duplicate, command, cwd, card }
     },
   })
   const target = claimed.card?.id ?? HYDRA_CARD
@@ -309,7 +330,7 @@ function startCommand({ hydraId, role, task, prompt, folder, harness, meta }: {
       PNYX_FOLDER: claimed.cwd,
     },
   })
-  const text = `Started ${role === 'hydra' ? 'Hydra' : 'a worker'} with the Hydra command in ${claimed.cwd}`
+  const text = `Started ${role === 'hydra' ? 'Hydra' : 'a worker'} with ${commandName ? `project command ${commandName}` : 'the Hydra command'} in ${claimed.cwd}`
   withWriter({
     hydraId,
     fn: ({ writer }) => {
