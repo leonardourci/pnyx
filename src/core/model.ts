@@ -105,7 +105,7 @@ export interface Attention {
   text?: string
   questions?: Question[]
   form?: FormField[]
-  // The reply that answered it from the board. The request stays until the session's
+  // The reply that answered it from the Hydra. The request stays until the session's
   // own hooks close it, but no longer counts as waiting on anyone.
   answered?: string
 }
@@ -178,7 +178,7 @@ export interface Card {
   launch?: AgentLaunch
   // Task membership is a list for future compatibility; v1 permits at most one.
   sessionIds?: string[]
-  // Session-only records remain addressable in History, outside the live board.
+  // Session-only records remain addressable in History, outside the live Hydra.
   hidden?: boolean
   automaticTask?: boolean
   tracking?: 'declared'
@@ -266,7 +266,7 @@ export interface HydraIdentity {
   session?: string
   home?: string
 }
-export interface BoardColumn {
+export interface HydraColumn {
   id: Column
   title: string
   description?: string
@@ -283,11 +283,11 @@ export interface AgentConfig {
   mode?: string
   quota?: (typeof QUOTA_BUCKETS)[number]
 }
-export interface BoardConfig {
+export interface HydraConfig {
   id: string
   name: string
   hydra: HydraIdentity
-  columns: BoardColumn[]
+  columns: HydraColumn[]
   // Task kind -> agent; `hydra` is the kind Hydra itself starts on.
   agents?: Record<string, AgentConfig>
   command?: string
@@ -302,9 +302,9 @@ export interface HydraMessage {
   actor: string
   hydra: string
 }
-export type HydraEvent = EventBase & (
-  | { type: 'board.configured'; data: BoardConfig }
-  | { type: 'board.columns'; data: { columns: BoardColumn[]; before?: BoardColumn[]; fallback?: Column; placements?: Record<string, { before: Column | null; after: Column | null }> } }
+export type HydraChange = EventBase & (
+  | { type: 'board.configured'; data: HydraConfig }
+  | { type: 'board.columns'; data: { columns: HydraColumn[]; before?: HydraColumn[]; fallback?: Column; placements?: Record<string, { before: Column | null; after: Column | null }> } }
   | { type: 'task.created'; data: { key: string; title: string; brief?: string; parentId?: string; column?: Column; folder?: string } }
   | { type: 'task.brief'; data: { before: string; after: string } }
   | { type: 'task.visibility'; data: { before: boolean; after: boolean } }
@@ -430,7 +430,7 @@ export type ChatEvent = EventBase & {
   data: { session: string; nativeId: string; role: string; text: string }
 }
 
-export type BoardEvent =
+export type HydraEvent =
   | PushedEvent
   | MovedEvent
   | LinkedEvent
@@ -439,17 +439,17 @@ export type BoardEvent =
   | NotedEvent
   | ViewEvent
   | SessionEvent
-  | HydraEvent
+  | HydraChange
   | ChatEvent
   | PermissionEvent
-export type EventType = BoardEvent['type']
+export type EventType = HydraEvent['type']
 export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched', 'task.permission']
 
-export interface BoardState {
-  board?: BoardConfig
+export interface HydraState {
+  config?: HydraConfig
   // Set once a board.configured event applies; a column edit alone does not configure Hydra.
   configured?: boolean
-  boardRevision?: number
+  configRevision?: number
   hydraMessages?: HydraMessage[]
   hydraMemory?: Record<string, { text: string; at: string }>
   view?: ViewPreferences
@@ -466,7 +466,7 @@ export interface BoardState {
   undone: Record<string, string>
 }
 
-export class BoardError extends Error {
+export class HydraError extends Error {
   code: string
   help: string[]
   constructor({ message, code, help = [] }: { message: string; code: string; help?: string[] }) {

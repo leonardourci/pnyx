@@ -1,8 +1,8 @@
 import { matchKeybindingPress, parseKeybinding, type KeybindingPress } from 'tinykeys'
 
-export type KeyScope = 'board' | 'thread' | 'navigation' | 'composer' | 'overlay' | 'hints'
+export type KeyScope = 'hydra' | 'thread' | 'navigation' | 'composer' | 'overlay' | 'hints'
 export type KeyPlatform = 'mac' | 'other'
-const navigation: KeyScope[] = ['board', 'thread', 'navigation']
+const navigation: KeyScope[] = ['hydra', 'thread', 'navigation']
 const action = (
   { id, label, keys, scopes, repeat = false }: {
     id: string
@@ -13,13 +13,13 @@ const action = (
   },
 ) => ({ id, label, keys, scopes, repeat })
 export const KEY_ACTIONS = [
-  action({ id: 'board.up', label: 'Previous card', keys: ['ArrowUp', 'k'], scopes: ['board'], repeat: true }),
-  action({ id: 'board.down', label: 'Next card', keys: ['ArrowDown', 'j'], scopes: ['board'], repeat: true }),
-  action({ id: 'board.left', label: 'Previous column', keys: ['ArrowLeft', 'h'], scopes: ['board'], repeat: true }),
-  action({ id: 'board.right', label: 'Next column', keys: ['ArrowRight', 'l'], scopes: ['board'], repeat: true }),
-  action({ id: 'board.first', label: 'First card', keys: ['Home'], scopes: ['board'], repeat: true }),
-  action({ id: 'board.last', label: 'Last card', keys: ['End'], scopes: ['board'], repeat: true }),
-  action({ id: 'board.open', label: 'Open conversation', keys: ['Enter'], scopes: ['board'] }),
+  action({ id: 'board.up', label: 'Previous card', keys: ['ArrowUp', 'k'], scopes: ['hydra'], repeat: true }),
+  action({ id: 'board.down', label: 'Next card', keys: ['ArrowDown', 'j'], scopes: ['hydra'], repeat: true }),
+  action({ id: 'board.left', label: 'Previous column', keys: ['ArrowLeft', 'h'], scopes: ['hydra'], repeat: true }),
+  action({ id: 'board.right', label: 'Next column', keys: ['ArrowRight', 'l'], scopes: ['hydra'], repeat: true }),
+  action({ id: 'board.first', label: 'First card', keys: ['Home'], scopes: ['hydra'], repeat: true }),
+  action({ id: 'board.last', label: 'Last card', keys: ['End'], scopes: ['hydra'], repeat: true }),
+  action({ id: 'board.open', label: 'Open conversation', keys: ['Enter'], scopes: ['hydra'] }),
   action({ id: 'thread.up', label: 'Previous message block', keys: ['ArrowUp', 'k'], scopes: ['thread'], repeat: true }),
   action({ id: 'thread.down', label: 'Next message block', keys: ['ArrowDown', 'j'], scopes: ['thread'], repeat: true }),
   action({ id: 'thread.pageUp', label: 'Previous conversation page', keys: ['PageUp'], scopes: ['thread'], repeat: true }),
@@ -28,16 +28,16 @@ export const KEY_ACTIONS = [
   action({ id: 'thread.last', label: 'Latest loaded message', keys: ['End'], scopes: ['thread'], repeat: true }),
   action({ id: 'thread.reply', label: 'Reply at the end of the conversation', keys: ['Enter'], scopes: ['thread'] }),
   action({ id: 'thread.comment', label: 'Comment on selected block', keys: ['c'], scopes: ['thread'] }),
-  action({ id: 'reply', label: 'Focus reply composer', keys: ['r'], scopes: ['board', 'thread'] }),
+  action({ id: 'reply', label: 'Focus reply composer', keys: ['r'], scopes: ['hydra', 'thread'] }),
   action({ id: 'send', label: 'Send reply', keys: ['Mod+Enter'], scopes: ['composer'] }),
   action({ id: 'cancel', label: 'Close the current layer', keys: ['Escape'], scopes: [...navigation, 'composer', 'overlay', 'hints'] }),
-  action({ id: 'move.left', label: 'Move highlighted left', keys: ['Mod+ArrowLeft'], scopes: ['board'] }),
-  action({ id: 'move.right', label: 'Move highlighted right', keys: ['Mod+ArrowRight'], scopes: ['board'] }),
-  action({ id: 'move.up', label: 'Move highlighted up', keys: ['Mod+ArrowUp'], scopes: ['board'] }),
-  action({ id: 'move.down', label: 'Move highlighted down', keys: ['Mod+ArrowDown'], scopes: ['board'] }),
+  action({ id: 'move.left', label: 'Move highlighted left', keys: ['Mod+ArrowLeft'], scopes: ['hydra'] }),
+  action({ id: 'move.right', label: 'Move highlighted right', keys: ['Mod+ArrowRight'], scopes: ['hydra'] }),
+  action({ id: 'move.up', label: 'Move highlighted up', keys: ['Mod+ArrowUp'], scopes: ['hydra'] }),
+  action({ id: 'move.down', label: 'Move highlighted down', keys: ['Mod+ArrowDown'], scopes: ['hydra'] }),
   action({ id: 'search', label: 'Search history', keys: ['/'], scopes: navigation }),
   action({ id: 'find', label: 'Find in current view', keys: ['Mod+f'], scopes: [...navigation, 'composer'] }),
-  action({ id: 'palette', label: 'Focus search', keys: ['Mod+k'], scopes: [...navigation, 'composer'] }),
+  action({ id: 'palette', label: 'Focus Oracle', keys: ['Mod+k'], scopes: [...navigation, 'composer'] }),
   action({ id: 'help', label: 'Keyboard help', keys: ['?'], scopes: navigation }),
   action({ id: 'settings', label: 'Open settings', keys: ['Mod+,'], scopes: navigation }),
   action({ id: 'topbar', label: 'Show or hide the top bar', keys: ['Mod+b'], scopes: [...navigation, 'composer'] }),

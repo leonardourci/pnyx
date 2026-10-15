@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
-import type { BoardState } from '../src/core/model.ts'
+import type { HydraState } from '../src/core/model.ts'
 
 const bin = join(import.meta.dirname, '../dist/cli/pnyx-axi.js')
 const execFileAsync = promisify(execFile)
@@ -29,7 +29,7 @@ function fixture() {
     return assert.fail(`${args.join(' ')} succeeded`)
   }
 
-  const state = (): BoardState => JSON.parse(readFileSync(join(root, 'boards/default/snapshot.json'), 'utf8')).state
+  const state = (): HydraState => JSON.parse(readFileSync(join(root, 'boards/default/snapshot.json'), 'utf8')).state
   let n = 0
 
   const hook = ({ session, cwd, terminal }: { session: string; cwd: string; terminal: string }) => {
@@ -54,33 +54,33 @@ test('kinds configure the agent each kind launches on and validate their flags',
   const f = fixture()
   f.run({ args: ['kind', 'set', 'review', '--harness', 'codex', '--model', 'gpt-5.4', '--effort', 'high', '--mode', 'bypass'] })
   f.run({ args: ['kind', 'set', 'research', '--quota', 'high'] })
-  assert.deepEqual(f.state().board!.agents, {
+  assert.deepEqual(f.state().config!.agents, {
     review: { harness: 'codex', model: 'gpt-5.4', effort: 'high', mode: 'bypass' },
     research: { harness: 'claude', quota: 'high' },
   })
   assert.match(f.run({ args: ['kind'] }), /review,codex,gpt-5\.4,high,bypass,off/)
   f.run({ args: ['kind', 'remove', 'research'] })
-  assert.deepEqual(Object.keys(f.state().board!.agents!), ['review'])
+  assert.deepEqual(Object.keys(f.state().config!.agents!), ['review'])
   assert.match(f.fail({ args: ['kind', 'set', 'bad', '--model', 'x; rm -rf /'] }), /cannot take/)
   assert.match(f.fail({ args: ['kind', 'set', 'bad', '--harness', 'vim'] }), /--harness/)
   assert.match(f.run({ args: ['kind', 'remove', 'missing'] }), /none: unchanged/)
   assert.equal(f.state().configured, undefined, 'saving a kind does not choose the Hydra')
 
   f.run({ args: ['kind', 'set', 'review', '--model', 'gpt-5.5', '--mode', '', '--quota', 'medium'] })
-  assert.deepEqual(f.state().board!.agents!.review, { harness: 'codex', model: 'gpt-5.5', effort: 'high', quota: 'medium' })
+  assert.deepEqual(f.state().config!.agents!.review, { harness: 'codex', model: 'gpt-5.5', effort: 'high', quota: 'medium' })
   f.run({ args: ['kind', 'set', 'review', '--quota', 'off'] })
-  assert.deepEqual(f.state().board!.agents!.review, { harness: 'codex', model: 'gpt-5.5', effort: 'high' })
+  assert.deepEqual(f.state().config!.agents!.review, { harness: 'codex', model: 'gpt-5.5', effort: 'high' })
   assert.match(f.run({ args: ['kind', 'set', 'review', '--effort', 'high'] }), /none: unchanged/)
   assert.match(f.run({ args: ['history'] }), /board\.agents/)
 })
 
-test('board set --session self binds the session running in the caller\'s Paseo terminal', () => {
+test('Hydra set --session self binds the session running in the caller\'s Paseo terminal', () => {
   const f = fixture()
   f.hook({ session: 'hydra', cwd: f.folder, terminal: 'term-h' })
-  assert.match(f.fail({ args: ['board', 'set', '--session', 'self'] }), /cannot tell this terminal/)
-  assert.match(f.fail({ args: ['board', 'set', '--session', 'self'], extra: { PASEO_TERMINAL_ID: 'term-x' } }), /no recorded session/)
-  f.run({ args: ['board', 'set', '--session', 'self'], extra: { PASEO_TERMINAL_ID: 'term-h' } })
-  assert.equal(f.state().board!.hydra.session, 'claude-code:hydra')
+  assert.match(f.fail({ args: ['hydra', 'set', '--session', 'self'] }), /cannot tell this terminal/)
+  assert.match(f.fail({ args: ['hydra', 'set', '--session', 'self'], extra: { PASEO_TERMINAL_ID: 'term-x' } }), /no recorded session/)
+  f.run({ args: ['hydra', 'set', '--session', 'self'], extra: { PASEO_TERMINAL_ID: 'term-h' } })
+  assert.equal(f.state().config!.hydra.session, 'claude-code:hydra')
 })
 
 test('hydra check lists only tracked changes by others and waits for the next one', async () => {

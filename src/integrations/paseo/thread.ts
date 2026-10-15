@@ -1,5 +1,5 @@
 import { HOST_LABEL, replyRoute } from '../../core/route.ts'
-import { BoardError, type Card } from '../../core/model.ts'
+import { HydraError, type Card } from '../../core/model.ts'
 import { localPaseoUrl } from '../../core/paseo.ts'
 import { cardSessionId } from '../../core/tasks.ts'
 import { splitEntry, type ThreadEntry, type ThreadPage } from '../../thread/read.ts'
@@ -24,7 +24,7 @@ export async function paseoConversation({
   const { paseoUrl: url, paseoAgentId: id } = card.agent ?? {}
 
   if (!url || !id) {
-    throw new BoardError({ message: 'this task has no Paseo agent', code: 'NOT_FOUND' })
+    throw new HydraError({ message: 'this task has no Paseo agent', code: 'NOT_FOUND' })
   }
 
   const client = await connect({ url: localPaseoUrl({ url }) })

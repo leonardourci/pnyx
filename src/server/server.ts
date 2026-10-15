@@ -7,8 +7,8 @@ import { replyRoute } from '../core/route.ts'
 import { PASEO_CURSOR, paseoConversation, type PaseoConversation } from '../integrations/paseo/thread.ts'
 import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
-import { searchBoard, searchCommands } from '../search/semantic.ts'
-import { readSettings, settingEntries, writeSetting } from '../search/settings.ts'
+import { queryOracle, matchActions } from '../oracle/semantic.ts'
+import { readSettings, settingEntries, writeSetting } from '../oracle/settings.ts'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -21,12 +21,12 @@ import { ingestSpool } from '../integrations/hooks/ingest.ts'
 import { commands as cliCommands } from '../cli/commands.ts'
 import { integrationsCommand } from '../cli/integrations.ts'
 import { workerCommands } from '../cli/workers.ts'
-import { BoardError, type BoardEvent, type BoardState, type Card, type ViewPreferences } from '../core/model.ts'
+import { HydraError, type HydraEvent, type HydraState, type Card, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
-import { boardDir, loadBoard, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/board-store.ts'
-import { DEFAULT_PORT, boardIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
-import { createBoard, listBoards, openBoard, renameBoard } from './boards.ts'
+import { hydraDir, loadHydra, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
+import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
+import { createHydra, listHydras, openHydra, renameHydra } from './hydras.ts'
 import { createHost, hostRequest, type QueryFn } from './host.ts'
 import type { SpawnCodex } from './codex.ts'
 
@@ -38,7 +38,7 @@ const RESUME_LIMIT = 1000
 const MAX_BUFFERED = 1 << 20
 const MAX_BODY = 1 << 20
 const STOP_TIMEOUT_MS = 5000
-const SEARCH_LIMIT = 100
+const ORACLE_LIMIT = 100
 
 const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) => {
   const { tools, thinking } = traces({ view: viewFor({ state: { view } }), card })
@@ -64,11 +64,11 @@ const MIME: Record<string, string> = {
 // Server to browser. A snapshot replaces whatever the tab held; events then follow in sequence.
 // Each command gets a receipt or an error carrying its id.
 export type ServerMessage =
-  | { type: 'hello'; build: string; board: string }
+  | { type: 'hello'; build: string; hydraId: string }
   | { type: 'pong' }
   | { type: 'thread'; thread: ThreadPage }
-  | { type: 'snapshot'; seq: number; state: BoardState }
-  | { type: 'event'; event: BoardEvent }
+  | { type: 'snapshot'; seq: number; state: HydraState }
+  | { type: 'event'; event: HydraEvent }
   // Last conversation messages by card: all of them on connect, then the ones that changed (null when gone).
   | { type: 'latest'; messages: Record<string, LatestMessage | null> }
   | { type: 'receipt'; id: string; [field: string]: unknown }
@@ -81,8 +81,8 @@ export interface RunningServer {
   close(): Promise<void>
 }
 
-export async function startServer({ board, ...options }: {
-  board: string
+export async function startServer({ hydraId, ...options }: {
+  hydraId: string
   port?: number
   homes?: string[]
   catalogLocations?: CatalogLocations
@@ -90,10 +90,10 @@ export async function startServer({ board, ...options }: {
   query?: QueryFn
   spawnCodex?: SpawnCodex
 }): Promise<RunningServer> {
-  const release = claimServer({ board })
+  const release = claimServer({ hydraId })
 
   try {
-    const server = await startOwnedServer({ board, ...options })
+    const server = await startOwnedServer({ hydraId, ...options })
 
     return {
       ...server,
@@ -112,21 +112,21 @@ export async function startServer({ board, ...options }: {
 }
 
 async function startOwnedServer({
-  board,
+  hydraId,
   port = 0,
   homes = [],
   catalogLocations,
   query, spawnCodex,
 }: {
-  board: string
+  hydraId: string
   port?: number
   homes?: string[]
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
 }): Promise<RunningServer> {
-  if (await readServer({ board })) {
-    throw new BoardError({ message: `a server is already running for board ${board}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
+  if (await readServer({ hydraId })) {
+    throw new HydraError({ message: `a server is already running for Hydra ${hydraId}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
   }
 
   homes = homes.map(path => resolveHome({ path }))
@@ -178,7 +178,7 @@ async function startOwnedServer({
         }
 
         try {
-          send({ ws, message: { type: 'thread', thread: readThread({ board, state, card, homes }) } })
+          send({ ws, message: { type: 'thread', thread: readThread({ hydraId, state, card, homes }) } })
         } catch {
           unavailable()
         }
@@ -192,14 +192,14 @@ async function startOwnedServer({
     before?: string
   }): Promise<ThreadPage> => {
     if (!sub.native) {
-      return readThread({ board, state, card, homes, before })
+      return readThread({ hydraId, state, card, homes, before })
     }
 
     try {
       return await (await sub.native).read({ before })
     } catch (error) {
       // Replies sent from here still show while Paseo cannot be read.
-      return { ...readThread({ board, state, card, homes }), unavailable: `${error instanceof BoardError ? error.message : 'Paseo could not read this conversation'}; it shows again once Paseo answers.` }
+      return { ...readThread({ hydraId, state, card, homes }), unavailable: `${error instanceof HydraError ? error.message : 'Paseo could not read this conversation'}; it shows again once Paseo answers.` }
     }
   }
 
@@ -228,12 +228,12 @@ async function startOwnedServer({
     map.set(ws, sub)
   }
 
-  const dir = boardDir({ board })
+  const dir = hydraDir({ hydraId })
   privateDir({ dir: spoolDir({ dir }) })
   const token = Buffer.from(localToken())
-  const identity = boardIdentity({ board })
-  let { state, offset } = loadBoard({ board })
-  let recent: BoardEvent[] = []
+  const identity = hydraIdentity({ hydraId })
+  let { state, offset } = loadHydra({ hydraId })
+  let recent: HydraEvent[] = []
   const resyncing = new WeakSet<WebSocket>()
 
   const send = ({ ws, message }: { ws: WebSocket; message: ServerMessage }) => {
@@ -255,7 +255,7 @@ async function startOwnedServer({
   }
 
   // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.
-  const broadcast = ({ event }: { event: BoardEvent }) => {
+  const broadcast = ({ event }: { event: HydraEvent }) => {
     for (const ws of wss.clients) {
       if (!resyncing.has(ws)) {
         send({ ws, message: { type: 'event', event } })
@@ -286,7 +286,7 @@ async function startOwnedServer({
   }
 
   const reload = () => {
-    ({ state, offset } = loadBoard({ board }))
+    ({ state, offset } = loadHydra({ hydraId }))
     recent = []
     agents.reconcile({ state })
 
@@ -391,7 +391,7 @@ async function startOwnedServer({
   }
 
   const pump = () => {
-    const read = readEventsFrom({ board, offset })
+    const read = readEventsFrom({ hydraId, offset })
 
     if (!read) {
       return reload()
@@ -433,7 +433,7 @@ async function startOwnedServer({
 
       try {
         if (spoolFiles({ dir }).length > 0) {
-          ingestSpool({ board })
+          ingestSpool({ hydraId })
         }
 
         pump()
@@ -457,7 +457,7 @@ async function startOwnedServer({
     return token.length > 0 && bytes.length === token.length && timingSafeEqual(bytes, token)
   }
 
-  const agents = createHost({ board, query, spawnCodex, changed: () => kick() })
+  const agents = createHost({ hydraId, query, spawnCodex, changed: () => kick() })
 
   const http = createServer((req, res) => {
     if (!allowed({ req })) {
@@ -474,7 +474,7 @@ async function startOwnedServer({
       return void readBody({ req }).then(body => hostRequest({ host: agents, body }))
         .then(
           answer => reply({ res, status: 200, body: answer }),
-          (error: Error) => reply({ res, status: 400, body: { error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN', help: error instanceof BoardError ? error.help : [] } }),
+          (error: Error) => reply({ res, status: 400, body: { error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN', help: error instanceof HydraError ? error.help : [] } }),
         )
     }
 
@@ -485,7 +485,7 @@ async function startOwnedServer({
     const path = new URL(req.url ?? '/', 'http://localhost').pathname
 
     if (path === '/health') {
-      return reply({ res, status: 200, body: { board, pid: process.pid, build: buildId() } })
+      return reply({ res, status: 200, body: { hydraId, pid: process.pid, build: buildId() } })
     }
 
     serveStatic({ res, path, token: token.toString(), identity })
@@ -505,7 +505,7 @@ async function startOwnedServer({
       return fail({ error: 'command needs a string id', code: 'VALIDATION_ERROR' })
     }
 
-    if (['thread', 'search', 'search-commands', 'reply', 'answer', 'agent', 'catalog', 'settings', 'boards'].includes(String(name))) {
+    if (['thread', 'oracle', 'oracle-commands', 'reply', 'answer', 'agent', 'catalog', 'settings', 'hydras'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail({ error: 'args must be strings', code: 'VALIDATION_ERROR' })
       }
@@ -513,7 +513,7 @@ async function startOwnedServer({
       try {
         if (name === 'catalog') {
           if (args.length !== 1) {
-            throw new BoardError({ message: 'catalog expects a card', code: 'VALIDATION_ERROR' })
+            throw new HydraError({ message: 'catalog expects a card', code: 'VALIDATION_ERROR' })
           }
 
           const card = findCard({ state, ref: args[0] })
@@ -537,35 +537,35 @@ async function startOwnedServer({
           }
 
           void entry.read.then(catalog => send({ ws, message: { type: 'receipt', id, catalog } })).catch(() => fail({ error: 'Local catalog unavailable', code: 'CATALOG_UNAVAILABLE' }))
-        } else if (name === 'search') {
-          if (args.length > 3 || (args[2] !== undefined && args[2] !== 'board')) {
-            throw new BoardError({ message: 'search expects text, optional workspace and optional board scope', code: 'VALIDATION_ERROR' })
+        } else if (name === 'oracle') {
+          if (args.length > 3 || (args[2] !== undefined && args[2] !== 'hydra')) {
+            throw new HydraError({ message: 'oracle expects text, optional workspace and optional Hydra scope', code: 'VALIDATION_ERROR' })
           }
 
-          const query = { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), ...(args[2] === 'board' ? { live: true } : {}), limit: SEARCH_LIMIT }
+          const query = { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), ...(args[2] === 'hydra' ? { live: true } : {}), limit: ORACLE_LIMIT }
 
-          void searchBoard({ board, query })
+          void queryOracle({ hydraId, query })
             .then(result => send({ ws, message: { type: 'receipt', id, ...result } }))
-            .catch((error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
-        } else if (name === 'search-commands') {
+            .catch((error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
+        } else if (name === 'oracle-commands') {
           let entries: unknown
 
           try {
             entries = JSON.parse(args[1] ?? '[]')
           } catch {
-            throw new BoardError({ message: 'search-commands expects a JSON list of named entries', code: 'VALIDATION_ERROR' })
+            throw new HydraError({ message: 'oracle-commands expects a JSON list of named entries', code: 'VALIDATION_ERROR' })
           }
 
           if (args.length !== 2 || !args[0]?.trim() || args[0].length > 500
             || !Array.isArray(entries) || entries.length > 256
             || !entries.every((entry: unknown): entry is { id: string; text: string } => !!entry && typeof entry === 'object' && 'id' in entry && typeof entry.id === 'string' && entry.id.length <= 160 && 'text' in entry && typeof entry.text === 'string' && entry.text.length <= 500)) {
-            throw new BoardError({ message: 'search-commands expects a query and up to 256 named entries', code: 'VALIDATION_ERROR' })
+            throw new HydraError({ message: 'oracle-commands expects a query and up to 256 named entries', code: 'VALIDATION_ERROR' })
           }
 
-          void searchCommands({ query: args[0], entries }).then(matches => send({ ws, message: { type: 'receipt', id, matches } }))
+          void matchActions({ query: args[0], entries }).then(matches => send({ ws, message: { type: 'receipt', id, matches } }))
         } else if (name === 'settings') {
           if (args.length && (args.length !== 3 || args[0] !== 'set')) {
-            throw new BoardError({ message: 'settings expects nothing, or set, a key and a value', code: 'VALIDATION_ERROR' })
+            throw new HydraError({ message: 'settings expects nothing, or set, a key and a value', code: 'VALIDATION_ERROR' })
           }
 
           const settings = args.length ? writeSetting({
@@ -573,21 +573,21 @@ async function startOwnedServer({
             value: args[2]!,
           }) : readSettings({ })
           send({ ws, message: { type: 'receipt', id, settings: settingEntries({ settings }) } })
-        } else if (name === 'boards') {
+        } else if (name === 'hydras') {
           const [action, first, second] = args
-          const reply = ({ open }: { open?: string } = {}) => send({ ws, message: { type: 'receipt', id, board, boards: listBoards(), ...(open ? { url: open } : {}) } })
+          const reply = ({ open }: { open?: string } = {}) => send({ ws, message: { type: 'receipt', id, hydraId, hydras: listHydras(), ...(open ? { url: open } : {}) } })
 
           if (action === 'create' && first?.trim()) {
-            void openBoard({ id: createBoard({ name: first.trim().slice(0, 100) }) }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
+            void openHydra({ id: createHydra({ name: first.trim().slice(0, 100) }) }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
           } else if (action === 'open' && first) {
-            void openBoard({ id: first }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
-          } else if (action === 'rename' && first && second?.trim() && listBoards().some(b => b.id === first)) {
-            renameBoard({ id: first, name: second.trim().slice(0, 100) })
+            void openHydra({ id: first }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
+          } else if (action === 'rename' && first && second?.trim() && listHydras().some(b => b.id === first)) {
+            renameHydra({ id: first, name: second.trim().slice(0, 100) })
             reply()
           } else if (action === undefined) {
             reply()
           } else {
-            throw new BoardError({ message: 'boards expects nothing, open <id>, create <name> or rename <id> <name>', code: 'VALIDATION_ERROR' })
+            throw new HydraError({ message: 'Hydras expects nothing, open <id>, create <name> or rename <id> <name>', code: 'VALIDATION_ERROR' })
           }
         } else if (name === 'thread') {
           const map = subscriptionMap({ card: args[0] ?? '' })
@@ -604,7 +604,7 @@ async function startOwnedServer({
           const cursor = card.agent?.paseoAgentId ? PASEO_CURSOR : THREAD_CURSOR
 
           if (args[1] !== undefined && (args[1].length > 200 || !cursor.test(args[1]))) {
-            throw new BoardError({ message: 'invalid thread cursor', code: 'VALIDATION_ERROR' })
+            throw new HydraError({ message: 'invalid thread cursor', code: 'VALIDATION_ERROR' })
           }
 
           bindThread({ ws, card })
@@ -613,7 +613,7 @@ async function startOwnedServer({
             if (ws.readyState === ws.OPEN) {
               send({ ws, message: { type: 'receipt', id, thread } })
             }
-          }, (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
+          }, (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
         } else {
           const agent = name === 'agent'
           const answering = name === 'answer'
@@ -625,7 +625,7 @@ async function startOwnedServer({
               : args.length === 3 && !!args[2] && args[1].length <= 32000
 
           if (!valid) {
-            throw new BoardError({
+            throw new HydraError({
               message: agent
                 ? 'agent expects card, setting, value and idempotency key'
                 : answering ? 'answer expects card, request key, answer, idempotency key and request id' : 'reply expects card, text and idempotency key',
@@ -638,7 +638,7 @@ async function startOwnedServer({
           const found = replyRoute({ card, homes })
 
           if ('reason' in found) {
-            throw new BoardError({ message: `${found.reason}${agent ? '' : ' Your draft stays here.'}`, code: 'NO_ROUTE' })
+            throw new HydraError({ message: `${found.reason}${agent ? '' : ' Your draft stays here.'}`, code: 'NO_ROUTE' })
           }
 
           // A setting change is sent like a reply: `pnyx-axi agent` picks the harness's command and reads
@@ -651,7 +651,7 @@ async function startOwnedServer({
               : [['reply', card.id, '--text', args[1], '--idempotency-key', args[2]], []]
 
           // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.
-          execFile(process.execPath, [join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js'), ...command, '--board', board, '--actor', 'web', ...homes.flatMap(h => ['--home', h]), ...rest], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {
+          execFile(process.execPath, [join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js'), ...command, '--hydra', hydraId, '--actor', 'web', ...homes.flatMap(h => ['--home', h]), ...rest], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {
             kick()
 
             if (ws.readyState !== ws.OPEN) {
@@ -682,7 +682,7 @@ async function startOwnedServer({
           })
         }
       } catch (error) {
-        fail({ error: (error as Error).message, code: error instanceof BoardError ? error.code : 'UNKNOWN' })
+        fail({ error: (error as Error).message, code: error instanceof HydraError ? error.code : 'UNKNOWN' })
       }
 
       return
@@ -696,8 +696,8 @@ async function startOwnedServer({
       return fail({ error: 'args must be [string, ...]', code: 'VALIDATION_ERROR' })
     }
 
-    if (args.some(a => a === '--board' || a.startsWith('--board='))) {
-      return fail({ error: `--board is not allowed; this server writes board ${board}`, code: 'VALIDATION_ERROR' })
+    if (args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
+      return fail({ error: `--hydra is not allowed; this server writes Hydra ${hydraId}`, code: 'VALIDATION_ERROR' })
     }
 
     const actor = name === 'history' || name === 'card' || name === 'integrations' || args.some(a => a === '--actor' || a.startsWith('--actor=')) ? [] : ['--actor', 'web']
@@ -708,7 +708,7 @@ async function startOwnedServer({
 
     try {
       const handler = name === 'integrations' ? integrationsCommand : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
-      void Promise.resolve(handler([...args, ...actor, '--board', board])).then(result => {
+      void Promise.resolve(handler([...args, ...actor, '--hydra', hydraId])).then(result => {
         try {
           pump()
         } catch {
@@ -757,13 +757,13 @@ async function startOwnedServer({
           send({ ws, message: { type: 'error', id: null, error: 'unknown message', code: 'VALIDATION_ERROR', help: ['Send a command or resync message'] } })
         }
       })
-      send({ ws, message: { type: 'hello', build: buildId(), board: identity } })
+      send({ ws, message: { type: 'hello', build: buildId(), hydraId: identity } })
       resume({ ws, after: url.searchParams.get('after') })
     })
   })
 
   // A cursor this server can continue from gets only the events after it; any
-  // other cursor (ahead of the board, older than the kept events, or none) gets a snapshot.
+  // other cursor (ahead of the Hydra, older than the kept events, or none) gets a snapshot.
   // Either way the tab then gets every card's last message.
   const resume = ({ ws, after }: { ws: WebSocket; after: string | null }) => {
     const seq = after !== null && /^\d+$/.test(after) ? Number(after) : undefined
@@ -794,13 +794,13 @@ async function startOwnedServer({
   }
 
   const ingest = await listenIngest({
-    board,
+    hydraId,
     onLine: ({ line }) => {
       try {
         const entry = JSON.parse(line) as { id?: unknown }
 
         if (typeof entry === 'object' && entry !== null && typeof entry.id === 'string') {
-          spoolWrite({ board, entry: entry as { id: string } })
+          spoolWrite({ hydraId, entry: entry as { id: string } })
         }
       } catch {
       // Not JSON: dropped, as a hook never waits for an answer.
@@ -816,11 +816,11 @@ async function startOwnedServer({
     pid: process.pid,
     port: bound,
     url,
-    socket: ingest && socketPath({ board }),
+    socket: ingest && socketPath({ hydraId }),
   }
-  const tmp = `${infoPath({ board })}.tmp-${process.pid}`
+  const tmp = `${infoPath({ hydraId })}.tmp-${process.pid}`
   writeFileSync(tmp, JSON.stringify(info))
-  renameSync(tmp, infoPath({ board }))
+  renameSync(tmp, infoPath({ hydraId }))
 
   try {
     agents.recover()
@@ -866,10 +866,10 @@ async function startOwnedServer({
         new Promise(r => http.close(r)),
         ingest && new Promise(r => ingest.close(r)),
       ])
-      rmSync(infoPath({ board }), { force: true })
+      rmSync(infoPath({ hydraId }), { force: true })
 
       if (ingest) {
-        rmSync(socketPath({ board }), { force: true })
+        rmSync(socketPath({ hydraId }), { force: true })
       }
     },
   }
@@ -878,9 +878,9 @@ async function startOwnedServer({
 // Hook events, one JSON object per line. Null when the socket cannot be bound
 // (a path too long for a Unix socket, say); hooks then spool and the watcher drains it.
 async function listenIngest(
-  { board, onLine }: { board: string; onLine: ({ line }: { line: string }) => void },
+  { hydraId, onLine }: { hydraId: string; onLine: ({ line }: { line: string }) => void },
 ): Promise<SocketServer | null> {
-  const path = socketPath({ board })
+  const path = socketPath({ hydraId })
   // Left by a server that did not stop cleanly; startServer already checked none is running.
   rmSync(path, { force: true })
   const server = createSocketServer(conn => {
@@ -930,7 +930,7 @@ function readBody({ req }: { req: IncomingMessage }): Promise<unknown> {
       text += chunk
 
       if (text.length > MAX_BODY) {
-        reject(new BoardError({ message: 'request too large', code: 'VALIDATION_ERROR' }))
+        reject(new HydraError({ message: 'request too large', code: 'VALIDATION_ERROR' }))
         req.destroy()
       }
     })
@@ -938,7 +938,7 @@ function readBody({ req }: { req: IncomingMessage }): Promise<unknown> {
       try {
         resolve(JSON.parse(text))
       } catch {
-        reject(new BoardError({ message: 'request must be JSON', code: 'VALIDATION_ERROR' }))
+        reject(new HydraError({ message: 'request must be JSON', code: 'VALIDATION_ERROR' }))
       }
     })
     req.on('error', reject)
@@ -957,7 +957,7 @@ function parseMessage({ text }: { text: string }): ClientMessage | undefined {
   }
 }
 
-// Names the built web board: index.html links the content-hashed assets, so its
+// Names the built web app: index.html links the content-hashed assets, so its
 // hash changes with every rebuild. Empty when nothing is built (the Vite dev server).
 const buildOf = ({ html }: { html: string }) => createHash('sha256').update(html)
   .digest('hex')
@@ -979,7 +979,7 @@ function reply({ res, status, body }: {
   res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body))
 }
 
-// The built web board from dist/web; any unknown path falls back to its index.html.
+// The built web app from dist/web; any unknown path falls back to its index.html.
 // index.html carries the token for the WebSocket handshake; the caller has already
 // checked Host and Origin, so only this server's own page gets it. It also carries
 // its build, so an open tab can tell when a restarted server serves a newer one.
@@ -996,7 +996,7 @@ function serveStatic({ res, path, token, identity }: {
     try {
       if (candidate === index) {
         const raw = readFileSync(index, 'utf8')
-        const html = raw.replace('</head>', `<meta name="pnyx-token" content="${token}" />\n<meta name="pnyx-build" content="${buildOf({ html: raw })}" />\n<meta name="pnyx-board" content="${identity}" />\n</head>`)
+        const html = raw.replace('</head>', `<meta name="pnyx-token" content="${token}" />\n<meta name="pnyx-build" content="${buildOf({ html: raw })}" />\n<meta name="pnyx-hydra" content="${identity}" />\n</head>`)
         res.writeHead(200, { 'content-type': MIME['.html'], 'cache-control': 'no-store' }).end(html)
 
         return
@@ -1011,45 +1011,45 @@ function serveStatic({ res, path, token, identity }: {
     }
   }
 
-  reply({ res, status: 404, body: { error: 'not found; run `pnpm run build` for the web board', code: 'NOT_FOUND' } })
+  reply({ res, status: 404, body: { error: 'not found; run `pnpm run build` for the web Hydra', code: 'NOT_FOUND' } })
 }
 
-function boardFlag({ args, options = {} }: { args: string[]; options?: { port?: { type: 'string' }; home?: { type: 'string'; multiple: true } } }) {
+function hydraFlag({ args, options = {} }: { args: string[]; options?: { port?: { type: 'string' }; home?: { type: 'string'; multiple: true } } }) {
   try {
-    const { values } = parseArgs({ args, options: { board: { type: 'string' }, ...options }, strict: true })
+    const { values } = parseArgs({ args, options: { hydra: { type: 'string' }, ...options }, strict: true })
 
-    return values as { board?: string; port?: string; home?: string[] }
+    return values as { hydra?: string; port?: string; home?: string[] }
   } catch (error) {
     throw new AxiError((error as Error).message, 'VALIDATION_ERROR', ['Run the command with --help'])
   }
 }
 
-// A fixed default keeps one board at one address, so an open tab finds a restarted server again.
+// A fixed default keeps one Hydra at one address, so an open tab finds a restarted server again.
 export { DEFAULT_PORT } from './state.ts'
 
 export async function serve(args: string[]): Promise<Record<string, unknown>> {
-  const values = boardFlag({ args, options: { port: { type: 'string' }, home: { type: 'string', multiple: true } } })
-  const board = values.board ?? 'default'
+  const values = hydraFlag({ args, options: { port: { type: 'string' }, home: { type: 'string', multiple: true } } })
+  const hydraId = values.hydra ?? 'default'
 
   if (values.port !== undefined && !/^\d+$/.test(values.port)) {
     throw new AxiError('--port must be a number', 'VALIDATION_ERROR')
   }
 
   const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
-  const hydra = loadBoard({ board }).state.board?.hydra
-  // A recorded home that has since moved is skipped, so the board still opens.
+  const hydra = loadHydra({ hydraId }).state.config?.hydra
+  // A recorded home that has since moved is skipped, so the Hydra still opens.
   const recorded = hydra?.kind === 'firstmate' && hydra.home && existsSync(join(hydra.home, 'state')) ? [hydra.home] : []
   const given = values.home ?? recorded
   let server: RunningServer
 
   try {
     server = await startServer({
-      board,
+      hydraId,
       port,
       homes: given,
     })
   } catch (error) {
-    if (error instanceof BoardError) {
+    if (error instanceof HydraError) {
       throw new AxiError(error.message, error.code, error.help)
     }
 
@@ -1061,9 +1061,9 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   }
 
   const homes = given.map(path => resolveHome({ path }))
-  const firstmate = homes.length > 0 ? watchHomes({ board, list: homes }) : undefined
+  const firstmate = homes.length > 0 ? watchHomes({ hydraId, list: homes }) : undefined
   const watching = homes.length > 0 ? `firstmate: ${JSON.stringify(`watching ${homes.length} home${homes.length === 1 ? '' : 's'}`)}\n` : ''
-  process.stdout.write(`server: running\nboard: ${board}\nurl: ${JSON.stringify(server.url)}\n${watching}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
+  process.stdout.write(`server: running\nhydra: ${hydraId}\nurl: ${JSON.stringify(server.url)}\n${watching}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
   await new Promise(resolve => {
     process.once('SIGINT', resolve)
     process.once('SIGTERM', resolve)
@@ -1071,12 +1071,12 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const watched = firstmate?.close()
   await server.close()
 
-  return { server: 'stopped', board, ...(watched ? { firstmate: watched } : {}) }
+  return { server: 'stopped', hydraId, ...(watched ? { firstmate: watched } : {}) }
 }
 
 export async function stop(args: string[]): Promise<Record<string, unknown>> {
-  const board = boardFlag({ args }).board ?? 'default'
-  const info = await readServer({ board })
+  const hydraId = hydraFlag({ args }).hydra ?? 'default'
+  const info = await readServer({ hydraId })
 
   if (!info) {
     return { server: 'none: not running', help: ['Run `pnyx-axi serve` to start it'] }
@@ -1085,7 +1085,7 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
   process.kill(info.pid, 'SIGTERM')
   const deadline = Date.now() + STOP_TIMEOUT_MS
 
-  while (await readServer({ board })) {
+  while (await readServer({ hydraId })) {
     if (Date.now() > deadline) {
       throw new AxiError(`server pid ${info.pid} did not stop`, 'TIMEOUT', [`Check process ${info.pid}`])
     }
@@ -1093,5 +1093,5 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
     await new Promise(r => setTimeout(r, 25))
   }
 
-  return { server: 'stopped', board }
+  return { server: 'stopped', hydraId }
 }

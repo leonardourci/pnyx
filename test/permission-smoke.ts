@@ -8,7 +8,7 @@ import { sendReply } from '../src/cli/reply.ts'
 import { startTask } from '../src/cli/start.ts'
 import type { QueryFn } from '../src/server/host.ts'
 import { startServer } from '../src/server/server.ts'
-import { loadBoard } from '../src/store/board-store.ts'
+import { loadHydra } from '../src/store/hydra-store.ts'
 import { smokeBrowser } from './browser.ts'
 
 const home = mkdtempSync(join(tmpdir(), 'pnyx-permission-smoke-'))
@@ -40,13 +40,13 @@ const query = (({ prompt, options }: {
   return Object.assign(run(), { close() {} })
 }) as unknown as QueryFn
 
-await commands.board(['create', 'default', '--board', 'default'])
+await commands.hydra(['create', 'default', '--hydra', 'default'])
 await commands.task(['create', '--title', 'Permission example', '--key', 'permission', '--folder', home, '--column', 'workers_on_it'])
-let server = await startServer({ board: 'default', query })
-const board = () => loadBoard({ board: 'default' }).state
-const task = () => board().cards[board().keys.permission!]!
+let server = await startServer({ hydraId: 'default', query })
+const state = () => loadHydra({ hydraId: 'default' }).state
+const task = () => state().cards[state().keys.permission!]!
 const { browser, eventually, check, click, text, screenshot, close } = smokeBrowser({ home, session: 'pnyx-permissions' })
-await startTask({ board: 'default', task: 'permission', meta: { at: new Date().toISOString(), actor: 'fixture' } })
+await startTask({ hydraId: 'default', task: 'permission', meta: { at: new Date().toISOString(), actor: 'fixture' } })
 
 try {
   await browser({ args: ['open', server.url] })
@@ -62,15 +62,15 @@ try {
   await eventually({ condition: 'document.querySelector(".ask .receipt")?.textContent === "Allowed"', label: 'Allow resolves the request' })
   assert.deepEqual(results, [{ behavior: 'allow' }])
   assert.equal(task().column, 'workers_on_it')
-  await sendReply({ board: 'default', request: { card: task().id, text: 'Ask again', homes: [], actor: 'fixture' } })
+  await sendReply({ hydraId: 'default', request: { card: task().id, text: 'Ask again', homes: [], actor: 'fixture' } })
   await eventually({ condition: '!!document.querySelector(".ask button")', label: 'second request appears' })
   await text({ label: 'Deny' })
   await eventually({ condition: '[...document.querySelectorAll(".ask .receipt")].some(e => e.textContent === "Denied")', label: 'Deny resolves the request' })
   assert.equal(results[1]?.behavior, 'deny')
-  await sendReply({ board: 'default', request: { card: task().id, text: 'Ask before restart', homes: [], actor: 'fixture' } })
+  await sendReply({ hydraId: 'default', request: { card: task().id, text: 'Ask before restart', homes: [], actor: 'fixture' } })
   await eventually({ condition: '!!document.querySelector(".ask button")', label: 'third request appears' })
   await server.close()
-  server = await startServer({ board: 'default', query })
+  server = await startServer({ hydraId: 'default', query })
   await browser({ args: ['open', server.url] })
   await browser({ args: ['wait', 'Permission example'] })
   await click({ selector: '.card-open' })

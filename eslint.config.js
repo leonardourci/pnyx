@@ -69,7 +69,7 @@ export default tseslint.config(
     },
   },
   {
-    // The board reads best with one JSX prop per line once an element spans lines.
+    // The app reads best with one JSX prop per line once an element spans lines.
     files: ['web/**/*.tsx'],
     rules: {
       '@stylistic/jsx-max-props-per-line': ['error', { maximum: { single: 3, multi: 1 } }],

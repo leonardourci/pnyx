@@ -1,4 +1,4 @@
-import { BoardError, COLUMNS, type BoardState, type ViewPreferences } from './model.ts'
+import { HydraError, COLUMNS, type HydraState, type ViewPreferences } from './model.ts'
 import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from './keyboard.ts'
 
 export const DEFAULT_WIDTHS = { column: 290, hydra: 360 } as const
@@ -76,10 +76,10 @@ export function traces({ view, card }: { view: ViewPreferences; card: string }) 
   return { tools, thinking, focus: view.focusMode, overrides }
 }
 
-export const viewFor = ({ state }: { state: Pick<BoardState, 'view' | 'board'> }): ViewPreferences => {
+export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> }): ViewPreferences => {
   const view = { ...structuredClone(DEFAULT_VIEW), ...state.view }
   const columnIds = new Set<string>([
-    ...COLUMNS, ...(state.board?.columns ?? view.customColumns).map(column => column.id),
+    ...COLUMNS, ...(state.config?.columns ?? view.customColumns).map(column => column.id),
   ])
 
   return {
@@ -95,7 +95,7 @@ export const viewFor = ({ state }: { state: Pick<BoardState, 'view' | 'board'> }
       ...VIEW_SIZE_LIMITS.hydraWidth,
     }),
     defaultColumnWidths: {
-      ...Object.fromEntries((state.board?.columns ?? view.customColumns)
+      ...Object.fromEntries((state.config?.columns ?? view.customColumns)
         .map(c => [c.id, DEFAULT_COLUMN_WIDTH])),
       ...Object.fromEntries(Object.entries(persistedMap({
         values: view.defaultColumnWidths, ...VIEW_SIZE_LIMITS.columnWidth,
@@ -182,7 +182,7 @@ export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
 })
 
 const invalid = ({ detail }: { detail: string }): never => {
-  throw new BoardError({ message: `invalid view preference: ${detail}`, code: 'VALIDATION_ERROR' })
+  throw new HydraError({ message: `invalid view preference: ${detail}`, code: 'VALIDATION_ERROR' })
 }
 
 const record = ({ value }: { value: unknown }): Record<string, unknown> | undefined =>
@@ -206,7 +206,7 @@ const size = ({ value, min, max, key }: {
 
 // A patch merges maps; null removes an individual override. All callers use this validator.
 export function patchView({ state, input: rawInput }: {
-  state: BoardState
+  state: HydraState
   input: unknown
 }): ViewPreferences {
   const input = record({ value: rawInput })
@@ -216,7 +216,7 @@ export function patchView({ state, input: rawInput }: {
   }
 
   const next = structuredClone(viewFor({ state }))
-  const boardColumnIds = state.board?.columns.map(c => c.id) ?? []
+  const hydraColumnIds = state.config?.columns.map(c => c.id) ?? []
 
   for (const [key, value] of Object.entries(input).sort(([a], [b]) => a === 'customColumns' ? -1 : b === 'customColumns' ? 1 : a.localeCompare(b))) {
     switch (key) {
@@ -313,7 +313,7 @@ export function patchView({ state, input: rawInput }: {
             return invalid({ detail: id })
           }
 
-          if (key === 'columnWidths' && n !== null && ![...COLUMNS, ...boardColumnIds, ...next.customColumns.map(c => c.id)].includes(id as never)) {
+          if (key === 'columnWidths' && n !== null && ![...COLUMNS, ...hydraColumnIds, ...next.customColumns.map(c => c.id)].includes(id as never)) {
             return invalid({ detail: id })
           }
 
@@ -373,9 +373,9 @@ export function patchView({ state, input: rawInput }: {
           return { id: c.id as `custom:${string}`, title: c.title.trim() }
         })
 
-        // Legacy view edits leave board-owned column widths intact.
+        // Legacy view edits leave hydra-owned column widths intact.
         for (const id of Object.keys(next.columnWidths)) {
-          if (id.startsWith('custom:') && !ids.has(id) && !boardColumnIds.includes(id as `custom:${string}`)) {
+          if (id.startsWith('custom:') && !ids.has(id) && !hydraColumnIds.includes(id as `custom:${string}`)) {
             delete next.columnWidths[id]
           }
         }

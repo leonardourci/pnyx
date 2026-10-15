@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { BoardError } from '../../core/model.ts'
+import { HydraError } from '../../core/model.ts'
 
 export function runCommand({ command, cwd, env }: {
   command: string
@@ -12,7 +12,7 @@ export function runCommand({ command, cwd, env }: {
   child.unref()
 
   if (child.pid === undefined) {
-    throw new BoardError({ message: 'the board command did not start', code: 'COMMAND_ERROR', help: ['Check it with `pnyx-axi board show`'] })
+    throw new HydraError({ message: 'the Hydra command did not start', code: 'COMMAND_ERROR', help: ['Check it with `pnyx-axi hydra show`'] })
   }
 
   return { pid: child.pid }

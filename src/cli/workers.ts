@@ -2,13 +2,13 @@ import { checkAttachments } from '../integrations/presence/check.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
-import { boardConfig, hydraEvent } from '../core/hydra.ts'
-import { BoardError, HARNESS_NAMES, HYDRA_ACTOR, QUOTA_BUCKETS, type AgentConfig, type BoardEvent, type EventType, type SessionEvent } from '../core/model.ts'
-import { boardDir, loadBoard, readEvents, readEventsFrom, withWriter } from '../store/board-store.ts'
+import { hydraConfig, hydraEvent } from '../core/hydra.ts'
+import { HydraError, HARNESS_NAMES, HYDRA_ACTOR, QUOTA_BUCKETS, type AgentConfig, type HydraEvent, type EventType, type SessionEvent } from '../core/model.ts'
+import { hydraDir, loadHydra, readEvents, readEventsFrom, withWriter } from '../store/hydra-store.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { harvestPaseoChats } from '../integrations/paseo/harvest.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
-import { redact } from '../search/text.ts'
+import { redact } from '../oracle/text.ts'
 import { splitEntry } from '../thread/read.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { COMMON, WRITE, commit, commands, guard, integer, meta, parse, required, summarize, type Output } from './commands.ts'
@@ -16,54 +16,54 @@ import { COMMON, WRITE, commit, commands, guard, integer, meta, parse, required,
 const SAFE = /^[\w.:/[\]-]{1,100}$/
 
 function kindCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, board } = parse({ args, options: { ...WRITE, harness: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, mode: { type: 'string' }, quota: { type: 'string' } }, positionals: 2 })
+  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, harness: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, mode: { type: 'string' }, quota: { type: 'string' } }, positionals: 2 })
   const action = positionals[0] ?? 'list'
 
   if (action === 'list') {
-    const agents = boardConfig({ state: loadBoard({ board }).state, id: board }).agents ?? {}
+    const agents = hydraConfig({ state: loadHydra({ hydraId }).state, id: hydraId }).agents ?? {}
 
     return {
-      board,
+      hydraId,
       kinds: Object.keys(agents).length ? Object.entries(agents).map(([kind, a]) => ({ kind, harness: a.harness, model: a.model ?? 'default', effort: a.effort ?? 'default', mode: a.mode ?? 'default', quota: a.quota ?? 'off' })) : 'none: workers launch on Claude Code with its own defaults',
-      help: [`Run \`pnyx-axi kind set <kind> --harness claude|codex [--model <m>] [--effort <e>] [--mode <m>] [--quota high|medium|low] --board ${board}\``],
+      help: [`Run \`pnyx-axi kind set <kind> --harness claude|codex [--model <m>] [--effort <e>] [--mode <m>] [--quota high|medium|low] --hydra ${hydraId}\``],
     }
   }
 
   if (action !== 'set' && action !== 'remove') {
-    throw new BoardError({ message: 'Use kind list, set <kind> or remove <kind>', code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: 'Use kind list, set <kind> or remove <kind>', code: 'VALIDATION_ERROR' })
   }
 
   const kind = required({ value: positionals[1], what: 'kind' })
 
   if (!/^[a-z][a-z0-9-]{0,39}$/.test(kind)) {
-    throw new BoardError({ message: 'kinds use lowercase letters, digits and dashes', code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: 'kinds use lowercase letters, digits and dashes', code: 'VALIDATION_ERROR' })
   }
 
   const harness = values.harness as string | undefined
   const quota = values.quota as string | undefined
 
   if (harness !== undefined && !(HARNESS_NAMES as readonly string[]).includes(harness)) {
-    throw new BoardError({ message: `--harness must be ${HARNESS_NAMES.join(' or ')}`, code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: `--harness must be ${HARNESS_NAMES.join(' or ')}`, code: 'VALIDATION_ERROR' })
   }
 
   if (quota !== undefined && quota !== 'off' && !(QUOTA_BUCKETS as readonly string[]).includes(quota)) {
-    throw new BoardError({ message: `--quota must be ${QUOTA_BUCKETS.join(', ')} or off`, code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: `--quota must be ${QUOTA_BUCKETS.join(', ')} or off`, code: 'VALIDATION_ERROR' })
   }
 
   for (const flag of ['model', 'effort', 'mode'] as const) {
     if (values[flag] && !SAFE.test(String(values[flag]))) {
-      throw new BoardError({ message: `--${flag} has characters a harness flag cannot take`, code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: `--${flag} has characters a harness flag cannot take`, code: 'VALIDATION_ERROR' })
     }
   }
 
   const m = meta({ values })
 
   return commit({
-    board,
+    hydraId,
     meta: m,
     intent: { type: 'board.agents', card: '$board' },
     decide: ({ state }) => {
-      const before = boardConfig({ state, id: board }).agents ?? {}
+      const before = hydraConfig({ state, id: hydraId }).agents ?? {}
       const agents = { ...before }
       const existing = Object.hasOwn(before, kind) ? before[kind] : undefined
 
@@ -104,17 +104,17 @@ export async function hydraCheck({ args, connect }: {
   args: string[]
   connect?: Connect
 }): Promise<Output> {
-  const { values, board } = parse({ args, options: { ...COMMON, after: { type: 'string' }, wait: { type: 'string' } }, positionals: 1 })
+  const { values, hydraId } = parse({ args, options: { ...COMMON, after: { type: 'string' }, wait: { type: 'string' } }, positionals: 1 })
   const wait = integer({ value: values.wait, flag: '--wait' }) ?? 0
 
   if (wait > 3600) {
     throw new AxiError('--wait is at most 3600 seconds', 'VALIDATION_ERROR')
   }
 
-  const after = integer({ value: values.after, flag: '--after' }) ?? loadBoard({ board }).state.seq
-  boardDir({ board })
+  const after = integer({ value: values.after, flag: '--after' }) ?? loadHydra({ hydraId }).state.seq
+  hydraDir({ hydraId })
   const deadline = Date.now() + wait * 1000
-  const changes: BoardEvent[] = []
+  const changes: HydraEvent[] = []
   let woken = false
   let offset = 0
   let last = after
@@ -123,7 +123,7 @@ export async function hydraCheck({ args, connect }: {
 
   for (;;) {
     withWriter({
-      board,
+      hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         harvestTranscripts({
@@ -132,10 +132,10 @@ export async function hydraCheck({ args, connect }: {
             .map(c => c.id),
           at: new Date().toISOString(),
         })
-        const attachments = readEvents({ board }).filter((e): e is SessionEvent => e.type === 'task.session')
+        const attachments = readEvents({ hydraId }).filter((e): e is SessionEvent => e.type === 'task.session')
 
         for (const session of Object.values(writer.state.sessions ?? {})) {
-          const hydra = session.id === writer.state.board?.hydra.session
+          const hydra = session.id === writer.state.config?.hydra.session
 
           if (session.taskId || !session.agent.transcriptPath || hydra) {
             continue
@@ -155,12 +155,12 @@ export async function hydraCheck({ args, connect }: {
         }
       },
     })
-    unavailable = await harvestPaseoChats({ board, connect })
-    const read = readEventsFrom({ board, offset })
+    unavailable = await harvestPaseoChats({ hydraId, connect })
+    const read = readEventsFrom({ hydraId, offset })
 
     if (read) {
       offset = read.end
-      const current = loadBoard({ board }).state
+      const current = loadHydra({ hydraId }).state
 
       for (const e of read.events) {
         last = Math.max(last, e.seq)
@@ -231,7 +231,7 @@ export async function hydraCheck({ args, connect }: {
     }
   }
 
-  const row = ({ e }: { e: BoardEvent }) => ({
+  const row = ({ e }: { e: HydraEvent }) => ({
     seq: e.seq,
     id: e.id,
     type: e.type,
@@ -246,13 +246,13 @@ export async function hydraCheck({ args, connect }: {
   })
 
   return {
-    board,
+    hydraId,
     changes: page.length ? page.map(e => row({ e })) : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
-    agents: await checkAttachments({ state: loadBoard({ board }).state, connect }),
+    agents: await checkAttachments({ state: loadHydra({ hydraId }).state, connect }),
     ...(digest.size ? { conversations: [...digest.values()] } : {}),
     ...(unavailable.length ? { unavailable } : {}),
-    help: [...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []), `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --board ${board}\` to wait for the next change`],
+    help: [...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []), `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`],
   }
 }
 
@@ -266,7 +266,7 @@ function compact({ text }: { text: string }): string {
 // guard catches only synchronous errors; the check can wait.
 const hydraCheckHandler = guard({
   handler: ({ args }) => hydraCheck({ args }).catch((error: unknown) => {
-    if (error instanceof BoardError) {
+    if (error instanceof HydraError) {
       throw new AxiError(error.message, error.code, error.help)
     }
 

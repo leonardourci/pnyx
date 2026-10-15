@@ -1,4 +1,4 @@
-import { EVENT_VERSION, type BoardEvent, type BoardState, type Card, type PermissionRequest } from './model.ts'
+import { EVENT_VERSION, type HydraEvent, type HydraState, type Card, type PermissionRequest } from './model.ts'
 import type { Meta } from './decide.ts'
 
 const PREFIX = 'pnyx:permission:'
@@ -16,11 +16,11 @@ export function permissionAttention({ card }: { card: Card }): void {
 }
 
 export function permissionEvent({ state, card, request, meta }: {
-  state: BoardState
+  state: HydraState
   card: Card
   request: PermissionRequest
   meta: Meta
-}): Extract<BoardEvent, { type: 'task.permission' }> {
+}): Extract<HydraEvent, { type: 'task.permission' }> {
   return {
     v: EVENT_VERSION,
     seq: state.seq + 1,
@@ -35,8 +35,8 @@ export function permissionEvent({ state, card, request, meta }: {
 }
 
 export function applyPermission({ state, event }: {
-  state: BoardState
-  event: BoardEvent
+  state: HydraState
+  event: HydraEvent
 }): boolean {
   if (event.type !== 'task.permission') {
     return false

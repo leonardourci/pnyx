@@ -2,10 +2,10 @@ import { readFileSync, renameSync, rmSync } from 'node:fs'
 import { isDeepStrictEqual } from 'node:util'
 import { decideLink, decideOutcome, decidePush, decideSession, joinedKey, parseLink, type Decision, type Meta } from '../../core/decide.ts'
 import { hydraEvent, HYDRA_CARD } from '../../core/hydra.ts'
-import { BoardError, type AgentRef } from '../../core/model.ts'
+import { HydraError, type AgentRef } from '../../core/model.ts'
 import { terminalFacts } from '../../core/route.ts'
 import { cardSessionId, sessionId } from '../../core/tasks.ts'
-import { spoolFiles, withWriter, type Writer } from '../../store/board-store.ts'
+import { spoolFiles, withWriter, type Writer } from '../../store/hydra-store.ts'
 import { canonical } from '../../store/paths.ts'
 import { harvestTranscripts } from './harvest.ts'
 import { observedSettings, type FoundSettings } from './settings.ts'
@@ -16,7 +16,7 @@ const HOOKS = 'hooks'
 
 function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unknown> }): string[] {
   if (typeof entry?.id !== 'string' || typeof entry.at !== 'string') {
-    throw new BoardError({ message: 'spool entry needs id and at', code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: 'spool entry needs id and at', code: 'VALIDATION_ERROR' })
   }
 
   const apply = ({ decision }: { decision: Decision }) => {
@@ -27,7 +27,7 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
 
   if (!isHookEnvelope({ value: entry })) {
     if (typeof entry.key !== 'string') {
-      throw new BoardError({ message: 'spool entry needs id, key and at', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'spool entry needs id, key and at', code: 'VALIDATION_ERROR' })
     }
 
     const actor = typeof entry.actor === 'string' ? entry.actor : 'hook'
@@ -55,7 +55,7 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
   }
 
   if (!(HARNESSES as readonly string[]).includes(entry.harness as string) || typeof entry.event !== 'string') {
-    throw new BoardError({ message: 'hook entry needs a known harness and an event', code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: 'hook entry needs a known harness and an event', code: 'VALIDATION_ERROR' })
   }
 
   const harvest: string[] = []
@@ -161,7 +161,7 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
       harvest.push(writer.state.keys[key]!)
     }
 
-    const config = writer.state.board
+    const config = writer.state.config
 
     if (task === HYDRA_CARD && o.card.agent && config && !config.hydra.session) {
       const session = sessionId({ agent: o.card.agent as AgentRef })
@@ -190,7 +190,7 @@ export function drainSpool({ writer }: {
         harvest.add(id)
       }
     } catch (error) {
-      if (!(error instanceof BoardError || error instanceof SyntaxError)) {
+      if (!(error instanceof HydraError || error instanceof SyntaxError)) {
         throw error
       }
 
@@ -203,7 +203,7 @@ export function drainSpool({ writer }: {
     ingested += 1
   }
 
-  const hydra = writer.state.board?.hydra.session
+  const hydra = writer.state.config?.hydra.session
 
   const turned = [...harvest].flatMap(id => writer.state.cards[id] ?? [])
 
@@ -220,8 +220,8 @@ export function drainSpool({ writer }: {
   return { ingested, rejected, ...(notes ? { notes } : {}) }
 }
 
-export function ingestSpool({ board }: {
-  board: string
+export function ingestSpool({ hydraId }: {
+  hydraId: string
 }): { ingested: number; rejected: number; notes?: number } {
-  return withWriter({ board, fn: ({ writer }) => drainSpool({ writer }) })
+  return withWriter({ hydraId, fn: ({ writer }) => drainSpool({ writer }) })
 }

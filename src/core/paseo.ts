@@ -1,4 +1,4 @@
-import { BoardError } from './model.ts'
+import { HydraError } from './model.ts'
 
 // Paseo's documented default listen address.
 export const DEFAULT_PASEO_URL = 'ws://127.0.0.1:6767/ws'
@@ -13,7 +13,7 @@ export function localPaseoUrl({ url }: { url: string }): string {
     }
   } catch { /* Every unsupported endpoint gets the same error. */ }
 
-  throw new BoardError({ message: 'Paseo needs a local ws://127.0.0.1:<port>/ws endpoint', code: 'VALIDATION_ERROR' })
+  throw new HydraError({ message: 'Paseo needs a local ws://127.0.0.1:<port>/ws endpoint', code: 'VALIDATION_ERROR' })
 }
 
 export function paseoUrl({ url }: { url?: string } = {}): string {

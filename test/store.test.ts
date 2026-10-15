@@ -5,9 +5,9 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
-import { BoardError, type BoardEvent } from '../src/core/model.ts'
-import { emptyBoard, replay } from '../src/core/reducer.ts'
-import { boardDir, loadBoard, repairBoard, withWriter } from '../src/store/board-store.ts'
+import { HydraError, type HydraEvent } from '../src/core/model.ts'
+import { emptyHydra, replay } from '../src/core/reducer.ts'
+import { hydraDir, loadHydra, repairHydra, withWriter } from '../src/store/hydra-store.ts'
 import { STREAMS, assertGolden, readStream } from './streams.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
@@ -18,14 +18,14 @@ beforeEach(() => {
 })
 
 const rejects = ({ fn, code }: { fn: () => unknown; code: string }) =>
-  assert.throws(fn, (error: unknown) => error instanceof BoardError && error.code === code)
+  assert.throws(fn, (error: unknown) => error instanceof HydraError && error.code === code)
 
-function appendAll({ events }: { events: BoardEvent[] }): void {
-  withWriter({ board: 'default', fn: ({ writer }) => events.forEach(e => writer.append({ event: e })) })
+function appendAll({ events }: { events: HydraEvent[] }): void {
+  withWriter({ hydraId: 'default', fn: ({ writer }) => events.forEach(e => writer.append({ event: e })) })
 }
 
 function seedLog({ stream }: { stream: string }): string {
-  const dir = boardDir({ board: 'default' })
+  const dir = hydraDir({ hydraId: 'default' })
   mkdirSync(dir, { recursive: true })
   copyFileSync(join(STREAMS, `${stream}.jsonl`), join(dir, 'events.jsonl'))
 
@@ -35,7 +35,7 @@ function seedLog({ stream }: { stream: string }): string {
 test('appends are durable lines and the snapshot matches a full replay', () => {
   const events = readStream({ name: 'lifecycle' })
   appendAll({ events })
-  const dir = boardDir({ board: 'default' })
+  const dir = hydraDir({ hydraId: 'default' })
   const lines = readFileSync(join(dir, 'events.jsonl'), 'utf8').trimEnd()
     .split('\n')
   const written = lines.map(l => JSON.parse(l))
@@ -52,8 +52,8 @@ test('appends are durable lines and the snapshot matches a full replay', () => {
     return e
   })
   assert.deepEqual(original, events)
-  const expected = replay({ state: emptyBoard(), events })
-  assert.deepEqual(loadBoard({ board: 'default' }).state, expected)
+  const expected = replay({ state: emptyHydra(), events })
+  assert.deepEqual(loadHydra({ hydraId: 'default' }).state, expected)
   const snapshot = JSON.parse(readFileSync(join(dir, 'snapshot.json'), 'utf8'))
   assert.deepEqual(snapshot.state, expected)
 })
@@ -61,18 +61,18 @@ test('appends are durable lines and the snapshot matches a full replay', () => {
 test('a missing, corrupt or stale snapshot is rebuilt from the log', () => {
   const events = readStream({ name: 'lifecycle' })
   appendAll({ events: events.slice(0, 4) })
-  const dir = boardDir({ board: 'default' })
+  const dir = hydraDir({ hydraId: 'default' })
   const early = readFileSync(join(dir, 'snapshot.json'))
   appendAll({ events: events.slice(4) })
-  const expected = replay({ state: emptyBoard(), events })
+  const expected = replay({ state: emptyHydra(), events })
 
   // Crash between the append and the snapshot write: the old snapshot plus the log tail.
   writeFileSync(join(dir, 'snapshot.json'), early)
-  assert.deepEqual(loadBoard({ board: 'default' }).state, expected)
+  assert.deepEqual(loadHydra({ hydraId: 'default' }).state, expected)
   writeFileSync(join(dir, 'snapshot.json'), '{not json')
-  assert.deepEqual(loadBoard({ board: 'default' }).state, expected)
+  assert.deepEqual(loadHydra({ hydraId: 'default' }).state, expected)
   rmSync(join(dir, 'snapshot.json'))
-  assert.deepEqual(loadBoard({ board: 'default' }).state, expected)
+  assert.deepEqual(loadHydra({ hydraId: 'default' }).state, expected)
 })
 
 test('appends must continue the sequence', () => {
@@ -86,27 +86,27 @@ test('a torn tail is skipped on read, blocks writes and is set aside by repair',
   const original = readFileSync(join(dir, 'events.jsonl'))
   const clean = original.subarray(0, original.lastIndexOf(10) + 1)
 
-  const loaded = loadBoard({ board: 'default' })
+  const loaded = loadHydra({ hydraId: 'default' })
   assert.equal(loaded.state.seq, 3)
   assert.equal(loaded.tornBytes, original.length - clean.length)
   assertGolden({ name: 'torn-tail', actual: loaded.state })
-  rejects({ fn: () => withWriter({ board: 'default', fn: () => undefined }), code: 'TORN_TAIL' })
+  rejects({ fn: () => withWriter({ hydraId: 'default', fn: () => undefined }), code: 'TORN_TAIL' })
 
-  const result = repairBoard({ board: 'default' })
+  const result = repairHydra({ hydraId: 'default' })
   assert.equal(result.tornBytes, loaded.tornBytes)
   assert.deepEqual(readFileSync(result.preserved!), original.subarray(clean.length))
   const repaired = readFileSync(join(dir, 'events.jsonl'))
   assert.deepEqual(repaired.subarray(0, original.length), original)
   const marker = JSON.parse(repaired.subarray(original.length + 1).toString('utf8'))
   assert.deepEqual(marker.data, { offset: clean.length, length: original.length - clean.length })
-  assert.equal(loadBoard({ board: 'default' }).tornBytes, 0)
+  assert.equal(loadHydra({ hydraId: 'default' }).tornBytes, 0)
 
   const [first] = readStream({ name: 'torn-tail' })
   appendAll({ events: [{ ...first!, seq: 4, id: 'evt_4', type: 'card.moved', data: { before: 'review', after: null } }] })
-  assert.equal(loadBoard({ board: 'default' }).state.cards.c1!.column, 'parked')
+  assert.equal(loadHydra({ hydraId: 'default' }).state.cards.c1!.column, 'parked')
   rmSync(join(dir, 'snapshot.json'))
-  assert.equal(loadBoard({ board: 'default' }).state.seq, 4)
-  assert.equal(repairBoard({ board: 'default' }).tornBytes, 0)
+  assert.equal(loadHydra({ hydraId: 'default' }).state.seq, 4)
+  assert.equal(repairHydra({ hydraId: 'default' }).tornBytes, 0)
 })
 
 test('repair skips a torn line even when it parses as an event', () => {
@@ -114,16 +114,16 @@ test('repair skips a torn line even when it parses as an event', () => {
   const events = readStream({ name: 'lifecycle' })
   const unacknowledged = JSON.stringify({ ...events[0]!, seq: 9, id: 'evt_9', data: { key: 'ghost' } })
   writeFileSync(join(dir, 'events.jsonl'), readFileSync(join(dir, 'events.jsonl')).toString() + unacknowledged)
-  repairBoard({ board: 'default' })
+  repairHydra({ hydraId: 'default' })
   rmSync(join(dir, 'snapshot.json'))
-  assert.deepEqual(loadBoard({ board: 'default' }).state, replay({ state: emptyBoard(), events }))
+  assert.deepEqual(loadHydra({ hydraId: 'default' }).state, replay({ state: emptyHydra(), events }))
 })
 
 test('a repair marker that names the wrong line is corruption', () => {
   const dir = seedLog({ stream: 'lifecycle' })
   const marker = { v: 1, type: 'log.repaired', at: '2026-10-13T00:00:00Z', data: { offset: 0, length: 1 } }
   writeFileSync(join(dir, 'events.jsonl'), `${readFileSync(join(dir, 'events.jsonl'))}${JSON.stringify(marker)}\n`)
-  rejects({ fn: () => loadBoard({ board: 'default' }), code: 'LOG_CORRUPT' })
+  rejects({ fn: () => loadHydra({ hydraId: 'default' }), code: 'LOG_CORRUPT' })
 })
 
 test('corruption inside the log is rejected, not skipped', () => {
@@ -131,11 +131,11 @@ test('corruption inside the log is rejected, not skipped', () => {
   const lines = readFileSync(join(dir, 'events.jsonl'), 'utf8').split('\n')
   lines[2] = '{garbage'
   writeFileSync(join(dir, 'events.jsonl'), lines.join('\n'))
-  rejects({ fn: () => loadBoard({ board: 'default' }), code: 'LOG_CORRUPT' })
+  rejects({ fn: () => loadHydra({ hydraId: 'default' }), code: 'LOG_CORRUPT' })
 })
 
 test('a lock left by a dead process is taken over', () => {
-  const dir = boardDir({ board: 'default' })
+  const dir = hydraDir({ hydraId: 'default' })
   mkdirSync(dir, { recursive: true })
   const dead = spawnSync(process.execPath, ['-e', '']).pid
   writeFileSync(join(dir, 'writer.lock'), String(dead))
@@ -143,13 +143,13 @@ test('a lock left by a dead process is taken over', () => {
   assert.equal(existsSync(join(dir, 'writer.lock')), false)
 })
 
-test('board names cannot escape the boards folder', () => {
-  rejects({ fn: () => boardDir({ board: '../etc' }), code: 'VALIDATION_ERROR' })
-  rejects({ fn: () => boardDir({ board: 'a/b' }), code: 'VALIDATION_ERROR' })
+test('Hydra names cannot escape the Hydras folder', () => {
+  rejects({ fn: () => hydraDir({ hydraId: '../etc' }), code: 'VALIDATION_ERROR' })
+  rejects({ fn: () => hydraDir({ hydraId: 'a/b' }), code: 'VALIDATION_ERROR' })
 })
 
 test('two writers racing to take over a dead lock never hold it together', async () => {
-  const store = new URL('../src/store/board-store.ts', import.meta.url).href
+  const store = new URL('../src/store/hydra-store.ts', import.meta.url).href
   // Each contender holds the lock for a moment and fails loudly if it finds the other inside.
   const contender = `
     import { closeSync, openSync, rmSync } from 'node:fs'
@@ -158,14 +158,14 @@ test('two writers racing to take over a dead lock never hold it together', async
     import { withWriter } from '${store}'
     process.stdout.write('ready\\n')
     await createInterface({ input: process.stdin })[Symbol.asyncIterator]().next()
-    withWriter({ board: 'default', fn: ({ writer }) => {
+    withWriter({ hydraId: 'default', fn: ({ writer }) => {
       const inside = join(writer.dir, 'inside')
       closeSync(openSync(inside, 'wx'))
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
       rmSync(inside)
     } })
   `
-  const dir = boardDir({ board: 'default' })
+  const dir = hydraDir({ hydraId: 'default' })
   mkdirSync(dir, { recursive: true })
   const dead = spawnSync(process.execPath, ['-e', '']).pid
 
@@ -185,4 +185,39 @@ test('two writers racing to take over a dead lock never hold it together', async
     assert.equal(existsSync(join(dir, 'writer.lock')), false)
     assert.equal(existsSync(join(dir, 'writer.lock.takeover')), false)
   }
+})
+
+test('existing board directories and events replay after the naming change', () => {
+  const dir = join(process.env.PNYX_HOME!, 'boards', 'existing')
+  mkdirSync(dir, { recursive: true })
+  const config = {
+    id: 'existing',
+    name: 'Existing work',
+    hydra: { id: 'lead', kind: 'agent', name: 'Hydra' },
+    columns: [{ id: 'parked', title: 'Later', role: 'parked' }],
+  }
+  const log = [
+    { v: 1, seq: 1, id: 'configured', at: '2026-10-01T00:00:00Z', actor: 'cli', cardId: '$board', boardId: 'existing', type: 'board.configured', data: config },
+    { v: 1, seq: 2, id: 'task', at: '2026-10-01T00:00:01Z', actor: 'cli', cardId: 't1', boardId: 'existing', type: 'task.created', data: { key: 'work', title: 'Keep this task' } },
+    { v: 1, seq: 3, id: 'memory', at: '2026-10-01T00:00:02Z', actor: 'cli', cardId: '$board', boardId: 'existing', type: 'hydra.memory', data: { key: 'rule', before: null, after: 'Keep this fact' } },
+  ].map(event => JSON.stringify(event)).join('\n') + '\n'
+  writeFileSync(join(dir, 'events.jsonl'), log)
+  writeFileSync(join(dir, 'snapshot.json'), JSON.stringify({
+    v: 1,
+    rules: 7,
+    offset: Buffer.byteLength(log),
+    state: { ...emptyHydra(), seq: 3, board: config, boardRevision: 1 },
+  }))
+
+  const loaded = loadHydra({ hydraId: 'existing' })
+  assert.equal(loaded.dir, dir)
+  assert.equal(loaded.state.config?.name, 'Existing work')
+  assert.equal(loaded.state.config?.hydra.id, 'lead')
+  assert.equal(loaded.state.config?.columns[0]?.title, 'Later')
+  assert.equal(loaded.state.configRevision, 1)
+  assert.equal(loaded.state.cards.t1?.title, 'Keep this task')
+  assert.equal(loaded.state.hydraMemory?.rule?.text, 'Keep this fact')
+  repairHydra({ hydraId: 'existing' })
+  assert.equal(readFileSync(join(dir, 'events.jsonl'), 'utf8'), log)
+  assert.deepEqual(loadHydra({ hydraId: 'existing' }).state, loaded.state)
 })

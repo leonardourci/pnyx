@@ -3,8 +3,8 @@ import {
   EVENT_VERSION,
   SESSION_TITLE,
   type AutoTitle,
-  type BoardEvent,
-  type BoardState,
+  type HydraEvent,
+  type HydraState,
   type Card,
   type Link,
   type SourceRef,
@@ -14,7 +14,7 @@ import { applyHydra, refreshTasks } from './hydra.ts'
 import { applyPermission } from './permissions.ts'
 import { requestId } from './answer.ts'
 
-export function emptyBoard(): BoardState {
+export function emptyHydra(): HydraState {
   return { v: EVENT_VERSION, seq: 0, cards: {}, keys: {}, eventIds: {}, undone: {} }
 }
 
@@ -90,7 +90,7 @@ export function wouldCycle({ cards, cardId, parentId }: {
   return false
 }
 
-function apply({ state, event }: { state: BoardState; event: BoardEvent }): boolean {
+function apply({ state, event }: { state: HydraState; event: HydraEvent }): boolean {
   if (event.seq <= state.seq || event.id in state.eventIds) {
     return false
   }
@@ -360,9 +360,9 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
 }
 
 export function replay({ state, events }: {
-  state: BoardState
-  events: Iterable<BoardEvent>
-}): BoardState {
+  state: HydraState
+  events: Iterable<HydraEvent>
+}): HydraState {
   const next = structuredClone(state)
 
   for (const event of events) {
@@ -372,6 +372,6 @@ export function replay({ state, events }: {
   return next
 }
 
-export function reduce({ state, event }: { state: BoardState; event: BoardEvent }): BoardState {
+export function reduce({ state, event }: { state: HydraState; event: HydraEvent }): HydraState {
   return replay({ state, events: [event] })
 }

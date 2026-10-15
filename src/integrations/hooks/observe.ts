@@ -16,7 +16,7 @@ export interface HookEnvelope {
   harness: Harness
   event: string
   terminal?: unknown
-  // PNYX_TASK of a session Pnyx started: its task id, or $hydra for the board's Hydra.
+  // PNYX_TASK of a session Pnyx started: its task id, or $hydra for the Hydra.
   task?: unknown
   payload: unknown
 }
@@ -117,12 +117,12 @@ function questions({ value }: { value: unknown }): Question[] | undefined {
   return Array.isArray(value) && found.length && found.length === value.length ? found : undefined
 }
 
-// What the board can fill as the terminal would: anything else (a default, a format,
+// What the Hydra can fill as the terminal would: anything else (a default, a format,
 // titled choices, limits) changes what the prompt shows, so it is left to the terminal.
 const FIELD_KEYS = ['type', 'title', 'description', 'enum']
 
 // An MCP form's fields in the order its prompt lists them; undefined for a URL
-// elicitation or a field the board cannot fill, so the form is filled in the terminal.
+// elicitation or a field the Hydra cannot fill, so the form is filled in the terminal.
 function form({ payload }: { payload: Record<string, unknown> }): FormField[] | undefined {
   const schema = (payload.requested_schema ?? {}) as { properties?: unknown; required?: unknown }
   type Property = Record<string, unknown> | null

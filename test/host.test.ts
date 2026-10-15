@@ -14,7 +14,7 @@ import type { QueryFn } from '../src/server/host.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
 import { askHost } from '../src/server/state.ts'
 import { permissionEvent } from '../src/core/permissions.ts'
-import { loadBoard, readEvents, spoolWrite, withWriter } from '../src/store/board-store.ts'
+import { loadHydra, readEvents, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 
 const meta = { at: '2026-10-15T00:00:00Z', actor: 'test' }
 let server: RunningServer | undefined
@@ -105,17 +105,17 @@ async function lab() {
   process.env.CLAUDE_CONFIG_DIR = join(root, 'claude')
   const folder = join(root, 'work')
   mkdirSync(folder)
-  await commands.board(['create', 'lab', '--board', 'lab'])
-  await commands.task(['create', '--title', 'Ship it', '--key', 'ship', '--folder', folder, '--board', 'lab'])
-  await commands.task(['brief', 'ship', '--brief', 'Release the canary.', '--board', 'lab'])
+  await commands.hydra(['create', 'lab', '--hydra', 'lab'])
+  await commands.task(['create', '--title', 'Ship it', '--key', 'ship', '--folder', folder, '--hydra', 'lab'])
+  await commands.task(['brief', 'ship', '--brief', 'Release the canary.', '--hydra', 'lab'])
 
   const task = () => {
-    const state = loadBoard({ board: 'lab' }).state
+    const state = loadHydra({ hydraId: 'lab' }).state
 
     return state.cards[state.keys.ship!]! as Card
   }
 
-  return { folder, task, cards: () => Object.keys(loadBoard({ board: 'lab' }).state.cards).length }
+  return { folder, task, cards: () => Object.keys(loadHydra({ hydraId: 'lab' }).state.cards).length }
 }
 
 const hook = ({ id, event, session, cwd }: {
@@ -124,17 +124,17 @@ const hook = ({ id, event, session, cwd }: {
   session: string
   cwd: string
 }) => {
-  spoolWrite({ board: 'lab', entry: { v: 1, id, at: meta.at, harness: 'claude', event, payload: { session_id: session, cwd, prompt: 'Release the canary.' } } })
-  ingestSpool({ board: 'lab' })
+  spoolWrite({ hydraId: 'lab', entry: { v: 1, id, at: meta.at, harness: 'claude', event, payload: { session_id: session, cwd, prompt: 'Release the canary.' } } })
+  ingestSpool({ hydraId: 'lab' })
 }
 
 test('task start runs Claude Code through the server, records it on the task and takes replies', async () => {
   const { folder, task, cards } = await lab()
-  await workerCommands.kind(['set', 'default', '--harness', 'claude', '--model', 'opus', '--effort', 'high', '--mode', 'acceptEdits', '--board', 'lab'])
+  await workerCommands.kind(['set', 'default', '--harness', 'claude', '--model', 'opus', '--effort', 'high', '--mode', 'acceptEdits', '--hydra', 'lab'])
   const sdk = fakeSdk()
-  server = await startServer({ board: 'lab', query: sdk.query })
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
 
-  const started = await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
+  const started = await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
   assert.equal((started.agent as { host: string }).host, 'pnyx')
   const agentRef = task().agent!
   assert.equal(agentRef.host, 'pnyx')
@@ -154,12 +154,12 @@ test('task start runs Claude Code through the server, records it on the task and
   assert.equal(options.model, 'opus')
   assert.equal(options.effort, 'high')
   assert.equal(options.permissionMode, 'acceptEdits')
-  assert.equal(options.env?.PNYX_BOARD, 'lab')
+  assert.equal(options.env?.PNYX_HYDRA, 'lab')
   assert.equal(options.env?.PNYX_TASK, undefined)
   await until({ check: () => task().sessionActivity === 'finished', what: 'the turn to finish' })
 
   // A repeated start never starts a second agent.
-  assert.equal((await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })).event, 'none: duplicate')
+  assert.equal((await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })).event, 'none: duplicate')
   assert.equal(sdk.calls.length, 1)
 
   // The session's own hooks land on the same task, never on a new card.
@@ -171,7 +171,7 @@ test('task start runs Claude Code through the server, records it on the task and
   assert.equal(task().sessionIds?.length, 1)
 
   sdk.control.hold = true
-  const receipt = await sendReply({ board: 'lab', request: { card: 'ship', text: 'Also tag it', homes: [], actor: 'test' } })
+  const receipt = await sendReply({ hydraId: 'lab', request: { card: 'ship', text: 'Also tag it', homes: [], actor: 'test' } })
   assert.equal(receipt.state, 'delivered')
   await until({ check: () => sdk.calls[0]!.messages.length === 2, what: 'the reply' })
   assert.equal(sdk.calls[0]!.messages[1], 'Also tag it')
@@ -185,8 +185,8 @@ test('after a server restart the task keeps its agent, marks an interrupted turn
   const { folder, task } = await lab()
   const first = fakeSdk()
   first.control.hold = true
-  server = await startServer({ board: 'lab', query: first.query })
-  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
+  server = await startServer({ hydraId: 'lab', query: first.query })
+  await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
   await until({ check: () => first.calls[0]?.messages.length === 1, what: 'the opening prompt' })
   const agentRef = task().agent!
   // Claude Code wrote its transcript, so the session can be resumed.
@@ -201,13 +201,13 @@ test('after a server restart the task keeps its agent, marks an interrupted turn
   assert.equal(task().outcome, undefined)
 
   const second = fakeSdk()
-  server = await startServer({ board: 'lab', query: second.query })
+  server = await startServer({ hydraId: 'lab', query: second.query })
   assert.equal(task().agent?.sessionId, agentRef.sessionId)
   assert.equal(task().activity, 'interrupted')
   assert.equal(task().attention[0]?.key, 'pnyx:interrupted')
   assert.equal(second.calls.length, 0)
 
-  assert.equal((await sendReply({ board: 'lab', request: { card: 'ship', text: 'Carry on', homes: [], actor: 'test' } })).state, 'delivered')
+  assert.equal((await sendReply({ hydraId: 'lab', request: { card: 'ship', text: 'Carry on', homes: [], actor: 'test' } })).state, 'delivered')
   await until({ check: () => second.calls[0]?.messages.length === 1, what: 'the resumed session' })
   assert.equal(second.calls[0]!.options.resume, agentRef.sessionId)
   assert.equal(second.calls[0]!.options.sessionId, undefined)
@@ -218,19 +218,19 @@ test('after a server restart the task keeps its agent, marks an interrupted turn
 test('pickers set a hosted agent directly, and a stopped server refuses the send', async () => {
   await lab()
   const sdk = fakeSdk()
-  server = await startServer({ board: 'lab', query: sdk.query })
-  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
+  await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
   await until({ check: () => sdk.calls[0]?.messages.length === 1, what: 'the opening prompt' })
 
-  const changed = await agent(['ship', 'model', 'sonnet', '--board', 'lab']) as { agent: { sent: string; confirmed: boolean } }
+  const changed = await agent(['ship', 'model', 'sonnet', '--hydra', 'lab']) as { agent: { sent: string; confirmed: boolean } }
   assert.equal(changed.agent.sent, 'delivered')
   assert.equal(changed.agent.confirmed, true)
   assert.deepEqual(sdk.calls[0]!.set, ['model sonnet'])
-  await assert.rejects(agent(['ship', 'model', 'gpt', '--board', 'lab']), /offers no model gpt/)
+  await assert.rejects(agent(['ship', 'model', 'gpt', '--hydra', 'lab']), /offers no model gpt/)
 
   await server.close()
   server = undefined
-  const receipt = await sendReply({ board: 'lab', request: { card: 'ship', text: 'Anyone there?', homes: [], actor: 'test' } })
+  const receipt = await sendReply({ hydraId: 'lab', request: { card: 'ship', text: 'Anyone there?', homes: [], actor: 'test' } })
   assert.equal(receipt.state, 'failed')
   assert.match(receipt.detail!, /not running; nothing was sent/)
 })
@@ -242,8 +242,8 @@ test('the host keeps the server\'s own context out of the agent, and refuses wha
   process.env.TMUX_PANE = '%9'
 
   try {
-    server = await startServer({ board: 'lab', query: sdk.query })
-    await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
+    server = await startServer({ hydraId: 'lab', query: sdk.query })
+    await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
   } finally {
     delete process.env.PNYX_ACTOR
     delete process.env.TMUX_PANE
@@ -253,20 +253,20 @@ test('the host keeps the server\'s own context out of the agent, and refuses wha
   const env = sdk.calls[0]!.options.env!
   assert.equal(env.PNYX_ACTOR, undefined)
   assert.equal(env.TMUX_PANE, undefined)
-  assert.equal(env.PNYX_BOARD, 'lab')
+  assert.equal(env.PNYX_HYDRA, 'lab')
 
   const port = new URL(server.url).port
   const unauthorized = await fetch(`http://127.0.0.1:${port}/host`, { method: 'POST', body: JSON.stringify({ action: 'send', card: 'ship', text: 'hi' }) })
   assert.equal(unauthorized.status, 401)
-  await assert.rejects(askHost({ board: 'lab', body: { action: 'set', card: 'ship', setting: 'effort', value: 'huge' } }), /effort cannot be huge/)
-  await assert.rejects(askHost({ board: 'lab', body: { action: 'start', task: 'ship', prompt: 'Go', id: 'rel', folder: 'work' } }), /absolute path/)
+  await assert.rejects(askHost({ hydraId: 'lab', body: { action: 'set', card: 'ship', setting: 'effort', value: 'huge' } }), /effort cannot be huge/)
+  await assert.rejects(askHost({ hydraId: 'lab', body: { action: 'start', task: 'ship', prompt: 'Go', id: 'rel', folder: 'work' } }), /absolute path/)
 
   // A gone folder fails the send and leaves the task as it was.
   await until({ check: () => task().sessionActivity === 'finished', what: 'the turn to finish' })
   await server.close()
-  server = await startServer({ board: 'lab', query: sdk.query })
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
   rmSync(folder, { recursive: true })
-  const lost = await sendReply({ board: 'lab', request: { card: 'ship', text: 'Still there?', homes: [], actor: 'test' } })
+  const lost = await sendReply({ hydraId: 'lab', request: { card: 'ship', text: 'Still there?', homes: [], actor: 'test' } })
   assert.equal(lost.state, 'failed')
   assert.match(lost.detail!, /folder .* is gone/)
   assert.equal(task().sessionActivity, 'finished')
@@ -276,17 +276,17 @@ test('a new agent on the task does not inherit the old one\'s interrupted turn',
   const { folder, task } = await lab()
   const sdk = fakeSdk()
   sdk.control.hold = true
-  server = await startServer({ board: 'lab', query: sdk.query })
-  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
+  await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'start-1' } })
   await until({ check: () => sdk.calls[0]?.messages.length === 1, what: 'the opening prompt' })
   await server.close()
-  server = await startServer({ board: 'lab', query: sdk.query })
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
   assert.equal(task().attention[0]?.key, 'pnyx:interrupted')
 
-  await commands.task(['detach', 'ship', '--board', 'lab'])
+  await commands.task(['detach', 'ship', '--hydra', 'lab'])
   assert.equal(task().attention.some(a => a.key === 'pnyx:interrupted'), false)
   sdk.control.hold = false
-  await startTask({ board: 'lab', task: 'ship', folder, meta: { ...meta, id: 'start-2' } })
+  await startTask({ hydraId: 'lab', task: 'ship', folder, meta: { ...meta, id: 'start-2' } })
   await until({ check: () => sdk.calls.length === 2 && task().sessionActivity === 'finished', what: 'the new agent' })
   assert.equal(task().attention.some(a => a.key === 'pnyx:interrupted'), false)
 })
@@ -295,8 +295,8 @@ test('hosted permissions survive hooks, wake Hydra and accept exactly one answer
   const { folder, task } = await lab()
   const sdk = fakeSdk()
   sdk.control.permission = true
-  server = await startServer({ board: 'lab', query: sdk.query })
-  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'permission-start' } })
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
+  await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'permission-start' } })
   await until({ check: () => task().permissions?.[0]?.status === 'pending', what: 'permission request' })
   const request = task().permissions![0]!
   const column = task().column
@@ -305,17 +305,17 @@ test('hosted permissions survive hooks, wake Hydra and accept exactly one answer
   assert.equal(sdk.permissions.length, 0)
   hook({ id: 'permission-hook', event: 'PreToolUse', session: task().agent!.sessionId, cwd: folder })
   assert.equal(task().attention.some(a => a.key.endsWith(request.id) && a.blocking), true)
-  const event = readEvents({ board: 'lab' }).find(e => e.type === 'task.permission')!
-  const checked = await workerCommands.hydra(['check', '--after', String(event.seq - 1), '--board', 'lab'])
+  const event = readEvents({ hydraId: 'lab' }).find(e => e.type === 'task.permission')!
+  const checked = await workerCommands.hydra(['check', '--after', String(event.seq - 1), '--hydra', 'lab'])
   assert.ok((checked.changes as { type: string }[]).some(e => e.type === 'task.permission'))
-  const shown = await commands.task(['show', 'ship', '--full', '--board', 'lab'])
+  const shown = await commands.task(['show', 'ship', '--full', '--hydra', 'lab'])
   assert.deepEqual((shown.task as Card).permissions, task().permissions)
-  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--actor', 'hydra', '--board', 'lab']), /need --reason/)
+  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--actor', 'hydra', '--hydra', 'lab']), /need --reason/)
   assert.equal(task().permissions![0]!.status, 'pending')
 
   const answers = await Promise.allSettled([
-    commands.task(['permission', 'ship', request.id, 'allow', '--actor', 'hydra', '--reason', 'The command is scoped to this worktree', '--board', 'lab']),
-    commands.task(['permission', 'ship', request.id, 'deny', '--actor', 'web', '--board', 'lab']),
+    commands.task(['permission', 'ship', request.id, 'allow', '--actor', 'hydra', '--reason', 'The command is scoped to this worktree', '--hydra', 'lab']),
+    commands.task(['permission', 'ship', request.id, 'deny', '--actor', 'web', '--hydra', 'lab']),
   ])
   assert.equal(answers.filter(a => a.status === 'fulfilled').length, 1)
   await until({ check: () => sdk.permissions.length === 1, what: 'permission result' })
@@ -323,11 +323,11 @@ test('hosted permissions survive hooks, wake Hydra and accept exactly one answer
   assert.equal(sdk.permissions[0]!.behavior, status)
   assert.equal(task().column, column)
   assert.equal(task().attention.some(a => a.key.endsWith(request.id)), false)
-  assert.equal(readEvents({ board: 'lab' }).filter(e => e.type === 'task.permission' && e.data.status !== 'pending').length, 1)
+  assert.equal(readEvents({ hydraId: 'lab' }).filter(e => e.type === 'task.permission' && e.data.status !== 'pending').length, 1)
 
   if (status === 'allow') {
     assert.deepEqual(sdk.permissions[0], { behavior: 'allow' })
-    assert.match(loadBoard({ board: 'lab' }).state.hydraMessages!.at(-1)!.text, /Allowed Bash on Ship it: The command is scoped/)
+    assert.match(loadHydra({ hydraId: 'lab' }).state.hydraMessages!.at(-1)!.text, /Allowed Bash on Ship it: The command is scoped/)
   }
 })
 
@@ -335,33 +335,33 @@ test('denial tells the provider why and neither denied nor unknown requests can 
   const { task } = await lab()
   const sdk = fakeSdk()
   sdk.control.permission = true
-  server = await startServer({ board: 'lab', query: sdk.query })
-  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'deny-start' } })
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
+  await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'deny-start' } })
   await until({ check: () => task().permissions?.length === 1, what: 'permission request' })
   const request = task().permissions![0]!
-  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'always', '--board', 'lab']), /allow\|deny/)
-  await assert.rejects(async () => commands.task(['permission', 'ship', 'unknown', 'allow', '--board', 'lab']), /not found/)
-  await commands.task(['create', '--title', 'Other task', '--key', 'other', '--board', 'lab'])
-  await assert.rejects(async () => commands.task(['permission', 'other', request.id, 'allow', '--board', 'lab']), /not found/)
-  await commands.task(['permission', 'ship', request.id, 'deny', '--actor', 'hydra', '--reason', 'Do not write that file', '--board', 'lab'])
+  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'always', '--hydra', 'lab']), /allow\|deny/)
+  await assert.rejects(async () => commands.task(['permission', 'ship', 'unknown', 'allow', '--hydra', 'lab']), /not found/)
+  await commands.task(['create', '--title', 'Other task', '--key', 'other', '--hydra', 'lab'])
+  await assert.rejects(async () => commands.task(['permission', 'other', request.id, 'allow', '--hydra', 'lab']), /not found/)
+  await commands.task(['permission', 'ship', request.id, 'deny', '--actor', 'hydra', '--reason', 'Do not write that file', '--hydra', 'lab'])
   await until({ check: () => sdk.permissions.length === 1, what: 'denial result' })
   assert.deepEqual(sdk.permissions, [{ behavior: 'deny', message: 'Do not write that file' }])
-  assert.match(loadBoard({ board: 'lab' }).state.hydraMessages!.at(-1)!.text, /Denied Bash.*Do not write that file/)
-  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--board', 'lab']), /already deny/)
+  assert.match(loadHydra({ hydraId: 'lab' }).state.hydraMessages!.at(-1)!.text, /Denied Bash.*Do not write that file/)
+  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--hydra', 'lab']), /already deny/)
 })
 
 test('provider abort and server close expire pending requests and release the provider', async () => {
   const { task } = await lab()
   const sdk = fakeSdk()
   sdk.control.permission = true
-  server = await startServer({ board: 'lab', query: sdk.query })
-  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'abort-start' } })
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
+  await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'abort-start' } })
   await until({ check: () => task().permissions?.length === 1, what: 'permission request' })
   sdk.aborts[0]!.abort()
   await until({ check: () => sdk.permissions.length === 1, what: 'abort result' })
   assert.equal(task().permissions![0]!.status, 'expired')
   assert.equal(sdk.permissions[0]!.behavior, 'deny')
-  await sendReply({ board: 'lab', request: { card: 'ship', text: 'Try another command', homes: [], actor: 'test' } })
+  await sendReply({ hydraId: 'lab', request: { card: 'ship', text: 'Try another command', homes: [], actor: 'test' } })
   await until({ check: () => task().permissions?.length === 2, what: 'second permission' })
   await server.close()
   server = undefined
@@ -372,39 +372,39 @@ test('provider abort and server close expire pending requests and release the pr
 test('restart recovery expires a request left pending by a crash without starting an agent', async () => {
   const { task } = await lab()
   const sdk = fakeSdk()
-  server = await startServer({ board: 'lab', query: sdk.query })
-  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'recover-start' } })
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
+  await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'recover-start' } })
   await until({ check: () => task().sessionActivity === 'finished', what: 'turn end' })
   await server.close()
   server = undefined
-  withWriter({ board: 'lab', fn: ({ writer }) => writer.append({ event: permissionEvent({ state: writer.state, card: task(), request: { id: 'left-pending', session: task().sessionIds![0]!, tool: 'Bash', input: { command: 'pwd' }, status: 'pending' }, meta }) }) })
+  withWriter({ hydraId: 'lab', fn: ({ writer }) => writer.append({ event: permissionEvent({ state: writer.state, card: task(), request: { id: 'left-pending', session: task().sessionIds![0]!, tool: 'Bash', input: { command: 'pwd' }, status: 'pending' }, meta }) }) })
   const resumed = fakeSdk()
-  server = await startServer({ board: 'lab', query: resumed.query })
+  server = await startServer({ hydraId: 'lab', query: resumed.query })
   assert.equal(resumed.calls.length, 0)
   assert.equal(task().permissions![0]!.status, 'expired')
-  await assert.rejects(async () => commands.task(['permission', 'ship', 'left-pending', 'allow', '--board', 'lab']), /already expired/)
+  await assert.rejects(async () => commands.task(['permission', 'ship', 'left-pending', 'allow', '--hydra', 'lab']), /already expired/)
 })
 
 test('moving a live session expires its old permission and routes its next request to its current task', async () => {
   const { task } = await lab()
   const sdk = fakeSdk()
   sdk.control.permission = true
-  server = await startServer({ board: 'lab', query: sdk.query })
-  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'move-start' } })
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
+  await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'move-start' } })
   await until({ check: () => task().permissions?.length === 1, what: 'initial request' })
   const request = task().permissions![0]!
   const session = task().sessionIds![0]!
-  await commands.task(['create', '--title', 'Destination', '--key', 'destination', '--board', 'lab'])
-  await commands.task(['attach', 'destination', '--session', session, '--board', 'lab'])
-  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--board', 'lab']), /expired|no longer waits/)
+  await commands.task(['create', '--title', 'Destination', '--key', 'destination', '--hydra', 'lab'])
+  await commands.task(['attach', 'destination', '--session', session, '--hydra', 'lab'])
+  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--hydra', 'lab']), /expired|no longer waits/)
   await until({ check: () => sdk.permissions.length === 1, what: 'old request expires' })
   assert.equal(sdk.permissions[0]!.behavior, 'deny')
   assert.equal(task().permissions![0]!.status, 'expired')
   assert.equal(task().attention.some(a => a.key.endsWith(request.id)), false)
-  await sendReply({ board: 'lab', request: { card: 'destination', text: 'Continue here', homes: [], actor: 'test' } })
+  await sendReply({ hydraId: 'lab', request: { card: 'destination', text: 'Continue here', homes: [], actor: 'test' } })
 
   const destination = () => {
-    const state = loadBoard({ board: 'lab' }).state
+    const state = loadHydra({ hydraId: 'lab' }).state
 
     return state.cards[state.keys.destination!]!
   }
@@ -412,12 +412,12 @@ test('moving a live session expires its old permission and routes its next reque
   await until({ check: () => destination().permissions?.length === 1, what: 'request on the destination task' })
   const next = destination().permissions![0]!
   assert.equal(next.session, session)
-  await commands.task(['permission', 'destination', next.id, 'allow', '--board', 'lab'])
+  await commands.task(['permission', 'destination', next.id, 'allow', '--hydra', 'lab'])
   await until({ check: () => sdk.permissions.length === 2, what: 'destination approval' })
   assert.equal(sdk.permissions[1]!.behavior, 'allow')
-  await sendReply({ board: 'lab', request: { card: 'destination', text: 'Ask before detaching', homes: [], actor: 'test' } })
+  await sendReply({ hydraId: 'lab', request: { card: 'destination', text: 'Ask before detaching', homes: [], actor: 'test' } })
   await until({ check: () => destination().permissions?.length === 2, what: 'request before detaching' })
-  await commands.task(['detach', 'destination', '--board', 'lab'])
+  await commands.task(['detach', 'destination', '--hydra', 'lab'])
   await until({ check: () => sdk.permissions.length === 3, what: 'detaching releases the provider without an answer' })
   assert.equal(destination().permissions![1]!.status, 'expired')
   assert.equal(sdk.permissions[2]!.behavior, 'deny')

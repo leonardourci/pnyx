@@ -1,22 +1,22 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
-import { boardConfig } from '../core/hydra.ts'
+import { hydraConfig } from '../core/hydra.ts'
 import { hookStatus } from '../integrations/hooks/install.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
-import { loadBoard } from '../store/board-store.ts'
+import { loadHydra } from '../store/hydra-store.ts'
 import { COMMON, guard, parse, type Output } from './commands.ts'
 import { HOME_SKILL, HYDRA_SKILL } from './start.ts'
 
 const onPath = ({ name }: { name: string }) =>
   (process.env.PATH ?? '').split(delimiter).some(dir => dir && existsSync(join(dir, name)))
 
-export async function integrations({ board, url, connect }: {
-  board: string
+export async function integrations({ hydraId, url, connect }: {
+  hydraId: string
   url?: string
   connect?: Connect
 }): Promise<Output> {
-  const config = boardConfig({ state: loadBoard({ board }).state, id: board })
+  const config = hydraConfig({ state: loadHydra({ hydraId }).state, id: hydraId })
   const hooks = hookStatus()
   const paseo = await paseoStatus({ url, connect }).then(() => 'running', (error: Error) => `not running: ${error.message}`)
   const home = config.hydra.kind === 'firstmate' ? config.hydra.home : undefined
@@ -25,13 +25,13 @@ export async function integrations({ board, url, connect }: {
     : readFileSync(skill).equals(readFileSync(HYDRA_SKILL)) ? 'current' : 'outdated'
 
   return {
-    board,
+    hydraId,
     integrations: [
       {
         name: 'hooks',
         status: hooks === 'current' ? 'ready' : `hook script ${hooks}`,
         setup: 'pnyx-axi setup hooks',
-        docs: 'Claude Code and Codex sessions report to the board through them',
+        docs: 'Claude Code and Codex sessions report to the Hydra through them',
       },
       {
         name: 'paseo',
@@ -41,15 +41,15 @@ export async function integrations({ board, url, connect }: {
       },
       {
         name: 'firstmate',
-        status: home ? `Hydra ${home}; skill ${skillState}` : 'not this board\'s Hydra',
-        setup: `pnyx-axi setup hydra --home <firstmate home> --board ${board}`,
-        docs: 'Run `pnyx-axi board homes` to list the Firstmate homes and their boards',
+        status: home ? `Hydra ${home}; skill ${skillState}` : 'not configured for this Hydra',
+        setup: `pnyx-axi setup hydra --home <firstmate home> --hydra ${hydraId}`,
+        docs: 'Run `pnyx-axi hydra homes` to list the Firstmate homes and their Hydras',
       },
       {
         name: 'command',
         status: config.command ? `set: ${config.command}` : 'not set',
-        setup: `pnyx-axi board set --board ${board} --command '<shell command>'`,
-        docs: 'Started with PNYX_HOME, PNYX_BOARD, PNYX_TASK, PNYX_ROLE, PNYX_TASK_TITLE, PNYX_PROMPT, PNYX_HARNESS and PNYX_FOLDER',
+        setup: `pnyx-axi hydra set --hydra ${hydraId} --command '<shell command>'`,
+        docs: 'Started with PNYX_HOME, PNYX_HYDRA, PNYX_TASK, PNYX_ROLE, PNYX_TASK_TITLE, PNYX_PROMPT, PNYX_HARNESS and PNYX_FOLDER',
       },
       {
         name: 'github',
@@ -62,15 +62,15 @@ export async function integrations({ board, url, connect }: {
   }
 }
 
-export const INTEGRATIONS_HELP = `usage: pnyx-axi integrations [--board <id>] [--paseo-url <url>]
-Lists hooks, Paseo, Firstmate, the board command and GitHub: whether each is ready and the
+export const INTEGRATIONS_HELP = `usage: pnyx-axi integrations [--hydra <id>] [--paseo-url <url>]
+Lists hooks, Paseo, Firstmate, the Hydra command and GitHub: whether each is ready and the
 command that sets it up. It only reads; nothing is installed or started.
 `
 
 export const integrationsCommand = guard({
   handler: ({ args }) => {
-    const { values, board } = parse({ args, options: { ...COMMON, 'paseo-url': { type: 'string' } }, positionals: 0 })
+    const { values, hydraId } = parse({ args, options: { ...COMMON, 'paseo-url': { type: 'string' } }, positionals: 0 })
 
-    return integrations({ board, url: values['paseo-url'] as string | undefined })
+    return integrations({ hydraId, url: values['paseo-url'] as string | undefined })
   },
 })

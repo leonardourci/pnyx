@@ -1,7 +1,7 @@
 #!/bin/sh
 # Fake Firstmate send command for tests: records its FM_HOME and arguments,
 # then exits with the status in $FM_HOME/send-exit (0 when absent). When
-# $FM_HOME/tear exists it leaves a torn append on the pnyx board, so recording
+# $FM_HOME/tear exists it leaves a torn append on the Pnyx Hydra, so recording
 # the outcome fails.
 {
   printf 'FM_HOME=%s\n' "$FM_HOME"

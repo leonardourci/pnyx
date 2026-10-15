@@ -7,13 +7,13 @@ import { promisify } from 'node:util'
 import { startServer } from '../src/server/server.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import { decidePush } from '../src/core/decide.ts'
-import { loadBoard, readEvents, withWriter } from '../src/store/board-store.ts'
+import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 const home = mkdtempSync(join(tmpdir(), 'pnyx-connection-'))
 process.env.PNYX_HOME = home
 const fixture = seedWebFixture({ home })
-let server = await startServer({ board: 'default', homes: [fixture.nativeHome] })
+let server = await startServer({ hydraId: 'default', homes: [fixture.nativeHome] })
 const port = server.port, url = server.url
 const exec = promisify(execFile)
 const env = { ...process.env, CHROME_DEVTOOLS_AXI_SESSION: `pnyx-connection-${process.pid}` }
@@ -38,8 +38,8 @@ const delivery = ({ text }: { text: string }) => {
 
 try {
   await browser({ args: ['open', url] })
-  await browser({ args: ['wait', 'Shape the first working board'] })
-  await evaluate({ code: '() => { document.querySelector(\'[aria-label="Open conversation for Shape the first working board"]\').click(); window.connectionMarker = "same document"; return true; }' })
+  await browser({ args: ['wait', 'Shape the first working Hydra'] })
+  await evaluate({ code: '() => { document.querySelector(\'[aria-label="Open conversation for Shape the first working Hydra"]\').click(); window.connectionMarker = "same document"; return true; }' })
   await until({ condition: '!!document.querySelector(".detail .composer textarea") && document.querySelector(".connection").classList.contains("online")' })
   await server.close()
   await until({ condition: '!document.querySelector(".connection").classList.contains("online")' })
@@ -51,16 +51,16 @@ try {
   await evaluate({ code: '() => { document.querySelector(".hydra-chat .composer").requestSubmit(); return true; }' })
   assert.equal(delivery({ text: 'Queued during restart' }), 0)
   withWriter({
-    board: 'default',
+    hydraId: 'default',
     fn: ({ writer }) => {
       const d = decidePush({ state: writer.state, key: 'layout', input: { title: 'Recovered task' }, meta: { actor: 'fixture', at: new Date().toISOString() } })
       assert.ok('event' in d); writer.append({ event: d.event })
     },
   })
-  server = await startServer({ board: 'default', port, homes: [fixture.nativeHome] })
+  server = await startServer({ hydraId: 'default', port, homes: [fixture.nativeHome] })
   await until({ condition: 'document.querySelector(".connection").classList.contains("online") && document.querySelector(".detail .composer textarea").value === "" && document.querySelector(".hydra-chat .composer textarea").value === "" && document.body.textContent.includes("Recovered task")' })
   assert.equal(delivery({ text: 'Queued during restart' }), 1)
-  assert.equal(loadBoard({ board: 'default' }).state.hydraMessages?.filter(m => m.text === 'Hydra offline message').length, 1)
+  assert.equal(loadHydra({ hydraId: 'default' }).state.hydraMessages?.filter(m => m.text === 'Hydra offline message').length, 1)
   await until({ condition: 'window.connectionMarker === "same document"' })
   appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: new Date().toISOString(), message: { content: 'Subscription restored' } }) + '\n')
   await browser({ args: ['wait', 'Subscription restored'] })
@@ -75,30 +75,30 @@ try {
   await fill({ selector: '.detail .composer textarea', text: 'Draft across reload' })
   await browser({ args: ['open', url] })
   await until({ condition: 'document.querySelector(".detail .composer textarea")?.value === "Draft across reload" && document.body.textContent.includes("Subscription restored")' })
-  assert.equal(loadBoard({ board: 'default' }).state.cards[fixture.state.keys.layout!]?.agent?.sessionId, 'fixture-layout')
+  assert.equal(loadHydra({ hydraId: 'default' }).state.cards[fixture.state.keys.layout!]?.agent?.sessionId, 'fixture-layout')
   await evaluate({ code: '() => { window.connectionMarker = \'heartbeat\'; const send = WebSocket.prototype.send; WebSocket.prototype.send = function(data) { if (JSON.parse(data).type !== \'ping\') send.call(this, data); }; const Native = WebSocket; window.reconnects = 0; window.WebSocket = class extends Native { constructor(...args) { super(...args); window.reconnects++; } }; return true; }' })
   await evaluate({ code: 'async () => { for (let i = 0; i < 380; i++) { if (window.reconnects > 0 && document.querySelector(\'.connection\').classList.contains(\'online\')) return true; await new Promise(r => setTimeout(r, 100)); } throw new Error(\'heartbeat did not recover a silent socket\'); }' })
   await until({ condition: 'window.connectionMarker === "heartbeat" && !!document.querySelector(".detail .composer textarea:not(:disabled)")' })
-  const events = readEvents({ board: 'default' })
+  const events = readEvents({ hydraId: 'default' })
   withWriter({
-    board: 'other',
+    hydraId: 'other',
     fn: ({ writer }) => {
       for (const event of events) {
         const copy = structuredClone(event)
 
         if ((copy.type === 'task.created' || copy.type === 'card.pushed') && copy.data.title === 'Recovered task') {
-          copy.data.title = 'Different board'
+          copy.data.title = 'Different Hydra'
         }
 
         writer.append({ event: copy })
       }
     },
   })
-  assert.equal(loadBoard({ board: 'other' }).state.seq, loadBoard({ board: 'default' }).state.seq)
-  await fill({ selector: '.detail .composer textarea', text: 'Only for the original board' })
+  assert.equal(loadHydra({ hydraId: 'other' }).state.seq, loadHydra({ hydraId: 'default' }).state.seq)
+  await fill({ selector: '.detail .composer textarea', text: 'Only for the original Hydra' })
   await server.close()
-  server = await startServer({ board: 'other', port, homes: [fixture.nativeHome] })
-  await browser({ args: ['wait', 'Different board'] })
+  server = await startServer({ hydraId: 'other', port, homes: [fixture.nativeHome] })
+  await browser({ args: ['wait', 'Different Hydra'] })
   await until({ condition: '!document.body.textContent.includes("Recovered task") && !document.querySelector(".detail .composer textarea") && document.querySelector(".connection").classList.contains("online")' })
   process.stdout.write('Connection smoke passed: offline sends, event resync, subscription restore, reload and heartbeat recovery\n')
 } catch (error) {

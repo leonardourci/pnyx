@@ -1,31 +1,31 @@
-import { BoardError, EVENT_VERSION, TASK_STATES, type BoardColumn, type BoardConfig, type BoardEvent, type BoardState, type Column, type HydraEvent, type TaskStatus } from './model.ts'
+import { HydraError, EVENT_VERSION, TASK_STATES, type HydraColumn, type HydraConfig, type HydraEvent, type HydraState, type Column, type HydraChange, type TaskStatus } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { permissionAttention } from './permissions.ts'
 import { assignDefined } from './tasks.ts'
 
 export const HYDRA_CARD = '$hydra'
-export const TEMPLATE_COLUMNS: BoardColumn[] = [
+export const TEMPLATE_COLUMNS: HydraColumn[] = [
   { id: 'needs_you', title: 'Needs you', role: 'needs_you', description: 'Work that needs the owner to answer a question, grant permission or make a decision.' },
   { id: 'workers_on_it', title: 'Workers on it', role: 'workers_on_it', description: 'Work an attached agent is actively carrying forward.' },
   { id: 'done', title: 'Done', role: 'done', description: 'Work whose result has been checked and is complete.' },
   { id: 'parked', title: 'Parked', role: 'parked', description: 'Work kept for later, without an agent currently taking it forward.' },
 ]
 
-const ROLE_STATUS = { needs_you: 'needs_you', workers_on_it: 'working', done: 'done', parked: 'paused' } as const satisfies Record<NonNullable<BoardColumn['role']>, TaskStatus>
+const ROLE_STATUS = { needs_you: 'needs_you', workers_on_it: 'working', done: 'done', parked: 'paused' } as const satisfies Record<NonNullable<HydraColumn['role']>, TaskStatus>
 
-export function boardConfig({ state, id = 'default' }: { state: BoardState; id?: string }): BoardConfig {
-  return state.board ?? { id, name: id, hydra: { id: 'hydra', kind: 'agent', name: 'Hydra' }, columns: [...structuredClone(TEMPLATE_COLUMNS), ...(state.view?.customColumns ?? [])] }
+export function hydraConfig({ state, id = 'default' }: { state: HydraState; id?: string }): HydraConfig {
+  return state.config ?? { id, name: id, hydra: { id: 'hydra', kind: 'agent', name: 'Hydra' }, columns: [...structuredClone(TEMPLATE_COLUMNS), ...(state.view?.customColumns ?? [])] }
 }
 
-export function fallbackColumn({ columns }: { columns: BoardColumn[] }): Column {
+export function fallbackColumn({ columns }: { columns: HydraColumn[] }): Column {
   return (columns.find(c => c.role === 'parked') ?? columns[0]!).id
 }
 
 export function refreshTasks({ state, ids }: {
-  state: BoardState
+  state: HydraState
   ids?: (string | null | undefined)[]
 }): void {
-  const columns = boardConfig({ state }).columns
+  const columns = hydraConfig({ state }).columns
   const cards = ids
     ? [...new Set(ids)].flatMap(id => (id && state.cards[id] ? [state.cards[id]] : []))
     : Object.values(state.cards)
@@ -53,7 +53,7 @@ export function refreshTasks({ state, ids }: {
   }
 
   const hydra = state.cards[HYDRA_CARD]
-  const ref = state.board?.hydra.session
+  const ref = state.config?.hydra.session
   const session = ref ? state.sessions?.[ref] : undefined
 
   if (hydra) {
@@ -75,19 +75,19 @@ export function refreshTasks({ state, ids }: {
 }
 
 export function hydraEvent({ state, meta, cardId, change }: {
-  state: BoardState
+  state: HydraState
   meta: Meta
   cardId: string
-  change: Pick<HydraEvent, 'type' | 'data'>
+  change: Pick<HydraChange, 'type' | 'data'>
 }): Decision {
   if (meta.id && meta.id in state.eventIds) {
     return { skipped: 'duplicate' }
   }
 
-  const revision = cardId === '$board' ? state.boardRevision ?? 0 : state.cards[cardId]?.revision ?? 0
+  const revision = cardId === '$board' ? state.configRevision ?? 0 : state.cards[cardId]?.revision ?? 0
 
   if (meta.ifRevision !== undefined && meta.ifRevision !== revision) {
-    throw new BoardError({ message: `revision ${revision}, not ${meta.ifRevision}`, code: 'REVISION_CONFLICT' })
+    throw new HydraError({ message: `revision ${revision}, not ${meta.ifRevision}`, code: 'REVISION_CONFLICT' })
   }
 
   let id = meta.id ?? `evt_${state.seq + 1}`
@@ -105,29 +105,29 @@ export function hydraEvent({ state, meta, cardId, change }: {
     cardId,
     ...(meta.reason ? { reason: meta.reason } : {}),
     ...change,
-  } as HydraEvent
+  } as HydraChange
 
   return { event }
 }
 
-export function validateColumns({ columns }: { columns: BoardColumn[] }): void {
+export function validateColumns({ columns }: { columns: HydraColumn[] }): void {
   if (!columns.length || new Set(columns.map(c => c.id)).size !== columns.length) {
-    throw new BoardError({ message: 'a board needs at least one column and unique column ids', code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: 'a Hydra needs at least one column and unique column ids', code: 'VALIDATION_ERROR' })
   }
 
   for (const column of columns) {
     if (!column.title.trim() || column.title.length > 100) {
-      throw new BoardError({ message: 'column titles must have 1–100 characters', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'column titles must have 1–100 characters', code: 'VALIDATION_ERROR' })
     }
 
     if (column.description !== undefined && (typeof column.description !== 'string' || column.description.length > 4000)) {
-      throw new BoardError({ message: 'column descriptions must be text of up to 4000 characters', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'column descriptions must be text of up to 4000 characters', code: 'VALIDATION_ERROR' })
     }
   }
 }
 
 export function declareTask({ state, ref, status, note, meta, source, raw }: {
-  state: BoardState
+  state: HydraState
   ref: string
   status: string
   note: string
@@ -138,19 +138,19 @@ export function declareTask({ state, ref, status, note, meta, source, raw }: {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
   if (!card || card.automaticTask || card.id === HYDRA_CARD) {
-    throw new BoardError({ message: `task not found: ${ref}`, code: 'NOT_FOUND' })
+    throw new HydraError({ message: `task not found: ${ref}`, code: 'NOT_FOUND' })
   }
 
   const normalized = status === 'needs-you' || status === 'needs you' ? 'needs_you' : status
 
   if (!(TASK_STATES as readonly string[]).includes(normalized)) {
-    throw new BoardError({ message: `use ${TASK_STATES.join(', ')}`, code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: `use ${TASK_STATES.join(', ')}`, code: 'VALIDATION_ERROR' })
   }
 
   return hydraEvent({ state, meta, cardId: card.id, change: { type: 'task.declared', data: { state: normalized as TaskStatus, note, ...(source ? { source } : {}), ...(raw ? { raw } : {}) } } })
 }
 
-export function applyHydra({ state, event }: { state: BoardState; event: BoardEvent }): boolean {
+export function applyHydra({ state, event }: { state: HydraState; event: HydraEvent }): boolean {
   if (event.type === 'hydra.memory') {
     state.hydraMemory ??= {}
 
@@ -182,9 +182,9 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
   }
 
   if (event.type === 'board.configured') {
-    state.board = structuredClone(event.data)
+    state.config = structuredClone(event.data)
     state.configured = true
-    state.boardRevision = (state.boardRevision ?? 0) + 1
+    state.configRevision = (state.configRevision ?? 0) + 1
     state.cards[HYDRA_CARD] ??= {
       id: HYDRA_CARD, key: HYDRA_CARD, title: 'Hydra', workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], hidden: true, column: 'parked', revision: 0, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
     }
@@ -197,19 +197,19 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
     return true
   }
 
-  // Kinds are board settings; saving one does not choose the board's Hydra.
+  // Kinds are Hydra settings; saving one does not choose the Hydra.
   if (event.type === 'board.agents') {
-    state.board = structuredClone(boardConfig({ state, id: event.boardId }))
-    state.board.agents = structuredClone(event.data.agents)
-    state.boardRevision = (state.boardRevision ?? 0) + 1
+    state.config = structuredClone(hydraConfig({ state, id: event.boardId }))
+    state.config.agents = structuredClone(event.data.agents)
+    state.configRevision = (state.configRevision ?? 0) + 1
 
     return true
   }
 
   if (event.type === 'board.columns') {
-    state.board = structuredClone(boardConfig({ state, id: event.boardId }))
-    state.board.columns = structuredClone(event.data.columns)
-    state.boardRevision = (state.boardRevision ?? 0) + 1
+    state.config = structuredClone(hydraConfig({ state, id: event.boardId }))
+    state.config.columns = structuredClone(event.data.columns)
+    state.configRevision = (state.configRevision ?? 0) + 1
 
     for (const card of Object.values(state.cards)) {
       const placement = event.data.placements?.[card.id]
@@ -236,7 +236,7 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
 
   if (event.type === 'task.created') {
     const { key, title, brief, parentId, column, folder } = event.data
-    const role = boardConfig({ state }).columns.find(c => c.id === column)?.role
+    const role = hydraConfig({ state }).columns.find(c => c.id === column)?.role
     const initial = role && { id: event.id, at: event.at, actor: event.actor, state: ROLE_STATUS[role], note: '' }
     state.cards[event.cardId] = {
       id: event.cardId, key, title, ...(brief !== undefined ? { brief } : {}), titleSet: true, workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], sessionIds: [], tracking: 'declared', statusLog: initial ? [initial] : [], ...(initial ? { status: initial } : {}), ...(parentId ? { parentId } : {}), ...(folder ? { folder } : {}), column: column ?? 'parked', revision: 1, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
