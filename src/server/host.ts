@@ -7,10 +7,10 @@ import { terminalPresence, type Presence } from '../integrations/presence/check.
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { freeTask } from '../cli/start.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { BoardError, type AgentRef, type AgentSession, type AgentSettings, type Attention, type Card } from '../core/model.ts'
+import { HydraError, type AgentRef, type AgentSession, type AgentSettings, type Attention, type Card } from '../core/model.ts'
 import { harnessControls } from '../core/control.ts'
 import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
-import { pnyxHome, withWriter, type Writer } from '../store/board-store.ts'
+import { pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
 
 export type { QueryFn } from './claude.ts'
 
@@ -102,10 +102,10 @@ interface Live {
 }
 
 export function createHost({
-  board, query, spawnCodex, changed,
+  hydraId, query, spawnCodex, changed,
   presence = ({ session }) => terminalPresence({ session, verifyProcess: true }),
 }: {
-  board: string
+  hydraId: string
   query?: QueryFn
   spawnCodex?: SpawnCodex
   presence?({ session }: { session: AgentSession }): Presence
@@ -119,7 +119,7 @@ export function createHost({
 
   const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
     const result = withWriter({
-      board,
+      hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
 
@@ -154,7 +154,7 @@ export function createHost({
     const { cwd } = card.agent
 
     if (!cwd || !isFolder({ path: cwd })) {
-      throw new BoardError({ message: `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`, code: 'FOLDER_MISSING', help: [card.agent.host === 'pnyx' ? `Run \`pnyx-axi task detach ${card.id}\`, then \`pnyx-axi task start ${card.id} --folder <absolute path>\` to start fresh from the brief` : `Run \`pnyx-axi task start ${card.id} --via pnyx --replace-session ${sessionId({ agent: card.agent })} --folder <absolute path>\` to start fresh from the brief`] })
+      throw new HydraError({ message: `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`, code: 'FOLDER_MISSING', help: [card.agent.host === 'pnyx' ? `Run \`pnyx-axi task detach ${card.id}\`, then \`pnyx-axi task start ${card.id} --folder <absolute path>\` to start fresh from the brief` : `Run \`pnyx-axi task start ${card.id} --via pnyx --replace-session ${sessionId({ agent: card.agent })} --folder <absolute path>\` to start fresh from the brief`] })
     }
 
     return cwd
@@ -187,7 +187,7 @@ export function createHost({
     const card = findCard({ state: writer.state, ref })
 
     if (card.agent?.host !== 'pnyx') {
-      throw new BoardError({ message: `card ${card.id} has no agent that Pnyx runs`, code: 'NO_ROUTE' })
+      throw new HydraError({ message: `card ${card.id} has no agent that Pnyx runs`, code: 'NO_ROUTE' })
     }
 
     return card as Card & { agent: AgentRef }
@@ -198,13 +198,13 @@ export function createHost({
 
     if (!liveTask({ card }) || !agent || !['claude-code', 'codex'].includes(agent.provider)
       || agent.host || agent.agentId || agent.paseoAgentId) {
-      throw new BoardError({ message: 'Continue in Pnyx needs an outside Claude Code or Codex session attached to a task', code: 'NO_ROUTE' })
+      throw new HydraError({ message: 'Continue in Pnyx needs an outside Claude Code or Codex session attached to a task', code: 'NO_ROUTE' })
     }
 
     const session = writer.state.sessions?.[sessionId({ agent })]
 
     if (!session || session.taskId !== card.id) {
-      throw new BoardError({ message: 'the session is no longer attached to this task', code: 'SESSION_CONFLICT' })
+      throw new HydraError({ message: 'the session is no longer attached to this task', code: 'SESSION_CONFLICT' })
     }
 
     return session
@@ -212,7 +212,7 @@ export function createHost({
 
   const requireGone = ({ current }: { current: Presence }) => {
     if (current.state !== 'gone') {
-      throw new BoardError({ message: current.state === 'present' ? 'the outside session still runs in its terminal; end it before continuing in Pnyx' : `cannot confirm the outside session has ended: ${current.detail}`, code: 'SESSION_RUNNING', help: ['End the outside session, then try Continue in Pnyx again'] })
+      throw new HydraError({ message: current.state === 'present' ? 'the outside session still runs in its terminal; end it before continuing in Pnyx' : `cannot confirm the outside session has ended: ${current.detail}`, code: 'SESSION_RUNNING', help: ['End the outside session, then try Continue in Pnyx again'] })
     }
   }
 
@@ -229,7 +229,7 @@ export function createHost({
     const previous = outsideSession({ writer, card })
 
     if (previous.id !== replacement) {
-      throw new BoardError({ message: 'the task has a different session now; reopen its card before starting fresh', code: 'SESSION_CONFLICT' })
+      throw new HydraError({ message: 'the task has a different session now; reopen its card before starting fresh', code: 'SESSION_CONFLICT' })
     }
 
     requireGone({ current: presence({ session: previous }) })
@@ -265,12 +265,12 @@ export function createHost({
   const environment = () => ({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
     PNYX_HOME: pnyxHome(),
-    PNYX_BOARD: board,
+    PNYX_HYDRA: hydraId,
   })
 
   const providerOf = ({ provider }: { provider: string }) => {
     if (provider !== 'claude-code' && provider !== 'codex') {
-      throw new BoardError({ message: `unsupported hosted provider: ${provider}`, code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: `unsupported hosted provider: ${provider}`, code: 'VALIDATION_ERROR' })
     }
 
     return providers[provider]
@@ -400,13 +400,13 @@ export function createHost({
       }
 
       if (starting.has(target.id)) {
-        throw new BoardError({ message: `task ${target.id} is already starting`, code: 'SESSION_CONFLICT' })
+        throw new HydraError({ message: `task ${target.id} is already starting`, code: 'SESSION_CONFLICT' })
       }
 
       const cwd = folder ?? target.folder
 
       if (!cwd || !isFolder({ path: cwd })) {
-        throw new BoardError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
+        throw new HydraError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
       }
 
       const provider = settings.provider ?? 'claude-code'
@@ -437,11 +437,11 @@ export function createHost({
             startTarget({ writer, ref: task, replacement })
 
             if ((folder ?? card.folder) !== cwd) {
-              throw new BoardError({ message: 'the task folder changed while its agent was starting; retry the start', code: 'CONFLICT' })
+              throw new HydraError({ message: 'the task folder changed while its agent was starting; retry the start', code: 'CONFLICT' })
             }
 
             if (!isFolder({ path: cwd })) {
-              throw new BoardError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
+              throw new HydraError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
             }
 
             const meta = { at: at(), actor, ...(reason ? { reason } : {}) }
@@ -543,7 +543,7 @@ export function createHost({
           const control = controls?.controls.find(c => c.setting === setting)
 
           if (!control || !control.options.some(o => o.value === value)) {
-            throw new BoardError({ message: `${setting} cannot be ${value}`, code: 'VALIDATION_ERROR' })
+            throw new HydraError({ message: `${setting} cannot be ${value}`, code: 'VALIDATION_ERROR' })
           }
 
           record({ writer, agent: card.agent, input: { settings: { [setting]: value } }, actor })
@@ -607,7 +607,7 @@ const field = ({ body, name, optional = false }: {
   }
 
   if (typeof value !== 'string' || !value.trim() || value.length > 32000) {
-    throw new BoardError({ message: `${name} must be a string of 1 to 32000 characters`, code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: `${name} must be a string of 1 to 32000 characters`, code: 'VALIDATION_ERROR' })
   }
 
   return value
@@ -628,7 +628,7 @@ export async function hostRequest({ host, body: raw }: {
       const folder = field({ body, name: 'folder', optional: true })
 
       if (folder !== undefined && !isAbsolute(folder)) {
-        throw new BoardError({ message: 'folder must be an absolute path', code: 'VALIDATION_ERROR' })
+        throw new HydraError({ message: 'folder must be an absolute path', code: 'VALIDATION_ERROR' })
       }
 
       return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, replacement: field({ body, name: 'replacement', optional: true }), id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
@@ -646,7 +646,7 @@ export async function hostRequest({ host, body: raw }: {
       const value = field({ body, name: 'value' })!
 
       if (!SETTINGS.includes(setting)) {
-        throw new BoardError({ message: `${setting} cannot be ${value}`, code: 'VALIDATION_ERROR', help: [`Settings: ${SETTINGS.join(', ')}`] })
+        throw new HydraError({ message: `${setting} cannot be ${value}`, code: 'VALIDATION_ERROR', help: [`Settings: ${SETTINGS.join(', ')}`] })
       }
 
       await host.set({ card: field({ body, name: 'card' })!, setting, value, actor })
@@ -655,6 +655,6 @@ export async function hostRequest({ host, body: raw }: {
     }
 
     default:
-      throw new BoardError({ message: 'action must be start, continue, send or set', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'action must be start, continue, send or set', code: 'VALIDATION_ERROR' })
   }
 }

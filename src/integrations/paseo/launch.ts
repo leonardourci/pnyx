@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { decidePush, decideSession, findCard, type Meta } from '../../core/decide.ts'
-import { BoardError, type AgentConfig, type AgentRef } from '../../core/model.ts'
+import { HydraError, type AgentConfig, type AgentRef } from '../../core/model.ts'
 import { paseoUrl } from '../../core/paseo.ts'
 import { sessionId } from '../../core/tasks.ts'
 import { drainSpool } from '../hooks/ingest.ts'
 import type { Output } from '../../cli/commands.ts'
 import { canonical } from '../../store/paths.ts'
-import { pnyxHome, withWriter } from '../../store/board-store.ts'
+import { pnyxHome, withWriter } from '../../store/hydra-store.ts'
 import { openPaseo, type Connect } from './client.ts'
 
 export const HARNESSES = { claude: 'claude-code', codex: 'codex' } as const
@@ -15,9 +15,9 @@ export type Harness = keyof typeof HARNESSES
 const MAX_PROMPT = 32000
 
 export async function startAgent({
-  board, task, harness, agent: chosen, prompt, folder, url, meta, connect = openPaseo,
+  hydraId, task, harness, agent: chosen, prompt, folder, url, meta, connect = openPaseo,
 }: {
-  board: string
+  hydraId: string
   task: string
   harness: string
   agent?: AgentConfig
@@ -28,11 +28,11 @@ export async function startAgent({
   connect?: Connect
 }): Promise<Output> {
   if (!Object.hasOwn(HARNESSES, harness)) {
-    throw new BoardError({ message: `unknown harness: ${harness}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
+    throw new HydraError({ message: `unknown harness: ${harness}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
   }
 
   if (!prompt.trim() || prompt.length > MAX_PROMPT) {
-    throw new BoardError({ message: `the opening message must be 1 to ${MAX_PROMPT} characters`, code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: `the opening message must be 1 to ${MAX_PROMPT} characters`, code: 'VALIDATION_ERROR' })
   }
 
   const endpoint = paseoUrl({ url })
@@ -40,7 +40,7 @@ export async function startAgent({
   const id = meta.id ?? randomUUID()
   const attachId = `${id}:attach`
   const claimed = withWriter({
-    board,
+    hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
       const card = findCard({ state: writer.state, ref: task })
@@ -50,17 +50,17 @@ export async function startAgent({
       }
 
       if (meta.ifRevision !== undefined && meta.ifRevision !== card.revision) {
-        throw new BoardError({ message: `card ${card.id} is at revision ${card.revision}, not ${meta.ifRevision}`, code: 'REVISION_CONFLICT', help: [`Run \`pnyx-axi card ${card.id}\` and retry`] })
+        throw new HydraError({ message: `card ${card.id} is at revision ${card.revision}, not ${meta.ifRevision}`, code: 'REVISION_CONFLICT', help: [`Run \`pnyx-axi card ${card.id}\` and retry`] })
       }
 
       if (card.sessionIds?.length) {
-        throw new BoardError({ message: `task ${card.id} already has an attached agent; detach it first`, code: 'SESSION_CONFLICT' })
+        throw new HydraError({ message: `task ${card.id} already has an attached agent; detach it first`, code: 'SESSION_CONFLICT' })
       }
 
       const cwd = canonical({ path: folder }) ?? card.folder
 
       if (!cwd || !isFolder({ path: cwd })) {
-        throw new BoardError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
+        throw new HydraError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
       }
 
       if (cwd !== card.folder) {
@@ -88,7 +88,7 @@ export async function startAgent({
     id,
     // No PNYX_TASK: the task attaches the Paseo session below, so the agent's own
     // hooks must not race it onto the task.
-    env: { PNYX_HOME: pnyxHome(), PNYX_BOARD: board },
+    env: { PNYX_HOME: pnyxHome(), PNYX_HYDRA: hydraId },
     labels: { 'pnyx.task': claimed.card.id },
     url: endpoint,
     connect,
@@ -96,7 +96,7 @@ export async function startAgent({
 
   try {
     return withWriter({
-      board,
+      hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         const pushed = decidePush({
@@ -134,8 +134,8 @@ export async function startAgent({
       },
     })
   } catch (error) {
-    const reason = error instanceof BoardError ? error.message : 'the board could not record it'
-    throw new BoardError({
+    const reason = error instanceof HydraError ? error.message : 'the Hydra could not record it'
+    throw new HydraError({
       message: `Paseo started agent ${agent.id}, but it was not attached: ${reason}`,
       code: 'NOT_ATTACHED',
       help: [`Run \`pnyx-axi attach ${claimed.card.id} --session ${sessionId({ agent: ref })}\` once the task is free`],
@@ -167,7 +167,7 @@ export async function createPaseoAgent({
 
     // A quota pick Paseo does not offer falls back to its default; a named model must exist.
     if (kind?.model && !wanted && !kind.quota) {
-      throw new BoardError({
+      throw new HydraError({
         message: `Paseo has no ${harness} model ${kind.model}`,
         code: 'VALIDATION_ERROR',
         help: [`Use one of: ${(models ?? []).map(m => m.id).slice(0, 12)
@@ -178,7 +178,7 @@ export async function createPaseoAgent({
     const model = wanted ?? models?.find(m => m.isDefault) ?? models?.[0]
 
     if (!model) {
-      throw new BoardError({ message: `Paseo has no ${harness} model available`, code: 'PASEO_ERROR', help: [`Check \`paseo status\` for the ${harness} provider`] })
+      throw new HydraError({ message: `Paseo has no ${harness} model available`, code: 'PASEO_ERROR', help: [`Check \`paseo status\` for the ${harness} provider`] })
     }
 
     const config = {
@@ -190,11 +190,11 @@ export async function createPaseoAgent({
       config, cwd, title, prompt, idempotencyKey: id, labels, env,
     })
   } catch (error) {
-    if (error instanceof BoardError) {
+    if (error instanceof HydraError) {
       throw error
     }
 
-    throw new BoardError({ message: `Paseo did not start the agent: ${(error as Error).message}`.slice(0, 500), code: 'PASEO_ERROR', help: ['Check the Paseo app before retrying'] })
+    throw new HydraError({ message: `Paseo did not start the agent: ${(error as Error).message}`.slice(0, 500), code: 'PASEO_ERROR', help: ['Check the Paseo app before retrying'] })
   } finally {
     await client.close().catch(() => undefined)
   }

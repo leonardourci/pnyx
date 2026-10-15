@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { BoardError, type FirstmateRecord, type SourceNote } from '../../core/model.ts'
+import { HydraError, type FirstmateRecord, type SourceNote } from '../../core/model.ts'
 import { canonical } from '../../store/paths.ts'
 import { TERMINAL_FIELDS } from '../../core/route.ts'
 import { latestActivity, latestLine, openDecisions, statusNotes, type OpenDecision } from './status.ts'
@@ -57,11 +57,11 @@ export function resolveHome({ path }: { path: string }): string {
   try {
     real = realpathSync(path)
   } catch {
-    throw new BoardError({ message: `Firstmate home not found: ${path}`, code: 'NOT_FOUND', help: ["Pass the home's root folder with --home"] })
+    throw new HydraError({ message: `Firstmate home not found: ${path}`, code: 'NOT_FOUND', help: ["Pass the home's root folder with --home"] })
   }
 
   if (!isDir({ path: join(real, 'state') })) {
-    throw new BoardError({
+    throw new HydraError({
       message: `not a Firstmate home (no state/ folder): ${path}`,
       code: 'VALIDATION_ERROR',
       help: [

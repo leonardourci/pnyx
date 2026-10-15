@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { AgentSession } from '../src/core/model.ts'
-import { emptyBoard, replay } from '../src/core/reducer.ts'
+import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { decidePush, decideSession } from '../src/core/decide.ts'
 import { checkAttachments, terminalPresence } from '../src/integrations/presence/check.ts'
 
@@ -40,7 +40,7 @@ test('agent presence uses reboot evidence and verified process ownership, with u
 
 test('attachment metadata and last observation survive event replay and manual task edits', async () => {
   const meta = { actor: 'test', at: '2026-10-15T10:00:00Z' }
-  let state = emptyBoard()
+  let state = emptyHydra()
   const first = decidePush({ state, key: 'worker', input: { agent: session.agent, terminal: session.terminal, source: { adapter: 'hooks', objectId: 'worker', observedAt: meta.at } }, meta })
   assert.ok('event' in first)
   state = replay({ state, events: [first.event] })

@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_KEYBOARD, keyboardError, resolveKey, type KeyContext, type KeyInput, type KeyboardPreferences } from '../src/core/keyboard.ts'
-import { emptyBoard, reduce } from '../src/core/reducer.ts'
+import { emptyHydra, reduce } from '../src/core/reducer.ts'
 import { decideUndo, decideView, type Decision } from '../src/core/decide.ts'
 import { patchView, viewFor } from '../src/core/view.ts'
-import type { BoardEvent } from '../src/core/model.ts'
+import type { HydraEvent } from '../src/core/model.ts'
 import { navigate, restoreAnchor } from '../web/src/keyboard/navigation.ts'
 import { hintLabels } from '../web/src/keyboard/hints.ts'
 
-const context: KeyContext = { scope: 'board', platform: 'mac', characterShortcuts: true, now: 10 }
+const context: KeyContext = { scope: 'hydra', platform: 'mac', characterShortcuts: true, now: 10 }
 const resolve = (
   { event, change = {}, prefs = DEFAULT_KEYBOARD }: {
     event: KeyInput
@@ -17,7 +17,7 @@ const resolve = (
   },
 ) => resolveKey({ event, context: { ...context, ...change }, prefs })
 
-const event = ({ d }: { d: Decision }): BoardEvent => {
+const event = ({ d }: { d: Decision }): HydraEvent => {
   assert.ok('event' in d)
 
   return d.event
@@ -40,7 +40,7 @@ test('scopes, exact modifiers and logical punctuation resolve through tinykeys',
     assert.equal(resolve({ event: { key } }).action, undefined)
   }
 })
-test('typing, IME, dead keys, AltGraph and repeats cannot activate board commands or send', () => {
+test('typing, IME, dead keys, AltGraph and repeats cannot activate Hydra commands or send', () => {
   for (const scope of ['composer', 'navigation'] as const) {
     for (const key of ['j', 'k', '/', '?', 'm', 'r', 'f', 'Enter']) {
       assert.equal(resolve({ event: { key }, change: { scope, editing: true } }).action, undefined)
@@ -81,7 +81,7 @@ test('find uses the platform modifier, works in fields, and remains rebindable',
   for (const platform of ['mac', 'other'] as const) {
     const key = { key: 'f', ...(platform === 'mac' ? { metaKey: true } : { ctrlKey: true }) }
 
-    for (const scope of ['board', 'thread', 'navigation', 'composer'] as const) {
+    for (const scope of ['hydra', 'thread', 'navigation', 'composer'] as const) {
       assert.equal(resolve({ event: key, change: { platform, scope } }).action, 'find')
       assert.equal(resolve({ event: key, change: { platform, scope, editing: true, characterShortcuts: false } }).action, 'find')
     }
@@ -159,7 +159,7 @@ test('rebinding validates overlapping scopes and sequence prefixes on both platf
   assert.equal(resolve({ event: { key: 'g' }, change: { characterShortcuts: false }, prefs }).consume, false)
 })
 test('keyboard events replay, undo, merge and reset with revision checks and legacy defaults', () => {
-  const initial = emptyBoard(), meta = { actor: 'test', at: '2026-10-14T10:00:00Z', id: 'keyboard-edit', ifRevision: 0 }
+  const initial = emptyHydra(), meta = { actor: 'test', at: '2026-10-14T10:00:00Z', id: 'keyboard-edit', ifRevision: 0 }
   const edit = event({ d: decideView({ state: initial, patch: { keyboard: { bindings: { settings: ['g s'] }, characterShortcuts: false } }, meta }) })
   const state = reduce({ state: initial, event: edit })
   assert.deepEqual(viewFor({ state }).keyboard, { characterShortcuts: false, bindings: { settings: ['g s'] } })
@@ -220,10 +220,10 @@ test('the highlighted task or column moves with the platform modifier and arrows
 })
 
 test('retired saved bindings do not prevent later keyboard preference edits', () => {
-  const view = viewFor({ state: emptyBoard() })
+  const view = viewFor({ state: emptyHydra() })
   view.keyboard.bindings.move = ['g m']
   view.keyboard.bindings.hints = ['f']
-  const state = { ...emptyBoard(), view }
+  const state = { ...emptyHydra(), view }
   const patched = patchView({ state, input: { keyboard: { characterShortcuts: false } } })
   assert.deepEqual(patched.keyboard, { characterShortcuts: false, bindings: {} })
 })

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { uptime } from 'node:os'
-import type { AgentSession, BoardState } from '../../core/model.ts'
+import type { AgentSession, HydraState } from '../../core/model.ts'
 import { liveTask } from '../../core/tasks.ts'
 import { localPaseoUrl } from '../../core/paseo.ts'
 import { openPaseo, type Connect } from '../paseo/client.ts'
@@ -47,13 +47,13 @@ export function terminalPresence({ session, verifyProcess = false, bootedAt = Da
 }
 
 export async function checkAttachments({ state, connect = openPaseo, probe = terminalPresence }: {
-  state: BoardState
+  state: HydraState
   connect?: Connect
   probe?({ session }: { session: AgentSession }): Presence
 }) {
   const sessions = Object.values(state.sessions ?? {})
     .filter(s => (s.taskId && state.cards[s.taskId] && liveTask({ card: state.cards[s.taskId] }))
-      || state.board?.hydra.session === s.id)
+      || state.config?.hydra.session === s.id)
   const endpoints = new Map<string, Promise<Map<string, Presence>>>()
 
   const paseo = ({ url }: { url: string }) => {

@@ -161,10 +161,10 @@ test('hook stays silent and exits 0 on bad arguments, bad input and unwritable s
   assert.equal(stdout + stderr, '')
 })
 
-test("hook sends the line to the board's server socket instead of the spool when one listens", async () => {
+test("hook sends the line to the Hydra's server socket instead of the spool when one listens", async () => {
   const { script, home, spooled } = sandbox()
-  const board = join(home, 'boards', 'default')
-  mkdirSync(board, { recursive: true })
+  const hydraId = join(home, 'boards', 'default')
+  mkdirSync(hydraId, { recursive: true })
   const received: string[] = []
   const server = createServer(socket => {
     let data = ''
@@ -177,7 +177,7 @@ test("hook sends the line to the board's server socket instead of the spool when
       }
     })
   })
-  await new Promise<void>(resolve => server.listen(join(board, 'server.sock'), resolve))
+  await new Promise<void>(resolve => server.listen(join(hydraId, 'server.sock'), resolve))
 
   try {
     await hook({ script, args: ['claude', 'Stop'], input: fixture({ name: 'claude-stop' }) })

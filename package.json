@@ -2,7 +2,7 @@
   "name": "pnyx-axi",
   "version": "0.0.0",
   "private": true,
-  "description": "Deterministic board of every agent and its work, with an AXI CLI",
+  "description": "Every agent and its work in Pnyx, with an AXI CLI",
   "type": "module",
   "packageManager": "pnpm@11.9.0",
   "engines": {
@@ -18,7 +18,7 @@
     "test": "pnpm run build && node --test \"test/**/*.test.ts\"",
     "web:dev": "vite --config web/vite.config.ts",
     "dev": "pnpm run \"/^(dev:server|web:dev)$/\"",
-    "dev:server": "node --watch src/cli/pnyx-axi.ts serve --board dev --port ${PNYX_DEV_PORT:-4319}",
+    "dev:server": "node --watch src/cli/pnyx-axi.ts serve --hydra dev --port ${PNYX_DEV_PORT:-4319}",
     "test:web": "pnpm run build && node test/web-smoke.ts && node test/task-smoke.ts && node test/context-smoke.ts && node test/codex-host-smoke.ts",
     "test:keyboard": "pnpm run build && node test/keyboard-smoke.ts",
     "test:connection": "pnpm run build && node test/connection-smoke.ts",

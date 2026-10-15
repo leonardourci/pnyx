@@ -13,8 +13,8 @@ case $event in '' | *[!A-Za-z]*) exit 0 ;; esac
 home=${0%/*}
 home=${home%/hooks}
 case ${PNYX_HOME:-} in /*) home=$PNYX_HOME ;; esac
-board_name=${PNYX_BOARD:-default}
-case $board_name in [!A-Za-z0-9]* | *[!A-Za-z0-9._-]*) exit 0 ;; esac
+hydra_name=${PNYX_HYDRA:-default}
+case $hydra_name in [!A-Za-z0-9]* | *[!A-Za-z0-9._-]*) exit 0 ;; esac
 task=
 case ${PNYX_TASK:-} in '' | *[!A-Za-z0-9._:\$-]*) ;; *) task="\"task\":\"$PNYX_TASK\"," ;; esac
 
@@ -58,8 +58,8 @@ fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
 # shellcheck disable=SC2046
 set -- $(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
 id="hook-$1-$$"
-board=$home/boards/$board_name
-spool=$board/spool
+hydra_dir=$home/boards/$hydra_name
+spool=$hydra_dir/spool
 [ -d "$spool" ] || mkdir -p "$spool" || exit 0
 # ponytail: names order by whole seconds, then by the zero-padded process id, which
 # keeps one session's same-second hooks in order (each runs after the last) until the
@@ -80,11 +80,11 @@ if ! grep -q '"payload": *[^ }]' "$tmp"; then
   printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s%s"payload":null}\n' "$id" "$2" "$harness" "$event" "$terminal" "$task" >"$tmp" || exit 0
 fi
 
-# The board's server handles each line as soon as its newline arrives and
+# The Hydra's server handles each line as soon as its newline arrives and
 # replies nothing, so nothing here relies on nc half-closing; -w 1 bounds the wait
 # for an nc that keeps the connection open. Without a running server there is no
 # socket file, so the common path never starts nc.
-if [ -S "$board/server.sock" ] && nc -U -w 1 "$board/server.sock" <"$tmp"; then
+if [ -S "$hydra_dir/server.sock" ] && nc -U -w 1 "$hydra_dir/server.sock" <"$tmp"; then
   rm -f "$tmp"
   exit 0
 fi

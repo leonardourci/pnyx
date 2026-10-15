@@ -1,5 +1,5 @@
 const paths: Record<string, string> = {
-  board: 'M3 4h18v16H3zM9 4v16M15 4v16',
+  hydra: 'M3 4h18v16H3zM9 4v16M15 4v16',
   search: 'M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
   close: 'm6 6 12 12M6 18 18 6',
   settings: 'M9 3h6l1 4 4 2v6l-4 2-1 4H9l-1-4-4-2V9l4-2zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
@@ -66,7 +66,7 @@ export function Icon({ name, size = 16 }: { name: string; size?: number }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d={paths[name] ?? paths.board} />
+      <path d={paths[name] ?? paths.hydra} />
     </svg>
   )
 }

@@ -115,7 +115,7 @@ const boundary = ({ node, filename, sourceCode }) => {
     return true // The returned handler is the AXI argv adapter.
   }
 
-  if (filename.endsWith('/src/search/backend.ts')) {
+  if (filename.endsWith('/src/oracle/backend.ts')) {
     const facade = owner({ node, types: ['TSInterfaceDeclaration', 'TSTypeAliasDeclaration'] })
 
     if (['Embedding', 'Ranking', 'LlamaCpp'].includes(facade?.id.name)) {
@@ -138,7 +138,7 @@ const boundary = ({ node, filename, sourceCode }) => {
     return true // The node:test context's cleanup hook.
   }
 
-  if (filename.endsWith('/src/search/models.ts') && parent.type === 'Property'
+  if (filename.endsWith('/src/oracle/models.ts') && parent.type === 'Property'
     && parent.key.name === 'transform') {
     return true // node:stream's Transform implementation hook.
   }

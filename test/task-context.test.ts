@@ -8,16 +8,16 @@ import { startTask } from '../src/cli/start.ts'
 import { hydraCheck, workerCommands } from '../src/cli/workers.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { DEFAULT_WIDTHS, viewFor } from '../src/core/view.ts'
-import { emptyBoard, replay } from '../src/core/reducer.ts'
-import { loadBoard, readEvents, withWriter } from '../src/store/board-store.ts'
+import { emptyHydra, replay } from '../src/core/reducer.ts'
+import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
 function fixture() {
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-context-')))
   process.env.PNYX_HOME = home
-  const run = ({ name, args = [], board = 'default' }: { name: keyof typeof commands; args?: string[]; board?: string }): Output | Promise<Output> => commands[name]([...args, '--board', board])
-  const state = () => loadBoard({ board: 'default' }).state
+  const run = ({ name, args = [], hydraId = 'default' }: { name: keyof typeof commands; args?: string[]; hydraId?: string }): Output | Promise<Output> => commands[name]([...args, '--hydra', hydraId])
+  const state = () => loadHydra({ hydraId: 'default' }).state
   const push = ({ key, input }: { key: string; input: object }) => withWriter({
-    board: 'default',
+    hydraId: 'default',
     fn: ({ writer }) => {
       const d = decidePush({ state: writer.state, key, input, meta: { at: '2026-10-15T12:00:00Z', actor: 'test' } })
 
@@ -49,9 +49,9 @@ test('brief and visibility events replay without dropping history or reacting to
     assert.equal(f.state().cards[id]?.hidden, true)
     await f.run({ name: 'task', args: ['unhide', 'work'] })
     assert.equal(f.state().cards[id]?.hidden, false)
-    const events = readEvents({ board: 'default' })
+    const events = readEvents({ hydraId: 'default' })
     assert.equal(events.filter(e => e.type === 'task.visibility').length, 2)
-    assert.deepEqual(replay({ state: emptyBoard(), events }), f.state())
+    assert.deepEqual(replay({ state: emptyHydra(), events }), f.state())
     assert.match(JSON.stringify(await workerCommands.hydra(['check', '--after', '0'])), /task.brief|task.visibility/)
   } finally {
     rmSync(f.home, { recursive: true, force: true })
@@ -63,7 +63,7 @@ test('descriptions and widths persist, resetting widths preserves the rest of th
 
   try {
     await f.run({ name: 'column', args: ['describe', 'needs_you', '--description', 'Questions only.'] })
-    assert.equal(f.state().board?.columns[0]?.description, 'Questions only.')
+    assert.equal(f.state().config?.columns[0]?.description, 'Questions only.')
     const seq = f.state().seq
     await f.run({ name: 'column', args: ['describe', 'needs_you', '--description', 'Questions only.'] })
     assert.equal(f.state().seq, seq)
@@ -83,7 +83,7 @@ test('descriptions and widths persist, resetting widths preserves the rest of th
     assert.deepEqual(view.columnWidths, {})
     assert.equal(view.theme, 'dark')
     assert.equal(view.fontSize, 18)
-    assert.deepEqual(replay({ state: emptyBoard(), events: readEvents({ board: 'default' }) }), f.state())
+    assert.deepEqual(replay({ state: emptyHydra(), events: readEvents({ hydraId: 'default' }) }), f.state())
   } finally {
     rmSync(f.home, { recursive: true, force: true })
   }
@@ -117,7 +117,7 @@ test('moves and deletes confirm the exact action and reject a token after the ta
     const reorder = await f.run({ name: 'column', args: ['reorder', 'parked', '--before', 'needs_you'] })
     assert.equal(reorder.confirmation, 'needed')
     await f.run({ name: 'column', args: ['reorder', 'parked', '--before', 'needs_you', '--confirm', String(reorder.token)] })
-    assert.equal(f.state().board?.columns[0]?.id, 'parked')
+    assert.equal(f.state().config?.columns[0]?.id, 'parked')
     await f.run({ name: 'move', args: ['work', 'needs_you', '--actor', 'web'] })
     assert.equal(f.state().cards[id]?.column, 'needs_you')
   } finally {
@@ -161,7 +161,7 @@ test('Hydra changes need one reason, which Pnyx posts as its chat line, and the 
     const lines = ['Created API cleanup: the owner asked for it', 'Moved API cleanup to Needs you: its agent asked which schema to use']
     const messages = await f.run({ name: 'hydra', args: ['messages', '--after', '0'] }) as { messages: { actor: string; text: string }[] }
     assert.deepEqual(messages.messages.map(m => [m.actor, m.text]), lines.map(text => ['hydra', text]))
-    const check = await hydraCheck({ args: ['check', '--after', '0', '--board', 'default'] }) as { changes: { type: string; actor: string; summary: string }[] }
+    const check = await hydraCheck({ args: ['check', '--after', '0', '--hydra', 'default'] }) as { changes: { type: string; actor: string; summary: string }[] }
     const own = check.changes.filter(c => c.type === 'hydra.message').map(c => c.summary)
     assert.deepEqual(own, [`Hydra: ${lines[0]}`, `Hydra: ${lines[1]} (It found two schemas: v1 in the API and v2 in the migration.)`])
     assert.ok(check.changes.some(c => c.actor === 'web'))
@@ -176,7 +176,7 @@ test('Hydra lines name starts, undos and returns, and the receipt carries the cu
 
   try {
     const hydra = ['--actor', 'hydra']
-    await f.run({ name: 'board', args: ['set', '--command', 'true'] })
+    await f.run({ name: 'hydra', args: ['set', '--command', 'true'] })
     await f.run({ name: 'task', args: ['create', '--key', 'work', '--title', 'Docs', '--folder', f.home] })
     const id = f.state().keys.work!
     const started = await f.run({ name: 'task', args: ['start', 'work', '--via', 'command', ...hydra, '--reason', 'the brief is ready'] })
@@ -184,31 +184,31 @@ test('Hydra lines name starts, undos and returns, and the receipt carries the cu
     const hidden = await f.run({ name: 'task', args: ['hide', 'work', ...hydra, '--reason', 'the owner paused it'] }) as { card: { revision: number } }
     assert.equal(hidden.card.revision, f.state().cards[id]!.revision)
     const shown = await f.run({ name: 'task', args: ['unhide', 'work', ...hydra, '--reason', 'the owner resumed it', '--details', 'Resume after the release.'] })
-    assert.equal(shown.posted, 'Returned Docs to the board: the owner resumed it')
+    assert.equal(shown.posted, 'Returned Docs to the Hydra: the owner resumed it')
     const moved = await f.run({ name: 'move', args: ['work', 'done', '--actor', 'web'] }) as { event: { id: string } }
     const undone = await f.run({ name: 'undo', args: [moved.event.id, ...hydra, '--reason', 'the work is not finished'] })
     assert.equal(undone.posted, 'Moved Docs back to Parked: the work is not finished')
     const rows = (await f.run({ name: 'hydra', args: ['messages', '--after', '0'] }) as { messages: { text: string; details?: string }[] }).messages
-    assert.deepEqual(rows.find(r => r.details), { ...rows.find(r => r.details), text: 'Returned Docs to the board: the owner resumed it', details: 'Resume after the release.' })
+    assert.deepEqual(rows.find(r => r.details), { ...rows.find(r => r.details), text: 'Returned Docs to the Hydra: the owner resumed it', details: 'Resume after the release.' })
   } finally {
     rmSync(f.home, { recursive: true, force: true })
   }
 })
 
-test('Hydra memory replaces by key, survives switching Hydra and isolates boards', async () => {
+test('Hydra memory replaces by key, survives switching Hydra and isolates Hydras', async () => {
   const f = fixture()
 
   try {
     await f.run({ name: 'hydra', args: ['memory', 'set', '--key', 'review-policy', '--text', 'Check the canary.'] })
     await f.run({ name: 'hydra', args: ['memory', 'set', '--key', 'review-policy', '--text', 'Check canary and rollback.'] })
-    await f.run({ name: 'board', args: ['set', '--hydra', 'new-hydra'] })
+    await f.run({ name: 'hydra', args: ['set', '--identity', 'new-hydra'] })
     assert.equal(f.state().hydraMemory?.['review-policy']?.text, 'Check canary and rollback.')
-    assert.match(JSON.stringify(await f.run({ name: 'hydra', board: 'other', args: ['memory'] })), /none: no Hydra memory/)
+    assert.match(JSON.stringify(await f.run({ name: 'hydra', hydraId: 'other', args: ['memory'] })), /none: no Hydra memory/)
     assert.throws(() => f.run({ name: 'hydra', args: ['memory', 'set', '--key', '../escape', '--text', 'No.'] }))
     await f.run({ name: 'hydra', args: ['memory', 'forget', '--key', 'review-policy'] })
     assert.deepEqual(f.state().hydraMemory, {})
-    assert.equal(readEvents({ board: 'default' }).filter(e => e.type === 'hydra.memory').length, 3)
-    assert.deepEqual(replay({ state: emptyBoard(), events: readEvents({ board: 'default' }) }), f.state())
+    assert.equal(readEvents({ hydraId: 'default' }).filter(e => e.type === 'hydra.memory').length, 3)
+    assert.deepEqual(replay({ state: emptyHydra(), events: readEvents({ hydraId: 'default' }) }), f.state())
   } finally {
     rmSync(f.home, { recursive: true, force: true })
   }
@@ -220,7 +220,7 @@ test('attaching hands the brief to the agent once and Firstmate start includes i
   try {
     const home = join(f.home, 'firstmate')
     cpSync(join(import.meta.dirname, 'fixtures/firstmate-home'), home, { recursive: true })
-    await f.run({ name: 'board', args: ['set', '--firstmate', home] })
+    await f.run({ name: 'hydra', args: ['set', '--firstmate', home] })
     await f.run({ name: 'task', args: ['create', '--key', 'work', '--title', 'Work', '--brief', 'Verify the canary.'] })
     f.push({ key: 'work', input: { source: { adapter: 'firstmate', instanceId: home, objectId: 'api-v2' } } })
     f.push({ key: 'agent', input: { agent: { provider: 'claude-code', sessionId: 'worker' }, terminal: { tty: '/dev/ttys123' } } })
@@ -239,20 +239,20 @@ test('attaching hands the brief to the agent once and Firstmate start includes i
     assert.equal((retry.brief as Output).state, 'failed')
     assert.equal(readFileSync(join(home, 'sent.log'), 'utf8'), replacementLog)
     await f.run({ name: 'task', args: ['detach', 'work'] })
-    await startTask({ board: 'default', task: 'work', via: 'firstmate', meta: { at: '2026-10-15T12:00:00Z', actor: 'test' } })
+    await startTask({ hydraId: 'default', task: 'work', via: 'firstmate', meta: { at: '2026-10-15T12:00:00Z', actor: 'test' } })
     assert.match(readFileSync(join(home, 'inbox.json'), 'utf8'), /Verify the canary/)
   } finally {
     rmSync(f.home, { recursive: true, force: true })
   }
 })
 
-test('the board command receives the task brief before explicit opening instructions', async () => {
+test('the Hydra command receives the task brief before explicit opening instructions', async () => {
   const f = fixture()
 
   try {
-    await f.run({ name: 'board', args: ['set', '--command', 'node -e \'require("fs").writeFileSync("prompt.json", JSON.stringify(process.env.PNYX_PROMPT))\''] })
+    await f.run({ name: 'hydra', args: ['set', '--command', 'node -e \'require("fs").writeFileSync("prompt.json", JSON.stringify(process.env.PNYX_PROMPT))\''] })
     await f.run({ name: 'task', args: ['create', '--key', 'work', '--title', 'Work', '--folder', f.home, '--brief', 'Verify the canary.'] })
-    await startTask({ board: 'default', task: 'work', via: 'command', prompt: 'Then report the result.', meta: { at: '2026-10-15T12:00:00Z', actor: 'test' } })
+    await startTask({ hydraId: 'default', task: 'work', via: 'command', prompt: 'Then report the result.', meta: { at: '2026-10-15T12:00:00Z', actor: 'test' } })
     const path = join(f.home, 'prompt.json')
 
     for (let i = 0; !existsSync(path) && i < 100; i++) {

@@ -18,9 +18,9 @@ const plan = [
   "Use the existing reply queue so delivered and handled remain separate facts.",
   "Keep ordinary paragraphs readable at the narrowest allowed column width.",
   "Support list items, fenced code, tables, links, headings and inline formatting.",
-  "Allow the conversation to sit in a column or beside the board in its own panel.",
+  "Allow the conversation to sit in a column or beside the Hydra in its own panel.",
   "Save the Focus preference and let the full trace remain available on demand.",
-  "Retain the draft while switching views and editing settings on the board.",
+  "Retain the draft while switching views and editing settings on the Hydra.",
 ];
 const ready = true;
 // END LONG CODE

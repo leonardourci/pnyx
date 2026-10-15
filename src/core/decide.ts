@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import {
   AUTO_TITLE_SOURCES,
-  BoardError,
+  HydraError,
   EVENT_VERSION,
   LINK_KINDS,
   LINK_STATES,
@@ -11,8 +11,8 @@ import {
   type AgentSettings,
   type Attention,
   type AutoTitle,
-  type BoardEvent,
-  type BoardState,
+  type HydraEvent,
+  type HydraState,
   type Card,
   type Column,
   type Link,
@@ -32,7 +32,7 @@ import { TERMINAL_FIELDS } from './route.ts'
 import { DEFAULT_VIEW, patchView, viewFor } from './view.ts'
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from './reducer.ts'
 import { columnCards, findSession, interactive, liveTask, rankOf } from './tasks.ts'
-import { boardConfig, fallbackColumn, hydraEvent, HYDRA_CARD } from './hydra.ts'
+import { hydraConfig, fallbackColumn, hydraEvent, HYDRA_CARD } from './hydra.ts'
 
 export interface Meta {
   at: string
@@ -46,20 +46,20 @@ export interface Meta {
   details?: string
 }
 
-export type Decision = { event: BoardEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }
+export type Decision = { event: HydraEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }
 
-export function findCard({ state, ref }: { state: BoardState; ref: string }): Card {
+export function findCard({ state, ref }: { state: HydraState; ref: string }): Card {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
   if (!card) {
-    throw new BoardError({ message: `card not found: ${ref}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi` to list cards'] })
+    throw new HydraError({ message: `card not found: ${ref}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi` to list cards'] })
   }
 
   return card
 }
 
 // Generated ids share a namespace with caller-chosen ones, so skip any already used.
-function freeId({ state, seq }: { state: BoardState; seq: number }): string {
+function freeId({ state, seq }: { state: HydraState; seq: number }): string {
   let id = `evt_${seq}`
 
   for (let n = 2; id in state.eventIds; n++) {
@@ -69,7 +69,7 @@ function freeId({ state, seq }: { state: BoardState; seq: number }): string {
   return id
 }
 
-function base({ state, meta, cardId }: { state: BoardState; meta: Meta; cardId: string }) {
+function base({ state, meta, cardId }: { state: HydraState; meta: Meta; cardId: string }) {
   const seq = state.seq + 1
 
   return {
@@ -97,9 +97,9 @@ function strip({ card }: { card: Card | undefined }) {
 }
 
 function decided({ state, meta, event }: {
-  state: BoardState
+  state: HydraState
   meta: Meta
-  event: BoardEvent
+  event: HydraEvent
 }): Decision {
   if (event.id in state.eventIds) {
     return { skipped: 'duplicate' }
@@ -120,7 +120,7 @@ function checkRevision({ card, ifRevision }: {
   const revision = card?.revision ?? 0
 
   if (ifRevision !== undefined && revision !== ifRevision) {
-    throw new BoardError({
+    throw new HydraError({
       message: `card ${card?.id ?? '(new)'} is at revision ${revision}, not ${ifRevision}`,
       code: 'REVISION_CONFLICT',
       help: [
@@ -130,12 +130,12 @@ function checkRevision({ card, ifRevision }: {
   }
 }
 
-function notUndoable({ message }: { message: string }): BoardError {
-  return new BoardError({ message, code: 'NOT_UNDOABLE', help: ['Run `pnyx-axi history` to find an undoable edit'] })
+function notUndoable({ message }: { message: string }): HydraError {
+  return new HydraError({ message, code: 'NOT_UNDOABLE', help: ['Run `pnyx-axi history` to find an undoable edit'] })
 }
 
-function invalid({ message }: { message: string }): BoardError {
-  return new BoardError({ message, code: 'VALIDATION_ERROR' })
+function invalid({ message }: { message: string }): HydraError {
+  return new HydraError({ message, code: 'VALIDATION_ERROR' })
 }
 
 function asRecord({ value }: { value: unknown }): Record<string, unknown> | undefined {
@@ -425,7 +425,7 @@ function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
 // task is the PNYX_TASK a session was started with: the task it works on, or
 // Hydra's own marker; it outranks the folder join for a session not seen yet.
 export function joinedKey({ state, key, folder, terminal, probed = false, task }: {
-  state: BoardState
+  state: HydraState
   key: string
   folder: string | undefined
   terminal?: TerminalFacts
@@ -492,7 +492,7 @@ export function joinedKey({ state, key, folder, terminal, probed = false, task }
 }
 
 export function decideSession({ state, ref, task, meta }: {
-  state: BoardState
+  state: HydraState
   ref: string
   task: string | null
   meta: Meta
@@ -508,15 +508,15 @@ export function decideSession({ state, ref, task, meta }: {
   checkRevision({ card, ifRevision: meta.ifRevision })
 
   if (target?.sessionIds?.some(id => id !== session.id)) {
-    throw new BoardError({ message: `task ${target.id} already has an attached agent; detach it first`, code: 'SESSION_CONFLICT' })
+    throw new HydraError({ message: `task ${target.id} already has an attached agent; detach it first`, code: 'SESSION_CONFLICT' })
   }
 
-  if (target && state.board?.hydra.session === session.id) {
-    throw new BoardError({ message: 'Hydra cannot also be a task worker', code: 'CONFLICT' })
+  if (target && state.config?.hydra.session === session.id) {
+    throw new HydraError({ message: 'Hydra cannot also be a task worker', code: 'CONFLICT' })
   }
 
   if (target && !interactive({ session })) {
-    throw new BoardError({ message: 'A background session has no interactive terminal and cannot be attached to a task', code: 'NO_TERMINAL' })
+    throw new HydraError({ message: 'A background session has no interactive terminal and cannot be attached to a task', code: 'NO_TERMINAL' })
   }
 
   if (session.taskId === (target?.id ?? null)) {
@@ -538,7 +538,7 @@ export function decideSession({ state, ref, task, meta }: {
 }
 
 export function decidePush({ state, key, input: rawInput, meta }: {
-  state: BoardState
+  state: HydraState
   key: string
   input: unknown
   meta: Meta
@@ -671,15 +671,15 @@ function pushedValue({ card, field }: { card: Card; field: string }): unknown {
   return (card as unknown as Record<string, unknown>)[field] ?? null
 }
 
-function checkColumn({ state, column }: { state: BoardState; column: Column | null }): void {
-  if (column && !boardConfig({ state }).columns.some(c => c.id === column)) {
-    throw invalid({ message: `unknown board column: ${column}` })
+function checkColumn({ state, column }: { state: HydraState; column: Column | null }): void {
+  if (column && !hydraConfig({ state }).columns.some(c => c.id === column)) {
+    throw invalid({ message: `unknown Hydra column: ${column}` })
   }
 }
 
 export function decideMove(
   { state, ref, column, before, meta }: {
-    state: BoardState
+    state: HydraState
     ref: string
     column: Column
     before?: string
@@ -780,7 +780,7 @@ export function parseLink({ input }: {
 
 export function decideLink(
   { state, ref, url, link, meta }: {
-    state: BoardState
+    state: HydraState
     ref: string
     url: string
     link: Link | null
@@ -815,7 +815,7 @@ export function decideLink(
 // clears only through the same source; a person may replace one hooks observed.
 export function decideOutcome(
   { state, ref, outcome, meta, source }: {
-    state: BoardState
+    state: HydraState
     ref: string
     outcome: Outcome | null
     meta: Meta
@@ -826,7 +826,7 @@ export function decideOutcome(
   const observed = card.outcome?.source
 
   if (observed && source !== observed && !(source === undefined && observed === 'hooks')) {
-    throw new BoardError({
+    throw new HydraError({
       message: `card ${card.id}'s outcome comes from ${observed} and cannot be changed here`,
       code: 'SOURCE_OWNED',
       help: [
@@ -850,7 +850,7 @@ export function decideOutcome(
   })
 }
 
-export function decideReply({ state, ref, data, meta }: { state: BoardState; ref: string; data: RepliedEvent['data']; meta: Meta }): Decision {
+export function decideReply({ state, ref, data, meta }: { state: HydraState; ref: string; data: RepliedEvent['data']; meta: Meta }): Decision {
   const card = findCard({ state, ref })
 
   return decided({ state, meta, event: { ...base({ state, meta, cardId: card.id }), type: 'card.replied', data } })
@@ -866,7 +866,7 @@ export function noteId({ cardKey, ref }: { cardKey: string; ref: string }): stri
 
 export function decideNote(
   { state, ref, note, meta }: {
-    state: BoardState
+    state: HydraState
     ref: string
     note: Note
     meta: Meta & {
@@ -889,7 +889,7 @@ export function decideNote(
   return decided({ state, meta, event: { ...base({ state, meta, cardId: card.id }), type: 'card.noted', data } })
 }
 
-function currentValue({ card, target }: { card: Card; target: Exclude<BoardEvent, { type: 'board.view' }> }): unknown {
+function currentValue({ card, target }: { card: Card; target: Exclude<HydraEvent, { type: 'board.view' }> }): unknown {
   if (target.type === 'card.pushed') {
     return Object.fromEntries(
       Object.keys(target.data.before ?? {}).map(field => [field, pushedValue({ card, field })]),
@@ -907,7 +907,7 @@ function currentValue({ card, target }: { card: Card; target: Exclude<BoardEvent
   return card.outcome ?? null
 }
 
-function afterValue({ target }: { target: BoardEvent }): unknown {
+function afterValue({ target }: { target: HydraEvent }): unknown {
   if (target.type === 'card.replied' || target.type === 'card.noted') {
     return null
   }
@@ -938,15 +938,15 @@ function afterValue({ target }: { target: BoardEvent }): unknown {
 // whether a person or an agent made it. A sent reply cannot be unsent, and a
 // harvested note is a source observation.
 export function decideUndo({ state, target, meta }: {
-  state: BoardState
-  target: BoardEvent
+  state: HydraState
+  target: HydraEvent
   meta: Meta
 }): Decision {
   if (target.type === 'board.columns') {
-    const unchanged = isDeepStrictEqual(boardConfig({ state }).columns, target.data.columns)
+    const unchanged = isDeepStrictEqual(hydraConfig({ state }).columns, target.data.columns)
 
     if (!target.data.before || state.undone[target.id] || !unchanged) {
-      throw new BoardError({ message: 'columns changed since this event', code: 'CONFLICT' })
+      throw new HydraError({ message: 'columns changed since this event', code: 'CONFLICT' })
     }
 
     const pins = Object.entries(target.data.placements ?? {})
@@ -954,7 +954,7 @@ export function decideUndo({ state, target, meta }: {
       const card = state.cards[id]
 
       if (!card || card.column !== pin.after) {
-        throw new BoardError({ message: `task ${id} moved after the column edit`, code: 'CONFLICT' })
+        throw new HydraError({ message: `task ${id} moved after the column edit`, code: 'CONFLICT' })
       }
 
       return [id, { before: pin.after, after: pin.before }]
@@ -972,7 +972,7 @@ export function decideUndo({ state, target, meta }: {
     const session = findSession({ state, ref: target.data.session })
 
     if (state.undone[target.id] || session.taskId !== target.data.after) {
-      throw new BoardError({ message: 'session attachment changed since this event', code: 'CONFLICT' })
+      throw new HydraError({ message: 'session attachment changed since this event', code: 'CONFLICT' })
     }
 
     checkRevision({ card: findCard({ state, ref: target.cardId }), ifRevision: meta.ifRevision })
@@ -995,11 +995,11 @@ export function decideUndo({ state, target, meta }: {
         },
       }))
     ) {
-      throw new BoardError({ message: 'preferences changed since this event', code: 'CONFLICT' })
+      throw new HydraError({ message: 'preferences changed since this event', code: 'CONFLICT' })
     }
 
     if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) {
-      throw new BoardError({ message: 'view preferences changed', code: 'REVISION_CONFLICT' })
+      throw new HydraError({ message: 'view preferences changed', code: 'REVISION_CONFLICT' })
     }
 
     const after = patchView({ state: { ...state, view: DEFAULT_VIEW }, input: target.data.before })
@@ -1010,7 +1010,7 @@ export function decideUndo({ state, target, meta }: {
       const card = state.cards[p.cardId]
 
       if (!card || card.column !== p.after) {
-        throw new BoardError({ message: `card ${p.cardId} was moved since this event`, code: 'CONFLICT' })
+        throw new HydraError({ message: `card ${p.cardId} was moved since this event`, code: 'CONFLICT' })
       }
 
       if (placements.some(q => q.cardId === card.id)) {
@@ -1074,7 +1074,7 @@ export function decideUndo({ state, target, meta }: {
 
   if (latest) {
     const redone = chain.length % 2 === 0
-    throw new BoardError({
+    throw new HydraError({
       message: `${target.id} was already ${redone ? 'redone' : 'undone'} by ${latest}`,
       code: 'CONFLICT',
       help: [
@@ -1087,7 +1087,7 @@ export function decideUndo({ state, target, meta }: {
   checkRevision({ card, ifRevision: meta.ifRevision })
 
   if (!isDeepStrictEqual(currentValue({ card, target }), afterValue({ target }))) {
-    throw new BoardError({
+    throw new HydraError({
       message: `${target.id} no longer matches card ${card.id}: it changed since`,
       code: 'CONFLICT',
       help: [
@@ -1139,7 +1139,7 @@ export function decideUndo({ state, target, meta }: {
 }
 
 export function decideView({ state, patch, meta }: {
-  state: BoardState
+  state: HydraState
   patch: unknown
   meta: Meta
 }): Decision {
@@ -1148,7 +1148,7 @@ export function decideView({ state, patch, meta }: {
   }
 
   if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) {
-    throw new BoardError({ message: 'view preferences changed; reload and retry', code: 'REVISION_CONFLICT' })
+    throw new HydraError({ message: 'view preferences changed; reload and retry', code: 'REVISION_CONFLICT' })
   }
 
   const before = viewFor({ state }), after = patchView({ state, input: patch })
@@ -1168,16 +1168,16 @@ export function decideView({ state, patch, meta }: {
   }
 }
 
-// Cards in a deleted legacy view column move to the fallback column; board columns stay.
+// Cards in a deleted legacy view column move to the fallback column; Hydra columns stay.
 function removedColumnPlacements({ state, after }: {
-  state: BoardState
+  state: HydraState
   after: ViewPreferences
 }): NonNullable<ViewEvent['data']['placements']> {
   const kept = new Set<Column>([
     ...after.customColumns.map(c => c.id),
-    ...(state.board?.columns.map(c => c.id) ?? []),
+    ...(state.config?.columns.map(c => c.id) ?? []),
   ])
-  const columns = boardConfig({ state: { ...state, view: after } }).columns
+  const columns = hydraConfig({ state: { ...state, view: after } }).columns
   const fallback = fallbackColumn({ columns })
 
   return Object.values(state.cards)

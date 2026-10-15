@@ -113,7 +113,7 @@ test('external entry point exceptions apply only to their owning files and hooks
   assert.equal((await objectErrors({ code })).length, 1)
   const transform = 'new Transform({ transform(chunk, encoding, done) { done(null, chunk) } })'
   assert.equal((await objectErrors({
-    code: transform, filePath: 'src/search/models.ts',
+    code: transform, filePath: 'src/oracle/models.ts',
   })).length, 0)
   assert.equal((await objectErrors({ code: transform })).length, 1)
 })

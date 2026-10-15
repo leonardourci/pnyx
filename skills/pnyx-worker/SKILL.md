@@ -5,22 +5,22 @@ description: Use when you are a worker attached to a Pnyx task (your prompt name
 
 # Pnyx worker
 
-You work on one task of a Pnyx board. Hydra, the board's orchestrator, assigned it; the user and Hydra follow it on the board. Your task id is in your first prompt (and in `$PNYX_TASK` when the board's own command started you), your board in `$PNYX_BOARD`; pass `--board <board>` on every command.
+You work on one task of a Pnyx Hydra. Hydra, the Hydra's orchestrator, assigned it; the user and Hydra follow it on the Hydra. Your task id is in your first prompt (and in `$PNYX_TASK` when the Hydra's own command started you), your Hydra in `$PNYX_HYDRA`; pass `--hydra <hydra>` on every command.
 
 ## Start
 
-Read the task before working: `pnyx-axi task show <task> --board <board>`, then `pnyx-axi task history <task> --board <board>` for what earlier workers did and where they stopped. `pnyx-axi task chat <task> --session <session> --board <board>` reads a past worker's conversation.
+Read the task before working: `pnyx-axi task show <task> --hydra <hydra>`, then `pnyx-axi task history <task> --hydra <hydra>` for what earlier workers did and where they stopped. `pnyx-axi task chat <task> --session <session> --hydra <hydra>` reads a past worker's conversation.
 
 ## Declare, and only declare
 
 Your state changes only when you say so:
 
 ```sh
-pnyx-axi task status <task> working --note "<what you are doing>" --board <board>
-pnyx-axi task status <task> needs_you --note "<the question>" --board <board>
-pnyx-axi task status <task> blocked --note "<what stops you>" --board <board>
-pnyx-axi task status <task> paused --note "<why, and what resumes it>" --board <board>
-pnyx-axi task status <task> done --note "<the result, with links>" --board <board>
+pnyx-axi task status <task> working --note "<what you are doing>" --hydra <hydra>
+pnyx-axi task status <task> needs_you --note "<the question>" --hydra <hydra>
+pnyx-axi task status <task> blocked --note "<what stops you>" --hydra <hydra>
+pnyx-axi task status <task> paused --note "<why, and what resumes it>" --hydra <hydra>
+pnyx-axi task status <task> done --note "<the result, with links>" --hydra <hydra>
 ```
 
 - Declare `working` when you start.
@@ -28,9 +28,9 @@ pnyx-axi task status <task> done --note "<the result, with links>" --board <boar
 - Declare `blocked` for a real obstacle, `paused` for a deliberate wait, `done` only when the work is finished.
 - Silence changes nothing: idling, finishing a turn or exiting never moves the task. Declare a phase change once, not every step.
 
-To escalate a question or decision to Hydra, use `pnyx-axi hydra send --task <task> --text "<what you need and why>" --board <board>`. Hydra receives it through the light check and decides whether to answer, update the brief or ask the owner.
+To escalate a question or decision to Hydra, use `pnyx-axi hydra send --task <task> --text "<what you need and why>" --hydra <hydra>`. Hydra receives it through the light check and decides whether to answer, update the brief or ask the owner.
 
-Replies reach you as ordinary messages in your session. Link pull requests or tickets with `pnyx-axi link <task> --url <url> --board <board>`.
+Replies reach you as ordinary messages in your session. Link pull requests or tickets with `pnyx-axi link <task> --url <url> --hydra <hydra>`.
 
 ## Limits
 
