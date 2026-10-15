@@ -1,9 +1,13 @@
+import { cardSessionId, liveTask } from '../../../src/core/tasks.ts'
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import type { Card, ViewPreferences } from '../../../src/core/model.ts'
+import type { Card, Column as ColumnId, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { viewFor } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Input, Select } from '../components/ui/controls.tsx'
+import { InlineTitle } from '../components/ui/inline-title.tsx'
+import { HydraChat } from './hydra-chat.tsx'
+import type { Command } from './connection.ts'
 import { Icon } from '../components/ui/icon.tsx'
 import { InlineConfirm } from '../components/ui/inline-confirm.tsx'
 import { Resize } from '../components/ui/resize.tsx'
@@ -48,9 +52,16 @@ function Column({
   cards,
   view,
   save,
-  remove,
-  connected,
   children,
+  command,
+  notify,
+  revision,
+  connected,
+  columnIds,
+  editingTitle,
+  titleFinished,
+  createTask,
+  removed,
 }: {
   id: string
   title: string
@@ -58,17 +69,39 @@ function Column({
   cards: Card[]
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
-  remove(): Promise<boolean>
-  connected: boolean
   children: ReactNode
+  command: Command
+  notify({ text }: { text: string }): void
+  revision: number
+  connected: boolean
+  columnIds: ColumnId[]
+  editingTitle: boolean
+  titleFinished(): void
+  createTask({ column, parent }: { column: string; parent?: string }): void
+  removed({ event }: { event: string }): void
 }) {
   const [width, setWidth] = useState<number | null>(null)
+  const edit = ({ args }: { args: string[] }) => command({ name: 'column', args: [...args, '--if-revision', String(revision), '--event-id', crypto.randomUUID()] })
 
   return (
     <section
       data-column={id}
       className={`column column-${id}`}
       aria-label={title}
+      onDragOver={e => e.preventDefault()}
+      onDrop={e => {
+        e.preventDefault()
+        const source = e.dataTransfer.getData('application/pnyx-column')
+        const task = e.dataTransfer.getData('application/pnyx-task')
+
+        if (source && source !== id) {
+          const target = columnIds.indexOf(id as ColumnId)
+          const before = columnIds.indexOf(source as ColumnId) < target ? columnIds[target + 1] : id
+          void edit({ args: ['reorder', source, ...(before ? ['--before', before] : [])] }).catch(e => notify({ text: e.message }))
+        } else if (task) {
+          void command({ name: 'move', args: [task, id, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+        }
+      }}
       style={{
         width: width ?? view.columnWidths[id] ?? 290,
         flexBasis: width ?? view.columnWidths[id] ?? 290,
@@ -76,24 +109,63 @@ function Column({
         minHeight: VIEW_SIZE_LIMITS.columnHeight.min,
       }}
     >
-      <header className="column-header">
+      <header
+        className="column-header"
+        draggable={connected}
+        onDragStart={e => e.dataTransfer.setData('application/pnyx-column', id)}
+      >
         <div className="row between">
           <h2>
             <Icon name={id} size={15} />
-            {title}
+            <InlineTitle
+              value={title}
+              label={`Rename ${title} column`}
+              doubleClick
+              startEditing={editingTitle}
+              save={({ title }) => edit({ args: ['rename', id, `--title=${title}`] }).then(() => titleFinished())}
+            />
           </h2>
           <span className="count">{String(cards.length).padStart(2,'0')}</span>
         </div>
         <p>{description}</p>
-        {id.startsWith('custom:') && (
+        <div className="row">
+          <Button
+            aria-label={`Move ${title} left`}
+            disabled={!connected || columnIds.indexOf(id as ColumnId) === 0}
+            onClick={() => {
+              const before = columnIds[columnIds.indexOf(id as ColumnId) - 1]
+
+              if (before) {
+                void edit({ args: ['reorder', id, '--before', before] }).catch(e => notify({ text: e.message }))
+              }
+            }}
+          >←
+          </Button>
+          <Button
+            aria-label={`Move ${title} right`}
+            disabled={!connected || columnIds.at(-1) === id}
+            onClick={() => {
+              const before = columnIds[columnIds.indexOf(id as ColumnId) + 2]
+              void edit({ args: ['reorder', id, ...(before ? ['--before', before] : [])] }).catch(e => notify({ text: e.message }))
+            }}
+          >→
+          </Button>
           <InlineConfirm
             label={`Delete ${title} column`}
             action="Delete column"
-            message={`Delete “${title}”? Its cards return to automatic placement. You can undo this.`}
-            disabled={!connected}
-            confirm={remove}
+            message={`Delete “${title}”? Its tasks move to a remaining column.`}
+            disabled={!connected || columnIds.length === 1}
+            confirm={() => edit({ args: ['delete', id] }).then(receipt => {
+              removed({ event: (receipt.event as { id: string }).id })
+
+              return true
+            }, e => {
+              notify({ text: e.message })
+
+              return false
+            })}
           />
-        )}
+        </div>
       </header>
       <div className="column-cards">
         {children}
@@ -108,6 +180,7 @@ function Column({
             No cards here
           </p>
         )}
+        <Button disabled={!connected} onClick={() => createTask({ column: id })}>+ Add task</Button>
       </div>
       <Resize
         label={`Resize ${title} column`}
@@ -128,6 +201,7 @@ export function App() {
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
   // The deletion a notice can undo; any later notice replaces it.
   const [undoColumn, setUndoColumn] = useState<string | null>(null)
+  const [editingTask, setEditingTask] = useState<string | null>(null)
   const notify = useCallback(({ text }: { text: string }) => {
     setNotice(text); setUndoColumn(null)
   }, [])
@@ -148,14 +222,23 @@ export function App() {
   const columns = columnsFor({ state })
   const found = useFoundCards({ command, query, workspace })
   const matches = new Map(found.map(h => [h.card, h]))
-  const cards = findBoxCards({ state, workspace, tag, query, meaning: found.map(h => h.card) })
+  const cards = findBoxCards({
+    state,
+    workspace,
+    tag,
+    query,
+    meaning: found.map(h => h.card),
+  })
   const card = selected ? state.cards[selected] : undefined
+  const attachedSession = card ? cardSessionId({ card }) : undefined
   const title = pageTitle({ page, cards: state.cards, selected })
   useEffect(() => {
     document.title = title
   }, [title])
-  const workspaces = [...new Set(Object.values(state.cards).map(c => c.workspace))].sort()
-  const tags = [...new Set(Object.values(state.cards).flatMap(c => c.tags))].sort()
+  const workspaces = [...new Set(Object.values(state.cards).filter(c => liveTask({ card: c }))
+    .map(c => c.workspace))].sort()
+  const tags = [...new Set(Object.values(state.cards).filter(c => liveTask({ card: c }))
+    .flatMap(c => c.tags))].sort()
   const save = useCallback(({ patch }: { patch: unknown }) => command({ name: 'view', args: ['set', '--json', JSON.stringify(patch), '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => {
     notify({ text: 'Preferences saved' })
 
@@ -184,7 +267,7 @@ export function App() {
     return () => {
       cancelled = true
     }
-  }, [selected, connected, command, setThread, notify])
+  }, [selected, attachedSession, connected, command, setThread, notify])
   useEffect(() => {
     const keep = () => {
       try {
@@ -230,20 +313,12 @@ export function App() {
     const target = cards.find(c => c.id === selected) ?? cards.find(c => c.column === card?.column) ?? cards[0]; setSelected(null); requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-empty-column="${CSS.escape(card?.column ?? 'needs_you')}"]` }))
   }
 
-  const removeColumn = async ({ id }: { id: string }) => {
-    const eventId = crypto.randomUUID()
-
-    try {
-      await command({ name: 'view', args: ['set', '--json', JSON.stringify({ customColumns: view.customColumns.filter(c => c.id !== id) }), '--if-revision', String(state.viewRevision ?? 0), '--event-id', eventId] })
-      notify({ text: 'Column deleted. Its cards returned to automatic placement.' }); setUndoColumn(eventId)
-      requestAnimationFrame(() => focusElement({ selector: '[data-card], [data-empty-column]' }))
-
-      return true
-    } catch (e) {
-      notify({ text: (e as Error).message })
-
-      return false
-    }
+  const createTask = ({ column, parent }: { column: string; parent?: string }) => {
+    void command({ name: 'task', args: ['create', '--title', parent ? 'New subtask' : 'New task', '--column', column, ...(parent ? ['--parent', parent] : []), '--event-id', crypto.randomUUID()] }).then(receipt => {
+      setWorkspace(''); setTag(''); setQuery('')
+      setEditingTask((receipt.card as { id: string }).id)
+    })
+      .catch(e => notify({ text: e.message }))
   }
 
   const keyboard = useBoardKeyboard({
@@ -265,11 +340,11 @@ export function App() {
   })
   const detail = card && (
     <Detail
-      key={card.id}
+      key={`${card.id}:${attachedSession ?? ''}`}
       card={card}
       state={state}
       view={view}
-      thread={thread}
+      thread={thread?.session === attachedSession ? thread : null}
       command={command}
       connected={connected}
       close={close}
@@ -345,13 +420,13 @@ export function App() {
                   <p>Follow the work. Keep the conversation in view.</p>
                 </div>
                 <div className="hero-stats">
-                  <strong>{Object.values(state.cards).filter(c => c.column === 'needs_you').length}</strong>
+                  <strong>{Object.values(state.cards).filter(c => liveTask({ card: c }) && c.column === 'needs_you').length}</strong>
                   {' '}
                   need your attention
                   <p>
-                    {Object.keys(state.cards).length}
+                    {Object.values(state.cards).filter(c => liveTask({ card: c })).length}
                     {' '}
-                    sessions ·
+                    tasks ·
                     {' '}
                     {state.seq}
                     {' '}
@@ -394,6 +469,13 @@ export function App() {
                   />
                 </div>
               </div>
+              <HydraChat
+                state={state}
+                command={command}
+                connected={connected}
+                openTask={open}
+                notify={notify}
+              />
               <div className={`work-area ${view.panelPlacement}`}>
                 <div className="board-space">
                   <div className="kanban" aria-label="Work columns">
@@ -407,8 +489,17 @@ export function App() {
                           cards={items}
                           view={view}
                           save={save}
-                          remove={() => removeColumn({ id: c.id })}
+                          command={command}
+                          notify={notify}
+                          revision={state.boardRevision ?? 0}
                           connected={connected}
+                          columnIds={columns.map(c => c.id)}
+                          editingTitle={newColumn === c.id}
+                          titleFinished={() => setNewColumn(null)}
+                          createTask={createTask}
+                          removed={({ event }) => {
+                            notify({ text: 'Column deleted.' }); setUndoColumn(event)
+                          }}
                         >
                           {items.map(item => (
                             <Fragment key={item.id}>
@@ -421,6 +512,12 @@ export function App() {
                                 view={view}
                                 open={open}
                                 save={save}
+                                command={command}
+                                connected={connected}
+                                notify={notify}
+                                editingTitle={editingTask === item.id}
+                                titleFinished={() => setEditingTask(null)}
+                                createTask={createTask}
                                 tabIndex={
                                   (items.some(i => i.id === keyboard.remembered[c.id])
                                     ? keyboard.remembered[c.id]
@@ -434,45 +531,22 @@ export function App() {
                       )
                     })}
                     <div className="add-column">
-                      {newColumn === null ? <Button onClick={() => setNewColumn('')} disabled={!connected}>+ Add column</Button> : (
-                        <form
-                          onSubmit={e => {
-                            e.preventDefault()
-
-                            if (!newColumn.trim()) {
-                              return
-                            }
-
-                            const patch = { customColumns: [...view.customColumns, { id: `custom:${crypto.randomUUID()}`, title: newColumn.trim() }] }; void command({ name: 'view', args: ['set', '--json', JSON.stringify(patch), '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => setNewColumn(null))
-                              .catch(e => notify({ text: e.message }))
-                          }}
-                        >
-                          <Input
-                            autoFocus
-                            aria-label="New column name"
-                            value={newColumn}
-                            maxLength={60}
-                            placeholder="Column name"
-                            onChange={e => setNewColumn(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
-                                setNewColumn(null)
-                              }
-                            }}
-                          />
-                          <div className="row">
-                            <Button type="submit" variant="primary">Create column</Button>
-                            <Button onClick={() => setNewColumn(null)}>Cancel</Button>
-                          </div>
-                        </form>
-                      )}
+                      <Button
+                        disabled={!connected}
+                        onClick={() => {
+                          const id = `custom:${crypto.randomUUID()}`
+                          void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--event-id', crypto.randomUUID()] }).then(() => setNewColumn(id))
+                            .catch(e => notify({ text: e.message }))
+                        }}
+                      >+ Add column
+                      </Button>
                     </div>
                   </div>
                   <footer className="board-footer">
                     <span>
                       {cards.length}
                       {' '}
-                      visible sessions
+                      visible tasks
                     </span>
                     <KeyboardFooter />
                   </footer>
@@ -488,7 +562,7 @@ export function App() {
             {undoColumn && (
               <Button
                 onClick={() => {
-                  void command({ name: 'undo', args: [undoColumn, '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Column and its cards restored.' }))
+                  void command({ name: 'undo', args: [undoColumn, '--if-revision', String(state.boardRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Column and its cards restored.' }))
                     .catch(e => notify({ text: e.message }))
                 }}
               >
