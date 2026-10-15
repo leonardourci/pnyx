@@ -279,7 +279,7 @@ export function patchView({ state, input: rawInput }: {
             return invalid({ detail: id })
           }
 
-          if (key === 'columnWidths' && ![...COLUMNS, ...boardColumnIds, ...next.customColumns.map(c => c.id)].includes(id as never)) {
+          if (key === 'columnWidths' && n !== null && ![...COLUMNS, ...boardColumnIds, ...next.customColumns.map(c => c.id)].includes(id as never)) {
             return invalid({ detail: id })
           }
 
