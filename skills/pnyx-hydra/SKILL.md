@@ -74,7 +74,7 @@ Keep both statuses honest: your Firstmate status feeds the mirrored task, and th
 
 ## Layout and memory
 
-Use `column create --title "<name>" --description "<when and why>"`, `column rename <id> --title "<name>"` and `column describe <id> --description "<when and why>"` to maintain the columns. A Firstmate-linked Hydra's default columns cannot be renamed or deleted. `column reorder <id> --before <id>` moves a column and `column delete <id> --to <remaining-id>` deletes it and places its cards in the destination. Moves and deletes first return `confirmation: needed` and a token; inspect the action and repeat the exact command with `--confirm <token>`. A changed target requires a new confirmation.
+Use `column create --title "<name>" --description "<when and why>"`, `column rename <id> --title "<name>"` and `column describe <id> --description "<when and why>"` to maintain the columns. A Firstmate-linked Hydra's default columns cannot be deleted. `column reorder <id> --before <id>` moves a column and `column delete <id> --to <remaining-id>` deletes it and places its cards in the destination. Moves and deletes first return `confirmation: needed` and a token; inspect the action and repeat the exact command with `--confirm <token>`. A changed target requires a new confirmation.
 
 `column resize <id> --width <pixels>` and `hydra resize --width <pixels>` change widths; `layout show` reports them and their stored defaults, and `layout reset` restores default widths. Pass `--hydra <hydra>` on each.
 
