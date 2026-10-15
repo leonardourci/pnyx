@@ -66,7 +66,7 @@ test('undo events restore the card and record what they reversed', () => {
   const card = state.cards.c1!
   assert.deepEqual(card.links, [])
   assert.equal(card.outcome, undefined)
-  assert.equal(card.column, 'in_progress')
+  assert.equal(card.column, 'workers_on_it', 'an older log keeps its Workers on it card until the Hydra moves onto the default columns')
   assert.deepEqual(state.undone, { evt_2: 'evt_3', evt_4: 'evt_5', evt_6: 'evt_7' })
 })
 

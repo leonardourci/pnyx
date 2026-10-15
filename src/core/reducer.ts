@@ -1,6 +1,7 @@
 import {
   AUTO_TITLE_SOURCES,
   EVENT_VERSION,
+  LEGACY_IN_PROGRESS,
   SESSION_TITLE,
   type AutoTitle,
   type HydraEvent,
@@ -96,7 +97,7 @@ export function wouldCycle({ cards, cardId, parentId }: {
 function newCardColumn({ state }: { state: HydraState }): Column {
   const columns = hydraConfig({ state }).columns
 
-  return columns.some(c => c.id === 'workers_on_it') ? 'workers_on_it' : roleColumn({ columns, role: 'in_progress' }) ?? fallbackColumn({ columns })
+  return columns.some(c => c.id === LEGACY_IN_PROGRESS) ? LEGACY_IN_PROGRESS : roleColumn({ columns, role: 'in_progress' }) ?? fallbackColumn({ columns })
 }
 
 function apply({ state, event }: { state: HydraState; event: HydraEvent }): boolean {

@@ -3,7 +3,8 @@ export const HYDRA_ACTOR = 'hydra'
 
 export const COLUMNS = ['queued', 'in_progress', 'needs_you', 'parked', 'done'] as const
 // Column ids earlier versions wrote; old logs still name them until the Hydra moves onto the defaults.
-export const LEGACY_COLUMNS = ['workers_on_it', 'review'] as const
+export const LEGACY_IN_PROGRESS = 'workers_on_it'
+export const LEGACY_COLUMNS = [LEGACY_IN_PROGRESS, 'review'] as const
 export type Column = (typeof COLUMNS)[number] | (typeof LEGACY_COLUMNS)[number] | `custom:${string}`
 
 export const LINK_KINDS = ['github_pr', 'linear', 'url'] as const
@@ -281,7 +282,7 @@ export interface HydraColumn {
   description?: string
   // Roles survive a rename. A task created in a role's column starts with its status,
   // and a card whose column is deleted falls back to the parked one.
-  role?: (typeof COLUMNS)[number]
+  role?: (typeof COLUMNS)[number] | typeof LEGACY_IN_PROGRESS
 }
 export const HARNESS_NAMES = ['claude', 'codex'] as const
 export const QUOTA_BUCKETS = ['high', 'medium', 'low'] as const

@@ -6,6 +6,10 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 import { hydraDir, spoolWrite } from '../src/store/hydra-store.ts'
+import { lockedColumn, migrateColumns } from '../src/core/hydra.ts'
+import { decideUndo } from '../src/core/decide.ts'
+import { HydraError } from '../src/core/model.ts'
+import { emptyHydra, reduce } from '../src/core/reducer.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -191,4 +195,15 @@ test('concurrent writers get one contiguous sequence', async () => {
   assert.deepEqual(log.map(l => JSON.parse(l).seq), [1, 2, 3, 4, 5, 6, 7, 8])
   assert.match(run({ args: [] }), /^ {2}in_progress: 8$/m)
   assert.equal(existsSync(join(env.PNYX_HOME, 'boards', 'default', 'writer.lock')), false)
+})
+
+test('only a Firstmate-linked Hydra locks its default columns, and the move onto them cannot be undone', () => {
+  const firstmate = { ...emptyHydra(), config: { id: 'default', name: 'default', hydra: { id: 'fm', kind: 'firstmate' as const, name: 'Hydra', home: '/home' }, columns: [] } }
+  assert.equal(lockedColumn({ state: firstmate, id: 'needs_you' }), true)
+  assert.equal(lockedColumn({ state: firstmate, id: 'custom:mine' }), false)
+  assert.equal(lockedColumn({ state: { ...firstmate, config: { ...firstmate.config, hydra: { id: 'h', kind: 'agent', name: 'Hydra' } } }, id: 'needs_you' }), false)
+  const legacy = { ...firstmate, config: { ...firstmate.config, columns: [{ id: 'workers_on_it' as const, title: 'Workers on it', role: 'workers_on_it' as const }] } }
+  const decision = migrateColumns({ state: legacy, meta: { at: '2026-10-15T00:00:00.000Z', actor: 'pnyx' } })
+  assert.ok('event' in decision)
+  assert.throws(() => decideUndo({ state: reduce({ state: legacy, event: decision.event }), target: decision.event, meta: { at: '2026-10-15T00:00:01.000Z', actor: 'cli' } }), (error: unknown) => error instanceof HydraError && error.code === 'NOT_UNDOABLE')
 })

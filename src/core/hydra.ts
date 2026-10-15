@@ -1,4 +1,4 @@
-import { HydraError, EVENT_VERSION, LEGACY_COLUMNS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraState, type Column, type HydraChange, type TaskStatus } from './model.ts'
+import { HydraError, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraState, type Column, type HydraChange, type TaskStatus } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { permissionAttention } from './permissions.ts'
 import { assignDefined } from './tasks.ts'
@@ -14,11 +14,12 @@ export const DEFAULT_COLUMNS: HydraColumn[] = [
   { id: 'done', title: 'Done', role: 'done', description: 'Work whose result has been checked and is complete.' },
 ]
 
-// Older layouts named In progress `workers_on_it`; a task created there still starts working.
-const ROLE_STATUS: Record<string, TaskStatus> = { in_progress: 'working', workers_on_it: 'working', needs_you: 'needs_you', done: 'done', parked: 'paused' }
+// A task created in an older layout's Workers on it column still starts working.
+const ROLE_STATUS: Partial<Record<NonNullable<HydraColumn['role']>, TaskStatus>> = { in_progress: 'working', [LEGACY_IN_PROGRESS]: 'working', needs_you: 'needs_you', done: 'done', parked: 'paused' }
 
-const legacyColumn = ({ id }: { id: string }) => (LEGACY_COLUMNS as readonly string[]).includes(id)
+const legacyColumn = ({ id }: { id: Column }) => LEGACY_COLUMNS.some(legacy => legacy === id)
 
+// ponytail: a never-configured Hydra replays onto the defaults directly, so only its cards moved into Workers on it get placed by status; record a layout version if such logs ever matter.
 export function hydraConfig({ state, id = 'default' }: { state: HydraState; id?: string }): HydraConfig {
   return state.config ?? { id, name: id, hydra: { id: 'hydra', kind: 'agent', name: 'Hydra' }, columns: [...structuredClone(DEFAULT_COLUMNS), ...(state.view?.customColumns ?? [])] }
 }
@@ -37,22 +38,22 @@ export function roleColumn({ columns, role }: {
 }
 
 // The default column a card's latest status belongs in.
-export function statusRole({ card }: { card: Card }): Role | undefined {
+function statusRole({ card }: { card: Card }): Role | undefined {
   const state = card.outcome?.state === 'done' ? 'done' : card.status?.state
 
   return state === 'done' ? 'done'
     : state === 'needs_you' || state === 'blocked' ? 'needs_you'
       : state === 'paused' ? 'parked'
-        : state === 'working' || card.column === 'workers_on_it' ? 'in_progress' : undefined
+        : state === 'working' || card.column === LEGACY_IN_PROGRESS ? 'in_progress' : undefined
 }
 
 // A legacy layout, or a Firstmate-linked Hydra whose default columns are missing or
 // renamed, moves onto the five defaults in order, followed by the owner's own columns.
-export function withDefaultColumns({ columns, locked }: {
+function withDefaultColumns({ columns, locked }: {
   columns: HydraColumn[]
   locked: boolean
 }): HydraColumn[] {
-  const legacy = columns.some(c => legacyColumn({ id: c.id }) || (c.role as string) === 'workers_on_it')
+  const legacy = columns.some(c => legacyColumn({ id: c.id }) || c.role === LEGACY_IN_PROGRESS)
   const drifted = locked
     && DEFAULT_COLUMNS.some(d => columns.find(c => c.id === d.id)?.title !== d.title)
 
@@ -131,7 +132,7 @@ export function refreshTasks({ state, ids }: {
     }
 
     // Workers on it keeps its cards until the Hydra moves onto the default columns, which places them by status.
-    if (!columns.some(c => c.id === card.column) && card.column !== 'workers_on_it') {
+    if (!columns.some(c => c.id === card.column) && card.column !== LEGACY_IN_PROGRESS) {
       card.column = fallbackColumn({ columns })
     }
   }
@@ -359,7 +360,7 @@ export function applyHydra({ state, event }: { state: HydraState; event: HydraEv
   if (event.type === 'task.created') {
     const { key, title, project, brief, parentId, column, folder } = event.data
     const columns = hydraConfig({ state }).columns
-    const role = columns.find(c => c.id === column)?.role as string | undefined
+    const role = columns.find(c => c.id === column)?.role
     const initial = role && ROLE_STATUS[role] && { id: event.id, at: event.at, actor: event.actor, state: ROLE_STATUS[role], note: '' }
     state.cards[event.cardId] = {
       id: event.cardId, key, title, ...(project ? { project } : {}), ...(brief !== undefined ? { brief } : {}), titleSet: true, workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], sessionIds: [], tracking: 'declared', statusLog: initial ? [initial] : [], ...(initial ? { status: initial } : {}), ...(parentId ? { parentId } : {}), ...(folder ? { folder } : {}), column: column ?? roleColumn({ columns, role: 'queued' }) ?? 'parked', revision: 1, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
