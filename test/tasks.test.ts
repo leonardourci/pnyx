@@ -75,7 +75,7 @@ test('moving a session preserves task titles, links and placement while future h
   assert.equal(f.state.cards[target]!.title, 'Target task')
   assert.equal(joinedKey({ state: f.state, key: 'claude:one', folder: '/elsewhere' }), 'task:target')
   f.push({ key: 'task:target', input: { agent: { provider: 'claude-code', sessionId: 'one' }, activity: 'working', attention: [{ key: 'hook:q', kind: 'question', blocking: true }] } })
-  assert.equal(f.state.cards[target]!.column, 'workers_on_it')
+  assert.equal(f.state.cards[target]!.column, 'in_progress')
   assert.equal(f.state.cards[target]!.attention[0]?.key, 'hook:q')
   assert.equal(f.state.sessions?.['claude-code:one']?.activity, 'working')
   assert.equal(Object.values(f.state.cards).filter(card => liveTask({ card })).length, 1)

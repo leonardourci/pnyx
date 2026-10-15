@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import type { HydraColumn, Card, Column as ColumnId, ViewPreferences } from '../../../src/core/model.ts'
+import { LOCKED_DELETE } from '../../../src/core/hydra.ts'
 import { DEFAULT_COLUMN_WIDTH, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
@@ -21,6 +22,7 @@ export function Column({
   revision,
   connected,
   columnIds,
+  locked,
   editingTitle,
   titleFinished,
   createTask,
@@ -34,6 +36,8 @@ export function Column({
   revision: number
   connected: boolean
   columnIds: ColumnId[]
+  // A Firstmate-linked Hydra's default column, which cannot be deleted.
+  locked: boolean
   editingTitle: boolean
   titleFinished(): void
   createTask({ column, parent }: { column: string; parent?: string }): void
@@ -129,7 +133,12 @@ export function Column({
             }}
           >Edit description
           </Button>
-          <DeleteItem label="Delete column" disabled={!connected || columnIds.length === 1} confirm={() => edit({ args: ['delete', id] }).catch(error => report({ error }))} />
+          <DeleteItem
+            label="Delete column"
+            disabled={!connected || columnIds.length === 1}
+            {...(locked ? { refusal: LOCKED_DELETE } : {})}
+            confirm={() => edit({ args: ['delete', id] }).catch(error => report({ error }))}
+          />
         </Menu>
       </header>
       {describing && (

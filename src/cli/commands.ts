@@ -15,7 +15,7 @@ import { copyCommand } from '../copies/cli.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { hydraConfig, declareTask, hydraEvent, HYDRA_CARD, validateColumns } from '../core/hydra.ts'
+import { hydraConfig, declareTask, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, validateColumns } from '../core/hydra.ts'
 import type { HydraConfig, HydraIdentity } from '../core/model.ts'
 import { readThread } from '../thread/read.ts'
 import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
@@ -1184,6 +1184,10 @@ function columnCommand({ args }: { args: string[] }): Output {
 
       if (action !== 'create' && !selected) {
         throw new HydraError({ message: `column not found: ${ref}`, code: 'NOT_FOUND' })
+      }
+
+      if (action === 'delete' && lockedColumn({ state, id: ref! })) {
+        throw new HydraError({ message: LOCKED_DELETE, code: 'VALIDATION_ERROR' })
       }
 
       let fallback: Column | undefined

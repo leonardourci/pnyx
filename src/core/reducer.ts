@@ -1,16 +1,18 @@
 import {
   AUTO_TITLE_SOURCES,
   EVENT_VERSION,
+  LEGACY_IN_PROGRESS,
   SESSION_TITLE,
   type AutoTitle,
   type HydraEvent,
   type HydraState,
   type Card,
+  type Column,
   type Link,
   type SourceRef,
 } from './model.ts'
 import { applyAttachment, cardSessionId, observeSession, sessionId } from './tasks.ts'
-import { applyHydra, refreshTasks } from './hydra.ts'
+import { applyHydra, fallbackColumn, hydraConfig, refreshTasks, roleColumn } from './hydra.ts'
 import { applyPermission } from './permissions.ts'
 import { refreshDone } from './retention.ts'
 import { applyReminder } from '../reminders/state.ts'
@@ -90,6 +92,12 @@ export function wouldCycle({ cards, cardId, parentId }: {
   }
 
   return false
+}
+
+function newCardColumn({ state }: { state: HydraState }): Column {
+  const columns = hydraConfig({ state }).columns
+
+  return columns.some(c => c.id === LEGACY_IN_PROGRESS) ? LEGACY_IN_PROGRESS : roleColumn({ columns, role: 'in_progress' }) ?? fallbackColumn({ columns })
 }
 
 function apply({ state, event }: { state: HydraState; event: HydraEvent }): boolean {
@@ -182,7 +190,7 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
         links: [],
         sourceRefs: [],
         ...(fields.agent && (!source || ['hooks', 'paseo', 'pnyx'].includes(source.adapter)) ? { automaticTask: true } : {}),
-        column: 'workers_on_it',
+        column: newCardColumn({ state }),
         revision: 0,
         createdSeq: event.seq,
         updatedSeq: event.seq,
