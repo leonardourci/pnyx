@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { Card } from '../../../src/core/model.ts'
 import { Button, Input } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
@@ -20,6 +20,7 @@ export function ReminderEditor({ card, command, connected, close }: {
   connected: boolean
   close(): void
 }) {
+  const id = useId()
   const [when, setWhen] = useState(card.reminder?.dueAt ? '' : card.reminder?.at ?? '')
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
 
@@ -49,9 +50,9 @@ export function ReminderEditor({ card, command, connected, close }: {
         }
       }}
     >
-      <label htmlFor={`reminder-${card.id}`}>Remind me</label>
+      <label htmlFor={id}>Remind me</label>
       <Input
-        id={`reminder-${card.id}`}
+        id={id}
         aria-label="Reminder time"
         autoFocus
         placeholder="tomorrow 9:00 or in 2 hours"

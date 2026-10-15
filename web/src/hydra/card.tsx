@@ -50,11 +50,11 @@ export function HydraCard({
       className={`card ${selected ? 'selected' : ''}`}
       data-task={card.id}
       onClick={e => {
-        if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, .detail') && !window.getSelection()?.toString()) {
+        if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, form, .detail') && !window.getSelection()?.toString()) {
           open({ id: card.id })
         }
       }}
-      draggable={connected && !selected && !editingTitle}
+      draggable={connected && !selected && !editingTitle && !reminding}
       onDragStart={e => {
         e.stopPropagation(); e.dataTransfer.setData('application/pnyx-task', card.id)
       }}

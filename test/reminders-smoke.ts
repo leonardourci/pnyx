@@ -30,6 +30,8 @@ try {
   await screenshot({ name: 'reminder-before.png' })
   await menu(); await text({ label: 'Remind me…' })
   await check({ condition: '!!document.querySelector(".reminder-editor") && !document.querySelector("[role=dialog]")', label: 'Remind me opens an inline editor' })
+  await click({ selector: '.reminder-editor label' })
+  await check({ condition: '!document.querySelector(".detail") && document.querySelector(".card").draggable === false', label: 'editing a reminder keeps the card closed and prevents dragging' })
   await fill({ label: 'Reminder time', value: 'yesterday' }); await text({ label: 'Set reminder' })
   await eventually({ condition: '!!document.querySelector(".reminder-editor [role=alert]")', label: 'invalid time stays in the editor with an error' })
   await fill({ label: 'Reminder time', value: 'tomorrow 9:00' }); await text({ label: 'Set reminder' })
