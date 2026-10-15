@@ -1682,7 +1682,7 @@ commands:
   board create|list|homes|show|set            Configure boards, one per Firstmate home, each with one Hydra
   column create|rename|describe|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|status|history Tasks and one level of subtasks (--parent <id>)
-  task start <task> [--via paseo|firstmate|command] [--kind <kind>]  Start a worker for the task and attach it
+  task start <task> [--via pnyx|paseo|firstmate|command] [--kind <kind>]  Start a worker for the task and attach it
   hydra start|send|messages|check            Start the board's Hydra, queue task context in its chat, read it, or wait for changes
   kind list|set|remove                       The agent (harness, model, effort, mode, quota) each task kind starts on
   task sessions                              List recorded sessions, including background runs
@@ -1778,12 +1778,13 @@ Tasks accept one attached session. A second session cannot replace the recipient
 attach moves an interactive session to the task; an occupied destination is rejected.
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
-task start runs Claude Code in the task's folder with the opening message through the board's Pnyx server
-(\`pnyx-axi serve\`), with your own Claude Code settings, skills and hooks, and records its session, folder
+task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's folder through the board's
+Pnyx server (\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its native session, folder
 and settings on the task. Replies and setting changes from the board or \`pnyx-axi reply\` and \`pnyx-axi agent\`
 go straight to it; after a server restart the next message resumes the same session. A turn that was
 running when the server stopped is marked interrupted and waits for a message. Permission prompts are
-refused for now, so pick a mode that allows what the task needs.
+refused for now. Codex mode is its approval policy (untrusted, on-request or never); its sandbox follows
+your Codex configuration. Codex applies picker changes on the next turn and queues messages during a turn.
 --via paseo asks the local Paseo daemon (PNYX_PASEO_URL, default ws://127.0.0.1:6767/ws) to start a
 Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
 and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.
