@@ -29,7 +29,10 @@ createInterface({ input: process.stdin }).on('line', line => {
   const { id, method, params } = message
 
   if (method === 'initialize') {
-    if (process.env.FAKE_CODEX_REFUSE === 'initialize') { return }
+    if (process.env.FAKE_CODEX_REFUSE === 'initialize') {
+      return
+    }
+
     const response = JSON.stringify({ id, result: {} })
     process.stdout.write(response.slice(0, 4))
     setImmediate(() => process.stdout.write(`${response.slice(4)}\n`))
