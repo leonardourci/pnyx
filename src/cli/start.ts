@@ -8,6 +8,7 @@ import { HydraError, type AgentConfig, type HydraConfig, type HydraState, type C
 import { paseoUrl } from '../core/paseo.ts'
 import { liveTask, sessionId } from '../core/tasks.ts'
 import { runCommand } from '../integrations/command/run.ts'
+import { taskFolder } from '../copies/copies.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
 import { fmNote } from '../integrations/firstmate/reply.ts'
 import { HARNESSES, createPaseoAgent, startAgent, type Harness } from '../integrations/paseo/launch.ts'
@@ -134,7 +135,8 @@ const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
   + `Start with \`pnyx-axi task list --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`
 
 export async function startTask({
-  hydraId, task, via, kind, harness, prompt, folder, replacement, url, meta, connect,
+  hydraId, task, via, kind, harness, prompt, folder: given, inPlace, replacement, url, meta,
+  connect,
 }: {
   hydraId: string
   task: string
@@ -144,6 +146,7 @@ export async function startTask({
   harness?: string
   prompt?: string
   folder?: string
+  inPlace?: boolean
   url?: string
   meta: Meta
   connect?: Connect
@@ -162,7 +165,12 @@ export async function startTask({
     return askFirstmate({ hydraId, task, prompt, meta })
   }
 
-  if (how === 'command' || !agent) {
+  const command = how === 'command' || !agent
+  const ownFolder = command && Boolean(state.config?.commandOwnsFolder)
+  const folder = replacement ? given
+    : taskFolder({ hydraId, task, folder: given, inPlace, ownFolder, meta })
+
+  if (command) {
     return startCommand({ hydraId, role: 'worker', task, prompt, folder, harness, meta })
   }
 
