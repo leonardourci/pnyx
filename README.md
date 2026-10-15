@@ -32,6 +32,23 @@ pnyx-axi setup skills
 
 User data lives in `~/.pnyx` by default. Set `PNYX_HOME` to keep it anywhere else; the clone holds only code.
 
+## Projects
+
+A Hydra can work across several projects. Each project is a folder on your laptop, shown by its folder name. Attach an existing folder or clone code into a destination you choose:
+
+```sh
+pnyx-axi project add /path/to/project --hydra work
+pnyx-axi project add --clone https://example.com/team/project.git --into /path/to/new-project --hydra work
+pnyx-axi project list --hydra work
+pnyx-axi task create --title "Ship the change" --project project --hydra work
+pnyx-axi task project <task> --project project --hydra work
+pnyx-axi project remove project --hydra work
+```
+
+Clone runs ordinary git directly, without sending the URL to an agent. `--into` is required. Relative paths are resolved from the CLI's working folder; in Settings, use an absolute laptop path. Removing a project only detaches it: tasks, history and the project record stay. Add its path again, or choose Re-attach under Settings → Projects → Detached, to bring it back. Use a full path when folder names are ambiguous.
+
+Sharing a folder between Hydras requires an explicit confirmation naming the other Hydras. The CLI returns a token; repeat the attachment with `--confirm <token>`. Settings shows a confirmation dialog with links to those Hydras. Hydra's summary and light check include its projects. On a Firstmate-linked Hydra, the home’s project folders appear read-only and are managed by Firstmate.
+
 ## Run
 
 ```sh

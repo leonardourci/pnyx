@@ -1,3 +1,4 @@
+import { findProject, projectRows, taskProject } from '../projects/read.ts'
 import { MAX_DONE_HOURS } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
@@ -26,7 +27,6 @@ import {
   decideSession,
   findCard,
   parseLink,
-  projectLabel,
   type Decision,
   type Meta,
 } from '../core/decide.ts'
@@ -205,6 +205,14 @@ function actionText({ state, hydraId, event }: {
 }
 
 function receipt({ state, event }: { state: HydraState; event: HydraEvent }): Output {
+  if (event.type === 'hydra.project') {
+    return {
+      event: { seq: event.seq, id: event.id, type: event.type },
+      project: event.data.after,
+      revision: state.projectsRevision,
+    }
+  }
+
   if (event.type === 'hydra.memory') {
     return { event: { seq: event.seq, id: event.id, type: event.type }, memory: event.data.key, state: event.data.after === null ? 'forgotten' : 'saved' }
   }
@@ -242,6 +250,10 @@ interface Intent {
 }
 
 function confirmationPreview({ state, event }: { state: HydraState; event: HydraEvent }): Output {
+  if (event.type === 'hydra.project') {
+    return { project: event.data.after, hydras: event.data.sharedWith }
+  }
+
   if (event.type === 'card.moved') {
     return {
       task: event.cardId,
@@ -309,7 +321,7 @@ export function commit(
     meta: Meta
     intent: Intent
     decide: ({ state, meta }: { state: HydraState; meta: Meta }) => Decision
-    confirmation?: { token?: string }
+    confirmation?: { token?: string; when?({ event }: { event: HydraEvent }): boolean }
   },
 ): Output {
   const reason = EXPLAINED.includes(intent.type) ? explained({ meta }) : ''
@@ -338,9 +350,13 @@ export function commit(
         }
 
         if ('event' in decision) {
-          if (confirmation) {
+          const needsConfirmation = confirmation
+            && (!confirmation.when || confirmation.when({ event: decision.event }))
+
+          if (needsConfirmation) {
             const { type, cardId, data } = decision.event
-            const revision = cardId === '$board' ? writer.state.configRevision ?? 0 : writer.state.cards[cardId]?.revision ?? 0
+            const revision = cardId === '$projects' ? writer.state.projectsRevision ?? 0
+              : cardId === '$board' ? writer.state.configRevision ?? 0 : writer.state.cards[cardId]?.revision ?? 0
             const token = createHash('sha256').update(JSON.stringify({ hydraId, actor: meta.actor, type, cardId, data, revision }))
               .digest('hex')
               .slice(0, 24)
@@ -472,7 +488,7 @@ export async function home(): Promise<Output> {
     config.columns.map(c => [c.id, cards.filter(card => card.column === c.id).length]),
   )
   const server = await readServer({ hydraId: DEFAULT_HYDRA })
-  const out: Output = { hydraId: DEFAULT_HYDRA, hydra: config.hydra.id, server: server ? `running at ${server.url}` : 'not running', columns }
+  const out: Output = { projects: projectRows({ state }), hydraId: DEFAULT_HYDRA, hydra: config.hydra.id, server: server ? `running at ${server.url}` : 'not running', columns }
 
   if (tornBytes > 0) {
     out.warning = 'events.jsonl has a torn tail; run `pnyx-axi repair`'
@@ -649,7 +665,6 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       throw new HydraError({ message: 'task keys beginning with $ are reserved', code: 'VALIDATION_ERROR' })
     }
 
-    const project = values.project === undefined ? null : projectLabel({ value: values.project })
     const folder = canonical({ path: values.folder })
     const brief = taskBrief({ value: values.brief })
 
@@ -662,6 +677,8 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           throw new HydraError({ message: `task key already exists: ${key}`, code: 'CONFLICT' })
         }
 
+        const project = values.project
+          ? taskProject({ state, ref: String(values.project) }) : undefined
         const parent = values.parent ? findCard({ state, ref: String(values.parent) }) : undefined
 
         if (parent?.parentId || parent?.automaticTask || parent?.id === HYDRA_CARD) {
@@ -730,6 +747,24 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         hydraId, state, card, homes: [], before: values.before as string | undefined,
       }),
     }
+  }
+
+  if (action === 'project') {
+    const ref = required({ value: positionals[1], what: 'task id' })
+    const project = required({ value: values.project as string | undefined, what: '--project <name|path>' })
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: { type: 'task.project', card: ref },
+      decide: ({ state }) => {
+        const task = findCard({ state, ref })
+        const after = findProject({ state, ref: project, attached: true }).path
+
+        return task.project === after ? { skipped: 'unchanged' }
+          : hydraEvent({ state, meta: m, cardId: task.id, change: { type: 'task.project', data: { before: task.project ?? null, after } } })
+      },
+    })
   }
 
   if (action === 'status') {
@@ -941,7 +976,11 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
   if (action === 'show') {
     const state = loadHydra({ hydraId: id }).state
 
-    return { hydra: hydraConfig({ state, id }), revision: state.configRevision ?? 0 }
+    return {
+      hydra: hydraConfig({ state, id }),
+      projects: projectRows({ state }),
+      revision: state.configRevision ?? 0,
+    }
   }
 
   if (action !== 'create' && action !== 'set') {
@@ -1478,6 +1517,8 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'chat.message': return `${event.data.role}: ${event.data.text}`
     case 'board.configured': return `Hydra ${event.data.name}; Hydra ${event.data.hydra.id}`
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
+    case 'hydra.project': return `${event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Hydra ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
+    case 'task.project': return `Task project: ${event.data.after ?? 'none'}`
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
     case 'task.permission': return `${event.data.tool} permission ${event.data.id}: ${event.data.status}`
     case 'task.brief': return 'Task brief updated'
@@ -1743,14 +1784,14 @@ description: Pnyx shows every agent and its work in Hydras
 commands:
   pnyx-axi                                   Show the Hydra summary
   hydra create|list|homes|show|set            Create, list or configure Hydras
+  project add|list|remove                   Attach, list or detach projects
   column create|rename|describe|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
   kind list|set|remove                       The agent (harness, model, effort, mode, quota) each task kind starts on
   task sessions                              List recorded sessions, including background runs
-  task attach <task> --session <session>      Move an interactive session onto a task
-  task detach <task>                         Detach its agent without stopping the session
+  task attach|detach <task> [--session <id>]  Attach an interactive session or detach it
   push --key <key> --file <card.json|->      Create or update the card with this key
   card <id|key> [--full]                     Show one card with its summary, decisions and context
   harvest [--card <id>]                      Collect summaries and decisions sources already recorded
@@ -1830,6 +1871,7 @@ pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
 pnyx-axi task permission <task> <request> allow|deny [--reason <text>]
+pnyx-axi task project <task> --project <name|path>
 pnyx-axi task continue <task> [--check]
 pnyx-axi task start <task> [--via pnyx|paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>] [--replace-session <session>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
@@ -1844,6 +1886,7 @@ Tasks accept one attached session. A second session cannot replace the recipient
 attach moves an interactive session to the task; an occupied destination is rejected.
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
+task create accepts --project <name|path>; task project assigns an existing task to an attached project.
 task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
 It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.
 task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's folder through the Hydra's

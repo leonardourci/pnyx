@@ -25,6 +25,18 @@ export function HydraTabs({ command, connected, notify, active, showHydra }: {
     }
   }, [connected, command, notify])
 
+  useEffect(() => {
+    const target = new URLSearchParams(location.search).get('open-hydra')
+
+    if (!connected || !target) {
+      return
+    }
+
+    const clean = new URL(location.href)
+    clean.searchParams.delete('open-hydra'); history.replaceState(null, '', clean)
+    void command({ name: 'hydras', args: ['open', target] }).then(r => location.assign(r.url as string), (e: Error) => notify({ text: e.message }))
+  }, [connected, command, notify])
+
   const go = ({ args, rename }: { args: string[]; rename?: boolean }) => {
     setBusy(true)
     void command({ name: 'hydras', args }).then(r => {
