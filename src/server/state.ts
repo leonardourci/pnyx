@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { boardDir, pnyxHome } from '../store/board-store.ts'
+import { BoardError } from '../core/model.ts'
+import { boardDir, pnyxHome, withWriter } from '../store/board-store.ts'
 
+export const DEFAULT_PORT = 4747
 const HEALTH_TIMEOUT_MS = 1000
 
 export interface ServerInfo {
@@ -57,4 +59,44 @@ export function localToken(): string {
   }
 
   return readFileSync(path, 'utf8').trim()
+}
+
+export function claimServer({ board }: { board: string }): () => void {
+  const path = join(boardDir({ board }), 'server.lock')
+  withWriter({
+    board,
+    fn: () => {
+      let pid = 0
+
+      try {
+        pid = Number(readFileSync(path, 'utf8'))
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error
+        }
+      }
+
+      if (Number.isInteger(pid) && pid > 0) {
+        try {
+          process.kill(pid, 0)
+          throw new BoardError({ message: `a server already owns board ${board}`, code: 'ALREADY_RUNNING' })
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+            throw error
+          }
+        }
+      }
+
+      writeFileSync(path, String(process.pid), { mode: 0o600 })
+    },
+  })
+
+  return () => withWriter({
+    board,
+    fn: () => {
+      if (readFileSync(path, 'utf8') === String(process.pid)) {
+        rmSync(path, { force: true })
+      }
+    },
+  })
 }

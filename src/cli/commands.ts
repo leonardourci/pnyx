@@ -1,3 +1,4 @@
+import { setupService } from '../server/service.ts'
 import { DEFAULT_VIEW, viewFor } from '../core/view.ts'
 import { randomUUID } from 'node:crypto'
 import { cardSessionId, findSession, interactive, liveTask, rankOf, selfSession, sessionId } from '../core/tasks.ts'
@@ -717,10 +718,14 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (action === 'show') {
-    const task = findCard({ state: loadBoard({ board }).state, ref: required({ value: positionals[1], what: 'task id' }) })
+    const state = loadBoard({ board }).state
+    const task = findCard({ state, ref: required({ value: positionals[1], what: 'task id' }) })
 
     if (values.full) {
-      return { task }
+      return {
+        task,
+        worker: task.sessionIds?.[0] ? state.sessions?.[task.sessionIds[0]] : undefined,
+      }
     }
 
     return {
@@ -1332,6 +1337,7 @@ export function summarize({ event }: { event: BoardEvent }): string {
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
     case 'task.declared': return `${event.data.state}: ${event.data.note}`
+    case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
     case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
     case 'hydra.message': return `${event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}`
     case 'board.agents': return `Agent kinds: ${Object.keys(event.data.agents).join(', ') || 'none'}`
@@ -1454,8 +1460,12 @@ const repair = guard({
 
 const setup = guard({
   handler: ({ args }) => {
-    const options: Options = { ...WRITE, harness: { type: 'string' }, remove: { type: 'boolean' }, preview: { type: 'boolean' }, home: { type: 'string' } }
+    const options: Options = { ...WRITE, harness: { type: 'string' }, remove: { type: 'boolean' }, preview: { type: 'boolean' }, home: { type: 'string' }, port: { type: 'string' } }
     const { values, positionals, board } = parse({ args, options, positionals: 1 })
+
+    if (positionals[0] === 'service') {
+      return setupService({ board, port: integer({ value: values.port, flag: '--port' }), homes: values.home ? [String(values.home)] : [], remove: !!values.remove, preview: !!values.preview })
+    }
 
     if (positionals[0] === 'hydra') {
       return setupHydra({ board, home: required({ value: values.home as string | undefined, what: '--home' }), meta: meta({ values }) })
@@ -1577,7 +1587,7 @@ commands:
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>] [--home <path>]         Run the board server until stopped; --home also watches Firstmate
   stop                                       Stop the board's running server
-  setup hooks [--harness claude|codex]       Install the silent reporting hooks (--remove, --preview)
+  setup hooks|service                       Install reporting hooks or the macOS login service (--remove, --preview)
   setup hydra --home <firstmate home>        Make a Firstmate home the board's Hydra and give it the pnyx-hydra skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
@@ -1689,7 +1699,8 @@ Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
 Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
 Source observations, card creation and merges cannot be undone.
 `,
-  setup: `usage: pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
+  setup: `usage: pnyx-axi setup service [--board <id>] [--port <n>] [--home <Firstmate home>] [--remove] [--preview]
+pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
 pnyx-axi setup hydra --home <firstmate home> [--board <id>]
 Adds Pnyx's reporting hook to the user-level Claude Code settings.json or Codex hooks.json, keeping
 every other hook. Without --harness it sets up each harness whose config folder exists. Rerunning

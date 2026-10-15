@@ -23,7 +23,7 @@ import { BoardError, type BoardEvent, type BoardState, type Card, type ViewPrefe
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { boardDir, loadBoard, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/board-store.ts'
-import { infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
+import { DEFAULT_PORT, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 import { createBoard, listBoards, openBoard, renameBoard } from './boards.ts'
 
 // The browser edits kinds; Hydra's check and start stay in the CLI.
@@ -61,6 +61,7 @@ const MIME: Record<string, string> = {
 // Each command gets a receipt or an error carrying its id.
 export type ServerMessage =
   | { type: 'hello'; build: string }
+  | { type: 'pong' }
   | { type: 'thread'; thread: ThreadPage }
   | { type: 'snapshot'; seq: number; state: BoardState }
   | { type: 'event'; event: BoardEvent }
@@ -76,7 +77,34 @@ export interface RunningServer {
   close(): Promise<void>
 }
 
-export async function startServer({
+export async function startServer({ board, ...options }: {
+  board: string
+  port?: number
+  homes?: string[]
+  catalogLocations?: CatalogLocations
+}): Promise<RunningServer> {
+  const release = claimServer({ board })
+
+  try {
+    const server = await startOwnedServer({ board, ...options })
+
+    return {
+      ...server,
+      async close() {
+        try {
+          await server.close()
+        } finally {
+          release()
+        }
+      },
+    }
+  } catch (error) {
+    release()
+    throw error
+  }
+}
+
+async function startOwnedServer({
   board,
   port = 0,
   homes = [],
@@ -197,7 +225,9 @@ export async function startServer({
       return
     }
 
-    ws.send(JSON.stringify(message))
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify(message))
+    }
   }
 
   const sendSnapshot = ({ ws }: { ws: WebSocket }) => {
@@ -657,7 +687,9 @@ export async function startServer({
       ws.on('message', data => {
         const message = parseMessage({ text: data.toString() })
 
-        if (message?.type === 'resync') {
+        if (message?.type === 'ping') {
+          send({ ws, message: { type: 'pong' } })
+        } else if (message?.type === 'resync') {
           sendSnapshot({ ws })
         } else if (message?.type === 'command') {
           runCommand({ ws, message })
@@ -900,7 +932,7 @@ function boardFlag({ args, options = {} }: { args: string[]; options?: { port?: 
 }
 
 // A fixed default keeps one board at one address, so an open tab finds a restarted server again.
-export const DEFAULT_PORT = 4747
+export { DEFAULT_PORT } from './state.ts'
 
 export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const values = boardFlag({ args, options: { port: { type: 'string' }, home: { type: 'string', multiple: true } } })
