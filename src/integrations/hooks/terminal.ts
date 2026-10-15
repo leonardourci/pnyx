@@ -1,9 +1,3 @@
-// Types a reply into the terminal a hook session recorded, through the host's own
-// CLI: tmux, Herdr or Paseo, or AppleScript for iTerm2 and Terminal. Before
-// anything is typed, the session's process must still own its TTY, so text never
-// lands in a shell the agent left behind. The text is typed once, then submitted
-// with Enter after a short settle; nothing is retried or retyped. A setting change
-// may instead press one key, such as Shift+Tab, where the host can.
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import type { Key } from '../../core/control.ts'
 import type { ReplyState } from '../../core/model.ts'
@@ -16,8 +10,6 @@ const DETAIL_MAX = 300
 // pressed before it settles can pick an entry instead of submitting.
 export const SETTLE_MS = 400
 const POPUP_SETTLE_MS = 1500
-// The bytes a terminal sends for each key, for hosts that type input literally, and
-// tmux's names for them.
 const SEQUENCE: Record<Key, string> = { 'shift-tab': '\u001b[Z', 'shift-up': '\u001b[1;2A', 'shift-down': '\u001b[1;2B' }
 const TMUX_KEY: Record<Key | 'enter', string> = { 'enter': 'Enter', 'shift-tab': 'BTab', 'shift-up': 'S-Up', 'shift-down': 'S-Down' }
 // AppleScript error number for "no such session", raised before anything is typed.
@@ -73,7 +65,6 @@ function outcome(
   return result.status === null || typed ? { state: 'delivery_unknown', ...detail } : { state: 'failed', ...detail }
 }
 
-// The session's process still runs on the recorded TTY.
 function checkProcess({ route }: { route: TerminalRoute }): Delivery | undefined {
   const result = run({ command: 'ps', args: ['-o', 'tty=', '-p', String(route.pid)] })
   const failed = outcome({ result, command: 'ps', typed: false })
@@ -105,7 +96,6 @@ export function settle({ text }: { text: string }): number {
   return /^[/$]/.test(text) ? POPUP_SETTLE_MS : SETTLE_MS
 }
 
-// Two steps, typing then Enter, each through the host's CLI.
 function typeThenEnter(
   { command, type, enter, options, text }: {
     command: string
@@ -140,7 +130,6 @@ function typeThenEnter(
     : { state: 'delivered' }
 }
 
-// The pane still shows the session's TTY.
 function checkPane({ route }: { route: Extract<TerminalRoute, { kind: 'tmux' }> }): Delivery | undefined {
   const shown = run({ command: 'tmux', args: ['-S', route.socket, 'display-message', '-p', '-t', route.pane, '#{pane_tty}'] })
   const missing = outcome({ result: shown, command: 'tmux', typed: false })
@@ -221,7 +210,6 @@ const SCRIPTS = {
   end tell
   error "no iTerm2 session on " & theTty number ${NOT_FOUND}
 end run`,
-  // Writes the key's bytes without a newline.
   'iterm2-key': `on run argv
   set {theTty, theText} to argv
   tell application "iTerm2"
@@ -300,8 +288,6 @@ export function typeInto({ route, text }: { route: TerminalRoute; text: string }
   }
 }
 
-// Presses one key in the session's terminal: Enter on every host, other keys where
-// the host can send them (core/control.ts says which).
 export function pressKey({ route, key }: { route: TerminalRoute; key: Key | 'enter' }): Delivery {
   const gone = checkProcess({ route })
 

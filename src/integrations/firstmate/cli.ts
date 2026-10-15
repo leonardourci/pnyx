@@ -1,4 +1,3 @@
-// pnyx-axi commands for the Firstmate integration: `firstmate sync|watch`.
 import { AxiError } from 'axi-sdk-js'
 import { COMMON, guard, parse, type Options, type Output } from '../../cli/commands.ts'
 import { resolveHome } from './home.ts'
@@ -30,8 +29,6 @@ function sync({ board, list }: { board: string; list: string[] }): Output {
   }
 }
 
-// Watches each home, counting what it folds in, until closed. Shared by
-// `firstmate watch` and `serve --home`.
 export function watchHomes({ board, list }: {
   board: string
   list: string[]
@@ -79,7 +76,6 @@ export function watchHomes({ board, list }: {
   }
 }
 
-// Runs until SIGINT or SIGTERM, then reports what it folded in.
 async function watch({ board, list }: { board: string; list: string[] }): Promise<Output> {
   const watches = watchHomes({ board, list })
   await new Promise<void>(resolve => {

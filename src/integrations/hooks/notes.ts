@@ -1,11 +1,5 @@
-// Notes a harness already wrote into a session transcript the hooks recorded, read
-// as written and never generated: Claude Code's compaction summaries, older summary
-// records and session titles, the questions it asked through AskUserQuestion with
-// the user's answers, and Codex's compaction summaries. Pure: one record in, its
-// notes out.
 import { SESSION_TITLE, type Note, type SourceNote } from '../../core/model.ts'
 
-// The fixed opening Claude Code puts before a compaction summary.
 const COMPACT_PREAMBLE = /^This session is being continued from a previous conversation[^\n]*\n+(?:Summary:\s*\n)?/
 
 type Rec = {
@@ -36,7 +30,6 @@ function contentText({ content }: { content: unknown }): string {
   return content.map(b => (b?.type === 'text' && typeof b.text === 'string' ? b.text : '')).join('\n')
 }
 
-// The user's answers to one AskUserQuestion call, one decision per answered question.
 function answers({ r, at }: { r: Rec; at: string | undefined }): SourceNote[] {
   const result = r.toolUseResult as {
     questions?: unknown

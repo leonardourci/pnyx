@@ -1,5 +1,3 @@
-// Folds a Firstmate home's files into a board as source observations, and keeps
-// them current with fs.watch. Every write goes through the board's single writer.
 import { watch, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
@@ -41,7 +39,6 @@ const source = ({ home, objectId }: { home: string; objectId: string }): SourceR
   objectId,
 })
 
-// The Firstmate source ref of a card, if it has one.
 export function firstmateRef({ card }: { card: Card }): SourceRef | undefined {
   return card.sourceRefs.find(r => r.adapter === ADAPTER)
 }
@@ -84,7 +81,6 @@ function attention({ task }: { task: TaskObservation }): Attention[] {
   ]
 }
 
-// The attention a joined hook session opened on the card, which sync leaves alone.
 function hookAttention({ state, key }: { state: BoardState; key: string }): Attention[] {
   return state.cards[state.keys[key] ?? '']?.attention.filter(a => a.key.startsWith(HOOK)) ?? []
 }
@@ -358,7 +354,6 @@ export function syncHome({ board, home, at = new Date().toISOString() }: {
           continue
         }
 
-        // Its worktree goes back to the pool too, so the next task there can claim it.
         appended += apply(
           {
             writer,
@@ -391,9 +386,6 @@ const RELEVANT = /\.(meta|status)$|^backlog\.md$/
 const SETTLE_MS = 50
 const RETRY_MS = 1000
 
-// Syncs once, then again after each relevant change under state/ and data/.
-// Bursts coalesce into one sync. A watcher error re-creates the watchers and
-// resyncs, so a dropped event cannot leave the board behind. No polling.
 export function watchHome(
   { board, home, onSync }: {
     board: string

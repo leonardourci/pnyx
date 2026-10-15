@@ -1,10 +1,7 @@
-// Reads a linked pull request's title and description through `gh-axi pr view`.
-// Read-only; PNYX_GH_AXI overrides the binary, so tests use a fake one.
 import { spawnSync } from 'node:child_process'
 import type { SourceNote } from '../../core/model.ts'
 
 const VIEW_TIMEOUT_MS = 30_000
-// ponytail: a long description is cut here; raise it if descriptions that long need to stay whole.
 const BODY_MAX = 8000
 const PR_URL = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\/?$/
 

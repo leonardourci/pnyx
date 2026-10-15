@@ -1,19 +1,3 @@
-// Reads a session's settings from what Claude Code and Codex already record: hook
-// payloads and transcript records. Pure, and read-only towards the transcript. Every
-// harness maps onto the same names, model, effort, mode and fast, and adds its own
-// settings under names of their own:
-//
-// | Setting | Claude Code | Codex |
-// |---|---|---|
-// | model | SessionStart `model`, PostModelSwitch `to_model`; an assistant turn's `message.model` | every hook's `model`; turn context and thread settings `model` |
-// | effort | `effort.level` on tool and Stop hooks; an assistant turn's `effort` | turn context `effort`, thread settings `reasoning_effort` |
-// | mode | `permission_mode` on hooks; a prompt record's `permissionMode` | `permission_mode` on hooks |
-// | fast | an assistant turn's `message.usage.speed` | thread settings or turn context `service_tier` (`fast`, sent as `priority`) |
-// | context | `requestedModel` ending in `[1m]` | |
-// | client | `entrypoint` | session meta `originator` |
-// | version | `version` | session meta `cli_version` |
-// | approval, sandbox, collaboration, summary | | `approval_policy`, `sandbox_policy.type`, `collaboration_mode.mode`, reasoning summary |
-
 // A setting found in a record; null clears one the harness no longer reports.
 export type FoundSettings = Record<string, string | null>
 
@@ -42,9 +26,6 @@ export const LIVE_HOOK_SETTINGS: Record<string, string[]> = { 'claude-code': ['e
 
 const onOff = ({ fast }: { fast: boolean | undefined }) => (fast === undefined ? undefined : fast ? 'on' : 'off')
 
-// Settings a hook payload carries: Claude Code sends the model only on SessionStart
-// and after a switch, and effort only around tool use and Stop; Codex sends the
-// model on every hook.
 export function hookSettings({ payload }: {
   payload: Record<string, unknown>
 }): FoundSettings | undefined {
@@ -70,7 +51,6 @@ function codexFast({ tier }: { tier: unknown }): string | undefined {
   return onOff({ fast: value === undefined ? undefined : value === 'fast' || value === 'priority' })
 }
 
-// A granular approval policy is an object of switches, shown by its kind.
 function approval({ value }: { value: unknown }): string | undefined {
   return str({
     value,

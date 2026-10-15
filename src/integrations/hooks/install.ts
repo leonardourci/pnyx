@@ -1,7 +1,3 @@
-// Installs Pnyx's reporting hook into the user-level Claude Code and Codex hook
-// config by merging: other hook entries are kept as they are, and Pnyx's own
-// entries are recognised by the hook script's name, so installing twice changes
-// nothing and removing takes out only Pnyx's entries.
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,7 +6,6 @@ import { pnyxHome } from '../../store/board-store.ts'
 import type { Harness } from './observe.ts'
 
 const SCRIPT = 'pnyx-hook.sh'
-// Same relative path from src/integrations/hooks and dist/integrations/hooks.
 const SCRIPT_SOURCE = join(import.meta.dirname, '..', '..', '..', 'setup', 'hooks', SCRIPT)
 // The events Pnyx reads, for every tool: turn starts and ends, open requests, session
 // start and end, compaction for harvesting, and model switches. Claude Code worktree
@@ -179,9 +174,6 @@ export interface SetupResult {
   change: 'installed' | 'removed' | 'unchanged'
 }
 
-// Applies the change unless previewing. The config is replaced atomically and only
-// when its content changes; a symlinked config is written through the link.
-// Whether this home's hook script is the one this version installs.
 export function hookStatus(): 'current' | 'outdated' | 'missing' {
   if (!existsSync(scriptPath())) {
     return 'missing'
@@ -215,7 +207,6 @@ export function setupHooks(
   return { harness, config: path, change: changed ? (opts.remove ? 'removed' : 'installed') : 'unchanged' }
 }
 
-// Harnesses whose config folder exists, for `setup hooks` without --harness.
 export function detectedHarnesses(): Harness[] {
   return (['claude', 'codex'] as const).filter(h => existsSync(dirname(configPath({ harness: h }))))
 }

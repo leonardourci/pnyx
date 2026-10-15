@@ -1,6 +1,3 @@
-// Starts a Claude Code or Codex agent for a task through the local Paseo daemon,
-// then attaches its session to the task through the board's own writer. Paseo runs
-// and keeps the agent; the conversation continues in Pnyx or in Paseo.
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { decidePush, decideSession, findCard, type Meta } from '../../core/decide.ts'
@@ -100,7 +97,6 @@ export async function startAgent({
       board,
       fn: ({ writer }) => {
         drainSpool({ writer })
-        // The session is recorded as its own observation, then attached like any other.
         const pushed = decidePush({
           state: writer.state,
           key: `paseo:${agent.id}`,
@@ -145,14 +141,10 @@ export async function startAgent({
   }
 }
 
-// Asks the daemon for one agent. The idempotency key makes a retried create return
-// the agent the first one made. env reaches the agent's own hooks, so they report to
-// this Pnyx home, board and task rather than the installed defaults.
 export async function createPaseoAgent({
   harness, agent: chosen, prompt, cwd, title, id, env, labels, url, connect = openPaseo,
 }: {
   harness: Harness
-  // A task kind's model, effort and mode, used when its harness is this one.
   agent?: AgentConfig
   prompt: string
   cwd: string
@@ -220,7 +212,6 @@ function isFolder({ path }: { path: string }): boolean {
   }
 }
 
-// Whether the daemon answers, for a form that should say why it cannot start yet.
 export async function paseoStatus({ url, connect = openPaseo }: {
   url?: string
   connect?: Connect

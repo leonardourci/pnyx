@@ -1,9 +1,3 @@
-// Folds the notes a card's recorded transcript gained into the board, through the
-// writer the caller holds. Read-only towards the transcript. Each note's id derives
-// from its source record, so a re-read appends nothing new; harvest.json in the
-// board's folder only remembers how far each transcript was read, and deleting it
-// costs one full re-read. The settings a transcript gained, such as a model switch
-// or a new effort, update the card as an observation of the transcript.
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { decideNote, decidePush, noteId } from '../../core/decide.ts'
@@ -37,7 +31,6 @@ function writeCursors({ dir, cursors }: { dir: string; cursors: Cursors }): void
   renameSync(tmp, join(dir, CURSORS))
 }
 
-// Appends one harvested note to a card; returns 1 when it was new.
 export function appendNote(
   { writer, cardId, note: { ref, ...note }, at }: {
     writer: Writer
@@ -89,8 +82,6 @@ function codexTitle({ writer, cardId, path, at }: {
     .reduce((n, note) => n + appendNote({ writer, cardId, note, at }), 0)
 }
 
-// Harvests the transcripts of these cards from where the last read stopped, and
-// returns how many notes were appended. A missing transcript waits for its file.
 export function harvestTranscripts({ writer, cardIds, at }: {
   writer: Writer
   cardIds: Iterable<string>
@@ -179,7 +170,6 @@ export function harvestTranscripts({ writer, cardIds, at }: {
 
     const card = writer.state.cards[id]!
 
-    // Only a change is recorded: re-reading the same settings appends nothing.
     const changed = Object.entries(settings)
       .some(([name, value]) => (card.settings?.[name] ?? null) !== value)
 
