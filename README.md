@@ -68,7 +68,25 @@ Tracking follows explicit declarations: working goes to Workers on it, needs_you
 
 The append-only log preserves board, task, subtask, session, command and message identities. Replaying existing events migrates old session records without changing their event bytes or ids. Unattached and headless sessions remain available in History and search. Harvested user and assistant messages are redacted and copied into the log on turn end, attachment changes and explicit `harvest`, so observed conversations remain readable and searchable after a native transcript disappears. Search remains a derived, deletable index.
 
-`hydra send --text <message>` queues a board-level message with no task. `hydra send --task <task> [--action send|worker]` queues a task-specific message, and `hydra messages` reads the queue. These actions never launch a worker. Native launch integrations, several workers per task, automatic labels, quota reporting, board tabs, inline questions and the left chat layout are later work.
+`hydra send --text <message>` queues a board-level message with no task. `hydra send --task <task> [--action send|worker]` queues a task-specific message, and `hydra messages` reads the queue. Queuing never launches anything; Hydra acts on the queue (see Hydra and workers). Several workers per task, automatic labels, board tabs, inline questions and the left chat layout are later work.
+
+## Hydra and workers
+
+A board's Hydra can be any agent on any model. Firstmate runs a board with its own mechanics; any other agent follows the `pnyx-hydra` skill, and the workers it launches follow `pnyx-worker`. To make them available to Claude Code, link them from the clone: `ln -s "$PWD/skills/pnyx-hydra" "$PWD/skills/pnyx-worker" ~/.claude/skills/` (Codex reads `~/.codex/skills/`).
+
+```sh
+pnyx-axi kind set default --harness claude --model opus --effort high --mode acceptEdits
+pnyx-axi kind set review --harness codex --effort high --quota high
+pnyx-axi kind set hydra --harness claude --model sonnet
+pnyx-axi hydra start --cwd ~/code/project        # launch Hydra in a Paseo terminal
+pnyx-axi hydra check --after <seq> --wait 1800  # Hydra's light check
+pnyx-axi worker create <task> --kind review --request <message id>
+```
+
+- **Kinds:** `kind set` records the agent each kind of task launches on: harness (Claude Code or Codex), model, effort and mode (Claude Code's permission mode, or Codex's `bypass` or a sandbox mode). `--quota high|medium|low` picks, at launch, the model with the most runway in that intelligence bucket for the harness through `quota-axi`, keeping `--model` when quota-axi cannot tell. `default` is used when `worker create` names no kind and `hydra` is what `hydra start` launches; both fall back to Claude Code's own defaults. Settings → Agents on the board edits the same kinds. Kinds are part of the board's configuration, so every change is in its log.
+- **Launching:** `worker create <task>` opens a Paseo terminal in `--cwd` (else the task's folder, else the current one), types the kind's command line with a first prompt naming the task, and records `worker.launched` on the task with the agent, folder, terminal and the Hydra request it answers. The agent's first session in that terminal and folder joins the task, and the task's history keeps every worker that touched it. `--preview` prints the command line instead, for any other terminal. `hydra start` launches Hydra the same way; Hydra then binds itself with `board set --session self`, which picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. Launched agents carry `PNYX_BOARD`, so their hooks report to that board, and `PNYX_ACTOR` (`hydra` or `worker:<task>`), which names them in the log.
+- **Light check:** `hydra check` prints only what Hydra tracks (messages, task creation, declarations, attachments, column changes, manual moves, links and launches) after `--after`, skipping Hydra's own writes, without loading the board. With `--wait` it blocks until one appears, so a background command or monitor wakes Hydra only when something changed.
+- **Declarations:** a worker reports with `task status <task> working|needs_you|paused|blocked|done --note <text>`; silence, idling and exit change nothing. Pnyx never supervises a launched process.
 
 ## Using the board
 
