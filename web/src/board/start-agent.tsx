@@ -1,3 +1,4 @@
+import { sessionId } from '../../../src/core/tasks.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Card } from '../../../src/core/model.ts'
 import { Button, Input, Select, Textarea, useBusy } from '../components/ui/controls.tsx'
@@ -62,8 +63,8 @@ export function StartAgent({ card, firstmate, command, connected, replace = fals
           args.push('--harness', harness)
         }
 
-        if (replace) {
-          await command({ name: 'task', args: ['detach', card.id, '--event-id', `${attempt.current}:detach`] })
+        if (replace && card.agent) {
+          args.push('--replace-session', sessionId({ agent: card.agent }))
         }
 
         await command({ name: 'task', args })
@@ -89,12 +90,14 @@ export function StartAgent({ card, firstmate, command, connected, replace = fals
       }}
     >
       <h3>Start an agent</h3>
-      <Select
-        label="Start through"
-        value={via}
-        options={ROUTES}
-        onChange={({ value }) => setVia(value)}
-      />
+      {!replace && (
+        <Select
+          label="Start through"
+          value={via}
+          options={ROUTES}
+          onChange={({ value }) => setVia(value)}
+        />
+      )}
       {via === 'paseo' && (paseo === null ? <p className="small muted">Checking Paseo…</p> : !paseo.ok && (
         <div role="alert" className="request">
           <p>{paseo.reason}</p>
