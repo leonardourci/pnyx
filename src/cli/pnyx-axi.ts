@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { project, PROJECT_HELP } from '../projects/cli.ts'
 import { createRequire } from 'node:module'
 import { AxiError, runAxiCli } from 'axi-sdk-js'
 import { serve, stop } from '../server/server.ts'
@@ -13,6 +14,7 @@ const { version } = createRequire(import.meta.url)('../../package.json') as { ve
 const HELP: Record<string, string> = {
   oracle: ORACLE_HELP,
   settings: SETTINGS_HELP,
+  project: PROJECT_HELP,
   reply: REPLY_HELP,
   agent: AGENT_HELP,
   ...WORKER_HELP,
@@ -28,6 +30,7 @@ await runAxiCli({
     ?? firstmateHelp({ command }) ?? HELP[command],
   commands: {
     ...commands,
+    project,
     ...workerCommands,
     serve,
     stop,
