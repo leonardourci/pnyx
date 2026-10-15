@@ -14,7 +14,7 @@ test('briefs, descriptions and layout settings survive event replay without movi
 
   try {
     await commands.task(['create', '--key', 'brief', '--title', 'Read the design', '--column', 'parked'])
-    await commands.task(['brief', 'brief', '--text', 'Explain the design in plain English.'])
+    await commands.task(['brief', 'brief', '--brief', 'Explain the design in plain English.'])
     await commands.column(['describe', 'parked', '--description', 'Tasks held for a later day.'])
     await commands.view(['set', '--json', JSON.stringify({ hydraWidth: 420, lastMessageOnCards: true, focusMode: false })])
     const { state } = loadBoard({ board: 'default' })
@@ -35,6 +35,12 @@ test('briefs, descriptions and layout settings survive event replay without movi
     assert.throws(() => patchView({ state, input: { lastMessageOnCards: 'yes' } }), /invalid view/)
     const legacy = viewFor({ state: { ...state, view: undefined } })
     assert.equal(legacy.lastMessageOnCards, DEFAULT_VIEW.lastMessageOnCards)
+    await commands.view(['set', '--json', JSON.stringify({ defaultHydraWidth: 400, defaultColumnWidths: { needs_you: 310 } })])
+    await commands.layout(['reset'])
+    const reset = loadBoard({ board: 'default' }).state
+    assert.equal(reset.view?.hydraWidth, 400)
+    assert.equal(reset.view?.columnWidths.needs_you, 310)
+    assert.deepEqual(replay({ state: emptyBoard(), events: readEvents({ board: 'default' }) }), reset)
   } finally {
     rmSync(home, { recursive: true, force: true })
   }

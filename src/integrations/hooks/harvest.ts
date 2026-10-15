@@ -1,8 +1,8 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { decideNote, decidePush, noteId } from '../../core/decide.ts'
-import { EVENT_VERSION, SESSION_TITLE, type SourceNote } from '../../core/model.ts'
-import { cardSessionId } from '../../core/tasks.ts'
+import { EVENT_VERSION, SESSION_TITLE, type AgentSession, type SessionEvent, type SourceNote } from '../../core/model.ts'
+import { cardSessionId, taskForMessage } from '../../core/tasks.ts'
 import { recordEntries } from '../../thread/read.ts'
 import type { Writer } from '../../store/board-store.ts'
 import { readTranscript } from '../../search/index.ts'
@@ -82,23 +82,28 @@ function codexTitle({ writer, cardId, path, at }: {
     .reduce((n, note) => n + appendNote({ writer, cardId, note, at }), 0)
 }
 
-export function harvestTranscripts({ writer, cardIds, at }: {
+export function harvestTranscripts({ writer, cardIds, at, detached }: {
   writer: Writer
   cardIds: Iterable<string>
   at: string
+  detached?: { session: AgentSession; task: string; memberships: SessionEvent[] }
 }): number {
   const cursors = readCursors({ dir: writer.dir })
   let appended = 0
   let moved = false
 
   for (const id of cardIds) {
-    const path = writer.state.cards[id]?.agent?.transcriptPath
+    const path = detached?.session.agent.transcriptPath
+      ?? writer.state.cards[id]?.agent?.transcriptPath
 
     if (!path || !isAbsolute(path) || !path.endsWith('.jsonl')) {
       continue
     }
 
-    appended += codexTitle({ writer, cardId: id, path, at })
+    if (!detached) {
+      appended += codexTitle({ writer, cardId: id, path, at })
+    }
+
     const name = `${id}\n${path}`
     const tail = readTranscript({ cursor: { source: path, ...(cursors[name] ?? { identity: '', pos: 0 }) } })
 
@@ -107,7 +112,15 @@ export function harvestTranscripts({ writer, cardIds, at }: {
     }
 
     const settings: FoundSettings = {}
-    const { agent, autoTitle, sourceRefs, settings: held } = writer.state.cards[id]!
+    const source = {
+      ...writer.state.cards[id]!,
+      ...(detached ? {
+        agent: detached.session.agent,
+        sourceRefs: detached.session.sourceRefs,
+        settings: detached.session.settings,
+      } : {}),
+    }
+    const { agent, autoTitle, sourceRefs, settings: held } = source
     // The transcript is written after the fact and read later, so a record older than
     // the session's latest hook never overrides a value of a setting hooks report live.
     const hooked = Math.max(0, ...sourceRefs.filter(r => r.adapter === 'hooks')
@@ -120,9 +133,9 @@ export function harvestTranscripts({ writer, cardIds, at }: {
 
     for (const line of tail.lines) {
       const card = writer.state.cards[id]!
-      const session = cardSessionId({ card })
+      const session = detached?.session.id ?? cardSessionId({ card })
 
-      if (session && (card.tracking === 'declared' || id === '$hydra')) {
+      if (session && (detached || card.tracking === 'declared' || id === '$hydra')) {
         for (const entry of recordEntries({ record: line.record, offset: line.pos }).filter(e => e.kind === 'message')) {
           const messageId = noteId({ cardKey: session, ref: `chat:${path}:${tail.identity}:${entry.id}:${entry.text}` })
 
@@ -134,7 +147,10 @@ export function harvestTranscripts({ writer, cardIds, at }: {
                 id: messageId,
                 at: entry.at ?? at,
                 actor: `session:${session}`,
-                cardId: id,
+                cardId: detached ? taskForMessage({
+                  memberships: detached.memberships, fallback: detached.task, at: entry.at,
+                }) : id,
+                agentId: `${agent!.provider}:${agent!.agentId ?? agent!.sessionId}`,
                 type: 'chat.message',
                 sessionId: session,
                 messageId,
@@ -173,7 +189,7 @@ export function harvestTranscripts({ writer, cardIds, at }: {
     const changed = Object.entries(settings)
       .some(([name, value]) => (card.settings?.[name] ?? null) !== value)
 
-    if (changed) {
+    if (changed && !detached) {
       const source = {
         adapter: 'transcript',
         instanceId: card.agent!.provider,

@@ -1,5 +1,5 @@
 import type { BoardState, ViewPreferences } from '../../../src/core/model.ts'
-import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
+import { resetLayoutWidths, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 
 export type SearchSetting = {
   id: string
@@ -62,7 +62,4 @@ export function matchesCommand({ query, text }: { query: string; text: string })
     || CONCEPTS.some(group => group.includes(word) && group.some(term => haystack.includes(term))))
 }
 
-export const resetWidths = ({ view }: { view: ViewPreferences }) => ({
-  hydraWidth: view.defaultHydraWidth,
-  columnWidths: { ...view.defaultColumnWidths },
-})
+export const resetWidths = resetLayoutWidths

@@ -147,6 +147,7 @@ export interface Card {
   id: string
   key: string
   title: string
+  brief?: string
   // Set once a push gives an explicit title; an auto title never replaces it.
   titleSet?: boolean
   autoTitle?: AutoTitle
@@ -185,7 +186,6 @@ export interface Card {
   createdSeq: number
   updatedSeq: number
   updatedAt: string
-  brief?: string
 }
 
 export interface PushFields {
@@ -248,9 +248,9 @@ export interface HydraIdentity {
   home?: string
 }
 export interface BoardColumn {
-  description?: string
   id: Column
   title: string
+  description?: string
   // Roles survive a rename. A task created in a role's column starts with its status,
   // and a card whose column is deleted falls back to the parked one.
   role?: 'needs_you' | 'workers_on_it' | 'done' | 'parked'
@@ -285,8 +285,10 @@ export interface HydraMessage {
 export type HydraEvent = EventBase & (
   | { type: 'board.configured'; data: BoardConfig }
   | { type: 'board.columns'; data: { columns: BoardColumn[]; before?: BoardColumn[]; fallback?: Column; placements?: Record<string, { before: Column | null; after: Column | null }> } }
-  | { type: 'task.brief'; data: { text: string; before?: string } }
-  | { type: 'task.created'; data: { key: string; title: string; parentId?: string; column?: Column; folder?: string } }
+  | { type: 'task.created'; data: { key: string; title: string; brief?: string; parentId?: string; column?: Column; folder?: string } }
+  | { type: 'task.brief'; data: { before: string; after: string } }
+  | { type: 'task.visibility'; data: { before: boolean; after: boolean } }
+  | { type: 'hydra.memory'; data: { key: string; before: string | null; after: string | null } }
   | { type: 'task.declared'; data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> }
   | { type: 'task.mirrored'; data: FirstmateRecord }
   | { type: 'hydra.message'; data: Omit<HydraMessage, 'id' | 'at' | 'actor'> }
@@ -332,13 +334,13 @@ export type RepliedEvent = EventBase & {
     resolveKey?: string
     answers?: string
     detail?: string
+    control?: boolean
   }
 }
 
 export interface ViewPreferences {
   focusMode: boolean
   lastMessageOnCards: boolean
-  hydraWidth: number
   defaultHydraWidth: number
   defaultColumnWidths: Record<string, number>
   theme: 'light' | 'dark' | 'system'
@@ -348,6 +350,7 @@ export interface ViewPreferences {
   codeFontSize: number
   panelPlacement: 'right' | 'inline'
   panelWidth: number
+  hydraWidth: number
   composerHeight: number
   cardHeight: number
   cardColors: boolean
@@ -387,7 +390,7 @@ export interface AgentSession {
 
 export type SessionEvent = EventBase & {
   type: 'task.session'
-  data: { session: string; before: string | null; after: string | null }
+  data: { session: string; before: string | null; after: string | null; brief?: string }
 }
 
 export type ChatEvent = EventBase & {
@@ -407,7 +410,7 @@ export type BoardEvent =
   | HydraEvent
   | ChatEvent
 export type EventType = BoardEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents']
+export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents']
 
 export interface BoardState {
   board?: BoardConfig
@@ -415,6 +418,7 @@ export interface BoardState {
   configured?: boolean
   boardRevision?: number
   hydraMessages?: HydraMessage[]
+  hydraMemory?: Record<string, { text: string; at: string }>
   view?: ViewPreferences
   viewRevision?: number
   v: typeof EVENT_VERSION

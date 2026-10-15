@@ -26,13 +26,9 @@ export function TaskSession({ card, state, command, connected, notify }: {
     run({
       save: async () => {
         try {
-          await command({ name: 'task', args: ['attach', card.id, '--session', id, ...flags] })
-
-          if (card.brief?.trim()) {
-            const receipt = await command({ name: 'reply', args: [card.id, card.brief, `brief:${card.id}:${id}`] })
-            const reply = receipt.reply as { state: string } | undefined
-            setFailure(reply?.state === 'delivered' ? '' : 'Brief could not be delivered. It is kept in this task.')
-          }
+          const receipt = await command({ name: 'task', args: ['attach', card.id, '--session', id, ...flags] })
+          const brief = receipt.brief as { state: string } | undefined
+          setFailure(!brief || brief.state === 'delivered' ? '' : 'Brief could not be delivered. It is kept in this task.')
 
           notify({ text: 'Agent attached.' })
         } catch (error) {

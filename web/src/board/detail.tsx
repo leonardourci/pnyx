@@ -25,7 +25,7 @@ function TaskBrief({ card, command, notify }: {
       className="task-brief"
       onSubmit={e => {
         e.preventDefault(); setBusy(true)
-        void command({ name: 'task', args: ['brief', card.id, '--text', draft, '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] })
+        void command({ name: 'task', args: ['brief', card.id, '--brief', draft, '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] })
           .catch(e => notify({ text: e.message }))
           .finally(() => setBusy(false))
       }}

@@ -15,6 +15,7 @@ import { paseoReply } from '../src/integrations/paseo/reply.ts'
 import { paseoConversation } from '../src/integrations/paseo/thread.ts'
 import { loadBoard, withWriter } from '../src/store/board-store.ts'
 import { startTask } from '../src/cli/start.ts'
+import { commands } from '../src/cli/commands.ts'
 import { workerCommands } from '../src/cli/workers.ts'
 
 const at = '2026-10-14T12:00:00Z'
@@ -242,10 +243,12 @@ test('an agent started from a lab home reports its hooks to that home, never to 
 test('task start uses the task kind\'s model, effort and mode, and opens with the worker prompt', async () => {
   const { folder } = board()
   workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'codex-small', '--effort', 'high', '--mode', 'full-access', '--board', 'lab'])
+  commands.task(['brief', 'work', '--brief', 'Verify the canary.', '--board', 'lab'])
   const paseo = fakePaseo()
   await startTask({ board: 'lab', task: 'work', kind: 'review', folder, url, meta: { at, actor: 'test', id: 'kind-1' }, connect: paseo.connect })
   const created = paseo.calls.create[0]!
   assert.deepEqual(created.config, { provider: 'codex/codex-small', thinkingOptionId: 'high', modeId: 'full-access' })
+  assert.match(String(created.prompt), /^Verify the canary\.\n\n/)
   assert.match(String(created.prompt), /Pnyx worker for task c1 "Lab task" on board lab/)
 
   const other = board()

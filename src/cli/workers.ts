@@ -2,9 +2,14 @@ import { isDeepStrictEqual } from 'node:util'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
 import { boardConfig, hydraEvent } from '../core/hydra.ts'
-import { BoardError, HARNESS_NAMES, QUOTA_BUCKETS, type AgentConfig, type BoardEvent, type EventType } from '../core/model.ts'
-import { boardDir, loadBoard, readEventsFrom } from '../store/board-store.ts'
-import { COMMON, WRITE, commit, commands, guard, integer, meta, parse, required, summarize, type Output } from './commands.ts'
+import { BoardError, HARNESS_NAMES, QUOTA_BUCKETS, type AgentConfig, type BoardEvent, type EventType, type SessionEvent } from '../core/model.ts'
+import { boardDir, loadBoard, readEvents, readEventsFrom, withWriter } from '../store/board-store.ts'
+import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
+import { harvestPaseoChats } from '../integrations/paseo/harvest.ts'
+import type { Connect } from '../integrations/paseo/client.ts'
+import { redact } from '../search/text.ts'
+import { splitEntry } from '../thread/read.ts'
+import { COMMON, WRITE, commit, commands, drainSpool, guard, integer, meta, parse, required, summarize, type Output } from './commands.ts'
 
 const HYDRA_ACTOR = 'hydra'
 const SAFE = /^[\w.:/[\]-]{1,100}$/
@@ -90,12 +95,14 @@ function kindCommand({ args }: { args: string[] }): Output {
   })
 }
 
-// What Hydra tracks. Its own writes (actor hydra) and hook chatter never wake it.
-const TRACKED: readonly EventType[] = ['hydra.message', 'task.created', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked']
+const TRACKED: readonly EventType[] = ['hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked']
 const CHECK_LIMIT = 20
 const POLL_MS = 2000
 
-async function hydraCheck({ args }: { args: string[] }): Promise<Output> {
+export async function hydraCheck({ args, connect }: {
+  args: string[]
+  connect?: Connect
+}): Promise<Output> {
   const { values, board } = parse({ args, options: { ...COMMON, after: { type: 'string' }, wait: { type: 'string' } }, positionals: 1 })
   const wait = integer({ value: values.wait, flag: '--wait' }) ?? 0
 
@@ -109,23 +116,89 @@ async function hydraCheck({ args }: { args: string[] }): Promise<Output> {
   const changes: BoardEvent[] = []
   let offset = 0
   let last = after
+  const sent = new Map<string, number>()
+  let unavailable: { task: string; error: string }[]
 
   for (;;) {
+    withWriter({
+      board,
+      fn: ({ writer }) => {
+        drainSpool({ writer })
+        harvestTranscripts({
+          writer,
+          cardIds: Object.values(writer.state.cards).filter(c => c.id !== '$hydra' && !c.automaticTask && c.sessionIds?.length)
+            .map(c => c.id),
+          at: new Date().toISOString(),
+        })
+        const attachments = readEvents({ board }).filter((e): e is SessionEvent => e.type === 'task.session')
+
+        for (const session of Object.values(writer.state.sessions ?? {})) {
+          const hydra = session.id === writer.state.board?.hydra.session
+
+          if (session.taskId || !session.agent.transcriptPath || hydra) {
+            continue
+          }
+
+          const memberships = attachments.filter(e => e.data.session === session.id)
+          const task = memberships.findLast(e => e.data.after)?.data.after
+
+          if (task && writer.state.cards[session.originCardId]) {
+            harvestTranscripts({
+              writer,
+              cardIds: [session.originCardId],
+              at: new Date().toISOString(),
+              detached: { session, task, memberships },
+            })
+          }
+        }
+      },
+    })
+    unavailable = await harvestPaseoChats({ board, connect })
     const read = readEventsFrom({ board, offset })
 
     if (read) {
       offset = read.end
+      const current = loadBoard({ board }).state
 
       for (const e of read.events) {
         last = Math.max(last, e.seq)
 
-        if (e.seq > after && TRACKED.includes(e.type) && e.actor !== HYDRA_ACTOR) {
+        const task = current.cards[e.cardId]
+        const worker = task?.tracking === 'declared' && !task.automaticTask && e.cardId !== '$hydra'
+        const question = worker && e.type === 'card.pushed' && e.data.attention?.some(a => a.blocking && !a.answered)
+        const owner = e.type === 'card.replied' && e.cardId !== '$hydra' && e.data.state === 'queued' && Boolean(e.data.text?.trim()) && !e.data.control && e.actor !== HYDRA_ACTOR
+        const key = ({ text }: { text: string }) => `${e.sessionId ?? e.cardId}\n${redact({ text })}`
+
+        if (e.type === 'card.replied' && e.data.state === 'queued' && e.data.text) {
+          const parts = splitEntry({ entry: { id: e.data.reply, role: 'user', kind: 'message', text: e.data.text ?? '' } })
+
+          for (const part of parts) {
+            const echo = key({ text: part.text })
+            sent.set(echo, (sent.get(echo) ?? 0) + 1)
+          }
+        }
+
+        let chat = e.type === 'chat.message' && e.cardId !== '$hydra' && /^(user|assistant)( · continued)?$/.test(e.data.role)
+
+        if (chat && e.type === 'chat.message' && e.data.role.startsWith('user')) {
+          const echo = key({ text: e.data.text })
+          const count = sent.get(echo) ?? 0
+
+          if (count) {
+            sent.set(echo, count - 1)
+            chat = false
+          }
+        }
+
+        const tracked = TRACKED.includes(e.type) || question || owner || chat
+
+        if (e.seq > after && tracked && e.actor !== HYDRA_ACTOR) {
           changes.push(e)
         }
       }
     }
 
-    if (changes.length || Date.now() >= deadline) {
+    if (changes.length || unavailable.length || Date.now() >= deadline) {
       break
     }
 
@@ -134,6 +207,24 @@ async function hydraCheck({ args }: { args: string[] }): Promise<Output> {
 
   const page = changes.slice(0, CHECK_LIMIT)
   const through = changes.length > CHECK_LIMIT ? page.at(-1)!.seq : last
+  type Conversation = { task: string; messages: { seq: number; role: string; text: string }[] }
+  const digest = new Map<string, Conversation>()
+
+  for (const event of page) {
+    const message = event.type === 'chat.message'
+      ? { role: event.data.role, text: event.data.text }
+      : event.type === 'card.replied' && event.data.text
+        ? { role: 'user', text: event.data.text } : undefined
+
+    if (message) {
+      const task = digest.get(event.cardId) ?? { task: event.cardId, messages: [] }
+      task.messages.push({
+        seq: event.seq, role: message.role, text: compact({ text: message.text }),
+      })
+      digest.set(event.cardId, task)
+    }
+  }
+
   const row = ({ e }: { e: BoardEvent }) => ({
     seq: e.seq,
     id: e.id,
@@ -141,15 +232,28 @@ async function hydraCheck({ args }: { args: string[] }): Promise<Output> {
     task: e.cardId === '$board' ? 'none' : e.cardId,
     action: e.type === 'hydra.message' ? e.data.action : 'none',
     actor: e.actor,
-    summary: summarize({ event: e }),
+    summary: compact({
+      text: e.type === 'card.pushed' ? e.data.attention?.filter(a => a.blocking && !a.answered)
+        .map(a => a.text ?? a.kind)
+        .join('; ') ?? 'Agent needs an answer' : summarize({ event: e }),
+    }),
   })
 
   return {
     board,
     changes: page.length ? page.map(e => row({ e })) : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
-    help: [`Run \`pnyx-axi hydra check --after ${through} --wait 1800 --board ${board}\` to wait for the next change`],
+    ...(digest.size ? { conversations: [...digest.values()] } : {}),
+    ...(unavailable.length ? { unavailable } : {}),
+    help: [...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []), `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --board ${board}\` to wait for the next change`],
   }
+}
+
+function compact({ text }: { text: string }): string {
+  const clean = redact({ text }).replace(/\s+/g, ' ')
+    .trim()
+
+  return clean.length > 280 ? `${clean.slice(0, 279)}…` : clean
 }
 
 // guard catches only synchronous errors; the check can wait.

@@ -56,7 +56,7 @@ test('task start --via command runs the board command once and its session joins
   run({ args: ['task', 'create', '--title', 'Write the docs', '--folder', folder] })
   const task = Object.values(state().cards).find(c => c.title === 'Write the docs')!.id
 
-  await run({ args: ['task', 'brief', task, '--text', 'Draft it'] })
+  await run({ args: ['task', 'brief', task, '--brief', 'Draft it'] })
   const started = await startTask({ board: 'lab', task, via: 'command', meta: { ...meta, id: 's1' } })
   assert.equal(started.via, 'command')
   const env = environment({ text: await written({ path: out }) })
@@ -64,7 +64,7 @@ test('task start --via command runs the board command once and its session joins
   assert.equal(env.PNYX_BOARD, 'lab')
   assert.equal(env.PNYX_HOME, process.env.PNYX_HOME)
   assert.equal(env.PNYX_ROLE, 'worker')
-  assert.equal(env.PNYX_PROMPT, 'Draft it')
+  assert.match(env.PNYX_PROMPT!, /^Draft it\n\nYou are the Pnyx worker/)
   assert.equal(env.PNYX_FOLDER, folder)
   assert.equal(state().cards[task]!.notes?.at(-1)?.source, 'pnyx:start')
 

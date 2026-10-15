@@ -1,14 +1,15 @@
 import { BoardError, COLUMNS, type BoardState, type ViewPreferences } from './model.ts'
 import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from './keyboard.ts'
 
-export const DEFAULT_COLUMN_WIDTH = 290
+export const DEFAULT_WIDTHS = { column: 290, hydra: 360 } as const
+export const DEFAULT_COLUMN_WIDTH = DEFAULT_WIDTHS.column
 
 export const DEFAULT_VIEW: ViewPreferences = {
   theme: 'system',
   focusMode: true,
   lastMessageOnCards: false,
-  hydraWidth: 380,
-  defaultHydraWidth: 380,
+  hydraWidth: DEFAULT_WIDTHS.hydra,
+  defaultHydraWidth: DEFAULT_WIDTHS.hydra,
   defaultColumnWidths: Object.fromEntries(COLUMNS.map(id => [id, DEFAULT_COLUMN_WIDTH])),
   keyboard: DEFAULT_KEYBOARD,
   fontSize: 14,
@@ -77,6 +78,9 @@ export function traces({ view, card }: { view: ViewPreferences; card: string }) 
 
 export const viewFor = ({ state }: { state: Pick<BoardState, 'view' | 'board'> }): ViewPreferences => {
   const view = { ...structuredClone(DEFAULT_VIEW), ...state.view }
+  const columnIds = new Set<string>([
+    ...COLUMNS, ...(state.board?.columns ?? view.customColumns).map(column => column.id),
+  ])
 
   return {
     ...view,
@@ -93,7 +97,9 @@ export const viewFor = ({ state }: { state: Pick<BoardState, 'view' | 'board'> }
     defaultColumnWidths: {
       ...Object.fromEntries((state.board?.columns ?? view.customColumns)
         .map(c => [c.id, DEFAULT_COLUMN_WIDTH])),
-      ...persistedMap({ values: view.defaultColumnWidths, ...VIEW_SIZE_LIMITS.columnWidth }),
+      ...Object.fromEntries(Object.entries(persistedMap({
+        values: view.defaultColumnWidths, ...VIEW_SIZE_LIMITS.columnWidth,
+      })).filter(([id]) => columnIds.has(id))),
     },
     fontSize: persistedSize(
       {
@@ -165,6 +171,15 @@ export const viewFor = ({ state }: { state: Pick<BoardState, 'view' | 'board'> }
     ),
   }
 }
+
+export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
+  hydraWidth: view.defaultHydraWidth,
+  columnWidths: {
+    ...Object.fromEntries(Object.keys(view.columnWidths).map(id => [id, null])),
+    ...Object.fromEntries(Object.entries(view.defaultColumnWidths)
+      .filter(([, width]) => width !== DEFAULT_WIDTHS.column)),
+  },
+})
 
 const invalid = ({ detail }: { detail: string }): never => {
   throw new BoardError({ message: `invalid view preference: ${detail}`, code: 'VALIDATION_ERROR' })
@@ -298,7 +313,7 @@ export function patchView({ state, input: rawInput }: {
             return invalid({ detail: id })
           }
 
-          if (key === 'columnWidths' && ![...COLUMNS, ...boardColumnIds, ...next.customColumns.map(c => c.id)].includes(id as never)) {
+          if (key === 'columnWidths' && n !== null && ![...COLUMNS, ...boardColumnIds, ...next.customColumns.map(c => c.id)].includes(id as never)) {
             return invalid({ detail: id })
           }
 

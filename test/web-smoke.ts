@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startServer } from '../src/server/server.ts'
 import { loadBoard, withWriter } from '../src/store/board-store.ts'
+import { DEFAULT_WIDTHS } from '../src/core/view.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import { smokeBrowser } from './browser.ts'
@@ -68,8 +69,8 @@ try {
   await screenshot({ name: 'card-open.png' })
   await click({ selector: '[aria-label="Close detail"]' })
   await focus({ selector: '[aria-label="Resize Hydra panel"]' }); await press({ key: 'ArrowRight' })
-  await eventually({ condition: 'document.querySelector("[aria-label=\\"Resize Hydra panel\\"]").getAttribute("aria-valuenow") === "388"', label: 'Hydra resize is saved' })
-  assert.equal(state().view?.hydraWidth, 388)
+  await eventually({ condition: 'document.querySelector("[aria-label=\\"Resize Hydra panel\\"]").getAttribute("aria-valuenow") === "368"', label: 'Hydra resize is saved' })
+  assert.equal(state().view?.hydraWidth, DEFAULT_WIDTHS.hydra + 8)
   await focus({ selector: '[aria-label="Resize Needs you column"]' }); await press({ key: 'ArrowRight' })
   await eventually({ condition: 'document.querySelector("[aria-label=\\"Resize Needs you column\\"]").getAttribute("aria-valuenow") === "298"', label: 'column resize saved' })
   await text({ label: 'Settings' })
@@ -79,8 +80,8 @@ try {
   const beforeReset = state().seq
   await text({ label: 'Reset widths to defaults' })
   await eventually({ condition: 'document.querySelector(".app").dataset.seq === ' + JSON.stringify(String(beforeReset + 1)), label: 'width defaults restored' })
-  assert.equal(state().view?.hydraWidth, 380)
-  assert.equal(state().view?.columnWidths.needs_you, 290)
+  assert.equal(state().view?.hydraWidth, DEFAULT_WIDTHS.hydra)
+  assert.equal(state().view?.columnWidths.needs_you ?? DEFAULT_WIDTHS.column, DEFAULT_WIDTHS.column)
   await click({ selector: '[aria-label="Switch board"]' }); await click({ selector: '[aria-current="page"]' })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` }); await browser({ args: ['wait', 'Keep the conversation readable'] })
   await check({ condition: '!!document.querySelector(".detail .message.tool") && document.querySelector(".detail .trace").dataset.expandable === "false"', label: 'details off keeps tool rows visible and collapsed' })

@@ -13,7 +13,14 @@ const bin = join(import.meta.dirname, '../dist/cli/pnyx-axi.js')
 function fixture({ board = 'default' }: { board?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'pnyx-hydra-'))
   const env = { ...process.env, PNYX_HOME: root, PNYX_SEMANTIC: 'off' }
-  const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [bin, ...args, '--board', board], { env, encoding: 'utf8' })
+
+  const run = ({ args }: { args: string[] }): string => {
+    const out = execFileSync(process.execPath, [bin, ...args, '--board', board], { env, encoding: 'utf8' })
+    const token = /^token: ([a-f0-9]+)$/m.exec(out)?.[1]
+
+    return token ? run({ args: [...args, '--confirm', token] }) : out
+  }
+
   const state = ({ id = board }: { id?: string } = {}): BoardState => JSON.parse(readFileSync(join(root, 'boards', id, 'snapshot.json'), 'utf8')).state
   const events = (): BoardEvent[] => readFileSync(join(root, 'boards', board, 'events.jsonl'), 'utf8').trim()
     .split('\n')

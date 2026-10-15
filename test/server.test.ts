@@ -48,7 +48,12 @@ afterEach(async () => {
   server = undefined
 })
 
-const cli = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { encoding: 'utf8', timeout: CLI_TIMEOUT_MS })
+const cli = ({ args }: { args: string[] }): string => {
+  const out = execFileSync(process.execPath, [BIN, ...args], { encoding: 'utf8', timeout: CLI_TIMEOUT_MS })
+  const token = /^token: ([a-f0-9]+)$/m.exec(out)?.[1]
+
+  return token ? cli({ args: [...args, '--confirm', token] }) : out
+}
 
 const hookEvent = ({ id, key, title }: { id: string; key: string; title: string }) => ({ id, key, at: '2026-10-13T14:00:00Z', actor: 'hook', card: { title } })
 
