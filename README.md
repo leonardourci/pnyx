@@ -42,10 +42,15 @@ pnyx-axi project add --clone https://example.com/team/project.git --into /path/t
 pnyx-axi project list --hydra work
 pnyx-axi task create --title "Ship the change" --project project --hydra work
 pnyx-axi task project <task> --project project --hydra work
+pnyx-axi project set project --copy '<shell command>' --hydra work
 pnyx-axi project remove project --hydra work
 ```
 
 Clone runs ordinary git directly, without sending the URL to an agent. `--into` is required. Relative paths are resolved from the CLI's working folder; in Settings, use an absolute laptop path. Removing a project only detaches it: tasks, history and the project record stay. Add its path again, or choose Re-attach under Settings → Projects → Detached, to bring it back. Use a full path when folder names are ambiguous.
+
+Workers start in their task's own copy of its project by default: on the first start Pnyx makes a git worktree of the project on branch `pnyx/<hydra>-<task>`, kept under the Hydra's folder (`boards/<hydra>/copies/`), and later starts of that task reuse it. `task start --in-place` works in the project folder itself instead; it is refused while a worker of another Hydra runs in that folder. A project can make its copies its own way: `pnyx-axi project set <name> --copy '<shell command>' --hydra work` runs that command in the project folder with `PNYX_TASK`, `PNYX_TASK_TITLE` and `PNYX_PROJECT` in its environment, and it prints the new folder's path last; an empty `--copy` goes back to git worktrees. A Hydra start command that makes its own folder skips the copy with `hydra set --command-folder own`.
+
+When a task reaches Done and its agent is no longer working, Pnyx removes its copy if it has no uncommitted changes and its work has landed: its commit is on the default branch, or its linked pull request merged. The branch always stays, and a copy whose commit is on no branch is never removed this way. Files git ignores go with the copy. A copy made by the project's copy command is only released: its folder stays for that command's own tool. Otherwise nothing is committed or removed; the task keeps its copy, flagged, and Hydra gets a message to resolve it. `pnyx-axi task copy <task>` shows the copy and that check, and `task copy <task> remove` checks again once the work has landed. Hydra confirms a clean copy whose work already landed another way, or is empty, with `--safe`; discarding work that never landed takes `--discard` with the owner's `--confirm <token>`, never Hydra's. On a Firstmate-linked Hydra, Firstmate makes and cleans its own copies.
 
 Sharing a folder between Hydras requires an explicit confirmation naming the other Hydras. The CLI returns a token; repeat the attachment with `--confirm <token>`. Settings shows a confirmation dialog with links to those Hydras. Hydra's summary and light check include its projects. On a Firstmate-linked Hydra, the home’s project folders appear read-only and are managed by Firstmate.
 
@@ -173,13 +178,13 @@ On a slow laptop, or to keep search full-text only:
 
 ## Where data lives
 
-Everything is in `~/.pnyx/` (or `$PNYX_HOME`): the hook script in `hooks/`, the local write token, `settings.json`, the semantic search models in `models/` with the worker's `semantic.log`, and one folder per Hydra in `boards/<hydra>/` with `events.jsonl` (the append-only log), `snapshot.json`, `search.db` and `harvest.json`. Existing Hydras keep the `boards/` directories, `search.db` caches and event vocabulary, saved search settings and service identities on disk. Snapshots from an older version rebuild from the unchanged event log. The CLI uses `hydra`, `--hydra` and `oracle`; old command names and flags have no aliases. Rerun `pnyx-axi setup hooks` and `pnyx-axi setup service` after upgrading so installed hooks use `PNYX_HYDRA` and one login service runs every Hydra. Restart agents started before upgrading so their hooks inherit `PNYX_HYDRA`; their recorded tasks and conversations remain in the log. Nothing at runtime writes inside the repository.
+Everything is in `~/.pnyx/` (or `$PNYX_HOME`): the hook script in `hooks/`, the local write token, `settings.json`, the semantic search models in `models/` with the worker's `semantic.log`, and one folder per Hydra in `boards/<hydra>/` with `events.jsonl` (the append-only log), `snapshot.json`, `search.db`, `harvest.json` and `copies/`, the task copies Pnyx made. Existing Hydras keep the `boards/` directories, `search.db` caches and event vocabulary, saved search settings and service identities on disk. Snapshots from an older version rebuild from the unchanged event log. The CLI uses `hydra`, `--hydra` and `oracle`; old command names and flags have no aliases. Rerun `pnyx-axi setup hooks` and `pnyx-axi setup service` after upgrading so installed hooks use `PNYX_HYDRA` and one login service runs every Hydra. Restart agents started before upgrading so their hooks inherit `PNYX_HYDRA`; their recorded tasks and conversations remain in the log. Nothing at runtime writes inside the repository.
 
-To start a Hydra over, stop the server and delete its folder: `pnyx-axi stop && rm -rf ~/.pnyx/boards/default`. `pnyx-axi oracle rebuild` rebuilds only the search index.
+To start a Hydra over, stop the server and delete its folder: `pnyx-axi stop && rm -rf ~/.pnyx/boards/default`. That folder also holds its task copies, so settle them first with `pnyx-axi task copy <task> remove`, and run `git worktree prune` in each project afterwards. `pnyx-axi oracle rebuild` rebuilds only the search index.
 
 ## Uninstall
 
-Remove the hooks first, since they point at the script in `~/.pnyx/hooks/`:
+Remove the hooks first, since they point at the script in `~/.pnyx/hooks/`. Deleting `~/.pnyx` also deletes the task copies under each Hydra's folder, so settle them first:
 
 ```sh
 pnyx-axi stop
