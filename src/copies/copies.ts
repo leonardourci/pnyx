@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, realpathSync, statSync } from 'node:fs'
-import { dirname, isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join, sep } from 'node:path'
 import { decidePush, findCard, type Decision, type Meta } from '../core/decide.ts'
 import { hydraConfig, hydraEvent } from '../core/hydra.ts'
 import { HydraError, type Card, type HydraProject, type HydraState, type TaskCopy } from '../core/model.ts'
@@ -128,6 +128,15 @@ function commandCopy({ hydraId, card, project, command }: {
 }
 
 // A project task works in its own copy unless the start says otherwise; Firstmate Hydras make their own.
+// A copy recorded before its Hydra moved from boards/ to hydras/ is found in its new place.
+export function relocated({ copy }: { copy: TaskCopy }): TaskCopy {
+  const home = canonical({ path: pnyxHome() })!
+  const old = join(home, 'boards') + sep
+
+  return copy.path.startsWith(old) && !isFolder({ path: copy.path })
+    ? { ...copy, path: join(home, 'hydras', copy.path.slice(old.length)) } : copy
+}
+
 export function taskFolder({ hydraId, task, folder, inPlace, ownFolder, meta }: {
   hydraId: string
   task: string
@@ -183,7 +192,8 @@ export function taskFolder({ hydraId, task, folder, inPlace, ownFolder, meta }: 
     throw new HydraError({ message: `task ${card.id} still has a copy of ${card.copy.project} at ${card.copy.path}`, code: 'CONFLICT', help: [`Settle it first with \`pnyx-axi task copy ${card.id} remove --hydra ${hydraId}\``] })
   }
 
-  const current = card.copy && card.copy.state !== 'removed' && isFolder({ path: card.copy.path }) ? card.copy : undefined
+  const recorded = card.copy && relocated({ copy: card.copy })
+  const current = recorded && recorded.state !== 'removed' && isFolder({ path: recorded.path }) ? recorded : undefined
   const copy = current ?? (project.copy
     ? commandCopy({ hydraId, card, project, command: project.copy })
     : worktreeCopy({ hydraId, card, project }))
@@ -265,7 +275,7 @@ export function settleCopy({ hydraId, ref, mode = 'check', meta }: {
   meta: Meta
 }): { copy: TaskCopy | null; check?: CopyCheck } {
   const card = findCard({ state: loadHydra({ hydraId }).state, ref })
-  const copy = card.copy
+  const copy = card.copy && relocated({ copy: card.copy })
 
   if (!copy || copy.state === 'removed') {
     return { copy: copy ?? null }
@@ -297,7 +307,7 @@ export function settleCopy({ hydraId, ref, mode = 'check', meta }: {
       drainSpool({ writer })
       const now = findCard({ state: writer.state, ref: card.id })
 
-      if (now.copy?.path !== copy.path || now.copy.state === 'removed'
+      if (now.copy?.path !== card.copy!.path || now.copy.state === 'removed'
         || (now.copy.state === after.state && now.copy.reason === after.reason)) {
         return { copy: now.copy ?? null, check }
       }

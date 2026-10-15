@@ -3,7 +3,7 @@ import type { Output } from '../cli/commands.ts'
 import { findCard, type Meta } from '../core/decide.ts'
 import { HydraError, HYDRA_ACTOR } from '../core/model.ts'
 import { loadHydra } from '../store/hydra-store.ts'
-import { checkCopy, settleCopy } from './copies.ts'
+import { checkCopy, relocated, settleCopy } from './copies.ts'
 
 export function copyCommand({ hydraId, ref, action, values, meta }: {
   hydraId: string
@@ -19,7 +19,7 @@ export function copyCommand({ hydraId, ref, action, values, meta }: {
       return { task: card.id, copy: 'none: this task has no copy of its own' }
     }
 
-    return { task: card.id, copy: card.copy, ...(card.copy.state !== 'removed' ? { check: checkCopy({ card, copy: card.copy }) } : {}) }
+    return { task: card.id, copy: card.copy, ...(card.copy.state !== 'removed' ? { check: checkCopy({ card, copy: relocated({ copy: card.copy }) }) } : {}) }
   }
 
   if (action !== 'remove' || (values.safe && values.discard)) {
