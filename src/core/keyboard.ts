@@ -39,7 +39,6 @@ export const KEY_ACTIONS = [
   action({ id: 'find', label: 'Find in current view', keys: ['Mod+f'], scopes: [...navigation, 'composer'] }),
   action({ id: 'palette', label: 'Focus search', keys: ['Mod+k'], scopes: [...navigation, 'composer'] }),
   action({ id: 'help', label: 'Keyboard help', keys: ['?'], scopes: navigation }),
-  action({ id: 'hints', label: 'Show target hints', keys: ['f'], scopes: navigation }),
   action({ id: 'settings', label: 'Open settings', keys: ['Mod+,'], scopes: navigation }),
   action({ id: 'topbar', label: 'Show or hide the top bar', keys: ['Mod+b'], scopes: [...navigation, 'composer'] }),
 ]

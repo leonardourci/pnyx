@@ -80,6 +80,11 @@ export const viewFor = ({ state }: { state: Pick<BoardState, 'view' | 'board'> }
 
   return {
     ...view,
+    keyboard: {
+      ...view.keyboard,
+      bindings: Object.fromEntries(Object.entries(view.keyboard.bindings)
+        .filter(([id]) => KEY_ACTIONS.some(action => action.id === id))),
+    },
     defaultHydraWidth: persistedSize({
       value: view.defaultHydraWidth,
       fallback: DEFAULT_VIEW.defaultHydraWidth,

@@ -218,3 +218,12 @@ test('the highlighted task or column moves with the platform modifier and arrows
     assert.equal(resolve({ event: { key: `Arrow${direction}`, metaKey: true }, change: { editing: true } }).action, undefined)
   }
 })
+
+test('retired saved bindings do not prevent later keyboard preference edits', () => {
+  const view = viewFor({ state: emptyBoard() })
+  view.keyboard.bindings.move = ['g m']
+  view.keyboard.bindings.hints = ['f']
+  const state = { ...emptyBoard(), view }
+  const patched = patchView({ state, input: { keyboard: { characterShortcuts: false } } })
+  assert.deepEqual(patched.keyboard, { characterShortcuts: false, bindings: {} })
+})
