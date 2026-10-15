@@ -311,7 +311,7 @@ function lockIsStale({ path }: { path: string }): boolean {
 }
 
 // Re-checks staleness under an O_EXCL takeover file so only one writer can remove a dead lock.
-// ponytail: a writer killed inside the takeover leaves the takeover file behind; the LOCKED help says to remove it.
+// ponytail: a writer killed inside the takeover leaves the takeover file behind, and every later dead lock then needs the manual removal the LOCKED help names.
 function takeOver({ path, takeover }: { path: string; takeover: string }): boolean {
   try {
     closeSync(openSync(takeover, 'wx'))
