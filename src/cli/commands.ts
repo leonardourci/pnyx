@@ -47,12 +47,15 @@ import { answerPrompt } from '../core/answer.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
-import { boardDir, pnyxHome, loadBoard, readEvents, repairBoard, spoolFiles, withWriter } from '../store/board-store.ts'
+import { boardDir, pnyxHome, loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from '../store/board-store.ts'
 
 const DEFAULT_BOARD = 'default'
 const HISTORY_LIMIT = 20
 const HISTORY_MAX = 100
 const HOME_LIMIT = 50
+export const HYDRA_ACTOR = 'hydra'
+// Hydra's own changes to tasks carry one short why; the owner's direct actions need none.
+const EXPLAINED: readonly EventType[] = ['card.moved', 'task.created', 'task.brief', 'task.visibility']
 
 export type Output = Record<string, unknown>
 export type Options = NonNullable<ParseArgsConfig['options']>
@@ -62,6 +65,7 @@ export const WRITE: Options = {
   ...COMMON,
   actor: { type: 'string' },
   reason: { type: 'string' },
+  details: { type: 'string' },
   'event-id': { type: 'string' },
   'if-revision': { type: 'string' },
   confirm: { type: 'string' },
@@ -125,6 +129,10 @@ export function meta({ values }: { values: Record<string, string | boolean | und
     m.reason = values.reason
   }
 
+  if (typeof values.details === 'string' && values.details.trim()) {
+    m.details = values.details
+  }
+
   if (typeof values['event-id'] === 'string') {
     m.id = values['event-id']
   }
@@ -136,6 +144,54 @@ export function meta({ values }: { values: Record<string, string | boolean | und
   }
 
   return m
+}
+
+export function explained({ meta }: { meta: Meta }) {
+  if (meta.actor === HYDRA_ACTOR && !meta.reason?.trim()) {
+    throw new BoardError({ message: 'Hydra changes need --reason <why>', code: 'VALIDATION_ERROR', help: ['Repeat the command with --reason "<one short line on why>"; Pnyx keeps it on the event and posts it in your board chat'] })
+  }
+}
+
+// An ordinary Hydra message, so the light check, hydra messages and later sessions read it back.
+export function postLine({ writer, board, meta, cardId, action, id }: {
+  writer: Writer
+  board: string
+  meta: Meta
+  cardId: string
+  action: string
+  id?: string
+}): string {
+  const text = `${action}: ${meta.reason!.trim()}`
+
+  if (id && id in writer.state.eventIds) {
+    return text
+  }
+
+  const decision = hydraEvent({ state: writer.state, meta: { at: meta.at, actor: meta.actor, ...(id ? { id } : {}) }, cardId, change: { type: 'hydra.message', data: { task: cardId, action: 'send', text, ...(meta.details ? { details: meta.details } : {}), hydra: boardConfig({ state: writer.state, id: board }).hydra.id } } })
+
+  if ('event' in decision) {
+    decision.event.messageId = decision.event.id
+    writer.append({ event: decision.event })
+  }
+
+  return text
+}
+
+function actionText({ state, board, event }: {
+  state: BoardState
+  board: string
+  event: BoardEvent
+}): string {
+  const title = state.cards[event.cardId]?.title ?? event.cardId
+  const columnTitle = ({ id }: { id: Column | null }) => boardConfig({ state, id: board }).columns.find(c => c.id === id)?.title ?? id ?? 'none'
+
+  switch (event.type) {
+    case 'card.moved': return event.data.before === event.data.after ? `Reordered ${title} in ${columnTitle({ id: event.data.after })}` : `Moved ${title} to ${columnTitle({ id: event.data.after })}`
+    case 'task.created': return `Created ${title}`
+    case 'task.brief': return `Updated the brief of ${title}`
+    case 'task.visibility': return event.data.after ? `Hid ${title}` : `Returned ${title} to the board`
+    default: return summarize({ event })
+  }
 }
 
 function receipt({ state, event }: { state: BoardState; event: BoardEvent }): Output {
@@ -246,6 +302,10 @@ export function commit(
     confirmation?: { token?: string }
   },
 ): Output {
+  if (EXPLAINED.includes(intent.type)) {
+    explained({ meta })
+  }
+
   return withWriter({
     board,
     fn: ({ writer }) => {
@@ -284,6 +344,10 @@ export function commit(
 
           writer.append({ event: decision.event })
           out = receipt({ state: writer.state, event: decision.event })
+
+          if (meta.actor === HYDRA_ACTOR && EXPLAINED.includes(decision.event.type)) {
+            out.posted = postLine({ writer, board, meta, cardId: decision.event.cardId, action: actionText({ state: writer.state, board, event: decision.event }), id: `${decision.event.id}:line` })
+          }
 
           if (decision.event.type === 'task.session' && decision.event.data.after) {
             harvestTranscripts({
@@ -483,7 +547,9 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (action === 'start') {
-    return startTask({
+    explained({ meta: m })
+
+    const started = startTask({
       board,
       task: required({ value: positionals[1], what: 'task id' }),
       via: values.via as string | undefined,
@@ -494,6 +560,20 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       url,
       meta: m,
     })
+
+    return m.actor === HYDRA_ACTOR
+      ? started.then(out => ({
+        ...out,
+        posted: withWriter({
+          board,
+          fn: ({ writer }) => {
+            const card = findCard({ state: writer.state, ref: positionals[1]! })
+
+            return postLine({ writer, board, meta: m, cardId: card.id, action: `Started a worker on ${card.title}`, ...(m.id ? { id: `${m.id}:line` } : {}) })
+          },
+        }),
+      }))
+      : started
   }
 
   if (action === 'sessions') {
@@ -1126,7 +1206,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       const text = task
         ? String(values.text ?? `${action === 'worker' ? 'Create a worker for' : 'Work with me on'} task ${task.id}: ${task.title}. Read its task history and current record before continuing.`)
         : required({ value: values.text as string | undefined, what: '--text' })
-      const decision = hydraEvent({ state, meta: m, cardId: task?.id ?? '$board', change: { type: 'hydra.message', data: { ...(task ? { task: task.id } : {}), action, text, hydra: boardConfig({ state, id: board }).hydra.id } } })
+      const decision = hydraEvent({ state, meta: m, cardId: task?.id ?? '$board', change: { type: 'hydra.message', data: { ...(task ? { task: task.id } : {}), action, text, ...(m.details ? { details: m.details } : {}), hydra: boardConfig({ state, id: board }).hydra.id } } })
 
       if ('event' in decision) {
         decision.event.messageId = decision.event.id
@@ -1309,6 +1389,12 @@ const outcome = guard({
 })
 
 export function summarize({ event }: { event: BoardEvent }): string {
+  const text = summary({ event })
+
+  return event.reason ? `${text} (why: ${event.reason})` : text
+}
+
+function summary({ event }: { event: BoardEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
@@ -1322,7 +1408,7 @@ export function summarize({ event }: { event: BoardEvent }): string {
     case 'task.declared': return `${event.data.state}: ${event.data.note}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
     case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
-    case 'hydra.message': return `${event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}`
+    case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'board.agents': return `Agent kinds: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
@@ -1635,8 +1721,8 @@ the final column cannot be deleted. Reorder and delete first return confirmation
 repeat the same command with --confirm <token>. Browser actions already carry the owner’s intent.
 Use --if-revision for the board revision (the view revision for resize).
 `,
-  hydra: `usage: pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>]
-pnyx-axi hydra send --text <message>
+  hydra: `usage: pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--details <text>]
+pnyx-axi hydra send --text <message> [--details <text>]
 pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
@@ -1648,14 +1734,14 @@ session becomes the board's Hydra (in Paseo on the hydra kind's agent unless --k
 prompt points Hydra at the pnyx-hydra skill.
 Messages are durable entries in Hydra's board chat; one without --task is about the board, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
-check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra),
-and with --wait it blocks up to that many seconds until one appears. It also records native task conversations
+check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)
+except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It also records native task conversations
 and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
 for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
 `,
-  task: `usage: pnyx-axi task create --title <title> [--brief <text>] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>]
-pnyx-axi task brief <id> --brief <text>
-pnyx-axi task hide|unhide <id>
+  task: `usage: pnyx-axi task create --title <title> [--brief <text>] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
+pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list | show <id> [--full]
 pnyx-axi task rename <id> --title <title>
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
@@ -1664,6 +1750,8 @@ pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>
 pnyx-axi task start <task> [--via paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--prompt <text>] [--harness <name>] [--folder <path>]
+Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide and start, as to move. Pnyx keeps it on the event,
+posts "<what Hydra did>: <reason>" in Hydra's board chat with --details under it, and returns that line as posted.
 pnyx-axi task paseo [--paseo-url <url>]
 pnyx-axi task sessions
 pnyx-axi task attach <task> --session <session-id|card-id|key|self>
@@ -1704,10 +1792,11 @@ linked pull request's title and description through gh-axi. Sessions are also ha
 turn ends; Firstmate decisions, reports and Captain's intent arrive through \`firstmate sync\`.
 Sources are only read. Each note is kept once, so running it again appends only what is new.
 `,
-  move: `usage: pnyx-axi move <id> <column-id> [--before <id>] [--event-id <id>] [--if-revision <n>] [--reason <text>]
+  move: `usage: pnyx-axi move <id> <column-id> [--before <id>] [--event-id <id>] [--if-revision <n>] [--reason <text>] [--details <text>]
 Puts the card in the column just above the --before card, or at the end of the column without it.
 First returns confirmation: needed and a token; repeat with --confirm <token> to act.
 Hydra places a card only in response to its own agent’s actions, using the descriptions from \`pnyx-axi column list\`.
+Hydra's moves need --reason; Pnyx posts "Moved <task> to <column>: <reason>" in Hydra's board chat and returns it as posted. The owner's moves need none.
 `,
   link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove] [--event-id <id>] [--if-revision <n>]
 GitHub pull request URLs get kind and number filled in. A link never moves the card.
