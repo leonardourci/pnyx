@@ -332,6 +332,7 @@ async function boardSearch({ board, query, leg }: {
   const lexical = search({ board, query: { ...query, limit: Math.max(query.limit, CANDIDATES) } })
   const filters = {
     ...(query.kind ? { kind: query.kind } : {}),
+    ...(query.live ? { live: true } : {}),
     ...(query.workspace ? { workspace: query.workspace } : {}),
   }
   const vectors: VectorRead = nearestCards({
@@ -366,7 +367,7 @@ async function boardSearch({ board, query, leg }: {
     const near = byMeaning.get(card)
     const hit: HybridHit = words
       ? { ...words, match: near ? 'both' : words.match }
-      : { card, title: near!.title, match: 'semantic', snippets: [{ kind: near!.kind, at: near!.at || 'unknown', snippet: excerpt({ text: near!.body }) }] }
+      : { card, title: near!.title, ...(card === '$board' ? { kind: 'hydra' as const } : {}), match: 'semantic', snippets: [{ kind: near!.kind, at: near!.at || 'unknown', snippet: excerpt({ text: near!.body }) }] }
     const weakMeaning = !words && (reranked ? !top.has(card) : near!.similarity < floor)
 
     return ranked.weak.has(card) || weakMeaning ? { ...hit, weak: true } : hit
@@ -564,4 +565,32 @@ export async function setupSemantic(
   await ask({ req: { op: 'index', board }, timeoutMs: INDEX_TIMEOUT_MS }).catch(() => undefined)
 
   return { mode, choice, files }
+}
+
+export async function searchCommands({ query, entries, settings = readSettings({}) }: {
+  query: string
+  entries: { id: string; text: string }[]
+  settings?: SearchSettings
+}): Promise<string[]> {
+  if (!settings.semantic || !(stubbed() || runtimeInstalled()) || activeFailure({})) {
+    return []
+  }
+
+  try {
+    const result = await ask({ req: { op: 'commands', query, docs: entries.map(entry => entry.text) }, timeoutMs: EMBED_TIMEOUT_MS })
+
+    if (result.code === 'NOT_READY') {
+      return []
+    }
+
+    const scores = result.scores as number[]
+    const floor = result.floor as number
+
+    return entries.map((entry, index) => ({ id: entry.id, score: scores[index] ?? 0 }))
+      .filter(entry => entry.score >= floor)
+      .sort((a, b) => b.score - a.score)
+      .map(entry => entry.id)
+  } catch {
+    return []
+  }
 }
