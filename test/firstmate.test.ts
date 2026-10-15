@@ -10,7 +10,7 @@ import { loadBoard, readEvents, spoolWrite } from '../src/store/board-store.ts'
 import { captainsIntent, homeKey, parseBacklog, resolveHome } from '../src/integrations/firstmate/home.ts'
 import { latestActivity, openDecisions, parseStatusLine, statusNotes } from '../src/integrations/firstmate/status.ts'
 import { syncHome, watchHome, type SyncResult } from '../src/integrations/firstmate/sync.ts'
-import { stopProcess, track } from './processes.ts'
+import { stopAll, track } from './processes.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -333,7 +333,7 @@ test('serve --home folds the home into the board without a separate watch', asyn
     assert.match(out, /^firstmate: "watching 1 home"$/m)
     assert.equal(cardOf({ home, task: 'api-v2' }).title, 'app: v2 API with (optional) pagination')
   } finally {
-    await stopProcess({ pid: server.pid! })
+    await stopAll()
   }
 })
 
