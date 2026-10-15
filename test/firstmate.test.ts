@@ -143,7 +143,8 @@ test('sync mirrors Firstmate tasks under its Hydra', () => {
   const parent = cardOf({ home })
   assert.equal(parent.tags[0], 'firstmate')
   const api = cardOf({ home, task: 'api-v2' })
-  assert.equal(api.title, 'app: v2 API with (optional) pagination')
+  assert.equal(api.title, 'v2 API with (optional) pagination')
+  assert.equal(api.project, 'app')
   assert.deepEqual(api.tags, ['app'])
   assert.equal(api.parentId, undefined)
   assert.equal(parent.hidden, true)
@@ -275,7 +276,8 @@ test('a task whose records are gone drops its open decisions and its folder', ()
   const api = cardOf({ home, task: 'api-v2' })
   assert.deepEqual(api.attention, [])
   assert.equal(api.folder, undefined)
-  assert.equal(api.title, 'app: v2 API with (optional) pagination')
+  assert.equal(api.title, 'v2 API with (optional) pagination')
+  assert.equal(api.project, 'app')
 })
 
 test('watch reconciles on start and folds each change', async () => {
@@ -347,7 +349,7 @@ test('serve --home folds the home into the Hydra without a separate watch', asyn
       })
     })
     assert.match(out, /^firstmate: "watching 1 home"$/m)
-    assert.equal(cardOf({ home, task: 'api-v2' }).title, 'app: v2 API with (optional) pagination')
+    assert.equal(cardOf({ home, task: 'api-v2' }).title, 'v2 API with (optional) pagination')
   } finally {
     await stopAll()
   }
