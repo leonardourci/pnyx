@@ -145,7 +145,7 @@ const UNDATED_HOLD_DAYS = 14
 // or a failed or blocked latest line needs the owner. A captain hold
 // waits on the owner unless it is blocked, dated ahead or aged; any other hold parks
 // the task until its date.
-export function firstmatePlace({ task, today }: {
+function firstmatePlace({ task, today }: {
   task: TaskObservation
   today: string
 }): { role: (typeof COLUMNS)[number]; reason: string } {
@@ -366,6 +366,7 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         // his own stays there until the record changes.
         const placed = writer.state.cards[mirrored.id]!
         const columns = hydraConfig({ state: writer.state }).columns
+        // UTC, the day Firstmate itself compares hold dates against.
         const place = firstmatePlace({ task, today: at.slice(0, 10) })
         const target = roleColumn({ columns, role: place.role })
         const own = columns.some(c => c.id === placed.column && !c.role)
