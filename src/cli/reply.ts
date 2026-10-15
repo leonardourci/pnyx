@@ -222,6 +222,16 @@ export function sendReply({ board, request }: {
           })
         }
 
+        // Keys typed after the prompt closed would land on the next one, so an answer
+        // still being typed, or one that may have landed, holds the request.
+        if (card.replies?.some(r => r.answers === answers && (r.state === 'queued' || r.state === 'delivery_unknown'))) {
+          throw new BoardError({
+            message: `an answer to ${answer.request} is already being typed or may have landed; nothing was typed`,
+            code: 'SESSION_WAITING',
+            help: ['Check the session, and answer there if its prompt is still open'],
+          })
+        }
+
         const checked = checkAnswer({ prompt, request: open, value: answer.value })
 
         if ('error' in checked) {

@@ -328,5 +328,9 @@ test('a failure after the first key leaves the answer unconfirmed, never retyped
   assert.match(run({ args }), /state: delivery_unknown\n {2}detail: "the answer was typed only in part/)
   assert.equal(calls().filter(c => c.includes('arg=send-keys')).length, 2)
   assert.match(run({ args }), /sent: false/)
+  // Keys from another answer could land on the next prompt, so none is typed.
+  const again = ['reply', 's1', '--answer', plan.key, '--json', '{"choice":"approve"}', '--idempotency-key', 'p2']
+  assert.throws(() => run({ args: again }), (e: { stdout?: string }) => /code: SESSION_WAITING/.test(String(e.stdout)))
+  assert.equal(calls().filter(c => c.includes('arg=send-keys')).length, 2)
   assert.doesNotMatch(run({ args: ['card', 's1'] }), /answered/)
 })

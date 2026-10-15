@@ -139,6 +139,8 @@ export interface Outcome {
 export interface Reply {
   id: string
   state: ReplyState
+  // The request an inline answer answers, so a second answer to it is refused.
+  answers?: string
 }
 
 // A note a source already recorded, harvested as it was written: never generated.
