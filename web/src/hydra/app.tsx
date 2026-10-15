@@ -313,6 +313,8 @@ export function App() {
         } as CSSProperties}
       >
         <Panel
+          state={state}
+          openTask={open}
           shown={panel}
           connected={connected}
           page={page}
