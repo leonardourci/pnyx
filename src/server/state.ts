@@ -11,9 +11,21 @@ const HEALTH_TIMEOUT_MS = 1000
 export interface ServerInfo {
   pid: number
   port: number
+  // The Hydra's address on the one server, ending in /hydra/<id>/.
   url: string
   // Null when the ingest socket could not be bound; hooks then spool.
   socket: string | null
+}
+
+// Only the path of the recorded address is used, so a request (and the token sent with it) never leaves this machine.
+const local = ({ info, path }: { info: ServerInfo; path: string }) => {
+  const url = new URL(path, `http://127.0.0.1:${info.port}${new URL(info.url).pathname}`)
+
+  if (url.host !== `127.0.0.1:${info.port}`) {
+    throw new HydraError({ message: 'the recorded server address is not local', code: 'SERVER_UNAVAILABLE' })
+  }
+
+  return url
 }
 
 export const infoPath = ({ hydraId }: { hydraId: string }) => join(hydraDir({ hydraId }), 'server.json')
@@ -27,7 +39,7 @@ export async function readServer({ hydraId }: { hydraId: string }): Promise<Serv
 
   try {
     info = JSON.parse(readFileSync(infoPath({ hydraId }), 'utf8')) as ServerInfo
-    const res = await fetch(`http://127.0.0.1:${info.port}/health`, { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) })
+    const res = await fetch(local({ info, path: 'health' }), { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) })
     const health = (await res.json()) as { hydraId?: unknown; pid?: unknown }
 
     return health.hydraId === hydraId && health.pid === info.pid ? info : null
@@ -74,10 +86,10 @@ export async function askHost({ hydraId, body }: {
   const info = await readServer({ hydraId })
 
   if (!info) {
-    throw new HydraError({ message: `the Pnyx server for Hydra ${hydraId} is not running`, code: 'NOT_RUNNING', help: [`Run \`pnyx-axi serve --hydra ${hydraId}\`; it runs the agents Pnyx starts`] })
+    throw new HydraError({ message: `the Pnyx server for Hydra ${hydraId} is not running`, code: 'NOT_RUNNING', help: ['Run `pnyx-axi serve`; it runs the agents Pnyx starts'] })
   }
 
-  const res = await fetch(`http://127.0.0.1:${info.port}/host`, {
+  const res = await fetch(local({ info, path: 'host' }), {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'authorization': `Bearer ${localToken()}` },
     body: JSON.stringify(body),

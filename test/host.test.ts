@@ -257,8 +257,7 @@ test('the host keeps the server\'s own context out of the agent, and refuses wha
   assert.equal(env.TMUX_PANE, undefined)
   assert.equal(env.PNYX_HYDRA, 'lab')
 
-  const port = new URL(server.url).port
-  const unauthorized = await fetch(`http://127.0.0.1:${port}/host`, { method: 'POST', body: JSON.stringify({ action: 'send', card: 'ship', text: 'hi' }) })
+  const unauthorized = await fetch(new URL('host', server.url), { method: 'POST', body: JSON.stringify({ action: 'send', card: 'ship', text: 'hi' }) })
   assert.equal(unauthorized.status, 401)
   await assert.rejects(askHost({ hydraId: 'lab', body: { action: 'set', card: 'ship', setting: 'effort', value: 'huge' } }), /effort cannot be huge/)
   await assert.rejects(askHost({ hydraId: 'lab', body: { action: 'start', task: 'ship', prompt: 'Go', id: 'rel', folder: 'work' } }), /absolute path/)

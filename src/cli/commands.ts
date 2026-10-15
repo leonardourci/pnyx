@@ -1678,7 +1678,11 @@ const setup = guard({
     }
 
     if (positionals[0] === 'service') {
-      return setupService({ hydraId, port: integer({ value: values.port, flag: '--port' }), homes: values.home ? [String(values.home)] : [], remove: !!values.remove, preview: !!values.preview })
+      if (values.home !== undefined || args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
+        throw new AxiError('setup service runs every Hydra; it takes no --hydra or --home', 'VALIDATION_ERROR', ['Run `pnyx-axi setup hydra --home <firstmate home> --hydra <id>` to link a Firstmate home to its Hydra'])
+      }
+
+      return setupService({ port: integer({ value: values.port, flag: '--port' }), remove: !!values.remove, preview: !!values.preview })
     }
 
     if (positionals[0] === 'hydra') {
@@ -1826,8 +1830,8 @@ commands:
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   view show|schema|set; layout show|reset      Inspect or save preferences; reset widths
   repair                                     Set aside a torn log tail and rebuild the snapshot
-  serve [--port <n>] [--home <path>]         Run the Hydra server until stopped; --home also watches Firstmate
-  stop                                       Stop the Hydra's running server
+  serve [--port <n>]                         Run the one server of every Hydra until stopped
+  stop                                       Stop the running server
   setup skills|hooks|service                Install global skills, reporting hooks or the macOS login service (--remove, --preview)
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the pnyx-hydra skill
   integrations                               Show which integrations are ready and how to set each up
@@ -1977,7 +1981,7 @@ Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
 Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
 Source observations, card creation and merges cannot be undone.
 `,
-  setup: `usage: pnyx-axi setup service [--hydra <id>] [--port <n>] [--home <Firstmate home>] [--remove] [--preview]
+  setup: `usage: pnyx-axi setup service [--port <n>] [--remove] [--preview]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
 pnyx-axi setup skills [--remove] [--preview]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
@@ -1989,6 +1993,7 @@ every other hook. Without --harness it sets up each harness whose config folder 
 changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,
 so they never add to the agent's context: no session-start Hydra summary is installed.
 Hook events go to the default Hydra, or to PNYX_HOME and PNYX_HYDRA when a session has them.
+setup service installs one macOS login service running the server of every Hydra; it replaces the older one-per-Hydra services.
 setup hydra makes the Firstmate home the Hydra, copies the pnyx-hydra skill into the home's
 .agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
 Firstmate's own files are not changed.
@@ -1998,17 +2003,21 @@ A crash mid-append can leave a torn last line; writes refuse until it is repaire
 Repair copies the torn bytes to a side file and appends a marker so readers skip them; the log is never cut.
 `,
   serve: `usage: pnyx-axi serve [--port <n>] [--hydra <name>] [--home <Firstmate path>]...
-Serves the Hydra on 127.0.0.1 port 4747 (--port overrides it; 0 picks a random one) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
-Each --home is a Firstmate home: replies to its cards go through it, and its tasks are folded into the Hydra
-as \`pnyx-axi firstmate watch\` would, so no second process is needed.
-Hook events arrive on the Hydra's server.sock or through its spool. Browsers get one WebSocket at /ws:
-a snapshot on connect, then events by sequence; /ws?after=<seq> resumes, a gap gets a fresh snapshot.
-The handshake needs ?token=<token>: the Hydra page served here carries it, local programs read $PNYX_HOME/token.
+Serves every Hydra in PNYX_HOME on 127.0.0.1 port 4747 (--port overrides it; 0 picks a random one) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
+Each Hydra lives at /hydra/<id>/; / opens the --hydra Hydra. A Hydra that fails to load is skipped and reported, and a Hydra created
+while the server runs is served once its folder appears. --hydra names the Hydra whose address is printed (default: default); it and
+the default Hydra must load. A Hydra run by a Firstmate home watches that home and replies through it. Each --home is a Firstmate home
+for the --hydra Hydra instead: replies to its cards go through it, and its tasks are folded in as \`pnyx-axi firstmate watch\` would.
+Hook events arrive on each Hydra's server.sock or through its spool. Browsers get one WebSocket per Hydra at /hydra/<id>/ws:
+a snapshot on connect, then events by sequence; ?after=<seq> resumes, a gap gets a fresh snapshot.
+The handshake needs ?token=<token>: each Hydra page served here carries it, local programs read $PNYX_HOME/token.
 Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo|kind","args":[...]}
-gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write this Hydra;
---hydra is refused and the actor defaults to web. GET /health answers {"hydra","pid"}.
+gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write that socket's Hydra;
+--hydra is refused and the actor defaults to web. GET /hydra/<id>/health answers {"hydraId","pid","build"};
+GET /health answers {"pid","build","hydras","skipped"}.
 `,
-  stop: `usage: pnyx-axi stop [--hydra <name>]
+  stop: `usage: pnyx-axi stop
+Stops the one server of every Hydra. A login service starts it again; \`pnyx-axi setup service --remove\` keeps it stopped.
 `,
 }
 

@@ -483,7 +483,7 @@ export function setupHydra({ hydraId, home, meta }: {
     excluded: excluded ? 'yes' : 'no: not a git clone',
     note: sent.state,
     ...(sent.detail ? { detail: sent.detail } : {}),
-    help: [`Run \`pnyx-axi serve --hydra ${hydraId}\` to see the Hydra; Firstmate tasks sync from this home`],
+    help: ['A running `pnyx-axi serve` starts syncing Firstmate tasks from this home; run it if none is running'],
   }
 }
 
