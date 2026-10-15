@@ -128,12 +128,15 @@ async function tab({ query = '', hydraId = 'default' }: { query?: string; hydraI
   const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/hydra/${hydraId}/ws?token=${localToken()}${query.replace('?', '&')}`)
   tabs.add(ws)
   const main = inbox<ServerMessage>(), latest = inbox<LatestMessages>()
+  const summaries = inbox<Extract<ServerMessage, { type: 'hydras' }>>()
   const queue = main.queue
   ws.on('message', data => {
     const message = JSON.parse(String(data)) as ServerMessage
 
     if (message.type === 'latest') {
       latest.put({ message: message.messages })
+    } else if (message.type === 'hydras') {
+      summaries.put({ message })
     } else {
       main.put({ message })
     }
@@ -146,6 +149,7 @@ async function tab({ query = '', hydraId = 'default' }: { query?: string; hydraI
     ws,
     hello,
     next: main.next,
+    summaries: summaries.next,
     async latest({ card }: { card: string }) {
       for (;;) {
         const messages = await latest.next()
@@ -922,6 +926,33 @@ test('Hydras list projects and counts, create, rename and open on the same serve
 
   t.command({ id: 'b5', name: 'hydras', args: ['open', 'missing'] })
   assert.match((await receipt({ id: 'b5' })).error ?? '', /Hydra not found/)
+})
+
+test('project workload changes in another Hydra are pushed to subscribed tabs', async () => {
+  const folder = join(process.env.PNYX_HOME!, 'project')
+  mkdirSync(folder)
+  cli({ args: ['hydra', 'create', 'other', '--name', 'Other'] })
+  cli({ args: ['project', 'add', folder, '--hydra', 'other'] })
+  cli({ args: ['task', 'create', '--key', 'work', '--title', 'Other work', '--project', folder, '--hydra', 'other'] })
+  server = await startServer({ hydraId: 'default', port: 0 })
+  const t = await tab(); await t.next()
+  t.command({ id: 'subscribe-hydras', name: 'hydras', args: [] })
+  assert.equal((await t.next()).type, 'receipt')
+  const input = join(process.env.PNYX_HOME!, 'workload.json')
+  writeFileSync(input, JSON.stringify({ agent: { provider: 'claude-code', sessionId: 'other-worker' }, activity: 'working', attention: [{ key: 'ask', kind: 'question', blocking: true }] }))
+  cli({ args: ['push', '--key', 'work', '--file', input, '--hydra', 'other'] })
+
+  for (;;) {
+    const update = await t.summaries()
+    const project = update.hydras.find(h => h.id === 'other')?.projects[0]
+
+    if (project?.live === 1 && project.asks === 1) {
+      assert.equal(update.hydraId, 'default')
+      break
+    }
+  }
+
+  assert.equal(loadHydra({ hydraId: 'default' }).state.seq, 0)
 })
 
 test('one server serves every Hydra with its own hook socket, skips one that fails to load and serves one created later', async () => {
