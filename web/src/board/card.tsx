@@ -38,7 +38,6 @@ export function Tags({ tags }: { tags: string[] }) {
   return <div className="tags">{tags.map(t => <span key={t} className={`tag tone-${[...t].reduce((n,c) => n + c.charCodeAt(0), 0) % 4}`}>{t}</span>)}</div>
 }
 
-// The last message of the card's conversation, two lines at most.
 function LastMessage({ message }: { message: LatestMessage }) {
   return (
     <div className="last-message" title={message.text}>

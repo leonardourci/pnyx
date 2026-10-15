@@ -7,7 +7,6 @@ import type { Command } from './connection.ts'
 
 type Send = ({ request, value }: { request: Attention; value: unknown }) => Promise<void>
 
-// A question's picked option numbers, or the free text typed instead.
 type Draft = { pick: number[]; text: string }
 
 function QuestionField({ question, index, draft, change }: {
@@ -139,7 +138,6 @@ function FormInput({ field, value, change }: {
   )
 }
 
-// An MCP server's form: each field, then Accept with the values or Decline.
 function Form({ request, busy, send }: { request: Attention; busy: boolean; send: Send }) {
   const fields = request.form ?? []
   const [values, setValues] = useState<Values>({})
@@ -210,10 +208,6 @@ function Choices({ request, choices, busy, send }: ChoicesProps) {
 
 const TITLE: Record<string, string> = { question: 'Asking you', permission: 'Asking permission', plan: 'Plan to approve', input: 'Asking for input' }
 
-// The agent's own open prompts, shown in its thread with the options its terminal
-// shows, so the owner answers right there. An answer is typed into the session as
-// the keys its prompt expects; once delivered the request shows as answered until
-// the session's hooks report it moved on.
 export function InlineQuestions({ card, command, connected, notify }: {
   card: Card
   command: Command

@@ -82,8 +82,6 @@ function Table({ token }: { token: Tokens.Table }) {
 export interface MarkdownBlock { index: number; offset: number; quote: string }
 type Render = { tokens: Token[]; inItem?: boolean; base?: number }
 
-// GFM rendered without HTML. `block` wraps each top-level block and list item,
-// with its offset in the source text, so callers can attach comments to it.
 export function Markdown({ text, block }: {
   text: string
   block?({ index, offset, quote, children }: MarkdownBlock & { children: ReactNode }): ReactNode
@@ -94,7 +92,6 @@ export function Markdown({ text, block }: {
   const wrap = ({ offset, quote, children }: Omit<MarkdownBlock, 'index'> & { children: ReactNode }) =>
     block ? block({ index: index++, offset, quote: quote.trim(), children }) : children
 
-  // Offsets come from finding each token's raw text after the previous one.
   const render = ({ tokens, inItem = false, base = 0 }: Render): ReactNode => {
     let cursor = base
 

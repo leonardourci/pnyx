@@ -4,11 +4,8 @@ import { Button } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
 
-// A page opened from + New board starts with its name ready to type.
 const RENAME = 'rename-board'
 
-// One tab per board. Each board has its own server, so switching opens that
-// server's page; a new board is created at once and opens with its name selected.
 export function BoardTabs({ command, connected, notify }: {
   command: Command
   connected: boolean

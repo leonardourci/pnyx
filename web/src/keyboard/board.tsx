@@ -21,7 +21,6 @@ const readAnchor = ({ target }: {
     ? { column: target.dataset.emptyColumn }
     : undefined
 
-// Cards listed under the actions when a Cmd+K query finds some.
 const CARD_RESULTS = 8
 
 export function useBoardKeyboard({
@@ -410,7 +409,6 @@ export function KeyboardLayers({
       detail: `${a.scopes.join(' · ')}${!prefs.characterShortcuts ? ' · character keys disabled' : ''}`,
       disabled: ['cancel', 'send', 'palette'].includes(a.id) || (a.id.startsWith('board.') && overlay.context.scope !== 'board') || (a.id.startsWith('thread.') && overlay.context.scope !== 'thread') || (['move', 'reply'].includes(a.id) && (!card || (a.id === 'move' && !connected))),
       run: () => {
-        // A component's own handler (such as comments on the thread) runs first.
         const run = () => handlers.get(a.id)?.({ context: overlay.context })
           || onAction({ id: a.id, context: overlay.context })
         setTimeout(run, 0); closeOverlay()

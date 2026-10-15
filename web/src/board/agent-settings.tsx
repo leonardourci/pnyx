@@ -6,7 +6,6 @@ import { Button, Select } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import type { Command } from './connection.ts'
 
-// Harnesses with their own mark; any other provider shows its name alone.
 const HARNESSES: Record<string, string> = { 'claude-code': 'Claude Code', codex: 'Codex' }
 
 // Every setting a harness reports, in the order shown. Each name has an icon of the
@@ -24,11 +23,9 @@ const SETTINGS: Record<string, string> = {
   client: 'Client',
   version: 'Version',
 }
-// Shown on the card itself; the open card lists every setting.
 const ON_CARD = ['model', 'effort', 'mode']
 
 const label = ({ name }: { name: string }) => SETTINGS[name] ?? name
-// "bypassPermissions" reads as "bypass permissions"; model ids and versions stay as written.
 const shown = ({ name, value }: { name: string; value: string }) =>
   name === 'model' || name === 'version' ? value : value.replace(/([a-z])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`)
 
@@ -61,8 +58,6 @@ export function Harness({ card }: { card: Card }) {
   )
 }
 
-// The card's compact settings: model, effort and mode, plus fast mode while it is on.
-// Hovering one shows its full name and value.
 export function SettingChips({ settings }: { settings?: Record<string, string> }) {
   const chips = ordered({ settings: settings ?? {} }).filter(([name, value]) => ON_CARD.includes(name) || (name === 'fast' && value === 'on'))
 
@@ -83,7 +78,6 @@ export function SettingChips({ settings }: { settings?: Record<string, string> }
   )
 }
 
-// Every setting the card's harness reported, for the open card.
 export function SettingList({ settings }: { settings?: Record<string, string> }) {
   const entries = ordered({ settings: settings ?? {} })
 
@@ -102,7 +96,6 @@ export function SettingList({ settings }: { settings?: Record<string, string> })
   )
 }
 
-// What typing an option does, in the harness's own words; a Firstmate task's orchestrator gets a request note.
 const typedAs = ({ option, kind }: { option: ControlOption; kind?: ThreadPage['routeKind'] }) =>
   kind === 'firstmate'
     ? "Asks Firstmate's orchestrator in a request note"
@@ -112,7 +105,6 @@ const typedAs = ({ option, kind }: { option: ControlOption; kind?: ThreadPage['r
         ? `Types ${option.input.text} in the session`
         : 'Requires a Firstmate request route'
 
-// Why the route cannot press this control's keys, if it cannot.
 const keyReason = ({ control, kind }: { control: Control; kind?: ThreadPage['routeKind'] }) =>
   kind && control.options.map(o => inputReason({ kind, input: o.input })).find(Boolean)
 
@@ -136,7 +128,6 @@ function ControlRow({
   // A change, to this or another setting, is on its way: one at a time.
   sending: boolean
   blocked?: string
-  // Why this route cannot press this control's keys, shown under it.
   why?: string
   kind?: ThreadPage['routeKind']
   send({ option }: { option: ControlOption }): void
@@ -186,8 +177,6 @@ interface AgentControlsInput {
   notify({ text }: { text: string }): void
 }
 
-// Changes the session's settings by typing what its harness takes, on the card's
-// reply route, and tracks each change as pending until the session reports it.
 function useAgentControls({ card, thread, command, connected, notify }: AgentControlsInput) {
   const [pending, setPending] = useState<Record<string, Pending>>({})
   const provider = card.agent?.provider
@@ -283,7 +272,6 @@ export function AgentControls({ card, thread, command, connected, notify }: Agen
   )
 }
 
-// The same controls as compact pickers beside the reply input; nothing when the harness has none.
 export function ComposerSettings({ card, thread, command, connected, notify }: AgentControlsInput) {
   const { page, harness, route, pending, send, sending } = useAgentControls({
     card, thread, command, connected, notify,

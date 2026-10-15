@@ -38,7 +38,6 @@ export function Composer({
   save({ patch }: { patch: unknown }): Promise<boolean>
   connected: boolean
   notify({ text }: { text: string }): void
-  // The agent's setting pickers, shown beside the send button.
   settings?: ReactNode
 }) {
   const [preview, setPreview] = useState<number | null>(null)

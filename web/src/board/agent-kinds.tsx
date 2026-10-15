@@ -23,7 +23,6 @@ function flags({ agent }: { agent: AgentConfig }): string[] {
   ]
 }
 
-// The agent each task kind's workers launch on; `hydra` is what Hydra starts on.
 export function AgentKinds({ state, command, notify }: {
   state: BoardState
   command: Command

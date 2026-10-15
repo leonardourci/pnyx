@@ -70,7 +70,6 @@ export function Select({
   options: Option[]
   onChange({ value }: { value: string }): void
   disabled?: boolean
-  // Trigger content in place of the chosen option's label.
   display?: ReactNode
   title?: string
 }) {

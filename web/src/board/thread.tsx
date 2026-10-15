@@ -17,8 +17,6 @@ export const merge = ({ kept, page }: { kept: ThreadEntry[]; page: ThreadEntry[]
   return [...kept.filter(e => !ids.has(e.id)), ...page]
 }
 
-// One conversation as a chat: the transcript, then the reply input as the next
-// message. It needs only its card, so it can live in any panel.
 export function Thread({
   card,
   view,
