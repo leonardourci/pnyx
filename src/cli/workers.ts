@@ -91,7 +91,7 @@ function kindCommand({ args }: { args: string[] }): Output {
 }
 
 // What Hydra tracks. Its own writes (actor hydra) and hook chatter never wake it.
-const TRACKED: readonly EventType[] = ['hydra.message', 'task.created', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked']
+const TRACKED: readonly EventType[] = ['hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked']
 const CHECK_LIMIT = 20
 const POLL_MS = 2000
 
@@ -119,7 +119,9 @@ async function hydraCheck({ args }: { args: string[] }): Promise<Output> {
       for (const e of read.events) {
         last = Math.max(last, e.seq)
 
-        if (e.seq > after && TRACKED.includes(e.type) && e.actor !== HYDRA_ACTOR) {
+        const question = e.type === 'card.pushed' && e.data.attention?.some(a => a.blocking && !a.answered)
+
+        if (e.seq > after && (TRACKED.includes(e.type) || question) && e.actor !== HYDRA_ACTOR) {
           changes.push(e)
         }
       }
@@ -141,7 +143,8 @@ async function hydraCheck({ args }: { args: string[] }): Promise<Output> {
     task: e.cardId === '$board' ? 'none' : e.cardId,
     action: e.type === 'hydra.message' ? e.data.action : 'none',
     actor: e.actor,
-    summary: summarize({ event: e }),
+    summary: e.type === 'card.pushed' ? e.data.attention?.filter(a => a.blocking && !a.answered).map(a => a.text ?? a.kind)
+      .join('; ') ?? 'Agent needs an answer' : summarize({ event: e }),
   })
 
   return {

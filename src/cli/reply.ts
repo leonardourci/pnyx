@@ -17,6 +17,7 @@ import { COMMON, drainSpool, guard, meta, parse, required, type Options, type Ou
 
 export interface ReplyRequest {
   card: string
+  expectedSession?: string
   text: string
   key?: Key
   // One more Enter after the text, for a command the harness may ask to confirm.
@@ -144,6 +145,11 @@ export async function sendReply({ board, request }: {
     fn: ({ writer }) => {
       drainSpool({ writer })
       const card = findCard({ state: writer.state, ref: request.card })
+
+      if (request.expectedSession && card.sessionIds?.[0] !== request.expectedSession) {
+        throw new BoardError({ message: 'the attached agent changed before the brief could be sent', code: 'SESSION_CONFLICT' })
+      }
+
       const found = replyRoute({ card, homes })
 
       if ('reason' in found) {
