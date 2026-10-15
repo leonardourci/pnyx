@@ -1933,8 +1933,8 @@ The default route is firstmate for a Hydra run by a Firstmate home, otherwise pn
 A task with an attached project starts in its own copy: a git worktree on branch pnyx/<hydra>-<task> (or the project's
 copy command, see project set), made once and reused by later starts. --in-place works in the project folder itself and is
 refused while a worker of another Hydra runs there; --folder names the folder outright. Firstmate Hydras make their own copies.
-When the task reaches Done, Pnyx removes its copy if it has no uncommitted changes and its commit is on the default branch
-or its linked pull request merged; the branch stays. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
+When the task reaches Done and its agent stops working, Pnyx removes its copy if it has no uncommitted changes and its commit
+is on the default branch or its linked pull request merged; the branch stays. Copies from a project's copy command are only released. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
 task copy shows the copy and that check. task copy remove settles it again; --safe (Hydra) confirms a clean copy whose work
 already landed or is empty; --discard removes work that never landed and needs the owner's --confirm <token>, never Hydra's.
 `,
