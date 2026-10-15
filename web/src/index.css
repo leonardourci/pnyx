@@ -850,3 +850,9 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
   font-size: 11px;
   line-height: 1.5;
 }
+
+.card-tools { position: absolute; top: 6px; right: 6px; }
+.card:has(.card-tools) > .card-open { padding-right: 28px; }
+.reminder-label { display: block; margin-top: 8px; color: var(--color-gold); font-size: 12px; }
+.reminder-editor { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
+.reminder-editor [role=alert] { color: var(--color-red); }

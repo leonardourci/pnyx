@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react'
+import { Menu } from '../components/ui/menu.tsx'
+import { ReminderEditor, ReminderLabel } from './reminder.tsx'
+import { useState, type ReactNode } from 'react'
 import type { Card as CardData, ViewPreferences } from '../../../src/core/model.ts'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
@@ -41,6 +43,7 @@ export function HydraCard({
   children?: ReactNode
 }) {
   const activity = agentActivity({ card })
+  const [reminding, setReminding] = useState(false)
 
   return (
     <article
@@ -56,6 +59,13 @@ export function HydraCard({
         e.stopPropagation(); e.dataTransfer.setData('application/pnyx-task', card.id)
       }}
     >
+      {!card.automaticTask && (
+        <div className="card-tools">
+          <Menu label={`Task menu for ${card.title}`}>
+            <Button disabled={!connected} onClick={() => setReminding(true)}>Remind me…</Button>
+          </Menu>
+        </div>
+      )}
       {card.project && <span className="project-label" title={card.project}>{projectTitle({ project: card.project })}</span>}
       {editingTitle ? (
         <InlineTitle
@@ -82,6 +92,15 @@ export function HydraCard({
       {activity && <span className={`agent-activity activity-${activity}`}><i aria-hidden="true" />{activity === 'working' ? 'Working' : 'Finished its turn'}</span>}
       {card.agent && view.lastMessageOnCards && latest && !selected && (
         <LastMessage message={latest} />
+      )}
+      <ReminderLabel card={card} />
+      {reminding && (
+        <ReminderEditor
+          card={card}
+          command={command}
+          connected={connected}
+          close={() => setReminding(false)}
+        />
       )}
       {children}
     </article>
