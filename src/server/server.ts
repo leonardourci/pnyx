@@ -477,7 +477,7 @@ export async function startServer({
           const valid = agent
             ? args.length === 4 && !!args[3]
             : answering
-              ? args.length === 5 && !!args[3] && args[2].length <= 32000
+              ? args.length === 5 && args.every(Boolean) && args[2].length <= 32000
               : args.length === 3 && !!args[2] && args[1].length <= 32000
 
           if (!valid) {

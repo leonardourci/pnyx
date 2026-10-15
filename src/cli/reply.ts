@@ -338,6 +338,8 @@ export const reply = guard({
       } catch {
         throw new AxiError('--json is not valid JSON', 'VALIDATION_ERROR', ['Example: --json \'{"choice":"allow"}\''])
       }
+    } else if (values.json !== undefined || values.seen !== undefined) {
+      throw new AxiError('--json and --seen go with --answer', 'VALIDATION_ERROR', ['Run `pnyx-axi reply --help`'])
     } else if ((values.text === undefined) === (file === undefined)) {
       throw new AxiError('give either --text or --file', 'VALIDATION_ERROR', ['Run `pnyx-axi reply --help`'])
     }

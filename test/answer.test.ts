@@ -324,6 +324,7 @@ test('Codex takes keys in tmux too; Paseo, Herdr, iTerm2 and Terminal are answer
   }
 
   fails({ args: ['reply', 'o0', '--answer', permission.key, '--json', '{"choice":"allow"}', '--text', 'hi'], pattern: /--answer takes --json/ })
+  fails({ args: ['reply', 'o0', '--text', 'hi', '--json', '{}'], pattern: /--json and --seen go with --answer/ })
   assert.equal(calls().filter(c => /call=(paseo|herdr|osascript)/.test(c)).length, 0)
 })
 
