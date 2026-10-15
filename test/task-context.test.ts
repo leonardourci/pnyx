@@ -171,6 +171,30 @@ test('Hydra changes need one reason, which Pnyx posts as its chat line, and the 
   }
 })
 
+test('Hydra lines name starts, undos and returns, and the receipt carries the current revision', async () => {
+  const f = fixture()
+
+  try {
+    const hydra = ['--actor', 'hydra']
+    await f.run({ name: 'board', args: ['set', '--command', 'true'] })
+    await f.run({ name: 'task', args: ['create', '--key', 'work', '--title', 'Docs', '--folder', f.home] })
+    const id = f.state().keys.work!
+    const started = await f.run({ name: 'task', args: ['start', 'work', '--via', 'command', ...hydra, '--reason', 'the brief is ready'] })
+    assert.equal(started.posted, 'Started a worker on Docs: the brief is ready')
+    const hidden = await f.run({ name: 'task', args: ['hide', 'work', ...hydra, '--reason', 'the owner paused it'] }) as { card: { revision: number } }
+    assert.equal(hidden.card.revision, f.state().cards[id]!.revision)
+    const shown = await f.run({ name: 'task', args: ['unhide', 'work', ...hydra, '--reason', 'the owner resumed it', '--details', 'Resume after the release.'] })
+    assert.equal(shown.posted, 'Returned Docs to the board: the owner resumed it')
+    const moved = await f.run({ name: 'move', args: ['work', 'done', '--actor', 'web'] }) as { event: { id: string } }
+    const undone = await f.run({ name: 'undo', args: [moved.event.id, ...hydra, '--reason', 'the work is not finished'] })
+    assert.equal(undone.posted, 'Moved Docs back to Parked: the work is not finished')
+    const rows = (await f.run({ name: 'hydra', args: ['messages', '--after', '0'] }) as { messages: { text: string; details?: string }[] }).messages
+    assert.deepEqual(rows.find(r => r.details), { ...rows.find(r => r.details), text: 'Returned Docs to the board: the owner resumed it', details: 'Resume after the release.' })
+  } finally {
+    rmSync(f.home, { recursive: true, force: true })
+  }
+})
+
 test('Hydra memory replaces by key, survives switching Hydra and isolates boards', async () => {
   const f = fixture()
 

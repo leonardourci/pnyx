@@ -29,6 +29,7 @@ import {
 import {
   BoardError,
   EVENT_TYPES,
+  HYDRA_ACTOR,
   OUTCOME_STATES,
   type BoardEvent,
   type BoardState,
@@ -53,7 +54,6 @@ const DEFAULT_BOARD = 'default'
 const HISTORY_LIMIT = 20
 const HISTORY_MAX = 100
 const HOME_LIMIT = 50
-export const HYDRA_ACTOR = 'hydra'
 // Hydra's own changes to tasks carry one short why; the owner's direct actions need none.
 const EXPLAINED: readonly EventType[] = ['card.moved', 'task.created', 'task.brief', 'task.visibility']
 
@@ -146,22 +146,28 @@ export function meta({ values }: { values: Record<string, string | boolean | und
   return m
 }
 
-export function explained({ meta }: { meta: Meta }) {
-  if (meta.actor === HYDRA_ACTOR && !meta.reason?.trim()) {
+// Returns the trimmed reason, which is empty only for writes that are not Hydra's.
+export function explained({ meta }: { meta: Meta }): string {
+  const reason = meta.reason?.trim() ?? ''
+
+  if (meta.actor === HYDRA_ACTOR && !reason) {
     throw new BoardError({ message: 'Hydra changes need --reason <why>', code: 'VALIDATION_ERROR', help: ['Repeat the command with --reason "<one short line on why>"; Pnyx keeps it on the event and posts it in your board chat'] })
   }
+
+  return reason
 }
 
 // An ordinary Hydra message, so the light check, hydra messages and later sessions read it back.
-export function postLine({ writer, board, meta, cardId, action, id }: {
+export function postLine({ writer, board, meta, cardId, action, reason, id }: {
   writer: Writer
   board: string
   meta: Meta
   cardId: string
   action: string
+  reason: string
   id?: string
 }): string {
-  const text = `${action}: ${meta.reason!.trim()}`
+  const text = `${action}: ${reason}`
 
   if (id && id in writer.state.eventIds) {
     return text
@@ -186,7 +192,7 @@ function actionText({ state, board, event }: {
   const columnTitle = ({ id }: { id: Column | null }) => boardConfig({ state, id: board }).columns.find(c => c.id === id)?.title ?? id ?? 'none'
 
   switch (event.type) {
-    case 'card.moved': return event.data.before === event.data.after ? `Reordered ${title} in ${columnTitle({ id: event.data.after })}` : `Moved ${title} to ${columnTitle({ id: event.data.after })}`
+    case 'card.moved': return event.undoes ? `Moved ${title} back to ${columnTitle({ id: event.data.after })}` : event.data.before === event.data.after ? `Reordered ${title} in ${columnTitle({ id: event.data.after })}` : `Moved ${title} to ${columnTitle({ id: event.data.after })}`
     case 'task.created': return `Created ${title}`
     case 'task.brief': return `Updated the brief of ${title}`
     case 'task.visibility': return event.data.after ? `Hid ${title}` : `Returned ${title} to the board`
@@ -302,9 +308,7 @@ export function commit(
     confirmation?: { token?: string }
   },
 ): Output {
-  if (EXPLAINED.includes(intent.type)) {
-    explained({ meta })
-  }
+  const reason = EXPLAINED.includes(intent.type) ? explained({ meta }) : ''
 
   return withWriter({
     board,
@@ -343,11 +347,11 @@ export function commit(
           }
 
           writer.append({ event: decision.event })
-          out = receipt({ state: writer.state, event: decision.event })
-
-          if (meta.actor === HYDRA_ACTOR && EXPLAINED.includes(decision.event.type)) {
-            out.posted = postLine({ writer, board, meta, cardId: decision.event.cardId, action: actionText({ state: writer.state, board, event: decision.event }), id: `${decision.event.id}:line` })
-          }
+          const { event } = decision
+          const posted = meta.actor === HYDRA_ACTOR && reason && EXPLAINED.includes(event.type)
+            ? postLine({ writer, board, meta, cardId: event.cardId, action: actionText({ state: writer.state, board, event }), reason, id: `${event.id}:line` })
+            : undefined
+          out = { ...receipt({ state: writer.state, event }), ...(posted ? { posted } : {}) }
 
           if (decision.event.type === 'task.session' && decision.event.data.after) {
             harvestTranscripts({
@@ -547,11 +551,11 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (action === 'start') {
-    explained({ meta: m })
-
+    const reason = explained({ meta: m })
+    const ref = required({ value: positionals[1], what: 'task id' })
     const started = startTask({
       board,
-      task: required({ value: positionals[1], what: 'task id' }),
+      task: ref,
       via: values.via as string | undefined,
       kind: values.kind as string | undefined,
       harness: values.harness as string | undefined,
@@ -561,19 +565,33 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       meta: m,
     })
 
-    return m.actor === HYDRA_ACTOR
-      ? started.then(out => ({
-        ...out,
-        posted: withWriter({
-          board,
-          fn: ({ writer }) => {
-            const card = findCard({ state: writer.state, ref: positionals[1]! })
+    if (m.actor !== HYDRA_ACTOR) {
+      return started
+    }
 
-            return postLine({ writer, board, meta: m, cardId: card.id, action: `Started a worker on ${card.title}`, ...(m.id ? { id: `${m.id}:line` } : {}) })
-          },
-        }),
-      }))
-      : started
+    // The worker is already started, so a failed post must not turn into an error Hydra retries.
+    return started.then(out => {
+      if (out.sent === 'failed') {
+        return out
+      }
+
+      try {
+        return {
+          ...out,
+          posted: withWriter({
+            board,
+            fn: ({ writer }) => {
+              const card = findCard({ state: writer.state, ref })
+              const action = `${out.via === 'firstmate' ? 'Asked Firstmate for a worker on' : 'Started a worker on'} ${card.title}`
+
+              return postLine({ writer, board, meta: m, cardId: card.id, action, reason, ...(m.id ? { id: `${m.id}:line` } : {}) })
+            },
+          }),
+        }
+      } catch (error) {
+        return { ...out, posted: `none: ${(error as Error).message}` }
+      }
+    })
   }
 
   if (action === 'sessions') {
@@ -1167,7 +1185,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     return {
       hydra: boardConfig({ state, id: board }).hydra.id,
       messages: page.length
-        ? page.map(e => (values.full ? e : { seq: e.seq, id: e.id, at: e.at, actor: e.actor, task: e.data.task ?? 'none', action: e.data.action, text: e.data.text }))
+        ? page.map(e => (values.full ? e : { seq: e.seq, id: e.id, at: e.at, actor: e.actor, task: e.data.task ?? 'none', action: e.data.action, text: e.data.text, ...(e.data.details ? { details: e.data.details } : {}) }))
         : `none: no messages after seq ${after}`,
       through,
       ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through} --board ${board}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --board ${board}\` later for new messages`] }),

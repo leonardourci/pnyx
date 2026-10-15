@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
 import { boardConfig, hydraEvent } from '../core/hydra.ts'
-import { BoardError, HARNESS_NAMES, QUOTA_BUCKETS, type AgentConfig, type BoardEvent, type EventType, type SessionEvent } from '../core/model.ts'
+import { BoardError, HARNESS_NAMES, HYDRA_ACTOR, QUOTA_BUCKETS, type AgentConfig, type BoardEvent, type EventType, type SessionEvent } from '../core/model.ts'
 import { boardDir, loadBoard, readEvents, readEventsFrom, withWriter } from '../store/board-store.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { harvestPaseoChats } from '../integrations/paseo/harvest.ts'
@@ -11,7 +11,7 @@ import type { Connect } from '../integrations/paseo/client.ts'
 import { redact } from '../search/text.ts'
 import { splitEntry } from '../thread/read.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
-import { COMMON, HYDRA_ACTOR, WRITE, commit, commands, guard, integer, meta, parse, required, summarize, type Output } from './commands.ts'
+import { COMMON, WRITE, commit, commands, guard, integer, meta, parse, required, summarize, type Output } from './commands.ts'
 
 const SAFE = /^[\w.:/[\]-]{1,100}$/
 
