@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
-import { emptyBoard, replay } from '../src/core/reducer.ts'
+import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { DEFAULT_VIEW, patchView, traces, viewFor } from '../src/core/view.ts'
-import { loadBoard, readEvents } from '../src/store/board-store.ts'
+import { loadHydra, readEvents } from '../src/store/hydra-store.ts'
 
 test('briefs, descriptions and layout settings survive event replay without moving the task', async () => {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-layout-'))
@@ -17,12 +17,12 @@ test('briefs, descriptions and layout settings survive event replay without movi
     await commands.task(['brief', 'brief', '--brief', 'Explain the design in plain English.'])
     await commands.column(['describe', 'parked', '--description', 'Tasks held for a later day.'])
     await commands.view(['set', '--json', JSON.stringify({ hydraWidth: 420, lastMessageOnCards: true, focusMode: false })])
-    const { state } = loadBoard({ board: 'default' })
-    const events = readEvents({ board: 'default' })
-    assert.deepEqual(replay({ state: emptyBoard(), events }), state)
+    const { state } = loadHydra({ hydraId: 'default' })
+    const events = readEvents({ hydraId: 'default' })
+    assert.deepEqual(replay({ state: emptyHydra(), events }), state)
     assert.equal(state.cards.c1?.brief, 'Explain the design in plain English.')
     assert.equal(state.cards.c1?.column, 'parked')
-    assert.equal(state.board?.columns.find(c => c.id === 'parked')?.description, 'Tasks held for a later day.')
+    assert.equal(state.config?.columns.find(c => c.id === 'parked')?.description, 'Tasks held for a later day.')
     assert.equal(viewFor({ state }).hydraWidth, 420)
     assert.equal(viewFor({ state }).lastMessageOnCards, true)
     assert.deepEqual([traces({ view: viewFor({ state }), card: 'c1' }).tools, traces({ view: viewFor({ state }), card: 'c1' }).thinking], [true, true])
@@ -37,10 +37,10 @@ test('briefs, descriptions and layout settings survive event replay without movi
     assert.equal(legacy.lastMessageOnCards, DEFAULT_VIEW.lastMessageOnCards)
     await commands.view(['set', '--json', JSON.stringify({ defaultHydraWidth: 400, defaultColumnWidths: { needs_you: 310 } })])
     await commands.layout(['reset'])
-    const reset = loadBoard({ board: 'default' }).state
+    const reset = loadHydra({ hydraId: 'default' }).state
     assert.equal(reset.view?.hydraWidth, 400)
     assert.equal(reset.view?.columnWidths.needs_you, 310)
-    assert.deepEqual(replay({ state: emptyBoard(), events: readEvents({ board: 'default' }) }), reset)
+    assert.deepEqual(replay({ state: emptyHydra(), events: readEvents({ hydraId: 'default' }) }), reset)
   } finally {
     rmSync(home, { recursive: true, force: true })
   }

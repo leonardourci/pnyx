@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { BoardEvent } from '../src/core/model.ts'
-import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
+import type { HydraEvent } from '../src/core/model.ts'
+import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { assertGolden, readStream } from './streams.ts'
 
 for (const name of ['lifecycle', 'duplicates', 'pinned-attention', 'undo']) {
   test(`golden replay: ${name}`, () => {
     assertGolden({
       name,
-      actual: replay({ state: emptyBoard(), events: readStream({ name }) }),
+      actual: replay({ state: emptyHydra(), events: readStream({ name }) }),
     })
   })
 }
@@ -17,18 +17,18 @@ test('lifecycle: pull requests, merges and outcomes never move a card', () => {
   const events = readStream({ name: 'lifecycle' })
 
   for (let seq = 1; seq <= events.length; seq++) {
-    const state = replay({ state: emptyBoard(), events: events.slice(0, seq) })
+    const state = replay({ state: emptyHydra(), events: events.slice(0, seq) })
     assert.equal(state.cards.c1!.column, 'workers_on_it', `after event ${seq}`)
   }
 
-  const end = replay({ state: emptyBoard(), events })
+  const end = replay({ state: emptyHydra(), events })
   assert.equal(end.cards.c2!.parentId, 'c1')
   assert.equal(end.cards.c2!.column, 'workers_on_it')
   assert.equal(end.cards.c1!.links.filter(l => l.state === 'merged').length, 2)
 })
 
 test('duplicates and out-of-order observations are ignored', () => {
-  const state = replay({ state: emptyBoard(), events: readStream({ name: 'duplicates' }) })
+  const state = replay({ state: emptyHydra(), events: readStream({ name: 'duplicates' }) })
   const card = state.cards.c1!
   assert.equal(state.seq, 9)
   assert.equal(card.title, 'Refactor store layer')
@@ -42,13 +42,13 @@ test('duplicates and out-of-order observations are ignored', () => {
 })
 
 test('a moved card keeps its column and shows new attention; a legacy return to auto leaves it', () => {
-  const state = replay({ state: emptyBoard(), events: readStream({ name: 'pinned-attention' }) })
+  const state = replay({ state: emptyHydra(), events: readStream({ name: 'pinned-attention' }) })
   const card = state.cards.c1!
-  // review is no longer a board column, so the card falls back to Parked.
+  // review is no longer a Hydra column, so the card falls back to Parked.
   assert.equal(card.column, 'parked')
   assert.deepEqual(card.attention.map(a => a.kind), ['permission_needed'])
 
-  const auto: BoardEvent = {
+  const auto: HydraEvent = {
     v: 1,
     seq: 4,
     id: 'evt_4',
@@ -62,7 +62,7 @@ test('a moved card keeps its column and shows new attention; a legacy return to 
 })
 
 test('undo events restore the card and record what they reversed', () => {
-  const state = replay({ state: emptyBoard(), events: readStream({ name: 'undo' }) })
+  const state = replay({ state: emptyHydra(), events: readStream({ name: 'undo' }) })
   const card = state.cards.c1!
   assert.deepEqual(card.links, [])
   assert.equal(card.outcome, undefined)
@@ -72,7 +72,7 @@ test('undo events restore the card and record what they reversed', () => {
 
 test('replay is pure and deterministic', () => {
   const events = readStream({ name: 'lifecycle' })
-  const start = emptyBoard()
+  const start = emptyHydra()
   const frozen = structuredClone(start)
   const once = replay({ state: start, events })
   assert.deepEqual(start, frozen)
@@ -83,12 +83,12 @@ test('replay is pure and deterministic', () => {
     }),
     events: events.slice(4),
   }), once)
-  assert.deepEqual(replay({ state: emptyBoard(), events }), once)
+  assert.deepEqual(replay({ state: emptyHydra(), events }), once)
 })
 
 test('a parent change that would make a cycle is ignored', () => {
   const events = readStream({ name: 'lifecycle' })
-  const cycle: BoardEvent = {
+  const cycle: HydraEvent = {
     v: 1,
     seq: 9,
     id: 'evt_9',
@@ -99,17 +99,17 @@ test('a parent change that would make a cycle is ignored', () => {
     data: { key: 'claude:host-a:sess-1', parentId: 'c2' },
   }
   assert.equal(replay({
-    state: emptyBoard(),
+    state: emptyHydra(),
     events: [...events, cycle],
   }).cards.c1!.parentId, undefined)
 })
 
 test('an auto title fills an untitled card, best source first, and never replaces a set title', () => {
-  let state = emptyBoard()
+  let state = emptyHydra()
 
   const apply = ({ type, data }: { type: string; data: object }) => {
     const seq = state.seq + 1
-    state = reduce({ state, event: { v: 1, seq, id: `e${seq}`, at: '2026-10-13T00:00:00Z', actor: 'test', cardId: 'c1', type, data } as BoardEvent })
+    state = reduce({ state, event: { v: 1, seq, id: `e${seq}`, at: '2026-10-13T00:00:00Z', actor: 'test', cardId: 'c1', type, data } as HydraEvent })
 
     return state.cards.c1!.title
   }

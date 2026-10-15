@@ -5,15 +5,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
-import { boardDir, spoolWrite } from '../src/store/board-store.ts'
+import { hydraDir, spoolWrite } from '../src/store/hydra-store.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
 
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 
-function board() {
-  const home = mkdtempSync(join(tmpdir(), 'pnyx-board-'))
+function hydraId() {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-hydra-'))
   const env = { ...process.env, PNYX_HOME: home }
 
   const run = ({ args }: { args: string[] }): string => {
@@ -42,7 +42,7 @@ function board() {
 }
 
 test('push is an idempotent upsert by key', () => {
-  const { run, card } = board()
+  const { run, card } = hydraId()
   const file = card({ json: { title: 'Ship login', workspace: 'work', tags: ['auth'] } })
   assert.match(run({ args: ['push', '--key', 'claude:s1', '--file', file] }), /^ {2}id: c1$/m)
   assert.match(run({ args: ['push', '--key', 'claude:s1', '--file', file] }), /^event: "none: unchanged"$/m)
@@ -56,7 +56,7 @@ test('push is an idempotent upsert by key', () => {
 })
 
 test('only a move places the card; links, merges and outcomes leave it', () => {
-  const { run, fails, card } = board()
+  const { run, fails, card } = hydraId()
   run({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'Task' } })] })
   run({ args: ['push', '--key', 'k2', '--file', card({ json: { title: 'Other' } })] })
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'open'] })
@@ -72,7 +72,7 @@ test('only a move places the card; links, merges and outcomes leave it', () => {
 })
 
 test('history pages newest first and filters', () => {
-  const { run, card } = board()
+  const { run, card } = hydraId()
 
   for (let i = 0; i < 5; i++) {
     run({ args: ['push', '--key', 'k', '--file', card({ json: { title: `t${i}` } })] })
@@ -88,7 +88,7 @@ test('history pages newest first and filters', () => {
 })
 
 test('undo appends a reversing event and refuses a second undo', () => {
-  const { run, card } = board()
+  const { run, card } = hydraId()
   run({ args: ['push', '--key', 'k', '--file', card({ json: {} })] })
   run({ args: ['move', 'c1', 'done'] })
   assert.match(run({ args: ['undo', 'evt_2'] }), /^ {2}seq: 3$/m)
@@ -97,7 +97,7 @@ test('undo appends a reversing event and refuses a second undo', () => {
 })
 
 test('every write takes --event-id and --if-revision', () => {
-  const { run, fails, card } = board()
+  const { run, fails, card } = hydraId()
   run({ args: ['push', '--key', 'k', '--file', card({ json: {} }), '--if-revision', '0'] })
   fails({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'x' } }), '--if-revision', '0'], status: 1, code: 'REVISION_CONFLICT' })
   const url = 'https://github.com/o/r/pull/7'
@@ -113,7 +113,7 @@ test('every write takes --event-id and --if-revision', () => {
 })
 
 test('undo reverses a manual push edit and refuses a merge', () => {
-  const { run, fails, card } = board()
+  const { run, fails, card } = hydraId()
   run({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'Before' } })] })
   run({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'After' } })] })
   run({ args: ['undo', 'evt_2'] })
@@ -125,7 +125,7 @@ test('undo reverses a manual push edit and refuses a merge', () => {
 })
 
 test('errors are structured', () => {
-  const { fails } = board()
+  const { fails } = hydraId()
   fails({ args: ['card', 'c9'], status: 1, code: 'NOT_FOUND' })
   fails({ args: ['move', 'c1'], status: 2, code: 'VALIDATION_ERROR' })
   fails({ args: ['outcome', 'c1'], status: 2, code: 'VALIDATION_ERROR' })
@@ -135,7 +135,7 @@ test('errors are structured', () => {
 })
 
 test('a torn tail blocks writes until repair', () => {
-  const { home, run, fails, card } = board()
+  const { home, run, fails, card } = hydraId()
   run({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'a' } })] })
   appendFileSync(join(home, 'boards', 'default', 'events.jsonl'), '{"v":1,"seq":2,"id":"ev')
   assert.match(run({ args: [] }), /torn tail/)
@@ -145,11 +145,11 @@ test('a torn tail blocks writes until repair', () => {
 })
 
 test('spooled hook events are ingested once, in order, by the next write', () => {
-  const { env, run, card } = board()
+  const { env, run, card } = hydraId()
   process.env.PNYX_HOME = env.PNYX_HOME
-  spoolWrite({ board: 'default', entry: { id: 'hook-1', key: 'codex:t1', at: '2026-10-13T10:00:00Z', actor: 'hook', card: { title: 'From hook' } } })
-  spoolWrite({ board: 'default', entry: { id: 'hook-1', key: 'codex:t1', at: '2026-10-13T10:00:01Z', card: { title: 'Respooled' } } })
-  const spool = join(boardDir({ board: 'default' }), 'spool')
+  spoolWrite({ hydraId: 'default', entry: { id: 'hook-1', key: 'codex:t1', at: '2026-10-13T10:00:00Z', actor: 'hook', card: { title: 'From hook' } } })
+  spoolWrite({ hydraId: 'default', entry: { id: 'hook-1', key: 'codex:t1', at: '2026-10-13T10:00:01Z', card: { title: 'Respooled' } } })
+  const spool = join(hydraDir({ hydraId: 'default' }), 'spool')
   writeFileSync(join(spool, '999-bad.json'), '{nope')
   const out = run({ args: ['push', '--key', 'other', '--file', card({ json: {} })] })
   assert.match(out, /^ {2}ingested: 2$/m)
@@ -160,17 +160,17 @@ test('spooled hook events are ingested once, in order, by the next write', () =>
 })
 
 test('a spooled hook push is an observation, so undo refuses it', () => {
-  const { env, run, fails, card } = board()
+  const { env, run, fails, card } = hydraId()
   process.env.PNYX_HOME = env.PNYX_HOME
   run({ args: ['push', '--key', 'codex:t1', '--file', card({ json: { title: 'Manual' } })] })
-  spoolWrite({ board: 'default', entry: { id: 'hook-7', key: 'codex:t1', at: '2026-10-13T10:00:00Z', card: { activity: 'idle' } } })
+  spoolWrite({ hydraId: 'default', entry: { id: 'hook-7', key: 'codex:t1', at: '2026-10-13T10:00:00Z', card: { activity: 'idle' } } })
   run({ args: ['push', '--key', 'other', '--file', card({ json: {} })] })
   assert.match(run({ args: ['card', 'codex:t1'] }), /^ {2}activity: idle$/m)
   fails({ args: ['undo', 'hook-7'], status: 1, code: 'NOT_UNDOABLE' })
 })
 
 test('an event id reused for another card or type is an idempotency conflict', () => {
-  const { run, fails, card } = board()
+  const { run, fails, card } = hydraId()
   run({ args: ['push', '--key', 'a', '--file', card({ json: {} })] })
   run({ args: ['push', '--key', 'b', '--file', card({ json: {} }), '--event-id', 'x1'] })
   fails({ args: ['push', '--key', 'a', '--file', card({ json: { title: 't' } }), '--event-id', 'x1'], status: 1, code: 'IDEMPOTENCY_CONFLICT' })
@@ -180,7 +180,7 @@ test('an event id reused for another card or type is an idempotency conflict', (
 })
 
 test('concurrent writers get one contiguous sequence', async () => {
-  const { env, run, card } = board()
+  const { env, run, card } = hydraId()
   const exec = promisify(execFile)
   const file = card({ json: {} })
   await Promise.all(

@@ -6,7 +6,7 @@ import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, realpath
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { loadBoard, readEvents, spoolWrite } from '../src/store/board-store.ts'
+import { loadHydra, readEvents, spoolWrite } from '../src/store/hydra-store.ts'
 import { captainsIntent, homeKey, parseBacklog, resolveHome } from '../src/integrations/firstmate/home.ts'
 import { latestActivity, openDecisions, parseStatusLine, statusNotes } from '../src/integrations/firstmate/status.ts'
 import { syncHome, watchHome, type SyncResult } from '../src/integrations/firstmate/sync.ts'
@@ -28,7 +28,7 @@ function copyFixture(): { home: string; env: NodeJS.ProcessEnv } {
 }
 
 const cardOf = ({ home, task }: { home: string; task?: string }) => {
-  const { state } = loadBoard({ board: 'default' })
+  const { state } = loadHydra({ hydraId: 'default' })
 
   return state.cards[state.keys[task ? `${homeKey({ home })}:${task}` : homeKey({ home })]!]!
 }
@@ -135,9 +135,9 @@ test('backlog rows give titles, repo tags and merged state', () => {
   assert.deepEqual(rows.get('docs-scout'), { title: 'app: survey the docs', repo: 'docs', done: true, merged: false })
 })
 
-test('sync mirrors Firstmate tasks under its board Hydra', () => {
+test('sync mirrors Firstmate tasks under its Hydra Hydra', () => {
   const { home } = copyFixture()
-  const result = syncHome({ board: 'default', home, at: '2026-10-13T10:00:00.000Z' })
+  const result = syncHome({ hydraId: 'default', home, at: '2026-10-13T10:00:00.000Z' })
   assert.equal(result.tasks, 5)
 
   const parent = cardOf({ home })
@@ -171,22 +171,22 @@ test('sync mirrors Firstmate tasks under its board Hydra', () => {
   assert.deepEqual(release.links.map(l => [l.number, l.state]), [[40, 'merged']])
   assert.equal(release.column, 'workers_on_it')
 
-  assert.deepEqual(syncHome({ board: 'default', home }), { tasks: 5, appended: 0 })
+  assert.deepEqual(syncHome({ hydraId: 'default', home }), { tasks: 5, appended: 0 })
 })
 
 test('a session Hydra keeps its Firstmate home, and another home is named when ignored', () => {
   const { home, env } = copyFixture()
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
   const input = join(home, '..', 'hydra.json')
   writeFileSync(input, JSON.stringify({ agent: { provider: 'claude-code', sessionId: 'fm-hydra' }, terminal: { tty: '/dev/ttys126', pid: '126' } }))
   run({ args: ['push', '--key', 'fm-hydra', '--file', input] })
-  run({ args: ['board', 'set', '--session', 'claude-code:fm-hydra'] })
-  const hydra = loadBoard({ board: 'default' }).state.board!.hydra
+  run({ args: ['hydra', 'set', '--session', 'claude-code:fm-hydra'] })
+  const hydra = loadHydra({ hydraId: 'default' }).state.config!.hydra
   assert.equal(hydra.kind, 'firstmate')
   assert.equal(hydra.home, home)
   assert.equal(hydra.session, 'claude-code:fm-hydra')
-  assert.equal(syncHome({ board: 'default', home }).ignored, undefined)
+  assert.equal(syncHome({ hydraId: 'default', home }).ignored, undefined)
 
   const other = join(home, '..', 'other-home')
   cpSync(FIXTURE, other, { recursive: true })
@@ -198,22 +198,22 @@ test('a session Hydra keeps its Firstmate home, and another home is named when i
 test('a column edit before sync does not stand in for the Firstmate Hydra', () => {
   const { home, env } = copyFixture()
   execFileSync(process.execPath, [BIN, 'column', 'rename', 'needs_you', '--title', 'Your turn'], { env })
-  assert.equal(syncHome({ board: 'default', home }).tasks, 5)
-  const board = loadBoard({ board: 'default' }).state.board!
-  assert.equal(board.hydra.home, home)
-  assert.equal(board.columns[0]!.title, 'Your turn')
+  assert.equal(syncHome({ hydraId: 'default', home }).tasks, 5)
+  const hydraId = loadHydra({ hydraId: 'default' }).state.config!
+  assert.equal(hydraId.hydra.home, home)
+  assert.equal(hydraId.columns[0]!.title, 'Your turn')
   assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'workers_on_it')
 })
 
 test('a failed task closed in the backlog records a closed failure in place', () => {
   const { home } = copyFixture()
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] hotfix-2')), 1)
   rows.splice(rows.indexOf('## Done') + 1, 0, row!.replace('[ ]', '[x]'))
   writeFileSync(backlog, rows.join('\n'))
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [])
   assert.deepEqual(hotfix.outcome, { state: 'failed', note: 'closed after failure', closed: true, source: 'firstmate' })
@@ -223,14 +223,14 @@ test('a failed task closed in the backlog records a closed failure in place', ()
 test('a blocked task closed in the backlog clears its request and records done in place', () => {
   const { home } = copyFixture()
   writeFileSync(join(home, 'state', 'hotfix-2.status'), 'working: reproducing\nblocked: waiting for CI token\n')
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.deepEqual(cardOf({ home, task: 'hotfix-2' }).attention.map(a => [a.kind, a.key]), [['blocked', 'default']])
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] hotfix-2')), 1)
   rows.splice(rows.indexOf('## Done') + 1, 0, row!.replace('[ ]', '[x]'))
   writeFileSync(backlog, rows.join('\n'))
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [])
   assert.deepEqual(hotfix.outcome, { state: 'done', source: 'firstmate' })
@@ -245,7 +245,7 @@ test('a done declaration neither moves Hydra work nor closes its backlog record'
   const [row] = rows.splice(scout, 1)
   rows.splice(rows.indexOf('## In flight') + 1, 0, row!.replace('[x]', '[ ]'))
   writeFileSync(backlog, rows.join('\n'))
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home, task: 'docs-scout' }).outcome, undefined)
   assert.equal(cardOf({ home, task: 'docs-scout' }).status?.state, 'done')
   assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'workers_on_it')
@@ -254,24 +254,24 @@ test('a done declaration neither moves Hydra work nor closes its backlog record'
 test('sync never overwrites a link state another source refreshed', () => {
   const { home } = copyFixture()
   appendFileSync(join(home, 'state', 'api-v2.meta'), 'pr=https://github.com/example/app/pull/41\n')
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home, task: 'api-v2' }).links[0]!.state, 'open')
   const api = cardOf({ home, task: 'api-v2' })
   execFileSync(process.execPath, [BIN, 'link', api.id, '--url', 'https://github.com/example/app/pull/41', '--state', 'closed'], {
     env: process.env,
   })
   appendFileSync(join(home, 'state', 'api-v2.status'), 'working: still going\n')
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home, task: 'api-v2' }).links[0]!.state, 'closed')
 })
 
 test('a task whose records are gone drops its open decisions and its folder', () => {
   const { home } = copyFixture()
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'api-v2' }).folder, '/tmp/fixture-worktree/api-v2')
   rmSync(join(home, 'state', 'api-v2.meta'))
   rmSync(join(home, 'state', 'api-v2.status'))
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   const api = cardOf({ home, task: 'api-v2' })
   assert.deepEqual(api.attention, [])
   assert.equal(api.folder, undefined)
@@ -283,7 +283,7 @@ test('watch reconciles on start and folds each change', async () => {
   const results: SyncResult[] = []
   let wake: () => void = () => {}
   const watcher = watchHome({
-    board: 'default',
+    hydraId: 'default',
     home,
     onSync: ({ result: r }) => {
       if (r instanceof Error) {
@@ -327,7 +327,7 @@ test('firstmate sync through the CLI', () => {
   fails({ args: ['firstmate', 'sync', '--home', join(home, 'data')], code: 'VALIDATION_ERROR' })
 })
 
-test('serve --home folds the home into the board without a separate watch', async () => {
+test('serve --home folds the home into the Hydra without a separate watch', async () => {
   const { home, env } = copyFixture()
   const server = spawn(process.execPath, [BIN, 'serve', '--port', '0', '--home', home], { env, stdio: ['ignore', 'pipe', 'inherit'] })
   track({ child: server })
@@ -358,7 +358,7 @@ test('a Firstmate outcome is a source observation: undo and clear refuse it', ()
   const { run, fails } = cli({ env })
   run({ args: ['firstmate', 'sync', '--home', home] })
   const scout = cardOf({ home, task: 'docs-scout' })
-  const recorded = readEvents({ board: 'default' }).find(e => e.type === 'card.outcome' && e.cardId === scout.id)!
+  const recorded = readEvents({ hydraId: 'default' }).find(e => e.type === 'card.outcome' && e.cardId === scout.id)!
   fails({ args: ['undo', recorded.id], code: 'NOT_UNDOABLE' })
   fails({ args: ['outcome', scout.id, '--clear'], code: 'SOURCE_OWNED' })
   fails({ args: ['outcome', scout.id, 'cancelled'], code: 'SOURCE_OWNED' })
@@ -380,36 +380,36 @@ test("a task's decisions, reports and Captain's intent show on its card", () => 
   appendFileSync(join(home, 'state', 'api-v2.status'), 'resolved [key=api-shape] [at=1791900700]: REST\n')
   assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,5,3$/m)
   assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,5,0$/m)
-  assert.match(run({ args: ['search', 'partners', 'page'] }), /^ {6}note,"[^"]+","…Ship the v2 API so \[partners\] can \[page\]/m)
-  fails({ args: ['undo', readEvents({ board: 'default' }).find(e => e.type === 'card.noted')!.id], code: 'NOT_UNDOABLE' })
+  assert.match(run({ args: ['oracle', 'partners', 'page'] }), /^ {6}note,"[^"]+","…Ship the v2 API so \[partners\] can \[page\]/m)
+  fails({ args: ['undo', readEvents({ hydraId: 'default' }).find(e => e.type === 'card.noted')!.id], code: 'NOT_UNDOABLE' })
 })
 
 test('a Firstmate outcome follows the backlog on every sync', () => {
   const { home } = copyFixture()
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.deepEqual(cardOf({ home, task: 'docs-scout' }).outcome, { state: 'done', source: 'firstmate' })
   appendFileSync(join(home, 'state', 'docs-scout.status'), 'failed: rerun broke\n')
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.deepEqual(cardOf({ home, task: 'docs-scout' }).outcome, { state: 'failed', note: 'closed after failure', closed: true, source: 'firstmate' })
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [x] docs-scout')), 1)
   rows.splice(rows.indexOf('## In flight') + 1, 0, row!.replace('[x]', '[ ]'))
   writeFileSync(backlog, rows.join('\n'))
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home, task: 'docs-scout' }).outcome, undefined)
   assert.equal(cardOf({ home, task: 'docs-scout' }).column, 'workers_on_it')
-  const cleared = readEvents({ board: 'default' }).filter(e => e.type === 'card.outcome')
+  const cleared = readEvents({ hydraId: 'default' }).filter(e => e.type === 'card.outcome')
     .at(-1)!
   cli({ env: process.env }).fails({ args: ['undo', cleared.id], code: 'NOT_UNDOABLE' })
-  assert.deepEqual(syncHome({ board: 'default', home }).appended, 0)
+  assert.deepEqual(syncHome({ hydraId: 'default', home }).appended, 0)
 })
 
 test('firstmate sync ingests the hook spool', () => {
   const { home } = copyFixture()
-  spoolWrite({ board: 'default', entry: { id: 's1', key: 'spooled', at: '2026-01-01T00:00:00.000Z', card: { title: 'from a hook' } } })
-  syncHome({ board: 'default', home })
-  assert.equal(loadBoard({ board: 'default' }).state.cards[loadBoard({ board: 'default' }).state.keys['spooled']!]!.title, 'from a hook')
+  spoolWrite({ hydraId: 'default', entry: { id: 's1', key: 'spooled', at: '2026-01-01T00:00:00.000Z', card: { title: 'from a hook' } } })
+  syncHome({ hydraId: 'default', home })
+  assert.equal(loadHydra({ hydraId: 'default' }).state.cards[loadHydra({ hydraId: 'default' }).state.keys['spooled']!]!.title, 'from a hook')
 })
 
 test("reply sends through the home's fm-send with FM_HOME and records receipts", () => {
@@ -480,7 +480,7 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   writeFileSync(crafted, JSON.stringify({ title: 'crafted', source: { adapter: 'firstmate', instanceId: home, objectId: '--resolve-key' } }))
   run({ args: ['push', '--key', 'crafted', '--file', crafted] })
   fails({ args: ['reply', 'crafted', '--text', 'x', '--home', home], code: 'NO_ROUTE' })
-  fails({ args: ['undo', readEvents({ board: 'default' }).find(e => e.type === 'card.replied')!.id], code: 'NOT_UNDOABLE' })
+  fails({ args: ['undo', readEvents({ hydraId: 'default' }).find(e => e.type === 'card.replied')!.id], code: 'NOT_UNDOABLE' })
   const other = copyFixture()
   fails({ args: ['reply', api.id, '--text', 'x', '--home', other.home], code: 'VALIDATION_ERROR' })
 })
@@ -490,20 +490,20 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   const worktree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
   const meta = join(home, 'state', 'api-v2.meta')
   writeFileSync(meta, readFileSync(meta, 'utf8').replace(/^worktree=.*$/m, `worktree=${worktree}`))
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   const hook = ({ id, event, payload, extra = {} }: {
     id: string
     event: string
     payload: Record<string, unknown>
     extra?: Record<string, unknown>
   }) =>
-    spoolWrite({ board: 'default', entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'claude', event, payload, ...extra } })
+    spoolWrite({ hydraId: 'default', entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'claude', event, payload, ...extra } })
   const terminal = { tty: '/dev/ttys042', pid: '4242', program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' }
   // The hook reports the folder as the session saw it; the join compares canonical paths.
   hook({ id: 'h1', event: 'SessionStart', payload: { session_id: 'fm-s', cwd: worktree, transcript_path: '/x/fm-s.jsonl' }, extra: { terminal } })
   hook({ id: 'h2', event: 'SubagentStart', payload: { session_id: 'fm-s', agent_id: 'a1', cwd: worktree } })
-  syncHome({ board: 'default', home })
-  const { state } = loadBoard({ board: 'default' })
+  syncHome({ hydraId: 'default', home })
+  const { state } = loadHydra({ hydraId: 'default' })
   const api = cardOf({ home, task: 'api-v2' })
   assert.equal(api.folder, realpathSync(worktree))
   assert.equal(api.agent?.sessionId, 'fm-s')
@@ -516,15 +516,15 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   assert.match(readFileSync(join(home, 'sent.log'), 'utf8'), /arg=api-v2\narg=Use REST/)
 
   hook({ id: 'h2a', event: 'PermissionRequest', payload: { session_id: 'fm-s', cwd: worktree, tool_name: 'Bash', tool_input: { command: 'rm -rf build' } } })
-  syncHome({ board: 'default', home })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
+  syncHome({ hydraId: 'default', home })
   const asks = cardOf({ home, task: 'api-v2' }).attention.filter(a => a.key.startsWith('hook:'))
   assert.equal(asks.length, 1)
   assert.equal(asks[0]!.blocking, true)
   fails({ args: ['reply', api.id, '--text', 'x', '--resolve-key', asks[0]!.key, '--home', home], code: 'VALIDATION_ERROR' })
 
   hook({ id: 'h2e', event: 'SessionEnd', payload: { session_id: 'fm-s', cwd: worktree } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home, task: 'api-v2' }).outcome, undefined)
 
   // A closed task gives its worktree up, so the next session there keeps its own card.
@@ -532,14 +532,14 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   const rows = readFileSync(backlog, 'utf8').split('\n')
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [ ] api-v2')), 1)
   writeFileSync(backlog, [...rows, row!.replace('[ ]', '[x]')].join('\n'))
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home, task: 'api-v2' }).folder, undefined)
   hook({ id: 'h2b', event: 'SubagentStop', payload: { session_id: 'fm-s', agent_id: 'a1', cwd: worktree } })
   hook({ id: 'h2c', event: 'SessionEnd', payload: { session_id: 'fm-s', cwd: worktree } })
   hook({ id: 'h3', event: 'SessionStart', payload: { session_id: 'next', cwd: worktree } })
-  syncHome({ board: 'default', home })
-  assert.equal(loadBoard({ board: 'default' }).state.keys['claude:fm-s'], undefined)
-  assert.ok(loadBoard({ board: 'default' }).state.keys['claude:next'])
+  syncHome({ hydraId: 'default', home })
+  assert.equal(loadHydra({ hydraId: 'default' }).state.keys['claude:fm-s'], undefined)
+  assert.ok(loadHydra({ hydraId: 'default' }).state.keys['claude:next'])
 })
 
 test('a session joins the task launched in its worktree; only a session in its terminal takes over', () => {
@@ -556,7 +556,7 @@ test('a session joins the task launched in its worktree; only a session in its t
     extra?: object
   }) =>
     spoolWrite({
-      board: 'default',
+      hydraId: 'default',
       entry: {
         v: 1,
         id,
@@ -567,19 +567,19 @@ test('a session joins the task launched in its worktree; only a session in its t
         terminal: { ...facts, program: 'kitty', ...(paseoTerminal ? { paseoTerminal } : {}) },
       },
     })
-  const own = ({ session }: { session: string }) => !!loadBoard({ board: 'default' }).state.keys[`claude:${session}`]
+  const own = ({ session }: { session: string }) => !!loadHydra({ hydraId: 'default' }).state.keys[`claude:${session}`]
 
   // The pool hands the worktree from a finished task, whose records are gone, to the next.
   meta({ task: 'wt-a', terminal: 'term-a' })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   rmSync(join(home, 'state', 'wt-a.meta'))
   meta({ task: 'wt-b', terminal: 'term-b' })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.deepEqual(cardOf({ home: home, task: 'wt-b' }).terminal, { paseoTerminal: 'term-b' })
   const transcript = join(worktree, 's-b.jsonl')
   writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Retain before clear' }] } }) + '\n')
   hook({ id: 'h1', session: 's-b', paseoTerminal: 'term-b', extra: { transcript_path: transcript } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b')
   assert.equal(cardOf({ home: home, task: 'wt-b' }).terminal?.pid, '4242')
   assert.equal(own({ session: 's-b' }), false)
@@ -587,7 +587,7 @@ test('a session joins the task launched in its worktree; only a session in its t
   // A second session in the folder, in another or an unknown terminal, never replaces it.
   hook({ id: 'h2', session: 's-twin', paseoTerminal: 'term-elsewhere' })
   hook({ id: 'h2b', session: 's-bare' })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b')
   assert.equal(cardOf({ home: home, task: 'wt-b' }).terminal?.pid, '4242')
   assert.equal(own({ session: 's-twin' }), true)
@@ -596,36 +596,36 @@ test('a session joins the task launched in its worktree; only a session in its t
   // A headless run the worker starts in its worktree inherits the task's terminal
   // but has no tty of its own, so it keeps its own card.
   hook({ id: 'h2h', session: 's-child', paseoTerminal: 'term-b', facts: {} })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b')
   assert.equal(own({ session: 's-child' }), true)
 
   // Claude Code's /clear starts a new session on the same tty, which continues the
   // card, and its later events reach it.
   hook({ id: 'h2c', session: 's-b2', paseoTerminal: 'term-b', facts: tty, extra: { source: 'clear' } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   hook({ id: 'h2d', session: 's-b2', paseoTerminal: 'term-b' })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b2')
   assert.equal(own({ session: 's-b2' }), false)
-  const continued = loadBoard({ board: 'default' }).state
+  const continued = loadHydra({ hydraId: 'default' }).state
   assert.equal(continued.sessions?.['claude-code:s-b']?.taskId, null)
   assert.equal(continued.sessions?.['claude-code:s-b2']?.taskId, cardOf({ home, task: 'wt-b' }).id)
   assert.deepEqual(cardOf({ home, task: 'wt-b' }).sessionIds, ['claude-code:s-b2'])
   rmSync(transcript)
-  assert.ok(readEvents({ board: 'default' }).some(e => e.type === 'chat.message'
+  assert.ok(readEvents({ hydraId: 'default' }).some(e => e.type === 'chat.message'
     && e.data.session === 'claude-code:s-b' && e.data.text === 'Retain before clear'))
 
   hook({ id: 'h2s', session: 's-b', paseoTerminal: 'term-b' })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b2')
   assert.equal(own({ session: 's-b' }), true)
 
   meta({ task: 'wt-b', terminal: 'term-b3' })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.deepEqual(cardOf({ home: home, task: 'wt-b' }).terminal, { paseoTerminal: 'term-b3' })
   hook({ id: 'h2e', session: 's-b3', paseoTerminal: 'term-b3' })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b3')
   assert.equal(own({ session: 's-b3' }), false)
 
@@ -633,18 +633,18 @@ test('a session joins the task launched in its worktree; only a session in its t
   // terminal tells them apart, and one launched elsewhere joins neither.
   meta({ task: 'wt-c', terminal: 'term-c0' })
   meta({ task: 'wt-d', terminal: 'term-d' })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   meta({ task: 'wt-c', terminal: 'term-c' })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.deepEqual(cardOf({ home: home, task: 'wt-c' }).terminal, { paseoTerminal: 'term-c' })
   // A headless child in the task's terminal never joins a task card with no session yet.
   hook({ id: 'h3h', session: 's-d-child', paseoTerminal: 'term-d', facts: {} })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-d' }).agent, undefined)
   assert.equal(own({ session: 's-d-child' }), true)
   hook({ id: 'h3', session: 's-d', paseoTerminal: 'term-d' })
   hook({ id: 'h4', session: 's-other', paseoTerminal: 'term-elsewhere' })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-d' }).agent?.sessionId, 's-d')
   assert.equal(cardOf({ home: home, task: 'wt-c' }).agent, undefined)
   assert.equal(own({ session: 's-other' }), true)
@@ -654,9 +654,9 @@ test('a session outside Paseo joins a task with no recorded terminal and keeps i
   const { home } = copyFixture()
   const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
   writeFileSync(join(home, 'state', 'wt-t.meta'), `task=wt-t\nkind=ship\nworktree=${worktree}\n`)
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   spoolWrite({
-    board: 'default',
+    hydraId: 'default',
     entry: {
       v: 1,
       id: 'h1',
@@ -667,42 +667,42 @@ test('a session outside Paseo joins a task with no recorded terminal and keeps i
       terminal: { tty: '/dev/ttys042', pid: '4242', program: 'tmux' },
     },
   })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
 
   assert.equal(cardOf({ home: home, task: 'wt-t' }).agent?.sessionId, 's-tmux')
   assert.deepEqual(cardOf({ home: home, task: 'wt-t' }).terminal, { tty: '/dev/ttys042', pid: '4242', program: 'tmux' })
-  assert.equal(syncHome({ board: 'default', home }).appended, 0)
+  assert.equal(syncHome({ hydraId: 'default', home }).appended, 0)
 })
 
 test('a task launched in a Paseo terminal takes only a session from that terminal', () => {
   const { home } = copyFixture()
   const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
   writeFileSync(join(home, 'state', 'wt-p.meta'), `task=wt-p\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-p\n`)
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   const start = ({ id, session, terminal }: { id: string; session: string; terminal: object }) =>
     spoolWrite({
-      board: 'default',
+      hydraId: 'default',
       entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'claude', event: 'SessionStart', payload: { session_id: session, cwd: worktree }, terminal },
     })
 
   start({ id: 'h1', session: 's-tmux', terminal: { tty: '/dev/ttys042', pid: '4242', program: 'tmux' } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-p' }).agent, undefined)
   assert.deepEqual(cardOf({ home: home, task: 'wt-p' }).terminal, { paseoTerminal: 'term-p' })
-  assert.ok(loadBoard({ board: 'default' }).state.keys['claude:s-tmux'])
+  assert.ok(loadHydra({ hydraId: 'default' }).state.keys['claude:s-tmux'])
 
   start({ id: 'h2', session: 's-worker', terminal: { tty: '/dev/ttys043', pid: '4343', program: 'kitty', paseoTerminal: 'term-p' } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-p' }).agent?.sessionId, 's-worker')
   assert.equal(cardOf({ home: home, task: 'wt-p' }).terminal?.paseoTerminal, 'term-p')
-  assert.equal(loadBoard({ board: 'default' }).state.keys['claude:s-worker'], undefined)
+  assert.equal(loadHydra({ hydraId: 'default' }).state.keys['claude:s-worker'], undefined)
 })
 
 test('a Paseo task takes only events from its terminal, whatever event comes first', () => {
   const { home } = copyFixture()
   const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
   writeFileSync(join(home, 'state', 'wt-q.meta'), `task=wt-q\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-q\n`)
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   const hook = ({ id, session, event, terminal }: {
     id: string
     session: string
@@ -710,7 +710,7 @@ test('a Paseo task takes only events from its terminal, whatever event comes fir
     terminal?: object
   }) =>
     spoolWrite({
-      board: 'default',
+      hydraId: 'default',
       entry: {
         v: 1,
         id,
@@ -721,27 +721,27 @@ test('a Paseo task takes only events from its terminal, whatever event comes fir
         ...(terminal ? { terminal } : {}),
       },
     })
-  const own = ({ session }: { session: string }) => !!loadBoard({ board: 'default' }).state.keys[`codex:${session}`]
+  const own = ({ session }: { session: string }) => !!loadHydra({ hydraId: 'default' }).state.keys[`codex:${session}`]
 
   hook({ id: 'h1', session: 's-other', event: 'SessionStart', terminal: { tty: '/dev/ttys050', pid: '5050', paseoTerminal: 'term-elsewhere' } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-q' }).agent, undefined)
   assert.equal(own({ session: 's-other' }), true)
 
   hook({ id: 'h1b', session: 's-bare', event: 'PreToolUse' })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-q' }).agent, undefined)
   assert.equal(own({ session: 's-bare' }), true)
 
   // A worker already running when its hooks were trusted first reports a tool call,
   // which shows only its Paseo terminal; it joins, and its later events follow.
   hook({ id: 'h2', session: 's-worker', event: 'PreToolUse', terminal: { paseoTerminal: 'term-q' } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-q' }).agent?.sessionId, 's-worker')
   assert.deepEqual(cardOf({ home: home, task: 'wt-q' }).terminal, { paseoTerminal: 'term-q' })
   assert.equal(own({ session: 's-worker' }), false)
   hook({ id: 'h3', session: 's-worker', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys051', pid: '5151', paseoTerminal: 'term-q' } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-q' }).agent?.sessionId, 's-worker')
   assert.equal(cardOf({ home: home, task: 'wt-q' }).terminal?.paseoTerminal, 'term-q')
   assert.equal(own({ session: 's-worker' }), false)
@@ -751,7 +751,7 @@ test('a session that joined a Paseo task and then shows another terminal reports
   const { home } = copyFixture()
   const worktree = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-wt-')))
   writeFileSync(join(home, 'state', 'wt-r.meta'), `task=wt-r\nkind=ship\nworktree=${worktree}\npaseo_terminal_id=term-r\n`)
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   const hook = ({ id, session, event, terminal }: {
     id: string
     session: string
@@ -759,22 +759,22 @@ test('a session that joined a Paseo task and then shows another terminal reports
     terminal: object
   }) =>
     spoolWrite({
-      board: 'default',
+      hydraId: 'default',
       entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'codex', event, payload: { session_id: session, cwd: worktree, prompt: 'x' }, terminal },
     })
-  const own = ({ session }: { session: string }) => !!loadBoard({ board: 'default' }).state.keys[`codex:${session}`]
+  const own = ({ session }: { session: string }) => !!loadHydra({ hydraId: 'default' }).state.keys[`codex:${session}`]
 
   hook({ id: 'h1', session: 's-a', event: 'PreToolUse', terminal: { paseoTerminal: 'term-r' } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-r' }).agent?.sessionId, 's-a')
 
   hook({ id: 'h2', session: 's-a', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys060', pid: '6060', program: 'tmux' } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(own({ session: 's-a' }), true)
   assert.deepEqual(cardOf({ home: home, task: 'wt-r' }).terminal, { paseoTerminal: 'term-r' })
 
   hook({ id: 'h3', session: 's-worker', event: 'SessionStart', terminal: { tty: '/dev/ttys061', pid: '6161', paseoTerminal: 'term-r' } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-r' }).agent?.sessionId, 's-worker')
   assert.equal(own({ session: 's-worker' }), false)
 })
@@ -784,9 +784,9 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
   const worktree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
   const meta = join(home, 'state', 'api-v2.meta')
   writeFileSync(meta, readFileSync(meta, 'utf8').replace(/^worktree=.*$/m, `worktree=${worktree}`))
-  syncHome({ board: 'default', home })
-  spoolWrite({ board: 'default', entry: { v: 1, id: 'h1', at: '2026-10-14T00:00:00Z', harness: 'claude', event: 'SessionStart', terminal: { tty: '/dev/ttys042', pid: '4242' }, payload: { session_id: 'fm-s', cwd: worktree, model: 'claude-sonnet-5-5' } } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
+  spoolWrite({ hydraId: 'default', entry: { v: 1, id: 'h1', at: '2026-10-14T00:00:00Z', harness: 'claude', event: 'SessionStart', terminal: { tty: '/dev/ttys042', pid: '4242' }, payload: { session_id: 'fm-s', cwd: worktree, model: 'claude-sonnet-5-5' } } })
+  syncHome({ hydraId: 'default', home })
   const api = cardOf({ home: home, task: 'api-v2' })
   const { run } = cli({ env: env })
   const notes = () => readFileSync(join(home, 'inbox.log'), 'utf8').split('---\n')
@@ -802,13 +802,13 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
 
   // A key change is a request too, even while the worker waits on its own prompt:
   // nothing reaches the worker's session, so fm-send never runs.
-  spoolWrite({ board: 'default', entry: { v: 1, id: 'h2', at: '2026-10-14T00:01:00Z', harness: 'claude', event: 'PermissionRequest', payload: { session_id: 'fm-s', cwd: worktree, tool_name: 'Bash', tool_input: { command: 'ls' } } } })
+  spoolWrite({ hydraId: 'default', entry: { v: 1, id: 'h2', at: '2026-10-14T00:01:00Z', harness: 'claude', event: 'PermissionRequest', payload: { session_id: 'fm-s', cwd: worktree, tool_name: 'Bash', tool_input: { command: 'ls' } } } })
   assert.match(run({ args: ['agent', api.id, 'mode', 'next', '--home', home, '--idempotency-key', 'm2'] }), /sent: delivered/)
   assert.equal(notes().at(-1), note({ id: 'm2', text: 'Pnyx: please switch the worker on task api-v2 (Claude Code) to the next permission mode.' }))
   assert.equal(existsSync(join(home, 'sent.log')), false)
 
-  spoolWrite({ board: 'default', entry: { v: 1, id: 'h3', at: '2026-10-14T00:02:00Z', harness: 'claude', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys042', pid: '4242' }, payload: { session_id: 'fm-s', cwd: worktree, prompt: 'x', permission_mode: 'acceptEdits' } } })
-  syncHome({ board: 'default', home })
+  spoolWrite({ hydraId: 'default', entry: { v: 1, id: 'h3', at: '2026-10-14T00:02:00Z', harness: 'claude', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys042', pid: '4242' }, payload: { session_id: 'fm-s', cwd: worktree, prompt: 'x', permission_mode: 'acceptEdits' } } })
+  syncHome({ hydraId: 'default', home })
   assert.match(run({ args: ['agent', api.id, '--home', home] }), /mode,acceptEdits,next,yes/)
 
   // A note saved but not announced may still reach the orchestrator; one not saved fails.
@@ -824,9 +824,9 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
   const fix = join(home, 'state', 'hotfix-2.meta')
   const codexTree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
   writeFileSync(fix, `${readFileSync(fix, 'utf8')}worktree=${codexTree}\n`)
-  syncHome({ board: 'default', home })
-  spoolWrite({ board: 'default', entry: { v: 1, id: 'h4', at: '2026-10-14T00:00:00Z', harness: 'codex', event: 'SessionStart', terminal: { tty: '/dev/ttys043', pid: '4343' }, payload: { session_id: 'cx-s', cwd: codexTree } } })
-  syncHome({ board: 'default', home })
+  syncHome({ hydraId: 'default', home })
+  spoolWrite({ hydraId: 'default', entry: { v: 1, id: 'h4', at: '2026-10-14T00:00:00Z', harness: 'codex', event: 'SessionStart', terminal: { tty: '/dev/ttys043', pid: '4343' }, payload: { session_id: 'cx-s', cwd: codexTree } } })
+  syncHome({ hydraId: 'default', home })
   const hotfix = cardOf({ home: home, task: 'hotfix-2' })
   assert.equal(hotfix.agent?.provider, 'codex')
   assert.match(run({ args: ['agent', hotfix.id, '--home', home] }), /model,unknown,gpt-6.1-sol gpt-6-astra gpt-6-sol gpt-6-luna,yes/)

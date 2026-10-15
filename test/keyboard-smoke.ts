@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startServer } from '../src/server/server.ts'
-import { loadBoard } from '../src/store/board-store.ts'
+import { loadHydra } from '../src/store/hydra-store.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import { smokeBrowser } from './browser.ts'
 
@@ -11,10 +11,10 @@ process.env.PNYX_SEMANTIC = 'off'
 const home = mkdtempSync(join(tmpdir(), 'pnyx-keyboard-smoke-'))
 process.env.PNYX_HOME = home
 const fixture = seedWebFixture({ home })
-const server = await startServer({ board: 'default', homes: [fixture.nativeHome] })
+const server = await startServer({ hydraId: 'default', homes: [fixture.nativeHome] })
 const { browser, evaluate, eventually, check, fill, press, focus, screenshot, close } = smokeBrowser({ home, session: 'pnyx-keyboard' })
 const card = `[data-card="${fixture.state.keys.layout}"]`
-const state = () => loadBoard({ board: 'default' }).state
+const state = () => loadHydra({ hydraId: 'default' }).state
 
 try {
   await browser({ args: ['open', server.url] }); await browser({ args: ['resize', '1440', '900'] }); await browser({ args: ['wait', 'Needs you'] })
@@ -23,7 +23,7 @@ try {
   await focus({ selector: card }); await press({ key: `${mod}+b` })
   await check({ condition: 'document.querySelector(".topbar").hidden && document.querySelector(".hydra-chat").getBoundingClientRect().height > 800', label: 'Mod+B hides only the top bar' })
   await press({ key: `${mod}+k` })
-  await check({ condition: '!document.querySelector(".topbar").hidden && document.activeElement.matches("[data-search-slot] input") && !document.querySelector("[role=dialog]")', label: 'Mod+K reveals and focuses the one search field' })
+  await check({ condition: '!document.querySelector(".topbar").hidden && document.activeElement.matches("[data-oracle-slot] input") && !document.querySelector("[role=dialog]")', label: 'Mod+K reveals and focuses the one search field' })
   await focus({ selector: card }); await press({ key: 'ArrowDown' })
   await check({ condition: `document.activeElement.dataset.card === ${JSON.stringify(fixture.state.keys.coverage)}`, label: 'arrows navigate cards' })
   await press({ key: 'k' }); await check({ condition: `document.activeElement.matches(${JSON.stringify(card)})`, label: 'k navigates back' })
@@ -38,14 +38,14 @@ try {
   await check({ condition: 'document.activeElement.matches(".detail .composer textarea")', label: 'opening a card focuses its composer' })
   await focus({ selector: card }); await press({ key: 'r' })
   await check({ condition: '!!document.querySelector(".detail") && document.activeElement.matches(".detail .composer textarea")', label: 'r focuses an already-open card without closing it' })
-  await fill({ label: 'Reply to Shape the first working board', value: 'Literal hjkl / ? m' }); await press({ key: 'Enter' }); await press({ key: 'j' })
+  await fill({ label: 'Reply to Shape the first working Hydra', value: 'Literal hjkl / ? m' }); await press({ key: 'Enter' }); await press({ key: 'j' })
   await check({ condition: 'document.querySelector(".detail .composer textarea").value === "Literal hjkl / ? m\\nj" && !document.querySelector("[role=dialog]")', label: 'typing stays literal in the composer' })
   await press({ key: 'Escape' })
   await check({ condition: 'document.activeElement.matches(".detail [data-caret-host]") && getSelection().isCollapsed', label: 'Escape enters the latest reply with a keyboard caret' })
   await press({ key: 'Shift+End' }); await press({ key: 'Enter' })
   await check({ condition: 'document.activeElement.matches(".detail .inline-comment textarea")', label: 'Enter comments on the keyboard selection' })
   await fill({ label: 'Comment on selected text', value: 'Make this clearer.' }); await press({ key: 'Escape' }); await press({ key: 'Enter' })
-  await fill({ label: 'Reply to Shape the first working board', value: 'Apply that comment.' }); await press({ key: `${mod}+Enter` })
+  await fill({ label: 'Reply to Shape the first working Hydra', value: 'Apply that comment.' }); await press({ key: `${mod}+Enter` })
   await eventually({ condition: 'document.querySelector(".detail .composer textarea").value === ""', label: 'Mod+Enter sends the task reply' })
   assert.match(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), /Make this clearer/)
   const sent = state().hydraMessages?.length ?? 0
@@ -54,7 +54,7 @@ try {
   assert.equal(state().hydraMessages?.length, sent + 1)
   await evaluate({ code: 'document.querySelector(".detail .composer textarea").focus(); return true;' })
   await press({ key: `${mod}+b` }); await check({ condition: 'document.querySelector(".topbar").hidden', label: 'Mod+B works while typing a reply' })
-  await press({ key: `${mod}+k` }); await check({ condition: 'document.activeElement.matches("[data-search-slot] input")', label: 'Mod+K works while typing' })
+  await press({ key: `${mod}+k` }); await check({ condition: 'document.activeElement.matches("[data-oracle-slot] input")', label: 'Mod+K works while typing' })
   await screenshot({ name: 'keyboard.png' })
   process.stdout.write('Keyboard browser smoke passed.\n')
 } finally {

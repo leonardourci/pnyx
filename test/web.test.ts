@@ -4,31 +4,31 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decision } from '../src/core/decide.ts'
-import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
-import { BoardError, COLUMNS, type BoardEvent, type BoardState } from '../src/core/model.ts'
+import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
+import { HydraError, COLUMNS, type HydraEvent, type HydraState } from '../src/core/model.ts'
 import { clampViewSize, patchView, traces, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
-import { agentActivity, columnsFor, dropBefore, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, taskLabel, visibleParent } from '../web/src/board/view.ts'
-import { withWriter } from '../src/store/board-store.ts'
+import { agentActivity, columnsFor, dropBefore, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, taskLabel, visibleParent } from '../web/src/hydra/view.ts'
+import { withWriter } from '../src/store/hydra-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 import { observe } from '../src/integrations/hooks/observe.ts'
-import { briefNotes, relativeTime } from '../web/src/board/brief.ts'
+import { briefNotes, relativeTime } from '../web/src/hydra/brief.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
 
 const meta = { at: '2026-10-13T10:00:00Z', actor: 'test' }
 
-const event = ({ d }: { d: Decision }): BoardEvent => {
+const event = ({ d }: { d: Decision }): HydraEvent => {
   assert.ok('event' in d)
 
   return d.event
 }
 
-const push = ({ state, key, fields }: { state: BoardState; key: string; fields: unknown }) =>
+const push = ({ state, key, fields }: { state: HydraState; key: string; fields: unknown }) =>
   reduce({ state, event: event({ d: decidePush({ state, key, input: fields, meta }) }) })
 
-test('the task board and its semantic matches exclude ad-hoc sessions', () => {
-  let state = push({ state: emptyBoard(), key: 'work', fields: { title: 'Shared work', attention: [{ key: 'task-question', kind: 'question', blocking: true }] } })
+test('the task Hydra and its semantic matches exclude ad-hoc sessions', () => {
+  let state = push({ state: emptyHydra(), key: 'work', fields: { title: 'Shared work', attention: [{ key: 'task-question', kind: 'question', blocking: true }] } })
 
   for (const key of ['interactive', 'background']) {
     state = push({
@@ -52,15 +52,15 @@ test('the task board and its semantic matches exclude ad-hoc sessions', () => {
     query: 'Shared',
     meaning: [state.keys.interactive!, state.keys.background!],
   }).map(c => c.key), ['work'])
-  assert.equal(pageTitle({ page: 'board', cards: state.cards }), 'Board · Pnyx', 'a request never moves a card to Needs you')
+  assert.equal(pageTitle({ page: 'hydra', cards: state.cards }), 'Hydra · Pnyx', 'a request never moves a card to Needs you')
   state = reduce({ state, event: event({ d: decideMove({ state, ref: 'work', column: 'needs_you', meta }) }) })
-  assert.equal(pageTitle({ page: 'board', cards: state.cards }), '(1) Board · Pnyx')
+  assert.equal(pageTitle({ page: 'hydra', cards: state.cards }), '(1) Hydra · Pnyx')
   assert.ok(state.cards[state.keys.background!])
 })
 
 test('task labels retain legacy source status instead of claiming every tracked task is parked', () => {
   const state = push({
-    state: emptyBoard(),
+    state: emptyHydra(),
     key: 'fm:legacy',
     fields: {
       title: 'Legacy work',
@@ -82,11 +82,11 @@ test('task labels retain legacy source status instead of claiming every tracked 
 })
 
 test('tab titles follow the view, selected card and current needs-you count', () => {
-  for (const [page, label] of [['board', 'Board'], ['history', 'History'], ['settings', 'Settings']] as const) {
+  for (const [page, label] of [['hydra', 'Hydra'], ['history', 'History'], ['settings', 'Settings']] as const) {
     assert.equal(pageTitle({ page, cards: {} }), `${label} · Pnyx`)
   }
 
-  let state = push({ state: emptyBoard(), key: 'a', fields: { title: 'Review <literal> changes', attention: [{ kind: 'question', key: 'q', blocking: true }] } })
+  let state = push({ state: emptyHydra(), key: 'a', fields: { title: 'Review <literal> changes', attention: [{ kind: 'question', key: 'q', blocking: true }] } })
   state = push({ state, key: 'b', fields: { title: 'Another decision', attention: [{ kind: 'question', key: 'q', blocking: true }] } })
   state = push({ state, key: 'c', fields: { title: 'Still working', activity: 'working' } })
 
@@ -94,20 +94,20 @@ test('tab titles follow the view, selected card and current needs-you count', ()
     state = reduce({ state, event: event({ d: decideMove({ state, ref, column: 'needs_you', meta }) }) })
   }
 
-  assert.equal(pageTitle({ page: 'board', cards: state.cards }), '(2) Board · Pnyx')
-  assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'c1' }), '(2) Review <literal> changes · Pnyx')
-  assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'missing' }), '(2) Board · Pnyx')
+  assert.equal(pageTitle({ page: 'hydra', cards: state.cards }), '(2) Hydra · Pnyx')
+  assert.equal(pageTitle({ page: 'hydra', cards: state.cards, selected: 'c1' }), '(2) Review <literal> changes · Pnyx')
+  assert.equal(pageTitle({ page: 'hydra', cards: state.cards, selected: 'missing' }), '(2) Hydra · Pnyx')
   assert.equal(pageTitle({ page: 'history', cards: state.cards, selected: 'c1' }), '(2) History · Pnyx')
   assert.equal(pageTitle({ page: 'settings', cards: state.cards, selected: 'c1' }), '(2) Settings · Pnyx')
   state = push({ state, key: 'a', fields: { title: 'Updated card title' } })
   state = reduce({ state, event: event({ d: decideMove({ state, ref: 'b', column: 'done', meta }) }) })
-  assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'c1' }), '(1) Updated card title · Pnyx')
+  assert.equal(pageTitle({ page: 'hydra', cards: state.cards, selected: 'c1' }), '(1) Updated card title · Pnyx')
   state = reduce({ state, event: event({ d: decideMove({ state, ref: 'a', column: 'done', meta }) }) })
-  assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'c1' }), 'Updated card title · Pnyx')
+  assert.equal(pageTitle({ page: 'hydra', cards: state.cards, selected: 'c1' }), 'Updated card title · Pnyx')
 })
 
 test('preferences replay deterministically, guard revisions, and undo removes map overrides', () => {
-  const initial = push({ state: emptyBoard(), key: 'a', fields: { title: 'A' } })
+  const initial = push({ state: emptyHydra(), key: 'a', fields: { title: 'A' } })
   const edit = event({ d: decideView({ state: initial, patch: { columnWidths: { review: 400 }, cardTraceOverrides: { c1: { tools: true } } }, meta: { ...meta, ifRevision: 0, id: 'view-1' } }) })
   const state = reduce({ state: initial, event: edit })
   assert.equal(initial.view, undefined)
@@ -121,19 +121,19 @@ test('preferences replay deterministically, guard revisions, and undo removes ma
     event: event({ d: decideUndo({ state, target: edit, meta: { ...meta, ifRevision: 1 } }) }),
   })
   assert.deepEqual(viewFor({ state: undone }), viewFor({ state: initial }))
-  assert.throws(() => patchView({ state, input: { fontSize: 100 } }), BoardError)
-  assert.throws(() => patchView({ state, input: { chatFontSize: 100 } }), BoardError)
-  assert.throws(() => patchView({ state, input: { codeFontSize: 5 } }), BoardError)
+  assert.throws(() => patchView({ state, input: { fontSize: 100 } }), HydraError)
+  assert.throws(() => patchView({ state, input: { chatFontSize: 100 } }), HydraError)
+  assert.throws(() => patchView({ state, input: { codeFontSize: 5 } }), HydraError)
   const sizes = patchView({
     state,
     input: { fontSize: 15, chatFontSize: 18, codeFontSize: 12 },
   })
   assert.deepEqual([sizes.fontSize, sizes.chatFontSize, sizes.codeFontSize], [15, 18, 12])
-  assert.throws(() => patchView({ state, input: JSON.parse('{"columnWidths":{"__proto__":300}}') }), BoardError)
+  assert.throws(() => patchView({ state, input: JSON.parse('{"columnWidths":{"__proto__":300}}') }), HydraError)
 })
 
 test('saved resize preferences load within readable size limits', () => {
-  const initial = push({ state: emptyBoard(), key: 'a', fields: { title: 'A' } })
+  const initial = push({ state: emptyHydra(), key: 'a', fields: { title: 'A' } })
   const view = viewFor({ state: initial })
   const loaded = viewFor({
     state: {
@@ -161,10 +161,10 @@ test('saved resize preferences load within readable size limits', () => {
 })
 
 test('custom columns take moved cards and send them to the fallback column when deleted', () => {
-  let state = push({ state: emptyBoard(), key: 'a', fields: { attention: [{ kind: 'question', key: 'q', blocking: true }] } })
+  let state = push({ state: emptyHydra(), key: 'a', fields: { attention: [{ kind: 'question', key: 'q', blocking: true }] } })
   state = reduce({ state, event: event({ d: decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta }) }) })
   assert.equal(columnsFor({ state }).at(-1)?.title, 'Later')
-  assert.equal(patchView({ state: emptyBoard(), input: { columnWidths: { 'custom:one': 400 }, customColumns: [{ id: 'custom:one', title: 'One' }] } }).columnWidths['custom:one'], 400)
+  assert.equal(patchView({ state: emptyHydra(), input: { columnWidths: { 'custom:one': 400 }, customColumns: [{ id: 'custom:one', title: 'One' }] } }).columnWidths['custom:one'], 400)
   state = reduce({ state, event: event({ d: decideMove({ state, ref: 'a', column: 'custom:later', meta }) }) })
   assert.equal(state.cards.c1!.column, 'custom:later')
   assert.deepEqual(patchView({ state, input: { customColumns: [] } }).customColumns, [])
@@ -183,7 +183,7 @@ test('custom columns take moved cards and send them to the fallback column when 
 })
 
 test('filters do not expose excluded parent details, and links/slashes stay literal', () => {
-  let state = push({ state: emptyBoard(), key: 'parent', fields: { title: 'Private parent', workspace: 'A' } })
+  let state = push({ state: emptyHydra(), key: 'parent', fields: { title: 'Private parent', workspace: 'A' } })
   state = push({ state, key: 'child', fields: { title: 'Searchable child', workspace: 'B', parent: 'parent', tags: ['ui'] } })
   const visible = filterCards({ state, workspace: 'B', tag: 'ui', query: 'searchable' })
   assert.equal(visible.length, 1)
@@ -202,7 +202,7 @@ test('filters do not expose excluded parent details, and links/slashes stay lite
 })
 
 test('the Find box shows every card its filter matches, then the strong meaning-only cards', () => {
-  let state = emptyBoard()
+  let state = emptyHydra()
 
   for (let i = 0; i < 35; i += 1) {
     state = push({ state, key: `deploy-${i}`, fields: { title: `Deploy step ${i}`, workspace: 'A' } })
@@ -232,10 +232,10 @@ test('thread reader ignores partial records, pages old messages, separates trace
   const path = join(home, 'session.jsonl')
   const records = Array.from({ length: 90 }, (_, i) => JSON.stringify({ type: 'assistant', message: { content: `message ${i}` } }))
   writeFileSync(path, records.join('\n') + '\n{"partial":')
-  const state = push({ state: emptyBoard(), key: 'a', fields: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
-  const page = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
+  const state = push({ state: emptyHydra(), key: 'a', fields: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
+  const page = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [] })
   assert.equal(page.entries.length, 60); assert.equal(page.entries.at(-1)?.text, 'message 89'); assert.ok(page.older)
-  const older = readThread({ board: 'default', state, card: state.cards.c1!, homes: [], before: page.older })
+  const older = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [], before: page.older })
   assert.equal(older.entries.length, 30); assert.equal(older.entries[0]?.text, 'message 0'); assert.equal(older.older, undefined)
   assert.equal(page.route, false); assert.equal(page.watching, 'unknown')
   const entries = recordEntries({ record: { type: 'assistant', message: { content: [{ type: 'text', text: 'hello' }, { type: 'thinking', thinking: 'thinking' }, { type: 'tool_use', input: 'sk-abcdefghijklmnop123456789' }] } }, offset: 0 })
@@ -249,13 +249,13 @@ test('Focus hides traces before paging so tool-heavy output cannot push replies 
   const replies = Array.from({ length: 3 }, (_, i) => ({ type: 'assistant', message: { content: `reply ${i}` } }))
   const tools = Array.from({ length: 120 }, (_, i) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', input: `tool ${i}` }] } }))
   writeFileSync(path, [...replies, ...tools].map(r => JSON.stringify(r)).join('\n') + '\n')
-  let state = push({ state: emptyBoard(), key: 'a', fields: { activity: 'working', agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
-  const focused = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
+  let state = push({ state: emptyHydra(), key: 'a', fields: { activity: 'working', agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
+  const focused = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [] })
   assert.deepEqual(focused.entries.map(e => e.text), ['reply 0', 'reply 1', 'reply 2'])
   assert.ok(traces({ view: viewFor({ state }), card: 'c1' }).focus)
   const showTools = { focusMode: false }
   state = reduce({ state, event: event({ d: decideView({ state, patch: showTools, meta }) }) })
-  const full = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
+  const full = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [] })
   assert.equal(full.entries.length, 60); assert.ok(full.entries.every(e => e.kind === 'tool'))
   assert.equal(traces({ view: viewFor({ state }), card: 'c1' }).focus, false)
 })
@@ -268,10 +268,10 @@ test('Focus pages messages from a tool-heavy tail larger than the first read win
     { type: 'assistant', message: { content: [{ type: 'tool_use', input: `${padding} ${i}` }] } },
   ]).flat()
   writeFileSync(path, records.map(r => JSON.stringify(r)).join('\n') + '\n')
-  const state = push({ state: emptyBoard(), key: 'a', fields: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
-  const page = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
+  const state = push({ state: emptyHydra(), key: 'a', fields: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
+  const page = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [] })
   assert.deepEqual(page.entries.map(e => e.text), Array.from({ length: 60 }, (_, i) => `message ${i + 30}`))
-  const older = readThread({ board: 'default', state, card: state.cards.c1!, homes: [], before: page.older })
+  const older = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [], before: page.older })
   assert.deepEqual(older.entries.map(e => e.text), Array.from({ length: 30 }, (_, i) => `message ${i}`))
   assert.equal(older.older, undefined)
 })
@@ -281,7 +281,7 @@ test('long transcript messages and reply history page without losing text or dup
   const path = join(home, 'session.jsonl'), longText = 'abcdefghij'.repeat(7000)
   writeFileSync(path, JSON.stringify({ type: 'assistant', timestamp: '2026-10-12T10:00:00Z', message: { content: longText } }) + '\n')
   const state = withWriter({
-    board: 'default',
+    hydraId: 'default',
     fn: ({ writer: w }) => {
       w.append({ event: event({ d: decidePush({ state: w.state, key: 'a', input: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } }, meta }) }) })
 
@@ -296,7 +296,7 @@ test('long transcript messages and reply history page without losing text or dup
   const pages: ReturnType<typeof readThread>['entries'][] = []
 
   do {
-    const page = readThread({ board: 'default', state, card: state.cards.c1!, homes: [], before: cursor })
+    const page = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [], before: cursor })
     assert.ok(page.entries.length <= 60)
     pages.unshift(page.entries); cursor = page.older
     assert.ok(pages.length < 10, 'pagination terminates')
@@ -308,14 +308,14 @@ test('long transcript messages and reply history page without losing text or dup
     .join(''), longText)
   assert.equal(entries.filter(e => e.role === 'You').length, 90)
   const later = withWriter({
-    board: 'default',
+    hydraId: 'default',
     fn: ({ writer: w }) => {
       w.append({ event: event({ d: decideReply({ state: w.state, ref: 'a', data: { reply: 'r90', state: 'queued', route: 'fixture', text: 'reply 90' }, meta }) }) })
 
       return w.state
     },
   })
-  assert.equal(readThread({ board: 'default', state: later, card: later.cards.c1!, homes: [] }).entries.at(-1)?.text, 'reply 90')
+  assert.equal(readThread({ hydraId: 'default', state: later, card: later.cards.c1!, homes: [] }).entries.at(-1)?.text, 'reply 90')
 })
 
 test('a tab reloads only when it reconnects to a server serving another build', () => {
@@ -368,8 +368,8 @@ test("a card's last message is read again from only what its transcript gained",
 })
 
 test('deleting a populated column is atomic, replayable, undoable and guarded', () => {
-  const events: BoardEvent[] = []
-  let state = emptyBoard()
+  const events: HydraEvent[] = []
+  let state = emptyHydra()
 
   const apply = ({ d }: { d: Decision }) => {
     const e = event({ d }); events.push(e); state = reduce({ state, event: e })
@@ -387,7 +387,7 @@ test('deleting a populated column is atomic, replayable, undoable and guarded', 
   assert.equal(state.cards.c1!.column, 'parked')
   assert.equal(state.cards.c2!.column, 'parked')
   assert.equal(viewFor({ state }).columnWidths['custom:later'], undefined)
-  assert.deepEqual(replay({ state: emptyBoard(), events }), state)
+  assert.deepEqual(replay({ state: emptyHydra(), events }), state)
   assert.deepEqual(decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }), { skipped: 'duplicate' })
   const later = reduce({ state, event: event({ d: decideMove({ state, ref: 'worker', column: 'done', meta }) }) })
   assert.throws(() => decideUndo({ state: later, target: deletion, meta }), /moved since/)
@@ -401,23 +401,23 @@ test('deleting a populated column is atomic, replayable, undoable and guarded', 
   const redo = apply({ d: decideUndo({ state, target: undo, meta }) })
   assert.deepEqual(redo.type === 'board.view' && redo.data.placements?.map(p => p.cardId), ['c1', 'c2'])
   assert.equal(state.cards.c1!.column, 'parked')
-  assert.deepEqual(replay({ state: emptyBoard(), events }), state)
+  assert.deepEqual(replay({ state: emptyHydra(), events }), state)
 
   for (const id of COLUMNS) {
     assert.throws(() => patchView({ state, input: { customColumns: [{ id, title: 'Replacement' }] } }), /invalid/)
   }
 })
 
-test('themes validate, default to System on older boards, and undo', () => {
-  assert.equal(viewFor({ state: emptyBoard() }).theme, 'system')
+test('themes validate, default to System on older Hydras, and undo', () => {
+  assert.equal(viewFor({ state: emptyHydra() }).theme, 'system')
 
   for (const theme of ['light', 'dark', 'system']) {
-    assert.equal(patchView({ state: emptyBoard(), input: { theme } }).theme, theme)
+    assert.equal(patchView({ state: emptyHydra(), input: { theme } }).theme, theme)
   }
 
-  assert.throws(() => patchView({ state: emptyBoard(), input: { theme: 'sepia' } }), /invalid/)
-  const change = event({ d: decideView({ state: emptyBoard(), patch: { theme: 'light' }, meta }) })
-  const state = reduce({ state: emptyBoard(), event: change })
+  assert.throws(() => patchView({ state: emptyHydra(), input: { theme: 'sepia' } }), /invalid/)
+  const change = event({ d: decideView({ state: emptyHydra(), patch: { theme: 'light' }, meta }) })
+  const state = reduce({ state: emptyHydra(), event: change })
   assert.equal(viewFor({ state }).theme, 'light')
   assert.equal(viewFor({ state: reduce({ state, event: event({ d: decideUndo({ state, target: change, meta }) }) }) }).theme, 'system')
 })
@@ -433,7 +433,7 @@ test('the notes header keeps the newest distinct notes and skips text already in
 
 test('the turn indicator follows the joined session: working from a prompt or tool call until the turn ends', () => {
   const firstmate = { activity: 'working: task status', source: { adapter: 'firstmate', objectId: 'task' } }
-  let state = push({ state: emptyBoard(), key: 'task', fields: { title: 'Joined task', ...firstmate } })
+  let state = push({ state: emptyHydra(), key: 'task', fields: { title: 'Joined task', ...firstmate } })
   assert.equal(agentActivity({ card: state.cards.c1! }), undefined)
 
   for (const [hook, expected] of [['UserPromptSubmit', 'working'], ['PreToolUse', 'working'], ['PostToolUseFailure', 'working'], ['Stop', 'finished']] as const) {
@@ -456,7 +456,7 @@ test('the turn indicator follows the joined session: working from a prompt or to
 })
 
 test('a dropped card goes above the card it lands on, or below it on its lower half', () => {
-  let state = emptyBoard()
+  let state = emptyHydra()
 
   for (const key of ['a', 'b']) {
     state = push({ state, key, fields: {} })
@@ -470,7 +470,7 @@ test('a dropped card goes above the card it lands on, or below it on its lower h
 })
 
 test('only a working turn shows as working; any other session state is finished', () => {
-  const card = push({ state: emptyBoard(), key: 'k', fields: { agent: { provider: 'claude', sessionId: 's' } } }).cards.c1!
+  const card = push({ state: emptyHydra(), key: 'k', fields: { agent: { provider: 'claude', sessionId: 's' } } }).cards.c1!
 
   for (const [sessionActivity, expected] of [['working', 'working'], ['finished', 'finished'], ['ended', 'finished'], [undefined, 'finished'], ['running Bash', 'finished']] as const) {
     const shown = agentActivity({ card: { ...card, sessionActivity } })

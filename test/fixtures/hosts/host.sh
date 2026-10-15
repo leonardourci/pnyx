@@ -4,7 +4,7 @@
 # n-th call to a name, prints <name>.out.<n> (else <name>.out), writes <name>.err
 # to stderr and exits with <name>.exit.<n> (else <name>.exit, else 0), all read
 # from $STUB_DIR. When <name>.spool.<n> exists, the n-th call also drops it into the
-# default board's hook spool under $PNYX_HOME, as a hook firing meanwhile would, and
+# default Hydra's hook spool under $PNYX_HOME, as a hook firing meanwhile would, and
 # <name>.append.<n> is appended to the file named in $STUB_DIR/append.path, as a
 # harness recording the change in its transcript would.
 # Never touches a real terminal.

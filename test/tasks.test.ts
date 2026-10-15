@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { decidePush, decideSession, decideUndo, joinedKey, type Decision } from '../src/core/decide.ts'
-import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
+import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { liveTask } from '../src/core/tasks.ts'
-import type { BoardEvent, BoardState } from '../src/core/model.ts'
+import type { HydraEvent, HydraState } from '../src/core/model.ts'
 
 const at = '2026-10-14T12:00:00Z'
 const meta = { at, actor: 'test' }
 
 function fixture() {
-  let state = emptyBoard()
-  const events: BoardEvent[] = []
+  let state = emptyHydra()
+  const events: HydraEvent[] = []
 
   const apply = ({ decision }: { decision: Decision }) => {
     assert.ok('event' in decision)
@@ -50,7 +50,7 @@ test('legacy interactive sessions stay recorded without creating Hydra work', ()
   assert.deepEqual(task.sessionIds, ['claude-code:one'])
   assert.equal(f.state.sessions?.['claude-code:one']?.taskId, task.id)
   assert.equal(liveTask({ card: task }), false)
-  assert.deepEqual(replay({ state: emptyBoard(), events: f.events }), f.state)
+  assert.deepEqual(replay({ state: emptyHydra(), events: f.events }), f.state)
 })
 
 test('background runs stay addressable in history but never become live cards', () => {
@@ -124,7 +124,7 @@ test('legacy multi-session joins keep the first worker attached and retain every
   assert.equal(f.state.sessions?.['claude-code:two']?.taskId, null)
 
   for (let i = 0; i <= f.events.length; i++) {
-    const prefix = replay({ state: emptyBoard(), events: f.events.slice(0, i) })
+    const prefix = replay({ state: emptyHydra(), events: f.events.slice(0, i) })
     assert.deepEqual(replay({ state: prefix, events: f.events.slice(i) }), f.state)
   }
 })
@@ -134,7 +134,7 @@ test('attachments validate revisions and preserve reducer input', () => {
   f.session({ key: 'one' })
   f.push({ key: 'target', input: { title: 'Target' } })
   assert.throws(() => decideSession({ state: f.state, ref: 'claude:one', task: 'target', meta: { ...meta, ifRevision: 0 } }), /revision/)
-  const before: BoardState = structuredClone(f.state)
+  const before: HydraState = structuredClone(f.state)
   const decision = decideSession({ state: f.state, ref: 'claude:one', task: 'target', meta })
   assert.ok('event' in decision)
   reduce({ state: f.state, event: decision.event })

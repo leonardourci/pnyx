@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, linkSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { EMBEDDERS, RERANKER } from '../src/search/models.ts'
+import { EMBEDDERS, RERANKER } from '../src/oracle/models.ts'
 
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 const home = mkdtempSync(join(tmpdir(), 'pnyx-golden-'))
@@ -56,8 +56,8 @@ async function embedded(): Promise<void> {
   let shown = ''
 
   for (let i = 0; i < 3000; i += 1) {
-    run({ args: ['search', 'orders'] })
-    const status = run({ args: ['search', 'status'] })
+    run({ args: ['oracle', 'orders'] })
+    const status = run({ args: ['oracle', 'status'] })
     const line = status.match(/^semantic: .*$/m)?.[0] ?? ''
     const m = status.match(/^vectors: (\d+) of (\d+) entries embedded$/m)
 
@@ -77,14 +77,14 @@ async function embedded(): Promise<void> {
 
 function check({ label }: { label: string }): void {
   for (const [q, card] of QUERIES) {
-    assert.equal(cards({ out: run({ args: ['search', q] }) })[0], card, `${label}: ${q}`)
+    assert.equal(cards({ out: run({ args: ['oracle', q] }) })[0], card, `${label}: ${q}`)
   }
 
   const times: number[] = []
 
   for (let i = 0; i < 5; i += 1) {
     const t = performance.now()
-    run({ args: ['search', QUERIES[i]![0]] })
+    run({ args: ['oracle', QUERIES[i]![0]] })
     times.push(performance.now() - t)
   }
 
@@ -94,16 +94,16 @@ function check({ label }: { label: string }): void {
 
 try {
   await embedded()
-  const status = run({ args: ['search', 'status'] })
+  const status = run({ args: ['oracle', 'status'] })
   console.log(status.match(/^semantic: .*$/m)![0])
   check({ label: `default model, reranker ${/^rerank: on$/m.test(status) ? 'on' : 'off'}` })
-  run({ args: ['settings', 'set', 'search.rerank', 'off'] })
+  run({ args: ['settings', 'set', 'oracle.rerank', 'off'] })
   await embedded()
   check({ label: 'default model, reranker off' })
-  run({ args: ['settings', 'set', 'search.model', 'granite-97m'] })
+  run({ args: ['settings', 'set', 'oracle.model', 'granite-97m'] })
   await embedded()
   check({ label: 'granite-97m' })
   console.log('golden check passed')
 } finally {
-  run({ args: ['settings', 'set', 'search.semantic', 'off'] })
+  run({ args: ['settings', 'set', 'oracle.semantic', 'off'] })
 }

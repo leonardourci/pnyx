@@ -5,9 +5,9 @@ import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
 import { setupService } from '../src/server/service.ts'
 
-test('login service starts the same board, survives exit and uninstalls through launchd', () => {
+test('login service starts the same Hydra, survives exit and uninstalls through launchd', () => {
   const root = mkdtempSync(join(tmpdir(), 'pnyx-service-'))
-  process.env.PNYX_HOME = join(root, 'pnyx & board')
+  process.env.PNYX_HOME = join(root, 'pnyx & Hydra')
   const calls: string[][] = []
   let loaded = false
 
@@ -26,7 +26,7 @@ test('login service starts the same board, survives exit and uninstalls through 
     return ''
   }
 
-  const options = { board: 'default', port: 49123, homes: ['/fixture/home & space'], platform: 'darwin' as const, userHome: root, run }
+  const options = { hydraId: 'default', port: 49123, homes: ['/fixture/home & space'], platform: 'darwin' as const, userHome: root, run }
   const preview = setupService({ ...options, preview: true })
   assert.equal(calls.length, 0)
   assert.equal(existsSync(preview.path), false)
@@ -34,10 +34,10 @@ test('login service starts the same board, survives exit and uninstalls through 
   const plist = readFileSync(installed.path, 'utf8')
   assert.match(plist, /<key>RunAtLoad<\/key><true\/>/)
   assert.match(plist, /<key>KeepAlive<\/key><true\/>/)
-  assert.match(plist, /<string>serve<\/string><string>--board<\/string><string>default<\/string>/)
+  assert.match(plist, /<string>serve<\/string><string>--hydra<\/string><string>default<\/string>/)
   assert.match(plist, /49123/)
   assert.match(plist, /home &amp; space/)
-  assert.match(plist, /pnyx &amp; board/)
+  assert.match(plist, /pnyx &amp; hydraId/)
   assert.equal(calls.at(-1)?.[0], 'bootstrap')
   setupService(options)
   assert.equal(calls.at(-2)?.[0], 'bootout')
@@ -62,7 +62,7 @@ test('login service runs Node through a PATH link that survives a Homebrew upgra
   writeFileSync(join(cellar, 'node'), '')
   writeFileSync(join(other, 'node'), '')
   symlinkSync(join(cellar, 'node'), join(bin, 'node'))
-  const options = { board: 'default', platform: 'darwin' as const, userHome: root, preview: true, node: join(cellar, 'node'), run: () => '' }
+  const options = { hydraId: 'default', platform: 'darwin' as const, userHome: root, preview: true, node: join(cellar, 'node'), run: () => '' }
   const linked = setupService({ ...options, searchPath: ['relative', other, bin].join(delimiter) }).plist!
   assert.ok(linked.includes(`<array><string>${join(bin, 'node')}</string>`))
   const unlinked = setupService({ ...options, searchPath: other }).plist!

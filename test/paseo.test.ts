@@ -13,7 +13,7 @@ import { openPaseo } from '../src/integrations/paseo/client.ts'
 import { paseoStatus, startAgent } from '../src/integrations/paseo/launch.ts'
 import { paseoReply } from '../src/integrations/paseo/reply.ts'
 import { paseoConversation } from '../src/integrations/paseo/thread.ts'
-import { loadBoard, withWriter } from '../src/store/board-store.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { startTask } from '../src/cli/start.ts'
 import { commands } from '../src/cli/commands.ts'
 import { workerCommands } from '../src/cli/workers.ts'
@@ -79,12 +79,12 @@ function fakePaseo({ send }: { send?: () => Promise<void> } = {}) {
   return { calls, connect: async () => client as unknown as PaseoClient }
 }
 
-function board() {
+function hydraId() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-paseo-'))
   process.env.PNYX_HOME = home
   const folder = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-paseo-work-')))
   withWriter({
-    board: 'lab',
+    hydraId: 'lab',
     fn: ({ writer }) => {
       const decision = decidePush({ state: writer.state, key: 'work', input: { title: 'Lab task', activity: 'waiting' }, meta: { at, actor: 'test' } })
       assert.ok('event' in decision)
@@ -92,7 +92,7 @@ function board() {
     },
   })
 
-  return { folder, state: () => loadBoard({ board: 'lab' }).state }
+  return { folder, state: () => loadHydra({ hydraId: 'lab' }).state }
 }
 
 test('Paseo endpoints are local daemons only, with no credentials in the URL', () => {
@@ -105,10 +105,10 @@ test('Paseo endpoints are local daemons only, with no credentials in the URL', (
 
 for (const harness of ['claude', 'codex']) {
   test(`task start runs ${harness} in Paseo with the task's folder and message, then attaches it`, async () => {
-    const { folder, state } = board()
+    const { folder, state } = hydraId()
     const paseo = fakePaseo()
     const meta = { at, actor: 'test', id: 'start-1' }
-    const result = await startAgent({ board: 'lab', task: 'work', harness, prompt: 'Do the lab work', folder, url, meta, connect: paseo.connect })
+    const result = await startAgent({ hydraId: 'lab', task: 'work', harness, prompt: 'Do the lab work', folder, url, meta, connect: paseo.connect })
 
     assert.equal(result.task, 'c1')
     const [created] = paseo.calls.create
@@ -119,7 +119,7 @@ for (const harness of ['claude', 'codex']) {
       prompt: 'Do the lab work',
       idempotencyKey: 'start-1',
       labels: { 'pnyx.task': 'c1' },
-      env: { PNYX_HOME: process.env.PNYX_HOME, PNYX_BOARD: 'lab' },
+      env: { PNYX_HOME: process.env.PNYX_HOME, PNYX_HYDRA: 'lab' },
     })
     assert.equal(paseo.calls.closed, 1)
 
@@ -134,11 +134,11 @@ for (const harness of ['claude', 'codex']) {
     assert.equal(liveTask({ card: origin }), false)
     assert.equal(state().sessions?.[`${provider}:lab-1`]?.taskId, 'c1')
 
-    const again = await startAgent({ board: 'lab', task: 'work', harness, prompt: 'Do the lab work', url, meta, connect: paseo.connect })
+    const again = await startAgent({ hydraId: 'lab', task: 'work', harness, prompt: 'Do the lab work', url, meta, connect: paseo.connect })
     assert.equal(again.event, 'none: duplicate')
     assert.equal(paseo.calls.create.length, 1)
     await assert.rejects(
-      startAgent({ board: 'lab', task: 'work', harness, prompt: 'Another', url, meta: { ...meta, id: 'start-2' }, connect: paseo.connect }),
+      startAgent({ hydraId: 'lab', task: 'work', harness, prompt: 'Another', url, meta: { ...meta, id: 'start-2' }, connect: paseo.connect }),
       /already has an attached agent/,
     )
     assert.equal(paseo.calls.create.length, 1)
@@ -146,12 +146,12 @@ for (const harness of ['claude', 'codex']) {
 }
 
 test('task start checks its input before reaching Paseo', async () => {
-  const { folder } = board()
+  const { folder } = hydraId()
   const paseo = fakePaseo()
   const meta = { at, actor: 'test' }
   type Input = { harness?: string; prompt?: string; folder?: string }
   const start = ({ ...input }: Input) => startAgent({
-    board: 'lab', task: 'work', harness: 'claude', prompt: 'Go', url, meta, connect: paseo.connect, ...input,
+    hydraId: 'lab', task: 'work', harness: 'claude', prompt: 'Go', url, meta, connect: paseo.connect, ...input,
   })
 
   await assert.rejects(start({ harness: 'gemini' }), /unknown harness/)
@@ -162,7 +162,7 @@ test('task start checks its input before reaching Paseo', async () => {
 })
 
 test('a Paseo daemon that is not running gives a clear reason and starts nothing', async () => {
-  board()
+  hydraId()
   // Nothing listens on port 1, so the real client cannot connect.
   const closed = 'ws://127.0.0.1:1/ws'
   await assert.rejects(paseoStatus({ url: closed }), (error: { code: string; message: string }) =>
@@ -172,9 +172,9 @@ test('a Paseo daemon that is not running gives a clear reason and starts nothing
 })
 
 test('a started task replies through Paseo and reads its conversation from the daemon', async () => {
-  const { folder, state } = board()
+  const { folder, state } = hydraId()
   const paseo = fakePaseo()
-  await startAgent({ board: 'lab', task: 'work', harness: 'codex', prompt: 'Go', folder, url, meta: { at, actor: 'test' }, connect: paseo.connect })
+  await startAgent({ hydraId: 'lab', task: 'work', harness: 'codex', prompt: 'Go', folder, url, meta: { at, actor: 'test' }, connect: paseo.connect })
   const card = state().cards.c1!
 
   const found = replyRoute({ card, homes: [] })
@@ -206,10 +206,10 @@ test('a started task replies through Paseo and reads its conversation from the d
 })
 
 test('pnyx-axi task start and task paseo report a stopped daemon as structured errors', () => {
-  const { folder } = board()
+  const { folder } = hydraId()
   const bin = join(import.meta.dirname, '../dist/cli/pnyx-axi.js')
   const env = { ...process.env, PNYX_HOME: process.env.PNYX_HOME, PNYX_SEMANTIC: 'off', PNYX_PASEO_URL: 'ws://127.0.0.1:1/ws' }
-  const run = ({ args }: { args: string[] }) => spawnSync(process.execPath, [bin, ...args, '--board', 'lab'], { env, encoding: 'utf8' })
+  const run = ({ args }: { args: string[] }) => spawnSync(process.execPath, [bin, ...args, '--hydra', 'lab'], { env, encoding: 'utf8' })
 
   const status = run({ args: ['task', 'paseo'] })
   assert.notEqual(status.status, 0)
@@ -226,10 +226,10 @@ test('an agent started from a lab home reports its hooks to that home, never to 
   const script = join(installed, 'hooks', 'pnyx-hook.sh')
   mkdirSync(join(installed, 'hooks'))
   copyFileSync(join(import.meta.dirname, '../setup/hooks/pnyx-hook.sh'), script)
-  const { folder } = board()
+  const { folder } = hydraId()
   const lab = process.env.PNYX_HOME!
   const paseo = fakePaseo()
-  await startAgent({ board: 'lab', task: 'work', harness: 'claude', prompt: 'Go', folder, url, meta: { at, actor: 'test' }, connect: paseo.connect })
+  await startAgent({ hydraId: 'lab', task: 'work', harness: 'claude', prompt: 'Go', folder, url, meta: { at, actor: 'test' }, connect: paseo.connect })
 
   const env = paseo.calls.create[0]!.env as Record<string, string>
   const payload = JSON.stringify({ session_id: 'lab-session', hook_event_name: 'UserPromptSubmit', cwd: folder, prompt: 'Go' })
@@ -241,19 +241,19 @@ test('an agent started from a lab home reports its hooks to that home, never to 
 })
 
 test('task start uses the task kind\'s model, effort and mode, and opens with the worker prompt', async () => {
-  const { folder } = board()
-  workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'codex-small', '--effort', 'high', '--mode', 'full-access', '--board', 'lab'])
-  commands.task(['brief', 'work', '--brief', 'Verify the canary.', '--board', 'lab'])
+  const { folder } = hydraId()
+  workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'codex-small', '--effort', 'high', '--mode', 'full-access', '--hydra', 'lab'])
+  commands.task(['brief', 'work', '--brief', 'Verify the canary.', '--hydra', 'lab'])
   const paseo = fakePaseo()
-  await startTask({ board: 'lab', task: 'work', kind: 'review', folder, url, meta: { at, actor: 'test', id: 'kind-1' }, connect: paseo.connect })
+  await startTask({ hydraId: 'lab', task: 'work', kind: 'review', folder, url, meta: { at, actor: 'test', id: 'kind-1' }, connect: paseo.connect })
   const created = paseo.calls.create[0]!
   assert.deepEqual(created.config, { provider: 'codex/codex-small', thinkingOptionId: 'high', modeId: 'full-access' })
   assert.match(String(created.prompt), /^Verify the canary\.\n\n/)
-  assert.match(String(created.prompt), /Pnyx worker for task c1 "Lab task" on board lab/)
+  assert.match(String(created.prompt), /Pnyx worker for task c1 "Lab task" on Hydra lab/)
 
-  const other = board()
-  workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'missing', '--board', 'lab'])
+  const other = hydraId()
+  workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'missing', '--hydra', 'lab'])
   const refused = fakePaseo()
-  await assert.rejects(startTask({ board: 'lab', task: 'work', kind: 'review', folder: other.folder, url, meta: { at, actor: 'test', id: 'kind-2' }, connect: refused.connect }), /no codex model missing/)
+  await assert.rejects(startTask({ hydraId: 'lab', task: 'work', kind: 'review', folder: other.folder, url, meta: { at, actor: 'test', id: 'kind-2' }, connect: refused.connect }), /no codex model missing/)
   assert.equal(refused.calls.create.length, 0)
 })

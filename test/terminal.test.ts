@@ -11,7 +11,7 @@ import { promisify } from 'node:util'
 import type { Card } from '../src/core/model.ts'
 import { confirms, findOption, inputReason } from '../src/core/control.ts'
 import { replyRoute, terminalFacts } from '../src/core/route.ts'
-import { loadBoard } from '../src/store/board-store.ts'
+import { loadHydra } from '../src/store/hydra-store.ts'
 
 const ROOT = join(import.meta.dirname, '..')
 const BIN = join(ROOT, 'dist', 'cli', 'pnyx-axi.js')
@@ -236,7 +236,7 @@ test('the hook records the terminal the session runs in, past wrapper shells, an
 
   execFileSync(process.execPath, [BIN, 'harvest'], { env: { ...env, PNYX_HOME: home }, encoding: 'utf8' })
   process.env.PNYX_HOME = home
-  const { state } = loadBoard({ board: 'default' })
+  const { state } = loadHydra({ hydraId: 'default' })
   assert.deepEqual(state.cards[state.keys['claude:s1']!]!.terminal, line.terminal)
 
   // A headless harness that session started records no tty or pid of its own.
@@ -261,7 +261,7 @@ test('the hook records the terminal the session runs in, past wrapper shells, an
     .map(f => JSON.parse(readFileSync(join(spool, f), 'utf8')) as { event: string; terminal?: object })
   assert.deepEqual(lines.find(l => l.event === 'PreToolUse')?.terminal, { paseoTerminal: 'term-1' })
   execFileSync(process.execPath, [BIN, 'harvest'], { env: { ...env, PNYX_HOME: home }, encoding: 'utf8' })
-  const after = loadBoard({ board: 'default' }).state
+  const after = loadHydra({ hydraId: 'default' }).state
   assert.deepEqual(after.cards[after.keys['claude:s1']!]!.terminal, line.terminal)
 })
 

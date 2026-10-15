@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { decideLink, decideNote, decidePush, decideView, type Decision } from '../src/core/decide.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
 import type { Note } from '../src/core/model.ts'
-import { loadBoard, withWriter } from '../src/store/board-store.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 
 export function seedWebFixture({ home }: { home: string }) {
   const nativePath = join(home, 'firstmate-fixture')
@@ -12,10 +12,10 @@ export function seedWebFixture({ home }: { home: string }) {
   mkdirSync(join(home, 'transcripts'), { recursive: true })
   const transcript = join(home, 'transcripts/session.jsonl')
   cpSync(join(import.meta.dirname, 'fixtures/web/thread.jsonl'), transcript)
-  const rows = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/web/board.json'), 'utf8')) as { key: string; [key: string]: unknown }[]
+  const rows = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/web/hydra.json'), 'utf8')) as { key: string; [key: string]: unknown }[]
   const meta = { actor: 'fixture', at: '2026-10-13T10:50:00Z' }
   withWriter({
-    board: 'default',
+    hydraId: 'default',
     fn: ({ writer: w }) => {
       const append = ({ d }: { d: Decision }) => {
         if ('event' in d) {
@@ -39,10 +39,10 @@ export function seedWebFixture({ home }: { home: string }) {
       notes.forEach((note, i) => append({ d: decideNote({ state: w.state, ref: 'layout', note, meta: { ...meta, id: `fixture-note-${i}` } }) }))
 
       const url = 'https://linear.app/example/issue/UI-42'
-      append({ d: decideLink({ state: w.state, ref: 'layout', url, link: { kind: 'linear', url, title: 'Design the agent board' }, meta }) })
+      append({ d: decideLink({ state: w.state, ref: 'layout', url, link: { kind: 'linear', url, title: 'Design the agent Hydra' }, meta }) })
       append({ d: decideView({ state: w.state, patch: { panelPlacement: 'right' }, meta }) })
     },
   })
 
-  return { nativeHome, transcript, state: loadBoard({ board: 'default' }).state }
+  return { nativeHome, transcript, state: loadHydra({ hydraId: 'default' }).state }
 }

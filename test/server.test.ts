@@ -9,14 +9,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
-import { BoardError } from '../src/core/model.ts'
+import { HydraError } from '../src/core/model.ts'
 import { startServer, type RunningServer, type ServerMessage } from '../src/server/server.ts'
 import { infoPath, localToken, socketPath } from '../src/server/state.ts'
-import { boardDir, loadBoard, spoolDir, spoolWrite, withWriter } from '../src/store/board-store.ts'
-import { boardConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
+import { hydraDir, loadHydra, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
+import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { decidePush } from '../src/core/decide.ts'
-import { indexStatus, searchPath } from '../src/search/index.ts'
-import { writeSetting } from '../src/search/settings.ts'
+import { indexStatus, searchPath } from '../src/oracle/index.ts'
+import { writeSetting } from '../src/oracle/settings.ts'
 import { stopAll, stopProcess, track } from './processes.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
@@ -75,7 +75,7 @@ async function until<T>({ check, what }: { check: () => T | undefined; what: str
   }
 }
 
-const seqIs = ({ seq, board = 'default' }: { seq: number; board?: string }) => until({ check: () => (loadBoard({ board }).state.seq === seq ? true : undefined), what: `seq ${seq}` })
+const seqIs = ({ seq, hydraId = 'default' }: { seq: number; hydraId?: string }) => until({ check: () => (loadHydra({ hydraId }).state.seq === seq ? true : undefined), what: `seq ${seq}` })
 
 async function sendToSocket({ path, text }: { path: string; text: string }): Promise<void> {
   const conn = connect(path)
@@ -194,35 +194,35 @@ async function handshakeStatus(
   return response.statusCode
 }
 
-async function boardWithCard({ board = 'default' }: { board?: string } = {}) {
-  server = await startServer({ board })
+async function hydraWithCard({ hydraId = 'default' }: { hydraId?: string } = {}) {
+  server = await startServer({ hydraId })
   await sendToSocket({ path: server.socket!, text: JSON.stringify(hookEvent({ id: 'hook-1', key: 'a', title: 'A' })) })
-  await seqIs({ seq: 1, board })
+  await seqIs({ seq: 1, hydraId })
 
-  return loadBoard({ board }).state.keys.a!
+  return loadHydra({ hydraId }).state.keys.a!
 }
 
 test('serve runs until stop, and the summary reports it without starting it', async () => {
   const before = cli({ args: [] })
   assert.match(before, /^server: not running$/m)
   assert.match(before, /pnyx-axi serve/)
-  assert.equal(existsSync(infoPath({ board: 'default' })), false)
+  assert.equal(existsSync(infoPath({ hydraId: 'default' })), false)
 
   const child = spawn(process.execPath, [BIN, 'serve', '--port', '0'], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
   track({ child })
   let out = ''
   child.stdout.on('data', chunk => (out += chunk))
   const url = await until({ check: () => /^url: "(http:\/\/127\.0\.0\.1:\d+)"$/m.exec(out)?.[1], what: 'serve to start' })
-  await until({ check: () => (existsSync(infoPath({ board: 'default' })) ? true : undefined), what: 'server.json' })
+  await until({ check: () => (existsSync(infoPath({ hydraId: 'default' })) ? true : undefined), what: 'server.json' })
   assert.match(cli({ args: [] }), new RegExp(`^server: "running at ${url}"$`, 'm'))
-  assert.ok(existsSync(socketPath({ board: 'default' })))
+  assert.ok(existsSync(socketPath({ hydraId: 'default' })))
 
   assert.match(cli({ args: ['stop'] }), /^server: stopped$/m)
   const [code] = await once(child, 'exit')
   assert.equal(code, 0)
   assert.match(out, /^server: stopped$/m)
-  assert.equal(existsSync(infoPath({ board: 'default' })), false)
-  assert.equal(existsSync(socketPath({ board: 'default' })), false)
+  assert.equal(existsSync(infoPath({ hydraId: 'default' })), false)
+  assert.equal(existsSync(socketPath({ hydraId: 'default' })), false)
   assert.match(cli({ args: [] }), /^server: not running$/m)
   assert.match(cli({ args: ['stop'] }), /^server: "none: not running"$/m)
 })
@@ -247,15 +247,15 @@ test('serve refuses a taken port instead of picking another', async () => {
   }
 })
 
-test('a second server for the same board is refused', async () => {
-  server = await startServer({ board: 'default' })
-  await assert.rejects(startServer({ board: 'default' }), error => error instanceof BoardError && error.code === 'ALREADY_RUNNING')
+test('a second server for the same Hydra is refused', async () => {
+  server = await startServer({ hydraId: 'default' })
+  await assert.rejects(startServer({ hydraId: 'default' }), error => error instanceof HydraError && error.code === 'ALREADY_RUNNING')
 })
 
 test('hook events on the socket become cards and reach open tabs', async () => {
-  server = await startServer({ board: 'default' })
+  server = await startServer({ hydraId: 'default' })
   const t = await tab()
-  assert.deepEqual(await t.next(), { type: 'snapshot', seq: 0, state: loadBoard({ board: 'default' }).state })
+  assert.deepEqual(await t.next(), { type: 'snapshot', seq: 0, state: loadHydra({ hydraId: 'default' }).state })
 
   const event = JSON.stringify(hookEvent({ id: 'hook-1', key: 'session-a', title: 'Fix the parser' }))
   await sendToSocket({ path: server.socket!, text: `${event}\nnot json\n${event}` })
@@ -264,24 +264,24 @@ test('hook events on the socket become cards and reach open tabs', async () => {
   assert.equal(message.type === 'event' && message.event.seq, 1)
   assert.equal(message.type === 'event' && message.event.id, 'hook-1')
   await t.idle()
-  const { state } = loadBoard({ board: 'default' })
+  const { state } = loadHydra({ hydraId: 'default' })
   assert.equal(state.cards[state.keys['session-a']!]!.title, 'Fix the parser')
-  assert.deepEqual(readdirSync(spoolDir({ dir: boardDir({ board: 'default' }) })), [])
+  assert.deepEqual(readdirSync(spoolDir({ dir: hydraDir({ hydraId: 'default' }) })), [])
 })
 
 test('spooled hook events are drained on start and while running', async () => {
-  spoolWrite({ board: 'default', entry: hookEvent({ id: 'hook-1', key: 'session-a', title: 'Written while the server was down' }) })
-  server = await startServer({ board: 'default' })
+  spoolWrite({ hydraId: 'default', entry: hookEvent({ id: 'hook-1', key: 'session-a', title: 'Written while the server was down' }) })
+  server = await startServer({ hydraId: 'default' })
   await seqIs({ seq: 1 })
-  spoolWrite({ board: 'default', entry: hookEvent({ id: 'hook-2', key: 'session-b', title: 'Spooled while it runs' }) })
+  spoolWrite({ hydraId: 'default', entry: hookEvent({ id: 'hook-2', key: 'session-b', title: 'Spooled while it runs' }) })
   await seqIs({ seq: 2 })
-  const { state } = loadBoard({ board: 'default' })
+  const { state } = loadHydra({ hydraId: 'default' })
   assert.deepEqual(Object.keys(state.keys).sort(), ['session-a', 'session-b'])
-  assert.deepEqual(readdirSync(spoolDir({ dir: boardDir({ board: 'default' }) })), [])
+  assert.deepEqual(readdirSync(spoolDir({ dir: hydraDir({ hydraId: 'default' }) })), [])
 })
 
 test('a tab resumes from its cursor, gets CLI writes, and resyncs with a snapshot on a gap', async () => {
-  server = await startServer({ board: 'default' })
+  server = await startServer({ hydraId: 'default' })
   await sendToSocket({ path: server.socket!, text: `${JSON.stringify(hookEvent({ id: 'hook-1', key: 'a', title: 'A' }))}\n${JSON.stringify(hookEvent({ id: 'hook-2', key: 'b', title: 'B' }))}\n` })
   await seqIs({ seq: 2 })
 
@@ -302,7 +302,7 @@ test('a tab resumes from its cursor, gets CLI writes, and resyncs with a snapsho
   const resynced = await current.next()
   assert.equal(resynced.type === 'snapshot' && resynced.seq, 2)
 
-  const cardId = loadBoard({ board: 'default' }).state.keys.a!
+  const cardId = loadHydra({ hydraId: 'default' }).state.keys.a!
   cli({ args: ['move', cardId, 'done'] })
   const moved = await current.next()
   assert.equal(moved.type === 'event' && moved.event.seq, 3)
@@ -310,7 +310,7 @@ test('a tab resumes from its cursor, gets CLI writes, and resyncs with a snapsho
 })
 
 test("a tab gets its write's event before the receipt with its request id, recorded as web", async () => {
-  const cardId = await boardWithCard()
+  const cardId = await hydraWithCard()
   const t = await tab({ query: '?after=1' })
 
   t.command({ id: 'req-1', name: 'move', args: [cardId, 'done'] })
@@ -329,15 +329,15 @@ test("a tab gets its write's event before the receipt with its request id, recor
 })
 
 test('a bad command gets an error carrying its request id and writes nothing', async () => {
-  const cardId = await boardWithCard()
+  const cardId = await hydraWithCard()
   const t = await tab({ query: '?after=1' })
 
   const cases: [string, string, unknown, string][] = [
     ['r1', 'push', ['--key', 'x', '--file', '/etc/hosts'], 'NOT_FOUND'],
     ['r2', 'move', 'not a list', 'VALIDATION_ERROR'],
     ['r3', 'move', ['no-such-card', 'done'], 'NOT_FOUND'],
-    ['r4', 'move', [cardId, 'done', '--board', 'other'], 'VALIDATION_ERROR'],
-    ['r5', 'move', [cardId, 'done', '--board=other'], 'VALIDATION_ERROR'],
+    ['r4', 'move', [cardId, 'done', '--hydra', 'other'], 'VALIDATION_ERROR'],
+    ['r5', 'move', [cardId, 'done', '--hydra=other'], 'VALIDATION_ERROR'],
     ['r6', 'catalog', [cardId, '/arbitrary/path'], 'VALIDATION_ERROR'],
     ['r7', 'catalog', ['no-such-card'], 'NOT_FOUND'],
   ]
@@ -351,23 +351,23 @@ test('a bad command gets an error carrying its request id and writes nothing', a
   }
 
   await t.idle()
-  assert.equal(loadBoard({ board: 'default' }).state.seq, 1)
-  assert.equal(existsSync(boardDir({ board: 'other' })), false)
+  assert.equal(loadHydra({ hydraId: 'default' }).state.seq, 1)
+  assert.equal(existsSync(hydraDir({ hydraId: 'other' })), false)
 })
 
-test("writes through the server always land on the server's own board", async () => {
-  const cardId = await boardWithCard({ board: 'work' })
+test("writes through the server always land on the server's own Hydra", async () => {
+  const cardId = await hydraWithCard({ hydraId: 'work' })
   const t = await tab({ query: '?after=1' })
   t.command({ id: 'req-1', name: 'move', args: [cardId, 'done'] })
   assert.equal((await t.next()).type, 'event')
   assert.equal((await t.next()).type, 'receipt')
-  await seqIs({ seq: 2, board: 'work' })
-  assert.equal(loadBoard({ board: 'work' }).state.cards[cardId]!.column, 'done')
-  assert.equal(loadBoard({ board: 'default' }).state.seq, 0)
+  await seqIs({ seq: 2, hydraId: 'work' })
+  assert.equal(loadHydra({ hydraId: 'work' }).state.cards[cardId]!.column, 'done')
+  assert.equal(loadHydra({ hydraId: 'default' }).state.seq, 0)
 })
 
 test('the WebSocket handshake needs the token, an exact host and an exact origin', async () => {
-  server = await startServer({ board: 'default' })
+  server = await startServer({ hydraId: 'default' })
   const token = `?token=${localToken()}`
   assert.equal(await handshakeStatus({ query: '' }), 401)
   assert.equal(await handshakeStatus({ query: '?token=wrong' }), 401)
@@ -381,8 +381,8 @@ test('the WebSocket handshake needs the token, an exact host and an exact origin
   ok.close()
 })
 
-test('the board page carries the token only for its own host and origin; /health names the board', async () => {
-  server = await startServer({ board: 'default' })
+test('the Hydra page carries the token only for its own host and origin; /health names the Hydra', async () => {
+  server = await startServer({ hydraId: 'default' })
   const meta = `<meta name="pnyx-token" content="${localToken()}" />`
 
   for (const path of ['/', '/index.html', '/some/route']) {
@@ -401,13 +401,13 @@ test('the board page carries the token only for its own host and origin; /health
   const health = await http({ method: 'GET', path: '/health' })
   assert.equal(health.status, 200)
   const { build } = JSON.parse(health.text) as { build: string }
-  assert.deepEqual(JSON.parse(health.text), { board: 'default', pid: process.pid, build })
+  assert.deepEqual(JSON.parse(health.text), { hydraId: 'default', pid: process.pid, build })
   assert.match(build, /^[0-9a-f]{12}$/)
   assert.ok((await http({ method: 'GET', path: '/' })).text.includes(`<meta name="pnyx-build" content="${build}" />`))
   const html = (await http({ method: 'GET', path: '/' })).text
-  const identity = /name="pnyx-board" content="([a-f0-9]{24})"/.exec(html)?.[1]
+  const identity = /name="pnyx-hydra" content="([a-f0-9]{24})"/.exec(html)?.[1]
   assert.ok(identity)
-  assert.deepEqual((await tab()).hello, { type: 'hello', build, board: identity })
+  assert.deepEqual((await tab()).hello, { type: 'hello', build, hydraId: identity })
   assert.equal((await http({ method: 'GET', path: '/api/commands/move' })).status, 200)
   assert.equal((await http({ method: 'POST', path: '/api/commands/move' })).status, 405)
 })
@@ -422,26 +422,26 @@ test('a server.json left by a dead server is not trusted, even when its pid was 
   const port = (probe.address() as { port: number }).port
   await new Promise(r => probe.close(r))
 
-  mkdirSync(boardDir({ board: 'default' }), { recursive: true })
-  writeFileSync(infoPath({ board: 'default' }), JSON.stringify({ pid: other.pid, port, url: `http://127.0.0.1:${port}`, socket: null }))
+  mkdirSync(hydraDir({ hydraId: 'default' }), { recursive: true })
+  writeFileSync(infoPath({ hydraId: 'default' }), JSON.stringify({ pid: other.pid, port, url: `http://127.0.0.1:${port}`, socket: null }))
 
   assert.match(cli({ args: [] }), /^server: not running$/m)
   assert.match(cli({ args: ['stop'] }), /^server: "none: not running"$/m)
   assert.equal(other.exitCode, null)
   assert.equal(other.signalCode, null)
-  server = await startServer({ board: 'default' })
+  server = await startServer({ hydraId: 'default' })
 })
 
 test('web preferences, custom moves and read queries share the authenticated socket', async () => {
-  const card = await boardWithCard()
+  const card = await hydraWithCard()
   const t = await tab(); await t.next()
   t.command({ id: 'view-1', name: 'view', args: ['set', '--json', JSON.stringify({ customColumns: [{ id: 'custom:later', title: 'Later' }], panelWidth: 500 }), '--if-revision', '0', '--event-id', 'web-view'] })
   const update = await t.next(); assert.equal(update.type, 'event')
   const receipt = await t.next(); assert.equal(receipt.type, 'receipt')
-  assert.equal(loadBoard({ board: 'default' }).state.view?.panelWidth, 500)
+  assert.equal(loadHydra({ hydraId: 'default' }).state.view?.panelWidth, 500)
   t.command({ id: 'move-1', name: 'move', args: [card, 'custom:later', '--if-revision', '1'] })
   assert.equal((await t.next()).type, 'event'); assert.equal((await t.next()).type, 'receipt')
-  assert.equal(loadBoard({ board: 'default' }).state.cards[card]?.column, 'custom:later')
+  assert.equal(loadHydra({ hydraId: 'default' }).state.cards[card]?.column, 'custom:later')
   t.command({ id: 'view-stale', name: 'view', args: ['set', '--json', '{"fontSize":18}', '--if-revision', '0'] })
   const stale = await t.next(); assert.equal(stale.type, 'error')
 
@@ -483,7 +483,7 @@ test('web preferences, custom moves and read queries share the authenticated soc
   }
 
   t.command({ id: 'history-1', name: 'history', args: ['--card', card] }); assert.equal((await t.next()).type, 'receipt')
-  t.command({ id: 'escape-board', name: 'history', args: ['--board', 'other'] }); assert.equal((await t.next()).type, 'error')
+  t.command({ id: 'escape-Hydra', name: 'history', args: ['--hydra', 'other'] }); assert.equal((await t.next()).type, 'error')
   t.command({ id: 'card-1', name: 'card', args: [card, '--full'] })
   const shown = await t.next(); assert.equal(shown.type, 'receipt')
 
@@ -501,15 +501,15 @@ test("overlapping catalog requests share or queue the socket's read and answer e
     const cwd = join(home, key); mkdirSync(join(cwd, '.git'), { recursive: true }); mkdirSync(join(cwd, '.claude/skills', `skill-${key}`), { recursive: true })
     writeFileSync(join(cwd, '.claude/skills', `skill-${key}`, 'SKILL.md'), `---\nname: skill-${key}\ndescription: ${key}\n---\n`)
     withWriter({
-      board: 'default',
+      hydraId: 'default',
       fn: ({ writer: w }) => {
         const d = decidePush({ state: w.state, key, input: { title: key, agent: { provider: 'claude', sessionId: key, cwd } }, meta: { actor: 'test', at: '2026-10-14T10:00:00Z' } }); assert.ok('event' in d); w.append({ event: d.event })
       },
     })
   }
 
-  const { one, two } = loadBoard({ board: 'default' }).state.keys
-  server = await startServer({ board: 'default', catalogLocations: locations })
+  const { one, two } = loadHydra({ hydraId: 'default' }).state.keys
+  server = await startServer({ hydraId: 'default', catalogLocations: locations })
   const t = await tab(); await t.next()
   const requests = [['c1', one], ['c2', one], ['c3', two], ['c4', one]] as const
 
@@ -536,7 +536,7 @@ test("overlapping catalog requests share or queue the socket's read and answer e
 
 test('browser reply delivery uses only configured fixture homes and never resends an unknown result', async () => {
   const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
-  server = await startServer({ board: 'default', homes: [fixture.nativeHome] })
+  server = await startServer({ hydraId: 'default', homes: [fixture.nativeHome] })
   const t = await tab(); await t.next()
   const card = fixture.state.keys.layout!
   writeFileSync(join(fixture.nativeHome, 'send-exit'), '3')
@@ -573,7 +573,7 @@ test('browser reply delivery uses only configured fixture homes and never resend
     assert.equal(invalid.code, 'VALIDATION_ERROR')
   }
 
-  assert.equal(loadBoard({ board: 'default' }).state.cards[card]?.attention.length, 1)
+  assert.equal(loadHydra({ hydraId: 'default' }).state.cards[card]?.attention.length, 1)
 
   const sends = readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8')
   t.command({ id: 'agent-1', name: 'agent', args: [card, 'effort', 'high', 'effort-1'] })
@@ -601,8 +601,8 @@ test('browser reply delivery uses only configured fixture homes and never resend
     assert.equal(short.code, 'VALIDATION_ERROR')
   }
 
-  t.command({ id: 'search-1', name: 'search', args: ['conversation readable'] })
-  const found = await receipt({ id: 'search-1' }); assert.equal(found.type, 'receipt')
+  t.command({ id: 'oracle-1', name: 'oracle', args: ['conversation readable'] })
+  const found = await receipt({ id: 'oracle-1' }); assert.equal(found.type, 'receipt')
 
   if (found.type === 'receipt') {
     assert.equal((found.hits as { card: string }[])[0]?.card, card)
@@ -613,13 +613,13 @@ test('browser reply delivery uses only configured fixture homes and never resend
 
 const assistantLine = ({ text, at }: { text: string; at: string }) => JSON.stringify({ type: 'assistant', timestamp: at, message: { content: [{ type: 'text', text }] } }) + '\n'
 
-test('the board search finds a card by a word only its transcript holds, including words a live session just wrote', async () => {
+test('the Hydra search finds a card by a word only its transcript holds, including words a live session just wrote', async () => {
   const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
-  server = await startServer({ board: 'default' })
+  server = await startServer({ hydraId: 'default' })
   const t = await tab(); await t.next()
 
   const search = async ({ id, text }: { id: string; text: string }) => {
-    t.command({ id, name: 'search', args: [text] })
+    t.command({ id, name: 'oracle', args: [text] })
 
     for (;;) {
       const m = await t.next()
@@ -641,13 +641,13 @@ test('the board search finds a card by a word only its transcript holds, includi
   t.ws.close()
 })
 
-test('a board search rebuilds a stale search index', async () => {
+test('a Hydra search rebuilds a stale search index', async () => {
   const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
-  writeFileSync(searchPath({ board: 'default' }), 'not a database')
-  assert.equal(indexStatus({ board: 'default' })?.current, false)
-  server = await startServer({ board: 'default' })
+  writeFileSync(searchPath({ hydraId: 'default' }), 'not a database')
+  assert.equal(indexStatus({ hydraId: 'default' })?.current, false)
+  server = await startServer({ hydraId: 'default' })
   const t = await tab(); await t.next()
-  t.command({ id: 's1', name: 'search', args: ['readable'] })
+  t.command({ id: 's1', name: 'oracle', args: ['readable'] })
   let m = await t.next()
 
   while (!((m.type === 'receipt' || m.type === 'error') && m.id === 's1')) {
@@ -655,7 +655,7 @@ test('a board search rebuilds a stale search index', async () => {
   }
 
   assert.deepEqual(m.type === 'receipt' && (m.hits as { card: string }[]).map(h => h.card), [fixture.state.keys.layout])
-  const status = indexStatus({ board: 'default' })
+  const status = indexStatus({ hydraId: 'default' })
   assert.equal(status?.current, true)
   assert.equal(status?.transcripts.tracked, 1)
   t.ws.close()
@@ -664,7 +664,7 @@ test('a board search rebuilds a stale search index', async () => {
 test("each card gets its conversation's last message, pushed again as the transcript grows", async () => {
   const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
   const card = fixture.state.keys.layout!
-  server = await startServer({ board: 'default' })
+  server = await startServer({ hydraId: 'default' })
   const t = await tab(); await t.next()
   assert.deepEqual(await t.latest({ card }), { role: 'assistant', text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.', at: '2026-10-13T10:49:00Z' })
   // Tool calls and thinking never replace the last message; a newer typed user message does.
@@ -683,12 +683,12 @@ test("each card gets its conversation's last message, pushed again as the transc
 
 test("a tab whose snapshot alone fills its send buffer still gets every card's last message", async () => {
   const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
-  server = await startServer({ board: 'default' })
+  server = await startServer({ hydraId: 'default' })
   const card = fixture.state.keys.layout!, message = { role: 'assistant', text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.', at: '2026-10-13T10:49:00Z' }
   const first = await tab(); await first.next()
   assert.deepEqual(await first.latest({ card }), message)
   withWriter({
-    board: 'default',
+    hydraId: 'default',
     fn: ({ writer: w }) => {
       const d = decidePush({ state: w.state, key: 'big', input: { title: 'x'.repeat(4 << 20) }, meta: { actor: 'test', at: '2026-10-14T10:00:00Z' } }); assert.ok('event' in d); w.append({ event: d.event })
     },
@@ -701,19 +701,19 @@ test("a tab whose snapshot alone fills its send buffer still gets every card's l
   first.ws.close(); t.ws.close()
 })
 
-test('with semantic search on, the board search finds a transcript-only card by meaning when its words do not all match', async () => {
+test('with semantic search on, the Hydra search finds a transcript-only card by meaning when its words do not all match', async () => {
   const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
   appendFileSync(fixture.transcript, assistantLine({ text: 'Flamingo rollout staged.', at: '2026-10-13T11:00:00Z' }))
   // The stub worker embeds with hashed word vectors, so no model is fetched or loaded.
   delete process.env.PNYX_SEMANTIC
   process.env.PNYX_SEMANTIC_STUB = '1'
-  writeSetting({ key: 'search.rerank', value: 'off' })
+  writeSetting({ key: 'oracle.rerank', value: 'off' })
 
   try {
-    server = await startServer({ board: 'default' })
+    server = await startServer({ hydraId: 'default' })
     const t = await tab(); await t.next()
     // "dinosaur" is nowhere, so full text finds nothing; the transcript holds the other words.
-    // The first search waits for the worker to start and embed the board, so receipts may be slow:
+    // The first search waits for the worker to start and embed the Hydra, so receipts may be slow:
     // wait longer than the server's own worst case (10s index request plus 30s embed request).
     const deadline = Date.now() + 60_000
 
@@ -736,7 +736,7 @@ test('with semantic search on, the board search finds a transcript-only card by 
     let hits: { card: string; match: string; weak?: true }[] = []
 
     for (let n = 0; !hits.some(h => h.match === 'semantic') && Date.now() < deadline; n++) {
-      t.command({ id: `m${n}`, name: 'search', args: ['flamingo rollout staged dinosaur'] })
+      t.command({ id: `m${n}`, name: 'oracle', args: ['flamingo rollout staged dinosaur'] })
       const m = await receipt({ id: `m${n}` })
       assert.equal(m.type, 'receipt', JSON.stringify(m))
       hits = m.type === 'receipt' ? m.hits as typeof hits : []
@@ -745,23 +745,23 @@ test('with semantic search on, the board search finds a transcript-only card by 
     assert.deepEqual(hits.filter(h => !h.weak).map(h => [h.card, h.match]), [[fixture.state.keys.layout, 'semantic']])
     t.ws.close()
   } finally {
-    writeSetting({ key: 'search.semantic', value: 'off' })
+    writeSetting({ key: 'oracle.semantic', value: 'off' })
     process.env.PNYX_SEMANTIC = 'off'
     delete process.env.PNYX_SEMANTIC_STUB
   }
 })
 
-test('a stopped server leaves no open handles, even with board and transcript changes still in flight', async () => {
+test('a stopped server leaves no open handles, even with Hydra and transcript changes still in flight', async () => {
   const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
   const card = fixture.state.keys.layout!
   const settle = () => new Promise(r => setTimeout(r, 300))
   await settle()
   const before = process.getActiveResourcesInfo().sort()
-  server = await startServer({ board: 'default' })
+  server = await startServer({ hydraId: 'default' })
   const t = await tab(); await t.next()
   assert.ok(await t.latest({ card }))
   t.command({ id: 'thread-1', name: 'thread', args: [card] })
-  t.command({ id: 'search-1', name: 'search', args: ['readable'] })
+  t.command({ id: 'oracle-1', name: 'oracle', args: ['readable'] })
 
   for (let n = 0; n < 2;) {
     const m = await t.next()
@@ -789,7 +789,7 @@ test('the open task follows attachment identity and watches only its current tra
   })}\n`
 
   withWriter({
-    board: 'default',
+    hydraId: 'default',
     fn: ({ writer }) => {
       for (const key of ['task', 'a', 'b'] as const) {
         if (key !== 'task') {
@@ -807,7 +807,7 @@ test('the open task follows attachment identity and watches only its current tra
       }
     },
   })
-  server = await startServer({ board: 'default' })
+  server = await startServer({ hydraId: 'default' })
   const t = await tab(); await t.next()
 
   const page = async ({ session, text }: { session?: string; text?: string }) => {
@@ -845,23 +845,23 @@ test('the open task follows attachment identity and watches only its current tra
   }
 })
 
-test('the board edits task kinds over the socket', async () => {
-  await boardWithCard()
+test('the Hydra edits task kinds over the socket', async () => {
+  await hydraWithCard()
   const t = await tab(); await t.next()
   t.command({ id: 'kind-1', name: 'kind', args: ['set', 'review', '--harness', 'codex', '--quota', 'high'] })
   assert.equal((await t.next()).type, 'event'); assert.equal((await t.next()).type, 'receipt')
-  const board = loadBoard({ board: 'default' }).state
-  assert.deepEqual(board.board?.agents, { review: { harness: 'codex', quota: 'high' } })
-  const last = readFileSync(join(boardDir({ board: 'default' }), 'events.jsonl'), 'utf8').trim()
+  const hydraId = loadHydra({ hydraId: 'default' }).state
+  assert.deepEqual(hydraId.config?.agents, { review: { harness: 'codex', quota: 'high' } })
+  const last = readFileSync(join(hydraDir({ hydraId: 'default' }), 'events.jsonl'), 'utf8').trim()
     .split('\n')
     .at(-1)!
   assert.equal(JSON.parse(last).actor, 'web')
   t.ws.close()
 })
 
-test('board tabs list, create, rename and open boards, each on its own server', async context => {
-  cli({ args: ['board', 'create', 'default', '--name', 'Main'] })
-  server = await startServer({ board: 'default', port: 0 })
+test('Hydra tabs list, create, rename and open Hydras, each on its own server', async context => {
+  cli({ args: ['hydra', 'create', 'default', '--name', 'Main'] })
+  server = await startServer({ hydraId: 'default', port: 0 })
   const t = await tab()
 
   const receipt = async ({ id }: { id: string }) => {
@@ -869,39 +869,39 @@ test('board tabs list, create, rename and open boards, each on its own server', 
       const message = await t.next()
 
       if ((message.type === 'receipt' || message.type === 'error') && message.id === id) {
-        type Boards = { boards?: { id: string; name: string }[]; url?: string; error?: string }
+        type Hydras = { hydras?: { id: string; name: string }[]; url?: string; error?: string }
 
-        return message as ServerMessage & Boards
+        return message as ServerMessage & Hydras
       }
     }
   }
 
-  t.command({ id: 'b1', name: 'boards', args: [] })
-  assert.deepEqual((await receipt({ id: 'b1' })).boards?.map(b => [b.id, b.name]), [['default', 'Main']])
+  t.command({ id: 'b1', name: 'hydras', args: [] })
+  assert.deepEqual((await receipt({ id: 'b1' })).hydras?.map(b => [b.id, b.name]), [['default', 'Main']])
 
-  t.command({ id: 'b2', name: 'boards', args: ['rename', 'default', 'Work'] })
-  assert.deepEqual((await receipt({ id: 'b2' })).boards?.map(b => b.name), ['Work'])
+  t.command({ id: 'b2', name: 'hydras', args: ['rename', 'default', 'Work'] })
+  assert.deepEqual((await receipt({ id: 'b2' })).hydras?.map(b => b.name), ['Work'])
 
-  t.command({ id: 'b3', name: 'boards', args: ['create', 'Side'] })
+  t.command({ id: 'b3', name: 'hydras', args: ['create', 'Side'] })
   // That server runs detached from this test, so it is stopped by the pid it announces, even when it starts after the test gave up on it.
-  const announced = infoPath({ board: 'board-2' })
+  const announced = infoPath({ hydraId: 'hydra-2' })
   context.after(async () => {
-    const pid = await until({ check: () => (existsSync(announced) ? (JSON.parse(readFileSync(announced, 'utf8')) as { pid: number }).pid : undefined), what: 'board-2 server.json' })
+    const pid = await until({ check: () => (existsSync(announced) ? (JSON.parse(readFileSync(announced, 'utf8')) as { pid: number }).pid : undefined), what: 'hydra-2 server.json' })
     await stopProcess({ pid })
   })
   const created = await receipt({ id: 'b3' })
-  assert.deepEqual(created.boards?.map(b => [b.id, b.name]), [['board-2', 'Side'], ['default', 'Work']])
+  assert.deepEqual(created.hydras?.map(b => [b.id, b.name]), [['default', 'Work'], ['hydra-2', 'Side']])
   assert.match(created.url!, /^http:\/\/127\.0\.0\.1:\d+$/)
   assert.notEqual(created.url, `http://127.0.0.1:${server.port}`)
-  t.command({ id: 'b4', name: 'boards', args: ['open', 'board-2'] })
+  t.command({ id: 'b4', name: 'hydras', args: ['open', 'hydra-2'] })
   assert.equal((await receipt({ id: 'b4' })).url, created.url)
 
-  t.command({ id: 'b5', name: 'boards', args: ['open', 'missing'] })
-  assert.match((await receipt({ id: 'b5' })).error ?? '', /board not found/)
+  t.command({ id: 'b5', name: 'hydras', args: ['open', 'missing'] })
+  assert.match((await receipt({ id: 'b5' })).error ?? '', /Hydra not found/)
 })
 
-test('concurrent server starts claim one board before binding their sockets', async () => {
-  const started = await Promise.allSettled([startServer({ board: 'default' }), startServer({ board: 'default' })])
+test('concurrent server starts claim one Hydra before binding their sockets', async () => {
+  const started = await Promise.allSettled([startServer({ hydraId: 'default' }), startServer({ hydraId: 'default' })])
   const accepted = started.filter(r => r.status === 'fulfilled')
   assert.equal(accepted.length, 1)
 
@@ -922,7 +922,7 @@ test('Hydra and the open task keep independent live transcripts on one socket', 
   const paths = [join(root, 'worker.jsonl'), join(root, 'hydra.jsonl')]
   paths.forEach(path => writeFileSync(path, ''))
   withWriter({
-    board: 'default',
+    hydraId: 'default',
     fn: ({ writer }) => {
       const meta = { actor: 'fixture', at: '2026-10-15T00:00:00Z' }
 
@@ -931,12 +931,12 @@ test('Hydra and the open task keep independent live transcripts on one socket', 
         assert.ok('event' in decision); writer.append({ event: decision.event })
       }
 
-      const decision = hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data: { ...boardConfig({ state: writer.state }), hydra: { id: 'hydra', kind: 'agent', name: 'Hydra', session: 'claude-code:hydra-session' } } } })
+      const decision = hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data: { ...hydraConfig({ state: writer.state }), hydra: { id: 'hydra', kind: 'agent', name: 'Hydra', session: 'claude-code:hydra-session' } } } })
       assert.ok('event' in decision); writer.append({ event: decision.event })
     },
   })
-  const task = loadBoard({ board: 'default' }).state.keys.worker!
-  server = await startServer({ board: 'default' })
+  const task = loadHydra({ hydraId: 'default' }).state.keys.worker!
+  server = await startServer({ hydraId: 'default' })
   const t = await tab(); await t.next()
 
   const subscribe = async ({ id, card }: { id: string; card: string }) => {
@@ -971,10 +971,10 @@ test('Hydra and the open task keep independent live transcripts on one socket', 
   assert.deepEqual([...changed].sort(), [HYDRA_CARD, task].sort())
 })
 
-test('board-scoped search returns Hydra messages and validates command searches', async () => {
+test('hydra-scoped search returns Hydra messages and validates command searches', async () => {
   seedWebFixture({ home: process.env.PNYX_HOME! })
   withWriter({
-    board: 'default',
+    hydraId: 'default',
     fn: ({ writer }) => {
       writer.append({
         event: {
@@ -990,12 +990,12 @@ test('board-scoped search returns Hydra messages and validates command searches'
       })
     },
   })
-  server = await startServer({ board: 'default' })
+  server = await startServer({ hydraId: 'default' })
   const t = await tab(); await t.next()
-  t.command({ id: 'hydra-search', name: 'search', args: ['lunch', '', 'board'] })
+  t.command({ id: 'oracle', name: 'oracle', args: ['lunch', '', 'hydra'] })
   let result = await t.next()
 
-  while (!((result.type === 'receipt' || result.type === 'error') && result.id === 'hydra-search')) {
+  while (!((result.type === 'receipt' || result.type === 'error') && result.id === 'oracle')) {
     result = await t.next()
   }
 
@@ -1005,7 +1005,7 @@ test('board-scoped search returns Hydra messages and validates command searches'
     assert.deepEqual((result.hits as { card: string; kind?: string }[]).map(hit => [hit.card, hit.kind]), [['$board', 'hydra']])
   }
 
-  t.command({ id: 'commands-off', name: 'search-commands', args: ['theme', JSON.stringify([{ id: 'theme', text: 'Choose a dark theme' }])] })
+  t.command({ id: 'commands-off', name: 'oracle-commands', args: ['theme', JSON.stringify([{ id: 'theme', text: 'Choose a dark theme' }])] })
 
   do {
     result = await t.next()
@@ -1017,7 +1017,7 @@ test('board-scoped search returns Hydra messages and validates command searches'
     assert.deepEqual(result.matches, [])
   }
 
-  t.command({ id: 'commands-invalid', name: 'search-commands', args: ['theme', JSON.stringify([{ id: 'theme', text: 42 }])] })
+  t.command({ id: 'commands-invalid', name: 'oracle-commands', args: ['theme', JSON.stringify([{ id: 'theme', text: 42 }])] })
 
   do {
     result = await t.next()
@@ -1033,13 +1033,13 @@ test('board-scoped search returns Hydra messages and validates command searches'
 })
 
 test('a server lock whose pid was reused is reclaimed', async () => {
-  const dir = boardDir({ board: 'default' })
+  const dir = hydraDir({ hydraId: 'default' })
   mkdirSync(dir, { recursive: true })
   const path = join(dir, 'server.lock')
   writeFileSync(path, JSON.stringify({ pid: process.pid, processStart: 'a previous boot' }))
-  server = await startServer({ board: 'default' })
+  server = await startServer({ hydraId: 'default' })
   const owner = JSON.parse(readFileSync(path, 'utf8'))
   assert.equal(owner.pid, process.pid)
   assert.notEqual(owner.processStart, 'a previous boot')
-  await assert.rejects(startServer({ board: 'default' }), { code: 'ALREADY_RUNNING' })
+  await assert.rejects(startServer({ hydraId: 'default' }), { code: 'ALREADY_RUNNING' })
 })
