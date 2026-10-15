@@ -13,7 +13,7 @@ const created: HydraEvent = {
   ...meta,
   cardId: 'task',
   type: 'task.created',
-  data: { key: 'task', title: 'Permission task', column: 'workers_on_it' },
+  data: { key: 'task', title: 'Permission task', column: 'in_progress' },
 }
 const request: PermissionRequest = {
   id: 'request',
@@ -33,7 +33,7 @@ test('permission replay keeps the first decision, its original input and the col
   const events = [created, pending, allowed, late]
   const state = replay({ state: emptyHydra(), events })
   assert.deepEqual(state.cards.task!.permissions, [{ ...request, status: 'allow' }])
-  assert.equal(state.cards.task!.column, 'workers_on_it')
+  assert.equal(state.cards.task!.column, 'in_progress')
   assert.equal(state.cards.task!.attention.length, 0)
   assert.deepEqual(replay({ state: emptyHydra(), events }), state)
   assert.equal(initial.cards.task!.permissions, undefined)

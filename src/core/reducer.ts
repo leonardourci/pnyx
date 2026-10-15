@@ -6,11 +6,12 @@ import {
   type HydraEvent,
   type HydraState,
   type Card,
+  type Column,
   type Link,
   type SourceRef,
 } from './model.ts'
 import { applyAttachment, cardSessionId, observeSession, sessionId } from './tasks.ts'
-import { applyHydra, refreshTasks } from './hydra.ts'
+import { applyHydra, fallbackColumn, hydraConfig, refreshTasks, roleColumn } from './hydra.ts'
 import { applyPermission } from './permissions.ts'
 import { requestId } from './answer.ts'
 
@@ -88,6 +89,13 @@ export function wouldCycle({ cards, cardId, parentId }: {
   }
 
   return false
+}
+
+// An older layout still has its own `workers_on_it` column.
+function newCardColumn({ state }: { state: HydraState }): Column {
+  const columns = hydraConfig({ state }).columns
+
+  return columns.some(c => c.id === 'workers_on_it') ? 'workers_on_it' : roleColumn({ columns, role: 'in_progress' }) ?? fallbackColumn({ columns })
 }
 
 function apply({ state, event }: { state: HydraState; event: HydraEvent }): boolean {
@@ -178,7 +186,7 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
         links: [],
         sourceRefs: [],
         ...(fields.agent && (!source || ['hooks', 'paseo', 'pnyx'].includes(source.adapter)) ? { automaticTask: true } : {}),
-        column: 'workers_on_it',
+        column: newCardColumn({ state }),
         revision: 0,
         createdSeq: event.seq,
         updatedSeq: event.seq,

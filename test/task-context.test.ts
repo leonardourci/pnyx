@@ -34,7 +34,7 @@ test('brief and visibility events replay without dropping history or reacting to
   const f = fixture()
 
   try {
-    await f.run({ name: 'task', args: ['create', '--key', 'work', '--title', 'Work', '--brief', 'Check the canary.', '--column', 'workers_on_it'] })
+    await f.run({ name: 'task', args: ['create', '--key', 'work', '--title', 'Work', '--brief', 'Check the canary.', '--column', 'in_progress'] })
     const id = f.state().keys.work!
     await f.run({ name: 'task', args: ['brief', 'work', '--brief', 'Check the canary and rollback.', '--event-id', 'brief-v2'] })
     const seq = f.state().seq
@@ -45,7 +45,7 @@ test('brief and visibility events replay without dropping history or reacting to
     assert.match(JSON.stringify(await f.run({ name: 'task', args: ['list'] })), /none: no tasks/)
     assert.match(JSON.stringify(await f.run({ name: 'task', args: ['show', 'work'] })), /Check the canary and rollback/)
     await f.run({ name: 'task', args: ['status', 'work', 'done'] })
-    assert.equal(f.state().cards[id]?.column, 'workers_on_it')
+    assert.equal(f.state().cards[id]?.column, 'in_progress')
     assert.equal(f.state().cards[id]?.hidden, true)
     await f.run({ name: 'task', args: ['unhide', 'work'] })
     assert.equal(f.state().cards[id]?.hidden, false)
@@ -63,7 +63,7 @@ test('descriptions and widths persist, resetting widths preserves the rest of th
 
   try {
     await f.run({ name: 'column', args: ['describe', 'needs_you', '--description', 'Questions only.'] })
-    assert.equal(f.state().config?.columns[0]?.description, 'Questions only.')
+    assert.equal(f.state().config?.columns.find(c => c.id === 'needs_you')?.description, 'Questions only.')
     const seq = f.state().seq
     await f.run({ name: 'column', args: ['describe', 'needs_you', '--description', 'Questions only.'] })
     assert.equal(f.state().seq, seq)
@@ -98,7 +98,7 @@ test('moves and deletes confirm the exact action and reject a token after the ta
     const first = await f.run({ name: 'move', args })
     const id = f.state().keys.work!
     assert.equal(first.confirmation, 'needed')
-    assert.equal(f.state().cards[id]?.column, 'parked')
+    assert.equal(f.state().cards[id]?.column, 'queued')
     await f.run({ name: 'task', args: ['rename', 'work', '--title', 'Changed task'] })
     const stale = await f.run({ name: 'move', args: [...args, '--confirm', String(first.token)] })
     assert.equal(stale.confirmation, 'needed')
@@ -114,9 +114,9 @@ test('moves and deletes confirm the exact action and reject a token after the ta
     assert.equal(other.confirmation, 'needed')
     await f.run({ name: 'column', args: ['delete', 'done', '--to', 'parked', '--confirm', String(deletion.token)] })
     assert.equal(f.state().cards[id]?.column, 'parked')
-    const reorder = await f.run({ name: 'column', args: ['reorder', 'parked', '--before', 'needs_you'] })
+    const reorder = await f.run({ name: 'column', args: ['reorder', 'parked', '--before', 'queued'] })
     assert.equal(reorder.confirmation, 'needed')
-    await f.run({ name: 'column', args: ['reorder', 'parked', '--before', 'needs_you', '--confirm', String(reorder.token)] })
+    await f.run({ name: 'column', args: ['reorder', 'parked', '--before', 'queued', '--confirm', String(reorder.token)] })
     assert.equal(f.state().config?.columns[0]?.id, 'parked')
     await f.run({ name: 'move', args: ['work', 'needs_you', '--actor', 'web'] })
     assert.equal(f.state().cards[id]?.column, 'needs_you')
@@ -152,7 +152,7 @@ test('Hydra changes need one reason, which Pnyx posts as its chat line, and the 
       'Task brief updated',
       'needs_you -> done',
       'Hydra: Moved API cleanup to Needs you: its agent asked which schema to use (It found two schemas: v1 in the API and v2 in the migration.)',
-      'parked -> needs_you (why: its agent asked which schema to use)',
+      'queued -> needs_you (why: its agent asked which schema to use)',
       'Hydra: Created API cleanup: the owner asked for it',
       'Created task: API cleanup (why: the owner asked for it)',
     ])
@@ -187,7 +187,7 @@ test('Hydra lines name starts, undos and returns, and the receipt carries the cu
     assert.equal(shown.posted, 'Returned Docs to the Hydra: the owner resumed it')
     const moved = await f.run({ name: 'move', args: ['work', 'done', '--actor', 'web'] }) as { event: { id: string } }
     const undone = await f.run({ name: 'undo', args: [moved.event.id, ...hydra, '--reason', 'the work is not finished'] })
-    assert.equal(undone.posted, 'Moved Docs back to Parked: the work is not finished')
+    assert.equal(undone.posted, 'Moved Docs back to Queued: the work is not finished')
     const rows = (await f.run({ name: 'hydra', args: ['messages', '--after', '0'] }) as { messages: { text: string; details?: string }[] }).messages
     assert.deepEqual(rows.find(r => r.details), { ...rows.find(r => r.details), text: 'Returned Docs to the Hydra: the owner resumed it', details: 'Resume after the release.' })
   } finally {

@@ -51,8 +51,8 @@ test('push is an idempotent upsert by key', () => {
   assert.match(retry, /^ {2}seq: 2$/m)
   assert.match(retry, /^duplicate: /m)
   const out = run({ args: [] })
-  assert.match(out, /^ {2}workers_on_it: 1$/m)
-  assert.match(out, /^ {2}c1,x,workers_on_it,none$/m)
+  assert.match(out, /^ {2}in_progress: 1$/m)
+  assert.match(out, /^ {2}c1,x,in_progress,none$/m)
 })
 
 test('only a move places the card; links, merges and outcomes leave it', () => {
@@ -60,7 +60,7 @@ test('only a move places the card; links, merges and outcomes leave it', () => {
   run({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'Task' } })] })
   run({ args: ['push', '--key', 'k2', '--file', card({ json: { title: 'Other' } })] })
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'open'] })
-  assert.match(run({ args: ['card', 'k'] }), /^ {2}column: workers_on_it$/m)
+  assert.match(run({ args: ['card', 'k'] }), /^ {2}column: in_progress$/m)
   run({ args: ['move', 'c1', 'needs-you'] })
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'merged'] })
   run({ args: ['outcome', 'c1', 'done', '--note', 'shipped'] })
@@ -92,8 +92,8 @@ test('undo appends a reversing event and refuses a second undo', () => {
   run({ args: ['push', '--key', 'k', '--file', card({ json: {} })] })
   run({ args: ['move', 'c1', 'done'] })
   assert.match(run({ args: ['undo', 'evt_2'] }), /^ {2}seq: 3$/m)
-  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: workers_on_it$/m)
-  assert.match(run({ args: ['history', '--limit', '1'] }), /undo evt_2: done -> workers_on_it/)
+  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: in_progress$/m)
+  assert.match(run({ args: ['history', '--limit', '1'] }), /undo evt_2: done -> in_progress/)
 })
 
 test('every write takes --event-id and --if-revision', () => {
@@ -121,7 +121,7 @@ test('undo reverses a manual push edit and refuses a merge', () => {
   fails({ args: ['undo', 'evt_1'], status: 1, code: 'NOT_UNDOABLE' })
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'merged'] })
   fails({ args: ['undo', 'evt_4'], status: 1, code: 'NOT_UNDOABLE' })
-  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: workers_on_it$/m)
+  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: in_progress$/m)
 })
 
 test('errors are structured', () => {
@@ -189,6 +189,6 @@ test('concurrent writers get one contiguous sequence', async () => {
   const log = readFileSync(join(env.PNYX_HOME, 'boards', 'default', 'events.jsonl'), 'utf8').trimEnd()
     .split('\n')
   assert.deepEqual(log.map(l => JSON.parse(l).seq), [1, 2, 3, 4, 5, 6, 7, 8])
-  assert.match(run({ args: [] }), /^ {2}workers_on_it: 8$/m)
+  assert.match(run({ args: [] }), /^ {2}in_progress: 8$/m)
   assert.equal(existsSync(join(env.PNYX_HOME, 'boards', 'default', 'writer.lock')), false)
 })

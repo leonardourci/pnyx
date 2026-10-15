@@ -75,23 +75,23 @@ test('declared status, hooks, outcomes and column edits never move a task; repla
     assert.throws(() => f.run({ args: ['task', 'create', '--title', 'Too deep', '--parent', 'child'] }))
     const root = f.state().keys.root!
     const child = f.state().keys.child!
-    assert.equal(f.state().cards[root]?.column, 'parked')
+    assert.equal(f.state().cards[root]?.column, 'queued')
     f.run({ args: ['task', 'status', 'root', 'working', '--note', 'Building it'] })
     f.push({ key: 'session', input: { agent: { provider: 'claude-code', sessionId: 'worker' }, terminal: { tty: '/dev/ttys123', pid: '123' }, source: { adapter: 'hooks', objectId: 'worker' } } })
     f.run({ args: ['task', 'attach', 'root', '--session', 'claude-code:worker'] })
     f.push({ key: 'root', input: { activity: 'finished', source: { adapter: 'hooks', objectId: 'worker' } } })
-    assert.equal(f.state().cards[root]?.column, 'parked')
+    assert.equal(f.state().cards[root]?.column, 'queued')
     f.run({ args: ['outcome', 'root', 'done'] })
-    assert.equal(f.state().cards[root]?.column, 'parked')
+    assert.equal(f.state().cards[root]?.column, 'queued')
     f.run({ args: ['task', 'status', 'root', 'needs-you', '--note', 'Choose a schema'] })
-    assert.equal(f.state().cards[root]?.column, 'parked')
+    assert.equal(f.state().cards[root]?.column, 'queued')
     f.run({ args: ['column', 'rename', 'needs_you', '--title', 'Your turn'] })
-    assert.equal(f.state().config?.columns[0]?.title, 'Your turn')
+    assert.equal(f.state().config?.columns.find(c => c.id === 'needs_you')?.title, 'Your turn')
     f.run({ args: ['column', 'create', '--title', 'Research', '--id', 'custom:research'] })
-    f.run({ args: ['column', 'reorder', 'custom:research', '--before', 'needs_you'] })
+    f.run({ args: ['column', 'reorder', 'custom:research', '--before', 'queued'] })
     assert.equal(f.state().config?.columns[0]?.id, 'custom:research')
     const reordered = f.events().length
-    f.run({ args: ['column', 'reorder', 'custom:research', '--before', 'needs_you'] })
+    f.run({ args: ['column', 'reorder', 'custom:research', '--before', 'queued'] })
     assert.equal(f.events().length, reordered)
     f.run({ args: ['move', 'root', 'custom:research'] })
     f.run({ args: ['task', 'status', 'root', 'done', '--note', 'Finished'] })
@@ -134,9 +134,9 @@ test('ad-hoc sessions never become tasks, and a merge never moves declared work'
     assert.throws(() => f.run({ args: ['task', 'attach', 'work', '--session', 'codex:s'] }))
     f.run({ args: ['link', 'work', '--url', 'https://github.com/example/app/pull/1', '--state', 'merged'] })
     const work = f.state().keys.work!
-    assert.equal(f.state().cards[work]?.column, 'parked')
+    assert.equal(f.state().cards[work]?.column, 'queued')
 
-    for (const id of ['needs_you', 'workers_on_it', 'done']) {
+    for (const id of ['queued', 'needs_you', 'in_progress', 'done']) {
       f.run({ args: ['column', 'delete', id] })
     }
 
@@ -264,20 +264,20 @@ test('role columns record a declaration, column edits keep the Hydra unconfigure
     assert.equal(f.state().config?.id, 'work')
     assert.equal(f.state().configured, undefined)
     f.run({ args: ['hydra', 'create', 'work'] })
-    assert.equal(f.state().config?.columns[0]?.title, 'Your turn')
+    assert.equal(f.state().config?.columns.find(c => c.id === 'needs_you')?.title, 'Your turn')
     f.run({ args: ['task', 'create', '--title', 'Ask', '--key', 'ask', '--column', 'needs_you'] })
     const ask = f.state().keys.ask!
     assert.equal(f.state().cards[ask]?.column, 'needs_you')
     assert.equal(f.state().cards[ask]?.status?.state, 'needs_you')
     f.run({ args: ['task', 'status', 'ask', 'working', '--note', 'On it'] })
     assert.equal(f.state().cards[ask]?.column, 'needs_you')
-    f.run({ args: ['move', 'ask', 'workers_on_it'] })
-    f.run({ args: ['column', 'delete', 'workers_on_it', '--to', 'needs_you'] })
+    f.run({ args: ['move', 'ask', 'in_progress'] })
+    f.run({ args: ['column', 'delete', 'in_progress', '--to', 'needs_you'] })
     assert.equal(f.state().cards[ask]?.column, 'needs_you')
     f.run({ args: ['undo', f.events().at(-1)!.id] })
-    assert.equal(f.state().cards[ask]?.column, 'workers_on_it')
+    assert.equal(f.state().cards[ask]?.column, 'in_progress')
     f.run({ args: ['outcome', 'ask', 'done'] })
-    assert.equal(f.state().cards[ask]?.column, 'workers_on_it')
+    assert.equal(f.state().cards[ask]?.column, 'in_progress')
     f.run({ args: ['undo', f.events().at(-1)!.id] })
     assert.equal(f.state().cards[ask]?.status?.state, 'working')
     f.run({ args: ['column', 'create', '--title', 'Later', '--id', 'custom:later'] })
