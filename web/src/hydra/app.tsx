@@ -48,8 +48,8 @@ const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [da
 
 export function App() {
   const { state, command, connected, thread, setThread, hydraThread, latest } = useHydra()
-  const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') ? 'settings' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
+  const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') ? 'settings' : new URLSearchParams(location.search).has('project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
+  const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
   const [editingTask, setEditingTask] = useState<string | null>(null)
   const [historyQuery, setHistoryQuery] = useState('')
@@ -62,6 +62,8 @@ export function App() {
   useEffect(() => {
     if (new URLSearchParams(location.search).has('projects')) {
       requestAnimationFrame(() => document.querySelector('[aria-label="Projects"]')?.scrollIntoView())
+      const url = new URL(location.href)
+      url.searchParams.delete('projects'); history.replaceState(null, '', url)
     }
   }, [])
 
