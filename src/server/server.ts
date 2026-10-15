@@ -20,13 +20,16 @@ import { basename, dirname, extname, join, normalize } from 'node:path'
 import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { WebSocketServer, type WebSocket } from 'ws'
-import { commands, ingestSpool } from '../cli/commands.ts'
+import { commands as cliCommands, ingestSpool } from '../cli/commands.ts'
+import { workerCommands } from '../cli/workers.ts'
 import { BoardError, type BoardEvent, type BoardState, type Card, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { boardDir, loadBoard, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/board-store.ts'
 import { infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 
+// The browser edits kinds; Hydra's check and start stay in the CLI.
+const commands = { ...cliCommands, kind: workerCommands.kind }
 // Events kept in memory for cursor resume; an older cursor gets a snapshot instead.
 const RESUME_LIMIT = 1000
 // A tab with more than this unsent is dropped from the event stream and resynced with a snapshot.
@@ -45,7 +48,7 @@ const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) =>
 // How often a live transcript's card and open conversation are read again at most while the session writes.
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
-const CLI_COMMANDS = ['task', 'column', 'hydra', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card'] as const
+const CLI_COMMANDS = ['task', 'column', 'hydra', 'kind', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card'] as const
 // Same relative path from src/server and dist/server.
 const WEB_ROOT = join(import.meta.dirname, '..', '..', 'dist', 'web')
 const MIME: Record<string, string> = {

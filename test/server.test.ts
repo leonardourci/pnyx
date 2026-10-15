@@ -844,3 +844,19 @@ test('the open task follows attachment identity and watches only its current tra
     t.ws.close()
   }
 })
+
+test('the board edits task kinds over the socket but cannot check or launch Hydra', async () => {
+  await boardWithCard()
+  const t = await tab(); await t.next()
+  t.command({ id: 'kind-1', name: 'kind', args: ['set', 'review', '--harness', 'codex', '--quota', 'high'] })
+  assert.equal((await t.next()).type, 'event'); assert.equal((await t.next()).type, 'receipt')
+  const board = loadBoard({ board: 'default' }).state
+  assert.deepEqual(board.board?.agents, { review: { harness: 'codex', quota: 'high' } })
+  const last = readFileSync(join(boardDir({ board: 'default' }), 'events.jsonl'), 'utf8').trim()
+    .split('\n')
+    .at(-1)!
+  assert.equal(JSON.parse(last).actor, 'web')
+  t.command({ id: 'start-1', name: 'hydra', args: ['start', '--preview'] })
+  const refused = await t.next(); assert.equal(refused.type, 'error')
+  t.ws.close()
+})

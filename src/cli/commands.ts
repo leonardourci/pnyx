@@ -1578,7 +1578,7 @@ as \`pnyx-axi firstmate watch\` would, so no second process is needed.
 Hook events arrive on the board's server.sock or through its spool. Browsers get one WebSocket at /ws:
 a snapshot on connect, then events by sequence; /ws?after=<seq> resumes, a gap gets a fresh snapshot.
 The handshake needs ?token=<token>: the board page served here carries it, local programs read $PNYX_HOME/token.
-Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo","args":[...]}
+Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo|kind","args":[...]}
 gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write this board;
 --board is refused and the actor defaults to web. GET /health answers {"board","pid"}.
 `,
