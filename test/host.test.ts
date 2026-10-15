@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, test } from 'node:test'
-import type { Options } from '@anthropic-ai/claude-agent-sdk'
+import type { Options, PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 import { commands } from '../src/cli/commands.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { agent, sendReply } from '../src/cli/reply.ts'
@@ -13,7 +13,8 @@ import type { Card } from '../src/core/model.ts'
 import type { QueryFn } from '../src/server/host.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
 import { askHost } from '../src/server/state.ts'
-import { loadBoard, spoolWrite } from '../src/store/board-store.ts'
+import { permissionEvent } from '../src/core/permissions.ts'
+import { loadBoard, readEvents, spoolWrite, withWriter } from '../src/store/board-store.ts'
 
 const meta = { at: '2026-10-15T00:00:00Z', actor: 'test' }
 let server: RunningServer | undefined
@@ -28,7 +29,9 @@ afterEach(async () => {
 function fakeSdk() {
   const calls: { options: Options; messages: string[]; set: string[]; closed: boolean }[] = []
   const gates: (() => void)[] = []
-  const control = { hold: false }
+  const control = { hold: false, permission: false }
+  const permissions: PermissionResult[] = []
+  const aborts: AbortController[] = []
 
   const query = (({ prompt, options }: {
     prompt: AsyncIterable<{ message: { content: unknown } }>
@@ -41,6 +44,14 @@ function fakeSdk() {
       for await (const message of prompt) {
         call.messages.push(String(message.message.content))
         yield { type: 'system', subtype: 'session_state_changed', state: 'running' }
+
+        if (control.permission) {
+          const abort = new AbortController()
+          aborts.push(abort)
+          const result = await options.canUseTool!('Bash', { command: 'touch allowed.txt' }, { signal: abort.signal, toolUseID: 'tool-1', requestId: 'sdk-request', decisionReason: 'Run a shell command' })
+          assert.ok(result)
+          permissions.push(result)
+        }
 
         if (control.hold) {
           await new Promise<void>(resolve => gates.push(resolve))
@@ -66,7 +77,14 @@ function fakeSdk() {
     })
   }) as unknown as QueryFn
 
-  return { query, calls, control, release: () => gates.splice(0).forEach(open => open()) }
+  return {
+    query,
+    calls,
+    control,
+    permissions,
+    aborts,
+    release: () => gates.splice(0).forEach(open => open()),
+  }
 }
 
 async function until({ check, what }: { check: () => boolean; what: string }) {
@@ -131,7 +149,8 @@ test('task start runs Claude Code through the server, records it on the task and
   assert.equal(options.resume, undefined)
   assert.equal(options.cwd, folder)
   assert.deepEqual(options.settingSources, ['user', 'project', 'local'])
-  assert.equal(options.permissionPrompts, 'none')
+  assert.equal(options.permissionPrompts, 'host')
+  assert.equal(typeof options.canUseTool, 'function')
   assert.equal(options.model, 'opus')
   assert.equal(options.effort, 'high')
   assert.equal(options.permissionMode, 'acceptEdits')
@@ -270,4 +289,98 @@ test('a new agent on the task does not inherit the old one\'s interrupted turn',
   await startTask({ board: 'lab', task: 'ship', folder, meta: { ...meta, id: 'start-2' } })
   await until({ check: () => sdk.calls.length === 2 && task().sessionActivity === 'finished', what: 'the new agent' })
   assert.equal(task().attention.some(a => a.key === 'pnyx:interrupted'), false)
+})
+
+test('hosted permissions survive hooks, wake Hydra and accept exactly one answer without moving the task', async () => {
+  const { folder, task } = await lab()
+  const sdk = fakeSdk()
+  sdk.control.permission = true
+  server = await startServer({ board: 'lab', query: sdk.query })
+  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'permission-start' } })
+  await until({ check: () => task().permissions?.[0]?.status === 'pending', what: 'permission request' })
+  const request = task().permissions![0]!
+  const column = task().column
+  assert.equal(request.tool, 'Bash')
+  assert.deepEqual(request.input, { command: 'touch allowed.txt' })
+  assert.equal(sdk.permissions.length, 0)
+  hook({ id: 'permission-hook', event: 'PreToolUse', session: task().agent!.sessionId, cwd: folder })
+  assert.equal(task().attention.some(a => a.key.endsWith(request.id) && a.blocking), true)
+  const event = readEvents({ board: 'lab' }).find(e => e.type === 'task.permission')!
+  const checked = await workerCommands.hydra(['check', '--after', String(event.seq - 1), '--board', 'lab'])
+  assert.ok((checked.changes as { type: string }[]).some(e => e.type === 'task.permission'))
+  const shown = await commands.task(['show', 'ship', '--full', '--board', 'lab'])
+  assert.deepEqual((shown.task as Card).permissions, task().permissions)
+  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--actor', 'hydra', '--board', 'lab']), /need --reason/)
+  assert.equal(task().permissions![0]!.status, 'pending')
+
+  const answers = await Promise.allSettled([
+    commands.task(['permission', 'ship', request.id, 'allow', '--actor', 'hydra', '--reason', 'The command is scoped to this worktree', '--board', 'lab']),
+    commands.task(['permission', 'ship', request.id, 'deny', '--actor', 'web', '--board', 'lab']),
+  ])
+  assert.equal(answers.filter(a => a.status === 'fulfilled').length, 1)
+  await until({ check: () => sdk.permissions.length === 1, what: 'permission result' })
+  const status = task().permissions![0]!.status
+  assert.equal(sdk.permissions[0]!.behavior, status)
+  assert.equal(task().column, column)
+  assert.equal(task().attention.some(a => a.key.endsWith(request.id)), false)
+  assert.equal(readEvents({ board: 'lab' }).filter(e => e.type === 'task.permission' && e.data.status !== 'pending').length, 1)
+
+  if (status === 'allow') {
+    assert.deepEqual(sdk.permissions[0], { behavior: 'allow' })
+    assert.match(loadBoard({ board: 'lab' }).state.hydraMessages!.at(-1)!.text, /Allowed Bash on Ship it: The command is scoped/)
+  }
+})
+
+test('denial tells the provider why and neither denied nor unknown requests can be answered again', async () => {
+  const { task } = await lab()
+  const sdk = fakeSdk()
+  sdk.control.permission = true
+  server = await startServer({ board: 'lab', query: sdk.query })
+  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'deny-start' } })
+  await until({ check: () => task().permissions?.length === 1, what: 'permission request' })
+  const request = task().permissions![0]!
+  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'always', '--board', 'lab']), /allow\|deny/)
+  await assert.rejects(async () => commands.task(['permission', 'ship', 'unknown', 'allow', '--board', 'lab']), /not found/)
+  await commands.task(['create', '--title', 'Other task', '--key', 'other', '--board', 'lab'])
+  await assert.rejects(async () => commands.task(['permission', 'other', request.id, 'allow', '--board', 'lab']), /not found/)
+  await commands.task(['permission', 'ship', request.id, 'deny', '--actor', 'hydra', '--reason', 'Do not write that file', '--board', 'lab'])
+  await until({ check: () => sdk.permissions.length === 1, what: 'denial result' })
+  assert.deepEqual(sdk.permissions, [{ behavior: 'deny', message: 'Do not write that file' }])
+  assert.match(loadBoard({ board: 'lab' }).state.hydraMessages!.at(-1)!.text, /Denied Bash.*Do not write that file/)
+  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--board', 'lab']), /already deny/)
+})
+
+test('provider abort and server close expire pending requests and release the provider', async () => {
+  const { task } = await lab()
+  const sdk = fakeSdk()
+  sdk.control.permission = true
+  server = await startServer({ board: 'lab', query: sdk.query })
+  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'abort-start' } })
+  await until({ check: () => task().permissions?.length === 1, what: 'permission request' })
+  sdk.aborts[0]!.abort()
+  await until({ check: () => sdk.permissions.length === 1, what: 'abort result' })
+  assert.equal(task().permissions![0]!.status, 'expired')
+  assert.equal(sdk.permissions[0]!.behavior, 'deny')
+  await sendReply({ board: 'lab', request: { card: 'ship', text: 'Try another command', homes: [], actor: 'test' } })
+  await until({ check: () => task().permissions?.length === 2, what: 'second permission' })
+  await server.close()
+  server = undefined
+  assert.equal(task().permissions![1]!.status, 'expired')
+  assert.equal(task().attention.some(a => a.key.startsWith('pnyx:permission:')), false)
+})
+
+test('restart recovery expires a request left pending by a crash without starting an agent', async () => {
+  const { task } = await lab()
+  const sdk = fakeSdk()
+  server = await startServer({ board: 'lab', query: sdk.query })
+  await startTask({ board: 'lab', task: 'ship', meta: { ...meta, id: 'recover-start' } })
+  await until({ check: () => task().sessionActivity === 'finished', what: 'turn end' })
+  await server.close()
+  server = undefined
+  withWriter({ board: 'lab', fn: ({ writer }) => writer.append({ event: permissionEvent({ state: writer.state, card: task(), request: { id: 'left-pending', session: task().sessionIds![0]!, tool: 'Bash', input: { command: 'pwd' }, status: 'pending' }, meta }) }) })
+  const resumed = fakeSdk()
+  server = await startServer({ board: 'lab', query: resumed.query })
+  assert.equal(resumed.calls.length, 0)
+  assert.equal(task().permissions![0]!.status, 'expired')
+  await assert.rejects(async () => commands.task(['permission', 'ship', 'left-pending', 'allow', '--board', 'lab']), /already expired/)
 })

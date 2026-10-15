@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
-import type { EffortLevel, Options, PermissionMode, Query, SDKMessage, query } from '@anthropic-ai/claude-agent-sdk'
+import type { EffortLevel, Options, PermissionMode, PermissionResult, Query, SDKMessage, query } from '@anthropic-ai/claude-agent-sdk'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
+import { explained, postLine } from '../cli/commands.ts'
+import { permissionEvent } from '../core/permissions.ts'
 import { freeTask } from '../cli/start.ts'
 import { decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { BoardError, type AgentRef, type AgentSettings, type Attention, type Card } from '../core/model.ts'
+import { BoardError, type AgentRef, type AgentSettings, type Attention, type Card, type PermissionRequest } from '../core/model.ts'
 import { INTERRUPTED, sessionId } from '../core/tasks.ts'
 import { pnyxHome, withWriter, type Writer } from '../store/board-store.ts'
 
@@ -30,6 +32,14 @@ export interface Host {
     value: string
     actor: string
   }): Promise<void>
+  permission({ task, request, choice, actor, reason, details }: {
+    task: string
+    request: string
+    choice: 'allow' | 'deny'
+    actor: string
+    reason?: string
+    details?: string
+  }): Record<string, unknown>
   // Marks a hosted turn that was running when the server last stopped as interrupted.
   recover(): void
   close(): void
@@ -128,6 +138,11 @@ export function createHost({ board, query, changed }: {
   changed(): void
 }): Host {
   const live = new Map<string, Live>()
+  const pending = new Map<string, {
+    card: string
+    entry: Live
+    finish({ result }: { result: PermissionResult }): void
+  }>()
   let closing = false
 
   const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
@@ -152,8 +167,37 @@ export function createHost({ board, query, changed }: {
 
   const sessionKey = ({ agent }: { agent: AgentRef }) => `claude:${agent.sessionId}`
 
+  const expire = ({ id }: { id: string }) => {
+    const waiting = pending.get(id)
+
+    if (!waiting) {
+      return
+    }
+
+    waiting.finish({ result: { behavior: 'deny', message: 'This permission request expired.' } })
+    note({
+      fn: ({ writer }) => {
+        const card = writer.state.cards[waiting.card]
+        const request = card?.permissions?.find(p => p.id === id && p.status === 'pending')
+
+        if (card && request) {
+          writer.append({ event: permissionEvent({ state: writer.state, card, request: { ...request, status: 'expired' }, meta: { at: at(), actor: 'pnyx' } }) })
+        }
+      },
+    })
+  }
+
+  const expireEntry = ({ entry }: { entry: Live }) => {
+    for (const [id, waiting] of pending) {
+      if (waiting.entry === entry) {
+        expire({ id })
+      }
+    }
+  }
+
   const retire = ({ key, entry }: { key: string; entry: Live }) => {
     clearTimeout(entry.idle)
+    expireEntry({ entry })
 
     if (live.get(key) === entry) {
       live.delete(key)
@@ -273,6 +317,7 @@ export function createHost({ board, query, changed }: {
     }
 
     clearTimeout(entry.idle)
+    expireEntry({ entry })
 
     if (live.get(key) === entry) {
       live.delete(key)
@@ -310,8 +355,51 @@ export function createHost({ board, query, changed }: {
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code' },
       tools: { type: 'preset', preset: 'claude_code' },
-      // Pnyx cannot answer permission prompts yet: what would ask is refused and Claude says so.
-      permissionPrompts: 'none',
+      permissionPrompts: 'host',
+      // eslint-disable-next-line pnyx/object-params -- The SDK owns this callback signature.
+      canUseTool: (tool, input, { signal, decisionReason }) => {
+        if (closing || signal.aborted) {
+          return Promise.resolve({ behavior: 'deny', message: 'This permission request expired.' })
+        }
+
+        return new Promise<PermissionResult>(resolve => {
+          const id = randomUUID()
+          const abort = () => expire({ id })
+
+          const finish = ({ result }: { result: PermissionResult }) => {
+            pending.delete(id)
+            signal.removeEventListener('abort', abort)
+            resolve(result)
+          }
+
+          const request: PermissionRequest = {
+            id,
+            session: key,
+            tool,
+            input,
+            status: 'pending',
+            ...(decisionReason ? { description: decisionReason } : {}),
+          }
+          pending.set(id, { card: card.id, entry, finish })
+          signal.addEventListener('abort', abort, { once: true })
+
+          try {
+            write({
+              fn: ({ writer }) => {
+                const current = writer.state.cards[card.id]
+
+                if (!current || current.agent?.host !== 'pnyx' || sessionId({ agent: current.agent }) !== key) {
+                  throw new BoardError({ message: 'the agent is no longer attached to this task', code: 'NO_ROUTE' })
+                }
+
+                writer.append({ event: permissionEvent({ state: writer.state, card: current, request, meta: { at: at(), actor: 'pnyx' } }) })
+              },
+            })
+          } catch (error) {
+            finish({ result: { behavior: 'deny', message: `Could not record permission: ${(error as Error).message}` } })
+          }
+        })
+      },
       env: { ...env, PNYX_HOME: pnyxHome(), PNYX_BOARD: board },
       ...sdkOptions({ settings: card.settings ?? {} }),
     }
@@ -413,6 +501,52 @@ export function createHost({ board, query, changed }: {
 
     send,
 
+    permission: ({ task, request: id, choice, actor, reason, details }) => {
+      const why = explained({ meta: { at: at(), actor, reason } })
+      const waiting = pending.get(id)
+      const result = write({
+        fn: ({ writer }) => {
+          const card = findCard({ state: writer.state, ref: task })
+          const request = card.permissions?.find(p => p.id === id)
+
+          if (!request) {
+            throw new BoardError({ message: `permission request not found: ${id}`, code: 'NOT_FOUND' })
+          }
+
+          if (request.status !== 'pending') {
+            throw new BoardError({ message: `permission request is already ${request.status}`, code: 'PERMISSION_CLOSED' })
+          }
+
+          if (!waiting || waiting.card !== card.id || card.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
+            throw new BoardError({ message: 'the agent no longer waits for this request', code: 'PERMISSION_CLOSED' })
+          }
+
+          writer.append({
+            event: permissionEvent({
+              state: writer.state,
+              card,
+              request: { ...request, status: choice },
+              meta: { at: at(), actor, reason: why },
+            }),
+          })
+          let posted: string | undefined
+
+          if (actor === 'hydra') {
+            try {
+              posted = postLine({ writer, board, meta: { at: at(), actor, details }, cardId: card.id, action: `${choice === 'allow' ? 'Allowed' : 'Denied'} ${request.tool} on ${card.title}`, reason: why })
+            } catch (error) {
+              posted = `none: ${(error as Error).message}`
+            }
+          }
+
+          return { task: card.id, request: id, status: choice, ...(posted ? { posted } : {}) }
+        },
+      })
+      waiting?.finish({ result: choice === 'allow' ? { behavior: 'allow' } : { behavior: 'deny', message: why || 'Permission denied from Pnyx.' } })
+
+      return result
+    },
+
     set: async ({ card: ref, setting, value, actor }) => {
       const card = write({
         fn: ({ writer }) => {
@@ -457,6 +591,14 @@ export function createHost({ board, query, changed }: {
 
     recover: () => write({
       fn: ({ writer }) => {
+        for (const card of Object.values(writer.state.cards)) {
+          for (const request of card.permissions ?? []) {
+            if (request.status === 'pending' && !pending.has(request.id)) {
+              writer.append({ event: permissionEvent({ state: writer.state, card, request: { ...request, status: 'expired' }, meta: { at: at(), actor: 'pnyx' } }) })
+            }
+          }
+        }
+
         for (const session of Object.values(writer.state.sessions ?? {})) {
           if (session.agent.host === 'pnyx' && !live.has(session.id) && (session.sessionActivity ?? session.activity) === 'working') {
             interrupt({ writer, agent: session.agent, note: 'Pnyx stopped during this turn. Send a message to continue it.' })
@@ -514,6 +656,16 @@ export async function hostRequest({ host, body: raw }: {
       return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
     }
 
+    case 'permission': {
+      const choice = field({ body, name: 'choice' })
+
+      if (choice !== 'allow' && choice !== 'deny') {
+        throw new BoardError({ message: 'choice must be allow or deny', code: 'VALIDATION_ERROR' })
+      }
+
+      return host.permission({ task: field({ body, name: 'task' })!, request: field({ body, name: 'request' })!, choice, actor, reason: field({ body, name: 'reason', optional: true }), details: field({ body, name: 'details', optional: true }) })
+    }
+
     case 'send':
       host.send({ card: field({ body, name: 'card' })!, text: field({ body, name: 'text' })!, actor })
 
@@ -533,6 +685,6 @@ export async function hostRequest({ host, body: raw }: {
     }
 
     default:
-      throw new BoardError({ message: 'action must be start, send or set', code: 'VALIDATION_ERROR' })
+      throw new BoardError({ message: 'action must be start, send, set or permission', code: 'VALIDATION_ERROR' })
   }
 }
