@@ -22,6 +22,11 @@ test('agent presence uses reboot evidence and verified process ownership, with u
     },
   }).state, 'gone')
   assert.equal(terminalPresence({ session, bootedAt, run: () => 'ttys999' }).state, 'gone')
+
+  for (const current of ['ttys999', '?', '']) {
+    assert.equal(terminalPresence({ session, verifyProcess: true, bootedAt, run: () => current }).state, 'unknown')
+  }
+
   assert.equal(terminalPresence({ session, bootedAt: bootedAt + 7200000, run: () => assert.fail('must not probe a reused pid after reboot') }).state, 'gone')
   assert.equal(terminalPresence({
     session,

@@ -32,6 +32,10 @@ export function terminalPresence({ session, verifyProcess = false, bootedAt = Da
   try {
     const current = run({ pid }).trim()
 
+    if (verifyProcess && `/dev/${current}` !== tty) {
+      return { state: 'unknown', detail: 'The process answered, but its recorded terminal no longer matches.' }
+    }
+
     return current && `/dev/${current}` === tty
       ? { state: 'present', detail: 'The recorded process still owns its terminal.' }
       : { state: 'gone', detail: 'The recorded process no longer owns its terminal.' }
