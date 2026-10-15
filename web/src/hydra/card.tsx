@@ -78,7 +78,7 @@ export function HydraCard({
           </Button>
         )}
       {card.permissions?.some(p => p.status === 'pending') && <span className="agent-activity">Needs you · permission</span>}
-      {activity && <span className={`agent-activity activity-${activity}`}><i aria-hidden="true" />{activity === 'working' ? 'Working' : 'Finished its turn'}</span>}
+      {activity && <span className={`agent-activity activity-${activity}`}><i aria-hidden="true" />{{ working: 'Working', finished: 'Finished its turn', stopped: 'Stopped' }[activity]}</span>}
       {card.agent && view.lastMessageOnCards && latest && !selected && (
         <LastMessage message={latest} />
       )}

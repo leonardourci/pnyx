@@ -64,12 +64,15 @@ export function safeLink({ link }: { link: Link }): string | undefined {
 export const shownActivity = ({ card }: { card: Card }) =>
   card.sessionActivity && card.sessionActivity !== 'ended' ? card.sessionActivity : card.activity
 
-export function agentActivity({ card }: { card: Card }): 'working' | 'finished' | undefined {
+// A worker whose session ended is stopped, so a dead job never reads as active.
+export function agentActivity({ card }: { card: Card }): 'working' | 'finished' | 'stopped' | undefined {
   if (!card.agent) {
     return undefined
   }
 
-  return (card.sessionActivity ?? card.activity) === 'working' ? 'working' : 'finished'
+  const activity = card.sessionActivity ?? card.activity
+
+  return activity === 'ended' || card.outcome?.state === 'ended' ? 'stopped' : activity === 'working' ? 'working' : 'finished'
 }
 
 // The card a dragged task goes above when dropped on `over`: `over` itself, or the

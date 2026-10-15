@@ -8,7 +8,7 @@ import { InlineConfirm } from '../components/ui/inline-confirm.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { focusElement, useKeyboard, useKeyAction, type ActionContext } from '../keyboard/registry.tsx'
 import type { Command } from './connection.ts'
-import { hydraConfig } from '../../../src/core/hydra.ts'
+import { hydraConfig, lockedColumn } from '../../../src/core/hydra.ts'
 import { AgentKinds } from './agent-kinds.tsx'
 import { columnsFor } from './view.ts'
 import { commandQuery, matchesCommand, resetWidths, oracleSettings, queryWords } from './oracle-catalog.ts'
@@ -165,6 +165,11 @@ export function Oracle({
         </>
       ),
     })
+
+    if (lockedColumn({ state, id: column.id })) {
+      continue
+    }
+
     add({ id: `rename:${column.id}`, label: `Rename ${column.title} column`, words: 'layout title name', content: <><span>Rename column</span><InlineTitle value={column.title} label={`Rename ${column.title} column from Oracle`} save={({ title }) => editColumn({ args: ['rename', column.id, `--title=${title}`] })} /></> })
     add({
       id: `delete:${column.id}`,

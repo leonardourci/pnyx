@@ -1,5 +1,5 @@
 import { storageKey } from './outbox.ts'
-import { HYDRA_CARD } from '../../../src/core/hydra.ts'
+import { HYDRA_CARD, lockedColumn } from '../../../src/core/hydra.ts'
 import { cardSessionId } from '../../../src/core/tasks.ts'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { viewFor } from '../../../src/core/view.ts'
@@ -373,6 +373,7 @@ export function App() {
                               revision={state.configRevision ?? 0}
                               connected={connected}
                               columnIds={columns.map(c => c.id)}
+                              locked={lockedColumn({ state, id: c.id })}
                               editingTitle={newColumn === c.id}
                               titleFinished={() => setNewColumn(null)}
                               createTask={createTask}

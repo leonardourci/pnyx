@@ -70,7 +70,7 @@ test('task labels retain legacy source status instead of claiming every tracked 
   })
   const card = state.cards.c1!
   assert.equal(card.tracking, 'declared')
-  assert.equal(card.column, 'workers_on_it')
+  assert.equal(card.column, 'in_progress')
   assert.equal(card.status, undefined)
   assert.equal(taskLabel({ card }), 'working: step one')
   const moved = reduce({ state, event: event({ d: decideMove({ state, ref: card.id, column: 'done', meta }) }) })
@@ -108,11 +108,11 @@ test('tab titles follow the view, selected card and current needs-you count', ()
 
 test('preferences replay deterministically, guard revisions, and undo removes map overrides', () => {
   const initial = push({ state: emptyHydra(), key: 'a', fields: { title: 'A' } })
-  const edit = event({ d: decideView({ state: initial, patch: { columnWidths: { review: 400 }, cardTraceOverrides: { c1: { tools: true } } }, meta: { ...meta, ifRevision: 0, id: 'view-1' } }) })
+  const edit = event({ d: decideView({ state: initial, patch: { columnWidths: { in_progress: 400 }, cardTraceOverrides: { c1: { tools: true } } }, meta: { ...meta, ifRevision: 0, id: 'view-1' } }) })
   const state = reduce({ state: initial, event: edit })
   assert.equal(initial.view, undefined)
   assert.equal(state.viewRevision, 1)
-  assert.equal(viewFor({ state }).columnWidths.review, 400)
+  assert.equal(viewFor({ state }).columnWidths.in_progress, 400)
   assert.deepEqual(reduce({ state: initial, event: edit }), state)
   assert.deepEqual(decideView({ state, patch: {}, meta: { ...meta, id: 'view-1', ifRevision: 0 } }), { skipped: 'duplicate' })
   assert.throws(() => decideView({ state, patch: { fontSize: 18 }, meta: { ...meta, ifRevision: 0 } }), /changed/)
@@ -452,7 +452,7 @@ test('the turn indicator follows the joined session: working from a prompt or to
   assert.equal(shownActivity({ card: state.cards.c1! }), 'ended')
   state = push({ state, key: 'task', fields: { ...firstmate, activity: 'working: new step' } })
   assert.equal(shownActivity({ card: state.cards.c1! }), 'working: new step')
-  assert.equal(agentActivity({ card: state.cards.c1! }), 'finished')
+  assert.equal(agentActivity({ card: state.cards.c1! }), 'stopped', 'a source status line never revives an ended worker')
 })
 
 test('a dropped card goes above the card it lands on, or below it on its lower half', () => {
@@ -469,10 +469,10 @@ test('a dropped card goes above the card it lands on, or below it on its lower h
   assert.equal(dropBefore({ cards, below: false }), undefined, 'empty column space is the end')
 })
 
-test('only a working turn shows as working; any other session state is finished', () => {
+test('only a working turn shows as working, an ended session is stopped and any other state is finished', () => {
   const card = push({ state: emptyHydra(), key: 'k', fields: { agent: { provider: 'claude', sessionId: 's' } } }).cards.c1!
 
-  for (const [sessionActivity, expected] of [['working', 'working'], ['finished', 'finished'], ['ended', 'finished'], [undefined, 'finished'], ['running Bash', 'finished']] as const) {
+  for (const [sessionActivity, expected] of [['working', 'working'], ['finished', 'finished'], ['ended', 'stopped'], [undefined, 'finished'], ['running Bash', 'finished']] as const) {
     const shown = agentActivity({ card: { ...card, sessionActivity } })
     assert.equal(shown, expected, String(sessionActivity))
   }
