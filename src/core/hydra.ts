@@ -1,5 +1,6 @@
 import { HydraError, EVENT_VERSION, TASK_STATES, type HydraColumn, type HydraConfig, type HydraEvent, type HydraState, type Column, type HydraChange, type TaskStatus } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
+import { permissionAttention } from './permissions.ts'
 import { assignDefined } from './tasks.ts'
 
 export const HYDRA_CARD = '$hydra'
@@ -30,6 +31,8 @@ export function refreshTasks({ state, ids }: {
     : Object.values(state.cards)
 
   for (const card of cards) {
+    permissionAttention({ card })
+
     if (card.automaticTask || card.sourceRefs.some(r => r.adapter === 'firstmate' && r.objectId === '@home')) {
       card.hidden = true
     }

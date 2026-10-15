@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import type { Provider } from './provider.ts'
+import type { AskPermission, Provider } from './provider.ts'
 
 export type SpawnCodex = ({ cwd, env }: {
   cwd: string
@@ -12,6 +12,13 @@ const object = ({ value }: { value: unknown }): ObjectValue =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ? value as ObjectValue : {}
 
 function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
+  let permission: AskPermission | undefined, activeThread: string | undefined
+  const approvals = new Map<string | number, {
+    abort: AbortController
+    thread: unknown
+    turn: unknown
+  }>()
+  const items = new Map<string, ObjectValue>()
   let next = 0, stopped = false, failure: Error | undefined, stderr = ''
   const pending = new Map<number, {
     resolve({ value }: { value: ObjectValue }): void
@@ -31,6 +38,12 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     }
 
     failure = error
+
+    for (const { abort } of approvals.values()) {
+      abort.abort()
+    }
+
+    approvals.clear()
     end({ error })
 
     for (const request of pending.values()) {
@@ -61,12 +74,71 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
 
       if (typeof message.method === 'string') {
         if (message.id !== undefined) {
-          const result = ['item/commandExecution/requestApproval', 'item/fileChange/requestApproval'].includes(message.method)
-            ? { decision: 'decline' } : undefined
-          write({ message: { id: message.id, ...(result ? { result } : { error: { code: -32601, message: 'Pnyx cannot answer this request yet' } }) } })
-        } else if (message.method === 'turn/completed') {
-          events.push(object({ value: message.params }))
+          const id = message.id
+
+          if ((typeof id !== 'string' && typeof id !== 'number') || approvals.has(id)) {
+            return
+          }
+
+          if (!['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval'].includes(message.method)) {
+            write({ message: { id, error: { code: -32601, message: 'Pnyx cannot answer this request yet' } } })
+
+            return
+          }
+
+          const params = object({ value: message.params })
+          const abort = new AbortController()
+          approvals.set(id, { abort, thread: params.threadId, turn: params.turnId })
+          const item = typeof params.itemId === 'string' ? items.get(params.itemId) : undefined
+          const turnPermissions = message.method === 'item/permissions/requestApproval'
+          const input = { ...params, ...(turnPermissions ? { scope: 'turn' } : {}), ...(item?.changes ? { changes: item.changes } : {}) }
+          const tool = turnPermissions ? 'Turn permissions' : message.method === 'item/commandExecution/requestApproval' ? 'Command' : 'File change'
+          const answer = permission && params.threadId === activeThread ? permission({
+            tool,
+            input,
+            signal: abort.signal,
+            ...(typeof params.reason === 'string' ? { description: params.reason } : {}),
+          }) : Promise.resolve({ behavior: 'deny' as const })
+
+          const respond = ({ allow }: { allow: boolean }) => {
+            if (!failure && approvals.get(id)?.abort === abort) {
+              approvals.delete(id)
+              const requested = object({ value: params.permissions })
+              const permissions = Object.fromEntries(
+                Object.entries(requested).filter(([, value]) => value !== null),
+              )
+              const result = turnPermissions
+                ? { permissions: allow ? permissions : {}, scope: 'turn' }
+                : { decision: allow ? 'accept' : 'decline' }
+              write({ message: { id, result } })
+            }
+          }
+
+          void answer.then(result => respond({ allow: result.behavior === 'allow' }), () => respond({ allow: false }))
+        } else if (message.method === 'serverRequest/resolved' || message.method === 'turn/completed') {
+          const params = object({ value: message.params })
+          const turn = object({ value: params.turn })
+
+          for (const [id, request] of approvals) {
+            if (request.thread === params.threadId && (message.method === 'serverRequest/resolved' ? id === params.requestId : request.turn === turn.id)) {
+              approvals.delete(id)
+              request.abort.abort()
+            }
+          }
+
+          if (message.method !== 'turn/completed') {
+            return
+          }
+
+          items.clear()
+          events.push(params)
           wake?.()
+        } else if (message.method === 'item/started') {
+          const item = object({ value: object({ value: message.params }).item })
+
+          if (item.type === 'fileChange' && typeof item.id === 'string') {
+            items.set(item.id, item)
+          }
         }
       } else if (typeof message.id === 'number') {
         const request = pending.get(message.id)
@@ -87,6 +159,10 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
 
   return {
     ended,
+    permissions({ ask, thread }: { ask: AskPermission; thread: string }) {
+      permission = ask
+      activeThread = thread
+    },
     async request({ method, params }: {
       method: string
       params: ObjectValue
@@ -197,7 +273,8 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
         return {
           id,
           ...(typeof thread.path === 'string' ? { path: thread.path } : {}),
-          async* run({ input }) {
+          async* run({ input, permission }) {
+            rpc.permissions({ ask: permission, thread: id })
             const messages = input[Symbol.asyncIterator]()
 
             for (;;) {

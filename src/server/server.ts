@@ -288,6 +288,7 @@ async function startOwnedServer({
   const reload = () => {
     ({ state, offset } = loadHydra({ hydraId }))
     recent = []
+    agents.reconcile({ state })
 
     for (const ws of wss.clients) {
       sendSnapshot({ ws })
@@ -408,6 +409,7 @@ async function startOwnedServer({
     }
 
     offset = read.end
+    agents.reconcile({ state })
 
     if (recent.length > RESUME_LIMIT) {
       recent = recent.slice(-RESUME_LIMIT)

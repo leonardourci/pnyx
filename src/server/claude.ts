@@ -45,7 +45,7 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
       return {
         id,
         path,
-        async* run({ input }) {
+        async* run({ input, permission }) {
           const run = query ?? (await import('@anthropic-ai/claude-agent-sdk')).query
 
           if (closed) {
@@ -66,7 +66,11 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
               settingSources: ['user', 'project', 'local'],
               systemPrompt: { type: 'preset', preset: 'claude_code' },
               tools: { type: 'preset', preset: 'claude_code' },
-              permissionPrompts: 'none',
+              permissionPrompts: 'host',
+              // eslint-disable-next-line pnyx/object-params -- The SDK owns this callback signature.
+              canUseTool: (tool, input, { signal, decisionReason }) => permission({
+                tool, input, signal, description: decisionReason,
+              }),
               env,
               ...sdkOptions({ settings }),
             },

@@ -22,6 +22,10 @@ const finish = ({ id, text }) => {
 }
 
 process.on('SIGUSR1', () => finish({ id: held, text: 'released' }))
+process.on('SIGUSR2', () => {
+  send({ method: 'serverRequest/resolved', params: { threadId, requestId: 'approval' } })
+  finish(waiting)
+})
 
 createInterface({ input: process.stdin }).on('line', line => {
   const message = JSON.parse(line)
@@ -50,9 +54,14 @@ createInterface({ input: process.stdin }).on('line', line => {
     const text = params.input[0].text
     appendFileSync(path, `${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } })}\n`)
 
-    if (text === 'DENY') {
+    if (['DENY', 'ALLOW', 'FILE', 'CANCEL', 'PERMISSIONS_ALLOW', 'PERMISSIONS_DENY'].includes(text)) {
       waiting = { id: turnId, text }
-      send({ id: 'approval', method: 'item/commandExecution/requestApproval', params: { threadId, turnId } })
+
+      if (text === 'FILE') {
+        send({ method: 'item/started', params: { threadId, turnId, item: { id: 'file-item', type: 'fileChange', changes: [{ path: 'allowed.txt', diff: '+approved', kind: { type: 'add' } }] } } })
+      }
+
+      send({ id: 'approval', method: text.startsWith('PERMISSIONS_') ? 'item/permissions/requestApproval' : text === 'FILE' ? 'item/fileChange/requestApproval' : 'item/commandExecution/requestApproval', params: { threadId, turnId, itemId: text === 'FILE' ? 'file-item' : 'command-item', ...(text.startsWith('PERMISSIONS_') ? { permissions: { network: { enabled: true }, fileSystem: null }, reason: 'Network access for this turn' } : text === 'FILE' ? { reason: 'Write a file' } : { command: 'touch allowed.txt', cwd: process.cwd(), reason: 'Run a command' }) } })
     } else {
       // Completion can arrive before the response to turn/start.
       finish({ id: turnId, text })
@@ -60,7 +69,21 @@ createInterface({ input: process.stdin }).on('line', line => {
 
     send({ id, result: { turn: { id: turnId } } })
   } else if (id === 'approval') {
-    if (message.result?.decision !== 'decline') {
+    if (waiting.text.startsWith('PERMISSIONS_')) {
+      const expected = waiting.text === 'PERMISSIONS_ALLOW' ? { network: { enabled: true } } : {}
+
+      if (message.result?.scope !== 'turn' || JSON.stringify(message.result?.permissions) !== JSON.stringify(expected)) {
+        process.exit(8)
+      }
+
+      finish(waiting)
+
+      return
+    }
+
+    const expected = ['ALLOW', 'FILE'].includes(waiting.text) ? 'accept' : 'decline'
+
+    if (message.result?.decision !== expected) {
       process.exit(8)
     }
 

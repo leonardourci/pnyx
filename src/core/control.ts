@@ -83,7 +83,7 @@ const HOSTED_CLAUDE: Controls = {
     { setting: 'effort', confirm: 'equals', options: set({ values: ['low', 'medium', 'high', 'xhigh', 'max'], name: 'effort' }) },
     { setting: 'mode', confirm: 'equals', options: set({ values: ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'], name: 'permission mode' }) },
   ],
-  note: 'Pnyx runs this agent, so a change applies to this session only and is kept for its next turns. A request the agent would ask permission for is refused until Pnyx can answer permission prompts; pick a mode that allows it.',
+  note: 'Pnyx runs this agent, so a change applies to this session only and is kept for its next turns. Permission requests appear on the task with Allow and Deny.',
 }
 
 const HOSTED_CODEX: Controls = {
@@ -93,7 +93,7 @@ const HOSTED_CODEX: Controls = {
     { setting: 'effort', confirm: 'equals', options: set({ values: ['low', 'medium', 'high', 'xhigh'], name: 'effort' }) },
     { setting: 'mode', confirm: 'equals', options: set({ values: ['untrusted', 'on-request', 'never'], name: 'approval policy' }) },
   ],
-  note: 'Pnyx keeps these settings for the next turn. Permission requests are declined until Pnyx can answer them; the sandbox still follows your Codex configuration.',
+  note: 'Pnyx keeps these settings for the next turn. Permission requests appear on the task with Allow and Deny; the sandbox follows your Codex configuration.',
 }
 
 const CODEX_REQUESTS: Control[] = [

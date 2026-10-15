@@ -1,13 +1,16 @@
+import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
-import type { HostedSession } from './provider.ts'
+import type { HostedSession, PermissionDecision } from './provider.ts'
 import { terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
+import { explained, postLine } from '../cli/commands.ts'
+import { permissionEvent } from '../core/permissions.ts'
 import { freeTask } from '../cli/start.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { HydraError, type AgentRef, type AgentSession, type AgentSettings, type Attention, type Card } from '../core/model.ts'
+import { HydraError, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
 import { harnessControls } from '../core/control.ts'
 import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
 import { pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
@@ -39,6 +42,15 @@ export interface Host {
     value: string
     actor: string
   }): Promise<void>
+  permission({ task, request, choice, actor, reason, details }: {
+    task: string
+    request: string
+    choice: 'allow' | 'deny'
+    actor: string
+    reason?: string
+    details?: string
+  }): Record<string, unknown>
+  reconcile({ state }: { state: HydraState }): void
   // Marks a hosted turn that was running when the server last stopped as interrupted.
   recover(): void
   close(): void
@@ -115,6 +127,11 @@ export function createHost({
   const controller = new AbortController()
   const starting = new Set<string>()
   const live = new Map<string, Live>()
+  const pending = new Map<string, {
+    card: string
+    entry: Live
+    finish({ result }: { result: PermissionDecision }): void
+  }>()
   let closing = false
 
   const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
@@ -139,8 +156,37 @@ export function createHost({
 
   const sessionKey = ({ agent }: { agent: AgentRef }) => `${agent.provider === 'claude-code' ? 'claude' : agent.provider}:${agent.sessionId}`
 
+  const expire = ({ id }: { id: string }) => {
+    const waiting = pending.get(id)
+
+    if (!waiting) {
+      return
+    }
+
+    waiting.finish({ result: { behavior: 'deny', message: 'This permission request expired.' } })
+    note({
+      fn: ({ writer }) => {
+        const card = writer.state.cards[waiting.card]
+        const request = card?.permissions?.find(p => p.id === id && p.status === 'pending')
+
+        if (card && request) {
+          writer.append({ event: permissionEvent({ state: writer.state, card, request: { ...request, status: 'expired' }, meta: { at: at(), actor: 'pnyx' } }) })
+        }
+      },
+    })
+  }
+
+  const expireEntry = ({ entry }: { entry: Live }) => {
+    for (const [id, waiting] of pending) {
+      if (waiting.entry === entry) {
+        expire({ id })
+      }
+    }
+  }
+
   const retire = ({ key, entry }: { key: string; entry: Live }) => {
     clearTimeout(entry.idle)
+    expireEntry({ entry })
 
     if (live.get(key) === entry) {
       live.delete(key)
@@ -276,6 +322,58 @@ export function createHost({
     return providers[provider]
   }
 
+  const askPermission = ({ key, entry, tool, input, signal, description }: {
+    tool: string
+    input: Record<string, unknown>
+    signal: AbortSignal
+    description?: string
+    key: string
+    entry: Live
+  }): Promise<PermissionDecision> => {
+    if (closing || signal.aborted) {
+      return Promise.resolve({ behavior: 'deny', message: 'This permission request expired.' })
+    }
+
+    return new Promise<PermissionDecision>(resolve => {
+      const id = randomUUID()
+      const abort = () => expire({ id })
+
+      const finish = ({ result }: { result: PermissionDecision }) => {
+        pending.delete(id)
+        signal.removeEventListener('abort', abort)
+        resolve(result)
+      }
+
+      const request: PermissionRequest = {
+        id,
+        session: key,
+        tool,
+        input,
+        status: 'pending',
+        ...(description ? { description } : {}),
+      }
+      signal.addEventListener('abort', abort, { once: true })
+
+      try {
+        write({
+          fn: ({ writer }) => {
+            const session = writer.state.sessions?.[key]
+            const current = session?.taskId ? writer.state.cards[session.taskId] : undefined
+
+            if (!current || current.agent?.host !== 'pnyx' || sessionId({ agent: current.agent }) !== key) {
+              throw new HydraError({ message: 'the agent is no longer attached to this task', code: 'NO_ROUTE' })
+            }
+
+            pending.set(id, { card: current.id, entry, finish })
+            writer.append({ event: permissionEvent({ state: writer.state, card: current, request, meta: { at: at(), actor: 'pnyx' } }) })
+          },
+        })
+      } catch (error) {
+        finish({ result: { behavior: 'deny', message: `Could not record permission: ${(error as Error).message}` } })
+      }
+    })
+  }
+
   const consume = async ({ key, card, entry }: {
     key: string
     card: Card & { agent: AgentRef }
@@ -298,7 +396,12 @@ export function createHost({
         return
       }
 
-      for await (const activity of entry.session.run({ input: entry.input })) {
+      for await (const activity of entry.session.run({
+        input: entry.input,
+        permission: ({ tool, input, signal, description }) => askPermission({
+          key, entry, tool, input, signal, description,
+        }),
+      })) {
         if (activity === 'finished' && entry.input.pending()) {
           continue
         }
@@ -535,6 +638,63 @@ export function createHost({
 
     send,
 
+    permission: ({ task, request: id, choice, actor, reason, details }) => {
+      const why = explained({ meta: { at: at(), actor, reason } })
+      const waiting = pending.get(id)
+      const result = write({
+        fn: ({ writer }) => {
+          const card = findCard({ state: writer.state, ref: task })
+          const request = card.permissions?.find(p => p.id === id)
+
+          if (!request) {
+            throw new HydraError({ message: `permission request not found: ${id}`, code: 'NOT_FOUND' })
+          }
+
+          if (request.status !== 'pending') {
+            throw new HydraError({ message: `permission request is already ${request.status}`, code: 'PERMISSION_CLOSED' })
+          }
+
+          if (!waiting || waiting.card !== card.id || card.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
+            writer.append({ event: permissionEvent({ state: writer.state, card, request: { ...request, status: 'expired' }, meta: { at: at(), actor: 'pnyx' } }) })
+
+            return { expired: true as const }
+          }
+
+          writer.append({
+            event: permissionEvent({
+              state: writer.state,
+              card,
+              request: { ...request, status: choice },
+              meta: { at: at(), actor, reason: why },
+            }),
+          })
+          let posted: string | undefined
+
+          if (actor === 'hydra') {
+            try {
+              posted = postLine({ writer, hydraId, meta: { at: at(), actor, details }, cardId: card.id, action: `${choice === 'allow' ? 'Allowed' : 'Denied'} ${request.tool} on ${card.title}`, reason: why })
+            } catch (error) {
+              posted = `none: ${(error as Error).message}`
+            }
+          }
+
+          return {
+            expired: false as const,
+            receipt: { task: card.id, request: id, status: choice, ...(posted ? { posted } : {}) },
+          }
+        },
+      })
+
+      if (result.expired) {
+        waiting?.finish({ result: { behavior: 'deny', message: 'This permission request expired.' } })
+        throw new HydraError({ message: 'the agent no longer waits for this request', code: 'PERMISSION_CLOSED' })
+      }
+
+      waiting?.finish({ result: choice === 'allow' ? { behavior: 'allow' } : { behavior: 'deny', message: why || 'Permission denied from Pnyx.' } })
+
+      return result.receipt
+    },
+
     set: async ({ card: ref, setting, value, actor }) => {
       const card = write({
         fn: ({ writer }) => {
@@ -574,8 +734,27 @@ export function createHost({
       }
     },
 
+    reconcile: ({ state }) => {
+      for (const [id, waiting] of pending) {
+        const card = state.cards[waiting.card]
+        const request = card?.permissions?.find(p => p.id === id)
+
+        if (!request || request.status !== 'pending' || card?.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
+          expire({ id })
+        }
+      }
+    },
+
     recover: () => write({
       fn: ({ writer }) => {
+        for (const card of Object.values(writer.state.cards)) {
+          for (const request of card.permissions ?? []) {
+            if (request.status === 'pending' && !pending.has(request.id)) {
+              writer.append({ event: permissionEvent({ state: writer.state, card, request: { ...request, status: 'expired' }, meta: { at: at(), actor: 'pnyx' } }) })
+            }
+          }
+        }
+
         for (const session of Object.values(writer.state.sessions ?? {})) {
           if (session.agent.host === 'pnyx' && !live.has(session.id) && (session.sessionActivity ?? session.activity) === 'working') {
             interrupt({ writer, agent: session.agent, note: 'Pnyx stopped during this turn. Send a message to continue it.' })
@@ -634,6 +813,15 @@ export async function hostRequest({ host, body: raw }: {
       return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, replacement: field({ body, name: 'replacement', optional: true }), id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
     }
 
+    case 'permission': {
+      const choice = field({ body, name: 'choice' })
+
+      if (choice !== 'allow' && choice !== 'deny') {
+        throw new HydraError({ message: 'choice must be allow or deny', code: 'VALIDATION_ERROR' })
+      }
+
+      return host.permission({ task: field({ body, name: 'task' })!, request: field({ body, name: 'request' })!, choice, actor, reason: field({ body, name: 'reason', optional: true }), details: field({ body, name: 'details', optional: true }) })
+    }
     case 'continue':
       return host.continue({ task: field({ body, name: 'task' })!, id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }), check: body.check === true })
 
@@ -655,6 +843,6 @@ export async function hostRequest({ host, body: raw }: {
     }
 
     default:
-      throw new HydraError({ message: 'action must be start, continue, send or set', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'action must be start, continue, send, set or permission', code: 'VALIDATION_ERROR' })
   }
 }

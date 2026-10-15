@@ -112,7 +112,7 @@ test('Codex closes with the server and lazily resumes its interrupted thread on 
   assert.equal(task().attention.some(a => a.key === 'pnyx:interrupted'), false)
 })
 
-test('Codex queues replies during a turn and declines approval requests without hanging', async () => {
+test('Codex queues replies during a turn and waits for the Hydra to answer its permission', async () => {
   const { fixture, task, send } = await lab()
   await startTask({ hydraId: 'lab', task: 'ship', meta })
   await until({ check: () => task().sessionActivity === 'finished' })
@@ -121,6 +121,9 @@ test('Codex queues replies during a turn and declines approval requests without 
   await send({ text: 'DENY' })
   assert.equal(task().sessionActivity, 'working')
   fixture.children[0]!.kill('SIGUSR1')
+  await until({ check: () => task().permissions?.[0]?.status === 'pending' })
+  assert.equal(fixture.messages().some(m => m.id === 'approval'), false)
+  await commands.task(['permission', 'ship', task().permissions![0]!.id, 'deny', '--hydra', 'lab'])
   await until({ check: () => task().sessionActivity === 'finished' })
   assert.equal(fixture.messages().find(m => m.id === 'approval')?.result?.decision, 'decline')
 })
@@ -248,4 +251,67 @@ test('native hook and transcript settings preserve hosted picker changes across 
   assert.equal(turn.model, desired.model)
   assert.equal(turn.effort, desired.effort)
   assert.equal(turn.approvalPolicy, desired.mode)
+})
+
+test('Codex command and file approvals use the same inline permission events and apply only to that call', async () => {
+  const { fixture, task, send } = await lab()
+  await startTask({ hydraId: 'lab', task: 'ship', meta })
+  await until({ check: () => task().sessionActivity === 'finished' })
+  const column = task().column
+  await send({ text: 'ALLOW' })
+  await until({ check: () => task().permissions?.length === 1 })
+  const command = task().permissions![0]!
+  assert.equal(command.tool, 'Command')
+  assert.equal(command.input.command, 'touch allowed.txt')
+  await commands.task(['permission', 'ship', command.id, 'allow', '--actor', 'hydra', '--reason', 'Scoped to the task folder', '--hydra', 'lab'])
+  await until({ check: () => task().sessionActivity === 'finished' })
+  assert.equal(task().permissions![0]!.status, 'allow')
+  assert.equal(fixture.messages().find(m => m.id === 'approval')?.result?.decision, 'accept')
+  await assert.rejects(async () => commands.task(['permission', 'ship', command.id, 'deny', '--hydra', 'lab']), /already allow/)
+  await send({ text: 'FILE' })
+  await until({ check: () => task().permissions?.length === 2 })
+  const file = task().permissions![1]!
+  assert.equal(file.tool, 'File change')
+  assert.deepEqual(file.input.changes, [{ path: 'allowed.txt', diff: '+approved', kind: { type: 'add' } }])
+  await commands.task(['permission', 'ship', file.id, 'allow', '--hydra', 'lab'])
+  await until({ check: () => task().sessionActivity === 'finished' })
+  assert.deepEqual(fixture.messages().filter(m => m.id === 'approval')
+    .map(m => m.result?.decision), ['accept', 'accept'])
+  assert.equal(task().column, column)
+})
+
+test('Codex resolved requests and a server restart expire approvals rather than leave answer controls', async () => {
+  const { fixture, task, send } = await lab()
+  await startTask({ hydraId: 'lab', task: 'ship', meta })
+  await until({ check: () => task().sessionActivity === 'finished' })
+  await send({ text: 'CANCEL' })
+  await until({ check: () => task().permissions?.length === 1 })
+  fixture.children[0]!.kill('SIGUSR2')
+  await until({ check: () => task().permissions?.[0]?.status === 'expired' && task().sessionActivity === 'finished' })
+  assert.equal(fixture.messages().some(m => m.id === 'approval'), false)
+  await send({ text: 'DENY' })
+  await until({ check: () => task().permissions?.length === 2 })
+  await server!.close()
+  server = await startServer({ hydraId: 'lab', spawnCodex: fixture.spawnCodex })
+  assert.equal(task().permissions![1]!.status, 'expired')
+  assert.equal(task().attention.some(a => a.key.startsWith('pnyx:permission:')), false)
+  await assert.rejects(async () => commands.task(['permission', 'ship', task().permissions![1]!.id, 'allow', '--hydra', 'lab']), /already expired/)
+})
+
+test('Codex permission profiles grant only the requested turn scope and denial grants nothing', async () => {
+  const { fixture, task, send } = await lab()
+  await startTask({ hydraId: 'lab', task: 'ship', meta })
+  await until({ check: () => task().sessionActivity === 'finished' })
+
+  for (const [index, choice] of (['allow', 'deny'] as const).entries()) {
+    await send({ text: `PERMISSIONS_${choice.toUpperCase()}` })
+    await until({ check: () => task().permissions?.length === index + 1 })
+    const request = task().permissions![index]!
+    assert.equal(request.tool, 'Turn permissions')
+    assert.equal(request.input.scope, 'turn')
+    await commands.task(['permission', 'ship', request.id, choice, '--hydra', 'lab'])
+    await until({ check: () => task().sessionActivity === 'finished' })
+    const response = fixture.messages().filter(m => m.id === 'approval')[index]!
+    assert.deepEqual(response.result, { permissions: choice === 'allow' ? { network: { enabled: true } } : {}, scope: 'turn' })
+  }
 })

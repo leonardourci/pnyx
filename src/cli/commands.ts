@@ -1,4 +1,3 @@
-import { askHost } from '../server/state.ts'
 import { setupService } from '../server/service.ts'
 import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths, viewFor } from '../core/view.ts'
 import { createHash, randomUUID } from 'node:crypto'
@@ -41,7 +40,7 @@ import {
   type OutcomeState,
 } from '../core/model.ts'
 import { emptyHydra, replay } from '../core/reducer.ts'
-import { readServer } from '../server/state.ts'
+import { askHost, readServer } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
@@ -438,6 +437,7 @@ function cardDetail({ card }: { card: Card }): Output {
     detail.settings = card.settings
   }
 
+  detail.permissions = card.permissions?.length ? card.permissions : 'none'
   detail.attention = card.attention.length ? card.attention : 'none'
   detail.links = card.links.length
     ? card.links.map(l => ({ kind: l.kind, number: l.number ?? '', title: l.title ?? '', state: l.state ?? 'unknown', url: l.url }))
@@ -543,11 +543,33 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       via: { type: 'string' },
       kind: { type: 'string' },
     },
-    positionals: 3,
+    positionals: 4,
   })
   const action = positionals[0]
   const m = meta({ values })
   const url = values['paseo-url'] as string | undefined
+
+  if (action === 'permission') {
+    const reason = explained({ meta: m })
+    const choice = positionals[3]
+
+    if (choice !== 'allow' && choice !== 'deny') {
+      throw new HydraError({ message: 'Use task permission <task> <request> allow|deny', code: 'VALIDATION_ERROR' })
+    }
+
+    return askHost({
+      hydraId,
+      body: {
+        action: 'permission',
+        task: required({ value: positionals[1], what: 'task id' }),
+        request: required({ value: positionals[2], what: 'request id' }),
+        choice,
+        actor: m.actor,
+        ...(reason ? { reason } : {}),
+        ...(m.details ? { details: m.details } : {}),
+      },
+    })
+  }
 
   if (action === 'paseo') {
     return paseoStatus({ url })
@@ -744,7 +766,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (action !== 'attach' && action !== 'detach') {
-    throw new AxiError('Use task create, list, show, status, history, rename, start, paseo, sessions, attach or detach', 'VALIDATION_ERROR')
+    throw new AxiError('Use task create, list, show, status, history, rename, start, permission, paseo, sessions, attach or detach', 'VALIDATION_ERROR')
   }
 
   const ref = required({ value: positionals[1], what: 'task id' })
@@ -1430,6 +1452,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'board.configured': return `Hydra ${event.data.name}; Hydra ${event.data.hydra.id}`
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
+    case 'task.permission': return `${event.data.tool} permission ${event.data.id}: ${event.data.status}`
     case 'task.brief': return 'Task brief updated'
     case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
     case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Hydra memory: ${event.data.key}`
@@ -1690,7 +1713,7 @@ commands:
   pnyx-axi                                   Show the Hydra summary
   hydra create|list|homes|show|set            Create, list or configure Hydras
   column create|rename|describe|resize|delete|reorder|list  Edit columns
-  task create|list|show|rename|status|history Tasks and one level of subtasks (--parent <id>)
+  task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
   kind list|set|remove                       The agent (harness, model, effort, mode, quota) each task kind starts on
@@ -1773,11 +1796,12 @@ pnyx-axi task rename <id> --title <title>
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
+pnyx-axi task permission <task> <request> allow|deny [--reason <text>]
 pnyx-axi task continue <task> [--check]
 pnyx-axi task start <task> [--via pnyx|paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>] [--replace-session <session>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--prompt <text>] [--harness <name>] [--folder <path>]
-Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide and start, as to move. Pnyx keeps it on the event,
+Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start and permission, as to move. Pnyx keeps it on the event,
 posts "<what Hydra did>: <reason>" in Hydra’s chat with --details under it, and returns that line as posted.
 pnyx-axi task paseo [--paseo-url <url>]
 pnyx-axi task sessions

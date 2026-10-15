@@ -7,6 +7,7 @@ import { joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 import { ComposerSettings } from './agent-settings.tsx'
 import { Composer } from './composer.tsx'
 import { Messages } from './messages.tsx'
+import { InlinePermissions } from './permissions.tsx'
 import { InlineQuestions } from './questions.tsx'
 import { agentActivity } from './view.ts'
 import type { Command } from './connection.ts'
@@ -138,6 +139,7 @@ export function Thread({
             Agent is running
           </p>
         )}
+        <InlinePermissions card={card} command={command} notify={notify} />
         <InlineQuestions
           card={card}
           command={command}
