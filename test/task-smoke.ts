@@ -138,6 +138,16 @@ try {
   assert.match(notes.at(-1)?.body ?? '', /asks for a worker on task/)
   assert.equal(hydraId().hydraMessages?.at(-1)?.task, requested)
   assert.equal(hydraId().cards[requested]?.agent, undefined)
+  await click({ selector: '[aria-label="Close detail"]' })
+  await click({ selector: '[data-task="c1"] .card-open' })
+  const oldSession = hydraId().cards.c1?.agent?.sessionId
+  await text({ label: 'Ask Hydra to start fresh' })
+  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Inspect its current attachment")', label: 'Firstmate fresh request appears in Hydra chat' })
+  const freshNotes = JSON.parse(readFileSync(join(firstmate, 'inbox.json'), 'utf8')) as { body: string }[]
+  assert.match(freshNotes.at(-1)?.body ?? '', /Start fresh from the brief.*Inspect its current attachment/)
+  assert.equal(hydraId().cards.c1?.agent?.sessionId, oldSession)
+  assert.equal(received.length, 1)
+
 
   process.stdout.write('Task, brief, attachment and column browser smoke passed.\n')
 } finally {

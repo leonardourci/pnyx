@@ -14,9 +14,10 @@ export function useStartRequest({ card, firstmate, command, notify }: {
   const start = () => run({
     save: async () => {
       try {
+        const fresh = card.agent ? `Start fresh from the brief for task ${card.id}: ${card.title}. Inspect its current attachment and task history before deciding how to replace it.` : undefined
         const result = await command(firstmate
-          ? { name: 'task', args: ['start', card.id, '--via', 'firstmate', '--event-id', attempt.current] }
-          : { name: 'hydra', args: ['send', '--task', card.id, '--action', 'worker', '--event-id', attempt.current] })
+          ? { name: 'task', args: ['start', card.id, '--via', 'firstmate', '--event-id', attempt.current, ...(fresh ? ['--prompt', fresh] : [])] }
+          : { name: 'hydra', args: ['send', '--task', card.id, '--action', 'worker', '--event-id', attempt.current, ...(fresh ? ['--text', fresh] : [])] })
 
         if (result.sent === 'failed') {
           notify({ text: 'Request saved in Hydra’s chat. Firstmate could not be reached; try Start again to resend.' })
