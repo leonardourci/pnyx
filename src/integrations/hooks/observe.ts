@@ -375,7 +375,7 @@ export function attend({ current, change }: { current: Attention[]; change: Atte
   const kept = current.filter(a => !change.clear?.some(prefix => a.key.startsWith(prefix)))
   const add = change.add
 
-  if (!add || (change.ifNone && kept.some(a => a.blocking))) {
+  if (!add || (change.ifNone && kept.some(a => a.blocking && !a.answered))) {
     return kept
   }
 

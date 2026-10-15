@@ -204,6 +204,14 @@ test('a form field the board cannot fill as the terminal would leaves the whole 
   assert.equal(formWith({ property: { type: 'string', enum: 'abcdefghi'.split('') } }), undefined, 'a long choice list')
 })
 
+test('an answered request no longer holds back a new one', () => {
+  const answered = { ...permission, answered: 'r1' }
+  const note = { kind: 'permission', key: 'hook:notification', blocking: true, text: 'Claude needs your permission' }
+  const change = { add: note, ifNone: true }
+  assert.deepEqual(attend({ current: [answered], change }), [note, answered])
+  assert.deepEqual(attend({ current: [permission], change }), [permission])
+})
+
 test('a delivered answer marks its request answered and frees the card until the session moves on', () => {
   const event = ({ seq, type, data }: { seq: number; type: string; data: unknown }): BoardEvent =>
     ({ v: 1, seq, id: `e${seq}`, at: `2026-10-14T17:00:0${seq}Z`, actor: 'cli', cardId: 'c1', type, data }) as BoardEvent
