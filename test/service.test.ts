@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -46,4 +46,26 @@ test('login service starts the same board, survives exit and uninstalls through 
   assert.equal(existsSync(installed.path), false)
   assert.throws(() => setupService({ ...options, platform: 'linux' }), /requires macOS/)
   assert.throws(() => setupService({ ...options, port: 0 }), /1 to 65535/)
+})
+
+test('login service runs Node through a PATH link that survives a Homebrew upgrade', () => {
+  const root = mkdtempSync(join(tmpdir(), 'pnyx-service-node-'))
+  process.env.PNYX_HOME = join(root, 'pnyx')
+  const cellar = join(root, 'Cellar', 'node', '26.4.0', 'bin')
+  const other = join(root, 'other')
+  const bin = join(root, 'bin')
+
+  for (const dir of [cellar, other, bin]) {
+    mkdirSync(dir, { recursive: true })
+  }
+
+  writeFileSync(join(cellar, 'node'), '')
+  writeFileSync(join(other, 'node'), '')
+  symlinkSync(join(cellar, 'node'), join(bin, 'node'))
+  const options = { board: 'default', platform: 'darwin' as const, userHome: root, preview: true, node: join(cellar, 'node'), run: () => '' }
+  const linked = setupService({ ...options, searchPath: ['relative', other, bin].join(':') }).plist!
+  assert.match(linked, new RegExp(`<array><string>${join(bin, 'node')}</string>`))
+  assert.doesNotMatch(linked, /<array><string>[^<]*Cellar/)
+  const unlinked = setupService({ ...options, searchPath: other }).plist!
+  assert.match(unlinked, new RegExp(`<array><string>${join(cellar, 'node')}</string>`))
 })
