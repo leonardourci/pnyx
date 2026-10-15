@@ -353,6 +353,10 @@ export function joinedKey({ state, key, folder, terminal, probed = false }: {
 
   const session = terminal?.paseoTerminal
 
+  if (session && session === state.board?.hydra.terminal) {
+    return key
+  }
+
   if (joined) {
     return (!joined.agent || joined.agent.sessionId === sessionId)
       && (!joined.terminal?.paseoTerminal || joined.terminal.paseoTerminal === session)
@@ -835,7 +839,7 @@ export function decideUndo({ state, target, meta }: {
     return 'event' in decision ? { event: { ...decision.event, undoes: target.id } } : decision
   }
 
-  if (['board.configured', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'worker.launched'].includes(target.type)) {
+  if (['board.configured', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'worker.launched', 'board.agents'].includes(target.type)) {
     throw notUndoable({ message: `${target.id} records durable work history; append a correction instead` })
   }
 

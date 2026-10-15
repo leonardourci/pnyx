@@ -240,6 +240,8 @@ export interface HydraIdentity {
   name: string
   session?: string
   home?: string
+  // The Paseo terminal `hydra start` opened, so Hydra's session never joins a task.
+  terminal?: string
 }
 export interface BoardColumn {
   id: Column
@@ -290,6 +292,7 @@ export type HydraEvent = EventBase & (
   | { type: 'task.mirrored'; data: FirstmateRecord }
   | { type: 'hydra.message'; data: Omit<HydraMessage, 'id' | 'at' | 'actor'> }
   | { type: 'worker.launched'; data: WorkerLaunch }
+  | { type: 'board.agents'; data: { agents: Record<string, AgentConfig>; before: Record<string, AgentConfig> } }
 )
 
 // before holds the earlier value of each field the push changed (null when it was
@@ -400,7 +403,7 @@ export type BoardEvent =
   | HydraEvent
   | ChatEvent
 export type EventType = BoardEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'worker.launched']
+export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'worker.launched', 'board.agents']
 
 export interface BoardState {
   board?: BoardConfig

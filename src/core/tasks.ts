@@ -27,17 +27,17 @@ export function findSession({ state, ref }: { state: BoardState; ref: string }):
 }
 
 // The session running in the caller's own terminal, for `--session self`: the newest
-// recorded session whose Paseo terminal, tmux pane or Herdr pane matches.
+// live session whose Paseo terminal, tmux pane or Herdr pane matches.
 export function selfSession({ state, here }: {
   state: BoardState
   here: Pick<TerminalFacts, 'paseoTerminal' | 'tmuxPane' | 'herdrPane'>
 }): AgentSession {
   const keys = (['paseoTerminal', 'tmuxPane', 'herdrPane'] as const).filter(k => here[k])
-  const seq = ({ s }: { s: AgentSession }) =>
-    state.cards[s.taskId ?? s.originCardId]?.updatedSeq ?? 0
+  const rank = ({ s }: { s: AgentSession }) => (s.activity === 'ended' ? 0 : 1e12)
+    + (state.cards[s.taskId ?? s.originCardId]?.updatedSeq ?? 0)
   const found = Object.values(state.sessions ?? {})
     .filter(s => keys.some(k => s.terminal?.[k] === here[k]))
-    .sort((a, b) => seq({ s: b }) - seq({ s: a }))[0]
+    .sort((a, b) => rank({ s: b }) - rank({ s: a }))[0]
 
   if (!found) {
     throw new BoardError({ message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no Paseo, tmux or Herdr pane in the environment', code: 'NOT_FOUND', help: ['Run `pnyx-axi task sessions` and pass --session <id>'] })

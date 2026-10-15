@@ -340,7 +340,7 @@ export function ingestSpool({ board }: {
 }
 
 function receipt({ state, event }: { state: BoardState; event: BoardEvent }): Output {
-  if (event.type === 'board.configured' || event.type === 'board.columns') {
+  if (event.type === 'board.configured' || event.type === 'board.columns' || event.type === 'board.agents') {
     return {
       event: { seq: event.seq, id: event.id, type: event.type },
       board: state.board,
@@ -1233,6 +1233,7 @@ export function summarize({ event }: { event: BoardEvent }): string {
     case 'task.declared': return `${event.data.state}: ${event.data.note}`
     case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
     case 'hydra.message': return `${event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}`
+    case 'board.agents': return `Agent kinds: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'worker.launched': return `Launched ${event.data.kind} worker: ${event.data.agent.harness}${event.data.agent.model ? ` ${event.data.agent.model}` : ''} in ${event.data.folder}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
