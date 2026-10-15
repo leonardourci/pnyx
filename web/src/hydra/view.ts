@@ -7,8 +7,13 @@ export const columnsFor = ({ state }: { state: HydraState }) => {
   return hydraConfig({ state }).columns
 }
 
-export function pageTitle({ page, cards, selected = null }: { page: string; cards: HydraState['cards']; selected?: string | null }): string {
-  const count = Object.values(cards).filter(c => liveTask({ card: c }) && (c.attention.some(a => a.blocking && !a.answered) || c.status?.state === 'needs_you' || c.status?.state === 'blocked')).length
+export function pageTitle({ page, cards, selected = null, needsYou = 'needs_you' }: {
+  page: string
+  cards: HydraState['cards']
+  selected?: string | null
+  needsYou?: string
+}): string {
+  const count = Object.values(cards).filter(c => liveTask({ card: c }) && c.column === needsYou).length
   const label = page === 'history' ? 'History' : page === 'settings' ? 'Settings'
     : (selected && cards[selected]?.title) || 'Hydra'
 

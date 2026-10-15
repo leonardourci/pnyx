@@ -59,6 +59,7 @@ try {
   await check({ condition: 'document.body.textContent.includes("not started") && document.body.textContent.includes("finished its turn") && document.body.textContent.includes("stopped · 2h ago") && document.body.textContent.includes("asks") && document.body.textContent.includes("done · 2h ago") && document.body.textContent.includes("hidden in 3h")', label: 'states and relative Done labels' })
   await evaluate({ code: `const card = document.querySelector('[data-task="${stopped}"]'); card.querySelector('.card-open').focus(); return true;` })
   await check({ condition: 'document.body.textContent.includes("copy not cleaned")', label: 'flagged copy state shown' })
+  await evaluate({ code: 'const probe = document.createElement("span"); probe.style.color = "var(--color-red)"; document.body.append(probe); if (getComputedStyle(probe).color !== getComputedStyle(document.querySelector(".activity-stopped")).color) throw new Error("Stopped worker must be red"); probe.remove(); return true;' })
   await screenshot({ name: 'card-states-after.png' })
   await click({ selector: `[data-task="${stopped}"] .card-resume` })
   await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Resume the stopped worker")', label: 'Resume request appears in Hydra chat' })
