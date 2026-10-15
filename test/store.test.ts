@@ -139,7 +139,7 @@ test('corruption inside the log is rejected, not skipped', () => {
 test('a lock left by a dead process is taken over', () => {
   const dir = boardDir({ board: 'default' })
   mkdirSync(dir, { recursive: true })
-  const dead = spawnSync(process.execPath, ['-e', '']).pid!
+  const dead = spawnSync(process.execPath, ['-e', '']).pid
   writeFileSync(join(dir, 'writer.lock'), String(dead))
   appendAll({ events: readStream({ name: 'lifecycle' }).slice(0, 1) })
   assert.equal(existsSync(join(dir, 'writer.lock')), false)
@@ -169,12 +169,12 @@ test('two writers racing to take over a dead lock never hold it together', async
   `
   const dir = boardDir({ board: 'default' })
   mkdirSync(dir, { recursive: true })
-  const dead = spawnSync(process.execPath, ['-e', '']).pid!
+  const dead = spawnSync(process.execPath, ['-e', '']).pid
 
   for (let round = 0; round < 40; round++) {
     writeFileSync(join(dir, 'writer.lock'), String(dead))
     const children = [0, 1].map(() => {
-      const child = spawn(process.execPath, ['--input-type=module', '-e', contender], { env: process.env })
+      const child = spawn(process.execPath, ['--input-type=module', '-e', contender])
       let stderr = ''
       child.stderr.on('data', chunk => (stderr += chunk))
 
@@ -185,5 +185,6 @@ test('two writers racing to take over a dead lock never hold it together', async
     const results = await Promise.all(children.map(({ done }) => done))
     assert.deepEqual(results, [{ code: 0, stderr: '' }, { code: 0, stderr: '' }], `round ${round}`)
     assert.equal(existsSync(join(dir, 'writer.lock')), false)
+    assert.equal(existsSync(join(dir, 'writer.lock.takeover')), false)
   }
 })
