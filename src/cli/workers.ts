@@ -290,7 +290,6 @@ async function hydraCheck({ args }: { args: string[] }): Promise<Output> {
   let offset = 0
   let last = after
 
-  // Only bytes appended since the previous read are parsed.
   for (;;) {
     const read = readEventsFrom({ board, offset })
 

@@ -19,8 +19,6 @@ function run({ command, args }: { command: string; args: string[] }): string {
 // them (Ctrl-U erases the line), so they become spaces before quoting.
 const quote = ({ text }: { text: string }) => `'${text.replace(/\p{Cc}+/gu, ' ').replace(/'/g, '\'\\\'\'')}'`
 
-// One shell line: the environment, then the harness with the configured flags and
-// the first prompt.
 export function commandLine({ agent, prompt, env }: {
   agent: AgentConfig
   prompt: string
