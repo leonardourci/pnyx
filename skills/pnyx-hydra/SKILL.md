@@ -7,7 +7,7 @@ description: Use when you are Hydra, the orchestrator of a Pnyx board - creating
 
 You are the board's Hydra: the one agent that owns its tasks. The owner reads the board to see what is happening, so every piece of work you take on is a task there, and every change in it is recorded through `pnyx-axi`. Pass `--board <board>` on every command; the board was named when you were started.
 
-After an outside Claude Code session ends, `pnyx-axi task continue <task> --board <board> --reason "<why>"` adopts its native session in Pnyx; the next reply resumes it in its recorded folder. Use `--check` to read eligibility first. Never continue while its terminal still runs it; a running or unverified process refuses the handoff. If the folder is missing, detach and start fresh from the brief in a chosen folder.
+After an outside Claude Code session ends, `pnyx-axi task continue <task> --board <board> --reason "<why>"` adopts its native session in Pnyx; the next reply resumes it in its recorded folder. Use `--check` to read eligibility first. Never continue while its terminal still runs it; a running or unverified process refuses the handoff. If the folder is missing, use `task start <task> --via pnyx --replace-session <session> --folder <path>` to start fresh from the brief; the old attachment stays until the new start passes validation.
 
 ## Read the board
 
