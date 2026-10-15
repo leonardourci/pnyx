@@ -1,3 +1,4 @@
+import { fixtureCli } from './cli-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -18,7 +19,7 @@ const cards = ({ out }: { out: string }) => [...out.matchAll(/^ {2}- card: (\S+)
 function hydraId({ extra = {} }: { extra?: Record<string, string> } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-sem-'))
   const env = { ...process.env, PNYX_HOME: home, PNYX_SEMANTIC_STUB: '1', ...extra }
-  const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const run = fixtureCli({ home, execute: ({ args }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) })
   const fails = ({ args, code, message }: { args: string[]; code: string; message?: RegExp }) =>
     assert.throws(() => run({ args: [...args] }), (error: { stdout: string }) => {
       assert.match(error.stdout, new RegExp(`^code: ${code}$`, 'm'))
@@ -44,7 +45,7 @@ function hydraId({ extra = {} }: { extra?: Record<string, string> } = {}) {
   // Turning semantic search off stops the worker within seconds.
   const stop = () => run({ args: ['settings', 'set', 'oracle.semantic', 'off'] })
 
-  const lexical = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env: { ...env, PNYX_SEMANTIC: 'off' }, encoding: 'utf8' })
+  const lexical = fixtureCli({ home, execute: ({ args }) => execFileSync(process.execPath, [BIN, ...args], { env: { ...env, PNYX_SEMANTIC: 'off' }, encoding: 'utf8' }) })
 
   return { home, env, run, lexical, fails, push, stop }
 }
@@ -275,9 +276,9 @@ test('the reranker reorders the top results, marks weak ones and says when nothi
 })
 
 test('turned off, search output is exactly the full-text output', async () => {
-  const { run, stop, env } = hydraId({ })
+  const { run, stop, env, home } = hydraId({ })
   const queries = [['orders'], ['reverted', 'cookie'], ['migraton'], ['orders', '--card', 'c1']]
-  const off = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env: { ...env, PNYX_SEMANTIC: 'off' }, encoding: 'utf8' })
+  const off = fixtureCli({ home, execute: ({ args }) => execFileSync(process.execPath, [BIN, ...args], { env: { ...env, PNYX_SEMANTIC: 'off' }, encoding: 'utf8' }) })
   const before = queries.map(q => off({ args: ['oracle', ...q] }))
   run({ args: ['oracle', 'setup', '--semantic'] })
   await embedded({ run })
@@ -291,7 +292,7 @@ test('a changed model drops the vectors and embeds again; the worker answers eve
   try {
     run({ args: ['oracle', 'setup', '--semantic'] })
     await embedded({ run })
-    const db = join(home, 'boards', 'default', 'search.db')
+    const db = join(home, 'hydras', 'default', 'search.db')
     const { sqlite } = await import('../src/oracle/index.ts')
     const { DatabaseSync } = sqlite()
     const w = new DatabaseSync(db)

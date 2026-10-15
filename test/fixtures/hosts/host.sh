@@ -22,8 +22,8 @@ input=
   printf -- '---\n'
 } >>"$dir/calls.log"
 if [ -f "$dir/$name.spool.$n" ]; then
-  mkdir -p "$PNYX_HOME/boards/default/spool"
-  cp "$dir/$name.spool.$n" "$PNYX_HOME/boards/default/spool/000000000000000-$name-$n.json"
+  mkdir -p "$PNYX_HOME/hydras/default/spool"
+  cp "$dir/$name.spool.$n" "$PNYX_HOME/hydras/default/spool/000000000000000-$name-$n.json"
 fi
 [ -f "$dir/$name.append.$n" ] && cat "$dir/$name.append.$n" >>"$(cat "$dir/append.path")"
 pick() { if [ -f "$dir/$name.$1.$n" ]; then cat "$dir/$name.$1.$n"; elif [ -f "$dir/$name.$1" ]; then cat "$dir/$name.$1"; fi; }

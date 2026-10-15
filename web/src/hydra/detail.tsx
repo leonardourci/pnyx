@@ -5,6 +5,8 @@ import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Input, Textarea } from '../components/ui/controls.tsx'
 import { TaskSession } from './task-session.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
+import { CopyId } from '../components/ui/copy-id.tsx'
+import { HideAfter } from './hide-after.tsx'
 import { Menu } from '../components/ui/menu.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { harnessName } from './agent-settings.tsx'
@@ -95,6 +97,13 @@ export function Detail({
         {card.agent && <span className="agent-chip">{`${harnessName({ provider: card.agent.provider })}${card.agent.host === 'pnyx' ? ' · Pnyx' : card.terminal?.tty ? ' · terminal' : ''}`}</span>}
         <div className="row">
           <Menu label="Task menu">
+            <CopyId id={card.id} notify={notify} />
+            <HideAfter
+              card={card}
+              command={command}
+              connected={connected}
+              notify={notify}
+            />
             <Button onClick={() => setRenaming(true)}>Rename task</Button>
             {!card.automaticTask && (
               <Button disabled={!connected} onClick={() => setReminding(true)}>Remind me…</Button>

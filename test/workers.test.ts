@@ -29,11 +29,11 @@ function fixture() {
     return assert.fail(`${args.join(' ')} succeeded`)
   }
 
-  const state = (): HydraState => JSON.parse(readFileSync(join(root, 'boards/default/snapshot.json'), 'utf8')).state
+  const state = (): HydraState => JSON.parse(readFileSync(join(root, 'hydras/default/snapshot.json'), 'utf8')).state
   let n = 0
 
   const hook = ({ session, cwd, terminal }: { session: string; cwd: string; terminal: string }) => {
-    const spool = join(root, 'boards/default/spool')
+    const spool = join(root, 'hydras/default/spool')
     mkdirSync(spool, { recursive: true })
     n++
     writeFileSync(join(spool, `${String(n).padStart(4, '0')}.json`), JSON.stringify({
@@ -92,9 +92,9 @@ test('hydra check lists only tracked changes by others and waits for the next on
   f.run({ args: ['task', 'rename', 'a', '--title', 'First, renamed'] })
   f.run({ args: ['task', 'status', 'a', 'needs_you', '--note', 'which db?'], extra: { PNYX_ACTOR: 'worker:c1' } })
   const out = f.run({ args: ['hydra', 'check', '--after', String(start)] })
-  assert.match(out, /evt_\d+,task\.declared,c1,none,"worker:c1","needs_you: which db\?"/)
-  assert.doesNotMatch(out, /task\.created,c\d+,none,hydra|card\.pushed/)
-  assert.match(out, /hydra\.message,c\d+,send,hydra,"Hydra: Created By Hydra: split out the docs"/)
+  assert.match(out, /evt_\d+,task\.declared,task-[0-9a-f-]{36},none,"worker:c1","needs_you: which db\?"/)
+  assert.doesNotMatch(out, /task\.created,task-[0-9a-f-]{36},none,hydra|card\.pushed/)
+  assert.match(out, /hydra\.message,task-[0-9a-f-]{36},send,hydra,"Hydra: Created By Hydra: split out the docs"/)
   const through = Number(/through: (\d+)/.exec(out)![1])
   assert.equal(through, f.state().seq)
 

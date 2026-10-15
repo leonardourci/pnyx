@@ -105,6 +105,7 @@ export function projectSession({ state, session }: {
       terminal: session.terminal && { ...session.terminal },
       activity: session.activity,
       sessionActivity: session.sessionActivity,
+      stoppedAt: session.stoppedAt,
     },
   })
   task.attention = [...task.attention.filter(a => !a.key.startsWith('hook:')), ...session.attention]
@@ -137,6 +138,7 @@ export function applyAttachment({ state, event }: {
     delete old.terminal
     delete old.activity
     delete old.sessionActivity
+    delete old.stoppedAt
     old.attention = old.attention.filter(a => !a.key.startsWith('hook:') && a.key !== INTERRUPTED)
 
     if (old.outcome?.source === 'hooks') {
@@ -198,6 +200,7 @@ export function observeSession({ state, card, event }: {
         settings: card.settings && { ...card.settings },
         activity: card.activity,
         sessionActivity: card.sessionActivity,
+        stoppedAt: card.stoppedAt,
       },
     })
     session.attention = card.attention.filter(a => a.key.startsWith('hook:'))
@@ -208,7 +211,7 @@ export function observeSession({ state, card, event }: {
   }
 
   if (event.type === 'card.outcome' && (event.data.after?.source === 'hooks' || event.data.before?.source === 'hooks')) {
-    assignDefined({ target: session, values: { outcome: event.data.after?.source === 'hooks' ? event.data.after : undefined } })
+    assignDefined({ target: session, values: { outcome: event.data.after?.source === 'hooks' ? event.data.after : undefined, stoppedAt: card.stoppedAt } })
   }
 
   projectSession({ state, session })

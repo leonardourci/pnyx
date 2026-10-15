@@ -80,7 +80,7 @@ function sandbox() {
     CODEX_HOME: codex,
   }
   const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
-  const spool = join(home, 'boards', 'default', 'spool')
+  const spool = join(home, 'hydras', 'default', 'spool')
   const spooled = () => (existsSync(spool) ? readdirSync(spool).filter(f => f.endsWith('.json') && !f.startsWith('.')) : [])
   const script = join(home, 'hooks', 'pnyx-hook.sh')
   mkdirSync(join(home, 'hooks'), { recursive: true })
@@ -154,16 +154,16 @@ test('hook stays silent and exits 0 on bad arguments, bad input and unwritable s
 
   assert.equal(spooled().length, 0)
   await hook({ script, args: ['codex', 'Stop'], input: '' })
-  assert.equal(JSON.parse(readFileSync(join(home, 'boards', 'default', 'spool', spooled()[0]!), 'utf8')).payload, null)
+  assert.equal(JSON.parse(readFileSync(join(home, 'hydras', 'default', 'spool', spooled()[0]!), 'utf8')).payload, null)
   const blocked = sandbox()
-  writeFileSync(join(blocked.home, 'boards'), '')
+  writeFileSync(join(blocked.home, 'hydras'), '')
   const { stdout, stderr } = await hook({ script: blocked.script, args: ['claude', 'Stop'], input: fixture({ name: 'claude-stop' }) })
   assert.equal(stdout + stderr, '')
 })
 
 test("hook sends the line to the Hydra's server socket instead of the spool when one listens", async () => {
   const { script, home, spooled } = sandbox()
-  const hydraId = join(home, 'boards', 'default')
+  const hydraId = join(home, 'hydras', 'default')
   mkdirSync(hydraId, { recursive: true })
   const received: string[] = []
   const server = createServer(socket => {
@@ -423,7 +423,7 @@ test('a request ends with its own tool call, the turn, or a newer request, and o
 
 test('a permission prompt shows its reason without moving the card, and the turn state follows prompt and Stop', () => {
   const { run, home } = sandbox()
-  const spool = join(home, 'boards', 'default', 'spool')
+  const spool = join(home, 'hydras', 'default', 'spool')
   mkdirSync(spool, { recursive: true })
   const probe = join(home, 'probe.json')
   writeFileSync(probe, '{}')
@@ -462,7 +462,7 @@ test('a permission prompt shows its reason without moving the card, and the turn
 
 test('a subagent\'s permission prompt leaves both cards once its tool call ends or it stops', () => {
   const { run, home } = sandbox()
-  const spool = join(home, 'boards', 'default', 'spool')
+  const spool = join(home, 'hydras', 'default', 'spool')
   mkdirSync(spool, { recursive: true })
   const probe = join(home, 'probe.json')
   writeFileSync(probe, '{}')
@@ -491,7 +491,7 @@ test('a subagent\'s permission prompt leaves both cards once its tool call ends 
   assert.match(run({ args: ['card', parent] }), /^ {2}attention: none$/m)
   assert.match(run({ args: ['card', child] }), /^ {2}attention: none$/m)
   send({ event: 'PostToolUse', name: 'claude-post-tool-bash', extra: { agent_id: 'agent-a1', agent_type: 'Explore', tool_name: 'Write' } })
-  const ids = readFileSync(join(home, 'boards', 'default', 'events.jsonl'), 'utf8').trimEnd()
+  const ids = readFileSync(join(home, 'hydras', 'default', 'events.jsonl'), 'utf8').trimEnd()
     .split('\n')
     .map(l => JSON.parse(l).id)
   assert.ok(ids.includes(`hook-${n - 1}-1:parent`))
@@ -538,14 +538,14 @@ test('spooled hook events become cards on the next write, and a finished turn ne
   assert.match(session, /https:\/\/github\.com\/example\/repo\/pull\/42/)
   assert.doesNotMatch(session, /outcome/)
   const child = run({ args: ['card', `claude:${SESSION}/agent-a1`] })
-  assert.match(child, /^ {2}parent: c1$/m)
+  assert.match(child, /^ {2}parent: task-[0-9a-f-]{36}$/m)
   assert.match(child, /^ {4}agentId: agent-a1$/m)
   assert.match(run({ args: ['history', '--limit', '100'] }), /hook:claude/)
 })
 
 test('a hook event ingested twice, from the socket and the spool, is applied once', () => {
   const { run, home } = sandbox()
-  const spool = join(home, 'boards', 'default', 'spool')
+  const spool = join(home, 'hydras', 'default', 'spool')
   mkdirSync(spool, { recursive: true })
   const line = JSON.stringify({ ...envelope({ harness: 'claude', event: 'SubagentStart', name: 'claude-subagent-start' }), id: 'hook-9-9' })
   writeFileSync(join(spool, '000000000000001-1-a.json'), line)
@@ -694,7 +694,7 @@ test('setup hooks writes through a symlinked config and refuses invalid JSON', (
 
 test('an ended session records its outcome in place, and a resumed one is reopened', () => {
   const { run, home } = sandbox()
-  const spool = join(home, 'boards', 'default', 'spool')
+  const spool = join(home, 'hydras', 'default', 'spool')
   mkdirSync(spool, { recursive: true })
   const probe = join(home, 'probe.json')
   writeFileSync(probe, '{}')
@@ -743,12 +743,12 @@ test('an ended session records its outcome in place, and a resumed one is reopen
 
 test('a hook never changes an outcome another source or a person recorded', () => {
   const { run, home } = sandbox()
-  const spool = join(home, 'boards', 'default', 'spool')
+  const spool = join(home, 'hydras', 'default', 'spool')
   mkdirSync(spool, { recursive: true })
   const file = join(home, 'card.json')
   writeFileSync(file, JSON.stringify({ title: 'Mine' }))
   run({ args: ['push', '--key', `claude:${SESSION}`, '--file', file] })
-  run({ args: ['outcome', 'c1', 'cancelled'] })
+  run({ args: ['outcome', `claude:${SESSION}`, 'cancelled'] })
 
   for (const [i, [event, name]] of [['SessionEnd', 'claude-session-end'], ['UserPromptSubmit', 'claude-user-prompt']].entries()) {
     writeFileSync(join(spool, `00000000000000${i}-1-a.json`), JSON.stringify({ ...envelope({ harness: 'claude', event: event!, name: name! }), id: `hook-${i}` }))

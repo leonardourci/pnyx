@@ -1,5 +1,5 @@
 import { hydraEvent } from '../core/hydra.ts'
-import { DEFAULT_DONE_HOURS, doneDeadline, HOUR_MS } from '../core/retention.ts'
+import { cardDoneDeadline, doneDeadline } from '../core/retention.ts'
 import { loadHydra, withWriter } from './hydra-store.ts'
 
 export function hideDone({ hydraId, at = new Date().toISOString() }: {
@@ -16,12 +16,12 @@ export function hideDone({ hydraId, at = new Date().toISOString() }: {
   return withWriter({
     hydraId,
     fn: ({ writer }) => {
-      const hours = writer.state.config?.doneAfterHours ?? DEFAULT_DONE_HOURS
       let hidden = 0
 
       for (const card of Object.values(writer.state.cards)) {
-        if (!hours || card.hidden || card.keepDone || !card.doneAt
-          || Date.parse(card.doneAt) + hours * HOUR_MS > now) {
+        const deadline = cardDoneDeadline({ card, hours: writer.state.config?.doneAfterHours })
+
+        if (deadline === undefined || deadline > now) {
           continue
         }
 

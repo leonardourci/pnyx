@@ -86,7 +86,7 @@ function hydraId() {
   withWriter({
     hydraId: 'lab',
     fn: ({ writer }) => {
-      const decision = decidePush({ state: writer.state, key: 'work', input: { title: 'Lab task', activity: 'waiting' }, meta: { at, actor: 'test' } })
+      const decision = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: 'work', input: { title: 'Lab task', activity: 'waiting' }, meta: { at, actor: 'test' } })
       assert.ok('event' in decision)
       writer.append({ event: decision.event })
     },
@@ -236,7 +236,7 @@ test('an agent started from a lab home reports its hooks to that home, never to 
   const ran = spawnSync('/bin/sh', [script, 'claude', 'UserPromptSubmit'], { input: payload, env: { PATH: process.env.PATH, ...env } })
   assert.equal(ran.status, 0)
 
-  assert.equal(readdirSync(join(lab, 'boards', 'lab', 'spool')).filter(f => f.endsWith('.json')).length, 1)
+  assert.equal(readdirSync(join(lab, 'hydras', 'lab', 'spool')).filter(f => f.endsWith('.json')).length, 1)
   assert.deepEqual(readdirSync(installed), ['hooks'])
 })
 

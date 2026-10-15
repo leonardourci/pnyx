@@ -58,7 +58,7 @@ fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
 # shellcheck disable=SC2046
 set -- $(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
 id="hook-$1-$$"
-hydra_dir=$home/boards/$hydra_name
+hydra_dir=$home/hydras/$hydra_name
 spool=$hydra_dir/spool
 [ -d "$spool" ] || mkdir -p "$spool" || exit 0
 # ponytail: names order by whole seconds, then by the zero-padded process id, which

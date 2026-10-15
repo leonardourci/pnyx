@@ -31,9 +31,9 @@ import { workerCommands } from '../cli/workers.ts'
 import { HydraError, type HydraEvent, type HydraState, type Card, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
-import { hydraDir, loadHydra, pnyxHome, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
+import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
 import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
-import { createHydra, hydraIds, listHydras, renameHydra } from './hydras.ts'
+import { createHydra, listHydras, renameHydra } from './hydras.ts'
 import { createHost, hostRequest, type QueryFn } from './host.ts'
 import type { SpawnCodex } from './codex.ts'
 
@@ -243,9 +243,9 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
     }
   }
 
-  const boards = join(pnyxHome(), 'boards')
-  mkdirSync(boards, { recursive: true })
-  const watcher = watch(boards, mountAll)
+  const hydras = hydrasDir()
+  mkdirSync(hydras, { recursive: true })
+  const watcher = watch(hydras, mountAll)
   const retry = setInterval(mountAll, RETRY_MS).unref()
 
   const close = async () => {

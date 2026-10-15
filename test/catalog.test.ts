@@ -16,7 +16,7 @@ const skill = ({ name, description = 'Local fixture skill', extra = '' }: { name
 function setup({ t, provider = 'claude' }: { t: { after(fn: () => void): void }; provider?: string }) {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-catalog-')); t.after(() => rmSync(home, { recursive: true, force: true }))
   const cwd = join(home, 'project/service'); mkdirSync(cwd, { recursive: true }); write({ path: join(home, 'project/.git'), text: 'fixture worktree marker' })
-  const decision = decidePush({ state: emptyHydra(), key: 'fixture', input: { agent: { provider, sessionId: 'fixture-session', cwd } }, meta: { actor: 'test', at: '2026-10-14T10:00:00Z' } }); assert.ok('event' in decision)
+  const decision = decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'fixture', input: { agent: { provider, sessionId: 'fixture-session', cwd } }, meta: { actor: 'test', at: '2026-10-14T10:00:00Z' } }); assert.ok('event' in decision)
   const card = reduce({ state: emptyHydra(), event: decision.event }).cards.c1!
 
   return { home, cwd, card, locations: { home, claude: join(home, '.claude'), codex: join(home, '.codex') } }

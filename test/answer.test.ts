@@ -293,7 +293,7 @@ test('an answer is typed as keys into the tmux pane, once, and marks the request
   assert.ok(calls().every(c => !/load-buffer|paste-buffer/.test(c)), 'keys are typed, never pasted')
   assert.match(calls()[1]!, /arg=display-message/)
   assert.match(run({ args: ['card', 's1'] }), /answered: a1/)
-  assert.ok(readFileSync(join(root, 'pnyx', 'boards', 'default', 'events.jsonl'), 'utf8')
+  assert.ok(readFileSync(join(root, 'pnyx', 'hydras', 'default', 'events.jsonl'), 'utf8')
     .includes(`"text":"Pick a color → Blue\\nPick sizes → Small, Large","answers":"${seen}"`))
   assert.match(run({ args: ['reply', 's1', '--answer', multi.key, '--json', answer, '--idempotency-key', 'a1'] }), /sent: false/)
   fails({ args: ['reply', 's1', '--answer', multi.key, '--json', answer], pattern: /no open request/ })

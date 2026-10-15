@@ -81,14 +81,14 @@ test('pushed settings merge into the card, null removes one, and bad names or va
     decision: ReturnType<typeof decidePush>
   }) =>
     ('event' in decision ? reduce({ state, event: decision.event }) : state)
-  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), key: 'k', input: { settings: { model: 'm1', fast: 'off' } }, meta: meta({ id: 'e1' }) }) })
-  state = apply({ state, decision: decidePush({ state, key: 'k', input: { settings: { fast: 'on', effort: 'high' } }, meta: meta({ id: 'e2' }) }) })
+  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k', input: { settings: { model: 'm1', fast: 'off' } }, meta: meta({ id: 'e1' }) }) })
+  state = apply({ state, decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k', input: { settings: { fast: 'on', effort: 'high' } }, meta: meta({ id: 'e2' }) }) })
   assert.deepEqual(state.cards.c1!.settings, { model: 'm1', fast: 'on', effort: 'high' })
-  state = apply({ state, decision: decidePush({ state, key: 'k', input: { settings: { model: null, fast: null, effort: null } }, meta: meta({ id: 'e3' }) }) })
+  state = apply({ state, decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k', input: { settings: { model: null, fast: null, effort: null } }, meta: meta({ id: 'e3' }) }) })
   assert.equal(state.cards.c1!.settings, undefined)
-  assert.deepEqual(decidePush({ state, key: 'k', input: { settings: {} }, meta: meta({ id: 'e4' }) }), { skipped: 'unchanged' })
-  assert.throws(() => decidePush({ state, key: 'k', input: { settings: { 'bad name': 'x' } }, meta: meta({ id: 'e5' }) }), /camelCase/)
-  assert.throws(() => decidePush({ state, key: 'k', input: { settings: { model: 3 } }, meta: meta({ id: 'e5' }) }), /string/)
+  assert.deepEqual(decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k', input: { settings: {} }, meta: meta({ id: 'e4' }) }), { skipped: 'unchanged' })
+  assert.throws(() => decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k', input: { settings: { 'bad name': 'x' } }, meta: meta({ id: 'e5' }) }), /camelCase/)
+  assert.throws(() => decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k', input: { settings: { model: 3 } }, meta: meta({ id: 'e5' }) }), /string/)
 })
 
 function hydraId() {
@@ -147,7 +147,7 @@ test('hook events and the transcript keep a Claude Code card\'s settings current
   })
 
   const events = readEvents({ hydraId: 'default' }).length
-  writeFileSync(join(home, 'boards', 'default', 'harvest.json'), '{}')
+  writeFileSync(join(home, 'hydras', 'default', 'harvest.json'), '{}')
   run({ args: ['harvest'] })
   assert.equal(readEvents({ hydraId: 'default' }).length, events)
   const observed = readEvents({ hydraId: 'default' }).findLast(e => e.type === 'card.pushed' && e.actor === 'harvest')!
