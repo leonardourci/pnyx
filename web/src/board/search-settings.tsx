@@ -13,16 +13,16 @@ const RERANK = [
 // This machine's search settings, shared by every board.
 export function SearchSettings({ command, notify }: {
   command: Command
-  notify(text: string): void
+  notify({ text }: { text: string }): void
 }) {
   const [settings, setSettings] = useState<Entries | null>(null)
   useEffect(() => {
-    void command('settings', []).then(r => setSettings(r.settings as Entries))
-      .catch(e => notify(e.message))
+    void command({ name: 'settings', args: [] }).then(r => setSettings(r.settings as Entries))
+      .catch(e => notify({ text: e.message }))
   }, [command, notify])
-  const set = (key: string, value: string) => command('settings', ['set', key, value]).then(r => {
-    setSettings(r.settings as Entries); notify('Search settings saved')
-  }, e => notify(e.message))
+  const set = ({ key, value }: { key: string; value: string }) => command({ name: 'settings', args: ['set', key, value] }).then(r => {
+    setSettings(r.settings as Entries); notify({ text: 'Search settings saved' })
+  }, e => notify({ text: e.message }))
 
   return (
     <section className="settings-box" aria-label="Search">
@@ -33,13 +33,13 @@ export function SearchSettings({ command, notify }: {
       </p>
       {settings && (
         <>
-          <Switch label="Semantic search" checked={settings['search.semantic'] === 'on'} onChange={on => set('search.semantic', on ? 'on' : 'off')} />
+          <Switch label="Semantic search" checked={settings['search.semantic'] === 'on'} onChange={({ value: on }) => set({ key: 'search.semantic', value: on ? 'on' : 'off' })} />
           <label className="setting-label">Rerank top results</label>
           <Select
             label="Rerank top results"
             value={settings['search.rerank'] ?? 'auto'}
             options={RERANK}
-            onChange={value => set('search.rerank', value)}
+            onChange={({ value }) => set({ key: 'search.rerank', value })}
           />
         </>
       )}

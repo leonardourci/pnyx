@@ -6,19 +6,27 @@ import { assertGolden, readStream } from './streams.ts'
 
 for (const name of ['lifecycle', 'duplicates', 'pinned-attention', 'undo']) {
   test(`golden replay: ${name}`, () => {
-    assertGolden(name, replay(emptyBoard(), readStream(name)))
+    assertGolden({
+      name,
+      actual: replay({ state: emptyBoard(), events: readStream({ name }) }),
+    })
   })
 }
 
-test('lifecycle: open pull request is review, all merged is done, outcome places the child', () => {
-  const events = readStream('lifecycle')
-  const at = (seq: number) => replay(emptyBoard(), events.slice(0, seq))
-  assert.equal(at(1).cards.c1!.column, 'workers_on_it')
-  assert.equal(at(3).cards.c1!.column, 'review')
-  // One of two pull requests merged: still review.
-  assert.equal(at(5).cards.c1!.column, 'review')
-  assert.equal(at(6).cards.c1!.column, 'done')
-  const end = at(events.length)
+test('lifecycle: an open pull request waits in Parked, all merged is done, outcome places the child', () => {
+  const events = readStream({ name: 'lifecycle' })
+  const at = ({ seq }: {
+    seq: number
+  }) => replay({
+    state: emptyBoard(),
+    events: events.slice(0, seq),
+  })
+  assert.equal(at({ seq: 1 }).cards.c1!.column, 'workers_on_it')
+  assert.equal(at({ seq: 3 }).cards.c1!.column, 'parked')
+  // One of two pull requests merged: still waiting.
+  assert.equal(at({ seq: 5 }).cards.c1!.column, 'parked')
+  assert.equal(at({ seq: 6 }).cards.c1!.column, 'done')
+  const end = at({ seq: events.length })
   assert.equal(end.cards.c2!.parentId, 'c1')
   assert.equal(end.cards.c2!.column, 'done')
   // A non-PR link does not move a done card.
@@ -26,7 +34,7 @@ test('lifecycle: open pull request is review, all merged is done, outcome places
 })
 
 test('duplicates and out-of-order observations are ignored', () => {
-  const state = replay(emptyBoard(), readStream('duplicates'))
+  const state = replay({ state: emptyBoard(), events: readStream({ name: 'duplicates' }) })
   const card = state.cards.c1!
   assert.equal(state.seq, 9)
   assert.equal(card.title, 'Refactor store layer')
@@ -40,9 +48,9 @@ test('duplicates and out-of-order observations are ignored', () => {
 })
 
 test('a pinned card keeps its column and shows new attention', () => {
-  const state = replay(emptyBoard(), readStream('pinned-attention'))
+  const state = replay({ state: emptyBoard(), events: readStream({ name: 'pinned-attention' }) })
   const card = state.cards.c1!
-  assert.equal(card.column, 'review')
+  assert.equal(card.column, 'parked')
   assert.equal(card.manualColumn, 'review')
   assert.deepEqual(card.attention.map(a => a.kind), ['permission_needed'])
 
@@ -56,11 +64,11 @@ test('a pinned card keeps its column and shows new attention', () => {
     type: 'card.moved',
     data: { before: 'review', after: null },
   }
-  assert.equal(reduce(state, auto).cards.c1!.column, 'needs_you')
+  assert.equal(reduce({ state, event: auto }).cards.c1!.column, 'needs_you')
 })
 
 test('undo events restore the card and record what they reversed', () => {
-  const state = replay(emptyBoard(), readStream('undo'))
+  const state = replay({ state: emptyBoard(), events: readStream({ name: 'undo' }) })
   const card = state.cards.c1!
   assert.equal(card.manualColumn, undefined)
   assert.deepEqual(card.links, [])
@@ -70,17 +78,23 @@ test('undo events restore the card and record what they reversed', () => {
 })
 
 test('replay is pure and deterministic', () => {
-  const events = readStream('lifecycle')
+  const events = readStream({ name: 'lifecycle' })
   const start = emptyBoard()
   const frozen = structuredClone(start)
-  const once = replay(start, events)
+  const once = replay({ state: start, events })
   assert.deepEqual(start, frozen)
-  assert.deepEqual(replay(replay(start, events.slice(0, 4)), events.slice(4)), once)
-  assert.deepEqual(replay(emptyBoard(), events), once)
+  assert.deepEqual(replay({
+    state: replay({
+      state: start,
+      events: events.slice(0, 4),
+    }),
+    events: events.slice(4),
+  }), once)
+  assert.deepEqual(replay({ state: emptyBoard(), events }), once)
 })
 
 test('a parent change that would make a cycle is ignored', () => {
-  const events = readStream('lifecycle')
+  const events = readStream({ name: 'lifecycle' })
   const cycle: BoardEvent = {
     v: 1,
     seq: 9,
@@ -91,10 +105,13 @@ test('a parent change that would make a cycle is ignored', () => {
     type: 'card.pushed',
     data: { key: 'claude:host-a:sess-1', parentId: 'c2' },
   }
-  assert.equal(replay(emptyBoard(), [...events, cycle]).cards.c1!.parentId, undefined)
+  assert.equal(replay({
+    state: emptyBoard(),
+    events: [...events, cycle],
+  }).cards.c1!.parentId, undefined)
 })
 
-function card(overrides: Partial<Card>): Card {
+function card({ overrides }: { overrides: Partial<Card> }): Card {
   return {
     id: 'c1',
     key: 'k',
@@ -113,21 +130,21 @@ function card(overrides: Partial<Card>): Card {
   }
 }
 
-const pr = (state?: 'open' | 'merged' | 'closed') => ({ kind: 'github_pr' as const, url: `https://github.com/o/r/pull/${state}`, ...(state ? { state } : {}) })
+const pr = ({ state }: { state?: 'open' | 'merged' | 'closed' }) => ({ kind: 'github_pr' as const, url: `https://github.com/o/r/pull/${state}`, ...(state ? { state } : {}) })
 const blocking = { kind: 'reply_needed', key: 'q1', blocking: true }
 const note = { kind: 'check_this', key: 'n1', blocking: false }
 
 test('column rules follow the settled precedence', () => {
   const cases: [string, Partial<Card>, string][] = [
     ['ongoing work', {}, 'workers_on_it'],
-    ['manual pin beats everything', { manualColumn: 'done', attention: [blocking], links: [pr('open')] }, 'done'],
-    ['blocking request beats an open pull request', { attention: [blocking], links: [pr('open')] }, 'needs_you'],
-    ['open pull request', { links: [pr('open')] }, 'review'],
-    ['any open pull request means review', { links: [pr('merged'), pr('open')] }, 'review'],
-    ['all merged means done', { links: [pr('merged'), pr('merged')] }, 'done'],
-    ['merged plus unchecked is not done', { links: [pr('merged'), pr()] }, 'workers_on_it'],
-    ['closed unmerged needs you', { links: [pr('merged'), pr('closed')] }, 'needs_you'],
-    ['open pull request beats non-blocking attention', { attention: [note], links: [pr('open')] }, 'review'],
+    ['manual pin beats everything', { manualColumn: 'done', attention: [blocking], links: [pr({ state: 'open' })] }, 'done'],
+    ['blocking request beats an open pull request', { attention: [blocking], links: [pr({ state: 'open' })] }, 'needs_you'],
+    ['open pull request', { links: [pr({ state: 'open' })] }, 'review'],
+    ['any open pull request means review', { links: [pr({ state: 'merged' }), pr({ state: 'open' })] }, 'review'],
+    ['all merged means done', { links: [pr({ state: 'merged' }), pr({ state: 'merged' })] }, 'done'],
+    ['merged plus unchecked is not done', { links: [pr({ state: 'merged' }), pr({})] }, 'workers_on_it'],
+    ['closed unmerged needs you', { links: [pr({ state: 'merged' }), pr({ state: 'closed' })] }, 'needs_you'],
+    ['open pull request beats non-blocking attention', { attention: [note], links: [pr({ state: 'open' })] }, 'review'],
     ['non-blocking attention', { attention: [note] }, 'needs_you'],
     ['done outcome', { outcome: { state: 'done' } }, 'done'],
     ['cancelled outcome', { outcome: { state: 'cancelled' } }, 'done'],
@@ -139,32 +156,32 @@ test('column rules follow the settled precedence', () => {
   ]
 
   for (const [name, overrides, expected] of cases) {
-    assert.equal(columnFor(card(overrides)), expected, name)
+    assert.equal(columnFor({ card: card({ overrides }) }), expected, name)
   }
 })
 
 test('an auto title fills an untitled card, best source first, and never replaces a set title', () => {
   let state = emptyBoard()
 
-  const apply = (type: string, data: object) => {
+  const apply = ({ type, data }: { type: string; data: object }) => {
     const seq = state.seq + 1
-    state = reduce(state, { v: 1, seq, id: `e${seq}`, at: '2026-10-13T00:00:00Z', actor: 'test', cardId: 'c1', type, data } as BoardEvent)
+    state = reduce({ state, event: { v: 1, seq, id: `e${seq}`, at: '2026-10-13T00:00:00Z', actor: 'test', cardId: 'c1', type, data } as BoardEvent })
 
     return state.cards.c1!.title
   }
 
-  const push = (fields: object) => apply('card.pushed', { key: 'claude:s1', ...fields })
-  const sessionTitle = (title: string) => apply('card.noted', { kind: 'context', source: 'claude-code', text: `Session title: ${title}` })
+  const push = ({ fields }: { fields: object }) => apply({ type: 'card.pushed', data: { key: 'claude:s1', ...fields } })
+  const sessionTitle = ({ title }: { title: string }) => apply({ type: 'card.noted', data: { kind: 'context', source: 'claude-code', text: `Session title: ${title}` } })
 
-  assert.equal(push({}), 'claude:s1')
-  assert.equal(push({ autoTitle: { from: 'folder', text: 'repo' } }), 'repo')
-  assert.equal(push({ autoTitle: { from: 'prompt', text: 'Fix the login bug' } }), 'Fix the login bug')
-  assert.equal(push({ autoTitle: { from: 'prompt', text: 'And add a test' } }), 'Fix the login bug', 'the first prompt stays')
-  assert.equal(push({ autoTitle: { from: 'folder', text: 'repo' } }), 'Fix the login bug', 'a worse source never replaces a better one')
-  assert.equal(sessionTitle('Login bug'), 'Login bug')
-  assert.equal(sessionTitle('Login bug and tests'), 'Login bug and tests', 'a later session title wins')
-  assert.equal(apply('card.noted', { kind: 'context', source: 'firstmate', text: "Captain's intent: ship it" }), 'Login bug and tests')
-  assert.equal(push({ title: 'Mine' }), 'Mine')
-  assert.equal(sessionTitle('Renamed'), 'Mine', 'a set title is never replaced')
-  assert.equal(push({ title: null }), 'Renamed', 'undoing the set title returns to the auto title')
+  assert.equal(push({ fields: {} }), 'claude:s1')
+  assert.equal(push({ fields: { autoTitle: { from: 'folder', text: 'repo' } } }), 'repo')
+  assert.equal(push({ fields: { autoTitle: { from: 'prompt', text: 'Fix the login bug' } } }), 'Fix the login bug')
+  assert.equal(push({ fields: { autoTitle: { from: 'prompt', text: 'And add a test' } } }), 'Fix the login bug', 'the first prompt stays')
+  assert.equal(push({ fields: { autoTitle: { from: 'folder', text: 'repo' } } }), 'Fix the login bug', 'a worse source never replaces a better one')
+  assert.equal(sessionTitle({ title: 'Login bug' }), 'Login bug')
+  assert.equal(sessionTitle({ title: 'Login bug and tests' }), 'Login bug and tests', 'a later session title wins')
+  assert.equal(apply({ type: 'card.noted', data: { kind: 'context', source: 'firstmate', text: "Captain's intent: ship it" } }), 'Login bug and tests')
+  assert.equal(push({ fields: { title: 'Mine' } }), 'Mine')
+  assert.equal(sessionTitle({ title: 'Renamed' }), 'Mine', 'a set title is never replaced')
+  assert.equal(push({ fields: { title: null } }), 'Renamed', 'undoing the set title returns to the auto title')
 })

@@ -20,8 +20,8 @@ export function History({
 }: {
   command: Command
   workspace: string
-  open(id: string): void
-  notify(text: string): void
+  open({ id }: { id: string }): void
+  notify({ text }: { text: string }): void
 }) {
   const [query, setQuery] = useState(''), [kind, setKind] = useState(''), [hits, setHits] = useState<Hit[]>([]), [events, setEvents] = useState<EventRow[]>([]), [loading, setLoading] = useState(false), [before, setBefore] = useState<number | null>(null), [note, setNote] = useState('')
   const generation = useRef(0)
@@ -30,7 +30,7 @@ export function History({
     const timer = setTimeout(() => {
       setLoading(true)
       const args = [...(workspace ? ['--workspace', workspace] : []), ...(kind ? ['--kind', kind] : []), ...(before ? ['--before', String(before)] : []), '--limit', '50']
-      void command(query.trim() ? 'search' : 'history', query.trim() ? [query, workspace] : args).then(r => {
+      void command({ name: query.trim() ? 'search' : 'history', args: query.trim() ? [query, workspace] : args }).then(r => {
         if (gen !== generation.current) {
           return
         }
@@ -41,7 +41,7 @@ export function History({
       })
         .catch(e => {
           if (gen === generation.current) {
-            notify(e.message)
+            notify({ text: e.message })
           }
         })
         .finally(() => {
@@ -78,7 +78,7 @@ export function History({
           disabled={Boolean(query.trim())}
           value={kind}
           options={[{ value: '', label: 'All events' }, ...['pushed', 'moved', 'linked', 'outcome', 'replied', 'noted'].map(k => ({ value: k, label: k }))]}
-          onChange={k => {
+          onChange={({ value: k }) => {
             setKind(k); setBefore(null)
           }}
         />
@@ -95,7 +95,7 @@ export function History({
         {query.trim() && note && <p className="muted" role="status">{note}</p>}
         {query.trim() ? hits.map(hit => (
           <article className="history-entry" key={hit.card}>
-            <Button className="result-title" onClick={() => open(hit.card)}>{hit.title}</Button>
+            <Button className="result-title" onClick={() => open({ id: hit.card })}>{hit.title}</Button>
             {hit.match === 'semantic' && <span className="small muted">similar meaning</span>}
             {hit.snippets.map((s,i) => <p key={i} className="muted">{s.snippet}</p>)}
           </article>
@@ -108,7 +108,7 @@ export function History({
               {' '}
               {e.seq}
             </span>
-            <Button onClick={() => open(e.card)} disabled={e.card === '$board'}>{e.summary}</Button>
+            <Button onClick={() => open({ id: e.card })} disabled={e.card === '$board'}>{e.summary}</Button>
             <span className="small muted">{e.type}</span>
           </article>
         ))}

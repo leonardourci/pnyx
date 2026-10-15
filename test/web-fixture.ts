@@ -1,9 +1,11 @@
 import { cpSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
-import { decideLink, decidePush, type Decision } from '../src/core/decide.ts'
+import { decideLink, decideNote, decidePush, decideView, type Decision } from '../src/core/decide.ts'
+import { hydraEvent } from '../src/core/hydra.ts'
+import type { Note } from '../src/core/model.ts'
 import { loadBoard, withWriter } from '../src/store/board-store.ts'
 
-export function seedWebFixture(home: string) {
+export function seedWebFixture({ home }: { home: string }) {
   const nativePath = join(home, 'firstmate-fixture')
   cpSync(join(import.meta.dirname, 'fixtures/firstmate-home'), nativePath, { recursive: true })
   const nativeHome = realpathSync(nativePath)
@@ -12,24 +14,35 @@ export function seedWebFixture(home: string) {
   cpSync(join(import.meta.dirname, 'fixtures/web/thread.jsonl'), transcript)
   const rows = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/web/board.json'), 'utf8')) as { key: string; [key: string]: unknown }[]
   const meta = { actor: 'fixture', at: '2026-10-13T10:50:00Z' }
-  withWriter('default', w => {
-    const append = (d: Decision) => {
-      if ('event' in d) {
-        w.append(d.event)
+  withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      const append = ({ d }: { d: Decision }) => {
+        if ('event' in d) {
+          w.append({ event: d.event })
+        }
       }
-    }
 
-    for (const { key, ...fields } of rows) {
-      append(decidePush(w.state, key, { ...fields, ...(key === 'layout' ? { source: { adapter: 'firstmate', instanceId: nativeHome, objectId: 'api-v2' }, agent: { provider: 'claude', sessionId: 'fixture-layout', transcriptPath: transcript } } : {}) }, meta))
-    }
+      for (const { key, ...fields } of rows) {
+        const column = key === 'layout' || key === 'coverage' ? 'needs_you'
+          : key === 'review' ? 'parked' : key === 'docs' ? 'done' : 'workers_on_it'
+        const parentId = typeof fields.parent === 'string' ? w.state.keys[fields.parent] : undefined
+        append({ d: hydraEvent({ state: w.state, meta, cardId: `c${w.state.seq + 1}`, change: { type: 'task.created', data: { key, title: String(fields.title), column, ...(parentId ? { parentId } : {}) } } }) })
+        append({ d: decidePush({ state: w.state, key, input: { ...fields, ...(key === 'layout' ? { source: { adapter: 'firstmate', instanceId: nativeHome, objectId: 'api-v2' }, agent: { provider: 'claude-code', sessionId: 'fixture-layout', transcriptPath: transcript } } : {}) }, meta }) })
+      }
 
-    for (const [key, number, state] of [['layout', 42, 'open'], ['review', 321, 'open'], ['docs', 309, 'merged']] as const) {
-      const url = `https://github.com/example/project/pull/${number}`; append(decideLink(w.state, key, url, { kind: 'github_pr', url, number, state }, meta))
-    }
+      for (const [key, number, state] of [['layout', 42, 'open'], ['review', 321, 'open'], ['docs', 309, 'merged']] as const) {
+        const url = `https://github.com/example/project/pull/${number}`; append({ d: decideLink({ state: w.state, ref: key, url, link: { kind: 'github_pr', url, number, state }, meta }) })
+      }
 
-    const url = 'https://linear.app/example/issue/UI-42'
-    append(decideLink(w.state, 'layout', url, { kind: 'linear', url, title: 'Design the agent board' }, meta))
+      const notes = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/web/notes.json'), 'utf8')) as Note[]
+      notes.forEach((note, i) => append({ d: decideNote({ state: w.state, ref: 'layout', note, meta: { ...meta, id: `fixture-note-${i}` } }) }))
+
+      const url = 'https://linear.app/example/issue/UI-42'
+      append({ d: decideLink({ state: w.state, ref: 'layout', url, link: { kind: 'linear', url, title: 'Design the agent board' }, meta }) })
+      append({ d: decideView({ state: w.state, patch: { panelPlacement: 'right' }, meta }) })
+    },
   })
 
-  return { nativeHome, transcript, state: loadBoard('default').state }
+  return { nativeHome, transcript, state: loadBoard({ board: 'default' }).state }
 }

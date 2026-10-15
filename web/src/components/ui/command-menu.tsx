@@ -22,7 +22,7 @@ export function CommandMenu({
   items: MenuItem[]
   close(): void
   // More results for a typed query, fetched after a pause and listed after the matching items.
-  search?(query: string): Promise<MenuItem[]>
+  search?({ query }: { query: string }): Promise<MenuItem[]>
 }) {
   const [query, setQuery] = useState(''), [active, setActive] = useState(0), root = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null), id = useId()
   const [found, setFound] = useState<{ query: string; items: MenuItem[] }>({ query: '', items: [] })
@@ -34,7 +34,7 @@ export function CommandMenu({
 
     let live = true
     const timer = setTimeout(() => {
-      void search(q).then(results => {
+      void search({ query: q }).then(results => {
         if (live) {
           setFound({ query: q, items: results })
         }
@@ -57,7 +57,7 @@ export function CommandMenu({
     document.getElementById(`${id}-${index}`)?.scrollIntoView({ block: 'nearest' })
   }, [index, id])
 
-  const choose = (n: number) => {
+  const choose = ({ position: n }: { position: number }) => {
     const item = visible[n]
 
     if (item && !item.disabled) {
@@ -125,7 +125,7 @@ export function CommandMenu({
               e.preventDefault()
 
               if (!e.repeat) {
-                choose(index)
+                choose({ position: index })
               }
             }
           }}
@@ -145,7 +145,7 @@ export function CommandMenu({
               key={item.id}
               className={`command-result ${index === n ? 'active' : ''}`}
               onPointerMove={() => setActive(n)}
-              onClick={() => choose(n)}
+              onClick={() => choose({ position: n })}
             >
               <span>
                 <strong>{item.label}</strong>

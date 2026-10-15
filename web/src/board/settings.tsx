@@ -16,10 +16,10 @@ export function Settings({
 }: {
   state: BoardState
   view: ViewPreferences
-  save(patch: unknown): Promise<boolean>
+  save({ patch }: { patch: unknown }): Promise<boolean>
   close(): void
   command: Command
-  notify(text: string): void
+  notify({ text }: { text: string }): void
 }) {
   return (
     <section className="settings" aria-label="Settings">
@@ -35,61 +35,70 @@ export function Settings({
         <section className="settings-box">
           <h2>Reading & conversation</h2>
           <p className="muted">Keep the conversation beside your work, or open it in its column.</p>
-          <NumberField
-            label="Font size"
-            step={1}
-            value={view.fontSize}
-            min={12}
-            max={20}
-            onChange={fontSize => save({ fontSize })}
+          <label className="setting-label">Theme</label>
+          <Select
+            label="Theme"
+            value={view.theme}
+            options={[{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
+            onChange={({ value: theme }) => save({ patch: { theme } })}
           />
+          {([['fontSize', 'UI font size'], ['chatFontSize', 'Chat font size'], ['codeFontSize', 'Code font size']] as const).map(([key, label]) => (
+            <NumberField
+              key={key}
+              label={label}
+              step={1}
+              value={view[key]}
+              min={VIEW_SIZE_LIMITS[key].min}
+              max={VIEW_SIZE_LIMITS[key].max}
+              onChange={({ value: n }) => save({ patch: { [key]: n } })}
+            />
+          ))}
           <label className="setting-label">Conversation placement</label>
           <Select
             label="Conversation placement"
             value={view.panelPlacement}
             options={[{ value: 'right', label: 'Right panel' }, { value: 'inline', label: 'Inline with cards' }]}
-            onChange={panelPlacement => save({ panelPlacement })}
+            onChange={({ value: panelPlacement }) => save({ patch: { panelPlacement } })}
           />
           <NumberField
             label="Panel width"
             value={view.panelWidth}
             min={VIEW_SIZE_LIMITS.panelWidth.min}
             max={VIEW_SIZE_LIMITS.panelWidth.max}
-            onChange={panelWidth => save({ panelWidth })}
+            onChange={({ value: panelWidth }) => save({ patch: { panelWidth } })}
           />
           <NumberField
             label="Composer height"
             value={view.composerHeight}
             min={VIEW_SIZE_LIMITS.composerHeight.min}
             max={VIEW_SIZE_LIMITS.composerHeight.max}
-            onChange={composerHeight => save({ composerHeight })}
+            onChange={({ value: composerHeight }) => save({ patch: { composerHeight } })}
           />
         </section>
         <section className="settings-box">
           <h2>Cards & details</h2>
-          <p className="muted">Resize an individual card on the board. Trace defaults apply unless a card has an override.</p>
+          <p className="muted">Resize an individual card on the board. Focus shows only prompts and agent messages, unless a card has an override.</p>
           <NumberField
             label="Default card height"
             value={view.cardHeight}
             min={VIEW_SIZE_LIMITS.cardHeight.min}
             max={VIEW_SIZE_LIMITS.cardHeight.max}
-            onChange={cardHeight => save({ cardHeight })}
+            onChange={({ value: cardHeight }) => save({ patch: { cardHeight } })}
           />
-          <Switch label="Card accent colors" checked={view.cardColors} onChange={cardColors => save({ cardColors })} />
-          <Switch label="Tool details by default" checked={view.toolDetails} onChange={toolDetails => save({ toolDetails })} />
-          <Switch label="Thinking by default" checked={view.thinkingDetails} onChange={thinkingDetails => save({ thinkingDetails })} />
+          <Switch label="Card accent colors" checked={view.cardColors} onChange={({ value: cardColors }) => save({ patch: { cardColors } })} />
+          <Switch label="Focus by default" checked={!view.toolDetails && !view.thinkingDetails} onChange={({ value: focus }) => save({ patch: { toolDetails: !focus, thinkingDetails: !focus } })} />
         </section>
         <section className="settings-box">
           <h2>Column widths</h2>
           <p className="muted">Drag a boundary or focus it and use arrow keys. Shift moves in larger steps.</p>
-          {columnsFor(state).map(c => (
+          {columnsFor({ state }).map(c => (
             <NumberField
               key={c.id}
               label={c.title}
               value={view.columnWidths[c.id] ?? 290}
               min={VIEW_SIZE_LIMITS.columnWidth.min}
               max={VIEW_SIZE_LIMITS.columnWidth.max}
-              onChange={n => save({ columnWidths: { [c.id]: n } })}
+              onChange={({ value: n }) => save({ patch: { columnWidths: { [c.id]: n } } })}
             />
           ))}
         </section>

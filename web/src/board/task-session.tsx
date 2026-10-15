@@ -8,7 +8,7 @@ export function TaskSession({ card, state, command, connected, notify }: {
   state: BoardState
   command: Command
   connected: boolean
-  notify(text: string): void
+  notify({ text }: { text: string }): void
 }) {
   const [busy, run] = useBusy()
   const attached = card.sessionIds?.[0]
@@ -16,14 +16,16 @@ export function TaskSession({ card, state, command, connected, notify }: {
   const candidates = Object.values(state.sessions ?? {}).filter(s => interactive({ session: s }))
   const flags = ['--if-revision', String(card.revision), '--event-id', crypto.randomUUID()]
 
-  const attach = (id: string) => {
+  const attach = ({ id }: { id: string }) => {
     if (!id) {
       return
     }
 
-    run(() => command('attach', [card.id, '--session', id, ...flags])
-      .then(() => notify('Agent attached.'))
-      .catch(error => notify(error.message)))
+    run({
+      save: () => command({ name: 'task', args: ['attach', card.id, '--session', id, ...flags] })
+        .then(() => notify({ text: 'Agent attached.' }))
+        .catch(error => notify({ text: error.message })),
+    })
   }
 
   return (
@@ -38,9 +40,11 @@ export function TaskSession({ card, state, command, connected, notify }: {
           </p>
           <Button
             disabled={!connected || busy}
-            onClick={() => run(() => command('detach', [card.id, ...flags])
-              .then(() => notify('Agent detached. Its session is still available.'))
-              .catch(error => notify(error.message)))}
+            onClick={() => run({
+              save: () => command({ name: 'task', args: ['detach', card.id, ...flags] })
+                .then(() => notify({ text: 'Agent detached. Its session is still available.' }))
+                .catch(error => notify({ text: error.message })),
+            })}
           >
             Detach agent
           </Button>
@@ -52,7 +56,7 @@ export function TaskSession({ card, state, command, connected, notify }: {
             label="Attach agent session"
             value=""
             disabled={!connected || busy || !candidates.length}
-            onChange={attach}
+            onChange={({ value }) => attach({ id: value })}
             options={[
               { value: '', label: candidates.length ? 'Choose a session' : 'No interactive sessions available' },
               ...candidates.map(s => ({

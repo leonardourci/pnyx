@@ -80,13 +80,16 @@ function board() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-paseo-'))
   process.env.PNYX_HOME = home
   const folder = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-paseo-work-')))
-  withWriter('lab', writer => {
-    const decision = decidePush(writer.state, 'work', { title: 'Lab task', activity: 'waiting' }, { at, actor: 'test' })
-    assert.ok('event' in decision)
-    writer.append(decision.event)
+  withWriter({
+    board: 'lab',
+    fn: ({ writer }) => {
+      const decision = decidePush({ state: writer.state, key: 'work', input: { title: 'Lab task', activity: 'waiting' }, meta: { at, actor: 'test' } })
+      assert.ok('event' in decision)
+      writer.append({ event: decision.event })
+    },
   })
 
-  return { folder, state: () => loadBoard('lab').state }
+  return { folder, state: () => loadBoard({ board: 'lab' }).state }
 }
 
 test('Paseo endpoints are local daemons only, with no credentials in the URL', () => {
@@ -145,7 +148,8 @@ test('task start checks its input before reaching Paseo', async () => {
   const { folder } = board()
   const paseo = fakePaseo()
   const meta = { at, actor: 'test' }
-  const start = (input: { harness?: string; prompt?: string; folder?: string }) => startAgent({
+  type Input = { harness?: string; prompt?: string; folder?: string }
+  const start = ({ ...input }: Input) => startAgent({
     board: 'lab', task: 'work', harness: 'claude', prompt: 'Go', url, meta, connect: paseo.connect, ...input,
   })
 
@@ -172,7 +176,7 @@ test('a started task replies through Paseo and reads its conversation from the d
   await startAgent({ board: 'lab', task: 'work', harness: 'codex', prompt: 'Go', folder, url, meta: { at, actor: 'test' }, connect: paseo.connect })
   const card = state().cards.c1!
 
-  const found = replyRoute(card, [])
+  const found = replyRoute({ card, homes: [] })
   assert.ok('route' in found && found.route.kind === 'paseo-agent')
   assert.deepEqual(found.route, { kind: 'paseo-agent', agent: 'lab-1', url })
   assert.deepEqual(await paseoReply({ route: found.route, text: 'Continue', id: 'r9', connect: paseo.connect }), { state: 'delivered' })
@@ -204,16 +208,16 @@ test('pnyx-axi task start and task paseo report a stopped daemon as structured e
   const { folder } = board()
   const bin = join(import.meta.dirname, '../dist/cli/pnyx-axi.js')
   const env = { ...process.env, PNYX_HOME: process.env.PNYX_HOME, PNYX_SEMANTIC: 'off', PNYX_PASEO_URL: 'ws://127.0.0.1:1/ws' }
-  const run = (...args: string[]) => spawnSync(process.execPath, [bin, ...args, '--board', 'lab'], { env, encoding: 'utf8' })
+  const run = ({ args }: { args: string[] }) => spawnSync(process.execPath, [bin, ...args, '--board', 'lab'], { env, encoding: 'utf8' })
 
-  const status = run('task', 'paseo')
+  const status = run({ args: ['task', 'paseo'] })
   assert.notEqual(status.status, 0)
   assert.match(status.stdout, /PASEO_UNAVAILABLE/)
   assert.match(status.stdout, /Paseo is not running at ws:\/\/127\.0\.0\.1:1\/ws/)
-  const start = run('task', 'start', 'work', '--harness', 'claude', '--prompt', 'Go', '--folder', folder)
+  const start = run({ args: ['task', 'start', 'work', '--harness', 'claude', '--prompt', 'Go', '--folder', folder] })
   assert.notEqual(start.status, 0)
   assert.match(start.stdout, /PASEO_UNAVAILABLE/)
-  assert.match(run('task', '--help').stdout, /task start <task> --harness claude\|codex --prompt <text>/)
+  assert.match(run({ args: ['task', '--help'] }).stdout, /task start <task> --harness claude\|codex --prompt <text>/)
 })
 
 test('an agent started from a lab home reports its hooks to that home, never to the installed one', async () => {

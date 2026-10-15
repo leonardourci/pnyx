@@ -15,7 +15,7 @@ export function localPaseoUrl({ url }: { url: string }): string {
     }
   } catch { /* Every unsupported endpoint gets the same error. */ }
 
-  throw new BoardError('Paseo needs a local ws://127.0.0.1:<port>/ws endpoint', 'VALIDATION_ERROR')
+  throw new BoardError({ message: 'Paseo needs a local ws://127.0.0.1:<port>/ws endpoint', code: 'VALIDATION_ERROR' })
 }
 
 // The daemon this machine's Pnyx starts agents through: PNYX_PASEO_URL, else Paseo's default.

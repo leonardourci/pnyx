@@ -35,7 +35,7 @@ export type Request =
 // Where a model stands: being fetched (bytes so far of the total), loading, ready or failed.
 type Phase = { phase: 'downloading'; done: number; total: number } | { phase: 'loading' } | { phase: 'ready' } | { phase: 'failed'; message: string } | { phase: 'off' }
 
-const settings = readSettings()
+const settings = readSettings({ })
 let mode = ''
 let embedder: Phase = { phase: 'loading' }
 let reranker: Phase = { phase: 'loading' }
@@ -67,7 +67,7 @@ const server = createServer(socket => {
     }
 
     answering += 1
-    void answer(buf.slice(0, end)).then(reply => {
+    void answer({ line: buf.slice(0, end) }).then(reply => {
       socket.end(`${JSON.stringify(reply)}\n`)
       answering -= 1
     })
@@ -104,33 +104,40 @@ function shutdown(): void {
   exit()
 }
 
-async function fetchModel(m: ModelFile, track: (p: Phase) => void): Promise<void> {
+async function fetchModel({ model, track }: {
+  model: ModelFile
+  track: (
+    { phase }: {
+      phase: Phase
+    },
+  ) => void
+}): Promise<void> {
   if (stubbed()) {
     // Tests stand in for a download's progress with PNYX_SEMANTIC_STUB_DOWNLOAD_MS.
     const ms = Number(process.env.PNYX_SEMANTIC_STUB_DOWNLOAD_MS) || 0
 
     for (let t = 0; t < ms; t += 100) {
-      track({ phase: 'downloading', done: Math.round((m.bytes * t) / ms), total: m.bytes })
+      track({ phase: { phase: 'downloading', done: Math.round((model.bytes * t) / ms), total: model.bytes } })
       await new Promise(resolve => setTimeout(resolve, 100))
     }
 
     return
   }
 
-  if (isInstalled(m)) {
+  if (isInstalled({ model })) {
     return
   }
 
-  track({ phase: 'downloading', done: 0, total: m.bytes })
-  await download(m, bytes => track({ phase: 'downloading', done: bytes, total: m.bytes }))
+  track({ phase: { phase: 'downloading', done: 0, total: model.bytes } })
+  await download({ model, progress: ({ bytes }) => track({ phase: { phase: 'downloading', done: bytes, total: model.bytes } }) })
 }
 
 // Fails this worker for a while: searches stay full-text and say why, and no new
 // worker starts until the cooldown ends (or `search setup --semantic` clears it).
-function fail(error: unknown, forMs: number): never {
+function fail({ error, forMs }: { error: unknown; forMs: number }): never {
   const message = (error as Error).message
   console.error((error as Error).stack)
-  recordFailure(message, forMs)
+  recordFailure({ message, forMs })
   setTimeout(shutdown, RETRY_MS)
   throw error
 }
@@ -141,53 +148,53 @@ async function prepare(): Promise<Backend> {
     mode = await detectMode()
   } catch (error) {
     embedder = { phase: 'failed', message: (error as Error).message }
-    fail(error, DOWNLOAD_COOLDOWN_MS)
+    fail({ error, forMs: DOWNLOAD_COOLDOWN_MS })
   } finally {
     // A detection failure is answered as such rather than waited on.
     setTimeout(decide, 0)
   }
 
-  const choice = resolveChoice(settings, mode)
+  const choice = resolveChoice({ settings, mode })
   const spec = EMBEDDERS[choice.model]
   reranker = choice.rerank ? { phase: 'loading' } : { phase: 'off' }
 
   try {
-    const fetching = fetchModel(spec, p => (embedder = p))
+    const fetching = fetchModel({ model: spec, track: ({ phase }) => (embedder = phase) })
     decide()
     await fetching
   } catch (error) {
     embedder = { phase: 'failed', message: (error as Error).message }
-    fail(error, DOWNLOAD_COOLDOWN_MS)
+    fail({ error, forMs: DOWNLOAD_COOLDOWN_MS })
   }
 
   embedder = { phase: 'loading' }
   let b: Backend
 
   try {
-    b = await loadBackend(choice.model)
+    b = await loadBackend({ model: choice.model })
   } catch (error) {
     embedder = { phase: 'failed', message: (error as Error).message }
     const broken = error instanceof SemanticError ? error.broken : undefined
 
     // A file failing its golden check is deleted, so the next attempt downloads it afresh.
     if (broken) {
-      rmSync(modelPath(broken), { force: true })
+      rmSync(modelPath({ model: broken }), { force: true })
     }
 
-    fail(error, broken ? BROKEN_COOLDOWN_MS : DOWNLOAD_COOLDOWN_MS)
+    fail({ error, forMs: broken ? BROKEN_COOLDOWN_MS : DOWNLOAD_COOLDOWN_MS })
   }
 
   embedder = { phase: 'ready' }
 
-  const rerankFailure = choice.rerank ? activeFailure('reranker') : undefined
+  const rerankFailure = choice.rerank ? activeFailure({ what: 'reranker' }) : undefined
 
   if (rerankFailure) {
     reranker = { phase: 'failed', message: rerankFailure }
   } else if (choice.rerank) {
     // The reranker downloads and loads in the background; searches rank without it
     // until then, and after a failure until its cooldown ends.
-    void fetchModel(RERANKER, p => (reranker = p))
-      .then(() => b.rerank('probe', ['probe']))
+    void fetchModel({ model: RERANKER, track: ({ phase }) => (reranker = phase) })
+      .then(() => b.rerank({ query: 'probe', docs: ['probe'] }))
       .then(() => (reranker = { phase: 'ready' }))
       .catch((error: unknown) => {
         reranker = { phase: 'failed', message: (error as Error).message }
@@ -195,10 +202,10 @@ async function prepare(): Promise<Backend> {
         const broken = error instanceof SemanticError ? error.broken : undefined
 
         if (broken) {
-          rmSync(modelPath(broken), { force: true })
+          rmSync(modelPath({ model: broken }), { force: true })
         }
 
-        recordFailure((error as Error).message, broken ? BROKEN_COOLDOWN_MS : DOWNLOAD_COOLDOWN_MS, 'reranker')
+        recordFailure({ message: (error as Error).message, forMs: broken ? BROKEN_COOLDOWN_MS : DOWNLOAD_COOLDOWN_MS, what: 'reranker' })
       })
   }
 
@@ -207,15 +214,15 @@ async function prepare(): Promise<Backend> {
 
 const load = () => (backend ??= prepare())
 
-const describe = (p: Phase) => (p.phase === 'downloading' ? { phase: p.phase, done: p.done, total: p.total } : p)
+const describe = ({ phase }: { phase: Phase }) => (phase.phase === 'downloading' ? { phase: phase.phase, done: phase.done, total: phase.total } : phase)
 
-async function answer(line: string): Promise<Record<string, unknown>> {
+async function answer({ line }: { line: string }): Promise<Record<string, unknown>> {
   touch()
 
   try {
     const req = JSON.parse(line) as Request
     // Settings changed since this worker started: let a new one start with them.
-    const now = readSettings()
+    const now = readSettings({ })
 
     if (!now.semantic || now.model !== settings.model || now.rerank !== settings.rerank) {
       setTimeout(shutdown, 50)
@@ -242,8 +249,8 @@ async function answer(line: string): Promise<Record<string, unknown>> {
       return {
         ...(req.op === 'status' ? {} : { code: 'NOT_READY' }),
         mode,
-        embedder: describe(embedder),
-        reranker: describe(reranker),
+        embedder: describe({ phase: embedder }),
+        reranker: describe({ phase: reranker }),
         ...(b ? { key: b.key, dims: b.dims } : {}),
       }
     }
@@ -251,7 +258,7 @@ async function answer(line: string): Promise<Record<string, unknown>> {
     const b = await load()
 
     if (req.op === 'embed') {
-      return { key: b.key, floor: b.floor, rerank: reranker.phase === 'ready', reranker: describe(reranker), vector: Array.from(await b.embed(req.text)) }
+      return { key: b.key, floor: b.floor, rerank: reranker.phase === 'ready', reranker: describe({ phase: reranker }), vector: Array.from(await b.embed({ text: req.text })) }
     }
 
     if (req.op === 'rerank') {
@@ -259,7 +266,7 @@ async function answer(line: string): Promise<Record<string, unknown>> {
         return { error: `the reranker is ${reranker.phase}`, code: 'OFF' }
       }
 
-      return { scores: await b.rerank(req.query, req.docs) }
+      return { scores: await b.rerank({ query: req.query, docs: req.docs }) }
     }
 
     return { error: 'unknown op', code: 'VALIDATION_ERROR' }
@@ -284,7 +291,7 @@ async function drain(): Promise<void> {
       queue.delete(board)
 
       try {
-        await indexBoard(board, b)
+        await indexBoard({ board, b })
       } catch {
         // The next index request retries.
       }
@@ -299,25 +306,42 @@ async function drain(): Promise<void> {
 
 // Runs one step against the board's index, closed again before any embedding:
 // the file may be rebuilt meanwhile (and Windows cannot delete an open file).
-function withVectors<T>(board: string, b: Backend, fn: (db: DatabaseSync) => T): T | null {
-  const db = openVectors(board)
+function withVectors<T>({ board, b, fn }: {
+  board: string
+  b: Backend
+  fn: (
+    { db }: {
+      db: DatabaseSync
+    },
+  ) => T
+}): T | null {
+  const db = openVectors({ board })
 
   if (!db) {
     return null
   }
 
   try {
-    claimVectors(db, b.key, b.probes)
+    claimVectors({ db, key: b.key, probes: b.probes })
 
-    return fn(db)
+    return fn({ db })
   } finally {
     db.close()
   }
 }
 
-async function indexBoard(board: string, b: Backend): Promise<void> {
-  while (readSettings().semantic && !closing) {
-    const rows = withVectors(board, b, db => pending(db, BATCH, failed))
+async function indexBoard({ board, b }: { board: string; b: Backend }): Promise<void> {
+  while (readSettings({ }).semantic && !closing) {
+    const rows = withVectors({
+      board,
+      b,
+      fn: ({ db }) =>
+        pending({
+          db,
+          limit: BATCH,
+          skip: failed,
+        }),
+    })
 
     if (!rows?.length) {
       return
@@ -327,14 +351,14 @@ async function indexBoard(board: string, b: Backend): Promise<void> {
 
     for (const r of rows) {
       try {
-        done.push({ hash: r.hash, vector: await b.embed(r.body) })
+        done.push({ hash: r.hash, vector: await b.embed({ text: r.body }) })
       } catch (error) {
         failed.add(r.hash)
         console.error(`skipped a chunk: ${(error as Error).message}`)
       }
     }
 
-    withVectors(board, b, db => putVectors(db, done))
+    withVectors({ board, b, fn: ({ db }) => putVectors({ db, rows: done }) })
   }
 }
 
@@ -359,7 +383,7 @@ function listen(): void {
       const replaced = process.platform !== 'win32' && socketId() !== bound
       const busy = indexing || embedder.phase === 'downloading' || reranker.phase === 'downloading'
 
-      if (replaced || !readSettings().semantic || (!busy && Date.now() - last > IDLE_MS)) {
+      if (replaced || !readSettings({ }).semantic || (!busy && Date.now() - last > IDLE_MS)) {
         shutdown()
       }
     }, TICK_MS)

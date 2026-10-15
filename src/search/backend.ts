@@ -21,9 +21,9 @@ export interface Backend {
   // Each PROBES text's vector, as this backend makes it.
   probes: Float32Array[]
   // A unit vector.
-  embed(text: string): Promise<Float32Array>
+  embed({ text }: { text: string }): Promise<Float32Array>
   // Relevance of each document to the query, 0 to 1; loads the reranker on first use.
-  rerank(query: string, docs: string[]): Promise<number[]>
+  rerank({ query, docs }: { query: string; docs: string[] }): Promise<number[]>
   close(): Promise<void>
 }
 
@@ -38,8 +38,8 @@ const RERANK_QUERY_MAX = 512
 // broken names the model file that failed its golden check, so setup can fetch it again.
 export class SemanticError extends BoardError {
   broken?: ModelFile
-  constructor(message: string, broken?: ModelFile) {
-    super(message, 'SEMANTIC_UNAVAILABLE', ['Run `pnyx-axi search setup --semantic` again, or `pnyx-axi settings set search.semantic off`'])
+  constructor({ message, broken }: { message: string; broken?: ModelFile }) {
+    super({ message, code: 'SEMANTIC_UNAVAILABLE', help: ['Run `pnyx-axi search setup --semantic` again, or `pnyx-axi settings set search.semantic off`'] })
 
     if (broken) {
       this.broken = broken
@@ -47,7 +47,7 @@ export class SemanticError extends BoardError {
   }
 }
 
-function unit(vector: ArrayLike<number>): Float32Array {
+function unit({ vector }: { vector: ArrayLike<number> }): Float32Array {
   const out = Float32Array.from(vector)
   const norm = Math.hypot(...out) || 1
 
@@ -95,59 +95,62 @@ export async function detectMode(): Promise<string> {
 // the reranker; on CPU only the 97m embedder alone (the reranker takes seconds there).
 export type Choice = { model: EmbedderId; rerank: boolean }
 
-export function resolveChoice(settings: SearchSettings, mode: string): Choice {
+export function resolveChoice({ settings, mode }: {
+  settings: SearchSettings
+  mode: string
+}): Choice {
   return {
     model: settings.model === 'auto' ? (mode === 'cpu' ? 'granite-97m' : 'granite-311m') : settings.model,
     rerank: settings.rerank === 'auto' ? mode !== 'cpu' : settings.rerank,
   }
 }
 
-export async function loadBackend(model: EmbedderId): Promise<Backend> {
-  return stubbed() ? stubBackend(model) : realBackend(model)
+export async function loadBackend({ model }: { model: EmbedderId }): Promise<Backend> {
+  return stubbed() ? stubBackend({ id: model }) : realBackend({ id: model })
 }
 
-async function realBackend(id: EmbedderId): Promise<Backend> {
+async function realBackend({ id }: { id: EmbedderId }): Promise<Backend> {
   const { getLlama, LlamaLogLevel } = await llamaCpp()
   // build: never; a machine without a prebuilt binary has no semantic search rather than a compile.
   const llama = await getLlama({ gpu: 'auto', build: 'never', logLevel: LlamaLogLevel.error })
   const mode = llama.gpu || 'cpu'
   const spec = EMBEDDERS[id]
-  const model = await llama.loadModel({ modelPath: modelPath(spec) })
+  const model = await llama.loadModel({ modelPath: modelPath({ model: spec }) })
   const context = await model.createEmbeddingContext({
     contextSize: EMBED_CONTEXT,
     batchSize: EMBED_CONTEXT,
   })
 
   // Leaves room for the start and end tokens the context adds; its input must stay under the context size.
-  const embed = async (text: string) => {
+  const embed = async ({ text }: { text: string }) => {
     const tokens = model.tokenize(text).slice(0, EMBED_CONTEXT - 4)
 
-    return unit((await context.getEmbeddingFor(tokens)).vector)
+    return unit({ vector: (await context.getEmbeddingFor(tokens)).vector })
   }
 
   const probes: Float32Array[] = []
 
   for (const p of PROBES) {
-    probes.push(await embed(p))
+    probes.push(await embed({ text: p }))
   }
 
   const drift = Math.max(...spec.golden.flatMap((g, i) =>
     g.map((x, d) => Math.abs(x - probes[i]![d]!))))
 
   if (!(drift <= GOLDEN_TOLERANCE)) {
-    throw new SemanticError(`${id} failed its golden check (drift ${drift.toFixed(4)}); the model file or runtime is broken`, spec)
+    throw new SemanticError({ message: `${id} failed its golden check (drift ${drift.toFixed(4)}); the model file or runtime is broken`, broken: spec })
   }
 
   let ranking: Promise<Ranking> | undefined
 
   const loadRanking = async () => {
-    const reranker = await llama.loadModel({ modelPath: modelPath(RERANKER) })
+    const reranker = await llama.loadModel({ modelPath: modelPath({ model: RERANKER }) })
     const ctx = await reranker.createRankingContext({ contextSize: RERANK_CONTEXT })
     const scores = await ctx.rankAll(RERANK_PROBE, PROBES, { onOverflow: 'maxChunk' })
     const off = Math.max(...scores.map((s, i) => Math.abs(s - RERANKER.golden[i]!)))
 
     if (!(off <= RERANK_TOLERANCE)) {
-      throw new SemanticError(`the reranker failed its golden check (off by ${off.toFixed(3)})`, RERANKER)
+      throw new SemanticError({ message: `the reranker failed its golden check (off by ${off.toFixed(3)})`, broken: RERANKER })
     }
 
     return ctx
@@ -160,7 +163,7 @@ async function realBackend(id: EmbedderId): Promise<Backend> {
     floor: spec.floor,
     probes,
     embed,
-    async rerank(query, docs) {
+    async rerank({ query, docs }) {
       ranking ??= loadRanking()
       const ctx = await ranking
 
@@ -174,38 +177,38 @@ async function realBackend(id: EmbedderId): Promise<Backend> {
 const STUB_DIMS = 64
 // A chunk holding most of the query's words passes; one sharing a word or none does not.
 const STUB_FLOOR = 0.5
-const fold = (text: string) => text.toLowerCase().normalize('NFD')
+const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
   .replace(/\p{M}/gu, '')
-const stubWords = (text: string) => fold(text).match(/[\p{L}\p{N}]+/gu) ?? []
+const stubWords = ({ text }: { text: string }) => fold({ text }).match(/[\p{L}\p{N}]+/gu) ?? []
 
 // Bag of words hashed into 64 dimensions: texts sharing words are near.
-function stubVector(text: string): Float32Array {
+function stubVector({ text }: { text: string }): Float32Array {
   const v = new Float32Array(STUB_DIMS)
   v[0] = 0.01
 
-  for (const word of stubWords(text)) {
+  for (const word of stubWords({ text })) {
     const h = createHash('sha256').update(word)
       .digest()
     v[h[0]! % STUB_DIMS]! += h[1]! & 1 ? 1 : -1
   }
 
-  return unit(v)
+  return unit({ vector: v })
 }
 
-function stubBackend(id: EmbedderId): Backend {
+function stubBackend({ id }: { id: EmbedderId }): Backend {
   return {
     mode: 'stub',
     key: `${id}@stub/stub`,
     dims: STUB_DIMS,
     floor: STUB_FLOOR,
-    probes: PROBES.map(stubVector),
-    embed: async text => stubVector(text),
+    probes: PROBES.map(text => stubVector({ text })),
+    embed: async ({ text }) => stubVector({ text }),
     // The share of the query's words the document holds.
-    rerank: async (query, docs) => {
-      const q = new Set(stubWords(query))
+    rerank: async ({ query, docs }) => {
+      const q = new Set(stubWords({ text: query }))
 
       return docs.map(d => {
-        const words = new Set(stubWords(d))
+        const words = new Set(stubWords({ text: d }))
 
         return q.size ? [...q].filter(w => words.has(w)).length / q.size : 0
       })

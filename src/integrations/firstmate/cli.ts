@@ -6,29 +6,41 @@ import { syncHome, watchHome, type SyncResult } from './sync.ts'
 
 const HOMES: Options = { ...COMMON, home: { type: 'string', multiple: true } }
 
-function homes(values: Record<string, unknown>): string[] {
+function homes({ values }: { values: Record<string, unknown> }): string[] {
   const list = (values.home as string[] | undefined) ?? []
 
   if (list.length === 0) {
     throw new AxiError('missing --home', 'VALIDATION_ERROR', ['Pass each Firstmate home with --home <path>'])
   }
 
-  return list.map(resolveHome)
+  return list.map(path => resolveHome({ path }))
 }
 
-function sync(board: string, list: string[]): Output {
-  const results = list.map(home => ({ home, ...syncHome(board, home) }))
+function sync({ board, list }: { board: string; list: string[] }): Output {
+  const results = list.map(home => ({ home, ...syncHome({ board, home }) }))
+  const ignored = results.filter(r => r.ignored).map(r => r.home)
 
-  return { synced: results, help: ['Run `pnyx-axi` to see the board'] }
+  return {
+    synced: results.map(({ home, tasks, appended }) => ({ home, tasks, appended })),
+    ...(ignored.length ? { ignored: results.filter(r => r.ignored).map(r => `${r.home}: ${r.ignored}`) } : {}),
+    help: [
+      ...ignored.map(home => `Ignored ${home}: run \`pnyx-axi board set --firstmate ${home} --board ${board}\` to make it this board's Hydra, or sync it into another board`),
+      'Run `pnyx-axi` to see the board',
+    ],
+  }
 }
 
 // Watches each home, counting what it folds in, until closed. Shared by
 // `firstmate watch` and `serve --home`.
-export function watchHomes(board: string, list: string[]): { close(): Output } {
+export function watchHomes({ board, list }: {
+  board: string
+  list: string[]
+}): { close(): Output } {
   const totals = { syncs: 0, appended: 0, errors: 0 }
+  const ignored = new Set<string>()
   let lastError: string | undefined
 
-  const onSync = (result: SyncResult | Error) => {
+  const onSync = ({ home }: { home: string }) => ({ result }: { result: SyncResult | Error }) => {
     if (result instanceof Error) {
       totals.errors += 1
       lastError = result.message
@@ -38,9 +50,18 @@ export function watchHomes(board: string, list: string[]): { close(): Output } {
 
     totals.syncs += 1
     totals.appended += result.appended
+
+    if (result.ignored && !ignored.has(home)) {
+      ignored.add(home)
+      process.stdout.write(`ignored: ${JSON.stringify(`${home}: ${result.ignored}`)}\n`)
+    }
   }
 
-  const watches = list.map(home => watchHome(board, home, onSync))
+  const watches = list.map(home => watchHome({
+    board,
+    home,
+    onSync: onSync({ home }),
+  }))
 
   return {
     close() {
@@ -48,14 +69,19 @@ export function watchHomes(board: string, list: string[]): { close(): Output } {
         w.close()
       }
 
-      return { watched: list, ...totals, ...(lastError ? { lastError } : {}) }
+      return {
+        watched: list,
+        ...totals,
+        ...(ignored.size ? { ignored: [...ignored] } : {}),
+        ...(lastError ? { lastError } : {}),
+      }
     },
   }
 }
 
 // Runs until SIGINT or SIGTERM, then reports what it folded in.
-async function watch(board: string, list: string[]): Promise<Output> {
-  const watches = watchHomes(board, list)
+async function watch({ board, list }: { board: string; list: string[] }): Promise<Output> {
+  const watches = watchHomes({ board, list })
   await new Promise<void>(resolve => {
     process.once('SIGINT', resolve)
     process.once('SIGTERM', resolve)
@@ -64,19 +90,21 @@ async function watch(board: string, list: string[]): Promise<Output> {
   return watches.close()
 }
 
-const firstmate = guard<Output | Promise<Output>>(args => {
-  const [sub, ...rest] = args
+const firstmate = guard<Output | Promise<Output>>({
+  handler: ({ args }) => {
+    const [sub, ...rest] = args
 
-  if (sub !== 'sync' && sub !== 'watch') {
-    throw new AxiError(`unknown firstmate command: ${sub ?? '(none)'}`, 'VALIDATION_ERROR', [
-      'Run `pnyx-axi firstmate sync --home <path>` or `pnyx-axi firstmate watch --home <path>`',
-    ])
-  }
+    if (sub !== 'sync' && sub !== 'watch') {
+      throw new AxiError(`unknown firstmate command: ${sub ?? '(none)'}`, 'VALIDATION_ERROR', [
+        'Run `pnyx-axi firstmate sync --home <path>` or `pnyx-axi firstmate watch --home <path>`',
+      ])
+    }
 
-  const { values, board } = parse(rest, HOMES, 0)
-  const list = homes(values)
+    const { values, board } = parse({ args: rest, options: HOMES, positionals: 0 })
+    const list = homes({ values })
 
-  return sub === 'sync' ? sync(board, list) : watch(board, list)
+    return sub === 'sync' ? sync({ board, list }) : watch({ board, list })
+  },
 })
 
 export const firstmateCommands = { firstmate }
@@ -93,6 +121,6 @@ then again on every change until SIGINT or SIGTERM.
 `,
 }
 
-export function firstmateHelp(command: string): string | undefined {
+export function firstmateHelp({ command }: { command: string }): string | undefined {
   return HELP[command]
 }

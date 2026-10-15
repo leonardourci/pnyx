@@ -11,7 +11,7 @@ export const PASEO_CURSOR = /^p[A-Za-z0-9_-]{1,190}$/
 const PAGE = 50
 
 export interface PaseoConversation {
-  read(options: { before?: string }): Promise<ThreadPage>
+  read({ before }: { before?: string }): Promise<ThreadPage>
   close(): void
 }
 
@@ -31,7 +31,7 @@ export async function paseoConversation({ card, changed, connect = openPaseo }: 
     throw error
   }
 
-  const found = replyRoute(card, [])
+  const found = replyRoute({ card, homes: [] })
 
   return {
     async read({ before }) {
@@ -40,7 +40,7 @@ export async function paseoConversation({ card, changed, connect = openPaseo }: 
       const entries = page.entries.flatMap(({ item, seqStart, timestamp }) => {
         const entry = timelineEntry({ item: item as Item, id: `paseo:${page.epoch}:${seqStart}`, at: timestamp })
 
-        return entry ? splitEntry(entry) : []
+        return entry ? splitEntry({ entry }) : []
       })
 
       return {
@@ -68,14 +68,14 @@ function timelineEntry({ item, id, at }: {
   id: string
   at: string
 }): ThreadEntry | undefined {
-  const text = (value: unknown) => (typeof value === 'string' ? value : '')
+  const text = ({ value }: { value: unknown }) => (typeof value === 'string' ? value : '')
 
   switch (item.type) {
-    case 'user_message': return { id, at, kind: 'message', role: 'user', text: text(item.text) }
-    case 'assistant_message': return { id, at, kind: 'message', role: 'assistant', text: text(item.text) }
-    case 'reasoning': return { id, at, kind: 'thinking', role: 'assistant', text: text(item.text) }
-    case 'tool_call': return { id, at, kind: 'tool', role: text(item.name) || 'tool', text: item.detail === undefined ? 'Recorded details unavailable' : JSON.stringify(item.detail) }
-    case 'error': return { id, at, kind: 'message', role: 'error', text: text(item.message) }
+    case 'user_message': return { id, at, kind: 'message', role: 'user', text: text({ value: item.text }) }
+    case 'assistant_message': return { id, at, kind: 'message', role: 'assistant', text: text({ value: item.text }) }
+    case 'reasoning': return { id, at, kind: 'thinking', role: 'assistant', text: text({ value: item.text }) }
+    case 'tool_call': return { id, at, kind: 'tool', role: text({ value: item.name }) || 'tool', text: item.detail === undefined ? 'Recorded details unavailable' : JSON.stringify(item.detail) }
+    case 'error': return { id, at, kind: 'message', role: 'error', text: text({ value: item.message }) }
     default: return undefined
   }
 }

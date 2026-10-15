@@ -11,7 +11,7 @@ export function interactive({ session }: { session: AgentSession }): boolean {
 }
 
 export function liveTask({ card }: { card: Card }): boolean {
-  return card.hidden !== true
+  return card.hidden !== true && !card.automaticTask
 }
 
 export function cardSessionId({ card }: { card: Card }): string | undefined {
@@ -25,7 +25,7 @@ export function findSession({ state, ref }: { state: BoardState; ref: string }):
     card?.sessionIds?.includes(s.id) || s.sourceRefs.some(r => `${r.instanceId}:${r.objectId}` === ref))
 
   if (!found) {
-    throw new BoardError(`session not found: ${ref}`, 'NOT_FOUND', ['Run `pnyx-axi task sessions`'])
+    throw new BoardError({ message: `session not found: ${ref}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi task sessions`'] })
   }
 
   return found
@@ -33,18 +33,25 @@ export function findSession({ state, ref }: { state: BoardState; ref: string }):
 
 const firstmate = ({ card }: { card: Card }) => card.sourceRefs.some(r => r.adapter === 'firstmate')
 
-// Refreshes the task's session fields without replacing task-owned decisions,
-// outcomes, titles, links or pins. Background sessions stay in the registry.
+// An absent value deletes its key, so the state keeps its shape through a snapshot's JSON.
+export function assignDefined<T extends object>({ target, values }: {
+  target: T
+  values: Partial<T>
+}): void {
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) {
+      delete (target as Record<string, unknown>)[key]
+    } else {
+      (target as Record<string, unknown>)[key] = value
+    }
+  }
+}
+
+// Membership projection preserves task-owned fields when the session changes.
 export function projectSession({ state, session }: {
   state: BoardState
   session: AgentSession
 }): void {
-  const origin = state.cards[session.originCardId]
-
-  if (origin?.automaticTask && !firstmate({ card: origin })) {
-    origin.hidden = session.taskId !== origin.id || !interactive({ session })
-  }
-
   const task = session.taskId && state.cards[session.taskId]
 
   if (!task) {
@@ -52,20 +59,21 @@ export function projectSession({ state, session }: {
   }
 
   task.sessionIds = [session.id]
-
-  if (task.automaticTask) {
-    task.hidden = !interactive({ session })
-  }
-
   task.agent = structuredClone(session.agent)
   task.sourceRefs = [
     ...task.sourceRefs.filter(r => !session.sourceRefs.some(s =>
       r.adapter === s.adapter && r.instanceId === s.instanceId && r.objectId === s.objectId)),
     ...session.sourceRefs,
   ]
-  task.settings = session.settings && { ...session.settings }
-  task.terminal = session.terminal && { ...session.terminal }
-  task.activity = session.activity
+  assignDefined({
+    target: task,
+    values: {
+      settings: session.settings && { ...session.settings },
+      terminal: session.terminal && { ...session.terminal },
+      activity: session.activity,
+      sessionActivity: session.sessionActivity,
+    },
+  })
   task.attention = [...task.attention.filter(a => !a.key.startsWith('hook:')), ...session.attention]
 
   if (!task.outcome || task.outcome.source === 'hooks') {
@@ -95,6 +103,7 @@ export function applyAttachment({ state, event }: {
     delete old.settings
     delete old.terminal
     delete old.activity
+    delete old.sessionActivity
     old.attention = old.attention.filter(a => !a.key.startsWith('hook:'))
 
     if (old.outcome?.source === 'hooks') {
@@ -110,8 +119,7 @@ export function applyAttachment({ state, event }: {
   projectSession({ state, session })
 }
 
-// Legacy card pushes become task/session observations during replay. This is
-// also the migration: no event bytes or old identifiers need to change.
+// Replay migrates legacy observations without changing event bytes or ids.
 export function observeSession({ state, card, event }: {
   state: BoardState
   card: Card
@@ -134,9 +142,15 @@ export function observeSession({ state, card, event }: {
 
   if (event.type === 'card.pushed') {
     session.agent = { ...session.agent, ...card.agent }
-    session.terminal = card.terminal && { ...card.terminal }
-    session.settings = card.settings && { ...card.settings }
-    session.activity = card.activity
+    assignDefined({
+      target: session,
+      values: {
+        terminal: card.terminal && { ...card.terminal },
+        settings: card.settings && { ...card.settings },
+        activity: card.activity,
+        sessionActivity: card.sessionActivity,
+      },
+    })
     session.attention = card.attention.filter(a => a.key.startsWith('hook:'))
     const objectId = `${session.agent.sessionId}${session.agent.agentId ? `/${session.agent.agentId}` : ''}`
     session.sourceRefs = card.sourceRefs.filter(r => (r.adapter === 'hooks' && r.objectId === objectId)
@@ -145,14 +159,10 @@ export function observeSession({ state, card, event }: {
   }
 
   if (event.type === 'card.outcome' && (event.data.after?.source === 'hooks' || event.data.before?.source === 'hooks')) {
-    session.outcome = event.data.after?.source === 'hooks' ? event.data.after : undefined
+    assignDefined({ target: session, values: { outcome: event.data.after?.source === 'hooks' ? event.data.after : undefined } })
   }
 
   projectSession({ state, session })
-
-  if (card.automaticTask && session.taskId !== card.id) {
-    card.hidden = true
-  }
 
   if (session.taskId !== card.id && card.sessionIds?.length) {
     const attached = state.sessions[card.sessionIds[0]!]

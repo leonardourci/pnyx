@@ -2,7 +2,7 @@
 
 export const EVENT_VERSION = 1 as const
 
-export const COLUMNS = ['needs_you', 'workers_on_it', 'review', 'done'] as const
+export const COLUMNS = ['needs_you', 'workers_on_it', 'review', 'done', 'parked'] as const
 export type Column = (typeof COLUMNS)[number] | `custom:${string}`
 
 export const LINK_KINDS = ['github_pr', 'linear', 'url'] as const
@@ -151,12 +151,18 @@ export interface Card {
   tags: string[]
   parentId?: string
   activity?: string
+  // The hook session's own latest activity, which a task source's status line does not replace.
+  sessionActivity?: string
   agent?: AgentRef
   // Task membership is a list for future compatibility; v1 permits at most one.
   sessionIds?: string[]
   // Session-only records remain addressable in History, outside the live board.
   hidden?: boolean
   automaticTask?: boolean
+  tracking?: 'declared'
+  status?: TaskDeclaration
+  statusLog?: TaskDeclaration[]
+  mirror?: FirstmateRecord
   settings?: AgentSettings
   terminal?: TerminalFacts
   // The working folder a source assigned, such as a Firstmate task's worktree; a
@@ -204,7 +210,70 @@ interface EventBase {
   reason?: string
   // Set on an event that reverses an earlier one.
   undoes?: string
+  boardId?: string
+  taskId?: string
+  subtaskId?: string
+  agentId?: string
+  sessionId?: string
+  commandId?: string
+  messageId?: string
 }
+
+export const TASK_STATES = ['working', 'needs_you', 'paused', 'blocked', 'done'] as const
+export type TaskStatus = (typeof TASK_STATES)[number]
+export interface TaskDeclaration {
+  id: string
+  at: string
+  actor: string
+  state: TaskStatus
+  note: string
+  source?: string
+  raw?: string
+}
+export interface FirstmateRecord {
+  home: string
+  task: string
+  backlog?: Record<string, unknown>
+  meta: Record<string, string>
+  status: string
+  present?: { meta: boolean; status: boolean }
+}
+export interface HydraIdentity {
+  id: string
+  kind: 'agent' | 'firstmate'
+  name: string
+  session?: string
+  home?: string
+}
+export interface BoardColumn {
+  id: Column
+  title: string
+  // Roles survive a rename. Automatic placement uses the first matching role.
+  role?: 'needs_you' | 'workers_on_it' | 'done' | 'parked'
+}
+export interface BoardConfig {
+  id: string
+  name: string
+  hydra: HydraIdentity
+  columns: BoardColumn[]
+}
+export interface HydraMessage {
+  id: string
+  task?: string
+  action: 'send' | 'worker'
+  text: string
+  at: string
+  actor: string
+  hydra: string
+}
+export type HydraEvent = EventBase & (
+  | { type: 'board.configured'; data: BoardConfig }
+  | { type: 'board.columns'; data: { columns: BoardColumn[]; before?: BoardColumn[]; fallback?: Column; placements?: Record<string, { before: Column | null; after: Column | null }> } }
+  | { type: 'task.created'; data: { key: string; title: string; parentId?: string; column?: Column; folder?: string } }
+  | { type: 'task.declared'; data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> }
+  | { type: 'task.mirrored'; data: FirstmateRecord }
+  | { type: 'hydra.message'; data: Omit<HydraMessage, 'id' | 'at' | 'actor'> }
+)
 
 // before holds the earlier value of each field the push changed (null when it was
 // absent), so a manual edit can be undone. A push that created the card has none.
@@ -246,8 +315,11 @@ export type RepliedEvent = EventBase & {
 }
 
 export interface ViewPreferences {
+  theme: 'light' | 'dark' | 'system'
   keyboard: import('./keyboard.ts').KeyboardPreferences
   fontSize: number
+  chatFontSize: number
+  codeFontSize: number
   panelPlacement: 'right' | 'inline'
   panelWidth: number
   composerHeight: number
@@ -263,7 +335,12 @@ export interface ViewPreferences {
 
 export type ViewEvent = EventBase & {
   type: 'board.view'
-  data: { before: ViewPreferences; after: ViewPreferences }
+  // placements: cards a deleted custom column returned to automatic placement, applied atomically.
+  data: {
+    before: ViewPreferences
+    after: ViewPreferences
+    placements?: { cardId: string; before: Column | null; after: Column | null; revision: number }[]
+  }
 }
 
 // One harvested note. Its id is derived from the source record, so harvesting the
@@ -278,6 +355,7 @@ export interface AgentSession {
   terminal?: TerminalFacts
   settings?: AgentSettings
   activity?: string
+  sessionActivity?: string
   attention: Attention[]
   outcome?: Outcome
   sourceRefs: SourceRef[]
@@ -286,6 +364,11 @@ export interface AgentSession {
 export type SessionEvent = EventBase & {
   type: 'task.session'
   data: { session: string; before: string | null; after: string | null }
+}
+
+export type ChatEvent = EventBase & {
+  type: 'chat.message'
+  data: { session: string; nativeId: string; role: string; text: string }
 }
 
 export type BoardEvent =
@@ -297,10 +380,17 @@ export type BoardEvent =
   | NotedEvent
   | ViewEvent
   | SessionEvent
+  | HydraEvent
+  | ChatEvent
 export type EventType = BoardEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session']
+export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message']
 
 export interface BoardState {
+  board?: BoardConfig
+  // Set once a board.configured event applies; a column edit alone does not configure Hydra.
+  configured?: boolean
+  boardRevision?: number
+  hydraMessages?: HydraMessage[]
   view?: ViewPreferences
   viewRevision?: number
   v: typeof EVENT_VERSION
@@ -319,7 +409,7 @@ export interface BoardState {
 export class BoardError extends Error {
   code: string
   help: string[]
-  constructor(message: string, code: string, help: string[] = []) {
+  constructor({ message, code, help = [] }: { message: string; code: string; help?: string[] }) {
     super(message)
     this.code = code
     this.help = help

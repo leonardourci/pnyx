@@ -1,6 +1,6 @@
 # Pnyx contributor guide
 
-Pnyx is a deterministic board of every agent and its work, with an AXI CLI named `pnyx-axi`. Read `docs/design.md` before changing behavior.
+Pnyx is a deterministic board of every agent and its work, with an AXI CLI named `pnyx-axi`.
 
 ## Build and test
 
@@ -14,11 +14,13 @@ pnpm test        # builds the CLI and web board, then runs node --test
 pnpm run web:dev # Vite dev server for the board
 ```
 
+Functions take one destructured object parameter; no-argument functions and signatures owned by external APIs keep their contracts.
+
 Tests use Node's built-in test runner and run TypeScript directly through Node's type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests never touch the real `~/.pnyx`, a real Firstmate home, Paseo, Herdr, tmux or any real terminal: use a temporary `PNYX_HOME`, a random port and `test/fixtures/`.
 
 ## Layout
 
-One folder per feature. Code for a feature lives in its folder; a folder without code yet holds only a README saying what will live there. Do not add speculative code.
+One folder per feature. Code for a feature lives in its folder. There are no per-folder READMEs; usage and setup live in the root README. Do not add speculative code.
 
 | Folder | Holds |
 |---|---|
@@ -33,7 +35,7 @@ One folder per feature. Code for a feature lives in its folder; a folder without
 | `setup/` | hook templates per harness |
 | `skills/pnyx/` | the agent skill shipped with the CLI |
 | `test/` | tests; synthetic inputs in `test/fixtures/` |
-| `docs/` | design and reference docs |
+| `docs/media/` | the README's demo GIF |
 
 Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links to it.
 

@@ -10,7 +10,7 @@ process.env.PNYX_SEMANTIC = 'off'
 
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 
-function run(...args: string[]): string {
+function run({ args = [] }: { args?: string[] } = {}): string {
   // Tests never touch the real ~/.pnyx.
   const env = { ...process.env, PNYX_HOME: mkdtempSync(join(tmpdir(), 'pnyx-test-')) }
 
@@ -18,21 +18,21 @@ function run(...args: string[]): string {
 }
 
 test('no arguments prints an empty board summary', () => {
-  const out = run()
+  const out = run({ })
   assert.match(out, /^board: default$/m)
   assert.match(out, /^ {2}needs_you: 0$/m)
   assert.match(out, /^cards: "none: no cards yet"$/m)
-  assert.match(out, /pnyx-axi push --key/)
+  assert.match(out, /pnyx-axi task create --title/)
 })
 
 test('--help prints concise help', () => {
-  const out = run('--help')
+  const out = run({ args: ['--help'] })
   assert.match(out, /^usage: pnyx-axi/)
-  assert.ok(out.split('\n').length < 34)
+  assert.ok(out.split('\n').length < 40)
 })
 
 test('update fails with a structured error while unpublished', () => {
-  assert.throws(() => run('update'), (error: { status: number; stdout: string }) => {
+  assert.throws(() => run({ args: ['update'] }), (error: { status: number; stdout: string }) => {
     assert.equal(error.status, 2)
     assert.match(error.stdout, /^code: VALIDATION_ERROR$/m)
 

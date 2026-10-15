@@ -11,8 +11,8 @@ export function StartAgent({ card, command, connected, notify, started }: {
   card?: Card
   command: Command
   connected: boolean
-  notify(text: string): void
-  started?(task: string): void
+  notify({ text }: { text: string }): void
+  started?({ task }: { task: string }): void
 }) {
   const [title, setTitle] = useState(''), [harness, setHarness] = useState('claude')
   const [folder, setFolder] = useState(card?.folder ?? ''), [message, setMessage] = useState('')
@@ -22,7 +22,7 @@ export function StartAgent({ card, command, connected, notify, started }: {
   const attempt = useRef({ task: crypto.randomUUID(), start: crypto.randomUUID() })
   const check = useCallback(() => {
     setPaseo(null)
-    void command('task', ['paseo']).then(() => setPaseo({ ok: true }), (e: Error) => setPaseo({ ok: false, reason: e.message }))
+    void command({ name: 'task', args: ['paseo'] }).then(() => setPaseo({ ok: true }), (e: Error) => setPaseo({ ok: false, reason: e.message }))
   }, [command])
   useEffect(() => {
     if (connected) {
@@ -32,23 +32,25 @@ export function StartAgent({ card, command, connected, notify, started }: {
 
   const ready = connected && paseo?.ok && folder.trim().startsWith('/') && message.trim() && (card || title.trim())
 
-  const start = () => run(async () => {
-    try {
-      let task = card?.id
+  const start = () => run({
+    save: async () => {
+      try {
+        let task = card?.id
 
-      if (!task) {
-        const created = await command('task', ['create', '--title', title.trim(), '--folder', folder.trim(), '--event-id', attempt.current.task])
-        task = (created.card as { id: string }).id
+        if (!task) {
+          const created = await command({ name: 'task', args: ['create', '--title', title.trim(), '--folder', folder.trim(), '--event-id', attempt.current.task] })
+          task = (created.card as { id: string }).id
+        }
+
+        await command({ name: 'task', args: ['start', task, '--harness', harness, '--prompt', message, '--folder', folder.trim(), '--event-id', attempt.current.start] })
+        attempt.current = { task: crypto.randomUUID(), start: crypto.randomUUID() }
+        setMessage(''); setTitle('')
+        notify({ text: 'Agent started in Paseo. Continue here or in Paseo.' })
+        started?.({ task })
+      } catch (e) {
+        notify({ text: (e as Error).message })
       }
-
-      await command('task', ['start', task, '--harness', harness, '--prompt', message, '--folder', folder.trim(), '--event-id', attempt.current.start])
-      attempt.current = { task: crypto.randomUUID(), start: crypto.randomUUID() }
-      setMessage(''); setTitle('')
-      notify('Agent started in Paseo. Continue here or in Paseo.')
-      started?.(task)
-    } catch (e) {
-      notify((e as Error).message)
-    }
+    },
   })
 
   return (
@@ -92,7 +94,7 @@ export function StartAgent({ card, command, connected, notify, started }: {
         label="Agent"
         value={harness}
         options={HARNESSES}
-        onChange={setHarness}
+        onChange={({ value }) => setHarness(value)}
       />
       <label>
         Folder

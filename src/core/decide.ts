@@ -24,11 +24,14 @@ import {
   type RepliedEvent,
   type SourceRef,
   type TerminalFacts,
+  type ViewEvent,
+  type ViewPreferences,
 } from './model.ts'
 import { TERMINAL_FIELDS } from './route.ts'
 import { DEFAULT_VIEW, patchView, viewFor } from './view.ts'
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from './reducer.ts'
 import { findSession, interactive } from './tasks.ts'
+import { boardConfig, hydraEvent } from './hydra.ts'
 
 export interface Meta {
   at: string
@@ -42,18 +45,18 @@ export interface Meta {
 
 export type Decision = { event: BoardEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }
 
-export function findCard(state: BoardState, ref: string): Card {
+export function findCard({ state, ref }: { state: BoardState; ref: string }): Card {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
   if (!card) {
-    throw new BoardError(`card not found: ${ref}`, 'NOT_FOUND', ['Run `pnyx-axi` to list cards'])
+    throw new BoardError({ message: `card not found: ${ref}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi` to list cards'] })
   }
 
   return card
 }
 
 // Generated ids share a namespace with caller-chosen ones, so skip any already used.
-function freeId(state: BoardState, seq: number): string {
+function freeId({ state, seq }: { state: BoardState; seq: number }): string {
   let id = `evt_${seq}`
 
   for (let n = 2; id in state.eventIds; n++) {
@@ -63,13 +66,13 @@ function freeId(state: BoardState, seq: number): string {
   return id
 }
 
-function base(state: BoardState, meta: Meta, cardId: string) {
+function base({ state, meta, cardId }: { state: BoardState; meta: Meta; cardId: string }) {
   const seq = state.seq + 1
 
   return {
     v: EVENT_VERSION,
     seq,
-    id: meta.id ?? freeId(state, seq),
+    id: meta.id ?? freeId({ state, seq }),
     at: meta.at,
     actor: meta.actor,
     cardId,
@@ -77,7 +80,7 @@ function base(state: BoardState, meta: Meta, cardId: string) {
   }
 }
 
-function strip(card: Card | undefined) {
+function strip({ card }: { card: Card | undefined }) {
   if (!card) {
     return undefined
   }
@@ -90,104 +93,125 @@ function strip(card: Card | undefined) {
   return content
 }
 
-function decided(state: BoardState, meta: Meta, event: BoardEvent): Decision {
+function decided({ state, meta, event }: {
+  state: BoardState
+  meta: Meta
+  event: BoardEvent
+}): Decision {
   if (event.id in state.eventIds) {
     return { skipped: 'duplicate' }
   }
 
-  checkRevision(state.cards[event.cardId], meta.ifRevision)
-  const before = strip(state.cards[event.cardId])
-  const reduced = reduce(state, event)
-  const after = strip(reduced.cards[event.cardId])
+  checkRevision({ card: state.cards[event.cardId], ifRevision: meta.ifRevision })
+  const before = strip({ card: state.cards[event.cardId] })
+  const reduced = reduce({ state, event })
+  const after = strip({ card: reduced.cards[event.cardId] })
 
   return before && isDeepStrictEqual(before, after) && isDeepStrictEqual(state.sessions, reduced.sessions) ? { skipped: 'unchanged' } : { event }
 }
 
-function checkRevision(card: Card | undefined, ifRevision: number | undefined): void {
+function checkRevision({ card, ifRevision }: {
+  card: Card | undefined
+  ifRevision: number | undefined
+}): void {
   const revision = card?.revision ?? 0
 
   if (ifRevision !== undefined && revision !== ifRevision) {
-    throw new BoardError(`card ${card?.id ?? '(new)'} is at revision ${revision}, not ${ifRevision}`, 'REVISION_CONFLICT', [
-      card ? `Run \`pnyx-axi card ${card.id}\` and retry with the current revision` : 'Use --if-revision 0 for a new card',
-    ])
+    throw new BoardError({
+      message: `card ${card?.id ?? '(new)'} is at revision ${revision}, not ${ifRevision}`,
+      code: 'REVISION_CONFLICT',
+      help: [
+        card ? `Run \`pnyx-axi card ${card.id}\` and retry with the current revision` : 'Use --if-revision 0 for a new card',
+      ],
+    })
   }
 }
 
-function notUndoable(message: string): BoardError {
-  return new BoardError(message, 'NOT_UNDOABLE', ['Run `pnyx-axi history` to find an undoable edit'])
+function notUndoable({ message }: { message: string }): BoardError {
+  return new BoardError({ message, code: 'NOT_UNDOABLE', help: ['Run `pnyx-axi history` to find an undoable edit'] })
 }
 
-function invalid(message: string): BoardError {
-  return new BoardError(message, 'VALIDATION_ERROR')
+function invalid({ message }: { message: string }): BoardError {
+  return new BoardError({ message, code: 'VALIDATION_ERROR' })
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function asRecord({ value }: { value: unknown }): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
 }
 
-function onlyKeys(value: Record<string, unknown>, allowed: string[], what: string): void {
+function onlyKeys({ value, allowed, what }: {
+  value: Record<string, unknown>
+  allowed: string[]
+  what: string
+}): void {
   const extra = Object.keys(value).filter(k => !allowed.includes(k))
 
   if (extra.length > 0) {
-    throw invalid(`${what}: unknown field ${extra.join(', ')}; allowed: ${allowed.join(', ')}`)
+    throw invalid({ message: `${what}: unknown field ${extra.join(', ')}; allowed: ${allowed.join(', ')}` })
   }
 }
 
-function text(value: unknown, what: string): string {
+function text({ value, what }: { value: unknown; what: string }): string {
   if (typeof value !== 'string' || value.trim() === '') {
-    throw invalid(`${what} must be a non-empty string`)
+    throw invalid({ message: `${what} must be a non-empty string` })
   }
 
   return value
 }
 
-function optionalText(value: unknown, what: string): string | undefined {
-  return value === undefined ? undefined : text(value, what)
+function optionalText({ value, what }: { value: unknown; what: string }): string | undefined {
+  return value === undefined ? undefined : text({ value, what })
 }
 
-function parseAttention(value: unknown): Attention[] {
+function parseAttention({ value }: { value: unknown }): Attention[] {
   if (!Array.isArray(value)) {
-    throw invalid('attention must be a list')
+    throw invalid({ message: 'attention must be a list' })
   }
 
-  return value.map((item, i) => {
-    if (!isRecord(item)) {
-      throw invalid(`attention[${i}] must be an object`)
+  return value.map((rawItem, i) => {
+    const item = asRecord({ value: rawItem })
+
+    if (!item) {
+      throw invalid({ message: `attention[${i}] must be an object` })
     }
 
-    onlyKeys(item, ['kind', 'key', 'blocking', 'text'], `attention[${i}]`)
+    onlyKeys({ value: item, allowed: ['kind', 'key', 'blocking', 'text'], what: `attention[${i}]` })
 
     if (item.blocking !== undefined && typeof item.blocking !== 'boolean') {
-      throw invalid(`attention[${i}].blocking must be true or false`)
+      throw invalid({ message: `attention[${i}].blocking must be true or false` })
     }
 
-    const note = optionalText(item.text, `attention[${i}].text`)
+    const note = optionalText({ value: item.text, what: `attention[${i}].text` })
 
     return {
-      kind: text(item.kind, `attention[${i}].kind`),
-      key: text(item.key, `attention[${i}].key`),
+      kind: text({ value: item.kind, what: `attention[${i}].kind` }),
+      key: text({ value: item.key, what: `attention[${i}].key` }),
       blocking: item.blocking === true,
       ...(note ? { text: note } : {}),
     }
   })
 }
 
-function parseSource(value: unknown): SourceRef {
-  if (!isRecord(value)) {
-    throw invalid('source must be an object')
+function parseSource({ value: rawValue }: { value: unknown }): SourceRef {
+  const value = asRecord({ value: rawValue })
+
+  if (!value) {
+    throw invalid({ message: 'source must be an object' })
   }
 
-  onlyKeys(value, ['adapter', 'instanceId', 'objectId', 'generation', 'cursor', 'observedAt'], 'source')
+  onlyKeys({ value, allowed: ['adapter', 'instanceId', 'objectId', 'generation', 'cursor', 'observedAt'], what: 'source' })
   const { generation } = value
 
   if (generation !== undefined && !(Number.isInteger(generation) && (generation as number) >= 0)) {
-    throw invalid('source.generation must be a non-negative integer')
+    throw invalid({ message: 'source.generation must be a non-negative integer' })
   }
 
-  const source: SourceRef = { adapter: text(value.adapter, 'source.adapter'), objectId: text(value.objectId, 'source.objectId') }
-  const instanceId = optionalText(value.instanceId, 'source.instanceId')
-  const cursor = optionalText(value.cursor, 'source.cursor')
-  const observedAt = optionalText(value.observedAt, 'source.observedAt')
+  const source: SourceRef = { adapter: text({ value: value.adapter, what: 'source.adapter' }), objectId: text({ value: value.objectId, what: 'source.objectId' }) }
+  const instanceId = optionalText({ value: value.instanceId, what: 'source.instanceId' })
+  const cursor = optionalText({ value: value.cursor, what: 'source.cursor' })
+  const observedAt = optionalText({ value: value.observedAt, what: 'source.observedAt' })
 
   if (instanceId) {
     source.instanceId = instanceId
@@ -208,31 +232,35 @@ function parseSource(value: unknown): SourceRef {
   return source
 }
 
-function parseAutoTitle(value: unknown): AutoTitle {
-  if (!isRecord(value)) {
-    throw invalid('autoTitle must be an object')
+function parseAutoTitle({ value: rawValue }: { value: unknown }): AutoTitle {
+  const value = asRecord({ value: rawValue })
+
+  if (!value) {
+    throw invalid({ message: 'autoTitle must be an object' })
   }
 
-  onlyKeys(value, ['from', 'text'], 'autoTitle')
+  onlyKeys({ value, allowed: ['from', 'text'], what: 'autoTitle' })
 
   if (!(AUTO_TITLE_SOURCES as readonly unknown[]).includes(value.from)) {
-    throw invalid(`autoTitle.from must be one of ${AUTO_TITLE_SOURCES.join(', ')}`)
+    throw invalid({ message: `autoTitle.from must be one of ${AUTO_TITLE_SOURCES.join(', ')}` })
   }
 
-  return { from: value.from as AutoTitle['from'], text: text(value.text, 'autoTitle.text') }
+  return { from: value.from as AutoTitle['from'], text: text({ value: value.text, what: 'autoTitle.text' }) }
 }
 
-function parseAgent(value: unknown): AgentRef {
-  if (!isRecord(value)) {
-    throw invalid('agent must be an object')
+function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
+  const value = asRecord({ value: rawValue })
+
+  if (!value) {
+    throw invalid({ message: 'agent must be an object' })
   }
 
   const fields = ['agentId', 'agentType', 'cwd', 'transcriptPath', 'paseoAgentId', 'paseoUrl'] as const
-  onlyKeys(value, ['provider', 'sessionId', ...fields], 'agent')
-  const agent: AgentRef = { provider: text(value.provider, 'agent.provider'), sessionId: text(value.sessionId, 'agent.sessionId') }
+  onlyKeys({ value, allowed: ['provider', 'sessionId', ...fields], what: 'agent' })
+  const agent: AgentRef = { provider: text({ value: value.provider, what: 'agent.provider' }), sessionId: text({ value: value.sessionId, what: 'agent.sessionId' }) }
 
   for (const field of fields) {
-    const v = optionalText(value[field], `agent.${field}`)
+    const v = optionalText({ value: value[field], what: `agent.${field}` })
 
     if (v) {
       agent[field] = v
@@ -245,16 +273,21 @@ function parseAgent(value: unknown): AgentRef {
 // Merges pushed settings into the card's current ones: a string sets a setting and
 // null removes it. Returns the card's whole settings after the push, so the event
 // replays and undoes on its own.
-function mergeSettings(current: AgentSettings | undefined, value: unknown): AgentSettings | null {
-  if (!isRecord(value)) {
-    throw invalid('settings must be an object')
+function mergeSettings({ current, value: rawValue }: {
+  current: AgentSettings | undefined
+  value: unknown
+}): AgentSettings | null {
+  const value = asRecord({ value: rawValue })
+
+  if (!value) {
+    throw invalid({ message: 'settings must be an object' })
   }
 
   const merged = { ...current }
 
   for (const [name, v] of Object.entries(value)) {
     if (!/^[a-z][A-Za-z]{0,31}$/.test(name)) {
-      throw invalid(`settings.${name}: a setting name is a camelCase word`)
+      throw invalid({ message: `settings.${name}: a setting name is a camelCase word` })
     }
 
     if (v === null) {
@@ -262,40 +295,51 @@ function mergeSettings(current: AgentSettings | undefined, value: unknown): Agen
     } else if (typeof v === 'string' && v.trim() !== '' && v.length <= 200) {
       merged[name] = v
     } else {
-      throw invalid(`settings.${name} must be a string of up to 200 characters, or null to remove it`)
+      throw invalid({ message: `settings.${name} must be a string of up to 200 characters, or null to remove it` })
     }
   }
 
   return Object.keys(merged).length ? merged : null
 }
 
-function parseTerminal(value: unknown): TerminalFacts {
-  if (!isRecord(value)) {
-    throw invalid('terminal must be an object')
+function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
+  const value = asRecord({ value: rawValue })
+
+  if (!value) {
+    throw invalid({ message: 'terminal must be an object' })
   }
 
-  onlyKeys(value, Object.keys(TERMINAL_FIELDS), 'terminal')
+  onlyKeys({ value, allowed: Object.keys(TERMINAL_FIELDS), what: 'terminal' })
 
   for (const [field, v] of Object.entries(value)) {
     if (typeof v !== 'string' || !TERMINAL_FIELDS[field as keyof TerminalFacts].test(v)) {
-      throw invalid(`terminal.${field} has an unsupported value`)
+      throw invalid({ message: `terminal.${field} has an unsupported value` })
     }
   }
 
   return value as TerminalFacts
 }
 
-// The key a hook session's observation (key `<harness>:<session>`) goes to: its own
-// once it has a card, else the card it already joined, else the one card whose
-// source assigned the session's working folder, such as the Firstmate task running
-// there. Several such cards stay ambiguous, so the session keeps its own card.
-// Membership pins the recipient; an occupied folder match never takes another session.
-export function joinedKey(state: BoardState, key: string, folder: string | undefined): string {
-  const session = Object.values(state.sessions ?? {}).find(s => s.sourceRefs.some(r =>
+// Explicit attachments survive folder changes; Firstmate joins also honor its recorded terminal.
+export function joinedKey({ state, key, folder, terminal, probed = false }: {
+  state: BoardState
+  key: string
+  folder: string | undefined
+  terminal?: TerminalFacts
+  probed?: boolean
+}): string {
+  const recorded = Object.values(state.sessions ?? {}).find(s => s.sourceRefs.some(r =>
     r.adapter === 'hooks' && `${r.instanceId}:${r.objectId}` === key))
 
-  if (session) {
-    return session.taskId ? state.cards[session.taskId]!.key : key
+  if (recorded) {
+    const task = recorded.taskId ? state.cards[recorded.taskId] : undefined
+    const managed = task?.sourceRefs.some(r => r.adapter === 'firstmate')
+
+    const matchesTerminal = !task?.terminal?.paseoTerminal
+      || task.terminal.paseoTerminal === terminal?.paseoTerminal
+
+    return task && (!managed || matchesTerminal)
+      ? task.key : key
   }
 
   if (key in state.keys) {
@@ -303,21 +347,35 @@ export function joinedKey(state: BoardState, key: string, folder: string | undef
   }
 
   const colon = key.indexOf(':')
+  const sessionId = key.slice(colon + 1)
   const joined = Object.values(state.cards).find(c => c.sourceRefs.some(r =>
-    r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === key.slice(colon + 1)))
+    r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === sessionId))
+
+  const session = terminal?.paseoTerminal
 
   if (joined) {
-    return joined.key
+    return (!joined.agent || joined.agent.sessionId === sessionId)
+      && (!joined.terminal?.paseoTerminal || joined.terminal.paseoTerminal === session)
+      ? joined.key
+      : key
   }
 
-  if (!folder) {
+  if (!folder || (probed && !terminal?.tty)) {
     return key
   }
 
+  const tty = terminal?.tty
+  const ownTerminal = ({ card: c }: { card: Card }) =>
+    !!session && c.terminal?.paseoTerminal === session
+  const succeeds = ({ card: c }: { card: Card }) => !!tty
+    && (c.activity === 'ended' || !c.terminal?.tty || c.terminal.tty === tty)
   const matches = Object.values(state.cards).filter(c => c.folder === folder
-    && !c.sessionIds?.length)
+    && (c.agent
+      ? ownTerminal({ card: c }) && succeeds({ card: c })
+      : !c.terminal?.paseoTerminal || ownTerminal({ card: c })))
+  const own = matches.filter(card => ownTerminal({ card }))
 
-  return matches.length === 1 ? matches[0]!.key : key
+  return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key
 }
 
 export function decideSession({ state, ref, task, meta }: {
@@ -331,17 +389,21 @@ export function decideSession({ state, ref, task, meta }: {
   }
 
   const session = findSession({ state, ref })
-  const target = task === null ? null : findCard(state, task)
+  const target = task === null ? null : findCard({ state, ref: task })
   const current = session.taskId ? state.cards[session.taskId] : state.cards[session.originCardId]
   const card = target ?? current!
-  checkRevision(card, meta.ifRevision)
+  checkRevision({ card, ifRevision: meta.ifRevision })
 
   if (target?.sessionIds?.some(id => id !== session.id)) {
-    throw new BoardError(`task ${target.id} already has an attached agent; detach it first`, 'SESSION_CONFLICT')
+    throw new BoardError({ message: `task ${target.id} already has an attached agent; detach it first`, code: 'SESSION_CONFLICT' })
+  }
+
+  if (target && state.board?.hydra.session === session.id) {
+    throw new BoardError({ message: 'Hydra cannot also be a task worker', code: 'CONFLICT' })
   }
 
   if (target && !interactive({ session })) {
-    throw new BoardError('A background session has no interactive terminal and cannot be attached to a task', 'NO_TERMINAL')
+    throw new BoardError({ message: 'A background session has no interactive terminal and cannot be attached to a task', code: 'NO_TERMINAL' })
   }
 
   if (session.taskId === (target?.id ?? null)) {
@@ -350,7 +412,7 @@ export function decideSession({ state, ref, task, meta }: {
 
   return {
     event: {
-      ...base(state, meta, card.id),
+      ...base({ state, meta, cardId: card.id }),
       type: 'task.session',
       data: { session: session.id, before: session.taskId, after: target?.id ?? null },
     },
@@ -359,21 +421,28 @@ export function decideSession({ state, ref, task, meta }: {
 
 // Upserts the card with this key. `input` is the untrusted card JSON; `parent`
 // names the parent card by id or key, and null clears it.
-export function decidePush(state: BoardState, key: string, input: unknown, meta: Meta): Decision {
-  text(key, 'key')
+export function decidePush({ state, key, input: rawInput, meta }: {
+  state: BoardState
+  key: string
+  input: unknown
+  meta: Meta
+}): Decision {
+  text({ value: key, what: 'key' })
 
-  if (!isRecord(input)) {
-    throw invalid('card must be a JSON object')
+  const input = asRecord({ value: rawInput })
+
+  if (!input) {
+    throw invalid({ message: 'card must be a JSON object' })
   }
 
-  onlyKeys(input, ['title', 'autoTitle', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'terminal', 'folder', 'attention', 'source'], 'card')
+  onlyKeys({ value: input, allowed: ['title', 'autoTitle', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'terminal', 'folder', 'attention', 'source'], what: 'card' })
 
   const cardId = state.keys[key] ?? `c${state.seq + 1}`
   const fields: PushFields = {}
-  const title = optionalText(input.title, 'title')
-  const workspace = optionalText(input.workspace, 'workspace')
-  const activity = optionalText(input.activity, 'activity')
-  const folder = input.folder === null ? null : optionalText(input.folder, 'folder')
+  const title = optionalText({ value: input.title, what: 'title' })
+  const workspace = optionalText({ value: input.workspace, what: 'workspace' })
+  const activity = optionalText({ value: input.activity, what: 'activity' })
+  const folder = input.folder === null ? null : optionalText({ value: input.folder, what: 'folder' })
 
   if (title) {
     fields.title = title
@@ -391,7 +460,7 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
     fields.folder = null
   } else if (folder) {
     if (!folder.startsWith('/')) {
-      throw invalid('folder must be an absolute path')
+      throw invalid({ message: 'folder must be an absolute path' })
     }
 
     fields.folder = folder
@@ -399,48 +468,60 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
 
   if (input.tags !== undefined) {
     if (!Array.isArray(input.tags)) {
-      throw invalid('tags must be a list of strings')
+      throw invalid({ message: 'tags must be a list of strings' })
     }
 
-    fields.tags = [...new Set(input.tags.map((t, i) => text(t, `tags[${i}]`)))]
+    fields.tags = [...new Set(input.tags.map((t, i) => text({ value: t, what: `tags[${i}]` })))]
   }
 
   if (input.autoTitle !== undefined) {
-    fields.autoTitle = parseAutoTitle(input.autoTitle)
+    fields.autoTitle = parseAutoTitle({ value: input.autoTitle })
   }
 
   if (input.agent !== undefined) {
-    fields.agent = parseAgent(input.agent)
+    fields.agent = parseAgent({ value: input.agent })
   }
 
   if (input.settings !== undefined) {
-    fields.settings = mergeSettings(state.cards[cardId]?.settings, input.settings)
+    fields.settings = mergeSettings({
+      current: state.cards[cardId]?.settings,
+      value: input.settings,
+    })
   }
 
   if (input.terminal !== undefined) {
-    fields.terminal = parseTerminal(input.terminal)
+    fields.terminal = parseTerminal({ value: input.terminal })
   }
 
   if (input.attention !== undefined) {
-    fields.attention = parseAttention(input.attention)
+    fields.attention = parseAttention({ value: input.attention })
   }
 
   if (input.parent === null) {
     fields.parentId = null
   } else if (input.parent !== undefined) {
-    const parent = findCard(state, text(input.parent, 'parent'))
+    const parent = findCard({ state, ref: text({ value: input.parent, what: 'parent' }) })
 
-    if (wouldCycle(state.cards, cardId, parent.id)) {
-      throw invalid(`parent ${parent.id} would make a cycle`)
+    if (wouldCycle({ cards: state.cards, cardId, parentId: parent.id })) {
+      throw invalid({ message: `parent ${parent.id} would make a cycle` })
+    }
+
+    const hasChildren = Object.values(state.cards).some(c => c.parentId === cardId)
+
+    const declared = state.configured || state.cards[cardId]?.tracking || parent.tracking
+    const hookSession = asRecord({ value: input.source })?.adapter === 'hooks' && input.agent
+
+    if (declared && !hookSession && (parent.parentId || hasChildren)) {
+      throw invalid({ message: 'subtasks have one level; a subtask cannot have children' })
     }
 
     fields.parentId = parent.id
   }
 
-  const source = input.source === undefined ? undefined : parseSource(input.source)
+  const source = input.source === undefined ? undefined : parseSource({ value: input.source })
   const card = state.cards[cardId]
 
-  if (source && isStaleSource(card, source)) {
+  if (source && isStaleSource({ card, source })) {
     return { skipped: 'stale' }
   }
 
@@ -448,21 +529,25 @@ export function decidePush(state: BoardState, key: string, input: unknown, meta:
 
   if (card) {
     const changed = Object.entries(fields)
-      .filter(([field, value]) => !isDeepStrictEqual(pushedValue(card, field), value))
+      .filter(([field, value]) => !isDeepStrictEqual(pushedValue({ card, field }), value))
     before = Object.fromEntries(
-      changed.map(([field]) => [field, pushedValue(card, field)]),
+      changed.map(([field]) => [field, pushedValue({ card, field })]),
     ) as PushFields
   }
 
-  return decided(state, meta, {
-    ...base(state, meta, cardId),
-    type: 'card.pushed',
-    data: { key, ...fields, ...(source ? { source } : {}), ...(before ? { before } : {}) },
+  return decided({
+    state,
+    meta,
+    event: {
+      ...base({ state, meta, cardId }),
+      type: 'card.pushed',
+      data: { key, ...fields, ...(source ? { source } : {}), ...(before ? { before } : {}) },
+    },
   })
 }
 
 // The card's value for a push field, null when absent. An auto title counts as absent.
-function pushedValue(card: Card, field: string): unknown {
+function pushedValue({ card, field }: { card: Card; field: string }): unknown {
   if (field === 'title' && !card.titleSet) {
     return null
   }
@@ -470,49 +555,57 @@ function pushedValue(card: Card, field: string): unknown {
   return (card as unknown as Record<string, unknown>)[field] ?? null
 }
 
-function checkColumn(state: BoardState, column: Column | null): void {
-  if (column?.startsWith('custom:') && !viewFor(state).customColumns.some(c => c.id === column)) {
-    throw invalid('unknown custom column')
+function checkColumn({ state, column }: { state: BoardState; column: Column | null }): void {
+  if (column && !boardConfig({ state }).columns.some(c => c.id === column)) {
+    throw invalid({ message: `unknown board column: ${column}` })
   }
 }
 
 // column null returns the card to automatic placement.
 export function decideMove(
-  state: BoardState,
-  ref: string,
-  column: Column | null,
-  meta: Meta,
+  { state, ref, column, meta }: {
+    state: BoardState
+    ref: string
+    column: Column | null
+    meta: Meta
+  },
 ): Decision {
-  const card = findCard(state, ref)
-  checkColumn(state, column)
+  const card = findCard({ state, ref })
+  checkColumn({ state, column })
 
-  return decided(state, meta, {
-    ...base(state, meta, card.id),
-    type: 'card.moved',
-    data: { before: card.manualColumn ?? null, after: column },
+  return decided({
+    state,
+    meta,
+    event: {
+      ...base({ state, meta, cardId: card.id }),
+      type: 'card.moved',
+      data: { before: card.manualColumn ?? null, after: column },
+    },
   })
 }
 
 // Builds a link from CLI-style input, filling kind and number from a GitHub pull
 // request URL when they are not given.
-export function parseLink(input: {
-  url: string
-  kind?: string
-  number?: string
-  title?: string
-  state?: string
-  checkedAt?: string
+export function parseLink({ input }: {
+  input: {
+    url: string
+    kind?: string
+    number?: string
+    title?: string
+    state?: string
+    checkedAt?: string
+  }
 }): Link {
   let url: URL
 
   try {
     url = new URL(input.url)
   } catch {
-    throw invalid(`not a URL: ${input.url}`)
+    throw invalid({ message: `not a URL: ${input.url}` })
   }
 
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    throw invalid('link URL must be http or https')
+    throw invalid({ message: 'link URL must be http or https' })
   }
 
   const pr = /^\/[^/]+\/[^/]+\/pull\/(\d+)\/?$/.exec(url.pathname)
@@ -520,17 +613,17 @@ export function parseLink(input: {
   const kind = input.kind ?? (isGitHubPr ? 'github_pr' : 'url')
 
   if (!(LINK_KINDS as readonly string[]).includes(kind)) {
-    throw invalid(`kind must be one of ${LINK_KINDS.join(', ')}`)
+    throw invalid({ message: `kind must be one of ${LINK_KINDS.join(', ')}` })
   }
 
   if (input.state !== undefined && !(LINK_STATES as readonly string[]).includes(input.state)) {
-    throw invalid(`state must be one of ${LINK_STATES.join(', ')}`)
+    throw invalid({ message: `state must be one of ${LINK_STATES.join(', ')}` })
   }
 
   const number = input.number ?? (isGitHubPr ? pr[1] : undefined)
 
   if (number !== undefined && !/^\d+$/.test(number)) {
-    throw invalid('number must be a positive integer')
+    throw invalid({ message: 'number must be a positive integer' })
   }
 
   const link: Link = { kind: kind as Link['kind'], url: input.url }
@@ -557,13 +650,15 @@ export function parseLink(input: {
 // Adds or updates a link (merged over the existing one with the same URL), or
 // removes it when link is null.
 export function decideLink(
-  state: BoardState,
-  ref: string,
-  url: string,
-  link: Link | null,
-  meta: Meta,
+  { state, ref, url, link, meta }: {
+    state: BoardState
+    ref: string
+    url: string
+    link: Link | null
+    meta: Meta
+  },
 ): Decision {
-  const card = findCard(state, ref)
+  const card = findCard({ state, ref })
   const current = card.links.find(l => l.url === url)
 
   if (!link && !current) {
@@ -572,57 +667,71 @@ export function decideLink(
 
   const after = link ? { ...current, ...link } : null
 
-  if (after && isStaleLink(current, after)) {
+  if (after && isStaleLink({ current, next: after })) {
     return { skipped: 'stale' }
   }
 
-  return decided(state, meta, {
-    ...base(state, meta, card.id),
-    type: 'card.linked',
-    data: { url, before: current ?? null, after },
+  return decided({
+    state,
+    meta,
+    event: {
+      ...base({ state, meta, cardId: card.id }),
+      type: 'card.linked',
+      data: { url, before: current ?? null, after },
+    },
   })
 }
 
 // source: the adapter observing this outcome. An observed outcome changes or
 // clears only through the same source; a person may replace one hooks observed.
 export function decideOutcome(
-  state: BoardState,
-  ref: string,
-  outcome: Outcome | null,
-  meta: Meta,
-  source?: string,
+  { state, ref, outcome, meta, source }: {
+    state: BoardState
+    ref: string
+    outcome: Outcome | null
+    meta: Meta
+    source?: string
+  },
 ): Decision {
-  const card = findCard(state, ref)
+  const card = findCard({ state, ref })
   const observed = card.outcome?.source
 
   if (observed && source !== observed && !(source === undefined && observed === 'hooks')) {
-    throw new BoardError(`card ${card.id}'s outcome comes from ${observed} and cannot be changed here`, 'SOURCE_OWNED', [
-      `Run \`pnyx-axi move ${card.id} <column>\` to pin the card instead`,
-    ])
+    throw new BoardError({
+      message: `card ${card.id}'s outcome comes from ${observed} and cannot be changed here`,
+      code: 'SOURCE_OWNED',
+      help: [
+        `Run \`pnyx-axi move ${card.id} <column>\` to pin the card instead`,
+      ],
+    })
   }
 
-  return decided(state, meta, {
-    ...base(state, meta, card.id),
-    type: 'card.outcome',
-    data: {
-      before: card.outcome ?? null,
-      after: outcome && source ? { ...outcome, source } : outcome,
-      card: { title: card.title, workspace: card.workspace, tags: card.tags, links: card.links },
+  return decided({
+    state,
+    meta,
+    event: {
+      ...base({ state, meta, cardId: card.id }),
+      type: 'card.outcome',
+      data: {
+        before: card.outcome ?? null,
+        after: outcome && source ? { ...outcome, source } : outcome,
+        card: { title: card.title, workspace: card.workspace, tags: card.tags, links: card.links },
+      },
     },
   })
 }
 
 // Records one receipt of a reply. A receipt that repeats the reply's current state
 // appends nothing.
-export function decideReply(state: BoardState, ref: string, data: RepliedEvent['data'], meta: Meta): Decision {
-  const card = findCard(state, ref)
+export function decideReply({ state, ref, data, meta }: { state: BoardState; ref: string; data: RepliedEvent['data']; meta: Meta }): Decision {
+  const card = findCard({ state, ref })
 
-  return decided(state, meta, { ...base(state, meta, card.id), type: 'card.replied', data })
+  return decided({ state, meta, event: { ...base({ state, meta, cardId: card.id }), type: 'card.replied', data } })
 }
 
 // The event id of a harvested note: the same card and source record always give
 // the same id, so a note is appended once however often its source is read.
-export function noteId(cardKey: string, ref: string): string {
+export function noteId({ cardKey, ref }: { cardKey: string; ref: string }): string {
   return `note_${createHash('sha256').update(`${cardKey}\n${ref}`)
     .digest('hex')
     .slice(0, 20)}`
@@ -631,30 +740,34 @@ export function noteId(cardKey: string, ref: string): string {
 // Records one harvested note. meta.id is the note's stable id, so the same source
 // record harvested again is a duplicate and appends nothing.
 export function decideNote(
-  state: BoardState,
-  ref: string,
-  note: Note,
-  meta: Meta & { id: string },
+  { state, ref, note, meta }: {
+    state: BoardState
+    ref: string
+    note: Note
+    meta: Meta & {
+      id: string
+    }
+  },
 ): Decision {
-  const card = findCard(state, ref)
+  const card = findCard({ state, ref })
 
   if (!(NOTE_KINDS as readonly string[]).includes(note.kind)) {
-    throw invalid(`note kind must be one of ${NOTE_KINDS.join(', ')}`)
+    throw invalid({ message: `note kind must be one of ${NOTE_KINDS.join(', ')}` })
   }
 
-  const data: Note = { kind: note.kind, source: text(note.source, 'note source'), text: text(note.text, 'note text') }
+  const data: Note = { kind: note.kind, source: text({ value: note.source, what: 'note source' }), text: text({ value: note.text, what: 'note text' }) }
 
   if (note.at) {
     data.at = note.at
   }
 
-  return decided(state, meta, { ...base(state, meta, card.id), type: 'card.noted', data })
+  return decided({ state, meta, event: { ...base({ state, meta, cardId: card.id }), type: 'card.noted', data } })
 }
 
-function currentValue(card: Card, target: Exclude<BoardEvent, { type: 'board.view' }>): unknown {
+function currentValue({ card, target }: { card: Card; target: Exclude<BoardEvent, { type: 'board.view' }> }): unknown {
   if (target.type === 'card.pushed') {
     return Object.fromEntries(
-      Object.keys(target.data.before ?? {}).map(field => [field, pushedValue(card, field)]),
+      Object.keys(target.data.before ?? {}).map(field => [field, pushedValue({ card, field })]),
     )
   }
 
@@ -669,13 +782,17 @@ function currentValue(card: Card, target: Exclude<BoardEvent, { type: 'board.vie
   return card.outcome ?? null
 }
 
-function afterValue(target: BoardEvent): unknown {
+function afterValue({ target }: { target: BoardEvent }): unknown {
   if (target.type === 'card.replied' || target.type === 'card.noted') {
     return null
   }
 
-  if (target.type !== 'card.pushed') {
+  if (target.type !== 'card.pushed' && 'after' in target.data) {
     return target.data.after
+  }
+
+  if (target.type !== 'card.pushed') {
+    return null
   }
 
   const after = target.data as unknown as Record<string, unknown>
@@ -691,15 +808,45 @@ function afterValue(target: BoardEvent): unknown {
 // an observation: --actor is attribution, so a direct CLI or UI write stays undoable
 // whether a person or an agent made it. A sent reply cannot be unsent, and a
 // harvested note is a source observation.
-export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): Decision {
+export function decideUndo({ state, target, meta }: {
+  state: BoardState
+  target: BoardEvent
+  meta: Meta
+}): Decision {
+  if (target.type === 'board.columns') {
+    const unchanged = isDeepStrictEqual(boardConfig({ state }).columns, target.data.columns)
+
+    if (!target.data.before || state.undone[target.id] || !unchanged) {
+      throw new BoardError({ message: 'columns changed since this event', code: 'CONFLICT' })
+    }
+
+    const pins = Object.entries(target.data.placements ?? {})
+    const placements = Object.fromEntries(pins.map(([id, pin]) => {
+      const card = state.cards[id]
+
+      if (!card || (card.manualColumn ?? null) !== pin.after) {
+        throw new BoardError({ message: `task ${id} moved after the column edit`, code: 'CONFLICT' })
+      }
+
+      return [id, { before: pin.after, after: pin.before }]
+    }))
+    const decision = hydraEvent({ state, meta, cardId: '$board', change: { type: 'board.columns', data: { columns: target.data.before, before: target.data.columns, placements } } })
+
+    return 'event' in decision ? { event: { ...decision.event, undoes: target.id } } : decision
+  }
+
+  if (['board.configured', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message'].includes(target.type)) {
+    throw notUndoable({ message: `${target.id} records durable work history; append a correction instead` })
+  }
+
   if (target.type === 'task.session') {
     const session = findSession({ state, ref: target.data.session })
 
     if (state.undone[target.id] || session.taskId !== target.data.after) {
-      throw new BoardError('session attachment changed since this event', 'CONFLICT')
+      throw new BoardError({ message: 'session attachment changed since this event', code: 'CONFLICT' })
     }
 
-    checkRevision(findCard(state, target.cardId), meta.ifRevision)
+    checkRevision({ card: findCard({ state, ref: target.cardId }), ifRevision: meta.ifRevision })
     const decision = decideSession({
       state, ref: session.id, task: target.data.before, meta: { ...meta, ifRevision: undefined },
     })
@@ -710,34 +857,69 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
   if (target.type === 'board.view') {
     if (
       state.undone[target.id]
-      || !isDeepStrictEqual(viewFor(state), viewFor({ ...state, view: target.data.after }))
+      || !isDeepStrictEqual(viewFor({
+        state,
+      }), viewFor({
+        state: {
+          ...state,
+          view: target.data.after,
+        },
+      }))
     ) {
-      throw new BoardError('preferences changed since this event', 'CONFLICT')
+      throw new BoardError({ message: 'preferences changed since this event', code: 'CONFLICT' })
     }
 
     if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) {
-      throw new BoardError('view preferences changed', 'REVISION_CONFLICT')
+      throw new BoardError({ message: 'view preferences changed', code: 'REVISION_CONFLICT' })
     }
 
-    const after = patchView({ ...state, view: DEFAULT_VIEW }, target.data.before)
+    const after = patchView({ state: { ...state, view: DEFAULT_VIEW }, input: target.data.before })
+    const placements = removedColumnPlacements({ state, after })
 
-    return { event: { ...base(state, meta, '$board'), type: 'board.view', undoes: target.id, data: { before: viewFor(state), after } } }
+    // Undoing a column deletion puts its cards back, unless one was placed since.
+    for (const p of target.data.placements ?? []) {
+      const card = state.cards[p.cardId]
+
+      if (!card || (card.manualColumn ?? null) !== p.after) {
+        throw new BoardError({ message: `card ${p.cardId} was moved since this event`, code: 'CONFLICT' })
+      }
+
+      if (placements.some(q => q.cardId === card.id)) {
+        continue
+      }
+
+      placements.push({
+        cardId: card.id,
+        before: p.after,
+        after: p.before,
+        revision: card.revision,
+      })
+    }
+
+    return {
+      event: {
+        ...base({ state, meta, cardId: '$board' }),
+        type: 'board.view',
+        undoes: target.id,
+        data: { before: viewFor({ state }), after, ...(placements.length ? { placements } : {}) },
+      },
+    }
   }
 
   if (target.type === 'card.replied') {
-    throw notUndoable(`${target.id} records a reply, which cannot be unsent`)
+    throw notUndoable({ message: `${target.id} records a reply, which cannot be unsent` })
   }
 
   if (target.type === 'card.noted') {
-    throw notUndoable(`${target.id} records a note harvested from ${target.data.source} and cannot be undone`)
+    throw notUndoable({ message: `${target.id} records a note harvested from ${target.data.source} and cannot be undone` })
   }
 
   if (target.type === 'card.pushed' && target.data.source) {
-    throw notUndoable(`${target.id} records a source observation and cannot be undone`)
+    throw notUndoable({ message: `${target.id} records a source observation and cannot be undone` })
   }
 
   if (target.type === 'card.pushed' && !target.data.before) {
-    throw notUndoable(`${target.id} created card ${target.cardId} and cannot be undone`)
+    throw notUndoable({ message: `${target.id} created card ${target.cardId} and cannot be undone` })
   }
 
   const after = target.type === 'card.outcome' && !target.undoes && target.data.after?.source
@@ -745,11 +927,11 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
   const observedBy = after || (before && (before !== 'hooks' || target.actor.startsWith('hook:')) && before)
 
   if (observedBy) {
-    throw notUndoable(`${target.id} records an outcome observed by ${observedBy} and cannot be undone`)
+    throw notUndoable({ message: `${target.id} records an outcome observed by ${observedBy} and cannot be undone` })
   }
 
   if (target.type === 'card.linked' && target.data.after?.state === 'merged') {
-    throw notUndoable(`${target.id} records a merge, which cannot be undone`)
+    throw notUndoable({ message: `${target.id} records a merge, which cannot be undone` })
   }
 
   // Each undo can itself be undone, so follow the chain to the latest one.
@@ -763,66 +945,109 @@ export function decideUndo(state: BoardState, target: BoardEvent, meta: Meta): D
 
   if (latest) {
     const redone = chain.length % 2 === 0
-    throw new BoardError(`${target.id} was already ${redone ? 'redone' : 'undone'} by ${latest}`, 'CONFLICT', [
-      `Run \`pnyx-axi undo ${latest}\` to ${redone ? 'undo it again' : 'redo it'}`,
-    ])
+    throw new BoardError({
+      message: `${target.id} was already ${redone ? 'redone' : 'undone'} by ${latest}`,
+      code: 'CONFLICT',
+      help: [
+        `Run \`pnyx-axi undo ${latest}\` to ${redone ? 'undo it again' : 'redo it'}`,
+      ],
+    })
   }
 
-  const card = findCard(state, target.cardId)
-  checkRevision(card, meta.ifRevision)
+  const card = findCard({ state, ref: target.cardId })
+  checkRevision({ card, ifRevision: meta.ifRevision })
 
-  if (!isDeepStrictEqual(currentValue(card, target), afterValue(target))) {
-    throw new BoardError(`${target.id} no longer matches card ${card.id}: it changed since`, 'CONFLICT', [
-      `Run \`pnyx-axi history --card ${card.id}\` to see the later change`,
-    ])
+  if (!isDeepStrictEqual(currentValue({ card, target }), afterValue({ target }))) {
+    throw new BoardError({
+      message: `${target.id} no longer matches card ${card.id}: it changed since`,
+      code: 'CONFLICT',
+      help: [
+        `Run \`pnyx-axi history --card ${card.id}\` to see the later change`,
+      ],
+    })
   }
 
-  const head = { ...base(state, meta, card.id), undoes: target.id }
+  const head = { ...base({ state, meta, cardId: card.id }), undoes: target.id }
 
   if (target.type === 'card.pushed') {
     const before = target.data.before!
-    const data = { key: card.key, ...before, before: afterValue(target) as PushFields }
+    const data = { key: card.key, ...before, before: afterValue({ target }) as PushFields }
 
-    return decided(state, meta, { ...head, type: 'card.pushed', data })
+    return decided({ state, meta, event: { ...head, type: 'card.pushed', data } })
   }
 
   if (target.type === 'card.moved') {
-    checkColumn(state, target.data.before)
+    checkColumn({ state, column: target.data.before })
 
-    return decided(state, meta, { ...head, type: 'card.moved', data: { before: target.data.after, after: target.data.before } })
+    return decided({ state, meta, event: { ...head, type: 'card.moved', data: { before: target.data.after, after: target.data.before } } })
   }
 
   if (target.type === 'card.linked') {
     const data = { url: target.data.url, before: target.data.after, after: target.data.before }
 
-    return decided(state, meta, { ...head, type: 'card.linked', data })
+    return decided({ state, meta, event: { ...head, type: 'card.linked', data } })
   }
 
-  return decided(state, meta, {
-    ...head,
-    type: 'card.outcome',
-    data: {
-      before: target.data.after,
-      after: target.data.before,
-      card: { title: card.title, workspace: card.workspace, tags: card.tags, links: card.links },
+  if (target.type !== 'card.outcome') {
+    throw notUndoable({ message: `${target.id} cannot be undone` })
+  }
+
+  return decided({
+    state,
+    meta,
+    event: {
+      ...head,
+      type: 'card.outcome',
+      data: {
+        before: target.data.after,
+        after: target.data.before,
+        card: { title: card.title, workspace: card.workspace, tags: card.tags, links: card.links },
+      },
     },
   })
 }
 
-export function decideView(state: BoardState, patch: unknown, meta: Meta): Decision {
+export function decideView({ state, patch, meta }: {
+  state: BoardState
+  patch: unknown
+  meta: Meta
+}): Decision {
   if (meta.id && meta.id in state.eventIds) {
     return { skipped: 'duplicate' }
   }
 
   if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) {
-    throw new BoardError('view preferences changed; reload and retry', 'REVISION_CONFLICT')
+    throw new BoardError({ message: 'view preferences changed; reload and retry', code: 'REVISION_CONFLICT' })
   }
 
-  const before = viewFor(state), after = patchView(state, patch)
+  const before = viewFor({ state }), after = patchView({ state, input: patch })
 
   if (isDeepStrictEqual(before, after)) {
     return { skipped: 'unchanged' }
   }
 
-  return { event: { ...base(state, meta, '$board'), type: 'board.view', data: { before, after } } }
+  const placements = removedColumnPlacements({ state, after })
+
+  return {
+    event: {
+      ...base({ state, meta, cardId: '$board' }),
+      type: 'board.view',
+      data: { before, after, ...(placements.length ? { placements } : {}) },
+    },
+  }
+}
+
+// Legacy view-column deletion must not remove pins owned by board columns.
+function removedColumnPlacements({ state, after }: {
+  state: BoardState
+  after: ViewPreferences
+}): NonNullable<ViewEvent['data']['placements']> {
+  const kept = new Set<Column>([
+    ...after.customColumns.map(c => c.id),
+    ...(state.board?.columns.map(c => c.id) ?? []),
+  ])
+
+  return Object.values(state.cards)
+    .filter(c => c.manualColumn?.startsWith('custom:') && !kept.has(c.manualColumn))
+    .map(c => ({ cardId: c.id, before: c.manualColumn!, after: null, revision: c.revision }))
 }

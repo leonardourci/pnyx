@@ -3,7 +3,7 @@
 import { createPaseoClient, type PaseoClient } from '@getpaseo/client'
 import { BoardError } from '../../core/model.ts'
 
-export type Connect = (options: { url: string }) => Promise<PaseoClient>
+export type Connect = ({ url }: { url: string }) => Promise<PaseoClient>
 
 export async function openPaseo({ url }: { url: string }): Promise<PaseoClient> {
   const client = createPaseoClient({
@@ -18,9 +18,10 @@ export async function openPaseo({ url }: { url: string }): Promise<PaseoClient> 
     return client
   } catch {
     await client.close().catch(() => undefined)
-    throw new BoardError(`Paseo is not running at ${url}`, 'PASEO_UNAVAILABLE', [
-      'Start it with `paseo start` or open the Paseo app, then try again',
-      'Set PNYX_PASEO_URL when the daemon listens elsewhere',
-    ])
+    throw new BoardError({
+      message: `Paseo is not running at ${url}`,
+      code: 'PASEO_UNAVAILABLE',
+      help: ['Start it with `paseo start` or open the Paseo app, then try again', 'Set PNYX_PASEO_URL when the daemon listens elsewhere'],
+    })
   }
 }
