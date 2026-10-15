@@ -1,4 +1,4 @@
-import { findProject, projectRows, projectsFor } from '../projects/read.ts'
+import { findProject, projectRows, taskProject } from '../projects/read.ts'
 import { MAX_DONE_HOURS } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
@@ -26,7 +26,6 @@ import {
   decideSession,
   findCard,
   parseLink,
-  projectLabel,
   type Decision,
   type Meta,
 } from '../core/decide.ts'
@@ -678,10 +677,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         }
 
         const project = values.project
-          ? projectsFor({ state }).length
-            ? findProject({ state, ref: String(values.project), attached: true }).path
-            : projectLabel({ value: values.project })
-          : undefined
+          ? taskProject({ state, ref: String(values.project) }) : undefined
         const parent = values.parent ? findCard({ state, ref: String(values.parent) }) : undefined
 
         if (parent?.parentId || parent?.automaticTask || parent?.id === HYDRA_CARD) {

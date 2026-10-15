@@ -1,3 +1,4 @@
+import { projectLabel } from '../core/decide.ts'
 import { readdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import { HydraError, type HydraProject, type HydraState } from '../core/model.ts'
@@ -41,6 +42,24 @@ export function findProject({ state, ref, attached = false }: {
   }
 
   return project
+}
+
+export function taskProject({ state, ref }: { state: HydraState; ref: string }): string | null {
+  let selected: HydraProject | undefined
+
+  try {
+    selected = findProject({ state, ref })
+  } catch (error) {
+    if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
+      throw error
+    }
+  }
+
+  if (selected?.detached) {
+    throw new HydraError({ message: `project is detached: ${ref}`, code: 'NOT_FOUND', help: ['Re-attach the project before selecting it for new work'] })
+  }
+
+  return selected?.path ?? projectLabel({ value: ref })
 }
 
 export function projectFolder({ path }: { path: string }): string {

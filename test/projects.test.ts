@@ -175,3 +175,12 @@ test('Settings requires absolute laptop folders', async () => {
   const { run } = fixture()
   await assert.rejects(run({ args: ['add', '.', '--actor', 'web'] }), { code: 'VALIDATION_ERROR' })
 })
+
+test('standalone task labels still work after a project is attached', async () => {
+  const { folder, run, state } = fixture()
+  await run({ args: ['add', folder] })
+  commands.task(['create', '--title', 'Labelled work', '--key', 'labelled', '--project', 'free-label'])
+  assert.equal(state().cards[state().keys.labelled!]!.project, 'free-label')
+  commands.task(['create', '--title', 'Project work', '--key', 'linked', '--project', 'project'])
+  assert.equal(state().cards[state().keys.linked!]!.project, folder)
+})
