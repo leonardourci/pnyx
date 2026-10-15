@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { startTask } from '../src/cli/start.ts'
+import { decidePush } from '../src/core/decide.ts'
 import { settleDone } from '../src/copies/copies.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { project } from '../src/projects/cli.ts'
-import { hydraDir, loadHydra } from '../src/store/hydra-store.ts'
+import { hydraDir, loadHydra, withWriter } from '../src/store/hydra-store.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 const meta = { at: '2026-10-15T00:00:00Z', actor: 'test' }
@@ -147,4 +148,57 @@ test('a project copy command or a command with its own folder replaces the workt
   const card2 = loadHydra({ hydraId: 'lab' }).state.cards[own]!
   assert.equal(card2.launch?.folder, repo)
   assert.equal(card2.copy, undefined)
+})
+
+test('a deleted copy is made again on its branch, and a working agent keeps its copy in Done', async () => {
+  const { run, task, card } = await lab()
+  await startTask({ hydraId: 'lab', task, via: 'command', meta })
+  const { path, branch } = card().copy!
+  rmSync(path, { recursive: true, force: true })
+  await startTask({ hydraId: 'lab', task, via: 'command', meta })
+  assert.equal(card().copy?.path, path)
+  assert.equal(git({ cwd: path, args: ['symbolic-ref', '--short', 'HEAD'] }), branch)
+
+  withWriter({
+    hydraId: 'lab',
+    fn: ({ writer }) => {
+      const pushed = decidePush({ state: writer.state, key: card().key, input: { activity: 'working' }, meta })
+
+      if ('event' in pushed) {
+        writer.append({ event: pushed.event })
+      }
+    },
+  })
+  run({ args: ['move', task, 'done', '--actor', 'web'] })
+  assert.equal(settleDone({ hydraId: 'lab' }), 0)
+  assert.ok(existsSync(path))
+})
+
+test('a confirmed-safe copy whose commit is on no branch stays', async () => {
+  const { task, card, run } = await lab()
+  await startTask({ hydraId: 'lab', task, via: 'command', meta })
+  const { path } = card().copy!
+  git({ cwd: path, args: ['checkout', '-q', '--detach'] })
+  writeFileSync(join(path, 'loose.txt'), 'loose\n')
+  git({ cwd: path, args: ['add', '.'] })
+  git({ cwd: path, args: ['commit', '-q', '-m', 'loose'] })
+  await run({ args: ['task', 'copy', task, 'remove', '--safe', '--actor', 'hydra'] })
+  assert.equal(card().copy?.state, 'flagged')
+  assert.equal(card().copy?.reason, 'its commit is on no branch')
+  assert.ok(existsSync(path))
+})
+
+test('a copy from the project copy command is released, never deleted', async () => {
+  const { root, run, task, card } = await lab()
+  const made = join(root, 'made')
+  await project(['set', 'app', '--copy', `mkdir -p "${made}/$PNYX_TASK" && echo "${made}/$PNYX_TASK"`, '--hydra', 'lab'])
+  await startTask({ hydraId: 'lab', task, via: 'command', meta })
+  run({ args: ['move', task, 'done', '--actor', 'web'] })
+  settleDone({ hydraId: 'lab' })
+  assert.equal(card().copy?.state, 'flagged')
+  await run({ args: ['task', 'copy', task, 'remove', '--safe', '--actor', 'hydra'] })
+  assert.equal(card().copy?.state, 'removed')
+  assert.match(card().copy?.reason ?? '', /folder stays/)
+  assert.ok(existsSync(join(made, task)))
+  await assert.rejects(startTask({ hydraId: 'lab', task, via: 'command', folder: made, inPlace: true, meta }), /either --folder or --in-place/)
 })
