@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { KEY_LABEL, confirms, harnessControls, inputReason, type Control, type ControlOption } from '../../../src/core/control.ts'
 import type { Card } from '../../../src/core/model.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
-import { Button } from '../components/ui/controls.tsx'
+import { Button, Select } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import type { Command } from './connection.ts'
 
@@ -280,5 +280,54 @@ export function AgentControls({ card, thread, command, connected, notify }: Agen
       ))}
       {harness.note && <p className="small muted">{harness.note}</p>}
     </section>
+  )
+}
+
+// The same controls as compact pickers beside the reply input; nothing when the harness has none.
+export function ComposerSettings({ card, thread, command, connected, notify }: AgentControlsInput) {
+  const { page, harness, route, pending, send, sending } = useAgentControls({
+    card, thread, command, connected, notify,
+  })
+
+  return harness && (
+    <div className="composer-settings" role="group" aria-label="Agent settings">
+      {harness.controls.map(control => {
+        const now = card.settings?.[control.setting], waiting = pending[control.setting]
+        const blocked = route ?? keyReason({ control, kind: page?.routeKind })
+        const current = control.confirm === 'changes' || now === undefined
+          ? undefined
+          : control.options.find(option => confirms({
+            control, option, before: undefined, after: now,
+          }))
+        const reported = now === undefined ? undefined
+          : shown({ name: control.setting, value: control.setting === 'model' ? now.replace(/^claude-/, '') : now })
+        const chosen = waiting && control.options.find(o => o.value === waiting.value)
+        const value = chosen ? chosen.label : reported
+
+        return (
+          <Select
+            key={control.setting}
+            label={label({ name: control.setting })}
+            value={current?.value ?? ''}
+            options={control.options}
+            disabled={!!blocked || sending}
+            title={blocked ?? `${label({ name: control.setting })}: ${now ?? 'not reported'}`}
+            display={(
+              <>
+                <Icon name={control.setting} size={12} />
+                {value ? `${value}${waiting ? '…' : ''}` : label({ name: control.setting })}
+              </>
+            )}
+            onChange={({ value }) => {
+              const option = control.options.find(o => o.value === value)
+
+              if (option) {
+                send({ control, option })
+              }
+            }}
+          />
+        )
+      })}
+    </div>
   )
 }
