@@ -1,6 +1,6 @@
 import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
@@ -16,12 +16,14 @@ import { boardDir, loadBoard, spoolDir, spoolWrite, withWriter } from '../src/st
 import { decidePush } from '../src/core/decide.ts'
 import { indexStatus, searchPath } from '../src/search/index.ts'
 import { writeSetting } from '../src/search/settings.ts'
+import { stopAll, stopProcess, track } from './processes.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
 
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
-const TIMEOUT_MS = 3000
+// Waits end as soon as their condition holds; the bound only has to outlast a heavily loaded machine.
+const TIMEOUT_MS = 30000
 // CLI children start a fresh node process; under a parallel test run that can take far longer than a poll.
 const CLI_TIMEOUT_MS = 30000
 
@@ -42,18 +44,11 @@ afterEach(async () => {
   }
 
   tabs.clear()
+  // A spawned server must not outlive its test, even one that failed or timed out.
+  await stopAll()
   await server?.close()
   server = undefined
 })
-
-// Stops a spawned server and waits for it to exit, so none outlives its test.
-async function stopChild({ child }: { child: ChildProcess }) {
-  if (child.exitCode === null && child.signalCode === null) {
-    const exited = once(child, 'exit')
-    child.kill('SIGTERM')
-    await exited
-  }
-}
 
 const cli = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { encoding: 'utf8', timeout: CLI_TIMEOUT_MS })
 
@@ -207,15 +202,14 @@ async function boardWithCard({ board = 'default' }: { board?: string } = {}) {
   return loadBoard({ board }).state.keys.a!
 }
 
-test('serve runs until stop, and the summary reports it without starting it', async t => {
+test('serve runs until stop, and the summary reports it without starting it', async () => {
   const before = cli({ args: [] })
   assert.match(before, /^server: not running$/m)
   assert.match(before, /pnyx-axi serve/)
   assert.equal(existsSync(infoPath({ board: 'default' })), false)
 
   const child = spawn(process.execPath, [BIN, 'serve', '--port', '0'], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
-  // A failed assertion must not leave the piped child keeping this test file alive.
-  t.after(() => stopChild({ child }))
+  track({ child })
   let out = ''
   child.stdout.on('data', chunk => (out += chunk))
   const url = await until({ check: () => /^url: "(http:\/\/127\.0\.0\.1:\d+)"$/m.exec(out)?.[1], what: 'serve to start' })
@@ -233,14 +227,14 @@ test('serve runs until stop, and the summary reports it without starting it', as
   assert.match(cli({ args: ['stop'] }), /^server: "none: not running"$/m)
 })
 
-test('serve refuses a taken port instead of picking another', async t => {
+test('serve refuses a taken port instead of picking another', async () => {
   const holder = createServer().listen(0, '127.0.0.1')
   await once(holder, 'listening')
   const { port } = holder.address() as { port: number }
 
   try {
     const child = spawn(process.execPath, [BIN, 'serve', '--port', String(port)], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
-    t.after(() => stopChild({ child }))
+    track({ child })
     let out = ''
     child.stdout.on('data', chunk => (out += chunk))
     const [code] = await once(child, 'exit')
@@ -421,24 +415,22 @@ test('the board page carries the token only for its own host and origin; /health
 
 test('a server.json left by a dead server is not trusted, even when its pid was reused', async () => {
   // A live process that is not a Pnyx server, and a port nothing listens on.
-  const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 10000)'], { stdio: 'ignore' })
+  // It must outlast the CLI calls below on a loaded machine; the test's cleanup stops it.
+  const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], { stdio: 'ignore' })
+  track({ child: other })
   const probe = createServer().listen(0, '127.0.0.1')
   await once(probe, 'listening')
   const port = (probe.address() as { port: number }).port
   await new Promise(r => probe.close(r))
 
-  try {
-    mkdirSync(boardDir({ board: 'default' }), { recursive: true })
-    writeFileSync(infoPath({ board: 'default' }), JSON.stringify({ pid: other.pid, port, url: `http://127.0.0.1:${port}`, socket: null }))
+  mkdirSync(boardDir({ board: 'default' }), { recursive: true })
+  writeFileSync(infoPath({ board: 'default' }), JSON.stringify({ pid: other.pid, port, url: `http://127.0.0.1:${port}`, socket: null }))
 
-    assert.match(cli({ args: [] }), /^server: not running$/m)
-    assert.match(cli({ args: ['stop'] }), /^server: "none: not running"$/m)
-    assert.equal(other.exitCode, null)
-    assert.equal(other.signalCode, null)
-    server = await startServer({ board: 'default' })
-  } finally {
-    other.kill()
-  }
+  assert.match(cli({ args: [] }), /^server: not running$/m)
+  assert.match(cli({ args: ['stop'] }), /^server: "none: not running"$/m)
+  assert.equal(other.exitCode, null)
+  assert.equal(other.signalCode, null)
+  server = await startServer({ board: 'default' })
 })
 
 test('web preferences, custom moves and read queries share the authenticated socket', async () => {
@@ -875,7 +867,7 @@ test('the board edits task kinds over the socket', async () => {
   t.ws.close()
 })
 
-test('board tabs list, create, rename and open boards, each on its own server', async () => {
+test('board tabs list, create, rename and open boards, each on its own server', async context => {
   cli({ args: ['board', 'create', 'default', '--name', 'Main'] })
   server = await startServer({ board: 'default', port: 0 })
   const t = await tab()
@@ -900,18 +892,19 @@ test('board tabs list, create, rename and open boards, each on its own server', 
 
   // A new board gets the next free id and its own running server.
   t.command({ id: 'b3', name: 'boards', args: ['create', 'Side'] })
+  // That server runs detached from this test, so it is stopped by the pid it announces, even when it starts after the test gave up on it.
+  const announced = infoPath({ board: 'board-2' })
+  context.after(async () => {
+    const pid = await until({ check: () => (existsSync(announced) ? (JSON.parse(readFileSync(announced, 'utf8')) as { pid: number }).pid : undefined), what: 'board-2 server.json' })
+    await stopProcess({ pid })
+  })
   const created = await receipt({ id: 'b3' })
-
-  try {
-    assert.deepEqual(created.boards?.map(b => [b.id, b.name]), [['board-2', 'Side'], ['default', 'Work']])
-    assert.match(created.url!, /^http:\/\/127\.0\.0\.1:\d+$/)
-    assert.notEqual(created.url, `http://127.0.0.1:${server.port}`)
-    // Opening it again finds the same server.
-    t.command({ id: 'b4', name: 'boards', args: ['open', 'board-2'] })
-    assert.equal((await receipt({ id: 'b4' })).url, created.url)
-  } finally {
-    cli({ args: ['stop', '--board', 'board-2'] })
-  }
+  assert.deepEqual(created.boards?.map(b => [b.id, b.name]), [['board-2', 'Side'], ['default', 'Work']])
+  assert.match(created.url!, /^http:\/\/127\.0\.0\.1:\d+$/)
+  assert.notEqual(created.url, `http://127.0.0.1:${server.port}`)
+  // Opening it again finds the same server.
+  t.command({ id: 'b4', name: 'boards', args: ['open', 'board-2'] })
+  assert.equal((await receipt({ id: 'b4' })).url, created.url)
 
   t.command({ id: 'b5', name: 'boards', args: ['open', 'missing'] })
   assert.match((await receipt({ id: 'b5' })).error ?? '', /board not found/)

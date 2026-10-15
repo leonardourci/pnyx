@@ -10,6 +10,7 @@ import { loadBoard, readEvents, spoolWrite } from '../src/store/board-store.ts'
 import { captainsIntent, homeKey, parseBacklog, resolveHome } from '../src/integrations/firstmate/home.ts'
 import { latestActivity, openDecisions, parseStatusLine, statusNotes } from '../src/integrations/firstmate/status.ts'
 import { syncHome, watchHome, type SyncResult } from '../src/integrations/firstmate/sync.ts'
+import { stopAll, track } from './processes.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -313,11 +314,13 @@ test('firstmate sync through the CLI', () => {
 test('serve --home folds the home into the board without a separate watch', async () => {
   const { home, env } = copyFixture()
   const server = spawn(process.execPath, [BIN, 'serve', '--port', '0', '--home', home], { env, stdio: ['ignore', 'pipe', 'inherit'] })
+  track({ child: server })
 
   try {
     let out = ''
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`serve did not start: ${out}`)), 10000)
+      // Resolves on the first output that holds it; the bound only has to outlast a heavily loaded machine.
+      const timer = setTimeout(() => reject(new Error(`serve did not start: ${out}`)), 60000)
       server.stdout.on('data', (chunk: Buffer) => {
         out += chunk
 
@@ -330,12 +333,7 @@ test('serve --home folds the home into the board without a separate watch', asyn
     assert.match(out, /^firstmate: "watching 1 home"$/m)
     assert.equal(cardOf({ home, task: 'api-v2' }).title, 'app: v2 API with (optional) pagination')
   } finally {
-    // A server that already exited has no exit event left to wait for.
-    if (server.exitCode === null && server.signalCode === null) {
-      const exited = new Promise(resolve => server.once('exit', resolve))
-      server.kill('SIGTERM')
-      await exited
-    }
+    await stopAll()
   }
 })
 
