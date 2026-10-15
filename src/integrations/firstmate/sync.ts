@@ -212,7 +212,7 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
       if (!writer.state.configured) {
         const config = hydraConfig({ state: writer.state, id: hydraId })
 
-        if (!writer.state.config) {
+        if (!writer.state.config && !Object.keys(writer.state.cards).length) {
           config.columns = config.columns.map(c => ({ ...c, id: `custom:${randomUUID()}` }))
         }
 

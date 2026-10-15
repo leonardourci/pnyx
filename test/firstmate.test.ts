@@ -957,3 +957,15 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
   assert.match(notes().at(-1)!, /arg=Pnyx: please raise the reasoning effort of the worker on task hotfix-2 \(Codex\) by one step\.\n$/)
   assert.equal(existsSync(join(home, 'sent.log')), false)
 })
+
+test('linking a Firstmate home preserves the columns and Done time of existing unconfigured work', () => {
+  const { home, env } = copyFixture()
+  const { run } = cli({ env })
+  run({ args: ['task', 'create', '--key', 'kept', '--title', 'Existing completion', '--column', 'done'] })
+  const before = loadHydra({ hydraId: 'default' }).state
+  const id = before.keys.kept!
+  syncHome({ hydraId: 'default', home })
+  const after = loadHydra({ hydraId: 'default' }).state
+  assert.equal(after.cards[id]?.column, before.cards[id]?.column)
+  assert.equal(after.cards[id]?.doneAt, before.cards[id]?.doneAt)
+})
