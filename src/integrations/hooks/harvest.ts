@@ -8,7 +8,7 @@ import type { Writer } from '../../store/hydra-store.ts'
 import { readTranscript } from '../../oracle/index.ts'
 import { redact } from '../../oracle/text.ts'
 import { codexThreadTitle, transcriptNotes } from './notes.ts'
-import { LIVE_HOOK_SETTINGS, transcriptSettings, type FoundSettings } from './settings.ts'
+import { LIVE_HOOK_SETTINGS, observedSettings, transcriptSettings, type FoundSettings } from './settings.ts'
 
 const CURSORS = 'harvest.json'
 
@@ -175,7 +175,9 @@ export function harvestTranscripts({ writer, cardIds, at, detached }: {
         }
       }
 
-      const found = transcriptSettings({ record: line.record, subagent })
+      const found = observedSettings({
+        agent: agent!, held, observed: transcriptSettings({ record: line.record, subagent }),
+      })
       const stamp = Date.parse(String((line.record as { timestamp?: unknown }).timestamp))
       const stale = hooked > 0 && !(stamp >= hooked)
 

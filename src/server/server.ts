@@ -28,6 +28,7 @@ import { hydraDir, loadHydra, privateDir, readEventsFrom, spoolDir, spoolFiles, 
 import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 import { createHydra, listHydras, openHydra, renameHydra } from './hydras.ts'
 import { createHost, hostRequest, type QueryFn } from './host.ts'
+import type { SpawnCodex } from './codex.ts'
 
 // The browser edits kinds; Hydra's check and start stay in the CLI.
 const commands = { ...cliCommands, kind: workerCommands.kind }
@@ -87,6 +88,7 @@ export async function startServer({ hydraId, ...options }: {
   catalogLocations?: CatalogLocations
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
+  spawnCodex?: SpawnCodex
 }): Promise<RunningServer> {
   const release = claimServer({ hydraId })
 
@@ -114,13 +116,14 @@ async function startOwnedServer({
   port = 0,
   homes = [],
   catalogLocations,
-  query,
+  query, spawnCodex,
 }: {
   hydraId: string
   port?: number
   homes?: string[]
   catalogLocations?: CatalogLocations
   query?: QueryFn
+  spawnCodex?: SpawnCodex
 }): Promise<RunningServer> {
   if (await readServer({ hydraId })) {
     throw new HydraError({ message: `a server is already running for Hydra ${hydraId}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
@@ -452,7 +455,7 @@ async function startOwnedServer({
     return token.length > 0 && bytes.length === token.length && timingSafeEqual(bytes, token)
   }
 
-  const agents = createHost({ hydraId, query, changed: () => kick() })
+  const agents = createHost({ hydraId, query, spawnCodex, changed: () => kick() })
 
   const http = createServer((req, res) => {
     if (!allowed({ req })) {

@@ -8,6 +8,7 @@ import { cardSessionId, sessionId } from '../../core/tasks.ts'
 import { spoolFiles, withWriter, type Writer } from '../../store/hydra-store.ts'
 import { canonical } from '../../store/paths.ts'
 import { harvestTranscripts } from './harvest.ts'
+import { observedSettings, type FoundSettings } from './settings.ts'
 import { HARNESSES, TERMINAL_EVENTS, attend, isHookEnvelope, observe, type HookEnvelope } from './observe.ts'
 
 const HARVEST_AFTER = ['Stop', 'SubagentStop', 'PostCompact', 'SessionEnd']
@@ -80,7 +81,21 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
       continue
     }
 
-    const card = typeof o.card.parent === 'string' ? { ...o.card, parent: resolve({ key: o.card.parent }) } : o.card
+    let card = typeof o.card.parent === 'string' ? { ...o.card, parent: resolve({ key: o.card.parent }) } : o.card
+    const session = o.card.agent
+      ? writer.state.sessions?.[sessionId({ agent: o.card.agent as AgentRef })] : undefined
+
+    if (session && session.agent.host === 'pnyx') {
+      card = {
+        ...card,
+        settings: observedSettings({
+          agent: session.agent,
+          held: session.settings,
+          observed: card.settings as FoundSettings | undefined,
+        }),
+      }
+    }
+
     const m: Meta = { id: o.id ? `${entry.id}:${o.id}` : entry.id, at: entry.at, actor: `hook:${entry.harness}` }
     const current = writer.state.cards[writer.state.keys[key] ?? '']?.attention ?? []
     const attention = o.attend && attend({ current, change: o.attend })

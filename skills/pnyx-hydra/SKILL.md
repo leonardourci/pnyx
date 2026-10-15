@@ -52,8 +52,8 @@ Write your own chat message only when you need the owner's input: `pnyx-axi hydr
 
 `pnyx-axi task start <task> --reason "<why>" --hydra <hydra>` starts one worker for a task and attaches it:
 
-- With no `--via` (or `--via pnyx`), the Hydra's server runs Claude Code itself in the task's folder on the kind's model, effort and mode, with the brief as its first prompt; `--folder <absolute path>` sets the folder when the task has none. `pnyx-axi reply <task> --text "<message>"` reaches it even after the server restarted. A task marked interrupted stopped mid-turn: decide whether to send it a message to continue.
-- `--via paseo [--kind <kind>] --folder <absolute path>` starts it in the local Paseo daemon on the kind's agent (`pnyx-axi kind list --hydra <hydra>`; the `default` kind when none is given). `--harness claude|codex` and `--prompt "<opening message>"` override the kind's harness and the default opening message, which names the task and the `pnyx-worker` skill workers follow.
+- With no `--via` (or `--via pnyx`), the Hydra's server runs Claude Code or Codex in the task's folder on the kind's provider, model, effort and mode (`--harness claude|codex` overrides its provider), with the brief as its first prompt; `--folder <absolute path>` sets the folder when the task has none. `pnyx-axi reply <task> --text "<message>"` reaches it even after the server restarted. A task marked interrupted stopped mid-turn: decide whether to send it a message to continue.
+- `--via paseo [--kind <kind>] --folder <absolute path>` starts it in the local Paseo daemon on the kind's agent (`pnyx-axi kind list --hydra <Hydra>`; the `default` kind when none is given). `--harness claude|codex` and `--prompt "<opening message>"` override the kind's harness and the default opening message, which names the task and the `pnyx-worker` skill workers follow.
 - `--via command [--prompt "<text>"]` runs the Hydra's own start command in the task's folder.
 - `--via firstmate [--prompt "<text>"]` hands the request to the Firstmate home that is this Hydra.
 

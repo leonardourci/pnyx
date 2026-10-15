@@ -23,13 +23,11 @@ type Via = (typeof VIAS)[number]
 export const HYDRA_SKILL = join(import.meta.dirname, '..', '..', 'skills', 'pnyx-hydra', 'SKILL.md')
 export const HOME_SKILL = join('.agents', 'skills', 'pnyx-hydra')
 
-// Pnyx runs Claude Code itself; Codex still starts in Paseo.
-function chooseVia({ state, via, harness }: {
+function chooseVia({ state, via }: {
   state: HydraState
   via?: string
-  harness: string
 }): Via {
-  const chosen = via ?? (state.config?.hydra.kind === 'firstmate' ? 'firstmate' : harness === 'claude' ? 'pnyx' : 'paseo')
+  const chosen = via ?? (state.config?.hydra.kind === 'firstmate' ? 'firstmate' : 'pnyx')
 
   if (!(VIAS as readonly string[]).includes(chosen)) {
     throw new HydraError({ message: `unknown start route: ${chosen}`, code: 'VALIDATION_ERROR', help: [`Use --via ${VIAS.join('|')}`] })
@@ -80,10 +78,11 @@ function quotaModel({ harness, quota }: {
 }
 
 // The agent a start uses: the named kind, else `default` (or `hydra`), else Claude Code's defaults.
-export function agentFor({ state, hydraId, kind }: {
+export function agentFor({ state, hydraId, kind, harness }: {
   state: HydraState
   hydraId: string
   kind: string
+  harness?: string
 }): AgentConfig {
   const agents = hydraConfig({ state, id: hydraId }).agents ?? {}
   const configured = Object.hasOwn(agents, kind) ? agents[kind] : undefined
@@ -92,7 +91,14 @@ export function agentFor({ state, hydraId, kind }: {
     throw new HydraError({ message: `no agent configured for kind ${kind}`, code: 'NOT_FOUND', help: [`Run \`pnyx-axi kind set ${kind} --harness claude --hydra ${hydraId}\``] })
   }
 
-  const agent: AgentConfig = { ...(configured ?? { harness: 'claude' }) }
+  if (harness !== undefined && harness !== 'claude' && harness !== 'codex') {
+    throw new HydraError({ message: `unknown harness: ${harness}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
+  }
+
+  const defaults = configured ?? { harness: 'claude' as const }
+  const agent: AgentConfig = harness && harness !== defaults.harness
+    ? { harness, ...(defaults.quota ? { quota: defaults.quota } : {}) }
+    : { ...defaults }
 
   if (agent.quota) {
     agent.model = quotaModel({ harness: agent.harness, quota: agent.quota }) ?? agent.model
@@ -144,8 +150,8 @@ export async function startTask({
   const state = loadHydra({ hydraId }).state
   const card = findCard({ state, ref: task })
   const agent = via === 'firstmate' || via === 'command' || (!via && state.config?.hydra.kind === 'firstmate')
-    ? undefined : agentFor({ state, hydraId, kind: kind ?? 'default' })
-  const how = chooseVia({ state, via, harness: harness ?? agent?.harness ?? 'claude' })
+    ? undefined : agentFor({ state, hydraId, kind: kind ?? 'default', harness })
+  const how = chooseVia({ state, via })
 
   if (how === 'firstmate') {
     return askFirstmate({ hydraId, task, prompt, meta })
@@ -156,11 +162,13 @@ export async function startTask({
   }
 
   if (how === 'pnyx') {
-    if ((harness ?? agent.harness) !== 'claude') {
-      throw new HydraError({ message: 'Pnyx runs Claude Code agents only so far', code: 'VALIDATION_ERROR', help: ['Start Codex with --via paseo'] })
+    const chosen = harness ?? agent.harness
+
+    if (chosen !== 'claude' && chosen !== 'codex') {
+      throw new HydraError({ message: `unknown harness: ${chosen}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
     }
 
-    const settings = { model: agent.model, effort: agent.effort, mode: agent.mode }
+    const settings = { model: agent.model, effort: agent.effort, mode: agent.mode, provider: chosen === 'codex' ? 'codex' : 'claude-code' }
 
     return askHost({
       hydraId,
