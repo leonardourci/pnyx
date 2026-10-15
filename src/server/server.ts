@@ -28,6 +28,7 @@ import { boardDir, loadBoard, privateDir, readEventsFrom, spoolDir, spoolFiles, 
 import { DEFAULT_PORT, boardIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 import { createBoard, listBoards, openBoard, renameBoard } from './boards.ts'
 import { createHost, hostRequest, type QueryFn } from './host.ts'
+import type { SpawnCodex } from './codex.ts'
 
 // The browser edits kinds; Hydra's check and start stay in the CLI.
 const commands = { ...cliCommands, kind: workerCommands.kind }
@@ -87,6 +88,7 @@ export async function startServer({ board, ...options }: {
   catalogLocations?: CatalogLocations
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
+  spawnCodex?: SpawnCodex
 }): Promise<RunningServer> {
   const release = claimServer({ board })
 
@@ -114,13 +116,14 @@ async function startOwnedServer({
   port = 0,
   homes = [],
   catalogLocations,
-  query,
+  query, spawnCodex,
 }: {
   board: string
   port?: number
   homes?: string[]
   catalogLocations?: CatalogLocations
   query?: QueryFn
+  spawnCodex?: SpawnCodex
 }): Promise<RunningServer> {
   if (await readServer({ board })) {
     throw new BoardError({ message: `a server is already running for board ${board}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
@@ -452,7 +455,7 @@ async function startOwnedServer({
     return token.length > 0 && bytes.length === token.length && timingSafeEqual(bytes, token)
   }
 
-  const agents = createHost({ board, query, changed: () => kick() })
+  const agents = createHost({ board, query, spawnCodex, changed: () => kick() })
 
   const http = createServer((req, res) => {
     if (!allowed({ req })) {
