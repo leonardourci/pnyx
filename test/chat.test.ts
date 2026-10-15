@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { recordEntries } from '../src/thread/read.ts'
-import { commentReply, joinMessageParts } from '../web/src/board/chat.ts'
+import { commentReply, joinMessageParts, quoteInto } from '../web/src/board/chat.ts'
 import { DEFAULT_KEYBOARD, keyboardError, resolveKey } from '../src/core/keyboard.ts'
 
 test('Markdown messages split for transport reassemble across older pages without losing text', () => {
@@ -43,4 +43,9 @@ test('Enter replies and c comments in the thread without consuming typed text', 
   assert.equal(resolveKey({ event: { key: 'c' }, context, prefs: DEFAULT_KEYBOARD }).action, 'thread.comment')
   assert.equal(resolveKey({ event: { key: 'c' }, context: { ...context, editing: true }, prefs: DEFAULT_KEYBOARD }).consume, false)
   assert.equal(keyboardError({ prefs: { ...DEFAULT_KEYBOARD, bindings: { 'thread.comment': ['n'] } } }), undefined)
+})
+
+test('a quoted selection follows the draft as Markdown, ready for an answer under it', () => {
+  assert.equal(quoteInto({ draft: '', text: ' First line\nSecond line ' }), '> First line\n> Second line\n\n')
+  assert.equal(quoteInto({ draft: 'Context\n\n', text: 'Quoted' }), 'Context\n\n> Quoted\n\n')
 })

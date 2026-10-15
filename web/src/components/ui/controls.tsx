@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ComponentProps } from 'react'
+import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 
 export function Button({ className = '', variant = 'quiet', ...props }: ComponentProps<'button'> & { variant?: 'quiet' | 'primary' | 'surface' }) {
   return <button type="button" className={`button ${variant} ${className}`} {...props} />
@@ -62,12 +62,17 @@ export function Select({
   options,
   onChange,
   disabled = false,
+  display,
+  title,
 }: {
   label: string
   value: string
   options: Option[]
   onChange({ value }: { value: string }): void
   disabled?: boolean
+  // Trigger content in place of the chosen option's label.
+  display?: ReactNode
+  title?: string
 }) {
   const [open, setOpen] = useState(false), [active, setActive] = useState(0)
   const root = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), id = useId()
@@ -101,6 +106,7 @@ export function Select({
         ref={trigger}
         variant="surface"
         disabled={disabled}
+        title={title}
         role="combobox"
         aria-label={label}
         aria-haspopup="listbox"
@@ -122,7 +128,7 @@ export function Select({
         }}
         aria-activedescendant={open ? `${id}-${active}` : undefined}
       >
-        {options.find(o => o.value === value)?.label ?? label}
+        {display ?? options.find(o => o.value === value)?.label ?? label}
         <span aria-hidden="true">⌄</span>
       </Button>
       {open && (

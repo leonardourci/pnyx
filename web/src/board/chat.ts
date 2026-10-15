@@ -46,3 +46,12 @@ export function commentReply({ draft, comments }: {
 
   return [draft, ...blocks].filter(text => text.trim()).join('\n\n')
 }
+
+// Trailing blank line leaves room to answer under the quote.
+export function quoteInto({ draft, text }: { draft: string; text: string }): string {
+  const quote = text.trim().split('\n')
+    .map(line => `> ${line}`)
+    .join('\n')
+
+  return [draft.trimEnd(), quote].filter(Boolean).join('\n\n') + '\n\n'
+}
