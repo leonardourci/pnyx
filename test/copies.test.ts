@@ -76,10 +76,12 @@ test('a copy made under boards/ keeps working after its Hydra moves to hydras/',
   process.env.PNYX_HOME = join(root, 'later')
 
   assert.equal(card().copy?.path, old)
+  assert.equal(git({ cwd: old, args: ['rev-parse', '--abbrev-ref', 'HEAD'] }), `pnyx/lab-${task}`)
+  assert.equal(realpathSync(join(home, 'boards/lab')), join(home, 'hydras/lab'))
   assert.ok(git({ cwd: repo, args: ['worktree', 'list', '--porcelain'] }).includes(`worktree ${moved}\n`))
   run({ args: ['move', task, 'done', '--actor', 'web'] })
   assert.equal(settleDone({ hydraId: 'lab' }), 1)
-  assert.deepEqual([card().copy?.state, card().copy?.path], ['removed', moved])
+  assert.deepEqual([card().copy?.state, card().copy?.path], ['removed', old])
   assert.equal(existsSync(moved), false)
 })
 
