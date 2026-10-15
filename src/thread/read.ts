@@ -16,7 +16,7 @@ const MAX_BYTES = 10 * 1024 * 1024
 // below the socket budget even for JSON-escaped control characters.
 const MAX_TEXT = 1000
 
-const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => {
+export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => {
   const text = redact({ text: entry.text })
 
   if (text.length <= MAX_TEXT) {

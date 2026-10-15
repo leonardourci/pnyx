@@ -4,7 +4,7 @@ import { agent, reply } from './reply.ts'
 
 try {
   const [command, ...args] = process.argv.slice(2)
-  process.stdout.write(JSON.stringify((command === 'agent' ? agent : reply)(args)))
+  process.stdout.write(JSON.stringify(await (command === 'agent' ? agent : reply)(args)))
 } catch (error) {
   if (error instanceof AxiError) {
     process.stdout.write(JSON.stringify({

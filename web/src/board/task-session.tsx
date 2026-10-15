@@ -1,4 +1,5 @@
 import type { BoardState, Card } from '../../../src/core/model.ts'
+import { interactive } from '../../../src/core/tasks.ts'
 import { Button, Select, useBusy } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
 
@@ -12,7 +13,7 @@ export function TaskSession({ card, state, command, connected, notify }: {
   const [busy, run] = useBusy()
   const attached = card.sessionIds?.[0]
   const session = attached ? state.sessions?.[attached] : undefined
-  const candidates = Object.values(state.sessions ?? {}).filter(s => s.terminal?.tty)
+  const candidates = Object.values(state.sessions ?? {}).filter(s => interactive({ session: s }))
   const flags = ['--if-revision', String(card.revision), '--event-id', crypto.randomUUID()]
 
   const attach = ({ id }: { id: string }) => {

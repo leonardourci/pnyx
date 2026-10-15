@@ -133,6 +133,10 @@ export function findOption({ provider, setting, value, firstmate = false }: {
 // a reply goes and a key needs a host that presses keys; a Firstmate task gets every
 // change as a request note, so it takes any input.
 export function inputReason({ kind, input }: { kind: ReplyRoute['kind']; input: ControlInput }): string | undefined {
+  if (kind === 'paseo-agent') {
+    return 'Change this agent\'s settings in Paseo.'
+  }
+
   if ('request' in input) {
     return kind === 'firstmate' ? undefined : 'This setting can only be requested through Firstmate.'
   }

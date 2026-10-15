@@ -9,7 +9,8 @@ import { TaskSession } from './task-session.tsx'
 import { AgentControls, SettingChips, SettingList, harnessName } from './agent-settings.tsx'
 import { Links, Tags } from './card.tsx'
 import { ConversationBrief } from './notes.tsx'
-import { columnsFor } from './view.ts'
+import { StartAgent } from './start-agent.tsx'
+import { columnsFor, needsAgent } from './view.ts'
 import { merge, Thread } from './thread.tsx'
 import type { ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
@@ -142,7 +143,15 @@ export function Detail({
           </Button>
         ))}
       </nav>
-      {tab === 'thread' ? (
+      {tab === 'thread' && needsAgent({ card }) ? (
+        <StartAgent
+          card={card}
+          firstmate={state.board?.hydra.kind === 'firstmate'}
+          command={command}
+          connected={connected}
+          notify={notify}
+        />
+      ) : tab === 'thread' ? (
         <Thread
           card={card}
           view={view}

@@ -8,12 +8,13 @@ import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessag
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
 import { findCard } from '../core/decide.ts'
 import { replyRoute } from '../core/route.ts'
+import { PASEO_CURSOR, paseoConversation, type PaseoConversation } from '../integrations/paseo/thread.ts'
 import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
 import { searchBoard } from '../search/semantic.ts'
 import { readSettings, settingEntries, writeSetting } from '../search/settings.ts'
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { chmodSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
 import { basename, dirname, extname, join, normalize } from 'node:path'
@@ -21,11 +22,13 @@ import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { commands, ingestSpool } from '../cli/commands.ts'
+import { integrationsCommand } from '../cli/integrations.ts'
 import { BoardError, type BoardEvent, type BoardState, type Card, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { boardDir, loadBoard, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/board-store.ts'
 import { infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
+import { createBoard, listBoards, openBoard, renameBoard } from './boards.ts'
 
 // Events kept in memory for cursor resume; an older cursor gets a snapshot instead.
 const RESUME_LIMIT = 1000
@@ -45,7 +48,7 @@ const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) =>
 // How often a live transcript's card and open conversation are read again at most while the session writes.
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
-const CLI_COMMANDS = ['task', 'column', 'hydra', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card'] as const
+const CLI_COMMANDS = ['task', 'column', 'hydra', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card', 'integrations'] as const
 // Same relative path from src/server and dist/server.
 const WEB_ROOT = join(import.meta.dirname, '..', '..', 'dist', 'web')
 const MIME: Record<string, string> = {
@@ -94,7 +97,15 @@ export async function startServer({
   }
 
   homes = homes.map(path => resolveHome({ path }))
-  const subscriptions = new Map<WebSocket, { card: string; path?: string; watcher?: FSWatcher }>()
+  // A tab's open conversation: a transcript file it watches, or a Paseo agent's live timeline.
+  type Subscription = {
+    card: string
+    path?: string
+    paseo?: string
+    watcher?: { close(): unknown }
+    native?: Promise<PaseoConversation>
+  }
+  const subscriptions = new Map<WebSocket, Subscription>()
   const threadTimers = new Map<WebSocket, ReturnType<typeof setTimeout>>()
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
@@ -117,20 +128,56 @@ export async function startServer({
         return
       }
 
+      const unavailable = () => send({ ws, message: { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' } })
+
+      if (sub.native) {
+        void sub.native.then(n => n.read({})).then(thread => {
+          if (subscriptions.get(ws) === sub && ws.readyState === ws.OPEN) {
+            send({ ws, message: { type: 'thread', thread } })
+          }
+        }, unavailable)
+
+        return
+      }
+
       try {
         send({ ws, message: { type: 'thread', thread: readThread({ board, state, card, homes }) } })
       } catch {
-        send({ ws, message: { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' } })
+        unavailable()
       }
     }, LATEST_DELAY_MS))
+  }
+
+  // The first page of a conversation, or of an older one before the cursor.
+  const threadPage = async ({ sub, card, before }: {
+    sub: Subscription
+    card: Card
+    before?: string
+  }): Promise<ThreadPage> => {
+    if (!sub.native) {
+      return readThread({ board, state, card, homes, before })
+    }
+
+    try {
+      return await (await sub.native).read({ before })
+    } catch (error) {
+      // Replies sent from here still show while Paseo cannot be read.
+      return { ...readThread({ board, state, card, homes }), unavailable: `${error instanceof BoardError ? error.message : 'Paseo could not read this conversation'}; it shows again once Paseo answers.` }
+    }
   }
 
   const bindThread = ({ ws, card }: { ws: WebSocket; card: Card }) => {
     subscriptions.get(ws)?.watcher?.close()
     const path = threadPath({ card })
-    const sub: { card: string; path?: string; watcher?: FSWatcher } = { card: card.id, path }
+    const sub: Subscription = { card: card.id, path }
+    const paseo = card.agent?.paseoAgentId
 
-    if (path) {
+    if (paseo) {
+      const native = paseoConversation({ card, changed: () => refreshThread({ ws }) })
+      native.catch(() => undefined)
+      const watcher = { close: () => void native.then(n => n.close(), () => undefined) }
+      Object.assign(sub, { paseo, native, watcher })
+    } else if (path) {
       try {
         sub.watcher = watch(dirname(path), (_event, filename) => {
           if (!filename || String(filename) === basename(path)) {
@@ -184,7 +231,7 @@ export async function startServer({
         || (event.type === 'board.view' && shownTraces({ view: event.data.before, card: sub.card }) !== shownTraces({ view: event.data.after, card: sub.card })))) {
         const card = state.cards[sub.card]
 
-        if (card && sub.path !== threadPath({ card })) {
+        if (card && (sub.path !== threadPath({ card }) || sub.paseo !== card.agent?.paseoAgentId)) {
           bindThread({ ws, card })
         }
 
@@ -398,7 +445,7 @@ export async function startServer({
       return fail({ error: 'command needs a string id', code: 'VALIDATION_ERROR' })
     }
 
-    if (['thread', 'search', 'reply', 'agent', 'catalog', 'settings'].includes(String(name))) {
+    if (['thread', 'search', 'reply', 'agent', 'catalog', 'settings', 'boards'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail({ error: 'args must be strings', code: 'VALIDATION_ERROR' })
       }
@@ -452,6 +499,23 @@ export async function startServer({
             value: args[2]!,
           }) : readSettings({ })
           send({ ws, message: { type: 'receipt', id, settings: settingEntries({ settings }) } })
+        } else if (name === 'boards') {
+          // [] lists the boards; ['open', id], ['create', name] and ['rename', id, name] answer with them.
+          const [action, first, second] = args
+          const reply = ({ open }: { open?: string } = {}) => send({ ws, message: { type: 'receipt', id, board, boards: listBoards(), ...(open ? { url: open } : {}) } })
+
+          if (action === 'create' && first?.trim()) {
+            void openBoard({ id: createBoard({ name: first.trim().slice(0, 100) }) }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
+          } else if (action === 'open' && first) {
+            void openBoard({ id: first }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
+          } else if (action === 'rename' && first && second?.trim() && listBoards().some(b => b.id === first)) {
+            renameBoard({ id: first, name: second.trim().slice(0, 100) })
+            reply()
+          } else if (action === undefined) {
+            reply()
+          } else {
+            throw new BoardError({ message: 'boards expects nothing, open <id>, create <name> or rename <id> <name>', code: 'VALIDATION_ERROR' })
+          }
         } else if (name === 'thread') {
           const old = subscriptions.get(ws); old?.watcher?.close(); subscriptions.delete(ws)
 
@@ -463,12 +527,19 @@ export async function startServer({
 
           const card = findCard({ state, ref: args[0] })
 
-          if (args[1] !== undefined && (args[1].length > 100 || !THREAD_CURSOR.test(args[1]))) {
+          const cursor = card.agent?.paseoAgentId ? PASEO_CURSOR : THREAD_CURSOR
+
+          if (args[1] !== undefined && (args[1].length > 200 || !cursor.test(args[1]))) {
             throw new BoardError({ message: 'invalid thread cursor', code: 'VALIDATION_ERROR' })
           }
 
           bindThread({ ws, card })
-          send({ ws, message: { type: 'receipt', id, thread: readThread({ board, state, card, homes, before: args[1] }) } })
+          const sub = subscriptions.get(ws)!
+          void threadPage({ sub, card, before: args[1] }).then(thread => {
+            if (ws.readyState === ws.OPEN) {
+              send({ ws, message: { type: 'receipt', id, thread } })
+            }
+          }, (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
         } else {
           const agent = name === 'agent'
 
@@ -544,24 +615,26 @@ export async function startServer({
       return fail({ error: `--board is not allowed; this server writes board ${board}`, code: 'VALIDATION_ERROR' })
     }
 
-    const actor = name === 'history' || name === 'card' || args.some(a => a === '--actor' || a.startsWith('--actor=')) ? [] : ['--actor', 'web']
+    const actor = name === 'history' || name === 'card' || name === 'integrations' || args.some(a => a === '--actor' || a.startsWith('--actor=')) ? [] : ['--actor', 'web']
+
+    const failed = ({ error }: { error: unknown }) => error instanceof AxiError
+      ? fail({ error: error.message, code: error.code, help: error.suggestions })
+      : fail({ error: (error as Error).message, code: 'UNKNOWN' })
 
     try {
-      const result = commands[name as (typeof CLI_COMMANDS)[number]]([...args, ...actor, '--board', board])
+      // task start waits on the Paseo daemon; every other command answers at once.
+      const handler = name === 'integrations' ? integrationsCommand : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
+      void Promise.resolve(handler([...args, ...actor, '--board', board])).then(result => {
+        try {
+          pump()
+        } catch {
+          kick()
+        }
 
-      try {
-        pump()
-      } catch {
-        kick()
-      }
-
-      send({ ws, message: { ...result, type: 'receipt', id } })
+        send({ ws, message: { ...result, type: 'receipt', id } })
+      }, error => failed({ error }))
     } catch (error) {
-      if (!(error instanceof AxiError)) {
-        return fail({ error: (error as Error).message, code: 'UNKNOWN' })
-      }
-
-      fail({ error: error.message, code: error.code, help: error.suggestions })
+      failed({ error })
     }
   }
 
@@ -844,13 +917,18 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   }
 
   const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
+  // Without --home, a board whose Hydra is a Firstmate home watches that home.
+  const hydra = loadBoard({ board }).state.board?.hydra
+  // A recorded home that has since moved is skipped, so the board still opens.
+  const recorded = hydra?.kind === 'firstmate' && hydra.home && existsSync(join(hydra.home, 'state')) ? [hydra.home] : []
+  const given = values.home ?? recorded
   let server: RunningServer
 
   try {
     server = await startServer({
       board,
       port,
-      homes: values.home,
+      homes: given,
     })
   } catch (error) {
     if (error instanceof BoardError) {
@@ -865,7 +943,7 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   }
 
   // Each --home both takes replies and feeds the board, as `firstmate watch` would.
-  const homes = (values.home ?? []).map(path => resolveHome({ path }))
+  const homes = given.map(path => resolveHome({ path }))
   const firstmate = homes.length > 0 ? watchHomes({ board, list: homes }) : undefined
   // TOON for a flat object is `key: value`; JSON quoting keeps the values valid TOON.
   const watching = homes.length > 0 ? `firstmate: ${JSON.stringify(`watching ${homes.length} home${homes.length === 1 ? '' : 's'}`)}\n` : ''
