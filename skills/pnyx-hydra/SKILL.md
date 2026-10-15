@@ -23,7 +23,11 @@ Do not reread the board to find out whether anything happened. Run
 pnyx-axi hydra check --after <through> --wait 1800 --board <board>
 ```
 
-It prints only what you track (new messages, tasks created by someone else, brief and visibility changes, worker declarations, open agent questions, attachments, column changes, manual moves and links), skipping your own writes. Each row has the event `id`, its `type`, the `task` (`none` for the board), the message `action` (`send` or `worker`), the `actor` and a summary. With `--wait` it blocks until a change appears or the time runs out; run it as a background command or monitor when your harness has one, so its exit wakes you, and pass its `through` to the next check. Your writes count as yours when `PNYX_ACTOR=hydra` is set or you pass `--actor hydra`.
+It prints only what you track (new messages, tasks created by someone else, brief and visibility changes, worker declarations, open agent questions, attachments, column changes, manual moves and links, plus the owner’s direct task conversations), skipping your own writes. Each row has the event `id`, its `type`, the `task` (`none` for the board), the message `action` (`send` or `worker`), the `actor` and a summary. With `--wait` it blocks until a change appears or the time runs out; run it as a background command or monitor when your harness has one, so its exit wakes you, and pass its `through` to the next check. Your writes count as yours when `PNYX_ACTOR=hydra` is set or you pass `--actor hydra`.
+
+The `conversations` digest groups direct owner messages and agent replies by task, with compact excerpts and event sequences. Treat the owner’s direct words as instructions; decide whether to act (for example move the card or update its brief) or just take note. Read `task history <task> --full` for complete wording before acting on a clipped excerpt. Responses you send to a worker should carry `--actor hydra`, so your own answer does not return as an owner instruction. Native chats that could not be read are listed under `unavailable`; use the recorded events and retry those sources later rather than starting a tight retry loop.
+
+Keep the cursor only after you have handled every entry through it. Stow it as `hydra memory set --key check-cursor --text "<through>" --board <board>` before a reset. If no cursor is known, begin at `--after 0` and page forward; never replace a known cursor with the board’s latest sequence before reading the intervening events.
 
 ## Keep tasks current
 

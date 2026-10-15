@@ -28,6 +28,8 @@ pnyx-axi task status <task> done --note "<the result, with links>" --board <boar
 - Declare `blocked` for a real obstacle, `paused` for a deliberate wait, `done` only when the work is finished.
 - Silence changes nothing: idling, finishing a turn or exiting never moves the task. Declare a phase change once, not every step.
 
+To escalate a question or decision to Hydra, use `pnyx-axi hydra send --task <task> --text "<what you need and why>" --board <board>`. Hydra receives it through the light check and decides whether to answer, update the brief or ask the owner.
+
 Replies reach you as ordinary messages in your session. Link pull requests or tickets with `pnyx-axi link <task> --url <url> --board <board>`.
 
 ## Limits
