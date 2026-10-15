@@ -455,6 +455,7 @@ function cardDetail({ card }: { card: Card }): Output {
 
   detail.sessions = card.sessionIds?.length ? card.sessionIds : 'none'
   detail.visibility = card.hidden ? 'history' : 'hydra'
+  detail.hideAfterHours = card.doneAfterHours ?? 'Hydra setting'
 
   if (card.settings) {
     detail.settings = card.settings
@@ -696,13 +697,16 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
         const columns = hydraConfig({ state, id: hydraId }).columns
         const selected = values.column
-          ? columns.find(c => c.id === values.column || c.title === values.column) : undefined
+          ? columns.find(c => c.id === values.column || c.title === values.column
+            || c.role === values.column) : undefined
 
         if (values.column && !selected) {
           throw new HydraError({ message: 'unknown Hydra column', code: 'VALIDATION_ERROR' })
         }
 
-        return hydraEvent({ state, meta: m, cardId: `c${state.seq + 1}`, change: { type: 'task.created', data: { key, title, ...(project ? { project } : {}), ...(brief !== undefined ? { brief } : {}), ...(folder ? { folder } : {}), ...(parent ? { parentId: parent.id } : {}), ...(selected ? { column: selected.id } : {}) } } })
+        const cardId = `task-${randomUUID()}`
+
+        return hydraEvent({ state, meta: m, cardId, change: { type: 'task.created', data: { key, title, ...(project ? { project } : {}), ...(brief !== undefined ? { brief } : {}), ...(folder ? { folder } : {}), ...(parent ? { parentId: parent.id } : {}), ...(selected ? { column: selected.id } : {}) } } })
       },
     })
   }
@@ -780,6 +784,35 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const ref = required({ value: positionals[1], what: 'task id' })
 
     return commit({ hydraId, meta: m, intent: { type: 'task.declared', card: ref }, decide: ({ state }) => declareTask({ state, ref, status: required({ value: positionals[2], what: 'status' }), note: String(values.note ?? ''), meta: m }) })
+  }
+
+  if (action === 'hide-after') {
+    const ref = required({ value: positionals[1], what: 'task id' })
+    const raw = required({ value: positionals[2], what: 'hours or default' }).trim()
+    const after = raw === 'default' ? null : Number(raw)
+
+    if (after !== null
+      && (!raw || !Number.isFinite(after) || after < 0 || after > MAX_DONE_HOURS)) {
+      throw new HydraError({ message: `use hours from 0 to ${MAX_DONE_HOURS}, or default (0 keeps the card visible)`, code: 'VALIDATION_ERROR' })
+    }
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: { type: 'task.retention', card: ref },
+      decide: ({ state }) => {
+        const task = findCard({ state, ref })
+
+        if (task.automaticTask || task.id === HYDRA_CARD) {
+          throw new HydraError({ message: 'choose a task', code: 'VALIDATION_ERROR' })
+        }
+
+        const before = task.doneAfterHours ?? null
+
+        return before === after && !task.keepDone ? { skipped: 'unchanged' }
+          : hydraEvent({ state, meta: m, cardId: task.id, change: { type: 'task.retention', data: { before, after } } })
+      },
+    })
   }
 
   if (action === 'brief' || action === 'hide' || action === 'unhide') {
@@ -1008,6 +1041,11 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       }
 
       const current = hydraConfig({ state, id })
+
+      if (action === 'create' && !state.config && !Object.keys(state.cards).length) {
+        current.columns = current.columns.map(c => ({ ...c, id: `custom:${randomUUID()}` }))
+      }
+
       const identity = String(values.identity ?? current.hydra.id)
       required({ value: identity.trim(), what: '--identity' })
       const kept = identity === current.hydra.id ? current.hydra : undefined
@@ -1149,20 +1187,20 @@ function columnCommand({ args }: { args: string[] }): Output {
       const before = structuredClone(hydraConfig({ state, id: hydraId }).columns)
       let columns = structuredClone(before)
       const ref = positionals[1]
-      const selected = columns.find(c => c.id === ref)
+      const selected = columns.find(c => c.id === ref || c.role === ref)
 
       if (action !== 'create' && !selected) {
         throw new HydraError({ message: `column not found: ${ref}`, code: 'NOT_FOUND' })
       }
 
-      if (action === 'delete' && lockedColumn({ state, id: ref! })) {
+      if (action === 'delete' && lockedColumn({ state, id: selected!.id })) {
         throw new HydraError({ message: LOCKED_DELETE, code: 'VALIDATION_ERROR' })
       }
 
       let fallback: Column | undefined
 
       if (action === 'create') {
-        const id = String(values.id ?? `custom:${(m.id ?? randomUUID()).toLowerCase()}`)
+        const id = String(values.id ?? `custom:${randomUUID()}`)
 
         if (!/^custom:[a-z0-9-]{1,60}$/.test(id)) {
           throw new HydraError({ message: 'new column ids use custom:<letters-digits-dashes>', code: 'VALIDATION_ERROR' })
@@ -1178,16 +1216,17 @@ function columnCommand({ args }: { args: string[] }): Output {
 
         selected!.description = values.description
       } else if (action === 'delete') {
-        columns = columns.filter(c => c.id !== ref)
-        fallback = values.to ? columns.find(c => c.id === values.to)?.id : columns[0]?.id
+        columns = columns.filter(c => c.id !== selected!.id)
+        fallback = values.to
+          ? columns.find(c => c.id === values.to || c.role === values.to)?.id : columns[0]?.id
 
         if (values.to && !fallback) {
           throw new HydraError({ message: 'fallback column not found', code: 'VALIDATION_ERROR' })
         }
       } else if (action === 'reorder') {
-        columns = columns.filter(c => c.id !== ref)
+        columns = columns.filter(c => c.id !== selected!.id)
         const index = values.before
-          ? columns.findIndex(c => c.id === values.before)
+          ? columns.findIndex(c => c.id === values.before || c.role === values.before)
           : columns.length
 
         if (index < 0) {
@@ -1477,7 +1516,7 @@ const move = guard({
     const target = column({ value: required({ value: positionals[1], what: 'column' }) })
     const before = values.before as string | undefined
 
-    return commit({ hydraId, meta: m, intent: { type: 'card.moved', card: ref }, ...(m.actor !== 'web' ? { confirmation: { token: values.confirm as string | undefined } } : {}), decide: ({ state }) => decideMove({ state, ref, column: target, before, meta: m }) })
+    return commit({ hydraId, meta: m, intent: { type: 'card.moved', card: ref }, ...(m.actor !== 'web' ? { confirmation: { token: values.confirm as string | undefined } } : {}), decide: ({ state }) => decideMove({ state, ref, column: hydraConfig({ state }).columns.find(c => c.id === target || c.role === target)?.id ?? target, before, meta: m }) })
   },
 })
 
@@ -1548,6 +1587,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
     case 'task.permission': return `${event.data.tool} permission ${event.data.id}: ${event.data.status}`
     case 'task.brief': return 'Task brief updated'
+    case 'task.retention': return event.data.after === null ? 'Using the Hydra hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
     case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
     case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Hydra memory: ${event.data.key}`
     case 'task.declared': return `${event.data.state}: ${event.data.note}`
@@ -1892,7 +1932,8 @@ the final column cannot be deleted. Reorder and delete first return confirmation
 repeat the same command with --confirm <token>. Browser actions already carry the owner’s intent.
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
-  task: `usage: pnyx-axi task create --title <title> [--project <name>] [--brief <text>] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+  task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
+pnyx-axi task create --title <title> [--project <name>] [--brief <text>] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
 pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list | show <id> [--full]

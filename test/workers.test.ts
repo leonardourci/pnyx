@@ -92,9 +92,9 @@ test('hydra check lists only tracked changes by others and waits for the next on
   f.run({ args: ['task', 'rename', 'a', '--title', 'First, renamed'] })
   f.run({ args: ['task', 'status', 'a', 'needs_you', '--note', 'which db?'], extra: { PNYX_ACTOR: 'worker:c1' } })
   const out = f.run({ args: ['hydra', 'check', '--after', String(start)] })
-  assert.match(out, /evt_\d+,task\.declared,c1,none,"worker:c1","needs_you: which db\?"/)
-  assert.doesNotMatch(out, /task\.created,c\d+,none,hydra|card\.pushed/)
-  assert.match(out, /hydra\.message,c\d+,send,hydra,"Hydra: Created By Hydra: split out the docs"/)
+  assert.match(out, /evt_\d+,task\.declared,task-[0-9a-f-]{36},none,"worker:c1","needs_you: which db\?"/)
+  assert.doesNotMatch(out, /task\.created,task-[0-9a-f-]{36},none,hydra|card\.pushed/)
+  assert.match(out, /hydra\.message,task-[0-9a-f-]{36},send,hydra,"Hydra: Created By Hydra: split out the docs"/)
   const through = Number(/through: (\d+)/.exec(out)![1])
   assert.equal(through, f.state().seq)
 
