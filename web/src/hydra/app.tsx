@@ -50,23 +50,32 @@ export function App() {
   const {
     state, command, connected, thread, setThread, hydraThread, latest, navigation,
   } = useHydra()
-  const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') ? 'settings' : new URLSearchParams(location.search).has('project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
+  const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') ? 'settings' : new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
+  const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
   const [editingTask, setEditingTask] = useState<string | null>(null)
   const [historyQuery, setHistoryQuery] = useState('')
   const [panel, setPanel] = useState(restored.panel ?? true)
-  const [project, setProject] = useState(new URLSearchParams(location.search).get('project') ?? '')
+  const [project, setProject] = useState(new URLSearchParams(location.search).get('open-project') ?? new URLSearchParams(location.search).get('project') ?? '')
   const [projectReferences, setProjectReferences] = useState<string[]>([])
   const resolveProject = useCallback(({ references }: { references: string[] }) => {
     setProjectReferences(references)
   }, [])
   useEffect(() => {
-    if (new URLSearchParams(location.search).has('projects')) {
+    const url = new URL(location.href)
+
+    if (url.searchParams.has('projects')) {
       requestAnimationFrame(() => document.querySelector('[aria-label="Projects"]')?.scrollIntoView())
-      const url = new URL(location.href)
-      url.searchParams.delete('projects'); history.replaceState(null, '', url)
+      url.searchParams.delete('projects')
     }
+
+    const project = url.searchParams.get('open-project')
+
+    if (project !== null) {
+      url.searchParams.delete('open-project'); url.searchParams.set('project', project)
+    }
+
+    history.replaceState(null, '', url)
   }, [])
 
   const filterProject = ({ path }: { path: string }) => {

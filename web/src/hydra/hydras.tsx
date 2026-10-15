@@ -49,7 +49,7 @@ export function Hydras({
       const url = new URL(r.url as string)
 
       if (path) {
-        url.searchParams.set('project', path)
+        url.searchParams.set('open-project', path)
       }
 
       if (projects) {
