@@ -369,6 +369,19 @@ export function Search({
     <div
       className="board-search"
       ref={root}
+      onKeyDown={e => {
+        if (e.key === 'Escape' && !e.nativeEvent.isComposing && !e.defaultPrevented) {
+          e.preventDefault(); e.stopPropagation()
+
+          if (context.current.target.isConnected) {
+            context.current.target.focus()
+          } else {
+            input.current?.focus()
+          }
+
+          setExpanded(false)
+        }
+      }}
       onKeyDownCapture={e => {
         if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.target instanceof HTMLInputElement
           && e.target !== input.current && !e.target.closest('form')) {

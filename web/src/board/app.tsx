@@ -334,7 +334,7 @@ export function App() {
 
   const createTask = ({ column, parent }: { column: string; parent?: string }) => {
     void command({ name: 'task', args: ['create', '--title', parent ? 'New subtask' : 'New task', '--column', column, ...(parent ? ['--parent', parent] : []), '--event-id', crypto.randomUUID()] }).then(receipt => {
-      setWorkspace(''); setTag(''); setQuery('')
+      setPage('board'); setWorkspace(''); setTag(''); setQuery('')
       setEditingTask((receipt.card as { id: string }).id)
     })
       .catch(e => notify({ text: e.message }))
@@ -343,7 +343,7 @@ export function App() {
   const createColumn = () => {
     const id = `custom:${crypto.randomUUID()}`
     void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--if-revision', String(state.boardRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => {
-      setNewColumn(id)
+      setPage('board'); setNewColumn(id)
     })
       .catch(e => notify({ text: e.message }))
   }
@@ -460,7 +460,8 @@ export function App() {
             <History
               command={command}
               workspace={workspace}
-              initialQuery={historyQuery}
+              query={historyQuery}
+              setQuery={({ query }) => setHistoryQuery(query)}
               open={open}
               notify={notify}
             />
