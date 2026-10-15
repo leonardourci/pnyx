@@ -529,6 +529,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       key: { type: 'string' },
       folder: { type: 'string' },
       session: { type: 'string' },
+      'replace-session': { type: 'string' },
       parent: { type: 'string' },
       column: { type: 'string' },
       note: { type: 'string' },
@@ -562,6 +563,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const started = action === 'continue' ? askHost({ board, body: { action: 'continue', task: ref, id: m.id ?? randomUUID(), actor: m.actor, ...(m.reason ? { reason: m.reason } : {}) } }) : startTask({
       board,
       task: ref,
+      replacement: values['replace-session'] as string | undefined,
       via: values.via as string | undefined,
       kind: values.kind as string | undefined,
       harness: values.harness as string | undefined,
