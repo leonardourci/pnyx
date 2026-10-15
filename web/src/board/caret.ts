@@ -1,7 +1,7 @@
 // Messages are contenteditable only so the browser draws a caret; Chromium-only (-webkit-user-modify).
 export const CARET_HOST = 'data-caret-host'
 export const CARET_KEY = /^(Arrow(Up|Down|Left|Right)|Home|End|Page(Up|Down))$/
-const ISLANDS = '.message-head, .block-comment-action, .inline-comment, .trace-text, .receipt, .code-language'
+const ISLANDS = '.block-comment-action, .inline-comment, .trace, .receipt, .code-language'
 // Lines kept in view above and below the caret as it moves.
 const MARGIN_LINES = 3
 

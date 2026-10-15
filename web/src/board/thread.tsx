@@ -4,6 +4,7 @@ import { traces } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Switch } from '../components/ui/controls.tsx'
 import { joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
+import { ComposerSettings } from './agent-settings.tsx'
 import { Composer } from './composer.tsx'
 import { Messages } from './messages.tsx'
 import { agentActivity } from './view.ts'
@@ -74,20 +75,10 @@ export function Thread({
 
   return (
     <>
-      <div className="thread-controls">
-        <div className="row wrap">
-          <Switch label="Focus" checked={focus} onChange={({ value: focus }) => save({ patch: { cardTraceOverrides: { [card.id]: { tools: !focus, thinking: !focus } } } })} />
-          <span className="small muted">{focus ? 'Prompts and agent messages only' : 'Showing tool calls and thinking'}</span>
-        </div>
-        <div className="row between small muted">
-          <span>{overrides ? 'This card has overrides' : 'Following board defaults'}</span>
-          <Button
-            disabled={!overrides}
-            onClick={() => save({ patch: { cardTraceOverrides: { [card.id]: null } } })}
-          >
-            Use defaults
-          </Button>
-        </div>
+      <div className="thread-controls row">
+        <Switch label="Focus" checked={focus} onChange={({ value: focus }) => save({ patch: { cardTraceOverrides: { [card.id]: { tools: !focus, thinking: !focus } } } })} />
+        <span className="small muted">{focus ? 'Prompts and agent messages only' : 'Showing tool calls and thinking'}</span>
+        {overrides && <Button className="small" onClick={() => save({ patch: { cardTraceOverrides: { [card.id]: null } } })}>Use defaults</Button>}
       </div>
       <div
         className="thread"
@@ -144,11 +135,22 @@ export function Thread({
           save={save}
           connected={connected}
           notify={notify}
+          settings={(
+            <ComposerSettings
+              card={card}
+              thread={thread}
+              command={command}
+              connected={connected}
+              notify={notify}
+            />
+          )}
         />
       </div>
       {latest && (
         <Button
           className="jump"
+          aria-label="Jump to latest"
+          title="Jump to latest"
           onClick={() => {
             if (scroller.current) {
               scroller.current.scrollTop = scroller.current.scrollHeight
@@ -157,15 +159,9 @@ export function Thread({
             atBottom.current = true; setLatest(false)
           }}
         >
-          Jump to latest ↓
+          <span aria-hidden="true">↓</span>
         </Button>
       )}
-      <div className="watch-banner">
-        <strong>Not watching · presence unverified</strong>
-        <p>
-          The source has no listener signal. Activity alone does not confirm it is watching.
-        </p>
-      </div>
     </>
   )
 }

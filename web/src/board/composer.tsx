@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import type { Catalog } from '../../../src/thread/catalog.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
@@ -24,6 +24,7 @@ export function Composer({
   save,
   connected,
   notify,
+  settings,
 }: {
   card: string
   title: string
@@ -37,6 +38,8 @@ export function Composer({
   save({ patch }: { patch: unknown }): Promise<boolean>
   connected: boolean
   notify({ text }: { text: string }): void
+  // The agent's setting pickers, shown beside the send button.
+  settings?: ReactNode
 }) {
   const [preview, setPreview] = useState<number | null>(null)
   const [sending, setSending] = useState(false)
@@ -159,12 +162,6 @@ export function Composer({
         onPreview={({ value }) => setPreview(value)}
         onCommit={({ value: n }) => save({ patch: { composerHeight: n } })}
       />
-      <label htmlFor={`reply-${card}`} className="small muted reply-label">
-        <Icon name="typing" size={14} />
-        Reply to
-        {' '}
-        {title}
-      </label>
       {commented > 0 && (
         <div className="pending-comments small">
           <p className="gold">{commented === 1 ? '1 comment goes' : `${commented} comments go`} with this reply</p>
@@ -214,8 +211,9 @@ export function Composer({
           data-key-scope="composer"
           id={`reply-${card}`}
           value={draft}
-          placeholder="Write a reply, or type / for commands…"
-          aria-describedby={`reply-note-${card}`}
+          placeholder={`Reply to the agent, type / for commands, or ${label({ id: 'cancel' })} or ↑ to comment above`}
+          aria-label={`Reply to ${title}`}
+          aria-describedby={thread?.route ? undefined : `reply-note-${card}`}
           aria-controls={catalogOpen ? `suggestions-${card}` : undefined}
           aria-activedescendant={active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
           onChange={e => {
@@ -253,28 +251,24 @@ export function Composer({
           }}
         />
       </div>
-      <div className="row between">
-        <span className="small muted">
-          Enter newline ·
-          {' '}
-          {label({ id: 'send' })}
-          {' '}
-          send ·
-          {' '}
-          {label({ id: 'cancel' })}
-          {' '}
-          or ↑ comment on the conversation
-        </span>
-        <Button type="submit" variant="primary" disabled={sending || !outgoing.trim() || !connected || !thread?.route}>
-          {sending ? 'Sending…' : 'Send reply'}
+      <div className="composer-bar">
+        {settings}
+        <Button
+          type="submit"
+          variant="primary"
+          className="composer-send"
+          aria-label="Send reply"
+          title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
+          disabled={sending || !outgoing.trim() || !connected || !thread?.route}
+        >
           <Icon name="send" size={14} />
         </Button>
       </div>
-      <p id={`reply-note-${card}`} className="small muted">
-        {thread?.route
-          ? `Sends through ${thread.via ?? 'the recorded route'}. Queued, delivered and handled are separate facts.`
-          : `${thread?.noRoute ?? 'Reply route unavailable.'} Your draft stays here.`}
-      </p>
+      {!thread?.route && (
+        <p id={`reply-note-${card}`} className="small muted">
+          {`${thread?.noRoute ?? 'Reply route unavailable.'} Your draft stays here.`}
+        </p>
+      )}
     </form>
   )
 }

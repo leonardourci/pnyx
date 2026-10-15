@@ -282,14 +282,12 @@ export function Messages({ entries, comments, setComments, quote }: {
       }}
     >
       {entries.map(entry => (
-        <article key={entry.id} className={`message ${entry.kind}${entry.role === 'user' || entry.role === 'You' ? ' mine' : ''}`}>
-          <div className="message-head">
-            <strong>
-              <Icon name={entry.kind === 'message' ? 'agent' : entry.kind} size={14} />
-              {roleLabel(entry)}
-            </strong>
-            <time>{entry.at ? new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</time>
-          </div>
+        <article
+          key={entry.id}
+          className={`message ${entry.kind}${entry.role === 'user' || entry.role === 'You' ? ' mine' : ''}`}
+          aria-label={roleLabel(entry)}
+          title={entry.at ? new Date(entry.at).toLocaleString() : undefined}
+        >
           {entry.kind === 'message' ? (
             <Markdown
               text={entry.text}
@@ -352,7 +350,16 @@ export function Messages({ entries, comments, setComments, quote }: {
                 )
               }}
             />
-          ) : <pre className="trace-text">{entry.text}</pre>}
+          ) : (
+            <details className="trace">
+              <summary>
+                <Icon name={entry.kind} size={14} />
+                <strong>{entry.kind === 'thinking' ? 'Thinking' : roleLabel(entry)}</strong>
+                <span>{entry.text}</span>
+              </summary>
+              <pre className="trace-text">{entry.text}</pre>
+            </details>
+          )}
           {entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
         </article>
       ))}
