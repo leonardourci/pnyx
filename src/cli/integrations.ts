@@ -41,7 +41,7 @@ export async function integrations({ hydraId, url, connect }: {
       },
       {
         name: 'firstmate',
-        status: home ? `Hydra ${home}; skill ${skillState}` : 'not this Hydra\'s Hydra',
+        status: home ? `Hydra ${home}; skill ${skillState}` : 'not configured for this Hydra',
         setup: `pnyx-axi setup hydra --home <firstmate home> --hydra ${hydraId}`,
         docs: 'Run `pnyx-axi hydra homes` to list the Firstmate homes and their Hydras',
       },
