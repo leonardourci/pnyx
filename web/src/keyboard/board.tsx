@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { BoardState } from '../../../src/core/model.ts'
 import { KEY_ACTIONS } from '../../../src/core/keyboard.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { CommandMenu, type MenuItem } from '../components/ui/command-menu.tsx'
 import type { Command } from '../board/connection.ts'
 import { columnsFor } from '../board/view.ts'
-import { findCards } from '../board/card-search.ts'
 import { caretInto, hostOf, latestReply } from '../board/caret.ts'
 import { focusElement, useKeyboard, type ActionContext } from './registry.tsx'
 import { navigate, restoreAnchor, type BoardAnchor, type ColumnCards } from './navigation.ts'
 import { hintLabels, visibleTargets, type Hint } from './hints.ts'
 
-interface Overlay { kind: 'palette' | 'help' | 'move'; context: ActionContext; card?: string; revision?: number }
+interface Overlay { kind: 'help' | 'move'; context: ActionContext; card?: string; revision?: number }
 const anchorElement = ({ anchor }: { anchor: BoardAnchor }) => anchor.card ? `[data-card="${CSS.escape(anchor.card)}"]` : `[data-empty-column="${CSS.escape(anchor.column)}"]`
 const readAnchor = ({ target }: {
   target: HTMLElement
@@ -20,8 +19,6 @@ const readAnchor = ({ target }: {
   : target.dataset.emptyColumn
     ? { column: target.dataset.emptyColumn }
     : undefined
-
-const CARD_RESULTS = 8
 
 export function useBoardKeyboard({
   state,
@@ -225,18 +222,13 @@ export function useBoardKeyboard({
       return true
     }
 
-    if (id === 'find') {
-      return (page === 'board' || page === 'history')
-        && focusElement({ selector: page === 'board' ? "[aria-label='Find a card']" : "[aria-label='Search history']" })
-    }
-
     if (id === 'search' || id === 'settings') {
       setPage({ page: id === 'search' ? 'history' : 'settings' }); requestAnimationFrame(() => focusElement({ selector: id === 'search' ? "[aria-label='Search history']" : '[data-settings-heading]' }))
 
       return true
     }
 
-    if (id === 'palette' || id === 'help') {
+    if (id === 'help') {
       showOverlay({ kind: id, context })
 
       return true
@@ -328,26 +320,8 @@ export function useBoardKeyboard({
       .catch(e => notify({ text: e.message }))
   }
 
-  // Cmd+K also finds cards, ranked like every other search. Stable across
-  // renders, so a board update does not restart the palette's pending search.
-  const latest = useRef({ command, open, closeOverlay })
-  latest.current = { command, open, closeOverlay }
-  const searchCards = useCallback(async ({ query: q }: { query: string }): Promise<MenuItem[]> => {
-    const hits = await findCards({ command: latest.current.command, query: q })
-
-    return hits.slice(0, CARD_RESULTS).map(h => ({
-      id: `card:${h.card}`,
-      label: h.title,
-      detail: h.match === 'semantic' ? 'Open card · similar meaning' : 'Open card',
-      run: () => {
-        latest.current.closeOverlay(); latest.current.open({ id: h.card })
-      },
-    }))
-  }, [])
-
   return {
     remembered,
-    searchCards,
     onAction,
     leaveField,
     hintKey,
@@ -368,11 +342,6 @@ export function KeyboardToolbar({
 
   return (
     <div className="keyboard-toolbar">
-      <Button onClick={e => action({ id: 'palette', context: { scope: 'navigation', target: e.currentTarget } })}>
-        Commands
-        {' '}
-        <kbd>{label({ id: 'palette' })}</kbd>
-      </Button>
       <Button onClick={e => action({ id: 'help', context: { scope: 'navigation', target: e.currentTarget } })}>
         Help
         {' '}
@@ -397,7 +366,7 @@ export function KeyboardLayers({
   connected: boolean
 }) {
   const { label, prefs, handlers } = useKeyboard()
-  const { overlay, closeOverlay, onAction, move, hints, hintPrefix, searchCards } = keyboard
+  const { overlay, closeOverlay, onAction, move, hints, hintPrefix } = keyboard
   let items: MenuItem[] = []
 
   if (overlay) {
@@ -414,21 +383,16 @@ export function KeyboardLayers({
         setTimeout(run, 0); closeOverlay()
       },
     }))
-
-    if (overlay.kind === 'palette') {
-      items = items.filter(item => !item.disabled)
-    }
   }
 
   return (
     <>
       {overlay && (
         <CommandMenu
-          title={overlay.kind === 'move' ? 'Move card' : overlay.kind === 'help' ? 'Keyboard help' : 'Commands'}
+          title={overlay.kind === 'move' ? 'Move card' : 'Keyboard help'}
           description={overlay.kind === 'move' ? 'Placement does not complete work or resolve a source request.' : 'Shortcuts follow the focused area. Edit every binding in Settings.'}
           items={items}
           close={closeOverlay}
-          {...(overlay.kind === 'palette' ? { search: searchCards } : {})}
         />
       )}
       {hints.length > 0 && (

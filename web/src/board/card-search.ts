@@ -6,13 +6,14 @@ import type { Command } from './connection.ts'
 // full-text plus meaning ranking as `pnyx-axi search` and History. Weak results
 // (the reranker found them unrelated, or a card found by meaning alone is not
 // a strong match) are left out.
-export const findCards = ({ command, query, workspace = '' }: { command: Command; query: string; workspace?: string }) =>
-  command({ name: 'search', args: [query, workspace] }).then(r => (r.hits as HybridHit[]).filter(h => !h.weak))
+export const findCards = ({ command, query, workspace = '', live = false }: { command: Command; query: string; workspace?: string; live?: boolean }) =>
+  command({ name: 'search', args: [query, workspace, ...(live ? ['board'] : [])] }).then(r => (r.hits as HybridHit[]).filter(h => !h.weak))
 
-export function useFoundCards({ command, query, workspace }: {
+export function useFoundCards({ command, query, workspace, revision }: {
   command: Command
   query: string
   workspace: string
+  revision: number
 }): HybridHit[] {
   const [found, setFound] = useState<{ query: string; hits: HybridHit[] } | null>(null)
   const q = query.trim()
@@ -23,7 +24,7 @@ export function useFoundCards({ command, query, workspace }: {
 
     let live = true
     const timer = setTimeout(() => {
-      void findCards({ command, query: q, workspace }).then(hits => {
+      void findCards({ command, query: q, workspace, live: true }).then(hits => {
         if (live) {
           setFound({ query: `${q}\n${workspace}`, hits })
         }
@@ -33,7 +34,7 @@ export function useFoundCards({ command, query, workspace }: {
     return () => {
       live = false; clearTimeout(timer)
     }
-  }, [command, q, workspace])
+  }, [command, q, workspace, revision])
 
   return q && found?.query === `${q}\n${workspace}` ? found.hits : []
 }

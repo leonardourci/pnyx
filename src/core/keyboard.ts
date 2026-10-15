@@ -34,7 +34,7 @@ export const KEY_ACTIONS = [
   action({ id: 'move', label: 'Move card', keys: ['m'], scopes: ['board', 'thread'] }),
   action({ id: 'search', label: 'Search history', keys: ['/'], scopes: navigation }),
   action({ id: 'find', label: 'Find in current view', keys: ['Mod+f'], scopes: [...navigation, 'composer'] }),
-  action({ id: 'palette', label: 'Open commands', keys: ['Mod+k'], scopes: navigation }),
+  action({ id: 'palette', label: 'Focus search', keys: ['Mod+k'], scopes: [...navigation, 'composer'] }),
   action({ id: 'help', label: 'Keyboard help', keys: ['?'], scopes: navigation }),
   action({ id: 'hints', label: 'Show target hints', keys: ['f'], scopes: navigation }),
   action({ id: 'settings', label: 'Open settings', keys: ['Mod+,'], scopes: navigation }),
@@ -211,7 +211,7 @@ export function resolveKey(
 
   const available = KEY_ACTIONS.filter(a =>
     a.scopes.includes(context.scope)
-    && (!context.editing || a.id === 'find' || a.id === 'send' || (a.id === 'cancel' && context.scope !== 'navigation')))
+    && (!context.editing || a.id === 'find' || a.id === 'palette' || a.id === 'send' || (a.id === 'cancel' && context.scope !== 'navigation')))
   const candidates = progress.scope === context.scope && context.now <= progress.until
     ? progress.candidates
     : []

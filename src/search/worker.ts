@@ -19,6 +19,7 @@ const BROKEN_COOLDOWN_MS = 24 * 60 * 60_000
 export type Request =
   | { op: 'status' }
   | { op: 'embed'; text: string }
+  | { op: 'commands'; query: string; docs: string[] }
   | { op: 'rerank'; query: string; docs: string[] }
   | { op: 'index'; board: string }
 
@@ -43,6 +44,7 @@ let closing = false
 let bound = ''
 // Chunks the embedder failed on, skipped until this worker exits.
 const failed = new Set<string>()
+const commandVectors = new Map<string, Promise<Float32Array>>()
 
 const server = createServer(socket => {
   let buf = ''
@@ -246,6 +248,30 @@ async function answer({ line }: { line: string }): Promise<Record<string, unknow
 
     if (req.op === 'embed') {
       return { key: b.key, floor: b.floor, rerank: reranker.phase === 'ready', reranker: describe({ phase: reranker }), vector: Array.from(await b.embed({ text: req.text })) }
+    }
+
+    if (req.op === 'commands') {
+      const query = await b.embed({ text: req.query })
+      const scores: number[] = []
+
+      for (const text of req.docs) {
+        let vector = commandVectors.get(text)
+
+        if (!vector) {
+          if (commandVectors.size >= 512) {
+            commandVectors.clear()
+          }
+
+          vector = b.embed({ text }).catch(error => {
+            commandVectors.delete(text); throw error
+          })
+          commandVectors.set(text, vector)
+        }
+
+        scores.push((await vector).reduce((sum, value, index) => sum + value * query[index]!, 0))
+      }
+
+      return { scores, floor: b.floor }
     }
 
     if (req.op === 'rerank') {
