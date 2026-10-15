@@ -103,9 +103,7 @@ type HydraUpgrade = { req: IncomingMessage; socket: Duplex; head: Buffer; url: U
 const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
 const RETRY_MS = 60_000
 
-// Serves every Hydra under $PNYX_HOME on one port, each at /hydra/<id>/, and / opens the
-// named Hydra. It (with any homes given for it) and the default Hydra must load; any other
-// Hydra that fails is skipped and reported. A Hydra folder created later is served once it appears.
+// Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
 export async function startServer({ hydraId = 'default', port = 0, homes, ...options }: {
   hydraId?: string
   port?: number
@@ -169,8 +167,7 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
 
   http.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
-    // ponytail: /ws, like /, is the named Hydra's: a tab opened before one server ran every
-    // Hydra reconnects and reloads, and the Vite dev page at / reaches the dev Hydra.
+    // ponytail: /ws, like /, is the named Hydra's, for tabs from before one server and the Vite dev page.
     const [, id, rest] = url.pathname === '/ws' ? ['', hydraId, '/ws'] : HYDRA_PATH.exec(url.pathname) ?? []
     const mount = id === undefined ? undefined : served.get(id)
 
@@ -232,8 +229,7 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
 
   let named: MountedHydra
 
-  // A skipped Hydra is tried again, as one held by an older server is free once that server stops;
-  // its reason is logged only when it changes.
+  // An older server may let go of a skipped Hydra, so it is retried; its reason is logged once.
   const mountAll = () => {
     for (const id of hydraIds()) {
       const before = skipped[id]
@@ -1198,11 +1194,7 @@ function reply({ res, status, body }: {
   res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body))
 }
 
-// The built web app from dist/web. A Hydra's page falls back to its index.html for any
-// unknown path; the index carries the token for the WebSocket handshake, so only
-// this server's own pages get it (the caller has already checked Host and Origin).
-// It also carries its build, so an open tab can tell when a restarted server serves a
-// newer one, and a base so the page reaches its own Hydra's WebSocket.
+// Only a Hydra's page carries the token; its base points the page at its own Hydra's WebSocket.
 function serveStatic({ res, path, page }: {
   res: ServerResponse
   path: string
