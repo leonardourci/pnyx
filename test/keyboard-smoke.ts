@@ -53,6 +53,8 @@ const fill = async ({ role, name, text }: { role: string; name: string; text: st
 const press = ({ key }: { key: string }) => browser({ args: ['press', key] })
 const focus = ({ selector }: { selector: string }) => browser({ args: ['eval', `() => { document.querySelector(${JSON.stringify(selector)}).focus(); return true; }`] })
 const active = ({ selector }: { selector: string }) => `document.activeElement.matches(${JSON.stringify(selector)})`
+// The caret is collapsed in the latest reply at `offset`, an expression.
+const caretAt = ({ offset }: { offset: string }) => `document.activeElement.matches("[data-caret-host]") && getSelection().isCollapsed && getSelection().focusNode.data?.startsWith("The first pass") && getSelection().focusOffset === ${offset}`
 const cardSelector = `[data-card="${fixture.state.keys.layout}"]`
 const board = () => loadBoard({ board: 'default' }).state
 
@@ -84,12 +86,25 @@ try {
   await press({ key: 'k' }); await check({ condition: active({ selector: cardSelector }), label: 'k moves back' }); await press({ key: 'ArrowRight' }); await check({ condition: "document.activeElement.closest('[data-column]').dataset.column === 'workers_on_it'", label: 'right crosses columns' })
   await press({ key: 'h' }); await check({ condition: active({ selector: cardSelector }), label: 'left remembers column focus' })
   await press({ key: 'Enter' }); await browser({ args: ['wait', 'The first pass is ready to review.'] }); await check({ condition: active({ selector: '.composer textarea' }), label: 'Enter opens the conversation at its reply input' })
-  await press({ key: 'Escape' }); await check({ condition: active({ selector: '.thread' }), label: 'Escape moves into the transcript' }); await press({ key: 'Enter' }); await check({ condition: active({ selector: '.composer textarea' }), label: 'Enter returns to the reply input' })
+  await press({ key: 'Escape' }); await check({ condition: caretAt({ offset: '0' }), label: 'Escape puts the caret at the start of the latest reply' })
+  await browser({ args: ['eval', '() => { window.messagesText = document.querySelector("[data-caret-host]").textContent; return true; }'] })
+  await press({ key: 'ArrowRight' }); await press({ key: 'ArrowRight' }); await check({ condition: caretAt({ offset: '2' }), label: 'arrows move the caret' })
+  await press({ key: 'x' }); await press({ key: 'Backspace' }); await press({ key: 'Enter' }); await check({ condition: active({ selector: '.composer textarea' }) + ' && document.querySelector("[data-caret-host]").textContent === window.messagesText', label: 'typing never edits the output and Enter without a selection returns to the reply input' })
+  await press({ key: `${mod}+l` }); await check({ condition: caretAt({ offset: '0' }), label: 'Mod+L jumps from the reply input to the latest reply' })
+  await press({ key: `${mod}+l` }); await check({ condition: active({ selector: '.composer textarea' }), label: 'Mod+L jumps back to the reply input' })
+  await press({ key: 'ArrowUp' }); await check({ condition: caretAt({ offset: 'getSelection().focusNode.length' }), label: 'Up from the top of the reply input enters the end of the latest reply' })
+  await press({ key: 'ArrowDown' }); await check({ condition: active({ selector: '.composer textarea' }), label: 'Down past the end of the output returns to the reply input' })
+  await press({ key: 'Escape' }); await press({ key: 'Shift+End' }); await check({ condition: 'getSelection().toString().startsWith("The first pass") && !!document.querySelector(".block-comment-action.has-selection")', label: 'Shift extends a selection that offers a comment' })
+  await press({ key: 'Shift+Enter' }); await check({ condition: active({ selector: '.composer textarea' }) + ' && document.activeElement.value.startsWith("> The first pass")', label: 'Shift+Enter quotes the selection into the reply input' })
+  await browser({ args: ['eval', '() => { const input = document.querySelector(".composer textarea"); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(input, ""); input.dispatchEvent(new Event("input", { bubbles: true })); return true; }'] })
+  await press({ key: 'Escape' }); await press({ key: 'Shift+End' }); await press({ key: 'Enter' }); await check({ condition: active({ selector: '.inline-comment textarea' }), label: 'Enter comments on the selection' })
+  await press({ key: 'Escape' }); await check({ condition: caretAt({ offset: '0' }) + " && !document.querySelector('.inline-comment')", label: 'Escape leaves an empty comment for the caret' })
+  await press({ key: 'Escape' }); await check({ condition: active({ selector: '.thread' }) + ' && getSelection().rangeCount === 0', label: 'Escape hides the caret' }); await press({ key: 'Enter' }); await check({ condition: active({ selector: '.composer textarea' }), label: 'Enter returns to the reply input' })
   await press({ key: 'Escape' }); await press({ key: 'r' }); await check({ condition: active({ selector: '.composer textarea' }), label: 'r focuses composer' })
   await press({ key: `${mod}+f` }); await check({ condition: active({ selector: "[aria-label='Find a card']" }), label: 'Mod+F leaves a text field for board search' }); await focus({ selector: '.composer textarea' })
   await fill({ role: 'textbox', name: 'Reply to Shape the first working board', text: 'hjkl / ? m' }); await press({ key: 'Enter' }); await press({ key: 'j' })
   await check({ condition: "document.querySelector('textarea').value === 'hjkl / ? m\\nj' && !document.querySelector('[role=dialog]')", label: 'typing stays literal' })
-  await press({ key: 'Escape' }); await check({ condition: active({ selector: '.thread' }), label: 'Escape leaves composer' }); await press({ key: 'Escape' }); await check({ condition: active({ selector: cardSelector }) + " && !document.querySelector('.detail')", label: 'Escape restores board focus' })
+  await press({ key: 'Escape' }); await check({ condition: caretAt({ offset: '0' }), label: 'Escape leaves composer' }); await press({ key: 'Escape' }); await check({ condition: active({ selector: '.thread' }), label: 'Escape hides the caret' }); await press({ key: 'Escape' }); await check({ condition: active({ selector: cardSelector }) + " && !document.querySelector('.detail')", label: 'Escape restores board focus' })
   await press({ key: 'r' }); await browser({ args: ['wait', 'Reply to Shape the first working board'] }); await check({ condition: "document.querySelector('textarea').value === 'hjkl / ? m\\nj'", label: 'draft survives keyboard navigation' })
   const beforeSlash = board().seq
   await fill({ role: 'textbox', name: 'Reply to Shape the first working board', text: '/' }); await browser({ args: ['wait', '/review-local'] }); await screenshot({ name: 'keyboard-slash.png' })
@@ -101,7 +116,7 @@ try {
   await fill({ role: 'textbox', name: 'Reply to Shape the first working board', text: 'Keep this draft' })
   await browser({ args: ['eval', `() => { document.querySelector('textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ${mod === 'Meta' ? 'metaKey' : 'ctrlKey'}: true, repeat: true, bubbles: true })); return true; }`] })
   assert.equal(board().cards[fixture.state.keys.layout!]!.replies!.length, replyCount)
-  await press({ key: 'Escape' }); await press({ key: 'Escape' })
+  await press({ key: 'Escape' }); await press({ key: 'Escape' }); await press({ key: 'Escape' })
   await press({ key: 'm' }); await browser({ args: ['wait', 'Manual placement'] }); await fill({ role: 'combobox', name: 'Search Move card', text: 'Done' }); await press({ key: 'Enter' }); await browser({ args: ['wait', 'Placement updated'] })
   assert.equal(board().cards[fixture.state.keys.layout!]!.column, 'done'); assert.equal(board().cards[fixture.state.keys.layout!]!.attention.length, 1)
   await check({ condition: active({ selector: cardSelector }), label: 'moving a focused card follows its identity' })
@@ -156,7 +171,7 @@ try {
   await press({ key: `${mod}+f` }); await check({ condition: active({ selector: "[aria-label='Find a card']" }), label: 'Mod+F works with character shortcuts disabled' }); await focus({ selector: cardSelector })
   await press({ key: `${mod}+,` }); await browser({ args: ['wait', 'Keyboard shortcuts'] }); await click({ role: 'switch', name: 'Character shortcuts' }); await browser({ args: ['wait', 'Preferences saved'] })
   await click({ role: 'button', name: 'Back to board' }); await browser({ args: ['open', server.url] }); await browser({ args: ['wait', 'The working board'] }); await focus({ selector: cardSelector }); await press({ key: 'g' }); await press({ key: 'r' }); await browser({ args: ['wait', 'Reply to Shape the first working board'] }); await check({ condition: active({ selector: 'textarea' }), label: 'bindings survive reload' })
-  await press({ key: 'Escape' }); await press({ key: 'Escape' })
+  await press({ key: 'Escape' }); await press({ key: 'Escape' }); await press({ key: 'Escape' })
   // Empty-column navigation and live moves use source events, not DOM edits.
   withWriter({
     board: 'default',
@@ -175,9 +190,9 @@ try {
   await press({ key: '?' }); await browser({ args: ['wait', 'Keyboard help'] }); await press({ key: 'Escape' }); await check({ condition: active({ selector: cardSelector }), label: 'help restores board focus' })
   await click({ role: 'button', name: 'Settings' }); await click({ role: 'combobox', name: 'Conversation placement' }); await click({ role: 'option', name: 'Inline with cards' }); await click({ role: 'button', name: 'Back to board' })
   await focus({ selector: cardSelector }); await press({ key: 'Enter' }); await browser({ args: ['wait', 'Reply to Shape the first working board'] }); await check({ condition: active({ selector: '.composer textarea' }), label: 'inline conversation receives focus' })
-  await press({ key: 'Escape' }); await press({ key: 'g' }); await press({ key: 'r' }); await fill({ role: 'textbox', name: 'Reply to Shape the first working board', text: 'Preserve inline draft' }); await press({ key: 'Escape' }); await press({ key: 'Escape' }); await check({ condition: active({ selector: cardSelector }), label: 'inline close restores card focus' })
+  await press({ key: 'Escape' }); await press({ key: 'g' }); await press({ key: 'r' }); await fill({ role: 'textbox', name: 'Reply to Shape the first working board', text: 'Preserve inline draft' }); await press({ key: 'Escape' }); await press({ key: 'Escape' }); await press({ key: 'Escape' }); await check({ condition: active({ selector: cardSelector }), label: 'inline close restores card focus' })
   await press({ key: 'Enter' }); await click({ role: 'combobox', name: 'Workspace' }); await click({ role: 'option', name: 'Work' }); await browser({ args: ['wait', 'Outside current filters'] })
-  await focus({ selector: '.thread' }); await press({ key: 'g' }); await press({ key: 'r' }); await check({ condition: "document.querySelector('textarea').value === 'Preserve inline draft'", label: 'filtered conversation keeps draft' }); await press({ key: 'Escape' }); await press({ key: 'Escape' })
+  await focus({ selector: '.thread' }); await press({ key: 'g' }); await press({ key: 'r' }); await check({ condition: "document.querySelector('textarea').value === 'Preserve inline draft'", label: 'filtered conversation keeps draft' }); await press({ key: 'Escape' }); await press({ key: 'Escape' }); await press({ key: 'Escape' })
   await check({ condition: "document.activeElement.matches('[data-card]') && document.activeElement.closest('.card').querySelector('.workspace').textContent === 'Work'", label: 'filtered close finds a visible board anchor' })
   await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] }); await click({ role: 'button', name: 'Commands' }); await browser({ args: ['wait', 'Search Commands'] })
   await check({ condition: "document.documentElement.scrollWidth === innerWidth && document.querySelector('[role=dialog]').getBoundingClientRect().bottom <= innerHeight && !document.querySelector('[role=option][aria-disabled=true]')", label: 'mobile palette fits viewport and shows available actions' }); await screenshot({ name: 'keyboard-mobile.png' })
