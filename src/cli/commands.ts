@@ -2,6 +2,7 @@ import { findProject, projectRows, taskProject } from '../projects/read.ts'
 import { MAX_DONE_HOURS } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
+import { setupSkills } from '../integrations/skills/install.ts'
 import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths, viewFor } from '../core/view.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { sendReply } from './reply.ts'
@@ -1650,6 +1651,10 @@ const setup = guard({
     const options: Options = { ...WRITE, harness: { type: 'string' }, remove: { type: 'boolean' }, preview: { type: 'boolean' }, home: { type: 'string' }, port: { type: 'string' } }
     const { values, positionals, hydraId } = parse({ args, options, positionals: 1 })
 
+    if (positionals[0] === 'skills') {
+      return setupSkills({ remove: !!values.remove, preview: !!values.preview })
+    }
+
     if (positionals[0] === 'service') {
       return setupService({ hydraId, port: integer({ value: values.port, flag: '--port' }), homes: values.home ? [String(values.home)] : [], remove: !!values.remove, preview: !!values.preview })
     }
@@ -1659,7 +1664,7 @@ const setup = guard({
     }
 
     if (positionals[0] !== 'hooks') {
-      throw new AxiError(`unknown setup target: ${positionals[0] ?? '(none)'}`, 'VALIDATION_ERROR', ['Run `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'])
+      throw new AxiError(`unknown setup target: ${positionals[0] ?? '(none)'}`, 'VALIDATION_ERROR', ['Run `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'])
     }
 
     const harness = values.harness as string | undefined
@@ -1801,7 +1806,7 @@ commands:
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>] [--home <path>]         Run the Hydra server until stopped; --home also watches Firstmate
   stop                                       Stop the Hydra's running server
-  setup hooks|service                       Install reporting hooks or the macOS login service (--remove, --preview)
+  setup skills|hooks|service                Install global skills, reporting hooks or the macOS login service (--remove, --preview)
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the pnyx-hydra skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
@@ -1943,7 +1948,11 @@ Source observations, card creation and merges cannot be undone.
 `,
   setup: `usage: pnyx-axi setup service [--hydra <id>] [--port <n>] [--home <Firstmate home>] [--remove] [--preview]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
+pnyx-axi setup skills [--remove] [--preview]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
+setup skills links pnyx-hydra and pnyx-worker from this installation into ~/.claude/skills
+(or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.
+Existing files and unrelated links are never replaced; --remove takes out only this install's links.
 Adds Pnyx's reporting hook to the user-level Claude Code settings.json or Codex hooks.json, keeping
 every other hook. Without --harness it sets up each harness whose config folder exists. Rerunning
 changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,

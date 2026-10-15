@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { hydraConfig } from '../core/hydra.ts'
 import { hookStatus } from '../integrations/hooks/install.ts'
+import { skillStatus } from '../integrations/skills/install.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
 import { loadHydra } from '../store/hydra-store.ts'
@@ -27,6 +28,12 @@ export async function integrations({ hydraId, url, connect }: {
   return {
     hydraId,
     integrations: [
+      {
+        name: 'skills',
+        status: skillStatus(),
+        setup: 'pnyx-axi setup skills',
+        docs: 'pnyx-hydra and pnyx-worker are available in every project or copy through global skill links',
+      },
       {
         name: 'hooks',
         status: hooks === 'current' ? 'ready' : `hook script ${hooks}`,
@@ -63,7 +70,7 @@ export async function integrations({ hydraId, url, connect }: {
 }
 
 export const INTEGRATIONS_HELP = `usage: pnyx-axi integrations [--hydra <id>] [--paseo-url <url>]
-Lists hooks, Paseo, Firstmate, the Hydra command and GitHub: whether each is ready and the
+Lists global skills, hooks, Paseo, Firstmate, the Hydra command and GitHub: whether each is ready and the
 command that sets it up. It only reads; nothing is installed or started.
 `
 
