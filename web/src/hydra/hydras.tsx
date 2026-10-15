@@ -1,29 +1,54 @@
 import { useEffect, useState } from 'react'
-import type { HydraTab } from '../../../src/server/hydras.ts'
-import { Button } from '../components/ui/controls.tsx'
+import type { HydraSummary } from '../../../src/server/hydras.ts'
+import { Button, Input } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
 
-const RENAME = 'rename-hydra'
-
-export function HydraTabs({ command, connected, notify, active, showHydra }: {
-  active: boolean
-  showHydra(): void
+export function Hydras({
+  command, connected, notify, revision, project, resolveProject, selectProject,
+  showHydra, addProject,
+}: {
   command: Command
   connected: boolean
+  revision: number
+  project: string
+  resolveProject({ references }: { references: string[] }): void
+  selectProject({ path }: { path: string }): void
+  showHydra(): void
+  addProject(): void
   notify({ text }: { text: string }): void
 }) {
-  const [hydras, setHydras] = useState<HydraTab[]>([]), [current, setCurrent] = useState('')
-  const [busy, setBusy] = useState(false), [open, setOpen] = useState(false)
-  const renaming = new URLSearchParams(location.search).has(RENAME)
+  const [hydras, setHydras] = useState<HydraSummary[]>([]), [current, setCurrent] = useState('')
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [busy, setBusy] = useState(false), [creating, setCreating] = useState(false), [name, setName] = useState('')
+  const [renaming, setRenaming] = useState(false)
+  useEffect(() => {
+    const chosen = hydras.find(h => h.id === current)?.projects.find(p => p.path === project)
+    resolveProject({ references: chosen?.references ?? [project] })
+  }, [hydras, current, project, resolveProject])
 
   useEffect(() => {
-    if (connected) {
-      void command({ name: 'hydras', args: [] }).then(r => {
-        setHydras(r.hydras as HydraTab[]); setCurrent(r.hydraId as string)
-      }, (e: Error) => notify({ text: e.message }))
+    if (!connected) {
+      return
     }
-  }, [connected, command, notify])
+
+    let live = true
+
+    const refresh = () => {
+      void command({ name: 'hydras', args: [] }).then(r => {
+        if (live) {
+          setHydras(r.hydras as HydraSummary[]); setCurrent(r.hydraId as string)
+        }
+      }, (e: Error) => live && notify({ text: e.message }))
+    }
+
+    refresh()
+    const timer = setInterval(refresh, 5000)
+
+    return () => {
+      live = false; clearInterval(timer)
+    }
+  }, [connected, command, notify, revision])
 
   useEffect(() => {
     const target = new URLSearchParams(location.search).get('open-hydra')
@@ -37,13 +62,21 @@ export function HydraTabs({ command, connected, notify, active, showHydra }: {
     void command({ name: 'hydras', args: ['open', target] }).then(r => location.assign(r.url as string), (e: Error) => notify({ text: e.message }))
   }, [connected, command, notify])
 
-  const go = ({ args, rename }: { args: string[]; rename?: boolean }) => {
+  const go = ({ args, path, projects = false }: {
+    args: string[]
+    path?: string
+    projects?: boolean
+  }) => {
     setBusy(true)
     void command({ name: 'hydras', args }).then(r => {
       const url = new URL(r.url as string)
 
-      if (rename) {
-        url.searchParams.set(RENAME, '1')
+      if (path) {
+        url.searchParams.set('project', path)
+      }
+
+      if (projects) {
+        url.searchParams.set('projects', '1')
       }
 
       location.assign(url)
@@ -52,61 +85,92 @@ export function HydraTabs({ command, connected, notify, active, showHydra }: {
     })
   }
 
-  const currentHydra = hydras.find(b => b.id === current)
-
   return (
-    <div
-      className="hydra-switcher"
-      onBlur={e => {
-        if (!e.currentTarget.contains(e.relatedTarget)) {
-          setOpen(false)
-        }
-      }}
-      onKeyDown={e => {
-        if (e.key === 'Escape') {
-          e.stopPropagation(); setOpen(false)
-        }
-      }}
-    >
-      <Button
-        aria-label="Switch Hydra"
-        aria-pressed={active}
-        aria-expanded={open}
-        onClick={() => {
-          showHydra(); setOpen(value => !value)
-        }}
-      >{currentHydra?.name ?? 'Hydra'} <span aria-hidden="true">▾</span>
-      </Button>
-      {renaming && currentHydra && (
-        <InlineTitle
-          value={currentHydra.name}
-          label={`Rename Hydra ${currentHydra.name}`}
-          startEditing
-          save={({ title }) => command({ name: 'hydras', args: ['rename', currentHydra.id, title] }).then(r => {
-            setHydras(r.hydras as HydraTab[]); history.replaceState(null, '', location.pathname)
-          })}
-        />
-      )}
-      {open && (
-        <div className="hydra-list" aria-label="Hydras">
-          {hydras.map(b => (
-            <Button
-              key={b.id}
-              aria-current={b.id === current ? 'page' : undefined}
-              disabled={busy}
-              onClick={() => {
-                if (b.id === current) {
-                  showHydra(); setOpen(false)
-                } else {
-                  go({ args: ['open', b.id] })
+    <section className="hydras-panel" aria-label="Hydras">
+      <div className="hydras-heading"><h2>Hydras</h2>
+        {creating ? (
+          <form
+            onSubmit={e => {
+              e.preventDefault()
+
+              if (name.trim() && !busy) {
+                go({ args: ['create', name.trim()] })
+              }
+            }}
+          >
+            <Input
+              autoFocus
+              aria-label="New Hydra name"
+              placeholder="Name your Hydra"
+              maxLength={100}
+              value={name}
+              disabled={busy || !connected}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Escape') {
+                  e.preventDefault(); e.stopPropagation(); setCreating(false); setName('')
                 }
               }}
-            >{b.name}
-            </Button>
-          ))}
-          <Button disabled={!connected || busy} onClick={() => go({ args: ['create', 'New Hydra'], rename: true })}>＋ New Hydra</Button>
-        </div>
-      )}
-    </div>
+            />
+          </form>
+        ) : <Button aria-label="Create Hydra" disabled={!connected || busy} onClick={() => setCreating(true)}>＋</Button>}
+      </div>
+      <div className="hydras-tree">
+        {hydras.map(h => {
+          const active = h.id === current, open = expanded[h.id] ?? active
+
+          return (
+            <div key={h.id} className="hydra-branch">
+              <div className="hydra-row">
+                <Button
+                  aria-label={`${open ? 'Collapse' : 'Expand'} ${h.name}`}
+                  aria-expanded={open}
+                  aria-controls={`projects-${h.id}`}
+                  onClick={() => setExpanded(e => ({ ...e, [h.id]: !open }))}
+                >{open ? '⌄' : '›'}
+                </Button>
+                {active && renaming ? (
+                  <InlineTitle
+                    value={h.name}
+                    label={`Rename Hydra ${h.name}`}
+                    startEditing
+                    finished={() => setRenaming(false)}
+                    save={({ title }) => command({ name: 'hydras', args: ['rename', h.id, title] }).then(r => setHydras(r.hydras as HydraSummary[]))}
+                  />
+                ) : (
+                  <Button
+                    className="hydra-name"
+                    data-hydra-current={active ? '' : undefined}
+                    aria-current={active ? 'page' : undefined}
+                    disabled={!connected || busy}
+                    onDoubleClick={() => active && setRenaming(true)}
+                    onClick={() => active ? showHydra() : go({ args: ['open', h.id] })}
+                  >{h.name}
+                  </Button>
+                )}
+              </div>
+              {open && (
+                <div className="hydra-projects" id={`projects-${h.id}`}>
+                  {h.projects.map(p => (
+                    <Button
+                      key={p.path}
+                      className="panel-project"
+                      title={p.path}
+                      aria-pressed={active && project === p.path}
+                      disabled={!connected || busy}
+                      onClick={() => active ? selectProject({ path: p.path }) : go({ args: ['open', h.id], path: p.path })}
+                    >
+                      <span>{p.name}</span>
+                      <small aria-label={`${p.live} live, ${p.asks} asks`}><span>{p.live} live</span><span className={p.asks ? 'project-asks' : ''}>{p.asks} asks</span></small>
+                    </Button>
+                  ))}
+                  <Button className="add-project" disabled={!connected || busy} onClick={() => active ? addProject() : go({ args: ['open', h.id], projects: true })}>＋ Add project</Button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
