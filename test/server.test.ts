@@ -2,7 +2,7 @@ import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -18,6 +18,7 @@ import { decidePush } from '../src/core/decide.ts'
 import { indexStatus, searchPath } from '../src/oracle/index.ts'
 import { writeSetting } from '../src/oracle/settings.ts'
 import { stopAll, track } from './processes.ts'
+import type { HydraSummary } from '../src/server/hydras.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -874,8 +875,19 @@ test('the Hydra edits task kinds over the socket', async () => {
   t.ws.close()
 })
 
-test('Hydra tabs list, create, rename and open Hydras on the same server', async () => {
+test('Hydras list projects and counts, create, rename and open on the same server', async () => {
   cli({ args: ['hydra', 'create', 'default', '--name', 'Main'] })
+  const folder = join(process.env.PNYX_HOME!, 'project')
+  mkdirSync(folder)
+  cli({ args: ['project', 'add', folder] })
+  cli({ args: ['task', 'create', '--key', 'work', '--title', 'Work', '--project', folder] })
+  cli({ args: ['task', 'create', '--key', 'hidden', '--title', 'Hidden', '--project', folder] })
+  const input = join(process.env.PNYX_HOME!, 'input.json')
+  writeFileSync(input, JSON.stringify({ agent: { provider: 'claude-code', sessionId: 'fake' }, activity: 'working', attention: [{ key: 'ask', kind: 'question', blocking: true }, { key: 'answered', kind: 'question', blocking: true, answered: 'reply-1' }] }))
+  cli({ args: ['push', '--key', 'work', '--file', input] })
+  writeFileSync(input, readFileSync(input, 'utf8').replace('fake', 'fake-hidden'))
+  cli({ args: ['push', '--key', 'hidden', '--file', input] })
+  cli({ args: ['task', 'hide', 'hidden', '--reason', 'test fixture'] })
   server = await startServer({ hydraId: 'default', port: 0 })
   const t = await tab()
 
@@ -884,7 +896,7 @@ test('Hydra tabs list, create, rename and open Hydras on the same server', async
       const message = await t.next()
 
       if ((message.type === 'receipt' || message.type === 'error') && message.id === id) {
-        type Hydras = { hydras?: { id: string; name: string }[]; url?: string; error?: string }
+        type Hydras = { hydras?: HydraSummary[]; url?: string; error?: string }
 
         return message as ServerMessage & Hydras
       }
@@ -892,7 +904,9 @@ test('Hydra tabs list, create, rename and open Hydras on the same server', async
   }
 
   t.command({ id: 'b1', name: 'hydras', args: [] })
-  assert.deepEqual((await receipt({ id: 'b1' })).hydras?.map(b => [b.id, b.name]), [['default', 'Main']])
+  const listed = (await receipt({ id: 'b1' })).hydras
+  assert.deepEqual(listed?.map(h => [h.id, h.name]), [['default', 'Main']])
+  assert.deepEqual(listed?.[0]?.projects, [{ name: 'project', path: realpathSync(folder), references: [realpathSync(folder)], live: 1, asks: 1 }])
 
   t.command({ id: 'b2', name: 'hydras', args: ['rename', 'default', 'Work'] })
   assert.deepEqual((await receipt({ id: 'b2' })).hydras?.map(b => b.name), ['Work'])
