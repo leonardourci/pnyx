@@ -131,6 +131,12 @@ export function eventText({ event }: { event: HydraEvent }): string {
     case 'chat.message':
       parts.push(event.data.text)
       break
+    case 'task.reminder':
+      parts.push(event.data.after ?? 'Reminder cleared')
+      break
+    case 'task.reminder-due':
+      parts.push(event.data.message.text)
+      break
     case 'task.created':
       parts.push(event.data.title)
       break
