@@ -34,7 +34,7 @@ export function History({
     const timer = setTimeout(() => {
       setLoading(true)
       const args = [...(workspace ? ['--workspace', workspace] : []), ...(kind ? ['--kind', kind] : []), ...(before ? ['--before', String(before)] : []), '--limit', '50']
-      void command({ name: query.trim() ? 'search' : 'history', args: query.trim() ? [query, workspace] : args }).then(r => {
+      void command({ name: query.trim() ? 'oracle' : 'history', args: query.trim() ? [query, workspace] : args }).then(r => {
         if (gen !== generation.current) {
           return
         }
@@ -65,7 +65,7 @@ export function History({
       <div>
         <span className="eyebrow">THE RECORDED WORK</span>
         <h1>History</h1>
-        <p className="muted">Oracle card facts and recorded conversations.</p>
+        <p className="muted">Search card facts and recorded conversations.</p>
       </div>
       <div className="row wrap">
         <Input
