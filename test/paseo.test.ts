@@ -215,10 +215,10 @@ test('pnyx-axi task start and task paseo report a stopped daemon as structured e
   assert.notEqual(status.status, 0)
   assert.match(status.stdout, /PASEO_UNAVAILABLE/)
   assert.match(status.stdout, /Paseo is not running at ws:\/\/127\.0\.0\.1:1\/ws/)
-  const start = run({ args: ['task', 'start', 'work', '--harness', 'claude', '--prompt', 'Go', '--folder', folder] })
+  const start = run({ args: ['task', 'start', 'work', '--via', 'paseo', '--harness', 'claude', '--prompt', 'Go', '--folder', folder] })
   assert.notEqual(start.status, 0)
   assert.match(start.stdout, /PASEO_UNAVAILABLE/)
-  assert.match(run({ args: ['task', '--help'] }).stdout, /task start <task> \[--via paseo\] \[--kind <kind>\] \[--harness claude\|codex\] \[--prompt <text>\]/)
+  assert.match(run({ args: ['task', '--help'] }).stdout, /task start <task> \[--via pnyx\|paseo\] \[--kind <kind>\] \[--harness claude\|codex\] \[--prompt <text>\]/)
 })
 
 test('an agent started from a lab home reports its hooks to that home, never to the installed one', async () => {
