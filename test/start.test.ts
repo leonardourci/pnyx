@@ -45,14 +45,18 @@ function hook({ env, session, event }: {
   assert.equal(ran.status, 0)
 }
 
-const environment = ({ text }: { text: string }) =>
-  Object.fromEntries(text.trim().split('\n')
-    .map(line => line.split(/=(.*)/s).slice(0, 2) as [string, string]))
+const environment = ({ text }: { text: string }): Record<string, string> => JSON.parse(text)
+
+const captureEnvironment = ({ path }: { path: string }) => {
+  const script = `const fs = require('node:fs'); const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.startsWith('PNYX_'))); fs.writeFileSync(${JSON.stringify(path + '.tmp')}, JSON.stringify(env)); fs.renameSync(${JSON.stringify(path + '.tmp')}, ${JSON.stringify(path)});`
+
+  return `node -e '${script.replaceAll("'", "'\\''")}'`
+}
 
 test('task start --via command runs the board command once and its session joins the task', async () => {
   const { root, folder, run, state } = lab()
   const out = join(root, 'env.txt')
-  run({ args: ['board', 'set', '--command', `env | grep ^PNYX_ > ${out}.tmp && mv ${out}.tmp ${out}`] })
+  run({ args: ['board', 'set', '--command', captureEnvironment({ path: out })] })
   run({ args: ['task', 'create', '--title', 'Write the docs', '--folder', folder] })
   const task = Object.values(state().cards).find(c => c.title === 'Write the docs')!.id
 
@@ -87,7 +91,7 @@ test('task start --via command runs the board command once and its session joins
 test('hydra start --via command makes its first session the board Hydra, never a worker', async () => {
   const { root, folder, run, state } = lab()
   const out = join(root, 'env.txt')
-  run({ args: ['board', 'set', '--command', `env | grep ^PNYX_ > ${out}.tmp && mv ${out}.tmp ${out}`] })
+  run({ args: ['board', 'set', '--command', captureEnvironment({ path: out })] })
   run({ args: ['task', 'create', '--title', 'Same folder', '--folder', folder] })
 
   await startHydra({ board: 'lab', via: 'command', folder, meta: { ...meta, id: 'h1' } })
