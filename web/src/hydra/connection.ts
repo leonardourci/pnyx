@@ -94,7 +94,7 @@ export function useHydra() {
         return
       }
 
-      const url = new URL('/ws', location.href); url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'; url.searchParams.set('token', token)
+      const url = new URL('ws', document.baseURI); url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'; url.searchParams.set('token', token)
 
       if (hasSnapshot.current) {
         url.searchParams.set('after', String(stateRef.current.seq))
