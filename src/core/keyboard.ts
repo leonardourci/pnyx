@@ -40,7 +40,7 @@ export const KEY_ACTIONS = [
   action({ id: 'palette', label: 'Focus Oracle', keys: ['Mod+k'], scopes: [...navigation, 'composer'] }),
   action({ id: 'help', label: 'Keyboard help', keys: ['?'], scopes: navigation }),
   action({ id: 'settings', label: 'Open settings', keys: ['Mod+,'], scopes: navigation }),
-  action({ id: 'topbar', label: 'Show or hide the top bar', keys: ['Mod+b'], scopes: [...navigation, 'composer'] }),
+  action({ id: 'topbar', label: 'Show or hide the left panel', keys: ['Mod+b'], scopes: [...navigation, 'composer'] }),
 ]
 export interface KeyboardPreferences {
   characterShortcuts: boolean
