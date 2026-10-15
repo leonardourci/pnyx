@@ -45,18 +45,20 @@ Write your own chat message only when you need the owner's input: `pnyx-axi hydr
 
 - New work: `pnyx-axi task create --title "<what>" --brief "<instructions>" --reason "<why>" --hydra <hydra>`; a piece of a larger task: add `--parent <task>` (one level only).
 - Status is what you declare, never inferred: `pnyx-axi task status <task> working|needs_you|paused|blocked|done --note "<one line>" --hydra <hydra>`. Silence changes nothing, so declare `needs_you` with the question in the note whenever the owner has to act, and `done` only when the work is finished.
-- The owner arranges cards. You may also place a card when its own agent does something that calls for it, using the column descriptions. For an agent question, answer it through the card when you can; otherwise move it to the column for owner decisions. A declared status alone never calls for a move. Run `pnyx-axi move <task> <column> --reason "<why>" --hydra <hydra>`, inspect the proposed action, then repeat with `--confirm <token>`.
+- The owner arranges cards. You may also place a card when its own agent does something that calls for it, using the column descriptions. On a Firstmate-linked Hydra, Pnyx moves cards between the five default columns (Queued, In progress, Needs you, Parked, Done) from Firstmate's records, so leave those moves to it. For an agent question, answer it through the card when you can; otherwise move it to the column for owner decisions. A declared status alone never calls for a move. Run `pnyx-axi move <task> <column> --reason "<why>" --hydra <hydra>`, inspect the proposed action, then repeat with `--confirm <token>`.
 - When the owner asks to hide work, use `pnyx-axi task hide <task> --reason "<why>" --hydra <hydra>`; `task unhide` restores it. Hiding keeps its record and conversation.
 - Edit the instructions before attaching an agent with `pnyx-axi task brief <task> --brief "<instructions>" --reason "<why>" --hydra <hydra>`. An explicit attach hands the brief to the agent, and task start includes it in the opening prompt.
 - Evidence: `pnyx-axi link <task> --url <pull request or ticket> --hydra <hydra>`.
 
 ## Start workers
 
+Start in the UI requests a worker in your chat; you choose the project, copy or folder, launch route and agent. Read the task’s history and current record before starting it. A request to start fresh may still have an old session attached; inspect it before choosing whether to continue or replace it.
+
 `pnyx-axi task start <task> --reason "<why>" --hydra <hydra>` starts one worker for a task and attaches it:
 
 - With no `--via` (or `--via pnyx`), the Hydra's server runs Claude Code or Codex in the task's folder on the kind's provider, model, effort and mode (`--harness claude|codex` overrides its provider), with the brief as its first prompt; `--folder <absolute path>` sets the folder when the task has none. `pnyx-axi reply <task> --text "<message>"` reaches it even after the server restarted. A task marked interrupted stopped mid-turn: decide whether to send it a message to continue.
 - `--via paseo [--kind <kind>] --folder <absolute path>` starts it in the local Paseo daemon on the kind's agent (`pnyx-axi kind list --hydra <Hydra>`; the `default` kind when none is given). `--harness claude|codex` and `--prompt "<opening message>"` override the kind's harness and the default opening message, which names the task and the `pnyx-worker` skill workers follow.
-- `--via command [--prompt "<text>"]` runs the Hydra's own start command in the task's folder.
+- `--via command [--prompt "<text>"]` runs the Hydra's own start command in the task's folder. Add `--command "<name>"` to select the assigned project’s named command from `project list`, your summary or light check. Settings → Projects (or `project set <project> --command-name "<name>" --command "<shell>" --brings-own-folder true|false`) saves it. `bringsOwnFolder` means the command manages its own worker folder, so Pnyx skips creating a task copy and runs it from the project folder unless its contract needs `--folder`. Otherwise Pnyx makes or reuses the task’s project copy.
 - `--via firstmate [--prompt "<text>"]` hands the request to the Firstmate home that is this Hydra.
 
 A task with an attached project starts in its own copy (a git worktree on branch `pnyx/<hydra>-<task>`, or the project's copy command); `--in-place` works in the project folder itself and is refused while another Hydra's worker runs there. When the task reaches Done, Pnyx removes a clean copy whose work landed. Otherwise it keeps the copy, flags it and sends you a message: land the work and run `pnyx-axi task copy <task> remove --hydra <hydra>`, or, when it already landed another way or is empty, `pnyx-axi task copy <task> remove --safe --reason "<why>" --hydra <hydra>`. Never discard work that never landed; ask the owner, who runs `--discard`.
@@ -76,7 +78,7 @@ Keep both statuses honest: your Firstmate status feeds the mirrored task, and th
 
 ## Layout and memory
 
-Use `column create --title "<name>" --description "<when and why>"`, `column rename <id> --title "<name>"` and `column describe <id> --description "<when and why>"` to maintain the template. `column reorder <id> --before <id>` moves a column and `column delete <id> --to <remaining-id>` deletes it and places its cards in the destination. Moves and deletes first return `confirmation: needed` and a token; inspect the action and repeat the exact command with `--confirm <token>`. A changed target requires a new confirmation.
+Use `column create --title "<name>" --description "<when and why>"`, `column rename <id> --title "<name>"` and `column describe <id> --description "<when and why>"` to maintain the columns. A Firstmate-linked Hydra's default columns cannot be deleted. `column reorder <id> --before <id>` moves a column and `column delete <id> --to <remaining-id>` deletes it and places its cards in the destination. Moves and deletes first return `confirmation: needed` and a token; inspect the action and repeat the exact command with `--confirm <token>`. A changed target requires a new confirmation.
 
 `column resize <id> --width <pixels>` and `hydra resize --width <pixels>` change widths; `layout show` reports them and their stored defaults, and `layout reset` restores default widths. Pass `--hydra <hydra>` on each.
 

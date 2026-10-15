@@ -75,7 +75,7 @@ test('undo reverses a move unless the card changed since', () => {
   state = reduce({ state, event: move })
   const undo = eventOf({ decision: decideUndo({ state, target: move, meta }) })
   assert.equal(undo.undoes, move.id)
-  assert.equal(reduce({ state, event: undo }).cards.c1!.column, 'workers_on_it')
+  assert.equal(reduce({ state, event: undo }).cards.c1!.column, 'in_progress')
 
   const later = reduce({ state, event: eventOf({ decision: decideMove({ state, ref: 'c1', column: 'done', meta }) }) })
   rejects({ fn: () => decideUndo({ state: later, target: move, meta }), code: 'CONFLICT' })
@@ -91,13 +91,13 @@ test('a move orders the card within its column, and nothing else reorders it', (
     state = apply({ state, decision: decidePush({ state, key, input: {}, meta }) })
   }
 
-  const order = () => columnCards({ state, column: 'workers_on_it' }).map(c => c.key)
+  const order = () => columnCards({ state, column: 'in_progress' }).map(c => c.key)
   assert.deepEqual(order(), ['a', 'b', 'c'], 'new cards go to the end')
 
-  const top = eventOf({ decision: decideMove({ state, ref: 'c', column: 'workers_on_it', before: 'a', meta }) })
+  const top = eventOf({ decision: decideMove({ state, ref: 'c', column: 'in_progress', before: 'a', meta }) })
   state = reduce({ state, event: top })
   assert.deepEqual(order(), ['c', 'a', 'b'])
-  const between = eventOf({ decision: decideMove({ state, ref: 'b', column: 'workers_on_it', before: 'a', meta }) })
+  const between = eventOf({ decision: decideMove({ state, ref: 'b', column: 'in_progress', before: 'a', meta }) })
   state = reduce({ state, event: between })
   assert.deepEqual(order(), ['c', 'b', 'a'], 'between two cards')
   const undo = eventOf({ decision: decideUndo({ state, target: between, meta }) })
@@ -105,15 +105,15 @@ test('a move orders the card within its column, and nothing else reorders it', (
   assert.deepEqual(order(), ['c', 'a', 'b'], 'undo restores the old position')
   state = apply({ state, decision: decideUndo({ state, target: undo, meta }) })
   assert.deepEqual(order(), ['c', 'b', 'a'], 'redo places it again')
-  state = apply({ state, decision: decideMove({ state, ref: 'c', column: 'workers_on_it', meta }) })
+  state = apply({ state, decision: decideMove({ state, ref: 'c', column: 'in_progress', meta }) })
   assert.deepEqual(order(), ['b', 'a', 'c'], 'no --before goes to the end')
   state = apply({ state, decision: decidePush({ state, key: 'a', input: { title: 'edited', activity: 'working' }, meta }) })
   assert.deepEqual(order(), ['b', 'a', 'c'], 'an edit never reorders')
 
   state = apply({ state, decision: decideMove({ state, ref: 'a', column: 'done', meta }) })
   assert.deepEqual(columnCards({ state, column: 'done' }).map(c => c.key), ['a'])
-  rejects({ fn: () => decideMove({ state, ref: 'b', column: 'workers_on_it', before: 'a', meta }), code: 'VALIDATION_ERROR' })
-  rejects({ fn: () => decideMove({ state, ref: 'b', column: 'workers_on_it', before: 'b', meta }), code: 'VALIDATION_ERROR' })
+  rejects({ fn: () => decideMove({ state, ref: 'b', column: 'in_progress', before: 'a', meta }), code: 'VALIDATION_ERROR' })
+  rejects({ fn: () => decideMove({ state, ref: 'b', column: 'in_progress', before: 'b', meta }), code: 'VALIDATION_ERROR' })
   rejects({ fn: () => decideMove({ state, ref: 'b', column: 'custom:nowhere', meta }), code: 'VALIDATION_ERROR' })
 })
 
@@ -122,7 +122,7 @@ test('undo reverses a link update but never a merge', () => {
   const url = 'https://github.com/o/r/pull/3'
   const open = eventOf({ decision: decideLink({ state, ref: 'c1', url, link: parseLink({ input: { url, state: 'open' } }), meta }) })
   state = reduce({ state, event: open })
-  assert.equal(state.cards.c1!.column, 'workers_on_it')
+  assert.equal(state.cards.c1!.column, 'in_progress')
   const reverted = reduce({
     state,
     event: eventOf({ decision: decideUndo({ state, target: open, meta }) }),
@@ -131,7 +131,7 @@ test('undo reverses a link update but never a merge', () => {
 
   const merged = eventOf({ decision: decideLink({ state, ref: 'c1', url, link: { kind: 'github_pr', url, state: 'merged' }, meta }) })
   state = reduce({ state, event: merged })
-  assert.equal(state.cards.c1!.column, 'workers_on_it', 'a merge never moves a card')
+  assert.equal(state.cards.c1!.column, 'in_progress', 'a merge never moves a card')
   rejects({ fn: () => decideUndo({ state, target: merged, meta }), code: 'NOT_UNDOABLE' })
 })
 

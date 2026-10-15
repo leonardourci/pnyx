@@ -961,6 +961,10 @@ export function decideUndo({ state, target, meta }: {
   meta: Meta
 }): Decision {
   if (target.type === 'board.columns') {
+    if (target.actor === 'pnyx') {
+      throw notUndoable({ message: 'the move onto the default columns cannot be undone' })
+    }
+
     const unchanged = isDeepStrictEqual(hydraConfig({ state }).columns, target.data.columns)
 
     if (!target.data.before || state.undone[target.id] || !unchanged) {

@@ -224,6 +224,36 @@ test('a Hydra in the old boards folder moves to hydras and its events replay', (
   assert.deepEqual(loadHydra({ hydraId: 'existing' }).state, loaded.state)
 })
 
+test('a Hydra on the older layout moves onto the default columns on its next write, keeping its own columns and titles', () => {
+  const dir = hydraDir({ hydraId: 'default' })
+  mkdirSync(dir, { recursive: true })
+  const columns = [
+    { id: 'needs_you', title: 'Your turn', role: 'needs_you' },
+    { id: 'workers_on_it', title: 'Workers on it', role: 'workers_on_it' },
+    { id: 'custom:review', title: 'Review' },
+    { id: 'done', title: 'Done', role: 'done' },
+  ]
+  const base = { v: 1, at: '2026-10-01T00:00:00Z', actor: 'cli' }
+  const log = [
+    { ...base, seq: 1, id: 'e1', cardId: '$board', type: 'board.configured', data: { id: 'default', name: 'default', hydra: { id: 'lead', kind: 'agent', name: 'Hydra' }, columns } },
+    { ...base, seq: 2, id: 'e2', cardId: 't1', type: 'task.created', data: { key: 'working', title: 'Working', column: 'workers_on_it' } },
+    { ...base, seq: 3, id: 'e3', cardId: 't2', type: 'task.created', data: { key: 'finished', title: 'Finished', column: 'workers_on_it' } },
+    { ...base, seq: 4, id: 'e4', cardId: 't2', type: 'task.declared', data: { state: 'done', note: 'Shipped' } },
+    { ...base, seq: 5, id: 'e5', cardId: 't3', type: 'task.created', data: { key: 'unknown', title: 'No status yet' } },
+    { ...base, seq: 6, id: 'e6', cardId: 't3', type: 'card.moved', data: { before: 'parked', after: 'workers_on_it' } },
+  ].map(event => JSON.stringify(event)).join('\n') + '\n'
+  writeFileSync(join(dir, 'events.jsonl'), log)
+  assert.equal(loadHydra({ hydraId: 'default' }).state.cards.t1!.column, 'workers_on_it', 'loading alone writes nothing')
+
+  withWriter({ hydraId: 'default', fn: () => undefined })
+  const { state } = loadHydra({ hydraId: 'default' })
+  assert.deepEqual(state.config!.columns.map(c => [c.id, c.title]), [['queued', 'Queued'], ['in_progress', 'In progress'], ['needs_you', 'Your turn'], ['parked', 'Parked'], ['done', 'Done'], ['custom:review', 'Review']])
+  assert.deepEqual(['t1', 't2', 't3'].map(id => state.cards[id]!.column), ['in_progress', 'done', 'in_progress'])
+  const seq = state.seq
+  withWriter({ hydraId: 'default', fn: () => undefined })
+  assert.equal(loadHydra({ hydraId: 'default' }).state.seq, seq, 'the move happens once')
+})
+
 const seed = ({ files }: { files: Record<string, string> }) => {
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(join(process.env.PNYX_HOME!, name, '..'), { recursive: true })

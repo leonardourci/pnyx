@@ -6,6 +6,10 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 import { hydraDir, spoolWrite } from '../src/store/hydra-store.ts'
+import { DEFAULT_COLUMNS, lockedColumn, migrateColumns } from '../src/core/hydra.ts'
+import { decideUndo } from '../src/core/decide.ts'
+import { HydraError } from '../src/core/model.ts'
+import { emptyHydra, reduce } from '../src/core/reducer.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -51,8 +55,8 @@ test('push is an idempotent upsert by key', () => {
   assert.match(retry, /^ {2}seq: 2$/m)
   assert.match(retry, /^duplicate: /m)
   const out = run({ args: [] })
-  assert.match(out, /^ {2}workers_on_it: 1$/m)
-  assert.match(out, /^ {2}c1,x,workers_on_it,none$/m)
+  assert.match(out, /^ {2}in_progress: 1$/m)
+  assert.match(out, /^ {2}c1,x,in_progress,none$/m)
 })
 
 test('only a move places the card; links, merges and outcomes leave it', () => {
@@ -60,7 +64,7 @@ test('only a move places the card; links, merges and outcomes leave it', () => {
   run({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'Task' } })] })
   run({ args: ['push', '--key', 'k2', '--file', card({ json: { title: 'Other' } })] })
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'open'] })
-  assert.match(run({ args: ['card', 'k'] }), /^ {2}column: workers_on_it$/m)
+  assert.match(run({ args: ['card', 'k'] }), /^ {2}column: in_progress$/m)
   run({ args: ['move', 'c1', 'needs-you'] })
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'merged'] })
   run({ args: ['outcome', 'c1', 'done', '--note', 'shipped'] })
@@ -92,8 +96,8 @@ test('undo appends a reversing event and refuses a second undo', () => {
   run({ args: ['push', '--key', 'k', '--file', card({ json: {} })] })
   run({ args: ['move', 'c1', 'done'] })
   assert.match(run({ args: ['undo', 'evt_2'] }), /^ {2}seq: 3$/m)
-  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: workers_on_it$/m)
-  assert.match(run({ args: ['history', '--limit', '1'] }), /undo evt_2: done -> workers_on_it/)
+  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: in_progress$/m)
+  assert.match(run({ args: ['history', '--limit', '1'] }), /undo evt_2: done -> in_progress/)
 })
 
 test('every write takes --event-id and --if-revision', () => {
@@ -121,7 +125,7 @@ test('undo reverses a manual push edit and refuses a merge', () => {
   fails({ args: ['undo', 'evt_1'], status: 1, code: 'NOT_UNDOABLE' })
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'merged'] })
   fails({ args: ['undo', 'evt_4'], status: 1, code: 'NOT_UNDOABLE' })
-  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: workers_on_it$/m)
+  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: in_progress$/m)
 })
 
 test('errors are structured', () => {
@@ -189,6 +193,17 @@ test('concurrent writers get one contiguous sequence', async () => {
   const log = readFileSync(join(env.PNYX_HOME, 'hydras', 'default', 'events.jsonl'), 'utf8').trimEnd()
     .split('\n')
   assert.deepEqual(log.map(l => JSON.parse(l).seq), [1, 2, 3, 4, 5, 6, 7, 8])
-  assert.match(run({ args: [] }), /^ {2}workers_on_it: 8$/m)
+  assert.match(run({ args: [] }), /^ {2}in_progress: 8$/m)
   assert.equal(existsSync(join(env.PNYX_HOME, 'hydras', 'default', 'writer.lock')), false)
+})
+
+test('only a Firstmate-linked Hydra keeps its default columns from deletion, and the move onto them cannot be undone', () => {
+  const firstmate = { ...emptyHydra(), config: { id: 'default', name: 'default', hydra: { id: 'fm', kind: 'firstmate' as const, name: 'Hydra', home: '/home' }, columns: [...DEFAULT_COLUMNS, { id: 'custom:mine' as const, title: 'Mine' }] } }
+  assert.equal(lockedColumn({ state: firstmate, id: 'needs_you' }), true)
+  assert.equal(lockedColumn({ state: firstmate, id: 'custom:mine' }), false)
+  assert.equal(lockedColumn({ state: { ...firstmate, config: { ...firstmate.config, hydra: { id: 'h', kind: 'agent', name: 'Hydra' } } }, id: 'needs_you' }), false)
+  const legacy = { ...firstmate, config: { ...firstmate.config, columns: [{ id: 'workers_on_it' as const, title: 'Workers on it', role: 'workers_on_it' as const }] } }
+  const decision = migrateColumns({ state: legacy, meta: { at: '2026-10-15T00:00:00.000Z', actor: 'pnyx' } })
+  assert.ok('event' in decision)
+  assert.throws(() => decideUndo({ state: reduce({ state: legacy, event: decision.event }), target: decision.event, meta: { at: '2026-10-15T00:00:01.000Z', actor: 'cli' } }), (error: unknown) => error instanceof HydraError && error.code === 'NOT_UNDOABLE')
 })

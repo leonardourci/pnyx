@@ -8,7 +8,7 @@ import { InlineConfirm } from '../components/ui/inline-confirm.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { focusElement, useKeyboard, useKeyAction, type ActionContext } from '../keyboard/registry.tsx'
 import type { Command } from './connection.ts'
-import { hydraConfig } from '../../../src/core/hydra.ts'
+import { hydraConfig, LOCKED_DELETE, lockedColumn } from '../../../src/core/hydra.ts'
 import { AgentKinds } from './agent-kinds.tsx'
 import { columnsFor } from './view.ts'
 import { commandQuery, matchesCommand, resetWidths, oracleSettings, queryWords } from './oracle-catalog.ts'
@@ -165,22 +165,25 @@ export function Oracle({
         </>
       ),
     })
+
     add({ id: `rename:${column.id}`, label: `Rename ${column.title} column`, words: 'layout title name', content: <><span>Rename column</span><InlineTitle value={column.title} label={`Rename ${column.title} column from Oracle`} save={({ title }) => editColumn({ args: ['rename', column.id, `--title=${title}`] })} /></> })
     add({
       id: `delete:${column.id}`,
       label: `Delete ${column.title} column`,
       words: 'layout remove',
-      content: <InlineConfirm
-        label={`Delete ${column.title} column from Oracle`}
-        action="Delete column"
-        message={`Delete “${column.title}”? Its tasks move to a remaining column.`}
-        disabled={!connected || columnsFor({ state }).length === 1}
-        confirm={() => editColumn({ args: ['delete', column.id] }).then(() => true, (e: Error) => {
-          notify({ text: e.message })
+      content: lockedColumn({ state, id: column.id }) ? <p role="status">{LOCKED_DELETE}</p> : (
+        <InlineConfirm
+          label={`Delete ${column.title} column from Oracle`}
+          action="Delete column"
+          message={`Delete “${column.title}”? Its tasks move to a remaining column.`}
+          disabled={!connected || columnsFor({ state }).length === 1}
+          confirm={() => editColumn({ args: ['delete', column.id] }).then(() => true, (e: Error) => {
+            notify({ text: e.message })
 
-          return false
-        })}
-      />,
+            return false
+          })}
+        />
+      ),
     })
   }
 

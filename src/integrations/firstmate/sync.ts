@@ -1,10 +1,11 @@
 import { watch, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import { hydraConfig, declareTask, hydraEvent } from '../../core/hydra.ts'
+import { hydraConfig, declareTask, hydraEvent, migrateColumns, roleColumn } from '../../core/hydra.ts'
 import { parseStatusLine } from './status.ts'
 import {
   decideLink,
+  decideMove,
   decideNote,
   decideOutcome,
   decidePush,
@@ -13,7 +14,7 @@ import {
   type Decision,
   type Meta,
 } from '../../core/decide.ts'
-import type { Attention, HydraState, Card, SourceRef } from '../../core/model.ts'
+import type { Attention, COLUMNS, HydraState, Card, SourceRef } from '../../core/model.ts'
 import { drainSpool } from '../hooks/ingest.ts'
 import { withWriter, type Writer } from '../../store/hydra-store.ts'
 import { HOOK } from '../hooks/observe.ts'
@@ -136,6 +137,44 @@ function prLink({ state, key, task, at }: {
   return parseLink({ input: { url: task.pr, state: task.merged ? 'merged' : 'open', checkedAt: at } })
 }
 
+// Firstmate's own aging rule: an undated captain hold this old no longer waits on the owner.
+const UNDATED_HOLD_DAYS = 14
+
+// Captain holds use Firstmate's own buckets: only a live one waits on the owner.
+function firstmatePlace({ task, today }: {
+  task: TaskObservation
+  today: string
+}): { role: (typeof COLUMNS)[number]; reason: string } {
+  const because = ({ fallback }: { fallback: string }) => task.activity ?? fallback
+  const hold = task.hold
+
+  if (task.done) {
+    return { role: 'done', reason: because({ fallback: 'Closed in the Firstmate backlog' }) }
+  }
+
+  if (task.decisions.length || task.stalled) {
+    return { role: 'needs_you', reason: because({ fallback: 'Firstmate has an open decision' }) }
+  }
+
+  if (hold && hold.kind === 'captain' && hold.reason) {
+    const age = hold.set ? (Date.parse(today) - Date.parse(hold.set)) / 86_400_000 : undefined
+    const waiting = !hold.blockers.length && !(hold.until && hold.until > today)
+      && !(!hold.until && age !== undefined && age >= UNDATED_HOLD_DAYS)
+
+    return waiting
+      ? { role: 'needs_you', reason: because({ fallback: 'Held in the Firstmate backlog for the owner' }) }
+      : { role: 'parked', reason: because({ fallback: `Held in the Firstmate backlog${hold.until ? ` until ${hold.until}` : ''}` }) }
+  }
+
+  if (hold && !(hold.until && hold.until <= today)) {
+    return { role: 'parked', reason: because({ fallback: `Held in the Firstmate backlog${hold.until ? ` until ${hold.until}` : ''}` }) }
+  }
+
+  return task.section === 'queued'
+    ? { role: 'queued', reason: because({ fallback: 'Queued in the Firstmate backlog' }) }
+    : { role: 'in_progress', reason: because({ fallback: 'In flight in the Firstmate backlog' }) }
+}
+
 function apply({ writer, decision }: { writer: Writer; decision: Decision }): number {
   if (!('event' in decision)) {
     return 0
@@ -173,6 +212,9 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         const config = hydraConfig({ state: writer.state, id: hydraId })
         configured = apply({ writer, decision: hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data: { ...config, hydra: { id: observed.key, name: 'Hydra', kind: 'firstmate', home } } } }) })
       }
+
+      // A Firstmate-linked Hydra always has every default role, so linking restores a missing one.
+      configured += apply({ writer, decision: migrateColumns({ state: writer.state, meta }) })
 
       let appended = apply({
         writer,
@@ -216,7 +258,9 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
             ? task.record.status : mirrored.mirror?.status ?? task.record.status,
         }
 
-        if (!isDeepStrictEqual(mirrored.mirror, record)) {
+        const changed = !isDeepStrictEqual(mirrored.mirror, record)
+
+        if (changed) {
           appended += apply({ writer, decision: hydraEvent({ state: writer.state, meta, cardId: mirrored.id, change: { type: 'task.mirrored', data: record } }) })
         }
 
@@ -310,6 +354,26 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
               outcome,
               meta,
               source: ADAPTER,
+            }),
+          })
+        }
+
+        // A card in the owner's own column stays until its Firstmate record changes.
+        const placed = writer.state.cards[mirrored.id]!
+        const columns = hydraConfig({ state: writer.state }).columns
+        // UTC, the day Firstmate itself compares hold dates against.
+        const place = firstmatePlace({ task, today: at.slice(0, 10) })
+        const target = roleColumn({ columns, role: place.role })
+        const own = columns.some(c => c.id === placed.column && !c.role)
+
+        if (target && target !== placed.column && (changed || !own)) {
+          appended += apply({
+            writer,
+            decision: decideMove({
+              state: writer.state,
+              ref: placed.id,
+              column: target,
+              meta: { ...meta, reason: place.reason },
             }),
           })
         }

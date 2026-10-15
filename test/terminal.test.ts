@@ -76,7 +76,7 @@ const card = ({ fields }: { fields: Partial<Card> }): Card => ({
   attention: [],
   links: [],
   sourceRefs: [],
-  column: 'workers_on_it',
+  column: 'in_progress',
   revision: 1,
   createdSeq: 1,
   updatedSeq: 1,
