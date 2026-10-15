@@ -131,7 +131,6 @@ function deliver({ board, card, reply, route, request, keys }: {
     : { state: 'delivery_unknown', detail: `the command was sent, but the Enter that answers its confirmation was not${answered.detail ? ` (${answered.detail})` : ''}; check the session` }
 }
 
-// Hands the message or setting to the board's server, which runs the agent.
 async function hostReply({ board, card, text, setting, actor }: {
   board: string
   card: string

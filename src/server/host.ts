@@ -493,7 +493,6 @@ const field = ({ body, name, optional = false }: {
   return value
 }
 
-// One request from the CLI to the server's host, checked field by field.
 export async function hostRequest({ host, body: raw }: {
   host: Host
   body: unknown
