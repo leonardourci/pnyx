@@ -24,6 +24,9 @@ home=${home%/hooks}
 case ${PNYX_HOME:-} in /*) home=$PNYX_HOME ;; esac
 board_name=${PNYX_BOARD:-default}
 case $board_name in [!A-Za-z0-9]* | *[!A-Za-z0-9._-]*) exit 0 ;; esac
+# A session Pnyx started for a task, or as the board's Hydra, carries PNYX_TASK.
+task=
+case ${PNYX_TASK:-} in '' | *[!A-Za-z0-9._:\$-]*) ;; *) task="\"task\":\"$PNYX_TASK\"," ;; esac
 
 # Where the session's terminal is, so a reply can be typed into it: the harness
 # process and its TTY, and the host around it from the environment. Recorded when
@@ -84,14 +87,14 @@ tmp=$spool/.tmp-$name
 # large tool output costs little. JSON strings cannot hold raw newlines, so
 # flattening keeps the payload valid on one line.
 {
-  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s"payload":' "$id" "$2" "$harness" "$event" "$terminal"
+  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s%s"payload":' "$id" "$2" "$harness" "$event" "$terminal" "$task"
   tr '\n\r' '  '
   printf '}\n'
 } >"$tmp" || exit 0
 
 # Empty input has nothing after the envelope's own "payload": key.
 if ! grep -q '"payload": *[^ }]' "$tmp"; then
-  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s"payload":null}\n' "$id" "$2" "$harness" "$event" "$terminal" >"$tmp" || exit 0
+  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s%s"payload":null}\n' "$id" "$2" "$harness" "$event" "$terminal" "$task" >"$tmp" || exit 0
 fi
 
 # The board's server handles each line as soon as its newline arrives and

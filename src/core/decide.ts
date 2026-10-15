@@ -30,8 +30,8 @@ import {
 import { TERMINAL_FIELDS } from './route.ts'
 import { DEFAULT_VIEW, patchView, viewFor } from './view.ts'
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from './reducer.ts'
-import { findSession, interactive } from './tasks.ts'
-import { boardConfig, hydraEvent } from './hydra.ts'
+import { findSession, interactive, liveTask } from './tasks.ts'
+import { boardConfig, hydraEvent, HYDRA_CARD } from './hydra.ts'
 
 export interface Meta {
   at: string
@@ -321,12 +321,15 @@ function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
 }
 
 // Explicit attachments survive folder changes; Firstmate joins also honor its recorded terminal.
-export function joinedKey({ state, key, folder, terminal, probed = false }: {
+// task is the PNYX_TASK a session was started with: the task it works on, or
+// Hydra's own marker; it outranks the folder join for a session not seen yet.
+export function joinedKey({ state, key, folder, terminal, probed = false, task }: {
   state: BoardState
   key: string
   folder: string | undefined
   terminal?: TerminalFacts
   probed?: boolean
+  task?: string
 }): string {
   const recorded = Object.values(state.sessions ?? {}).find(s => s.sourceRefs.some(r =>
     r.adapter === 'hooks' && `${r.instanceId}:${r.objectId}` === key))
@@ -352,6 +355,15 @@ export function joinedKey({ state, key, folder, terminal, probed = false }: {
     r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === sessionId))
 
   const session = terminal?.paseoTerminal
+  const hinted = task ? state.cards[task] : undefined
+
+  if (!joined && task === HYDRA_CARD) {
+    return key
+  }
+
+  if (!joined && hinted && liveTask({ card: hinted }) && !hinted.sessionIds?.length) {
+    return hinted.key
+  }
 
   if (joined) {
     return (!joined.agent || joined.agent.sessionId === sessionId)

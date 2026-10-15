@@ -206,7 +206,8 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
   const probed = TERMINAL_EVENTS.includes(entry.event)
   // A session (never a subagent, whose key has a /) started in a folder a source
   // assigned, such as a Firstmate task's worktree, reports to that card.
-  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder, terminal, probed }))
+  const task = typeof entry.task === 'string' ? entry.task : undefined
+  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder, terminal, probed, task }))
 
   for (const o of observe({ envelope: entry as unknown as HookEnvelope })) {
     const key = resolve({ key: o.key })
@@ -279,6 +280,19 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
     if (!o.ifMissing && !o.ifChanged && HARVEST_AFTER.includes(entry.event)
       && key in writer.state.keys) {
       harvest.push(writer.state.keys[key]!)
+    }
+
+    // The first session started as Hydra becomes the board's Hydra.
+    const config = writer.state.board
+
+    if (task === HYDRA_CARD && o.card.agent && config && !config.hydra.session) {
+      const session = sessionId({ agent: o.card.agent as AgentRef })
+
+      const recorded = writer.state.sessions?.[session]
+
+      if (recorded && (!recorded.taskId || writer.state.cards[recorded.taskId]?.automaticTask)) {
+        apply({ decision: hydraEvent({ state: writer.state, meta: { ...m, id: `${m.id}:hydra` }, cardId: '$board', change: { type: 'board.configured', data: { ...config, hydra: { ...config.hydra, session } } } }) })
+      }
     }
   }
 
