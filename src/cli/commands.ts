@@ -1842,7 +1842,9 @@ prompt points Hydra at the pnyx-hydra skill.
 Messages are durable entries in Hydra's board chat; one without --task is about the board, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
 check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra),
-and with --wait it blocks up to that many seconds until one appears. Pass the printed through as the next --after.
+and with --wait it blocks up to that many seconds until one appears. It also records native task conversations
+and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
+for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
 `,
   task: `usage: pnyx-axi task create --title <title> [--brief <text>] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>]
 pnyx-axi task brief <id> --brief <text>

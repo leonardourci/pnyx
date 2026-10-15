@@ -262,6 +262,7 @@ export async function sendReply({ board, request }: {
         state: 'queued' as const,
         route: routeName({ route, control: request.control }),
         text,
+        ...(request.control || request.key ? { control: true } : {}),
         ...(resolveKey ? { resolveKey } : {}),
         ...(answers ? { answers } : {}),
       }
