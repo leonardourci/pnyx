@@ -1,4 +1,4 @@
-import type { Attention, BoardEvent } from '../core/model.ts'
+import type { Attention, HydraEvent } from '../core/model.ts'
 
 // Bump when chunk() or the filters change what is indexed; the index rebuilds on mismatch.
 export const CHUNKER_VERSION = 4
@@ -124,7 +124,7 @@ export function chunk({ text }: { text: string }): string[] {
 
 const attentionText = ({ list }: { list: Attention[] | undefined }) => (list ?? []).map(a => a.text)
 
-export function eventText({ event }: { event: BoardEvent }): string {
+export function eventText({ event }: { event: HydraEvent }): string {
   const parts: (string | undefined)[] = [event.reason]
 
   switch (event.type) {

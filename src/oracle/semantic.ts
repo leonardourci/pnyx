@@ -1,5 +1,5 @@
 // Semantic search on top of the full-text index: the worker client, the hybrid
-// ranking and `search setup --semantic`. On by default; with the search.semantic
+// ranking and `oracle setup --semantic`. On by default; with the oracle.semantic
 // setting off, or the optional packages not installed, search is lexical exactly as before.
 // Ranking: the full-text query as typed (every word must match) and an exact
 // nearest-vector scan each give up to 50 cards; reciprocal rank fusion (k = 60)
@@ -14,14 +14,14 @@ import { closeSync, existsSync, lstatSync, mkdirSync, openSync, rmSync } from 'n
 import { createConnection } from 'node:net'
 import { constants, setPriority, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { BoardError } from '../core/model.ts'
-import { loadBoard, pnyxHome } from '../store/board-store.ts'
+import { HydraError } from '../core/model.ts'
+import { loadHydra, pnyxHome } from '../store/hydra-store.ts'
 import { localToken } from '../server/state.ts'
 import { SemanticError, detectMode, loadBackend, resolveChoice, type Choice } from './backend.ts'
 import { search, updateIndex, type Hit, type Match, type Query } from './index.ts'
 import { EMBEDDERS, RERANKER, activeFailure, clearFailure, download, modelPath, type ModelFile } from './models.ts'
 import { runtimeInstalled } from './runtime.ts'
-import { readSettings, saveSettings, stubbed, type SearchSettings } from './settings.ts'
+import { readSettings, saveSettings, stubbed, type OracleSettings } from './settings.ts'
 import { nearestCards, nearestChunks, vectorCounts, type NearChunk, type Nearest, type VectorRead } from './vectors.ts'
 import type { Request } from './worker.ts'
 
@@ -30,7 +30,7 @@ const RRF_K = 60
 const RERANK_TOP = 20
 // Reranker scores, measured at 100k chunks: under WEAK a result is marked weak,
 // and when even the best is under STRONG the output says no strong match.
-// ponytail: constants from one measured corpus; tune them on real boards.
+// ponytail: constants from one measured corpus; tune them on real hydras.
 const WEAK = 0.5
 const STRONG = 0.9
 const SNIPPET_MAX = 200
@@ -171,7 +171,7 @@ export interface HybridHit extends Omit<Hit, 'match'> {
   weak?: true
 }
 
-export interface SearchResult {
+export interface OracleResult {
   hits: HybridHit[]
   total: number
   mode: string
@@ -246,21 +246,21 @@ async function rerank<T>({ order, text, query }: {
   }
 }
 
-// Search as the settings say. Hybrid when semantic search is on and its optional
+// Oracle as the settings say. Hybrid when semantic search is on and its optional
 // packages are installed; full-text exactly as before when it is off or they are
 // absent. When the worker cannot answer yet (models downloading or loading) or has
 // failed, full-text results come back with a line saying why.
-export async function searchBoard(
-  { board, query, settings = readSettings({ }) }: {
-    board: string
+export async function queryOracle(
+  { hydraId, query, settings = readSettings({ }) }: {
+    hydraId: string
     query: Query
-    settings?: SearchSettings
+    settings?: OracleSettings
   },
-): Promise<SearchResult> {
-  updateIndex({ board })
+): Promise<OracleResult> {
+  updateIndex({ hydraId })
 
-  const lexicalOnly = ({ semantic }: { semantic?: string } = {}): SearchResult => {
-    const r = search({ board, query })
+  const lexicalOnly = ({ semantic }: { semantic?: string } = {}): OracleResult => {
+    const r = search({ hydraId, query })
 
     return { hits: r.hits, total: r.total, mode: r.match, ...(semantic ? { semantic } : {}) }
   }
@@ -272,13 +272,13 @@ export async function searchBoard(
   const failure = activeFailure({ })
 
   if (failure) {
-    return lexicalOnly({ semantic: `unavailable: ${failure}; run \`pnyx-axi search setup --semantic\` to retry now` })
+    return lexicalOnly({ semantic: `unavailable: ${failure}; run \`pnyx-axi oracle setup --semantic\` to retry now` })
   }
 
   let reply: Reply
 
   try {
-    await ask({ req: { op: 'index', board }, timeoutMs: INDEX_TIMEOUT_MS })
+    await ask({ req: { op: 'index', hydraId }, timeoutMs: INDEX_TIMEOUT_MS })
     reply = await ask({ req: { op: 'embed', text: query.text }, timeoutMs: EMBED_TIMEOUT_MS })
   } catch (error) {
     return lexicalOnly({ semantic: `unavailable: ${(error as Error).message}` })
@@ -297,11 +297,11 @@ export async function searchBoard(
   const leg: Leg = { key, floor, vector, useReranker: reply.rerank === true, pendingReranker }
 
   return query.card ? await cardSearch({
-    board,
+    hydraId,
     query,
     leg,
-  }) : await boardSearch({
-    board,
+  }) : await hydraSearch({
+    hydraId,
     query,
     leg,
   })
@@ -323,20 +323,20 @@ function readiness({ key, v }: { key: string; v: { embedded: number; total: numb
     : `indexing: ${v.embedded} of ${v.total} entries embedded with ${describe({ key })}; the rest match by words only`
 }
 
-async function boardSearch({ board, query, leg }: {
-  board: string
+async function hydraSearch({ hydraId, query, leg }: {
+  hydraId: string
   query: Query
   leg: Leg
-}): Promise<SearchResult> {
+}): Promise<OracleResult> {
   const { key, floor, vector, useReranker, pendingReranker } = leg
-  const lexical = search({ board, query: { ...query, limit: Math.max(query.limit, CANDIDATES) } })
+  const lexical = search({ hydraId, query: { ...query, limit: Math.max(query.limit, CANDIDATES) } })
   const filters = {
     ...(query.kind ? { kind: query.kind } : {}),
     ...(query.live ? { live: true } : {}),
     ...(query.workspace ? { workspace: query.workspace } : {}),
   }
   const vectors: VectorRead = nearestCards({
-    board,
+    hydraId,
     key,
     query: vector,
     filters,
@@ -381,18 +381,18 @@ async function boardSearch({ board, query, leg }: {
 
 // One card's entries (--card): its full-text matching entries fused with its
 // entries nearest the query, as one hit whose snippets are the best entries.
-async function cardSearch({ board, query, leg }: {
-  board: string
+async function cardSearch({ hydraId, query, leg }: {
+  hydraId: string
   query: Query
   leg: Leg
-}): Promise<SearchResult> {
+}): Promise<OracleResult> {
   const { key, vector, useReranker, pendingReranker } = leg
   const card = query.card!
   const limit = Math.max(query.limit, CANDIDATES)
-  const lexical = search({ board, query: { ...query, limit, withIds: true } }).hits[0]
+  const lexical = search({ hydraId, query: { ...query, limit, withIds: true } }).hits[0]
   const words = new Map((lexical?.snippets ?? []).map(s => [s.id!, s]))
   const near = nearestChunks({
-    board,
+    hydraId,
     key,
     query: vector,
     card,
@@ -401,7 +401,7 @@ async function cardSearch({ board, query, leg }: {
   })
   const meaning = new Map<number, NearChunk>(near.map(n => [n.id, n]))
   let order = fuse({ lists: [[...words.keys()], near.map(n => n.id)] })
-  const counts = vectorCounts({ board, key }) ?? { embedded: 0, total: 0 }
+  const counts = vectorCounts({ hydraId, key }) ?? { embedded: 0, total: 0 }
   let semantic = readiness({ key, v: counts }) + pendingReranker
   let ranked: Reranked<number> = { order, weak: new Set() }
   let mode = 'hybrid'
@@ -439,7 +439,7 @@ async function cardSearch({ board, query, leg }: {
     return { kind: n.kind, at: n.at || 'unknown', snippet: excerpt({ text: n.body }) }
   })
   const match = words.size && near.length ? 'both' : words.size ? lexical!.match : 'semantic'
-  const title = lexical?.title ?? loadBoard({ board }).state.cards[card]?.title ?? card
+  const title = lexical?.title ?? loadHydra({ hydraId }).state.cards[card]?.title ?? card
 
   const hits: HybridHit[] = [{ card, title, match, snippets }]
 
@@ -454,11 +454,11 @@ export interface SemanticStatus {
   vectors?: string
 }
 
-export async function semanticStatus({ board }: { board: string }): Promise<SemanticStatus> {
+export async function semanticStatus({ hydraId }: { hydraId: string }): Promise<SemanticStatus> {
   const s = readSettings({ })
 
   if (!s.semantic) {
-    return { semantic: 'off: run `pnyx-axi settings set search.semantic on` to turn it on' }
+    return { semantic: 'off: run `pnyx-axi settings set oracle.semantic on` to turn it on' }
   }
 
   if (!stubbed() && !runtimeInstalled()) {
@@ -468,7 +468,7 @@ export async function semanticStatus({ board }: { board: string }): Promise<Sema
   const failure = activeFailure({ })
 
   if (failure) {
-    return { semantic: `unavailable: ${failure}; run \`pnyx-axi search setup --semantic\` to retry now` }
+    return { semantic: `unavailable: ${failure}; run \`pnyx-axi oracle setup --semantic\` to retry now` }
   }
 
   try {
@@ -482,7 +482,7 @@ export async function semanticStatus({ board }: { board: string }): Promise<Sema
     }
 
     const key = reply.key as string
-    const v = vectorCounts({ board, key })
+    const v = vectorCounts({ hydraId, key })
 
     return {
       semantic: `on: ${describe({ key })}, ${reply.dims as number} dimensions`,
@@ -501,10 +501,10 @@ export interface SetupFile {
 }
 
 export async function setupSemantic(
-  { board, progress }: { board: string; progress: ({ line }: { line: string }) => void },
+  { hydraId, progress }: { hydraId: string; progress: ({ line }: { line: string }) => void },
 ): Promise<{ mode: string; choice: Choice; files: SetupFile[] }> {
   if (!stubbed() && !runtimeInstalled()) {
-    throw new BoardError({
+    throw new HydraError({
       message: 'semantic search needs the optional dependencies node-llama-cpp and sqlite-vec, which this install skipped',
       code: 'NOT_INSTALLED',
       help: [
@@ -514,7 +514,7 @@ export async function setupSemantic(
   }
 
   clearFailure()
-  const settings: SearchSettings = { ...readSettings({ applyEnv: false }), semantic: true }
+  const settings: OracleSettings = { ...readSettings({ applyEnv: false }), semantic: true }
   const mode = await detectMode()
   const choice = resolveChoice({ settings, mode })
   const wanted: ModelFile[] = [EMBEDDERS[choice.model], ...(choice.rerank ? [RERANKER] : [])]
@@ -561,16 +561,16 @@ export async function setupSemantic(
   }
 
   saveSettings({ settings })
-  updateIndex({ board })
-  await ask({ req: { op: 'index', board }, timeoutMs: INDEX_TIMEOUT_MS }).catch(() => undefined)
+  updateIndex({ hydraId })
+  await ask({ req: { op: 'index', hydraId }, timeoutMs: INDEX_TIMEOUT_MS }).catch(() => undefined)
 
   return { mode, choice, files }
 }
 
-export async function searchCommands({ query, entries, settings = readSettings({}) }: {
+export async function matchActions({ query, entries, settings = readSettings({}) }: {
   query: string
   entries: { id: string; text: string }[]
-  settings?: SearchSettings
+  settings?: OracleSettings
 }): Promise<string[]> {
   if (!settings.semantic || !(stubbed() || runtimeInstalled()) || activeFailure({})) {
     return []

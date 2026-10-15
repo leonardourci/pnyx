@@ -21,7 +21,7 @@ export type Request =
   | { op: 'embed'; text: string }
   | { op: 'commands'; query: string; docs: string[] }
   | { op: 'rerank'; query: string; docs: string[] }
-  | { op: 'index'; board: string }
+  | { op: 'index'; hydraId: string }
 
 type Phase = { phase: 'downloading'; done: number; total: number } | { phase: 'loading' } | { phase: 'ready' } | { phase: 'failed'; message: string } | { phase: 'off' }
 
@@ -123,7 +123,7 @@ async function fetchModel({ model, track }: {
 }
 
 // Fails this worker for a while: searches stay full-text and say why, and no new
-// worker starts until the cooldown ends (or `search setup --semantic` clears it).
+// worker starts until the cooldown ends (or `oracle setup --semantic` clears it).
 function fail({ error, forMs }: { error: unknown; forMs: number }): never {
   const message = (error as Error).message
   console.error((error as Error).stack)
@@ -220,10 +220,10 @@ async function answer({ line }: { line: string }): Promise<Record<string, unknow
     }
 
     if (req.op === 'index') {
-      queue.add(req.board)
+      queue.add(req.hydraId)
       void drain()
 
-      return { queued: req.board }
+      return { queued: req.hydraId }
     }
 
     // Status and queries answer at once while a model downloads: searches stay full-text meanwhile.
@@ -288,8 +288,8 @@ async function answer({ line }: { line: string }): Promise<Record<string, unknow
   }
 }
 
-// Embeds what each queued board's index lacks. Errors (a board mid-rebuild, a
-// busy lock) drop the board until the next search queues it again.
+// Embeds what each queued Hydra's index lacks. Errors (a Hydra mid-rebuild, a
+// busy lock) drop the Hydra until the next search queues it again.
 async function drain(): Promise<void> {
   if (indexing) {
     return
@@ -300,11 +300,11 @@ async function drain(): Promise<void> {
   try {
     const b = await load()
 
-    for (const board of queue) {
-      queue.delete(board)
+    for (const hydraId of queue) {
+      queue.delete(hydraId)
 
       try {
-        await indexBoard({ board, b })
+        await indexHydra({ hydraId, b })
       } catch {
         // The next index request retries.
       }
@@ -317,10 +317,10 @@ async function drain(): Promise<void> {
   }
 }
 
-// Runs one step against the board's index, closed again before any embedding:
+// Runs one step against the Hydra's index, closed again before any embedding:
 // the file may be rebuilt meanwhile (and Windows cannot delete an open file).
-function withVectors<T>({ board, b, fn }: {
-  board: string
+function withVectors<T>({ hydraId, b, fn }: {
+  hydraId: string
   b: Backend
   fn: (
     { db }: {
@@ -328,7 +328,7 @@ function withVectors<T>({ board, b, fn }: {
     },
   ) => T
 }): T | null {
-  const db = openVectors({ board })
+  const db = openVectors({ hydraId })
 
   if (!db) {
     return null
@@ -343,10 +343,10 @@ function withVectors<T>({ board, b, fn }: {
   }
 }
 
-async function indexBoard({ board, b }: { board: string; b: Backend }): Promise<void> {
+async function indexHydra({ hydraId, b }: { hydraId: string; b: Backend }): Promise<void> {
   while (readSettings({ }).semantic && !closing) {
     const rows = withVectors({
-      board,
+      hydraId,
       b,
       fn: ({ db }) =>
         pending({
@@ -371,7 +371,7 @@ async function indexBoard({ board, b }: { board: string; b: Backend }): Promise<
       }
     }
 
-    withVectors({ board, b, fn: ({ db }) => putVectors({ db, rows: done }) })
+    withVectors({ hydraId, b, fn: ({ db }) => putVectors({ db, rows: done }) })
   }
 }
 

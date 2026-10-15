@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
-import { BoardError } from '../core/model.ts'
+import { HydraError } from '../core/model.ts'
 import { EMBEDDERS, PROBES, RERANKER, RERANK_PROBE, modelPath, type EmbedderId, type ModelFile } from './models.ts'
 import { llamaCppUrl } from './runtime.ts'
-import { stubbed, type SearchSettings } from './settings.ts'
+import { stubbed, type OracleSettings } from './settings.ts'
 
 export interface Backend {
   // metal, cuda, vulkan, cpu or stub.
@@ -31,10 +31,10 @@ const RERANK_QUERY_MAX = 512
 
 // Semantic search cannot run: a model failed its check, or the worker did not answer.
 // broken names the model file that failed its golden check, so setup can fetch it again.
-export class SemanticError extends BoardError {
+export class SemanticError extends HydraError {
   broken?: ModelFile
   constructor({ message, broken }: { message: string; broken?: ModelFile }) {
-    super({ message, code: 'SEMANTIC_UNAVAILABLE', help: ['Run `pnyx-axi search setup --semantic` again, or `pnyx-axi settings set search.semantic off`'] })
+    super({ message, code: 'SEMANTIC_UNAVAILABLE', help: ['Run `pnyx-axi oracle setup --semantic` again, or `pnyx-axi settings set oracle.semantic off`'] })
 
     if (broken) {
       this.broken = broken
@@ -72,7 +72,7 @@ interface LlamaCpp {
 
 const llamaCpp = () => import(llamaCppUrl()) as Promise<LlamaCpp>
 
-// The detected mode without loading a model: what `search setup` picks models by.
+// The detected mode without loading a model: what `oracle setup` picks models by.
 export async function detectMode(): Promise<string> {
   if (stubbed()) {
     return 'stub'
@@ -91,7 +91,7 @@ export async function detectMode(): Promise<string> {
 export type Choice = { model: EmbedderId; rerank: boolean }
 
 export function resolveChoice({ settings, mode }: {
-  settings: SearchSettings
+  settings: OracleSettings
   mode: string
 }): Choice {
   return {

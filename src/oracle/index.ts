@@ -3,11 +3,11 @@ import { chmodSync, closeSync, existsSync, fstatSync, openSync, readSync, rmSync
 import { createRequire } from 'node:module'
 import { isAbsolute, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { BoardError } from '../core/model.ts'
+import { HydraError } from '../core/model.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
 import { cardSessionId, liveTask, sessionId } from '../core/tasks.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
-import { boardDir, loadBoard, privateDir, readEventsFrom, withWriter } from '../store/board-store.ts'
+import { hydraDir, loadHydra, privateDir, readEventsFrom, withWriter } from '../store/hydra-store.ts'
 import { synonymGroup } from './synonyms.ts'
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from './text.ts'
 
@@ -77,7 +77,7 @@ export function sqlite(): typeof import('node:sqlite') {
   }
 }
 
-export const searchPath = ({ board }: { board: string }) => join(boardDir({ board }), 'search.db')
+export const searchPath = ({ hydraId }: { hydraId: string }) => join(hydraDir({ hydraId }), 'search.db')
 
 function removeIndex({ path }: { path: string }): void {
   for (const suffix of ['', '-journal', '-wal', '-shm']) {
@@ -103,10 +103,12 @@ function isCurrent({ db }: { db: DatabaseSync }): boolean {
 // was built by another schema or chunker version. A new index first harvests every
 // card's transcript, so what a transcript holds as a note is a note before it is indexed.
 // ponytail: a rebuild deletes the file under any concurrent reader; it reopens on its next query.
-function openWriter({ board, fresh = false }: { board: string; fresh?: boolean }): DatabaseSync {
+function openWriter(
+  { hydraId, fresh = false }: { hydraId: string; fresh?: boolean },
+): DatabaseSync {
   const { DatabaseSync } = sqlite()
-  const path = searchPath({ board })
-  privateDir({ dir: boardDir({ board }) })
+  const path = searchPath({ hydraId })
+  privateDir({ dir: hydraDir({ hydraId }) })
 
   if (fresh) {
     removeIndex({ path })
@@ -125,7 +127,7 @@ function openWriter({ board, fresh = false }: { board: string; fresh?: boolean }
   }
 
   withWriter({
-    board,
+    hydraId,
     fn: ({ writer }) =>
       harvestTranscripts({
         writer,
@@ -176,7 +178,7 @@ export interface IndexResult {
 
 // Folds what the log and the recorded transcripts gained since the cursors into
 // the index, in one transaction. SQLite's write lock keeps two indexers apart.
-function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResult {
+function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexResult {
   const insert = db.prepare(
     'INSERT OR IGNORE INTO docs (card, kind, source, pos, part, at, body, content_hash, session, line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   )
@@ -260,13 +262,13 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
     db,
     fn: () => {
       let cursor = (getCursor.get(EVENTS) as Cursor | undefined) ?? { source: EVENTS, card: '', identity: '', pos: 0, seq: 0, session: '' }
-      let read = readEventsFrom({ board, offset: cursor.pos })
+      let read = readEventsFrom({ hydraId, offset: cursor.pos })
 
       // The log never shrinks or reorders, so a mismatch means the index is from another log: start over.
       if (!read || (read.events.length > 0 && read.events[0]!.seq !== cursor.seq + 1)) {
         db.exec('DELETE FROM docs; DELETE FROM cursors; DELETE FROM cards; DELETE FROM card_fts; DELETE FROM terms; DELETE FROM terms_tri;')
         cursor = { ...cursor, pos: 0, seq: 0 }
-        read = readEventsFrom({ board, offset: 0 })!
+        read = readEventsFrom({ hydraId, offset: 0 })!
       }
 
       for (const event of read.events) {
@@ -288,7 +290,7 @@ function catchUp({ db, board }: { db: DatabaseSync; board: string }): IndexResul
 
       putCursor.run({ ...cursor, pos: read.end, seq: read.events.at(-1)?.seq ?? cursor.seq })
 
-      const state = loadBoard({ board }).state
+      const state = loadHydra({ hydraId }).state
       const hydra = state.cards[HYDRA_CARD]
       const hydraSession = hydra ? cardSessionId({ card: hydra }) : undefined
       let transcripts = 0
@@ -427,21 +429,21 @@ export function readTranscript({ cursor }: { cursor: Pick<Cursor, 'source' | 'id
   }
 }
 
-export function updateIndex({ board }: { board: string }): IndexResult {
-  const db = openWriter({ board })
+export function updateIndex({ hydraId }: { hydraId: string }): IndexResult {
+  const db = openWriter({ hydraId })
 
   try {
-    return catchUp({ db, board })
+    return catchUp({ db, hydraId })
   } finally {
     db.close()
   }
 }
 
-export function rebuildIndex({ board }: { board: string }): IndexResult {
-  const db = openWriter({ board, fresh: true })
+export function rebuildIndex({ hydraId }: { hydraId: string }): IndexResult {
+  const db = openWriter({ hydraId, fresh: true })
 
   try {
-    return catchUp({ db, board })
+    return catchUp({ db, hydraId })
   } finally {
     db.close()
   }
@@ -606,8 +608,8 @@ function prefixed({ db, prefix }: { db: DatabaseSync; prefix: string }): string[
 // chunks matching the most words. With --card or --kind every word must match in one chunk of that card or kind.
 // Words match stemmed, case and accent folded, and with their synonyms; when that
 // finds nothing, words also match the indexed words nearest them.
-export function search({ board, query }: {
-  board: string
+export function search({ hydraId, query }: {
+  hydraId: string
   query: Query
 }): {
   hits: Hit[]
@@ -617,11 +619,11 @@ export function search({ board, query }: {
   const typed = queryTerms({ text: query.text })
 
   if (!typed.length) {
-    throw new BoardError({ message: 'query has no words to search for', code: 'VALIDATION_ERROR', help: ['Run `pnyx-axi search "<words>"`'] })
+    throw new HydraError({ message: 'query has no words to search for', code: 'VALIDATION_ERROR', help: ['Run `pnyx-axi oracle "<words>"`'] })
   }
 
   const { DatabaseSync } = sqlite()
-  const db = new DatabaseSync(searchPath({ board }), { readOnly: true })
+  const db = new DatabaseSync(searchPath({ hydraId }), { readOnly: true })
 
   try {
     db.exec('PRAGMA busy_timeout = 5000')
@@ -705,8 +707,8 @@ export interface IndexStatus {
 }
 
 // Reads the index without writing it. Null when it has not been built.
-export function indexStatus({ board }: { board: string }): IndexStatus | null {
-  const path = searchPath({ board })
+export function indexStatus({ hydraId }: { hydraId: string }): IndexStatus | null {
+  const path = searchPath({ hydraId })
 
   if (!existsSync(path)) {
     return null

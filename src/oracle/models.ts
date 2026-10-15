@@ -5,8 +5,8 @@ import { createWriteStream, mkdirSync, readFileSync, readdirSync, renameSync, rm
 import { join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { BoardError } from '../core/model.ts'
-import { pnyxHome } from '../store/board-store.ts'
+import { HydraError } from '../core/model.ts'
+import { pnyxHome } from '../store/hydra-store.ts'
 
 export interface ModelFile {
   file: string
@@ -230,7 +230,7 @@ export async function download({ model, progress = () => {} }: { model: ModelFil
   mkdirSync(modelsDir(), { recursive: true })
   removeAbandoned({ model })
   const part = `${modelPath({ model })}.${process.pid}.part`
-  const failed = ({ why }: { why: string }) => new BoardError({ message: `download of ${model.file} failed: ${why}`, code: 'DOWNLOAD_FAILED', help: ['Check the network and run `pnyx-axi search setup --semantic` again'] })
+  const failed = ({ why }: { why: string }) => new HydraError({ message: `download of ${model.file} failed: ${why}`, code: 'DOWNLOAD_FAILED', help: ['Check the network and run `pnyx-axi oracle setup --semantic` again'] })
   const stall = new AbortController()
   let timer = setTimeout(() => stall.abort(new Error('no data for a minute')), STALL_MS)
   const res = await fetch(model.url, { signal: stall.signal }).catch((error: Error) => {
@@ -266,7 +266,7 @@ export async function download({ model, progress = () => {} }: { model: ModelFil
     renameSync(part, modelPath({ model }))
   } catch (error) {
     rmSync(part, { force: true })
-    throw error instanceof BoardError ? error : failed({ why: (error as Error).message })
+    throw error instanceof HydraError ? error : failed({ why: (error as Error).message })
   } finally {
     clearTimeout(timer)
   }

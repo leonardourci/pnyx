@@ -1,5 +1,5 @@
 // Our own vocabulary: a query word or phrase in a group also matches the rest of
-// its group. Add a group or a word here; bump the version so `search status` shows it.
+// its group. Add a group or a word here; bump the version so `oracle status` shows it.
 export const SYNONYMS_VERSION = 1
 
 export const SYNONYMS: readonly (readonly string[])[] = [

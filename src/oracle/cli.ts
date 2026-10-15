@@ -1,13 +1,13 @@
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '../core/decide.ts'
-import { BoardError } from '../core/model.ts'
+import { HydraError } from '../core/model.ts'
 import { COMMON, guard, parse, type Options, type Output } from '../cli/commands.ts'
-import { loadBoard } from '../store/board-store.ts'
+import { loadHydra } from '../store/hydra-store.ts'
 import { SYNONYMS, SYNONYMS_VERSION } from './synonyms.ts'
 import { KINDS, SNIPPETS, indexStatus, rebuildIndex, type IndexResult, type Kind } from './index.ts'
 import { EMBEDDER_IDS } from './models.ts'
 import { runtimeInstalled } from './runtime.ts'
-import { searchBoard, semanticStatus, setupSemantic, type SearchResult } from './semantic.ts'
+import { queryOracle, semanticStatus, setupSemantic, type OracleResult } from './semantic.ts'
 import { SETTING_KEYS, readSettings, settingEntries, writeSetting } from './settings.ts'
 
 const LIMIT = 20
@@ -27,7 +27,7 @@ async function axi<T>({ work }: { work: Promise<T> }): Promise<T> {
   try {
     return await work
   } catch (error) {
-    if (error instanceof BoardError) {
+    if (error instanceof HydraError) {
       throw new AxiError(error.message, error.code, error.help)
     }
 
@@ -35,14 +35,14 @@ async function axi<T>({ work }: { work: Promise<T> }): Promise<T> {
   }
 }
 
-async function status({ board }: { board: string }): Promise<Output> {
-  const s = indexStatus({ board })
-  const seq = loadBoard({ board }).state.seq
+async function status({ hydraId }: { hydraId: string }): Promise<Output> {
+  const s = indexStatus({ hydraId })
+  const seq = loadHydra({ hydraId }).state.seq
 
   if (!s) {
     return {
       index: 'none: not built yet',
-      help: ['Run `pnyx-axi search "<words>"` or `pnyx-axi search rebuild` to build it'],
+      help: ['Run `pnyx-axi oracle "<words>"` or `pnyx-axi oracle rebuild` to build it'],
     }
   }
 
@@ -54,7 +54,7 @@ async function status({ board }: { board: string }): Promise<Output> {
     index: s.builtThrough === seq ? `current through seq ${seq}` : `behind: through seq ${s.builtThrough} of ${seq}; the next search catches up`,
     mode: readSettings({ }).semantic && runtimeInstalled() ? 'hybrid: words fused with meaning' : 'lexical, fuzzy when nothing matches',
     synonyms: `v${SYNONYMS_VERSION}, ${SYNONYMS.length} groups`,
-    ...(await semanticStatus({ board })),
+    ...(await semanticStatus({ hydraId })),
     docs: s.docs,
     transcripts: s.transcripts,
     bytes: s.bytes,
@@ -62,14 +62,14 @@ async function status({ board }: { board: string }): Promise<Output> {
 }
 
 function built({ result }: { result: IndexResult }): Output {
-  return { rebuilt: result, help: ['Run `pnyx-axi search "<words>"`'] }
+  return { rebuilt: result, help: ['Run `pnyx-axi oracle "<words>"`'] }
 }
 
 async function setup({ args }: { args: string[] }): Promise<Output> {
-  const { values, board } = parse({ args, options: SETUP, positionals: 0 })
+  const { values, hydraId } = parse({ args, options: SETUP, positionals: 0 })
 
   if (!values.semantic) {
-    throw new AxiError('search setup needs --semantic', 'VALIDATION_ERROR', ['Run `pnyx-axi search setup --semantic`'])
+    throw new AxiError('oracle setup needs --semantic', 'VALIDATION_ERROR', ['Run `pnyx-axi oracle setup --semantic`'])
   }
 
   const progress = ({ line }: { line: string }) => {
@@ -78,7 +78,7 @@ async function setup({ args }: { args: string[] }): Promise<Output> {
     }
   }
 
-  const r = await setupSemantic({ board, progress })
+  const r = await setupSemantic({ hydraId, progress })
 
   return {
     semantic: 'on',
@@ -86,27 +86,27 @@ async function setup({ args }: { args: string[] }): Promise<Output> {
     model: r.choice.model,
     rerank: r.choice.rerank ? 'on' : 'off',
     files: r.files,
-    help: ['Run `pnyx-axi search "<words>"`; entries are embedded in the background', 'Run `pnyx-axi settings set search.semantic off` to turn it off'],
+    help: ['Run `pnyx-axi oracle "<words>"`; entries are embedded in the background', 'Run `pnyx-axi settings set oracle.semantic off` to turn it off'],
   }
 }
 
-const searchCommand = guard<Output | Promise<Output>>({
+const oracleCommand = guard<Output | Promise<Output>>({
   handler: ({ args }) => {
     if (args[0] === 'status' || args[0] === 'rebuild') {
-      const { board } = parse({ args: args.slice(1), options: COMMON, positionals: 0 })
+      const { hydraId } = parse({ args: args.slice(1), options: COMMON, positionals: 0 })
 
-      return args[0] === 'status' ? axi({ work: status({ board }) }) : built({ result: rebuildIndex({ board }) })
+      return args[0] === 'status' ? axi({ work: status({ hydraId }) }) : built({ result: rebuildIndex({ hydraId }) })
     }
 
     if (args[0] === 'setup') {
       return axi({ work: setup({ args: args.slice(1) }) })
     }
 
-    const { values, positionals, board } = parse({ args, options: SEARCH, positionals: Infinity })
+    const { values, positionals, hydraId } = parse({ args, options: SEARCH, positionals: Infinity })
     const text = positionals.join(' ')
 
     if (!text) {
-      throw new AxiError('missing query', 'VALIDATION_ERROR', ['Run `pnyx-axi search "<words>"`'])
+      throw new AxiError('missing query', 'VALIDATION_ERROR', ['Run `pnyx-axi oracle "<words>"`'])
     }
 
     const kind = values.kind as string | undefined
@@ -123,11 +123,11 @@ const searchCommand = guard<Output | Promise<Output>>({
 
     const card = values.card === undefined
       ? undefined
-      : findCard({ state: loadBoard({ board }).state, ref: values.card as string }).id
+      : findCard({ state: loadHydra({ hydraId }).state, ref: values.card as string }).id
 
     return axi({
-      work: searchBoard({
-        board,
+      work: queryOracle({
+        hydraId,
         query: {
           text,
           limit: Math.min(rawLimit ? Number(rawLimit) : LIMIT, MAX),
@@ -143,7 +143,7 @@ const searchCommand = guard<Output | Promise<Output>>({
 
 function present(
   { input: { hits, total, mode, semantic, note }, text, card, kind }: {
-    input: SearchResult
+    input: OracleResult
     text: string
     card: string | undefined
     kind: string | undefined
@@ -159,7 +159,7 @@ function present(
     }
   }
 
-  const help = card ? [`Run \`pnyx-axi history --card ${card}\` for its events`] : [hits[0]!.kind === 'hydra' ? 'Open Hydra on the board to read this conversation' : `Run \`pnyx-axi card ${hits[0]!.card}\` to open the top match`]
+  const help = card ? [`Run \`pnyx-axi history --card ${card}\` for its events`] : [hits[0]!.kind === 'hydra' ? 'Open Hydra on the Hydra to read this conversation' : `Run \`pnyx-axi card ${hits[0]!.card}\` to open the top match`]
   const shown = card ? hits[0]!.snippets.length : hits.length
 
   if (total > shown) {
@@ -190,15 +190,15 @@ const settingsCommand = guard({
 
     parse({ args, options: {}, positionals: 0 })
 
-    return { settings: settingEntries({ settings: readSettings({ }) }), help: ['Run `pnyx-axi settings set search.semantic on|off`'] }
+    return { settings: settingEntries({ settings: readSettings({ }) }), help: ['Run `pnyx-axi settings set oracle.semantic on|off`'] }
   },
 })
 
-export const searchCommands = { search: searchCommand, settings: settingsCommand }
+export const oracleCommands = { oracle: oracleCommand, settings: settingsCommand }
 
-export const SEARCH_HELP = `usage: pnyx-axi search "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--limit <n>]
-       pnyx-axi search status | rebuild [--board <name>]
-       pnyx-axi search setup --semantic
+export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--limit <n>]
+       pnyx-axi oracle status | rebuild [--hydra <name>]
+       pnyx-axi oracle setup --semantic
 Full-text search over card titles, links, event text, harvested notes and the session transcripts
 hooks recorded. Every word must match somewhere on one card: its title, link titles or any entry.
 With --card or --kind, every word must match in one entry of that card or kind. Words match by
@@ -206,12 +206,12 @@ stem, ignoring case and accents ("deploying" finds "deploy", "migracao" finds "m
 their synonyms:
 ${SYNONYMS.map(g => g.join(' / ')).join(', ')}. When nothing matches, words also match the
 indexed words nearest them, so typos and partial words still find results (mode: fuzzy).
-End a word with * to match a prefix; \`search -- status\` searches for that word.
+End a word with * to match a prefix; \`oracle -- status\` searches for that word.
 Results are ranked by BM25, best first, one per card with its ${SNIPPETS} best-matching entries as
 snippets (with --card, its matching entries up to --limit); ${LIMIT} cards by default (max ${MAX}).
 A harvested note (a summary, decision or context; see \`pnyx-axi harvest\`) counts double.
-Each search first indexes what the log and transcripts gained. The index, search.db in the board's
-folder, is a derived cache: \`search rebuild\` deletes and rebuilds it from the log and transcripts,
+Each search first indexes what the log and transcripts gained. The index, search.db in the Hydra's
+folder, is a derived cache: \`oracle rebuild\` deletes and rebuilds it from the log and transcripts,
 after harvesting every card's transcript.
 Tool calls and output, thinking and injected text are not indexed; secret-shaped strings are redacted.
 Semantic search is on by default: searches also find cards by meaning, in any language (match:
@@ -220,23 +220,23 @@ through the optional node-llama-cpp and sqlite-vec packages: with a GPU (Metal, 
 granite-embedding-311m and the Qwen3-Reranker-0.6B reranker, about 1 GB; on CPU only,
 granite-embedding-97m without the reranker, about 115 MB. The first search downloads them in the
 background into the Pnyx home's models/ folder, checked by SHA-256 and golden vectors; searches are
-full-text and say so until they are ready (\`search status\` shows the progress). \`search setup
+full-text and say so until they are ready (\`oracle status\` shows the progress). \`oracle setup
 --semantic\` downloads what the settings need now instead, in the foreground. A background
 worker process embeds entries at low priority and exits after a minute idle. The reranker re-scores
 the top 20, marks weak results and says when nothing matches strongly. A card found by meaning
 alone is weak outside the reranked top 20, or without the reranker, when its nearest entry is under
 the model's similarity floor.
-Turn it off with \`pnyx-axi settings set search.semantic off\` (or PNYX_SEMANTIC=off for one
+Turn it off with \`pnyx-axi settings set oracle.semantic off\` (or PNYX_SEMANTIC=off for one
 process); installed without optional dependencies, search is full-text only.
 `
 
 export const SETTINGS_HELP = `usage: pnyx-axi settings
        pnyx-axi settings set <key> <value>
-This machine's search settings, in the Pnyx home's settings.json, shared by every board:
-  search.semantic on|off        Find cards by meaning as well as by words (default on)
-  search.rerank auto|on|off     Re-score the top results with the reranker, about 0.4 s a search
+This machine's search settings, in the Pnyx home's settings.json, shared by every Hydra:
+  oracle.semantic on|off        Find cards by meaning as well as by words (default on)
+  oracle.rerank auto|on|off     Re-score the top results with the reranker, about 0.4 s a search
                                 on a GPU (auto: on with a GPU, off on CPU only)
-  search.model auto|${EMBEDDER_IDS.join('|')}  The embedding model (auto: granite-311m with a GPU,
+  oracle.model auto|${EMBEDDER_IDS.join('|')}  The embedding model (auto: granite-311m with a GPU,
                                 granite-97m on CPU only)
 A model the settings need is downloaded on the next search.
 `

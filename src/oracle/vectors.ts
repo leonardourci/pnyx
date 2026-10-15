@@ -27,14 +27,14 @@ function meta({ db, key }: { db: DatabaseSync; key: string }): string | undefine
   return (db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined)?.value
 }
 
-export function openVectors({ board }: { board: string }): DatabaseSync | null {
+export function openVectors({ hydraId }: { hydraId: string }): DatabaseSync | null {
   const { DatabaseSync } = sqlite()
 
-  if (!existsSync(searchPath({ board }))) {
+  if (!existsSync(searchPath({ hydraId }))) {
     return null
   }
 
-  const db = new DatabaseSync(searchPath({ board }))
+  const db = new DatabaseSync(searchPath({ hydraId }))
 
   try {
     db.exec('PRAGMA busy_timeout = 5000')
@@ -140,10 +140,10 @@ export interface VectorRead {
 // Cards by their chunk nearest the query vector, an exact scan with sqlite-vec's
 // cosine distance over the chunks the filters leave. Only vectors from the given
 // backend count; none do while the worker re-embeds for a new one.
-// ponytail: a full scan, about 50 ms at 100k chunks; a vec0 index if boards grow far past that.
+// ponytail: a full scan, about 50 ms at 100k chunks; a vec0 index if hydras grow far past that.
 export function nearestCards(
-  { board, key, query, filters, limit }: {
-    board: string
+  { hydraId, key, query, filters, limit }: {
+    hydraId: string
     key: string
     query: Float32Array
     filters: {
@@ -155,7 +155,7 @@ export function nearestCards(
   },
 ): VectorRead {
   return withReader({
-    board,
+    hydraId,
     key,
     fn: ({ db, counts }) => {
       if (!counts.embedded) {
@@ -187,8 +187,8 @@ export interface NearChunk {
 }
 
 export function nearestChunks(
-  { board, key, query, card, kind, limit }: {
-    board: string
+  { hydraId, key, query, card, kind, limit }: {
+    hydraId: string
     key: string
     query: Float32Array
     card: string
@@ -197,7 +197,7 @@ export function nearestChunks(
   },
 ): NearChunk[] {
   return withReader({
-    board,
+    hydraId,
     key,
     fn: ({ db, counts }) => {
       if (!counts.embedded) {
@@ -226,20 +226,20 @@ function loadVec({ db }: { db: DatabaseSync }): void {
 
 type Counts = { embedded: number; total: number }
 
-export function vectorCounts({ board, key }: { board: string; key: string }): Counts | null {
-  if (!existsSync(searchPath({ board }))) {
+export function vectorCounts({ hydraId, key }: { hydraId: string; key: string }): Counts | null {
+  if (!existsSync(searchPath({ hydraId }))) {
     return null
   }
 
   try {
-    return withReader({ board, key, fn: ({ counts }) => counts })
+    return withReader({ hydraId, key, fn: ({ counts }) => counts })
   } catch {
     return null
   }
 }
 
-function withReader<T>({ board, key, fn }: {
-  board: string
+function withReader<T>({ hydraId, key, fn }: {
+  hydraId: string
   key: string
   fn: (
     { db, counts }: {
@@ -249,7 +249,7 @@ function withReader<T>({ board, key, fn }: {
   ) => T
 }): T {
   const { DatabaseSync } = sqlite()
-  const db = new DatabaseSync(searchPath({ board }), { readOnly: true, allowExtension: true })
+  const db = new DatabaseSync(searchPath({ hydraId }), { readOnly: true, allowExtension: true })
 
   try {
     db.exec('PRAGMA busy_timeout = 5000')
