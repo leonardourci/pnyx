@@ -5,7 +5,7 @@ import type { Command } from './connection.ts'
 
 const HARNESSES = [{ value: 'claude', label: 'Claude Code' }, { value: 'codex', label: 'Codex' }]
 const ROUTES = [
-  { value: 'pnyx', label: 'Pnyx (Claude Code)' },
+  { value: 'pnyx', label: 'Pnyx' },
   { value: 'paseo', label: 'Paseo' },
   { value: 'firstmate', label: 'Firstmate (this board\'s Hydra)' },
   { value: 'command', label: 'Board command' },
@@ -17,14 +17,15 @@ const STARTED: Record<string, string> = {
   command: 'Board command started; its agent attaches when it reports.',
 }
 
-export function StartAgent({ card, firstmate, command, connected, notify }: {
+export function StartAgent({ card, firstmate, defaultHarness, command, connected, notify }: {
   card: Card
   firstmate: boolean
+  defaultHarness?: string
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
-  const [via, setVia] = useState(firstmate ? 'firstmate' : 'pnyx'), [harness, setHarness] = useState('claude')
+  const [via, setVia] = useState(firstmate ? 'firstmate' : 'pnyx'), [harness, setHarness] = useState(defaultHarness ?? 'claude')
   const [folder, setFolder] = useState(card.folder ?? ''), [message, setMessage] = useState(card.brief ?? '')
   const [paseo, setPaseo] = useState<{ ok: boolean; reason?: string } | null>(null)
   const [busy, run] = useBusy()
@@ -57,7 +58,7 @@ export function StartAgent({ card, firstmate, command, connected, notify }: {
           args.push('--folder', folder.trim())
         }
 
-        if (via === 'paseo') {
+        if (via === 'paseo' || via === 'pnyx') {
           args.push('--harness', harness)
         }
 
@@ -103,7 +104,7 @@ export function StartAgent({ card, firstmate, command, connected, notify }: {
           <Button onClick={check}>Check again</Button>
         </div>
       ))}
-      {via === 'paseo' && (
+      {(via === 'paseo' || via === 'pnyx') && (
         <Select
           label="Agent"
           value={harness}
