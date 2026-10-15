@@ -79,7 +79,7 @@ export function Detail({
   }, [tab, card.id, card.revision, command, notify])
 
   const move = ({ to }: { to: string }) => {
-    void command({ name: 'move', args: [card.id, ...(to === 'auto' ? ['--auto'] : [to]), '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Placement updated. Source requests are unchanged.' }))
+    void command({ name: 'move', args: [card.id, to, '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Placement updated. Source requests are unchanged.' }))
       .catch(e => notify({ text: e.message }))
   }
 
@@ -205,11 +205,11 @@ export function Detail({
       ) : (
         <div className="detail-content">
           <h3>Placement</h3>
-          <p className="muted">{card.manualColumn ? 'Pinned manually. Return to auto to follow source facts.' : card.attention.some(a => a.blocking) ? 'A blocking source request needs your attention.' : card.links.some(l => l.kind === 'github_pr' && l.state === 'open') ? 'An open linked pull request is ready for review.' : card.outcome || card.column === 'done' ? 'A confirmed outcome or merge is recorded.' : 'Placement follows the recorded source facts.'}</p>
+          <p className="muted">The card stays where you put it. Agent work and pull requests never move it.</p>
           <Select
             label="Move card"
-            value={card.manualColumn ?? 'auto'}
-            options={[{ value: 'auto', label: 'Return to auto' }, ...columnsFor({ state }).map(c => ({ value: c.id, label: c.title }))]}
+            value={card.column}
+            options={columnsFor({ state }).map(c => ({ value: c.id, label: c.title }))}
             onChange={({ value }) => move({ to: value })}
             disabled={!connected}
           />

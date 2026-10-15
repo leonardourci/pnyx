@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Card as CardData, Link, ViewPreferences } from '../../../src/core/model.ts'
-import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
+import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { HybridHit } from '../../../src/search/semantic.ts'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
@@ -100,6 +100,7 @@ export function BoardCard({
           open({ id: card.id })
         }
       }}
+      data-task={card.id}
       draggable={connected}
       onDragStart={e => {
         e.stopPropagation(); e.dataTransfer.setData('application/pnyx-task', card.id)
@@ -174,14 +175,9 @@ export function BoardCard({
           title={card.status?.note}
         >
           {activity ? <i aria-hidden="true" /> : <Icon name={card.column} size={13} />}
-          {taskLabel({ card, focus: traces({ view, card: card.id }).focus })}
+          {taskLabel({ card })}
         </span>
-        {card.manualColumn ? (
-          <span title="Manual placement">
-            <Icon name="pin" size={13} />
-            Pinned
-          </span>
-        ) : <span>{card.replies?.at(-1) ? receiptLabel({ state: card.replies.at(-1)!.state }) : 'Automatic'}</span>}
+        {card.replies?.at(-1) && <span>{receiptLabel({ state: card.replies.at(-1)!.state })}</span>}
       </div>
       <Resize
         label={`Resize card ${card.title}`}

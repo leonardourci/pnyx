@@ -255,7 +255,8 @@ try {
   const later = loadBoard({ board: 'default' }).state.board?.columns.at(-1)
   assert.equal(later?.title, 'Later')
   await click({ role: 'button', name: 'Open conversation for Shape the first working board' }); await click({ role: 'button', name: 'Why here / move' }); await click({ role: 'combobox', name: 'Move card' }); await click({ role: 'option', name: 'Later' })
-  await check({ condition: 'document.querySelector(".detail-content").textContent.includes("Pinned manually")', label: 'custom column move persists' })
+  await check({ condition: 'document.querySelector(".detail-content").textContent.includes("stays where you put it")', label: 'the placement note says cards never move on their own' })
+  assert.equal(loadBoard({ board: 'default' }).state.cards[fixture.state.keys.layout!]!.column, later!.id)
   assert.equal(loadBoard({ board: 'default' }).state.cards[fixture.state.keys.layout!]!.attention.length, 1)
   await click({ role: 'button', name: 'Conversation' }); await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] }); await browser({ args: ['wait', 'Later'] })
   // On a phone the open panel can cover the card's centre, so open it by its own element.
@@ -318,11 +319,11 @@ try {
   assert.equal(loadBoard({ board: 'default' }).state.board?.columns.filter(c => c.id.startsWith('custom:')).length, 0)
   const deleted = loadBoard({ board: 'default' }).state
   const moved = deleted.cards[fixture.state.keys.layout!]!
-  assert.notEqual(moved.manualColumn, later!.id)
+  assert.notEqual(moved.column, later!.id)
   assert.ok(deleted.board?.columns.some(c => c.id === moved.column))
   await click({ role: 'button', name: 'Undo' }); await browser({ args: ['wait', 'Column and its cards restored.'] })
   const restored = loadBoard({ board: 'default' }).state
-  assert.equal(restored.cards[fixture.state.keys.layout!]!.manualColumn, later!.id)
+  assert.equal(restored.cards[fixture.state.keys.layout!]!.column, later!.id)
   const consoleOutput = await browser({ args: ['console'] }); assert.doesNotMatch(consoleOutput, /(?:TypeError|ReferenceError|Uncaught)/)
   process.stdout.write(`Browser smoke passed; screenshots: ${evidence}\n`)
 } finally {

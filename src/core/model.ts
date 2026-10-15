@@ -93,8 +93,8 @@ export interface Link {
   checkedAt?: string
 }
 
-// An explicit source request. blocking requests (a question, a permission prompt)
-// outrank linked pull requests; the rest only outrank ongoing work.
+// An explicit source request. A blocking one (a question, a permission prompt)
+// waits on the user before the agent can go on.
 export interface Attention {
   kind: string
   key: string
@@ -174,9 +174,10 @@ export interface Card {
   outcome?: Outcome
   replies?: Reply[]
   notes?: NoteRef[]
-  // Set by a manual move and kept until `move --auto`.
-  manualColumn?: Column
+  // The column and the position in it are set only by creation and explicit moves.
+  // A lower rank sorts first; a card never moved ranks by its createdSeq.
   column: Column
+  rank?: number
   revision: number
   createdSeq: number
   updatedSeq: number
@@ -248,7 +249,8 @@ export interface HydraIdentity {
 export interface BoardColumn {
   id: Column
   title: string
-  // Roles survive a rename. Automatic placement uses the first matching role.
+  // Roles survive a rename. A task created in a role's column starts with its status,
+  // and a card whose column is deleted falls back to the parked one.
   role?: 'needs_you' | 'workers_on_it' | 'done' | 'parked'
 }
 // The agent a worker of one task kind launches on. quota picks the model with the
@@ -297,9 +299,11 @@ export type PushedEvent = EventBase & {
   type: 'card.pushed'
   data: PushFields & { key: string; source?: SourceRef; before?: PushFields }
 }
+// rank places the card in its new column; beforeRank keeps the old one for undo.
+// A null column comes only from older logs and leaves the column as it is.
 export type MovedEvent = EventBase & {
   type: 'card.moved'
-  data: { before: Column | null; after: Column | null }
+  data: { before: Column | null; after: Column | null; rank?: number; beforeRank?: number }
 }
 export type LinkedEvent = EventBase & {
   type: 'card.linked'
@@ -351,7 +355,7 @@ export interface ViewPreferences {
 
 export type ViewEvent = EventBase & {
   type: 'board.view'
-  // placements: cards a deleted custom column returned to automatic placement, applied atomically.
+  // placements: cards a deleted custom column moved to the fallback column, applied atomically.
   data: {
     before: ViewPreferences
     after: ViewPreferences

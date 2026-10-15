@@ -7,7 +7,7 @@ import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decis
 import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
 import { BoardError, COLUMNS, type BoardEvent, type BoardState } from '../src/core/model.ts'
 import { clampViewSize, patchView, traces, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
-import { agentActivity, columnsFor, filterCards, findBoxCards, focusedActivity, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, taskLabel, visibleParent } from '../web/src/board/view.ts'
+import { agentActivity, columnsFor, dropBefore, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, taskLabel, visibleParent } from '../web/src/board/view.ts'
 import { withWriter } from '../src/store/board-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 import { observe } from '../src/integrations/hooks/observe.ts'
@@ -52,6 +52,8 @@ test('the task board and its semantic matches exclude ad-hoc sessions', () => {
     query: 'Shared',
     meaning: [state.keys.interactive!, state.keys.background!],
   }).map(c => c.key), ['work'])
+  assert.equal(pageTitle({ page: 'board', cards: state.cards }), 'Board · Pnyx', 'a request never moves a card to Needs you')
+  state = reduce({ state, event: event({ d: decideMove({ state, ref: 'work', column: 'needs_you', meta }) }) })
   assert.equal(pageTitle({ page: 'board', cards: state.cards }), '(1) Board · Pnyx')
   assert.ok(state.cards[state.keys.background!])
 })
@@ -70,13 +72,12 @@ test('task labels retain legacy source status instead of claiming every tracked 
   assert.equal(card.tracking, 'declared')
   assert.equal(card.column, 'workers_on_it')
   assert.equal(card.status, undefined)
-  assert.equal(taskLabel({ card, focus: true }), 'working: step one')
-  const pinned = reduce({ state, event: event({ d: decideMove({ state, ref: card.id, column: 'done', meta }) }) })
-  assert.equal(taskLabel({ card: pinned.cards.c1!, focus: true }), 'working: step one')
-  assert.equal(taskLabel({ card: { ...card, activity: undefined, sourceRefs: [] }, focus: true }), 'Parked')
+  assert.equal(taskLabel({ card }), 'working: step one')
+  const moved = reduce({ state, event: event({ d: decideMove({ state, ref: card.id, column: 'done', meta }) }) })
+  assert.equal(taskLabel({ card: moved.cards.c1! }), 'working: step one')
+  assert.equal(taskLabel({ card: { ...card, activity: undefined, sourceRefs: [] } }), 'No status')
   assert.equal(taskLabel({
     card: { ...card, status: { id: 'd1', at: meta.at, actor: 'test', state: 'needs_you', note: 'Review' } },
-    focus: true,
   }), 'needs you: Review')
 })
 
@@ -88,6 +89,11 @@ test('tab titles follow the view, selected card and current needs-you count', ()
   let state = push({ state: emptyBoard(), key: 'a', fields: { title: 'Review <literal> changes', attention: [{ kind: 'question', key: 'q', blocking: true }] } })
   state = push({ state, key: 'b', fields: { title: 'Another decision', attention: [{ kind: 'question', key: 'q', blocking: true }] } })
   state = push({ state, key: 'c', fields: { title: 'Still working', activity: 'working' } })
+
+  for (const ref of ['a', 'b']) {
+    state = reduce({ state, event: event({ d: decideMove({ state, ref, column: 'needs_you', meta }) }) })
+  }
+
   assert.equal(pageTitle({ page: 'board', cards: state.cards }), '(2) Board · Pnyx')
   assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'c1' }), '(2) Review <literal> changes · Pnyx')
   assert.equal(pageTitle({ page: 'board', cards: state.cards, selected: 'missing' }), '(2) Board · Pnyx')
@@ -154,7 +160,7 @@ test('saved resize preferences load within readable size limits', () => {
   assert.equal(clampViewSize({ value: 320.5, min: 320, max: 720 }), 321)
 })
 
-test('custom columns accept manual placement and return their cards to auto when deleted', () => {
+test('custom columns take moved cards and send them to the fallback column when deleted', () => {
   let state = push({ state: emptyBoard(), key: 'a', fields: { attention: [{ kind: 'question', key: 'q', blocking: true }] } })
   state = reduce({ state, event: event({ d: decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta }) }) })
   assert.equal(columnsFor({ state }).at(-1)?.title, 'Later')
@@ -163,15 +169,17 @@ test('custom columns accept manual placement and return their cards to auto when
   assert.equal(state.cards.c1!.column, 'custom:later')
   assert.deepEqual(patchView({ state, input: { customColumns: [] } }).customColumns, [])
   assert.throws(() => decideMove({ state, ref: 'a', column: 'custom:missing', meta }), /unknown/)
-  const toAuto = event({ d: decideMove({ state, ref: 'a', column: null, meta }) })
-  state = reduce({ state, event: toAuto })
+  const back = event({ d: decideMove({ state, ref: 'a', column: 'needs_you', meta }) })
+  state = reduce({ state, event: back })
   assert.equal(state.cards.c1!.column, 'needs_you')
   assert.equal(state.cards.c1!.attention.length, 1)
+  state = reduce({ state, event: event({ d: decideMove({ state, ref: 'a', column: 'custom:later', meta }) }) })
   state = reduce({
     state,
     event: event({ d: decideView({ state, patch: { customColumns: [] }, meta }) }),
   })
-  assert.throws(() => decideUndo({ state, target: toAuto, meta }), /unknown board column/)
+  assert.equal(state.cards.c1!.column, 'parked')
+  assert.throws(() => decideUndo({ state, target: back, meta }), /changed since/)
 })
 
 test('filters do not expose excluded parent details, and links/slashes stay literal', () => {
@@ -243,22 +251,15 @@ test('Focus hides traces before paging so tool-heavy output cannot push replies 
   const replies = Array.from({ length: 3 }, (_, i) => ({ type: 'assistant', message: { content: `reply ${i}` } }))
   const tools = Array.from({ length: 120 }, (_, i) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', input: `tool ${i}` }] } }))
   writeFileSync(path, [...replies, ...tools].map(r => JSON.stringify(r)).join('\n') + '\n')
-  let state = push({ state: emptyBoard(), key: 'a', fields: { activity: 'running git status', agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
+  let state = push({ state: emptyBoard(), key: 'a', fields: { activity: 'working', agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
   const focused = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
   assert.deepEqual(focused.entries.map(e => e.text), ['reply 0', 'reply 1', 'reply 2'])
   assert.ok(traces({ view: viewFor({ state }), card: 'c1' }).focus)
-  assert.equal(focusedActivity({ activity: state.cards.c1!.activity, focus: true }), 'working')
   const showTools = { cardTraceOverrides: { c1: { tools: true } } }
   state = reduce({ state, event: event({ d: decideView({ state, patch: showTools, meta }) }) })
   const full = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
   assert.equal(full.entries.length, 60); assert.ok(full.entries.every(e => e.kind === 'tool'))
-  const { focus } = traces({ view: viewFor({ state }), card: 'c1' })
-  assert.equal(focusedActivity({ activity: 'running git status', focus }), 'running git status')
-  assert.equal(focusedActivity({ activity: 'idle', focus: true }), 'idle')
-
-  for (const activity of ['ran git status', 'task: review the diff', 'task done: review the diff', 'Bash failed', 'Edit denied']) {
-    assert.equal(focusedActivity({ activity, focus: true }), 'working')
-  }
+  assert.equal(traces({ view: viewFor({ state }), card: 'c1' }).focus, false)
 })
 
 test('Focus pages messages from a tool-heavy tail larger than the first read window', () => {
@@ -389,9 +390,8 @@ test('deleting a populated column is atomic, replayable, undoable and guarded', 
   apply({ d: decideMove({ state, ref: 'worker', column: 'custom:later', meta }) })
   const before = structuredClone(state)
   const deletion = apply({ d: decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }) })
-  assert.equal(state.cards.c1!.column, 'needs_you')
-  assert.equal(state.cards.c2!.column, 'workers_on_it')
-  assert.equal(state.cards.c1!.manualColumn, undefined)
+  assert.equal(state.cards.c1!.column, 'parked')
+  assert.equal(state.cards.c2!.column, 'parked')
   assert.equal(viewFor({ state }).columnWidths['custom:later'], undefined)
   assert.deepEqual(replay({ state: emptyBoard(), events }), state)
   assert.deepEqual(decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }), { skipped: 'duplicate' })
@@ -401,12 +401,12 @@ test('deleting a populated column is atomic, replayable, undoable and guarded', 
     d: decideUndo({ state, target: deletion, meta: { ...meta, ifRevision: 2 } }),
   })
   assert.deepEqual(viewFor({ state }), viewFor({ state: before }))
-  assert.equal(state.cards.c1!.manualColumn, 'custom:later')
+  assert.equal(state.cards.c1!.column, 'custom:later')
   assert.equal(state.cards.c2!.column, 'custom:later')
   assert.deepEqual(state.cards.c1!.attention, before.cards.c1!.attention)
   const redo = apply({ d: decideUndo({ state, target: undo, meta }) })
   assert.deepEqual(redo.type === 'board.view' && redo.data.placements?.map(p => p.cardId), ['c1', 'c2'])
-  assert.equal(state.cards.c1!.column, 'needs_you')
+  assert.equal(state.cards.c1!.column, 'parked')
   assert.deepEqual(replay({ state: emptyBoard(), events }), state)
 
   for (const id of COLUMNS) {
@@ -437,12 +437,12 @@ test('the notes header keeps the newest distinct notes and skips text already in
   assert.equal(relativeTime({ at: undefined, now: 0 }), 'Time not recorded')
 })
 
-test('a live joined session drives the running indicator; Firstmate status shows once it ends', () => {
+test('the turn indicator follows the joined session: working from a prompt or tool call until the turn ends', () => {
   const firstmate = { activity: 'working: task status', source: { adapter: 'firstmate', objectId: 'task' } }
   let state = push({ state: emptyBoard(), key: 'task', fields: { title: 'Joined task', ...firstmate } })
   assert.equal(agentActivity({ card: state.cards.c1! }), undefined)
 
-  for (const [hook, expected] of [['UserPromptSubmit', 'working'], ['PreToolUse', 'working'], ['PostToolUseFailure', 'working'], ['Stop', 'idle']] as const) {
+  for (const [hook, expected] of [['UserPromptSubmit', 'working'], ['PreToolUse', 'working'], ['PostToolUseFailure', 'working'], ['Stop', 'finished']] as const) {
     const [observed] = observe({ envelope: { v: 1, id: hook, at: meta.at, harness: 'claude', event: hook, payload: { session_id: 'fixture', tool_name: 'Read' } } })
     assert.ok(observed)
     state = push({ state, key: 'task', fields: observed.card })
@@ -458,11 +458,28 @@ test('a live joined session drives the running indicator; Firstmate status shows
   assert.equal(shownActivity({ card: state.cards.c1! }), 'ended')
   state = push({ state, key: 'task', fields: { ...firstmate, activity: 'working: new step' } })
   assert.equal(shownActivity({ card: state.cards.c1! }), 'working: new step')
-  assert.equal(agentActivity({ card: state.cards.c1! }), 'ended')
+  assert.equal(agentActivity({ card: state.cards.c1! }), 'finished')
 })
 
-test('in-turn tool failures, denials and task updates count as working', () => {
-  for (const activity of ['Bash failed', 'Edit denied', 'task: write tests', 'task done: write tests']) {
-    assert.equal(agentActivity({ card: { ...push({ state: emptyBoard(), key: 'k', fields: { agent: { provider: 'claude', sessionId: 's' } } }).cards.c1!, activity } }), 'working')
+test('a dropped card goes above the card it lands on, or below it on its lower half', () => {
+  let state = emptyBoard()
+
+  for (const key of ['a', 'b']) {
+    state = push({ state, key, fields: {} })
+  }
+
+  const cards = filterCards({ state, workspace: '', tag: '' })
+  assert.equal(dropBefore({ cards, over: 'c1', below: false }), 'c1')
+  assert.equal(dropBefore({ cards, over: 'c1', below: true }), 'c2')
+  assert.equal(dropBefore({ cards, over: 'c2', below: true }), undefined, 'below the last card is the end')
+  assert.equal(dropBefore({ cards, below: false }), undefined, 'empty column space is the end')
+})
+
+test('only a working turn shows as working; any other session state is finished', () => {
+  const card = push({ state: emptyBoard(), key: 'k', fields: { agent: { provider: 'claude', sessionId: 's' } } }).cards.c1!
+
+  for (const [sessionActivity, expected] of [['working', 'working'], ['finished', 'finished'], ['ended', 'finished'], [undefined, 'finished'], ['running Bash', 'finished']] as const) {
+    const shown = agentActivity({ card: { ...card, sessionActivity } })
+    assert.equal(shown, expected, String(sessionActivity))
   }
 })

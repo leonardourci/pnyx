@@ -118,7 +118,7 @@ try {
   await browser({ args: ['eval', `() => { document.querySelector('textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ${mod === 'Meta' ? 'metaKey' : 'ctrlKey'}: true, repeat: true, bubbles: true })); return true; }`] })
   assert.equal(board().cards[fixture.state.keys.layout!]!.replies!.length, replyCount)
   await press({ key: 'Escape' }); await press({ key: 'Escape' }); await press({ key: 'Escape' })
-  await press({ key: 'm' }); await browser({ args: ['wait', 'Manual placement'] }); await fill({ role: 'combobox', name: 'Search Move card', text: 'Done' }); await press({ key: 'Enter' }); await browser({ args: ['wait', 'Placement updated'] })
+  await press({ key: 'm' }); await browser({ args: ['wait', 'Placement does not complete work'] }); await fill({ role: 'combobox', name: 'Search Move card', text: 'Done' }); await press({ key: 'Enter' }); await browser({ args: ['wait', 'Placement updated'] })
   assert.equal(board().cards[fixture.state.keys.layout!]!.column, 'done'); assert.equal(board().cards[fixture.state.keys.layout!]!.attention.length, 1)
   await check({ condition: active({ selector: cardSelector }), label: 'moving a focused card follows its identity' })
   const frames = () => browser({ args: ['eval', '() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => resolve(true), 50))))'] })

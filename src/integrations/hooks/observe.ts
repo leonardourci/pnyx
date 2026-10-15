@@ -53,35 +53,18 @@ export interface Observation {
 }
 
 const PROVIDER: Record<Harness, string> = { claude: 'claude-code', codex: 'codex' }
-// Shell commands a tool hook names in its activity, counted only in command position.
-export const PR_COMMANDS = ['gh pr create', 'gh pr merge', 'gh-axi pr create', 'gh-axi pr merge']
-export const DEPLOY_COMMANDS = [
-  'wrangler deploy',
-  'railway up',
-  'vercel deploy',
-  'vercel --prod',
-  'netlify deploy',
-  'fly deploy',
-  'eas update',
-  'eas submit',
-  'npm run deploy',
-  'pnpm run deploy',
-  'yarn run deploy',
-  'bun run deploy',
-]
+// Shell commands whose output names the pull request they opened.
+export const PR_COMMANDS = ['gh pr create', 'gh-axi pr create']
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
 // Keys of the requests hooks open, so clearing them never touches another source's.
 export const HOOK = 'hook:'
 const ELICITATION = `${HOOK}elicitation`
 const NOTIFICATION = `${HOOK}notification`
-// Requests that end once the agent is busy again: waiting idle and a failed turn.
-const RESUMED = [`${HOOK}idle`, `${HOOK}error`]
-// Tools whose call is itself a question to the user, shown in the agent's own prompt.
-const ASKING: Record<string, string> = {
-  AskUserQuestion: 'asking you a question',
-  ExitPlanMode: 'waiting for plan approval',
-}
+
+// The one thing Pnyx watches in an agent, as Paseo does: whether it is working on
+// a turn, or finished it so its messages are final. "ended" when the session closed.
+export type Turn = 'working' | 'finished' | 'ended'
 
 export function isHookEnvelope({ value }: { value: Record<string, unknown> }): boolean {
   return 'harness' in value
@@ -112,24 +95,13 @@ function commandText({ input }: { input: unknown }): string | undefined {
   return flag >= 0 ? args[flag + 1] : args.join(' ')
 }
 
-// "gh pr create", "gh pr merge" or "deploy" when a listed command starts the command
-// text or follows &&, ||, ;, | or a newline, else undefined.
-function commandLabel({ payload }: { payload: Record<string, unknown> }): string | undefined {
-  for (const part of (commandText({ input: payload.tool_input }) ?? '').split(/&&|\|\||[;|\n]/)) {
+// True when a PR command starts the command text or follows &&, ||, ;, | or a newline.
+function createsPr({ payload }: { payload: Record<string, unknown> }): boolean {
+  return (commandText({ input: payload.tool_input }) ?? '').split(/&&|\|\||[;|\n]/).some(part => {
     const words = part.trim().replace(/\s+/g, ' ')
-    const starts = ({ command: c }: { command: string }) => words === c || words.startsWith(`${c} `)
-    const pr = PR_COMMANDS.find(command => starts({ command }))
 
-    if (pr) {
-      return `gh pr ${pr.split(' ').at(-1)}`
-    }
-
-    if (DEPLOY_COMMANDS.some(command => starts({ command }))) {
-      return 'deploy'
-    }
-  }
-
-  return undefined
+    return PR_COMMANDS.some(command => words === command || words.startsWith(`${command} `))
+  })
 }
 
 // The request a tool call puts to the user: its question, a plan to approve, or
@@ -166,15 +138,16 @@ function request(
   return { kind: 'permission', key, blocking: true, text: short({ value: detail ? `Allow ${tool}: ${detail}` : `Allow ${tool}` }) }
 }
 
-// What one hook event does to its card.
+// What one hook event does to its card: the turn state it reports, if any, and the
+// change to its open requests.
 interface Signal {
-  activity?: string
+  activity?: Turn
   attend?: Attend
 }
 
 // A tool call that ended or was refused no longer waits on the user.
 function toolDone({ tool }: { tool: string }): Attend {
-  return { clear: [`${HOOK}tool:${tool}`, NOTIFICATION, ...RESUMED] }
+  return { clear: [`${HOOK}tool:${tool}`, NOTIFICATION] }
 }
 
 function notification({ payload }: { payload: Record<string, unknown> }): Signal | undefined {
@@ -186,7 +159,7 @@ function notification({ payload }: { payload: Record<string, unknown> }): Signal
       // prompt that reached the main session from a subagent.
       return { attend: { add: { kind: 'permission', key: NOTIFICATION, blocking: true, text: message ?? 'Permission needed' }, ifNone: true } }
     case 'agent_needs_input':
-      return { activity: 'needs your input', attend: { add: { kind: 'input', key: NOTIFICATION, blocking: true, text: message ?? 'Input needed' } } }
+      return { attend: { add: { kind: 'input', key: NOTIFICATION, blocking: true, text: message ?? 'Input needed' } } }
     case 'elicitation_dialog':
     case 'elicitation_url_dialog':
       return { attend: { add: { kind: 'input', key: ELICITATION, blocking: true, text: message ?? 'Input needed' }, ifNone: true } }
@@ -194,20 +167,16 @@ function notification({ payload }: { payload: Record<string, unknown> }): Signal
     case 'elicitation_response':
       return { attend: { clear: [ELICITATION] } }
     case 'idle_prompt':
-      return {
-        activity: 'idle, waiting for input',
-        attend: { add: { kind: 'idle', key: `${HOOK}idle`, blocking: false, text: message ?? 'Waiting for your input' } },
-      }
-    case 'auth_success':
-      return undefined
+      // Claude Code sends no Stop for an interrupted turn; this catches it once the prompt sits idle.
+      return { activity: 'finished' }
     default:
-      // agent_completed, quota_auto_resume_* and types added later: the agent's own words.
-      return message ? { activity: message } : undefined
+      return undefined
   }
 }
 
-// The card's activity and the change to its requests for one event. Returns
-// undefined for an event Pnyx does not report.
+// The turn state and the change to the card's requests for one event: a prompt or
+// a tool call means the agent is working, and Stop is the harness's own turn end.
+// Returns undefined for an event Pnyx does not report.
 function signal({ event, payload }: {
   event: string
   payload: Record<string, unknown>
@@ -216,73 +185,42 @@ function signal({ event, payload }: {
   const tool = str({ value: payload.tool_name }) ?? 'a tool'
 
   switch (event) {
-    case 'SessionStart': {
-      const source = str({ value: payload.source })
-
-      return { activity: source === 'resume' ? 'resumed' : source === 'compact' ? 'compacted' : 'started', attend: all }
-    }
+    case 'SessionStart':
+      // A compaction can start a session in the middle of a turn.
+      return str({ value: payload.source }) === 'compact' ? { attend: all } : { activity: 'finished', attend: all }
     case 'UserPromptSubmit':
       return { activity: 'working', attend: all }
-    case 'PreToolUse': {
-      const add = request({ tool, payload, permission: false })
-
-      return { activity: ASKING[tool] ?? `running ${commandLabel({ payload }) ?? tool}`, attend: { clear: RESUMED, add } }
-    }
+    case 'PreToolUse':
+      return { activity: 'working', attend: { add: request({ tool, payload, permission: false }) } }
     case 'PermissionRequest':
-      return { activity: ASKING[tool] ?? `waiting for permission: ${tool}`, attend: { add: request({ tool, payload, permission: true }) } }
+      return { attend: { add: request({ tool, payload, permission: true }) } }
     case 'PermissionDenied':
-      return { activity: `${tool} denied`, attend: toolDone({ tool }) }
-    case 'PostToolUse': {
-      const label = commandLabel({ payload })
-
-      return { activity: label ? `ran ${label}` : 'working', attend: toolDone({ tool }) }
-    }
+      return { attend: toolDone({ tool }) }
+    case 'PostToolUse':
+      return { activity: 'working', attend: toolDone({ tool }) }
     case 'PostToolUseFailure':
-      return { activity: payload.is_interrupt === true ? 'interrupted' : `${tool} failed`, attend: toolDone({ tool }) }
+      return { activity: payload.is_interrupt === true ? 'finished' : 'working', attend: toolDone({ tool }) }
     case 'Notification':
       return notification({ payload })
     case 'Elicitation': {
       const text = short({ value: [str({ value: payload.mcp_server_name }), str({ value: payload.message })].filter(Boolean).join(': ') })
 
-      return { activity: 'waiting for your input', attend: { add: { kind: 'input', key: ELICITATION, blocking: true, text: text || 'Input needed' } } }
+      return { attend: { add: { kind: 'input', key: ELICITATION, blocking: true, text: text || 'Input needed' } } }
     }
     case 'ElicitationResult':
-      return { activity: 'working', attend: { clear: [ELICITATION] } }
-    case 'Stop': {
-      const running = Array.isArray(payload.background_tasks)
-        ? payload.background_tasks.filter(t => (t as { status?: unknown } | null)?.status === 'running').length
-        : 0
-
-      return { activity: running ? `idle, ${running} background task${running > 1 ? 's' : ''} running` : 'idle', attend: all }
-    }
-    case 'StopFailure': {
-      const error = str({ value: payload.error }) ?? 'unknown'
-      const text = short({ value: [error, str({ value: payload.error_details })].filter(Boolean).join(': ') })!
-
-      return { activity: `stopped on ${error}`, attend: { clear: [HOOK], add: { kind: 'error', key: `${HOOK}error`, blocking: false, text } } }
-    }
+      return { attend: { clear: [ELICITATION] } }
+    case 'Stop':
+    case 'StopFailure':
     case 'Interrupt':
-      return { activity: 'interrupted', attend: all }
-    case 'SubagentStart':
-      return { activity: 'started' }
     case 'SubagentStop':
-      return { activity: 'stopped', attend: all }
-    case 'TaskCreated':
-    case 'TaskCompleted': {
-      const subject = str({ value: payload.task_subject }) ?? str({ value: payload.task_id }) ?? 'a task'
-
-      return { activity: short({ value: `${event === 'TaskCreated' ? 'task' : 'task done'}: ${subject}` }) }
-    }
-    case 'TeammateIdle':
-      return { activity: short({ value: `teammate ${str({ value: payload.teammate_name }) ?? str({ value: payload.agent_id }) ?? ''} idle` }) }
-    case 'PreCompact':
-      return { activity: 'compacting' }
-    case 'PostCompact':
-      return { activity: 'compacted' }
+      return { activity: 'finished', attend: all }
+    case 'SubagentStart':
+      return { activity: 'working' }
     case 'SessionEnd':
       return { activity: 'ended', attend: all }
     case 'PostModelSwitch':
-      // Only the new model, read by hookSettings; nothing changes in the session's work.
+    case 'PostCompact':
+      // No turn change: the new model is read by hookSettings, and a compaction queues a harvest.
       return {}
     default:
       return undefined
@@ -414,7 +352,7 @@ export function observe({ envelope }: { envelope: HookEnvelope }): Observation[]
     observation.attend = found.attend
   }
 
-  if (envelope.event === 'PostToolUse' && found.activity === 'ran gh pr create') {
+  if (envelope.event === 'PostToolUse' && createsPr({ payload: p })) {
     const url = PR_URL.exec(JSON.stringify(p.tool_response ?? ''))?.[0]
 
     if (url) {

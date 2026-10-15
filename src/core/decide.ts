@@ -30,8 +30,8 @@ import {
 import { TERMINAL_FIELDS } from './route.ts'
 import { DEFAULT_VIEW, patchView, viewFor } from './view.ts'
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from './reducer.ts'
-import { findSession, interactive, liveTask } from './tasks.ts'
-import { boardConfig, hydraEvent, HYDRA_CARD } from './hydra.ts'
+import { columnCards, findSession, interactive, liveTask, rankOf } from './tasks.ts'
+import { boardConfig, fallbackColumn, hydraEvent, HYDRA_CARD } from './hydra.ts'
 
 export interface Meta {
   at: string
@@ -573,17 +573,36 @@ function checkColumn({ state, column }: { state: BoardState; column: Column | nu
   }
 }
 
-// column null returns the card to automatic placement.
+// Places the card in column just above the card `before`, or at the end of the
+// column without one. The rank falls between its new neighbours'.
 export function decideMove(
-  { state, ref, column, meta }: {
+  { state, ref, column, before, meta }: {
     state: BoardState
     ref: string
-    column: Column | null
+    column: Column
+    before?: string
     meta: Meta
   },
 ): Decision {
   const card = findCard({ state, ref })
   checkColumn({ state, column })
+  const others = columnCards({ state, column }).filter(c => c.id !== card.id)
+  const above = before === undefined ? undefined : findCard({ state, ref: before }).id
+  const at = above === undefined ? others.length : others.findIndex(c => c.id === above)
+
+  if (above === card.id) {
+    throw invalid({ message: 'a card cannot go before itself' })
+  }
+
+  if (at < 0) {
+    throw invalid({ message: `card ${before} is not in column ${column}` })
+  }
+
+  const next = others[at], previous = others[at - 1]
+  // ponytail: midpoint ranks run out of float precision after ~50 drops into one gap; renumber the column if that ever bites.
+  const rank = next && previous ? (rankOf({ card: previous }) + rankOf({ card: next })) / 2
+    : next ? rankOf({ card: next }) - 1
+      : previous ? rankOf({ card: previous }) + 1 : rankOf({ card })
 
   return decided({
     state,
@@ -591,7 +610,7 @@ export function decideMove(
     event: {
       ...base({ state, meta, cardId: card.id }),
       type: 'card.moved',
-      data: { before: card.manualColumn ?? null, after: column },
+      data: { before: card.column, after: column, rank, beforeRank: rankOf({ card }) },
     },
   })
 }
@@ -784,7 +803,7 @@ function currentValue({ card, target }: { card: Card; target: Exclude<BoardEvent
   }
 
   if (target.type === 'card.moved') {
-    return card.manualColumn ?? null
+    return { column: card.column, rank: rankOf({ card }) }
   }
 
   if (target.type === 'card.linked') {
@@ -797,6 +816,10 @@ function currentValue({ card, target }: { card: Card; target: Exclude<BoardEvent
 function afterValue({ target }: { target: BoardEvent }): unknown {
   if (target.type === 'card.replied' || target.type === 'card.noted') {
     return null
+  }
+
+  if (target.type === 'card.moved') {
+    return { column: target.data.after, rank: target.data.rank }
   }
 
   if (target.type !== 'card.pushed' && 'after' in target.data) {
@@ -836,7 +859,7 @@ export function decideUndo({ state, target, meta }: {
     const placements = Object.fromEntries(pins.map(([id, pin]) => {
       const card = state.cards[id]
 
-      if (!card || (card.manualColumn ?? null) !== pin.after) {
+      if (!card || card.column !== pin.after) {
         throw new BoardError({ message: `task ${id} moved after the column edit`, code: 'CONFLICT' })
       }
 
@@ -892,7 +915,7 @@ export function decideUndo({ state, target, meta }: {
     for (const p of target.data.placements ?? []) {
       const card = state.cards[p.cardId]
 
-      if (!card || (card.manualColumn ?? null) !== p.after) {
+      if (!card || card.column !== p.after) {
         throw new BoardError({ message: `card ${p.cardId} was moved since this event`, code: 'CONFLICT' })
       }
 
@@ -991,7 +1014,9 @@ export function decideUndo({ state, target, meta }: {
   if (target.type === 'card.moved') {
     checkColumn({ state, column: target.data.before })
 
-    return decided({ state, meta, event: { ...head, type: 'card.moved', data: { before: target.data.after, after: target.data.before } } })
+    const { before, after, rank, beforeRank } = target.data
+
+    return decided({ state, meta, event: { ...head, type: 'card.moved', data: { before: after, after: before, rank: beforeRank, beforeRank: rank } } })
   }
 
   if (target.type === 'card.linked') {
@@ -1049,7 +1074,7 @@ export function decideView({ state, patch, meta }: {
   }
 }
 
-// Legacy view-column deletion must not remove pins owned by board columns.
+// Cards in a deleted legacy view column move to the fallback column; board columns stay.
 function removedColumnPlacements({ state, after }: {
   state: BoardState
   after: ViewPreferences
@@ -1058,8 +1083,10 @@ function removedColumnPlacements({ state, after }: {
     ...after.customColumns.map(c => c.id),
     ...(state.board?.columns.map(c => c.id) ?? []),
   ])
+  const columns = boardConfig({ state: { ...state, view: after } }).columns
+  const fallback = fallbackColumn({ columns })
 
   return Object.values(state.cards)
-    .filter(c => c.manualColumn?.startsWith('custom:') && !kept.has(c.manualColumn))
-    .map(c => ({ cardId: c.id, before: c.manualColumn!, after: null, revision: c.revision }))
+    .filter(c => c.column.startsWith('custom:') && !kept.has(c.column))
+    .map(c => ({ cardId: c.id, before: c.column, after: fallback, revision: c.revision }))
 }
