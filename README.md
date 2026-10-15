@@ -70,7 +70,7 @@ Tracking follows explicit declarations: working goes to Workers on it, needs_you
 
 The append-only log preserves board, task, subtask, session, command and message identities. Replaying existing events migrates old session records without changing their event bytes or ids. Unattached and headless sessions remain available in History and search. Harvested user and assistant messages are redacted and copied into the log on turn end, attachment changes and explicit `harvest`, so observed conversations remain readable and searchable after a native transcript disappears. Search remains a derived, deletable index.
 
-`hydra send --text <message>` queues a board-level message with no task. `hydra send --task <task> [--action send|worker]` queues a task-specific message, and `hydra messages` reads the queue. These actions never launch a worker; starting one is `task start` (below). Several workers per task, automatic labels, and quota reporting are later work.
+`hydra send --text <message>` queues a board-level message with no task. `hydra send --task <task> [--action send|worker]` queues a task-specific message, and `hydra messages` reads the queue. These actions never launch a worker; starting one is `task start` (below). Several workers per task, automatic labels and quota reporting are later work.
 
 ## Starting workers and Hydra
 
