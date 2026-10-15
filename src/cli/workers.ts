@@ -11,9 +11,8 @@ import type { Connect } from '../integrations/paseo/client.ts'
 import { redact } from '../search/text.ts'
 import { splitEntry } from '../thread/read.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
-import { COMMON, WRITE, commit, commands, guard, integer, meta, parse, required, summarize, type Output } from './commands.ts'
+import { COMMON, HYDRA_ACTOR, WRITE, commit, commands, guard, integer, meta, parse, required, summarize, type Output } from './commands.ts'
 
-const HYDRA_ACTOR = 'hydra'
 const SAFE = /^[\w.:/[\]-]{1,100}$/
 
 function kindCommand({ args }: { args: string[] }): Output {
@@ -116,6 +115,7 @@ export async function hydraCheck({ args, connect }: {
   boardDir({ board })
   const deadline = Date.now() + wait * 1000
   const changes: BoardEvent[] = []
+  let woken = false
   let offset = 0
   let last = after
   const sent = new Map<string, number>()
@@ -194,13 +194,17 @@ export async function hydraCheck({ args, connect }: {
 
         const tracked = TRACKED.includes(e.type) || question || owner || chat
 
-        if (e.seq > after && tracked && e.actor !== HYDRA_ACTOR) {
+        // Hydra's own chat lines are listed so it rereads what it said and why, but never wake it.
+        const own = e.type === 'hydra.message' && e.actor === HYDRA_ACTOR
+
+        if (e.seq > after && ((tracked && e.actor !== HYDRA_ACTOR) || own)) {
           changes.push(e)
+          woken ||= !own
         }
       }
     }
 
-    if (changes.length || unavailable.length || Date.now() >= deadline) {
+    if (woken || unavailable.length || Date.now() >= deadline) {
       break
     }
 

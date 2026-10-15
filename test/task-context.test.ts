@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands, type Output } from '../src/cli/commands.ts'
 import { startTask } from '../src/cli/start.ts'
-import { workerCommands } from '../src/cli/workers.ts'
+import { hydraCheck, workerCommands } from '../src/cli/workers.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { DEFAULT_WIDTHS, viewFor } from '../src/core/view.ts'
 import { emptyBoard, replay } from '../src/core/reducer.ts'
@@ -94,7 +94,7 @@ test('moves and deletes confirm the exact action and reject a token after the ta
 
   try {
     await f.run({ name: 'task', args: ['create', '--key', 'work', '--title', 'Work'] })
-    const args = ['work', 'done', '--actor', 'hydra', '--event-id', 'move-work']
+    const args = ['work', 'done', '--actor', 'hydra', '--reason', 'The worker finished', '--event-id', 'move-work']
     const first = await f.run({ name: 'move', args })
     const id = f.state().keys.work!
     assert.equal(first.confirmation, 'needed')
@@ -120,6 +120,52 @@ test('moves and deletes confirm the exact action and reject a token after the ta
     assert.equal(f.state().board?.columns[0]?.id, 'parked')
     await f.run({ name: 'move', args: ['work', 'needs_you', '--actor', 'web'] })
     assert.equal(f.state().cards[id]?.column, 'needs_you')
+  } finally {
+    rmSync(f.home, { recursive: true, force: true })
+  }
+})
+
+test('Hydra changes need one reason, which Pnyx posts as its chat line, and the owner needs none', async () => {
+  const f = fixture()
+
+  try {
+    const hydra = ['--actor', 'hydra']
+    await assert.rejects(async () => f.run({ name: 'task', args: ['create', '--key', 'work', '--title', 'API cleanup', ...hydra] }), { code: 'VALIDATION_ERROR' })
+    const created = await f.run({ name: 'task', args: ['create', '--key', 'work', '--title', 'API cleanup', ...hydra, '--reason', 'the owner asked for it'] })
+    assert.equal(created.posted, 'Created API cleanup: the owner asked for it')
+    await assert.rejects(async () => f.run({ name: 'task', args: ['brief', 'work', '--brief', 'Check it.', ...hydra, '--reason', ' '] }), /--reason/)
+    await assert.rejects(async () => f.run({ name: 'task', args: ['hide', 'work', ...hydra] }), /--reason/)
+    await assert.rejects(async () => f.run({ name: 'move', args: ['work', 'needs_you', ...hydra] }), /--reason/)
+    await assert.rejects(async () => f.run({ name: 'task', args: ['start', 'work', '--via', 'command', ...hydra] }), /--reason/)
+    const why = ['--reason', 'its agent asked which schema to use', '--details', 'It found two schemas: v1 in the API and v2 in the migration.']
+    const asked = await f.run({ name: 'move', args: ['work', 'needs_you', ...hydra, ...why] })
+    assert.equal(asked.posted, undefined)
+    const moved = await f.run({ name: 'move', args: ['work', 'needs_you', ...hydra, ...why, '--event-id', 'move-1', '--confirm', String(asked.token)] })
+    assert.equal(moved.posted, 'Moved API cleanup to Needs you: its agent asked which schema to use')
+    const seq = f.state().seq
+    await f.run({ name: 'move', args: ['work', 'needs_you', ...hydra, ...why, '--event-id', 'move-1', '--confirm', String(asked.token)] })
+    assert.equal(f.state().seq, seq)
+    await f.run({ name: 'move', args: ['work', 'done', '--actor', 'web'] })
+    await f.run({ name: 'task', args: ['brief', 'work', '--brief', 'Owner edit.'] })
+    const summaries = (await f.run({ name: 'task', args: ['history', 'work'] }) as { events: { summary: string }[] }).events.map(e => e.summary)
+    assert.deepEqual(summaries, [
+      'Task brief updated',
+      'needs_you -> done',
+      'Hydra: Moved API cleanup to Needs you: its agent asked which schema to use (It found two schemas: v1 in the API and v2 in the migration.)',
+      'parked -> needs_you (why: its agent asked which schema to use)',
+      'Hydra: Created API cleanup: the owner asked for it',
+      'Created task: API cleanup (why: the owner asked for it)',
+    ])
+
+    // A fresh Hydra session starts from cursor 0 and rereads its own lines with their reasons.
+    const lines = ['Created API cleanup: the owner asked for it', 'Moved API cleanup to Needs you: its agent asked which schema to use']
+    const messages = await f.run({ name: 'hydra', args: ['messages', '--after', '0'] }) as { messages: { actor: string; text: string }[] }
+    assert.deepEqual(messages.messages.map(m => [m.actor, m.text]), lines.map(text => ['hydra', text]))
+    const check = await hydraCheck({ args: ['check', '--after', '0', '--board', 'default'] }) as { changes: { type: string; actor: string; summary: string }[] }
+    const own = check.changes.filter(c => c.type === 'hydra.message').map(c => c.summary)
+    assert.deepEqual(own, [`Hydra: ${lines[0]}`, `Hydra: ${lines[1]} (It found two schemas: v1 in the API and v2 in the migration.)`])
+    assert.ok(check.changes.some(c => c.actor === 'web'))
+    assert.ok(!check.changes.some(c => c.actor === 'hydra' && c.type !== 'hydra.message'))
   } finally {
     rmSync(f.home, { recursive: true, force: true })
   }
