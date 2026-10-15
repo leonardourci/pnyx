@@ -1,4 +1,4 @@
-import { BoardError, type AgentRef, type AgentSession, type BoardEvent, type BoardState, type Card, type TerminalFacts, type SessionEvent } from './model.ts'
+import { HydraError, type AgentRef, type AgentSession, type HydraEvent, type HydraState, type Card, type TerminalFacts, type SessionEvent } from './model.ts'
 
 // The open request marking a hosted agent's turn cut off by a server stop; it belongs
 // to that agent, so it goes when the agent leaves the task.
@@ -20,7 +20,7 @@ export function rankOf({ card }: { card: Card }): number {
   return card.rank ?? card.createdSeq
 }
 
-export function columnCards({ state, column }: { state: BoardState; column: string }): Card[] {
+export function columnCards({ state, column }: { state: HydraState; column: string }): Card[] {
   return Object.values(state.cards)
     .filter(c => liveTask({ card: c }) && c.column === column)
     .sort((a, b) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
@@ -30,14 +30,14 @@ export function cardSessionId({ card }: { card: Card }): string | undefined {
   return card.sessionIds?.[0] ?? (card.agent ? sessionId({ agent: card.agent }) : undefined)
 }
 
-export function findSession({ state, ref }: { state: BoardState; ref: string }): AgentSession {
+export function findSession({ state, ref }: { state: HydraState; ref: string }): AgentSession {
   const direct = state.sessions?.[ref]
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
   const found = direct ?? Object.values(state.sessions ?? {}).find(s =>
     card?.sessionIds?.includes(s.id) || s.sourceRefs.some(r => `${r.instanceId}:${r.objectId}` === ref))
 
   if (!found) {
-    throw new BoardError({ message: `session not found: ${ref}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi task sessions`'] })
+    throw new HydraError({ message: `session not found: ${ref}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi task sessions`'] })
   }
 
   return found
@@ -46,7 +46,7 @@ export function findSession({ state, ref }: { state: BoardState; ref: string }):
 // The session running in the caller's own terminal, for `--session self`: the newest
 // live session whose Paseo terminal, tmux pane or Herdr pane matches.
 export function selfSession({ state, here }: {
-  state: BoardState
+  state: HydraState
   here: Pick<TerminalFacts, 'paseoTerminal' | 'tmuxPane' | 'herdrPane'>
 }): AgentSession {
   const keys = (['paseoTerminal', 'tmuxPane', 'herdrPane'] as const).filter(k => here[k])
@@ -57,7 +57,7 @@ export function selfSession({ state, here }: {
     .sort((a, b) => rank({ s: b }) - rank({ s: a }))[0]
 
   if (!found) {
-    throw new BoardError({ message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no Paseo, tmux or Herdr pane in the environment', code: 'NOT_FOUND', help: ['Run `pnyx-axi task sessions` and pass --session <id>'] })
+    throw new HydraError({ message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no Paseo, tmux or Herdr pane in the environment', code: 'NOT_FOUND', help: ['Run `pnyx-axi task sessions` and pass --session <id>'] })
   }
 
   return found
@@ -81,7 +81,7 @@ export function assignDefined<T extends object>({ target, values }: {
 
 // Membership projection preserves task-owned fields when the session changes.
 export function projectSession({ state, session }: {
-  state: BoardState
+  state: HydraState
   session: AgentSession
 }): void {
   const task = session.taskId && state.cards[session.taskId]
@@ -119,8 +119,8 @@ export function projectSession({ state, session }: {
 }
 
 export function applyAttachment({ state, event }: {
-  state: BoardState
-  event: Extract<BoardEvent, { type: 'task.session'}>
+  state: HydraState
+  event: Extract<HydraEvent, { type: 'task.session'}>
 }): void {
   const session = state.sessions?.[event.data.session]
 
@@ -160,9 +160,9 @@ export function applyAttachment({ state, event }: {
 
 // Replay migrates legacy observations without changing event bytes or ids.
 export function observeSession({ state, card, event }: {
-  state: BoardState
+  state: HydraState
   card: Card
-  event: BoardEvent
+  event: HydraEvent
 }): void {
   if (!card.agent || event.type === 'task.session') {
     return
