@@ -9,7 +9,6 @@ import { AGENT_HELP, REPLY_HELP, agent, reply } from './reply.ts'
 import { WORKER_HELP, workerCommands } from './workers.ts'
 import { INTEGRATIONS_HELP, integrationsCommand } from './integrations.ts'
 
-// Same relative path from src/cli and dist/cli.
 const { version } = createRequire(import.meta.url)('../../package.json') as { version: string }
 const HELP: Record<string, string> = {
   search: SEARCH_HELP,
