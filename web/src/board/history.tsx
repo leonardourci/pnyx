@@ -15,15 +15,19 @@ interface EventRow {
 export function History({
   command,
   workspace,
+  query,
+  setQuery,
   open,
   notify,
 }: {
   command: Command
   workspace: string
+  query: string
+  setQuery({ query }: { query: string }): void
   open({ id }: { id: string }): void
   notify({ text }: { text: string }): void
 }) {
-  const [query, setQuery] = useState(''), [kind, setKind] = useState(''), [hits, setHits] = useState<Hit[]>([]), [events, setEvents] = useState<EventRow[]>([]), [loading, setLoading] = useState(false), [before, setBefore] = useState<number | null>(null), [note, setNote] = useState('')
+  const [kind, setKind] = useState(''), [hits, setHits] = useState<Hit[]>([]), [events, setEvents] = useState<EventRow[]>([]), [loading, setLoading] = useState(false), [before, setBefore] = useState<number | null>(null), [note, setNote] = useState('')
   const generation = useRef(0)
   useEffect(() => {
     const gen = ++generation.current
@@ -70,7 +74,7 @@ export function History({
           placeholder="Search messages, links and decisions…"
           value={query}
           onChange={e => {
-            setQuery(e.target.value); setBefore(null)
+            setQuery({ query: e.target.value }); setBefore(null)
           }}
         />
         <Select

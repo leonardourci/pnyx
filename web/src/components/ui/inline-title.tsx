@@ -52,8 +52,8 @@ export function InlineTitle({ value, label, save, doubleClick = false, startEdit
         onFocus={e => e.currentTarget.select()}
         onChange={e => setDraft(e.target.value)}
         onKeyDown={e => {
-          if (e.key === 'Escape') {
-            setDraft(value); setEditing(false)
+          if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
+            e.preventDefault(); e.stopPropagation(); setDraft(value); setEditing(false)
           }
         }}
       />

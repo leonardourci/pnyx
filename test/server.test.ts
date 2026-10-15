@@ -895,3 +895,64 @@ test('board tabs list, create, rename and open boards, each on its own server', 
   t.command({ id: 'b5', name: 'boards', args: ['open', 'missing'] })
   assert.match((await receipt({ id: 'b5' })).error ?? '', /board not found/)
 })
+
+test('board-scoped search returns Hydra messages and validates command searches', async () => {
+  seedWebFixture({ home: process.env.PNYX_HOME! })
+  withWriter({
+    board: 'default',
+    fn: ({ writer }) => {
+      writer.append({
+        event: {
+          v: 1,
+          seq: writer.state.seq + 1,
+          id: 'hydra-lunch',
+          at: '2026-10-15T10:00:00Z',
+          actor: 'fixture',
+          cardId: '$board',
+          type: 'hydra.message',
+          data: { action: 'send', text: 'Review this after lunch.', hydra: 'hydra' },
+        },
+      })
+    },
+  })
+  server = await startServer({ board: 'default' })
+  const t = await tab(); await t.next()
+  t.command({ id: 'hydra-search', name: 'search', args: ['lunch', '', 'board'] })
+  let result = await t.next()
+
+  while (!((result.type === 'receipt' || result.type === 'error') && result.id === 'hydra-search')) {
+    result = await t.next()
+  }
+
+  assert.equal(result.type, 'receipt')
+
+  if (result.type === 'receipt') {
+    assert.deepEqual((result.hits as { card: string; kind?: string }[]).map(hit => [hit.card, hit.kind]), [['$board', 'hydra']])
+  }
+
+  t.command({ id: 'commands-off', name: 'search-commands', args: ['theme', JSON.stringify([{ id: 'theme', text: 'Choose a dark theme' }])] })
+
+  do {
+    result = await t.next()
+  } while (!((result.type === 'receipt' || result.type === 'error') && result.id === 'commands-off'))
+
+  assert.equal(result.type, 'receipt')
+
+  if (result.type === 'receipt') {
+    assert.deepEqual(result.matches, [])
+  }
+
+  t.command({ id: 'commands-invalid', name: 'search-commands', args: ['theme', JSON.stringify([{ id: 'theme', text: 42 }])] })
+
+  do {
+    result = await t.next()
+  } while (!((result.type === 'receipt' || result.type === 'error') && result.id === 'commands-invalid'))
+
+  assert.equal(result.type, 'error')
+
+  if (result.type === 'error') {
+    assert.equal(result.code, 'VALIDATION_ERROR')
+  }
+
+  t.ws.close()
+})

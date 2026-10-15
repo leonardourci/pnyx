@@ -330,3 +330,60 @@ test('a model download is checked against its pinned size and SHA-256', async ()
     delete process.env.PNYX_HOME
   }
 })
+
+test('settings and actions can be ranked by the local semantic worker', async () => {
+  const { run, home, stop } = board({})
+  const saved = {
+    PNYX_HOME: process.env.PNYX_HOME, PNYX_SEMANTIC_STUB: process.env.PNYX_SEMANTIC_STUB,
+  }
+  process.env.PNYX_HOME = home
+  process.env.PNYX_SEMANTIC_STUB = '1'
+
+  try {
+    const { searchCommands } = await import('../src/search/semantic.ts')
+    const entries = [
+      { id: 'theme', text: 'Choose a dark theme for reading at night' },
+      { id: 'new-task', text: 'Create a new task in this column' },
+    ]
+    run({ args: ['search', 'setup', '--semantic'] })
+    await embedded({ run })
+    assert.deepEqual(await searchCommands({ query: entries[0]!.text, entries }), ['theme'])
+    assert.deepEqual(await searchCommands({ query: entries[1]!.text, entries }), ['new-task'])
+    const { withWriter } = await import('../src/store/board-store.ts')
+    withWriter({
+      board: 'default',
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'hydra-semantic',
+            at: '2026-10-15T10:00:00Z',
+            actor: 'fixture',
+            cardId: '$board',
+            type: 'hydra.message',
+            data: { action: 'send', hydra: 'hydra', text: 'flamingo rollout staged' },
+          },
+        })
+      },
+    })
+    run({ args: ['settings', 'set', 'search.rerank', 'off'] })
+    await embedded({ run })
+    run({ args: ['search', 'flamingo'] })
+    await embedded({ run })
+    const hydra = run({ args: ['search', 'flamingo rollout staged dinosaur'] })
+    assert.match(hydra, /kind: hydra\n {4}match: semantic/)
+    run({ args: ['settings', 'set', 'search.semantic', 'off'] })
+    assert.deepEqual(await searchCommands({ query: entries[0]!.text, entries }), [])
+  } finally {
+    stop()
+
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+  }
+})
