@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { HYDRA_ACTOR, type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
 import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
@@ -12,8 +12,10 @@ import { HydraAgent } from './hydra-agent.tsx'
 import { joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 
 export function HydraChat({
-  state, command, connected, notify, view, save, draft, setDraft, comments, setComments, liveThread,
+  state, command, connected, notify, view, save, draft, setDraft, comments, setComments,
+  liveThread, projectSetup,
 }: {
+  projectSetup?: ReactNode
   liveThread: ThreadPage | null
   state: HydraState
   command: Command
@@ -97,6 +99,7 @@ export function HydraChat({
           follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
         }}
       >
+        {projectSetup && <div className="hydra-project-setup">{projectSetup}</div>}
         <Messages
           entries={entries}
           comments={comments}
@@ -105,7 +108,7 @@ export function HydraChat({
           toolDetails={view.toolDetails}
           thinkingDetails={view.thinkingDetails}
         />
-        {!entries.length && <p className="hydra-empty">What are we working on?</p>}
+        {!entries.length && !projectSetup && <p className="hydra-empty">What are we working on?</p>}
         {card && (
           <InlineQuestions
             card={card}

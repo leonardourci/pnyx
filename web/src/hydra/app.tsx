@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { viewFor } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
+import { AddProject } from './add-project.tsx'
 import { HydraChat } from './hydra-chat.tsx'
 import { useHydra } from './connection.ts'
 import { HydraCard } from './card.tsx'
@@ -50,11 +51,12 @@ export function App() {
   const {
     state, command, connected, thread, setThread, hydraThread, latest, navigation,
   } = useHydra()
-  const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') ? 'settings' : new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
+  const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') || new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
   const [editingTask, setEditingTask] = useState<string | null>(null)
   const [historyQuery, setHistoryQuery] = useState('')
+  const [addingProject, setAddingProject] = useState(new URLSearchParams(location.search).has('projects'))
   const [panel, setPanel] = useState(restored.panel ?? true)
   const [project, setProject] = useState(new URLSearchParams(location.search).get('open-project') ?? new URLSearchParams(location.search).get('project') ?? '')
   const [projectReferences, setProjectReferences] = useState<string[]>([])
@@ -65,7 +67,6 @@ export function App() {
     const url = new URL(location.href)
 
     if (url.searchParams.has('projects')) {
-      requestAnimationFrame(() => document.querySelector('[aria-label="Projects"]')?.scrollIntoView())
       url.searchParams.delete('projects')
     }
 
@@ -77,6 +78,12 @@ export function App() {
 
     history.replaceState(null, '', url)
   }, [])
+
+  useEffect(() => {
+    if (addingProject && state.config?.hydra.kind === 'firstmate') {
+      setPage('settings'); setAddingProject(false)
+    }
+  }, [addingProject, state.config?.hydra.kind])
 
   const filterProject = ({ path }: { path: string }) => {
     setProject(path)
@@ -359,8 +366,7 @@ export function App() {
               setPage('hydra'); filterProject({ path: '' })
             }}
             addProject={() => {
-              setPage('settings')
-              requestAnimationFrame(() => document.querySelector('[aria-label="Projects"]')?.scrollIntoView())
+              setPage(state.config?.hydra.kind === 'firstmate' ? 'settings' : 'hydra'); setAddingProject(true)
             }}
           />
         </Panel>
@@ -388,6 +394,15 @@ export function App() {
             <>
               <div className="hydra-page">
                 <HydraChat
+                  projectSetup={state.config?.hydra.kind !== 'firstmate' && (addingProject || (connected && !(state.projects ?? []).some(p => !p.detached))) ? (
+                    <AddProject
+                      command={command}
+                      connected={connected}
+                      notify={notify}
+                      attached={() => setAddingProject(false)}
+                      cancel={addingProject ? () => setAddingProject(false) : undefined}
+                    />
+                  ) : undefined}
                   state={state}
                   liveThread={hydraThread}
                   command={command}

@@ -60,7 +60,7 @@ test('shared paths require a token naming every other Hydra, including browser w
   symlinkSync(folder, alias)
   const preview = await run({ args: ['add', alias, '--actor', 'web'] })
   assert.equal(preview.confirmation, 'needed')
-  assert.deepEqual((preview.preview as { hydras: unknown }).hydras, [{ id: 'alpha', name: 'Alpha Hydra', url: '/?open-hydra=alpha' }])
+  assert.deepEqual((preview.preview as { hydras: unknown }).hydras, [{ id: 'alpha', name: 'Alpha Hydra', url: '/hydra/alpha/' }])
   assert.equal(state().projects, undefined)
   await run({ args: ['add', alias, '--actor', 'web', '--confirm', String(preview.token)] })
   assert.equal(state().projects?.[0]?.path, folder)

@@ -1,6 +1,7 @@
 import { fireReminders } from '../reminders/fire.ts'
 import { reminderDeadline, waitingReminders } from '../reminders/state.ts'
 import { project } from '../projects/cli.ts'
+import { listFolders } from '../projects/folders.ts'
 import { doneDeadline } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
 import { settleDone, settles } from '../copies/copies.ts'
@@ -746,6 +747,15 @@ async function mountOwnedHydra({
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return reply({ res, status: 405, body: { error: 'method not allowed', code: 'METHOD_NOT_ALLOWED' } })
+    }
+
+    if (path === '/folders') {
+      const query = new URL(req.url ?? '/', 'http://localhost').searchParams
+
+      return void listFolders({ path: query.get('path') ?? '', repository: query.get('repository') ?? '' }).then(
+        body => reply({ res, status: 200, body }),
+        (error: Error) => reply({ res, status: 400, body: { error: error.message, code: 'FOLDER_UNAVAILABLE' } }),
+      )
     }
 
     if (path === '/reminders') {
