@@ -12,7 +12,7 @@ Every command takes `--board <board>`; pass it on each call (it defaults to `def
 ## Start
 
 1. Bind yourself, once: `pnyx-axi board set --session self --board <board>` (or `--session <id>` from `pnyx-axi task sessions`).
-2. Read the state: `pnyx-axi hydra messages --board <board>`, `pnyx-axi task list --board <board>` and `pnyx-axi kind list --board <board>`. Keep the `through` value of your last read.
+2. Read the state: `pnyx-axi hydra messages --board <board>` (keep its `through`), `pnyx-axi task list --board <board>` and `pnyx-axi kind list --board <board>`.
 
 ## Light check
 
@@ -22,7 +22,7 @@ Do not reload the board to find out whether anything happened. Run
 pnyx-axi hydra check --after <through> --wait 1800 --board <board>
 ```
 
-It prints only what you track (new messages, tasks created by someone else, worker declarations, attachments, column changes, manual moves, links, launches) and skips your own writes. With `--wait` it blocks until one appears or the time runs out; run it as a background command or monitor when your harness has one, so its exit wakes you. Pass its `through` to the next check. When it says `none`, nothing needs you.
+It prints only what you track (new messages, tasks created by someone else, worker declarations, attachments, column changes, manual moves, links, launches) and skips your own writes. Each row has the event `id`, its `type`, the `task` (`none` for the board), the message `action` (`send` or `worker`), the `actor` and a summary. With `--wait` it blocks until one appears or the time runs out; run it as a background command or monitor when your harness has one, so its exit wakes you. Pass its `through` to the next check. When it says `none`, nothing needs you.
 
 ## Handle what changed
 

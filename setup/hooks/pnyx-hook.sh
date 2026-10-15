@@ -90,7 +90,7 @@ if ! grep -q '"payload": *[^ }]' "$tmp"; then
   printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s"payload":null}\n' "$id" "$2" "$harness" "$event" "$terminal" >"$tmp" || exit 0
 fi
 
-# The default board's server handles each line as soon as its newline arrives and
+# The board's server handles each line as soon as its newline arrives and
 # replies nothing, so nothing here relies on nc half-closing; -w 1 bounds the wait
 # for an nc that keeps the connection open. Without a running server there is no
 # socket file, so the common path never starts nc.
