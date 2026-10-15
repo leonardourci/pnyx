@@ -294,6 +294,7 @@ export interface HydraProject {
   path: string
   name: string
   detached: boolean
+  startCommand?: { name: string; command: string; bringsOwnFolder: boolean }
 }
 
 export interface HydraConfig {
