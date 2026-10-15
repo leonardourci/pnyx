@@ -5,6 +5,7 @@ import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import type { HydraState } from '../../../src/core/model.ts'
 import { emptyHydra, reduce } from '../../../src/core/reducer.ts'
 import type { ServerMessage } from '../../../src/server/server.ts'
+import type { HydraSummary } from '../../../src/server/hydras.ts'
 import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
 import { shouldReload } from './view.ts'
 
@@ -38,6 +39,10 @@ function restoredHydra(): HydraState {
 export function useHydra() {
   const [state, setState] = useState<HydraState>(restoredHydra)
   const [connected, setConnected] = useState(false)
+  const [navigation, setNavigation] = useState<{ hydraId: string; hydras: HydraSummary[] }>({
+    hydraId: document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? 'default',
+    hydras: [],
+  })
   const [thread, setThread] = useState<ThreadPage | null>(null)
   const [hydraThread, setHydraThread] = useState<ThreadPage | null>(null)
   const [latest, setLatest] = useState<Record<string, LatestMessage>>({})
@@ -190,6 +195,8 @@ export function useHydra() {
 
               return next
             })
+          } else if (m.type === 'hydras') {
+            setNavigation({ hydraId: m.hydraId, hydras: m.hydras })
           } else if ('id' in m && m.id) {
             const p = pending.current.get(m.id)
 
@@ -202,6 +209,10 @@ export function useHydra() {
             if (m.type === 'error') {
               p.reject({ error: new Error(m.error) })
             } else {
+              if (p.message.name === 'hydras' && typeof m.hydraId === 'string' && Array.isArray(m.hydras)) {
+                setNavigation({ hydraId: m.hydraId, hydras: m.hydras as HydraSummary[] })
+              }
+
               p.resolve({ receipt: m })
             }
           }
@@ -264,5 +275,5 @@ export function useHydra() {
     flush()
   }), [flush])
 
-  return { state, connected, command, thread, setThread, hydraThread, latest }
+  return { state, connected, command, thread, setThread, hydraThread, latest, navigation }
 }

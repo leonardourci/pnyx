@@ -76,7 +76,7 @@ try {
   await browser({ args: ['open', url] })
   await until({ condition: 'document.querySelector(".detail .composer textarea")?.value === "Draft across reload" && document.body.textContent.includes("Subscription restored")' })
   assert.equal(loadHydra({ hydraId: 'default' }).state.cards[fixture.state.keys.layout!]?.agent?.sessionId, 'fixture-layout')
-  await evaluate({ code: '() => { window.connectionMarker = \'heartbeat\'; const send = WebSocket.prototype.send; WebSocket.prototype.send = function(data) { const message = JSON.parse(data); if (message.type !== \'ping\' && message.name !== \'hydras\') send.call(this, data); }; const Native = WebSocket; window.reconnects = 0; window.WebSocket = class extends Native { constructor(...args) { super(...args); window.reconnects++; } }; return true; }' })
+  await evaluate({ code: '() => { window.connectionMarker = \'heartbeat\'; const send = WebSocket.prototype.send; WebSocket.prototype.send = function(data) { if (JSON.parse(data).type !== \'ping\') send.call(this, data); }; const Native = WebSocket; window.reconnects = 0; window.WebSocket = class extends Native { constructor(...args) { super(...args); window.reconnects++; } }; return true; }' })
   await evaluate({ code: 'async () => { for (let i = 0; i < 380; i++) { if (window.reconnects > 0 && (document.querySelector(\'.app\').dataset.connected === \'true\')) return true; await new Promise(r => setTimeout(r, 100)); } throw new Error(\'heartbeat did not recover a silent socket\'); }' })
   await until({ condition: 'window.connectionMarker === "heartbeat" && !!document.querySelector(".detail .composer textarea:not(:disabled)")' })
   const events = readEvents({ hydraId: 'default' })

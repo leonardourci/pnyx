@@ -47,7 +47,9 @@ const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [da
   .map(el => [el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban', el] as const)
 
 export function App() {
-  const { state, command, connected, thread, setThread, hydraThread, latest } = useHydra()
+  const {
+    state, command, connected, thread, setThread, hydraThread, latest, navigation,
+  } = useHydra()
   const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') ? 'settings' : new URLSearchParams(location.search).has('project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
@@ -83,6 +85,11 @@ export function App() {
   const notify = useCallback(({ text }: { text: string }) => {
     setNotice(text)
   }, [])
+  useEffect(() => {
+    if (connected) {
+      void command({ name: 'hydras', args: [] }).catch((error: Error) => notify({ text: error.message }))
+    }
+  }, [connected, command, notify])
   useEffect(() => {
     const timers = new Map<HTMLElement, ReturnType<typeof setTimeout>>()
 
@@ -330,7 +337,8 @@ export function App() {
             command={command}
             connected={connected}
             notify={notify}
-            revision={state.seq}
+            hydras={navigation.hydras}
+            current={navigation.hydraId}
             project={project}
             resolveProject={resolveProject}
             selectProject={({ path }) => {

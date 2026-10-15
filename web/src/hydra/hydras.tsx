@@ -5,12 +5,13 @@ import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
 
 export function Hydras({
-  command, connected, notify, revision, project, resolveProject, selectProject,
+  command, connected, notify, hydras, current, project, resolveProject, selectProject,
   showHydra, addProject,
 }: {
   command: Command
   connected: boolean
-  revision: number
+  hydras: HydraSummary[]
+  current: string
   project: string
   resolveProject({ references }: { references: string[] }): void
   selectProject({ path }: { path: string }): void
@@ -18,7 +19,6 @@ export function Hydras({
   addProject(): void
   notify({ text }: { text: string }): void
 }) {
-  const [hydras, setHydras] = useState<HydraSummary[]>([]), [current, setCurrent] = useState('')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false), [creating, setCreating] = useState(false), [name, setName] = useState('')
   const [renaming, setRenaming] = useState(false)
@@ -26,29 +26,6 @@ export function Hydras({
     const chosen = hydras.find(h => h.id === current)?.projects.find(p => p.path === project)
     resolveProject({ references: chosen?.references ?? [project] })
   }, [hydras, current, project, resolveProject])
-
-  useEffect(() => {
-    if (!connected) {
-      return
-    }
-
-    let live = true
-
-    const refresh = () => {
-      void command({ name: 'hydras', args: [] }).then(r => {
-        if (live) {
-          setHydras(r.hydras as HydraSummary[]); setCurrent(r.hydraId as string)
-        }
-      }, (e: Error) => live && notify({ text: e.message }))
-    }
-
-    refresh()
-    const timer = setInterval(refresh, 5000)
-
-    return () => {
-      live = false; clearInterval(timer)
-    }
-  }, [connected, command, notify, revision])
 
   useEffect(() => {
     const target = new URLSearchParams(location.search).get('open-hydra')
@@ -135,7 +112,7 @@ export function Hydras({
                     label={`Rename Hydra ${h.name}`}
                     startEditing
                     finished={() => setRenaming(false)}
-                    save={({ title }) => command({ name: 'hydras', args: ['rename', h.id, title] }).then(r => setHydras(r.hydras as HydraSummary[]))}
+                    save={({ title }) => command({ name: 'hydras', args: ['rename', h.id, title] })}
                   />
                 ) : (
                   <Button
