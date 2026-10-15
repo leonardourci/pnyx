@@ -1,13 +1,11 @@
-import type { BoardState, Card, Column, Link } from '../../../src/core/model.ts'
-import { viewFor } from '../../../src/core/view.ts'
+import type { BoardState, Card, Link } from '../../../src/core/model.ts'
+import { boardConfig } from '../../../src/core/hydra.ts'
 
-export const BUILTIN_COLUMNS: { id: Column; title: string; description: string }[] = [
-  { id: 'needs_you', title: 'Needs you', description: 'Decisions & interruptions' },
-  { id: 'workers_on_it', title: 'Workers on it', description: 'Open work, including idle agents' },
-  { id: 'review', title: 'Review', description: 'Linked change is open' },
-  { id: 'done', title: 'Done', description: 'Confirmed outcomes, merges & ended sessions' },
-]
-export const columnsFor = ({ state }: { state: BoardState }) => [...BUILTIN_COLUMNS, ...viewFor({ state }).customColumns.map(c => ({ ...c, description: 'Manual placement' }))]
+export const columnsFor = ({ state }: { state: BoardState }) => {
+  return boardConfig({ state }).columns.map(c => ({
+    ...c, description: c.role ? 'Follows declared task status' : 'Manual placement',
+  }))
+}
 
 export function pageTitle({ page, cards, selected = null }: { page: string; cards: BoardState['cards']; selected?: string | null }): string {
   const count = Object.values(cards).filter(c => c.column === 'needs_you').length

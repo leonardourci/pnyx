@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { startServer } from '../src/server/server.ts'
 import { loadBoard, withWriter } from '../src/store/board-store.ts'
-import { decideLink, decidePush } from '../src/core/decide.ts'
+import { decideLink, decidePush, decideSession } from '../src/core/decide.ts'
 import { seedWebFixture } from './web-fixture.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
@@ -58,7 +58,7 @@ const check = async ({ condition, label }: { condition: string; label: string })
 }
 
 const ref = async ({ role, name }: { role: string; name: string }) => {
-  const snapshot = await browser({ args: ['snapshot'] }); const line = snapshot.split('\n').find(l => l.includes(`${role} ${JSON.stringify(name)}`)); assert.ok(line, `missing ${role}: ${name}`)
+  const snapshot = await browser({ args: ['snapshot', '--full'] }); const line = snapshot.split('\n').find(l => l.includes(`${role} ${JSON.stringify(name)}`)); assert.ok(line, `missing ${role}: ${name}`)
 
   return '@' + /uid=([^ ]+)/.exec(line)![1]
 }
@@ -180,6 +180,18 @@ try {
   const report = ({ settings, provider = 'claude-code' }: { settings: Record<string, string>; provider?: string }) => withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
+      const task = w.state.cards[fixture.state.keys.layout!]!
+
+      if (task.agent && task.agent.provider !== provider) {
+        const detached = decideSession({
+          state: w.state,
+          ref: task.sessionIds![0]!,
+          task: null,
+          meta: { actor: 'fixture', at: '2026-10-14T16:30:00Z' },
+        })
+        assert.ok('event' in detached); w.append({ event: detached.event })
+      }
+
       const d = decidePush({ state: w.state, key: 'layout', input: { agent: { provider, sessionId: 'fixture-layout', transcriptPath: fixture.transcript }, settings }, meta: { actor: 'fixture', at: '2026-10-14T16:30:00Z' } })
       assert.ok('event' in d); w.append({ event: d.event })
     },
