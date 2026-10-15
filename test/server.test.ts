@@ -896,27 +896,42 @@ test('Hydra and the open task keep independent live transcripts on one socket', 
   const root = process.env.PNYX_HOME!
   const paths = [join(root, 'worker.jsonl'), join(root, 'hydra.jsonl')]
   paths.forEach(path => writeFileSync(path, ''))
-  const task = await boardWithCard()
   withWriter({
     board: 'default',
     fn: ({ writer }) => {
       const meta = { actor: 'fixture', at: '2026-10-15T00:00:00Z' }
 
-      for (const [key, path] of [['worker', paths[0]], ['hydra-session', paths[1]]]) {
-        const d = decidePush({ state: writer.state, key: key!, input: { agent: { provider: 'claude-code', sessionId: key, transcriptPath: path } }, meta })
-        assert.ok('event' in d); writer.append({ event: d.event })
+      for (const [key, path] of [['worker', paths[0]], ['hydra-session', paths[1]]] as const) {
+        const decision = decidePush({ state: writer.state, key, input: { title: key, agent: { provider: 'claude-code', sessionId: key, transcriptPath: path } }, meta })
+        assert.ok('event' in decision); writer.append({ event: decision.event })
       }
 
-      const d = hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data: { ...boardConfig({ state: writer.state }), hydra: { id: 'hydra', kind: 'agent', name: 'Hydra', session: 'claude-code:hydra-session' } } } })
-      assert.ok('event' in d); writer.append({ event: d.event })
-      const taskCard = writer.state.cards[task]!
-      const edit = decidePush({ state: writer.state, key: taskCard.key, input: { agent: { provider: 'claude-code', sessionId: 'worker', transcriptPath: paths[0] } }, meta })
-      assert.ok('event' in edit); writer.append({ event: edit.event })
+      const decision = hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data: { ...boardConfig({ state: writer.state }), hydra: { id: 'hydra', kind: 'agent', name: 'Hydra', session: 'claude-code:hydra-session' } } } })
+      assert.ok('event' in decision); writer.append({ event: decision.event })
     },
   })
+  const task = loadBoard({ board: 'default' }).state.keys.worker!
+  server = await startServer({ board: 'default' })
   const t = await tab(); await t.next()
-  t.command({ id: 'worker-thread', name: 'thread', args: [task] }); await t.next()
-  t.command({ id: 'hydra-thread', name: 'thread', args: [HYDRA_CARD] }); await t.next()
+
+  const subscribe = async ({ id, card }: { id: string; card: string }) => {
+    t.command({ id, name: 'thread', args: [card] })
+
+    for (;;) {
+      const message = await t.next()
+
+      if (message.type === 'error' && message.id === id) {
+        assert.fail(message.error)
+      }
+
+      if (message.type === 'receipt' && message.id === id) {
+        return
+      }
+    }
+  }
+
+  await subscribe({ id: 'worker-thread', card: task })
+  await subscribe({ id: 'hydra-thread', card: HYDRA_CARD })
   paths.forEach((path, index) => appendFileSync(path, JSON.stringify({ type: 'assistant', message: { content: `live reply ${index}` } }) + '\n'))
   const changed = new Set<string>()
 
