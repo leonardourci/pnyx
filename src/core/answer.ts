@@ -71,13 +71,12 @@ export function requestId({ request }: { request: Attention }): string {
   return `${key}#${(hash >>> 0).toString(16).padStart(8, '0')}`
 }
 
-// Whether the card's recorded route can press keys: a session's own terminal, not
-// Firstmate's send command, a subagent (which takes input through its parent),
-// Herdr (which types text, not keys) or Terminal (which cannot type a key without Return).
+// Whether the card's recorded route can press the keys: only a tmux pane, the one
+// host whose keys were checked by hand against each harness's prompt.
 function takesKeys({ card }: { card: Card }): boolean {
   const found = replyRoute({ card, homes: [] })
 
-  return 'route' in found && !['firstmate', 'herdr', 'terminal-app'].includes(found.route.kind)
+  return 'route' in found && found.route.kind === 'tmux'
 }
 
 // The prompt behind an open request, or undefined when only the terminal can answer

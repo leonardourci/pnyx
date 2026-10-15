@@ -569,8 +569,8 @@ Terminal is the exception: its do script types the text and Return together, wit
 Receipts: queued, then delivered, delivery_unknown or failed. Retrying the same --idempotency-key
 resends only after a failed send.
 --answer answers an agent's open question, permission, plan or MCP form prompt (its request key, from
-\`pnyx-axi card <id>\`) by pressing the keys that prompt expects in the session's terminal (tmux,
-Paseo or iTerm2):
+\`pnyx-axi card <id>\`) by pressing the keys that prompt expects in the session's tmux pane (other
+terminals are answered in the session itself):
   question:   --json '{"answers":[{"pick":[2]},{"pick":[1,3]},{"text":"free text"}]}'  one per question,
               options numbered from 1; text only for a single-choice question
   permission: --json '{"choice":"allow"}' or '{"choice":"deny","text":"do this instead"}'

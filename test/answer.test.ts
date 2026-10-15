@@ -303,20 +303,28 @@ test('an answer is typed as keys into the tmux pane, once, and marks the request
   fails({ args: ['reply', 's1', '--answer', multi.key, '--json', answer], pattern: /no open request/ })
 })
 
-test('Codex and Paseo take keys too; Herdr, Terminal and Firstmate cards cannot', () => {
+test('Codex takes keys in tmux too; Paseo, Herdr, iTerm2 and Terminal are answered in the session', () => {
   const { run, fails, calls, session } = hosts()
-  session({ key: 's1', provider: 'codex', terminal: { program: 'kitty', paseoTerminal: 'term-1' }, attention: [codex] })
+  session({ key: 's1', provider: 'codex', terminal: TMUX, attention: [codex] })
   assert.match(run({ args: ['reply', 's1', '--answer', codex.key, '--json', '{"choice":"deny","text":"skip it"}'] }), /state: delivered/)
-  const paseo = calls().filter(c => c.startsWith('call=paseo'))
-  assert.equal(paseo.length, 3)
-  assert.ok(paseo[0]!.includes(`arg=send-keys\narg=term-1\narg=-l\narg=--\narg=${KEY.escape}\n`))
+  const sent = calls().filter(c => c.includes('arg=send-keys'))
+    .map(c => c.split('arg=--\narg=')[1]!.replace(/\n$/, ''))
+  assert.deepEqual(sent, [KEY.escape, 'skip it', KEY.enter])
 
-  session({ key: 's2', provider: 'claude-code', terminal: { program: 'kitty', herdrSession: 'h1', herdrPane: 'p1' }, attention: [permission] })
-  fails({ args: ['reply', 's2', '--answer', permission.key, '--json', '{"choice":"allow"}'], pattern: /no open request with key .* that can be answered here/ })
-  session({ key: 's3', provider: 'claude-code', terminal: { program: 'Apple_Terminal' }, attention: [permission] })
-  fails({ args: ['reply', 's3', '--answer', permission.key, '--json', '{"choice":"allow"}'], pattern: /that can be answered here/ })
-  fails({ args: ['reply', 's3', '--answer', permission.key, '--json', '{"choice":"allow"}', '--text', 'hi'], pattern: /--answer takes --json/ })
-  assert.equal(calls().filter(c => /call=(herdr|osascript)/.test(c)).length, 0)
+  const others: Record<string, string>[] = [
+    { program: 'kitty', paseoTerminal: 'term-1' },
+    { program: 'kitty', herdrSession: 'h1', herdrPane: 'p1' },
+    { program: 'iTerm.app' },
+    { program: 'Apple_Terminal' },
+  ]
+
+  for (const [i, terminal] of others.entries()) {
+    session({ key: `o${i}`, provider: 'claude-code', terminal, attention: [permission] })
+    fails({ args: ['reply', `o${i}`, '--answer', permission.key, '--json', '{"choice":"allow"}'], pattern: /that can be answered here/ })
+  }
+
+  fails({ args: ['reply', 'o0', '--answer', permission.key, '--json', '{"choice":"allow"}', '--text', 'hi'], pattern: /--answer takes --json/ })
+  assert.equal(calls().filter(c => /call=(paseo|herdr|osascript)/.test(c)).length, 0)
 })
 
 test('a failure after the first key leaves the answer unconfirmed, never retyped', () => {

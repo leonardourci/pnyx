@@ -335,38 +335,28 @@ export function pressKey({ route, key }: { route: TerminalRoute; key: Key | 'ent
   }
 }
 
-// One keystroke chunk, typed rather than pasted: a pasted digit would not pick an option.
-type Sent = { command: string; result: SpawnSyncReturns<string> }
-
-function sendKeys({ route, keys }: { route: TerminalRoute; keys: string }): Sent | Delivery {
-  switch (route.kind) {
-    case 'tmux':
-      return { command: 'tmux', result: run({ command: 'tmux', args: ['-S', route.socket, 'send-keys', '-t', route.pane, '-l', '--', keys] }) }
-    case 'paseo':
-      return { command: 'paseo', result: run({ command: 'paseo', args: ['terminal', 'send-keys', ...(route.home ? ['--home', route.home] : []), route.terminal, '-l', '--', keys] }) }
-    case 'iterm2':
-      return { command: 'osascript', result: run({ command: 'osascript', args: ['-e', SCRIPTS['iterm2-key'], route.tty, keys] }) }
-    default:
-      return { state: 'failed', detail: 'Pnyx cannot press keys in this terminal, so answer in the session itself' }
-  }
-}
-
-// Types an inline answer into the session's own prompt, one keystroke chunk at a
-// time with its settle after it. Once a chunk went in, a failure leaves the prompt
-// half answered, so it is delivery_unknown and never retyped.
+// Types an inline answer into the session's tmux pane, one keystroke chunk at a
+// time with its settle after it: typed with send-keys -l, never pasted, since a
+// pasted digit would not pick an option. Once a chunk went in, a failure leaves the
+// prompt half answered, so it is delivery_unknown and never retyped. Only tmux was
+// checked by hand against each harness's prompt.
 export function pressKeys({ route, steps }: { route: TerminalRoute; steps: KeyStep[] }): Delivery {
-  const gone = checkProcess({ route }) ?? (route.kind === 'tmux' ? checkPane({ route }) : undefined)
+  if (route.kind !== 'tmux') {
+    return { state: 'failed', detail: 'Pnyx answers prompts only in tmux, so answer in the session itself' }
+  }
+
+  const gone = checkProcess({ route }) ?? checkPane({ route })
 
   if (gone) {
     return gone
   }
 
   for (const [i, step] of steps.entries()) {
-    const sent = sendKeys({ route, keys: step.keys })
-    const failed = 'state' in sent ? sent : outcome({ result: sent.result, command: sent.command, typed: i > 0 })
+    const result = run({ command: 'tmux', args: ['-S', route.socket, 'send-keys', '-t', route.pane, '-l', '--', step.keys] })
+    const failed = outcome({ result, command: 'tmux', typed: i > 0 })
 
     if (failed) {
-      return i > 0 || failed.state !== 'failed'
+      return i > 0
         ? { state: 'delivery_unknown', detail: `the answer was typed only in part${failed.detail ? `: ${failed.detail}` : ''}; check the session before answering again` }
         : failed
     }
