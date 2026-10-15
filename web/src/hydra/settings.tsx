@@ -9,6 +9,7 @@ import type { Command } from './connection.ts'
 import { resetWidths } from './oracle-catalog.ts'
 import { OracleSettings } from './oracle-settings.tsx'
 import { AgentKinds } from './agent-kinds.tsx'
+import { IntegrationSettings } from './integrations.tsx'
 
 export function Settings({ state, view, save, command, notify }: {
   state: HydraState
@@ -115,6 +116,7 @@ export function Settings({ state, view, save, command, notify }: {
         </section>
         <AgentKinds state={state} command={command} notify={notify} />
         <OracleSettings command={command} notify={notify} />
+        <IntegrationSettings command={command} notify={notify} />
       </div>
       <KeyboardSettings prefs={view.keyboard} save={save} />
     </section>
