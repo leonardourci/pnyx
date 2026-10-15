@@ -1,6 +1,6 @@
 export interface Hint { label: string; element: HTMLElement; x: number; y: number }
 
-export function hintLabels(count: number): string[] {
+export function hintLabels({ count }: { count: number }): string[] {
   const alphabet = 'asdfghjkl', width = Math.max(1, Math.ceil(Math.log(Math.max(1, count)) / Math.log(alphabet.length)))
 
   return Array.from({ length: count }, (_, i) => {

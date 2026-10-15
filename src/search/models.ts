@@ -189,12 +189,12 @@ export const RERANK_PROBE = 'rollback after database schema change blocked write
 const STALL_MS = 60_000
 
 export const modelsDir = () => join(pnyxHome(), 'models')
-export const modelPath = (m: ModelFile) => join(modelsDir(), m.file)
+export const modelPath = ({ model }: { model: ModelFile }) => join(modelsDir(), model.file)
 
 // Present at its pinned size; download() checked its SHA-256 before naming it.
-export function isInstalled(m: ModelFile): boolean {
+export function isInstalled({ model }: { model: ModelFile }): boolean {
   try {
-    return statSync(modelPath(m)).size === m.bytes
+    return statSync(modelPath({ model })).size === model.bytes
   } catch {
     return false
   }
@@ -202,11 +202,11 @@ export function isInstalled(m: ModelFile): boolean {
 
 // Partial downloads of this file left by processes that are gone (an interrupted
 // download, a worker that stopped when semantic search was turned off).
-function removeAbandoned(m: ModelFile): void {
+function removeAbandoned({ model }: { model: ModelFile }): void {
   for (const name of readdirSync(modelsDir())) {
-    const pid = Number(name.slice(m.file.length + 1, -'.part'.length))
+    const pid = Number(name.slice(model.file.length + 1, -'.part'.length))
 
-    if (!name.startsWith(`${m.file}.`) || !name.endsWith('.part') || !Number.isInteger(pid)) {
+    if (!name.startsWith(`${model.file}.`) || !name.endsWith('.part') || !Number.isInteger(pid)) {
       continue
     }
 
@@ -224,24 +224,24 @@ function removeAbandoned(m: ModelFile): void {
 // only when size and SHA-256 match. Reports progress in bytes. A minute without
 // data aborts it.
 // ponytail: a failed download starts over; resume with a Range request if large files fail often.
-export async function download(m: ModelFile, progress: (bytes: number) => void = () => {}): Promise<'present' | 'downloaded'> {
-  if (isInstalled(m)) {
+export async function download({ model, progress = () => {} }: { model: ModelFile; progress?: ({ bytes }: { bytes: number }) => void }): Promise<'present' | 'downloaded'> {
+  if (isInstalled({ model })) {
     return 'present'
   }
 
   mkdirSync(modelsDir(), { recursive: true })
-  removeAbandoned(m)
-  const part = `${modelPath(m)}.${process.pid}.part`
-  const failed = (why: string) => new BoardError(`download of ${m.file} failed: ${why}`, 'DOWNLOAD_FAILED', ['Check the network and run `pnyx-axi search setup --semantic` again'])
+  removeAbandoned({ model })
+  const part = `${modelPath({ model })}.${process.pid}.part`
+  const failed = ({ why }: { why: string }) => new BoardError({ message: `download of ${model.file} failed: ${why}`, code: 'DOWNLOAD_FAILED', help: ['Check the network and run `pnyx-axi search setup --semantic` again'] })
   const stall = new AbortController()
   let timer = setTimeout(() => stall.abort(new Error('no data for a minute')), STALL_MS)
-  const res = await fetch(m.url, { signal: stall.signal }).catch((error: Error) => {
+  const res = await fetch(model.url, { signal: stall.signal }).catch((error: Error) => {
     clearTimeout(timer)
-    throw failed(error.message)
+    throw failed({ why: error.message })
   })
 
   if (!res.ok || !res.body) {
-    throw failed(`HTTP ${res.status}`)
+    throw failed({ why: `HTTP ${res.status}` })
   }
 
   const hash = createHash('sha256')
@@ -252,7 +252,7 @@ export async function download(m: ModelFile, progress: (bytes: number) => void =
       timer = setTimeout(() => stall.abort(new Error('no data for a minute')), STALL_MS)
       hash.update(chunk)
       bytes += chunk.length
-      progress(bytes)
+      progress({ bytes })
       done(null, chunk)
     },
   })
@@ -261,14 +261,14 @@ export async function download(m: ModelFile, progress: (bytes: number) => void =
     await pipeline(Readable.fromWeb(res.body as import('node:stream/web').ReadableStream), count, createWriteStream(part))
     const sha256 = hash.digest('hex')
 
-    if (bytes !== m.bytes || sha256 !== m.sha256) {
-      throw failed(`it does not match its pin (${bytes} bytes, sha256 ${sha256})`)
+    if (bytes !== model.bytes || sha256 !== model.sha256) {
+      throw failed({ why: `it does not match its pin (${bytes} bytes, sha256 ${sha256})` })
     }
 
-    renameSync(part, modelPath(m))
+    renameSync(part, modelPath({ model }))
   } catch (error) {
     rmSync(part, { force: true })
-    throw error instanceof BoardError ? error : failed((error as Error).message)
+    throw error instanceof BoardError ? error : failed({ why: (error as Error).message })
   } finally {
     clearTimeout(timer)
   }
@@ -280,16 +280,16 @@ export async function download(m: ModelFile, progress: (bytes: number) => void =
 // would fail the same way (or fetch a gigabyte again) until it expires. The
 // reranker's failures are kept apart: searches still run on the embedder meanwhile.
 type Failing = 'semantic' | 'reranker'
-const failurePath = (what: Failing) => join(pnyxHome(), `${what}-failure.json`)
+const failurePath = ({ what }: { what: Failing }) => join(pnyxHome(), `${what}-failure.json`)
 
-export function recordFailure(message: string, forMs: number, what: Failing = 'semantic'): void {
+export function recordFailure({ message, forMs, what = 'semantic' }: { message: string; forMs: number; what?: Failing }): void {
   mkdirSync(pnyxHome(), { recursive: true })
-  writeFileSync(failurePath(what), `${JSON.stringify({ message, until: Date.now() + forMs })}\n`)
+  writeFileSync(failurePath({ what }), `${JSON.stringify({ message, until: Date.now() + forMs })}\n`)
 }
 
-export function activeFailure(what: Failing = 'semantic'): string | undefined {
+export function activeFailure({ what = 'semantic' }: { what?: Failing } = {}): string | undefined {
   try {
-    const { message, until } = JSON.parse(readFileSync(failurePath(what), 'utf8')) as { message: string; until: number }
+    const { message, until } = JSON.parse(readFileSync(failurePath({ what }), 'utf8')) as { message: string; until: number }
 
     return until > Date.now() ? message : undefined
   } catch {
@@ -298,6 +298,6 @@ export function activeFailure(what: Failing = 'semantic'): string | undefined {
 }
 
 export function clearFailure(): void {
-  rmSync(failurePath('semantic'), { force: true })
-  rmSync(failurePath('reranker'), { force: true })
+  rmSync(failurePath({ what: 'semantic' }), { force: true })
+  rmSync(failurePath({ what: 'reranker' }), { force: true })
 }

@@ -19,7 +19,7 @@
         }
       ],
       "sourceRefs": [],
-      "column": "review",
+      "column": "parked",
       "revision": 3,
       "createdSeq": 1,
       "updatedSeq": 3,

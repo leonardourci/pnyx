@@ -56,20 +56,27 @@ const MAX_OPTIONS = 8
 
 // Names one request exactly as it was shown, so an answer lands only on the prompt
 // it was written for: a later request under the same key with other text,
-// questions or fields is a different prompt.
+// questions or fields is a different prompt. FNV-1a over its fields, so the browser
+// and the CLI name it alike.
 export function requestId({ request }: { request: Attention }): string {
   const { kind, key, text, questions, form } = request
+  const shown = JSON.stringify({ kind, key, text, questions, form })
+  let hash = 0x811c9dc5
 
-  return JSON.stringify({ kind, key, text, questions, form })
+  for (let i = 0; i < shown.length; i++) {
+    hash = Math.imul(hash ^ shown.charCodeAt(i), 0x01000193)
+  }
+
+  return `${key}#${(hash >>> 0).toString(16).padStart(8, '0')}`
 }
 
 // Whether the card's recorded route can press keys: a session's own terminal, not
-// Firstmate's send command, a subagent (which takes input through its parent) or
-// Terminal (which cannot type a key without Return).
+// Firstmate's send command, a subagent (which takes input through its parent),
+// Herdr (which types text, not keys) or Terminal (which cannot type a key without Return).
 function takesKeys({ card }: { card: Card }): boolean {
-  const found = replyRoute(card, [])
+  const found = replyRoute({ card, homes: [] })
 
-  return 'route' in found && found.route.kind !== 'firstmate' && found.route.kind !== 'terminal-app'
+  return 'route' in found && !['firstmate', 'herdr', 'terminal-app'].includes(found.route.kind)
 }
 
 // The prompt behind an open request, or undefined when only the terminal can answer
@@ -95,7 +102,8 @@ export function answerPrompt(
 
   if (provider === 'claude-code') {
     if (request.kind === 'question') {
-      const fits = request.questions?.length && request.questions.every(q => q.options.length <= MAX_OPTIONS)
+      const fits = request.questions?.length
+        && request.questions.every(q => q.options.length <= MAX_OPTIONS)
 
       return fits ? { kind: 'questions' } : undefined
     }

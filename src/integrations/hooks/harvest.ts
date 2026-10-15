@@ -7,18 +7,21 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { decideNote, decidePush, noteId } from '../../core/decide.ts'
-import { SESSION_TITLE, type SourceNote } from '../../core/model.ts'
+import { EVENT_VERSION, SESSION_TITLE, type SourceNote } from '../../core/model.ts'
+import { cardSessionId } from '../../core/tasks.ts'
+import { recordEntries } from '../../thread/read.ts'
 import type { Writer } from '../../store/board-store.ts'
 import { readTranscript } from '../../search/index.ts'
+import { redact } from '../../search/text.ts'
 import { codexThreadTitle, transcriptNotes } from './notes.ts'
-import { transcriptSettings, type FoundSettings } from './settings.ts'
+import { LIVE_HOOK_SETTINGS, transcriptSettings, type FoundSettings } from './settings.ts'
 
 const CURSORS = 'harvest.json'
 
 // "<card id>\n<transcript path>" -> how far it was read.
 type Cursors = Record<string, { identity: string; pos: number }>
 
-function readCursors(dir: string): Cursors {
+function readCursors({ dir }: { dir: string }): Cursors {
   try {
     const value = JSON.parse(readFileSync(join(dir, CURSORS), 'utf8')) as unknown
 
@@ -28,7 +31,7 @@ function readCursors(dir: string): Cursors {
   }
 }
 
-function writeCursors(dir: string, cursors: Cursors): void {
+function writeCursors({ dir, cursors }: { dir: string; cursors: Cursors }): void {
   const tmp = join(dir, `.${CURSORS}.tmp-${process.pid}`)
   writeFileSync(tmp, JSON.stringify(cursors))
   renameSync(tmp, join(dir, CURSORS))
@@ -36,19 +39,21 @@ function writeCursors(dir: string, cursors: Cursors): void {
 
 // Appends one harvested note to a card; returns 1 when it was new.
 export function appendNote(
-  writer: Writer,
-  cardId: string,
-  { ref, ...note }: SourceNote,
-  at: string,
+  { writer, cardId, note: { ref, ...note }, at }: {
+    writer: Writer
+    cardId: string
+    note: SourceNote
+    at: string
+  },
 ): number {
   const card = writer.state.cards[cardId]!
-  const decision = decideNote(writer.state, card.id, note, { at, actor: 'harvest', id: noteId(card.key, ref) })
+  const decision = decideNote({ state: writer.state, ref: card.id, note, meta: { at, actor: 'harvest', id: noteId({ cardKey: card.key, ref }) } })
 
   if (!('event' in decision)) {
     return 0
   }
 
-  writer.append(decision.event)
+  writer.append({ event: decision.event })
 
   return 1
 }
@@ -56,7 +61,12 @@ export function appendNote(
 // Codex writes a session's thread name to session_index.jsonl in its home, not to
 // the transcript at <home>/sessions/YYYY/MM/DD/rollout-*.jsonl.
 // ponytail: reads the whole index each time; it is one short line per named thread.
-function codexTitle(writer: Writer, cardId: string, path: string, at: string): number {
+function codexTitle({ writer, cardId, path, at }: {
+  writer: Writer
+  cardId: string
+  path: string
+  at: string
+}): number {
   const card = writer.state.cards[cardId]!
   const sessions = dirname(dirname(dirname(dirname(path))))
 
@@ -74,15 +84,19 @@ function codexTitle(writer: Writer, cardId: string, path: string, at: string): n
 
   const shown = card.autoTitle?.from === 'session' ? `${SESSION_TITLE}${card.autoTitle.text}` : undefined
 
-  return codexThreadTitle(index, card.agent.sessionId)
+  return codexThreadTitle({ index, sessionId: card.agent.sessionId })
     .filter(note => note.text !== shown)
-    .reduce((n, note) => n + appendNote(writer, cardId, note, at), 0)
+    .reduce((n, note) => n + appendNote({ writer, cardId, note, at }), 0)
 }
 
 // Harvests the transcripts of these cards from where the last read stopped, and
 // returns how many notes were appended. A missing transcript waits for its file.
-export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at: string): number {
-  const cursors = readCursors(writer.dir)
+export function harvestTranscripts({ writer, cardIds, at }: {
+  writer: Writer
+  cardIds: Iterable<string>
+  at: string
+}): number {
+  const cursors = readCursors({ dir: writer.dir })
   let appended = 0
   let moved = false
 
@@ -93,31 +107,74 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
       continue
     }
 
-    appended += codexTitle(writer, id, path, at)
+    appended += codexTitle({ writer, cardId: id, path, at })
     const name = `${id}\n${path}`
-    const tail = readTranscript({ source: path, ...(cursors[name] ?? { identity: '', pos: 0 }) })
+    const tail = readTranscript({ cursor: { source: path, ...(cursors[name] ?? { identity: '', pos: 0 }) } })
 
     if (!tail) {
       continue
     }
 
     const settings: FoundSettings = {}
-    const { agent, autoTitle } = writer.state.cards[id]!
+    const { agent, autoTitle, sourceRefs, settings: held } = writer.state.cards[id]!
+    // The transcript is written after the fact and read later, so a record older than
+    // the session's latest hook never overrides a value of a setting hooks report live.
+    const hooked = Math.max(0, ...sourceRefs.filter(r => r.adapter === 'hooks')
+      .map(r => Date.parse(r.observedAt ?? '') || 0))
+    const live = (LIVE_HOOK_SETTINGS[agent!.provider] ?? [])
+      .filter(name => held?.[name] !== undefined)
     const subagent = agent!.agentId !== undefined
     // The session title the transcript named last before this read.
     let title = tail.reset || !cursors[name]?.pos || autoTitle?.from !== 'session' ? undefined : `${SESSION_TITLE}${autoTitle.text}`
 
     for (const line of tail.lines) {
-      for (const note of transcriptNotes(line.record)) {
-        if (note.kind !== 'context' || !note.text.startsWith(SESSION_TITLE)) {
-          appended += appendNote(writer, id, note, at)
-        } else if (note.text !== title) {
-          title = note.text
-          appended += appendNote(writer, id, { ...note, ref: `${note.ref}@${line.pos}` }, at)
+      const card = writer.state.cards[id]!
+      const session = cardSessionId({ card })
+
+      if (session && (card.tracking === 'declared' || id === '$hydra')) {
+        for (const entry of recordEntries({ record: line.record, offset: line.pos }).filter(e => e.kind === 'message')) {
+          const messageId = noteId({ cardKey: session, ref: `chat:${path}:${tail.identity}:${entry.id}:${entry.text}` })
+
+          if (!(messageId in writer.state.eventIds)) {
+            writer.append({
+              event: {
+                v: EVENT_VERSION,
+                seq: writer.state.seq + 1,
+                id: messageId,
+                at: entry.at ?? at,
+                actor: `session:${session}`,
+                cardId: id,
+                type: 'chat.message',
+                sessionId: session,
+                messageId,
+                data: {
+                  session,
+                  nativeId: entry.id,
+                  role: entry.role,
+                  text: redact({ text: entry.text }),
+                },
+              },
+            })
+          }
         }
       }
 
-      Object.assign(settings, transcriptSettings(line.record, subagent))
+      for (const note of transcriptNotes({ record: line.record })) {
+        if (note.kind !== 'context' || !note.text.startsWith(SESSION_TITLE)) {
+          appended += appendNote({ writer, cardId: id, note, at })
+        } else if (note.text !== title) {
+          title = note.text
+          appended += appendNote({ writer, cardId: id, note: { ...note, ref: `${note.ref}@${line.pos}` }, at })
+        }
+      }
+
+      const found = transcriptSettings({ record: line.record, subagent })
+      const stamp = Date.parse(String((line.record as { timestamp?: unknown }).timestamp))
+      const stale = hooked > 0 && !(stamp >= hooked)
+
+      Object.assign(settings, stale
+        ? Object.fromEntries(Object.entries(found ?? {}).filter(([name]) => !live.includes(name)))
+        : found)
     }
 
     const card = writer.state.cards[id]!
@@ -133,10 +190,10 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
         objectId: path,
         observedAt: at,
       }
-      const decision = decidePush(writer.state, card.key, { settings, source }, { at, actor: 'harvest' })
+      const decision = decidePush({ state: writer.state, key: card.key, input: { settings, source }, meta: { at, actor: 'harvest' } })
 
       if ('event' in decision) {
-        writer.append(decision.event)
+        writer.append({ event: decision.event })
       }
     }
 
@@ -145,7 +202,7 @@ export function harvestTranscripts(writer: Writer, cardIds: Iterable<string>, at
   }
 
   if (moved) {
-    writeCursors(writer.dir, cursors)
+    writeCursors({ dir: writer.dir, cursors })
   }
 
   return appended

@@ -2,26 +2,27 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardState } from '../../../src/core/model.ts'
 import { emptyBoard, reduce } from '../../../src/core/reducer.ts'
 import type { ServerMessage } from '../../../src/server/server.ts'
-import type { ThreadPage } from '../../../src/thread/read.ts'
+import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
 import { shouldReload } from './view.ts'
 
 export type Receipt = Record<string, unknown>
-export type Command = (name: string, args: string[]) => Promise<Receipt>
+export type Command = ({ name, args }: { name: string; args: string[] }) => Promise<Receipt>
 
 export function useBoard() {
   const [state, setState] = useState<BoardState>(emptyBoard), [connected, setConnected] = useState(false), [error, setError] = useState('')
   const [thread, setThread] = useState<ThreadPage | null>(null)
+  const [latest, setLatest] = useState<Record<string, LatestMessage>>({})
   const stateRef = useRef(state)
   const socket = useRef<WebSocket | null>(null)
   const hasSnapshot = useRef(false)
   const pending = useRef(new Map<string, {
-    resolve(r: Receipt): void
-    reject(e: Error): void
+    resolve({ receipt }: { receipt: Receipt }): void
+    reject({ error }: { error: Error }): void
     timer: ReturnType<typeof setTimeout>
   }>())
   const rejectPending = useCallback(() => {
     for (const p of pending.current.values()) {
-      clearTimeout(p.timer); p.reject(new Error('Connection lost. Check receipts before retrying; draft retained.'))
+      clearTimeout(p.timer); p.reject({ error: new Error('Connection lost. Check receipts before retrying; draft retained.') })
     }
 
     pending.current.clear()
@@ -48,7 +49,7 @@ export function useBoard() {
 
       ws.onopen = () => {
         if (!closed) {
-          setConnected(true); setError('')
+          setConnected(true); setError(''); setLatest({})
         }
       }
 
@@ -61,11 +62,11 @@ export function useBoard() {
           const m = JSON.parse(e.data) as ServerMessage
 
           if (m.type === 'hello') {
-            if (shouldReload(document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content, m.build)) {
+            if (shouldReload({ loaded: document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content, server: m.build })) {
               closed = true; ws.close(); location.reload()
             }
           } else if (m.type === 'snapshot') {
-            hasSnapshot.current = true; stateRef.current = m.state; setState(m.state)
+            hasSnapshot.current = true; stateRef.current = m.state; setState(m.state); setLatest({})
           } else if (m.type === 'event') {
             if (m.event.seq <= stateRef.current.seq) {
               return
@@ -77,9 +78,26 @@ export function useBoard() {
               return
             }
 
-            stateRef.current = reduce(stateRef.current, m.event); setState(stateRef.current)
+            stateRef.current = reduce({
+              state: stateRef.current,
+              event: m.event,
+            }); setState(stateRef.current)
           } else if (m.type === 'thread') {
             setThread(m.thread)
+          } else if (m.type === 'latest') {
+            setLatest(old => {
+              const next = { ...old }
+
+              for (const [card, message] of Object.entries(m.messages)) {
+                if (message) {
+                  next[card] = message
+                } else {
+                  delete next[card]
+                }
+              }
+
+              return next
+            })
           } else if (m.type === 'error' && !m.id) {
             setError(m.error)
           } else if (m.id) {
@@ -92,9 +110,9 @@ export function useBoard() {
             clearTimeout(p.timer); pending.current.delete(m.id)
 
             if (m.type === 'error') {
-              p.reject(new Error(m.error))
+              p.reject({ error: new Error(m.error) })
             } else {
-              p.resolve(m)
+              p.resolve({ receipt: m })
             }
           }
         } catch {
@@ -121,7 +139,7 @@ export function useBoard() {
       closed = true; clearTimeout(retry); socket.current?.close(); rejectPending()
     }
   }, [rejectPending])
-  const command: Command = useCallback((name, args) => new Promise((resolve, reject) => {
+  const command: Command = useCallback(({ name, args }) => new Promise((resolve, reject) => {
     if (socket.current?.readyState !== WebSocket.OPEN) {
       reject(new Error('The board is offline. Draft retained.'))
 
@@ -131,10 +149,16 @@ export function useBoard() {
     const id = crypto.randomUUID()
     const timer = setTimeout(() => {
       pending.current.delete(id); reject(new Error('No receipt yet. Check history before retrying.'))
-    }, name === 'reply' ? 140000 : 15000)
-    pending.current.set(id, { resolve, reject, timer })
+    }, name === 'reply' || name === 'agent' ? 140000 : 15000)
+    pending.current.set(id, {
+      resolve: ({ receipt }) =>
+        resolve(receipt),
+      reject: ({ error }) =>
+        reject(error),
+      timer,
+    })
     socket.current.send(JSON.stringify({ type: 'command', id, name, args }))
   }), [])
 
-  return { state, connected, error, command, thread, setThread }
+  return { state, connected, error, command, thread, setThread, latest }
 }

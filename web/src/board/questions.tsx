@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { answerPrompt, type Choice, type QuestionAnswer } from '../../../src/core/answer.ts'
+import { answerPrompt, requestId, type Choice, type QuestionAnswer } from '../../../src/core/answer.ts'
 import type { Attention, Card, FormField, Question } from '../../../src/core/model.ts'
 import { Button, Input, Switch } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import type { Command } from './connection.ts'
 
-type Send = (args: { request: Attention; value: unknown }) => Promise<void>
+type Send = ({ request, value }: { request: Attention; value: unknown }) => Promise<void>
 
 // A question's picked option numbers, or the free text typed instead.
 type Draft = { pick: number[]; text: string }
@@ -14,7 +14,7 @@ function QuestionField({ question, index, draft, change }: {
   question: Question
   index: number
   draft: Draft
-  change(args: { next: Draft }): void
+  change({ next }: { next: Draft }): void
 }) {
   const toggle = ({ n }: { n: number }) => change({
     next: {
@@ -98,13 +98,13 @@ type Values = Record<string, string | boolean>
 function FormInput({ field, value, change }: {
   field: FormField
   value: string | boolean | undefined
-  change(args: { value: string | boolean }): void
+  change({ value }: { value: string | boolean }): void
 }) {
   const label = `${field.title ?? field.name}${field.required ? ' *' : ''}`
 
   if (field.type === 'boolean') {
     return (
-      <Switch label={label} checked={value === true} onChange={next => change({ value: next })} />
+      <Switch label={label} checked={value === true} onChange={change} />
     )
   }
 
@@ -218,7 +218,7 @@ export function InlineQuestions({ card, command, connected, notify }: {
   card: Card
   command: Command
   connected: boolean
-  notify(text: string): void
+  notify({ text }: { text: string }): void
 }) {
   const [busy, setBusy] = useState<string | null>(null)
   const shown = card.attention
@@ -229,19 +229,23 @@ export function InlineQuestions({ card, command, connected, notify }: {
   }
 
   const send: Send = async ({ request, value }) => {
-    setBusy(request.key)
+    setBusy(requestId({ request }))
 
     try {
-      const r = await command('answer', [card.id, request.key, JSON.stringify(value), crypto.randomUUID(), request.text ?? ''])
+      const id = requestId({ request })
+      const args = [card.id, request.key, JSON.stringify(value), crypto.randomUUID(), id]
+      const r = await command({ name: 'answer', args })
       const receipt = r.reply as { state: string; detail?: string } | undefined
       const why = receipt?.detail ? ` (${receipt.detail})` : ''
-      notify(receipt?.state === 'delivered'
-        ? 'Answer typed into the session. It shows as answered until the session moves on.'
-        : receipt?.state === 'delivery_unknown'
-          ? `Answer may be half typed${why}. Check the session before answering again.`
-          : `Answer not sent${why}.`)
+      notify({
+        text: receipt?.state === 'delivered'
+          ? 'Answer typed into the session. It shows as answered until the session moves on.'
+          : receipt?.state === 'delivery_unknown'
+            ? `Answer may be half typed${why}. Check the session before answering again.`
+            : `Answer not sent${why}.`,
+      })
     } catch (e) {
-      notify((e as Error).message)
+      notify({ text: (e as Error).message })
     } finally {
       setBusy(null)
     }
@@ -251,9 +255,10 @@ export function InlineQuestions({ card, command, connected, notify }: {
     <>
       {shown.map(request => {
         const prompt = answerPrompt({ card, request })
+        const pending = busy === requestId({ request })
 
         return (
-          <article key={`${request.key}:${request.text ?? ''}`} className={`message ask${request.answered ? ' answered' : ''}`} aria-label={TITLE[request.kind] ?? 'Agent request'}>
+          <article key={requestId({ request })} className={`message ask${request.answered ? ' answered' : ''}`} aria-label={TITLE[request.kind] ?? 'Agent request'}>
             <div className="message-head">
               <strong>
                 <Icon name="agent" size={14} />
@@ -266,14 +271,14 @@ export function InlineQuestions({ card, command, connected, notify }: {
               : !connected
                 ? <p className="small muted">Reconnect to answer.</p>
                 : prompt?.kind === 'questions'
-                  ? <Questions request={request} busy={busy === request.key} send={send} />
+                  ? <Questions request={request} busy={pending} send={send} />
                   : prompt?.kind === 'form'
-                    ? <Form request={request} busy={busy === request.key} send={send} />
+                    ? <Form request={request} busy={pending} send={send} />
                     : prompt && (
                       <Choices
                         request={request}
                         choices={prompt.choices}
-                        busy={busy === request.key}
+                        busy={pending}
                         send={send}
                       />
                     )}

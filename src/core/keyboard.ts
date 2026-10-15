@@ -4,48 +4,55 @@ export type KeyScope = 'board' | 'thread' | 'navigation' | 'composer' | 'overlay
 export type KeyPlatform = 'mac' | 'other'
 const navigation: KeyScope[] = ['board', 'thread', 'navigation']
 const action = (
-  id: string,
-  label: string,
-  keys: string[],
-  scopes: KeyScope[],
-  repeat = false,
+  { id, label, keys, scopes, repeat = false }: {
+    id: string
+    label: string
+    keys: string[]
+    scopes: KeyScope[]
+    repeat?: boolean
+  },
 ) => ({ id, label, keys, scopes, repeat })
 export const KEY_ACTIONS = [
-  action('board.up', 'Previous card', ['ArrowUp', 'k'], ['board'], true),
-  action('board.down', 'Next card', ['ArrowDown', 'j'], ['board'], true),
-  action('board.left', 'Previous column', ['ArrowLeft', 'h'], ['board'], true),
-  action('board.right', 'Next column', ['ArrowRight', 'l'], ['board'], true),
-  action('board.first', 'First card', ['Home'], ['board'], true),
-  action('board.last', 'Last card', ['End'], ['board'], true),
-  action('board.open', 'Open conversation', ['Enter'], ['board']),
-  action('thread.up', 'Scroll conversation up', ['ArrowUp', 'k'], ['thread'], true),
-  action('thread.down', 'Scroll conversation down', ['ArrowDown', 'j'], ['thread'], true),
-  action('thread.pageUp', 'Previous conversation page', ['PageUp'], ['thread'], true),
-  action('thread.pageDown', 'Next conversation page', ['PageDown'], ['thread'], true),
-  action('thread.first', 'First loaded message', ['Home'], ['thread'], true),
-  action('thread.last', 'Latest loaded message', ['End'], ['thread'], true),
-  action('reply', 'Focus reply composer', ['r'], ['board', 'thread']),
-  action('send', 'Send reply', ['Mod+Enter'], ['composer']),
-  action('cancel', 'Close the current layer', ['Escape'], [...navigation, 'composer', 'overlay', 'hints']),
-  action('move', 'Move card', ['m'], ['board', 'thread']),
-  action('search', 'Search history', ['/'], navigation),
-  action('find', 'Find in current view', ['Mod+f'], [...navigation, 'composer']),
-  action('palette', 'Open commands', ['Mod+k'], navigation),
-  action('help', 'Keyboard help', ['?'], navigation),
-  action('hints', 'Show target hints', ['f'], navigation),
-  action('settings', 'Open settings', ['Mod+,'], navigation),
+  action({ id: 'board.up', label: 'Previous card', keys: ['ArrowUp', 'k'], scopes: ['board'], repeat: true }),
+  action({ id: 'board.down', label: 'Next card', keys: ['ArrowDown', 'j'], scopes: ['board'], repeat: true }),
+  action({ id: 'board.left', label: 'Previous column', keys: ['ArrowLeft', 'h'], scopes: ['board'], repeat: true }),
+  action({ id: 'board.right', label: 'Next column', keys: ['ArrowRight', 'l'], scopes: ['board'], repeat: true }),
+  action({ id: 'board.first', label: 'First card', keys: ['Home'], scopes: ['board'], repeat: true }),
+  action({ id: 'board.last', label: 'Last card', keys: ['End'], scopes: ['board'], repeat: true }),
+  action({ id: 'board.open', label: 'Open conversation', keys: ['Enter'], scopes: ['board'] }),
+  action({ id: 'thread.up', label: 'Previous message block', keys: ['ArrowUp', 'k'], scopes: ['thread'], repeat: true }),
+  action({ id: 'thread.down', label: 'Next message block', keys: ['ArrowDown', 'j'], scopes: ['thread'], repeat: true }),
+  action({ id: 'thread.pageUp', label: 'Previous conversation page', keys: ['PageUp'], scopes: ['thread'], repeat: true }),
+  action({ id: 'thread.pageDown', label: 'Next conversation page', keys: ['PageDown'], scopes: ['thread'], repeat: true }),
+  action({ id: 'thread.first', label: 'First loaded message', keys: ['Home'], scopes: ['thread'], repeat: true }),
+  action({ id: 'thread.last', label: 'Latest loaded message', keys: ['End'], scopes: ['thread'], repeat: true }),
+  action({ id: 'thread.reply', label: 'Reply at the end of the conversation', keys: ['Enter'], scopes: ['thread'] }),
+  action({ id: 'thread.comment', label: 'Comment on selected block', keys: ['c'], scopes: ['thread'] }),
+  action({ id: 'reply', label: 'Focus reply composer', keys: ['r'], scopes: ['board', 'thread'] }),
+  action({ id: 'send', label: 'Send reply', keys: ['Mod+Enter'], scopes: ['composer'] }),
+  action({ id: 'cancel', label: 'Close the current layer', keys: ['Escape'], scopes: [...navigation, 'composer', 'overlay', 'hints'] }),
+  action({ id: 'move', label: 'Move card', keys: ['m'], scopes: ['board', 'thread'] }),
+  action({ id: 'search', label: 'Search history', keys: ['/'], scopes: navigation }),
+  action({ id: 'find', label: 'Find in current view', keys: ['Mod+f'], scopes: [...navigation, 'composer'] }),
+  action({ id: 'palette', label: 'Open commands', keys: ['Mod+k'], scopes: navigation }),
+  action({ id: 'help', label: 'Keyboard help', keys: ['?'], scopes: navigation }),
+  action({ id: 'hints', label: 'Show target hints', keys: ['f'], scopes: navigation }),
+  action({ id: 'settings', label: 'Open settings', keys: ['Mod+,'], scopes: navigation }),
 ]
 export interface KeyboardPreferences {
   characterShortcuts: boolean
   bindings: Record<string, string[]>
 }
 export const DEFAULT_KEYBOARD: KeyboardPreferences = { characterShortcuts: true, bindings: {} }
-export const bindingsFor = (prefs: KeyboardPreferences, id: string) =>
+export const bindingsFor = ({ prefs, id }: { prefs: KeyboardPreferences; id: string }) =>
   prefs.bindings[id] ?? KEY_ACTIONS.find(a => a.id === id)?.keys ?? []
 const namedKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Enter', 'Escape', 'Backspace', 'Delete', ...Array.from({ length: 12 }, (_, i) => 'F' + (i + 1))])
 const modifiers = ['Control', 'Meta', 'Alt', 'Shift']
 
-export function parseBinding(binding: string, platform: KeyPlatform): KeybindingPress[] {
+export function parseBinding({ binding, platform }: {
+  binding: string
+  platform: KeyPlatform
+}): KeybindingPress[] {
   return parseKeybinding(binding.trim().replace(/\s+/g, ' ')
     .replace(/(\$mod|\bMod)(?=\+)/g, platform === 'mac' ? 'Meta' : 'Control')).map(([required, optional, key]) => {
     // Symbols use their logical key on layouts with or without Shift.
@@ -55,12 +62,15 @@ export function parseBinding(binding: string, platform: KeyPlatform): Keybinding
   })
 }
 
-const printable = (p: KeybindingPress) =>
-  typeof p[2] === 'string' && p[2].length === 1 && !p[0].some(m => ['Control', 'Meta', 'Alt'].includes(m))
-export const characterBinding = (binding: string, platform: KeyPlatform) =>
-  parseBinding(binding, platform).some(printable)
+const printable = ({ press }: { press: KeybindingPress }) =>
+  typeof press[2] === 'string' && press[2].length === 1 && !press[0].some(m => ['Control', 'Meta', 'Alt'].includes(m))
+export const characterBinding = ({ binding, platform }: {
+  binding: string
+  platform: KeyPlatform
+}) =>
+  parseBinding({ binding, platform }).some(p => printable({ press: p }))
 
-const samePress = (a: KeybindingPress, b: KeybindingPress) => {
+const samePress = ({ a, b }: { a: KeybindingPress; b: KeybindingPress }) => {
   if (String(a[2]).toLowerCase() !== String(b[2]).toLowerCase()) {
     return false
   }
@@ -70,7 +80,7 @@ const samePress = (a: KeybindingPress, b: KeybindingPress) => {
     && !(b[0].includes(m) && !a[0].includes(m) && !a[1].includes(m)))
 }
 
-export function keyboardError(prefs: KeyboardPreferences): string | undefined {
+export function keyboardError({ prefs }: { prefs: KeyboardPreferences }): string | undefined {
   const all: { id: string; binding: string; strokes: KeybindingPress[]; scopes: KeyScope[] }[] = []
 
   for (const id of Object.keys(prefs.bindings)) {
@@ -83,7 +93,7 @@ export function keyboardError(prefs: KeyboardPreferences): string | undefined {
     all.length = 0
 
     for (const a of KEY_ACTIONS) {
-      const keys = bindingsFor(prefs, a.id)
+      const keys = bindingsFor({ prefs, id: a.id })
 
       if (!Array.isArray(keys) || keys.length > 4) {
         return 'Use at most four bindings for ' + a.label
@@ -97,7 +107,7 @@ export function keyboardError(prefs: KeyboardPreferences): string | undefined {
         let strokes: KeybindingPress[]
 
         try {
-          strokes = parseBinding(binding, platform)
+          strokes = parseBinding({ binding, platform })
         } catch {
           return 'Invalid key syntax: ' + binding
         }
@@ -116,7 +126,7 @@ export function keyboardError(prefs: KeyboardPreferences): string | undefined {
           return 'Reserved browser shortcut: ' + binding
         }
 
-        if ((a.id === 'send' || a.id === 'cancel') && strokes.some(printable)) {
+        if ((a.id === 'send' || a.id === 'cancel') && strokes.some(p => printable({ press: p }))) {
           return 'Typing must remain literal: ' + a.label + ' needs a non-printing key or a command modifier'
         }
 
@@ -133,7 +143,7 @@ export function keyboardError(prefs: KeyboardPreferences): string | undefined {
             a.scopes.some(s => prior.scopes.includes(s))
             && strokes
               .slice(0, Math.min(strokes.length, prior.strokes.length))
-              .every((s, i) => samePress(s, prior.strokes[i]))
+              .every((s, i) => samePress({ a: s, b: prior.strokes[i] }))
           ) {
             return 'Shortcut conflicts with ' + KEY_ACTIONS.find(x => x.id === prior.id)!.label + ': ' + binding
           }
@@ -171,17 +181,22 @@ export interface KeyProgress {
 }
 export const emptyProgress = (): KeyProgress => ({ candidates: [], scope: 'navigation', until: 0 })
 
-export function matchesPress(event: KeyInput, stroke: KeybindingPress): boolean {
+export function matchesPress({ event, stroke }: {
+  event: KeyInput
+  stroke: KeybindingPress
+}): boolean {
   const wrapped = { ...event, code: event.code ?? '', getModifierState: (m: string) => ({ Control: !!event.ctrlKey, Meta: !!event.metaKey, Alt: !!event.altKey, Shift: !!event.shiftKey }[m] ?? false) }
 
   return matchKeybindingPress(wrapped as KeyboardEvent, stroke)
 }
 
 export function resolveKey(
-  event: KeyInput,
-  context: KeyContext,
-  prefs: KeyboardPreferences,
-  progress = emptyProgress(),
+  { event, context, prefs, progress = emptyProgress() }: {
+    event: KeyInput
+    context: KeyContext
+    prefs: KeyboardPreferences
+    progress?: KeyProgress
+  },
 ): { action?: string; consume: boolean; progress: KeyProgress } {
   const empty = { consume: false, progress: emptyProgress() }
 
@@ -202,10 +217,12 @@ export function resolveKey(
   const pending: KeyProgress['candidates'] = []
 
   for (const a of available) {
-    for (const binding of bindingsFor(prefs, a.id)) {
-      const strokes = parseBinding(binding, context.platform)
+    for (const binding of bindingsFor({ prefs, id: a.id })) {
+      const strokes = parseBinding({ binding, platform: context.platform })
 
-      if ((!context.characterShortcuts || context.editing) && strokes.some(printable)) {
+      const typesText = strokes.some(p => printable({ press: p }))
+
+      if ((!context.characterShortcuts || context.editing) && typesText) {
         continue
       }
 
@@ -215,7 +232,7 @@ export function resolveKey(
 
       const next = candidates.find(c => c.action === a.id && c.binding === binding)?.next ?? 0
 
-      if (!matchesPress(event, strokes[next])) {
+      if (!matchesPress({ event, stroke: strokes[next] })) {
         continue
       }
 
@@ -233,7 +250,7 @@ export function resolveKey(
   }
 }
 
-export function keyLabel(keys: string[], platform: KeyPlatform): string {
+export function keyLabel({ keys, platform }: { keys: string[]; platform: KeyPlatform }): string {
   return keys.map(k => k.replace(/Mod\+/g, platform === 'mac' ? '⌘+' : 'Ctrl+').replace(/ArrowUp/g, '↑')
     .replace(/ArrowDown/g, '↓')
     .replace(/ArrowLeft/g, '←')

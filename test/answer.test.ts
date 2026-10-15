@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFil
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { answerPrompt, answerText, checkAnswer, type Answer, type Prompt } from '../src/core/answer.ts'
+import { answerPrompt, answerText, checkAnswer, requestId, type Answer, type Prompt } from '../src/core/answer.ts'
 import type { Attention, BoardEvent, Card } from '../src/core/model.ts'
 import { emptyBoard, replay } from '../src/core/reducer.ts'
 import { KEY, answerKeys } from '../src/integrations/hooks/answer.ts'
@@ -25,7 +25,7 @@ const fixture = ({ name }: { name: string }) => JSON.parse(readFileSync(join(ROO
 const opened = ({ harness, event, name }: { harness: 'claude' | 'codex'; event: string; name: string }): Attention => {
   const envelope: HookEnvelope = { v: 1, id: 'hook-1', at: '2026-10-14T17:00:00Z', harness, event, payload: fixture({ name }) }
 
-  return attend([], observe(envelope).at(-1)!.attend!)[0]!
+  return attend({ current: [], change: observe({ envelope }).at(-1)!.attend! })[0]!
 }
 
 const card = ({ provider, attention }: { provider: string; attention: Attention[] }): Card => ({
@@ -43,6 +43,7 @@ const card = ({ provider, attention }: { provider: string; attention: Attention[
   updatedSeq: 1,
   updatedAt: '2026-10-14T00:00:00Z',
   agent: { provider, sessionId: 's' },
+  terminal: { tty: TTY, pid: '4242', program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' },
 })
 
 const multi = opened({ harness: 'claude', event: 'PermissionRequest', name: 'claude-permission-request-ask-multi' })
@@ -85,7 +86,7 @@ test('a Claude Code AskUserQuestion request keeps every question with its option
   // A malformed question is left out entirely, so it is answered in the terminal.
   const broken = { ...fixture({ name: 'claude-pre-tool-ask' }), tool_input: { questions: [{ question: 'Which?', options: [] }] } }
   const envelope: HookEnvelope = { v: 1, id: 'hook-2', at: '2026-10-14T17:00:00Z', harness: 'claude', event: 'PreToolUse', payload: broken }
-  const request = attend([], observe(envelope)[0]!.attend!)[0]!
+  const request = attend({ current: [], change: observe({ envelope })[0]!.attend! })[0]!
   assert.equal(request.text, 'Which?')
   assert.equal(request.questions, undefined)
   assert.equal(answerPrompt({ card: card({ provider: 'claude-code', attention: [request] }), request }), undefined)
@@ -98,30 +99,30 @@ test('only hook requests whose prompt keys were verified can be answered inline'
     kind: 'choices',
     choices: [{ choice: 'allow', label: 'Yes, proceed', text: 'none' }, { choice: 'deny', label: 'No', text: 'optional' }],
   })
-  const none = (provider: string, request: Attention) =>
+  const none = ({ provider, request }: { provider: string; request: Attention }) =>
     assert.equal(answerPrompt({ card: card({ provider, attention: [request] }), request }), undefined, `${provider} ${request.key}`)
-  none('claude-code', { kind: 'permission', key: 'hook:notification', blocking: true, text: 'Claude needs your permission' })
-  none('claude-code', { kind: 'input', key: 'hook:elicitation', blocking: true, text: 'server: name?' })
-  none('claude-code', { kind: 'decision', key: 'fm:decision', blocking: true, text: 'Ship it?' })
-  none('claude-code', { ...permission, answered: 'r1' })
-  none('codex', plan)
+  none({ provider: 'claude-code', request: { kind: 'permission', key: 'hook:notification', blocking: true, text: 'Claude needs your permission' } })
+  none({ provider: 'claude-code', request: { kind: 'input', key: 'hook:elicitation', blocking: true, text: 'server: name?' } })
+  none({ provider: 'claude-code', request: { kind: 'decision', key: 'fm:decision', blocking: true, text: 'Ship it?' } })
+  none({ provider: 'claude-code', request: { ...permission, answered: 'r1' } })
+  none({ provider: 'codex', request: plan })
 })
 
 test('answers are checked against the prompt before anything is typed', () => {
-  const error = (request: Attention, value: unknown) => {
+  const error = ({ request, value }: { request: Attention; value: unknown }) => {
     const result = checkAnswer({ prompt: prompt({ provider: 'claude-code', request }), request, value })
 
     return 'error' in result ? result.error : undefined
   }
 
-  assert.match(error(multi, { answers: [{ pick: [1] }] })!, /one answer for each of the 2 questions/)
-  assert.match(error(multi, { answers: [{ pick: [1, 2] }, { pick: [1] }] })!, /takes one option/)
-  assert.match(error(multi, { answers: [{ pick: [4] }, { pick: [1] }] })!, /from 1 to 3/)
-  assert.match(error(multi, { answers: [{ pick: [1] }, { pick: [2, 2] }] })!, /each once/)
-  assert.match(error(multi, { answers: [{ pick: [1] }, { text: 'Huge' }] })!, /takes several options/)
-  assert.match(error(permission, { choice: 'approve' })!, /one of allow, deny/)
-  assert.match(error(permission, { choice: 'allow', text: 'and more' })!, /takes no text/)
-  assert.match(error(plan, { choice: 'revise' })!, /needs text/)
+  assert.match(error({ request: multi, value: { answers: [{ pick: [1] }] } })!, /one answer for each of the 2 questions/)
+  assert.match(error({ request: multi, value: { answers: [{ pick: [1, 2] }, { pick: [1] }] } })!, /takes one option/)
+  assert.match(error({ request: multi, value: { answers: [{ pick: [4] }, { pick: [1] }] } })!, /from 1 to 3/)
+  assert.match(error({ request: multi, value: { answers: [{ pick: [1] }, { pick: [2, 2] }] } })!, /each once/)
+  assert.match(error({ request: multi, value: { answers: [{ pick: [1] }, { text: 'Huge' }] } })!, /takes several options/)
+  assert.match(error({ request: permission, value: { choice: 'approve' } })!, /one of allow, deny/)
+  assert.match(error({ request: permission, value: { choice: 'allow', text: 'and more' } })!, /takes no text/)
+  assert.match(error({ request: plan, value: { choice: 'revise' } })!, /needs text/)
   assert.deepEqual(checked({ provider: 'claude-code', request: multi, value: { answers: [{ text: '  Teal\nplease ' }, { pick: [3, 1] }] } }).answers, [
     { text: 'Teal please' },
     { pick: [1, 3] },
@@ -136,18 +137,18 @@ test('an answer is recorded in words', () => {
 })
 
 test('each harness gets the keys its own prompt expects', () => {
-  const claude = (request: Attention, value: unknown) => keys({ provider: 'claude-code', request, value })
+  const claude = ({ request, value }: { request: Attention; value: unknown }) => keys({ provider: 'claude-code', request, value })
   // A number picks a single-choice option and moves on; a multiple-choice question
   // toggles numbers and moves on with Right; several questions end on the review's Submit.
-  assert.deepEqual(claude(multi, { answers: [{ pick: [2] }, { pick: [1, 3] }] }), ['2', '1', '3', KEY.right, '1'])
-  assert.deepEqual(claude(single, { answers: [{ pick: [2] }] }), ['2'])
+  assert.deepEqual(claude({ request: multi, value: { answers: [{ pick: [2] }, { pick: [1, 3] }] } }), ['2', '1', '3', KEY.right, '1'])
+  assert.deepEqual(claude({ request: single, value: { answers: [{ pick: [2] }] } }), ['2'])
   // Free text goes on the line after the options, then Enter.
-  assert.deepEqual(claude(single, { answers: [{ text: 'Purple' }] }), ['3', 'Purple', KEY.enter])
-  assert.deepEqual(claude(permission, { choice: 'allow' }), ['1'])
-  assert.deepEqual(claude(permission, { choice: 'deny' }), [KEY.escape])
-  assert.deepEqual(claude(permission, { choice: 'deny', text: 'not that' }), [KEY.up, KEY.tab, 'not that', KEY.enter])
-  assert.deepEqual(claude(plan, { choice: 'approve' }), ['2'])
-  assert.deepEqual(claude(plan, { choice: 'revise', text: 'smaller' }), ['3', 'smaller', KEY.enter])
+  assert.deepEqual(claude({ request: single, value: { answers: [{ text: 'Purple' }] } }), ['3', 'Purple', KEY.enter])
+  assert.deepEqual(claude({ request: permission, value: { choice: 'allow' } }), ['1'])
+  assert.deepEqual(claude({ request: permission, value: { choice: 'deny' } }), [KEY.escape])
+  assert.deepEqual(claude({ request: permission, value: { choice: 'deny', text: 'not that' } }), [KEY.up, KEY.tab, 'not that', KEY.enter])
+  assert.deepEqual(claude({ request: plan, value: { choice: 'approve' } }), ['2'])
+  assert.deepEqual(claude({ request: plan, value: { choice: 'revise', text: 'smaller' } }), ['3', 'smaller', KEY.enter])
   assert.deepEqual(keys({ provider: 'codex', request: codex, value: { choice: 'allow' } }), ['y'])
   assert.deepEqual(keys({ provider: 'codex', request: codex, value: { choice: 'deny' } }), [KEY.escape])
   assert.deepEqual(keys({ provider: 'codex', request: codex, value: { choice: 'deny', text: 'skip it' } }), [KEY.escape, 'skip it', KEY.enter])
@@ -162,40 +163,48 @@ test('an MCP form keeps its fields, is checked, and is filled with the keys its 
   assert.deepEqual(prompt({ provider: 'claude-code', request: elicitation }), { kind: 'form' })
   const url = { ...fixture({ name: 'claude-elicitation-form' }), mode: 'url', url: 'https://example.com/auth' }
   const envelope: HookEnvelope = { v: 1, id: 'hook-3', at: '2026-10-14T17:00:00Z', harness: 'claude', event: 'Elicitation', payload: url }
-  assert.equal(attend([], observe(envelope)[0]!.attend!)[0]!.form, undefined, 'a URL elicitation is answered in the session')
+  assert.equal(attend({ current: [], change: observe({ envelope })[0]!.attend! })[0]!.form, undefined, 'a URL elicitation is answered in the session')
 
-  const error = (value: unknown) => {
+  const error = ({ value }: { value: unknown }) => {
     const result = checkAnswer({ prompt: { kind: 'form' }, request: elicitation, value })
 
     return 'error' in result ? result.error : undefined
   }
 
-  assert.match(error({ choice: 'accept', values: {} })!, /Name is required/)
-  assert.match(error({ choice: 'accept', values: { name: 'Ada', color: 'green' } })!, /one of red, blue/)
-  assert.match(error({ choice: 'accept', values: { name: 'Ada', ok: 'yes' } })!, /true or false/)
-  assert.match(error({ choice: 'accept', values: { name: 'Ada', age: 3 } })!, /no field age/)
-  assert.match(error({ choice: 'allow' })!, /takes \{"choice":"accept"/)
+  assert.match(error({ value: { choice: 'accept', values: {} } })!, /Name is required/)
+  assert.match(error({ value: { choice: 'accept', values: { name: 'Ada', color: 'green' } } })!, /one of red, blue/)
+  assert.match(error({ value: { choice: 'accept', values: { name: 'Ada', ok: 'yes' } } })!, /true or false/)
+  assert.match(error({ value: { choice: 'accept', values: { name: 'Ada', age: 3 } } })!, /no field age/)
+  assert.match(error({ value: { choice: 'allow' } })!, /takes \{"choice":"accept"/)
 
-  const form = (value: unknown) => keys({ provider: 'claude-code', request: elicitation, value })
-  assert.deepEqual(form({ choice: 'accept', values: { name: 'Grace Hopper', color: 'blue', ok: true } }), [
+  const form = ({ value }: { value: unknown }) => keys({ provider: 'claude-code', request: elicitation, value })
+  assert.deepEqual(form({ value: { choice: 'accept', values: { name: 'Grace Hopper', color: 'blue', ok: true } } }), [
     'Grace Hopper', KEY.down, KEY.right, KEY.down, KEY.space, KEY.down, KEY.space, KEY.down, KEY.enter,
   ])
-  assert.deepEqual(form({ choice: 'accept', values: { name: 'Ada', ok: false } }), ['Ada', KEY.down, KEY.down, KEY.down, KEY.enter])
-  assert.deepEqual(form({ choice: 'decline' }), [KEY.down, KEY.down, KEY.down, KEY.right, KEY.enter])
+  assert.deepEqual(form({ value: { choice: 'accept', values: { name: 'Ada', ok: false } } }), ['Ada', KEY.down, KEY.down, KEY.down, KEY.enter])
+  assert.deepEqual(form({ value: { choice: 'decline' } }), [KEY.down, KEY.down, KEY.down, KEY.right, KEY.enter])
   const answer = checked({ provider: 'claude-code', request: elicitation, value: { choice: 'accept', values: { name: 'Ada', ok: true } } })
   assert.equal(answerText({ prompt: { kind: 'form' }, request: elicitation, answer }), 'Accept\nName: Ada\nAgree: yes')
 })
 
 test('a delivered answer marks its request answered and frees the card until the session moves on', () => {
-  const event = (seq: number, type: string, data: unknown): BoardEvent =>
+  const event = ({ seq, type, data }: { seq: number; type: string; data: unknown }): BoardEvent =>
     ({ v: 1, seq, id: `e${seq}`, at: `2026-10-14T17:00:0${seq}Z`, actor: 'cli', cardId: 'c1', type, data }) as BoardEvent
-  const pushed = event(1, 'card.pushed', { key: 'claude:s', agent: { provider: 'claude-code', sessionId: 's' }, attention: [permission] })
-  const reply = (seq: number, state: string) => event(seq, 'card.replied', { reply: 'r2', state, route: 'terminal:tmux', answers: permission.key })
-  const queued = replay(emptyBoard(), [pushed, reply(2, 'queued')])
-  assert.equal(queued.cards.c1!.column, 'needs_you')
-  const delivered = replay(queued, [reply(3, 'delivered')])
-  assert.deepEqual(delivered.cards.c1!.attention, [{ ...permission, answered: 'r2' }])
-  assert.equal(delivered.cards.c1!.column, 'workers_on_it')
+  const pushed = event({ seq: 1, type: 'card.pushed', data: { key: 'claude:s', agent: { provider: 'claude-code', sessionId: 's' }, attention: [permission] } })
+  type Receipt = { seq: number; state: string; answers?: string }
+  const reply = ({ seq, state, answers = requestId({ request: permission }) }: Receipt) =>
+    event({ seq, type: 'card.replied', data: { reply: `r${seq}`, state, route: 'terminal:tmux', answers } })
+  const queued = replay({ state: emptyBoard(), events: [pushed, reply({ seq: 2, state: 'queued' })] })
+  assert.equal(queued.cards.c1!.attention[0]!.answered, undefined)
+  // An answer written for an earlier request under the same key leaves this one open.
+  const stale = replay({
+    state: queued,
+    events: [reply({ seq: 3, state: 'delivered', answers: `${permission.key}#00000000` })],
+  })
+  assert.equal(stale.cards.c1!.attention[0]!.answered, undefined)
+  const delivered = replay({ state: queued, events: [reply({ seq: 3, state: 'delivered' })] })
+  assert.deepEqual(delivered.cards.c1!.attention, [{ ...permission, answered: 'r3' }])
+  assert.equal(delivered.sessions!['claude-code:s']!.attention[0]!.answered, 'r3')
 })
 
 function hosts() {
@@ -212,9 +221,9 @@ function hosts() {
   writeFileSync(join(stub, 'ps.out'), 'ttys042\n')
   writeFileSync(join(stub, 'tmux.out'), `${TTY}\n`)
   const env = { ...process.env, PNYX_HOME: join(root, 'pnyx'), STUB_DIR: stub, PATH: `${bin}:/usr/bin:/bin` }
-  const run = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
-  const fails = (args: string[], pattern: RegExp) =>
-    assert.throws(() => run(...args), (e: { stdout?: string }) => pattern.test(String(e.stdout)))
+  const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
+  const fails = ({ args, pattern }: { args: string[]; pattern: RegExp }) =>
+    assert.throws(() => run({ args }), (e: { stdout?: string }) => pattern.test(String(e.stdout)))
 
   const calls = () => {
     const log = join(stub, 'calls.log')
@@ -224,14 +233,16 @@ function hosts() {
   }
 
   type Terminal = Record<string, string>
+  type Session = { key: string; provider: string; terminal: Terminal; attention: Attention[] }
 
-  const session = (key: string, provider: string, terminal: Terminal, attention: Attention[]) => {
+  const session = ({ key, provider, terminal, attention }: Session) => {
     const file = join(root, `${key}.json`)
     writeFileSync(file, JSON.stringify({ agent: { provider, sessionId: key }, terminal: { tty: TTY, pid: '4242', ...terminal }, attention }))
-    run('push', '--key', key, '--file', file)
+    run({ args: ['push', '--key', key, '--file', file] })
   }
 
-  const set = (file: string, text: string) => writeFileSync(join(stub, file), text)
+  const set = ({ file, text }: { file: string; text: string }) =>
+    writeFileSync(join(stub, file), text)
 
   return { root, run, fails, calls, session, set }
 }
@@ -240,52 +251,53 @@ const TMUX = { program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' }
 
 test('an answer is typed as keys into the tmux pane, once, and marks the request answered', () => {
   const { root, run, fails, calls, session } = hosts()
-  session('s1', 'claude-code', TMUX, [multi])
+  session({ key: 's1', provider: 'claude-code', terminal: TMUX, attention: [multi] })
   const answer = JSON.stringify({ answers: [{ pick: [2] }, { pick: [1, 3] }] })
-  fails(['reply', 's1', '--answer', multi.key, '--json', answer, '--seen', 'Pick a fruit'], /code: REVISION_CONFLICT/)
-  fails(['reply', 's1', '--answer', 'hook:tool:Bash', '--json', answer], /no open request with key hook:tool:Bash/)
-  fails(['reply', 's1', '--answer', multi.key, '--json', '{"answers":[]}'], /one answer for each/)
-  fails(['reply', 's1', '--answer', multi.key, '--json', 'nope'], /not valid JSON/)
+  const seen = requestId({ request: multi })
+  fails({ args: ['reply', 's1', '--answer', multi.key, '--json', answer, '--seen', `${multi.key}#00000000`], pattern: /code: REVISION_CONFLICT/ })
+  fails({ args: ['reply', 's1', '--answer', 'hook:tool:Bash', '--json', answer], pattern: /no open request with key hook:tool:Bash/ })
+  fails({ args: ['reply', 's1', '--answer', multi.key, '--json', '{"answers":[]}'], pattern: /one answer for each/ })
+  fails({ args: ['reply', 's1', '--answer', multi.key, '--json', 'nope'], pattern: /not valid JSON/ })
   assert.equal(calls().length, 0)
 
-  assert.match(run('reply', 's1', '--answer', multi.key, '--json', answer, '--seen', 'Pick a color', '--idempotency-key', 'a1'), /state: delivered/)
+  assert.match(run({ args: ['reply', 's1', '--answer', multi.key, `--json=${answer}`, `--seen=${seen}`, '--idempotency-key', 'a1'] }), /state: delivered/)
   const sent = calls().filter(c => c.includes('arg=send-keys'))
     .map(c => c.split('arg=--\narg=')[1]!.replace(/\n$/, ''))
   assert.deepEqual(sent, ['2', '1', '3', KEY.right, '1'])
   assert.ok(calls().every(c => !/load-buffer|paste-buffer/.test(c)), 'keys are typed, never pasted')
   assert.match(calls()[1]!, /arg=display-message/)
-  assert.match(run('card', 's1'), /answered: a1/)
-  assert.match(readFileSync(join(root, 'pnyx', 'boards', 'default', 'events.jsonl'), 'utf8'), /"text":"Pick a color → Blue\\nPick sizes → Small, Large","answers":"hook:tool:AskUserQuestion"/)
+  assert.match(run({ args: ['card', 's1'] }), /answered: a1/)
+  assert.ok(readFileSync(join(root, 'pnyx', 'boards', 'default', 'events.jsonl'), 'utf8')
+    .includes(`"text":"Pick a color → Blue\\nPick sizes → Small, Large","answers":"${seen}"`))
   // The same key never answers twice, and an answered request takes no other answer.
-  assert.match(run('reply', 's1', '--answer', multi.key, '--json', answer, '--idempotency-key', 'a1'), /sent: false/)
-  fails(['reply', 's1', '--answer', multi.key, '--json', answer], /no open request/)
+  assert.match(run({ args: ['reply', 's1', '--answer', multi.key, '--json', answer, '--idempotency-key', 'a1'] }), /sent: false/)
+  fails({ args: ['reply', 's1', '--answer', multi.key, '--json', answer], pattern: /no open request/ })
 })
 
-test('Codex, Paseo and Herdr take keys too; Terminal and Firstmate cards cannot', () => {
+test('Codex and Paseo take keys too; Herdr, Terminal and Firstmate cards cannot', () => {
   const { run, fails, calls, session } = hosts()
-  session('s1', 'codex', { program: 'kitty', paseoTerminal: 'term-1' }, [codex])
-  assert.match(run('reply', 's1', '--answer', codex.key, '--json', '{"choice":"deny","text":"skip it"}'), /state: delivered/)
+  session({ key: 's1', provider: 'codex', terminal: { program: 'kitty', paseoTerminal: 'term-1' }, attention: [codex] })
+  assert.match(run({ args: ['reply', 's1', '--answer', codex.key, '--json', '{"choice":"deny","text":"skip it"}'] }), /state: delivered/)
   const paseo = calls().filter(c => c.startsWith('call=paseo'))
   assert.equal(paseo.length, 3)
   assert.ok(paseo[0]!.includes(`arg=send-keys\narg=term-1\narg=-l\narg=--\narg=${KEY.escape}\n`))
 
-  session('s2', 'claude-code', { program: 'kitty', herdrSession: 'h1', herdrPane: 'p1' }, [permission])
-  assert.match(run('reply', 's2', '--answer', permission.key, '--json', '{"choice":"allow"}'), /state: delivered/)
-  assert.match(calls().at(-1)!, /call=herdr\narg=pane\narg=send-text\narg=p1\narg=1\n/)
-
-  session('s3', 'claude-code', { program: 'Apple_Terminal' }, [permission])
-  assert.match(run('reply', 's3', '--answer', permission.key, '--json', '{"choice":"allow"}'), /state: failed\n {2}detail: "Terminal cannot type a key/)
-  fails(['reply', 's3', '--answer', permission.key, '--json', '{"choice":"allow"}', '--text', 'hi'], /--answer takes --json/)
+  session({ key: 's2', provider: 'claude-code', terminal: { program: 'kitty', herdrSession: 'h1', herdrPane: 'p1' }, attention: [permission] })
+  fails({ args: ['reply', 's2', '--answer', permission.key, '--json', '{"choice":"allow"}'], pattern: /no open request with key .* that can be answered here/ })
+  session({ key: 's3', provider: 'claude-code', terminal: { program: 'Apple_Terminal' }, attention: [permission] })
+  fails({ args: ['reply', 's3', '--answer', permission.key, '--json', '{"choice":"allow"}'], pattern: /that can be answered here/ })
+  fails({ args: ['reply', 's3', '--answer', permission.key, '--json', '{"choice":"allow"}', '--text', 'hi'], pattern: /--answer takes --json/ })
+  assert.equal(calls().filter(c => /call=(herdr|osascript)/.test(c)).length, 0)
 })
 
 test('a failure after the first key leaves the answer unconfirmed, never retyped', () => {
   const { run, calls, session, set } = hosts()
-  session('s1', 'claude-code', TMUX, [plan])
+  session({ key: 's1', provider: 'claude-code', terminal: TMUX, attention: [plan] })
   // tmux call 1 checks the pane, call 2 types 3, call 3 (the text) fails.
-  set('tmux.exit.3', '1')
-  const out = run('reply', 's1', '--answer', plan.key, '--json', '{"choice":"revise","text":"smaller"}', '--idempotency-key', 'p1')
-  assert.match(out, /state: delivery_unknown\n {2}detail: "the answer was typed only in part/)
+  set({ file: 'tmux.exit.3', text: '1' })
+  const args = ['reply', 's1', '--answer', plan.key, '--json', '{"choice":"revise","text":"smaller"}', '--idempotency-key', 'p1']
+  assert.match(run({ args }), /state: delivery_unknown\n {2}detail: "the answer was typed only in part/)
   assert.equal(calls().filter(c => c.includes('arg=send-keys')).length, 2)
-  assert.match(run('reply', 's1', '--answer', plan.key, '--json', '{"choice":"revise","text":"smaller"}', '--idempotency-key', 'p1'), /sent: false/)
-  assert.doesNotMatch(run('card', 's1'), /answered/)
+  assert.match(run({ args }), /sent: false/)
+  assert.doesNotMatch(run({ args: ['card', 's1'] }), /answered/)
 })

@@ -2,17 +2,17 @@ import { createContext, useContext, useEffect, useRef, type ReactNode } from 're
 import { bindingsFor, characterBinding, emptyProgress, keyLabel, resolveKey, type KeyboardPreferences, type KeyPlatform, type KeyScope } from '../../../src/core/keyboard.ts'
 
 export interface ActionContext { scope: KeyScope; target: HTMLElement }
-type Handler = (context: ActionContext) => boolean
+type Handler = ({ context }: { context: ActionContext }) => boolean
 interface KeyboardContext {
   prefs: KeyboardPreferences
   platform: KeyPlatform
-  label(id: string): string
+  label({ id }: { id: string }): string
   handlers: Map<string, Handler>
 }
 const Context = createContext<KeyboardContext | null>(null)
-export const isEditing = (target: HTMLElement) => !!target.closest('input,textarea,[contenteditable]:not([contenteditable=false])')
+export const isEditing = ({ target }: { target: HTMLElement }) => !!target.closest('input,textarea,[contenteditable]:not([contenteditable=false])')
 
-export function focusElement(selector: string) {
+export function focusElement({ selector }: { selector: string }) {
   const element = document.querySelector<HTMLElement>(selector)
   element?.focus({ preventScroll: true }); element?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 
@@ -28,10 +28,10 @@ export function KeyboardProvider({
   children,
 }: {
   prefs: KeyboardPreferences
-  onAction(id: string, context: ActionContext): boolean
+  onAction({ id, context }: { id: string; context: ActionContext }): boolean
   leaveField(): void
   hints: boolean
-  hintKey(event: KeyboardEvent): boolean
+  hintKey({ event }: { event: KeyboardEvent }): boolean
   children: ReactNode
 }) {
   const platform: KeyPlatform = /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other'
@@ -63,25 +63,34 @@ export function KeyboardProvider({
       }
 
       const overlay = target.closest('[data-key-scope=overlay]')
-      const scope = hints ? 'hints' : overlay ? 'overlay' : (target.dataset.keyScope ?? 'navigation') as KeyScope
+      // Message blocks, comments and buttons inside the conversation share its scope.
+      const scope = hints ? 'hints' : overlay ? 'overlay' : (target.closest<HTMLElement>('[data-key-scope]')?.dataset.keyScope ?? 'navigation') as KeyScope
+      // These controls own their standard navigation and selection keys; buttons and
+      // links in the conversation keep Enter.
+      const owned = target.closest('[role=combobox],[role=listbox],[role=separator]')
+        || (scope === 'thread' && event.key === 'Enter' && target.closest('button,a'))
 
-      // These controls own their standard navigation and selection keys.
-      if (!hints && !event.ctrlKey && !event.metaKey && !event.altKey && target.closest('[role=combobox],[role=listbox],[role=separator]') && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', ' '].includes(event.key)) {
+      if (!hints && !event.ctrlKey && !event.metaKey && !event.altKey && owned && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', ' '].includes(event.key)) {
         return
       }
 
-      const result = resolveKey({ key: event.key, code: event.code, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat, defaultPrevented: event.defaultPrevented, isComposing: event.isComposing, altGraph: event.getModifierState('AltGraph') }, { scope, editing: isEditing(target), platform, characterShortcuts: prefs.characterShortcuts, now: performance.now() }, prefs, progress)
+      const result = resolveKey({ event: { key: event.key, code: event.code, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat, defaultPrevented: event.defaultPrevented, isComposing: event.isComposing, altGraph: event.getModifierState('AltGraph') }, context: { scope, editing: isEditing({ target }), platform, characterShortcuts: prefs.characterShortcuts, now: performance.now() }, prefs, progress })
       progress = result.progress
 
       if (result.action) {
         const context = { scope, target }
 
-        if (handlers.current.get(result.action)?.(context) || onAction(result.action, context)) {
+        if (handlers.current.get(result.action)?.({
+          context,
+        }) || onAction({
+          id: result.action,
+          context,
+        })) {
           event.preventDefault()
         }
       } else if (result.consume) {
         event.preventDefault()
-      } else if (hints && !event.defaultPrevented && !event.isComposing && hintKey(event)) {
+      } else if (hints && !event.defaultPrevented && !event.isComposing && hintKey({ event })) {
         event.preventDefault()
       }
     }
@@ -104,11 +113,13 @@ export function KeyboardProvider({
         prefs,
         platform,
         handlers: handlers.current,
-        label: id => keyLabel(
-          bindingsFor(prefs, id).filter(
-            binding => prefs.characterShortcuts || !characterBinding(binding, platform),
-          ),
-          platform,
+        label: ({ id }) => keyLabel(
+          {
+            keys: bindingsFor({ prefs, id }).filter(
+              binding => prefs.characterShortcuts || !characterBinding({ binding, platform }),
+            ),
+            platform,
+          },
         ),
       }}
     >
@@ -127,10 +138,10 @@ export function useKeyboard() {
   return value
 }
 
-export function useKeyAction(id: string, handler: Handler) {
+export function useKeyAction({ id, handler }: { id: string; handler: Handler }) {
   const { handlers } = useKeyboard(), current = useRef(handler); current.current = handler
   useEffect(() => {
-    const run: Handler = context => current.current(context); handlers.set(id, run)
+    const run: Handler = ({ context }) => current.current({ context }); handlers.set(id, run)
 
     return () => {
       if (handlers.get(id) === run) {

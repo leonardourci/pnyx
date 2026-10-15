@@ -6,6 +6,7 @@ import { Button, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { slashMatches, slashPrefix } from './view.ts'
+import { commentReply, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 
@@ -14,6 +15,8 @@ export function Composer({
   title,
   draft,
   setDraft,
+  comments,
+  setComments,
   thread,
   height,
   command,
@@ -24,13 +27,15 @@ export function Composer({
   card: string
   title: string
   draft: string
-  setDraft(text: string): void
+  setDraft({ text }: { text: string }): void
+  comments: ChatComment[]
+  setComments({ items }: { items: ChatComment[] }): void
   thread: ThreadPage | null
   height: number
   command: Command
-  save(patch: unknown): Promise<boolean>
+  save({ patch }: { patch: unknown }): Promise<boolean>
   connected: boolean
-  notify(text: string): void
+  notify({ text }: { text: string }): void
 }) {
   const [preview, setPreview] = useState<number | null>(null)
   const [sending, setSending] = useState(false)
@@ -38,10 +43,13 @@ export function Composer({
   const [active, setActive] = useState(-1)
   const input = useRef<HTMLTextAreaElement>(null)
   const attempt = useRef<{ text: string; id: string } | null>(null)
-  const currentDraft = useRef(draft)
-  currentDraft.current = draft
+  // Comments travel with the draft as one reply, and stay until it is delivered.
+  const outgoing = commentReply({ draft, comments })
+  const commented = comments.filter(c => c.text.trim()).length
+  const current = useRef({ draft, comments })
+  current.current = { draft, comments }
   const { label } = useKeyboard(), [catalog, setCatalog] = useState<Catalog | null>(null)
-  const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches(s.command, prefix ?? ''))
+  const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches({ command: s.command, prefix: prefix ?? '' }))
   const catalogOpen = prefix !== null
   useEffect(() => {
     if (!catalogOpen || !connected) {
@@ -50,7 +58,7 @@ export function Composer({
 
     let cancelled = false; setCatalog(null)
     const timer = setTimeout(() => {
-      void command('catalog', [card]).then(r => {
+      void command({ name: 'catalog', args: [card] }).then(r => {
         if (!cancelled) {
           setCatalog(r.catalog as Catalog)
         }
@@ -70,53 +78,66 @@ export function Composer({
     document.getElementById(`suggestion-${card}-${active}`)?.scrollIntoView({ block: 'nearest' })
   }, [card, active])
 
-  const choose = (command: string) => {
-    const cursor = input.current?.selectionStart ?? draft.length; setDraft(command + ' ' + draft.slice(cursor)); setPrefix(null); setActive(-1); input.current?.focus(); requestAnimationFrame(() => input.current?.setSelectionRange(command.length + 1, command.length + 1))
+  const choose = ({ command }: { command: string }) => {
+    const cursor = input.current?.selectionStart ?? draft.length; setDraft({ text: command + ' ' + draft.slice(cursor) }); setPrefix(null); setActive(-1); input.current?.focus(); requestAnimationFrame(() => input.current?.setSelectionRange(command.length + 1, command.length + 1))
   }
 
   const send = async () => {
-    if (sending || !draft.trim() || !connected || !thread?.route) {
+    if (sending || !outgoing.trim() || !connected || !thread?.route) {
       return
     }
 
-    if (attempt.current?.text !== draft) {
-      attempt.current = { text: draft, id: crypto.randomUUID() }
+    if (attempt.current?.text !== outgoing) {
+      attempt.current = { text: outgoing, id: crypto.randomUUID() }
     }
 
     setSending(true)
 
     try {
-      const r = await command('reply', [card, draft, attempt.current.id]); const receipt = r.reply as { state: string; detail?: string } | undefined
+      const r = await command({ name: 'reply', args: [card, outgoing, attempt.current.id] }); const receipt = r.reply as { state: string; detail?: string } | undefined
       const why = receipt?.detail ? ` (${receipt.detail})` : ''
-      notify(receipt?.state === 'delivery_unknown' ? `Delivery unknown${why}. Check the native session before sending again.` : receipt?.state === 'failed' ? `Delivery failed${why}. Your draft is retained.` : 'Reply delivered to the route. This does not confirm it was handled.')
+      notify({ text: receipt?.state === 'delivery_unknown' ? `Delivery unknown${why}. Check the native session before sending again.` : receipt?.state === 'failed' ? `Delivery failed${why}. Your draft is retained.` : 'Reply delivered to the route. This does not confirm it was handled.' })
 
-      if (receipt?.state === 'delivered' && currentDraft.current === draft) {
-        setDraft(''); attempt.current = null
+      if (receipt?.state === 'delivered') {
+        // Keep anything typed or commented while the reply was in flight.
+        if (current.current.draft === draft) {
+          setDraft({ text: '' })
+        }
+
+        const sent = new Set(comments.map(c => `${c.id}\n${c.text}`))
+        setComments({ items: current.current.comments.filter(c => !sent.has(`${c.id}\n${c.text}`)) })
+        attempt.current = null
       }
     } catch (e) {
-      notify((e as Error).message)
+      notify({ text: (e as Error).message })
     } finally {
       setSending(false)
     }
   }
 
-  useKeyAction('send', ({ scope }) => {
-    if (scope !== 'composer') {
-      return false
-    }
+  useKeyAction({
+    id: 'send',
+    handler: ({ context: { scope } }) => {
+      if (scope !== 'composer') {
+        return false
+      }
 
-    void send()
+      void send()
 
-    return true
+      return true
+    },
   })
-  useKeyAction('cancel', ({ scope }) => {
-    if (scope !== 'composer' || prefix === null) {
-      return false
-    }
+  useKeyAction({
+    id: 'cancel',
+    handler: ({ context: { scope } }) => {
+      if (scope !== 'composer' || prefix === null) {
+        return false
+      }
 
-    setPrefix(null); setActive(-1)
+      setPrefix(null); setActive(-1)
 
-    return true
+      return true
+    },
   })
 
   return (
@@ -134,14 +155,32 @@ export function Composer({
         value={height}
         min={VIEW_SIZE_LIMITS.composerHeight.min}
         max={VIEW_SIZE_LIMITS.composerHeight.max}
-        onPreview={setPreview}
-        onCommit={n => save({ composerHeight: n })}
+        onPreview={({ value }) => setPreview(value)}
+        onCommit={({ value: n }) => save({ patch: { composerHeight: n } })}
       />
-      <label htmlFor={`reply-${card}`} className="small muted">
+      <label htmlFor={`reply-${card}`} className="small muted reply-label">
+        <Icon name="typing" size={14} />
         Reply to
         {' '}
         {title}
       </label>
+      {commented > 0 && (
+        <div className="pending-comments small">
+          <p className="gold">{commented === 1 ? '1 comment goes' : `${commented} comments go`} with this reply</p>
+          <ul>
+            {comments.filter(c => c.text.trim()).map(c => (
+              <li key={c.id}>
+                <span>
+                  <q className="muted">{c.quote}</q>
+                  {' '}
+                  {c.text.trim()}
+                </span>
+                <Button aria-label="Remove comment" onClick={() => setComments({ items: comments.filter(x => x.id !== c.id) })}>Remove</Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="composer-input">
         {prefix !== null && (
           <div className="slash-menu">
@@ -155,7 +194,7 @@ export function Composer({
                   key={s.command}
                   className={n === active ? 'active' : ''}
                   onMouseDown={e => e.preventDefault()}
-                  onClick={() => choose(s.command)}
+                  onClick={() => choose({ command: s.command })}
                 >
                   <strong>{s.command}</strong>
                   <span>
@@ -179,8 +218,8 @@ export function Composer({
           aria-controls={catalogOpen ? `suggestions-${card}` : undefined}
           aria-activedescendant={active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
           onChange={e => {
-            setDraft(e.target.value)
-            setPrefix(slashPrefix(e.target.value, e.target.selectionStart))
+            setDraft({ text: e.target.value })
+            setPrefix(slashPrefix({ text: e.target.value, cursor: e.target.selectionStart }))
             setActive(-1)
           }}
           onKeyDown={e => {
@@ -199,7 +238,7 @@ export function Composer({
             }
 
             if (prefix !== null && active >= 0 && e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
-              e.preventDefault(); choose(suggestions[active].command)
+              e.preventDefault(); choose({ command: suggestions[active].command })
 
               return
             }
@@ -210,15 +249,15 @@ export function Composer({
         <span className="small muted">
           Enter newline ·
           {' '}
-          {label('send')}
+          {label({ id: 'send' })}
           {' '}
           send ·
           {' '}
-          {label('cancel')}
+          {label({ id: 'cancel' })}
           {' '}
           leave
         </span>
-        <Button type="submit" variant="primary" disabled={sending || !draft.trim() || !connected || !thread?.route}>
+        <Button type="submit" variant="primary" disabled={sending || !outgoing.trim() || !connected || !thread?.route}>
           {sending ? 'Sending…' : 'Send reply'}
           <Icon name="send" size={14} />
         </Button>

@@ -1,35 +1,46 @@
 import { useEffect, useState } from 'react'
 import type { Card } from '../../../src/core/model.ts'
+import type { ThreadEntry } from '../../../src/thread/read.ts'
+import { CollapsibleText, Disclosure } from '../components/ui/disclosure.tsx'
+import { briefNotes, relativeTime, type BriefNote } from './brief.ts'
 import type { Command } from './connection.ts'
 
-interface Note { at: string; source: string; text: string }
-const SECTIONS = [['summary', 'Summary'], ['decisions', 'Decisions'], ['context', 'Context']] as const
+type Sections = Record<'summary' | 'decisions' | 'context', BriefNote[]>
 
-// The card's harvested notes, in full, as `pnyx-axi card --full` reports them.
-export function Notes({
-  card,
-  command,
-  notify,
-}: {
+const list = ({ value }: { value: unknown }) => (Array.isArray(value) ? value as BriefNote[] : [])
+const STATUS = /^(?:done|resolved|needs-decision)(?: \[[^\]]+\])?:\s*/
+
+// The card's harvested notes, as `pnyx-axi card --full` reports them, folded into one
+// collapsed header: the latest summary on top, then decisions, context and earlier summaries.
+export function ConversationBrief({ card, entries, command, notify }: {
   card: Card
+  entries: ThreadEntry[]
   command: Command
-  notify(text: string): void
+  notify({ text }: { text: string }): void
 }) {
-  const [notes, setNotes] = useState<Record<string, Note[]> | null>(null)
+  const [notes, setNotes] = useState<Sections>({ summary: [], decisions: [], context: [] })
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60000)
+
+    return () => clearInterval(timer)
+  }, [])
   useEffect(() => {
     let cancelled = false
-    void command('card', [card.id, '--full']).then(r => {
-      if (!cancelled) {
-        setNotes(Object.fromEntries(SECTIONS.map(([key]) => {
-          const list = (r.notes as Record<string, unknown> | undefined)?.[key]
+    void command({ name: 'card', args: [card.id, '--full'] }).then(r => {
+      const data = r.notes as Record<string, unknown> | undefined
 
-          return [key, Array.isArray(list) ? list as Note[] : []]
-        })))
+      if (!cancelled) {
+        setNotes({
+          summary: list({ value: data?.summary }),
+          decisions: list({ value: data?.decisions }),
+          context: list({ value: data?.context }),
+        })
       }
     })
       .catch(e => {
         if (!cancelled) {
-          notify(e.message)
+          notify({ text: e.message })
         }
       })
 
@@ -38,34 +49,59 @@ export function Notes({
     }
   }, [card.id, card.notes?.length, command, notify])
 
-  if (!notes) {
-    return (
-      <div className="detail-content">
-        <p className="empty">Loading notes…</p>
-      </div>
-    )
+  const conversation = entries.filter(e => e.kind === 'message').map(e => e.text)
+  const [summary, ...earlier] = briefNotes({ notes: notes.summary, conversation })
+  const decisions = briefNotes({ notes: notes.decisions, conversation })
+  const context = briefNotes({ notes: notes.context, conversation })
+
+  if (!summary && !decisions.length && !context.length) {
+    return null
   }
 
+  const meta = ({ note }: { note: BriefNote }) => (
+    <span className="brief-meta">
+      {note.source}
+      {' · '}
+      <time dateTime={note.at} title={note.at ? new Date(note.at).toLocaleString() : undefined}>
+        {relativeTime({ at: note.at, now })}
+      </time>
+    </span>
+  )
+
+  const items = [
+    ...decisions.map(note => [note.text.startsWith('needs-decision') ? 'Decision requested' : 'Decision', note] as const),
+    ...context.map(note => ['Context', note] as const),
+    ...earlier.map(note => ['Earlier summary', note] as const),
+  ]
+
   return (
-    <div className="detail-content">
-      <span className="eyebrow">Summary · Decisions · Context</span>
-      {SECTIONS.map(([key, title]) => (
-        <section key={key} aria-label={title}>
-          <h3>{title}</h3>
-          {notes[key]!.length ? notes[key]!.map((n, i) => (
-            <article key={i} className="history-entry">
-              <p>{n.text}</p>
-              <span className="small muted">
-                {n.source}
-                {' '}
-                ·
-                {' '}
-                {new Date(n.at).toLocaleString()}
-              </span>
-            </article>
-          )) : <p className="empty">Nothing recorded yet.</p>}
-        </section>
+    <Disclosure
+      className="conversation-brief"
+      title={(
+        <>
+          <span className="eyebrow">
+            Summary & decisions
+            {decisions.length ? ` · ${decisions.length}` : ''}
+          </span>
+          <span className="brief-line">
+            {summary?.text.replace(STATUS, '').split('\n')[0] ?? (decisions.length ? 'Recorded decisions' : 'Context')}
+          </span>
+        </>
+      )}
+    >
+      {summary && (
+        <div className="brief-item">
+          <CollapsibleText text={summary.text.replace(STATUS, '')} />
+          {meta({ note: summary })}
+        </div>
+      )}
+      {items.map(([label, note], i) => (
+        <article className="brief-item" key={`${label}-${note.at}-${i}`}>
+          <span className="eyebrow">{label}</span>
+          <CollapsibleText text={note.text.replace(STATUS, '')} />
+          {meta({ note })}
+        </article>
       ))}
-    </div>
+    </Disclosure>
   )
 }

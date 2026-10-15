@@ -8,20 +8,23 @@ export function KeyboardSettings({
   save,
 }: {
   prefs: KeyboardPreferences
-  save(patch: unknown): Promise<boolean>
+  save({ patch }: { patch: unknown }): Promise<boolean>
 }) {
   const { platform } = useKeyboard(), [filter, setFilter] = useState(''), [editing, setEditing] = useState<string | null>(null), [draft, setDraft] = useState(''), [error, setError] = useState(''), [busy, run] = useBusy()
-  useKeyAction('cancel', ({ scope }) => {
-    if (scope !== 'navigation' || !editing || busy) {
-      return false
-    }
+  useKeyAction({
+    id: 'cancel',
+    handler: ({ context: { scope } }) => {
+      if (scope !== 'navigation' || !editing || busy) {
+        return false
+      }
 
-    setEditing(null); setError('')
+      setEditing(null); setError('')
 
-    return true
+      return true
+    },
   })
 
-  const persist = (bindings: Record<string, string[] | null> | null) => {
+  const persist = ({ bindings }: { bindings: Record<string, string[] | null> | null }) => {
     const next = { ...prefs, bindings: bindings === null ? {} : { ...prefs.bindings } }
 
     if (bindings) {
@@ -34,7 +37,7 @@ export function KeyboardSettings({
       }
     }
 
-    const invalid = keyboardError(next)
+    const invalid = keyboardError({ prefs: next })
 
     if (invalid) {
       setError(invalid)
@@ -42,10 +45,12 @@ export function KeyboardSettings({
       return
     }
 
-    setError(''); run(async () => {
-      if (await save({ keyboard: { bindings } })) {
-        setEditing(null)
-      }
+    setError(''); run({
+      save: async () => {
+        if (await save({ patch: { keyboard: { bindings } } })) {
+          setEditing(null)
+        }
+      },
     })
   }
 
@@ -56,10 +61,10 @@ export function KeyboardSettings({
           <span className="eyebrow">MOVE THROUGH YOUR WORK</span>
           <h2>Keyboard shortcuts</h2>
         </div>
-        <Button variant="surface" disabled={busy} onClick={() => persist(null)}>Reset all bindings</Button>
+        <Button variant="surface" disabled={busy} onClick={() => persist({ bindings: null })}>Reset all bindings</Button>
       </div>
       <p className="muted">Bindings follow this board. Text fields keep normal typing; Enter adds a newline. Browsers may reserve the settings shortcut—Commands and the Settings button always remain available.</p>
-      <Switch label="Character shortcuts" checked={prefs.characterShortcuts} onChange={characterShortcuts => save({ keyboard: { characterShortcuts } })} />
+      <Switch label="Character shortcuts" checked={prefs.characterShortcuts} onChange={({ value: characterShortcuts }) => save({ patch: { keyboard: { characterShortcuts } } })} />
       <Input
         type="search"
         aria-label="Filter shortcuts"
@@ -80,10 +85,10 @@ export function KeyboardSettings({
                 disabled={busy}
                 aria-label={`Rebind ${a.label}`}
                 onClick={() => {
-                  setEditing(a.id); setDraft(bindingsFor(prefs, a.id).join('\n')); setError('')
+                  setEditing(a.id); setDraft(bindingsFor({ prefs, id: a.id }).join('\n')); setError('')
                 }}
               >
-                <kbd>{keyLabel(bindingsFor(prefs, a.id), platform)}</kbd>
+                <kbd>{keyLabel({ keys: bindingsFor({ prefs, id: a.id }), platform })}</kbd>
                 <span className="muted">Edit</span>
               </Button>
             </div>
@@ -92,8 +97,10 @@ export function KeyboardSettings({
                 className="binding-editor"
                 onSubmit={e => {
                   e.preventDefault(); persist({
-                    [a.id]: draft.split('\n').map(s => s.trim())
-                      .filter(Boolean),
+                    bindings: {
+                      [a.id]: draft.split('\n').map(s => s.trim())
+                        .filter(Boolean),
+                    },
                   })
                 }}
               >
@@ -115,7 +122,7 @@ export function KeyboardSettings({
                   <Button type="submit" variant="primary" disabled={busy}>Save binding</Button>
                   <Button
                     disabled={busy}
-                    onClick={() => persist({ [a.id]: null })}
+                    onClick={() => persist({ bindings: { [a.id]: null } })}
                   >
                     Reset action
                   </Button>

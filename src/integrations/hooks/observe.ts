@@ -8,6 +8,8 @@ import { terminalFacts } from '../../core/route.ts'
 import { hookSettings } from './settings.ts'
 
 export const HARNESSES = ['claude', 'codex'] as const
+// The events whose hook looks for the session's terminal; any other carries at most its Paseo terminal.
+export const TERMINAL_EVENTS = ['SessionStart', 'UserPromptSubmit']
 export type Harness = (typeof HARNESSES)[number]
 
 // What pnyx-hook.sh writes: one line per hook call.
@@ -79,26 +81,26 @@ const ASKING: Record<string, string> = {
   ExitPlanMode: 'waiting for plan approval',
 }
 
-export function isHookEnvelope(value: Record<string, unknown>): boolean {
+export function isHookEnvelope({ value }: { value: Record<string, unknown> }): boolean {
   return 'harness' in value
 }
 
-function str(value: unknown): string | undefined {
+function str({ value }: { value: unknown }): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined
 }
 
 // One line of at most 200 characters, for a request or activity shown on a card.
-function short(value: string | undefined): string | undefined {
+function short({ value }: { value: string | undefined }): string | undefined {
   const line = value?.replace(/\s+/g, ' ').trim()
 
   return line && (line.length > 200 ? `${line.slice(0, 199)}…` : line)
 }
 
-function commandText(input: unknown): string | undefined {
+function commandText({ input }: { input: unknown }): string | undefined {
   const command = (input as { command?: unknown } | null)?.command
 
   if (!Array.isArray(command)) {
-    return str(command)
+    return str({ value: command })
   }
 
   // Codex may send argv, such as ["bash", "-lc", "pnpm run deploy"]: the shell's own command string.
@@ -110,17 +112,17 @@ function commandText(input: unknown): string | undefined {
 
 // "gh pr create", "gh pr merge" or "deploy" when a listed command starts the command
 // text or follows &&, ||, ;, | or a newline, else undefined.
-function commandLabel(payload: Record<string, unknown>): string | undefined {
-  for (const part of (commandText(payload.tool_input) ?? '').split(/&&|\|\||[;|\n]/)) {
+function commandLabel({ payload }: { payload: Record<string, unknown> }): string | undefined {
+  for (const part of (commandText({ input: payload.tool_input }) ?? '').split(/&&|\|\||[;|\n]/)) {
     const words = part.trim().replace(/\s+/g, ' ')
-    const starts = (c: string) => words === c || words.startsWith(`${c} `)
-    const pr = PR_COMMANDS.find(starts)
+    const starts = ({ command: c }: { command: string }) => words === c || words.startsWith(`${c} `)
+    const pr = PR_COMMANDS.find(command => starts({ command }))
 
     if (pr) {
       return `gh pr ${pr.split(' ').at(-1)}`
     }
 
-    if (DEPLOY_COMMANDS.some(starts)) {
+    if (DEPLOY_COMMANDS.some(command => starts({ command }))) {
       return 'deploy'
     }
   }
@@ -133,16 +135,15 @@ function commandLabel(payload: Record<string, unknown>): string | undefined {
 function questions({ value }: { value: unknown }): Question[] | undefined {
   const found = (Array.isArray(value) ? value : []).flatMap((item): Question[] => {
     const q = (item ?? {}) as Record<string, unknown>
-    const question = str(q.question)
+    const question = str({ value: q.question })
     const options = (Array.isArray(q.options) ? q.options : []).flatMap(o => {
       const option = (o ?? {}) as Record<string, unknown>
-      const label = str(option.label)
-      const description = str(option.description)
+      const label = str({ value: option.label })
+      const description = str({ value: option.description })
 
       return label ? [{ label, ...(description ? { description } : {}) }] : []
     })
-    const header = str(q.header)
-
+    const header = str({ value: q.header })
     const multiSelect = q.multiSelect === true ? { multiSelect: true } : {}
 
     return question && options.length
@@ -164,9 +165,9 @@ function form({ payload }: { payload: Record<string, unknown> }): FormField[] | 
   const properties = Object.entries((schema.properties ?? {}) as Record<string, Property>)
   const required = Array.isArray(schema.required) ? schema.required : []
   const fields = properties.flatMap(([name, p]): FormField[] => {
-    const type = str(p?.type)
+    const type = str({ value: p?.type })
     const options = Array.isArray(p?.enum) && p.enum.every(o => typeof o === 'string') ? p.enum as string[] : undefined
-    const title = str(p?.title)
+    const title = str({ value: p?.title })
 
     if (!type || !FIELD_TYPES.includes(type) || (options && type !== 'string') || p?.format !== undefined) {
       return []
@@ -181,15 +182,17 @@ function form({ payload }: { payload: Record<string, unknown> }): FormField[] | 
     }]
   })
 
-  return str(payload.mode) !== 'url' && fields.length && fields.length === properties.length ? fields : undefined
+  return str({ value: payload.mode }) !== 'url' && fields.length && fields.length === properties.length ? fields : undefined
 }
 
 // The request a tool call puts to the user: its question, a plan to approve, or
 // permission to run it with what it would run.
 function request(
-  tool: string,
-  payload: Record<string, unknown>,
-  permission: boolean,
+  { tool, payload, permission }: {
+    tool: string
+    payload: Record<string, unknown>
+    permission: boolean
+  },
 ): Attention | undefined {
   const input = (payload.tool_input ?? {}) as Record<string, unknown>
   const key = `${HOOK}tool:${tool}`
@@ -202,7 +205,7 @@ function request(
       kind: 'question',
       key,
       blocking: true,
-      text: short(str(first)) ?? 'Answer a question',
+      text: short({ value: str({ value: first }) }) ?? 'Answer a question',
       ...(asked ? { questions: asked } : {}),
     }
   }
@@ -215,10 +218,12 @@ function request(
     return undefined
   }
 
-  const detail = commandText(input)
-    ?? str(input.file_path) ?? str(input.url) ?? str(input.description)
+  const detail = commandText({ input })
+    ?? str({ value: input.file_path })
+    ?? str({ value: input.url })
+    ?? str({ value: input.description })
 
-  return { kind: 'permission', key, blocking: true, text: short(detail ? `Allow ${tool}: ${detail}` : `Allow ${tool}`) }
+  return { kind: 'permission', key, blocking: true, text: short({ value: detail ? `Allow ${tool}: ${detail}` : `Allow ${tool}` }) }
 }
 
 // What one hook event does to its card.
@@ -228,14 +233,14 @@ interface Signal {
 }
 
 // A tool call that ended or was refused no longer waits on the user.
-function toolDone(tool: string): Attend {
+function toolDone({ tool }: { tool: string }): Attend {
   return { clear: [`${HOOK}tool:${tool}`, NOTIFICATION, ...RESUMED] }
 }
 
-function notification(payload: Record<string, unknown>): Signal | undefined {
-  const message = short(str(payload.message))
+function notification({ payload }: { payload: Record<string, unknown> }): Signal | undefined {
+  const message = short({ value: str({ value: payload.message }) })
 
-  switch (str(payload.notification_type)) {
+  switch (str({ value: payload.notification_type })) {
     case 'permission_prompt':
       // PermissionRequest names the tool and command; this repeats it, or covers a
       // prompt that reached the main session from a subagent.
@@ -263,38 +268,41 @@ function notification(payload: Record<string, unknown>): Signal | undefined {
 
 // The card's activity and the change to its requests for one event. Returns
 // undefined for an event Pnyx does not report.
-function signal(event: string, payload: Record<string, unknown>): Signal | undefined {
+function signal({ event, payload }: {
+  event: string
+  payload: Record<string, unknown>
+}): Signal | undefined {
   const all = { clear: [HOOK] }
-  const tool = str(payload.tool_name) ?? 'a tool'
+  const tool = str({ value: payload.tool_name }) ?? 'a tool'
 
   switch (event) {
     case 'SessionStart': {
-      const source = str(payload.source)
+      const source = str({ value: payload.source })
 
       return { activity: source === 'resume' ? 'resumed' : source === 'compact' ? 'compacted' : 'started', attend: all }
     }
     case 'UserPromptSubmit':
       return { activity: 'working', attend: all }
     case 'PreToolUse': {
-      const add = request(tool, payload, false)
+      const add = request({ tool, payload, permission: false })
 
-      return { activity: ASKING[tool] ?? `running ${commandLabel(payload) ?? tool}`, attend: { clear: RESUMED, add } }
+      return { activity: ASKING[tool] ?? `running ${commandLabel({ payload }) ?? tool}`, attend: { clear: RESUMED, add } }
     }
     case 'PermissionRequest':
-      return { activity: ASKING[tool] ?? `waiting for permission: ${tool}`, attend: { add: request(tool, payload, true) } }
+      return { activity: ASKING[tool] ?? `waiting for permission: ${tool}`, attend: { add: request({ tool, payload, permission: true }) } }
     case 'PermissionDenied':
-      return { activity: `${tool} denied`, attend: toolDone(tool) }
+      return { activity: `${tool} denied`, attend: toolDone({ tool }) }
     case 'PostToolUse': {
-      const label = commandLabel(payload)
+      const label = commandLabel({ payload })
 
-      return { activity: label ? `ran ${label}` : 'working', attend: toolDone(tool) }
+      return { activity: label ? `ran ${label}` : 'working', attend: toolDone({ tool }) }
     }
     case 'PostToolUseFailure':
-      return { activity: payload.is_interrupt === true ? 'interrupted' : `${tool} failed`, attend: toolDone(tool) }
+      return { activity: payload.is_interrupt === true ? 'interrupted' : `${tool} failed`, attend: toolDone({ tool }) }
     case 'Notification':
-      return notification(payload)
+      return notification({ payload })
     case 'Elicitation': {
-      const text = short([str(payload.mcp_server_name), str(payload.message)].filter(Boolean).join(': '))
+      const text = short({ value: [str({ value: payload.mcp_server_name }), str({ value: payload.message })].filter(Boolean).join(': ') })
       const fields = form({ payload })
       const add: Attention = { kind: 'input', key: ELICITATION, blocking: true, text: text || 'Input needed' }
 
@@ -310,8 +318,8 @@ function signal(event: string, payload: Record<string, unknown>): Signal | undef
       return { activity: running ? `idle, ${running} background task${running > 1 ? 's' : ''} running` : 'idle', attend: all }
     }
     case 'StopFailure': {
-      const error = str(payload.error) ?? 'unknown'
-      const text = short([error, str(payload.error_details)].filter(Boolean).join(': '))!
+      const error = str({ value: payload.error }) ?? 'unknown'
+      const text = short({ value: [error, str({ value: payload.error_details })].filter(Boolean).join(': ') })!
 
       return { activity: `stopped on ${error}`, attend: { clear: [HOOK], add: { kind: 'error', key: `${HOOK}error`, blocking: false, text } } }
     }
@@ -323,18 +331,21 @@ function signal(event: string, payload: Record<string, unknown>): Signal | undef
       return { activity: 'stopped', attend: all }
     case 'TaskCreated':
     case 'TaskCompleted': {
-      const subject = str(payload.task_subject) ?? str(payload.task_id) ?? 'a task'
+      const subject = str({ value: payload.task_subject }) ?? str({ value: payload.task_id }) ?? 'a task'
 
-      return { activity: short(`${event === 'TaskCreated' ? 'task' : 'task done'}: ${subject}`) }
+      return { activity: short({ value: `${event === 'TaskCreated' ? 'task' : 'task done'}: ${subject}` }) }
     }
     case 'TeammateIdle':
-      return { activity: short(`teammate ${str(payload.teammate_name) ?? str(payload.agent_id) ?? ''} idle`) }
+      return { activity: short({ value: `teammate ${str({ value: payload.teammate_name }) ?? str({ value: payload.agent_id }) ?? ''} idle` }) }
     case 'PreCompact':
       return { activity: 'compacting' }
     case 'PostCompact':
       return { activity: 'compacted' }
     case 'SessionEnd':
       return { activity: 'ended', attend: all }
+    case 'PostModelSwitch':
+      // Only the new model, read by hookSettings; nothing changes in the session's work.
+      return {}
     default:
       return undefined
   }
@@ -345,8 +356,8 @@ const REOPENS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse'
 const TITLE_MAX = 100
 
 // The prompt's first non-empty line, cut to TITLE_MAX characters.
-function promptTitle(prompt: unknown): string | undefined {
-  const line = str(prompt)?.split('\n')
+function promptTitle({ prompt }: { prompt: unknown }): string | undefined {
+  const line = str({ value: prompt })?.split('\n')
     .map(l => l.trim())
     .find(l => l !== '')
 
@@ -354,7 +365,7 @@ function promptTitle(prompt: unknown): string | undefined {
 }
 
 // The card's requests after one event's change; pure.
-export function attend(current: Attention[], change: Attend): Attention[] {
+export function attend({ current, change }: { current: Attention[]; change: Attend }): Attention[] {
   const kept = current.filter(a => !change.clear?.some(prefix => a.key.startsWith(prefix)))
   const add = change.add
 
@@ -373,7 +384,7 @@ export function attend(current: Attention[], change: Attend): Attention[] {
 // session, after making sure the parent card exists. A subagent's permission prompt
 // notifies on the parent card, so a subagent event that ends its requests also
 // clears that notification there.
-export function observe(envelope: HookEnvelope): Observation[] {
+export function observe({ envelope }: { envelope: HookEnvelope }): Observation[] {
   const payload = envelope.payload
 
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -381,9 +392,9 @@ export function observe(envelope: HookEnvelope): Observation[] {
   }
 
   const p = payload as Record<string, unknown>
-  const sessionId = str(p.session_id)
-  const agentId = str(p.agent_id)
-  const found = signal(envelope.event, p)
+  const sessionId = str({ value: p.session_id })
+  const agentId = str({ value: p.agent_id })
+  const found = signal({ event: envelope.event, payload: p })
 
   // Claude Code runs helper agents with an empty agent type (session titles, prompt
   // suggestions, compaction) that its own interface never shows.
@@ -393,34 +404,37 @@ export function observe(envelope: HookEnvelope): Observation[] {
 
   const provider = PROVIDER[envelope.harness]
   const parentKey = `${envelope.harness}:${sessionId}`
-  const source = (objectId: string) => ({
+  const source = ({ objectId }: { objectId: string }) => ({
     adapter: 'hooks',
     instanceId: envelope.harness,
     objectId,
     observedAt: envelope.at,
   })
-  const cwd = str(p.cwd)
-  const agent = (extra: Record<string, unknown>) =>
+  const cwd = str({ value: p.cwd })
+  const agent = ({ extra }: { extra: Record<string, unknown> }) =>
     Object.fromEntries(
       Object.entries({ provider, sessionId, ...extra, cwd })
         .filter(([, v]) => v !== undefined),
     )
 
-  const prompt = envelope.event === 'UserPromptSubmit' ? promptTitle(p.prompt) : undefined
+  const prompt = envelope.event === 'UserPromptSubmit' ? promptTitle({ prompt: p.prompt }) : undefined
   const folder = cwd && basename(cwd)
   const autoTitle = prompt
     ? { from: 'prompt', text: prompt }
     : folder ? { from: 'folder', text: folder } : undefined
   const session = {
-    source: source(sessionId),
-    agent: agent({ transcriptPath: str(p.transcript_path) }),
+    source: source({ objectId: sessionId }),
+    agent: agent({ extra: { transcriptPath: str({ value: p.transcript_path }) } }),
     ...(autoTitle ? { autoTitle } : {}),
   }
   const activity = found.activity ? { activity: found.activity } : {}
   const out: Observation[] = []
   let key = parentKey
-  const terminal = terminalFacts(envelope.terminal)
-  let card: Record<string, unknown> = { ...session, ...activity, ...(terminal ? { terminal } : {}) }
+  const recordedTerminal = TERMINAL_EVENTS.includes(envelope.event)
+  const terminal = recordedTerminal ? terminalFacts({ value: envelope.terminal }) : undefined
+  let card: Record<string, unknown> = {
+    ...session, ...activity, ...(terminal || recordedTerminal ? { terminal: terminal ?? {} } : {}),
+  }
 
   if (agentId) {
     const clears = found.attend?.clear?.some(prefix => NOTIFICATION.startsWith(prefix))
@@ -428,13 +442,15 @@ export function observe(envelope: HookEnvelope): Observation[] {
       ? { id: 'parent', key: parentKey, card: session, attend: { clear: [NOTIFICATION] }, ifChanged: true }
       : { id: 'parent', key: parentKey, card: session, ifMissing: true })
     key = `${parentKey}/${agentId}`
-    const agentType = str(p.agent_type)
+    const agentType = str({ value: p.agent_type })
     card = {
-      source: source(`${sessionId}/${agentId}`),
+      source: source({ objectId: `${sessionId}/${agentId}` }),
       agent: agent({
-        agentId,
-        agentType,
-        transcriptPath: str(p.agent_transcript_path),
+        extra: {
+          agentId,
+          agentType,
+          transcriptPath: str({ value: p.agent_transcript_path }),
+        },
       }),
       autoTitle: { from: 'agent', text: `${agentType ?? 'Subagent'} ${agentId.slice(-4)}` },
       parent: parentKey,
@@ -442,7 +458,7 @@ export function observe(envelope: HookEnvelope): Observation[] {
     }
   }
 
-  const settings = hookSettings(p)
+  const settings = hookSettings({ payload: p })
 
   if (settings) {
     card.settings = settings

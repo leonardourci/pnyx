@@ -5,9 +5,9 @@
 //
 // | Setting | Claude Code | Codex |
 // |---|---|---|
-// | model | SessionStart `model`; an assistant turn's `message.model` | every hook's `model`; turn context and thread settings `model` |
+// | model | SessionStart `model`, PostModelSwitch `to_model`; an assistant turn's `message.model` | every hook's `model`; turn context and thread settings `model` |
 // | effort | `effort.level` on tool and Stop hooks; an assistant turn's `effort` | turn context `effort`, thread settings `reasoning_effort` |
-// | mode | `permission_mode` on hooks; `permission-mode` records | `permission_mode` on hooks |
+// | mode | `permission_mode` on hooks; a prompt record's `permissionMode` | `permission_mode` on hooks |
 // | fast | an assistant turn's `message.usage.speed` | thread settings or turn context `service_tier` (`fast`, sent as `priority`) |
 // | context | `requestedModel` ending in `[1m]` | |
 // | client | `entrypoint` | session meta `originator` |
@@ -17,106 +17,149 @@
 // A setting found in a record; null clears one the harness no longer reports.
 export type FoundSettings = Record<string, string | null>
 
-function str(value: unknown): string | undefined {
+function str({ value }: { value: unknown }): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined
 }
 
-function obj(value: unknown): Record<string, unknown> {
+function obj({ value }: { value: unknown }): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {}
 }
 
-function known(settings: Record<string, string | null | undefined>): FoundSettings | undefined {
+function known({ settings }: {
+  settings: Record<string, string | null | undefined>
+}): FoundSettings | undefined {
   const entries = Object.entries(settings).filter(([, v]) => v !== undefined)
   const found = Object.fromEntries(entries) as FoundSettings
 
   return Object.keys(found).length ? found : undefined
 }
 
-const onOff = (fast: boolean | undefined) => (fast === undefined ? undefined : fast ? 'on' : 'off')
+// Settings a harness's hooks report on nearly every event, so the latest hook holds
+// the live value: Claude Code sends its model only at session start and after a switch.
+export const LIVE_HOOK_SETTINGS: Record<string, string[]> = { 'claude-code': ['effort', 'mode'], 'codex': ['model', 'mode'] }
+
+const onOff = ({ fast }: { fast: boolean | undefined }) => (fast === undefined ? undefined : fast ? 'on' : 'off')
 
 // Settings a hook payload carries: Claude Code sends the model only on SessionStart
-// and effort only around tool use and Stop; Codex sends the model on every hook.
-export function hookSettings(payload: Record<string, unknown>): FoundSettings | undefined {
+// and after a switch, and effort only around tool use and Stop; Codex sends the
+// model on every hook.
+export function hookSettings({ payload }: {
+  payload: Record<string, unknown>
+}): FoundSettings | undefined {
   return known({
-    model: str(payload.model),
-    effort: str(payload.effort) ?? str(obj(payload.effort).level),
-    mode: str(payload.permission_mode),
+    settings: {
+      model: str({ value: payload.model }) ?? str({ value: payload.to_model }),
+      effort: str({
+        value: payload.effort,
+      }) ?? str({
+        value: obj({
+          value: payload.effort,
+        }).level,
+      }),
+      mode: str({ value: payload.permission_mode }),
+    },
   })
 }
 
 // Codex's service tier: fast is requested as priority; any other tier is not fast.
-function codexFast(tier: unknown): string | undefined {
-  const value = str(tier)
+function codexFast({ tier }: { tier: unknown }): string | undefined {
+  const value = str({ value: tier })
 
-  return onOff(value === undefined ? undefined : value === 'fast' || value === 'priority')
+  return onOff({ fast: value === undefined ? undefined : value === 'fast' || value === 'priority' })
 }
 
 // A granular approval policy is an object of switches, shown by its kind.
-function approval(value: unknown): string | undefined {
-  return str(value) ?? (Object.keys(obj(value)).length ? Object.keys(obj(value))[0] : undefined)
+function approval({ value }: { value: unknown }): string | undefined {
+  return str({
+    value,
+  }) ?? (Object.keys(obj({
+    value,
+  })).length ? Object.keys(obj({
+      value,
+    }))[0] : undefined)
 }
 
 function claudeSettings(
-  record: Record<string, unknown>,
-  subagent: boolean,
+  { record, subagent }: { record: Record<string, unknown>; subagent: boolean },
 ): FoundSettings | undefined {
-  if (record.type === 'permission-mode') {
-    return known({ mode: str(record.permissionMode) })
-  }
-
   // In a session's transcript a sidechain record belongs to a subagent, whose settings
   // live on its own card; a subagent's own transcript holds only sidechain records.
-  if (record.type !== 'assistant' || (record.isSidechain === true && !subagent)) {
+  if (record.isSidechain === true && !subagent) {
     return undefined
   }
 
-  const message = obj(record.message)
-  const model = str(message.model)
-  const speed = str(obj(message.usage).speed)
-  const requested = str(record.requestedModel)
+  // A prompt records the mode it was sent in. The separate permission-mode records
+  // keep the session's starting mode, not one changed with Shift+Tab since.
+  if (record.type === 'user') {
+    return known({ settings: { mode: str({ value: record.permissionMode }) } })
+  }
+
+  if (record.type !== 'assistant') {
+    return undefined
+  }
+
+  const message = obj({ value: record.message })
+  const model = str({ value: message.model })
+  const speed = str({ value: obj({ value: message.usage }).speed })
+  const requested = str({ value: record.requestedModel })
 
   return known({
+    settings: {
     // A synthetic turn, such as an error, names no real model.
-    model: model?.startsWith('<') ? undefined : model,
-    effort: str(record.effort),
-    fast: onOff(speed === undefined ? undefined : speed === 'fast'),
-    context: requested === undefined ? undefined : /\[1m\]$/i.test(requested) ? '1M' : null,
-    client: str(record.entrypoint),
-    version: str(record.version),
+      model: model?.startsWith('<') ? undefined : model,
+      effort: str({ value: record.effort }),
+      fast: onOff({ fast: speed === undefined ? undefined : speed === 'fast' }),
+      context: requested === undefined ? undefined : /\[1m\]$/i.test(requested) ? '1M' : null,
+      client: str({ value: record.entrypoint }),
+      version: str({ value: record.version }),
+    },
   })
 }
 
-function codexSettings(record: Record<string, unknown>): FoundSettings | undefined {
-  const payload = obj(record.payload)
+function codexSettings({ record }: { record: Record<string, unknown> }): FoundSettings | undefined {
+  const payload = obj({ value: record.payload })
 
   if (record.type === 'session_meta') {
-    return known({ client: str(payload.originator), version: str(payload.cli_version) })
+    return known({
+      settings: {
+        client: str({
+          value: payload.originator,
+        }),
+        version: str({
+          value: payload.cli_version,
+        }),
+      },
+    })
   }
 
   if (record.type === 'turn_context') {
     return known({
-      model: str(payload.model),
-      effort: str(payload.effort),
-      fast: codexFast(payload.service_tier),
-      approval: approval(payload.approval_policy),
-      sandbox: str(obj(payload.sandbox_policy).type),
-      collaboration: str(obj(payload.collaboration_mode).mode),
-      summary: str(payload.summary),
+      settings: {
+        model: str({ value: payload.model }),
+        effort: str({ value: payload.effort }),
+        fast: codexFast({ tier: payload.service_tier }),
+        approval: approval({ value: payload.approval_policy }),
+        sandbox: str({ value: obj({ value: payload.sandbox_policy }).type }),
+        collaboration: str({ value: obj({ value: payload.collaboration_mode }).mode }),
+        summary: str({ value: payload.summary }),
+      },
     })
   }
 
   if (record.type === 'event_msg' && payload.type === 'thread_settings_applied') {
-    const settings = obj(payload.thread_settings)
+    const settings = obj({ value: payload.thread_settings })
 
     return known({
-      model: str(settings.model),
-      effort: str(settings.reasoning_effort),
-      fast: codexFast(settings.service_tier),
-      approval: approval(settings.approval_policy),
-      collaboration: str(obj(settings.collaboration_mode).mode),
-      summary: str(settings.reasoning_summary),
+      settings: {
+        model: str({ value: settings.model }),
+        effort: str({ value: settings.reasoning_effort }),
+        fast: codexFast({ tier: settings.service_tier }),
+        approval: approval({ value: settings.approval_policy }),
+        collaboration: str({ value: obj({ value: settings.collaboration_mode }).mode }),
+        summary: str({ value: settings.reasoning_summary }),
+      },
     })
   }
 
@@ -126,8 +169,11 @@ function codexSettings(record: Record<string, unknown>): FoundSettings | undefin
 // The settings one transcript record reports, or undefined for a record that holds
 // none, read from a subagent's own transcript when subagent is set. Claude Code and
 // Codex records are told apart by their shape.
-export function transcriptSettings(record: unknown, subagent = false): FoundSettings | undefined {
-  const r = obj(record)
+export function transcriptSettings({ record, subagent = false }: {
+  record: unknown
+  subagent?: boolean
+}): FoundSettings | undefined {
+  const r = obj({ value: record })
 
-  return 'payload' in r ? codexSettings(r) : claudeSettings(r, subagent)
+  return 'payload' in r ? codexSettings({ record: r }) : claudeSettings({ record: r, subagent })
 }
