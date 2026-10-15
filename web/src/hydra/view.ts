@@ -101,3 +101,8 @@ export function taskLabel({ card }: { card: Card }): string {
 }
 
 export const needsAgent = ({ card }: { card: Card }) => !card.agent && !card.sourceRefs.some(r => r.adapter === 'firstmate')
+
+export function projectTitle({ project }: { project: string }): string {
+  return project.startsWith('/') ? project.split('/').filter(Boolean)
+    .at(-1) ?? project : project
+}

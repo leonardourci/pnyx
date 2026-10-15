@@ -84,7 +84,7 @@ export function hydraEvent({ state, meta, cardId, change }: {
     return { skipped: 'duplicate' }
   }
 
-  const revision = cardId === '$board' ? state.configRevision ?? 0 : state.cards[cardId]?.revision ?? 0
+  const revision = cardId === '$projects' ? state.projectsRevision ?? 0 : cardId === '$board' ? state.configRevision ?? 0 : state.cards[cardId]?.revision ?? 0
 
   if (meta.ifRevision !== undefined && meta.ifRevision !== revision) {
     throw new HydraError({ message: `revision ${revision}, not ${meta.ifRevision}`, code: 'REVISION_CONFLICT' })
@@ -151,6 +151,34 @@ export function declareTask({ state, ref, status, note, meta, source, raw }: {
 }
 
 export function applyHydra({ state, event }: { state: HydraState; event: HydraEvent }): boolean {
+  if (event.type === 'hydra.project') {
+    state.projects = [
+      ...(state.projects ?? []).filter(p => p.path !== event.data.after.path),
+      structuredClone(event.data.after),
+    ]
+    state.projectsRevision = (state.projectsRevision ?? 0) + 1
+
+    return true
+  }
+
+  if (event.type === 'task.project') {
+    const card = state.cards[event.cardId]
+
+    if (card) {
+      if (event.data.after === null) {
+        delete card.project
+      } else {
+        card.project = event.data.after
+      }
+
+      card.revision++
+      card.updatedSeq = event.seq
+      card.updatedAt = event.at
+    }
+
+    return true
+  }
+
   if (event.type === 'hydra.memory') {
     state.hydraMemory ??= {}
 

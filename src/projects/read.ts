@@ -1,0 +1,103 @@
+import { projectLabel } from '../core/decide.ts'
+import { readdirSync, realpathSync, statSync } from 'node:fs'
+import { basename, join, resolve } from 'node:path'
+import { HydraError, type HydraProject, type HydraState } from '../core/model.ts'
+import { hydraConfig } from '../core/hydra.ts'
+import { loadHydra, pnyxHome } from '../store/hydra-store.ts'
+import { firstmateProjects } from '../integrations/firstmate/projects.ts'
+
+export function projectsFor({ state }: { state: HydraState }): HydraProject[] {
+  const hydra = state.config?.hydra
+  const projects = hydra?.kind === 'firstmate' && hydra.home
+    ? firstmateProjects({ home: hydra.home }) : state.projects ?? []
+
+  return [...projects].sort((a, b) => Number(a.detached) - Number(b.detached)
+    || a.name.localeCompare(b.name) || a.path.localeCompare(b.path))
+}
+
+export function projectRows({ state }: { state: HydraState }) {
+  return projectsFor({ state }).map(p => ({ name: p.name, path: p.path, state: p.detached ? 'detached' : 'attached' }))
+}
+
+export function findProject({ state, ref, attached = false }: {
+  state: HydraState
+  ref: string
+  attached?: boolean
+}): HydraProject {
+  const projects = projectsFor({ state }).filter(p => !attached || !p.detached)
+  let path = resolve(ref)
+
+  try {
+    path = realpathSync(path)
+  } catch { /* Detached folders may no longer exist. */ }
+
+  const pathRef = ref.includes('/') || ref === '.' || ref === '..'
+  const exact = projects.find(p => p.path === ref || (pathRef && p.path === path))
+  const matches = exact ? [exact] : projects.filter(p => p.name === ref)
+
+  const [project, ...others] = matches
+
+  if (!project || others.length) {
+    throw new HydraError({ message: matches.length ? `project name is ambiguous: ${ref}; use its full path` : `project not found: ${ref}`, code: matches.length ? 'CONFLICT' : 'NOT_FOUND' })
+  }
+
+  return project
+}
+
+export function taskProject({ state, ref }: { state: HydraState; ref: string }): string | null {
+  let selected: HydraProject | undefined
+
+  try {
+    selected = findProject({ state, ref })
+  } catch (error) {
+    if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
+      throw error
+    }
+  }
+
+  if (selected?.detached) {
+    throw new HydraError({ message: `project is detached: ${ref}`, code: 'NOT_FOUND', help: ['Re-attach the project before selecting it for new work'] })
+  }
+
+  return selected?.path ?? projectLabel({ value: ref })
+}
+
+export function projectFolder({ path }: { path: string }): string {
+  try {
+    const real = realpathSync(resolve(path))
+
+    if (statSync(real).isDirectory()) {
+      return real
+    }
+  } catch { /* Missing paths cannot be attached. */ }
+
+  throw new HydraError({ message: `project folder not found: ${path}`, code: 'NOT_FOUND' })
+}
+
+export function sharingHydras({ hydraId, path }: { hydraId: string; path: string }) {
+  let ids: string[]
+
+  try {
+    ids = readdirSync(join(pnyxHome(), 'boards'), { withFileTypes: true }).filter(d => d.isDirectory())
+      .map(d => d.name)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error
+    }
+
+    ids = []
+  }
+
+  return ids.sort().filter(id => id !== hydraId)
+    .flatMap(id => {
+      const state = loadHydra({ hydraId: id }).state
+
+      if (!projectsFor({ state }).some(p => !p.detached && p.path === path)) {
+        return []
+      }
+
+      return [{ id, name: hydraConfig({ state, id }).name, url: `/?open-hydra=${encodeURIComponent(id)}` }]
+    })
+}
+
+export const projectName = ({ path }: { path: string }) => basename(path) || path

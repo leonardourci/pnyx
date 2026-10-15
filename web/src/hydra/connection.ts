@@ -1,3 +1,4 @@
+import { CLONE_TIMEOUT_MS } from '../../../src/projects/limits.ts'
 import { storageKey } from './outbox.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HYDRA_CARD } from '../../../src/core/hydra.ts'
@@ -15,6 +16,14 @@ export const reconnectDelay = ({ attempt }: { attempt: number }) =>
   Math.min(500 * 2 ** Math.min(attempt, 5), 10000)
 export const retryable = ({ name, args }: { name: string; args: string[] }) =>
   ['reply', 'answer', 'agent'].includes(name) || (name === 'hydra' && args[0] === 'send' && args.includes('--event-id'))
+
+export function commandTimeout({ name, args }: { name: string; args: string[] }): number {
+  if (name === 'project' && args[0] === 'add' && args.includes('--clone')) {
+    return CLONE_TIMEOUT_MS + 20_000
+  }
+
+  return ['reply', 'answer', 'agent'].includes(name) ? 140000 : 60000
+}
 
 function restoredHydra(): HydraState {
   try {
@@ -58,7 +67,7 @@ export function useHydra() {
       p.timer = setTimeout(() => {
         pending.current.delete(id)
         p.reject({ error: new Error('Send could not be confirmed. Draft kept; check the conversation before retrying.') })
-      }, ['reply', 'answer', 'agent'].includes(p.message.name) ? 140000 : 60000)
+      }, commandTimeout({ name: p.message.name, args: p.message.args }))
       socket.current.send(JSON.stringify(p.message))
     }
   }, [])

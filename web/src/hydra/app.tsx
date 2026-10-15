@@ -322,6 +322,7 @@ export function App() {
           {page === 'settings' ? (
             <Settings
               state={state}
+              connected={connected}
               view={view}
               save={save}
               close={() => setPage('hydra')}
