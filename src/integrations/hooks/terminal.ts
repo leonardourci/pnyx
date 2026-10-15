@@ -14,7 +14,7 @@ const STEP_TIMEOUT_MS = 15_000
 const DETAIL_MAX = 300
 // Claude Code and Codex open a completion popup for a leading / or $; Enter
 // pressed before it settles can pick an entry instead of submitting.
-const SETTLE_MS = 400
+export const SETTLE_MS = 400
 const POPUP_SETTLE_MS = 1500
 // The bytes a terminal sends for each key, for hosts that type input literally, and
 // tmux's names for them.
@@ -101,7 +101,7 @@ function pasted({ text }: { text: string }): string {
   return text.includes('\n') ? `\u001b[200~${text}\u001b[201~` : text
 }
 
-function settle({ text }: { text: string }): number {
+export function settle({ text }: { text: string }): number {
   return /^[/$]/.test(text) ? POPUP_SETTLE_MS : SETTLE_MS
 }
 

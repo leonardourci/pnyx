@@ -19,6 +19,7 @@ import {
   type Column,
   type Link,
   type Note,
+  FORM_FIELD_TYPES,
   type Outcome,
   type FormField,
   type PushFields,
@@ -200,8 +201,6 @@ function parseAttention({ value }: { value: unknown }): Attention[] {
   })
 }
 
-const FIELD_TYPES = ['string', 'number', 'integer', 'boolean'] as const
-
 function parseForm({ value, what }: { value: unknown; what: string }): FormField[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw invalid({ message: `${what} must be a non-empty list` })
@@ -216,10 +215,10 @@ function parseForm({ value, what }: { value: unknown; what: string }): FormField
     }
 
     onlyKeys({ value: item, allowed: ['name', 'title', 'type', 'options', 'required'], what: at })
-    const type = FIELD_TYPES.find(t => t === item.type)
+    const type = FORM_FIELD_TYPES.find(t => t === item.type)
 
     if (!type) {
-      throw invalid({ message: `${at}.type must be one of ${FIELD_TYPES.join(', ')}` })
+      throw invalid({ message: `${at}.type must be one of ${FORM_FIELD_TYPES.join(', ')}` })
     }
 
     if (item.options !== undefined && (!Array.isArray(item.options) || !item.options.every(o => typeof o === 'string' && o !== ''))) {

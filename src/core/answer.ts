@@ -51,8 +51,9 @@ const CODEX_PERMISSION: Choice[] = [
   { choice: 'deny', label: 'No', text: 'optional' },
 ]
 
-// A question is answered with one digit per option, and its last line takes text.
-const MAX_OPTIONS = 8
+// A question's options are picked by digit, and a form's choices are each a Down key
+// away, so longer lists are left to the terminal.
+export const MAX_OPTIONS = 8
 
 // Names one request exactly as it was shown, so an answer lands only on the prompt
 // it was written for: a later request under the same key with other text,
@@ -92,7 +93,7 @@ export function answerPrompt(
 
   const provider = card.agent?.provider
 
-  if (request.key === ELICITATION && request.form?.length && provider === 'claude-code' && !request.answered) {
+  if (request.key === ELICITATION && request.form?.length && provider === 'claude-code') {
     return { kind: 'form' }
   }
 
@@ -301,12 +302,11 @@ export function answerText(
       return 'Decline'
     }
 
-    const said = (request.form ?? []).filter(f => answer.values?.[f.name] !== undefined)
-      .map(f => {
-        const v = answer.values![f.name]
+    const said = (request.form ?? []).flatMap(f => {
+      const v = answer.values?.[f.name]
 
-        return `${f.title ?? f.name}: ${typeof v === 'boolean' ? (v ? 'yes' : 'no') : v}`
-      })
+      return v === undefined ? [] : [`${f.title ?? f.name}: ${typeof v === 'boolean' ? (v ? 'yes' : 'no') : v}`]
+    })
 
     return ['Accept', ...said].join('\n')
   }

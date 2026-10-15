@@ -3,6 +3,7 @@
 // entry is typed as keystrokes, never pasted, with a short settle after it.
 import type { Answer } from '../../core/answer.ts'
 import type { Attention } from '../../core/model.ts'
+import { SETTLE_MS, settle } from './terminal.ts'
 
 export const KEY = {
   enter: '\r',
@@ -20,12 +21,8 @@ export interface KeyStep {
   settleMs: number
 }
 
-const SETTLE_MS = 400
 // Codex leaves its approval prompt and redraws the composer after Escape.
 const REDRAW_MS = 1200
-// Codex's composer opens a completion popup for a leading / or $, and an Enter
-// pressed before it settles picks an entry instead of sending the prompt.
-const POPUP_MS = 1500
 
 function steps({ keys }: { keys: string[] }): KeyStep[] {
   return keys.map(k => ({ keys: k, settleMs: SETTLE_MS }))
@@ -98,7 +95,8 @@ export function answerKeys(
     return answer.text
       ? [
         { keys: KEY.escape, settleMs: REDRAW_MS },
-        { keys: answer.text, settleMs: /^[/$]/.test(answer.text) ? POPUP_MS : SETTLE_MS },
+        // Text after a Codex No is the next prompt, so a leading / or $ waits out its popup.
+        { keys: answer.text, settleMs: settle({ text: answer.text }) },
         ...steps({ keys: [KEY.enter] }),
       ]
       : steps({ keys: [KEY.escape] })

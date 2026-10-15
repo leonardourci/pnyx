@@ -98,12 +98,14 @@ export interface Question {
   multiSelect?: boolean
 }
 
+export const FORM_FIELD_TYPES = ['string', 'number', 'integer', 'boolean'] as const
+
 // One field of an MCP server's form, as its elicitation schema names it. options
 // lists the values of a choice field.
 export interface FormField {
   name: string
   title?: string
-  type: 'string' | 'number' | 'integer' | 'boolean'
+  type: (typeof FORM_FIELD_TYPES)[number]
   options?: string[]
   required?: boolean
 }

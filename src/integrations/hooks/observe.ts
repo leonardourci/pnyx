@@ -3,7 +3,8 @@
 // never run. Every mapping is a fixed rule on fields the harness sends; nothing
 // is classified by a model.
 import { basename } from 'node:path'
-import type { Attention, FormField, Question } from '../../core/model.ts'
+import { MAX_OPTIONS } from '../../core/answer.ts'
+import { FORM_FIELD_TYPES, type Attention, type FormField, type Question } from '../../core/model.ts'
 import { terminalFacts } from '../../core/route.ts'
 import { hookSettings } from './settings.ts'
 
@@ -151,15 +152,12 @@ function questions({ value }: { value: unknown }): Question[] | undefined {
       : []
   })
 
-  return found.length && found.length === (value as unknown[]).length ? found : undefined
+  return Array.isArray(value) && found.length && found.length === value.length ? found : undefined
 }
 
-const FIELD_TYPES = ['string', 'number', 'integer', 'boolean']
 // What the board can fill as the terminal would: anything else (a default, a format,
 // titled choices, limits) changes what the prompt shows, so it is left to the terminal.
 const FIELD_KEYS = ['type', 'title', 'description', 'enum']
-// Each choice is a Down keystroke away, so a long list is left to the terminal.
-const MAX_CHOICES = 8
 
 // An MCP form's fields in the order its prompt lists them; undefined for a URL
 // elicitation or a field the board cannot fill, so the form is filled in the terminal.
@@ -169,20 +167,20 @@ function form({ payload }: { payload: Record<string, unknown> }): FormField[] | 
   const properties = Object.entries((schema.properties ?? {}) as Record<string, Property>)
   const required = Array.isArray(schema.required) ? schema.required : []
   const fields = properties.flatMap(([name, p]): FormField[] => {
-    const type = str({ value: p?.type })
+    const type = FORM_FIELD_TYPES.find(t => t === p?.type)
     const options = Array.isArray(p?.enum) && p.enum.every(o => typeof o === 'string') ? p.enum as string[] : undefined
     const title = str({ value: p?.title })
 
-    if (!p || !type || !FIELD_TYPES.includes(type)
+    if (!p || !type
       || Object.keys(p).some(k => !FIELD_KEYS.includes(k))
-      || (p.enum !== undefined && (!options || type !== 'string' || options.length > MAX_CHOICES))) {
+      || (p.enum !== undefined && (!options || type !== 'string' || options.length > MAX_OPTIONS))) {
       return []
     }
 
     return [{
       name,
       ...(title ? { title } : {}),
-      type: type as FormField['type'],
+      type,
       ...(options ? { options } : {}),
       ...(required.includes(name) ? { required: true } : {}),
     }]
