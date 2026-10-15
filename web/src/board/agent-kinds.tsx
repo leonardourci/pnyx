@@ -12,12 +12,12 @@ const QUOTA = [
 ]
 const FIELDS = [['model', 'Model'], ['effort', 'Effort'], ['mode', 'Mode']] as const
 
-// Flags for `kind set`: the whole config, so a save never drops a field.
+// Flags for `kind set`: every field, so a cleared one is cleared on the board too.
 function flags({ agent }: { agent: AgentConfig }): string[] {
   return [
     '--harness',
     agent.harness,
-    ...FIELDS.flatMap(([key]) => (agent[key] ? [`--${key}`, agent[key]] : [])),
+    ...FIELDS.flatMap(([key]) => [`--${key}`, agent[key] ?? '']),
     '--quota',
     agent.quota ?? 'off',
   ]
@@ -32,7 +32,15 @@ export function AgentKinds({ state, command, notify }: {
   const agents = state.board?.agents ?? {}
   const [name, setName] = useState('')
   const run = ({ args, done }: { args: string[]; done: string }) =>
-    command({ name: 'kind', args }).then(() => notify({ text: done }), e => notify({ text: e.message }))
+    command({ name: 'kind', args }).then(() => {
+      notify({ text: done })
+
+      return true
+    }, e => {
+      notify({ text: e.message })
+
+      return false
+    })
   const save = ({ kind, agent }: { kind: string; agent: AgentConfig }) =>
     run({ args: ['set', kind, ...flags({ agent })], done: `Saved ${kind}` })
 
@@ -58,7 +66,7 @@ export function AgentKinds({ state, command, notify }: {
             onChange={({ value }) => save({ kind, agent: { ...agent, harness: value as AgentConfig['harness'] } })}
           />
           {FIELDS.map(([key, label]) => (
-            <Fragment key={key}>
+            <Fragment key={`${key}:${agent[key] ?? ''}`}>
               <label className="setting-label">{label}</label>
               <Input
                 aria-label={`${kind} ${key}`}
@@ -81,7 +89,7 @@ export function AgentKinds({ state, command, notify }: {
         className="row"
         onSubmit={e => {
           e.preventDefault()
-          void save({ kind: name.trim(), agent: { harness: 'claude' } }).then(() => setName(''))
+          void save({ kind: name.trim(), agent: { harness: 'claude' } }).then(saved => saved && setName(''))
         }}
       >
         <Input
