@@ -1,8 +1,3 @@
-// The local board server: loopback HTTP for the web board and a health check, a
-// Unix socket for hook events, and one WebSocket per browser tab for pushed
-// changes and the tab's commands.
-// It writes only through the CLI's own commands and spool drain, so the board
-// keeps a single writer whether a change comes from here or from the CLI.
 import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
@@ -39,7 +34,6 @@ const RESUME_LIMIT = 1000
 const MAX_BUFFERED = 1 << 20
 const MAX_BODY = 1 << 20
 const STOP_TIMEOUT_MS = 5000
-// Matching cards a search returns, enough to filter the whole board.
 const SEARCH_LIMIT = 100
 
 const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) => {
@@ -48,11 +42,9 @@ const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) =>
   return `${tools}:${thinking}`
 }
 
-// How often a live transcript's card and open conversation are read again at most while the session writes.
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
 const CLI_COMMANDS = ['task', 'column', 'hydra', 'kind', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card', 'integrations'] as const
-// Same relative path from src/server and dist/server.
 const WEB_ROOT = join(import.meta.dirname, '..', '..', 'dist', 'web')
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -100,7 +92,6 @@ export async function startServer({
   }
 
   homes = homes.map(path => resolveHome({ path }))
-  // A tab's open conversation: a transcript file it watches, or a Paseo agent's live timeline.
   type Subscription = {
     card: string
     path?: string
@@ -151,7 +142,6 @@ export async function startServer({
     }, LATEST_DELAY_MS))
   }
 
-  // The first page of a conversation, or of an older one before the cursor.
   const threadPage = async ({ sub, card, before }: {
     sub: Subscription
     card: Card
@@ -210,7 +200,6 @@ export async function startServer({
     ws.send(JSON.stringify(message))
   }
 
-  // A snapshot is always followed by every card's last message, which the tab takes in place of its own.
   const sendSnapshot = ({ ws }: { ws: WebSocket }) => {
     resyncing.delete(ws)
     send({ ws, message: { type: 'snapshot', seq: state.seq, state } })
@@ -347,7 +336,6 @@ export async function startServer({
     }
   }
 
-  // Folds whatever was appended since the last read, from this server or the CLI.
   const pump = () => {
     const read = readEventsFrom({ board, offset })
 
@@ -373,7 +361,6 @@ export async function startServer({
     }
   }
 
-  // Coalesces watcher bursts into one drain-and-pump per tick.
   let scheduled = false
 
   const kick = () => {
@@ -433,7 +420,6 @@ export async function startServer({
     serveStatic({ res, path, token: token.toString() })
   })
 
-  // A tab's write: the same CLI command, pinned to this board, under the same writer lock.
   const catalogReads = new WeakMap<WebSocket, { card: string; read: Promise<Catalog> }>()
 
   const runCommand = ({ ws, message }: {
@@ -487,12 +473,10 @@ export async function startServer({
 
           const query = { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), limit: SEARCH_LIMIT }
 
-          // The semantic leg waits on the worker process, never on this event loop.
           void searchBoard({ board, query })
             .then(result => send({ ws, message: { type: 'receipt', id, ...result } }))
             .catch((error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
         } else if (name === 'settings') {
-          // This machine's search settings, shared by every board: [] reads them, ['set', key, value] changes one.
           if (args.length && (args.length !== 3 || args[0] !== 'set')) {
             throw new BoardError({ message: 'settings expects nothing, or set, a key and a value', code: 'VALIDATION_ERROR' })
           }
@@ -503,7 +487,6 @@ export async function startServer({
           }) : readSettings({ })
           send({ ws, message: { type: 'receipt', id, settings: settingEntries({ settings }) } })
         } else if (name === 'boards') {
-          // [] lists the boards; ['open', id], ['create', name] and ['rename', id, name] answer with them.
           const [action, first, second] = args
           const reply = ({ open }: { open?: string } = {}) => send({ ws, message: { type: 'receipt', id, board, boards: listBoards(), ...(open ? { url: open } : {}) } })
 
@@ -545,7 +528,6 @@ export async function startServer({
           }, (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
         } else {
           const agent = name === 'agent'
-          // answer: card, request key, the answer as JSON, idempotency key and the requestId it was written for.
           const answering = name === 'answer'
 
           const valid = agent
@@ -637,7 +619,6 @@ export async function startServer({
       : fail({ error: (error as Error).message, code: 'UNKNOWN' })
 
     try {
-      // task start waits on the Paseo daemon; every other command answers at once.
       const handler = name === 'integrations' ? integrationsCommand : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
       void Promise.resolve(handler([...args, ...actor, '--board', board])).then(result => {
         try {
@@ -748,7 +729,6 @@ export async function startServer({
   const tmp = `${infoPath({ board })}.tmp-${process.pid}`
   writeFileSync(tmp, JSON.stringify(info))
   renameSync(tmp, infoPath({ board }))
-  // Events spooled while no server ran.
   kick()
   touchLatest({ ids: Object.keys(state.cards) })
 
@@ -922,7 +902,6 @@ function boardFlag({ args, options = {} }: { args: string[]; options?: { port?: 
 // A fixed default keeps one board at one address, so an open tab finds a restarted server again.
 export const DEFAULT_PORT = 4747
 
-// `pnyx-axi serve`: runs in the foreground until SIGINT, SIGTERM or `pnyx-axi stop`.
 export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const values = boardFlag({ args, options: { port: { type: 'string' }, home: { type: 'string', multiple: true } } })
   const board = values.board ?? 'default'
@@ -932,7 +911,6 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   }
 
   const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
-  // Without --home, a board whose Hydra is a Firstmate home watches that home.
   const hydra = loadBoard({ board }).state.board?.hydra
   // A recorded home that has since moved is skipped, so the board still opens.
   const recorded = hydra?.kind === 'firstmate' && hydra.home && existsSync(join(hydra.home, 'state')) ? [hydra.home] : []
@@ -957,10 +935,8 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     throw error
   }
 
-  // Each --home both takes replies and feeds the board, as `firstmate watch` would.
   const homes = given.map(path => resolveHome({ path }))
   const firstmate = homes.length > 0 ? watchHomes({ board, list: homes }) : undefined
-  // TOON for a flat object is `key: value`; JSON quoting keeps the values valid TOON.
   const watching = homes.length > 0 ? `firstmate: ${JSON.stringify(`watching ${homes.length} home${homes.length === 1 ? '' : 's'}`)}\n` : ''
   process.stdout.write(`server: running\nboard: ${board}\nurl: ${JSON.stringify(server.url)}\n${watching}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
   await new Promise(resolve => {
@@ -973,7 +949,6 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   return { server: 'stopped', board, ...(watched ? { firstmate: watched } : {}) }
 }
 
-// `pnyx-axi stop`: signals the board's server and waits until it no longer answers.
 export async function stop(args: string[]): Promise<Record<string, unknown>> {
   const board = boardFlag({ args }).board ?? 'default'
   const info = await readServer({ board })

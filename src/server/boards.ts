@@ -1,5 +1,3 @@
-// The boards a tab can switch to. Each board keeps its own server, so opening one
-// starts `pnyx-axi serve` for it when none is running and returns its address.
 import { spawn } from 'node:child_process'
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -29,7 +27,6 @@ export function listBoards(): BoardTab[] {
   })
 }
 
-// The board's running server, started in the background when there is none.
 export async function openBoard({ id }: { id: string }): Promise<string> {
   if (!listBoards().some(b => b.id === id)) {
     throw new BoardError({ message: `board not found: ${id}`, code: 'NOT_FOUND' })
@@ -55,7 +52,6 @@ export async function openBoard({ id }: { id: string }): Promise<string> {
   throw new BoardError({ message: `board ${id} did not start`, code: 'NOT_STARTED', help: [`Run \`pnyx-axi serve --board ${id}\``] })
 }
 
-// A new board with the next free id, named as given.
 export function createBoard({ name }: { name: string }): string {
   const taken = new Set(listBoards().map(b => b.id))
   let n = taken.size + 1
