@@ -22,11 +22,13 @@ import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { commands, ingestSpool } from '../cli/commands.ts'
+import { integrationsCommand } from '../cli/integrations.ts'
 import { BoardError, type BoardEvent, type BoardState, type Card, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { boardDir, loadBoard, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/board-store.ts'
 import { infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
+import { createBoard, listBoards, openBoard, renameBoard } from './boards.ts'
 
 // Events kept in memory for cursor resume; an older cursor gets a snapshot instead.
 const RESUME_LIMIT = 1000
@@ -46,7 +48,7 @@ const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) =>
 // How often a live transcript's card and open conversation are read again at most while the session writes.
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
-const CLI_COMMANDS = ['task', 'column', 'hydra', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card'] as const
+const CLI_COMMANDS = ['task', 'column', 'hydra', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card', 'integrations'] as const
 // Same relative path from src/server and dist/server.
 const WEB_ROOT = join(import.meta.dirname, '..', '..', 'dist', 'web')
 const MIME: Record<string, string> = {
@@ -443,7 +445,7 @@ export async function startServer({
       return fail({ error: 'command needs a string id', code: 'VALIDATION_ERROR' })
     }
 
-    if (['thread', 'search', 'reply', 'agent', 'catalog', 'settings'].includes(String(name))) {
+    if (['thread', 'search', 'reply', 'agent', 'catalog', 'settings', 'boards'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail({ error: 'args must be strings', code: 'VALIDATION_ERROR' })
       }
@@ -497,6 +499,23 @@ export async function startServer({
             value: args[2]!,
           }) : readSettings({ })
           send({ ws, message: { type: 'receipt', id, settings: settingEntries({ settings }) } })
+        } else if (name === 'boards') {
+          // [] lists the boards; ['open', id], ['create', name] and ['rename', id, name] answer with them.
+          const [action, first, second] = args
+          const reply = ({ open }: { open?: string } = {}) => send({ ws, message: { type: 'receipt', id, board, boards: listBoards(), ...(open ? { url: open } : {}) } })
+
+          if (action === 'create' && first?.trim()) {
+            void openBoard({ id: createBoard({ name: first.trim().slice(0, 100) }) }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
+          } else if (action === 'open' && first) {
+            void openBoard({ id: first }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
+          } else if (action === 'rename' && first && second?.trim()) {
+            renameBoard({ id: first, name: second.trim().slice(0, 100) })
+            reply()
+          } else if (action === undefined) {
+            reply()
+          } else {
+            throw new BoardError({ message: 'boards expects nothing, open <id>, create <name> or rename <id> <name>', code: 'VALIDATION_ERROR' })
+          }
         } else if (name === 'thread') {
           const old = subscriptions.get(ws); old?.watcher?.close(); subscriptions.delete(ws)
 
@@ -596,7 +615,7 @@ export async function startServer({
       return fail({ error: `--board is not allowed; this server writes board ${board}`, code: 'VALIDATION_ERROR' })
     }
 
-    const actor = name === 'history' || name === 'card' || args.some(a => a === '--actor' || a.startsWith('--actor=')) ? [] : ['--actor', 'web']
+    const actor = name === 'history' || name === 'card' || name === 'integrations' || args.some(a => a === '--actor' || a.startsWith('--actor=')) ? [] : ['--actor', 'web']
 
     const failed = ({ error }: { error: unknown }) => error instanceof AxiError
       ? fail({ error: error.message, code: error.code, help: error.suggestions })
@@ -604,7 +623,8 @@ export async function startServer({
 
     try {
       // task start waits on the Paseo daemon; every other command answers at once.
-      void Promise.resolve(commands[name as (typeof CLI_COMMANDS)[number]]([...args, ...actor, '--board', board])).then(result => {
+      const handler = name === 'integrations' ? integrationsCommand : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
+      void Promise.resolve(handler([...args, ...actor, '--board', board])).then(result => {
         try {
           pump()
         } catch {
