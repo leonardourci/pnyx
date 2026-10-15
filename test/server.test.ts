@@ -21,7 +21,8 @@ import { writeSetting } from '../src/search/settings.ts'
 process.env.PNYX_SEMANTIC = 'off'
 
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
-const TIMEOUT_MS = 3000
+// Waits end as soon as their condition holds; the bound only has to outlast a heavily loaded machine.
+const TIMEOUT_MS = 30000
 // CLI children start a fresh node process; under a parallel test run that can take far longer than a poll.
 const CLI_TIMEOUT_MS = 30000
 
@@ -421,7 +422,8 @@ test('the board page carries the token only for its own host and origin; /health
 
 test('a server.json left by a dead server is not trusted, even when its pid was reused', async () => {
   // A live process that is not a Pnyx server, and a port nothing listens on.
-  const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 10000)'], { stdio: 'ignore' })
+  // It must outlast the CLI calls below on a loaded machine.
+  const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], { stdio: 'ignore' })
   const probe = createServer().listen(0, '127.0.0.1')
   await once(probe, 'listening')
   const port = (probe.address() as { port: number }).port
