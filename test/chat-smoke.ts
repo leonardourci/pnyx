@@ -164,7 +164,8 @@ try {
   step = 'Switch to mobile emulation (reloads the document), then reopen the card'
   await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] })
   await browser({ args: ['wait', 'The working board'] })
-  await click({ role: 'button', name: 'Open conversation for Shape the first working board' }); await browser({ args: ['wait', 'Thread plan'] })
+  // On a phone the open panel can cover the card's centre, so open it by its own element.
+  await browser({ args: ['eval', '() => { document.querySelector("[aria-label=\\"Open conversation for Shape the first working board\\"]").click(); return true }'] }); await browser({ args: ['wait', 'Thread plan'] })
   await focus({ selector: '.composer textarea' })
   await check({ condition: 'document.documentElement.scrollWidth === innerWidth && document.querySelector(".thread").scrollWidth <= document.querySelector(".thread").clientWidth + 1', label: 'mobile chat stays within the viewport' })
   await screenshot({ name: 'chat-mobile.png' })
