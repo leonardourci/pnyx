@@ -50,3 +50,5 @@ printf '{"parent":"<board task>"}' | pnyx-axi push --key <mirrored key> --file -
 ```
 
 Keep both statuses honest: your Firstmate status feeds the mirrored task, and the board task gets your own `task status` declarations.
+
+Replies may include `## Comments on your reply from <time>` with numbered quoted passages, followed by `## Message`. A quote of three words or fewer includes its paragraph for context. Several comments may refer to overlapping passages. Address them together with the message; the first comment’s internal explanation is marked “no reply needed” and needs no separate acknowledgement.

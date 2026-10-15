@@ -10,3 +10,5 @@ Run `pnyx-axi` for the board summary and `pnyx-axi --help` for commands. Pnyx is
 When a session waits on its own question, permission or plan prompt, `pnyx-axi card <id>` lists the request with its options and `pnyx-axi reply <id> --answer <request key> --json <answer>` answers it in that session's tmux pane (see `pnyx-axi reply --help`).
 
 To start a worker for a task, run `pnyx-axi task start <task> --via paseo|firstmate|command` (see `pnyx-axi task --help`). The board's orchestrator, Hydra, follows the `pnyx-hydra` skill and the workers it starts follow `pnyx-worker`; `pnyx-axi setup hydra --home <firstmate home>` gives it to a Firstmate home.
+
+Replies may include `## Comments on your reply from <time>` with numbered quoted passages, followed by `## Message`. A quote of three words or fewer includes its paragraph for context. Several comments may refer to overlapping passages. Address them together with the message; the first comment’s internal explanation is marked “no reply needed” and needs no separate acknowledgement.
