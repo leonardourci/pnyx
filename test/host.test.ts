@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
+import { fakeCodex } from './codex-fixture.ts'
 import { commands } from '../src/cli/commands.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { agent, sendReply } from '../src/cli/reply.ts'
@@ -273,17 +274,18 @@ test('a new agent on the task does not inherit the old one\'s interrupted turn',
   assert.equal(task().attention.some(a => a.key === 'pnyx:interrupted'), false)
 })
 
-function outside({ folder, provider = 'claude-code', activity = 'ended', pid }: {
+function outside({ folder, provider = 'claude-code', activity = 'ended', pid, transcriptPath }: {
   folder: string
   provider?: string
   activity?: string
   pid?: string
+  transcriptPath?: string
 }) {
   withWriter({
     board: 'lab',
     fn: ({ writer }) => {
       const stamp = { ...meta, at: new Date().toISOString() }
-      const pushed = decidePush({ state: writer.state, key: 'outside', input: { agent: { provider, sessionId: 'native-session', cwd: folder }, terminal: { tty: '/dev/ttys123', ...(pid ? { pid } : {}) }, settings: { model: 'sonnet', effort: 'high' }, activity, source: { adapter: 'hooks', instanceId: 'claude', objectId: 'native-session', observedAt: stamp.at } }, meta: stamp })
+      const pushed = decidePush({ state: writer.state, key: 'outside', input: { agent: { provider, sessionId: 'native-session', cwd: folder, ...(transcriptPath ? { transcriptPath } : {}) }, terminal: { tty: '/dev/ttys123', ...(pid ? { pid } : {}) }, settings: provider === 'codex' ? { model: 'gpt-6.1-sol', effort: 'high', mode: 'never' } : { model: 'sonnet', effort: 'high' }, activity, source: { adapter: 'hooks', instanceId: provider === 'codex' ? 'codex' : 'claude', objectId: 'native-session', observedAt: stamp.at } }, meta: stamp })
       assert.ok('event' in pushed); writer.append({ event: pushed.event })
       const ended = decideOutcome({ state: writer.state, ref: 'outside', outcome: { state: 'ended' }, source: 'hooks', meta: stamp })
       assert.ok('event' in ended); writer.append({ event: ended.event })
@@ -341,7 +343,7 @@ test('continuation refuses running and unknown presence without changing the ses
     assert.throws(() => host.continue({ task: 'ship', id: 'adopt', actor: 'test' }), state === 'present' ? /still runs in its terminal/ : /cannot confirm/)
     assert.equal(loadBoard({ board: 'lab' }).state.seq, before)
     assert.equal(task().agent?.host, undefined)
-    assert.throws(() => host.start({ task: 'ship', replacement: 'claude-code:native-session', id: 'fresh', actor: 'test', settings: {}, folder, prompt: 'Fresh' }), state === 'present' ? /still runs/ : /cannot confirm/)
+    await assert.rejects(host.start({ task: 'ship', replacement: 'claude-code:native-session', id: 'fresh', actor: 'test', settings: {}, folder, prompt: 'Fresh' }), state === 'present' ? /still runs/ : /cannot confirm/)
     assert.equal(task().agent?.sessionId, 'native-session')
     host.close()
   }
@@ -364,8 +366,8 @@ test('continuation reports a missing folder with a fresh-start hint and rejects 
   await commands.task(['detach', 'ship', '--board', 'lab'])
   const empty = createHost({ board: 'lab', changed: () => {} })
   assert.throws(() => empty.continue({ task: 'ship', id: 'none', actor: 'test' }), /outside Claude Code/)
-  outside({ folder, provider: 'codex' })
-  assert.throws(() => empty.continue({ task: 'ship', id: 'codex', actor: 'test' }), /outside Claude Code/)
+  outside({ folder, provider: 'unsupported' })
+  assert.throws(() => empty.continue({ task: 'ship', id: 'unsupported', actor: 'test' }), /outside Claude Code/)
   empty.close()
 })
 
@@ -391,4 +393,39 @@ test('starting fresh validates the replacement before detaching and starts once 
   assert.equal(sdk.calls[0]!.options.resume, undefined)
   assert.equal((await startTask({ board: 'lab', task: 'ship', replacement, folder, meta: { ...meta, id: 'fresh-1' } })).event, 'none: duplicate')
   assert.equal(sdk.calls.length, 1)
+})
+
+test('an ended outside Codex thread continues lazily in Pnyx and resumes the same thread after restart', async () => {
+  const { folder, task, cards } = await lab()
+  const fixture = fakeCodex({ root: dirname(folder) })
+  outside({ folder, provider: 'codex', transcriptPath: fixture.transcript })
+  const count = cards()
+  server = await startServer({ board: 'lab', spawnCodex: fixture.spawnCodex })
+  assert.equal((await commands.task(['continue', 'ship', '--check', '--board', 'lab'])).canContinue, true)
+  await commands.task(['continue', 'ship', '--event-id', 'adopt-codex', '--board', 'lab'])
+  assert.equal(task().agent?.host, 'pnyx')
+  assert.equal(task().agent?.sessionId, 'native-session')
+  assert.equal(task().agent?.transcriptPath, fixture.transcript)
+  assert.equal(fixture.children.length, 0)
+  assert.equal((await sendReply({ board: 'lab', request: { card: 'ship', text: 'Continue Codex', homes: [], actor: 'test' } })).state, 'delivered')
+  await until({ check: () => task().sessionActivity === 'finished', what: 'Codex resumed turn' })
+  assert.equal(fixture.messages().find(m => m.method === 'thread/resume')?.params?.threadId, 'native-session')
+  assert.equal(fixture.messages().some(m => m.method === 'thread/start'), false)
+  await agent(['ship', 'model', 'gpt-6-luna', '--board', 'lab'])
+  await agent(['ship', 'effort', 'low', '--board', 'lab'])
+  await server.close()
+  server = await startServer({ board: 'lab', spawnCodex: fixture.spawnCodex })
+  assert.equal(fixture.children.length, 1)
+  await sendReply({ board: 'lab', request: { card: 'ship', text: 'After restart', homes: [], actor: 'test' } })
+  await until({ check: () => fixture.children.length === 2 && task().sessionActivity === 'finished', what: 'Codex resumed after restart' })
+  const last = fixture.messages().filter(m => m.method === 'turn/start')
+    .at(-1)!.params!
+  assert.equal(last.model, 'gpt-6-luna')
+  assert.equal(last.effort, 'low')
+  assert.equal(last.approvalPolicy, 'never')
+  spoolWrite({ board: 'lab', entry: { v: 1, id: 'codex-adopted-hook', at: new Date().toISOString(), harness: 'codex', event: 'SessionEnd', payload: { session_id: 'native-session', cwd: folder } } })
+  ingestSpool({ board: 'lab' })
+  assert.equal(task().agent?.host, 'pnyx')
+  assert.notEqual(task().sessionActivity, 'ended')
+  assert.equal(cards(), count)
 })
