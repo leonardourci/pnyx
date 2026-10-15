@@ -7,12 +7,15 @@ import { openPaseo, type Connect } from '../paseo/client.ts'
 
 export type Presence = { state: 'present' | 'gone' | 'unknown'; detail: string }
 
-export function terminalPresence({ session, bootedAt = Date.now() - uptime() * 1000, run = ({ pid }) => execFileSync('ps', ['-o', 'tty=', '-p', pid], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }) }: {
+export function terminalPresence({ session, verifyProcess = false, bootedAt = Date.now() - uptime() * 1000, run = ({ pid }) => execFileSync('ps', ['-o', 'tty=', '-p', pid], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }) }: {
   session: AgentSession
+  verifyProcess?: boolean
   bootedAt?: number
   run?({ pid }: { pid: string }): string
 }): Presence {
-  if (session.activity === 'ended' || session.sessionActivity === 'ended') {
+  const ended = session.activity === 'ended' || session.sessionActivity === 'ended'
+
+  if (ended && (!verifyProcess || !session.terminal?.pid)) {
     return { state: 'gone', detail: 'The harness recorded the session ending.' }
   }
 
@@ -28,6 +31,10 @@ export function terminalPresence({ session, bootedAt = Date.now() - uptime() * 1
 
   try {
     const current = run({ pid }).trim()
+
+    if (verifyProcess && `/dev/${current}` !== tty) {
+      return { state: 'unknown', detail: 'The process answered, but its recorded terminal no longer matches.' }
+    }
 
     return current && `/dev/${current}` === tty
       ? { state: 'present', detail: 'The recorded process still owns its terminal.' }

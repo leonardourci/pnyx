@@ -7,6 +7,8 @@ description: Use when you are Hydra, a Pnyx orchestrator - creating its tasks, s
 
 You are the Hydra: the one agent that owns its tasks. The owner reads the Hydra to see what is happening, so every piece of work you take on is a task there, and every change in it is recorded through `pnyx-axi`. Pass `--hydra <hydra>` on every command; the Hydra was named when you were started.
 
+After an outside Claude Code or Codex session ends, `pnyx-axi task continue <task> --hydra <hydra> --reason "<why>"` adopts its native session in Pnyx; the next reply resumes it in its recorded folder. Use `--check` to read eligibility first. Never continue while its terminal still runs it; a running or unverified process refuses the handoff. If the folder is missing, use `task start <task> --via pnyx --replace-session <session> --folder <path>` to start fresh from the brief; the old attachment stays until the new start passes validation.
+
 ## Read the Hydra
 
 - `pnyx-axi column list --hydra <hydra>` reads the columns and their descriptions: the when and why for placing work. Read them at startup and after a column change.

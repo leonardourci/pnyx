@@ -1,3 +1,4 @@
+import { sessionId } from '../../../src/core/tasks.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Card } from '../../../src/core/model.ts'
 import { Button, Input, Select, Textarea, useBusy } from '../components/ui/controls.tsx'
@@ -17,15 +18,19 @@ const STARTED: Record<string, string> = {
   command: 'Hydra command started; its agent attaches when it reports.',
 }
 
-export function StartAgent({ card, firstmate, defaultHarness, command, connected, notify }: {
+export function StartAgent({
+  card, firstmate, defaultHarness, command, connected, replace = false, notify,
+}: {
   card: Card
   firstmate: boolean
   defaultHarness?: string
   command: Command
   connected: boolean
+  replace?: boolean
   notify({ text }: { text: string }): void
 }) {
-  const [via, setVia] = useState(firstmate ? 'firstmate' : 'pnyx'), [harness, setHarness] = useState(defaultHarness ?? 'claude')
+  const [via, setVia] = useState(firstmate && !replace ? 'firstmate' : 'pnyx')
+  const [harness, setHarness] = useState(replace ? card.agent?.provider === 'codex' ? 'codex' : 'claude' : defaultHarness ?? 'claude')
   const [folder, setFolder] = useState(card.folder ?? ''), [message, setMessage] = useState(card.brief ?? '')
   const [paseo, setPaseo] = useState<{ ok: boolean; reason?: string } | null>(null)
   const [busy, run] = useBusy()
@@ -62,6 +67,10 @@ export function StartAgent({ card, firstmate, defaultHarness, command, connected
           args.push('--harness', harness)
         }
 
+        if (replace && card.agent) {
+          args.push('--replace-session', sessionId({ agent: card.agent }))
+        }
+
         await command({ name: 'task', args })
         attempt.current = crypto.randomUUID()
         setMessage('')
@@ -85,12 +94,14 @@ export function StartAgent({ card, firstmate, defaultHarness, command, connected
       }}
     >
       <h3>Start an agent</h3>
-      <Select
-        label="Start through"
-        value={via}
-        options={ROUTES}
-        onChange={({ value }) => setVia(value)}
-      />
+      {!replace && (
+        <Select
+          label="Start through"
+          value={via}
+          options={ROUTES}
+          onChange={({ value }) => setVia(value)}
+        />
+      )}
       {via === 'paseo' && (paseo === null ? <p className="small muted">Checking Paseo…</p> : !paseo.ok && (
         <div role="alert" className="request">
           <p>{paseo.reason}</p>

@@ -1,3 +1,4 @@
+import { askHost } from '../server/state.ts'
 import { setupService } from '../server/service.ts'
 import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths, viewFor } from '../core/view.ts'
 import { createHash, randomUUID } from 'node:crypto'
@@ -528,6 +529,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       key: { type: 'string' },
       folder: { type: 'string' },
       session: { type: 'string' },
+      'replace-session': { type: 'string' },
       parent: { type: 'string' },
       column: { type: 'string' },
       note: { type: 'string' },
@@ -537,6 +539,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       harness: { type: 'string' },
       prompt: { type: 'string' },
       'paseo-url': { type: 'string' },
+      check: { type: 'boolean' },
       via: { type: 'string' },
       kind: { type: 'string' },
     },
@@ -550,12 +553,17 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     return paseoStatus({ url })
   }
 
-  if (action === 'start') {
+  if (action === 'continue' && values.check) {
+    return askHost({ hydraId, body: { action: 'continue', task: required({ value: positionals[1], what: 'task id' }), check: true, id: m.id ?? randomUUID(), actor: m.actor } })
+  }
+
+  if (action === 'start' || action === 'continue') {
     const reason = explained({ meta: m })
     const ref = required({ value: positionals[1], what: 'task id' })
-    const started = startTask({
+    const started = action === 'continue' ? askHost({ hydraId, body: { action: 'continue', task: ref, id: m.id ?? randomUUID(), actor: m.actor, ...(m.reason ? { reason: m.reason } : {}) } }) : startTask({
       hydraId,
       task: ref,
+      replacement: values['replace-session'] as string | undefined,
       via: values.via as string | undefined,
       kind: values.kind as string | undefined,
       harness: values.harness as string | undefined,
@@ -582,7 +590,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
             hydraId,
             fn: ({ writer }) => {
               const card = findCard({ state: writer.state, ref })
-              const action = `${out.via === 'firstmate' ? 'Asked Firstmate for a worker on' : 'Started a worker on'} ${card.title}`
+              const action = `${positionals[0] === 'continue' ? 'Continued the agent in Pnyx on' : out.via === 'firstmate' ? 'Asked Firstmate for a worker on' : 'Started a worker on'} ${card.title}`
 
               return postLine({ writer, hydraId, meta: m, cardId: card.id, action, reason, ...(m.id ? { id: `${m.id}:line` } : {}) })
             },
@@ -1683,7 +1691,7 @@ commands:
   hydra create|list|homes|show|set            Create, list or configure Hydras
   column create|rename|describe|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|status|history Tasks and one level of subtasks (--parent <id>)
-  task start <task> [--via pnyx|paseo|firstmate|command] [--kind <kind>]  Start a worker for the task and attach it
+  task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
   kind list|set|remove                       The agent (harness, model, effort, mode, quota) each task kind starts on
   task sessions                              List recorded sessions, including background runs
@@ -1765,7 +1773,8 @@ pnyx-axi task rename <id> --title <title>
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
-pnyx-axi task start <task> [--via pnyx|paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
+pnyx-axi task continue <task> [--check]
+pnyx-axi task start <task> [--via pnyx|paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>] [--replace-session <session>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--prompt <text>] [--harness <name>] [--folder <path>]
 Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide and start, as to move. Pnyx keeps it on the event,
@@ -1778,6 +1787,8 @@ Tasks accept one attached session. A second session cannot replace the recipient
 attach moves an interactive session to the task; an occupied destination is rejected.
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
+task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
+It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.
 task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's folder through the Hydra's
 Pnyx server (\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its native session, folder
 and settings on the task. Replies and setting changes from the Hydra or \`pnyx-axi reply\` and \`pnyx-axi agent\`

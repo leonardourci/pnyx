@@ -54,6 +54,8 @@ export interface AgentRef {
   paseoUrl?: string
   // Set when the Pnyx server runs this agent itself instead of a terminal.
   host?: 'pnyx'
+  // An adopted native session must resume even when its transcript is unavailable.
+  resume?: true
 }
 
 export type AgentSettings = Record<string, string>
