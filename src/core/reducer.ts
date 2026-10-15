@@ -12,6 +12,7 @@ import {
 import { applyAttachment, cardSessionId, observeSession, sessionId } from './tasks.ts'
 import { applyHydra, refreshTasks } from './hydra.ts'
 import { applyPermission } from './permissions.ts'
+import { refreshDone } from './retention.ts'
 import { requestId } from './answer.ts'
 
 export function emptyHydra(): HydraState {
@@ -196,8 +197,14 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
       card.sourceRefs = [...card.sourceRefs.filter(r => !sameSource({ a: r, b: source })), source]
     }
 
-    const { parentId, activity, settings, folder, autoTitle, ...rest } = fields
+    const { parentId, activity, settings, folder, autoTitle, project, ...rest } = fields
     Object.assign(card, rest)
+
+    if (project === null) {
+      delete card.project
+    } else if (project !== undefined) {
+      card.project = project
+    }
 
     if (settings === null) {
       delete card.settings
@@ -366,7 +373,9 @@ export function replay({ state, events }: {
   const next = structuredClone(state)
 
   for (const event of events) {
-    apply({ state: next, event })
+    if (apply({ state: next, event })) {
+      refreshDone({ state: next, at: event.at })
+    }
   }
 
   return next

@@ -19,7 +19,7 @@ export function filterCards({ state, workspace, tag, query = '' }: { state: Hydr
     .split(/\s+/)
     .filter(Boolean)
 
-  return Object.values(state.cards).filter(c => liveTask({ card: c }) && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag)) && words.every(w => [c.title, c.key, ...c.tags, ...c.links.map(l => `${l.number ?? ''} ${l.title ?? ''}`)].join(' ').toLowerCase()
+  return Object.values(state.cards).filter(c => liveTask({ card: c }) && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag)) && words.every(w => [c.title, c.project ?? '', c.key, ...c.tags, ...c.links.map(l => `${l.number ?? ''} ${l.title ?? ''}`)].join(' ').toLowerCase()
     .includes(w)))
     .sort((a,b) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
 }
