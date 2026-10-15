@@ -1,20 +1,8 @@
-import { readdirSync } from 'node:fs'
-import { join } from 'node:path'
 import { commands } from '../cli/commands.ts'
 import { hydraConfig } from '../core/hydra.ts'
-import { loadHydra, pnyxHome } from '../store/hydra-store.ts'
+import { hydraIds, loadHydra } from '../store/hydra-store.ts'
 
 export interface HydraTab { id: string; name: string; hydra: string }
-
-export function hydraIds(): string[] {
-  try {
-    return readdirSync(join(pnyxHome(), 'boards'), { withFileTypes: true }).filter(d => d.isDirectory())
-      .map(d => d.name)
-      .sort()
-  } catch {
-    return []
-  }
-}
 
 // A Hydra that cannot be read still gets a tab, so opening it reports why.
 export function listHydras(): HydraTab[] {

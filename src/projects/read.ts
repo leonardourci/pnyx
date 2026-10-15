@@ -1,9 +1,9 @@
 import { projectLabel } from '../core/decide.ts'
-import { readdirSync, realpathSync, statSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { realpathSync, statSync } from 'node:fs'
+import { basename, resolve } from 'node:path'
 import { HydraError, type HydraProject, type HydraState } from '../core/model.ts'
 import { hydraConfig } from '../core/hydra.ts'
-import { loadHydra, pnyxHome } from '../store/hydra-store.ts'
+import { hydraIds, loadHydra } from '../store/hydra-store.ts'
 import { firstmateProjects } from '../integrations/firstmate/projects.ts'
 
 export function projectsFor({ state }: { state: HydraState }): HydraProject[] {
@@ -75,20 +75,7 @@ export function projectFolder({ path }: { path: string }): string {
 }
 
 export function sharingHydras({ hydraId, path }: { hydraId: string; path: string }) {
-  let ids: string[]
-
-  try {
-    ids = readdirSync(join(pnyxHome(), 'boards'), { withFileTypes: true }).filter(d => d.isDirectory())
-      .map(d => d.name)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw error
-    }
-
-    ids = []
-  }
-
-  return ids.sort().filter(id => id !== hydraId)
+  return hydraIds().filter(id => id !== hydraId)
     .flatMap(id => {
       const state = loadHydra({ hydraId: id }).state
 
