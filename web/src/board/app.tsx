@@ -340,6 +340,7 @@ export function App() {
     notify,
     newColumn: newColumn !== null,
     cancelColumn: () => setNewColumn(null),
+    toggleTopbar: () => setTopbar(shown => !shown),
   })
   const detail = card && (
     <Detail
@@ -364,15 +365,7 @@ export function App() {
   return (
     <KeyboardProvider
       prefs={view.keyboard}
-      onAction={({ id, context }) => {
-        if (id === 'topbar') {
-          setTopbar(shown => !shown)
-
-          return true
-        }
-
-        return keyboard.onAction({ id, context })
-      }}
+      onAction={keyboard.onAction}
       leaveField={keyboard.leaveField}
       hints={keyboard.hints.length > 0}
       hintKey={keyboard.hintKey}

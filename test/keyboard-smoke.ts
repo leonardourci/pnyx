@@ -117,6 +117,10 @@ try {
     await press({ key: 'Escape' }); await frames(); await check({ condition: active({ selector: cardSelector }), label: `${title} restores the card after the palette` })
   }
 
+  // The palette runs the same top bar toggle as Mod+B.
+  await press({ key: `${mod}+k` }); await browser({ args: ['wait', 'Search Commands'] }); await fill({ role: 'combobox', name: 'Search Commands', text: 'top bar' }); await press({ key: 'Enter' }); await frames()
+  await check({ condition: "document.querySelector('.topbar').hidden", label: 'the palette hides the top bar' })
+  await focus({ selector: cardSelector }); await press({ key: `${mod}+b` }); await check({ condition: "!document.querySelector('.topbar').hidden", label: 'Mod+B brings the top bar back' })
   await press({ key: `${mod}+k` }); await browser({ args: ['wait', 'Search Commands'] }); await screenshot({ name: 'keyboard-palette.png' })
   await findPrevented({ expected: false })
   await fill({ role: 'combobox', name: 'Search Commands', text: 'settings' }); await press({ key: 'Enter' }); await browser({ args: ['wait', 'Keyboard shortcuts'] })

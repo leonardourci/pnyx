@@ -36,6 +36,7 @@ export function useBoardKeyboard({
   notify,
   newColumn,
   cancelColumn,
+  toggleTopbar,
 }: {
   state: BoardState
   groups: ColumnCards[]
@@ -49,6 +50,7 @@ export function useBoardKeyboard({
   notify({ text }: { text: string }): void
   newColumn: boolean
   cancelColumn(): void
+  toggleTopbar(): void
 }) {
   const [remembered, setRemembered] = useState<Record<string, string>>({}), [overlay, setOverlay] = useState<Overlay | null>(null), [hints, setHints] = useState<Hint[]>([]), [hintPrefix, setHintPrefix] = useState('')
   const focus = useRef<{ anchor?: BoardAnchor; owned: boolean }>({ owned: false })
@@ -209,6 +211,12 @@ export function useBoardKeyboard({
 
     if (id === 'move' && cardId && connected) {
       showOverlay({ kind: 'move', context })
+
+      return true
+    }
+
+    if (id === 'topbar') {
+      toggleTopbar()
 
       return true
     }
