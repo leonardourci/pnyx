@@ -1,13 +1,13 @@
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import type { BoardEvent, BoardState, Card, ReplyState } from '../core/model.ts'
-import { boardDir, readEventsFrom } from '../store/board-store.ts'
-import { redact, transcriptMessages } from '../search/text.ts'
+import type { HydraEvent, HydraState, Card, ReplyState } from '../core/model.ts'
+import { hydraDir, readEventsFrom } from '../store/hydra-store.ts'
+import { redact, transcriptMessages } from '../oracle/text.ts'
 import { HOST_LABEL, replyRoute, type ReplyRoute } from '../core/route.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { cardSessionId } from '../core/tasks.ts'
 
-// messageId and part let the board rejoin a long message split into transport chunks.
+// messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; messageId?: string; part?: number }
 export interface ThreadPage { card: string; session?: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; routeKind?: ReplyRoute['kind']; noRoute?: string; watching: 'unknown' }
 const MAX_BYTES = 10 * 1024 * 1024
@@ -191,18 +191,18 @@ export function latestMessage({ path, prev }: { path: string; prev?: LatestRead 
 // chunks when reply receipts also fill the latest page.
 export const THREAD_CURSOR = /^n(\d+:\d+)?;r(\d+:\d+)?$/
 const PAGE = 60
-type RepliedEvent = Extract<BoardEvent, { type: 'card.replied' }>
-type ChatEvent = Extract<BoardEvent, { type: 'chat.message' }>
+type RepliedEvent = Extract<HydraEvent, { type: 'card.replied' }>
+type ChatEvent = Extract<HydraEvent, { type: 'chat.message' }>
 type LoggedMessage = RepliedEvent | ChatEvent
 const replyLogs = new Map<string, { end: number; events: LoggedMessage[] }>()
 
-function repliedEvents({ board }: { board: string }): LoggedMessage[] {
-  const dir = boardDir({ board })
+function repliedEvents({ hydraId }: { hydraId: string }): LoggedMessage[] {
+  const dir = hydraDir({ hydraId })
   let log = replyLogs.get(dir) ?? { end: 0, events: [] }
-  let read = readEventsFrom({ board, offset: log.end })
+  let read = readEventsFrom({ hydraId, offset: log.end })
 
   if (!read) {
-    log = { end: 0, events: [] }; read = readEventsFrom({ board, offset: 0 })
+    log = { end: 0, events: [] }; read = readEventsFrom({ hydraId, offset: 0 })
   }
 
   const added = (read?.events ?? []).filter((e): e is LoggedMessage =>
@@ -214,9 +214,9 @@ function repliedEvents({ board }: { board: string }): LoggedMessage[] {
 }
 
 export function readThread(
-  { board, state, card, homes, before }: {
-    board: string
-    state: BoardState
+  { hydraId, state, card, homes, before }: {
+    hydraId: string
+    state: HydraState
     card: Card
     homes: string[]
     before?: string
@@ -329,7 +329,7 @@ export function readThread(
   const [replySeq, replyPart] = replyCursor?.split(':').map(Number) ?? [Infinity, Infinity]
   let archived = false
 
-  for (const e of repliedEvents({ board })) {
+  for (const e of repliedEvents({ hydraId })) {
     if (e.type === 'chat.message') {
       const session = cardSessionId({ card })
 

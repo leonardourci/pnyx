@@ -1,7 +1,7 @@
 import { watch, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import { boardConfig, declareTask, hydraEvent } from '../../core/hydra.ts'
+import { hydraConfig, declareTask, hydraEvent } from '../../core/hydra.ts'
 import { parseStatusLine } from './status.ts'
 import {
   decideLink,
@@ -13,9 +13,9 @@ import {
   type Decision,
   type Meta,
 } from '../../core/decide.ts'
-import type { Attention, BoardState, Card, SourceRef } from '../../core/model.ts'
+import type { Attention, HydraState, Card, SourceRef } from '../../core/model.ts'
 import { drainSpool } from '../hooks/ingest.ts'
-import { withWriter, type Writer } from '../../store/board-store.ts'
+import { withWriter, type Writer } from '../../store/hydra-store.ts'
 import { HOOK } from '../hooks/observe.ts'
 import {
   ADAPTER,
@@ -29,7 +29,7 @@ import {
 export interface SyncResult {
   tasks: number
   appended: number
-  // Set when the board's Hydra is another identity, so this home was not mirrored.
+  // Set when the Hydra is another identity, so this home was not mirrored.
   ignored?: string
 }
 
@@ -81,7 +81,7 @@ function attention({ task }: { task: TaskObservation }): Attention[] {
   ]
 }
 
-function hookAttention({ state, key }: { state: BoardState; key: string }): Attention[] {
+function hookAttention({ state, key }: { state: HydraState; key: string }): Attention[] {
   return state.cards[state.keys[key] ?? '']?.attention.filter(a => a.key.startsWith(HOOK)) ?? []
 }
 
@@ -96,7 +96,7 @@ function taskCard(
   return {
     title: task.title,
     tags: task.repo ? [task.repo] : [],
-    // Hydra may nest the task under the board task it serves; that placement stays.
+    // Hydra may nest the task under the Hydra task it serves; that placement stays.
     ...(current?.parentId ? {} : { parent: null }),
     ...(task.activity ? { activity: task.activity } : {}),
     // A pool reuses worktrees, so a closed task gives its folder up for the next one.
@@ -117,7 +117,7 @@ function taskCard(
 // has what Firstmate knows. Firstmate adds the link as open and later marks it
 // merged from the backlog; it never overwrites a state another source refreshed.
 function prLink({ state, key, task, at }: {
-  state: BoardState
+  state: HydraState
   key: string
   task: TaskObservation
   at: string
@@ -145,12 +145,12 @@ function apply({ writer, decision }: { writer: Writer; decision: Decision }): nu
   return 1
 }
 
-// Reconciles the board with the home's current files. Unchanged facts append
+// Reconciles the Hydra with the home's current files. Unchanged facts append
 // nothing, so syncing twice is a no-op. A task whose records are gone keeps its
 // card but drops its open decisions, since nothing can answer them any more, and
 // its folder.
-export function syncHome({ board, home, at = new Date().toISOString() }: {
-  board: string
+export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
+  hydraId: string
   home: string
   at?: string
 }): SyncResult {
@@ -158,18 +158,18 @@ export function syncHome({ board, home, at = new Date().toISOString() }: {
   const meta: Meta = { at, actor: ADAPTER }
 
   return withWriter({
-    board,
+    hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
 
-      if (writer.state.configured && (writer.state.board!.hydra.kind !== 'firstmate' || writer.state.board!.hydra.home !== home)) {
-        return { tasks: 0, appended: 0, ignored: `board ${board} has Hydra ${writer.state.board!.hydra.id}, not this home` }
+      if (writer.state.configured && (writer.state.config!.hydra.kind !== 'firstmate' || writer.state.config!.hydra.home !== home)) {
+        return { tasks: 0, appended: 0, ignored: `Hydra ${hydraId} has Hydra ${writer.state.config!.hydra.id}, not this home` }
       }
 
       let configured = 0
 
       if (!writer.state.configured) {
-        const config = boardConfig({ state: writer.state, id: board })
+        const config = hydraConfig({ state: writer.state, id: hydraId })
         configured = apply({ writer, decision: hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data: { ...config, hydra: { id: observed.key, name: 'Hydra', kind: 'firstmate', home } } } }) })
       }
 
@@ -387,8 +387,8 @@ const SETTLE_MS = 50
 const RETRY_MS = 1000
 
 export function watchHome(
-  { board, home, onSync }: {
-    board: string
+  { hydraId, home, onSync }: {
+    hydraId: string
     home: string
     onSync: (
       { result }: {
@@ -409,10 +409,10 @@ export function watchHome(
     }
 
     try {
-      onSync({ result: syncHome({ board, home }) })
+      onSync({ result: syncHome({ hydraId, home }) })
     } catch (error) {
       onSync({ result: error as Error })
-      // A locked board or a half-written file clears on its own; try once more later.
+      // A locked Hydra or a half-written file clears on its own; try once more later.
       schedule({ ms: RETRY_MS })
     }
   }

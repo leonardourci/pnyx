@@ -8,8 +8,8 @@ import { setupHydra, startHydra, startTask } from './start.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { boardConfig, declareTask, hydraEvent, HYDRA_CARD, validateColumns } from '../core/hydra.ts'
-import type { BoardConfig, HydraIdentity } from '../core/model.ts'
+import { hydraConfig, declareTask, hydraEvent, HYDRA_CARD, validateColumns } from '../core/hydra.ts'
+import type { HydraConfig, HydraIdentity } from '../core/model.ts'
 import { readThread } from '../thread/read.ts'
 import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
@@ -27,19 +27,19 @@ import {
   type Meta,
 } from '../core/decide.ts'
 import {
-  BoardError,
+  HydraError,
   EVENT_TYPES,
   HYDRA_ACTOR,
   OUTCOME_STATES,
-  type BoardEvent,
-  type BoardState,
+  type HydraEvent,
+  type HydraState,
   type Card,
   type EventType,
   type Column,
   type NotedEvent,
   type OutcomeState,
 } from '../core/model.ts'
-import { emptyBoard, replay } from '../core/reducer.ts'
+import { emptyHydra, replay } from '../core/reducer.ts'
 import { readServer } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
@@ -48,9 +48,9 @@ import { answerPrompt } from '../core/answer.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
-import { boardDir, pnyxHome, loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from '../store/board-store.ts'
+import { hydraDir, pnyxHome, loadHydra, readEvents, repairHydra, spoolFiles, withWriter, type Writer } from '../store/hydra-store.ts'
 
-const DEFAULT_BOARD = 'default'
+const DEFAULT_HYDRA = 'default'
 const HISTORY_LIMIT = 20
 const HISTORY_MAX = 100
 const HOME_LIMIT = 50
@@ -60,7 +60,7 @@ const EXPLAINED: readonly EventType[] = ['card.moved', 'task.created', 'task.bri
 export type Output = Record<string, unknown>
 export type Options = NonNullable<ParseArgsConfig['options']>
 
-export const COMMON: Options = { board: { type: 'string' } }
+export const COMMON: Options = { hydra: { type: 'string' } }
 export const WRITE: Options = {
   ...COMMON,
   actor: { type: 'string' },
@@ -95,7 +95,7 @@ export function parse({ args, options, positionals }: {
   return {
     values,
     positionals: parsed.positionals,
-    board: (values.board as string | undefined) ?? DEFAULT_BOARD,
+    hydraId: (values.hydra as string | undefined) ?? DEFAULT_HYDRA,
   }
 }
 
@@ -151,16 +151,16 @@ export function explained({ meta }: { meta: Meta }): string {
   const reason = meta.reason?.trim() ?? ''
 
   if (meta.actor === HYDRA_ACTOR && !reason) {
-    throw new BoardError({ message: 'Hydra changes need --reason <why>', code: 'VALIDATION_ERROR', help: ['Repeat the command with --reason "<one short line on why>"; Pnyx keeps it on the event and posts it in your board chat'] })
+    throw new HydraError({ message: 'Hydra changes need --reason <why>', code: 'VALIDATION_ERROR', help: ['Repeat the command with --reason "<one short line on why>"; Pnyx keeps it on the event and posts it in your Hydra’s chat'] })
   }
 
   return reason
 }
 
 // An ordinary Hydra message, so the light check, hydra messages and later sessions read it back.
-export function postLine({ writer, board, meta, cardId, action, reason, id }: {
+export function postLine({ writer, hydraId, meta, cardId, action, reason, id }: {
   writer: Writer
-  board: string
+  hydraId: string
   meta: Meta
   cardId: string
   action: string
@@ -173,7 +173,7 @@ export function postLine({ writer, board, meta, cardId, action, reason, id }: {
     return text
   }
 
-  const decision = hydraEvent({ state: writer.state, meta: { at: meta.at, actor: meta.actor, ...(id ? { id } : {}) }, cardId, change: { type: 'hydra.message', data: { task: cardId, action: 'send', text, ...(meta.details ? { details: meta.details } : {}), hydra: boardConfig({ state: writer.state, id: board }).hydra.id } } })
+  const decision = hydraEvent({ state: writer.state, meta: { at: meta.at, actor: meta.actor, ...(id ? { id } : {}) }, cardId, change: { type: 'hydra.message', data: { task: cardId, action: 'send', text, ...(meta.details ? { details: meta.details } : {}), hydra: hydraConfig({ state: writer.state, id: hydraId }).hydra.id } } })
 
   if ('event' in decision) {
     decision.event.messageId = decision.event.id
@@ -183,24 +183,24 @@ export function postLine({ writer, board, meta, cardId, action, reason, id }: {
   return text
 }
 
-function actionText({ state, board, event }: {
-  state: BoardState
-  board: string
-  event: BoardEvent
+function actionText({ state, hydraId, event }: {
+  state: HydraState
+  hydraId: string
+  event: HydraEvent
 }): string {
   const title = state.cards[event.cardId]?.title ?? event.cardId
-  const columnTitle = ({ id }: { id: Column | null }) => boardConfig({ state, id: board }).columns.find(c => c.id === id)?.title ?? id ?? 'none'
+  const columnTitle = ({ id }: { id: Column | null }) => hydraConfig({ state, id: hydraId }).columns.find(c => c.id === id)?.title ?? id ?? 'none'
 
   switch (event.type) {
     case 'card.moved': return event.undoes ? `Moved ${title} back to ${columnTitle({ id: event.data.after })}` : event.data.before === event.data.after ? `Reordered ${title} in ${columnTitle({ id: event.data.after })}` : `Moved ${title} to ${columnTitle({ id: event.data.after })}`
     case 'task.created': return `Created ${title}`
     case 'task.brief': return `Updated the brief of ${title}`
-    case 'task.visibility': return event.data.after ? `Hid ${title}` : `Returned ${title} to the board`
+    case 'task.visibility': return event.data.after ? `Hid ${title}` : `Returned ${title} to the Hydra`
     default: return summarize({ event })
   }
 }
 
-function receipt({ state, event }: { state: BoardState; event: BoardEvent }): Output {
+function receipt({ state, event }: { state: HydraState; event: HydraEvent }): Output {
   if (event.type === 'hydra.memory') {
     return { event: { seq: event.seq, id: event.id, type: event.type }, memory: event.data.key, state: event.data.after === null ? 'forgotten' : 'saved' }
   }
@@ -208,8 +208,8 @@ function receipt({ state, event }: { state: BoardState; event: BoardEvent }): Ou
   if (event.type === 'board.configured' || event.type === 'board.columns' || event.type === 'board.agents') {
     return {
       event: { seq: event.seq, id: event.id, type: event.type },
-      board: state.board,
-      revision: state.boardRevision,
+      hydra: state.config,
+      revision: state.configRevision,
     }
   }
 
@@ -237,7 +237,7 @@ interface Intent {
   card: string
 }
 
-function confirmationPreview({ state, event }: { state: BoardState; event: BoardEvent }): Output {
+function confirmationPreview({ state, event }: { state: HydraState; event: HydraEvent }): Output {
   if (event.type === 'card.moved') {
     return {
       task: event.cardId,
@@ -250,7 +250,7 @@ function confirmationPreview({ state, event }: { state: BoardState; event: Board
 
   if (event.type === 'board.columns') {
     const { columns, placements, fallback } = event.data
-    const before = boardConfig({ state }).columns
+    const before = hydraConfig({ state }).columns
 
     return {
       from: before.map(c => c.id),
@@ -267,15 +267,15 @@ function confirmationPreview({ state, event }: { state: BoardState; event: Board
 // The receipt the event with this id got when it was appended. An id already used
 // for another card or event type is a conflict, not a retry.
 function originalReceipt(
-  { board, state, id, seq, intent }: {
-    board: string
-    state: BoardState
+  { hydraId, state, id, seq, intent }: {
+    hydraId: string
+    state: HydraState
     id: string
     seq: number
     intent: Intent
   },
 ): Output {
-  const events = readEvents({ board })
+  const events = readEvents({ hydraId })
   const index = events.findIndex(e => e.id === id && e.seq === seq)
   const original = events[index]!
 
@@ -290,7 +290,7 @@ function originalReceipt(
 
   return {
     ...receipt({
-      state: replay({ state: emptyBoard(), events: events.slice(0, index + 1) }),
+      state: replay({ state: emptyHydra(), events: events.slice(0, index + 1) }),
       event: original,
     }),
     duplicate: 'event id already applied; nothing appended',
@@ -300,18 +300,18 @@ function originalReceipt(
 // A repeated --event-id answers with the original receipt before any other check,
 // so a retry of a write that already landed never reports a conflict.
 export function commit(
-  { board, meta, intent, decide, confirmation }: {
-    board: string
+  { hydraId, meta, intent, decide, confirmation }: {
+    hydraId: string
     meta: Meta
     intent: Intent
-    decide: ({ state, meta }: { state: BoardState; meta: Meta }) => Decision
+    decide: ({ state, meta }: { state: HydraState; meta: Meta }) => Decision
     confirmation?: { token?: string }
   },
 ): Output {
   const reason = EXPLAINED.includes(intent.type) ? explained({ meta }) : ''
 
   return withWriter({
-    board,
+    hydraId,
     fn: ({ writer }) => {
       const spool = drainSpool({ writer })
       const seq = meta.id === undefined ? undefined : writer.state.eventIds[meta.id]
@@ -319,7 +319,7 @@ export function commit(
 
       if (seq !== undefined) {
         out = originalReceipt({
-          board,
+          hydraId,
           state: writer.state,
           id: meta.id!,
           seq,
@@ -336,8 +336,8 @@ export function commit(
         if ('event' in decision) {
           if (confirmation) {
             const { type, cardId, data } = decision.event
-            const revision = cardId === '$board' ? writer.state.boardRevision ?? 0 : writer.state.cards[cardId]?.revision ?? 0
-            const token = createHash('sha256').update(JSON.stringify({ board, actor: meta.actor, type, cardId, data, revision }))
+            const revision = cardId === '$board' ? writer.state.configRevision ?? 0 : writer.state.cards[cardId]?.revision ?? 0
+            const token = createHash('sha256').update(JSON.stringify({ hydraId, actor: meta.actor, type, cardId, data, revision }))
               .digest('hex')
               .slice(0, 24)
 
@@ -349,7 +349,7 @@ export function commit(
           writer.append({ event: decision.event })
           const { event } = decision
           const posted = meta.actor === HYDRA_ACTOR && reason && EXPLAINED.includes(event.type)
-            ? postLine({ writer, board, meta, cardId: event.cardId, action: actionText({ state: writer.state, board, event }), reason, id: `${event.id}:line` })
+            ? postLine({ writer, hydraId, meta, cardId: event.cardId, action: actionText({ state: writer.state, hydraId, event }), reason, id: `${event.id}:line` })
             : undefined
           out = { ...receipt({ state: writer.state, event }), ...(posted ? { posted } : {}) }
 
@@ -376,7 +376,7 @@ export function commit(
 
 export function guard<T = Output>({ handler }: { handler: ({ args }: { args: string[] }) => T }) {
   const mapped = ({ error }: { error: unknown }): never => {
-    if (error instanceof BoardError) {
+    if (error instanceof HydraError) {
       throw new AxiError(error.message, error.code, error.help)
     }
 
@@ -431,7 +431,7 @@ function cardDetail({ card }: { card: Card }): Output {
   }
 
   detail.sessions = card.sessionIds?.length ? card.sessionIds : 'none'
-  detail.visibility = card.hidden ? 'history' : 'board'
+  detail.visibility = card.hidden ? 'history' : 'hydra'
 
   if (card.settings) {
     detail.settings = card.settings
@@ -457,20 +457,20 @@ function cardDetail({ card }: { card: Card }): Output {
 }
 
 export async function home(): Promise<Output> {
-  const { dir, state, tornBytes } = loadBoard({ board: DEFAULT_BOARD })
+  const { dir, state, tornBytes } = loadHydra({ hydraId: DEFAULT_HYDRA })
   const cards = Object.values(state.cards).filter(card => liveTask({ card }))
-  const config = boardConfig({ state })
+  const config = hydraConfig({ state })
   const columns = Object.fromEntries(
     config.columns.map(c => [c.id, cards.filter(card => card.column === c.id).length]),
   )
-  const server = await readServer({ board: DEFAULT_BOARD })
-  const out: Output = { board: DEFAULT_BOARD, hydra: config.hydra.id, server: server ? `running at ${server.url}` : 'not running', columns }
+  const server = await readServer({ hydraId: DEFAULT_HYDRA })
+  const out: Output = { hydraId: DEFAULT_HYDRA, hydra: config.hydra.id, server: server ? `running at ${server.url}` : 'not running', columns }
 
   if (tornBytes > 0) {
     out.warning = 'events.jsonl has a torn tail; run `pnyx-axi repair`'
   }
 
-  const serveHint = server ? [] : ['Run `pnyx-axi serve` to start the board server']
+  const serveHint = server ? [] : ['Run `pnyx-axi serve` to start the Hydra server']
   const spooled = spoolFiles({ dir }).length
 
   if (spooled > 0) {
@@ -502,7 +502,7 @@ export async function home(): Promise<Output> {
 
 const push = guard({
   handler: ({ args }) => {
-    const { values, board } = parse({ args, options: { ...WRITE, key: { type: 'string' }, file: { type: 'string' } }, positionals: 0 })
+    const { values, hydraId } = parse({ args, options: { ...WRITE, key: { type: 'string' }, file: { type: 'string' } }, positionals: 0 })
     const m = meta({ values })
     const key = required({ value: values.key as string | undefined, what: '--key' })
     const file = required({ value: values.file as string | undefined, what: '--file' })
@@ -514,12 +514,12 @@ const push = guard({
       throw new AxiError(`cannot read card JSON from ${file}: ${(error as Error).message}`, 'VALIDATION_ERROR')
     }
 
-    return commit({ board, meta: m, intent: { type: 'card.pushed', card: key }, decide: ({ state }) => decidePush({ state, key, input, meta: m }) })
+    return commit({ hydraId, meta: m, intent: { type: 'card.pushed', card: key }, decide: ({ state }) => decidePush({ state, key, input, meta: m }) })
   },
 })
 
 function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
-  const { values, positionals, board } = parse({
+  const { values, positionals, hydraId } = parse({
     args,
     options: {
       ...WRITE,
@@ -554,7 +554,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const reason = explained({ meta: m })
     const ref = required({ value: positionals[1], what: 'task id' })
     const started = startTask({
-      board,
+      hydraId,
       task: ref,
       via: values.via as string | undefined,
       kind: values.kind as string | undefined,
@@ -579,12 +579,12 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         return {
           ...out,
           posted: withWriter({
-            board,
+            hydraId,
             fn: ({ writer }) => {
               const card = findCard({ state: writer.state, ref })
               const action = `${out.via === 'firstmate' ? 'Asked Firstmate for a worker on' : 'Started a worker on'} ${card.title}`
 
-              return postLine({ writer, board, meta: m, cardId: card.id, action, reason, ...(m.id ? { id: `${m.id}:line` } : {}) })
+              return postLine({ writer, hydraId, meta: m, cardId: card.id, action, reason, ...(m.id ? { id: `${m.id}:line` } : {}) })
             },
           }),
         }
@@ -595,7 +595,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (action === 'sessions') {
-    const sessions = Object.values(loadBoard({ board }).state.sessions ?? {}).map(s => ({
+    const sessions = Object.values(loadHydra({ hydraId }).state.sessions ?? {}).map(s => ({
       id: s.id, provider: s.agent.provider, task: s.taskId ?? 'none', interactive: interactive({ session: s }),
     }))
 
@@ -608,33 +608,33 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const key = values.key as string | undefined ?? `task:${m.id ?? randomUUID()}`
 
     if (key.startsWith('$')) {
-      throw new BoardError({ message: 'task keys beginning with $ are reserved', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'task keys beginning with $ are reserved', code: 'VALIDATION_ERROR' })
     }
 
     const folder = canonical({ path: values.folder })
     const brief = taskBrief({ value: values.brief })
 
     return commit({
-      board,
+      hydraId,
       meta: m,
       intent: { type: 'task.created', card: key },
       decide: ({ state }) => {
         if (state.keys[key]) {
-          throw new BoardError({ message: `task key already exists: ${key}`, code: 'CONFLICT' })
+          throw new HydraError({ message: `task key already exists: ${key}`, code: 'CONFLICT' })
         }
 
         const parent = values.parent ? findCard({ state, ref: String(values.parent) }) : undefined
 
         if (parent?.parentId || parent?.automaticTask || parent?.id === HYDRA_CARD) {
-          throw new BoardError({ message: 'subtasks have one level under a task', code: 'VALIDATION_ERROR' })
+          throw new HydraError({ message: 'subtasks have one level under a task', code: 'VALIDATION_ERROR' })
         }
 
-        const columns = boardConfig({ state, id: board }).columns
+        const columns = hydraConfig({ state, id: hydraId }).columns
         const selected = values.column
           ? columns.find(c => c.id === values.column || c.title === values.column) : undefined
 
         if (values.column && !selected) {
-          throw new BoardError({ message: 'unknown board column', code: 'VALIDATION_ERROR' })
+          throw new HydraError({ message: 'unknown Hydra column', code: 'VALIDATION_ERROR' })
         }
 
         return hydraEvent({ state, meta: m, cardId: `c${state.seq + 1}`, change: { type: 'task.created', data: { key, title, ...(brief !== undefined ? { brief } : {}), ...(folder ? { folder } : {}), ...(parent ? { parentId: parent.id } : {}), ...(selected ? { column: selected.id } : {}) } } })
@@ -643,22 +643,22 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (action === 'list') {
-    const state = loadBoard({ board }).state
+    const state = loadHydra({ hydraId }).state
 
     const tasks = Object.values(state.cards).filter(c => liveTask({ card: c }))
       .map(c => ({ ...cardRow({ card: c }), parent: c.parentId ?? '', status: c.status?.state ?? 'paused', worker: c.sessionIds?.[0] ?? '' }))
 
     return tasks.length
-      ? { board, tasks, help: [`Run \`pnyx-axi task show <id> --board ${board}\` for one task`] }
-      : { board, tasks: 'none: no tasks on this board', help: [`Run \`pnyx-axi task create --title <title> --board ${board}\` to add one`] }
+      ? { hydraId, tasks, help: [`Run \`pnyx-axi task show <id> --hydra ${hydraId}\` for one task`] }
+      : { hydraId, tasks: 'none: no tasks on this Hydra', help: [`Run \`pnyx-axi task create --title <title> --hydra ${hydraId}\` to add one`] }
   }
 
   if (action === 'history') {
-    return taskHistory({ board, ref: required({ value: positionals[1], what: 'task id' }), before: integer({ value: values.before, flag: '--before' }), limit: integer({ value: values.limit, flag: '--limit' }) ?? HISTORY_LIMIT, full: Boolean(values.full) })
+    return taskHistory({ hydraId, ref: required({ value: positionals[1], what: 'task id' }), before: integer({ value: values.before, flag: '--before' }), limit: integer({ value: values.limit, flag: '--limit' }) ?? HISTORY_LIMIT, full: Boolean(values.full) })
   }
 
   if (action === 'show') {
-    const state = loadBoard({ board }).state
+    const state = loadHydra({ hydraId }).state
     const task = findCard({ state, ref: required({ value: positionals[1], what: 'task id' }) })
 
     if (values.full) {
@@ -670,24 +670,24 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
     return {
       task: { ...cardRow({ card: task }), key: task.key, brief: task.brief ?? 'none', parent: task.parentId ?? 'none', status: task.status ? `${task.status.state}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet', worker: task.sessionIds?.[0] ?? 'none', declarations: task.statusLog?.length ?? 0, firstmate: task.mirror ? 'mirrored' : 'none' },
-      help: [`Run \`pnyx-axi task show ${task.id} --full --board ${board}\` for the full record, or \`pnyx-axi task history ${task.id} --board ${board}\` for its events`],
+      help: [`Run \`pnyx-axi task show ${task.id} --full --hydra ${hydraId}\` for the full record, or \`pnyx-axi task history ${task.id} --hydra ${hydraId}\` for its events`],
     }
   }
 
   if (action === 'chat') {
-    const state = loadBoard({ board }).state
+    const state = loadHydra({ hydraId }).state
     const task = findCard({ state, ref: required({ value: positionals[1], what: 'task id' }) })
     const session = values.session ? findSession({ state, ref: String(values.session) }) : undefined
 
-    if (session && !taskSessions({ board, ids: new Set([task.id]) }).has(session.id)) {
-      throw new BoardError({ message: 'this session has no recorded membership on the task', code: 'NOT_FOUND' })
+    if (session && !taskSessions({ hydraId, ids: new Set([task.id]) }).has(session.id)) {
+      throw new HydraError({ message: 'this session has no recorded membership on the task', code: 'NOT_FOUND' })
     }
 
     const card = session ? { ...task, agent: session.agent, sessionIds: [session.id] } : task
 
     return {
       thread: readThread({
-        board, state, card, homes: [], before: values.before as string | undefined,
+        hydraId, state, card, homes: [], before: values.before as string | undefined,
       }),
     }
   }
@@ -695,28 +695,28 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   if (action === 'status') {
     const ref = required({ value: positionals[1], what: 'task id' })
 
-    return commit({ board, meta: m, intent: { type: 'task.declared', card: ref }, decide: ({ state }) => declareTask({ state, ref, status: required({ value: positionals[2], what: 'status' }), note: String(values.note ?? ''), meta: m }) })
+    return commit({ hydraId, meta: m, intent: { type: 'task.declared', card: ref }, decide: ({ state }) => declareTask({ state, ref, status: required({ value: positionals[2], what: 'status' }), note: String(values.note ?? ''), meta: m }) })
   }
 
   if (action === 'brief' || action === 'hide' || action === 'unhide') {
     const ref = required({ value: positionals[1], what: 'task id' })
 
     return commit({
-      board,
+      hydraId,
       meta: m,
       intent: { type: action === 'brief' ? 'task.brief' : 'task.visibility', card: ref },
       decide: ({ state }) => {
         const task = findCard({ state, ref })
 
         if (task.automaticTask || task.id === HYDRA_CARD) {
-          throw new BoardError({ message: 'choose a task', code: 'VALIDATION_ERROR' })
+          throw new HydraError({ message: 'choose a task', code: 'VALIDATION_ERROR' })
         }
 
         if (action === 'brief') {
           const after = taskBrief({ value: values.brief })
 
           if (after === undefined) {
-            throw new BoardError({ message: 'pass --brief <text> (empty text clears it)', code: 'VALIDATION_ERROR' })
+            throw new HydraError({ message: 'pass --brief <text> (empty text clears it)', code: 'VALIDATION_ERROR' })
           }
 
           return after === (task.brief ?? '') ? { skipped: 'unchanged' } : hydraEvent({ state, meta: m, cardId: task.id, change: { type: 'task.brief', data: { before: task.brief ?? '', after } } })
@@ -732,7 +732,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   if (action === 'rename') {
     const ref = required({ value: positionals[1], what: 'task id' })
 
-    return commit({ board, meta: m, intent: { type: 'card.pushed', card: ref }, decide: ({ state }) => decidePush({ state, key: findCard({ state, ref }).key, input: { title: required({ value: values.title as string, what: '--title' }) }, meta: m }) })
+    return commit({ hydraId, meta: m, intent: { type: 'card.pushed', card: ref }, decide: ({ state }) => decidePush({ state, key: findCard({ state, ref }).key, input: { title: required({ value: values.title as string, what: '--title' }) }, meta: m }) })
   }
 
   if (action !== 'attach' && action !== 'detach') {
@@ -742,12 +742,12 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   const ref = required({ value: positionals[1], what: 'task id' })
 
   const result = commit({
-    board,
+    hydraId,
     meta: m,
     intent: { type: 'task.session', card: ref },
     decide: ({ state, meta: current }) => {
       if (!liveTask({ card: findCard({ state, ref }) })) {
-        throw new BoardError({ message: 'choose an explicit task; use board set to configure Hydra', code: 'VALIDATION_ERROR' })
+        throw new HydraError({ message: 'choose an explicit task; use hydra set to configure Hydra', code: 'VALIDATION_ERROR' })
       }
 
       if (action === 'detach' && !findCard({ state, ref }).sessionIds?.length) {
@@ -764,12 +764,12 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
   if (action === 'attach' && typeof result.event === 'object' && result.event !== null && 'id' in result.event) {
     const eventId = result.event.id
-    const attachment = readEvents({ board }).find(e => e.id === eventId)
+    const attachment = readEvents({ hydraId }).find(e => e.id === eventId)
 
     if (attachment?.type === 'task.session' && attachment.data.brief) {
-      const home = loadBoard({ board }).state.board?.hydra.home
+      const home = loadHydra({ hydraId }).state.config?.hydra.home
 
-      return sendReply({ board, request: { card: attachment.cardId, text: attachment.data.brief, expectedSession: attachment.data.session, homes: home ? [home] : [], actor: m.actor, id: `brief:${attachment.id}` } }).then(brief => ({ ...result, brief }), (error: unknown) => ({ ...result, brief: { state: 'failed', detail: (error as Error).message }, help: ['The attachment was recorded; inspect the task before retrying its brief with the same --event-id'] }))
+      return sendReply({ hydraId, request: { card: attachment.cardId, text: attachment.data.brief, expectedSession: attachment.data.session, homes: home ? [home] : [], actor: m.actor, id: `brief:${attachment.id}` } }).then(brief => ({ ...result, brief }), (error: unknown) => ({ ...result, brief: { state: 'failed', detail: (error as Error).message }, help: ['The attachment was recorded; inspect the task before retrying its brief with the same --event-id'] }))
     }
   }
 
@@ -782,7 +782,7 @@ function taskBrief({ value }: { value: unknown }): string | undefined {
   }
 
   if (typeof value !== 'string' || value.length > 24000) {
-    throw new BoardError({ message: 'a brief must be text of up to 24000 characters', code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: 'a brief must be text of up to 24000 characters', code: 'VALIDATION_ERROR' })
   }
 
   return value
@@ -790,7 +790,7 @@ function taskBrief({ value }: { value: unknown }): string | undefined {
 
 const task = guard({ handler: ({ args }) => taskCommand({ args }) })
 
-function sessionRef({ state, ref }: { state: BoardState; ref: string }): string {
+function sessionRef({ state, ref }: { state: HydraState; ref: string }): string {
   return ref === 'self'
     ? selfSession({
       state,
@@ -803,46 +803,46 @@ function sessionRef({ state, ref }: { state: BoardState; ref: string }): string 
     : ref
 }
 
-function taskHistory({ board, ref, before, limit, full }: {
-  board: string
+function taskHistory({ hydraId, ref, before, limit, full }: {
+  hydraId: string
   ref: string
   before?: number
   limit: number
   full: boolean
 }): Output {
   if (limit < 1 || limit > HISTORY_MAX) {
-    throw new BoardError({ message: `limit must be 1–${HISTORY_MAX}`, code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: `limit must be 1–${HISTORY_MAX}`, code: 'VALIDATION_ERROR' })
   }
 
-  const state = loadBoard({ board }).state
+  const state = loadHydra({ hydraId }).state
   const task = findCard({ state, ref })
   const ids = new Set([task.id, ...Object.values(state.cards).filter(c => c.parentId === task.id)
     .map(c => c.id)])
-  const events = readEvents({ board })
-  const sessions = taskSessions({ board, ids })
+  const events = readEvents({ hydraId })
+  const sessions = taskSessions({ hydraId, ids })
   const matches = events.filter(e => (before === undefined || e.seq < before) && (ids.has(e.cardId) || (e.type === 'task.session' && (ids.has(e.data.before ?? '') || ids.has(e.data.after ?? ''))) || (e.type === 'hydra.message' && ids.has(e.data.task ?? ''))))
     .reverse()
   const page = matches.slice(0, limit)
 
   const help = [
-    ...(matches.length > limit ? [`Run \`pnyx-axi task history ${ref} --before ${page.at(-1)!.seq} --board ${board}\` for older events`] : []),
-    ...(full || !page.length ? [] : [`Run \`pnyx-axi task history ${ref} --full --board ${board}\` for each event's data`]),
+    ...(matches.length > limit ? [`Run \`pnyx-axi task history ${ref} --before ${page.at(-1)!.seq} --hydra ${hydraId}\` for older events`] : []),
+    ...(full || !page.length ? [] : [`Run \`pnyx-axi task history ${ref} --full --hydra ${hydraId}\` for each event's data`]),
   ]
 
   return {
-    board,
+    hydraId,
     task: task.id,
-    sessions: sessions.size ? [...sessions].map(id => ({ session: id, transcript: state.sessions?.[id]?.agent.transcriptPath ?? 'unavailable', command: `pnyx-axi task chat ${task.id} --session ${id} --board ${board}` })) : 'none: no agent has worked on this task',
+    sessions: sessions.size ? [...sessions].map(id => ({ session: id, transcript: state.sessions?.[id]?.agent.transcriptPath ?? 'unavailable', command: `pnyx-axi task chat ${task.id} --session ${id} --hydra ${hydraId}` })) : 'none: no agent has worked on this task',
     events: page.length ? page.map(e => ({ seq: e.seq, id: e.id, at: e.at, type: e.type, card: e.cardId, actor: e.actor, summary: summarize({ event: e }), ...(full ? { data: e.data } : {}) })) : 'none: no matching events',
     ...(matches.length > limit ? { next: page.at(-1)!.seq } : {}),
     ...(help.length ? { help } : {}),
   }
 }
 
-function taskSessions({ board, ids }: { board: string; ids: Set<string> }): Set<string> {
+function taskSessions({ hydraId, ids }: { hydraId: string; ids: Set<string> }): Set<string> {
   const sessions = new Set<string>()
 
-  for (const event of readEvents({ board })) {
+  for (const event of readEvents({ hydraId })) {
     if (event.type === 'task.session' && (ids.has(event.data.before ?? '') || ids.has(event.data.after ?? ''))) {
       sessions.add(event.data.session)
     }
@@ -856,8 +856,8 @@ function taskSessions({ board, ids }: { board: string; ids: Set<string> }): Set<
   return sessions
 }
 
-function boardCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, board } = parse({ args, options: { ...WRITE, name: { type: 'string' }, hydra: { type: 'string' }, session: { type: 'string' }, firstmate: { type: 'string' }, command: { type: 'string' }, base: { type: 'string' } }, positionals: 2 })
+function hydraConfigCommand({ args }: { args: string[] }): Output {
+  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, name: { type: 'string' }, identity: { type: 'string' }, session: { type: 'string' }, firstmate: { type: 'string' }, command: { type: 'string' }, base: { type: 'string' } }, positionals: 2 })
   const action = positionals[0]
 
   if (action === 'homes') {
@@ -865,63 +865,63 @@ function boardCommand({ args }: { args: string[] }): Output {
   }
 
   if (action === 'list') {
-    let boards: string[] = []
+    let hydras: string[] = []
 
     try {
-      boards = readdirSync(join(pnyxHome(), 'boards'), { withFileTypes: true }).filter(d => d.isDirectory())
+      hydras = readdirSync(join(pnyxHome(), 'boards'), { withFileTypes: true }).filter(d => d.isDirectory())
         .map(d => d.name)
-    } catch { /* No boards have been created. */ }
+    } catch { /* No hydras have been created. */ }
 
-    if (!boards.length) {
-      return { boards: 'none: no boards yet', help: ['Run `pnyx-axi board create <id>` to add one'] }
+    if (!hydras.length) {
+      return { hydras: 'none: no Hydras yet', help: ['Run `pnyx-axi hydra create <id>` to add one'] }
     }
 
     return {
-      boards: boards.map(id => {
-        const state = loadBoard({ board: id }).state
-        const config = boardConfig({ state, id })
+      hydras: hydras.map(id => {
+        const state = loadHydra({ hydraId: id }).state
+        const config = hydraConfig({ state, id })
 
         const tasks = Object.values(state.cards).filter(c => liveTask({ card: c })).length
 
         return { id, name: config.name, hydra: config.hydra.id, kind: config.hydra.kind, tasks }
       }),
-      help: ['Run `pnyx-axi board show --board <id>` for its columns and Hydra'],
+      help: ['Run `pnyx-axi hydra show --hydra <id>` for its columns and Hydra'],
     }
   }
 
-  const id = action !== 'create' ? board
-    : positionals[1] ?? (values.firstmate ? homeBoardId({ home: String(values.firstmate) }) : required({ value: undefined, what: 'board id' }))
-  boardDir({ board: id })
+  const id = action !== 'create' ? hydraId
+    : positionals[1] ?? (values.firstmate ? homeHydraId({ home: String(values.firstmate) }) : required({ value: undefined, what: 'Hydra id' }))
+  hydraDir({ hydraId: id })
 
   if (action === 'show') {
-    const state = loadBoard({ board: id }).state
+    const state = loadHydra({ hydraId: id }).state
 
-    return { board: boardConfig({ state, id }), revision: state.boardRevision ?? 0 }
+    return { hydra: hydraConfig({ state, id }), revision: state.configRevision ?? 0 }
   }
 
   if (action !== 'create' && action !== 'set') {
-    throw new BoardError({ message: 'Use board create <id>, list, homes, show or set', code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: 'Use hydra create <id>, list, homes, show or set', code: 'VALIDATION_ERROR' })
   }
 
   const m = meta({ values })
 
   return commit({
-    board: id,
+    hydraId: id,
     meta: m,
     intent: { type: 'board.configured', card: '$board' },
     decide: ({ state }) => {
       if (action === 'create' && state.configured) {
-        throw new BoardError({ message: `board already exists: ${id}`, code: 'CONFLICT' })
+        throw new HydraError({ message: `Hydra already exists: ${id}`, code: 'CONFLICT' })
       }
 
-      const current = boardConfig({ state, id })
-      const identity = String(values.hydra ?? current.hydra.id)
-      required({ value: identity.trim(), what: '--hydra identity' })
+      const current = hydraConfig({ state, id })
+      const identity = String(values.identity ?? current.hydra.id)
+      required({ value: identity.trim(), what: '--identity' })
       const kept = identity === current.hydra.id ? current.hydra : undefined
       const home = canonical({ path: values.firstmate })
 
       if (values.firstmate && !home) {
-        throw new BoardError({ message: '--firstmate must be an absolute home path', code: 'VALIDATION_ERROR' })
+        throw new HydraError({ message: '--firstmate must be an absolute home path', code: 'VALIDATION_ERROR' })
       }
 
       const session = values.session ? findSession({
@@ -930,13 +930,13 @@ function boardCommand({ args }: { args: string[] }): Output {
       }) : undefined
 
       if (session && session.taskId && !state.cards[session.taskId]?.automaticTask) {
-        throw new BoardError({ message: 'detach the task worker before making it Hydra', code: 'CONFLICT' })
+        throw new HydraError({ message: 'detach the task worker before making it Hydra', code: 'CONFLICT' })
       }
 
       const hydra: HydraIdentity = { name: 'Hydra', kind: 'agent', ...kept, id: identity, ...(home ? { kind: 'firstmate', home } : {}), ...(session ? { session: session.id } : {}) }
 
       const command = values.command === undefined ? current.command : String(values.command).trim()
-      const data: BoardConfig = { ...current, id, name: String(values.name ?? current.name), hydra }
+      const data: HydraConfig = { ...current, id, name: String(values.name ?? current.name), hydra }
       delete data.command
 
       if (command) {
@@ -948,7 +948,7 @@ function boardCommand({ args }: { args: string[] }): Output {
   })
 }
 
-function homeBoardId({ home }: { home: string }): string {
+function homeHydraId({ home }: { home: string }): string {
   return basename(home).toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/^[^a-z0-9]+/, '')
@@ -966,11 +966,11 @@ function firstmateHomes({ base }: { base?: string }): Output {
 
   const homes = names.map(name => join(root, name)).filter(path =>
     ['state', 'config'].every(dir => existsSync(join(path, dir))) && existsSync(join(path, 'bin', 'fm-send.sh')))
-  let boards: { id: string; home?: string }[] = []
+  let hydras: { id: string; home?: string }[] = []
 
   try {
-    boards = readdirSync(join(pnyxHome(), 'boards')).map(id => ({ id, home: loadBoard({ board: id }).state.board?.hydra.home }))
-  } catch { /* No boards yet. */ }
+    hydras = readdirSync(join(pnyxHome(), 'boards')).map(id => ({ id, home: loadHydra({ hydraId: id }).state.config?.hydra.home }))
+  } catch { /* No hydras yet. */ }
 
   if (!homes.length) {
     return { base: root, homes: 'none: no Firstmate homes found', help: ['Pass --base <folder holding the homes>'] }
@@ -978,26 +978,24 @@ function firstmateHomes({ base }: { base?: string }): Output {
 
   const rows = homes.map(home => {
     const real = canonical({ path: home }) ?? home
-    const board = boards.find(b => b.home === real)?.id
+    const hydraId = hydras.find(b => b.home === real)?.id
 
-    return { home: real, board: board ?? 'none', ...(board ? {} : { create: `pnyx-axi board create --firstmate ${real}` }) }
+    return { home: real, hydraId: hydraId ?? 'none', ...(hydraId ? {} : { create: `pnyx-axi hydra create --firstmate ${real}` }) }
   })
 
-  return { base: root, homes: rows, help: ['Each home gets its own board; run the create command of a home without one'] }
+  return { base: root, homes: rows, help: ['Each home gets its own Hydra; run the create command of a home without one'] }
 }
 
-const boardCommandHandler = guard({ handler: ({ args }) => boardCommand({ args }) })
-
 function columnCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, board } = parse({ args, options: { ...WRITE, title: { type: 'string' }, description: { type: 'string' }, width: { type: 'string' }, id: { type: 'string' }, to: { type: 'string' }, before: { type: 'string' } }, positionals: 2 })
+  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, title: { type: 'string' }, description: { type: 'string' }, width: { type: 'string' }, id: { type: 'string' }, to: { type: 'string' }, before: { type: 'string' } }, positionals: 2 })
   const action = positionals[0]
 
   if (action === 'list') {
-    const state = loadBoard({ board }).state
+    const state = loadHydra({ hydraId }).state
 
     return {
-      columns: boardConfig({ state, id: board }).columns,
-      revision: state.boardRevision ?? 0,
+      columns: hydraConfig({ state, id: hydraId }).columns,
+      revision: state.configRevision ?? 0,
     }
   }
 
@@ -1008,16 +1006,16 @@ function columnCommand({ args }: { args: string[] }): Output {
     const width = integer({ value: values.width, flag: '--width' })
 
     if (width === undefined) {
-      throw new BoardError({ message: 'pass --width <pixels>', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'pass --width <pixels>', code: 'VALIDATION_ERROR' })
     }
 
     return commit({
-      board,
+      hydraId,
       meta: m,
       intent: { type: 'board.view', card: '$board' },
       decide: ({ state }) => {
-        if (!boardConfig({ state, id: board }).columns.some(c => c.id === ref)) {
-          throw new BoardError({ message: `column not found: ${ref}`, code: 'NOT_FOUND' })
+        if (!hydraConfig({ state, id: hydraId }).columns.some(c => c.id === ref)) {
+          throw new HydraError({ message: `column not found: ${ref}`, code: 'NOT_FOUND' })
         }
 
         return decideView({ state, patch: { columnWidths: { [ref]: width } }, meta: m })
@@ -1026,18 +1024,18 @@ function columnCommand({ args }: { args: string[] }): Output {
   }
 
   return commit({
-    board,
+    hydraId,
     meta: m,
     ...(m.actor !== 'web' && (action === 'delete' || action === 'reorder') ? { confirmation: { token: values.confirm as string | undefined } } : {}),
     intent: { type: 'board.columns', card: '$board' },
     decide: ({ state }) => {
-      const before = structuredClone(boardConfig({ state, id: board }).columns)
+      const before = structuredClone(hydraConfig({ state, id: hydraId }).columns)
       let columns = structuredClone(before)
       const ref = positionals[1]
       const selected = columns.find(c => c.id === ref)
 
       if (action !== 'create' && !selected) {
-        throw new BoardError({ message: `column not found: ${ref}`, code: 'NOT_FOUND' })
+        throw new HydraError({ message: `column not found: ${ref}`, code: 'NOT_FOUND' })
       }
 
       let fallback: Column | undefined
@@ -1046,7 +1044,7 @@ function columnCommand({ args }: { args: string[] }): Output {
         const id = String(values.id ?? `custom:${(m.id ?? randomUUID()).toLowerCase()}`)
 
         if (!/^custom:[a-z0-9-]{1,60}$/.test(id)) {
-          throw new BoardError({ message: 'new column ids use custom:<letters-digits-dashes>', code: 'VALIDATION_ERROR' })
+          throw new HydraError({ message: 'new column ids use custom:<letters-digits-dashes>', code: 'VALIDATION_ERROR' })
         }
 
         columns.push({ id: id as Column, title: required({ value: values.title as string, what: '--title' }), description: String(values.description ?? '') })
@@ -1054,7 +1052,7 @@ function columnCommand({ args }: { args: string[] }): Output {
         selected!.title = required({ value: values.title as string, what: '--title' })
       } else if (action === 'describe') {
         if (typeof values.description !== 'string') {
-          throw new BoardError({ message: 'pass --description <text> (empty text clears it)', code: 'VALIDATION_ERROR' })
+          throw new HydraError({ message: 'pass --description <text> (empty text clears it)', code: 'VALIDATION_ERROR' })
         }
 
         selected!.description = values.description
@@ -1063,7 +1061,7 @@ function columnCommand({ args }: { args: string[] }): Output {
         fallback = values.to ? columns.find(c => c.id === values.to)?.id : columns[0]?.id
 
         if (values.to && !fallback) {
-          throw new BoardError({ message: 'fallback column not found', code: 'VALIDATION_ERROR' })
+          throw new HydraError({ message: 'fallback column not found', code: 'VALIDATION_ERROR' })
         }
       } else if (action === 'reorder') {
         columns = columns.filter(c => c.id !== ref)
@@ -1072,7 +1070,7 @@ function columnCommand({ args }: { args: string[] }): Output {
           : columns.length
 
         if (index < 0) {
-          throw new BoardError({ message: '--before column not found', code: 'VALIDATION_ERROR' })
+          throw new HydraError({ message: '--before column not found', code: 'VALIDATION_ERROR' })
         }
 
         columns.splice(index, 0, selected!)
@@ -1081,7 +1079,7 @@ function columnCommand({ args }: { args: string[] }): Output {
           return { skipped: 'unchanged' }
         }
       } else {
-        throw new BoardError({ message: 'Use column list, create, rename, describe, resize, delete or reorder', code: 'VALIDATION_ERROR' })
+        throw new HydraError({ message: 'Use column list, create, rename, describe, resize, delete or reorder', code: 'VALIDATION_ERROR' })
       }
 
       validateColumns({ columns })
@@ -1104,25 +1102,29 @@ function columnCommand({ args }: { args: string[] }): Output {
 const columnCommandHandler = guard({ handler: ({ args }) => columnCommand({ args }) })
 
 function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
-  const { values, positionals, board } = parse({ args, options: { ...WRITE, task: { type: 'string' }, action: { type: 'string' }, key: { type: 'string' }, width: { type: 'string' }, text: { type: 'string' }, after: { type: 'string' }, limit: { type: 'string' }, full: { type: 'boolean' }, via: { type: 'string' }, kind: { type: 'string' }, harness: { type: 'string' }, prompt: { type: 'string' }, folder: { type: 'string' }, home: { type: 'string' }, 'paseo-url': { type: 'string' } }, positionals: 2 })
+  if (['create', 'list', 'homes', 'show', 'set'].includes(args[0] ?? '')) {
+    return hydraConfigCommand({ args })
+  }
+
+  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, task: { type: 'string' }, action: { type: 'string' }, key: { type: 'string' }, width: { type: 'string' }, text: { type: 'string' }, after: { type: 'string' }, limit: { type: 'string' }, full: { type: 'boolean' }, via: { type: 'string' }, kind: { type: 'string' }, harness: { type: 'string' }, prompt: { type: 'string' }, folder: { type: 'string' }, home: { type: 'string' }, 'paseo-url': { type: 'string' } }, positionals: 2 })
 
   if (positionals[0] === 'resize') {
     const width = integer({ value: values.width, flag: '--width' })
 
     if (width === undefined) {
-      throw new BoardError({ message: 'pass --width <pixels>', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'pass --width <pixels>', code: 'VALIDATION_ERROR' })
     }
 
     const m = meta({ values })
 
-    return commit({ board, meta: m, intent: { type: 'board.view', card: '$board' }, decide: ({ state }) => decideView({ state, patch: { hydraWidth: width }, meta: m }) })
+    return commit({ hydraId, meta: m, intent: { type: 'board.view', card: '$board' }, decide: ({ state }) => decideView({ state, patch: { hydraWidth: width }, meta: m }) })
   }
 
   if (positionals[0] === 'memory') {
     const action = positionals[1] ?? 'list'
 
     if (action === 'list') {
-      const entries = Object.entries(loadBoard({ board }).state.hydraMemory ?? {})
+      const entries = Object.entries(loadHydra({ hydraId }).state.hydraMemory ?? {})
         .map(([key, entry]) => ({ key, ...entry }))
 
       return { memory: entries.length ? entries : 'none: no Hydra memory yet' }
@@ -1131,19 +1133,19 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const key = required({ value: values.key as string | undefined, what: '--key' })
 
     if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(key) || !['set', 'forget'].includes(action)) {
-      throw new BoardError({ message: 'use hydra memory list|set|forget; keys use lowercase letters, digits and dashes', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'use hydra memory list|set|forget; keys use lowercase letters, digits and dashes', code: 'VALIDATION_ERROR' })
     }
 
     const after = action === 'forget' ? null : required({ value: values.text as string | undefined, what: '--text' }).trim()
 
     if (after !== null && (!after || after.length > 4000)) {
-      throw new BoardError({ message: 'memory text must have 1–4000 characters', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'memory text must have 1–4000 characters', code: 'VALIDATION_ERROR' })
     }
 
     const m = meta({ values })
 
     return commit({
-      board,
+      hydraId,
       meta: m,
       intent: { type: 'hydra.memory', card: '$board' },
       decide: ({ state }) => {
@@ -1156,7 +1158,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
   if (positionals[0] === 'start') {
     return startHydra({
-      board,
+      hydraId,
       via: values.via as string | undefined,
       kind: values.kind as string | undefined,
       harness: values.harness as string | undefined,
@@ -1169,31 +1171,31 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (positionals[0] === 'messages') {
-    const state = loadBoard({ board }).state
+    const state = loadHydra({ hydraId }).state
     const after = integer({ value: values.after, flag: '--after' }) ?? 0
     const limit = Math.min(integer({ value: values.limit, flag: '--limit' }) ?? HISTORY_LIMIT, HISTORY_MAX)
 
     if (limit < 1) {
-      throw new BoardError({ message: '--limit must be positive', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: '--limit must be positive', code: 'VALIDATION_ERROR' })
     }
 
-    const events = readEvents({ board }).filter((e): e is Extract<BoardEvent, { type: 'hydra.message' }> => e.seq > after && e.type === 'hydra.message')
+    const events = readEvents({ hydraId }).filter((e): e is Extract<HydraEvent, { type: 'hydra.message' }> => e.seq > after && e.type === 'hydra.message')
     const page = events.slice(0, limit)
 
     const through = page.at(-1)?.seq ?? after
 
     return {
-      hydra: boardConfig({ state, id: board }).hydra.id,
+      hydra: hydraConfig({ state, id: hydraId }).hydra.id,
       messages: page.length
         ? page.map(e => (values.full ? e : { seq: e.seq, id: e.id, at: e.at, actor: e.actor, task: e.data.task ?? 'none', action: e.data.action, text: e.data.text, ...(e.data.details ? { details: e.data.details } : {}) }))
         : `none: no messages after seq ${after}`,
       through,
-      ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through} --board ${board}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --board ${board}\` later for new messages`] }),
+      ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`] }),
     }
   }
 
   if (positionals[0] !== 'send') {
-    throw new BoardError({ message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker] or hydra messages', code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker] or hydra messages', code: 'VALIDATION_ERROR' })
   }
 
   const m = meta({ values })
@@ -1201,30 +1203,30 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   const ref = values.task === undefined ? undefined : required({ value: values.task as string, what: '--task' })
 
   if (!ref && values.action !== undefined) {
-    throw new BoardError({ message: '--action needs --task', code: 'VALIDATION_ERROR' })
+    throw new HydraError({ message: '--action needs --task', code: 'VALIDATION_ERROR' })
   }
 
   return commit({
-    board,
+    hydraId,
     meta: m,
     intent: { type: 'hydra.message', card: ref ?? '$board' },
     decide: ({ state }) => {
       const task = ref ? findCard({ state, ref }) : undefined
 
       if (task && !liveTask({ card: task })) {
-        throw new BoardError({ message: 'choose a task, not an unassigned session', code: 'VALIDATION_ERROR' })
+        throw new HydraError({ message: 'choose a task, not an unassigned session', code: 'VALIDATION_ERROR' })
       }
 
       const action = String(values.action ?? 'send')
 
       if (action !== 'send' && action !== 'worker') {
-        throw new BoardError({ message: '--action must be send or worker', code: 'VALIDATION_ERROR' })
+        throw new HydraError({ message: '--action must be send or worker', code: 'VALIDATION_ERROR' })
       }
 
       const text = task
         ? String(values.text ?? `${action === 'worker' ? 'Create a worker for' : 'Work with me on'} task ${task.id}: ${task.title}. Read its task history and current record before continuing.`)
         : required({ value: values.text as string | undefined, what: '--text' })
-      const decision = hydraEvent({ state, meta: m, cardId: task?.id ?? '$board', change: { type: 'hydra.message', data: { ...(task ? { task: task.id } : {}), action, text, ...(m.details ? { details: m.details } : {}), hydra: boardConfig({ state, id: board }).hydra.id } } })
+      const decision = hydraEvent({ state, meta: m, cardId: task?.id ?? '$board', change: { type: 'hydra.message', data: { ...(task ? { task: task.id } : {}), action, text, ...(m.details ? { details: m.details } : {}), hydra: hydraConfig({ state, id: hydraId }).hydra.id } } })
 
       if ('event' in decision) {
         decision.event.messageId = decision.event.id
@@ -1241,13 +1243,13 @@ const NOTES_SHOWN = 3
 const NOTE_CUT = 280
 const NOTE_SECTIONS = { summary: 'summary', decision: 'decisions', context: 'context' } as const
 
-function cardNotes({ board, card, full }: {
-  board: string
+function cardNotes({ hydraId, card, full }: {
+  hydraId: string
   card: Card
   full: boolean
 }): { notes: Output; cut: boolean } {
   const ids = new Set((card.notes ?? []).map(n => n.id))
-  const events = ids.size ? readEvents({ board }).filter((e): e is NotedEvent => e.type === 'card.noted' && ids.has(e.id)) : []
+  const events = ids.size ? readEvents({ hydraId }).filter((e): e is NotedEvent => e.type === 'card.noted' && ids.has(e.id)) : []
   let cut = false
   const notes: Output = {}
 
@@ -1274,9 +1276,9 @@ function cardNotes({ board, card, full }: {
 
 const card = guard({
   handler: ({ args }) => {
-    const { values, positionals, board } = parse({ args, options: { ...COMMON, full: { type: 'boolean' } }, positionals: 1 })
-    const found = findCard({ state: loadBoard({ board }).state, ref: required({ value: positionals[0], what: 'card id' }) })
-    const { notes, cut } = cardNotes({ board, card: found, full: Boolean(values.full) })
+    const { values, positionals, hydraId } = parse({ args, options: { ...COMMON, full: { type: 'boolean' } }, positionals: 1 })
+    const found = findCard({ state: loadHydra({ hydraId }).state, ref: required({ value: positionals[0], what: 'card id' }) })
+    const { notes, cut } = cardNotes({ hydraId, card: found, full: Boolean(values.full) })
     const help = [`Run \`pnyx-axi history --card ${found.id}\` for its events`]
 
     if (cut) {
@@ -1299,11 +1301,11 @@ const card = guard({
 
 // Collects the notes sources already recorded: the cards' transcripts from where
 // the last read stopped, and each linked pull request's title and description.
-// ponytail: reads every linked pull request on each run; skip merged ones already noted if boards grow.
+// ponytail: reads every linked pull request on each run; skip merged ones already noted if hydras grow.
 const harvest = guard({
   handler: ({ args }) => {
-    const { values, board } = parse({ args, options: { ...COMMON, card: { type: 'string' } }, positionals: 0 })
-    const { state } = loadBoard({ board })
+    const { values, hydraId } = parse({ args, options: { ...COMMON, card: { type: 'string' } }, positionals: 0 })
+    const { state } = loadHydra({ hydraId })
     const cards = values.card ? [findCard({
       state,
       ref: values.card as string,
@@ -1312,7 +1314,7 @@ const harvest = guard({
     const prs = cards.flatMap(c => c.links.filter(l => l.kind === 'github_pr').map(l => ({ card: c.id, url: l.url, note: pullRequestNote({ url: l.url }) })))
 
     return withWriter({
-      board,
+      hydraId,
       fn: ({ writer }) => {
         const spool = drainSpool({ writer })
         const at = new Date().toISOString()
@@ -1348,13 +1350,13 @@ const harvest = guard({
 
 const move = guard({
   handler: ({ args }) => {
-    const { values, positionals, board } = parse({ args, options: { ...WRITE, before: { type: 'string' } }, positionals: 2 })
+    const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, before: { type: 'string' } }, positionals: 2 })
     const m = meta({ values })
     const ref = required({ value: positionals[0], what: 'card id' })
     const target = column({ value: required({ value: positionals[1], what: 'column' }) })
     const before = values.before as string | undefined
 
-    return commit({ board, meta: m, intent: { type: 'card.moved', card: ref }, ...(m.actor !== 'web' ? { confirmation: { token: values.confirm as string | undefined } } : {}), decide: ({ state }) => decideMove({ state, ref, column: target, before, meta: m }) })
+    return commit({ hydraId, meta: m, intent: { type: 'card.moved', card: ref }, ...(m.actor !== 'web' ? { confirmation: { token: values.confirm as string | undefined } } : {}), decide: ({ state }) => decideMove({ state, ref, column: target, before, meta: m }) })
   },
 })
 
@@ -1369,7 +1371,7 @@ const link = guard({
       state: { type: 'string' },
       remove: { type: 'boolean' },
     }
-    const { values, positionals, board } = parse({ args, options, positionals: 1 })
+    const { values, positionals, hydraId } = parse({ args, options, positionals: 1 })
     const m = meta({ values })
     const ref = required({ value: positionals[0], what: 'card id' })
     const url = required({ value: values.url as string | undefined, what: '--url' })
@@ -1378,13 +1380,13 @@ const link = guard({
       ? null
       : parseLink({ input: { url, kind: s({ name: 'kind' }), number: s({ name: 'number' }), title: s({ name: 'title' }), state: s({ name: 'state' }), checkedAt: s({ name: 'state' }) && new Date().toISOString() } })
 
-    return commit({ board, meta: m, intent: { type: 'card.linked', card: ref }, decide: ({ state }) => decideLink({ state, ref, url, link: parsed, meta: m }) })
+    return commit({ hydraId, meta: m, intent: { type: 'card.linked', card: ref }, decide: ({ state }) => decideLink({ state, ref, url, link: parsed, meta: m }) })
   },
 })
 
 const outcome = guard({
   handler: ({ args }) => {
-    const { values, positionals, board } = parse({ args, options: { ...WRITE, note: { type: 'string' }, clear: { type: 'boolean' } }, positionals: 2 })
+    const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, note: { type: 'string' }, clear: { type: 'boolean' } }, positionals: 2 })
     const m = meta({ values })
     const ref = required({ value: positionals[0], what: 'card id' })
     const state = positionals[1]
@@ -1402,26 +1404,26 @@ const outcome = guard({
       ? null
       : { state: state as OutcomeState, ...(note ? { note } : {}) }
 
-    return commit({ board, meta: m, intent: { type: 'card.outcome', card: ref }, decide: ({ state: s }) => decideOutcome({ state: s, ref, outcome: result, meta: m }) })
+    return commit({ hydraId, meta: m, intent: { type: 'card.outcome', card: ref }, decide: ({ state: s }) => decideOutcome({ state: s, ref, outcome: result, meta: m }) })
   },
 })
 
-export function summarize({ event }: { event: BoardEvent }): string {
+export function summarize({ event }: { event: HydraEvent }): string {
   const text = summary({ event })
 
   return event.reason ? `${text} (why: ${event.reason})` : text
 }
 
-function summary({ event }: { event: BoardEvent }): string {
+function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
     case 'chat.message': return `${event.data.role}: ${event.data.text}`
-    case 'board.configured': return `Board ${event.data.name}; Hydra ${event.data.hydra.id}`
+    case 'board.configured': return `Hydra ${event.data.name}; Hydra ${event.data.hydra.id}`
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
     case 'task.brief': return 'Task brief updated'
-    case 'task.visibility': return event.data.after ? 'Task hidden from board' : 'Task returned to board'
+    case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
     case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Hydra memory: ${event.data.key}`
     case 'task.declared': return `${event.data.state}: ${event.data.note}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
@@ -1461,7 +1463,7 @@ const history = guard({
       limit: { type: 'string' },
       full: { type: 'boolean' },
     }
-    const { values, board } = parse({ args, options, positionals: 0 })
+    const { values, hydraId } = parse({ args, options, positionals: 0 })
     const limit = Math.min(integer({ value: values.limit, flag: '--limit' }) ?? HISTORY_LIMIT, HISTORY_MAX)
     const before = integer({ value: values.before, flag: '--before' })
     const kind = values.kind as string | undefined
@@ -1471,14 +1473,14 @@ const history = guard({
       throw new AxiError(`unknown kind: ${kind}`, 'VALIDATION_ERROR', ['Use one of pushed, moved, linked, outcome, replied, noted'])
     }
 
-    const { state } = loadBoard({ board })
+    const { state } = loadHydra({ hydraId })
     const cardId = values.card ? findCard({ state, ref: values.card as string }).id : undefined
     const workspace = values.workspace as string | undefined
     // An outcome keeps the workspace it was recorded under; other events use the card's current one.
-    const inWorkspace = ({ e }: { e: BoardEvent }) =>
+    const inWorkspace = ({ e }: { e: HydraEvent }) =>
       (e.type === 'card.outcome' ? e.data.card.workspace : state.cards[e.cardId]?.workspace) === workspace
 
-    const matches = readEvents({ board })
+    const matches = readEvents({ hydraId })
       .filter(e => (before === undefined || e.seq < before) && (!cardId || e.cardId === cardId))
       .filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e })))
       .reverse()
@@ -1502,7 +1504,7 @@ const history = guard({
     }
 
     if (matches.length > limit) {
-      const flags = ['card', 'kind', 'workspace', 'limit', 'board'].flatMap(f => (values[f] ? [`--${f}`, String(values[f])] : []))
+      const flags = ['card', 'kind', 'workspace', 'limit', 'hydra'].flatMap(f => (values[f] ? [`--${f}`, String(values[f])] : []))
       out.help = [`Run \`pnyx-axi history ${[...flags, '--before', String(page.at(-1)!.seq)].join(' ')}\` for older events`]
     }
 
@@ -1512,10 +1514,10 @@ const history = guard({
 
 const undo = guard({
   handler: ({ args }) => {
-    const { values, positionals, board } = parse({ args, options: WRITE, positionals: 1 })
+    const { values, positionals, hydraId } = parse({ args, options: WRITE, positionals: 1 })
     const m = meta({ values })
     const id = required({ value: positionals[0], what: 'event id' })
-    const target = readEvents({ board }).find(e => e.id === id)
+    const target = readEvents({ hydraId }).find(e => e.id === id)
 
     if (!target) {
       throw new AxiError(`event not found: ${id}`, 'NOT_FOUND', ['Run `pnyx-axi history` to find event ids'])
@@ -1523,7 +1525,7 @@ const undo = guard({
 
     return commit(
       {
-        board,
+        hydraId,
         meta: m,
         intent: { type: target.type, card: target.cardId },
         decide: ({ state, meta: current }) => decideUndo({ state, target, meta: current }),
@@ -1534,8 +1536,8 @@ const undo = guard({
 
 const repair = guard({
   handler: ({ args }) => {
-    const { board } = parse({ args, options: COMMON, positionals: 0 })
-    const result = repairBoard({ board })
+    const { hydraId } = parse({ args, options: COMMON, positionals: 0 })
+    const result = repairHydra({ hydraId })
 
     return {
       repair: result.tornBytes > 0 ? `set aside ${result.tornBytes} torn bytes` : 'none: log ends cleanly',
@@ -1548,14 +1550,14 @@ const repair = guard({
 const setup = guard({
   handler: ({ args }) => {
     const options: Options = { ...WRITE, harness: { type: 'string' }, remove: { type: 'boolean' }, preview: { type: 'boolean' }, home: { type: 'string' }, port: { type: 'string' } }
-    const { values, positionals, board } = parse({ args, options, positionals: 1 })
+    const { values, positionals, hydraId } = parse({ args, options, positionals: 1 })
 
     if (positionals[0] === 'service') {
-      return setupService({ board, port: integer({ value: values.port, flag: '--port' }), homes: values.home ? [String(values.home)] : [], remove: !!values.remove, preview: !!values.preview })
+      return setupService({ hydraId, port: integer({ value: values.port, flag: '--port' }), homes: values.home ? [String(values.home)] : [], remove: !!values.remove, preview: !!values.preview })
     }
 
     if (positionals[0] === 'hydra') {
-      return setupHydra({ board, home: required({ value: values.home as string | undefined, what: '--home' }), meta: meta({ values }) })
+      return setupHydra({ hydraId, home: required({ value: values.home as string | undefined, what: '--home' }), meta: meta({ values }) })
     }
 
     if (positionals[0] !== 'hooks') {
@@ -1589,7 +1591,7 @@ const setup = guard({
       help.push('Codex asks you to review and trust new hooks: run `/hooks` in Codex')
     }
 
-    help.push(remove ? 'Run `pnyx-axi setup hooks` to install them again' : 'New sessions appear on the board; run `pnyx-axi` to see it')
+    help.push(remove ? 'Run `pnyx-axi setup hooks` to install them again' : 'New sessions appear on the Hydra; run `pnyx-axi` to see it')
     out.help = help
 
     return out
@@ -1599,10 +1601,10 @@ const setup = guard({
 const view = guard({
   handler: ({ args }) => {
     const [sub, ...rest] = args
-    const { values, board } = parse({ args: rest, options: { ...WRITE, json: { type: 'string' } }, positionals: 0 })
+    const { values, hydraId } = parse({ args: rest, options: { ...WRITE, json: { type: 'string' } }, positionals: 0 })
 
     if (sub === 'show') {
-      const { state } = loadBoard({ board })
+      const { state } = loadHydra({ hydraId })
 
       return { view: viewFor({ state }), revision: state.viewRevision ?? 0 }
     }
@@ -1625,16 +1627,16 @@ const view = guard({
 
     const m = meta({ values })
 
-    return commit({ board, meta: m, intent: { type: 'board.view', card: '$board' }, decide: ({ state: s }) => decideView({ state: s, patch, meta: m }) })
+    return commit({ hydraId, meta: m, intent: { type: 'board.view', card: '$board' }, decide: ({ state: s }) => decideView({ state: s, patch, meta: m }) })
   },
 })
 
 const layout = guard({
   handler: ({ args }) => {
-    const { values, positionals, board } = parse({ args, options: WRITE, positionals: 1 })
+    const { values, positionals, hydraId } = parse({ args, options: WRITE, positionals: 1 })
 
     if (positionals[0] === 'show') {
-      const view = viewFor({ state: loadBoard({ board }).state })
+      const view = viewFor({ state: loadHydra({ hydraId }).state })
 
       return {
         widths: { hydra: view.hydraWidth, columns: view.columnWidths },
@@ -1647,18 +1649,17 @@ const layout = guard({
     }
 
     if (positionals[0] !== 'reset') {
-      throw new BoardError({ message: 'use layout show or reset', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'use layout show or reset', code: 'VALIDATION_ERROR' })
     }
 
     const m = meta({ values })
 
-    return commit({ board, meta: m, intent: { type: 'board.view', card: '$board' }, decide: ({ state }) => decideView({ state, patch: resetLayoutWidths({ view: viewFor({ state }) }), meta: m }) })
+    return commit({ hydraId, meta: m, intent: { type: 'board.view', card: '$board' }, decide: ({ state }) => decideView({ state, patch: resetLayoutWidths({ view: viewFor({ state }) }), meta: m }) })
   },
 })
 
 export const commands = {
   layout,
-  board: boardCommandHandler,
   column: columnCommandHandler,
   hydra: hydraCommandHandler,
   task,
@@ -1676,14 +1677,14 @@ export const commands = {
 }
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
-description: Task boards, each with one Hydra orchestrator
+description: Pnyx shows every agent and its work in Hydras
 commands:
-  pnyx-axi                                   Show the board summary
-  board create|list|homes|show|set            Configure boards, one per Firstmate home, each with one Hydra
+  pnyx-axi                                   Show the Hydra summary
+  hydra create|list|homes|show|set            Create, list or configure Hydras
   column create|rename|describe|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|status|history Tasks and one level of subtasks (--parent <id>)
   task start <task> [--via paseo|firstmate|command] [--kind <kind>]  Start a worker for the task and attach it
-  hydra start|send|messages|check            Start the board's Hydra, queue task context in its chat, read it, or wait for changes
+  hydra start|send|messages|check            Start Hydra, queue task context in its chat, read it, or wait for changes
   kind list|set|remove                       The agent (harness, model, effort, mode, quota) each task kind starts on
   task sessions                              List recorded sessions, including background runs
   task attach <task> --session <session>      Move an interactive session onto a task
@@ -1695,37 +1696,54 @@ commands:
   link <id> --url <url> [--state open]       Add, update or --remove a link
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
-  search "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
-  settings [set <key> <value>]               Search settings: semantic search, reranker and model
+  oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
+  settings [set <key> <value>]               Oracle settings: semantic search, reranker and model
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   view show|schema|set; layout show|reset      Inspect or save preferences; reset widths
   repair                                     Set aside a torn log tail and rebuild the snapshot
-  serve [--port <n>] [--home <path>]         Run the board server until stopped; --home also watches Firstmate
-  stop                                       Stop the board's running server
+  serve [--port <n>] [--home <path>]         Run the Hydra server until stopped; --home also watches Firstmate
+  stop                                       Stop the Hydra's running server
   setup hooks|service                       Install reporting hooks or the macOS login service (--remove, --preview)
-  setup hydra --home <firstmate home>        Make a Firstmate home the board's Hydra and give it the pnyx-hydra skill
+  setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the pnyx-hydra skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
   agent <id> [<setting> <value>]             List or change a session's model, effort, mode or fast mode from its card
-  firstmate sync|watch --home <path>         Fold a Firstmate home's tasks into the board, once or on every change
+  firstmate sync|watch --home <path>         Fold a Firstmate home's tasks into the Hydra, once or on every change
 flags:
-  --board <name>     Board to use (default: default)
+  --hydra <name>     Hydra to use (default: default)
   --event-id <id>    On writes: idempotency key; a repeat returns the original receipt
   --if-revision <n>  On writes: expected card revision (0 for a new card)
   --help | --version Show command help or the installed version
 `
 
 const COMMAND_HELP: Record<string, string> = {
-  board: `usage: pnyx-axi board create <id> [--name <name>] [--hydra <identity>] [--session <session>] [--firstmate <home>]
-pnyx-axi board create --firstmate <home>
-pnyx-axi board list
-pnyx-axi board homes [--base <folder>]
-pnyx-axi board show|set --board <id> [--hydra <identity>] [--session <session>] [--firstmate <home>] [--command <shell>]
-Each board has exactly one Hydra identity. Changing Hydra preserves tasks, history and old messages.
+  hydra: `usage: pnyx-axi hydra create <id> [--name <name>] [--identity <identity>] [--session <session>] [--firstmate <home>]
+pnyx-axi hydra create --firstmate <home>
+pnyx-axi hydra list
+pnyx-axi hydra homes [--base <folder>]
+pnyx-axi hydra show|set --hydra <id> [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>]
+Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
 --session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
-board create --firstmate names the board after the home's folder. board homes lists the Firstmate homes
-in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's board.
+hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
+in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's Hydra.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
+pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--details <text>]
+pnyx-axi hydra send --text <message> [--details <text>]
+pnyx-axi hydra resize --width <pixels>
+pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
+pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
+pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
+pnyx-axi hydra start [--via paseo|command] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
+pnyx-axi hydra start --via firstmate --home <firstmate home>
+hydra start starts Hydra: in Paseo (Claude Code by default) or with the configured command, its
+session becomes Hydra (in Paseo on the hydra kind's agent unless --kind names another); a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
+prompt points Hydra at the pnyx-hydra skill.
+Messages are durable entries in Hydra’s chat; one without --task is about the Hydra, not a task. No worker is launched or native terminal typed into.
+Hydra reads messages and task history through AXI. --after is an event sequence cursor.
+check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)
+except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It also records native task conversations
+and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
+for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
 `,
   column: `usage: pnyx-axi column list
 pnyx-axi column create --title <title> [--id custom:<id>]
@@ -1737,25 +1755,7 @@ pnyx-axi column reorder <id> [--before <id>]
 All columns, including template columns, can be edited. Deletion moves cards to the fallback;
 the final column cannot be deleted. Reorder and delete first return confirmation: needed and a token;
 repeat the same command with --confirm <token>. Browser actions already carry the owner’s intent.
-Use --if-revision for the board revision (the view revision for resize).
-`,
-  hydra: `usage: pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--details <text>]
-pnyx-axi hydra send --text <message> [--details <text>]
-pnyx-axi hydra resize --width <pixels>
-pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
-pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
-pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
-pnyx-axi hydra start [--via paseo|command] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
-pnyx-axi hydra start --via firstmate --home <firstmate home>
-hydra start starts the board's Hydra: in Paseo (Claude Code by default) or with the board command, its
-session becomes the board's Hydra (in Paseo on the hydra kind's agent unless --kind names another); a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
-prompt points Hydra at the pnyx-hydra skill.
-Messages are durable entries in Hydra's board chat; one without --task is about the board, not a task. No worker is launched or native terminal typed into.
-Hydra reads messages and task history through AXI. --after is an event sequence cursor.
-check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)
-except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It also records native task conversations
-and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
-for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
+Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task create --title <title> [--brief <text>] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
 pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
@@ -1769,7 +1769,7 @@ pnyx-axi task start <task> [--via pnyx|paseo] [--kind <kind>] [--harness claude|
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--prompt <text>] [--harness <name>] [--folder <path>]
 Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide and start, as to move. Pnyx keeps it on the event,
-posts "<what Hydra did>: <reason>" in Hydra's board chat with --details under it, and returns that line as posted.
+posts "<what Hydra did>: <reason>" in Hydra’s chat with --details under it, and returns that line as posted.
 pnyx-axi task paseo [--paseo-url <url>]
 pnyx-axi task sessions
 pnyx-axi task attach <task> --session <session-id|card-id|key|self>
@@ -1778,9 +1778,9 @@ Tasks accept one attached session. A second session cannot replace the recipient
 attach moves an interactive session to the task; an occupied destination is rejected.
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
-task start runs Claude Code in the task's folder with the opening message through the board's Pnyx server
+task start runs Claude Code in the task's folder with the opening message through the Hydra's Pnyx server
 (\`pnyx-axi serve\`), with your own Claude Code settings, skills and hooks, and records its session, folder
-and settings on the task. Replies and setting changes from the board or \`pnyx-axi reply\` and \`pnyx-axi agent\`
+and settings on the task. Replies and setting changes from the Hydra or \`pnyx-axi reply\` and \`pnyx-axi agent\`
 go straight to it; after a server restart the next message resumes the same session. A turn that was
 running when the server stopped is marked interrupted and waits for a message. Permission prompts are
 refused for now, so pick a mode that allows what the task needs.
@@ -1790,10 +1790,10 @@ and the agent stays in Paseo too. task paseo checks the daemon. --folder also re
 Repeating the same --event-id never starts a second agent.
 --kind picks the agent (see pnyx-axi kind; default: the default kind, else Claude Code); --harness overrides its harness and
 --prompt its opening message, which otherwise names the task and the pnyx-worker skill.
---via firstmate puts a worker request in Hydra's chat and sends it to the board's Firstmate home as an inbox note.
---via command runs the board command in the task's folder with PNYX_TASK and the rest of its context in the
+--via firstmate puts a worker request in Hydra's chat and sends it to the Hydra's Firstmate home as an inbox note.
+--via command runs the configured command in the task's folder with PNYX_TASK and the rest of its context in the
 environment; the session it starts attaches to the task when its hooks first report.
-The default route is firstmate for a board whose Hydra is a Firstmate home, otherwise pnyx (paseo for a Codex agent).
+The default route is firstmate for a Hydra whose Hydra is a Firstmate home, otherwise pnyx (paseo for a Codex agent).
 `,
   push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
@@ -1805,11 +1805,11 @@ card.json fields (all optional): title, autoTitle {from: session|prompt|agent|fo
   source {adapter, objectId, instanceId, generation, cursor, observedAt}
 An observation older than the card's latest one from the same source is ignored.
 `,
-  card: `usage: pnyx-axi card <id|key> [--full] [--board <name>]
+  card: `usage: pnyx-axi card <id|key> [--full] [--hydra <name>]
 Shows the card and its notes in three sections, summary, decisions and context, newest first:
 ${NOTES_SHOWN} per section with text cut at ${NOTE_CUT} characters, or every note in full with --full.
 `,
-  harvest: `usage: pnyx-axi harvest [--card <id>] [--board <name>]
+  harvest: `usage: pnyx-axi harvest [--card <id>] [--hydra <name>]
 Collects notes that sources already recorded, with no model and nothing asked of agents: Claude Code
 compaction summaries, session titles and AskUserQuestion answers, Codex compaction summaries, and each
 linked pull request's title and description through gh-axi. Sessions are also harvested whenever a
@@ -1820,7 +1820,7 @@ Sources are only read. Each note is kept once, so running it again appends only 
 Puts the card in the column just above the --before card, or at the end of the column without it.
 First returns confirmation: needed and a token; repeat with --confirm <token> to act.
 Hydra places a card only in response to its own agent’s actions, using the descriptions from \`pnyx-axi column list\`.
-Hydra's moves need --reason; Pnyx posts "Moved <task> to <column>: <reason>" in Hydra's board chat and returns it as posted. The owner's moves need none.
+Hydra's moves need --reason; Pnyx posts "Moved <task> to <column>: <reason>" in Hydra’s chat and returns it as posted. The owner's moves need none.
 `,
   link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove] [--event-id <id>] [--if-revision <n>]
 GitHub pull request URLs get kind and number filled in. A link never moves the card.
@@ -1834,44 +1834,44 @@ Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
 Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
 Source observations, card creation and merges cannot be undone.
 `,
-  setup: `usage: pnyx-axi setup service [--board <id>] [--port <n>] [--home <Firstmate home>] [--remove] [--preview]
+  setup: `usage: pnyx-axi setup service [--hydra <id>] [--port <n>] [--home <Firstmate home>] [--remove] [--preview]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
-pnyx-axi setup hydra --home <firstmate home> [--board <id>]
+pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
 Adds Pnyx's reporting hook to the user-level Claude Code settings.json or Codex hooks.json, keeping
 every other hook. Without --harness it sets up each harness whose config folder exists. Rerunning
 changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,
-so they never add to the agent's context: no session-start board summary is installed.
-Hook events go to the default board, or to PNYX_HOME and PNYX_BOARD when a session has them.
-setup hydra makes the Firstmate home the board's Hydra, copies the pnyx-hydra skill into the home's
+so they never add to the agent's context: no session-start Hydra summary is installed.
+Hook events go to the default Hydra, or to PNYX_HOME and PNYX_HYDRA when a session has them.
+setup hydra makes the Firstmate home the Hydra, copies the pnyx-hydra skill into the home's
 .agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
 Firstmate's own files are not changed.
 `,
-  repair: `usage: pnyx-axi repair [--board <name>]
+  repair: `usage: pnyx-axi repair [--hydra <name>]
 A crash mid-append can leave a torn last line; writes refuse until it is repaired.
 Repair copies the torn bytes to a side file and appends a marker so readers skip them; the log is never cut.
 `,
-  serve: `usage: pnyx-axi serve [--port <n>] [--board <name>] [--home <Firstmate path>]...
-Serves the board on 127.0.0.1 port 4747 (--port overrides it; 0 picks a random one) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
-Each --home is a Firstmate home: replies to its cards go through it, and its tasks are folded into the board
+  serve: `usage: pnyx-axi serve [--port <n>] [--hydra <name>] [--home <Firstmate path>]...
+Serves the Hydra on 127.0.0.1 port 4747 (--port overrides it; 0 picks a random one) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
+Each --home is a Firstmate home: replies to its cards go through it, and its tasks are folded into the Hydra
 as \`pnyx-axi firstmate watch\` would, so no second process is needed.
-Hook events arrive on the board's server.sock or through its spool. Browsers get one WebSocket at /ws:
+Hook events arrive on the Hydra's server.sock or through its spool. Browsers get one WebSocket at /ws:
 a snapshot on connect, then events by sequence; /ws?after=<seq> resumes, a gap gets a fresh snapshot.
-The handshake needs ?token=<token>: the board page served here carries it, local programs read $PNYX_HOME/token.
+The handshake needs ?token=<token>: the Hydra page served here carries it, local programs read $PNYX_HOME/token.
 Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo|kind","args":[...]}
-gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write this board;
---board is refused and the actor defaults to web. GET /health answers {"board","pid"}.
+gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write this Hydra;
+--hydra is refused and the actor defaults to web. GET /health answers {"hydra","pid"}.
 `,
-  stop: `usage: pnyx-axi stop [--board <name>]
+  stop: `usage: pnyx-axi stop [--hydra <name>]
 `,
 }
 
 export function commandHelp({ command }: { command: string }): string | undefined {
   if (command === 'layout') {
-    return 'usage: pnyx-axi layout show|reset [--board <name>] [--if-revision <view revision>]'
+    return 'usage: pnyx-axi layout show|reset [--hydra <name>] [--if-revision <view revision>]'
   }
 
   if (command === 'view') {
-    return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--board <name>]'
+    return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--hydra <name>]'
   }
 
   return COMMAND_HELP[command]

@@ -3,7 +3,7 @@ import { EVENT_VERSION, type SessionEvent } from '../../core/model.ts'
 import { localPaseoUrl } from '../../core/paseo.ts'
 import { taskForMessage } from '../../core/tasks.ts'
 import { splitEntry, type ThreadEntry } from '../../thread/read.ts'
-import { loadBoard, readEvents, withWriter } from '../../store/board-store.ts'
+import { loadHydra, readEvents, withWriter } from '../../store/hydra-store.ts'
 import { openPaseo, type Connect } from './client.ts'
 
 const PAGE_SIZE = 100
@@ -60,19 +60,19 @@ async function collect({ session, url, id, known, connect }: {
   }
 }
 
-export async function harvestPaseoChats({ board, connect = openPaseo }: {
-  board: string
+export async function harvestPaseoChats({ hydraId, connect = openPaseo }: {
+  hydraId: string
   connect?: Connect
 }): Promise<{ task: string; error: string }[]> {
-  const state = loadBoard({ board }).state
-  const attachments = readEvents({ board }).filter((e): e is SessionEvent => e.type === 'task.session')
+  const state = loadHydra({ hydraId }).state
+  const attachments = readEvents({ hydraId }).filter((e): e is SessionEvent => e.type === 'task.session')
   const cards = Object.values(state.sessions ?? {}).flatMap(session => {
     const url = session.agent.paseoUrl, id = session.agent.paseoAgentId
     const last = attachments.findLast(e => e.data.session === session.id && e.data.after)
     const taskId = session.taskId ?? last?.data.after
     const task = taskId ? state.cards[taskId] : undefined
 
-    return task && task.id !== '$hydra' && !task.automaticTask && session.id !== state.board?.hydra.session && url && id
+    return task && task.id !== '$hydra' && !task.automaticTask && session.id !== state.config?.hydra.session && url && id
       ? [{ task: task.id, session: session.id, url, id, agent: `${session.agent.provider}:${session.agent.agentId ?? session.agent.sessionId}` }] : []
   })
   const failures: { task: string; error: string }[] = []
@@ -81,9 +81,9 @@ export async function harvestPaseoChats({ board, connect = openPaseo }: {
       const entries = await collect({ ...card, known: state.eventIds, connect })
       const { session } = card
       withWriter({
-        board,
+        hydraId,
         fn: ({ writer }) => {
-          const memberships = readEvents({ board }).filter((e): e is SessionEvent => e.type === 'task.session' && e.data.session === session)
+          const memberships = readEvents({ hydraId }).filter((e): e is SessionEvent => e.type === 'task.session' && e.data.session === session)
 
           for (const entry of entries) {
             const id = chatId({ session, nativeId: entry.id })
