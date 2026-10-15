@@ -298,6 +298,7 @@ export interface HydraProject {
   path: string
   name: string
   detached: boolean
+  startCommand?: { name: string; command: string; bringsOwnFolder: boolean }
   // A shell command run in the project folder that makes a task's copy and prints its path.
   copy?: string
 }

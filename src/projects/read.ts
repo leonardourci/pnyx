@@ -16,7 +16,7 @@ export function projectsFor({ state }: { state: HydraState }): HydraProject[] {
 }
 
 export function projectRows({ state }: { state: HydraState }) {
-  return projectsFor({ state }).map(p => ({ name: p.name, path: p.path, state: p.detached ? 'detached' : 'attached' }))
+  return projectsFor({ state }).map(p => ({ name: p.name, path: p.path, state: p.detached ? 'detached' : 'attached', ...(p.startCommand ? { startCommand: p.startCommand } : {}) }))
 }
 
 export function findProject({ state, ref, attached = false }: {
