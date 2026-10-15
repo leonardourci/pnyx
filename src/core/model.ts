@@ -334,6 +334,7 @@ export type RepliedEvent = EventBase & {
     resolveKey?: string
     answers?: string
     detail?: string
+    control?: boolean
   }
 }
 
