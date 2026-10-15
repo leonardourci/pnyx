@@ -1080,3 +1080,17 @@ test('a server lock whose pid was reused is reclaimed', async () => {
   assert.notEqual(owner.processStart, 'a previous boot')
   await assert.rejects(startServer({ hydraId: 'default' }), { code: 'ALREADY_RUNNING' })
 })
+
+test('idle Done expiry broadcasts hiding and survives a server restart', async () => {
+  cli({ args: ['hydra', 'create', 'default', '--done-after-hours', '0'] })
+  cli({ args: ['task', 'create', '--key', 'expire', '--title', 'Idle completion', '--column', 'done'] })
+  const id = loadHydra({ hydraId: 'default' }).state.keys.expire!
+  server = await startServer({ hydraId: 'default' })
+  cli({ args: ['hydra', 'set', '--done-after-hours', '0.0003'] })
+  await until({ check: () => loadHydra({ hydraId: 'default' }).state.cards[id]?.hidden || undefined, what: 'idle Done expiry' })
+  await server.close()
+  server = await startServer({ hydraId: 'default' })
+  assert.equal(loadHydra({ hydraId: 'default' }).state.cards[id]?.hidden, true)
+  cli({ args: ['task', 'unhide', id] })
+  assert.equal(loadHydra({ hydraId: 'default' }).state.cards[id]?.keepDone, true)
+})
