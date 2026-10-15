@@ -23,6 +23,8 @@ pnyx-axi hydra check --after <through> --wait 1800 --board <board>
 
 It prints only what you track (new messages, tasks created by someone else, worker declarations, attachments, column changes, manual moves and links), skipping your own writes. Each row has the event `id`, its `type`, the `task` (`none` for the board), the message `action` (`send` or `worker`), the `actor` and a summary. With `--wait` it blocks until a change appears or the time runs out; run it as a background command or monitor when your harness has one, so its exit wakes you, and pass its `through` to the next check. Your writes count as yours when `PNYX_ACTOR=hydra` is set or you pass `--actor hydra`.
 
+The result also includes `agents`: the recorded session, harness, launch route, folder and last observation for each attached worker, with a presence check. `gone` means the process exited, the terminal changed, the session ended or the machine restarted since it was observed; `unknown` means the process or daemon could not be checked. Read `task show <task> --full` and `task history <task>` before deciding what happened. Ask before replacing a lost agent; the board never relaunches it automatically.
+
 ## Keep tasks current
 
 - New work: `pnyx-axi task create --title "<what>" --board <board>`; a piece of a larger task: add `--parent <task>` (one level only).
