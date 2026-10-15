@@ -1,6 +1,7 @@
 import { project } from '../projects/cli.ts'
 import { doneDeadline } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
+import { settleDone, settles } from '../copies/copies.ts'
 import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
@@ -654,6 +655,12 @@ async function mountOwnedHydra({
 
         if (deadline !== undefined && deadline <= Date.now()) {
           hideDone({ hydraId })
+          pump()
+        }
+
+        // ponytail: git runs synchronously here; move it off the event loop if copies get slow to settle.
+        if (Object.values(state.cards).some(card => settles({ card }))) {
+          settleDone({ hydraId })
           pump()
         }
       } catch (error) {

@@ -9,6 +9,7 @@ import { sendReply } from './reply.ts'
 import { findSession, interactive, liveTask, rankOf, selfSession } from '../core/tasks.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import { setupHydra, startHydra, startTask } from './start.ts'
+import { copyCommand } from '../copies/cli.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -566,6 +567,9 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       check: { type: 'boolean' },
       via: { type: 'string' },
       kind: { type: 'string' },
+      'in-place': { type: 'boolean' },
+      safe: { type: 'boolean' },
+      discard: { type: 'boolean' },
     },
     positionals: 4,
   })
@@ -615,6 +619,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       harness: values.harness as string | undefined,
       prompt: values.prompt as string | undefined,
       folder: values.folder as string | undefined,
+      inPlace: Boolean(values['in-place']),
       url,
       meta: m,
     })
@@ -646,6 +651,10 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         return { ...out, posted: `none: ${(error as Error).message}` }
       }
     })
+  }
+
+  if (action === 'copy') {
+    return copyCommand({ hydraId, ref: required({ value: positionals[1], what: 'task id' }), action: positionals[2], values, meta: m })
   }
 
   if (action === 'sessions') {
@@ -726,7 +735,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     }
 
     return {
-      task: { ...cardRow({ card: task }), key: task.key, brief: task.brief ?? 'none', parent: task.parentId ?? 'none', status: task.status ? `${task.status.state}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet', worker: task.sessionIds?.[0] ?? 'none', declarations: task.statusLog?.length ?? 0, firstmate: task.mirror ? 'mirrored' : 'none' },
+      task: { ...cardRow({ card: task }), key: task.key, ...(task.copy ? { copy: `${task.copy.path} (${task.copy.state}${task.copy.reason ? `: ${task.copy.reason}` : ''})` } : {}), brief: task.brief ?? 'none', parent: task.parentId ?? 'none', status: task.status ? `${task.status.state}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet', worker: task.sessionIds?.[0] ?? 'none', declarations: task.statusLog?.length ?? 0, firstmate: task.mirror ? 'mirrored' : 'none' },
       help: [`Run \`pnyx-axi task show ${task.id} --full --hydra ${hydraId}\` for the full record, or \`pnyx-axi task history ${task.id} --hydra ${hydraId}\` for its events`],
     }
   }
@@ -815,7 +824,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (action !== 'attach' && action !== 'detach') {
-    throw new AxiError('Use task create, list, show, status, history, rename, start, permission, paseo, sessions, attach or detach', 'VALIDATION_ERROR')
+    throw new AxiError('Use task create, list, show, status, history, rename, start, copy, permission, paseo, sessions, attach or detach', 'VALIDATION_ERROR')
   }
 
   const ref = required({ value: positionals[1], what: 'task id' })
@@ -936,7 +945,7 @@ function taskSessions({ hydraId, ids }: { hydraId: string; ids: Set<string> }): 
 }
 
 function hydraConfigCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, name: { type: 'string' }, identity: { type: 'string' }, session: { type: 'string' }, firstmate: { type: 'string' }, command: { type: 'string' }, base: { type: 'string' }, 'done-after-hours': { type: 'string' } }, positionals: 2 })
+  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, name: { type: 'string' }, identity: { type: 'string' }, session: { type: 'string' }, firstmate: { type: 'string' }, command: { type: 'string' }, 'command-folder': { type: 'string' }, base: { type: 'string' }, 'done-after-hours': { type: 'string' } }, positionals: 2 })
   const action = positionals[0]
 
   if (action === 'homes') {
@@ -1032,6 +1041,18 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
 
       if (command) {
         data.command = command
+      }
+
+      const owns = values['command-folder']
+
+      if (owns !== undefined && owns !== 'own' && owns !== 'copy') {
+        throw new HydraError({ message: '--command-folder must be own or copy', code: 'VALIDATION_ERROR' })
+      }
+
+      if (owns === 'own') {
+        data.commandOwnsFolder = true
+      } else if (owns === 'copy') {
+        delete data.commandOwnsFolder
       }
 
       return hydraEvent({ state, meta: m, cardId: '$board', change: { type: 'board.configured', data } })
@@ -1517,6 +1538,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
     case 'hydra.project': return `${event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Hydra ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
     case 'task.project': return `Task project: ${event.data.after ?? 'none'}`
+    case 'task.copy': return `Task copy ${event.data.after.state}: ${event.data.after.path}${event.data.after.reason ? ` (${event.data.after.reason})` : ''}`
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
     case 'task.permission': return `${event.data.tool} permission ${event.data.id}: ${event.data.status}`
     case 'task.brief': return 'Task brief updated'
@@ -1826,13 +1848,14 @@ const COMMAND_HELP: Record<string, string> = {
 pnyx-axi hydra create --firstmate <home>
 pnyx-axi hydra list
 pnyx-axi hydra homes [--base <folder>]
-pnyx-axi hydra show|set --hydra <id> [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--done-after-hours <hours>]
+pnyx-axi hydra show|set --hydra <id> [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours>]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
 --session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
 in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's Hydra.
 --done-after-hours hides cards after continuous time in Done (default 24); 0 keeps them visible. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
+--command-folder own says the command makes its own folder, so it runs in the project folder and Pnyx makes no task copy; copy (the default) runs it in the task's copy.
 pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--details <text>]
 pnyx-axi hydra send --text <message> [--details <text>]
 pnyx-axi hydra resize --width <pixels>
@@ -1875,9 +1898,10 @@ pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>
 pnyx-axi task permission <task> <request> allow|deny [--reason <text>]
 pnyx-axi task project <task> --project <name|path>
 pnyx-axi task continue <task> [--check]
-pnyx-axi task start <task> [--via pnyx|paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>] [--replace-session <session>]
+pnyx-axi task start <task> [--via pnyx|paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
-pnyx-axi task start <task> --via command [--prompt <text>] [--harness <name>] [--folder <path>]
+pnyx-axi task start <task> --via command [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
+pnyx-axi task copy <task> [remove [--safe | --discard]]
 Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start and permission, as to move. Pnyx keeps it on the event,
 posts "<what Hydra did>: <reason>" in Hydra’s chat with --details under it, and returns that line as posted.
 pnyx-axi task paseo [--paseo-url <url>]
@@ -1908,6 +1932,13 @@ Repeating the same --event-id never starts a second agent.
 --via command runs the configured command in the task's folder with PNYX_TASK and the rest of its context in the
 environment; the session it starts attaches to the task when its hooks first report.
 The default route is firstmate for a Hydra run by a Firstmate home, otherwise pnyx.
+A task with an attached project starts in its own copy: a git worktree on branch pnyx/<hydra>-<task> (or the project's
+copy command, see project set), made once and reused by later starts. --in-place works in the project folder itself and is
+refused while a worker of another Hydra runs there; --folder names the folder outright. Firstmate Hydras make their own copies.
+When the task reaches Done and its agent stops working, Pnyx removes its copy if it has no uncommitted changes and its commit
+is on the default branch or its linked pull request merged; the branch stays. Copies from a project's copy command are only released. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
+task copy shows the copy and that check. task copy remove settles it again; --safe (Hydra) confirms a clean copy whose work
+already landed or is empty; --discard removes work that never landed and needs the owner's --confirm <token>, never Hydra's.
 `,
   push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.

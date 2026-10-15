@@ -308,11 +308,16 @@ export function applyHydra({ state, event }: { state: HydraState; event: HydraEv
     return true
   }
 
-  if (event.type === 'task.launched') {
+  if (event.type === 'task.launched' || event.type === 'task.copy') {
     const card = state.cards[event.cardId]
 
     if (card) {
-      card.launch = structuredClone(event.data)
+      if (event.type === 'task.copy') {
+        card.copy = structuredClone(event.data.after)
+      } else {
+        card.launch = structuredClone(event.data)
+      }
+
       card.revision++
       card.updatedAt = event.at
       card.updatedSeq = event.seq
