@@ -110,7 +110,6 @@ export function HydraChat({
           <InlineQuestions
             card={card}
             command={command}
-            connected={connected}
             notify={notify}
           />
         )}

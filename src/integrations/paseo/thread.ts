@@ -14,7 +14,9 @@ export interface PaseoConversation {
   close(): void
 }
 
-export async function paseoConversation({ card, changed, connect = openPaseo }: {
+export async function paseoConversation({
+  card, changed, connect = ({ url }) => openPaseo({ url, reconnect: true }),
+}: {
   card: Card
   changed(): void
   connect?: Connect

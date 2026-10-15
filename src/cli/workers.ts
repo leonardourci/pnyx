@@ -1,3 +1,4 @@
+import { checkAttachments } from '../integrations/presence/check.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
@@ -95,7 +96,7 @@ function kindCommand({ args }: { args: string[] }): Output {
   })
 }
 
-const TRACKED: readonly EventType[] = ['hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked']
+const TRACKED: readonly EventType[] = ['hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked', 'task.launched']
 const CHECK_LIMIT = 20
 const POLL_MS = 2000
 
@@ -243,6 +244,7 @@ export async function hydraCheck({ args, connect }: {
     board,
     changes: page.length ? page.map(e => row({ e })) : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
+    agents: await checkAttachments({ state: loadBoard({ board }).state, connect }),
     ...(digest.size ? { conversations: [...digest.values()] } : {}),
     ...(unavailable.length ? { unavailable } : {}),
     help: [...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []), `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --board ${board}\` to wait for the next change`],

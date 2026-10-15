@@ -122,7 +122,7 @@ export function Thread({
           </Button>
         )}
         {page?.unavailable && <p className="empty">{page.unavailable}</p>}
-        {!page && <p className="empty">{connected ? 'Loading conversation…' : 'Reconnect to load conversation.'}</p>}
+        {!page && <p className="empty">Loading conversation…</p>}
         <Messages
           entries={entries}
           comments={comments}
@@ -141,7 +141,6 @@ export function Thread({
         <InlineQuestions
           card={card}
           command={command}
-          connected={connected}
           notify={notify}
         />
         <Composer

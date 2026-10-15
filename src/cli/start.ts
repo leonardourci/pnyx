@@ -268,7 +268,10 @@ function startCommand({ board, role, task, prompt, folder, harness, meta }: {
   const text = `Started ${role === 'hydra' ? 'Hydra' : 'a worker'} with the board command in ${claimed.cwd}`
   withWriter({
     board,
-    fn: ({ writer }) => apply({ writer, decision: decideNote({ state: writer.state, ref: target, note: { kind: 'context', source: 'pnyx:start', text }, meta: { ...meta, id: `${id}:started` } }) }),
+    fn: ({ writer }) => {
+      apply({ writer, decision: hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:launch` }, cardId: target, change: { type: 'task.launched', data: { via: 'command', at: meta.at, folder: claimed.cwd, pid, command: claimed.command, ...(harness ? { harness } : {}) } } }) })
+      apply({ writer, decision: decideNote({ state: writer.state, ref: target, note: { kind: 'context', source: 'pnyx:start', text }, meta: { ...meta, id: `${id}:started` } }) })
+    },
   })
 
   return {

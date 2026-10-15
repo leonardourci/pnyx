@@ -166,7 +166,7 @@ test('Paseo messages are archived across pages and only completed assistant repl
     const count = f.state().seq
     await hydraCheck({ args: ['check', '--after', String(done.through)], connect })
     assert.equal(f.state().seq, count)
-    assert.equal(closed, 3)
+    assert.equal(closed, 6)
     commands.task(['create', '--key', 'other', '--title', 'Other task'])
     await commands.task(['attach', 'other', '--session', 'codex:paseo'])
     await commands.task(['detach', 'other'])

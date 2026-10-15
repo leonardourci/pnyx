@@ -1,3 +1,4 @@
+import { storageKey } from './outbox.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import type { BoardState } from '../../../src/core/model.ts'
@@ -9,35 +10,87 @@ import { shouldReload } from './view.ts'
 export type Receipt = Record<string, unknown>
 export type Command = ({ name, args }: { name: string; args: string[] }) => Promise<Receipt>
 
+const CACHE_KEY = storageKey({ key: 'board-state' })
+export const reconnectDelay = ({ attempt }: { attempt: number }) =>
+  Math.min(500 * 2 ** Math.min(attempt, 5), 10000)
+export const retryable = ({ name, args }: { name: string; args: string[] }) =>
+  ['reply', 'answer', 'agent'].includes(name) || (name === 'hydra' && args[0] === 'send' && args.includes('--event-id'))
+
+function restoredBoard(): BoardState {
+  try {
+    const state = JSON.parse(sessionStorage.getItem(CACHE_KEY) ?? 'null') as BoardState | null
+
+    return state?.v === 1 && typeof state.seq === 'number' && state.cards ? state : emptyBoard()
+  } catch {
+    return emptyBoard()
+  }
+}
+
 export function useBoard() {
-  const [state, setState] = useState<BoardState>(emptyBoard), [connected, setConnected] = useState(false), [error, setError] = useState('')
+  const [state, setState] = useState<BoardState>(restoredBoard)
+  const [connected, setConnected] = useState(false)
   const [thread, setThread] = useState<ThreadPage | null>(null)
   const [hydraThread, setHydraThread] = useState<ThreadPage | null>(null)
   const [latest, setLatest] = useState<Record<string, LatestMessage>>({})
   const stateRef = useRef(state)
   const socket = useRef<WebSocket | null>(null)
   const hasSnapshot = useRef(false)
+  const ready = useRef(false)
   const pending = useRef(new Map<string, {
     resolve({ receipt }: { receipt: Receipt }): void
     reject({ error }: { error: Error }): void
-    timer: ReturnType<typeof setTimeout>
+    timer?: ReturnType<typeof setTimeout>
+    message: { type: 'command'; id: string; name: string; args: string[] }
+    sent: boolean
+    retry: boolean
   }>())
-  const rejectPending = useCallback(() => {
-    for (const p of pending.current.values()) {
-      clearTimeout(p.timer); p.reject({ error: new Error('Connection lost. Check receipts before retrying; draft retained.') })
+  const flush = useCallback(() => {
+    if (!ready.current || socket.current?.readyState !== WebSocket.OPEN) {
+      return
     }
 
-    pending.current.clear()
+    for (const [id, p] of pending.current) {
+      if (p.sent) {
+        continue
+      }
+
+      p.sent = true
+      p.timer = setTimeout(() => {
+        pending.current.delete(id)
+        p.reject({ error: new Error('Send could not be confirmed. Draft kept; check the conversation before retrying.') })
+      }, ['reply', 'answer', 'agent'].includes(p.message.name) ? 140000 : 60000)
+      socket.current.send(JSON.stringify(p.message))
+    }
+  }, [])
+  const disconnected = useCallback(() => {
+    ready.current = false
+    setConnected(false)
+
+    for (const [id, p] of pending.current) {
+      clearTimeout(p.timer)
+
+      if (p.retry) {
+        p.sent = false
+      } else {
+        pending.current.delete(id)
+        p.reject({ error: new Error('Could not complete this action. Try again.') })
+      }
+    }
   }, [])
   useEffect(() => {
-    let closed = false, retry: ReturnType<typeof setTimeout>
+    try {
+      sessionStorage.setItem(CACHE_KEY, JSON.stringify(state))
+    } catch { /* A full or blocked store still permits reconnect in this tab. */ }
+  }, [state])
+  useEffect(() => {
+    let closed = false, retry: ReturnType<typeof setTimeout> | undefined
+    let attempt = 0, received = Date.now()
+    let watchdog: ReturnType<typeof setInterval> | undefined
 
     const connect = () => {
       const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
 
       if (!token) {
-        setError('Open this board through pnyx-axi serve to connect.')
-
         return
       }
 
@@ -48,23 +101,42 @@ export function useBoard() {
       }
 
       const ws = new WebSocket(url); socket.current = ws
+      received = Date.now()
+      clearInterval(watchdog)
 
-      ws.onopen = () => {
-        if (!closed) {
-          setConnected(true); setError(''); setLatest({})
+      const recover = () => {
+        if (closed || socket.current !== ws) {
+          return
         }
+
+        socket.current = null
+        clearInterval(watchdog)
+        ws.close()
+        disconnected()
+        retry = setTimeout(connect, reconnectDelay({ attempt: attempt++ }))
       }
 
+      watchdog = setInterval(() => {
+        if (Date.now() - received > 25000) {
+          recover()
+        } else if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }))
+        }
+      }, 10000)
+      ws.onclose = recover
+      ws.onerror = recover
+
       ws.onmessage = e => {
-        if (closed) {
+        if (closed || socket.current !== ws) {
           return
         }
 
         try {
+          received = Date.now()
           const m = JSON.parse(e.data) as ServerMessage
 
           if (m.type === 'hello') {
-            if (shouldReload({ loaded: document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content, server: m.build })) {
+            if (m.board !== document.querySelector<HTMLMetaElement>('meta[name=pnyx-board]')?.content || shouldReload({ loaded: document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content, server: m.build })) {
               closed = true; ws.close(); location.reload()
             }
           } else if (m.type === 'snapshot') {
@@ -75,6 +147,7 @@ export function useBoard() {
             }
 
             if (m.event.seq !== stateRef.current.seq + 1) {
+              ready.current = false; setConnected(false)
               ws.send(JSON.stringify({ type: 'resync' }))
 
               return
@@ -91,6 +164,10 @@ export function useBoard() {
               setThread(m.thread)
             }
           } else if (m.type === 'latest') {
+            if (!ready.current) {
+              ready.current = true; attempt = 0; setConnected(true); flush()
+            }
+
             setLatest(old => {
               const next = { ...old }
 
@@ -104,9 +181,7 @@ export function useBoard() {
 
               return next
             })
-          } else if (m.type === 'error' && !m.id) {
-            setError(m.error)
-          } else if (m.id) {
+          } else if ('id' in m && m.id) {
             const p = pending.current.get(m.id)
 
             if (!p) {
@@ -122,49 +197,63 @@ export function useBoard() {
             }
           }
         } catch {
-          setError('Could not read a board update.'); ws.send(JSON.stringify({ type: 'resync' }))
-        }
-      }
-
-      ws.onclose = () => {
-        if (!closed) {
-          setConnected(false); rejectPending(); retry = setTimeout(connect, 1500)
-        }
-      }
-
-      ws.onerror = () => {
-        if (!closed) {
-          setError('Connection unavailable. Reconnecting…')
+          ws.send(JSON.stringify({ type: 'resync' }))
         }
       }
     }
 
+    const wake = () => {
+      if (document.visibilityState === 'hidden' || socket.current?.readyState === WebSocket.OPEN) {
+        return
+      }
+
+      clearTimeout(retry)
+      socket.current?.close()
+      connect()
+    }
+
+    addEventListener('online', wake)
+    document.addEventListener('visibilitychange', wake)
     connect()
 
     return () => {
-      closed = true; clearTimeout(retry); socket.current?.close(); rejectPending()
+      closed = true; clearTimeout(retry); clearInterval(watchdog); socket.current?.close()
+      removeEventListener('online', wake)
+      document.removeEventListener('visibilitychange', wake)
+      disconnected()
+
+      for (const p of pending.current.values()) {
+        p.reject({ error: new Error('Send interrupted. Draft kept.') })
+      }
+
+      pending.current.clear()
     }
-  }, [rejectPending])
+  }, [disconnected, flush])
   const command: Command = useCallback(({ name, args }) => new Promise((resolve, reject) => {
-    if (socket.current?.readyState !== WebSocket.OPEN) {
-      reject(new Error('The board is offline. Draft retained.'))
+    const retry = retryable({ name, args })
+
+    if ((!ready.current || socket.current?.readyState !== WebSocket.OPEN) && !retry) {
+      reject(new Error('Could not complete this action. Try again.'))
+
+      return
+    }
+
+    if (!document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content) {
+      reject(new Error('Open this board through pnyx-axi serve to send. Draft kept.'))
 
       return
     }
 
     const id = crypto.randomUUID()
-    const timer = setTimeout(() => {
-      pending.current.delete(id); reject(new Error('No receipt yet. Check history before retrying.'))
-    }, name === 'reply' || name === 'agent' ? 140000 : name === 'task' ? 60000 : 15000)
     pending.current.set(id, {
-      resolve: ({ receipt }) =>
-        resolve(receipt),
-      reject: ({ error }) =>
-        reject(error),
-      timer,
+      resolve: ({ receipt }) => resolve(receipt),
+      reject: ({ error }) => reject(error),
+      message: { type: 'command', id, name, args },
+      retry,
+      sent: false,
     })
-    socket.current.send(JSON.stringify({ type: 'command', id, name, args }))
-  }), [])
+    flush()
+  }), [flush])
 
-  return { state, connected, error, command, thread, setThread, hydraThread, latest }
+  return { state, connected, command, thread, setThread, hydraThread, latest }
 }

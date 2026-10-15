@@ -1,3 +1,4 @@
+import { readAttempt, saveAttempt } from './outbox.ts'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import type { Catalog } from '../../../src/thread/catalog.ts'
@@ -41,11 +42,12 @@ export function Composer({
   settings?: ReactNode
 }) {
   const [preview, setPreview] = useState<number | null>(null)
-  const [sending, setSending] = useState(false), [failure, setFailure] = useState('')
+  const [failure, setFailure] = useState('')
+  const [sending, setSending] = useState(false)
   const [prefix, setPrefix] = useState<string | null>(null)
   const [active, setActive] = useState(-1)
   const input = useRef<HTMLTextAreaElement>(null)
-  const attempt = useRef<{ text: string; id: string } | null>(null)
+  const attempt = useRef(readAttempt({ key: card }))
   // Comments travel with the draft as one reply, and stay until it is delivered.
   const commentKey = `pnyx-comments:${card}:${thread?.session ?? ''}`
   const [taught, setTaught] = useState(() => {
@@ -100,26 +102,32 @@ export function Composer({
     const cursor = input.current?.selectionStart ?? draft.length; setDraft({ text: command + ' ' + draft.slice(cursor) }); setPrefix(null); setActive(-1); input.current?.focus(); requestAnimationFrame(() => input.current?.setSelectionRange(command.length + 1, command.length + 1))
   }
 
-  const send = async () => {
-    if (sending || !outgoing.trim() || !connected || !thread?.route) {
+  const send = async ({ restore = false }: { restore?: boolean } = {}) => {
+    const text = restore && attempt.current ? attempt.current.text : outgoing
+
+    if (sending || !text.trim()) {
       return
     }
 
-    if (attempt.current?.text !== outgoing) {
-      attempt.current = { text: outgoing, id: crypto.randomUUID() }
+    if (attempt.current?.text !== text) {
+      attempt.current = { text, id: crypto.randomUUID(), pending: true }
     }
 
-    setSending(true); setFailure('')
+    attempt.current.pending = true
+    saveAttempt({ key: card, attempt: attempt.current })
+    setFailure(''); setSending(true)
 
     try {
-      const r = await command({ name: 'reply', args: [card, outgoing, attempt.current.id] }); const receipt = r.reply as { state: string; detail?: string } | undefined
+      const r = await command({ name: 'reply', args: [card, text, attempt.current.id] }); const receipt = r.reply as { state: string; detail?: string } | undefined
+      const why = receipt?.detail ? ` (${receipt.detail})` : ''
 
-      if (receipt?.state === 'failed' || receipt?.state === 'delivery_unknown') {
-        setFailure(receipt?.state === 'failed' ? 'Reply failed to send. Your draft is kept.' : 'Delivery unknown. Your draft is kept.')
+      if (receipt?.state !== 'delivered' && receipt?.state !== 'queued') {
+        setFailure(receipt?.state === 'delivery_unknown' ? 'Send could not be confirmed. Check the conversation before retrying.' : `Could not send${why}. Draft kept.`)
       }
 
-      const why = receipt?.detail ? ` (${receipt.detail})` : ''
-      notify({ text: receipt?.state === 'queued' ? 'Message queued for Hydra.' : receipt?.state === 'delivery_unknown' ? `Delivery unknown${why}. Check the native session before sending again.` : receipt?.state === 'failed' ? `Delivery failed${why}. Your draft is retained.` : 'Reply delivered to the route. This does not confirm it was handled.' })
+      if (receipt?.state === 'delivered' || receipt?.state === 'queued') {
+        notify({ text: receipt.state === 'queued' ? 'Message queued for Hydra.' : 'Reply delivered to the route. This does not confirm it was handled.' })
+      }
 
       if ((receipt?.state === 'delivered' || receipt?.state === 'queued')) {
         if (commented) {
@@ -131,20 +139,34 @@ export function Composer({
         }
 
         // Keep anything typed or commented while the reply was in flight.
-        if (current.current.draft === draft) {
+        if (text === outgoing && current.current.draft === draft) {
           setDraft({ text: '' })
         }
 
-        const sent = new Set(comments.map(c => `${c.id}\n${c.text}`))
-        setComments({ items: current.current.comments.filter(c => !sent.has(`${c.id}\n${c.text}`)) })
+        if (text === outgoing) {
+          const sent = new Set(comments.map(c => `${c.id}\n${c.text}`))
+          setComments({ items: current.current.comments.filter(c => !sent.has(`${c.id}\n${c.text}`)) })
+        }
+
         attempt.current = null
       }
     } catch (e) {
-      setFailure('Reply failed to send. Your draft is kept.'); notify({ text: (e as Error).message })
+      setFailure((e as Error).message)
     } finally {
+      if (attempt.current) {
+        attempt.current.pending = false
+      }
+
+      saveAttempt({ key: card, attempt: attempt.current })
       setSending(false)
     }
   }
+
+  useEffect(() => {
+    if (attempt.current?.pending) {
+      void send({ restore: true })
+    }
+  }, [])
 
   useKeyAction({
     id: 'send',
@@ -230,7 +252,7 @@ export function Composer({
                 </Button>
               ))}
             </div>
-            {!suggestions.length && <p role="status">{!connected ? 'Reconnect to load commands.' : !catalog ? 'Loading local commands…' : catalog.unavailable ?? 'No matching local command.'}</p>}
+            {!suggestions.length && <p role="status">{!catalog ? 'Loading local commands…' : catalog.unavailable ?? 'No matching local command.'}</p>}
             {catalog?.note && <p>{catalog.note}</p>}
           </div>
         )}
@@ -286,7 +308,7 @@ export function Composer({
           className="composer-send"
           aria-label="Send reply"
           title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
-          disabled={sending || !outgoing.trim() || !connected || !thread?.route}
+          disabled={sending || !outgoing.trim()}
         >
           <Icon name="send" size={14} />
         </Button>

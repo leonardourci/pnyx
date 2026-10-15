@@ -29,6 +29,8 @@ The `conversations` digest groups direct owner messages and agent replies by tas
 
 Keep the cursor only after you have handled every entry through it. Stow it as `hydra memory set --key check-cursor --text "<through>" --board <board>` before a reset. If no cursor is known, begin at `--after 0` and page forward; never replace a known cursor with the board’s latest sequence before reading the intervening events.
 
+The result also includes `agents`: the recorded session, harness, launch route, folder and last observation for each attached worker, with a presence check. `gone` means the process exited, the terminal changed, the session ended or the machine restarted since it was observed; `unknown` means the process or daemon could not be checked. Read `task show <task> --full` and `task history <task>` before deciding what happened. Ask before replacing a lost agent; the board never relaunches it automatically.
+
 ## Keep tasks current
 
 - New work: `pnyx-axi task create --title "<what>" --brief "<instructions>" --board <board>`; a piece of a larger task: add `--parent <task>` (one level only).

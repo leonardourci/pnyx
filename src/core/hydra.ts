@@ -54,6 +54,10 @@ export function refreshTasks({ state, ids }: {
   const session = ref ? state.sessions?.[ref] : undefined
 
   if (hydra) {
+    if (session && hydra.launch?.via === 'command' && session.launch?.via === 'hooks') {
+      session.launch = { ...hydra.launch, harness: session.agent.provider }
+    }
+
     hydra.sessionIds = session ? [session.id] : []
     assignDefined({
       target: hydra,
@@ -258,6 +262,19 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
       card.updatedSeq = event.seq
       card.updatedAt = event.at
       refreshTasks({ state, ids: [card.id] })
+    }
+
+    return true
+  }
+
+  if (event.type === 'task.launched') {
+    const card = state.cards[event.cardId]
+
+    if (card) {
+      card.launch = structuredClone(event.data)
+      card.revision++
+      card.updatedAt = event.at
+      card.updatedSeq = event.seq
     }
 
     return true

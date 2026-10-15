@@ -1,3 +1,4 @@
+import { storageKey } from './outbox.ts'
 import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import { cardSessionId } from '../../../src/core/tasks.ts'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
@@ -22,7 +23,7 @@ import { useBoardKeyboard } from '../keyboard/board.tsx'
 
 // What a reload (by hand, or after the server serves a new build) would otherwise lose:
 // the open card, the page, unsent drafts and how far the board was scrolled. Kept per tab.
-const RESTORE_KEY = 'pnyx-restore'
+const RESTORE_KEY = storageKey({ key: 'restore' })
 type Restore = {
   selected?: string | null
   page?: string
@@ -45,7 +46,7 @@ const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [da
   .map(el => [el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban', el] as const)
 
 export function App() {
-  const { state, command, connected, error, thread, setThread, hydraThread, latest } = useBoard()
+  const { state, command, connected, thread, setThread, hydraThread, latest } = useBoard()
   const [page, setPage] = useState(restored.page ?? 'board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
@@ -119,7 +120,7 @@ export function App() {
       return
     }
 
-    let cancelled = false; setThread(null); void command({ name: 'thread', args: [selected ?? ''] }).then(r => {
+    let cancelled = false; void command({ name: 'thread', args: [selected ?? ''] }).then(r => {
       if (!cancelled && r.thread) {
         setThread(r.thread as ThreadPage)
       }
@@ -308,15 +309,14 @@ export function App() {
             notify={notify}
             connected={connected}
           />
-          {!connected && (
-            <span
-              className="connection"
-              role="status"
-              aria-label="Offline"
-              title={error ?? 'Reconnecting'}
-            ><i />
-            </span>
-          )}
+          <span
+            className={`connection ${connected ? 'online' : ''}`}
+            role="status"
+            aria-label={connected ? 'Connected' : 'Reconnecting'}
+            title={connected ? 'Connected' : 'Reconnecting'}
+          >
+            <i />
+          </span>
         </header>
         <main className="shell">
           {page === 'settings' ? (

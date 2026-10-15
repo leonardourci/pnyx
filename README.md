@@ -32,15 +32,20 @@ pnyx-axi serve                              # board only
 pnyx-axi serve --home ~/path/to/firstmate   # also shows and replies to Firstmate tasks
 ```
 
-Open the `url` it prints, http://127.0.0.1:4747 unless `--port` says otherwise; if that port is taken, `serve` exits with `PORT_IN_USE` rather than picking another. `pnyx-axi` with no arguments shows the board summary and the running server's address. Stop the server with Ctrl+C or `pnyx-axi stop`. When the server restarts on a new build at the same port, an open board reloads itself and keeps the open card, unsent drafts and scroll position.
+Open the `url` it prints, http://127.0.0.1:4747 unless `--port` says otherwise; if that port is taken, `serve` exits with `PORT_IN_USE` rather than picking another. `pnyx-axi` with no arguments shows the board summary and the running server's address. Stop a foreground server with Ctrl+C or `pnyx-axi stop`. The login service uses the Node executable and Pnyx installation that ran setup; keep that installation in place and rerun setup after moving it or changing Node. Each board permits one server even when two starts race. A service-managed board restarts after `stop`; use `setup service --remove` to keep it stopped.
+
+The browser reconnects automatically with capped backoff and a heartbeat, resumes board events and restores the open conversation subscription. Composers stay usable during an outage; submitting a message keeps its draft and sends it when the connection returns, using the same delivery key on retries. A failed send leaves one short line in the conversation. The top-bar mark is the connection indicator. Session identities and attachments live in the event log and survive browser reloads and server restarts.
+
+When the server restarts on a new build at the same port, an open board reloads itself and keeps the open card, unsent drafts and scroll position.
 
 To keep it running in the background:
 
 ```sh
 mkdir -p ~/.pnyx
-nohup pnyx-axi serve --home ~/path/to/firstmate > ~/.pnyx/serve.log 2>&1 &
-pnyx-axi        # prints the URL
-pnyx-axi stop
+pnyx-axi setup service                     # macOS: start now and at login, restart after exit
+pnyx-axi setup service --board work --port 4748 --home ~/path/to/firstmate
+pnyx-axi setup service --preview           # inspect the launchd configuration
+pnyx-axi setup service --remove            # stop and uninstall the default board's service
 ```
 
 ## Add your agents
@@ -100,7 +105,7 @@ pnyx-axi hydra check --after <seq> --wait 1800
 
 - **Kinds:** `kind set` records the agent each kind of task starts on in Paseo: harness, model, effort (Paseo's thinking option) and mode (Paseo's mode, such as `acceptEdits` or `bypassPermissions` for Claude Code). `--quota high|medium|low` picks, at start, the model with the most runway in that intelligence bucket for the harness through `quota-axi`, falling back to `--model` or Paseo's default. `task start` uses `--kind` or the `default` kind, and `hydra start` the `hydra` kind; without one, Claude Code with Paseo's default model. `--harness` on a start overrides the kind's, and without `--prompt` a worker opens with a message naming its task and the `pnyx-worker` skill. Set a flag to an empty value, or `--quota off`, to clear it. Settings → Agents on the board edits the same kinds, and each change is its own event in the log; saving a kind never chooses the board's Hydra.
 - **Direct conversations:** every owner message sent through a task card is already recorded with its send receipt. The light check also archives native transcript messages and completed Paseo replies into the same event log, including chats retained after detach and messages from an earlier task attachment. It returns a compact `conversations` digest grouped by task; Hydra treats the owner’s direct words as instructions and decides whether to act or take note. Excerpts point back to full task history, and the `through` cursor pages every event without dropping the rest. Echoes of board sends and Hydra’s own answers are excluded from the digest. Unavailable native sources are reported for a later retry. Workers can escalate directly with `hydra send --task <task> --text "<question and context>"`.
-- **Light check:** `hydra check` prints only what Hydra tracks (messages, task creation, brief and visibility changes, declarations, open agent questions, attachments, column changes, manual moves and links) after `--after`, with each event's id, task and message action, and skips Hydra's own writes (actor `hydra`, from `PNYX_ACTOR` or `--actor`). With `--wait` it blocks until one appears, so a background command or monitor wakes Hydra only when something changed, without loading the board.
+- **Light check:** `hydra check` also returns an `agents` list with each attachment’s session, harness, launch route, folder, start time, last observation and current presence. A terminal observed before this boot or a process that exited is `gone`; a daemon or process that cannot be queried is `unknown`. These are observations for Hydra to inspect with `task history` and `task show --full`; Pnyx never relaunches agents. `hydra check` prints only what Hydra tracks (messages, task creation, brief and visibility changes, declarations, open agent questions, attachments, column changes, manual moves and links) after `--after`, with each event's id, task and message action, and skips Hydra's own writes (actor `hydra`, from `PNYX_ACTOR` or `--actor`). With `--wait` it blocks until one appears, so a background command or monitor wakes Hydra only when something changed, without loading the board.
 - **Workers:** a worker follows the `pnyx-worker` skill and reports with `task status <task> working|needs_you|paused|blocked|done --note <text>`; silence, idling and exit change nothing. To make the skills available to a Claude Code session outside a Firstmate home, link them from the clone: `ln -s "$PWD/skills/pnyx-hydra" "$PWD/skills/pnyx-worker" ~/.claude/skills/`.
 - **Binding a session yourself:** `board set --session self` and `task attach <task> --session self` pick the session running in the caller's own Paseo terminal, tmux pane or Herdr pane.
 
@@ -158,7 +163,7 @@ pnpm remove -g pnyx-axi
 
 ## Development
 
-See [AGENTS.md](AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. `pnpm test:web` runs a real browser smoke test through `chrome-devtools-axi` with a temporary `PNYX_HOME`, a random port, synthetic transcripts and a fake Firstmate send script; set `PNYX_EVIDENCE_DIR` to a folder outside the repository to keep its screenshots. `pnpm test:keyboard` exercises navigation, card and column moves, the top bar, comments and independent task/Hydra sends with real browser keys. `pnpm test:chat` covers Markdown rendering, nested comments, their delivery format and the reply input. `pnpm test:semantic` checks semantic search on the real models; set `PNYX_GOLDEN_MODELS` to a folder already holding them to skip the download. `pnpm run web:dev` serves the board through Vite.
+See [AGENTS.md](AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. `pnpm test:web` runs a real browser smoke test through `chrome-devtools-axi` with a temporary `PNYX_HOME`, a random port, synthetic transcripts and a fake Firstmate send script; set `PNYX_EVIDENCE_DIR` to a folder outside the repository to keep its screenshots. `pnpm test:keyboard` exercises navigation, card and column moves, the top bar, comments and independent task/Hydra sends with real browser keys. `pnpm test:chat` covers Markdown rendering, nested comments, their delivery format and the reply input. `pnpm test:connection` covers offline sends, event resync, subscription recovery, reloads and heartbeat recovery. `pnpm test:semantic` checks semantic search on the real models; set `PNYX_GOLDEN_MODELS` to a folder already holding them to skip the download. `pnpm run web:dev` serves the board through Vite.
 
 ```sh
 pnpm dev

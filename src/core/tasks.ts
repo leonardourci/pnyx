@@ -88,6 +88,7 @@ export function projectSession({ state, session }: {
 
   task.sessionIds = [session.id]
   task.agent = structuredClone(session.agent)
+  task.launch = session.launch && structuredClone(session.launch)
   task.sourceRefs = [
     ...task.sourceRefs.filter(r => !session.sourceRefs.some(s =>
       r.adapter === s.adapter && r.instanceId === s.instanceId && r.objectId === s.objectId)),
@@ -143,6 +144,12 @@ export function applyAttachment({ state, event }: {
     old.updatedAt = event.at
   }
 
+  const target = event.data.after && state.cards[event.data.after]
+
+  if (target && target.launch?.via === 'command' && session.launch?.via === 'hooks') {
+    session.launch = { ...target.launch, harness: session.agent.provider }
+  }
+
   session.taskId = event.data.after
   projectSession({ state, session })
 }
@@ -169,6 +176,12 @@ export function observeSession({ state, card, event }: {
   }
 
   if (event.type === 'card.pushed') {
+    session.launch ??= card.launch ?? { via: card.agent.paseoAgentId ? 'paseo' : 'hooks', at: event.at, folder: card.agent.cwd, harness: card.agent.provider }
+
+    if (!session.lastSeen || event.data.source?.adapter === 'hooks' || event.data.source?.adapter === 'paseo' || event.data.source?.adapter === 'transcript') {
+      session.lastSeen = event.at
+    }
+
     session.agent = { ...session.agent, ...card.agent }
     assignDefined({
       target: session,

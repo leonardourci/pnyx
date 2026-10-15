@@ -3,11 +3,14 @@ import { BoardError } from '../../core/model.ts'
 
 export type Connect = ({ url }: { url: string }) => Promise<PaseoClient>
 
-export async function openPaseo({ url }: { url: string }): Promise<PaseoClient> {
+export async function openPaseo({ url, reconnect = false }: {
+  url: string
+  reconnect?: boolean
+}): Promise<PaseoClient> {
   const client = createPaseoClient({
     url,
     connectTimeoutMs: 5000,
-    reconnect: { enabled: false },
+    reconnect: { enabled: reconnect, baseDelayMs: 500, maxDelayMs: 10000 },
   })
 
   try {

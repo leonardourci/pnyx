@@ -1,7 +1,7 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
-import { localToken } from '../src/server/state.ts'
+import { boardIdentity, localToken } from '../src/server/state.ts'
 
 // `pnpm dev` runs `pnyx-axi serve --board dev` on this port; the dev server forwards the board's WebSocket to it.
 const SERVER = `http://127.0.0.1:${process.env.PNYX_DEV_PORT ?? 4319}`
@@ -10,7 +10,10 @@ const SERVER = `http://127.0.0.1:${process.env.PNYX_DEV_PORT ?? 4319}`
 const devToken: Plugin = {
   name: 'pnyx-dev-token',
   apply: 'serve',
-  transformIndexHtml: () => [{ tag: 'meta', attrs: { name: 'pnyx-token', content: localToken() }, injectTo: 'head' }],
+  transformIndexHtml: () => [
+    { tag: 'meta', attrs: { name: 'pnyx-token', content: localToken() }, injectTo: 'head' },
+    { tag: 'meta', attrs: { name: 'pnyx-board', content: boardIdentity({ board: 'dev' }) }, injectTo: 'head' },
+  ],
 }
 
 export default defineConfig({

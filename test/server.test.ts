@@ -404,7 +404,10 @@ test('the board page carries the token only for its own host and origin; /health
   assert.deepEqual(JSON.parse(health.text), { board: 'default', pid: process.pid, build })
   assert.match(build, /^[0-9a-f]{12}$/)
   assert.ok((await http({ method: 'GET', path: '/' })).text.includes(`<meta name="pnyx-build" content="${build}" />`))
-  assert.deepEqual((await tab()).hello, { type: 'hello', build })
+  const html = (await http({ method: 'GET', path: '/' })).text
+  const identity = /name="pnyx-board" content="([a-f0-9]{24})"/.exec(html)?.[1]
+  assert.ok(identity)
+  assert.deepEqual((await tab()).hello, { type: 'hello', build, board: identity })
   assert.equal((await http({ method: 'GET', path: '/api/commands/move' })).status, 200)
   assert.equal((await http({ method: 'POST', path: '/api/commands/move' })).status, 405)
 })
@@ -897,6 +900,23 @@ test('board tabs list, create, rename and open boards, each on its own server', 
   assert.match((await receipt({ id: 'b5' })).error ?? '', /board not found/)
 })
 
+test('concurrent server starts claim one board before binding their sockets', async () => {
+  const started = await Promise.allSettled([startServer({ board: 'default' }), startServer({ board: 'default' })])
+  const accepted = started.filter(r => r.status === 'fulfilled')
+  assert.equal(accepted.length, 1)
+
+  if (accepted[0]?.status === 'fulfilled') {
+    server = accepted[0].value
+  }
+
+  const refused = started.find(r => r.status === 'rejected')
+  assert.equal(refused?.status === 'rejected' && refused.reason.code, 'ALREADY_RUNNING')
+  const client = await tab()
+  assert.equal((await client.next()).type, 'snapshot')
+  client.ws.send(JSON.stringify({ type: 'ping' }))
+  assert.equal((await client.next()).type, 'pong')
+})
+
 test('Hydra and the open task keep independent live transcripts on one socket', async () => {
   const root = process.env.PNYX_HOME!
   const paths = [join(root, 'worker.jsonl'), join(root, 'hydra.jsonl')]
@@ -1010,4 +1030,16 @@ test('board-scoped search returns Hydra messages and validates command searches'
   }
 
   t.ws.close()
+})
+
+test('a server lock whose pid was reused is reclaimed', async () => {
+  const dir = boardDir({ board: 'default' })
+  mkdirSync(dir, { recursive: true })
+  const path = join(dir, 'server.lock')
+  writeFileSync(path, JSON.stringify({ pid: process.pid, processStart: 'a previous boot' }))
+  server = await startServer({ board: 'default' })
+  const owner = JSON.parse(readFileSync(path, 'utf8'))
+  assert.equal(owner.pid, process.pid)
+  assert.notEqual(owner.processStart, 'a previous boot')
+  await assert.rejects(startServer({ board: 'default' }), { code: 'ALREADY_RUNNING' })
 })
