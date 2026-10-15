@@ -288,6 +288,7 @@ export interface AgentConfig {
   model?: string
   effort?: string
   mode?: string
+  fast?: boolean
   quota?: (typeof QUOTA_BUCKETS)[number]
 }
 export interface HydraProject {
