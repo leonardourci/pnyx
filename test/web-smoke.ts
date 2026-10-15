@@ -7,6 +7,7 @@ import { promisify } from 'node:util'
 import { startServer } from '../src/server/server.ts'
 import { loadBoard, withWriter } from '../src/store/board-store.ts'
 import { decideLink, decidePush, decideSession } from '../src/core/decide.ts'
+import { hydraEvent } from '../src/core/hydra.ts'
 import { seedWebFixture } from './web-fixture.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
@@ -16,6 +17,16 @@ const exec = promisify(execFile)
 const home = mkdtempSync(join(tmpdir(), 'pnyx-web-smoke-'))
 process.env.PNYX_HOME = home
 const fixture = seedWebFixture({ home })
+withWriter({
+  board: 'default',
+  fn: ({ writer }) => {
+    const decision = hydraEvent({ state: writer.state, meta: { actor: 'fixture', at: '2026-10-15T10:00:00Z' }, cardId: '$board', change: { type: 'hydra.message', data: { action: 'send', text: 'Review the layout after lunch.', hydra: 'hydra' } } })
+
+    if ('event' in decision) {
+      writer.append({ event: decision.event })
+    }
+  },
+})
 const server = await startServer({ board: 'default', homes: [fixture.nativeHome] })
 const env = { ...process.env, CHROME_DEVTOOLS_AXI_SESSION: `pnyx-smoke-${process.pid}` }
 const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(home, 'evidence'); mkdirSync(evidence, { recursive: true })
@@ -92,11 +103,31 @@ try {
   await eventually({ condition: '[...document.querySelectorAll(".last-message")].some(m => m.textContent.includes("The first pass is ready to review."))', label: "the card shows its conversation's last message" })
   await screenshot({ name: 'board.png' })
   // "readable" is only in the card's transcript, so only the server's full-text search finds it.
-  await browser({ args: ['fill', await ref({ role: 'searchbox', name: 'Find a card' }), 'readable'] })
+  await browser({ args: ['fill', await ref({ role: 'searchbox', name: 'Search board' }), 'readable'] })
   await eventually({ condition: 'document.querySelectorAll("[data-card]").length === 1 && document.querySelector("[data-card]").closest(".card").textContent.includes("Shape the first working board")', label: 'the board search finds a card by its transcript' })
   await screenshot({ name: 'board-search.png' })
   await browser({ args: ['press', 'Escape'] })
   await eventually({ condition: 'document.querySelectorAll("[data-card]").length === 6', label: 'clearing the search shows every card' })
+  await browser({ args: ['fill', await ref({ role: 'searchbox', name: 'Search board' }), 'lunch'] })
+  await eventually({ condition: 'document.querySelector(".search-hit")?.textContent.includes("Hydra conversation") && document.querySelectorAll("[data-card]").length === 0', label: 'search finds the board Hydra conversation without a card' })
+  await screenshot({ name: 'hydra-search.png' })
+  await click({ role: 'button', name: 'Hydra Hydra conversation Review the layout after [lunch].' })
+  await check({ condition: 'document.activeElement.matches(".hydra-chat textarea")', label: 'Hydra result opens its composer' })
+  await browser({ args: ['fill', await ref({ role: 'searchbox', name: 'Search board' }), '> theme'] })
+  await check({ condition: 'document.querySelectorAll("[data-card]").length === 6 && !document.querySelector(".search-hit") && !!document.querySelector(".search-results [aria-label=Theme]")', label: 'command prefix keeps the board intact and offers settings inline' })
+  await click({ role: 'combobox', name: 'Theme' }); await click({ role: 'option', name: 'dark' })
+  await eventually({ condition: 'document.documentElement.dataset.theme === "dark" && !!document.querySelector(".search-results")', label: 'theme changes directly in the result row' })
+  await screenshot({ name: 'search-setting.png' })
+  await click({ role: 'combobox', name: 'Theme' }); await click({ role: 'option', name: 'system' })
+  await browser({ args: ['fill', await ref({ role: 'searchbox', name: 'Search board' }), '> Hydra default model'] })
+  await browser({ args: ['fill', await ref({ role: 'textbox', name: 'Hydra default model' }), 'gpt-6-luna'] })
+  await browser({ args: ['press', 'Enter'] })
+  await eventually({ condition: 'document.querySelector(\'[aria-label="Hydra default model"]\')?.value === "gpt-6-luna"', label: 'Hydra default model stays editable inside the search result' })
+  assert.equal(loadBoard({ board: 'default' }).state.board?.agents?.hydra?.model, 'gpt-6-luna')
+  await browser({ args: ['fill', await ref({ role: 'searchbox', name: 'Search board' }), 'readable'] })
+  await click({ role: 'button', name: 'Search history' })
+  await eventually({ condition: 'document.querySelector(\'[aria-label="Search history"]\')?.value === "readable" && document.querySelectorAll(".result-title").length === 1', label: 'Search history carries the query into history' })
+  await click({ role: 'button', name: 'Board' })
   await check({ condition: 'document.fonts.check(\'16px "Inter"\') && getComputedStyle(document.querySelector(".app")).fontFamily.startsWith("Inter")', label: 'the bundled UI font is used' })
   await browser({ args: ['emulate', '--color-scheme', 'dark'] }); await check({ condition: 'document.documentElement.dataset.theme === "dark"', label: 'System follows a dark operating system' })
   await screenshot({ name: 'board-dark.png' }); await browser({ args: ['emulate', '--color-scheme', 'auto'] })

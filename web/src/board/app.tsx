@@ -4,7 +4,7 @@ import type { Card, Column as ColumnId, ViewPreferences } from '../../../src/cor
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { viewFor } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
-import { Button, Input, Select } from '../components/ui/controls.tsx'
+import { Button, Select } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import { HydraChat } from './hydra-chat.tsx'
 import type { Command } from './connection.ts'
@@ -19,6 +19,8 @@ import { Settings } from './settings.tsx'
 import { BoardTabs } from './boards.tsx'
 import { History } from './history.tsx'
 import { columnsFor, dropBefore, findBoxCards, pageTitle } from './view.ts'
+import { Search } from './search.tsx'
+import { commandQuery } from './search-catalog.ts'
 import { useFoundCards } from './card-search.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { KeyboardLayers, KeyboardToolbar, useBoardKeyboard } from '../keyboard/board.tsx'
@@ -208,6 +210,7 @@ export function App() {
   // The deletion a notice can undo; any later notice replaces it.
   const [undoColumn, setUndoColumn] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState<string | null>(null)
+  const [historyQuery, setHistoryQuery] = useState('')
   const [topbar, setTopbar] = useState(restored.topbar ?? true)
   const notify = useCallback(({ text }: { text: string }) => {
     setNotice(text); setUndoColumn(null)
@@ -226,13 +229,13 @@ export function App() {
     return () => dark.removeEventListener('change', apply)
   }, [view.theme])
   const columns = columnsFor({ state })
-  const found = useFoundCards({ command, query, workspace })
+  const found = useFoundCards({ command, query: commandQuery({ query }) ? '' : query, workspace, revision: state.seq })
   const matches = new Map(found.map(h => [h.card, h]))
   const cards = findBoxCards({
     state,
     workspace,
     tag,
-    query,
+    query: commandQuery({ query }) ? '' : query,
     meaning: found.map(h => h.card),
   })
   const card = selected ? state.cards[selected] : undefined
@@ -307,7 +310,18 @@ export function App() {
     }
   }, [page, selected, view.panelPlacement])
 
+  const openHydra = () => {
+    setPage('board')
+    requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
+  }
+
   const open = ({ id }: { id: string }) => {
+    if (id === '$board') {
+      openHydra()
+
+      return
+    }
+
     if (state.cards[id]) {
       setSelected(id); setPage('board')
       requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.composer textarea' })))
@@ -322,6 +336,14 @@ export function App() {
     void command({ name: 'task', args: ['create', '--title', parent ? 'New subtask' : 'New task', '--column', column, ...(parent ? ['--parent', parent] : []), '--event-id', crypto.randomUUID()] }).then(receipt => {
       setWorkspace(''); setTag(''); setQuery('')
       setEditingTask((receipt.card as { id: string }).id)
+    })
+      .catch(e => notify({ text: e.message }))
+  }
+
+  const createColumn = () => {
+    const id = `custom:${crypto.randomUUID()}`
+    void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--if-revision', String(state.boardRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => {
+      setNewColumn(id)
     })
       .catch(e => notify({ text: e.message }))
   }
@@ -395,6 +417,28 @@ export function App() {
             ))}
           </nav>
           <BoardTabs command={command} connected={connected} notify={notify} />
+          <Search
+            selected={selected}
+            page={page}
+            state={state}
+            view={view}
+            command={command}
+            query={query}
+            setQuery={({ query }) => setQuery(query)}
+            hits={found}
+            save={save}
+            openTask={open}
+            openHydra={openHydra}
+            history={() => {
+              setHistoryQuery(query); setPage('history')
+            }}
+            showTopbar={() => setTopbar(true)}
+            createTask={createTask}
+            createColumn={createColumn}
+            action={keyboard.onAction}
+            notify={notify}
+            connected={connected}
+          />
           <KeyboardToolbar action={keyboard.onAction} />
           <span className={`connection ${connected ? 'online' : ''}`}>
             <i />
@@ -416,6 +460,7 @@ export function App() {
             <History
               command={command}
               workspace={workspace}
+              initialQuery={historyQuery}
               open={open}
               notify={notify}
             />
@@ -454,16 +499,7 @@ export function App() {
                         </Button>
                       )}
                     </div>
-                    <div className="row">
-                      <Icon name="search" />
-                      <Input
-                        aria-label="Find a card"
-                        type="search"
-                        placeholder="Find a card…"
-                        value={query}
-                        onChange={e => setQuery(e.target.value)}
-                      />
-                    </div>
+
                   </div>
                   <div className={`work-area ${view.panelPlacement}`}>
                     <div className="board-space">
@@ -522,11 +558,7 @@ export function App() {
                         <div className="add-column">
                           <Button
                             disabled={!connected}
-                            onClick={() => {
-                              const id = `custom:${crypto.randomUUID()}`
-                              void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--event-id', crypto.randomUUID()] }).then(() => setNewColumn(id))
-                                .catch(e => notify({ text: e.message }))
-                            }}
+                            onClick={createColumn}
                           >+ Add column
                           </Button>
                         </div>
