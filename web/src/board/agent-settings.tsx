@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { KEY_LABEL, confirms, harnessControls, inputReason, type Control, type ControlOption } from '../../../src/core/control.ts'
+import { confirms, harnessControls, inputReason, type Control, type ControlOption } from '../../../src/core/control.ts'
 import type { Card } from '../../../src/core/model.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Select } from '../components/ui/controls.tsx'
@@ -8,102 +8,13 @@ import type { Command } from './connection.ts'
 
 const HARNESSES: Record<string, string> = { 'claude-code': 'Claude Code', codex: 'Codex' }
 
-// Every setting a harness reports, in the order shown. Each name has an icon of the
-// same name; a setting not listed here shows under its own name with a plain icon.
-const SETTINGS: Record<string, string> = {
-  model: 'Model',
-  effort: 'Effort',
-  mode: 'Permission mode',
-  fast: 'Fast mode',
-  context: 'Context window',
-  collaboration: 'Collaboration mode',
-  approval: 'Approval policy',
-  sandbox: 'Sandbox',
-  summary: 'Reasoning summary',
-  client: 'Client',
-  version: 'Version',
-}
-const ON_CARD = ['model', 'effort', 'mode']
+const SETTINGS: Record<string, string> = { model: 'Model', effort: 'Effort', mode: 'Mode', fast: 'Fast', collaboration: 'Mode' }
 
 const label = ({ name }: { name: string }) => SETTINGS[name] ?? name
 const shown = ({ name, value }: { name: string; value: string }) =>
   name === 'model' || name === 'version' ? value : value.replace(/([a-z])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`)
 
-function ordered({ settings }: { settings: Record<string, string> }): [string, string][] {
-  const known = Object.keys(SETTINGS)
-  const rank = ({ name }: {
-    name: string
-  }) =>
-    (known.includes(name) ? known.indexOf(name) : known.length)
-
-  return Object.entries(settings).sort(([a], [b]) =>
-    rank({
-      name: a,
-    }) - rank({
-      name: b,
-    }) || a.localeCompare(b))
-}
-
 export const harnessName = ({ provider }: { provider: string }) => HARNESSES[provider] ?? provider
-
-export function Harness({ card }: { card: Card }) {
-  const provider = card.agent?.provider
-  const name = provider ? harnessName({ provider }) : card.sourceRefs[0]?.adapter ?? 'Manual'
-
-  return (
-    <span className="source harness" title={name}>
-      {provider && provider in HARNESSES && <Icon name={provider} size={13} />}
-      {name}
-    </span>
-  )
-}
-
-export function SettingChips({ settings }: { settings?: Record<string, string> }) {
-  const chips = ordered({ settings: settings ?? {} }).filter(([name, value]) => ON_CARD.includes(name) || (name === 'fast' && value === 'on'))
-
-  return chips.length > 0 && (
-    <div className="setting-chips">
-      {chips.map(([name, value]) => (
-        <span
-          key={name}
-          className="setting-chip"
-          title={`${label({ name })}: ${value}`}
-          aria-label={`${label({ name })}: ${value}`}
-        >
-          <Icon name={name} size={12} />
-          {name === 'fast' ? 'Fast' : shown({ name, value: name === 'model' ? value.replace(/^claude-/, '') : value })}
-        </span>
-      ))}
-    </div>
-  )
-}
-
-export function SettingList({ settings }: { settings?: Record<string, string> }) {
-  const entries = ordered({ settings: settings ?? {} })
-
-  return entries.length > 0 && (
-    <dl className="setting-list" aria-label="Agent settings">
-      {entries.map(([name, value]) => (
-        <div key={name} title={`${label({ name })}: ${value}`}>
-          <dt>
-            <Icon name={name} size={12} />
-            {label({ name })}
-          </dt>
-          <dd>{shown({ name, value })}</dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
-const typedAs = ({ option, kind }: { option: ControlOption; kind?: ThreadPage['routeKind'] }) =>
-  kind === 'firstmate'
-    ? "Asks Firstmate's orchestrator in a request note"
-    : 'key' in option.input
-      ? `Presses ${KEY_LABEL[option.input.key]} in the session`
-      : 'text' in option.input
-        ? `Types ${option.input.text} in the session`
-        : 'Requires a Firstmate request route'
 
 const keyReason = ({ control, kind }: { control: Control; kind?: ThreadPage['routeKind'] }) =>
   kind && control.options.map(o => inputReason({ kind, input: o.input })).find(Boolean)
@@ -111,63 +22,6 @@ const keyReason = ({ control, kind }: { control: Control; kind?: ThreadPage['rou
 // A change sent and not yet reported back by the session; sending while the command
 // itself is still on its way.
 interface Pending { value: string; before?: string; sending: boolean }
-
-function ControlRow({
-  control,
-  now,
-  pending,
-  sending,
-  blocked,
-  why,
-  kind,
-  send,
-}: {
-  control: Control
-  now?: string
-  pending?: Pending
-  // A change, to this or another setting, is on its way: one at a time.
-  sending: boolean
-  blocked?: string
-  why?: string
-  kind?: ThreadPage['routeKind']
-  send({ option }: { option: ControlOption }): void
-}) {
-  const sent = pending && control.options.find(o => o.value === pending.value)
-
-  return (
-    <div className="control-row" role="group" aria-label={label({ name: control.setting })}>
-      <div className="row between">
-        <span className="control-name">
-          <Icon name={control.setting} size={12} />
-          {label({ name: control.setting })}
-        </span>
-        <span className="small muted">{now === undefined ? 'not reported' : shown({ name: control.setting, value: now })}</span>
-      </div>
-      <div className="segmented">
-        {control.options.map(option => (
-          <Button
-            key={option.value}
-            variant="surface"
-            title={blocked ?? typedAs({ option, kind })}
-            aria-pressed={control.confirm !== 'changes' && now !== undefined && confirms({ control, option, before: undefined, after: now })}
-            disabled={!!blocked || sending}
-            onClick={() => send({ option })}
-          >
-            {option.label}
-          </Button>
-        ))}
-      </div>
-      {why && <p className="small muted">{why}</p>}
-      {sent && (
-        <p className="small gold" role="status">
-          {pending.sending
-            ? `Sending ${sent.label}…`
-            : `${kind === 'firstmate' ? 'Asked Firstmate for' : 'Sent'} ${sent.label}. Waiting for the session to report its ${label({ name: control.setting }).toLowerCase()}; it does on its next hook or turn.`}
-        </p>
-      )}
-    </div>
-  )
-}
 
 interface AgentControlsInput {
   card: Card
@@ -233,45 +87,6 @@ function useAgentControls({ card, thread, command, connected, notify }: AgentCon
   return { provider, page, firstmate, harness, route, pending, send, sending }
 }
 
-export function AgentControls({ card, thread, command, connected, notify }: AgentControlsInput) {
-  const {
-    provider, page, firstmate, harness, route, pending, send, sending,
-  } = useAgentControls({ card, thread, command, connected, notify })
-
-  if (!harness) {
-    return (
-      <p className="empty">
-        {provider ? `Pnyx changes settings only for Claude Code and Codex sessions, not ${harnessName({ provider: provider })}.` : 'No agent session has joined this card yet, so there is nothing to change.'}
-      </p>
-    )
-  }
-
-  return (
-    <section className="agent-controls" aria-label="Change settings">
-      <h3>Change from here</h3>
-      <p className="small muted">
-        {route ?? (firstmate
-          ? "Sent to Firstmate's orchestrator as a request note; Pnyx never types into the worker."
-          : `Typed into the session through ${page?.via ?? 'its route'}, as its own commands and keys.`)}
-      </p>
-      {harness.controls.map(control => (
-        <ControlRow
-          key={control.setting}
-          control={control}
-          now={card.settings?.[control.setting]}
-          pending={pending[control.setting]}
-          sending={sending}
-          blocked={route ?? keyReason({ control, kind: page?.routeKind })}
-          why={route ? undefined : keyReason({ control, kind: page?.routeKind })}
-          kind={page?.routeKind}
-          send={({ option }) => send({ control, option })}
-        />
-      ))}
-      {harness.note && <p className="small muted">{harness.note}</p>}
-    </section>
-  )
-}
-
 export function ComposerSettings({ card, thread, command, connected, notify }: AgentControlsInput) {
   const { page, harness, route, pending, send, sending } = useAgentControls({
     card, thread, command, connected, notify,
@@ -279,6 +94,16 @@ export function ComposerSettings({ card, thread, command, connected, notify }: A
 
   return harness && (
     <div className="composer-settings" role="group" aria-label="Agent settings">
+      {!harness.controls.some(control => control.setting === 'model') && (
+        <Select
+          label="Model"
+          value={card.settings?.model ?? ''}
+          options={[{ value: card.settings?.model ?? '', label: card.settings?.model ?? 'Model' }]}
+          disabled
+          title="Change the model in the agent's own picker."
+          onChange={() => {}}
+        />
+      )}
       {harness.controls.map(control => {
         const now = card.settings?.[control.setting], waiting = pending[control.setting]
         const blocked = route ?? keyReason({ control, kind: page?.routeKind })
@@ -292,10 +117,32 @@ export function ComposerSettings({ card, thread, command, connected, notify }: A
         const chosen = waiting && control.options.find(o => o.value === waiting.value)
         const value = chosen ? chosen.label : reported
 
+        if (control.setting === 'fast') {
+          const option = control.options.find(o => o.value === (now === 'on' ? 'off' : 'on')) ?? control.options[0]
+
+          return (
+            <Button
+              key="fast"
+              className="fast-toggle"
+              role="switch"
+              aria-label="Fast"
+              aria-checked={now === 'on'}
+              disabled={!!blocked || sending || !option}
+              title={blocked}
+              onClick={() => {
+                if (option) {
+                  send({ control, option })
+                }
+              }}
+            >Fast
+            </Button>
+          )
+        }
+
         return (
           <Select
             key={control.setting}
-            label={label({ name: control.setting })}
+            label={control.setting === 'collaboration' ? 'Mode' : label({ name: control.setting })}
             value={current?.value ?? ''}
             options={control.options}
             disabled={!!blocked || sending}

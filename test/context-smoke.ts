@@ -88,7 +88,7 @@ try {
   assert.match(JSON.stringify(digest.conversations), /Move this to next week/)
   assert.match(JSON.stringify(digest.conversations), /The rollout can wait/)
   await browser({ args: ['wait', 'Digest smoke task'] })
-  await browser({ args: ['eval', '() => { document.querySelector(\'[aria-label="Open conversation for Digest smoke task"]\').click(); return true; }'] })
+  await browser({ args: ['eval', '() => { [...document.querySelectorAll(\'.card\')].find(card => card.textContent.includes("Digest smoke task")).querySelector(\'.card-open\').click(); return true; }'] })
   await browser({ args: ['wait', 'Move this to next week.'] })
   await browser({ args: ['wait', 'The rollout can wait.'] })
   const screenshot = join(evidence, 'context-smoke.png')

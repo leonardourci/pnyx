@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
 import { traces } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
-import { Button, Switch } from '../components/ui/controls.tsx'
+import { Button } from '../components/ui/controls.tsx'
 import { joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 import { ComposerSettings } from './agent-settings.tsx'
 import { Composer } from './composer.tsx'
@@ -52,7 +52,7 @@ export function Thread({
 }) {
   const [latest, setLatest] = useState(false)
   const scroller = useRef<HTMLDivElement>(null), atBottom = useRef(true)
-  const { tools, thinking, focus, overrides } = traces({ view, card: card.id })
+  const { tools, thinking } = traces({ view, card: card.id })
   const page = thread?.card === card.id ? thread : null
   const olderCursor = older ? older.older : page?.older
   useEffect(() => {
@@ -60,9 +60,37 @@ export function Thread({
       keep({ entries: page.entries })
     }
   }, [page, keep])
+
+  const scrollToLatest = () => {
+    scroller.current?.querySelector('.composer')?.scrollIntoView({ block: 'end', inline: 'nearest' })
+    atBottom.current = true; setLatest(false)
+  }
+
   useEffect(() => {
-    if (atBottom.current && scroller.current) {
-      scroller.current.scrollTop = scroller.current.scrollHeight
+    const column = scroller.current?.closest<HTMLElement>('.column-cards')
+
+    if (!column) {
+      return
+    }
+
+    const track = () => {
+      const threadBox = scroller.current?.getBoundingClientRect()
+      const viewBox = column.getBoundingClientRect()
+      atBottom.current = !!threadBox && threadBox.bottom <= viewBox.bottom + 40
+        && threadBox.bottom >= viewBox.top
+
+      if (atBottom.current) {
+        setLatest(false)
+      }
+    }
+
+    column.addEventListener('scroll', track, { passive: true })
+
+    return () => column.removeEventListener('scroll', track)
+  }, [])
+  useEffect(() => {
+    if (atBottom.current) {
+      scrollToLatest()
     } else {
       setLatest(true)
     }
@@ -74,11 +102,6 @@ export function Thread({
 
   return (
     <>
-      <div className="thread-controls row">
-        <Switch label="Focus" checked={focus} onChange={({ value: focus }) => save({ patch: { cardTraceOverrides: { [card.id]: { tools: !focus, thinking: !focus } } } })} />
-        <span className="small muted">{focus ? 'Prompts and agent messages only' : 'Showing tool calls and thinking'}</span>
-        {overrides && <Button className="small" onClick={() => save({ patch: { cardTraceOverrides: { [card.id]: null } } })}>Use defaults</Button>}
-      </div>
       <div
         className="thread"
         data-key-scope="thread"
@@ -86,14 +109,6 @@ export function Thread({
         aria-label="Agent conversation"
         tabIndex={0}
         ref={scroller}
-        onScroll={e => {
-          const el = e.currentTarget
-          atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-
-          if (atBottom.current) {
-            setLatest(false)
-          }
-        }}
       >
         {olderCursor !== undefined && (
           <Button
@@ -113,6 +128,8 @@ export function Thread({
           comments={comments}
           setComments={setComments}
           quote={({ text }) => setDraft({ text: quoteInto({ draft, text }) })}
+          toolDetails={view.toolDetails}
+          thinkingDetails={view.thinkingDetails}
         />
         {page && entries.length === 0 && !page.unavailable && <p className="empty">No recorded messages yet.</p>}
         {agentActivity({ card }) === 'working' && (
@@ -156,13 +173,7 @@ export function Thread({
           className="jump"
           aria-label="Jump to latest"
           title="Jump to latest"
-          onClick={() => {
-            if (scroller.current) {
-              scroller.current.scrollTop = scroller.current.scrollHeight
-            }
-
-            atBottom.current = true; setLatest(false)
-          }}
+          onClick={scrollToLatest}
         >
           <span aria-hidden="true">↓</span>
         </Button>
