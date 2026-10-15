@@ -25,7 +25,11 @@ withWriter({
 commands.board(['create', 'default', '--hydra', 'fixture'])
 const received: string[] = []
 const query = (({ prompt, options }) => {
-  assert.equal(options?.resume, 'a')
+  if (options?.resume) {
+    assert.equal(options.resume, 'a')
+  } else {
+    assert.ok(options?.sessionId)
+  }
 
   async function* turn() {
     for await (const message of prompt as AsyncIterable<{ message: { content: string } }>) {
@@ -83,6 +87,12 @@ try {
   await eventually({ condition: '!!document.querySelector(".start-agent")', label: 'fresh start opens the folder and brief form' })
   assert.equal(board().cards.c1?.agent?.sessionId, 'b')
   assert.equal(received.length, 1)
+  await evaluate({ code: `const input = document.querySelector('.start-agent input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(home)}); input.dispatchEvent(new Event('input', { bubbles: true })); return true;` })
+  await text({ label: 'Start agent' })
+  await eventually({ condition: 'document.querySelector(".detail .agent-chip")?.textContent === "Claude Code · Pnyx"', label: 'fresh start attaches a new hosted session' })
+  assert.notEqual(board().cards.c1?.agent?.sessionId, 'b')
+  assert.equal(board().sessions?.['claude-code:b']?.taskId, null)
+  assert.match(received[1]!, /^Read the component and explain the edge cases\./)
 
   await menu(); await text({ label: 'Add subtask' }); await browser({ args: ['wait', 'New subtask'] })
   await fill({ label: 'Rename task New subtask', value: 'Browser subtask' }); await text({ label: 'Save title' }); await browser({ args: ['wait', 'Browser subtask'] })
