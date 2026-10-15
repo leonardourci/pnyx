@@ -1584,7 +1584,11 @@ const setup = guard({
     const { values, positionals, hydraId } = parse({ args, options, positionals: 1 })
 
     if (positionals[0] === 'service') {
-      return setupService({ hydraId, port: integer({ value: values.port, flag: '--port' }), homes: values.home ? [String(values.home)] : [], remove: !!values.remove, preview: !!values.preview })
+      if (values.home !== undefined || args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
+        throw new AxiError('setup service runs every Hydra; it takes no --hydra or --home', 'VALIDATION_ERROR', ['Run `pnyx-axi setup hydra --home <firstmate home> --hydra <id>` to link a Firstmate home to its Hydra'])
+      }
+
+      return setupService({ port: integer({ value: values.port, flag: '--port' }), remove: !!values.remove, preview: !!values.preview })
     }
 
     if (positionals[0] === 'hydra') {
@@ -1870,7 +1874,7 @@ Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
 Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
 Source observations, card creation and merges cannot be undone.
 `,
-  setup: `usage: pnyx-axi setup service [--hydra <id>] [--port <n>] [--home <Firstmate home>] [--remove] [--preview]
+  setup: `usage: pnyx-axi setup service [--port <n>] [--remove] [--preview]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
 Adds Pnyx's reporting hook to the user-level Claude Code settings.json or Codex hooks.json, keeping
@@ -1878,6 +1882,7 @@ every other hook. Without --harness it sets up each harness whose config folder 
 changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,
 so they never add to the agent's context: no session-start Hydra summary is installed.
 Hook events go to the default Hydra, or to PNYX_HOME and PNYX_HYDRA when a session has them.
+setup service installs one macOS login service running the server of every Hydra; it replaces the older one-per-Hydra services.
 setup hydra makes the Firstmate home the Hydra, copies the pnyx-hydra skill into the home's
 .agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
 Firstmate's own files are not changed.

@@ -5,42 +5,58 @@ import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
 import { setupService } from '../src/server/service.ts'
 
-test('login service starts the same Hydra, survives exit and uninstalls through launchd', () => {
+test('one login service runs the server of every Hydra, replaces the per-Hydra services of this home, survives exit and uninstalls through launchd', () => {
   const root = mkdtempSync(join(tmpdir(), 'pnyx-service-'))
   process.env.PNYX_HOME = join(root, 'pnyx & Hydra')
+  const agents = join(root, 'Library', 'LaunchAgents')
+  mkdirSync(agents, { recursive: true })
+
+  const legacy = ({ key, home }: { key: string; home: string }) => {
+    const path = join(agents, `local.pnyx.board.${key}.plist`)
+    writeFileSync(path, `<key>EnvironmentVariables</key><dict><key>PNYX_HOME</key><string>${home}</string></dict>`)
+
+    return path
+  }
+
+  const ours = legacy({ key: '0123456789abcdef', home: join(root, 'pnyx &amp; Hydra') })
+  const theirs = legacy({ key: 'fedcba9876543210', home: join(root, 'other') })
   const calls: string[][] = []
-  let loaded = false
+  const loaded = new Set(['local.pnyx.board.0123456789abcdef'])
 
   const run = ({ args }: { args: string[] }) => {
     calls.push(args)
+    const label = args.at(-1)!.split('/').at(-1)!.replace(/\.plist$/, '')
 
-    if (args[0] === 'print' && !loaded) {
+    if (args[0] === 'print' && !loaded.has(label)) {
       throw new Error('not loaded')
     }
 
     if (args[0] === 'bootstrap') {
-      assert.ok(existsSync(join(process.env.PNYX_HOME!, 'boards', 'default')))
-      loaded = true
+      loaded.add(label)
     }
 
     if (args[0] === 'bootout') {
-      loaded = false
+      loaded.delete(label)
     }
 
     return ''
   }
 
-  const options = { hydraId: 'default', port: 49123, homes: ['/fixture/home & space'], platform: 'darwin' as const, userHome: root, run, sleep: () => assert.fail('an immediate bootout needs no wait') }
+  const options = { port: 49123, platform: 'darwin' as const, userHome: root, run, sleep: () => assert.fail('an immediate bootout needs no wait') }
   const preview = setupService({ ...options, preview: true })
   assert.equal(calls.length, 0)
   assert.equal(existsSync(preview.path), false)
+  assert.deepEqual(preview.replaces, [ours])
   const installed = setupService(options)
+  assert.deepEqual(installed.replaced, [ours])
+  assert.equal(existsSync(ours), false)
+  assert.equal(existsSync(theirs), true)
+  assert.deepEqual(calls.filter(args => args[0] === 'bootout').map(args => args[1]), [`gui/${process.getuid!()}/local.pnyx.board.0123456789abcdef`])
   const plist = readFileSync(installed.path, 'utf8')
+  assert.match(installed.path, /local\.pnyx\.server\.[0-9a-f]{16}\.plist$/)
   assert.match(plist, /<key>RunAtLoad<\/key><true\/>/)
   assert.match(plist, /<key>KeepAlive<\/key><true\/>/)
-  assert.match(plist, /<string>serve<\/string><string>--hydra<\/string><string>default<\/string>/)
-  assert.match(plist, /49123/)
-  assert.match(plist, /home &amp; space/)
+  assert.match(plist, /<string>serve<\/string><string>--port<\/string><string>49123<\/string><\/array>/)
   assert.match(plist, /pnyx &amp; Hydra/)
   assert.equal(calls.at(-1)?.[0], 'bootstrap')
   setupService(options)
@@ -90,7 +106,7 @@ test('reinstalling a running service waits for launchd to finish the bootout and
     return ''
   }
 
-  const options = { hydraId: 'default', platform: 'darwin' as const, userHome: root, run, sleep: ({ ms }: { ms: number }) => waits.push(ms) }
+  const options = { platform: 'darwin' as const, userHome: root, run, sleep: ({ ms }: { ms: number }) => waits.push(ms) }
   setupService(options)
   assert.deepEqual(calls, ['print', 'bootout', 'print', 'print', 'print', 'print', 'bootstrap'])
   assert.deepEqual(waits, [100, 100, 100])
@@ -131,7 +147,7 @@ test('login service runs Node through a PATH link that survives a Homebrew upgra
   writeFileSync(join(cellar, 'node'), '')
   writeFileSync(join(other, 'node'), '')
   symlinkSync(join(cellar, 'node'), join(bin, 'node'))
-  const options = { hydraId: 'default', platform: 'darwin' as const, userHome: root, preview: true, node: join(cellar, 'node'), run: () => '' }
+  const options = { platform: 'darwin' as const, userHome: root, preview: true, node: join(cellar, 'node'), run: () => '' }
   const linked = setupService({ ...options, searchPath: ['relative', other, bin].join(delimiter) }).plist!
   assert.ok(linked.includes(`<array><string>${join(bin, 'node')}</string>`))
   const unlinked = setupService({ ...options, searchPath: other }).plist!
