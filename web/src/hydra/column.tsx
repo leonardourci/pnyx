@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import type { HydraColumn, Card, Column as ColumnId, ViewPreferences } from '../../../src/core/model.ts'
+import { LOCKED_DELETE } from '../../../src/core/hydra.ts'
 import { DEFAULT_COLUMN_WIDTH, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
@@ -35,7 +36,7 @@ export function Column({
   revision: number
   connected: boolean
   columnIds: ColumnId[]
-  // A Firstmate-linked Hydra's default column, which cannot be renamed or deleted.
+  // A Firstmate-linked Hydra's default column, which cannot be deleted.
   locked: boolean
   editingTitle: boolean
   titleFinished(): void
@@ -102,20 +103,18 @@ export function Column({
           data-key-scope="hydra"
           tabIndex={0}
         >
-          {locked ? title : (
-            <InlineTitle
-              value={title}
-              label={`Rename ${title} column`}
-              doubleClick
-              startEditing={editingTitle || rename}
-              finished={() => {
-                setRename(false); titleFinished()
-              }}
-              save={({ title }) => edit({ args: ['rename', id, `--title=${title}`] }).then(() => {
-                setRename(false); titleFinished()
-              })}
-            />
-          )}
+          <InlineTitle
+            value={title}
+            label={`Rename ${title} column`}
+            doubleClick
+            startEditing={editingTitle || rename}
+            finished={() => {
+              setRename(false); titleFinished()
+            }}
+            save={({ title }) => edit({ args: ['rename', id, `--title=${title}`] }).then(() => {
+              setRename(false); titleFinished()
+            })}
+          />
         </h2>
         <span className="count">{cards.length}</span>
         <Button
@@ -126,7 +125,7 @@ export function Column({
         >＋
         </Button>
         <Menu label={`${title} column menu`}>
-          {!locked && <Button disabled={!connected} onClick={() => setRename(true)}>Rename</Button>}
+          <Button disabled={!connected} onClick={() => setRename(true)}>Rename</Button>
           <Button
             disabled={!connected}
             onClick={() => {
@@ -134,7 +133,12 @@ export function Column({
             }}
           >Edit description
           </Button>
-          {!locked && <DeleteItem label="Delete column" disabled={!connected || columnIds.length === 1} confirm={() => edit({ args: ['delete', id] }).catch(error => report({ error }))} />}
+          <DeleteItem
+            label="Delete column"
+            disabled={!connected || columnIds.length === 1}
+            {...(locked ? { refusal: LOCKED_DELETE } : {})}
+            confirm={() => edit({ args: ['delete', id] }).catch(error => report({ error }))}
+          />
         </Menu>
       </header>
       {describing && (
