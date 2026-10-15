@@ -7,6 +7,7 @@ import { InlineTitle } from '../components/ui/inline-title.tsx'
 import { Menu } from '../components/ui/menu.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { harnessName } from './agent-settings.tsx'
+import { ContinueAgent } from './continue-agent.tsx'
 import { StartAgent } from './start-agent.tsx'
 import { needsAgent } from './view.ts'
 import { merge, Thread } from './thread.tsx'
@@ -88,7 +89,7 @@ export function Detail({
   return (
     <section aria-label={`Details for ${card.title}`} className="detail inline">
       <header className="detail-header">
-        {card.agent && <span className="agent-chip">{`${harnessName({ provider: card.agent.provider })}${card.agent.host === 'pnyx' ? ' · Pnyx' : ''}`}</span>}
+        {card.agent && <span className="agent-chip">{`${harnessName({ provider: card.agent.provider })}${card.agent.host === 'pnyx' ? ' · Pnyx' : card.terminal?.tty ? ' · terminal' : ''}`}</span>}
         <div className="row">
           <Menu label="Task menu">
             <Button onClick={() => setRenaming(true)}>Rename task</Button>
@@ -107,6 +108,15 @@ export function Detail({
           <Button aria-label="Close detail" onClick={close}><Icon name="close" size={14} /></Button>
         </div>
       </header>
+      {card.agent?.provider === 'claude-code' && !card.agent.host && !card.agent.agentId && !card.agent.paseoAgentId && !card.automaticTask && (
+        <ContinueAgent
+          card={card}
+          command={command}
+          connected={connected}
+          fresh={() => setStarting(true)}
+          notify={notify}
+        />
+      )}
       {renaming && (
         <InlineTitle
           value={card.title}
@@ -126,15 +136,17 @@ export function Detail({
         />
       )}
       {empty && <TaskBrief card={card} command={command} notify={notify} />}
-      {needsAgent({ card }) ? starting && (
+      {starting && (
         <StartAgent
           card={card}
+          replace={Boolean(card.agent)}
           firstmate={state.board?.hydra.kind === 'firstmate'}
           command={command}
           connected={connected}
           notify={notify}
         />
-      ) : (
+      )}
+      {!needsAgent({ card }) && (
         <Thread
           card={card}
           view={view}

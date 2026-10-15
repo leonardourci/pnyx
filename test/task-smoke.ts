@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { decidePush } from '../src/core/decide.ts'
 import { commands } from '../src/cli/commands.ts'
+import type { QueryFn } from '../src/server/host.ts'
 import { startServer } from '../src/server/server.ts'
 import { loadBoard, withWriter } from '../src/store/board-store.ts'
 import { smokeBrowser } from './browser.ts'
@@ -16,13 +17,26 @@ withWriter({
     for (const [key, title] of [['task', 'Attachment test task'], ['a', 'Alpha work'], ['b', 'Beta work']]) {
       const transcript = join(home, `${key}.jsonl`)
       writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: `${title} message from its session` } }) + '\n')
-      const decision = decidePush({ state: writer.state, key: key!, input: { title, ...(key !== 'task' ? { agent: { provider: 'claude-code', sessionId: key, transcriptPath: transcript }, terminal: { tty: '/dev/ttys123' } } : {}) }, meta: { at: '2026-10-14T12:00:00Z', actor: 'fixture' } })
+      const decision = decidePush({ state: writer.state, key: key!, input: { title, ...(key !== 'task' ? { agent: { provider: 'claude-code', sessionId: key, transcriptPath: transcript, cwd: home }, terminal: { tty: '/dev/ttys123' }, activity: key === 'a' ? 'ended' : 'working' } : {}) }, meta: { at: '2026-10-14T12:00:00Z', actor: 'fixture' } })
       assert.ok('event' in decision); writer.append({ event: decision.event })
     }
   },
 })
 commands.board(['create', 'default', '--hydra', 'fixture'])
-const server = await startServer({ board: 'default' })
+const received: string[] = []
+const query = (({ prompt, options }) => {
+  assert.equal(options?.resume, 'a')
+
+  async function* turn() {
+    for await (const message of prompt as AsyncIterable<{ message: { content: string } }>) {
+      received.push(message.message.content)
+      yield { type: 'result' }
+    }
+  }
+
+  return Object.assign(turn(), { close: () => {} })
+}) as QueryFn
+const server = await startServer({ board: 'default', query })
 const { browser, evaluate, eventually, check, click, text, fill, screenshot, close } = smokeBrowser({ home, session: 'pnyx-tasks' })
 const board = () => loadBoard({ board: 'default' }).state
 const menu = () => click({ selector: '[aria-label="Task menu"]' })
@@ -42,10 +56,34 @@ try {
   await eventually({ condition: 'document.querySelector(".task-brief button").disabled', label: 'brief saved' })
   assert.equal(board().cards.c1?.brief, 'Read the component and explain the edge cases.')
   await attach({ title: 'Alpha work' }); assert.equal(board().cards.c1?.agent?.sessionId, 'a')
+  await eventually({ condition: '[...document.querySelectorAll(".detail button")].some(b => b.textContent === "Continue in Pnyx")', label: 'ended outside session offers continuation' })
+  await screenshot({ name: 'continue-before.png' })
+  await text({ label: 'Continue in Pnyx' })
+  await eventually({ condition: 'document.querySelector(".detail .agent-chip")?.textContent === "Claude Code · Pnyx"', label: 'continuation changes the host on the same card' })
+  assert.equal(board().cards.c1?.agent?.sessionId, 'a')
+  assert.equal(received.length, 0)
+  await fill({ label: 'Reply to Attachment test task', value: 'Continue the same conversation' }); await click({ selector: '.detail .composer-send' })
+  await eventually({ condition: 'document.querySelector(".detail .composer textarea").value === ""', label: 'hosted reply clears the composer' })
+  assert.deepEqual(received, ['Continue the same conversation'])
+  await screenshot({ name: 'continue-after.png' })
   await menu(); await text({ label: 'Change agent' }); await text({ label: 'Detach agent' })
   await eventually({ condition: '!!document.querySelector(".task-brief")', label: 'detaching restores the brief' })
   await attach({ title: 'Beta work' }); assert.equal(board().cards.c1?.agent?.sessionId, 'b')
   await check({ condition: '!document.querySelector(".detail .thread").textContent.includes("Alpha work message")', label: 'changing agents discards the previous conversation' })
+  withWriter({
+    board: 'default',
+    fn: ({ writer }) => {
+      const card = writer.state.cards.c1!
+      const decision = decidePush({ state: writer.state, key: card.key, input: { agent: { ...card.agent!, cwd: join(home, 'missing') }, activity: 'ended', source: { adapter: 'hooks', instanceId: 'claude', objectId: 'b', observedAt: new Date().toISOString() } }, meta: { at: new Date().toISOString(), actor: 'fixture' } })
+      assert.ok('event' in decision); writer.append({ event: decision.event })
+    },
+  })
+  await eventually({ condition: '[...document.querySelectorAll(".detail button")].some(b => b.textContent === "Start fresh from brief")', label: 'a missing folder offers a fresh start' })
+  await text({ label: 'Start fresh from brief' })
+  await eventually({ condition: '!!document.querySelector(".start-agent")', label: 'fresh start opens the folder and brief form' })
+  assert.equal(board().cards.c1?.agent?.sessionId, 'b')
+  assert.equal(received.length, 1)
+
   await menu(); await text({ label: 'Add subtask' }); await browser({ args: ['wait', 'New subtask'] })
   await fill({ label: 'Rename task New subtask', value: 'Browser subtask' }); await text({ label: 'Save title' }); await browser({ args: ['wait', 'Browser subtask'] })
   assert.equal(Object.values(board().cards).filter(c => c.parentId).length, 1)

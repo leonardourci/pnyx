@@ -17,14 +17,15 @@ const STARTED: Record<string, string> = {
   command: 'Board command started; its agent attaches when it reports.',
 }
 
-export function StartAgent({ card, firstmate, command, connected, notify }: {
+export function StartAgent({ card, firstmate, command, connected, replace = false, notify }: {
   card: Card
   firstmate: boolean
   command: Command
   connected: boolean
+  replace?: boolean
   notify({ text }: { text: string }): void
 }) {
-  const [via, setVia] = useState(firstmate ? 'firstmate' : 'pnyx'), [harness, setHarness] = useState('claude')
+  const [via, setVia] = useState(firstmate && !replace ? 'firstmate' : 'pnyx'), [harness, setHarness] = useState('claude')
   const [folder, setFolder] = useState(card.folder ?? ''), [message, setMessage] = useState(card.brief ?? '')
   const [paseo, setPaseo] = useState<{ ok: boolean; reason?: string } | null>(null)
   const [busy, run] = useBusy()
@@ -59,6 +60,10 @@ export function StartAgent({ card, firstmate, command, connected, notify }: {
 
         if (via === 'paseo') {
           args.push('--harness', harness)
+        }
+
+        if (replace) {
+          await command({ name: 'task', args: ['detach', card.id, '--event-id', `${attempt.current}:detach`] })
         }
 
         await command({ name: 'task', args })
