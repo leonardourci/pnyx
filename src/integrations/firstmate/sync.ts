@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { watch, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
@@ -210,6 +211,11 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
 
       if (!writer.state.configured) {
         const config = hydraConfig({ state: writer.state, id: hydraId })
+
+        if (!writer.state.config) {
+          config.columns = config.columns.map(c => ({ ...c, id: `custom:${randomUUID()}` }))
+        }
+
         configured = apply({ writer, decision: hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data: { ...config, hydra: { id: observed.key, name: 'Hydra', kind: 'firstmate', home } } } }) })
       }
 
