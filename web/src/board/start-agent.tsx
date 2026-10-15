@@ -6,7 +6,7 @@ import type { Command } from './connection.ts'
 
 const HARNESSES = [{ value: 'claude', label: 'Claude Code' }, { value: 'codex', label: 'Codex' }]
 const ROUTES = [
-  { value: 'pnyx', label: 'Pnyx (Claude Code)' },
+  { value: 'pnyx', label: 'Pnyx' },
   { value: 'paseo', label: 'Paseo' },
   { value: 'firstmate', label: 'Firstmate (this board\'s Hydra)' },
   { value: 'command', label: 'Board command' },
@@ -18,15 +18,19 @@ const STARTED: Record<string, string> = {
   command: 'Board command started; its agent attaches when it reports.',
 }
 
-export function StartAgent({ card, firstmate, command, connected, replace = false, notify }: {
+export function StartAgent({
+  card, firstmate, defaultHarness, command, connected, replace = false, notify,
+}: {
   card: Card
   firstmate: boolean
+  defaultHarness?: string
   command: Command
   connected: boolean
   replace?: boolean
   notify({ text }: { text: string }): void
 }) {
-  const [via, setVia] = useState(firstmate && !replace ? 'firstmate' : 'pnyx'), [harness, setHarness] = useState('claude')
+  const [via, setVia] = useState(firstmate && !replace ? 'firstmate' : 'pnyx')
+  const [harness, setHarness] = useState(replace ? card.agent?.provider === 'codex' ? 'codex' : 'claude' : defaultHarness ?? 'claude')
   const [folder, setFolder] = useState(card.folder ?? ''), [message, setMessage] = useState(card.brief ?? '')
   const [paseo, setPaseo] = useState<{ ok: boolean; reason?: string } | null>(null)
   const [busy, run] = useBusy()
@@ -59,7 +63,7 @@ export function StartAgent({ card, firstmate, command, connected, replace = fals
           args.push('--folder', folder.trim())
         }
 
-        if (via === 'paseo') {
+        if (via === 'paseo' || via === 'pnyx') {
           args.push('--harness', harness)
         }
 
@@ -111,7 +115,7 @@ export function StartAgent({ card, firstmate, command, connected, replace = fals
           <Button onClick={check}>Check again</Button>
         </div>
       ))}
-      {via === 'paseo' && (
+      {(via === 'paseo' || via === 'pnyx') && (
         <Select
           label="Agent"
           value={harness}

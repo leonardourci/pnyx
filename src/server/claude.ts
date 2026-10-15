@@ -1,0 +1,102 @@
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import type { EffortLevel, Options, PermissionMode, SDKMessage, query } from '@anthropic-ai/claude-agent-sdk'
+import type { AgentSettings } from '../core/model.ts'
+import type { Provider } from './provider.ts'
+
+export type QueryFn = typeof query
+type UserMessage = Parameters<QueryFn>[0]['prompt'] extends string | AsyncIterable<infer M> ? M : never
+const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'] satisfies EffortLevel[]
+const MODES: readonly string[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk', 'auto'] satisfies PermissionMode[]
+
+// ponytail: folder names past 200 characters get a hash suffix we do not reproduce; the first hook corrects it.
+export const transcriptPath = ({ cwd, session }: { cwd: string; session: string }) =>
+  join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${session}.jsonl`)
+
+function sdkOptions({ settings }: { settings: AgentSettings }): Partial<Options> {
+  const { model, effort, mode } = settings
+
+  return {
+    ...(model ? { model } : {}),
+    ...(effort && EFFORTS.includes(effort) ? { effort: effort as EffortLevel } : {}),
+    ...(mode && MODES.includes(mode) ? { permissionMode: mode as PermissionMode } : {}),
+    ...(mode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
+  }
+}
+
+function turnOf({ message }: { message: SDKMessage }): 'working' | 'finished' | undefined {
+  if (message.type === 'system' && message.subtype === 'session_state_changed') {
+    return message.state === 'idle' ? 'finished' : 'working'
+  }
+
+  return message.type === 'result' ? 'finished' : undefined
+}
+
+export function claudeProvider({ query }: { query?: QueryFn }): Provider {
+  return {
+    async open({ cwd, agent, settings, env }) {
+      const id = agent?.sessionId ?? randomUUID()
+      const path = agent?.transcriptPath ?? transcriptPath({ cwd, session: id })
+      let running: ReturnType<QueryFn> | undefined
+      let closed = false
+
+      return {
+        id,
+        path,
+        async* run({ input }) {
+          const run = query ?? (await import('@anthropic-ai/claude-agent-sdk')).query
+
+          if (closed) {
+            return
+          }
+
+          const prompt = async function* (): AsyncGenerator<UserMessage> {
+            for await (const text of input) {
+              yield { type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null }
+            }
+          }
+
+          running = run({
+            prompt: prompt(),
+            options: {
+              cwd,
+              ...(agent?.resume || existsSync(path) ? { resume: id } : { sessionId: id }),
+              settingSources: ['user', 'project', 'local'],
+              systemPrompt: { type: 'preset', preset: 'claude_code' },
+              tools: { type: 'preset', preset: 'claude_code' },
+              permissionPrompts: 'none',
+              env,
+              ...sdkOptions({ settings }),
+            },
+          })
+
+          for await (const message of running) {
+            const activity = turnOf({ message })
+
+            if (activity) {
+              yield activity
+            }
+          }
+        },
+        async set({ setting, value }) {
+          if (!running) {
+            throw new Error('Claude Code is still loading')
+          }
+
+          if (setting === 'model') {
+            await running.setModel(value)
+          } else if (setting === 'mode') {
+            await running.setPermissionMode(value as PermissionMode)
+          } else if (setting === 'effort') {
+            await running.applyFlagSettings({ effortLevel: value as EffortLevel })
+          }
+        },
+        close() {
+          closed = true; running?.close()
+        },
+      }
+    },
+  }
+}

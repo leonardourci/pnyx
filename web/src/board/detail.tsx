@@ -108,7 +108,7 @@ export function Detail({
           <Button aria-label="Close detail" onClick={close}><Icon name="close" size={14} /></Button>
         </div>
       </header>
-      {card.agent?.provider === 'claude-code' && !card.agent.host && !card.agent.agentId && !card.agent.paseoAgentId && !card.automaticTask && (
+      {card.agent && ['claude-code', 'codex'].includes(card.agent.provider) && !card.agent.host && !card.agent.agentId && !card.agent.paseoAgentId && !card.automaticTask && (
         <ContinueAgent
           card={card}
           command={command}
@@ -141,6 +141,7 @@ export function Detail({
           card={card}
           replace={Boolean(card.agent)}
           firstmate={state.board?.hydra.kind === 'firstmate'}
+          defaultHarness={state.board?.agents?.default?.harness}
           command={command}
           connected={connected}
           notify={notify}

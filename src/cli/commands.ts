@@ -1787,14 +1787,15 @@ Tasks accept one attached session. A second session cannot replace the recipient
 attach moves an interactive session to the task; an occupied destination is rejected.
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
-task continue adopts an ended outside Claude Code session; --check only reads its current presence.
+task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
 It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.
-task start runs Claude Code in the task's folder with the opening message through the board's Pnyx server
-(\`pnyx-axi serve\`), with your own Claude Code settings, skills and hooks, and records its session, folder
+task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's folder through the board's
+Pnyx server (\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its native session, folder
 and settings on the task. Replies and setting changes from the board or \`pnyx-axi reply\` and \`pnyx-axi agent\`
 go straight to it; after a server restart the next message resumes the same session. A turn that was
 running when the server stopped is marked interrupted and waits for a message. Permission prompts are
-refused for now, so pick a mode that allows what the task needs.
+refused for now. Codex mode is its approval policy (untrusted, on-request or never); its sandbox follows
+your Codex configuration. Codex applies picker changes on the next turn and queues messages during a turn.
 --via paseo asks the local Paseo daemon (PNYX_PASEO_URL, default ws://127.0.0.1:6767/ws) to start a
 Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
 and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.

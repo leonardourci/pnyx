@@ -1,3 +1,5 @@
+import type { AgentRef, AgentSettings } from '../../core/model.ts'
+
 // A setting found in a record; null clears one the harness no longer reports.
 export type FoundSettings = Record<string, string | null>
 
@@ -156,4 +158,20 @@ export function transcriptSettings({ record, subagent = false }: {
   const r = obj({ value: record })
 
   return 'payload' in r ? codexSettings({ record: r }) : claudeSettings({ record: r, subagent })
+}
+
+export function observedSettings({ agent, held, observed }: {
+  agent: AgentRef
+  held?: AgentSettings
+  observed?: FoundSettings
+}): FoundSettings | undefined {
+  if (agent.host !== 'pnyx' || !held) {
+    return observed
+  }
+
+  // Native history may still describe the turn before a hosted picker change.
+  const desired = Object.fromEntries(Object.entries(held).filter(([name]) =>
+    ['model', 'effort', 'mode'].includes(name)))
+
+  return { ...held, ...observed, ...desired }
 }
