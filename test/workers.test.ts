@@ -86,6 +86,14 @@ test('kinds configure the agent each kind launches on and validate their flags',
   assert.match(f.fail({ args: ['kind', 'set', 'bad', '--model', 'x; rm -rf /'] }), /cannot take/)
   assert.match(f.fail({ args: ['kind', 'set', 'bad', '--harness', 'vim'] }), /--harness/)
   assert.match(f.run({ args: ['kind', 'remove', 'missing'] }), /none: unchanged/)
+  assert.equal(f.state().configured, undefined, 'saving a kind does not choose the Hydra')
+
+  f.run({ args: ['kind', 'set', 'review', '--model', 'gpt-5.5', '--mode', '', '--quota', 'medium'] })
+  assert.deepEqual(f.state().board!.agents!.review, { harness: 'codex', model: 'gpt-5.5', effort: 'high', quota: 'medium' })
+  f.run({ args: ['kind', 'set', 'review', '--quota', 'off'] })
+  assert.deepEqual(f.state().board!.agents!.review, { harness: 'codex', model: 'gpt-5.5', effort: 'high' })
+  assert.match(f.run({ args: ['kind', 'set', 'review', '--effort', 'high'] }), /none: unchanged/)
+  assert.match(f.run({ args: ['history'] }), /board\.agents/)
 })
 
 test('worker create previews a quoted command line for each harness, with a quota-picked model', () => {
@@ -98,6 +106,12 @@ test('worker create previews a quoted command line for each harness, with a quot
   const codex = f.run({ args: ['worker', 'create', 'w', '--kind', 'review', '--preview'] })
   assert.match(codex, /codex '-m' 'roomy' '-c' 'model_reasoning_effort="high"' '--dangerously-bypass-approvals-and-sandbox'/)
   assert.match(f.fail({ args: ['worker', 'create', 'w', '--kind', 'nope', '--preview'] }), /no agent configured/)
+  assert.match(f.fail({ args: ['worker', 'create', 'w', '--kind', 'constructor', '--preview'] }), /no agent configured/)
+  // A control character typed into the shell would act on the line, so it becomes a space.
+  f.run({ args: ['task', 'rename', 'w', '--title', 'a\u0015touch /tmp/pwned #'] })
+  const sanitized = f.run({ args: ['worker', 'create', 'w', '--preview', '--text', 'x\u001b[2Ky'] })
+  assert.doesNotMatch(/command: (.*)/.exec(sanitized)![1]!, /\p{Cc}|\\u00/u)
+  assert.match(sanitized, /a touch \/tmp\/pwned #/)
 })
 
 test('worker create opens a Paseo terminal, records the launch, and its session joins the task', () => {
@@ -131,13 +145,22 @@ test('board set --session self binds the session running in the caller\'s Paseo 
   assert.equal(f.state().board!.hydra.session, 'claude-code:hydra')
 })
 
-test('hydra start launches the hydra kind and refuses a Firstmate Hydra', () => {
+test('hydra start launches the hydra kind, keeps Hydra off tasks, and refuses a second or Firstmate Hydra', () => {
   const f = fixture()
   f.run({ args: ['kind', 'set', 'hydra', '--model', 'opus', '--effort', 'max'] })
   const preview = f.run({ args: ['hydra', 'start', '--preview', '--cwd', f.folder] })
   assert.match(preview, /PNYX_BOARD='default' PNYX_ACTOR='hydra' claude '--model' 'opus' '--effort' 'max' 'You are Hydra/)
+  f.run({ args: ['task', 'create', '--key', 'here', '--title', 'Work in the same folder', '--folder', f.folder] })
   f.run({ args: ['hydra', 'start', '--cwd', f.folder] })
   assert.match(f.paseo()[0]!, /^terminal create --cwd .* --name pnyx hydra default --json$/)
+  assert.equal(f.state().board!.hydra.terminal, 'term-1')
+  f.hook({ session: 'hydra', cwd: f.folder, terminal: 'term-1' })
+  const after = f.state()
+  assert.deepEqual(after.cards[after.keys.here!]!.sessionIds, [])
+  f.run({ args: ['board', 'set', '--session', 'self'], extra: { PASEO_TERMINAL_ID: 'term-1' } })
+  assert.equal(f.state().board!.hydra.session, 'claude-code:hydra')
+  assert.match(f.fail({ args: ['hydra', 'start', '--cwd', f.folder] }), /Hydra already runs as claude-code:hydra/)
+  f.run({ args: ['hydra', 'start', '--cwd', f.folder, '--force'] })
   f.run({ args: ['board', 'set', '--firstmate', f.root] })
   assert.match(f.fail({ args: ['hydra', 'start'] }), /Firstmate/)
 })
@@ -151,7 +174,7 @@ test('hydra check lists only tracked changes by others and waits for the next on
   f.run({ args: ['task', 'rename', 'a', '--title', 'First, renamed'] })
   f.run({ args: ['task', 'status', 'a', 'needs_you', '--note', 'which db?'], extra: { PNYX_ACTOR: 'worker:c1' } })
   const out = f.run({ args: ['hydra', 'check', '--after', String(start)] })
-  assert.match(out, /task\.declared,c1,"worker:c1","needs_you: which db\?"/)
+  assert.match(out, /evt_\d+,task\.declared,c1,none,"worker:c1","needs_you: which db\?"/)
   assert.doesNotMatch(out, /By Hydra|card\.pushed/)
   const through = Number(/through: (\d+)/.exec(out)![1])
   assert.equal(through, f.state().seq)
@@ -160,5 +183,17 @@ test('hydra check lists only tracked changes by others and waits for the next on
   await new Promise(resolve => setTimeout(resolve, 500))
   f.run({ args: ['hydra', 'send', '--text', 'plan the week'] })
   const { stdout } = await waiting
-  assert.match(stdout, /hydra\.message.*Send to Hydra: plan the week/)
+  assert.match(stdout, /hydra\.message,none,send,cli,"Send to Hydra: plan the week"/)
+
+  const before = f.state().seq
+
+  for (let i = 0; i < 22; i++) {
+    f.run({ args: ['hydra', 'send', '--text', `note ${i}`] })
+  }
+
+  const first = f.run({ args: ['hydra', 'check', '--after', String(before)] })
+  assert.equal((first.match(/note \d+/g) ?? []).length, 20)
+  const next = Number(/through: (\d+)/.exec(first)![1])
+  assert.equal(next, before + 20)
+  assert.match(f.run({ args: ['hydra', 'check', '--after', String(next)] }), /note 20.*\n.*note 21/)
 })

@@ -1,15 +1,14 @@
 // Agent kinds, worker launches and Hydra's light check. Launching types a harness
 // command line into a new Paseo terminal; Pnyx records it and never supervises it.
-import { statSync } from 'node:fs'
-import { join } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
-import { boardConfig, hydraEvent } from '../core/hydra.ts'
+import { boardConfig, hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
 import { findCard } from '../core/decide.ts'
 import { liveTask } from '../core/tasks.ts'
 import { BoardError, HARNESS_NAMES, QUOTA_BUCKETS, type AgentConfig, type BoardEvent, type BoardState, type EventType } from '../core/model.ts'
-import { boardDir, loadBoard, readEvents } from '../store/board-store.ts'
-import { commandLine, createTerminal, quotaModel, typeCommand } from '../integrations/paseo/launch.ts'
+import { boardDir, loadBoard, readEventsFrom } from '../store/board-store.ts'
+import { commandLine, createTerminal, killTerminal, quotaModel, typeCommand } from '../integrations/paseo/launch.ts'
 import { COMMON, WRITE, canonical, commit, commands, guard, integer, meta, parse, required, summarize, type Output } from './commands.ts'
 
 const DEFAULT_AGENT: AgentConfig = { harness: 'claude' }
@@ -21,7 +20,8 @@ function agentFor({ state, board, kind }: {
   board: string
   kind: string
 }): AgentConfig {
-  const configured = boardConfig({ state, id: board }).agents?.[kind]
+  const agents = boardConfig({ state, id: board }).agents ?? {}
+  const configured = Object.hasOwn(agents, kind) ? agents[kind] : undefined
 
   if (!configured && kind !== 'default' && kind !== 'hydra') {
     throw new BoardError({ message: `no agent configured for kind ${kind}`, code: 'NOT_FOUND', help: [`Run \`pnyx-axi kind set ${kind} --harness claude --board ${board}\``] })
@@ -30,7 +30,7 @@ function agentFor({ state, board, kind }: {
   const agent = { ...(configured ?? DEFAULT_AGENT) }
 
   if (agent.quota) {
-    agent.model = quotaModel({ agent }) ?? agent.model
+    agent.model = quotaModel({ harness: agent.harness, quota: agent.quota }) ?? agent.model
   }
 
   return agent
@@ -60,19 +60,19 @@ function kindCommand({ args }: { args: string[] }): Output {
     throw new BoardError({ message: 'kinds use lowercase letters, digits and dashes', code: 'VALIDATION_ERROR' })
   }
 
-  const harness = String(values.harness ?? 'claude')
-  const quota = values.quota === 'off' ? undefined : values.quota as string | undefined
+  const harness = values.harness as string | undefined
+  const quota = values.quota as string | undefined
 
-  if (!(HARNESS_NAMES as readonly string[]).includes(harness)) {
+  if (harness !== undefined && !(HARNESS_NAMES as readonly string[]).includes(harness)) {
     throw new BoardError({ message: `--harness must be ${HARNESS_NAMES.join(' or ')}`, code: 'VALIDATION_ERROR' })
   }
 
-  if (quota !== undefined && !(QUOTA_BUCKETS as readonly string[]).includes(quota)) {
+  if (quota !== undefined && quota !== 'off' && !(QUOTA_BUCKETS as readonly string[]).includes(quota)) {
     throw new BoardError({ message: `--quota must be ${QUOTA_BUCKETS.join(', ')} or off`, code: 'VALIDATION_ERROR' })
   }
 
   for (const flag of ['model', 'effort', 'mode'] as const) {
-    if (values[flag] !== undefined && !SAFE.test(String(values[flag]))) {
+    if (values[flag] && !SAFE.test(String(values[flag]))) {
       throw new BoardError({ message: `--${flag} has characters a harness flag cannot take`, code: 'VALIDATION_ERROR' })
     }
   }
@@ -82,28 +82,38 @@ function kindCommand({ args }: { args: string[] }): Output {
   return commit({
     board,
     meta: m,
-    intent: { type: 'board.configured', card: '$board' },
+    intent: { type: 'board.agents', card: '$board' },
     decide: ({ state }) => {
-      const current = boardConfig({ state, id: board })
-      const agents = { ...current.agents }
+      const before = boardConfig({ state, id: board }).agents ?? {}
+      const agents = { ...before }
+      const existing = Object.hasOwn(before, kind) ? before[kind] : undefined
 
       if (action === 'remove') {
-        if (!agents[kind]) {
+        if (!existing) {
           return { skipped: 'unchanged' }
         }
 
         delete agents[kind]
       } else {
-        agents[kind] = {
-          harness: harness as AgentConfig['harness'],
-          ...(values.model ? { model: String(values.model) } : {}),
-          ...(values.effort ? { effort: String(values.effort) } : {}),
-          ...(values.mode ? { mode: String(values.mode) } : {}),
-          ...(quota ? { quota: quota as AgentConfig['quota'] } : {}),
+        // A flag left out keeps its value; an empty value or --quota off clears it.
+        const agent: AgentConfig = { ...existing, harness: (harness ?? existing?.harness ?? 'claude') as AgentConfig['harness'] }
+
+        for (const [flag, value] of [['model', values.model], ['effort', values.effort], ['mode', values.mode], ['quota', quota === 'off' ? '' : quota]] as const) {
+          if (value === '') {
+            delete agent[flag]
+          } else if (value !== undefined) {
+            Object.assign(agent, { [flag]: String(value) })
+          }
         }
+
+        if (isDeepStrictEqual(agent, existing)) {
+          return { skipped: 'unchanged' }
+        }
+
+        agents[kind] = agent
       }
 
-      return hydraEvent({ state, meta: m, cardId: '$board', change: { type: 'board.configured', data: { ...current, agents } } })
+      return hydraEvent({ state, meta: m, cardId: '$board', change: { type: 'board.agents', data: { agents, before } } })
     },
   })
 }
@@ -177,30 +187,45 @@ function workerCommand({ args }: { args: string[] }): Output {
 
   const terminal = createTerminal({ cwd: folder, name: `pnyx ${task.id} ${task.title}`.slice(0, 60) })
   const m = meta({ values })
-  const out = commit({
-    board,
-    meta: m,
-    intent: { type: 'worker.launched', card: task.id },
-    decide: ({ state: current }) => {
-      if (findCard({ state: current, ref: task.id }).sessionIds?.length) {
-        throw new BoardError({ message: `task ${task.id} gained a worker meanwhile`, code: 'CONFLICT' })
-      }
+  let out: Output
 
-      return hydraEvent({ state: current, meta: m, cardId: task.id, change: { type: 'worker.launched', data: { kind, agent, folder, terminal, ...(request ? { request: request.id } : {}) } } })
-    },
-  })
-  typeCommand({ terminal, command })
+  // Recorded before typing, so the worker's first hook already finds the task's terminal.
+  try {
+    out = commit({
+      board,
+      meta: m,
+      intent: { type: 'worker.launched', card: task.id },
+      decide: ({ state: current }) => {
+        if (findCard({ state: current, ref: task.id }).sessionIds?.length) {
+          throw new BoardError({ message: `task ${task.id} gained a worker meanwhile`, code: 'CONFLICT' })
+        }
+
+        return hydraEvent({ state: current, meta: m, cardId: task.id, change: { type: 'worker.launched', data: { kind, agent, folder, terminal, ...(request ? { request: request.id } : {}) } } })
+      },
+    })
+    typeCommand({ terminal, command })
+  } catch (error) {
+    killTerminal({ terminal })
+
+    throw error
+  }
 
   return { ...out, terminal, agent, help: [`Its first session in that terminal joins the task; run \`pnyx-axi task show ${task.id} --board ${board}\` to see it`] }
 }
 
 function hydraStart({ args }: { args: string[] }): Output {
-  const { values, board } = parse({ args, options: { ...COMMON, cwd: { type: 'string' }, preview: { type: 'boolean' } }, positionals: 1 })
+  const { values, board } = parse({ args, options: { ...WRITE, cwd: { type: 'string' }, preview: { type: 'boolean' }, force: { type: 'boolean' } }, positionals: 1 })
   const state = loadBoard({ board }).state
   const config = boardConfig({ state, id: board })
 
   if (config.hydra.kind === 'firstmate') {
     throw new BoardError({ message: 'this board\'s Hydra is Firstmate, which runs on its own', code: 'VALIDATION_ERROR' })
+  }
+
+  const bound = config.hydra.session ? state.sessions?.[config.hydra.session] : undefined
+
+  if (bound && bound.activity !== 'ended' && !values.force && !values.preview) {
+    throw new BoardError({ message: `Hydra already runs as ${bound.id}`, code: 'CONFLICT', help: [`Reply to it with \`pnyx-axi reply ${HYDRA_CARD} --text <text> --board ${board}\`, or pass --force to start another`] })
   }
 
   const folder = canonical({ path: values.cwd ?? process.cwd() })
@@ -221,7 +246,26 @@ function hydraStart({ args }: { args: string[] }): Output {
   }
 
   const terminal = createTerminal({ cwd: folder, name: `pnyx hydra ${board}` })
-  typeCommand({ terminal, command })
+  const m = meta({ values })
+
+  // The recorded terminal keeps Hydra's session from joining a task in the same folder.
+  try {
+    commit({
+      board,
+      meta: m,
+      intent: { type: 'board.configured', card: '$board' },
+      decide: ({ state: current }) => {
+        const now = boardConfig({ state: current, id: board })
+
+        return hydraEvent({ state: current, meta: m, cardId: '$board', change: { type: 'board.configured', data: { ...now, hydra: { ...now.hydra, terminal } } } })
+      },
+    })
+    typeCommand({ terminal, command })
+  } catch (error) {
+    killTerminal({ terminal })
+
+    throw error
+  }
 
   return { board, terminal, agent, help: [`Hydra binds itself with \`board set --session self\`; run \`pnyx-axi board show --board ${board}\` to see it`] }
 }
@@ -240,45 +284,50 @@ async function hydraCheck({ args }: { args: string[] }): Promise<Output> {
   }
 
   const after = integer({ value: values.after, flag: '--after' }) ?? loadBoard({ board }).state.seq
-  const log = join(boardDir({ board }), 'events.jsonl')
-
-  const size = () => {
-    try {
-      return statSync(log).size
-    } catch {
-      return 0
-    }
-  }
-
-  let events: BoardEvent[] = []
-  const tracked = () => events.filter(e => e.seq > after && TRACKED.includes(e.type)
-    && e.actor !== HYDRA_ACTOR)
+  boardDir({ board })
   const deadline = Date.now() + wait * 1000
-  let seen = -1
+  const changes: BoardEvent[] = []
+  let offset = 0
+  let last = after
 
-  // ponytail: rereads the whole log whenever it grows; read from a byte offset if logs get large.
+  // Only bytes appended since the previous read are parsed.
   for (;;) {
-    if (size() !== seen) {
-      seen = size()
-      events = readEvents({ board })
+    const read = readEventsFrom({ board, offset })
+
+    if (read) {
+      offset = read.end
+
+      for (const e of read.events) {
+        last = Math.max(last, e.seq)
+
+        if (e.seq > after && TRACKED.includes(e.type) && e.actor !== HYDRA_ACTOR) {
+          changes.push(e)
+        }
+      }
     }
 
-    if (tracked().length || Date.now() >= deadline) {
+    if (changes.length || Date.now() >= deadline) {
       break
     }
 
     await sleep(Math.min(POLL_MS, deadline - Date.now()))
   }
 
-  const changes = tracked()
   const page = changes.slice(0, CHECK_LIMIT)
-  const through = changes.length > CHECK_LIMIT
-    ? page.at(-1)!.seq
-    : Math.max(after, events.at(-1)?.seq ?? 0)
+  const through = changes.length > CHECK_LIMIT ? page.at(-1)!.seq : last
+  const row = ({ e }: { e: BoardEvent }) => ({
+    seq: e.seq,
+    id: e.id,
+    type: e.type,
+    task: e.cardId === '$board' ? 'none' : e.cardId,
+    action: e.type === 'hydra.message' ? e.data.action : 'none',
+    actor: e.actor,
+    summary: summarize({ event: e }),
+  })
 
   return {
     board,
-    changes: page.length ? page.map(e => ({ seq: e.seq, type: e.type, task: e.cardId, actor: e.actor, summary: summarize({ event: e }) })) : `none: nothing Hydra tracks changed after seq ${after}`,
+    changes: page.length ? page.map(e => row({ e })) : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
     help: [`Run \`pnyx-axi hydra check --after ${through} --wait 1800 --board ${board}\` to wait for the next change`],
   }
@@ -309,11 +358,12 @@ export const WORKER_HELP: Record<string, string> = {
   kind: `usage: pnyx-axi kind list
 pnyx-axi kind set <kind> [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--quota high|medium|low|off]
 pnyx-axi kind remove <kind>
+set changes only the flags given: an empty --model, --effort or --mode, or --quota off, clears that field; a new kind starts on claude.
 The agent each task kind's workers launch on. \`default\` is used when worker create names no kind, and \`hydra\` is what hydra start launches; both fall back to Claude Code with its own defaults.
 --mode is Claude Code's --permission-mode, or for Codex bypass or a --sandbox mode. --quota picks, at launch, the model with the most runway in that intelligence bucket for the harness through quota-axi, keeping --model when quota-axi cannot tell.
 `,
   worker: `usage: pnyx-axi worker create <task> [--kind <kind>] [--cwd <dir>] [--request <hydra-message-id>] [--text <instructions>] [--preview]
-Opens a Paseo terminal in --cwd (the task's folder, else the current one), types the kind's harness command with a first prompt, and records worker.launched on the task.
+Opens a Paseo terminal in --cwd (else the task's folder, else the current one), types the kind's harness command with a first prompt, and records worker.launched on the task.
 The first session in that terminal and folder joins the task. --request links the Hydra message being answered and adds its text to the prompt.
 --preview prints the command line without launching anything. A task with a worker must be detached first.
 `,

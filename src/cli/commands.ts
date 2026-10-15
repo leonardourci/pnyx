@@ -1503,12 +1503,13 @@ the final column cannot be deleted. Use --if-revision for the board revision.
 pnyx-axi hydra send --text <message>
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
-pnyx-axi hydra start [--cwd <dir>] [--preview]
+pnyx-axi hydra start [--cwd <dir>] [--preview] [--force]
 Messages are durable entries in Hydra's board chat; one without --task is about the board, not a task. Sending one launches nothing.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
 check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, declarations, attachments, columns, moves, links, launches) after --after (default: now), skipping Hydra's own writes (actor hydra),
 and with --wait it blocks up to that many seconds until one appears. Pass the printed through as the next --after.
-start opens a Paseo terminal and launches Hydra on the hydra kind's agent (see pnyx-axi kind); Hydra then binds itself with board set --session self.
+start opens a Paseo terminal, records it as Hydra's, and launches Hydra on the hydra kind's agent (see pnyx-axi kind); Hydra then binds itself with board set --session self.
+It refuses while the bound Hydra session is still running; --force starts another.
 `,
   task: `usage: pnyx-axi task create --title <title> [--key <key>] [--folder <path>] [--column <id>] [--parent <task>]
 pnyx-axi task list | show <id> [--full]
