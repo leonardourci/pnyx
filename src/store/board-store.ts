@@ -310,10 +310,34 @@ function lockIsStale({ path }: { path: string }): boolean {
   }
 }
 
+// Re-checks staleness under an O_EXCL takeover file so only one writer can remove a dead lock.
+// ponytail: a writer killed inside the takeover leaves the takeover file behind; the LOCKED help says to remove it.
+function takeOver({ path, takeover }: { path: string; takeover: string }): boolean {
+  try {
+    closeSync(openSync(takeover, 'wx'))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      return false
+    }
+
+    throw error
+  }
+
+  try {
+    if (lockIsStale({ path })) {
+      rmSync(path, { force: true })
+    }
+  } finally {
+    rmSync(takeover, { force: true })
+  }
+
+  return true
+}
+
 // O_EXCL lock file holding the writer's pid; a lock whose process is gone is taken over.
-// ponytail: two writers can both judge the same dead lock stale; a lock daemon fixes it if that ever matters.
 function acquireLock({ dir }: { dir: string }): () => void {
   const path = join(dir, 'writer.lock')
+  const takeover = `${path}.takeover`
   const deadline = Date.now() + LOCK_TIMEOUT_MS
 
   for (;;) {
@@ -329,8 +353,7 @@ function acquireLock({ dir }: { dir: string }): () => void {
       }
     }
 
-    if (lockIsStale({ path })) {
-      rmSync(path, { force: true })
+    if (lockIsStale({ path }) && takeOver({ path, takeover })) {
       continue
     }
 
@@ -339,7 +362,7 @@ function acquireLock({ dir }: { dir: string }): () => void {
         message: 'board is locked by another pnyx-axi writer',
         code: 'LOCKED',
         help: [
-          `Retry, or remove ${path} if no pnyx-axi process is running`,
+          `Retry, or remove ${path} and ${takeover} if no pnyx-axi process is running`,
         ],
       })
     }
