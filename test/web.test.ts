@@ -116,17 +116,9 @@ test('custom columns accept manual placement and return their cards to auto when
   assert.equal(state.cards.c1!.attention.length, 1)
   state = reduce({
     state,
-    event: event({
-      d: decideView({
-        state,
-        patch: {
-          customColumns: [],
-        },
-        meta,
-      }),
-    }),
+    event: event({ d: decideView({ state, patch: { customColumns: [] }, meta }) }),
   })
-  assert.throws(() => decideUndo({ state, target: toAuto, meta }), /unknown custom column/)
+  assert.throws(() => decideUndo({ state, target: toAuto, meta }), /unknown board column/)
 })
 
 test('filters do not expose excluded parent details, and links/slashes stay literal', () => {
@@ -353,14 +345,7 @@ test('deleting a populated column is atomic, replayable, undoable and guarded', 
   const later = reduce({ state, event: event({ d: decideMove({ state, ref: 'worker', column: 'done', meta }) }) })
   assert.throws(() => decideUndo({ state: later, target: deletion, meta }), /moved since/)
   const undo = apply({
-    d: decideUndo({
-      state,
-      target: deletion,
-      meta: {
-        ...meta,
-        ifRevision: 2,
-      },
-    }),
+    d: decideUndo({ state, target: deletion, meta: { ...meta, ifRevision: 2 } }),
   })
   assert.deepEqual(viewFor({ state }), viewFor({ state: before }))
   assert.equal(state.cards.c1!.manualColumn, 'custom:later')

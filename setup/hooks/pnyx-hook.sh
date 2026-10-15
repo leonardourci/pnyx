@@ -32,9 +32,8 @@ fact() {
 }
 case $event in
 SessionStart | UserPromptSubmit)
-  # The harness is the nearest ancestor past any wrapper shell. Its TTY and pid are
-  # recorded only when it has a TTY, so a headless run (`claude -p`, `codex exec`)
-  # records none, even when an interactive session started it.
+  # Stop at the first non-shell ancestor. A headless harness must not borrow a
+  # terminal from an unrelated ancestor further up the process tree.
   pid=$PPID
   for _ in 1 2 3 4; do
     # shellcheck disable=SC2046
@@ -43,13 +42,9 @@ SessionStart | UserPromptSubmit)
     case ${3##*/} in
     sh | bash | zsh | dash | -*) ;;
     *)
-      case $2 in
-      '?' | '??') ;;
-      *)
-        fact tty "/dev/$2"
-        fact pid "$pid"
-        ;;
-      esac
+      case $2 in '?' | '??' | '-') break ;; esac
+      fact tty "/dev/$2"
+      fact pid "$pid"
       break
       ;;
     esac

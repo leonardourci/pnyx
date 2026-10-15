@@ -18,8 +18,16 @@ function homes({ values }: { values: Record<string, unknown> }): string[] {
 
 function sync({ board, list }: { board: string; list: string[] }): Output {
   const results = list.map(home => ({ home, ...syncHome({ board, home }) }))
+  const ignored = results.filter(r => r.ignored).map(r => r.home)
 
-  return { synced: results, help: ['Run `pnyx-axi` to see the board'] }
+  return {
+    synced: results.map(({ home, tasks, appended }) => ({ home, tasks, appended })),
+    ...(ignored.length ? { ignored: results.filter(r => r.ignored).map(r => `${r.home}: ${r.ignored}`) } : {}),
+    help: [
+      ...ignored.map(home => `Ignored ${home}: run \`pnyx-axi board set --firstmate ${home} --board ${board}\` to make it this board's Hydra, or sync it into another board`),
+      'Run `pnyx-axi` to see the board',
+    ],
+  }
 }
 
 // Watches each home, counting what it folds in, until closed. Shared by
@@ -27,13 +35,12 @@ function sync({ board, list }: { board: string; list: string[] }): Output {
 export function watchHomes({ board, list }: {
   board: string
   list: string[]
-}): {
-  close(): Output
-} {
+}): { close(): Output } {
   const totals = { syncs: 0, appended: 0, errors: 0 }
+  const ignored = new Set<string>()
   let lastError: string | undefined
 
-  const onSync = ({ result }: { result: SyncResult | Error }) => {
+  const onSync = ({ home }: { home: string }) => ({ result }: { result: SyncResult | Error }) => {
     if (result instanceof Error) {
       totals.errors += 1
       lastError = result.message
@@ -43,9 +50,18 @@ export function watchHomes({ board, list }: {
 
     totals.syncs += 1
     totals.appended += result.appended
+
+    if (result.ignored && !ignored.has(home)) {
+      ignored.add(home)
+      process.stdout.write(`ignored: ${JSON.stringify(`${home}: ${result.ignored}`)}\n`)
+    }
   }
 
-  const watches = list.map(home => watchHome({ board, home, onSync }))
+  const watches = list.map(home => watchHome({
+    board,
+    home,
+    onSync: onSync({ home }),
+  }))
 
   return {
     close() {
@@ -53,7 +69,12 @@ export function watchHomes({ board, list }: {
         w.close()
       }
 
-      return { watched: list, ...totals, ...(lastError ? { lastError } : {}) }
+      return {
+        watched: list,
+        ...totals,
+        ...(ignored.size ? { ignored: [...ignored] } : {}),
+        ...(lastError ? { lastError } : {}),
+      }
     },
   }
 }

@@ -1,8 +1,10 @@
 // Per-board files: the append-only events.jsonl, the snapshot.json cache, the
 // writer lock and the hook spool.
 import {
+  chmodSync,
   closeSync,
   existsSync,
+  fchmodSync,
   fstatSync,
   fsyncSync,
   mkdirSync,
@@ -40,6 +42,12 @@ export function boardDir({ board }: { board: string }): string {
   }
 
   return join(pnyxHome(), 'boards', board)
+}
+
+// Board files hold copied transcript text, which is as private as the transcripts.
+export function privateDir({ dir }: { dir: string }): void {
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  chmodSync(dir, 0o700)
 }
 
 const logPath = ({ dir }: { dir: string }) => join(dir, 'events.jsonl')
@@ -206,7 +214,7 @@ export function readEventsFrom(
 }
 
 // Bumped when the reducer derives cards differently, so an older cache is replayed.
-const RULES = 2
+const RULES = 6
 
 interface Snapshot {
   v: typeof EVENT_VERSION
@@ -232,9 +240,10 @@ function readSnapshot({ dir }: { dir: string }): Snapshot | null {
 
 // Writes and flushes to disk before returning. flag "a" appends, "w" replaces.
 function writeDurably({ path, data, flag }: { path: string; data: string | Buffer; flag: 'a' | 'w' }): void {
-  const fd = openSync(path, flag)
+  const fd = openSync(path, flag, 0o600)
 
   try {
+    fchmodSync(fd, 0o600)
     writeSync(fd, typeof data === 'string' ? Buffer.from(data) : data)
     fsyncSync(fd)
   } finally {
@@ -356,7 +365,7 @@ export function withWriter<T>({ board, fn }: {
   ) => T
 }): T {
   const dir = boardDir({ board })
-  mkdirSync(dir, { recursive: true })
+  privateDir({ dir })
   const release = acquireLock({ dir })
 
   try {
@@ -375,6 +384,23 @@ export function withWriter<T>({ board, fn }: {
               throw new Error(`append out of sequence: ${event.seq} after ${state.seq}`)
             }
 
+            const card = state.cards[event.cardId]
+            const parent = event.type === 'task.created' ? event.data.parentId : card?.parentId
+            const session = event.type === 'task.session' ? event.data.session : card?.sessionIds?.[0]
+            const agent = event.type === 'card.pushed' && event.data.agent
+              ? event.data.agent : session ? state.sessions?.[session]?.agent : card?.agent
+            const observedSession = agent
+              ? `${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}` : session
+            event = {
+              boardId: board,
+              ...(event.cardId !== '$board' ? { taskId: parent ?? event.cardId } : {}),
+              ...(parent ? { subtaskId: event.cardId } : {}),
+              ...(agent ? { agentId: `${agent.provider}:${agent.agentId ?? agent.sessionId}` } : {}),
+              ...(observedSession ? { sessionId: observedSession } : {}),
+              commandId: event.id,
+              ...(event.type === 'card.replied' ? { messageId: event.data.reply } : {}),
+              ...event,
+            }
             const line = `${JSON.stringify(event)}\n`
             writeDurably({ path: logPath({ dir }), data: line, flag: 'a' })
             offset += Buffer.byteLength(line)
@@ -421,7 +447,7 @@ export interface Repair {
 // ponytail: a crash while appending the marker leaves a corrupt interior line; inspect it by hand.
 export function repairBoard({ board }: { board: string }): Repair {
   const dir = boardDir({ board })
-  mkdirSync(dir, { recursive: true })
+  privateDir({ dir })
   const release = acquireLock({ dir })
 
   try {
@@ -460,11 +486,11 @@ export function spoolWrite({ board, entry }: {
   } & Record<string, unknown>
 }): string {
   const dir = spoolDir({ dir: boardDir({ board }) })
-  mkdirSync(dir, { recursive: true })
+  privateDir({ dir })
   // Millisecond time orders files across processes; hrtime keeps same-millisecond writes apart.
   const name = `${String(Date.now()).padStart(15, '0')}-${process.hrtime.bigint()}-${entry.id.replace(/[^A-Za-z0-9._-]/g, '_')}.json`
   const tmp = join(dir, `.tmp-${process.pid}-${name}`)
-  writeFileSync(tmp, JSON.stringify(entry))
+  writeFileSync(tmp, JSON.stringify(entry), { mode: 0o600 })
   renameSync(tmp, join(dir, name))
 
   return join(dir, name)

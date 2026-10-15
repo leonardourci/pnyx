@@ -7,8 +7,9 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { startServer } from '../src/server/server.ts'
 import { loadBoard, withWriter } from '../src/store/board-store.ts'
-import { decideMove, decidePush, decideView } from '../src/core/decide.ts'
+import { decideMove, decidePush } from '../src/core/decide.ts'
 import { seedWebFixture } from './web-fixture.ts'
+import { boardConfig, hydraEvent } from '../src/core/hydra.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -161,17 +162,38 @@ try {
   withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
-      const d = decideView({ state: w.state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta }); assert.ok('event' in d); w.append({ event: d.event })
+      const columns = boardConfig({ state: w.state }).columns
+      const d = hydraEvent({
+        state: w.state,
+        meta,
+        cardId: '$board',
+        change: { type: 'board.columns', data: { before: columns, columns: [...columns, { id: 'custom:later', title: 'Later' }] } },
+      })
+      assert.ok('event' in d); w.append({ event: d.event })
     },
   })
-  await browser({ args: ['wait', 'Later'] }); await focus({ selector: cardSelector }); await press({ key: 'ArrowRight' }); await check({ condition: active({ selector: "[data-empty-column='custom:later']" }), label: 'empty columns remain keyboard reachable' }); await press({ key: 'ArrowLeft' }); await check({ condition: active({ selector: cardSelector }), label: 'empty column returns to remembered card' })
+  await browser({ args: ['wait', 'Later'] }); await focus({ selector: cardSelector })
+  const columns = boardConfig({ state: board() }).columns
+  const steps = columns.findIndex(c => c.id === 'custom:later') - columns.findIndex(c => c.id === board().cards[fixture.state.keys.layout!]!.column)
+
+  for (let i = 0; i < steps; i++) {
+    await press({ key: 'ArrowRight' })
+  }
+
+  await check({ condition: active({ selector: "[data-empty-column='custom:later']" }), label: 'empty columns remain keyboard reachable' })
+
+  for (let i = 0; i < steps; i++) {
+    await press({ key: 'ArrowLeft' })
+  }
+
+  await check({ condition: active({ selector: cardSelector }), label: 'empty column returns to remembered card' })
   withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
-      const d = decideMove({ state: w.state, ref: 'layout', column: 'review', meta }); assert.ok('event' in d); w.append({ event: d.event })
+      const d = decideMove({ state: w.state, ref: 'layout', column: 'parked', meta }); assert.ok('event' in d); w.append({ event: d.event })
     },
   })
-  await browser({ args: ['eval', `() => new Promise((resolve, reject) => { const observer = new MutationObserver(check); const timer = setTimeout(() => { observer.disconnect(); reject(new Error("source move not rendered")); }, 5000); function check() { if (document.querySelector(${JSON.stringify(cardSelector)}).closest("[data-column]").dataset.column === "review") { clearTimeout(timer); observer.disconnect(); resolve(true); } } observer.observe(document.body, { subtree: true, childList: true }); check(); })`] }); await check({ condition: active({ selector: cardSelector }) + " && document.activeElement.closest('[data-column]').dataset.column === 'review'", label: 'live move retains card focus' })
+  await browser({ args: ['eval', `() => new Promise((resolve, reject) => { const observer = new MutationObserver(check); const timer = setTimeout(() => { observer.disconnect(); reject(new Error("source move not rendered")); }, 5000); function check() { if (document.querySelector(${JSON.stringify(cardSelector)}).closest("[data-column]").dataset.column === "parked") { clearTimeout(timer); observer.disconnect(); resolve(true); } } observer.observe(document.body, { subtree: true, childList: true }); check(); })`] }); await check({ condition: active({ selector: cardSelector }) + " && document.activeElement.closest('[data-column]').dataset.column === 'parked'", label: 'live move retains card focus' })
   await press({ key: '?' }); await browser({ args: ['wait', 'Keyboard help'] }); await press({ key: 'Escape' }); await check({ condition: active({ selector: cardSelector }), label: 'help restores board focus' })
   await click({ role: 'button', name: 'Settings' }); await click({ role: 'combobox', name: 'Conversation placement' }); await click({ role: 'option', name: 'Inline with cards' }); await click({ role: 'button', name: 'Back to board' })
   await focus({ selector: cardSelector }); await press({ key: 'Enter' }); await browser({ args: ['wait', 'Reply to Shape the first working board'] }); await check({ condition: active({ selector: '.composer textarea' }), label: 'inline conversation receives focus' })

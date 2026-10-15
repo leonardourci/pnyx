@@ -61,7 +61,7 @@ function hosts() {
 
   const session = ({ key, terminal }: { key: string; terminal: Record<string, string> }) => {
     const file = join(root, `${key}.json`)
-    writeFileSync(file, JSON.stringify({ agent: { provider: 'claude-code', sessionId: key }, terminal: { tty: TTY, pid: '4242', ...terminal } }))
+    writeFileSync(file, JSON.stringify({ agent: { provider: 'claude-code', sessionId: key.replace(/^claude:/, '') }, terminal: { tty: TTY, pid: '4242', ...terminal } }))
     run({ args: ['push', '--key', key, '--file', file] })
   }
 

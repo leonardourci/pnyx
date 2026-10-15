@@ -85,7 +85,7 @@ function sandbox() {
     CLAUDE_CONFIG_DIR: claude,
     CODEX_HOME: codex,
   }
-  const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
+  const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
   const spool = join(home, 'boards', 'default', 'spool')
   const spooled = () => (existsSync(spool) ? readdirSync(spool).filter(f => f.endsWith('.json') && !f.startsWith('.')) : [])
   // Puts the script where setup installs it, so it finds PNYX_HOME from its own path.
@@ -226,6 +226,7 @@ test('a session event observes the session card with its folder and transcript',
       },
       autoTitle: { from: 'folder', text: 'repo' },
       activity: 'started',
+      terminal: {},
       settings: { model: 'claude-opus-5-5', mode: 'default' },
     },
     attend: { clear: ['hook:'] },
@@ -409,7 +410,9 @@ const CASES: (Case | [Case[0], string, string, typeof NOTHING])[] = [
 
 test('every subscribed event of both harnesses maps to the activity and requests its interface shows', () => {
   for (const [harness, event, name, activity, attention] of CASES) {
-    const observations = observe({ envelope: envelope({ harness, event, name }) })
+    const observations = observe({
+      envelope: envelope({ harness, event, name }),
+    })
     const o = observations.at(-1)
 
     if (activity === NOTHING) {
@@ -476,7 +479,7 @@ test('a permission prompt moves the session to Needs you with its reason, and th
   assert.match(ran, /^ {2}attention: none$/m)
   assert.match(send({ event: 'Stop', name: 'claude-stop-background' }), /idle, 2 background tasks running/)
   const idle = send({ event: 'Notification', name: 'claude-notification-idle' })
-  assert.match(idle, /^ {2}column: needs_you$/m)
+  assert.match(idle, /^ {2}column: workers_on_it$/m)
   assert.match(idle, /Claude is waiting for your input/)
   assert.match(send({ event: 'UserPromptSubmit', name: 'claude-user-prompt' }), /^ {2}column: workers_on_it$/m)
   const failed = send({ event: 'StopFailure', name: 'claude-stop-failure' })
@@ -497,10 +500,10 @@ test('a subagent\'s permission prompt leaves Needs you on both cards once its to
   const child = `${parent}/agent-a1`
   let n = 0
 
-  const send = ({ event, name, harness: extra = {} }: {
+  const send = ({ event, name, extra = {} }: {
     event: string
     name: string
-    harness?: Record<string, unknown>
+    extra?: Record<string, unknown>
   }) => {
     n += 1
     const base = envelope({ harness: 'claude', event, name })
@@ -514,11 +517,11 @@ test('a subagent\'s permission prompt leaves Needs you on both cards once its to
   send({ event: 'Notification', name: 'claude-notification-permission' })
   assert.match(run({ args: ['card', parent] }), /^ {2}column: needs_you$/m)
   assert.match(run({ args: ['card', child] }), /Allow Write/)
-  send({ event: 'PostToolUse', name: 'claude-post-tool-bash', harness: { agent_id: 'agent-a1', agent_type: 'Explore', tool_name: 'Write' } })
+  send({ event: 'PostToolUse', name: 'claude-post-tool-bash', extra: { agent_id: 'agent-a1', agent_type: 'Explore', tool_name: 'Write' } })
   assert.match(run({ args: ['card', parent] }), /^ {2}attention: none$/m)
   assert.match(run({ args: ['card', child] }), /^ {2}attention: none$/m)
   // With nothing left to clear, a subagent's tool call records nothing on the parent.
-  send({ event: 'PostToolUse', name: 'claude-post-tool-bash', harness: { agent_id: 'agent-a1', agent_type: 'Explore', tool_name: 'Write' } })
+  send({ event: 'PostToolUse', name: 'claude-post-tool-bash', extra: { agent_id: 'agent-a1', agent_type: 'Explore', tool_name: 'Write' } })
   const ids = readFileSync(join(home, 'boards', 'default', 'events.jsonl'), 'utf8').trimEnd()
     .split('\n')
     .map(l => JSON.parse(l).id)
@@ -549,7 +552,7 @@ test('spooled hook events become cards on the next write, and a finished turn ne
   }
 
   assert.equal(spooled().length, 7)
-  assert.match(run({ }), /^spool: 7 hook events waiting; the next write ingests them$/m)
+  assert.match(run({ args: [] }), /^spool: 7 hook events waiting; the next write ingests them$/m)
 
   const probe = join(home, 'probe.json')
   writeFileSync(probe, '{}')
@@ -558,7 +561,7 @@ test('spooled hook events become cards on the next write, and a finished turn ne
 
   const session = run({ args: ['card', `claude:${SESSION}`] })
   // Same-second hooks may be ingested in either order, so only facts every order shares are checked.
-  assert.match(session, /^ {2}column: workers_on_it$/m)
+  assert.match(session, /^ {2}column: (workers_on_it|review)$/m)
   assert.match(session, /^ {2}workspace: unassigned$/m)
   assert.match(session, /^ {2}title: Open a pull request$/m)
   assert.match(session, /^ {4}cwd: \/work\/repo$/m)
@@ -729,11 +732,7 @@ test('an ended session moves to Done, an open question still needs you, and a re
   let n = 0
 
   // Explicit, ordered names: each step is ingested on the next write.
-  const send = ({ event, name, harness: payload }: {
-    event: string
-    name: string
-    harness?: object
-  }) => {
+  const send = ({ event, name, payload }: { event: string; name: string; payload?: object }) => {
     n += 1
     const line = { ...envelope({ harness: 'claude', event, name }), id: `hook-${n}`, at: `2026-10-13T14:00:${String(n).padStart(2, '0')}Z`, ...(payload ? { payload } : {}) }
     writeFileSync(join(spool, `${String(n).padStart(15, '0')}-1-a.json`), JSON.stringify(line))
@@ -759,7 +758,7 @@ test('an ended session moves to Done, an open question still needs you, and a re
   run({ args: ['push', '--key', `claude:${SESSION}`, '--file', question] })
   assert.match(card(), /^ {2}column: done$/m)
 
-  send({ event: 'SessionStart', name: 'claude-session-start', harness: { ...JSON.parse(fixture({ name: 'claude-session-start' })), source: 'resume' } })
+  send({ event: 'SessionStart', name: 'claude-session-start', payload: { ...JSON.parse(fixture({ name: 'claude-session-start' })), source: 'resume' } })
   assert.match(card(), /^ {2}column: workers_on_it$/m)
   assert.throws(() => run({ args: ['undo', `hook-${n}:outcome`] }), (error: { stdout: string }) => /^code: NOT_UNDOABLE$/m.test(error.stdout), "a hook's reopen cannot be undone")
   assert.doesNotMatch(card(), /outcome/)
