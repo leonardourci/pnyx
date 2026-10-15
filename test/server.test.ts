@@ -845,6 +845,20 @@ test('the open task follows attachment identity and watches only its current tra
   }
 })
 
+test('the board edits task kinds over the socket', async () => {
+  await boardWithCard()
+  const t = await tab(); await t.next()
+  t.command({ id: 'kind-1', name: 'kind', args: ['set', 'review', '--harness', 'codex', '--quota', 'high'] })
+  assert.equal((await t.next()).type, 'event'); assert.equal((await t.next()).type, 'receipt')
+  const board = loadBoard({ board: 'default' }).state
+  assert.deepEqual(board.board?.agents, { review: { harness: 'codex', quota: 'high' } })
+  const last = readFileSync(join(boardDir({ board: 'default' }), 'events.jsonl'), 'utf8').trim()
+    .split('\n')
+    .at(-1)!
+  assert.equal(JSON.parse(last).actor, 'web')
+  t.ws.close()
+})
+
 test('board tabs list, create, rename and open boards, each on its own server', async () => {
   cli({ args: ['board', 'create', 'default', '--name', 'Main'] })
   server = await startServer({ board: 'default', port: 0 })
