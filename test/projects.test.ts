@@ -1,3 +1,5 @@
+import { commandTimeout } from '../web/src/hydra/connection.ts'
+import { CLONE_TIMEOUT_MS } from '../src/projects/limits.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -183,4 +185,10 @@ test('standalone task labels still work after a project is attached', async () =
   assert.equal(state().cards[state().keys.labelled!]!.project, 'free-label')
   commands.task(['create', '--title', 'Project work', '--key', 'linked', '--project', 'project'])
   assert.equal(state().cards[state().keys.linked!]!.project, folder)
+})
+
+test('the web receipt deadline outlasts git clone and retains ordinary command deadlines', () => {
+  assert.ok(commandTimeout({ name: 'project', args: ['add', '--clone', 'url', '--into', '/folder'] }) > CLONE_TIMEOUT_MS)
+  assert.equal(commandTimeout({ name: 'project', args: ['list'] }), 60000)
+  assert.equal(commandTimeout({ name: 'reply', args: [] }), 140000)
 })

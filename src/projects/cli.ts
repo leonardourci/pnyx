@@ -1,3 +1,4 @@
+import { CLONE_TIMEOUT_MS } from './limits.ts'
 import { execFile } from 'node:child_process'
 import { isAbsolute, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -48,7 +49,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     const destination = resolve(required({ value: values.into as string | undefined, what: '--into <folder>' }))
 
     try {
-      await clone('git', ['clone', '--', String(values.clone), destination], { timeout: 120_000, maxBuffer: 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+      await clone('git', ['clone', '--', String(values.clone), destination], { timeout: CLONE_TIMEOUT_MS, maxBuffer: 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
     } catch {
       throw new HydraError({ message: `git clone failed into ${destination}; check the URL, access and destination before retrying`, code: 'CLONE_FAILED' })
     }
