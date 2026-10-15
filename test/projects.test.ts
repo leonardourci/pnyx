@@ -197,6 +197,7 @@ test('project commands persist, survive detaching and appear in Hydra checks', a
   const { folder, run, state } = fixture()
   await run({ args: ['add', folder] })
   await run({ args: ['set', 'project', '--command-name', 'local worker', '--command', 'echo fixture', '--brings-own-folder', 'true', '--event-id', 'command-1'] })
+  await run({ args: ['set', 'project', '--copy', 'echo copy-fixture'] })
   const saved = { name: 'local worker', command: 'echo fixture', bringsOwnFolder: true }
   assert.deepEqual(state().projects?.[0]?.startCommand, saved)
   const check = await hydraCheck({ args: ['check', '--after', '0'] })
@@ -211,6 +212,7 @@ test('project commands persist, survive detaching and appear in Hydra checks', a
   assert.deepEqual(state().projects?.[0]?.startCommand, saved)
   await run({ args: ['set', 'project', '--command', ''] })
   assert.equal(state().projects?.[0]?.startCommand, undefined)
+  assert.equal(state().projects?.[0]?.copy, 'echo copy-fixture')
 })
 
 test('project command settings reject incomplete values and Firstmate writes', async () => {

@@ -9,6 +9,7 @@ import { HydraError, type AgentConfig, type HydraConfig, type HydraState, type C
 import { paseoUrl } from '../core/paseo.ts'
 import { liveTask, sessionId } from '../core/tasks.ts'
 import { runCommand } from '../integrations/command/run.ts'
+import { taskFolder } from '../copies/copies.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
 import { fmNote } from '../integrations/firstmate/reply.ts'
 import { HARNESSES, createPaseoAgent, startAgent, type Harness } from '../integrations/paseo/launch.ts'
@@ -134,8 +135,25 @@ const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
   `You are Hydra, the orchestrator of the Pnyx Hydra "${hydraId}". Read ${HYDRA_SKILL} and follow it. `
   + `Start with \`pnyx-axi task list --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`
 
+function namedProjectCommand({ state, card, name }: {
+  state: HydraState
+  card: Card
+  name: string
+}) {
+  const project = card.project
+    ? findProject({ state, ref: card.project, attached: true }) : undefined
+  const selected = project?.startCommand
+
+  if (!selected || selected.name !== name) {
+    throw new HydraError({ message: `project command not found: ${name}; assign the task to its project and read project list`, code: 'NOT_FOUND' })
+  }
+
+  return selected
+}
+
 export async function startTask({
-  hydraId, task, via, kind, harness, prompt, folder, replacement, commandName, url, meta, connect,
+  hydraId, task, via, kind, harness, prompt, folder: given, inPlace, replacement, commandName,
+  url, meta, connect,
 }: {
   hydraId: string
   task: string
@@ -146,6 +164,7 @@ export async function startTask({
   harness?: string
   prompt?: string
   folder?: string
+  inPlace?: boolean
   url?: string
   meta: Meta
   connect?: Connect
@@ -168,7 +187,16 @@ export async function startTask({
     return askFirstmate({ hydraId, task, prompt, meta })
   }
 
-  if (how === 'command' || !agent) {
+  const command = how === 'command' || !agent
+  const selectedCommand = commandName
+    ? namedProjectCommand({ state, card, name: commandName }) : undefined
+  const ownsFolder = commandName
+    ? selectedCommand?.bringsOwnFolder : Boolean(state.config?.commandOwnsFolder)
+  const ownFolder = command && ownsFolder
+  const folder = replacement ? given
+    : taskFolder({ hydraId, task, folder: given, inPlace, ownFolder, meta })
+
+  if (command) {
     return startCommand({ hydraId, role: 'worker', task, prompt, folder, harness, commandName, meta })
   }
 
@@ -280,13 +308,8 @@ function startCommand({ hydraId, role, task, prompt, folder, harness, commandNam
       }
 
       const card = role === 'worker' ? freeTask({ state: writer.state, ref: task! }) : undefined
-      const project = commandName && card?.project
-        ? findProject({ state: writer.state, ref: card.project, attached: true }) : undefined
-      const selected = project?.startCommand
-
-      if (commandName && selected?.name !== commandName) {
-        throw new HydraError({ message: `project command not found: ${commandName}; assign the task to its project and read project list`, code: 'NOT_FOUND' })
-      }
+      const selected = commandName && card
+        ? namedProjectCommand({ state: writer.state, card, name: commandName }) : undefined
 
       const command = commandName ? selected?.command : config.command
 
@@ -294,7 +317,7 @@ function startCommand({ hydraId, role, task, prompt, folder, harness, commandNam
         throw new HydraError({ message: `Hydra ${hydraId} has no start command`, code: 'NO_COMMAND', help: [`Run \`pnyx-axi hydra set --hydra ${hydraId} --command '<shell command>'\``] })
       }
 
-      const cwd = canonical({ path: folder }) ?? card?.folder ?? project?.path ?? (role === 'hydra' ? process.cwd() : undefined)
+      const cwd = canonical({ path: folder }) ?? card?.folder ?? (role === 'hydra' ? process.cwd() : undefined)
 
       if (!cwd || !existsSync(cwd)) {
         throw new HydraError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })

@@ -74,21 +74,22 @@ export function projectFolder({ path }: { path: string }): string {
   throw new HydraError({ message: `project folder not found: ${path}`, code: 'NOT_FOUND' })
 }
 
-export function sharingHydras({ hydraId, path }: { hydraId: string; path: string }) {
-  let ids: string[]
-
+export function hydraIds(): string[] {
   try {
-    ids = readdirSync(join(pnyxHome(), 'boards'), { withFileTypes: true }).filter(d => d.isDirectory())
+    return readdirSync(join(pnyxHome(), 'boards'), { withFileTypes: true }).filter(d => d.isDirectory())
       .map(d => d.name)
+      .sort()
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw error
     }
 
-    ids = []
+    return []
   }
+}
 
-  return ids.sort().filter(id => id !== hydraId)
+export function sharingHydras({ hydraId, path }: { hydraId: string; path: string }) {
+  return hydraIds().filter(id => id !== hydraId)
     .flatMap(id => {
       const state = loadHydra({ hydraId: id }).state
 

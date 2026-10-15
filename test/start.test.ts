@@ -224,6 +224,7 @@ test('Hydra can select its task project’s start command by name', async () => 
   await run({ args: ['task', 'start', 'ship', '--via', 'command', '--command', 'fixture worker', '--event-id', 'project-start'] })
   const env = environment({ text: await written({ path: out }) })
   assert.equal(env.PNYX_FOLDER, folder)
+  assert.equal(state().cards[state().keys.ship!]!.copy, undefined)
   assert.equal(env.PNYX_TASK, state().keys.ship)
   const task = state().cards[state().keys.ship!]!
   assert.equal(task.launch?.command, captureEnvironment({ path: out }))
@@ -235,4 +236,19 @@ test('Hydra can select its task project’s start command by name', async () => 
   await assert.rejects(startTask({ hydraId: 'lab', task: 'ship', via: 'pnyx', commandName: 'fixture worker', meta }), /--command needs --via command/)
   run({ args: ['task', 'create', '--title', 'No project', '--key', 'other'] })
   await assert.rejects(startTask({ hydraId: 'lab', task: 'other', via: 'command', commandName: 'fixture worker', meta }), /project command not found/)
+})
+
+test('a named command uses the task copy unless it brings its own folder', async () => {
+  const { root, folder, run, state } = lab()
+  const copy = join(root, 'worker-copy'), out = join(root, 'copy-env.txt')
+  mkdirSync(copy)
+  await project(['add', folder, '--hydra', 'lab'])
+  await project(['set', 'work', '--copy', `echo '${copy}'`, '--command-name', 'fixture', '--command', captureEnvironment({ path: out }), '--hydra', 'lab'])
+  run({ args: ['task', 'create', '--title', 'Copy work', '--key', 'ship', '--project', 'work'] })
+  await assert.rejects(startTask({ hydraId: 'lab', task: 'ship', via: 'command', commandName: 'missing', meta }), /project command not found/)
+  assert.equal(state().cards[state().keys.ship!]!.copy, undefined)
+  await run({ args: ['task', 'start', 'ship', '--via', 'command', '--command', 'fixture'] })
+  const env = environment({ text: await written({ path: out }) })
+  assert.equal(env.PNYX_FOLDER, copy)
+  assert.equal(state().cards[state().keys.ship!]!.copy?.path, copy)
 })

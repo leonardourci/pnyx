@@ -193,6 +193,7 @@ export interface Card {
   mirror?: FirstmateRecord
   settings?: AgentSettings
   terminal?: TerminalFacts
+  copy?: TaskCopy
   // The working folder a source assigned, such as a Firstmate task's worktree; a
   // hook session started in it joins this card.
   folder?: string
@@ -295,6 +296,20 @@ export interface HydraProject {
   name: string
   detached: boolean
   startCommand?: { name: string; command: string; bringsOwnFolder: boolean }
+  // A shell command run in the project folder that makes a task's copy and prints its path.
+  copy?: string
+}
+
+// A task's own copy of its project: a git worktree Pnyx made, or the folder the
+// project's copy command printed. It is removed only once its work has landed.
+export interface TaskCopy {
+  path: string
+  project: string
+  via: 'worktree' | 'command'
+  branch?: string
+  base?: string
+  state: 'active' | 'flagged' | 'removed'
+  reason?: string
 }
 
 export interface HydraConfig {
@@ -305,6 +320,8 @@ export interface HydraConfig {
   // Task kind -> agent; `hydra` is the kind Hydra itself starts on.
   agents?: Record<string, AgentConfig>
   command?: string
+  // The command makes its own folder, so starts through it skip the task copy.
+  commandOwnsFolder?: boolean
   doneAfterHours?: number
 }
 export interface HydraMessage {
@@ -322,6 +339,7 @@ export type HydraChange = EventBase & (
   | { type: 'board.columns'; data: { columns: HydraColumn[]; before?: HydraColumn[]; fallback?: Column; placements?: Record<string, { before: Column | null; after: Column | null }> } }
   | { type: 'hydra.project'; data: { before: HydraProject | null; after: HydraProject; sharedWith: { id: string; name: string; url: string }[] } }
   | { type: 'task.project'; data: { before: string | null; after: string | null } }
+  | { type: 'task.copy'; data: { before: TaskCopy | null; after: TaskCopy } }
   | { type: 'task.created'; data: { key: string; title: string; brief?: string; parentId?: string; column?: Column; folder?: string; project?: string } }
   | { type: 'task.brief'; data: { before: string; after: string } }
   | { type: 'task.visibility'; data: { before: boolean; after: boolean; automatic?: boolean } }
@@ -460,7 +478,7 @@ export type HydraEvent =
   | ChatEvent
   | PermissionEvent
 export type EventType = HydraEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched', 'task.permission', 'hydra.project', 'task.project']
+export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched', 'task.permission', 'hydra.project', 'task.project', 'task.copy']
 
 export interface HydraState {
   projects?: HydraProject[]
