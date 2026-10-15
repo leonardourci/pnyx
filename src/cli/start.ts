@@ -256,6 +256,7 @@ function askFirstmate({ hydraId, task, prompt, meta }: {
       if (!liveTask({ card }) || card.id === HYDRA_CARD) {
         throw new HydraError({ message: `task not found: ${task}`, code: 'NOT_FOUND' })
       }
+
       const config = hydraConfig({ state: writer.state, id: hydraId })
 
       if (config.hydra.kind !== 'firstmate' || !config.hydra.home) {
