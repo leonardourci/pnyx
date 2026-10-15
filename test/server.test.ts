@@ -11,13 +11,13 @@ import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { HydraError } from '../src/core/model.ts'
 import { startServer, type RunningServer, type ServerMessage } from '../src/server/server.ts'
-import { infoPath, localToken, socketPath } from '../src/server/state.ts'
+import { infoPath, localToken, readServer, socketPath } from '../src/server/state.ts'
 import { hydraDir, loadHydra, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { indexStatus, searchPath } from '../src/oracle/index.ts'
 import { writeSetting } from '../src/oracle/settings.ts'
-import { stopAll, stopProcess, track } from './processes.ts'
+import { stopAll, track } from './processes.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -123,8 +123,8 @@ function inbox<T>() {
 type LatestMessages = Extract<ServerMessage, { type: 'latest' }>['messages']
 
 // Last-message pushes arrive on their own queue, so the other messages keep their order.
-async function tab({ query = '' }: { query?: string } = {}) {
-  const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/ws?token=${localToken()}${query.replace('?', '&')}`)
+async function tab({ query = '', hydraId = 'default' }: { query?: string; hydraId?: string } = {}) {
+  const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/hydra/${hydraId}/ws?token=${localToken()}${query.replace('?', '&')}`)
   tabs.add(ws)
   const main = inbox<ServerMessage>(), latest = inbox<LatestMessages>()
   const queue = main.queue
@@ -185,9 +185,9 @@ function http({ method, path, headers = {} }: {
 }
 
 async function handshakeStatus(
-  { query, headers = {} }: { query: string; headers?: Record<string, string> },
+  { query, headers = {}, path = '/hydra/default/ws' }: { query: string; headers?: Record<string, string>; path?: string },
 ): Promise<number> {
-  const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/ws${query}`, { headers })
+  const ws = new WebSocket(`ws://127.0.0.1:${server!.port}${path}${query}`, { headers })
   tabs.add(ws)
   const [, response] = await once(ws, 'unexpected-response')
 
@@ -212,7 +212,7 @@ test('serve runs until stop, and the summary reports it without starting it', as
   track({ child })
   let out = ''
   child.stdout.on('data', chunk => (out += chunk))
-  const url = await until({ check: () => /^url: "(http:\/\/127\.0\.0\.1:\d+)"$/m.exec(out)?.[1], what: 'serve to start' })
+  const url = await until({ check: () => /^url: "(http:\/\/127\.0\.0\.1:\d+\/hydra\/default\/)"$/m.exec(out)?.[1], what: 'serve to start' })
   await until({ check: () => (existsSync(infoPath({ hydraId: 'default' })) ? true : undefined), what: 'server.json' })
   assert.match(cli({ args: [] }), new RegExp(`^server: "running at ${url}"$`, 'm'))
   assert.ok(existsSync(socketPath({ hydraId: 'default' })))
@@ -357,7 +357,7 @@ test('a bad command gets an error carrying its request id and writes nothing', a
 
 test("writes through the server always land on the server's own Hydra", async () => {
   const cardId = await hydraWithCard({ hydraId: 'work' })
-  const t = await tab({ query: '?after=1' })
+  const t = await tab({ query: '?after=1', hydraId: 'work' })
   t.command({ id: 'req-1', name: 'move', args: [cardId, 'done'] })
   assert.equal((await t.next()).type, 'event')
   assert.equal((await t.next()).type, 'receipt')
@@ -374,42 +374,57 @@ test('the WebSocket handshake needs the token, an exact host and an exact origin
   assert.equal(await handshakeStatus({ query: token, headers: { origin: 'http://evil.example' } }), 403)
   assert.equal(await handshakeStatus({ query: token, headers: { origin: `http://127.0.0.1:${server.port}.evil.example` } }), 403)
   assert.equal(await handshakeStatus({ query: token, headers: { host: `evil.example:${server.port}` } }), 403)
+  assert.equal(await handshakeStatus({ query: token, path: '/hydra/missing/ws' }), 403)
 
-  const ok = new WebSocket(`ws://127.0.0.1:${server.port}/ws${token}`, { headers: { origin: `http://localhost:${server.port}` } })
-  tabs.add(ok)
-  await once(ok, 'open')
-  ok.close()
+  // /ws stays the default Hydra's, so a tab from before one server served every Hydra reconnects and reloads.
+  for (const path of ['/hydra/default/ws', '/ws']) {
+    const ok = new WebSocket(`ws://127.0.0.1:${server.port}${path}${token}`, { headers: { origin: `http://localhost:${server.port}` } })
+    tabs.add(ok)
+    await once(ok, 'open')
+    ok.close()
+  }
 })
 
 test('the Hydra page carries the token only for its own host and origin; /health names the Hydra', async () => {
   server = await startServer({ hydraId: 'default' })
   const meta = `<meta name="pnyx-token" content="${localToken()}" />`
 
-  for (const path of ['/', '/index.html', '/some/route']) {
+  for (const path of ['/hydra/default/', '/hydra/default/index.html', '/hydra/default/some/route']) {
     const page = await http({ method: 'GET', path, headers: { origin: `http://127.0.0.1:${server.port}` } })
     assert.equal(page.status, 200)
     assert.ok(page.text.includes(meta), path)
+    assert.ok(page.text.includes('<base href="/hydra/default/" />'), path)
     assert.equal(page.headers['cache-control'], 'no-store')
   }
 
   for (const headers of [{ host: `evil.example:${server.port}` }, { origin: 'http://evil.example' }] as Record<string, string>[]) {
-    const refused = await http({ method: 'GET', path: '/', headers })
+    const refused = await http({ method: 'GET', path: '/hydra/default/', headers })
     assert.equal(refused.status, 403)
     assert.ok(!refused.text.includes(localToken()))
   }
 
-  const health = await http({ method: 'GET', path: '/health' })
+  const root = await http({ method: 'GET', path: '/' })
+  assert.equal(root.status, 302)
+  assert.equal(root.headers.location, '/hydra/default/')
+  assert.equal((await http({ method: 'GET', path: '/hydra/default' })).headers.location, '/hydra/default/')
+  // Outside a Hydra only the shared assets are served, never a page carrying the token.
+  assert.equal((await http({ method: 'GET', path: '/index.html' })).status, 404)
+  assert.equal((await http({ method: 'GET', path: '/favicon.svg' })).status, 200)
+  assert.equal((await http({ method: 'GET', path: '/hydra/missing/' })).status, 404)
+
+  const health = await http({ method: 'GET', path: '/hydra/default/health' })
   assert.equal(health.status, 200)
   const { build } = JSON.parse(health.text) as { build: string }
   assert.deepEqual(JSON.parse(health.text), { hydraId: 'default', pid: process.pid, build })
   assert.match(build, /^[0-9a-f]{12}$/)
-  assert.ok((await http({ method: 'GET', path: '/' })).text.includes(`<meta name="pnyx-build" content="${build}" />`))
-  const html = (await http({ method: 'GET', path: '/' })).text
+  assert.deepEqual(JSON.parse((await http({ method: 'GET', path: '/health' })).text), { pid: process.pid, build, hydras: ['default'], skipped: {} })
+  const html = (await http({ method: 'GET', path: '/hydra/default/' })).text
+  assert.ok(html.includes(`<meta name="pnyx-build" content="${build}" />`))
   const identity = /name="pnyx-hydra" content="([a-f0-9]{24})"/.exec(html)?.[1]
   assert.ok(identity)
   assert.deepEqual((await tab()).hello, { type: 'hello', build, hydraId: identity })
-  assert.equal((await http({ method: 'GET', path: '/api/commands/move' })).status, 200)
-  assert.equal((await http({ method: 'POST', path: '/api/commands/move' })).status, 405)
+  assert.equal((await http({ method: 'GET', path: '/hydra/default/api/commands/move' })).status, 200)
+  assert.equal((await http({ method: 'POST', path: '/hydra/default/api/commands/move' })).status, 405)
 })
 
 test('a server.json left by a dead server is not trusted, even when its pid was reused', async () => {
@@ -859,7 +874,7 @@ test('the Hydra edits task kinds over the socket', async () => {
   t.ws.close()
 })
 
-test('Hydra tabs list, create, rename and open Hydras, each on its own server', async context => {
+test('Hydra tabs list, create, rename and open Hydras on the same server', async () => {
   cli({ args: ['hydra', 'create', 'default', '--name', 'Main'] })
   server = await startServer({ hydraId: 'default', port: 0 })
   const t = await tab()
@@ -883,21 +898,43 @@ test('Hydra tabs list, create, rename and open Hydras, each on its own server', 
   assert.deepEqual((await receipt({ id: 'b2' })).hydras?.map(b => b.name), ['Work'])
 
   t.command({ id: 'b3', name: 'hydras', args: ['create', 'Side'] })
-  // That server runs detached from this test, so it is stopped by the pid it announces, even when it starts after the test gave up on it.
-  const announced = infoPath({ hydraId: 'hydra-2' })
-  context.after(async () => {
-    const pid = await until({ check: () => (existsSync(announced) ? (JSON.parse(readFileSync(announced, 'utf8')) as { pid: number }).pid : undefined), what: 'hydra-2 server.json' })
-    await stopProcess({ pid })
-  })
   const created = await receipt({ id: 'b3' })
   assert.deepEqual(created.hydras?.map(b => [b.id, b.name]), [['default', 'Work'], ['hydra-2', 'Side']])
-  assert.match(created.url!, /^http:\/\/127\.0\.0\.1:\d+$/)
-  assert.notEqual(created.url, `http://127.0.0.1:${server.port}`)
+  assert.equal(created.url, `http://127.0.0.1:${server.port}/hydra/hydra-2/`)
+  assert.equal((await readServer({ hydraId: 'hydra-2' }))?.pid, process.pid)
   t.command({ id: 'b4', name: 'hydras', args: ['open', 'hydra-2'] })
   assert.equal((await receipt({ id: 'b4' })).url, created.url)
+  assert.equal((await (await tab({ hydraId: 'hydra-2' })).next()).type, 'snapshot')
 
   t.command({ id: 'b5', name: 'hydras', args: ['open', 'missing'] })
   assert.match((await receipt({ id: 'b5' })).error ?? '', /Hydra not found/)
+})
+
+test('one server serves every Hydra with its own hook socket, skips one that fails to load and serves one created later', async () => {
+  cli({ args: ['hydra', 'create', 'work', '--name', 'Work'] })
+  // A folder whose name is not a Hydra id cannot be loaded.
+  mkdirSync(join(process.env.PNYX_HOME!, 'boards', 'not a hydra'))
+  server = await startServer({ hydraId: 'default' })
+  assert.deepEqual(Object.keys(server.skipped), ['not a hydra'])
+  const health = JSON.parse((await http({ method: 'GET', path: '/health' })).text) as { hydras: string[]; skipped: Record<string, string> }
+  assert.deepEqual(health.hydras, ['default', 'work'])
+  assert.match(health.skipped['not a hydra']!, /invalid Hydra name/)
+
+  const work = (await readServer({ hydraId: 'work' }))!
+  assert.equal(work.pid, process.pid)
+  assert.equal(work.url, `http://127.0.0.1:${server.port}/hydra/work/`)
+  const created = loadHydra({ hydraId: 'work' }).state.seq
+  await sendToSocket({ path: work.socket!, text: JSON.stringify(hookEvent({ id: 'hook-1', key: 'a', title: 'A' })) })
+  await seqIs({ seq: created + 1, hydraId: 'work' })
+  assert.equal(loadHydra({ hydraId: 'default' }).state.seq, 0)
+  const t = await tab({ hydraId: 'work' })
+  const snapshot = await t.next()
+  assert.equal(snapshot.type === 'snapshot' && snapshot.seq, created + 1)
+
+  cli({ args: ['hydra', 'create', 'late', '--name', 'Late'] })
+  const late = await until({ check: () => (existsSync(infoPath({ hydraId: 'late' })) ? true : undefined), what: 'the new Hydra to be served' })
+  assert.ok(late)
+  assert.equal((await readServer({ hydraId: 'late' }))?.url, `http://127.0.0.1:${server.port}/hydra/late/`)
 })
 
 test('concurrent server starts claim one Hydra before binding their sockets', async () => {
