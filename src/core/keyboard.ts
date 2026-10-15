@@ -38,6 +38,7 @@ export const KEY_ACTIONS = [
   action({ id: 'help', label: 'Keyboard help', keys: ['?'], scopes: navigation }),
   action({ id: 'hints', label: 'Show target hints', keys: ['f'], scopes: navigation }),
   action({ id: 'settings', label: 'Open settings', keys: ['Mod+,'], scopes: navigation }),
+  action({ id: 'topbar', label: 'Show or hide the top bar', keys: ['Mod+b'], scopes: [...navigation, 'composer'] }),
 ]
 export interface KeyboardPreferences {
   characterShortcuts: boolean

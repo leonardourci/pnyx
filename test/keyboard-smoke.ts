@@ -74,6 +74,9 @@ try {
   await browser({ args: ['open', server.url] }); await browser({ args: ['resize', '1440', '900'] }); await browser({ args: ['wait', 'Needs you'] })
   const platform = await browser({ args: ['eval', "() => /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other'"] }); const mod = platform.includes('mac') ? 'Meta' : 'Control'
   const findPrevented = ({ expected }: { expected: boolean }) => check({ condition: `(() => { const event = new KeyboardEvent('keydown', { key: 'f', ${mod === 'Meta' ? 'metaKey' : 'ctrlKey'}: true, bubbles: true, cancelable: true }); document.activeElement.dispatchEvent(event); return event.defaultPrevented === ${expected}; })()`, label: `browser find prevented: ${expected}` })
+  // Mod+B hides the top bar for the whole height, and brings it back.
+  await focus({ selector: cardSelector }); await press({ key: `${mod}+b` }); await check({ condition: "document.querySelector('.topbar').hidden", label: 'Mod+B hides the top bar' })
+  await press({ key: `${mod}+b` }); await check({ condition: "!document.querySelector('.topbar').hidden", label: 'Mod+B shows the top bar again' })
   await focus({ selector: cardSelector }); await press({ key: `${mod}+f` }); await check({ condition: active({ selector: "[aria-label='Find a card']" }), label: 'Mod+F focuses board search' })
   await fill({ role: 'searchbox', name: 'Find a card', text: 'Shape' }); await findPrevented({ expected: true }); await check({ condition: active({ selector: "[aria-label='Find a card']" }) + " && document.activeElement.value === 'Shape'", label: 'find in search preserves the query' })
   await press({ key: 'Escape' })

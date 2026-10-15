@@ -28,6 +28,7 @@ const RESTORE_KEY = 'pnyx-restore'
 type Restore = {
   selected?: string | null
   page?: string
+  topbar?: boolean
   drafts?: Record<string, string>
   comments?: Record<string, ChatComment[]>
   scroll?: Record<string, [number, number]>
@@ -202,6 +203,8 @@ export function App() {
   // The deletion a notice can undo; any later notice replaces it.
   const [undoColumn, setUndoColumn] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState<string | null>(null)
+  // Mod+B hides the top bar to give the board the whole height.
+  const [topbar, setTopbar] = useState(restored.topbar ?? true)
   const notify = useCallback(({ text }: { text: string }) => {
     setNotice(text); setUndoColumn(null)
   }, [])
@@ -274,7 +277,7 @@ export function App() {
         const scroll = Object.fromEntries(scrollers()
           .map(([key, el]) => [key, [el.scrollLeft, el.scrollTop]]))
         sessionStorage.setItem(RESTORE_KEY, JSON.stringify({
-          selected, page, drafts, comments, scroll,
+          selected, page, topbar, drafts, comments, scroll,
         }))
       } catch { /* Storage full or blocked: the reload starts fresh. */ }
     }
@@ -282,7 +285,7 @@ export function App() {
     addEventListener('pagehide', keep)
 
     return () => removeEventListener('pagehide', keep)
-  }, [selected, page, drafts, comments])
+  }, [selected, page, topbar, drafts, comments])
   useEffect(() => {
     const scroll = pendingScroll.current
 
@@ -361,7 +364,15 @@ export function App() {
   return (
     <KeyboardProvider
       prefs={view.keyboard}
-      onAction={keyboard.onAction}
+      onAction={({ id, context }) => {
+        if (id === 'topbar') {
+          setTopbar(shown => !shown)
+
+          return true
+        }
+
+        return keyboard.onAction({ id, context })
+      }}
       leaveField={keyboard.leaveField}
       hints={keyboard.hints.length > 0}
       hintKey={keyboard.hintKey}
@@ -375,7 +386,7 @@ export function App() {
           '--text-code': `${view.codeFontSize}px`,
         } as CSSProperties}
       >
-        <header className="topbar">
+        <header className="topbar" hidden={!topbar}>
           <div className="brand">
             <span className="mark">π</span>
             <span>pnyx</span>
