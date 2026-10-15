@@ -1,7 +1,6 @@
 @import "tailwindcss";
 /* Bundled under the SIL Open Font License (see each folder's OFL.txt), so the board reads the same everywhere. */
 @font-face { font-family: "Inter"; src: url("/fonts/inter/Inter-Variable.ttf") format("truetype"); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: "Source Serif 4"; src: url("/fonts/source-serif-4/SourceSerif4-Variable.ttf") format("truetype"); font-weight: 200 900; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono/JetBrainsMono-Variable.ttf") format("truetype"); font-weight: 100 800; font-display: swap; }
 /* Light by default; dark comes from the Dark theme or, under System, the operating system. */
 @theme {

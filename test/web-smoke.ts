@@ -123,7 +123,7 @@ try {
   await check({ condition: '!document.querySelector(".message.tool, .message.thinking") && document.querySelectorAll(".message.message p").length >= 3', label: 'Focus shows messages and hides traces' })
   await check({ condition: '![...document.querySelectorAll(".detail-tabs .button")].some(b => b.textContent === "Notes") && !document.querySelector(".conversation-brief").open && document.querySelector(".brief-line").textContent === "The first board layout is ready for review."', label: 'notes fold into a collapsed summary header instead of a tab' })
   await browser({ args: ['eval', '() => { document.querySelector(".conversation-brief > summary").click(); return true; }'] })
-  await check({ condition: 'document.querySelectorAll(".conversation-brief .brief-item").length === 4 && getComputedStyle(document.querySelector(".message p")).fontFamily.startsWith("\\"Source Serif 4\\"")', label: 'the header lists each note once and chat text uses the chat font' })
+  await check({ condition: 'document.querySelectorAll(".conversation-brief .brief-item").length === 4 && getComputedStyle(document.querySelector(".message p")).fontFamily.startsWith("Inter")', label: 'the header lists each note once and chat text uses the UI font' })
   await screenshot({ name: 'notes-header.png' })
   await browser({ args: ['eval', '() => { document.querySelector(".conversation-brief > summary").click(); return true; }'] })
   await click({ role: 'switch', name: 'Focus' }); await check({ condition: '!!document.querySelector(".message.tool pre")', label: 'turning Focus off shows tool calls' })
