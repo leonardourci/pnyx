@@ -190,10 +190,10 @@ try {
   withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
-      const d = decideMove({ state: w.state, ref: 'layout', column: 'done', meta }); assert.ok('event' in d); w.append({ event: d.event })
+      const d = decideMove({ state: w.state, ref: 'layout', column: 'parked', meta }); assert.ok('event' in d); w.append({ event: d.event })
     },
   })
-  await browser({ args: ['eval', `() => new Promise((resolve, reject) => { const observer = new MutationObserver(check); const timer = setTimeout(() => { observer.disconnect(); reject(new Error("source move not rendered")); }, 5000); function check() { if (document.querySelector(${JSON.stringify(cardSelector)}).closest("[data-column]").dataset.column === "done") { clearTimeout(timer); observer.disconnect(); resolve(true); } } observer.observe(document.body, { subtree: true, childList: true }); check(); })`] }); await check({ condition: active({ selector: cardSelector }) + " && document.activeElement.closest('[data-column]').dataset.column === 'done'", label: 'live move retains card focus' })
+  await browser({ args: ['eval', `() => new Promise((resolve, reject) => { const observer = new MutationObserver(check); const timer = setTimeout(() => { observer.disconnect(); reject(new Error("source move not rendered")); }, 5000); function check() { if (document.querySelector(${JSON.stringify(cardSelector)}).closest("[data-column]").dataset.column === "parked") { clearTimeout(timer); observer.disconnect(); resolve(true); } } observer.observe(document.body, { subtree: true, childList: true }); check(); })`] }); await check({ condition: active({ selector: cardSelector }) + " && document.activeElement.closest('[data-column]').dataset.column === 'parked'", label: 'live move retains card focus' })
   await press({ key: '?' }); await browser({ args: ['wait', 'Keyboard help'] }); await press({ key: 'Escape' }); await check({ condition: active({ selector: cardSelector }), label: 'help restores board focus' })
   await click({ role: 'button', name: 'Settings' }); await click({ role: 'combobox', name: 'Conversation placement' }); await click({ role: 'option', name: 'Inline with cards' }); await click({ role: 'button', name: 'Back to board' })
   await focus({ selector: cardSelector }); await press({ key: 'Enter' }); await browser({ args: ['wait', 'Reply to Shape the first working board'] }); await check({ condition: active({ selector: '.composer textarea' }), label: 'inline conversation receives focus' })
