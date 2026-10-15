@@ -249,6 +249,21 @@ export function applyHydra({ state, event }: { state: BoardState; event: BoardEv
     return true
   }
 
+  // The launched terminal and folder let the worker's first session join the task.
+  if (event.type === 'worker.launched') {
+    const card = state.cards[event.cardId]
+
+    if (card) {
+      card.folder = event.data.folder
+      card.terminal = { paseoTerminal: event.data.terminal }
+      card.revision++
+      card.updatedSeq = event.seq
+      card.updatedAt = event.at
+    }
+
+    return true
+  }
+
   if (event.type === 'hydra.message') {
     const message = { ...event.data, id: event.id, at: event.at, actor: event.actor }
     state.hydraMessages = [...(state.hydraMessages ?? []), message]

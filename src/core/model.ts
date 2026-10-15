@@ -247,11 +247,31 @@ export interface BoardColumn {
   // Roles survive a rename. Automatic placement uses the first matching role.
   role?: 'needs_you' | 'workers_on_it' | 'done' | 'parked'
 }
+// The agent a worker of one task kind launches on. quota picks the model with the
+// most runway in that intelligence bucket through quota-axi, within the harness.
+export const HARNESS_NAMES = ['claude', 'codex'] as const
+export const QUOTA_BUCKETS = ['high', 'medium', 'low'] as const
+export interface AgentConfig {
+  harness: (typeof HARNESS_NAMES)[number]
+  model?: string
+  effort?: string
+  mode?: string
+  quota?: (typeof QUOTA_BUCKETS)[number]
+}
 export interface BoardConfig {
   id: string
   name: string
   hydra: HydraIdentity
   columns: BoardColumn[]
+  // Task kind -> agent; `hydra` is the kind Hydra itself starts on.
+  agents?: Record<string, AgentConfig>
+}
+export interface WorkerLaunch {
+  kind: string
+  agent: AgentConfig
+  folder: string
+  terminal: string
+  request?: string
 }
 export interface HydraMessage {
   id: string
@@ -269,6 +289,7 @@ export type HydraEvent = EventBase & (
   | { type: 'task.declared'; data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> }
   | { type: 'task.mirrored'; data: FirstmateRecord }
   | { type: 'hydra.message'; data: Omit<HydraMessage, 'id' | 'at' | 'actor'> }
+  | { type: 'worker.launched'; data: WorkerLaunch }
 )
 
 // before holds the earlier value of each field the push changed (null when it was
@@ -379,7 +400,7 @@ export type BoardEvent =
   | HydraEvent
   | ChatEvent
 export type EventType = BoardEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message']
+export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'worker.launched']
 
 export interface BoardState {
   board?: BoardConfig

@@ -835,7 +835,7 @@ export function decideUndo({ state, target, meta }: {
     return 'event' in decision ? { event: { ...decision.event, undoes: target.id } } : decision
   }
 
-  if (['board.configured', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message'].includes(target.type)) {
+  if (['board.configured', 'task.created', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'worker.launched'].includes(target.type)) {
     throw notUndoable({ message: `${target.id} records durable work history; append a correction instead` })
   }
 
