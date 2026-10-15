@@ -152,6 +152,10 @@ test('each harness gets the keys its own prompt expects', () => {
   assert.deepEqual(keys({ provider: 'codex', request: codex, value: { choice: 'allow' } }), ['y'])
   assert.deepEqual(keys({ provider: 'codex', request: codex, value: { choice: 'deny' } }), [KEY.escape])
   assert.deepEqual(keys({ provider: 'codex', request: codex, value: { choice: 'deny', text: 'skip it' } }), [KEY.escape, 'skip it', KEY.enter])
+  const settles = ({ text }: { text: string }) => answerKeys({ provider: 'codex', request: codex, answer: { choice: 'deny', text } })
+    .map(step => step.settleMs)
+  assert.deepEqual(settles({ text: '/review' }), [1200, 1500, 400], 'a leading / waits out the completion popup')
+  assert.deepEqual(settles({ text: 'skip it' }), [1200, 400, 400])
 })
 
 test('an MCP form keeps its fields, is checked, and is filled with the keys its prompt expects', () => {
