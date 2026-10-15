@@ -19,6 +19,7 @@ test('login service starts the same board, survives exit and uninstalls through 
     }
 
     if (args[0] === 'bootstrap') {
+      assert.ok(existsSync(join(process.env.PNYX_HOME!, 'boards', 'default')))
       loaded = true
     }
 

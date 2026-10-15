@@ -1,4 +1,5 @@
-import { randomBytes } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { createHash, randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { BoardError } from '../core/model.ts'
@@ -61,40 +62,66 @@ export function localToken(): string {
   return readFileSync(path, 'utf8').trim()
 }
 
+export function boardIdentity({ board }: { board: string }): string {
+  return createHash('sha256').update(localToken())
+    .update(board)
+    .digest('hex')
+    .slice(0, 24)
+}
+
+function processStart({ pid }: { pid: number }): string | null {
+  try {
+    return execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
+      encoding: 'utf8',
+      timeout: 2000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: { ...process.env, TZ: 'UTC', LC_ALL: 'C' },
+    }).trim() || null
+  } catch (error) {
+    if ((error as { status?: number }).status === 1) {
+      return null
+    }
+
+    throw error
+  }
+}
+
 export function claimServer({ board }: { board: string }): () => void {
   const path = join(boardDir({ board }), 'server.lock')
+  const started = processStart({ pid: process.pid })
+
+  if (!started) {
+    throw new BoardError({ message: 'could not identify the server process', code: 'SERVER_UNAVAILABLE' })
+  }
+
+  const owner = JSON.stringify({ pid: process.pid, processStart: started })
   withWriter({
     board,
     fn: () => {
-      let pid = 0
+      let previous: { pid?: unknown; processStart?: unknown } | null = null
 
       try {
-        pid = Number(readFileSync(path, 'utf8'))
+        previous = JSON.parse(readFileSync(path, 'utf8'))
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== 'ENOENT') {
           throw error
         }
       }
 
-      if (Number.isInteger(pid) && pid > 0) {
-        try {
-          process.kill(pid, 0)
-          throw new BoardError({ message: `a server already owns board ${board}`, code: 'ALREADY_RUNNING' })
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
-            throw error
-          }
-        }
+      if (typeof previous?.pid === 'number' && Number.isInteger(previous.pid) && previous.pid > 0
+      && typeof previous.processStart === 'string'
+      && processStart({ pid: previous.pid }) === previous.processStart) {
+        throw new BoardError({ message: `a server already owns board ${board}`, code: 'ALREADY_RUNNING' })
       }
 
-      writeFileSync(path, String(process.pid), { mode: 0o600 })
+      writeFileSync(path, owner, { mode: 0o600 })
     },
   })
 
   return () => withWriter({
     board,
     fn: () => {
-      if (readFileSync(path, 'utf8') === String(process.pid)) {
+      if (readFileSync(path, 'utf8') === owner) {
         rmSync(path, { force: true })
       }
     },

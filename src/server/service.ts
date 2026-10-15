@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { BoardError } from '../core/model.ts'
-import { boardDir, pnyxHome } from '../store/board-store.ts'
+import { boardDir, pnyxHome, privateDir } from '../store/board-store.ts'
 import { DEFAULT_PORT } from './state.ts'
 
 const xml = ({ text }: { text: string }) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
@@ -80,6 +80,7 @@ export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = 
     throw new BoardError({ message: 'build Pnyx before installing its login service', code: 'NOT_BUILT' })
   }
 
+  privateDir({ dir: boardDir({ board }) })
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, plist, { mode: 0o600 })
 
