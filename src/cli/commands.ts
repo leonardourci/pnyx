@@ -1,3 +1,5 @@
+import { reminderTime } from '../reminders/time.ts'
+import { waitingReminders } from '../reminders/state.ts'
 import { findProject, projectRows, taskProject } from '../projects/read.ts'
 import { MAX_DONE_HOURS } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
@@ -60,7 +62,7 @@ const HISTORY_LIMIT = 20
 const HISTORY_MAX = 100
 const HOME_LIMIT = 50
 // Hydra's own changes to tasks carry one short why; the owner's direct actions need none.
-const EXPLAINED: readonly EventType[] = ['card.moved', 'task.created', 'task.brief', 'task.visibility']
+const EXPLAINED: readonly EventType[] = ['card.moved', 'task.created', 'task.brief', 'task.visibility', 'task.reminder']
 
 export type Output = Record<string, unknown>
 export type Options = NonNullable<ParseArgsConfig['options']>
@@ -578,6 +580,35 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   const action = positionals[0]
   const m = meta({ values })
   const url = values['paseo-url'] as string | undefined
+
+  if (action === 'reminders') {
+    const reminders = waitingReminders({ state: loadHydra({ hydraId }).state })
+
+    return { hydraId, count: reminders.length, reminders: reminders.length ? reminders : 'none: no waiting reminders' }
+  }
+
+  if (action === 'remind') {
+    const ref = required({ value: positionals[1], what: 'task id' })
+    const when = required({ value: positionals[2], what: 'reminder time or clear' })
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: { type: 'task.reminder', card: ref },
+      decide: ({ state }) => {
+        const task = findCard({ state, ref })
+
+        if (task.automaticTask || task.id === HYDRA_CARD) {
+          throw new HydraError({ message: 'Choose a task for the reminder', code: 'VALIDATION_ERROR' })
+        }
+
+        const after = when === 'clear' ? null : reminderTime({ when, now: m.at })
+
+        return after === (task.reminder?.at ?? null) && !task.reminder?.dueAt ? { skipped: 'unchanged' }
+          : hydraEvent({ state, meta: m, cardId: task.id, change: { type: 'task.reminder', data: { before: task.reminder?.at ?? null, after } } })
+      },
+    })
+  }
 
   if (action === 'permission') {
     const reason = explained({ meta: m })
@@ -1339,7 +1370,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       throw new HydraError({ message: '--limit must be positive', code: 'VALIDATION_ERROR' })
     }
 
-    const events = readEvents({ hydraId }).filter((e): e is Extract<HydraEvent, { type: 'hydra.message' }> => e.seq > after && e.type === 'hydra.message')
+    const events = readEvents({ hydraId }).filter((e): e is Extract<HydraEvent, { type: 'hydra.message' | 'task.reminder-due' }> => e.seq > after && (e.type === 'hydra.message' || e.type === 'task.reminder-due'))
     const page = events.slice(0, limit)
 
     const through = page.at(-1)?.seq ?? after
@@ -1347,7 +1378,11 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     return {
       hydra: hydraConfig({ state, id: hydraId }).hydra.id,
       messages: page.length
-        ? page.map(e => (values.full ? e : { seq: e.seq, id: e.id, at: e.at, actor: e.actor, task: e.data.task ?? 'none', action: e.data.action, text: e.data.text, ...(e.data.details ? { details: e.data.details } : {}) }))
+        ? page.map(e => {
+          const data = e.type === 'task.reminder-due' ? e.data.message : e.data
+
+          return values.full ? e : { seq: e.seq, id: e.id, at: e.at, actor: e.type === 'task.reminder-due' ? HYDRA_ACTOR : e.actor, task: data.task ?? 'none', action: data.action, text: data.text, ...(data.details ? { details: data.details } : {}) }
+        })
         : `none: no messages after seq ${after}`,
       through,
       ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`] }),
@@ -1586,6 +1621,8 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.copy': return `Task copy ${event.data.after.state}: ${event.data.after.path}${event.data.after.reason ? ` (${event.data.after.reason})` : ''}`
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
     case 'task.permission': return `${event.data.tool} permission ${event.data.id}: ${event.data.status}`
+    case 'task.reminder': return event.data.after ? `Reminder set for ${event.data.after}` : 'Reminder cleared'
+    case 'task.reminder-due': return event.data.message.text
     case 'task.brief': return 'Task brief updated'
     case 'task.retention': return event.data.after === null ? 'Using the Hydra hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
     case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
@@ -1944,6 +1981,8 @@ pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
 pnyx-axi task permission <task> <request> allow|deny [--reason <text>]
 pnyx-axi task project <task> --project <name|path>
+pnyx-axi task remind <task> <when|clear>
+pnyx-axi task reminders
 pnyx-axi task continue <task> [--check]
 pnyx-axi task start <task> [--via pnyx|paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
@@ -1960,6 +1999,8 @@ attach moves an interactive session to the task; an occupied destination is reje
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
 task create accepts --project <name|path>; task project assigns an existing task to an attached project.
+task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. The server fires overdue reminders on startup, moves the task to Needs you, and records a line in Hydra’s chat.
+
 task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
 It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.
 task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's folder through the Hydra's

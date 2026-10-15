@@ -265,6 +265,9 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         }
 
         const changed = !isDeepStrictEqual(mirrored.mirror, record)
+        const columns = hydraConfig({ state: writer.state }).columns
+        const reminded = !changed && Boolean(mirrored.reminder?.dueAt)
+          && columns.some(c => c.id === mirrored.column && c.role === 'needs_you')
 
         if (changed) {
           appended += apply({ writer, decision: hydraEvent({ state: writer.state, meta, cardId: mirrored.id, change: { type: 'task.mirrored', data: record } }) })
@@ -309,7 +312,7 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         const currentStatus = writer.state.cards[mirrored.id]!.status?.state
         const expected = task.done ? 'done' : task.decisions.length ? 'needs_you' : declared ?? 'paused'
 
-        if (expected && expected !== currentStatus) {
+        if (expected && expected !== currentStatus && !reminded) {
           const note = task.done ? 'Closed in Firstmate backlog'
             : task.decisions.length ? 'Firstmate has unresolved decisions'
               : declared ? 'Latest Firstmate status declaration' : 'No active Firstmate worker declaration'
@@ -366,13 +369,12 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
 
         // A card in the owner's own column stays until its Firstmate record changes.
         const placed = writer.state.cards[mirrored.id]!
-        const columns = hydraConfig({ state: writer.state }).columns
         // UTC, the day Firstmate itself compares hold dates against.
         const place = firstmatePlace({ task, today: at.slice(0, 10) })
         const target = roleColumn({ columns, role: place.role })
         const own = columns.some(c => c.id === placed.column && !c.role)
 
-        if (target && target !== placed.column && (changed || !own)) {
+        if (target && target !== placed.column && (changed || (!own && !reminded))) {
           appended += apply({
             writer,
             decision: decideMove({

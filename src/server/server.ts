@@ -1,3 +1,5 @@
+import { fireReminders } from '../reminders/fire.ts'
+import { reminderDeadline, waitingReminders } from '../reminders/state.ts'
 import { project } from '../projects/cli.ts'
 import { doneDeadline } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
@@ -651,6 +653,8 @@ async function mountOwnedHydra({
 
         pump()
 
+        fireReminders({ hydraId })
+        pump()
         const deadline = doneDeadline({ state })
 
         if (deadline !== undefined && deadline <= Date.now()) {
@@ -668,7 +672,9 @@ async function mountOwnedHydra({
         console.error(`pnyx-axi serve: ${(error as Error).message}`)
       } finally {
         clearTimeout(expiryTimer)
-        const deadline = doneDeadline({ state })
+        const deadlines = [doneDeadline({ state }), reminderDeadline({ state })]
+          .filter((at): at is number => at !== undefined)
+        const deadline = deadlines.length ? Math.min(...deadlines) : undefined
 
         if (deadline !== undefined) {
           expiryTimer = setTimeout(kick, Math.max(100, Math.min(60_000, deadline - Date.now())))
@@ -703,6 +709,12 @@ async function mountOwnedHydra({
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return reply({ res, status: 405, body: { error: 'method not allowed', code: 'METHOD_NOT_ALLOWED' } })
+    }
+
+    if (path === '/reminders') {
+      const reminders = waitingReminders({ state })
+
+      return reply({ res, status: 200, body: { count: reminders.length, reminders } })
     }
 
     if (path === '/health') {

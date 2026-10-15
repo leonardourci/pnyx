@@ -8,7 +8,7 @@ export function fixtureCli({ home, execute }: {
   execute({ args }: { args: string[] }): string
 }) {
   const aliases = () => {
-    const path = join(home, 'boards/default/snapshot.json')
+    const path = join(home, 'hydras/default/snapshot.json')
     const state = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as { state: HydraState }).state : undefined
 
     return Object.values(state?.cards ?? {}).filter(c => !c.id.startsWith('$'))
