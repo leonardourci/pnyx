@@ -16,31 +16,15 @@ import {
   writeFileSync,
   writeSync,
 } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { BoardError, EVENT_TYPES, EVENT_VERSION, type BoardEvent, type BoardState } from '../core/model.ts'
 import { emptyBoard, reduce, replay } from '../core/reducer.ts'
+import { boardDir } from './paths.ts'
+
+export { boardDir, pnyxHome } from './paths.ts'
 
 const LOCK_TIMEOUT_MS = 5000
 const STALE_EMPTY_LOCK_MS = 10_000
-
-export function pnyxHome(): string {
-  return process.env.PNYX_HOME || join(homedir(), '.pnyx')
-}
-
-export function boardDir({ board }: { board: string }): string {
-  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(board)) {
-    throw new BoardError({
-      message: `invalid board name: ${board}`,
-      code: 'VALIDATION_ERROR',
-      help: [
-        'Use letters, digits, dot, dash or underscore',
-      ],
-    })
-  }
-
-  return join(pnyxHome(), 'boards', board)
-}
 
 // Board files hold copied transcript text, which is as private as the transcripts.
 export function privateDir({ dir }: { dir: string }): void {

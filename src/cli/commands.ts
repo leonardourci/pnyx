@@ -4,7 +4,7 @@ import { sendReply } from './reply.ts'
 import { cardSessionId, findSession, interactive, liveTask, rankOf, selfSession, sessionId } from '../core/tasks.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import { setupHydra, startHydra, startTask } from './start.ts'
-import { existsSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { boardConfig, declareTask, hydraEvent, HYDRA_CARD, validateColumns } from '../core/hydra.ts'
@@ -47,6 +47,7 @@ import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts
 import { answerPrompt } from '../core/answer.ts'
 import { HARNESSES, TERMINAL_EVENTS, attend, isHookEnvelope, observe, type Harness, type HookEnvelope } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
+import { canonical } from '../store/paths.ts'
 import { boardDir, pnyxHome, loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from '../store/board-store.ts'
 
 const DEFAULT_BOARD = 'default'
@@ -136,18 +137,6 @@ export function meta({ values }: { values: Record<string, string | boolean | und
   }
 
   return m
-}
-
-export function canonical({ path }: { path: unknown }): string | undefined {
-  if (typeof path !== 'string' || !path.startsWith('/')) {
-    return undefined
-  }
-
-  try {
-    return realpathSync(path)
-  } catch {
-    return path
-  }
 }
 
 const HARVEST_AFTER = ['Stop', 'SubagentStop', 'PostCompact', 'SessionEnd']
