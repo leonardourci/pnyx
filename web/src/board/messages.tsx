@@ -4,7 +4,10 @@ import { Button, Textarea } from '../components/ui/controls.tsx'
 import { Markdown } from '../components/ui/markdown.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
-import { CARET_HOST, CARET_KEY, caretBox, caretInto, focusReply, latestReply, reveal } from './caret.ts'
+import {
+  CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED,
+  caretBox, caretInto, focusReply, latestReply, reveal,
+} from './caret.ts'
 import type { ChatComment } from './chat.ts'
 import { receiptLabel } from './view.ts'
 
@@ -119,13 +122,20 @@ export function Messages({ entries, comments, setComments, quote }: {
       buttons = event.buttons; track({ buttons })
     }
 
+    // A drag that ends outside the window never sends its mouseup here.
+    const reset = () => {
+      buttons = 0
+    }
+
     const change = () => track({ buttons })
     document.addEventListener('selectionchange', change)
     document.addEventListener('mousedown', press); document.addEventListener('mouseup', release)
+    window.addEventListener('blur', reset)
 
     return () => {
       document.removeEventListener('selectionchange', change)
       document.removeEventListener('mousedown', press); document.removeEventListener('mouseup', release)
+      window.removeEventListener('blur', reset)
     }
   }, [])
 
@@ -149,7 +159,8 @@ export function Messages({ entries, comments, setComments, quote }: {
       const host = root.current, focused = document.activeElement
       const mod = platform === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
 
-      if (!host || !mod || event.shiftKey || event.altKey || event.key.toLowerCase() !== 'l') {
+      if (!host || !mod || event.shiftKey || event.altKey || event.repeat || event.isComposing ||
+        event.defaultPrevented || event.key.toLowerCase() !== 'l') {
         return
       }
 
@@ -198,7 +209,13 @@ export function Messages({ entries, comments, setComments, quote }: {
       return
     }
 
-    const scroller = host.closest('.thread')!, before = caretBox(), top = (before?.top ?? 0) + scroller.scrollTop
+    const scroller = host.closest('.thread')
+
+    if (!scroller) {
+      return
+    }
+
+    const before = caretBox(), top = (before?.top ?? 0) + scroller.scrollTop
     setTimeout(() => {
       const after = caretBox()
       const moved = after ? Math.abs(after.top + scroller.scrollTop - top) : 0
@@ -257,113 +274,117 @@ export function Messages({ entries, comments, setComments, quote }: {
   }
 
   return (
-    <div
-      className="messages"
-      ref={root}
-      contentEditable
-      suppressContentEditableWarning
-      {...{ [CARET_HOST]: '' }}
-      role="document"
-      aria-label="Messages"
-      tabIndex={-1}
-      inputMode="none"
-      spellCheck={false}
-      data-gramm="false"
-      onKeyDown={event => caretKey({ event })}
-      onCut={event => {
-        if (!(event.target instanceof Element && isEditing({ target: event.target }))) {
-          event.preventDefault(); event.clipboardData.setData('text/plain', window.getSelection()?.toString() ?? '')
-        }
-      }}
-      onCompositionStart={event => {
-        if (event.target === event.currentTarget) {
-          focusReply({ host: event.currentTarget })
-        }
-      }}
-    >
-      {entries.map(entry => (
-        <article
-          key={entry.id}
-          className={`message ${entry.kind}${entry.role === 'user' || entry.role === 'You' ? ' mine' : ''}`}
-          aria-label={roleLabel(entry)}
-          title={entry.at ? new Date(entry.at).toLocaleString() : undefined}
-        >
-          {entry.kind === 'message' ? (
-            <Markdown
-              text={entry.text}
-              block={({ index, offset: local, quote, children }) => {
-                const messageId = entry.messageId ?? entry.id
-                const offset = (entry.part ?? 0) + local
-                const key = blockKey({ messageId, offset })
-                const selected = selection?.messageId === messageId && selection.offset === offset
-                const whole: Quote = { messageId, block: index, offset, quote }
-                const own = comments.filter(c => c.messageId === messageId && c.offset === offset)
+    <>
+      <style>{CARET_CSS}</style>
+      <div
+        className="messages"
+        ref={root}
+        contentEditable={CARET_SUPPORTED}
+        suppressContentEditableWarning
+        {...{ [CARET_HOST]: '' }}
+        role="document"
+        aria-label="Messages"
+        aria-readonly="true"
+        tabIndex={-1}
+        inputMode="none"
+        spellCheck={false}
+        data-gramm="false"
+        onKeyDown={event => caretKey({ event })}
+        onCut={event => {
+          if (!(event.target instanceof Element && isEditing({ target: event.target }))) {
+            event.preventDefault(); event.clipboardData.setData('text/plain', window.getSelection()?.toString() ?? '')
+          }
+        }}
+        onCompositionStart={event => {
+          if (event.target === event.currentTarget) {
+            focusReply({ host: event.currentTarget })
+          }
+        }}
+      >
+        {entries.map(entry => (
+          <article
+            key={entry.id}
+            className={`message ${entry.kind}${entry.role === 'user' || entry.role === 'You' ? ' mine' : ''}`}
+            aria-label={roleLabel(entry)}
+            title={entry.at ? new Date(entry.at).toLocaleString() : undefined}
+          >
+            {entry.kind === 'message' ? (
+              <Markdown
+                text={entry.text}
+                block={({ index, offset: local, quote, children }) => {
+                  const messageId = entry.messageId ?? entry.id
+                  const offset = (entry.part ?? 0) + local
+                  const key = blockKey({ messageId, offset })
+                  const selected = selection?.messageId === messageId && selection.offset === offset
+                  const whole: Quote = { messageId, block: index, offset, quote }
+                  const own = comments.filter(c => c.messageId === messageId && c.offset === offset)
 
-                return (
-                  <div
-                    className="message-block"
-                    data-message-block={key}
-                    data-message-id={messageId}
-                    data-block-index={index}
-                    data-block-offset={offset}
-                    data-quote={quote}
-                    data-active={active === key}
-                    role="group"
-                    aria-label={`Message block ${index + 1}`}
-                  >
-                    {children}
-                    <Button
-                      className={`block-comment-action ${selected ? 'has-selection' : ''}`}
-                      aria-label="Comment on this block"
-                      title={selected ? 'Enter or type to comment on your selection; Shift+Enter quotes it' : `Comment · ${label({ id: 'thread.comment' })}`}
-                      onMouseDown={e => e.preventDefault()}
-                      onClick={() => addComment({ quote: selected ? selection : whole })}
+                  return (
+                    <div
+                      className="message-block"
+                      data-message-block={key}
+                      data-message-id={messageId}
+                      data-block-index={index}
+                      data-block-offset={offset}
+                      data-quote={quote}
+                      data-active={active === key}
+                      role="group"
+                      aria-label={`Message block ${index + 1}`}
                     >
-                      <Icon name="typing" size={14} />
-                      {selected
-                        ? (
-                          <>
-                            Comment
-                            <kbd>Enter</kbd>
-                            <span className="small">or type · Shift+Enter quotes</span>
-                          </>
-                        )
-                        : active === key && <kbd>{label({ id: 'thread.comment' })}</kbd>}
-                    </Button>
-                    {own.map(comment => (
-                      <InlineComment
-                        key={comment.id}
-                        comment={comment}
-                        editing={editing === comment.id}
-                        edit={() => setEditing(comment.id)}
-                        change={({ text }) => setComments({
-                          items: comments.map(c => c.id === comment.id ? { ...c, text } : c),
-                        })}
-                        finish={() => finish({ comment })}
-                        remove={() => {
-                          setComments({ items: comments.filter(c => c.id !== comment.id) })
-                          focusBlock({ element: blockFor({ key }) })
-                        }}
-                      />
-                    ))}
-                  </div>
-                )
-              }}
-            />
-          ) : (
-            <details className="trace">
-              <summary>
-                <Icon name={entry.kind} size={14} />
-                <strong>{entry.kind === 'thinking' ? 'Thinking' : roleLabel(entry)}</strong>
-                <span>{entry.text}</span>
-              </summary>
-              <pre className="trace-text">{entry.text}</pre>
-            </details>
-          )}
-          {entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
-        </article>
-      ))}
-    </div>
+                      {children}
+                      <Button
+                        className={`block-comment-action ${selected ? 'has-selection' : ''}`}
+                        aria-label="Comment on this block"
+                        title={selected ? 'Enter or type to comment on your selection; Shift+Enter quotes it' : `Comment · ${label({ id: 'thread.comment' })}`}
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => addComment({ quote: selected ? selection : whole })}
+                      >
+                        <Icon name="typing" size={14} />
+                        {selected
+                          ? (
+                            <>
+                              Comment
+                              <kbd>Enter</kbd>
+                              <span className="small">or type · Shift+Enter quotes</span>
+                            </>
+                          )
+                          : active === key && <kbd>{label({ id: 'thread.comment' })}</kbd>}
+                      </Button>
+                      {own.map(comment => (
+                        <InlineComment
+                          key={comment.id}
+                          comment={comment}
+                          editing={editing === comment.id}
+                          edit={() => setEditing(comment.id)}
+                          change={({ text }) => setComments({
+                            items: comments.map(c => c.id === comment.id ? { ...c, text } : c),
+                          })}
+                          finish={() => finish({ comment })}
+                          remove={() => {
+                            setComments({ items: comments.filter(c => c.id !== comment.id) })
+                            focusBlock({ element: blockFor({ key }) })
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )
+                }}
+              />
+            ) : (
+              <details className="trace">
+                <summary>
+                  <Icon name={entry.kind} size={14} />
+                  <strong>{entry.kind === 'thinking' ? 'Thinking' : roleLabel(entry)}</strong>
+                  <span>{entry.text.split('\n', 1)[0]?.slice(0, 200)}</span>
+                </summary>
+                <pre className="trace-text">{entry.text}</pre>
+              </details>
+            )}
+            {entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
+          </article>
+        ))}
+      </div>
+    </>
   )
 }
 

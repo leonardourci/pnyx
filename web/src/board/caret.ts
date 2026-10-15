@@ -1,25 +1,47 @@
-// Messages are contenteditable only so the browser draws a caret; Chromium-only (-webkit-user-modify).
+// Messages are contenteditable only so the browser draws a caret; without -webkit-user-modify
+// (Firefox) nothing would keep links and controls working inside, so the caret is off there.
+export const CARET_SUPPORTED = CSS.supports('-webkit-user-modify', 'read-only')
 export const CARET_HOST = 'data-caret-host'
 export const CARET_KEY = /^(Arrow(Up|Down|Left|Right)|Home|End|Page(Up|Down))$/
-const ISLANDS = '.block-comment-action, .inline-comment, .trace, .receipt, .code-language'
+// Board UI inside the messages, kept out of selections so it never lands in a quote.
+const CHROME = '.block-comment-action, .inline-comment, .receipt, .code-language, .trace summary'
+const ISLANDS = `${CHROME}, .trace, a[href]`
+export const CARET_CSS = `[${CARET_HOST}] :is(${ISLANDS}) { -webkit-user-modify: read-only; } [${CARET_HOST}] :is(${CHROME}) { user-select: none; }`
 // Lines kept in view above and below the caret as it moves.
 const MARGIN_LINES = 3
+
+const isContent = ({ node }: { node: Node }) =>
+  node instanceof Text && !!node.data.trim() && !node.parentElement?.closest(ISLANDS)
 
 const texts = ({ root }: { root: Element }) => {
   const found: Text[] = [], walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
 
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (node.textContent?.trim() && !node.parentElement?.closest(ISLANDS)) {
-      found.push(node as Text)
+    if (node instanceof Text && isContent({ node })) {
+      found.push(node)
     }
   }
 
   return found
 }
 
+const textAfter = ({ host, node }: { host: Element; node: Node }) => {
+  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT)
+  walker.currentNode = node
+
+  for (let next = walker.nextNode(); next; next = walker.nextNode()) {
+    if (next instanceof Text && isContent({ node: next })) {
+      return next
+    }
+  }
+
+  return null
+}
+
 export const hostOf = ({ from }: { from: Element }) => from.closest('.thread')?.querySelector<HTMLElement>(`[${CARET_HOST}]`) ?? null
 
-export const latestReply = ({ host }: { host: HTMLElement }) => [...host.querySelectorAll('.message.message:not(.mine)')].at(-1) ?? null
+export const latestReply = ({ host }: { host: HTMLElement }) =>
+  [...host.querySelectorAll('.message:not(.mine, .tool, .thinking)')].at(-1) ?? null
 
 // Measured on the next character: at a soft wrap the caret ends the prior text but draws on the next line.
 export function caretBox(): DOMRect | null {
@@ -31,8 +53,7 @@ export function caretBox(): DOMRect | null {
 
   const offset = selection.focusOffset, range = document.createRange()
   const host = (node instanceof Element ? node : node.parentElement)?.closest(`[${CARET_HOST}]`)
-  const all = host && node instanceof Text ? texts({ root: host }) : []
-  const index = all.indexOf(node as Text), following = index < 0 ? undefined : all[index + 1]
+  const following = host && node instanceof Text ? textAfter({ host, node }) : null
   const next = node instanceof Text && offset < node.length ? { text: node, at: offset }
     : following ? { text: following, at: 0 } : null
 
@@ -66,7 +87,7 @@ export function reveal({ host }: { host: HTMLElement }) {
 export function caretInto({ host, target, edge }: { host: HTMLElement; target: Element | null; edge: 'start' | 'end' }) {
   const all = target ? texts({ root: target }) : [], node = edge === 'start' ? all[0] : all.at(-1)
 
-  if (!node) {
+  if (!node || !CARET_SUPPORTED) {
     return false
   }
 
