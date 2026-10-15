@@ -15,7 +15,9 @@ function run({ command, args }: { command: string; args: string[] }): string {
   }
 }
 
-const quote = ({ text }: { text: string }) => `'${text.replace(/'/g, '\'\\\'\'')}'`
+// Control characters are typed into a live shell, where its line editor would act on
+// them (Ctrl-U erases the line), so they become spaces before quoting.
+const quote = ({ text }: { text: string }) => `'${text.replace(/\p{Cc}+/gu, ' ').replace(/'/g, '\'\\\'\'')}'`
 
 // One shell line: the environment, then the harness with the configured flags and
 // the first prompt.
@@ -44,12 +46,15 @@ interface QuotaModel {
 
 // The model with the most runway in the bucket for this harness, or undefined when
 // quota-axi cannot tell.
-export function quotaModel({ agent }: { agent: AgentConfig }): string | undefined {
+export function quotaModel({ harness, quota }: {
+  harness: AgentConfig['harness']
+  quota: NonNullable<AgentConfig['quota']>
+}): string | undefined {
   try {
-    const out = execFileSync('quota-axi', ['models', '--intelligence', agent.quota!, '--sort', 'runway', '--json', '--max-age', '5m', '--provider', agent.harness], { encoding: 'utf8', timeout: TIMEOUT, stdio: ['ignore', 'pipe', 'ignore'] })
+    const out = execFileSync('quota-axi', ['models', '--intelligence', quota, '--sort', 'runway', '--json', '--max-age', '5m', '--provider', harness], { encoding: 'utf8', timeout: TIMEOUT, stdio: ['ignore', 'pipe', 'ignore'] })
     const { models = [] } = JSON.parse(out) as { models?: QuotaModel[] }
 
-    return models.find(m => m.provider === agent.harness
+    return models.find(m => m.provider === harness
       && (m.effective?.effectivePercentRemaining ?? 1) > 0)?.id
   } catch {
     return undefined
@@ -71,6 +76,12 @@ export function createTerminal({ cwd, name }: { cwd: string; name: string }): st
   }
 
   return id
+}
+
+export function killTerminal({ terminal }: { terminal: string }): void {
+  try {
+    run({ command: 'paseo', args: ['terminal', 'kill', terminal] })
+  } catch { /* The launch error is the one to report. */ }
 }
 
 export function typeCommand({ terminal, command }: { terminal: string; command: string }): void {
