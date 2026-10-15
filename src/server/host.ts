@@ -3,11 +3,12 @@ import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import type { EffortLevel, Options, PermissionMode, Query, SDKMessage, query } from '@anthropic-ai/claude-agent-sdk'
+import { terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { freeTask } from '../cli/start.ts'
-import { decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { BoardError, type AgentRef, type AgentSettings, type Attention, type Card } from '../core/model.ts'
-import { INTERRUPTED, sessionId } from '../core/tasks.ts'
+import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
+import { BoardError, type AgentRef, type AgentSession, type AgentSettings, type Attention, type Card } from '../core/model.ts'
+import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
 import { pnyxHome, withWriter, type Writer } from '../store/board-store.ts'
 
 export type QueryFn = typeof query
@@ -22,6 +23,13 @@ export interface Host {
     id: string
     actor: string
     reason?: string
+  }): Record<string, unknown>
+  continue({ task, id, actor, reason, check }: {
+    task: string
+    id: string
+    actor: string
+    reason?: string
+    check?: boolean
   }): Record<string, unknown>
   send({ card, text, actor }: { card: string; text: string; actor: string }): void
   set({ card, setting, value, actor }: {
@@ -122,9 +130,13 @@ interface Live {
 // Runs Claude Code for the tasks Pnyx starts, through the Agent SDK. Each task records its
 // session, folder and settings as events; a session's process starts when a message needs
 // it and resumes the same session from Claude Code's own history.
-export function createHost({ board, query, changed }: {
+export function createHost({
+  board, query, changed,
+  presence = ({ session }) => terminalPresence({ session, verifyProcess: true }),
+}: {
   board: string
   query?: QueryFn
+  presence?({ session }: { session: AgentSession }): Presence
   changed(): void
 }): Host {
   const live = new Map<string, Live>()
@@ -304,8 +316,7 @@ export function createHost({ board, query, changed }: {
     const entry: Live = { input: inbox(), activity: 'finished' }
     const options: Options = {
       cwd,
-      // A session with a transcript resumes it; one that never got that far starts under its recorded id.
-      ...(path && existsSync(path) ? { resume: id } : { sessionId: id }),
+      ...(card.agent.resume || (path && existsSync(path)) ? { resume: id } : { sessionId: id }),
       // The user's own settings, so their skills, hooks, permissions and CLAUDE.md apply.
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code' },
@@ -411,6 +422,49 @@ export function createHost({ board, query, changed }: {
       }
     },
 
+    continue: ({ task, id, actor, reason, check }) => write({
+      fn: ({ writer }) => {
+        const card = findCard({ state: writer.state, ref: task })
+
+        if (!check && `${id}:continue` in writer.state.eventIds) {
+          return { task: card.id, event: 'none: duplicate' }
+        }
+
+        const agent = card.agent
+
+        if (!liveTask({ card }) || !agent || agent.provider !== PROVIDER
+          || agent.host || agent.agentId || agent.paseoAgentId) {
+          throw new BoardError({ message: 'Continue in Pnyx needs an outside Claude Code session attached to a task', code: 'NO_ROUTE' })
+        }
+
+        const session = writer.state.sessions?.[sessionId({ agent })]
+
+        if (!session || session.taskId !== card.id) {
+          throw new BoardError({ message: 'the session is no longer attached to this task', code: 'SESSION_CONFLICT' })
+        }
+
+        const current = presence({ session })
+
+        if (check) {
+          return { task: card.id, canContinue: current.state === 'gone', folderMissing: !agent.cwd || !isFolder({ path: agent.cwd }), ...current }
+        }
+
+        if (current.state !== 'gone') {
+          throw new BoardError({ message: current.state === 'present' ? 'the outside session still runs in its terminal; end it before continuing in Pnyx' : `cannot confirm the outside session has ended: ${current.detail}`, code: 'SESSION_RUNNING', help: ['End the outside session, then try Continue in Pnyx again'] })
+        }
+
+        const cwd = folderOf({ card: { ...card, agent } })
+        const meta = { at: at(), actor, ...(reason ? { reason } : {}) }
+        apply({ writer, decision: decidePush({ state: writer.state, key: card.key, input: { agent: { ...agent, host: 'pnyx', resume: true, transcriptPath: agent.transcriptPath ?? transcriptPath({ cwd, session: agent.sessionId }) }, terminal: {}, activity: 'finished', source: { adapter: 'pnyx', objectId: agent.sessionId, observedAt: meta.at }, attention: card.attention.filter(a => !a.key.startsWith('hook:')) }, meta: { ...meta, id: `${id}:continue` } }) })
+
+        if (card.outcome?.source === 'hooks') {
+          apply({ writer, decision: decideOutcome({ state: writer.state, ref: card.id, outcome: null, source: 'hooks', meta: { ...meta, id: `${id}:outcome` } }) })
+        }
+
+        return { task: card.id, agent: { harness: 'claude', session: agent.sessionId, folder: agent.cwd, host: 'pnyx' }, help: [`Send a message with \`pnyx-axi reply ${card.id} --text <text>\` to resume the session in Pnyx`] }
+      },
+    }),
+
     send,
 
     set: async ({ card: ref, setting, value, actor }) => {
@@ -514,6 +568,9 @@ export async function hostRequest({ host, body: raw }: {
       return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
     }
 
+    case 'continue':
+      return host.continue({ task: field({ body, name: 'task' })!, id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }), check: body.check === true })
+
     case 'send':
       host.send({ card: field({ body, name: 'card' })!, text: field({ body, name: 'text' })!, actor })
 
@@ -533,6 +590,6 @@ export async function hostRequest({ host, body: raw }: {
     }
 
     default:
-      throw new BoardError({ message: 'action must be start, send or set', code: 'VALIDATION_ERROR' })
+      throw new BoardError({ message: 'action must be start, continue, send or set', code: 'VALIDATION_ERROR' })
   }
 }
