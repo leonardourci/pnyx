@@ -11,14 +11,15 @@ test('one login service runs the server of every Hydra, replaces the per-Hydra s
   const agents = join(root, 'Library', 'LaunchAgents')
   mkdirSync(agents, { recursive: true })
 
-  const legacy = ({ key, home }: { key: string; home: string }) => {
+  const legacy = ({ key, home, args = '' }: { key: string; home: string; args?: string }) => {
     const path = join(agents, `local.pnyx.board.${key}.plist`)
-    writeFileSync(path, `<key>EnvironmentVariables</key><dict><key>PNYX_HOME</key><string>${home}</string></dict>`)
+    writeFileSync(path, `<array><string>serve</string>${args}</array><key>EnvironmentVariables</key><dict><key>PNYX_HOME</key><string>${home}</string></dict>`)
 
     return path
   }
 
-  const ours = legacy({ key: '0123456789abcdef', home: join(root, 'pnyx &amp; Hydra') })
+  // Its --home reached the work Hydra only through this job, so setup names it.
+  const ours = legacy({ key: '0123456789abcdef', home: join(root, 'pnyx &amp; Hydra'), args: '<string>--hydra</string><string>work</string><string>--home</string><string>/fm &amp; home</string>' })
   const theirs = legacy({ key: 'fedcba9876543210', home: join(root, 'other') })
   const calls: string[][] = []
   const loaded = new Set(['local.pnyx.board.0123456789abcdef'])
@@ -47,6 +48,8 @@ test('one login service runs the server of every Hydra, replaces the per-Hydra s
   assert.equal(calls.length, 0)
   assert.equal(existsSync(preview.path), false)
   assert.deepEqual(preview.replaces, [ours])
+  assert.deepEqual(preview.unrecorded, [{ hydra: 'work', home: '/fm & home' }])
+  assert.match(preview.help[0]!, /setup hydra --home \/fm & home --hydra work/)
   const installed = setupService(options)
   assert.deepEqual(installed.replaced, [ours])
   assert.equal(existsSync(ours), false)

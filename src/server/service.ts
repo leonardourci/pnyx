@@ -4,13 +4,19 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync,
 import { homedir } from 'node:os'
 import { basename, delimiter, dirname, isAbsolute, join } from 'node:path'
 import { HydraError } from '../core/model.ts'
-import { pnyxHome } from '../store/hydra-store.ts'
+import { loadHydra, pnyxHome, privateDir } from '../store/hydra-store.ts'
+import { canonical } from '../store/paths.ts'
 import { DEFAULT_PORT } from './state.ts'
 
 const xml = ({ text }: { text: string }) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
   .replaceAll('>', '&gt;')
   .replaceAll('"', '&quot;')
   .replaceAll("'", '&apos;')
+
+const unxml = ({ text }: { text: string }) => text.replaceAll('&lt;', '<').replaceAll('&gt;', '>')
+  .replaceAll('&quot;', '"')
+  .replaceAll('&apos;', "'")
+  .replaceAll('&amp;', '&')
 
 const resolve = ({ path }: { path: string }) => {
   try {
@@ -71,6 +77,22 @@ export function setupService({ port = DEFAULT_PORT, remove = false, preview = fa
       return []
     }
   })()
+  // A replaced job's --home reached its Hydra only through that job; the server now watches only recorded homes.
+  const unrecorded = replaced.flatMap(file => {
+    const text = readFileSync(file, 'utf8')
+    const flag = ({ name }: { name: string }) => [...text.matchAll(new RegExp(`<string>--${name}</string><string>([^<]*)</string>`, 'g'))].map(m => unxml({ text: m[1]! }))
+    const hydraId = flag({ name: 'hydra' })[0] ?? 'default'
+    let recorded: string | undefined
+
+    try {
+      const hydra = loadHydra({ hydraId }).state.config?.hydra
+      recorded = hydra?.kind === 'firstmate' ? canonical({ path: hydra.home }) : undefined
+    } catch { /* An unreadable Hydra records nothing. */ }
+
+    return flag({ name: 'home' }).filter(h => canonical({ path: h }) !== recorded)
+      .map(h => ({ hydra: hydraId, home: h }))
+  })
+  const relink = unrecorded.map(({ hydra, home: h }) => `Run \`pnyx-axi setup hydra --home ${h} --hydra ${hydra}\` so the server watches that Firstmate home again`)
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -86,7 +108,11 @@ export function setupService({ port = DEFAULT_PORT, remove = false, preview = fa
 `
 
   if (preview) {
-    return { service: remove ? 'would remove' : 'would install', path, plist: remove ? undefined : plist, replaces: replaced }
+    return { service: remove ? 'would remove' : 'would install', path, plist: remove ? undefined : plist, replaces: replaced, unrecorded, help: relink }
+  }
+
+  if (!remove && !existsSync(cli)) {
+    throw new HydraError({ message: 'build Pnyx before installing its login service', code: 'NOT_BUILT' })
   }
 
   const stopJob = ({ label }: { label: string }) => {
@@ -130,14 +156,10 @@ export function setupService({ port = DEFAULT_PORT, remove = false, preview = fa
   if (remove) {
     rmSync(path, { force: true })
 
-    return { service: 'removed', path, replaced }
+    return { service: 'removed', path, replaced, unrecorded, help: relink }
   }
 
-  if (!existsSync(cli)) {
-    throw new HydraError({ message: 'build Pnyx before installing its login service', code: 'NOT_BUILT' })
-  }
-
-  mkdirSync(home, { recursive: true })
+  privateDir({ dir: home })
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, plist, { mode: 0o600 })
 
@@ -153,5 +175,5 @@ export function setupService({ port = DEFAULT_PORT, remove = false, preview = fa
     }
   }
 
-  return { service: 'installed', path, log, replaced, help: ['The server of every Hydra starts at login and restarts after exit', 'Run `pnyx-axi setup service --remove` to stop and uninstall it'] }
+  return { service: 'installed', path, log, replaced, unrecorded, help: [...relink, 'The server of every Hydra starts at login and restarts after exit', 'Run `pnyx-axi setup service --remove` to stop and uninstall it'] }
 }
