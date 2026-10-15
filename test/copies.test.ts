@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -53,6 +53,36 @@ test('a start makes the task its own git worktree and later starts reuse it', as
   await startTask({ hydraId: 'lab', task, via: 'command', meta: { ...meta, id: 's2' } })
   assert.equal(Object.values(state().cards).filter(c => c.copy).length, 1)
   assert.equal(card().launch?.folder, copy.path)
+})
+
+test('a copy made under boards/ keeps working after its Hydra moves to hydras/', async () => {
+  const { root, repo, run, task, card } = await lab()
+  await startTask({ hydraId: 'lab', task, via: 'command', meta: { ...meta, id: 's1' } })
+  const home = process.env.PNYX_HOME!
+  const { path, branch } = card().copy!
+  writeFileSync(join(path, 'fix.txt'), 'fixed\n')
+  git({ cwd: path, args: ['add', '.'] })
+  git({ cwd: path, args: ['commit', '-q', '-m', 'fix'] })
+  git({ cwd: repo, args: ['merge', '-q', '--ff-only', branch!] })
+  const old = join(home, 'boards/lab/copies', `${task}-app`)
+  const moved = join(home, 'hydras/lab/copies', `${task}-app`)
+  // Lay the Hydra out as an older version left it, then look from a new process's view.
+  renameSync(join(home, 'hydras'), join(home, 'boards'))
+  const log = join(home, 'boards/lab/events.jsonl')
+  writeFileSync(log, readFileSync(log, 'utf8').replaceAll(`${home}/hydras/`, `${home}/boards/`))
+  rmSync(join(home, 'boards/lab/snapshot.json'))
+  git({ cwd: repo, args: ['worktree', 'repair', old] })
+  symlinkSync(home, join(root, 'later'))
+  process.env.PNYX_HOME = join(root, 'later')
+
+  assert.equal(card().copy?.path, old)
+  assert.equal(git({ cwd: old, args: ['rev-parse', '--abbrev-ref', 'HEAD'] }), `pnyx/lab-${task}`)
+  assert.equal(realpathSync(join(home, 'boards/lab')), join(home, 'hydras/lab'))
+  assert.ok(git({ cwd: repo, args: ['worktree', 'list', '--porcelain'] }).includes(`worktree ${moved}\n`))
+  run({ args: ['move', task, 'done', '--actor', 'web'] })
+  assert.equal(settleDone({ hydraId: 'lab' }), 1)
+  assert.deepEqual([card().copy?.state, card().copy?.path], ['removed', old])
+  assert.equal(existsSync(moved), false)
 })
 
 test('Done removes a clean, landed copy and keeps its branch', async () => {

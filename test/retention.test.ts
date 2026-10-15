@@ -59,7 +59,7 @@ test('expiry appends hiding once, keeps history, restores on reopen, and honors 
   const previous = process.env.PNYX_HOME
   process.env.PNYX_HOME = home
   const hydraId = 'expiry'
-  const path = join(home, 'boards', hydraId, 'events.jsonl')
+  const path = join(home, 'hydras', hydraId, 'events.jsonl')
   const f = fixture()
   const append = ({ change, cardId = 't1', at = later }: { change: Pick<HydraChange, 'type' | 'data'>; cardId?: string; at?: string }) => withWriter({
     hydraId,
@@ -100,7 +100,7 @@ test('expiry appends hiding once, keeps history, restores on reopen, and honors 
       .map(line => JSON.parse(line) as HydraEvent)
     assert.deepEqual(replay({ state: emptyHydra(), events }), state)
 
-    const snapshot = join(home, 'boards', hydraId, 'snapshot.json')
+    const snapshot = join(home, 'hydras', hydraId, 'snapshot.json')
     const old = JSON.parse(readFileSync(snapshot, 'utf8')) as { rules: number; state: HydraState }
     old.rules = 8
     old.state.cards.t1!.doneAt = '1900-01-01T00:00:00Z'

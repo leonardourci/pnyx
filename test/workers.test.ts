@@ -29,11 +29,11 @@ function fixture() {
     return assert.fail(`${args.join(' ')} succeeded`)
   }
 
-  const state = (): HydraState => JSON.parse(readFileSync(join(root, 'boards/default/snapshot.json'), 'utf8')).state
+  const state = (): HydraState => JSON.parse(readFileSync(join(root, 'hydras/default/snapshot.json'), 'utf8')).state
   let n = 0
 
   const hook = ({ session, cwd, terminal }: { session: string; cwd: string; terminal: string }) => {
-    const spool = join(root, 'boards/default/spool')
+    const spool = join(root, 'hydras/default/spool')
     mkdirSync(spool, { recursive: true })
     n++
     writeFileSync(join(spool, `${String(n).padStart(4, '0')}.json`), JSON.stringify({

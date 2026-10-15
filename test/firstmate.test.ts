@@ -450,7 +450,7 @@ test('backlog holds park a task or wait on the owner the way Firstmate classifie
 
 test('a Firstmate Hydra on the older layout moves onto the default columns, placing cards by status', () => {
   const { home } = copyFixture()
-  const dir = join(process.env.PNYX_HOME!, 'boards', 'default')
+  const dir = join(process.env.PNYX_HOME!, 'hydras', 'default')
   mkdirSync(dir, { recursive: true })
   const legacy = [{ id: 'needs_you', title: 'Needs you', role: 'needs_you' }, { id: 'workers_on_it', title: 'Workers on it', role: 'workers_on_it' }, { id: 'done', title: 'Done', role: 'done' }, { id: 'custom:x', title: 'Mine' }]
   const base = { v: 1, at: '2026-10-01T00:00:00.000Z', actor: 'cli' }

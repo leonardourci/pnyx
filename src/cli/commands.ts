@@ -53,7 +53,7 @@ import { answerPrompt } from '../core/answer.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
-import { hydraDir, pnyxHome, loadHydra, readEvents, repairHydra, spoolFiles, withWriter, type Writer } from '../store/hydra-store.ts'
+import { hydraDir, hydraIds, loadHydra, readEvents, repairHydra, spoolFiles, withWriter, type Writer } from '../store/hydra-store.ts'
 
 const DEFAULT_HYDRA = 'default'
 const HISTORY_LIMIT = 20
@@ -955,12 +955,7 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
   }
 
   if (action === 'list') {
-    let hydras: string[] = []
-
-    try {
-      hydras = readdirSync(join(pnyxHome(), 'boards'), { withFileTypes: true }).filter(d => d.isDirectory())
-        .map(d => d.name)
-    } catch { /* No hydras have been created. */ }
+    const hydras = hydraIds()
 
     if (!hydras.length) {
       return { hydras: 'none: no Hydras yet', help: ['Run `pnyx-axi hydra create <id>` to add one'] }
@@ -1088,8 +1083,11 @@ function firstmateHomes({ base }: { base?: string }): Output {
   let hydras: { id: string; home?: string }[] = []
 
   try {
-    hydras = readdirSync(join(pnyxHome(), 'boards')).map(id => ({ id, home: loadHydra({ hydraId: id }).state.config?.hydra.home }))
-  } catch { /* No hydras yet. */ }
+    hydras = hydraIds().map(id => ({
+      id,
+      home: loadHydra({ hydraId: id }).state.config?.hydra.home,
+    }))
+  } catch { /* An unreadable Hydra links no home. */ }
 
   if (!homes.length) {
     return { base: root, homes: 'none: no Firstmate homes found', help: ['Pass --base <folder holding the homes>'] }

@@ -913,7 +913,7 @@ test('Hydra tabs list, create, rename and open Hydras on the same server', async
 test('one server serves every Hydra with its own hook socket, skips one that fails to load and serves one created later', async () => {
   cli({ args: ['hydra', 'create', 'work', '--name', 'Work'] })
   // A folder whose name is not a Hydra id cannot be loaded.
-  mkdirSync(join(process.env.PNYX_HOME!, 'boards', 'not a hydra'))
+  mkdirSync(join(process.env.PNYX_HOME!, 'hydras', 'not a hydra'))
   server = await startServer({ hydraId: 'default' })
   assert.deepEqual(Object.keys(server.skipped), ['not a hydra'])
   const health = JSON.parse((await http({ method: 'GET', path: '/health' })).text) as { hydras: string[]; skipped: Record<string, string> }

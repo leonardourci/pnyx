@@ -21,8 +21,8 @@ function fixture({ hydraId = 'default' }: { hydraId?: string } = {}) {
     return token ? run({ args: [...args, '--confirm', token] }) : out
   }
 
-  const state = ({ id = hydraId }: { id?: string } = {}): HydraState => JSON.parse(readFileSync(join(root, 'boards', id, 'snapshot.json'), 'utf8')).state
-  const events = (): HydraEvent[] => readFileSync(join(root, 'boards', hydraId, 'events.jsonl'), 'utf8').trim()
+  const state = ({ id = hydraId }: { id?: string } = {}): HydraState => JSON.parse(readFileSync(join(root, 'hydras', id, 'snapshot.json'), 'utf8')).state
+  const events = (): HydraEvent[] => readFileSync(join(root, 'hydras', hydraId, 'events.jsonl'), 'utf8').trim()
     .split('\n')
     .map(line => JSON.parse(line))
 
@@ -36,7 +36,7 @@ function fixture({ hydraId = 'default' }: { hydraId?: string } = {}) {
   return { root, run, state, events, push }
 }
 
-test('boards keep one Hydra, independent task lists, and durable history after switching', () => {
+test('Hydras keep one Hydra each, independent task lists, and durable history after switching', () => {
   const f = fixture()
 
   try {
@@ -193,7 +193,7 @@ test('task messages remain in history and chat after the worker transcript is re
     const saved = f.events().filter(e => e.type === 'chat.message')
     assert.equal(saved.length, 1)
     assert.ok(saved[0]?.messageId && saved[0]?.sessionId)
-    assert.doesNotMatch(readFileSync(join(f.root, 'boards', 'default', 'events.jsonl'), 'utf8'), /sk-live0123456789abcdefXYZ/)
+    assert.doesNotMatch(readFileSync(join(f.root, 'hydras', 'default', 'events.jsonl'), 'utf8'), /sk-live0123456789abcdefXYZ/)
     assert.match(JSON.stringify(saved[0]?.data), /canary gate\. Key \[redacted\]/)
     f.run({ args: ['harvest'] })
     assert.equal(f.events().filter(e => e.type === 'chat.message').length, 1)
@@ -237,7 +237,7 @@ test('Hydra’s chat drained from turn-end hooks stays in history after its tran
     f.push({ key: 'claude:hydra-s', input: { agent: { provider: 'claude-code', sessionId: 'hydra-s', transcriptPath: transcript }, terminal: { tty: '/dev/ttys123', pid: '123' }, source: { adapter: 'hooks', instanceId: 'claude', objectId: 'hydra-s' } } })
     f.run({ args: ['hydra', 'set', '--session', 'claude-code:hydra-s'] })
     writeFileSync(transcript, `${JSON.stringify({ type: 'assistant', timestamp: '2026-10-14T19:00:00Z', message: { content: 'Hydra queued the migration audit.' } })}\n`)
-    const spool = join(f.root, 'boards', 'default', 'spool')
+    const spool = join(f.root, 'hydras', 'default', 'spool')
     mkdirSync(spool, { recursive: true })
     const stop = { v: 1, id: 'hook-1-1', at: '2026-10-14T19:00:01Z', harness: 'claude', event: 'Stop', payload: { session_id: 'hydra-s', transcript_path: transcript, cwd: '/work/repo' } }
     writeFileSync(join(spool, '000000000000001-1-a.json'), JSON.stringify(stop))
@@ -379,7 +379,7 @@ test('Hydra folders and the files holding copied chat stay private to the owner'
   const f = fixture()
 
   try {
-    const dir = join(f.root, 'boards', 'default')
+    const dir = join(f.root, 'hydras', 'default')
     const mode = ({ path }: { path: string }) => statSync(path).mode & 0o777
     f.run({ args: ['hydra', 'create', 'default'] })
     assert.equal(mode({ path: dir }), 0o700)

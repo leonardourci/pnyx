@@ -291,7 +291,7 @@ test('a changed model drops the vectors and embeds again; the worker answers eve
   try {
     run({ args: ['oracle', 'setup', '--semantic'] })
     await embedded({ run })
-    const db = join(home, 'boards', 'default', 'search.db')
+    const db = join(home, 'hydras', 'default', 'search.db')
     const { sqlite } = await import('../src/oracle/index.ts')
     const { DatabaseSync } = sqlite()
     const w = new DatabaseSync(db)

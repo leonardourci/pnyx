@@ -9,7 +9,7 @@ const bin = join(import.meta.dirname, '../dist/cli/pnyx-axi.js')
 
 function fixture() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-task-cli-'))
-  const dir = join(home, 'boards/default')
+  const dir = join(home, 'hydras/default')
   const env = { ...process.env, PNYX_HOME: home, PNYX_SEMANTIC: 'off' }
   const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [bin, ...args], { env, encoding: 'utf8' })
 

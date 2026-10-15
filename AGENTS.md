@@ -52,4 +52,4 @@ Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links t
 
 ## Runtime data
 
-Hydras live in `~/.pnyx/boards/<hydra>/` (`$PNYX_HOME/boards/<hydra>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock, the spool, the `search.db` index and the `harvest.json` transcript cursors. Nothing at runtime writes inside the repository.
+Hydras live in `~/.pnyx/hydras/<hydra>/` (`$PNYX_HOME/hydras/<hydra>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock, the spool, the `search.db` index and the `harvest.json` transcript cursors. Nothing at runtime writes inside the repository.

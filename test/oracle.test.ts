@@ -171,7 +171,7 @@ test('search finds titles, links, notes and transcript text, ranked one per card
   assert.match(status, /^index: current through seq 5$/m)
   assert.match(status, /^semantic: "off: run `pnyx-axi settings set oracle.semantic on` to turn it on"$/m)
   assert.match(status, /^ {2}tracked: 1$/m)
-  assert.equal(statSync(join(home, 'boards', 'default', 'search.db')).mode & 0o777, 0o600)
+  assert.equal(statSync(join(home, 'hydras', 'default', 'search.db')).mode & 0o777, 0o600)
 })
 
 test("a Codex session's messages are searchable", () => {
@@ -243,7 +243,7 @@ test('a replaced or shortened transcript is read again from the start', () => {
 test('rebuild recreates the index from the sources', () => {
   const { run, home } = hydraId()
   run({ args: ['oracle', 'reverted'] })
-  const db = join(home, 'boards', 'default', 'search.db')
+  const db = join(home, 'hydras', 'default', 'search.db')
   writeFileSync(db, 'not a database')
   assert.match(run({ args: ['oracle', 'status'] }), /^index: "stale: /m)
   assert.match(run({ args: ['oracle', 'reverted'] }), /^results\[1\]/m)
