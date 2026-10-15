@@ -1,4 +1,5 @@
 export const EVENT_VERSION = 1 as const
+export const HYDRA_ACTOR = 'hydra'
 
 export const COLUMNS = ['needs_you', 'workers_on_it', 'review', 'done', 'parked'] as const
 export type Column = (typeof COLUMNS)[number] | `custom:${string}`
