@@ -127,7 +127,7 @@ test('hydra start --via paseo records the Paseo agent as the board Hydra', async
 
   const out = await startHydra({ board: 'lab', via: 'paseo', folder, url, meta: { ...meta, id: 'p1' }, connect })
   assert.deepEqual(out.hydra, { session: 'claude-code:hydra-agent', paseo: 'hydra-agent', folder })
-  assert.deepEqual(created[0]!.env, { PNYX_HOME: process.env.PNYX_HOME, PNYX_BOARD: 'lab', PNYX_TASK: HYDRA_CARD })
+  assert.deepEqual(created[0]!.env, { PNYX_HOME: process.env.PNYX_HOME, PNYX_BOARD: 'lab' })
   assert.equal(created[0]!.cwd, folder)
   assert.equal(state().board?.hydra.session, 'claude-code:hydra-agent')
   assert.equal((await startHydra({ board: 'lab', via: 'paseo', folder, url, meta: { ...meta, id: 'p1' }, connect })).event, 'none: duplicate')
@@ -152,6 +152,12 @@ test('setup hydra gives a Firstmate home the skill and a note, and task start as
   setupHydra({ board: 'lab', home, meta })
   assert.equal(readFileSync(join(home, '.git', 'info', 'exclude'), 'utf8').match(/pnyx-hydra/g)?.length, 1)
   assert.equal(JSON.parse(readFileSync(join(home, 'inbox.json'), 'utf8')).length, 1)
+  // Switching to another home and back makes the first home Hydra again.
+  cpSync(join(ROOT, 'test', 'fixtures', 'firstmate-home'), join(root, 'other'), { recursive: true })
+  setupHydra({ board: 'lab', home: join(root, 'other'), meta })
+  assert.equal(state().board?.hydra.home, join(root, 'other'))
+  setupHydra({ board: 'lab', home, meta })
+  assert.equal(state().board?.hydra.home, home)
 
   run({ args: ['task', 'create', '--title', 'Fix login'] })
   const task = Object.values(state().cards).find(c => c.title === 'Fix login')!.id

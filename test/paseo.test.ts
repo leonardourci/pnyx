@@ -116,7 +116,7 @@ for (const harness of ['claude', 'codex']) {
       prompt: 'Do the lab work',
       idempotencyKey: 'start-1',
       labels: { 'pnyx.task': 'c1' },
-      env: { PNYX_HOME: process.env.PNYX_HOME, PNYX_BOARD: 'lab', PNYX_TASK: 'c1' },
+      env: { PNYX_HOME: process.env.PNYX_HOME, PNYX_BOARD: 'lab' },
     })
     assert.equal(paseo.calls.closed, 1)
 

@@ -27,7 +27,7 @@ export async function startAgent({
   meta: Meta
   connect?: Connect
 }): Promise<Output> {
-  if (!(harness in HARNESSES)) {
+  if (!Object.hasOwn(HARNESSES, harness)) {
     throw new BoardError({ message: `unknown harness: ${harness}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
   }
 
@@ -85,7 +85,9 @@ export async function startAgent({
     cwd: claimed.cwd,
     title: claimed.card.title,
     id,
-    env: { PNYX_HOME: pnyxHome(), PNYX_BOARD: board, PNYX_TASK: claimed.card.id },
+    // No PNYX_TASK: the task attaches the Paseo session below, so the agent's own
+    // hooks must not race it onto the task.
+    env: { PNYX_HOME: pnyxHome(), PNYX_BOARD: board },
     labels: { 'pnyx.task': claimed.card.id },
     url: endpoint,
     connect,

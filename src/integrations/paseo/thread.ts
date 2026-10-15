@@ -1,7 +1,8 @@
 // A Paseo agent's conversation, read from its daemon's timeline and followed live.
 // Paseo keeps the conversation; nothing here writes to it.
 import { HOST_LABEL, replyRoute } from '../../core/route.ts'
-import type { Card } from '../../core/model.ts'
+import { BoardError, type Card } from '../../core/model.ts'
+import { localPaseoUrl } from '../../core/paseo.ts'
 import { cardSessionId } from '../../core/tasks.ts'
 import { splitEntry, type ThreadEntry, type ThreadPage } from '../../thread/read.ts'
 import { openPaseo, type Connect } from './client.ts'
@@ -20,8 +21,14 @@ export async function paseoConversation({ card, changed, connect = openPaseo }: 
   changed(): void
   connect?: Connect
 }): Promise<PaseoConversation> {
-  const client = await connect({ url: card.agent!.paseoUrl! })
-  const agent = client.agents.ref(card.agent!.paseoAgentId!)
+  const { paseoUrl: url, paseoAgentId: id } = card.agent ?? {}
+
+  if (!url || !id) {
+    throw new BoardError({ message: 'this task has no Paseo agent', code: 'NOT_FOUND' })
+  }
+
+  const client = await connect({ url: localPaseoUrl({ url }) })
+  const agent = client.agents.ref(id)
   const live = agent.timeline.subscribe(() => changed())
 
   try {

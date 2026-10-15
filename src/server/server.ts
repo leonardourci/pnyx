@@ -14,7 +14,7 @@ import { resolveHome } from '../integrations/firstmate/home.ts'
 import { searchBoard } from '../search/semantic.ts'
 import { readSettings, settingEntries, writeSetting } from '../search/settings.ts'
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { chmodSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
 import { basename, dirname, extname, join, normalize } from 'node:path'
@@ -508,7 +508,7 @@ export async function startServer({
             void openBoard({ id: createBoard({ name: first.trim().slice(0, 100) }) }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
           } else if (action === 'open' && first) {
             void openBoard({ id: first }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
-          } else if (action === 'rename' && first && second?.trim()) {
+          } else if (action === 'rename' && first && second?.trim() && listBoards().some(b => b.id === first)) {
             renameBoard({ id: first, name: second.trim().slice(0, 100) })
             reply()
           } else if (action === undefined) {
@@ -919,7 +919,9 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
   // Without --home, a board whose Hydra is a Firstmate home watches that home.
   const hydra = loadBoard({ board }).state.board?.hydra
-  const given = values.home ?? (hydra?.kind === 'firstmate' && hydra.home ? [hydra.home] : [])
+  // A recorded home that has since moved is skipped, so the board still opens.
+  const recorded = hydra?.kind === 'firstmate' && hydra.home && existsSync(join(hydra.home, 'state')) ? [hydra.home] : []
+  const given = values.home ?? recorded
   let server: RunningServer
 
   try {

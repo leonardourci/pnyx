@@ -849,12 +849,15 @@ test('board tabs list, create, rename and open boards, each on its own server', 
   cli({ args: ['board', 'create', 'default', '--name', 'Main'] })
   server = await startServer({ board: 'default', port: 0 })
   const t = await tab()
+
   const receipt = async ({ id }: { id: string }) => {
     for (;;) {
       const message = await t.next()
 
       if ((message.type === 'receipt' || message.type === 'error') && message.id === id) {
-        return message as ServerMessage & { boards?: { id: string; name: string }[]; url?: string; error?: string }
+        type Boards = { boards?: { id: string; name: string }[]; url?: string; error?: string }
+
+        return message as ServerMessage & Boards
       }
     }
   }

@@ -8,7 +8,7 @@ import { paseoStatus } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
 import { loadBoard } from '../store/board-store.ts'
 import { COMMON, guard, parse, type Output } from './commands.ts'
-import { HYDRA_SKILL } from './start.ts'
+import { HOME_SKILL, HYDRA_SKILL } from './start.ts'
 
 const onPath = ({ name }: { name: string }) =>
   (process.env.PATH ?? '').split(delimiter).some(dir => dir && existsSync(join(dir, name)))
@@ -22,7 +22,7 @@ export async function integrations({ board, url, connect }: {
   const hooks = hookStatus()
   const paseo = await paseoStatus({ url, connect }).then(() => 'running', (error: Error) => `not running: ${error.message}`)
   const home = config.hydra.kind === 'firstmate' ? config.hydra.home : undefined
-  const skill = home && join(home, '.agents', 'skills', 'pnyx-hydra', 'SKILL.md')
+  const skill = home && join(home, HOME_SKILL, 'SKILL.md')
   const skillState = !skill || !existsSync(skill) ? 'missing'
     : readFileSync(skill).equals(readFileSync(HYDRA_SKILL)) ? 'current' : 'outdated'
 
@@ -51,7 +51,7 @@ export async function integrations({ board, url, connect }: {
         name: 'command',
         status: config.command ? `set: ${config.command}` : 'not set',
         setup: `pnyx-axi board set --board ${board} --command '<shell command>'`,
-        docs: 'Started with PNYX_HOME, PNYX_BOARD, PNYX_TASK, PNYX_ROLE, PNYX_PROMPT, PNYX_HARNESS and PNYX_FOLDER',
+        docs: 'Started with PNYX_HOME, PNYX_BOARD, PNYX_TASK, PNYX_ROLE, PNYX_TASK_TITLE, PNYX_PROMPT, PNYX_HARNESS and PNYX_FOLDER',
       },
       {
         name: 'github',

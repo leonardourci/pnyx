@@ -24,7 +24,7 @@ type Via = (typeof VIAS)[number]
 // Same relative path from src/cli and dist/cli.
 export const HYDRA_SKILL = join(import.meta.dirname, '..', '..', 'skills', 'pnyx-hydra', 'SKILL.md')
 // Where a Firstmate home finds a skill of its own, outside Firstmate's tracked files.
-const HOME_SKILL = join('.agents', 'skills', 'pnyx-hydra')
+export const HOME_SKILL = join('.agents', 'skills', 'pnyx-hydra')
 
 function chooseVia({ state, via }: { state: BoardState; via?: string }): Via {
   const chosen = via ?? (state.board?.hydra.kind === 'firstmate' ? 'firstmate' : 'paseo')
@@ -133,8 +133,8 @@ function askFirstmate({ board, task, prompt, meta }: {
   }
 }
 
-// Runs the board's command with the task in its environment. The start is recorded
-// first as a note, and a repeated event id runs nothing again.
+// Runs the board's command with the task in its environment, then notes the start;
+// a repeated event id runs nothing again.
 function startCommand({ board, role, task, prompt, folder, harness, meta }: {
   board: string
   role: 'worker' | 'hydra'
@@ -164,14 +164,9 @@ function startCommand({ board, role, task, prompt, folder, harness, meta }: {
 
       const duplicate = `${id}:started` in writer.state.eventIds
 
-      if (!duplicate) {
-        // Hydra's own card exists once the board is configured; its start is noted there.
-        if (role === 'hydra' && !writer.state.configured) {
-          apply({ writer, decision: hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:board` }, cardId: '$board', change: { type: 'board.configured', data: config } }) })
-        }
-
-        const text = `Started ${role === 'hydra' ? 'Hydra' : 'a worker'} with the board command in ${cwd}`
-        apply({ writer, decision: decideNote({ state: writer.state, ref: card?.id ?? HYDRA_CARD, note: { kind: 'context', source: 'pnyx:start', text }, meta: { ...meta, id: `${id}:started` } }) })
+      // Hydra's own card exists once the board is configured; its start is noted there.
+      if (!duplicate && role === 'hydra' && !writer.state.configured) {
+        apply({ writer, decision: hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:board` }, cardId: '$board', change: { type: 'board.configured', data: config } }) })
       }
 
       return { duplicate, command: config.command, cwd, card }
@@ -196,6 +191,11 @@ function startCommand({ board, role, task, prompt, folder, harness, meta }: {
       PNYX_HARNESS: harness ?? '',
       PNYX_FOLDER: claimed.cwd,
     },
+  })
+  const text = `Started ${role === 'hydra' ? 'Hydra' : 'a worker'} with the board command in ${claimed.cwd}`
+  withWriter({
+    board,
+    fn: ({ writer }) => apply({ writer, decision: decideNote({ state: writer.state, ref: target, note: { kind: 'context', source: 'pnyx:start', text }, meta: { ...meta, id: `${id}:started` } }) }),
   })
 
   return {
@@ -222,14 +222,17 @@ export async function startHydra({
   meta: Meta
   connect?: Connect
 }): Promise<Output> {
-  const how = via ?? (home ? 'firstmate' : 'paseo')
+  const current = loadBoard({ board }).state.board?.hydra
+  const how = via ?? (home || current?.kind === 'firstmate' ? 'firstmate' : 'paseo')
 
   if (how === 'firstmate') {
-    if (!home) {
+    const given = home ?? current?.home
+
+    if (!given) {
       throw new BoardError({ message: 'a Firstmate Hydra needs --home <firstmate home>', code: 'VALIDATION_ERROR' })
     }
 
-    return setupHydra({ board, home, meta })
+    return setupHydra({ board, home: given, meta })
   }
 
   if (how === 'command') {
@@ -242,7 +245,7 @@ export async function startHydra({
 
   const chosen = (harness ?? 'claude') as Harness
 
-  if (!(chosen in HARNESSES)) {
+  if (!Object.hasOwn(HARNESSES, chosen)) {
     throw new BoardError({ message: `unknown harness: ${chosen}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
   }
 
@@ -276,7 +279,8 @@ export async function startHydra({
     cwd,
     title: `Hydra · ${board}`,
     id,
-    env: { PNYX_HOME: pnyxHome(), PNYX_BOARD: board, PNYX_TASK: HYDRA_CARD },
+    // No PNYX_TASK: the Paseo agent is recorded as Hydra here, not by its hooks.
+    env: { PNYX_HOME: pnyxHome(), PNYX_BOARD: board },
     labels: { 'pnyx.board': board, 'pnyx.role': 'hydra' },
     url: endpoint,
     connect,
@@ -322,7 +326,6 @@ export function setupHydra({ board, home, meta }: {
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'SKILL.md'), readFileSync(HYDRA_SKILL))
   const excluded = exclude({ home: real, path: `/${HOME_SKILL}/` })
-  const id = meta.id ?? `pnyx:${board}:hydra:${basename(real)}`
 
   withWriter({
     board,
@@ -335,7 +338,7 @@ export function setupHydra({ board, home, meta }: {
       }
 
       const data: BoardConfig = { ...config, hydra: { id: `firstmate:${basename(real)}`, kind: 'firstmate', name: config.hydra.name, home: real } }
-      apply({ writer, decision: hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:board` }, cardId: '$board', change: { type: 'board.configured', data } }) })
+      apply({ writer, decision: hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data } }) })
     },
   })
 
