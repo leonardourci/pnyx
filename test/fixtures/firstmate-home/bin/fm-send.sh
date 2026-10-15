@@ -8,7 +8,7 @@
   for arg in "$@"; do printf 'arg=%s\n' "$arg"; done
   printf -- '---\n'
 } >> "$FM_HOME/sent.log"
-[ -f "$FM_HOME/tear" ] && printf '{"torn' >> "$PNYX_HOME/boards/default/events.jsonl"
+[ -f "$FM_HOME/tear" ] && printf '{"torn' >> "$PNYX_HOME/hydras/default/events.jsonl"
 code=0
 [ -f "$FM_HOME/send-exit" ] && code=$(cat "$FM_HOME/send-exit")
 [ "$code" = 0 ] || echo "error: fake send failed with $code" >&2

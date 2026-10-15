@@ -137,7 +137,7 @@ test('errors are structured', () => {
 test('a torn tail blocks writes until repair', () => {
   const { home, run, fails, card } = hydraId()
   run({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'a' } })] })
-  appendFileSync(join(home, 'boards', 'default', 'events.jsonl'), '{"v":1,"seq":2,"id":"ev')
+  appendFileSync(join(home, 'hydras', 'default', 'events.jsonl'), '{"v":1,"seq":2,"id":"ev')
   assert.match(run({ args: [] }), /torn tail/)
   fails({ args: ['move', 'c1', 'done'], status: 1, code: 'TORN_TAIL' })
   assert.match(run({ args: ['repair'] }), /set aside 23 torn bytes/)
@@ -186,9 +186,9 @@ test('concurrent writers get one contiguous sequence', async () => {
   await Promise.all(
     Array.from({ length: 8 }, (_, i) => exec(process.execPath, [BIN, 'push', '--key', `k${i}`, '--file', file], { env })),
   )
-  const log = readFileSync(join(env.PNYX_HOME, 'boards', 'default', 'events.jsonl'), 'utf8').trimEnd()
+  const log = readFileSync(join(env.PNYX_HOME, 'hydras', 'default', 'events.jsonl'), 'utf8').trimEnd()
     .split('\n')
   assert.deepEqual(log.map(l => JSON.parse(l).seq), [1, 2, 3, 4, 5, 6, 7, 8])
   assert.match(run({ args: [] }), /^ {2}workers_on_it: 8$/m)
-  assert.equal(existsSync(join(env.PNYX_HOME, 'boards', 'default', 'writer.lock')), false)
+  assert.equal(existsSync(join(env.PNYX_HOME, 'hydras', 'default', 'writer.lock')), false)
 })

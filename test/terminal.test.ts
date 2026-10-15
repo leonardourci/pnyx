@@ -223,7 +223,7 @@ test('the hook records the terminal the session runs in, past wrapper shells, an
   child.child.stdin!.end('{"session_id":"s1","cwd":"/work"}')
   const { stdout, stderr } = await child
   assert.equal(stdout + stderr, '')
-  const spool = join(home, 'boards', 'default', 'spool')
+  const spool = join(home, 'hydras', 'default', 'spool')
   const line = JSON.parse(readFileSync(join(spool, readdirSync(spool)[0]!), 'utf8'))
   assert.deepEqual(line.terminal, {
     tty: TTY,

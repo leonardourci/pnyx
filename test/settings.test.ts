@@ -147,7 +147,7 @@ test('hook events and the transcript keep a Claude Code card\'s settings current
   })
 
   const events = readEvents({ hydraId: 'default' }).length
-  writeFileSync(join(home, 'boards', 'default', 'harvest.json'), '{}')
+  writeFileSync(join(home, 'hydras', 'default', 'harvest.json'), '{}')
   run({ args: ['harvest'] })
   assert.equal(readEvents({ hydraId: 'default' }).length, events)
   const observed = readEvents({ hydraId: 'default' }).findLast(e => e.type === 'card.pushed' && e.actor === 'harvest')!
