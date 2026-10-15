@@ -13,6 +13,7 @@ import { BoardError } from '../src/core/model.ts'
 import { startServer, type RunningServer, type ServerMessage } from '../src/server/server.ts'
 import { infoPath, localToken, socketPath } from '../src/server/state.ts'
 import { boardDir, loadBoard, spoolDir, spoolWrite, withWriter } from '../src/store/board-store.ts'
+import { boardConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { indexStatus, searchPath } from '../src/search/index.ts'
 import { writeSetting } from '../src/search/settings.ts'
@@ -449,7 +450,7 @@ test('web preferences, custom moves and read queries share the authenticated soc
 
   t.command({ id: 'view-2', name: 'view', args: ['set', '--json', '{"panelWidth":520}', '--if-revision', '1'] })
   assert.deepEqual([(await t.next()).type, (await t.next()).type], ['event', 'receipt'], 'a resize leaves the open conversation alone')
-  t.command({ id: 'view-3', name: 'view', args: ['set', '--json', JSON.stringify({ cardTraceOverrides: { [card]: { tools: true } } }), '--if-revision', '2'] })
+  t.command({ id: 'view-3', name: 'view', args: ['set', '--json', JSON.stringify({ focusMode: false }), '--if-revision', '2'] })
   assert.deepEqual([(await t.next()).type, (await t.next()).type, (await t.next()).type].sort(), ['event', 'receipt', 'thread'], 'showing traces pages the conversation again')
 
   t.command({ id: 'reply-1', name: 'reply', args: [card, 'test', 'id'] })
@@ -889,4 +890,43 @@ test('board tabs list, create, rename and open boards, each on its own server', 
 
   t.command({ id: 'b5', name: 'boards', args: ['open', 'missing'] })
   assert.match((await receipt({ id: 'b5' })).error ?? '', /board not found/)
+})
+
+test('Hydra and the open task keep independent live transcripts on one socket', async () => {
+  const root = process.env.PNYX_HOME!
+  const paths = [join(root, 'worker.jsonl'), join(root, 'hydra.jsonl')]
+  paths.forEach(path => writeFileSync(path, ''))
+  const task = await boardWithCard()
+  withWriter({
+    board: 'default',
+    fn: ({ writer }) => {
+      const meta = { actor: 'fixture', at: '2026-10-15T00:00:00Z' }
+
+      for (const [key, path] of [['worker', paths[0]], ['hydra-session', paths[1]]]) {
+        const d = decidePush({ state: writer.state, key: key!, input: { agent: { provider: 'claude-code', sessionId: key, transcriptPath: path } }, meta })
+        assert.ok('event' in d); writer.append({ event: d.event })
+      }
+
+      const d = hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data: { ...boardConfig({ state: writer.state }), hydra: { id: 'hydra', kind: 'agent', name: 'Hydra', session: 'claude-code:hydra-session' } } } })
+      assert.ok('event' in d); writer.append({ event: d.event })
+      const taskCard = writer.state.cards[task]!
+      const edit = decidePush({ state: writer.state, key: taskCard.key, input: { agent: { provider: 'claude-code', sessionId: 'worker', transcriptPath: paths[0] } }, meta })
+      assert.ok('event' in edit); writer.append({ event: edit.event })
+    },
+  })
+  const t = await tab(); await t.next()
+  t.command({ id: 'worker-thread', name: 'thread', args: [task] }); await t.next()
+  t.command({ id: 'hydra-thread', name: 'thread', args: [HYDRA_CARD] }); await t.next()
+  paths.forEach((path, index) => appendFileSync(path, JSON.stringify({ type: 'assistant', message: { content: `live reply ${index}` } }) + '\n'))
+  const changed = new Set<string>()
+
+  while (changed.size < 2) {
+    const message = await t.next()
+
+    if (message.type === 'thread' && message.thread.entries.some(e => e.text.startsWith('live reply'))) {
+      changed.add(message.thread.card)
+    }
+  }
+
+  assert.deepEqual([...changed].sort(), [HYDRA_CARD, task].sort())
 })
