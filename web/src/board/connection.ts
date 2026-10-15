@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import type { BoardState } from '../../../src/core/model.ts'
 import { emptyBoard, reduce } from '../../../src/core/reducer.ts'
 import type { ServerMessage } from '../../../src/server/server.ts'
@@ -11,6 +12,7 @@ export type Command = ({ name, args }: { name: string; args: string[] }) => Prom
 export function useBoard() {
   const [state, setState] = useState<BoardState>(emptyBoard), [connected, setConnected] = useState(false), [error, setError] = useState('')
   const [thread, setThread] = useState<ThreadPage | null>(null)
+  const [hydraThread, setHydraThread] = useState<ThreadPage | null>(null)
   const [latest, setLatest] = useState<Record<string, LatestMessage>>({})
   const stateRef = useRef(state)
   const socket = useRef<WebSocket | null>(null)
@@ -83,7 +85,11 @@ export function useBoard() {
               event: m.event,
             }); setState(stateRef.current)
           } else if (m.type === 'thread') {
-            setThread(m.thread)
+            if (m.thread.card === HYDRA_CARD) {
+              setHydraThread(m.thread)
+            } else {
+              setThread(m.thread)
+            }
           } else if (m.type === 'latest') {
             setLatest(old => {
               const next = { ...old }
@@ -160,5 +166,5 @@ export function useBoard() {
     socket.current.send(JSON.stringify({ type: 'command', id, name, args }))
   }), [])
 
-  return { state, connected, error, command, thread, setThread, latest }
+  return { state, connected, error, command, thread, setThread, hydraThread, latest }
 }

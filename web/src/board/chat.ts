@@ -1,6 +1,5 @@
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 
-// A comment on one block of an agent message. It travels with the next reply.
 export interface ChatComment {
   id: string
   messageId: string
@@ -8,10 +7,11 @@ export interface ChatComment {
   offset: number
   quote: string
   text: string
+  paragraph?: string
+  at?: string
 }
 
-// The transport chunks large messages to stay inside the socket budget. Join
-// adjacent parts before parsing Markdown, including after loading an older page.
+// Transport parts must rejoin before Markdown parsing, even across loaded pages.
 export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): ThreadEntry[] {
   const result: ThreadEntry[] = []
 
@@ -29,29 +29,59 @@ export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): Threa
   return result
 }
 
-// Each comment becomes a fenced pnyx-comment block quoting its text, with a fence
-// longer than any backtick run inside so quoted code cannot close it early.
-export function commentReply({ draft, comments }: {
-  draft: string
-  comments: ChatComment[]
-}): string {
-  const blocks = comments.filter(c => c.text.trim()).map(c => {
-    const body = c.quote.split('\n').map(line => `> ${line}`)
-      .join('\n') + '\n\n' + c.text.trim()
-    const longest = Math.max(2, ...(body.match(/`+/g) ?? []).map(run => run.length))
-    const fence = '`'.repeat(longest + 1)
+export const COMMENT_NOTE = '> Internal note — no reply needed: numbered comments refer to passages in your earlier reply. Short quotes include their paragraph for context. Address the comments together with the message below.'
 
-    return `${fence}pnyx-comment block=${c.block + 1} msg=${JSON.stringify(c.messageId)} offset=${c.offset}\n${body}\n${fence}`
-  })
+const markdownQuote = ({ text }: { text: string }) => text.split('\n')
+  .map(line => `> ${line}`)
+  .join('\n')
 
-  return [draft, ...blocks].filter(text => text.trim()).join('\n\n')
+const numberedComment = ({ comment, number }: { comment: ChatComment; number: number }) => {
+  const parts = [`${number}. ${markdownQuote({ text: comment.quote })}`]
+  const shortQuote = comment.quote.trim().split(/\s+/).length <= 3
+
+  if (shortQuote && comment.paragraph && comment.paragraph !== comment.quote) {
+    parts.push(`Paragraph:\n\n${markdownQuote({ text: comment.paragraph })}`)
+  }
+
+  parts.push(comment.text.trim())
+
+  return parts.join('\n\n')
 }
 
-// Trailing blank line leaves room to answer under the quote.
-export function quoteInto({ draft, text }: { draft: string; text: string }): string {
-  const quote = text.trim().split('\n')
-    .map(line => `> ${line}`)
-    .join('\n')
+export function commentReply({ draft, comments, firstComment = false }: {
+  draft: string
+  comments: ChatComment[]
+  firstComment?: boolean
+}): string {
+  const replies = new Map<string, ChatComment[]>()
 
-  return [draft.trimEnd(), quote].filter(Boolean).join('\n\n') + '\n\n'
+  for (const comment of comments) {
+    if (!comment.text.trim()) {
+      continue
+    }
+
+    const reply = comment.at ?? comment.messageId
+    const group = replies.get(reply) ?? []
+    group.push(comment); replies.set(reply, group)
+  }
+
+  if (!replies.size) {
+    return draft
+  }
+
+  const sections = firstComment ? [COMMENT_NOTE] : []
+
+  for (const [time, items] of replies) {
+    const numbered = items.map((comment, index) => numberedComment({ comment, number: index + 1 }))
+    sections.push(`## Comments on your reply from ${time}\n\n${numbered.join('\n\n')}`)
+  }
+
+  sections.push(`## Message\n\n${draft}`)
+
+  return sections.join('\n\n')
+}
+
+export function quoteInto({ draft, text }: { draft: string; text: string }): string {
+  return [draft.trimEnd(), markdownQuote({ text: text.trim() })]
+    .filter(Boolean).join('\n\n') + '\n\n'
 }

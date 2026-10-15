@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { BoardState, Card } from '../../../src/core/model.ts'
 import { interactive } from '../../../src/core/tasks.ts'
 import { Button, Select, useBusy } from '../components/ui/controls.tsx'
@@ -11,6 +12,7 @@ export function TaskSession({ card, state, command, connected, notify }: {
   notify({ text }: { text: string }): void
 }) {
   const [busy, run] = useBusy()
+  const [failure, setFailure] = useState('')
   const attached = card.sessionIds?.[0]
   const session = attached ? state.sessions?.[attached] : undefined
   const candidates = Object.values(state.sessions ?? {}).filter(s => interactive({ session: s }))
@@ -22,15 +24,25 @@ export function TaskSession({ card, state, command, connected, notify }: {
     }
 
     run({
-      save: () => command({ name: 'task', args: ['attach', card.id, '--session', id, ...flags] })
-        .then(() => notify({ text: 'Agent attached.' }))
-        .catch(error => notify({ text: error.message })),
+      save: async () => {
+        try {
+          const receipt = await command({ name: 'task', args: ['attach', card.id, '--session', id, ...flags] })
+          const brief = receipt.brief as { state: string } | undefined
+          setFailure(!brief || brief.state === 'delivered' ? '' : 'Brief could not be delivered. It is kept in this task.')
+
+          notify({ text: 'Agent attached.' })
+        } catch (error) {
+          setFailure('Brief could not be delivered. It is kept in this task.')
+          notify({ text: (error as Error).message })
+        }
+      },
     })
   }
 
   return (
     <section aria-label="Task agent" className="task-session">
       <h3>Attached agent</h3>
+      {failure && <p className="reply-failure" role="status">{failure}</p>}
       {session ? (
         <>
           <p>
@@ -61,7 +73,7 @@ export function TaskSession({ card, state, command, connected, notify }: {
               { value: '', label: candidates.length ? 'Choose a session' : 'No interactive sessions available' },
               ...candidates.map(s => ({
                 value: s.id,
-                label: `${s.agent.provider} · ${s.taskId ? `Move from ${state.cards[s.taskId]?.title ?? s.taskId}` : s.agent.sessionId}`,
+                label: `${s.agent.provider} · ${s.taskId ? `Move from ${state.cards[s.taskId]?.title ?? s.taskId}` : state.cards[s.originCardId]?.title ?? s.agent.sessionId}`,
               })),
             ]}
           />

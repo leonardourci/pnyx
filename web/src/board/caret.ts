@@ -1,102 +1,116 @@
-// Messages are contenteditable only so the browser draws a caret; without -webkit-user-modify
-// (Firefox) nothing would keep links and controls working inside, so the caret is off there.
+// Read-only editing support keeps native caret navigation from changing recorded messages.
 export const CARET_SUPPORTED = CSS.supports('-webkit-user-modify', 'read-only')
 export const CARET_HOST = 'data-caret-host'
 export const CARET_KEY = /^(Arrow(Up|Down|Left|Right)|Home|End|Page(Up|Down))$/
-// Board UI inside the messages, kept out of selections so it never lands in a quote.
-const CHROME = '.block-comment-action, .inline-comment, .receipt, .code-language, .trace summary'
-const ISLANDS = `${CHROME}, .trace, a[href]`
-export const CARET_CSS = `[${CARET_HOST}] :is(${ISLANDS}) { -webkit-user-modify: read-only; } [${CARET_HOST}] :is(${CHROME}) { user-select: none; }`
-const MARGIN_LINES = 3
+const MESSAGE_CONTROLS = '.block-comment-action, .inline-comment, .receipt, .code-language, .trace summary'
+const NON_MESSAGE_TEXT = `${MESSAGE_CONTROLS}, .trace, a[href]`
+export const CARET_CSS = `[${CARET_HOST}] :is(${NON_MESSAGE_TEXT}) { -webkit-user-modify: read-only; } [${CARET_HOST}] :is(${MESSAGE_CONTROLS}) { user-select: none; }`
 
-const isContent = ({ node }: { node: Node }) =>
-  node instanceof Text && !!node.data.trim() && !node.parentElement?.closest(ISLANDS)
+const selectableMessageText = ({ node }: { node: Text }) =>
+  !!node.data.trim() && !node.parentElement?.closest(NON_MESSAGE_TEXT)
 
-const texts = ({ root }: { root: Element }) => {
-  const found: Text[] = [], walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+function* messageText({ root, after }: { root: Element; after?: Node }) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+
+  if (after) {
+    walker.currentNode = after
+  }
 
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (node instanceof Text && isContent({ node })) {
-      found.push(node)
+    if (node instanceof Text && selectableMessageText({ node })) {
+      yield node
     }
   }
-
-  return found
 }
 
-const textAfter = ({ host, node }: { host: Element; node: Node }) => {
-  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT)
-  walker.currentNode = node
+export const conversationMessages = ({ from }: { from: Element }) => from
+  .closest('.detail, .hydra-chat')?.querySelector<HTMLElement>(`[${CARET_HOST}]`) ?? null
 
-  for (let next = walker.nextNode(); next; next = walker.nextNode()) {
-    if (next instanceof Text && isContent({ node: next })) {
-      return next
-    }
-  }
-
-  return null
-}
-
-export const hostOf = ({ from }: { from: Element }) => from.closest('.thread')?.querySelector<HTMLElement>(`[${CARET_HOST}]`) ?? null
-
-export const latestReply = ({ host }: { host: HTMLElement }) =>
+export const latestAgentMessage = ({ host }: { host: HTMLElement }) =>
   [...host.querySelectorAll('.message:not(.mine, .tool, .thinking)')].at(-1) ?? null
 
-// Measured on the next character: at a soft wrap the caret ends the prior text but draws on the next line.
-export function caretBox(): DOMRect | null {
-  const selection = window.getSelection(), node = selection?.focusNode
+export function caretBounds(): DOMRect | null {
+  const selection = window.getSelection()
 
-  if (!selection || !node) {
+  if (!selection?.focusNode) {
     return null
   }
 
-  const offset = selection.focusOffset, range = document.createRange()
+  const node = selection.focusNode
+  const offset = selection.focusOffset
+  const range = document.createRange()
   const host = (node instanceof Element ? node : node.parentElement)?.closest(`[${CARET_HOST}]`)
-  const following = host && node instanceof Text ? textAfter({ host, node }) : null
-  const next = node instanceof Text && offset < node.length ? { text: node, at: offset }
-    : following ? { text: following, at: 0 } : null
+  let next: Text | null = null
 
+  if (node instanceof Text && offset < node.length) {
+    next = node
+  } else if (host && node instanceof Text) {
+    next = messageText({ root: host, after: node }).next().value ?? null
+  }
+
+  // The next character reports the new line when the caret sits at a soft wrap.
   if (next) {
-    range.setStart(next.text, next.at); range.setEnd(next.text, next.at + 1)
+    const start = next === node ? offset : 0
+    range.setStart(next, start); range.setEnd(next, start + 1)
   } else if (node instanceof Text && offset > 0) {
     range.setStart(node, offset - 1); range.setEnd(node, offset)
   } else {
     range.setStart(node, offset)
   }
 
-  const rects = range.getClientRects(), rect = next ? rects[0] : rects[rects.length - 1]
+  const rects = range.getClientRects()
+  const bounds = next ? rects[0] : rects[rects.length - 1]
 
-  return rect?.height ? rect : null
+  return bounds?.height ? bounds : null
 }
 
-export function reveal({ host }: { host: HTMLElement }) {
-  const scroller = host.closest('.thread'), box = caretBox()
+export function revealCaret({ host }: { host: HTMLElement }) {
+  const scroller = host.closest('.hydra-messages, .column-cards')
+  const caret = caretBounds()
 
-  if (!scroller || !box) {
+  if (!scroller || !caret) {
     return
   }
 
-  const view = scroller.getBoundingClientRect()
-  const margin = Math.min(MARGIN_LINES * box.height, view.height / 3)
-  const above = box.top - (view.top + margin), below = box.bottom - (view.bottom - margin)
+  const viewport = scroller.getBoundingClientRect()
+  const padding = Math.min(3 * caret.height, viewport.height / 3)
+  const above = caret.top - viewport.top - padding
+  const below = caret.bottom - viewport.bottom + padding
   scroller.scrollBy({ top: above < 0 ? above : Math.max(0, below) })
 }
 
-// False when `target` has no text.
-export function caretInto({ host, target, edge }: { host: HTMLElement; target: Element | null; edge: 'start' | 'end' }) {
-  const all = target ? texts({ root: target }) : [], node = edge === 'start' ? all[0] : all.at(-1)
-
-  if (!node || !CARET_SUPPORTED) {
+export function placeMessageCaret({ host, target, edge }: {
+  host: HTMLElement
+  target: Element | null
+  edge: 'start' | 'end'
+}) {
+  if (!target || !CARET_SUPPORTED) {
     return false
   }
 
-  host.focus({ preventScroll: true }); window.getSelection()?.collapse(node, edge === 'start' ? 0 : node.length); reveal({ host })
+  let node: Text | undefined
+
+  for (const text of messageText({ root: target })) {
+    node = text
+
+    if (edge === 'start') {
+      break
+    }
+  }
+
+  if (!node) {
+    return false
+  }
+
+  host.focus({ preventScroll: true })
+  window.getSelection()?.collapse(node, edge === 'start' ? 0 : node.length)
+  revealCaret({ host })
 
   return true
 }
 
-export function focusReply({ host }: { host: HTMLElement }) {
-  const input = host.closest('.thread')?.querySelector<HTMLTextAreaElement>('.composer textarea')
+export function focusComposer({ host }: { host: HTMLElement }) {
+  const input = host.closest('.detail, .hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
   input?.focus(); input?.setSelectionRange(input.value.length, input.value.length)
 
   return !!input

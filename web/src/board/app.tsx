@@ -1,29 +1,24 @@
-import { cardSessionId, liveTask } from '../../../src/core/tasks.ts'
-import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import type { Card, Column as ColumnId, ViewPreferences } from '../../../src/core/model.ts'
-import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
+import { HYDRA_CARD } from '../../../src/core/hydra.ts'
+import { cardSessionId } from '../../../src/core/tasks.ts'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { viewFor } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
-import { Button, Select } from '../components/ui/controls.tsx'
-import { InlineTitle } from '../components/ui/inline-title.tsx'
+import { Button } from '../components/ui/controls.tsx'
 import { HydraChat } from './hydra-chat.tsx'
-import type { Command } from './connection.ts'
-import { Icon } from '../components/ui/icon.tsx'
-import { InlineConfirm } from '../components/ui/inline-confirm.tsx'
-import { Resize } from '../components/ui/resize.tsx'
 import { useBoard } from './connection.ts'
 import { BoardCard } from './card.tsx'
+import { Column } from './column.tsx'
 import { Detail } from './detail.tsx'
 import type { ChatComment } from './chat.ts'
 import { Settings } from './settings.tsx'
 import { BoardTabs } from './boards.tsx'
 import { History } from './history.tsx'
-import { columnsFor, dropBefore, findBoxCards, pageTitle } from './view.ts'
+import { columnsFor, findBoxCards, pageTitle } from './view.ts'
 import { Search } from './search.tsx'
 import { commandQuery } from './search-catalog.ts'
 import { useFoundCards } from './card-search.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
-import { KeyboardLayers, KeyboardToolbar, useBoardKeyboard } from '../keyboard/board.tsx'
+import { useBoardKeyboard } from '../keyboard/board.tsx'
 
 // What a reload (by hand, or after the server serves a new build) would otherwise lose:
 // the open card, the page, unsent drafts and how far the board was scrolled. Kept per tab.
@@ -49,171 +44,38 @@ const restored: Restore = (() => {
 const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [data-column] > .column-cards')]
   .map(el => [el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban', el] as const)
 
-function Column({
-  id,
-  title,
-  cards,
-  view,
-  save,
-  children,
-  command,
-  notify,
-  revision,
-  connected,
-  columnIds,
-  editingTitle,
-  titleFinished,
-  createTask,
-  removed,
-}: {
-  id: string
-  title: string
-  cards: Card[]
-  view: ViewPreferences
-  save({ patch }: { patch: unknown }): Promise<boolean>
-  children: ReactNode
-  command: Command
-  notify({ text }: { text: string }): void
-  revision: number
-  connected: boolean
-  columnIds: ColumnId[]
-  editingTitle: boolean
-  titleFinished(): void
-  createTask({ column, parent }: { column: string; parent?: string }): void
-  removed({ event }: { event: string }): void
-}) {
-  const [width, setWidth] = useState<number | null>(null)
-  const edit = ({ args }: { args: string[] }) => command({ name: 'column', args: [...args, '--if-revision', String(revision), '--event-id', crypto.randomUUID()] })
-
-  return (
-    <section
-      data-column={id}
-      className={`column column-${id}`}
-      aria-label={title}
-      onDragOver={e => e.preventDefault()}
-      onDrop={e => {
-        e.preventDefault()
-        const source = e.dataTransfer.getData('application/pnyx-column')
-        const task = e.dataTransfer.getData('application/pnyx-task')
-
-        if (source && source !== id) {
-          const target = columnIds.indexOf(id as ColumnId)
-          const before = columnIds.indexOf(source as ColumnId) < target ? columnIds[target + 1] : id
-          void edit({ args: ['reorder', source, ...(before ? ['--before', before] : [])] }).catch(e => notify({ text: e.message }))
-        } else if (task) {
-          const over = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-task]') : null
-          const rect = over?.getBoundingClientRect()
-          const below = !!rect && e.clientY > rect.top + rect.height / 2
-          const before = dropBefore({ cards, over: over?.dataset.task, below })
-
-          if (before !== task) {
-            void command({ name: 'move', args: [task, id, ...(before ? ['--before', before] : []), '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
-          }
-        }
-      }}
-      style={{
-        width: width ?? view.columnWidths[id] ?? 290,
-        flexBasis: width ?? view.columnWidths[id] ?? 290,
-        minWidth: VIEW_SIZE_LIMITS.columnWidth.min,
-        minHeight: VIEW_SIZE_LIMITS.columnHeight.min,
-      }}
-    >
-      <header
-        className="column-header"
-        draggable={connected}
-        onDragStart={e => e.dataTransfer.setData('application/pnyx-column', id)}
-      >
-        <div className="row between">
-          <h2>
-            <Icon name={id} size={15} />
-            <InlineTitle
-              value={title}
-              label={`Rename ${title} column`}
-              doubleClick
-              startEditing={editingTitle}
-              save={({ title }) => edit({ args: ['rename', id, `--title=${title}`] }).then(() => titleFinished())}
-            />
-          </h2>
-          <span className="count">{String(cards.length).padStart(2,'0')}</span>
-        </div>
-        <div className="row">
-          <Button
-            aria-label={`Move ${title} left`}
-            disabled={!connected || columnIds.indexOf(id as ColumnId) === 0}
-            onClick={() => {
-              const before = columnIds[columnIds.indexOf(id as ColumnId) - 1]
-
-              if (before) {
-                void edit({ args: ['reorder', id, '--before', before] }).catch(e => notify({ text: e.message }))
-              }
-            }}
-          >←
-          </Button>
-          <Button
-            aria-label={`Move ${title} right`}
-            disabled={!connected || columnIds.at(-1) === id}
-            onClick={() => {
-              const before = columnIds[columnIds.indexOf(id as ColumnId) + 2]
-              void edit({ args: ['reorder', id, ...(before ? ['--before', before] : [])] }).catch(e => notify({ text: e.message }))
-            }}
-          >→
-          </Button>
-          <InlineConfirm
-            label={`Delete ${title} column`}
-            action="Delete column"
-            message={`Delete “${title}”? Its tasks move to a remaining column.`}
-            disabled={!connected || columnIds.length === 1}
-            confirm={() => edit({ args: ['delete', id] }).then(receipt => {
-              removed({ event: (receipt.event as { id: string }).id })
-
-              return true
-            }, e => {
-              notify({ text: e.message })
-
-              return false
-            })}
-          />
-        </div>
-      </header>
-      <div className="column-cards">
-        {children}
-        {cards.length === 0 && (
-          <p
-            className="empty"
-            data-empty-column={id}
-            data-key-scope="board"
-            aria-label={`${title}: no cards`}
-            tabIndex={0}
-          >
-            No cards here
-          </p>
-        )}
-        <Button disabled={!connected} onClick={() => createTask({ column: id })}>+ Add task</Button>
-      </div>
-      <Resize
-        label={`Resize ${title} column`}
-        value={view.columnWidths[id] ?? 290}
-        min={VIEW_SIZE_LIMITS.columnWidth.min}
-        max={VIEW_SIZE_LIMITS.columnWidth.max}
-        onPreview={({ value }) => setWidth(value)}
-        onCommit={({ value: n }) => save({ patch: { columnWidths: { [id]: n } } })}
-      />
-    </section>
-  )
-}
-
 export function App() {
-  const { state, command, connected, error, thread, setThread, latest } = useBoard()
+  const { state, command, connected, error, thread, setThread, hydraThread, latest } = useBoard()
   const [page, setPage] = useState(restored.page ?? 'board'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
-  // The deletion a notice can undo; any later notice replaces it.
-  const [undoColumn, setUndoColumn] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState<string | null>(null)
   const [historyQuery, setHistoryQuery] = useState('')
   const [topbar, setTopbar] = useState(restored.topbar ?? true)
   const notify = useCallback(({ text }: { text: string }) => {
-    setNotice(text); setUndoColumn(null)
+    setNotice(text)
+  }, [])
+  useEffect(() => {
+    const timers = new Map<HTMLElement, ReturnType<typeof setTimeout>>()
+
+    const scroll = (event: Event) => {
+      const target = event.target
+
+      if (!(target instanceof HTMLElement)) {
+        return
+      }
+
+      clearTimeout(timers.get(target)); target.classList.add('scrolling')
+      timers.set(target, setTimeout(() => {
+        target.classList.remove('scrolling'); timers.delete(target)
+      }, 700))
+    }
+
+    document.addEventListener('scroll', scroll, true)
+
+    return () => {
+      document.removeEventListener('scroll', scroll, true); timers.forEach(timer => clearTimeout(timer))
+    }
   }, [])
   const pendingScroll = useRef(restored.scroll)
   const view = viewFor({ state })
@@ -230,8 +92,7 @@ export function App() {
   }, [view.theme])
   const columns = columnsFor({ state })
   const found = useFoundCards({ command, query: commandQuery({ query }) ? '' : query, workspace, revision: state.seq })
-  const matches = new Map(found.map(h => [h.card, h]))
-  const cards = findBoxCards({
+  const filteredCards = findBoxCards({
     state,
     workspace,
     tag,
@@ -239,18 +100,14 @@ export function App() {
     meaning: found.map(h => h.card),
   })
   const card = selected ? state.cards[selected] : undefined
+  const cards = card && !filteredCards.some(item => item.id === card.id)
+    ? [...filteredCards, card] : filteredCards
   const attachedSession = card ? cardSessionId({ card }) : undefined
   const title = pageTitle({ page, cards: state.cards, selected })
   useEffect(() => {
     document.title = title
   }, [title])
-  const workspaces = [...new Set(Object.values(state.cards).filter(c => liveTask({ card: c }))
-    .map(c => c.workspace))].sort()
-  const tags = [...new Set(Object.values(state.cards).filter(c => liveTask({ card: c }))
-    .flatMap(c => c.tags))].sort()
   const save = useCallback(({ patch }: { patch: unknown }) => command({ name: 'view', args: ['set', '--json', JSON.stringify(patch), '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => {
-    notify({ text: 'Preferences saved' })
-
     return true
   }, e => {
     notify({ text: e.message })
@@ -305,10 +162,10 @@ export function App() {
     }
   }, [state.seq])
   useEffect(() => {
-    if (page === 'board' && selected && view.panelPlacement === 'inline') {
-      requestAnimationFrame(() => document.querySelector('.column-cards > .detail')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }))
+    if (page === 'board' && selected) {
+      requestAnimationFrame(() => document.querySelector('.card.selected')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }))
     }
-  }, [page, selected, view.panelPlacement])
+  }, [page, selected])
 
   const openHydra = () => {
     setPage('board')
@@ -324,18 +181,24 @@ export function App() {
 
     if (state.cards[id]) {
       setSelected(id); setPage('board')
-      requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.composer textarea' })))
+      requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.detail .composer textarea' })))
     }
   }
 
   const close = () => {
-    const target = cards.find(c => c.id === selected) ?? cards.find(c => c.column === card?.column) ?? cards[0]; setSelected(null); requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-empty-column="${CSS.escape(card?.column ?? 'needs_you')}"]` }))
+    const target = filteredCards.find(c => c.id === selected) ?? filteredCards.find(c => c.column === card?.column) ?? filteredCards[0]; setSelected(null); requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-column-heading="${CSS.escape(card?.column ?? 'needs_you')}"]` }))
   }
 
   const createTask = ({ column, parent }: { column: string; parent?: string }) => {
     void command({ name: 'task', args: ['create', '--title', parent ? 'New subtask' : 'New task', '--column', column, ...(parent ? ['--parent', parent] : []), '--event-id', crypto.randomUUID()] }).then(receipt => {
       setPage('board'); setWorkspace(''); setTag(''); setQuery('')
-      setEditingTask((receipt.card as { id: string }).id)
+      const id = (receipt.card as { id: string }).id
+      const first = cards.find(c => c.column === column)
+      setEditingTask(id)
+
+      if (first) {
+        void command({ name: 'move', args: [id, column, '--before', first.id, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+      }
     })
       .catch(e => notify({ text: e.message }))
   }
@@ -365,6 +228,7 @@ export function App() {
     newColumn: newColumn !== null,
     cancelColumn: () => setNewColumn(null),
     toggleTopbar: () => setTopbar(shown => !shown),
+    showTopbar: () => setTopbar(true),
   })
   const detail = card && (
     <Detail
@@ -381,7 +245,7 @@ export function App() {
       setDraft={({ text }) => setDrafts(d => ({ ...d, [card.id]: text }))}
       comments={comments[card.id] ?? []}
       setComments={({ items }) => setComments(c => ({ ...c, [card.id]: items }))}
-      outside={!cards.some(c => c.id === card.id)}
+      createTask={createTask}
       notify={notify}
     />
   )
@@ -409,14 +273,19 @@ export function App() {
             <span>pnyx</span>
           </div>
           <nav aria-label="Main pages">
-            {[['board', 'Board'], ['history', 'History'], ['settings', 'Settings']].map(([id,label]) => (
+            <BoardTabs
+              command={command}
+              connected={connected}
+              notify={notify}
+              active={page === 'board'}
+              showBoard={() => setPage('board')}
+            />
+            {[['history', 'History'], ['settings', 'Settings']].map(([id,label]) => (
               <Button key={id} aria-pressed={page === id} onClick={() => setPage(id)}>
-                <Icon name={id} size={14} />
                 {label}
               </Button>
             ))}
           </nav>
-          <BoardTabs command={command} connected={connected} notify={notify} />
           <Search
             selected={selected}
             page={page}
@@ -439,14 +308,17 @@ export function App() {
             notify={notify}
             connected={connected}
           />
-          <KeyboardToolbar action={keyboard.onAction} />
-          <span className={`connection ${connected ? 'online' : ''}`}>
-            <i />
-            {connected ? 'Connected' : 'Offline'}
-          </span>
+          {!connected && (
+            <span
+              className="connection"
+              role="status"
+              aria-label="Offline"
+              title={error ?? 'Reconnecting'}
+            ><i />
+            </span>
+          )}
         </header>
         <main className="shell">
-          {error && <div role="alert" className="error-banner">{error}</div>}
           {page === 'settings' ? (
             <Settings
               state={state}
@@ -470,39 +342,20 @@ export function App() {
               <div className="board-page">
                 <HydraChat
                   state={state}
+                  liveThread={hydraThread}
                   command={command}
                   connected={connected}
                   openTask={open}
                   notify={notify}
+                  view={view}
+                  save={save}
+                  draft={drafts[HYDRA_CARD] ?? ''}
+                  setDraft={({ text }) => setDrafts(d => ({ ...d, [HYDRA_CARD]: text }))}
+                  comments={comments[HYDRA_CARD] ?? []}
+                  setComments={({ items }) => setComments(c => ({ ...c, [HYDRA_CARD]: items }))}
                 />
                 <div className="board-main">
-                  <div className="toolbar">
-                    <div className="row wrap">
-                      <Select
-                        label="Workspace"
-                        value={workspace}
-                        options={[{ value: '', label: 'All workspaces' }, ...workspaces.map(w => ({ value: w, label: w }))]}
-                        onChange={({ value }) => setWorkspace(value)}
-                      />
-                      <Select
-                        label="Filter by tag"
-                        value={tag}
-                        options={[{ value: '', label: 'All tags' }, ...tags.map(t => ({ value: t, label: t }))]}
-                        onChange={({ value }) => setTag(value)}
-                      />
-                      {(workspace || tag) && (
-                        <Button
-                          onClick={() => {
-                            setWorkspace(''); setTag('')
-                          }}
-                        >
-                          Clear filters
-                        </Button>
-                      )}
-                    </div>
-
-                  </div>
-                  <div className={`work-area ${view.panelPlacement}`}>
+                  <div className="work-area inline">
                     <div className="board-space">
                       <div className="kanban" aria-label="Work columns">
                         {columns.map(c => {
@@ -523,35 +376,27 @@ export function App() {
                               editingTitle={newColumn === c.id}
                               titleFinished={() => setNewColumn(null)}
                               createTask={createTask}
-                              removed={({ event }) => {
-                                notify({ text: 'Column deleted.' }); setUndoColumn(event)
-                              }}
                             >
                               {items.map(item => (
-                                <Fragment key={item.id}>
-                                  <BoardCard
-                                    card={item}
-                                    latest={latest[item.id]}
-                                    match={matches.get(item.id)}
-                                    visible={cards}
-                                    selected={selected === item.id}
-                                    view={view}
-                                    open={open}
-                                    save={save}
-                                    command={command}
-                                    connected={connected}
-                                    notify={notify}
-                                    editingTitle={editingTask === item.id}
-                                    titleFinished={() => setEditingTask(null)}
-                                    createTask={createTask}
-                                    tabIndex={
-                                      (items.some(i => i.id === keyboard.remembered[c.id])
-                                        ? keyboard.remembered[c.id]
-                                        : items[0]?.id) === item.id ? 0 : -1
-                                    }
-                                  />
-                                  {selected === item.id && view.panelPlacement === 'inline' && detail}
-                                </Fragment>
+                                <BoardCard
+                                  key={item.id}
+                                  card={item}
+                                  latest={latest[item.id]}
+                                  selected={selected === item.id}
+                                  view={view}
+                                  open={({ id }) => selected === id ? close() : open({ id })}
+                                  command={command}
+                                  connected={connected}
+                                  editingTitle={editingTask === item.id}
+                                  titleFinished={() => setEditingTask(null)}
+                                  tabIndex={
+                                    (items.some(i => i.id === keyboard.remembered[c.id])
+                                      ? keyboard.remembered[c.id]
+                                      : items[0]?.id) === item.id ? 0 : -1
+                                  }
+                                >
+                                  {selected === item.id && detail}
+                                </BoardCard>
                               ))}
                             </Column>
                           )
@@ -565,32 +410,13 @@ export function App() {
                         </div>
                       </div>
                     </div>
-                    {(view.panelPlacement === 'right' || (card && !cards.some(c => c.id === card.id))) && detail}
                   </div>
                 </div>
               </div>
             </>
           )}
         </main>
-        {notice && (
-          <div role="status" className="notice">
-            <span>{notice}</span>
-            {undoColumn && (
-              <Button
-                onClick={() => {
-                  void command({ name: 'undo', args: [undoColumn, '--if-revision', String(state.boardRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => notify({ text: 'Column and its cards restored.' }))
-                    .catch(e => notify({ text: e.message }))
-                }}
-              >
-                Undo
-              </Button>
-            )}
-            <Button aria-label="Dismiss notification" onClick={() => setNotice('')}>
-              <Icon name="close" size={14} />
-            </Button>
-          </div>
-        )}
-        <KeyboardLayers keyboard={keyboard} state={state} connected={connected} />
+        <span className="sr-only" role="status">{notice}</span>
       </div>
     </KeyboardProvider>
   )

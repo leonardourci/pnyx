@@ -253,7 +253,7 @@ test('Focus hides traces before paging so tool-heavy output cannot push replies 
   const focused = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
   assert.deepEqual(focused.entries.map(e => e.text), ['reply 0', 'reply 1', 'reply 2'])
   assert.ok(traces({ view: viewFor({ state }), card: 'c1' }).focus)
-  const showTools = { cardTraceOverrides: { c1: { tools: true } } }
+  const showTools = { focusMode: false }
   state = reduce({ state, event: event({ d: decideView({ state, patch: showTools, meta }) }) })
   const full = readThread({ board: 'default', state, card: state.cards.c1!, homes: [] })
   assert.equal(full.entries.length, 60); assert.ok(full.entries.every(e => e.kind === 'tool'))

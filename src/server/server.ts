@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
+import { HYDRA_CARD } from '../core/hydra.ts'
 import { findCard } from '../core/decide.ts'
 import { replyRoute } from '../core/route.ts'
 import { PASEO_CURSOR, paseoConversation, type PaseoConversation } from '../integrations/paseo/thread.ts'
@@ -101,6 +102,10 @@ export async function startServer({
     native?: Promise<PaseoConversation>
   }
   const subscriptions = new Map<WebSocket, Subscription>()
+  const hydraSubscriptions = new Map<WebSocket, Subscription>()
+  const threadSubscriptions = [subscriptions, hydraSubscriptions]
+  const subscriptionMap = ({ card }: { card: string }) =>
+    card === HYDRA_CARD ? hydraSubscriptions : subscriptions
   const threadTimers = new Map<WebSocket, ReturnType<typeof setTimeout>>()
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
@@ -117,28 +122,30 @@ export async function startServer({
         return
       }
 
-      const sub = subscriptions.get(ws), card = sub && state.cards[sub.card]
+      for (const map of threadSubscriptions) {
+        const sub = map.get(ws), card = sub && state.cards[sub.card]
 
-      if (!card) {
-        return
-      }
+        if (!card) {
+          continue
+        }
 
-      const unavailable = () => send({ ws, message: { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' } })
+        const unavailable = () => send({ ws, message: { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' } })
 
-      if (sub.native) {
-        void sub.native.then(n => n.read({})).then(thread => {
-          if (subscriptions.get(ws) === sub && ws.readyState === ws.OPEN) {
-            send({ ws, message: { type: 'thread', thread } })
-          }
-        }, unavailable)
+        if (sub.native) {
+          void sub.native.then(n => n.read({})).then(thread => {
+            if (map.get(ws) === sub && ws.readyState === ws.OPEN) {
+              send({ ws, message: { type: 'thread', thread } })
+            }
+          }, unavailable)
 
-        return
-      }
+          continue
+        }
 
-      try {
-        send({ ws, message: { type: 'thread', thread: readThread({ board, state, card, homes }) } })
-      } catch {
-        unavailable()
+        try {
+          send({ ws, message: { type: 'thread', thread: readThread({ board, state, card, homes }) } })
+        } catch {
+          unavailable()
+        }
       }
     }, LATEST_DELAY_MS))
   }
@@ -161,7 +168,8 @@ export async function startServer({
   }
 
   const bindThread = ({ ws, card }: { ws: WebSocket; card: Card }) => {
-    subscriptions.get(ws)?.watcher?.close()
+    const map = subscriptionMap({ card: card.id })
+    map.get(ws)?.watcher?.close()
     const path = threadPath({ card })
     const sub: Subscription = { card: card.id, path }
     const paseo = card.agent?.paseoAgentId
@@ -181,7 +189,7 @@ export async function startServer({
       } catch { /* Missing transcript remains explicit. */ }
     }
 
-    subscriptions.set(ws, sub)
+    map.set(ws, sub)
   }
 
   const dir = boardDir({ board })
@@ -216,19 +224,24 @@ export async function startServer({
         sendSnapshot({ ws })
       }
 
-      const sub = subscriptions.get(ws)
+      for (const map of threadSubscriptions) {
+        const sub = map.get(ws)
 
-      // A view change that switches this card's traces on or off changes its page.
-      if (sub && (sub.card === event.cardId
+        // A view change that switches this card's traces on or off changes its page.
+        if (sub && (sub.card === event.cardId
         || (event.type === 'task.session' && sub.card === event.data.before)
-        || (event.type === 'board.view' && shownTraces({ view: event.data.before, card: sub.card }) !== shownTraces({ view: event.data.after, card: sub.card })))) {
-        const card = state.cards[sub.card]
+        || (event.type === 'board.view' &&
+          shownTraces({ view: event.data.before, card: sub.card })
+          !== shownTraces({ view: event.data.after, card: sub.card })))) {
+          const card = state.cards[sub.card]
 
-        if (card && (sub.path !== threadPath({ card }) || sub.paseo !== card.agent?.paseoAgentId)) {
-          bindThread({ ws, card })
+          if (card && (sub.path !== threadPath({ card })
+            || sub.paseo !== card.agent?.paseoAgentId)) {
+            bindThread({ ws, card })
+          }
+
+          refreshThread({ ws })
         }
-
-        refreshThread({ ws })
       }
     }
   }
@@ -520,7 +533,8 @@ export async function startServer({
             throw new BoardError({ message: 'boards expects nothing, open <id>, create <name> or rename <id> <name>', code: 'VALIDATION_ERROR' })
           }
         } else if (name === 'thread') {
-          const old = subscriptions.get(ws); old?.watcher?.close(); subscriptions.delete(ws)
+          const map = subscriptionMap({ card: args[0] ?? '' })
+          const old = map.get(ws); old?.watcher?.close(); map.delete(ws)
 
           if (!args[0]) {
             send({ ws, message: { type: 'receipt', id } })
@@ -537,7 +551,7 @@ export async function startServer({
           }
 
           bindThread({ ws, card })
-          const sub = subscriptions.get(ws)!
+          const sub = map.get(ws)!
           void threadPage({ sub, card, before: args[1] }).then(thread => {
             if (ws.readyState === ws.OPEN) {
               send({ ws, message: { type: 'receipt', id, thread } })
@@ -669,7 +683,9 @@ export async function startServer({
 
     wss.handleUpgrade(req, socket, head, ws => {
       ws.on('close', () => {
-        subscriptions.get(ws)?.watcher?.close(); subscriptions.delete(ws)
+        for (const map of threadSubscriptions) {
+          map.get(ws)?.watcher?.close(); map.delete(ws)
+        }
       })
       ws.on('message', data => {
         const message = parseMessage({ text: data.toString() })
@@ -756,14 +772,15 @@ export async function startServer({
     async close() {
       closed = true
 
-      const threads = [...subscriptions.values()].flatMap(sub => sub.watcher ?? [])
+      const threads = threadSubscriptions.flatMap(map =>
+        [...map.values()].flatMap(sub => sub.watcher ?? []))
 
       for (const w of [...watchers, ...folders.values(), ...threads]) {
         w.close()
       }
 
       folders.clear()
-      subscriptions.clear()
+      threadSubscriptions.forEach(map => map.clear())
       clearTimeout(latestTimer)
 
       for (const timer of threadTimers.values()) {

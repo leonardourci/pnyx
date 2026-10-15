@@ -15,7 +15,7 @@ import { commandQuery, matchesCommand, resetWidths, searchSettings, searchWords 
 
 export function Search({
   state, view, command, query, setQuery, hits, save, openTask, openHydra, history,
-  showTopbar, createTask, createColumn, action, notify, connected, page, selected,
+  showTopbar, createTask, createColumn, action, notify, connected, page,
 }: {
   page: string
   selected: string | null
@@ -146,19 +146,20 @@ export function Search({
   for (const column of columnsFor({ state })) {
     add({ id: `task:${column.id}`, label: `New task in ${column.title}`, words: 'create add card', content: <Button disabled={!connected} onClick={() => run({ work: () => createTask({ column: column.id }) })}>New task in {column.title}</Button> })
     add({
-      id: `reorder:${column.id}`,
-      label: `Move ${column.title} column`,
-      words: 'layout position reorder left right',
+      id: `describe:${column.id}`,
+      label: `${column.title} description`,
+      words: 'column template when why rules',
       content: (
         <>
-          <span>Move {column.title} column</span>
-          <Select
-            label={`Move ${column.title} column from search`}
-            value={columnsFor({ state })[columnsFor({ state }).findIndex(c => c.id === column.id) + 1]?.id ?? ''}
-            options={[...columnsFor({ state }).filter(c => c.id !== column.id)
-              .map(c => ({ value: c.id, label: `Before ${c.title}` })), { value: '', label: 'Last column' }]}
-            onChange={({ value }) => {
-              void editColumn({ args: ['reorder', column.id, ...(value ? ['--before', value] : [])] }).catch((e: Error) => notify({ text: e.message }))
+          <span>{column.title} description</span>
+          <Input
+            key={column.description ?? ''}
+            aria-label={`${column.title} description from search`}
+            defaultValue={column.description ?? ''}
+            onBlur={e => {
+              if (e.target.value !== (column.description ?? '')) {
+                void editColumn({ args: ['describe', column.id, '--description', e.target.value] }).catch((error: Error) => notify({ text: error.message }))
+              }
             }}
           />
         </>
@@ -186,35 +187,6 @@ export function Search({
   for (const entry of KEY_ACTIONS.filter(entry => !['palette', 'cancel', 'send', 'find'].includes(entry.id))) {
     const enabled = entry.scopes.includes(context.current.scope)
 
-    if (entry.id === 'move') {
-      const cardId = context.current.target.closest<HTMLElement>('[data-card]')?.dataset.card
-      const card = state.cards[cardId ?? selected ?? '']
-      add({
-        id: 'move-task',
-        label: 'Move card',
-        words: 'task place column',
-        content: (
-          <>
-            <span>Move card</span>
-            <Select
-              label="Move card from search"
-              value={card?.column ?? ''}
-              options={columnsFor({ state }).map(column => ({
-                value: column.id, label: column.title,
-              }))}
-              disabled={!card || !connected}
-              onChange={({ value }) => {
-                if (card) {
-                  void command({ name: 'move', args: [card.id, value, '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] }).catch((e: Error) => notify({ text: e.message }))
-                }
-              }}
-            />
-          </>
-        ),
-      })
-      continue
-    }
-
     add({
       id: `action:${entry.id}`,
       label: entry.label,
@@ -224,7 +196,9 @@ export function Search({
           disabled={!enabled}
           onClick={() => run({
             work: () => {
-              if (!handlers.get(entry.id)?.({ context: context.current })) {
+              const registered = [...(handlers.get(entry.id) ?? [])].reverse()
+
+              if (!registered.some(run => run({ context: context.current }))) {
                 action({ id: entry.id, context: context.current })
               }
             },
@@ -368,6 +342,7 @@ export function Search({
   return (
     <div
       className="board-search"
+      data-search-slot
       ref={root}
       onKeyDown={e => {
         if (e.key === 'Escape' && !e.nativeEvent.isComposing && !e.defaultPrevented) {
