@@ -23,10 +23,14 @@ test('login service starts the same board, survives exit and uninstalls through 
       loaded = true
     }
 
+    if (args[0] === 'bootout') {
+      loaded = false
+    }
+
     return ''
   }
 
-  const options = { board: 'default', port: 49123, homes: ['/fixture/home & space'], platform: 'darwin' as const, userHome: root, run }
+  const options = { board: 'default', port: 49123, homes: ['/fixture/home & space'], platform: 'darwin' as const, userHome: root, run, sleep: () => assert.fail('an immediate bootout needs no wait') }
   const preview = setupService({ ...options, preview: true })
   assert.equal(calls.length, 0)
   assert.equal(existsSync(preview.path), false)
@@ -40,12 +44,68 @@ test('login service starts the same board, survives exit and uninstalls through 
   assert.match(plist, /pnyx &amp; board/)
   assert.equal(calls.at(-1)?.[0], 'bootstrap')
   setupService(options)
-  assert.equal(calls.at(-2)?.[0], 'bootout')
+  assert.deepEqual(calls.slice(-3).map(args => args[0]), ['bootout', 'print', 'bootstrap'])
   setupService({ ...options, remove: true })
-  assert.equal(calls.at(-1)?.[0], 'bootout')
+  assert.deepEqual(calls.slice(-2).map(args => args[0]), ['bootout', 'print'])
   assert.equal(existsSync(installed.path), false)
   assert.throws(() => setupService({ ...options, platform: 'linux' }), /requires macOS/)
   assert.throws(() => setupService({ ...options, port: 0 }), /1 to 65535/)
+})
+
+test('reinstalling a running service waits for launchd to finish the bootout and retries a failed bootstrap once', () => {
+  const root = mkdtempSync(join(tmpdir(), 'pnyx-service-reinstall-'))
+  process.env.PNYX_HOME = join(root, 'pnyx')
+  const calls: string[] = []
+  const waits: number[] = []
+  let listed = true
+  let unloading = 0
+  let refusals = 0
+
+  const run = ({ args }: { args: string[] }) => {
+    calls.push(args[0])
+
+    if (args[0] === 'print') {
+      if (unloading > 0) {
+        unloading--
+      } else if (unloading === 0 && !listed) {
+        throw new Error('Could not find service')
+      }
+
+      return ''
+    }
+
+    if (args[0] === 'bootout') {
+      listed = false
+      unloading = 3
+    }
+
+    if (args[0] === 'bootstrap') {
+      if (unloading > 0 || refusals-- > 0) {
+        throw new Error(`Command failed: launchctl bootstrap ${args[1]} ${args[2]}\nBootstrap failed: 5: Input/output error`)
+      }
+
+      listed = true
+    }
+
+    return ''
+  }
+
+  const options = { board: 'default', platform: 'darwin' as const, userHome: root, run, sleep: ({ ms }: { ms: number }) => waits.push(ms) }
+  setupService(options)
+  assert.deepEqual(calls, ['print', 'bootout', 'print', 'print', 'print', 'print', 'bootstrap'])
+  assert.deepEqual(waits, [100, 100, 100])
+  assert.equal(listed, true)
+
+  calls.length = 0
+  waits.length = 0
+  refusals = 1
+  setupService(options)
+  assert.deepEqual(calls.slice(-2), ['bootstrap', 'bootstrap'])
+  assert.equal(waits.at(-1), 1000)
+  assert.equal(listed, true)
+
+  refusals = 2
+  assert.throws(() => setupService(options), (error: Error & { code?: string }) => error.code === 'SERVICE_ERROR' && error.message.includes('Bootstrap failed: 5: Input/output error'))
 })
 
 test('login service runs Node through a PATH link that survives a Homebrew upgrade', () => {

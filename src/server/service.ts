@@ -29,7 +29,7 @@ const stableNode = ({ node, searchPath }: { node: string; searchPath: string }) 
     .find(candidate => resolve({ path: candidate }) === real)) || node
 }
 
-export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = false, preview = false, platform = process.platform, userHome = homedir(), node = process.execPath, searchPath = process.env.PATH ?? '/usr/bin:/bin', run = ({ args }) => execFileSync('launchctl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }: {
+export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = false, preview = false, platform = process.platform, userHome = homedir(), node = process.execPath, searchPath = process.env.PATH ?? '/usr/bin:/bin', run = ({ args }) => execFileSync('launchctl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), sleep = ({ ms }) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) }: {
   board: string
   port?: number
   homes?: string[]
@@ -40,6 +40,7 @@ export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = 
   node?: string
   searchPath?: string
   run?({ args }: { args: string[] }): string
+  sleep?({ ms }: { ms: number }): unknown
 }) {
   if (platform !== 'darwin') {
     throw new BoardError({ message: 'the login service requires macOS launchd', code: 'UNSUPPORTED_PLATFORM' })
@@ -78,15 +79,25 @@ export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = 
     return { service: remove ? 'would remove' : 'would install', path, plist: remove ? undefined : plist }
   }
 
-  let loaded = false
+  const listed = () => {
+    try {
+      run({ args: ['print', target] })
 
-  try {
-    run({ args: ['print', target] })
-    loaded = true
-  } catch { /* An uninstalled service has no launchd record. */ }
+      return true
+    } catch {
+      return false
+    }
+  }
 
-  if (loaded) {
-    run({ args: ['bootout', target] })
+  if (listed()) {
+    try {
+      run({ args: ['bootout', target] })
+    } catch { /* The job may exit on its own between print and bootout. */ }
+
+    // launchd finishes a bootout asynchronously, and bootstrapping the same label before it is gone fails with an I/O error.
+    for (let attempt = 0; attempt < 50 && listed(); attempt++) {
+      sleep({ ms: 100 })
+    }
   }
 
   if (remove) {
@@ -105,8 +116,14 @@ export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = 
 
   try {
     run({ args: ['bootstrap', domain, path] })
-  } catch (error) {
-    throw new BoardError({ message: `launchd could not start the board: ${(error as Error).message}`, code: 'SERVICE_ERROR', help: [`Read ${log}`, 'Stop a manually started server before installing the service'] })
+  } catch {
+    sleep({ ms: 1000 })
+
+    try {
+      run({ args: ['bootstrap', domain, path] })
+    } catch (error) {
+      throw new BoardError({ message: `launchd could not start the board: ${(error as Error).message}`, code: 'SERVICE_ERROR', help: [`Read ${log}`, 'Stop a manually started server before installing the service'] })
+    }
   }
 
   return { service: 'installed', board, path, log, help: ['The board starts at login and restarts after exit', `Run \`pnyx-axi setup service --remove --board ${board}\` to stop and uninstall it`] }
