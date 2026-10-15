@@ -12,19 +12,21 @@ const xml = ({ text }: { text: string }) => text.replaceAll('&', '&amp;').replac
   .replaceAll('"', '&quot;')
   .replaceAll("'", '&apos;')
 
+const resolve = ({ path }: { path: string }) => {
+  try {
+    return realpathSync(path)
+  } catch {
+    return undefined
+  }
+}
+
 // A versioned path such as Homebrew's Cellar disappears on upgrade, so prefer a PATH entry that links to the same Node.
 const stableNode = ({ node, searchPath }: { node: string; searchPath: string }) => {
-  const real = realpathSync(node)
+  const real = resolve({ path: node })
 
-  return searchPath.split(delimiter).filter(dir => isAbsolute(dir))
+  return (real && searchPath.split(delimiter).filter(dir => isAbsolute(dir))
     .map(dir => join(dir, 'node'))
-    .find(candidate => {
-      try {
-        return realpathSync(candidate) === real
-      } catch {
-        return false
-      }
-    }) ?? node
+    .find(candidate => resolve({ path: candidate }) === real)) || node
 }
 
 export function setupService({ board, port = DEFAULT_PORT, homes = [], remove = false, preview = false, platform = process.platform, userHome = homedir(), node = process.execPath, searchPath = process.env.PATH ?? '/usr/bin:/bin', run = ({ args }) => execFileSync('launchctl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }: {

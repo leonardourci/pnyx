@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
 import { setupService } from '../src/server/service.ts'
 
@@ -63,9 +63,10 @@ test('login service runs Node through a PATH link that survives a Homebrew upgra
   writeFileSync(join(other, 'node'), '')
   symlinkSync(join(cellar, 'node'), join(bin, 'node'))
   const options = { board: 'default', platform: 'darwin' as const, userHome: root, preview: true, node: join(cellar, 'node'), run: () => '' }
-  const linked = setupService({ ...options, searchPath: ['relative', other, bin].join(':') }).plist!
-  assert.match(linked, new RegExp(`<array><string>${join(bin, 'node')}</string>`))
-  assert.doesNotMatch(linked, /<array><string>[^<]*Cellar/)
+  const linked = setupService({ ...options, searchPath: ['relative', other, bin].join(delimiter) }).plist!
+  assert.ok(linked.includes(`<array><string>${join(bin, 'node')}</string>`))
   const unlinked = setupService({ ...options, searchPath: other }).plist!
-  assert.match(unlinked, new RegExp(`<array><string>${join(cellar, 'node')}</string>`))
+  assert.ok(unlinked.includes(`<array><string>${join(cellar, 'node')}</string>`))
+  const missing = setupService({ ...options, node: join(root, 'gone', 'node'), searchPath: bin }).plist!
+  assert.ok(missing.includes(`<array><string>${join(root, 'gone', 'node')}</string>`))
 })
