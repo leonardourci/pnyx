@@ -18,12 +18,12 @@ test('lifecycle: pull requests, merges and outcomes never move a card', () => {
 
   for (let seq = 1; seq <= events.length; seq++) {
     const state = replay({ state: emptyHydra(), events: events.slice(0, seq) })
-    assert.equal(state.cards.c1!.column, 'workers_on_it', `after event ${seq}`)
+    assert.equal(state.cards.c1!.column, 'in_progress', `after event ${seq}`)
   }
 
   const end = replay({ state: emptyHydra(), events })
   assert.equal(end.cards.c2!.parentId, 'c1')
-  assert.equal(end.cards.c2!.column, 'workers_on_it')
+  assert.equal(end.cards.c2!.column, 'in_progress')
   assert.equal(end.cards.c1!.links.filter(l => l.state === 'merged').length, 2)
 })
 
@@ -34,7 +34,7 @@ test('duplicates and out-of-order observations are ignored', () => {
   assert.equal(card.title, 'Refactor store layer')
   assert.equal(card.activity, 'working')
   assert.equal(card.links[0]!.state, 'merged')
-  assert.equal(card.column, 'workers_on_it')
+  assert.equal(card.column, 'in_progress')
   assert.equal(state.eventIds['hook-0001'], 1)
   assert.equal(state.eventIds['hook-late'], undefined)
   // Applied: hook-0001, hook-0002, evt_7, hook-0005.
@@ -66,7 +66,7 @@ test('undo events restore the card and record what they reversed', () => {
   const card = state.cards.c1!
   assert.deepEqual(card.links, [])
   assert.equal(card.outcome, undefined)
-  assert.equal(card.column, 'workers_on_it')
+  assert.equal(card.column, 'workers_on_it', 'an older log keeps its Workers on it card until the Hydra moves onto the default columns')
   assert.deepEqual(state.undone, { evt_2: 'evt_3', evt_4: 'evt_5', evt_6: 'evt_7' })
 })
 

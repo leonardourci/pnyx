@@ -129,7 +129,7 @@ for (const harness of ['claude', 'codex']) {
     assert.equal(task.folder, folder)
     assert.equal(task.agent?.paseoAgentId, 'lab-1')
     assert.equal(task.agent?.paseoUrl, url)
-    assert.equal(task.column, 'workers_on_it')
+    assert.equal(task.column, 'in_progress')
     const origin = Object.values(state().cards).find(c => c.key === 'paseo:lab-1')!
     assert.equal(liveTask({ card: origin }), false)
     assert.equal(state().sessions?.[`${provider}:lab-1`]?.taskId, 'c1')

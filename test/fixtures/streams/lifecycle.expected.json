@@ -41,7 +41,7 @@
           "observedAt": "2026-10-13T10:00:00Z"
         }
       ],
-      "column": "workers_on_it",
+      "column": "in_progress",
       "revision": 6,
       "createdSeq": 1,
       "updatedSeq": 8,
@@ -66,7 +66,7 @@
           "observedAt": "2026-10-13T10:01:00Z"
         }
       ],
-      "column": "workers_on_it",
+      "column": "in_progress",
       "revision": 2,
       "createdSeq": 2,
       "updatedSeq": 7,

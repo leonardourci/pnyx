@@ -41,7 +41,7 @@ const query = (({ prompt, options }: {
 }) as unknown as QueryFn
 
 await commands.hydra(['create', 'default', '--hydra', 'default'])
-await commands.task(['create', '--title', 'Permission example', '--key', 'permission', '--folder', home, '--column', 'workers_on_it'])
+await commands.task(['create', '--title', 'Permission example', '--key', 'permission', '--folder', home, '--column', 'in_progress'])
 let server = await startServer({ hydraId: 'default', query })
 const state = () => loadHydra({ hydraId: 'default' }).state
 const task = () => state().cards[state().keys.permission!]!
@@ -56,12 +56,12 @@ try {
   await screenshot({ name: 'permission-before.png' })
   release?.()
   await eventually({ condition: '!!document.querySelector(".ask button")', label: 'permission buttons appear' })
-  await check({ condition: 'document.querySelector("[data-column=workers_on_it]").textContent.includes("Needs you · permission") && document.querySelector(".permission-input").textContent.includes("touch allowed.txt")', label: 'request shows tool input and Needs you in the original column' })
+  await check({ condition: 'document.querySelector("[data-column=in_progress]").textContent.includes("Needs you · permission") && document.querySelector(".permission-input").textContent.includes("touch allowed.txt")', label: 'request shows tool input and Needs you in the original column' })
   await screenshot({ name: 'permission-pending.png' })
   await text({ label: 'Allow' })
   await eventually({ condition: 'document.querySelector(".ask .receipt")?.textContent === "Allowed"', label: 'Allow resolves the request' })
   assert.deepEqual(results, [{ behavior: 'allow' }])
-  assert.equal(task().column, 'workers_on_it')
+  assert.equal(task().column, 'in_progress')
   await sendReply({ hydraId: 'default', request: { card: task().id, text: 'Ask again', homes: [], actor: 'fixture' } })
   await eventually({ condition: '!!document.querySelector(".ask button")', label: 'second request appears' })
   await text({ label: 'Deny' })

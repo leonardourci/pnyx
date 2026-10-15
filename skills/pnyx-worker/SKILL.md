@@ -32,6 +32,8 @@ To escalate a question or decision to Hydra, use `pnyx-axi hydra send --task <ta
 
 Replies reach you as ordinary messages in your session. Link pull requests or tickets with `pnyx-axi link <task> --url <url> --hydra <hydra>`.
 
+Pnyx usually starts you in your task's own copy of the project, on its own branch. Commit your work there and link its pull request: once the task is done, Pnyx removes the copy only if nothing is left uncommitted and the work has landed.
+
 ## Limits
 
 Work on your task only. Do not create, assign or attach other tasks or workers, and do not move columns; that is Hydra's job. If the task needs splitting, say so with `needs_you`.
