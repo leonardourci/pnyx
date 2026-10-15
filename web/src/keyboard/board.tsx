@@ -375,26 +375,6 @@ export function KeyboardToolbar({
   )
 }
 
-export function KeyboardFooter() {
-  const { label } = useKeyboard()
-
-  return (
-    <span>
-      {label({ id: 'board.down' })}
-      {' '}
-      next ·
-      {' '}
-      {label({ id: 'board.open' })}
-      {' '}
-      open ·
-      {' '}
-      {label({ id: 'reply' })}
-      {' '}
-      reply
-    </span>
-  )
-}
-
 export function KeyboardLayers({
   keyboard,
   state,

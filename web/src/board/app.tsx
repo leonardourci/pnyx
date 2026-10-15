@@ -20,7 +20,7 @@ import { History } from './history.tsx'
 import { columnsFor, findBoxCards, pageTitle } from './view.ts'
 import { useFoundCards } from './card-search.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
-import { KeyboardFooter, KeyboardLayers, KeyboardToolbar, useBoardKeyboard } from '../keyboard/board.tsx'
+import { KeyboardLayers, KeyboardToolbar, useBoardKeyboard } from '../keyboard/board.tsx'
 
 // What a reload (by hand, or after the server serves a new build) would otherwise lose:
 // the open card, the page, unsent drafts and how far the board was scrolled. Kept per tab.
@@ -368,6 +368,7 @@ export function App() {
     >
       <div
         className="app"
+        data-seq={state.seq}
         style={{
           '--text-ui': `${view.fontSize}px`,
           '--text-chat': `${view.chatFontSize}px`,
@@ -413,145 +414,120 @@ export function App() {
             />
           ) : (
             <>
-              <div className="hero">
-                <div>
-                  <span className="eyebrow">YOUR WORK, AT A GLANCE</span>
-                  <h1>The working board</h1>
-                  <p>Follow the work. Keep the conversation in view.</p>
-                </div>
-                <div className="hero-stats">
-                  <strong>{Object.values(state.cards).filter(c => liveTask({ card: c }) && c.column === 'needs_you').length}</strong>
-                  {' '}
-                  need your attention
-                  <p>
-                    {Object.values(state.cards).filter(c => liveTask({ card: c })).length}
-                    {' '}
-                    tasks ·
-                    {' '}
-                    {state.seq}
-                    {' '}
-                    recorded events
-                  </p>
-                </div>
-              </div>
-              <div className="toolbar">
-                <div className="row wrap">
-                  <Select
-                    label="Workspace"
-                    value={workspace}
-                    options={[{ value: '', label: 'All workspaces' }, ...workspaces.map(w => ({ value: w, label: w }))]}
-                    onChange={({ value }) => setWorkspace(value)}
-                  />
-                  <Select
-                    label="Filter by tag"
-                    value={tag}
-                    options={[{ value: '', label: 'All tags' }, ...tags.map(t => ({ value: t, label: t }))]}
-                    onChange={({ value }) => setTag(value)}
-                  />
-                  {(workspace || tag) && (
-                    <Button
-                      onClick={() => {
-                        setWorkspace(''); setTag('')
-                      }}
-                    >
-                      Clear filters
-                    </Button>
-                  )}
-                </div>
-                <div className="row">
-                  <Icon name="search" />
-                  <Input
-                    aria-label="Find a card"
-                    type="search"
-                    placeholder="Find a card…"
-                    value={query}
-                    onChange={e => setQuery(e.target.value)}
-                  />
-                </div>
-              </div>
-              <HydraChat
-                state={state}
-                command={command}
-                connected={connected}
-                openTask={open}
-                notify={notify}
-              />
-              <div className={`work-area ${view.panelPlacement}`}>
-                <div className="board-space">
-                  <div className="kanban" aria-label="Work columns">
-                    {columns.map(c => {
-                      const items = cards.filter(card => card.column === c.id)
-
-                      return (
-                        <Column
-                          key={c.id}
-                          {...c}
-                          cards={items}
-                          view={view}
-                          save={save}
-                          command={command}
-                          notify={notify}
-                          revision={state.boardRevision ?? 0}
-                          connected={connected}
-                          columnIds={columns.map(c => c.id)}
-                          editingTitle={newColumn === c.id}
-                          titleFinished={() => setNewColumn(null)}
-                          createTask={createTask}
-                          removed={({ event }) => {
-                            notify({ text: 'Column deleted.' }); setUndoColumn(event)
+              <div className="board-page">
+                <HydraChat
+                  state={state}
+                  command={command}
+                  connected={connected}
+                  openTask={open}
+                  notify={notify}
+                />
+                <div className="board-main">
+                  <div className="toolbar">
+                    <div className="row wrap">
+                      <Select
+                        label="Workspace"
+                        value={workspace}
+                        options={[{ value: '', label: 'All workspaces' }, ...workspaces.map(w => ({ value: w, label: w }))]}
+                        onChange={({ value }) => setWorkspace(value)}
+                      />
+                      <Select
+                        label="Filter by tag"
+                        value={tag}
+                        options={[{ value: '', label: 'All tags' }, ...tags.map(t => ({ value: t, label: t }))]}
+                        onChange={({ value }) => setTag(value)}
+                      />
+                      {(workspace || tag) && (
+                        <Button
+                          onClick={() => {
+                            setWorkspace(''); setTag('')
                           }}
                         >
-                          {items.map(item => (
-                            <Fragment key={item.id}>
-                              <BoardCard
-                                card={item}
-                                latest={latest[item.id]}
-                                match={matches.get(item.id)}
-                                visible={cards}
-                                selected={selected === item.id}
-                                view={view}
-                                open={open}
-                                save={save}
-                                command={command}
-                                connected={connected}
-                                notify={notify}
-                                editingTitle={editingTask === item.id}
-                                titleFinished={() => setEditingTask(null)}
-                                createTask={createTask}
-                                tabIndex={
-                                  (items.some(i => i.id === keyboard.remembered[c.id])
-                                    ? keyboard.remembered[c.id]
-                                    : items[0]?.id) === item.id ? 0 : -1
-                                }
-                              />
-                              {selected === item.id && view.panelPlacement === 'inline' && detail}
-                            </Fragment>
-                          ))}
-                        </Column>
-                      )
-                    })}
-                    <div className="add-column">
-                      <Button
-                        disabled={!connected}
-                        onClick={() => {
-                          const id = `custom:${crypto.randomUUID()}`
-                          void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--event-id', crypto.randomUUID()] }).then(() => setNewColumn(id))
-                            .catch(e => notify({ text: e.message }))
-                        }}
-                      >+ Add column
-                      </Button>
+                          Clear filters
+                        </Button>
+                      )}
+                    </div>
+                    <div className="row">
+                      <Icon name="search" />
+                      <Input
+                        aria-label="Find a card"
+                        type="search"
+                        placeholder="Find a card…"
+                        value={query}
+                        onChange={e => setQuery(e.target.value)}
+                      />
                     </div>
                   </div>
-                  <footer className="board-footer">
-                    <span>
-                      {cards.length}
-                      {' '}
-                      visible tasks
-                    </span>
-                    <KeyboardFooter />
-                  </footer>
+                  <div className={`work-area ${view.panelPlacement}`}>
+                    <div className="board-space">
+                      <div className="kanban" aria-label="Work columns">
+                        {columns.map(c => {
+                          const items = cards.filter(card => card.column === c.id)
+
+                          return (
+                            <Column
+                              key={c.id}
+                              {...c}
+                              cards={items}
+                              view={view}
+                              save={save}
+                              command={command}
+                              notify={notify}
+                              revision={state.boardRevision ?? 0}
+                              connected={connected}
+                              columnIds={columns.map(c => c.id)}
+                              editingTitle={newColumn === c.id}
+                              titleFinished={() => setNewColumn(null)}
+                              createTask={createTask}
+                              removed={({ event }) => {
+                                notify({ text: 'Column deleted.' }); setUndoColumn(event)
+                              }}
+                            >
+                              {items.map(item => (
+                                <Fragment key={item.id}>
+                                  <BoardCard
+                                    card={item}
+                                    latest={latest[item.id]}
+                                    match={matches.get(item.id)}
+                                    visible={cards}
+                                    selected={selected === item.id}
+                                    view={view}
+                                    open={open}
+                                    save={save}
+                                    command={command}
+                                    connected={connected}
+                                    notify={notify}
+                                    editingTitle={editingTask === item.id}
+                                    titleFinished={() => setEditingTask(null)}
+                                    createTask={createTask}
+                                    tabIndex={
+                                      (items.some(i => i.id === keyboard.remembered[c.id])
+                                        ? keyboard.remembered[c.id]
+                                        : items[0]?.id) === item.id ? 0 : -1
+                                    }
+                                  />
+                                  {selected === item.id && view.panelPlacement === 'inline' && detail}
+                                </Fragment>
+                              ))}
+                            </Column>
+                          )
+                        })}
+                        <div className="add-column">
+                          <Button
+                            disabled={!connected}
+                            onClick={() => {
+                              const id = `custom:${crypto.randomUUID()}`
+                              void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--event-id', crypto.randomUUID()] }).then(() => setNewColumn(id))
+                                .catch(e => notify({ text: e.message }))
+                            }}
+                          >+ Add column
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    {(view.panelPlacement === 'right' || (card && !cards.some(c => c.id === card.id))) && detail}
+                  </div>
                 </div>
-                {(view.panelPlacement === 'right' || (card && !cards.some(c => c.id === card.id))) && detail}
               </div>
             </>
           )}
