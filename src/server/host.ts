@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import type { EffortLevel, Options, PermissionMode, Query, SDKMessage, query } from '@anthropic-ai/claude-agent-sdk'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { freeTask } from '../cli/start.ts'
 import { decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
 import { BoardError, type AgentRef, type AgentSettings, type Attention, type Card } from '../core/model.ts'
-import { sessionId } from '../core/tasks.ts'
+import { INTERRUPTED, sessionId } from '../core/tasks.ts'
 import { pnyxHome, withWriter, type Writer } from '../store/board-store.ts'
 
 export type QueryFn = typeof query
@@ -36,7 +36,12 @@ export interface Host {
 }
 
 const PROVIDER = 'claude-code'
-const INTERRUPTED = 'pnyx:interrupted'
+export const SETTINGS = ['model', 'effort', 'mode']
+// An idle session's process is closed after this long; its next message resumes it.
+const IDLE_MS = 10 * 60 * 1000
+// The server's own launch context, which would make the agent report the server's
+// terminal, task or actor as its own.
+const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$)/
 const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'] satisfies EffortLevel[]
 const MODES: readonly string[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk', 'auto'] satisfies PermissionMode[]
 
@@ -109,6 +114,9 @@ interface Live {
   // Set once the SDK has loaded and Claude Code is starting.
   query?: Query
   activity: string
+  // A setting this process could not take: it is replaced once its turn is over.
+  stale?: boolean
+  idle?: ReturnType<typeof setTimeout>
 }
 
 // Runs Claude Code for the tasks Pnyx starts, through the Agent SDK. Each task records its
@@ -143,6 +151,28 @@ export function createHost({ board, query, changed }: {
   }
 
   const sessionKey = ({ agent }: { agent: AgentRef }) => `claude:${agent.sessionId}`
+
+  const retire = ({ key, entry }: { key: string; entry: Live }) => {
+    clearTimeout(entry.idle)
+
+    if (live.get(key) === entry) {
+      live.delete(key)
+    }
+
+    entry.input.end()
+    entry.query?.close()
+  }
+
+  const folderOf = ({ card }: { card: Card & { agent: AgentRef } }): string => {
+    const { cwd } = card.agent
+
+    if (!cwd || !isFolder({ path: cwd })) {
+      throw new BoardError({ message: `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`, code: 'FOLDER_MISSING', help: [`Run \`pnyx-axi task detach ${card.id}\`, then \`pnyx-axi task start ${card.id}\` to start fresh from the brief`] })
+    }
+
+    return cwd
+  }
+
   const at = () => new Date().toISOString()
 
   const record = ({ writer, agent, input, actor }: {
@@ -227,11 +257,22 @@ export function createHost({ board, query, changed }: {
         if (activity && activity !== entry.activity) {
           entry.activity = activity
           note({ fn: ({ writer }) => record({ writer, agent, input: { activity }, actor: 'pnyx' }) })
+          clearTimeout(entry.idle)
+
+          if (activity === 'finished') {
+            if (entry.stale) {
+              retire({ key, entry })
+            } else {
+              entry.idle = setTimeout(() => retire({ key, entry }), IDLE_MS).unref()
+            }
+          }
         }
       }
     } catch (error) {
       failure = (error as Error).message
     }
+
+    clearTimeout(entry.idle)
 
     if (live.get(key) === entry) {
       live.delete(key)
@@ -247,15 +288,18 @@ export function createHost({ board, query, changed }: {
     const key = sessionId({ agent: card.agent })
     const running = live.get(key)
 
-    if (running) {
+    if (running?.stale && running.activity !== 'working') {
+      retire({ key, entry: running })
+    } else if (running) {
+      clearTimeout(running.idle)
+
       return running
     }
 
-    const { cwd, sessionId: id, transcriptPath: path } = card.agent
-
-    if (!cwd || !isFolder({ path: cwd })) {
-      throw new BoardError({ message: `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`, code: 'FOLDER_MISSING', help: [`Run \`pnyx-axi task detach ${card.id}\`, then \`pnyx-axi task start ${card.id}\` to start fresh from the brief`] })
-    }
+    const cwd = folderOf({ card })
+    const { sessionId: id, transcriptPath: path } = card.agent
+    const env = Object.fromEntries(Object.entries(process.env)
+      .filter(([name]) => !INHERITED.test(name)))
 
     const entry: Live = { input: inbox(), activity: 'finished' }
     const options: Options = {
@@ -268,7 +312,7 @@ export function createHost({ board, query, changed }: {
       tools: { type: 'preset', preset: 'claude_code' },
       // Pnyx cannot answer permission prompts yet: what would ask is refused and Claude says so.
       permissionPrompts: 'none',
-      env: { ...process.env, PNYX_HOME: pnyxHome(), PNYX_BOARD: board },
+      env: { ...env, PNYX_HOME: pnyxHome(), PNYX_BOARD: board },
       ...sdkOptions({ settings: card.settings ?? {} }),
     }
     live.set(key, entry)
@@ -281,6 +325,10 @@ export function createHost({ board, query, changed }: {
     const card = write({
       fn: ({ writer }) => {
         const card = hosted({ writer, ref })
+
+        if (!live.has(sessionId({ agent: card.agent }))) {
+          folderOf({ card })
+        }
 
         if (card.attention.some(a => a.key === INTERRUPTED)) {
           const attention = card.attention.filter(a => a.key !== INTERRUPTED)
@@ -318,9 +366,15 @@ export function createHost({ board, query, changed }: {
           }
 
           const meta = { at: at(), actor, ...(reason ? { reason } : {}) }
+          // A marker left by an earlier agent belongs to it, not to the one starting now.
+          const attention = card.attention.filter(a => a.key !== INTERRUPTED)
+          const input = {
+            ...(cwd !== card.folder ? { folder: cwd } : {}),
+            ...(attention.length !== card.attention.length ? { attention } : {}),
+          }
 
-          if (cwd !== card.folder) {
-            apply({ writer, decision: decidePush({ state: writer.state, key: card.key, input: { folder: cwd }, meta: { ...meta, id: `${id}:folder` } }) })
+          if (Object.keys(input).length) {
+            apply({ writer, decision: decidePush({ state: writer.state, key: card.key, input, meta: { ...meta, id: `${id}:folder` } }) })
           }
 
           const session = randomUUID()
@@ -368,9 +422,17 @@ export function createHost({ board, query, changed }: {
           return card
         },
       })
-      const running = live.get(sessionId({ agent: card.agent }))
+      const key = sessionId({ agent: card.agent })
+      const running = live.get(key)
 
-      if (!running?.query) {
+      if (!running) {
+        return
+      }
+
+      // Still loading: its options were built before this change.
+      if (!running.query) {
+        running.stale = true
+
         return
       }
 
@@ -383,12 +445,12 @@ export function createHost({ board, query, changed }: {
           await running.query.applyFlagSettings({ effortLevel: value as EffortLevel })
         }
       } catch {
-        // The running process refused it (bypass needs a session started for it): the
-        // next message starts one with the recorded setting, once this turn is over.
+        // Refused by the running process (bypass needs a session started for it): the
+        // recorded setting applies from a new process once this turn is over.
+        running.stale = true
+
         if (running.activity !== 'working') {
-          live.delete(sessionId({ agent: card.agent }))
-          running.input.end()
-          running.query?.close()
+          retire({ key, entry: running })
         }
       }
     },
@@ -406,12 +468,9 @@ export function createHost({ board, query, changed }: {
     close: () => {
       closing = true
 
-      for (const entry of live.values()) {
-        entry.input.end()
-        entry.query?.close()
+      for (const [key, entry] of live) {
+        retire({ key, entry })
       }
-
-      live.clear()
     },
   }
 }
@@ -446,9 +505,14 @@ export async function hostRequest({ host, body: raw }: {
     case 'start': {
       const given = (body.settings ?? {}) as Record<string, unknown>
       const settings = Object.fromEntries(Object.entries(given)
-        .filter((e): e is [string, string] => ['model', 'effort', 'mode'].includes(e[0]) && typeof e[1] === 'string' && e[1] !== ''))
+        .filter((e): e is [string, string] => SETTINGS.includes(e[0]) && typeof e[1] === 'string' && e[1] !== ''))
+      const folder = field({ body, name: 'folder', optional: true })
 
-      return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder: field({ body, name: 'folder', optional: true }), settings, id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
+      if (folder !== undefined && !isAbsolute(folder)) {
+        throw new BoardError({ message: 'folder must be an absolute path', code: 'VALIDATION_ERROR' })
+      }
+
+      return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
     }
 
     case 'send':
@@ -457,12 +521,14 @@ export async function hostRequest({ host, body: raw }: {
       return { sent: true }
     case 'set': {
       const setting = field({ body, name: 'setting' })!
+      const value = field({ body, name: 'value' })!
+      const allowed = { effort: EFFORTS, mode: MODES }[setting]
 
-      if (!['model', 'effort', 'mode'].includes(setting)) {
-        throw new BoardError({ message: 'setting must be model, effort or mode', code: 'VALIDATION_ERROR' })
+      if (!SETTINGS.includes(setting) || (allowed && !allowed.includes(value))) {
+        throw new BoardError({ message: `${setting} cannot be ${value}`, code: 'VALIDATION_ERROR', help: [`Settings: ${SETTINGS.join(', ')}; effort ${EFFORTS.join('|')}; mode ${MODES.join('|')}`] })
       }
 
-      await host.set({ card: field({ body, name: 'card' })!, setting, value: field({ body, name: 'value' })!, actor })
+      await host.set({ card: field({ body, name: 'card' })!, setting, value, actor })
 
       return { set: true }
     }
