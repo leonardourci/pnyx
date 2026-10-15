@@ -538,7 +538,7 @@ test('spooled hook events become cards on the next write, and a finished turn ne
   assert.match(session, /https:\/\/github\.com\/example\/repo\/pull\/42/)
   assert.doesNotMatch(session, /outcome/)
   const child = run({ args: ['card', `claude:${SESSION}/agent-a1`] })
-  assert.match(child, /^ {2}parent: c1$/m)
+  assert.match(child, /^ {2}parent: task-[0-9a-f-]{36}$/m)
   assert.match(child, /^ {4}agentId: agent-a1$/m)
   assert.match(run({ args: ['history', '--limit', '100'] }), /hook:claude/)
 })
@@ -748,7 +748,7 @@ test('a hook never changes an outcome another source or a person recorded', () =
   const file = join(home, 'card.json')
   writeFileSync(file, JSON.stringify({ title: 'Mine' }))
   run({ args: ['push', '--key', `claude:${SESSION}`, '--file', file] })
-  run({ args: ['outcome', 'c1', 'cancelled'] })
+  run({ args: ['outcome', `claude:${SESSION}`, 'cancelled'] })
 
   for (const [i, [event, name]] of [['SessionEnd', 'claude-session-end'], ['UserPromptSubmit', 'claude-user-prompt']].entries()) {
     writeFileSync(join(spool, `00000000000000${i}-1-a.json`), JSON.stringify({ ...envelope({ harness: 'claude', event: event!, name: name! }), id: `hook-${i}` }))

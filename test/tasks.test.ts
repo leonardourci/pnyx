@@ -19,7 +19,7 @@ function fixture() {
   }
 
   const push = ({ key, input }: { key: string; input: object }) => apply({
-    decision: decidePush({ state, key, input, meta }),
+    decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key, input, meta }),
   })
   const session = ({ key, interactive = true }: { key: string; interactive?: boolean }) => push({
     key: `claude:${key}`,
@@ -148,6 +148,7 @@ test('moving a session keeps its source freshness, so late hooks cannot regress 
   f.apply({ decision: decideSession({ state: f.state, ref: 'claude:one', task: 'target', meta }) })
   const late = decidePush({
     state: f.state,
+    newCardId: `c${f.state.seq + 1}`,
     key: 'target',
     input: {
       agent: { provider: 'claude-code', sessionId: 'one' },

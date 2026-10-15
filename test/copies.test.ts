@@ -192,7 +192,7 @@ test('a deleted copy is made again on its branch, and a working agent keeps its 
   withWriter({
     hydraId: 'lab',
     fn: ({ writer }) => {
-      const pushed = decidePush({ state: writer.state, key: card().key, input: { activity: 'working' }, meta })
+      const pushed = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: card().key, input: { activity: 'working' }, meta })
 
       if ('event' in pushed) {
         writer.append({ event: pushed.event })

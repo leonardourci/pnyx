@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import {
   AUTO_TITLE_SOURCES,
@@ -551,7 +551,8 @@ export function decideSession({ state, ref, task, meta }: {
   }
 }
 
-export function decidePush({ state, key, input: rawInput, meta }: {
+export function decidePush({ state, key, input: rawInput, meta, newCardId = `task-${randomUUID()}` }: {
+  newCardId?: string
   state: HydraState
   key: string
   input: unknown
@@ -567,7 +568,7 @@ export function decidePush({ state, key, input: rawInput, meta }: {
 
   onlyKeys({ value: input, allowed: ['title', 'autoTitle', 'project', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'terminal', 'folder', 'attention', 'source'], what: 'card' })
 
-  const cardId = state.keys[key] ?? `c${state.seq + 1}`
+  const cardId = state.keys[key] ?? newCardId
   const fields: PushFields = {}
   const title = optionalText({ value: input.title, what: 'title' })
   const workspace = optionalText({ value: input.workspace, what: 'workspace' })

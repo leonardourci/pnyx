@@ -1,3 +1,4 @@
+import { fixtureCli } from './cli-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
@@ -113,7 +114,7 @@ const cards = ({ out }: { out: string }) => [...out.matchAll(/^ {2}- card: (\S+)
 function hydraId() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-oracle-'))
   const env = { ...process.env, PNYX_HOME: home }
-  const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const run = fixtureCli({ home, execute: ({ args }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) })
   const fails = ({ args, code }: { args: string[]; code: string }) =>
     assert.throws(() => run({ args: [...args] }), (error: { stdout: string }) => {
       assert.match(error.stdout, new RegExp(`^code: ${code}$`, 'm'))

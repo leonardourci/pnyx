@@ -25,35 +25,35 @@ const rejects = ({ fn, code }: { fn: () => unknown; code: string }) =>
 const source = ({ observedAt, generation = 1 }: { observedAt: string; generation?: unknown }) => ({ adapter: 'claude', objectId: 's1', generation, observedAt })
 
 test('push upserts by key and repeats are no-ops', () => {
-  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), key: 'k1', input: { title: 'One', source: source({ observedAt: '2026-10-13T10:00:00Z' }) }, meta }) })
+  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k1', input: { title: 'One', source: source({ observedAt: '2026-10-13T10:00:00Z' }) }, meta }) })
   assert.equal(state.keys.k1, 'c1')
-  assert.deepEqual(decidePush({ state, key: 'k1', input: { title: 'One', source: source({ observedAt: '2026-10-13T10:00:00Z' }) }, meta }), { skipped: 'unchanged' })
-  state = apply({ state, decision: decidePush({ state, key: 'k1', input: { title: 'One, renamed' }, meta }) })
+  assert.deepEqual(decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k1', input: { title: 'One', source: source({ observedAt: '2026-10-13T10:00:00Z' }) }, meta }), { skipped: 'unchanged' })
+  state = apply({ state, decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k1', input: { title: 'One, renamed' }, meta }) })
   assert.equal(Object.keys(state.cards).length, 1)
   assert.equal(state.cards.c1!.title, 'One, renamed')
 })
 
 test('push skips a repeated event id and an older observation', () => {
-  const state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), key: 'k1', input: { source: source({ observedAt: '2026-10-13T10:00:00Z', generation: 2 }) }, meta: { ...meta, id: 'hook-1' } }) })
-  assert.deepEqual(decidePush({ state, key: 'k1', input: { title: 'x' }, meta: { ...meta, id: 'hook-1' } }), { skipped: 'duplicate' })
-  assert.deepEqual(decidePush({ state, key: 'k1', input: { source: source({ observedAt: '2026-10-13T09:00:00Z', generation: 2 }) }, meta }), { skipped: 'stale' })
-  assert.deepEqual(decidePush({ state, key: 'k1', input: { source: source({ observedAt: '2026-10-13T11:00:00Z', generation: 1 }) }, meta }), { skipped: 'stale' })
+  const state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k1', input: { source: source({ observedAt: '2026-10-13T10:00:00Z', generation: 2 }) }, meta: { ...meta, id: 'hook-1' } }) })
+  assert.deepEqual(decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k1', input: { title: 'x' }, meta: { ...meta, id: 'hook-1' } }), { skipped: 'duplicate' })
+  assert.deepEqual(decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k1', input: { source: source({ observedAt: '2026-10-13T09:00:00Z', generation: 2 }) }, meta }), { skipped: 'stale' })
+  assert.deepEqual(decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k1', input: { source: source({ observedAt: '2026-10-13T11:00:00Z', generation: 1 }) }, meta }), { skipped: 'stale' })
 })
 
 test('push validates its input', () => {
-  rejects({ fn: () => decidePush({ state: emptyHydra(), key: 'k1', input: { titel: 'typo' }, meta }), code: 'VALIDATION_ERROR' })
-  rejects({ fn: () => decidePush({ state: emptyHydra(), key: 'k1', input: { tags: 'a' }, meta }), code: 'VALIDATION_ERROR' })
-  rejects({ fn: () => decidePush({ state: emptyHydra(), key: 'k1', input: { attention: [{ kind: 'q' }] }, meta }), code: 'VALIDATION_ERROR' })
-  rejects({ fn: () => decidePush({ state: emptyHydra(), key: 'k1', input: { parent: 'missing' }, meta }), code: 'NOT_FOUND' })
-  rejects({ fn: () => decidePush({ state: emptyHydra(), key: '', input: {}, meta }), code: 'VALIDATION_ERROR' })
+  rejects({ fn: () => decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k1', input: { titel: 'typo' }, meta }), code: 'VALIDATION_ERROR' })
+  rejects({ fn: () => decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k1', input: { tags: 'a' }, meta }), code: 'VALIDATION_ERROR' })
+  rejects({ fn: () => decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k1', input: { attention: [{ kind: 'q' }] }, meta }), code: 'VALIDATION_ERROR' })
+  rejects({ fn: () => decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k1', input: { parent: 'missing' }, meta }), code: 'NOT_FOUND' })
+  rejects({ fn: () => decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: '', input: {}, meta }), code: 'VALIDATION_ERROR' })
 })
 
 test('push resolves the parent by key and rejects cycles', () => {
-  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), key: 'parent', input: {}, meta }) })
-  state = apply({ state, decision: decidePush({ state, key: 'child', input: { parent: 'parent' }, meta }) })
+  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'parent', input: {}, meta }) })
+  state = apply({ state, decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'child', input: { parent: 'parent' }, meta }) })
   assert.equal(state.cards.c2!.parentId, 'c1')
-  rejects({ fn: () => decidePush({ state, key: 'parent', input: { parent: 'child' }, meta }), code: 'VALIDATION_ERROR' })
-  state = apply({ state, decision: decidePush({ state, key: 'child', input: { parent: null }, meta }) })
+  rejects({ fn: () => decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'parent', input: { parent: 'child' }, meta }), code: 'VALIDATION_ERROR' })
+  state = apply({ state, decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'child', input: { parent: null }, meta }) })
   assert.equal(state.cards.c2!.parentId, undefined)
 })
 
@@ -70,7 +70,7 @@ test('parseLink fills GitHub pull request details and validates', () => {
 })
 
 test('undo reverses a move unless the card changed since', () => {
-  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), key: 'k1', input: {}, meta }) })
+  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k1', input: {}, meta }) })
   const move = eventOf({ decision: decideMove({ state, ref: 'c1', column: 'parked', meta }) })
   state = reduce({ state, event: move })
   const undo = eventOf({ decision: decideUndo({ state, target: move, meta }) })
@@ -88,7 +88,7 @@ test('a move orders the card within its column, and nothing else reorders it', (
   let state = emptyHydra()
 
   for (const key of ['a', 'b', 'c']) {
-    state = apply({ state, decision: decidePush({ state, key, input: {}, meta }) })
+    state = apply({ state, decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key, input: {}, meta }) })
   }
 
   const order = () => columnCards({ state, column: 'in_progress' }).map(c => c.key)
@@ -107,7 +107,7 @@ test('a move orders the card within its column, and nothing else reorders it', (
   assert.deepEqual(order(), ['c', 'b', 'a'], 'redo places it again')
   state = apply({ state, decision: decideMove({ state, ref: 'c', column: 'in_progress', meta }) })
   assert.deepEqual(order(), ['b', 'a', 'c'], 'no --before goes to the end')
-  state = apply({ state, decision: decidePush({ state, key: 'a', input: { title: 'edited', activity: 'working' }, meta }) })
+  state = apply({ state, decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'a', input: { title: 'edited', activity: 'working' }, meta }) })
   assert.deepEqual(order(), ['b', 'a', 'c'], 'an edit never reorders')
 
   state = apply({ state, decision: decideMove({ state, ref: 'a', column: 'done', meta }) })
@@ -118,7 +118,7 @@ test('a move orders the card within its column, and nothing else reorders it', (
 })
 
 test('undo reverses a link update but never a merge', () => {
-  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), key: 'k1', input: {}, meta }) })
+  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k1', input: {}, meta }) })
   const url = 'https://github.com/o/r/pull/3'
   const open = eventOf({ decision: decideLink({ state, ref: 'c1', url, link: parseLink({ input: { url, state: 'open' } }), meta }) })
   state = reduce({ state, event: open })
@@ -136,11 +136,11 @@ test('undo reverses a link update but never a merge', () => {
 })
 
 test('undo reverses a manual push edit, but not creation or source observations', () => {
-  const created = eventOf({ decision: decidePush({ state: emptyHydra(), key: 'k1', input: { title: 'One' }, meta }) })
+  const created = eventOf({ decision: decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k1', input: { title: 'One' }, meta }) })
   let state = reduce({ state: emptyHydra(), event: created })
   rejects({ fn: () => decideUndo({ state, target: created, meta }), code: 'NOT_UNDOABLE' })
 
-  const edit = eventOf({ decision: decidePush({ state, key: 'k1', input: { title: 'Two', activity: 'busy', tags: ['a'] }, meta }) })
+  const edit = eventOf({ decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k1', input: { title: 'Two', activity: 'busy', tags: ['a'] }, meta }) })
   assert.deepEqual(edit.type === 'card.pushed' && edit.data.before, { title: 'One', activity: null, tags: [] })
   state = reduce({ state, event: edit })
   const undo = eventOf({ decision: decideUndo({ state, target: edit, meta }) })
@@ -150,12 +150,12 @@ test('undo reverses a manual push edit, but not creation or source observations'
   assert.deepEqual(undone.cards.c1!.tags, [])
   assert.equal(reduce({ state: undone, event: eventOf({ decision: decideUndo({ state: undone, target: undo, meta }) }) }).cards.c1!.title, 'Two')
 
-  const observed = eventOf({ decision: decidePush({ state, key: 'k1', input: { activity: 'idle', source: source({ observedAt: '2026-10-13T10:00:00Z' }) }, meta }) })
+  const observed = eventOf({ decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k1', input: { activity: 'idle', source: source({ observedAt: '2026-10-13T10:00:00Z' }) }, meta }) })
   rejects({ fn: () => decideUndo({ state: reduce({ state, event: observed }), target: observed, meta }), code: 'NOT_UNDOABLE' })
 })
 
 test('an undone undo points at the latest event in the chain', () => {
-  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), key: 'k1', input: {}, meta }) })
+  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k1', input: {}, meta }) })
   const move = eventOf({ decision: decideMove({ state, ref: 'c1', column: 'done', meta }) })
   state = reduce({ state, event: move })
   const undo = eventOf({ decision: decideUndo({ state, target: move, meta }) })
@@ -170,21 +170,21 @@ test('an undone undo points at the latest event in the chain', () => {
 })
 
 test('every write checks the expected revision; a repeated event id wins over it', () => {
-  const created = eventOf({ decision: decidePush({ state: emptyHydra(), key: 'k1', input: {}, meta: { ...meta, ifRevision: 0 } }) })
+  const created = eventOf({ decision: decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'k1', input: {}, meta: { ...meta, ifRevision: 0 } }) })
   const state = reduce({ state: emptyHydra(), event: created })
   const stale = { ...meta, ifRevision: 0 }
-  rejects({ fn: () => decidePush({ state, key: 'k1', input: { title: 'x' }, meta: stale }), code: 'REVISION_CONFLICT' })
+  rejects({ fn: () => decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k1', input: { title: 'x' }, meta: stale }), code: 'REVISION_CONFLICT' })
   rejects({ fn: () => decideMove({ state, ref: 'c1', column: 'done', meta: stale }), code: 'REVISION_CONFLICT' })
   rejects({ fn: () => decideLink({ state, ref: 'c1', url: 'https://example.com', link: parseLink({ input: { url: 'https://example.com' } }), meta: stale }), code: 'REVISION_CONFLICT' })
   rejects({ fn: () => decideOutcome({ state, ref: 'c1', outcome: { state: 'done' }, meta: stale }), code: 'REVISION_CONFLICT' })
   assert.ok('event' in decideOutcome({ state, ref: 'c1', outcome: { state: 'done' }, meta: { ...meta, ifRevision: 1 } }))
-  assert.deepEqual(decidePush({ state, key: 'k1', input: { title: 'x' }, meta: { ...stale, id: created.id } }), { skipped: 'duplicate' })
+  assert.deepEqual(decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'k1', input: { title: 'x' }, meta: { ...stale, id: created.id } }), { skipped: 'duplicate' })
 })
 
 test('generated event ids never collide with caller-chosen ones', () => {
-  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), key: 'a', input: {}, meta: { ...meta, id: 'evt_3' } }) })
-  state = apply({ state, decision: decidePush({ state, key: 'b', input: {}, meta }) })
-  const third = eventOf({ decision: decidePush({ state, key: 'c', input: {}, meta }) })
+  let state = apply({ state: emptyHydra(), decision: decidePush({ state: emptyHydra(), newCardId: `c${emptyHydra().seq + 1}`, key: 'a', input: {}, meta: { ...meta, id: 'evt_3' } }) })
+  state = apply({ state, decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'b', input: {}, meta }) })
+  const third = eventOf({ decision: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'c', input: {}, meta }) })
   assert.equal(third.seq, 3)
   assert.notEqual(third.id, 'evt_3')
   assert.ok(reduce({ state, event: third }).cards[third.cardId])

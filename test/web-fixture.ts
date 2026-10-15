@@ -28,7 +28,7 @@ export function seedWebFixture({ home }: { home: string }) {
           : key === 'review' ? 'parked' : key === 'docs' ? 'done' : 'in_progress'
         const parentId = typeof fields.parent === 'string' ? w.state.keys[fields.parent] : undefined
         append({ d: hydraEvent({ state: w.state, meta, cardId: `c${w.state.seq + 1}`, change: { type: 'task.created', data: { key, title: String(fields.title), column, ...(parentId ? { parentId } : {}) } } }) })
-        append({ d: decidePush({ state: w.state, key, input: { ...fields, ...(key === 'layout' ? { source: { adapter: 'firstmate', instanceId: nativeHome, objectId: 'api-v2' }, agent: { provider: 'claude-code', sessionId: 'fixture-layout', transcriptPath: transcript } } : {}) }, meta }) })
+        append({ d: decidePush({ state: w.state, newCardId: `c${w.state.seq + 1}`, key, input: { ...fields, ...(key === 'layout' ? { source: { adapter: 'firstmate', instanceId: nativeHome, objectId: 'api-v2' }, agent: { provider: 'claude-code', sessionId: 'fixture-layout', transcriptPath: transcript } } : {}) }, meta }) })
       }
 
       for (const [key, number, state] of [['layout', 42, 'open'], ['review', 321, 'open'], ['docs', 309, 'merged']] as const) {

@@ -4,6 +4,7 @@ import { LOCKED_DELETE } from '../../../src/core/hydra.ts'
 import { DEFAULT_COLUMN_WIDTH, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
+import { CopyId } from '../components/ui/copy-id.tsx'
 import { DeleteItem, Menu } from '../components/ui/menu.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import type { Command } from './connection.ts'
@@ -13,6 +14,7 @@ export function Column({
   id,
   title,
   description,
+  role,
   cards,
   view,
   save,
@@ -52,7 +54,7 @@ export function Column({
   return (
     <section
       data-column={id}
-      className={`column column-${id}`}
+      className={`column column-${role ?? id}`}
       aria-label={title}
       onDragOver={e => e.preventDefault()}
       onDrop={e => {
@@ -125,6 +127,7 @@ export function Column({
         >＋
         </Button>
         <Menu label={`${title} column menu`}>
+          <CopyId id={id} notify={notify} />
           <Button disabled={!connected} onClick={() => setRename(true)}>Rename</Button>
           <Button
             disabled={!connected}

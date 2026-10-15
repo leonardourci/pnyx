@@ -1,10 +1,13 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { Card as CardData, ViewPreferences } from '../../../src/core/model.ts'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
-import { agentActivity, projectTitle } from './view.ts'
+import { Menu } from '../components/ui/menu.tsx'
+import { CopyId } from '../components/ui/copy-id.tsx'
+import { HideAfter } from './hide-after.tsx'
+import { cardState, projectTitle } from './view.ts'
 
 function LastMessage({ message }: { message: LatestMessage }) {
   return (
@@ -27,8 +30,12 @@ export function HydraCard({
   editingTitle,
   titleFinished,
   children,
+  doneAfterHours,
+  notify,
 }: {
   card: CardData
+  doneAfterHours?: number
+  notify({ text }: { text: string }): void
   latest?: LatestMessage
   selected: boolean
   view: ViewPreferences
@@ -40,14 +47,20 @@ export function HydraCard({
   titleFinished(): void
   children?: ReactNode
 }) {
-  const activity = agentActivity({ card })
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000)
+
+    return () => clearInterval(timer)
+  }, [])
+  const status = cardState({ card, hours: doneAfterHours, now })
 
   return (
     <article
       className={`card ${selected ? 'selected' : ''}`}
       data-task={card.id}
       onClick={e => {
-        if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, .detail') && !window.getSelection()?.toString()) {
+        if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, .detail, .menu') && !window.getSelection()?.toString()) {
           open({ id: card.id })
         }
       }}
@@ -56,6 +69,17 @@ export function HydraCard({
         e.stopPropagation(); e.dataTransfer.setData('application/pnyx-task', card.id)
       }}
     >
+      <div className="card-menu">
+        <Menu label={`Card menu for ${card.title}`}>
+          <CopyId id={card.id} notify={notify} />
+          <HideAfter
+            card={card}
+            command={command}
+            connected={connected}
+            notify={notify}
+          />
+        </Menu>
+      </div>
       {card.project && <span className="project-label" title={card.project}>{projectTitle({ project: card.project })}</span>}
       {editingTitle ? (
         <InlineTitle
@@ -78,8 +102,20 @@ export function HydraCard({
           >{card.title}
           </Button>
         )}
-      {card.permissions?.some(p => p.status === 'pending') && <span className="agent-activity">Needs you · permission</span>}
-      {activity && <span className={`agent-activity activity-${activity}`}><i aria-hidden="true" />{{ working: 'Working', finished: 'Finished its turn', stopped: 'Stopped' }[activity]}</span>}
+      <div className="card-state">
+        <span className={`agent-activity activity-${status.kind}`} title={status.at ? new Date(status.at).toLocaleString() : undefined}><i aria-hidden="true" />{status.text}</span>
+        {status.kind === 'stopped' && (
+          <Button
+            className="card-resume"
+            disabled={!connected}
+            onClick={() => void command({ name: 'hydra', args: ['send', '--task', card.id, '--text', `Resume the stopped worker on task ${card.id}: ${card.title}. Read its history before continuing.`, '--event-id', crypto.randomUUID()] })
+              .then(() => notify({ text: 'Asked Hydra to resume' }))
+              .catch(e => notify({ text: e.message }))}
+          >Resume
+          </Button>
+        )}
+      </div>
+      {card.copy?.state === 'flagged' && <span className="copy-warning" title={card.copy.reason}>copy not cleaned</span>}
       {card.agent && view.lastMessageOnCards && latest && !selected && (
         <LastMessage message={latest} />
       )}

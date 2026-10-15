@@ -7,7 +7,18 @@ import { promisify } from 'node:util'
 const exec = promisify(execFile)
 
 export function smokeBrowser({ home, session }: { home: string; session: string }) {
-  const env = { ...process.env, CHROME_DEVTOOLS_AXI_SESSION: `${session}-${process.pid}` }
+  const env = {
+    ...process.env,
+    CHROME_DEVTOOLS_AXI_SESSION: `${session}-${process.pid}`,
+    CHROME_DEVTOOLS_AXI_PORT: String(20000 + process.pid % 30000),
+    CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '0',
+    CHROME_DEVTOOLS_AXI_HEADED: '0',
+  }
+
+  for (const name of ['CHROME_DEVTOOLS_AXI_BROWSER_URL', 'CHROME_DEVTOOLS_AXI_USER_DATA_DIR', 'CHROME_DEVTOOLS_AXI_MCP_SERVER_URL', 'CHROME_DEVTOOLS_AXI_WS_HEADERS', 'CHROME_DEVTOOLS_AXI_CHROME_ARGS']) {
+    delete (env as NodeJS.ProcessEnv)[name]
+  }
+
   const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(home, 'evidence')
   mkdirSync(evidence, { recursive: true })
 

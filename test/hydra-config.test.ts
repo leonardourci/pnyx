@@ -1,3 +1,4 @@
+import { fixtureCli } from './cli-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFile, execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -20,8 +21,10 @@ function hydraId() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-hydra-'))
   const env = { ...process.env, PNYX_HOME: home }
 
+  const execute = fixtureCli({ home, execute: ({ args }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' }) })
+
   const run = ({ args }: { args: string[] }): string => {
-    const out = execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
+    const out = execute({ args })
     const token = /^token: ([a-f0-9]+)$/m.exec(out)?.[1]
 
     return token ? run({ args: [...args, '--confirm', token] }) : out

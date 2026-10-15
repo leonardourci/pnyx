@@ -44,7 +44,7 @@ test('permission attention survives a source clearing its own attention and cann
   const pending = permissionEvent({ state, card: state.cards.task!, request, meta })
   state = reduce({ state, event: pending })
   const decision = decidePush({
-    state, key: 'task', input: { activity: 'working', attention: [] }, meta,
+    state, newCardId: `c${state.seq + 1}`, key: 'task', input: { activity: 'working', attention: [] }, meta,
   })
   assert.ok('event' in decision)
   state = reduce({ state, event: decision.event })
