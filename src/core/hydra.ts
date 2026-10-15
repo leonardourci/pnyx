@@ -267,12 +267,20 @@ export function applyHydra({ state, event }: { state: HydraState; event: HydraEv
     return true
   }
 
-  if (event.type === 'task.brief' || event.type === 'task.visibility') {
+  if (event.type === 'task.brief' || event.type === 'task.visibility' || event.type === 'task.retention') {
     const card = state.cards[event.cardId]
 
     if (card) {
       if (event.type === 'task.brief') {
         card.brief = event.data.after
+      } else if (event.type === 'task.retention') {
+        if (event.data.after === null) {
+          delete card.doneAfterHours
+        } else {
+          card.doneAfterHours = event.data.after
+        }
+
+        delete card.keepDone
       } else {
         card.hidden = event.data.after
 

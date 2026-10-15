@@ -152,3 +152,46 @@ test('expiry rechecks wall time without another event using a fake clock', t => 
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+test('per-card delays override the Hydra, survive replay and reopen, and can return to its default', () => {
+  const f = fixture()
+  f.change({ cardId: '$board', type: 'board.configured', data: { ...hydraConfig({ state: f.state() }), doneAfterHours: 0 } })
+  assert.equal(doneDeadline({ state: f.state() }), undefined)
+  f.change({ type: 'task.retention', data: { before: null, after: 1 } })
+  assert.equal(doneDeadline({ state: f.state() }), Date.parse(start) + HOUR_MS)
+  f.change({ type: 'task.retention', data: { before: 1, after: 0 } })
+  assert.equal(doneDeadline({ state: f.state() }), undefined)
+  f.change({ cardId: '$board', type: 'board.configured', data: { ...hydraConfig({ state: f.state() }), doneAfterHours: 72 } })
+  assert.equal(doneDeadline({ state: f.state() }), undefined)
+  f.change({ type: 'task.retention', data: { before: 0, after: null } })
+  assert.equal(doneDeadline({ state: f.state() }), Date.parse(start) + 72 * HOUR_MS)
+  assert.deepEqual(replay({ state: emptyHydra(), events: f.events }), f.state())
+})
+
+test('expiry uses each card delay even when the Hydra keeps Done visible', () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-card-retention-'))
+  const previous = process.env.PNYX_HOME
+  process.env.PNYX_HOME = home
+  const f = fixture()
+  f.change({ cardId: '$board', type: 'board.configured', data: { ...hydraConfig({ state: f.state() }), doneAfterHours: 0 } })
+  f.change({ type: 'task.retention', data: { before: null, after: 1 } })
+  f.change({ cardId: 't2', type: 'task.created', data: { key: 'kept', title: 'Kept', column: 'done' } })
+
+  try {
+    withWriter({ hydraId: 'delays', fn: ({ writer }) => f.events.forEach(event => writer.append({ event })) })
+    assert.equal(hideDone({ hydraId: 'delays', at: '2026-10-14T12:59:59Z' }), 0)
+    assert.equal(hideDone({ hydraId: 'delays', at: '2026-10-14T13:00:00Z' }), 1)
+    const state = loadHydra({ hydraId: 'delays' }).state
+    assert.equal(state.cards.t1?.hidden, true)
+    assert.equal(state.cards.t2?.hidden, undefined)
+    assert.equal(hideDone({ hydraId: 'delays', at: later }), 0)
+  } finally {
+    if (previous === undefined) {
+      delete process.env.PNYX_HOME
+    } else {
+      process.env.PNYX_HOME = previous
+    }
+
+    rmSync(home, { recursive: true, force: true })
+  }
+})

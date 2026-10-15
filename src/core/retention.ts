@@ -1,4 +1,4 @@
-import type { HydraState } from './model.ts'
+import type { Card, HydraState } from './model.ts'
 
 export const DEFAULT_DONE_HOURS = 24
 export const MAX_DONE_HOURS = 876000
@@ -23,21 +23,29 @@ export function refreshDone({ state, at }: { state: HydraState; at: string }): v
   }
 }
 
-export function doneDeadline({ state }: { state: HydraState }): number | undefined {
-  const hours = state.config?.doneAfterHours ?? DEFAULT_DONE_HOURS
-  let next: number | undefined
+export function cardDoneDeadline({ card, hours = DEFAULT_DONE_HOURS }: {
+  card: Card
+  hours?: number
+}): number | undefined {
+  const delay = card.doneAfterHours ?? hours
 
-  if (hours === 0) {
+  if (card.hidden || card.keepDone || !card.doneAt || delay === 0) {
     return undefined
   }
 
-  for (const card of Object.values(state.cards)) {
-    if (!card.hidden && !card.keepDone && card.doneAt) {
-      const deadline = Date.parse(card.doneAt) + hours * HOUR_MS
+  const deadline = Date.parse(card.doneAt) + delay * HOUR_MS
 
-      if (Number.isFinite(deadline)) {
-        next = Math.min(next ?? deadline, deadline)
-      }
+  return Number.isFinite(deadline) ? deadline : undefined
+}
+
+export function doneDeadline({ state }: { state: HydraState }): number | undefined {
+  let next: number | undefined
+
+  for (const card of Object.values(state.cards)) {
+    const deadline = cardDoneDeadline({ card, hours: state.config?.doneAfterHours })
+
+    if (deadline !== undefined) {
+      next = Math.min(next ?? deadline, deadline)
     }
   }
 
