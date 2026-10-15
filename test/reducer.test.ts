@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { BoardEvent, Card } from '../src/core/model.ts'
-import { columnFor, emptyBoard, reduce, replay } from '../src/core/reducer.ts'
+import type { BoardEvent } from '../src/core/model.ts'
+import { emptyBoard, reduce, replay } from '../src/core/reducer.ts'
 import { assertGolden, readStream } from './streams.ts'
 
 for (const name of ['lifecycle', 'duplicates', 'pinned-attention', 'undo']) {
@@ -13,24 +13,18 @@ for (const name of ['lifecycle', 'duplicates', 'pinned-attention', 'undo']) {
   })
 }
 
-test('lifecycle: an open pull request waits in Parked, all merged is done, outcome places the child', () => {
+test('lifecycle: pull requests, merges and outcomes never move a card', () => {
   const events = readStream({ name: 'lifecycle' })
-  const at = ({ seq }: {
-    seq: number
-  }) => replay({
-    state: emptyBoard(),
-    events: events.slice(0, seq),
-  })
-  assert.equal(at({ seq: 1 }).cards.c1!.column, 'workers_on_it')
-  assert.equal(at({ seq: 3 }).cards.c1!.column, 'parked')
-  // One of two pull requests merged: still waiting.
-  assert.equal(at({ seq: 5 }).cards.c1!.column, 'parked')
-  assert.equal(at({ seq: 6 }).cards.c1!.column, 'done')
-  const end = at({ seq: events.length })
+
+  for (let seq = 1; seq <= events.length; seq++) {
+    const state = replay({ state: emptyBoard(), events: events.slice(0, seq) })
+    assert.equal(state.cards.c1!.column, 'workers_on_it', `after event ${seq}`)
+  }
+
+  const end = replay({ state: emptyBoard(), events })
   assert.equal(end.cards.c2!.parentId, 'c1')
-  assert.equal(end.cards.c2!.column, 'done')
-  // A non-PR link does not move a done card.
-  assert.equal(end.cards.c1!.column, 'done')
+  assert.equal(end.cards.c2!.column, 'workers_on_it')
+  assert.equal(end.cards.c1!.links.filter(l => l.state === 'merged').length, 2)
 })
 
 test('duplicates and out-of-order observations are ignored', () => {
@@ -40,18 +34,18 @@ test('duplicates and out-of-order observations are ignored', () => {
   assert.equal(card.title, 'Refactor store layer')
   assert.equal(card.activity, 'working')
   assert.equal(card.links[0]!.state, 'merged')
-  assert.equal(card.column, 'done')
+  assert.equal(card.column, 'workers_on_it')
   assert.equal(state.eventIds['hook-0001'], 1)
   assert.equal(state.eventIds['hook-late'], undefined)
   // Applied: hook-0001, hook-0002, evt_7, hook-0005.
   assert.equal(card.revision, 4)
 })
 
-test('a pinned card keeps its column and shows new attention', () => {
+test('a moved card keeps its column and shows new attention; a legacy return to auto leaves it', () => {
   const state = replay({ state: emptyBoard(), events: readStream({ name: 'pinned-attention' }) })
   const card = state.cards.c1!
+  // review is no longer a board column, so the card falls back to Parked.
   assert.equal(card.column, 'parked')
-  assert.equal(card.manualColumn, 'review')
   assert.deepEqual(card.attention.map(a => a.kind), ['permission_needed'])
 
   const auto: BoardEvent = {
@@ -64,13 +58,12 @@ test('a pinned card keeps its column and shows new attention', () => {
     type: 'card.moved',
     data: { before: 'review', after: null },
   }
-  assert.equal(reduce({ state, event: auto }).cards.c1!.column, 'needs_you')
+  assert.equal(reduce({ state, event: auto }).cards.c1!.column, 'parked')
 })
 
 test('undo events restore the card and record what they reversed', () => {
   const state = replay({ state: emptyBoard(), events: readStream({ name: 'undo' }) })
   const card = state.cards.c1!
-  assert.equal(card.manualColumn, undefined)
   assert.deepEqual(card.links, [])
   assert.equal(card.outcome, undefined)
   assert.equal(card.column, 'workers_on_it')
@@ -109,55 +102,6 @@ test('a parent change that would make a cycle is ignored', () => {
     state: emptyBoard(),
     events: [...events, cycle],
   }).cards.c1!.parentId, undefined)
-})
-
-function card({ overrides }: { overrides: Partial<Card> }): Card {
-  return {
-    id: 'c1',
-    key: 'k',
-    title: 't',
-    workspace: 'work',
-    tags: [],
-    attention: [],
-    links: [],
-    sourceRefs: [],
-    column: 'workers_on_it',
-    revision: 1,
-    createdSeq: 1,
-    updatedSeq: 1,
-    updatedAt: '2026-10-13T00:00:00Z',
-    ...overrides,
-  }
-}
-
-const pr = ({ state }: { state?: 'open' | 'merged' | 'closed' }) => ({ kind: 'github_pr' as const, url: `https://github.com/o/r/pull/${state}`, ...(state ? { state } : {}) })
-const blocking = { kind: 'reply_needed', key: 'q1', blocking: true }
-const note = { kind: 'check_this', key: 'n1', blocking: false }
-
-test('column rules follow the settled precedence', () => {
-  const cases: [string, Partial<Card>, string][] = [
-    ['ongoing work', {}, 'workers_on_it'],
-    ['manual pin beats everything', { manualColumn: 'done', attention: [blocking], links: [pr({ state: 'open' })] }, 'done'],
-    ['blocking request beats an open pull request', { attention: [blocking], links: [pr({ state: 'open' })] }, 'needs_you'],
-    ['open pull request', { links: [pr({ state: 'open' })] }, 'review'],
-    ['any open pull request means review', { links: [pr({ state: 'merged' }), pr({ state: 'open' })] }, 'review'],
-    ['all merged means done', { links: [pr({ state: 'merged' }), pr({ state: 'merged' })] }, 'done'],
-    ['merged plus unchecked is not done', { links: [pr({ state: 'merged' }), pr({})] }, 'workers_on_it'],
-    ['closed unmerged needs you', { links: [pr({ state: 'merged' }), pr({ state: 'closed' })] }, 'needs_you'],
-    ['open pull request beats non-blocking attention', { attention: [note], links: [pr({ state: 'open' })] }, 'review'],
-    ['non-blocking attention', { attention: [note] }, 'needs_you'],
-    ['done outcome', { outcome: { state: 'done' } }, 'done'],
-    ['cancelled outcome', { outcome: { state: 'cancelled' } }, 'done'],
-    ['failed outcome', { outcome: { state: 'failed' } }, 'needs_you'],
-    ['closed failed outcome', { outcome: { state: 'failed', closed: true } }, 'done'],
-    ['ended session', { outcome: { state: 'ended', source: 'hooks' } }, 'done'],
-    ['ended session with an open question', { outcome: { state: 'ended', source: 'hooks' }, attention: [blocking] }, 'needs_you'],
-    ['non-PR links do not place', { links: [{ kind: 'linear', url: 'https://linear.app/x' }] }, 'workers_on_it'],
-  ]
-
-  for (const [name, overrides, expected] of cases) {
-    assert.equal(columnFor({ card: card({ overrides }) }), expected, name)
-  }
 })
 
 test('an auto title fills an untitled card, best source first, and never replaces a set title', () => {

@@ -64,7 +64,7 @@ test('background runs stay addressable in history but never become live cards', 
   assert.equal(f.state.cards.c1!.hidden, true)
 })
 
-test('moving a session preserves task titles, links and pins while future hooks follow its attachment', () => {
+test('moving a session preserves task titles, links and placement while future hooks follow its attachment', () => {
   const f = fixture()
   f.session({ key: 'one' })
   f.push({ key: 'task:target', input: { title: 'Target task' } })
@@ -75,7 +75,8 @@ test('moving a session preserves task titles, links and pins while future hooks 
   assert.equal(f.state.cards[target]!.title, 'Target task')
   assert.equal(joinedKey({ state: f.state, key: 'claude:one', folder: '/elsewhere' }), 'task:target')
   f.push({ key: 'task:target', input: { agent: { provider: 'claude-code', sessionId: 'one' }, activity: 'working', attention: [{ key: 'hook:q', kind: 'question', blocking: true }] } })
-  assert.equal(f.state.cards[target]!.column, 'needs_you')
+  assert.equal(f.state.cards[target]!.column, 'workers_on_it')
+  assert.equal(f.state.cards[target]!.attention[0]?.key, 'hook:q')
   assert.equal(f.state.sessions?.['claude-code:one']?.activity, 'working')
   assert.equal(Object.values(f.state.cards).filter(card => liveTask({ card })).length, 1)
 })

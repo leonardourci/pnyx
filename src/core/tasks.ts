@@ -9,6 +9,17 @@ export function liveTask({ card }: { card: Card }): boolean {
   return card.hidden !== true && !card.automaticTask
 }
 
+export function rankOf({ card }: { card: Card }): number {
+  return card.rank ?? card.createdSeq
+}
+
+// The live tasks in one column, in the order the owner put them.
+export function columnCards({ state, column }: { state: BoardState; column: string }): Card[] {
+  return Object.values(state.cards)
+    .filter(c => liveTask({ card: c }) && c.column === column)
+    .sort((a, b) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
+}
+
 export function cardSessionId({ card }: { card: Card }): string | undefined {
   return card.sessionIds?.[0] ?? (card.agent ? sessionId({ agent: card.agent }) : undefined)
 }

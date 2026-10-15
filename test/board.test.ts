@@ -50,19 +50,20 @@ test('push is an idempotent upsert by key', () => {
   assert.match(out, /^ {2}c1,x,workers_on_it,none$/m)
 })
 
-test('links, moves and outcomes place the card', () => {
-  const { run, card } = board()
+test('only a move places the card; links, merges and outcomes leave it', () => {
+  const { run, fails, card } = board()
   run({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'Task' } })] })
+  run({ args: ['push', '--key', 'k2', '--file', card({ json: { title: 'Other' } })] })
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'open'] })
-  assert.match(run({ args: ['card', 'k'] }), /^ {2}column: parked$/m)
+  assert.match(run({ args: ['card', 'k'] }), /^ {2}column: workers_on_it$/m)
   run({ args: ['move', 'c1', 'needs-you'] })
-  assert.match(run({ args: ['card', 'c1'] }), /^ {2}placement: manual$/m)
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'merged'] })
-  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: needs_you$/m)
-  run({ args: ['move', 'c1', '--auto'] })
-  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: done$/m)
   run({ args: ['outcome', 'c1', 'done', '--note', 'shipped'] })
+  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: needs_you$/m)
   assert.match(run({ args: ['history', '--kind', 'outcome'] }), /done: shipped/)
+  run({ args: ['move', 'c2', 'needs-you', '--before', 'c1'] })
+  assert.match(run({ args: [] }), /^ {2}c2,Other,needs_you,none\n {2}c1,Task,needs_you,none$/m)
+  fails({ args: ['move', 'c1', '--auto'], status: 2, code: 'VALIDATION_ERROR' })
 })
 
 test('history pages newest first and filters', () => {
@@ -86,8 +87,8 @@ test('undo appends a reversing event and refuses a second undo', () => {
   run({ args: ['push', '--key', 'k', '--file', card({ json: {} })] })
   run({ args: ['move', 'c1', 'done'] })
   assert.match(run({ args: ['undo', 'evt_2'] }), /^ {2}seq: 3$/m)
-  assert.match(run({ args: ['card', 'c1'] }), /^ {2}placement: auto$/m)
-  assert.match(run({ args: ['history', '--limit', '1'] }), /undo evt_2: done -> auto/)
+  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: workers_on_it$/m)
+  assert.match(run({ args: ['history', '--limit', '1'] }), /undo evt_2: done -> workers_on_it/)
 })
 
 test('every write takes --event-id and --if-revision', () => {
@@ -116,7 +117,7 @@ test('undo reverses a manual push edit and refuses a merge', () => {
   fails({ args: ['undo', 'evt_1'], status: 1, code: 'NOT_UNDOABLE' })
   run({ args: ['link', 'c1', '--url', 'https://github.com/o/r/pull/7', '--state', 'merged'] })
   fails({ args: ['undo', 'evt_4'], status: 1, code: 'NOT_UNDOABLE' })
-  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: done$/m)
+  assert.match(run({ args: ['card', 'c1'] }), /^ {2}column: workers_on_it$/m)
 })
 
 test('errors are structured', () => {

@@ -58,7 +58,7 @@ test('boards keep one Hydra, independent task lists, and durable history after s
   }
 })
 
-test('declared status survives idle hooks, session end, replay, pins and column edits', () => {
+test('declared status, hooks, outcomes and column edits never move a task; replay keeps it in place', () => {
   const f = fixture()
 
   try {
@@ -72,12 +72,12 @@ test('declared status survives idle hooks, session end, replay, pins and column 
     f.run({ args: ['task', 'status', 'root', 'working', '--note', 'Building it'] })
     f.push({ key: 'session', input: { agent: { provider: 'claude-code', sessionId: 'worker' }, terminal: { tty: '/dev/ttys123', pid: '123' }, source: { adapter: 'hooks', objectId: 'worker' } } })
     f.run({ args: ['task', 'attach', 'root', '--session', 'claude-code:worker'] })
-    f.push({ key: 'root', input: { activity: 'idle', source: { adapter: 'hooks', objectId: 'worker' } } })
-    assert.equal(f.state().cards[root]?.column, 'workers_on_it')
+    f.push({ key: 'root', input: { activity: 'finished', source: { adapter: 'hooks', objectId: 'worker' } } })
+    assert.equal(f.state().cards[root]?.column, 'parked')
     f.run({ args: ['outcome', 'root', 'done'] })
-    assert.equal(f.state().cards[root]?.column, 'done')
+    assert.equal(f.state().cards[root]?.column, 'parked')
     f.run({ args: ['task', 'status', 'root', 'needs-you', '--note', 'Choose a schema'] })
-    assert.equal(f.state().cards[root]?.column, 'needs_you')
+    assert.equal(f.state().cards[root]?.column, 'parked')
     f.run({ args: ['column', 'rename', 'needs_you', '--title', 'Your turn'] })
     assert.equal(f.state().board?.columns[0]?.title, 'Your turn')
     f.run({ args: ['column', 'create', '--title', 'Research', '--id', 'custom:research'] })
@@ -92,10 +92,10 @@ test('declared status survives idle hooks, session end, replay, pins and column 
     f.run({ args: ['column', 'delete', 'custom:research', '--to', 'parked'] })
     assert.equal(f.state().cards[root]?.column, 'parked')
     f.run({ args: ['undo', f.events().at(-1)!.id] })
-    assert.equal(f.state().cards[root]?.manualColumn, 'custom:research')
+    assert.equal(f.state().cards[root]?.column, 'custom:research')
     f.run({ args: ['column', 'delete', 'custom:research', '--to', 'parked'] })
-    f.run({ args: ['move', 'root', '--auto'] })
-    assert.equal(f.state().cards[root]?.column, 'done')
+    assert.equal(f.state().cards[root]?.column, 'parked')
+    assert.throws(() => f.run({ args: ['move', 'root', '--auto'] }))
     f.run({ args: ['task', 'status', 'child', 'paused', '--note', 'Waiting for review'] })
     const history = f.events()
     assert.ok(history.every(e => e.boardId === 'default' && e.commandId))
@@ -111,7 +111,7 @@ test('declared status survives idle hooks, session end, replay, pins and column 
   }
 })
 
-test('ad-hoc sessions never become tasks, and a confirmed merge completes declared work', () => {
+test('ad-hoc sessions never become tasks, and a merge never moves declared work', () => {
   const f = fixture()
 
   try {
@@ -127,7 +127,7 @@ test('ad-hoc sessions never become tasks, and a confirmed merge completes declar
     assert.throws(() => f.run({ args: ['task', 'attach', 'work', '--session', 'codex:s'] }))
     f.run({ args: ['link', 'work', '--url', 'https://github.com/example/app/pull/1', '--state', 'merged'] })
     const work = f.state().keys.work!
-    assert.equal(f.state().cards[work]?.column, 'done')
+    assert.equal(f.state().cards[work]?.column, 'parked')
 
     for (const id of ['needs_you', 'workers_on_it', 'done']) {
       f.run({ args: ['column', 'delete', id] })
@@ -231,7 +231,7 @@ test('Hydra chat drained from turn-end hooks stays in history after its transcri
   }
 })
 
-test('role columns record a declaration, custom columns pin, column edits keep the board unconfigured and outcome undo restores status', () => {
+test('role columns record a declaration, column edits keep the board unconfigured and outcome undo restores status', () => {
   const f = fixture({ board: 'work' })
 
   try {
@@ -242,24 +242,22 @@ test('role columns record a declaration, custom columns pin, column edits keep t
     assert.equal(f.state().board?.columns[0]?.title, 'Your turn')
     f.run({ args: ['task', 'create', '--title', 'Ask', '--key', 'ask', '--column', 'needs_you'] })
     const ask = f.state().keys.ask!
-    assert.equal(f.state().cards[ask]?.manualColumn, undefined)
+    assert.equal(f.state().cards[ask]?.column, 'needs_you')
     assert.equal(f.state().cards[ask]?.status?.state, 'needs_you')
     f.run({ args: ['task', 'status', 'ask', 'working', '--note', 'On it'] })
-    assert.equal(f.state().cards[ask]?.column, 'workers_on_it')
+    assert.equal(f.state().cards[ask]?.column, 'needs_you')
+    f.run({ args: ['move', 'ask', 'workers_on_it'] })
     f.run({ args: ['column', 'delete', 'workers_on_it', '--to', 'needs_you'] })
     assert.equal(f.state().cards[ask]?.column, 'needs_you')
-    assert.equal(f.state().cards[ask]?.manualColumn, 'needs_you')
     f.run({ args: ['undo', f.events().at(-1)!.id] })
-    assert.equal(f.state().cards[ask]?.manualColumn, undefined)
     assert.equal(f.state().cards[ask]?.column, 'workers_on_it')
     f.run({ args: ['outcome', 'ask', 'done'] })
-    assert.equal(f.state().cards[ask]?.column, 'done')
+    assert.equal(f.state().cards[ask]?.column, 'workers_on_it')
     f.run({ args: ['undo', f.events().at(-1)!.id] })
     assert.equal(f.state().cards[ask]?.status?.state, 'working')
-    assert.equal(f.state().cards[ask]?.column, 'workers_on_it')
     f.run({ args: ['column', 'create', '--title', 'Later', '--id', 'custom:later'] })
     f.run({ args: ['task', 'create', '--title', 'Someday', '--key', 'someday', '--column', 'custom:later'] })
-    assert.equal(f.state().cards[f.state().keys.someday!]?.manualColumn, 'custom:later')
+    assert.equal(f.state().cards[f.state().keys.someday!]?.column, 'custom:later')
     f.push({ key: 'pushed', input: { title: 'Pushed', activity: 'waiting' } })
     f.run({ args: ['link', 'pushed', '--url', 'https://github.com/example/app/pull/2', '--state', 'open'] })
     const pushed = f.state().cards[f.state().keys.pushed!]!
@@ -406,7 +404,7 @@ test('search keeps one copy of each archived native line, long or repeated', () 
   }
 })
 
-test('saving view preferences preserves pins owned by board columns', () => {
+test('saving view preferences keeps cards in board columns', () => {
   const f = fixture()
 
   try {
@@ -414,19 +412,18 @@ test('saving view preferences preserves pins owned by board columns', () => {
     f.run({ args: ['task', 'create', '--key', 'research', '--title', 'Check context', '--column', 'custom:research'] })
     const id = f.state().keys.research!
     const before = f.state().cards[id]!
-    assert.equal(before.manualColumn, 'custom:research')
+    assert.equal(before.column, 'custom:research')
 
     for (const patch of [{ fontSize: 16 }, { theme: 'light' }, { columnWidths: { 'custom:research': 400 } }]) {
       f.run({ args: ['view', 'set', '--json', JSON.stringify(patch)] })
       const current = f.state().cards[id]!
-      assert.equal(current.manualColumn, 'custom:research')
       assert.equal(current.column, 'custom:research')
       assert.equal(current.revision, before.revision)
     }
 
     f.run({ args: ['view', 'set', '--json', JSON.stringify({ customColumns: [] })] })
     assert.equal(f.state().view?.columnWidths['custom:research'], 400)
-    assert.equal(f.state().cards[id]!.manualColumn, 'custom:research')
+    assert.equal(f.state().cards[id]!.column, 'custom:research')
     const replayed = replay({ state: emptyBoard(), events: f.events() })
     assert.deepEqual(replayed.cards[id], f.state().cards[id])
   } finally {

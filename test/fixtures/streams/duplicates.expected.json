@@ -26,7 +26,7 @@
           "observedAt": "2026-10-13T11:20:00Z"
         }
       ],
-      "column": "done",
+      "column": "workers_on_it",
       "revision": 4,
       "createdSeq": 1,
       "updatedSeq": 9,

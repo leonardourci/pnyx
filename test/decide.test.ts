@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { decideLink, decideMove, decideOutcome, decidePush, decideUndo, parseLink, type Decision, type Meta } from '../src/core/decide.ts'
 import { BoardError, type BoardEvent, type BoardState } from '../src/core/model.ts'
 import { emptyBoard, reduce } from '../src/core/reducer.ts'
+import { columnCards } from '../src/core/tasks.ts'
 
 const meta: Meta = { at: '2026-10-13T12:00:00Z', actor: 'test' }
 
@@ -74,7 +75,7 @@ test('undo reverses a move unless the card changed since', () => {
   state = reduce({ state, event: move })
   const undo = eventOf({ decision: decideUndo({ state, target: move, meta }) })
   assert.equal(undo.undoes, move.id)
-  assert.equal(reduce({ state, event: undo }).cards.c1!.manualColumn, undefined)
+  assert.equal(reduce({ state, event: undo }).cards.c1!.column, 'workers_on_it')
 
   const later = reduce({ state, event: eventOf({ decision: decideMove({ state, ref: 'c1', column: 'done', meta }) }) })
   rejects({ fn: () => decideUndo({ state: later, target: move, meta }), code: 'CONFLICT' })
@@ -83,12 +84,38 @@ test('undo reverses a move unless the card changed since', () => {
   rejects({ fn: () => decideUndo({ state: undone, target: move, meta }), code: 'CONFLICT' })
 })
 
+test('a move orders the card within its column, and nothing else reorders it', () => {
+  let state = emptyBoard()
+
+  for (const key of ['a', 'b', 'c']) {
+    state = apply({ state, decision: decidePush({ state, key, input: {}, meta }) })
+  }
+
+  const order = () => columnCards({ state, column: 'workers_on_it' }).map(c => c.key)
+  assert.deepEqual(order(), ['a', 'b', 'c'], 'new cards go to the end')
+
+  const top = eventOf({ decision: decideMove({ state, ref: 'c', column: 'workers_on_it', before: 'a', meta }) })
+  state = reduce({ state, event: top })
+  assert.deepEqual(order(), ['c', 'a', 'b'])
+  state = apply({ state, decision: decideMove({ state, ref: 'b', column: 'workers_on_it', before: 'a', meta }) })
+  assert.deepEqual(order(), ['c', 'b', 'a'], 'between two cards')
+  state = apply({ state, decision: decideMove({ state, ref: 'c', column: 'workers_on_it', meta }) })
+  assert.deepEqual(order(), ['b', 'a', 'c'], 'no --before goes to the end')
+  state = apply({ state, decision: decidePush({ state, key: 'a', input: { title: 'edited', activity: 'working' }, meta }) })
+  assert.deepEqual(order(), ['b', 'a', 'c'], 'an edit never reorders')
+
+  state = apply({ state, decision: decideMove({ state, ref: 'a', column: 'done', meta }) })
+  assert.deepEqual(columnCards({ state, column: 'done' }).map(c => c.key), ['a'])
+  rejects({ fn: () => decideMove({ state, ref: 'b', column: 'workers_on_it', before: 'a', meta }), code: 'VALIDATION_ERROR' })
+  rejects({ fn: () => decideMove({ state, ref: 'b', column: 'custom:nowhere', meta }), code: 'VALIDATION_ERROR' })
+})
+
 test('undo reverses a link update but never a merge', () => {
   let state = apply({ state: emptyBoard(), decision: decidePush({ state: emptyBoard(), key: 'k1', input: {}, meta }) })
   const url = 'https://github.com/o/r/pull/3'
   const open = eventOf({ decision: decideLink({ state, ref: 'c1', url, link: parseLink({ input: { url, state: 'open' } }), meta }) })
   state = reduce({ state, event: open })
-  assert.equal(state.cards.c1!.column, 'parked')
+  assert.equal(state.cards.c1!.column, 'workers_on_it')
   const reverted = reduce({
     state,
     event: eventOf({ decision: decideUndo({ state, target: open, meta }) }),
@@ -97,7 +124,7 @@ test('undo reverses a link update but never a merge', () => {
 
   const merged = eventOf({ decision: decideLink({ state, ref: 'c1', url, link: { kind: 'github_pr', url, state: 'merged' }, meta }) })
   state = reduce({ state, event: merged })
-  assert.equal(state.cards.c1!.column, 'done')
+  assert.equal(state.cards.c1!.column, 'workers_on_it', 'a merge never moves a card')
   rejects({ fn: () => decideUndo({ state, target: merged, meta }), code: 'NOT_UNDOABLE' })
 })
 
@@ -129,7 +156,7 @@ test('an undone undo points at the latest event in the chain', () => {
   state = reduce({ state, event: undo })
   const redo = eventOf({ decision: decideUndo({ state, target: undo, meta }) })
   state = reduce({ state, event: redo })
-  assert.equal(state.cards.c1!.manualColumn, 'done')
+  assert.equal(state.cards.c1!.column, 'done')
   assert.throws(
     () => decideUndo({ state, target: move, meta }),
     (error: unknown) => error instanceof BoardError && error.code === 'CONFLICT' && error.help[0]!.includes(`undo ${redo.id}`),
