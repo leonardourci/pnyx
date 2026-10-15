@@ -279,6 +279,7 @@ export interface HydraMessage {
   task?: string
   action: 'send' | 'worker'
   text: string
+  details?: string
   at: string
   actor: string
   hydra: string
