@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -124,6 +125,11 @@ function moveBoards({ home }: { home: string }): Set<string> {
       }
 
       throw error
+    }
+
+    // Task copies are git worktrees, so their repositories must learn the new folder.
+    for (const copy of existsSync(join(to, 'copies')) ? readdirSync(join(to, 'copies')) : []) {
+      spawnSync('git', ['-C', join(to, 'copies', copy), 'worktree', 'repair'], { stdio: 'ignore', timeout: 30_000 })
     }
   }
 
