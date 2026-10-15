@@ -13,7 +13,8 @@ import { HOOK } from '../integrations/hooks/observe.ts'
 import { pressKey, pressKeys, typeInto, type Delivery } from '../integrations/hooks/terminal.ts'
 import { paseoReply } from '../integrations/paseo/reply.ts'
 import { loadBoard, withWriter } from '../store/board-store.ts'
-import { COMMON, drainSpool, guard, meta, parse, required, type Options, type Output } from './commands.ts'
+import { drainSpool } from '../integrations/hooks/ingest.ts'
+import { COMMON, guard, meta, parse, required, type Options, type Output } from './commands.ts'
 
 export interface ReplyRequest {
   card: string

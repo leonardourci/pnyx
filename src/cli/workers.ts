@@ -9,7 +9,8 @@ import { harvestPaseoChats } from '../integrations/paseo/harvest.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
 import { redact } from '../search/text.ts'
 import { splitEntry } from '../thread/read.ts'
-import { COMMON, WRITE, commit, commands, drainSpool, guard, integer, meta, parse, required, summarize, type Output } from './commands.ts'
+import { drainSpool } from '../integrations/hooks/ingest.ts'
+import { COMMON, WRITE, commit, commands, guard, integer, meta, parse, required, summarize, type Output } from './commands.ts'
 
 const HYDRA_ACTOR = 'hydra'
 const SAFE = /^[\w.:/[\]-]{1,100}$/

@@ -14,7 +14,7 @@ import {
   type Meta,
 } from '../../core/decide.ts'
 import type { Attention, BoardState, Card, SourceRef } from '../../core/model.ts'
-import { drainSpool } from '../../cli/commands.ts'
+import { drainSpool } from '../hooks/ingest.ts'
 import { withWriter, type Writer } from '../../store/board-store.ts'
 import { HOOK } from '../hooks/observe.ts'
 import {
