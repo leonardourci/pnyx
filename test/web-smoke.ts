@@ -234,6 +234,10 @@ try {
 
   await browser({ args: ['emulate', '--color-scheme', 'auto'] }); await browser({ args: ['wait', 'Change from here'] })
   await click({ role: 'button', name: 'Conversation' })
+  await check({ condition: '[...document.querySelectorAll(".composer-settings [role=combobox]")].some(b => b.textContent.includes("gpt-6.1-sol"))', label: 'the reply input shows the agent settings' })
+  await click({ role: 'combobox', name: 'Model' }); await click({ role: 'option', name: 'gpt-6-luna' })
+  await eventually({ condition: '[...document.querySelectorAll(".composer-settings [role=combobox]")].some(b => b.textContent.includes("gpt-6-luna…"))', label: 'a picked setting shows as pending' })
+  assert.match(readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8'), /arg=Pnyx: please switch the worker on task api-v2 \(Codex\) to model gpt-6-luna\./)
   await browser({ args: ['fill', await ref({ role: 'textbox', name: 'Reply to Shape the first working board' }), 'Keep this draft'] })
   await click({ role: 'combobox', name: 'Workspace' }); await click({ role: 'option', name: 'Work' })
   await check({ condition: 'document.querySelectorAll("[data-card]").length === 3 && document.querySelector(".detail").textContent.includes("Outside current filters")', label: 'workspace filters preserve the open conversation' })

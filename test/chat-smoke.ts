@@ -18,6 +18,8 @@ const markdown = readFileSync(join(import.meta.dirname, 'fixtures/web/chat.md'),
 appendFileSync(fixture.transcript, Array.from({ length: 70 }, (_, i) => JSON.stringify({ type: 'assistant', timestamp: `2026-10-01T10:00:${String(i).padStart(2, '0')}Z`, message: { content: `Earlier note ${i}` } }) + '\n').join(''))
 appendFileSync(fixture.transcript, JSON.stringify({ type: 'user', timestamp: '2026-10-13T10:50:00Z', message: { content: '**Review** this plan and `safe links`.' } }) + '\n')
 appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: '2026-10-13T10:51:00Z', message: { content: markdown } }) + '\n')
+// A trailing tool call, so with Focus off a trace is the last row.
+appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: '2026-10-13T10:52:00Z', message: { content: [{ type: 'tool_use', name: 'Run checks', input: { command: 'pnpm test' } }] } }) + '\n')
 const meta = { actor: 'fixture', at: '2026-10-14T10:00:00Z' }
 withWriter({
   board: 'default',
@@ -106,6 +108,11 @@ try {
   await check({ condition: 'document.querySelector(".card-footer").textContent.includes("needs you") && !document.querySelector(".card-footer").textContent.includes("running ")', label: 'the declared task status stays visible and Focus hides the running tool' })
   await click({ role: 'switch', name: 'Focus' }); await browser({ args: ['wait', 'Showing tool calls and thinking'] })
   await check({ condition: '!!document.querySelector(".message.tool pre") && !!document.querySelector(".message.thinking pre")', label: 'Focus off shows both trace kinds' })
+  await focus({ selector: '.composer textarea' }); await press({ key: 'Escape' })
+  await check({ condition: `document.querySelector(".messages > .message:last-child").matches(".tool") && ${caretIn({ block: '[...document.querySelectorAll(".message:not(.mine, .tool, .thinking)")].at(-1)' })}`, label: 'with a trace last, Escape still puts the caret in the latest reply' })
+  await press({ key: 'Shift+ArrowDown' }); await press({ key: 'Shift+ArrowDown' }); await press({ key: 'Shift+Enter' })
+  await check({ condition: 'document.activeElement.matches(".composer textarea") && document.activeElement.value.startsWith("> Thread plan\\n> A readable") && !/Comment|Enter|type/.test(document.activeElement.value)', label: 'a quote across blocks carries only message text' })
+  await browser({ args: ['eval', '() => { const input = document.querySelector(".composer textarea"); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(input, ""); input.dispatchEvent(new Event("input", { bubbles: true })); return true; }'] })
   await click({ role: 'switch', name: 'Focus' }); await browser({ args: ['wait', 'Prompts and agent messages only'] })
   await browser({ args: ['open', server.url] }); await browser({ args: ['wait', 'The working board'] }); await click({ role: 'button', name: 'Open conversation for Shape the first working board' }); await browser({ args: ['wait', 'Thread plan'] })
   await check({ condition: 'document.querySelector("[role=switch]").getAttribute("aria-checked") === "true"', label: 'Focus survives reload' })
