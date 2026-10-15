@@ -29,7 +29,6 @@ function hosts() {
     symlinkSync(HOST, join(bin, name))
   }
 
-  // ps answers that the session's process still runs on its TTY.
   writeFileSync(join(stub, 'ps.out'), 'ttys042\n')
   const env = { ...process.env, PNYX_HOME: join(root, 'pnyx'), STUB_DIR: stub, PATH: `${bin}:/usr/bin:/bin` }
   const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
@@ -105,11 +104,9 @@ test('the innermost recorded host is the route', () => {
   assert.match(reason({ c: card({ fields: { activity: 'ended', terminal: { ...base, program: 'Apple_Terminal' } } }) }), /session ended/)
   assert.match(reason({ c: card({ fields: { agent: { provider: 'claude-code', sessionId: 's', agentId: 'a' } } }) }), /subagent/)
   assert.match(reason({ c: card({ fields: { agent: undefined } }) }), /no Firstmate task or agent session/)
-  // A Firstmate task keeps its own send command, even with a terminal recorded.
   const fm = card({ fields: { sourceRefs: [{ adapter: 'firstmate', instanceId: '/fm', objectId: 'task' }], terminal: { ...base, program: 'Apple_Terminal' } } })
   assert.match(reason({ c: fm }), /not configured/)
   assert.deepEqual(replyRoute({ card: fm, homes: ['/fm'] }), { route: { kind: 'firstmate', home: '/fm', task: 'task' } })
-  // Values that could reach a command line as options or quotes are dropped.
   assert.deepEqual(terminalFacts({ value: { tty: TTY, tmuxPane: '-t', program: 'a b', pid: '0', paseoTerminal: '--x', extra: 'y' } }), { tty: TTY })
 })
 
@@ -126,7 +123,6 @@ test('a tmux reply checks the pane, pastes once and presses Enter', () => {
   assert.match(log[2]!, /arg=load-buffer[\s\S]*stdin=first line\nsecond line/)
   assert.match(log[3]!, /arg=paste-buffer\narg=-p\narg=-d[\s\S]*arg=-t\narg=%3/)
   assert.match(log[4]!, /arg=send-keys\narg=-t\narg=%3\narg=Enter\n$/)
-  // The same key never sends twice.
   assert.match(run({ args: ['reply', 's1', '--text', 'first line\nsecond line', '--idempotency-key', 'k1'] }), /sent: false/)
   assert.equal(calls().length, 5)
   assert.match(run({ args: ['history', '--card', 's1', '--kind', 'replied'] }), /reply k1 delivered/)
@@ -238,7 +234,6 @@ test('the hook records the terminal the session runs in, past wrapper shells, an
   })
   assert.doesNotMatch(JSON.stringify(line), /secret/)
 
-  // Ingesting the spool puts the facts on the session's card.
   execFileSync(process.execPath, [BIN, 'harvest'], { env: { ...env, PNYX_HOME: home }, encoding: 'utf8' })
   process.env.PNYX_HOME = home
   const { state } = loadBoard({ board: 'default' })
@@ -259,7 +254,6 @@ test('the hook records the terminal the session runs in, past wrapper shells, an
     paseoTerminal: 'term-1',
   })
 
-  // Any other event records only the Paseo terminal, and leaves the card's facts alone.
   const tool = execFileAsync('/bin/sh', [script, 'claude', 'PreToolUse'], { encoding: 'utf8', env: hostEnv })
   tool.child.stdin!.end('{"session_id":"s1","cwd":"/work","tool_name":"Bash","tool_input":{"command":"ls"}}')
   await tool
@@ -339,7 +333,6 @@ test('iTerm2 gets a key as raw bytes; Terminal and Herdr refuse keys before send
   fails({ args: ['agent', 's3', 'mode', 'next'], code: 'NO_ROUTE' })
   assert.match(run({ args: ['agent', 's2'] }), /mode,unknown,next,"Terminal types whole lines/)
   assert.equal(calls().length, before)
-  // Typed commands still go everywhere a reply goes.
   assert.match(run({ args: ['agent', 's2', 'fast', 'off'] }), /sent: delivered/)
   assert.match(calls().at(-1)!, /tell application "Terminal"[\s\S]*arg=\/fast off\n/)
 })
@@ -354,12 +347,10 @@ test("a session's report confirms a change the way its control reads back", () =
   }) =>
     confirms({ ...findOption({ provider, setting, value })!, before, after })
 
-  // A model alias confirms on the full id the session reports.
   assert.equal(check({ provider: 'claude-code', setting: 'model', value: 'opus', before: 'claude-sonnet-5-5', after: 'claude-opus-5-5' }), true)
   assert.equal(check({ provider: 'claude-code', setting: 'model', value: 'opus', before: 'claude-sonnet-5-5', after: 'claude-sonnet-5-5' }), false)
   assert.equal(check({ provider: 'claude-code', setting: 'effort', value: 'high', before: 'medium', after: 'high' }), true)
   assert.equal(check({ provider: 'claude-code', setting: 'effort', value: 'xhigh', before: 'medium', after: 'high' }), false)
-  // A key that cycles or steps confirms on any change.
   assert.equal(check({ provider: 'claude-code', setting: 'mode', value: 'next', before: 'auto', after: 'default' }), true)
   assert.equal(check({ provider: 'codex', setting: 'effort', value: 'raise', before: 'medium', after: 'medium' }), false)
   assert.equal(check({ provider: 'codex', setting: 'fast', value: 'toggle', before: 'off', after: undefined }), false)

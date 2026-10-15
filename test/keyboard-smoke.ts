@@ -1,4 +1,3 @@
-// Real keyboard events against an isolated board and synthetic harness files.
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -54,7 +53,6 @@ const fill = async ({ role, name, text }: { role: string; name: string; text: st
 const press = ({ key }: { key: string }) => browser({ args: ['press', key] })
 const focus = ({ selector }: { selector: string }) => browser({ args: ['eval', `() => { document.querySelector(${JSON.stringify(selector)}).focus(); return true; }`] })
 const active = ({ selector }: { selector: string }) => `document.activeElement.matches(${JSON.stringify(selector)})`
-// The caret is collapsed in the latest reply at `offset`, an expression.
 const caretAt = ({ offset }: { offset: string }) => `document.activeElement.matches("[data-caret-host]") && getSelection().isCollapsed && getSelection().focusNode.data?.startsWith("The first pass") && getSelection().focusOffset === ${offset}`
 const cardSelector = `[data-card="${fixture.state.keys.layout}"]`
 const board = () => loadBoard({ board: 'default' }).state
@@ -76,7 +74,6 @@ try {
   await browser({ args: ['open', server.url] }); await browser({ args: ['resize', '1440', '900'] }); await browser({ args: ['wait', 'Needs you'] })
   const platform = await browser({ args: ['eval', "() => /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other'"] }); const mod = platform.includes('mac') ? 'Meta' : 'Control'
   const findPrevented = ({ expected }: { expected: boolean }) => check({ condition: `(() => { const event = new KeyboardEvent('keydown', { key: 'f', ${mod === 'Meta' ? 'metaKey' : 'ctrlKey'}: true, bubbles: true, cancelable: true }); document.activeElement.dispatchEvent(event); return event.defaultPrevented === ${expected}; })()`, label: `browser find prevented: ${expected}` })
-  // Mod+B hides the top bar for the whole height, and brings it back.
   await focus({ selector: cardSelector }); await press({ key: `${mod}+b` }); await check({ condition: "document.querySelector('.topbar').hidden", label: 'Mod+B hides the top bar' })
   await press({ key: `${mod}+b` }); await check({ condition: "!document.querySelector('.topbar').hidden", label: 'Mod+B shows the top bar again' })
   await focus({ selector: cardSelector }); await press({ key: `${mod}+f` }); await check({ condition: active({ selector: "[aria-label='Find a card']" }), label: 'Mod+F focuses board search' })
@@ -132,7 +129,6 @@ try {
     await press({ key: 'Escape' }); await frames(); await check({ condition: active({ selector: cardSelector }), label: `${title} restores the card after the palette` })
   }
 
-  // The palette runs the same top bar toggle as Mod+B.
   await press({ key: `${mod}+k` }); await browser({ args: ['wait', 'Search Commands'] }); await fill({ role: 'combobox', name: 'Search Commands', text: 'top bar' }); await press({ key: 'Enter' }); await frames()
   await check({ condition: "document.querySelector('.topbar').hidden", label: 'the palette hides the top bar' })
   await focus({ selector: cardSelector }); await press({ key: `${mod}+b` }); await check({ condition: "!document.querySelector('.topbar').hidden", label: 'Mod+B brings the top bar back' })
@@ -180,7 +176,6 @@ try {
   await press({ key: `${mod}+,` }); await browser({ args: ['wait', 'Keyboard shortcuts'] }); await click({ role: 'switch', name: 'Character shortcuts' }); await browser({ args: ['wait', 'Preferences saved'] })
   await click({ role: 'button', name: 'Back to board' }); await browser({ args: ['open', server.url] }); await browser({ args: ['wait', 'Needs you'] }); await focus({ selector: cardSelector }); await press({ key: 'g' }); await press({ key: 'r' }); await browser({ args: ['wait', 'Reply to Shape the first working board'] }); await check({ condition: active({ selector: 'textarea' }), label: 'bindings survive reload' })
   await press({ key: 'Escape' }); await press({ key: 'Escape' }); await press({ key: 'Escape' })
-  // Empty-column navigation and live moves use source events, not DOM edits.
   withWriter({
     board: 'default',
     fn: ({ writer: w }) => {

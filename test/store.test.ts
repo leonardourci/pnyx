@@ -14,7 +14,6 @@ import { STREAMS, assertGolden, readStream } from './streams.ts'
 process.env.PNYX_SEMANTIC = 'off'
 
 beforeEach(() => {
-  // Every test gets its own home; nothing touches the real ~/.pnyx.
   process.env.PNYX_HOME = mkdtempSync(join(tmpdir(), 'pnyx-store-'))
 })
 
@@ -96,7 +95,6 @@ test('a torn tail is skipped on read, blocks writes and is set aside by repair',
   const result = repairBoard({ board: 'default' })
   assert.equal(result.tornBytes, loaded.tornBytes)
   assert.deepEqual(readFileSync(result.preserved!), original.subarray(clean.length))
-  // The log is only appended to: the torn bytes stay, closed by a repair marker.
   const repaired = readFileSync(join(dir, 'events.jsonl'))
   assert.deepEqual(repaired.subarray(0, original.length), original)
   const marker = JSON.parse(repaired.subarray(original.length + 1).toString('utf8'))

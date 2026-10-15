@@ -41,9 +41,7 @@ test("status lines follow Firstmate's key grammar", () => {
     declares: true,
     colon: true,
   })
-  // A readable stamp with colons does not move the head/note boundary.
   assert.equal(parseStatusLine({ line: 'blocked [at=10:30]: stuck' }).note, 'stuck')
-  // A key at the head of the note is the same key, stripped from the note.
   assert.deepEqual([parseStatusLine({ line: 'resolved: [key=api] REST' }).key, parseStatusLine({ line: 'resolved: [key=api] REST' }).note], ['api', 'REST'])
   assert.equal(parseStatusLine({ line: 'needs-decision: plain' }).key, 'default')
   assert.equal(parseStatusLine({ line: 'needs-decision [key=a b]: x' }).key, null)
@@ -65,7 +63,6 @@ test('the decision fold opens, closes and clears keys like Firstmate', () => {
     openDecisions({ log, kind: 'ship' }).map(d => d.key),
     ['b', 'pending-reply-y', 'default'],
   )
-  // A ship or scout terminal line closes every decision; a secondmate's does not.
   assert.deepEqual(openDecisions({ log: `${log}\ndone: shipped`, kind: 'ship' }), [])
   assert.equal(openDecisions({ log: `${log}\ndone: other work`, kind: 'secondmate' }).length, 3)
   assert.deepEqual(openDecisions({ log: 'needs-decision [key=k]: x\ncaptain-held [key=k]: moved to captain', kind: 'ship' }), [])
@@ -135,22 +132,17 @@ test('sync mirrors Firstmate tasks under its board Hydra', () => {
   )
   assert.equal(api.column, 'workers_on_it', 'a synced task stays where it was created')
   assert.equal(api.activity, 'working: PR https://github.com/example/app/pull/41 opened')
-  // A pull request named only in the status log is not the task's own.
   assert.deepEqual(api.links, [])
   assert.deepEqual(api.sourceRefs, [{ adapter: 'firstmate', instanceId: home, objectId: 'api-v2' }])
 
-  // The scout's terminal line closed its decision, and its Done backlog row
-  // records it as done with no pull request.
   const scout = cardOf({ home, task: 'docs-scout' })
   assert.deepEqual(scout.attention, [])
   assert.deepEqual(scout.outcome, { state: 'done', source: 'firstmate' })
   assert.equal(scout.column, 'workers_on_it')
-  // A failed: line closes the ship's decisions but asks for the owner.
   const hotfix = cardOf({ home, task: 'hotfix-2' })
   assert.deepEqual(hotfix.attention, [{ kind: 'failed', key: '@status', blocking: true, text: 'tests red after patch' }])
   assert.equal(hotfix.outcome, undefined)
   assert.equal(hotfix.column, 'workers_on_it')
-  // meta pr= plus a merged backlog row: a merged link, and the card stays put.
   const release = cardOf({ home, task: 'release-1' })
   assert.deepEqual(release.links.map(l => [l.number, l.state]), [[40, 'merged']])
   assert.equal(release.column, 'workers_on_it')
@@ -361,7 +353,6 @@ test("a task's decisions, reports and Captain's intent show on its card", () => 
   assert.match(api, /^ {2}context\[1\]\{at,source,text\}:\n {4}"[^"]+",firstmate,"Captain's intent:\\nShip the v2 API so partners can page through invoices\.\\nKeep v1 working until every partner moves\."$/m)
   assert.doesNotMatch(api, /Firstmate spec|Setup text/)
   assert.match(run({ args: ['card', cardOf({ home, task: 'release-1' }).id] }), /^ {2}summary\[1\]\{at,source,text\}:\n {4}"2026-10-13T14:06:40.000Z",firstmate,"done: PR https:\/\/github.com\/example\/app\/pull\/40 checks green"$/m)
-  // New lines add notes; a re-sync adds nothing twice.
   appendFileSync(join(home, 'state', 'api-v2.status'), 'resolved [key=api-shape] [at=1791900700]: REST\n')
   assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,5,3$/m)
   assert.match(run({ args: ['firstmate', 'sync', '--home', home] }), /home,5,0$/m)
@@ -373,11 +364,9 @@ test('a Firstmate outcome follows the backlog on every sync', () => {
   const { home } = copyFixture()
   syncHome({ board: 'default', home })
   assert.deepEqual(cardOf({ home, task: 'docs-scout' }).outcome, { state: 'done', source: 'firstmate' })
-  // A later failed: line turns the recorded done into a closed failure.
   appendFileSync(join(home, 'state', 'docs-scout.status'), 'failed: rerun broke\n')
   syncHome({ board: 'default', home })
   assert.deepEqual(cardOf({ home, task: 'docs-scout' }).outcome, { state: 'failed', note: 'closed after failure', closed: true, source: 'firstmate' })
-  // Back in flight: the outcome is cleared.
   const backlog = join(home, 'data', 'backlog.md')
   const rows = readFileSync(backlog, 'utf8').split('\n')
   const [row] = rows.splice(rows.findIndex(l => l.startsWith('- [x] docs-scout')), 1)
@@ -409,7 +398,6 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   const out = run({ args: ['reply', api.id, '--text', 'Use REST', '--resolve-key', 'api-shape', '--idempotency-key', 'k1', '--home', home] })
   assert.match(out, /state: delivered/)
   assert.equal(sent(), `FM_HOME=${home}\narg=api-v2\narg=--resolve-key\narg=api-shape\narg=Use REST\n---\n`)
-  // A retry with the same key does not send again.
   assert.match(run({ args: ['reply', api.id, '--text', 'Use REST', '--idempotency-key', 'k1', '--home', home] }), /sent: false/)
   assert.equal(sent().split('---').length, 2)
   // The answer does not close the decision by itself; Firstmate's resolved line does.
@@ -460,7 +448,6 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   run({ args: ['repair'] })
 
   fails({ args: ['reply', api.id, '--text', 'x', '--resolve-key', 'nope', '--home', home], code: 'VALIDATION_ERROR' })
-  // A failed: line's attention is not a Firstmate decision fm-send could resolve.
   fails({ args: ['reply', cardOf({ home, task: 'hotfix-2' }).id, '--text', 'x', '--resolve-key', '@status', '--home', home], code: 'VALIDATION_ERROR' })
   fails({ args: ['reply', api.id, '--text=--resolve-key x', '--home', home], code: 'VALIDATION_ERROR' })
   fails({ args: ['reply', cardOf({ home }).id, '--text', 'x', '--home', home], code: 'NO_ROUTE' })
@@ -470,7 +457,6 @@ test("reply sends through the home's fm-send with FM_HOME and records receipts",
   run({ args: ['push', '--key', 'crafted', '--file', crafted] })
   fails({ args: ['reply', 'crafted', '--text', 'x', '--home', home], code: 'NO_ROUTE' })
   fails({ args: ['undo', readEvents({ board: 'default' }).find(e => e.type === 'card.replied')!.id], code: 'NOT_UNDOABLE' })
-  // The card's home must be configured for this send.
   const other = copyFixture()
   fails({ args: ['reply', api.id, '--text', 'x', '--home', other.home], code: 'VALIDATION_ERROR' })
 })
@@ -501,12 +487,10 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   assert.equal(state.keys['claude:fm-s'], undefined)
   assert.equal(state.cards[state.keys['claude:fm-s/a1']!]!.parentId, api.id)
 
-  // The joined card still replies through Firstmate, never by typing into the pane.
   const { run, fails } = cli({ env })
   assert.match(run({ args: ['reply', api.id, '--text', 'Use REST', '--home', home] }), /state: delivered/)
   assert.match(readFileSync(join(home, 'sent.log'), 'utf8'), /arg=api-v2\narg=Use REST/)
 
-  // Firstmate sync replaces only its own attention, so the session's permission request stays.
   hook({ id: 'h2a', event: 'PermissionRequest', payload: { session_id: 'fm-s', cwd: worktree, tool_name: 'Bash', tool_input: { command: 'rm -rf build' } } })
   syncHome({ board: 'default', home })
   syncHome({ board: 'default', home })
@@ -515,7 +499,6 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   assert.equal(asks[0]!.blocking, true)
   fails({ args: ['reply', api.id, '--text', 'x', '--resolve-key', asks[0]!.key, '--home', home], code: 'VALIDATION_ERROR' })
 
-  // The joined session ending leaves the task's outcome to Firstmate.
   hook({ id: 'h2e', event: 'SessionEnd', payload: { session_id: 'fm-s', cwd: worktree } })
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home, task: 'api-v2' }).outcome, undefined)
@@ -527,7 +510,6 @@ test("a hook session in a task's worktree joins the task card, which keeps fm-se
   writeFileSync(backlog, [...rows, row!.replace('[ ]', '[x]')].join('\n'))
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home, task: 'api-v2' }).folder, undefined)
-  // The joined session's later events still reach the task card, not a card of its own.
   hook({ id: 'h2b', event: 'SubagentStop', payload: { session_id: 'fm-s', agent_id: 'a1', cwd: worktree } })
   hook({ id: 'h2c', event: 'SessionEnd', payload: { session_id: 'fm-s', cwd: worktree } })
   hook({ id: 'h3', event: 'SessionStart', payload: { session_id: 'next', cwd: worktree } })
@@ -610,13 +592,11 @@ test('a session joins the task launched in its worktree; only a session in its t
   assert.ok(readEvents({ board: 'default' }).some(e => e.type === 'chat.message'
     && e.data.session === 'claude-code:s-b' && e.data.text === 'Retain before clear'))
 
-  // The session it replaced reports to its own card from then on.
   hook({ id: 'h2s', session: 's-b', paseoTerminal: 'term-b' })
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-b' }).agent?.sessionId, 's-b2')
   assert.equal(own({ session: 's-b' }), true)
 
-  // Firstmate respawns the worker in a new terminal; its session continues the card.
   meta({ task: 'wt-b', terminal: 'term-b3' })
   syncHome({ board: 'default', home })
   assert.deepEqual(cardOf({ home: home, task: 'wt-b' }).terminal, { paseoTerminal: 'term-b3' })
@@ -630,7 +610,6 @@ test('a session joins the task launched in its worktree; only a session in its t
   meta({ task: 'wt-c', terminal: 'term-c0' })
   meta({ task: 'wt-d', terminal: 'term-d' })
   syncHome({ board: 'default', home })
-  // A task respawned before its session joined records its new terminal.
   meta({ task: 'wt-c', terminal: 'term-c' })
   syncHome({ board: 'default', home })
   assert.deepEqual(cardOf({ home: home, task: 'wt-c' }).terminal, { paseoTerminal: 'term-c' })
@@ -682,14 +661,12 @@ test('a task launched in a Paseo terminal takes only a session from that termina
       entry: { v: 1, id, at: '2026-10-14T00:00:00Z', harness: 'claude', event: 'SessionStart', payload: { session_id: session, cwd: worktree }, terminal },
     })
 
-  // The owner's session in tmux, in the same worktree, keeps its own card.
   start({ id: 'h1', session: 's-tmux', terminal: { tty: '/dev/ttys042', pid: '4242', program: 'tmux' } })
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-p' }).agent, undefined)
   assert.deepEqual(cardOf({ home: home, task: 'wt-p' }).terminal, { paseoTerminal: 'term-p' })
   assert.ok(loadBoard({ board: 'default' }).state.keys['claude:s-tmux'])
 
-  // The worker in the task's own terminal still joins it.
   start({ id: 'h2', session: 's-worker', terminal: { tty: '/dev/ttys043', pid: '4343', program: 'kitty', paseoTerminal: 'term-p' } })
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-p' }).agent?.sessionId, 's-worker')
@@ -722,13 +699,11 @@ test('a Paseo task takes only events from its terminal, whatever event comes fir
     })
   const own = ({ session }: { session: string }) => !!loadBoard({ board: 'default' }).state.keys[`codex:${session}`]
 
-  // A session in another Paseo terminal keeps its own card.
   hook({ id: 'h1', session: 's-other', event: 'SessionStart', terminal: { tty: '/dev/ttys050', pid: '5050', paseoTerminal: 'term-elsewhere' } })
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-q' }).agent, undefined)
   assert.equal(own({ session: 's-other' }), true)
 
-  // An event that shows no Paseo terminal keeps its own card too.
   hook({ id: 'h1b', session: 's-bare', event: 'PreToolUse' })
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-q' }).agent, undefined)
@@ -769,13 +744,11 @@ test('a session that joined a Paseo task and then shows another terminal reports
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-r' }).agent?.sessionId, 's-a')
 
-  // Its next prompt comes from tmux: that goes to its own card, and the task keeps its terminal.
   hook({ id: 'h2', session: 's-a', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys060', pid: '6060', program: 'tmux' } })
   syncHome({ board: 'default', home })
   assert.equal(own({ session: 's-a' }), true)
   assert.deepEqual(cardOf({ home: home, task: 'wt-r' }).terminal, { paseoTerminal: 'term-r' })
 
-  // The worker in the task's terminal still takes the card over.
   hook({ id: 'h3', session: 's-worker', event: 'SessionStart', terminal: { tty: '/dev/ttys061', pid: '6161', paseoTerminal: 'term-r' } })
   syncHome({ board: 'default', home })
   assert.equal(cardOf({ home: home, task: 'wt-r' }).agent?.sessionId, 's-worker')
@@ -800,7 +773,6 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
   assert.match(run({ args: ['agent', api.id, '--home', home] }), /route: "firstmate:inbox"[\s\S]*mode,unknown,next,yes/)
   assert.match(run({ args: ['agent', api.id, 'model', 'opus', '--home', home, '--idempotency-key', 'm1'] }), /sent: delivered[\s\S]*confirmed: false[\s\S]*Firstmate note n1 asks/)
   assert.deepEqual(notes(), [note({ id: 'm1', text: 'Pnyx: please switch the worker on task api-v2 (Claude Code) to model opus.' })])
-  // A retry of the same change sends nothing again.
   run({ args: ['agent', api.id, 'model', 'opus', '--home', home, '--idempotency-key', 'm1'] })
   assert.equal(notes().length, 1)
 
@@ -811,7 +783,6 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
   assert.equal(notes().at(-1), note({ id: 'm2', text: 'Pnyx: please switch the worker on task api-v2 (Claude Code) to the next permission mode.' }))
   assert.equal(existsSync(join(home, 'sent.log')), false)
 
-  // The worker's own report confirms the setting.
   spoolWrite({ board: 'default', entry: { v: 1, id: 'h3', at: '2026-10-14T00:02:00Z', harness: 'claude', event: 'UserPromptSubmit', terminal: { tty: '/dev/ttys042', pid: '4242' }, payload: { session_id: 'fm-s', cwd: worktree, prompt: 'x', permission_mode: 'acceptEdits' } } })
   syncHome({ board: 'default', home })
   assert.match(run({ args: ['agent', api.id, '--home', home] }), /mode,acceptEdits,next,yes/)
@@ -823,11 +794,9 @@ test("a task card's setting changes go to the orchestrator as request notes, nev
   assert.match(run({ args: ['agent', api.id, 'fast', 'on', '--home', home, '--idempotency-key', 'm4'] }), /sent: failed[\s\S]*Nothing was changed: fm-inbox: fake note failed/)
   writeFileSync(join(home, 'inbox-exit'), '0')
 
-  // A secondmate and a remote task take requests the same way, since nothing is typed.
   writeFileSync(meta, `${readFileSync(meta, 'utf8').replace(/^kind=.*$/m, 'kind=secondmate')}remote_host=box\n`)
   assert.match(run({ args: ['agent', api.id, 'effort', 'low', '--home', home, '--idempotency-key', 'm5'] }), /sent: delivered/)
 
-  // A Codex worker's changes are requests as well.
   const fix = join(home, 'state', 'hotfix-2.meta')
   const codexTree = mkdtempSync(join(tmpdir(), 'pnyx-wt-'))
   writeFileSync(fix, `${readFileSync(fix, 'utf8')}worktree=${codexTree}\n`)

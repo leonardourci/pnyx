@@ -28,11 +28,9 @@ const TIMEOUT_MS = 30000
 const CLI_TIMEOUT_MS = 30000
 
 let server: RunningServer | undefined
-// Every tab a test opens, closed after it even when it fails.
 const tabs = new Set<WebSocket>()
 
 beforeEach(() => {
-  // Every test gets its own home; nothing touches the real ~/.pnyx.
   process.env.PNYX_HOME = mkdtempSync(join(tmpdir(), 'pnyx-server-'))
 })
 
@@ -44,7 +42,6 @@ afterEach(async () => {
   }
 
   tabs.clear()
-  // A spawned server must not outlive its test, even one that failed or timed out.
   await stopAll()
   await server?.close()
   server = undefined
@@ -135,7 +132,6 @@ async function tab({ query = '' }: { query?: string } = {}) {
     }
   })
   await once(ws, 'open')
-  // Every connection opens with the server's build.
   const hello = await main.next()
   assert.equal(hello.type, 'hello')
 
@@ -143,7 +139,6 @@ async function tab({ query = '' }: { query?: string } = {}) {
     ws,
     hello,
     next: main.next,
-    // The next last-message push that includes this card.
     async latest({ card }: { card: string }) {
       for (;;) {
         const messages = await latest.next()
@@ -156,7 +151,6 @@ async function tab({ query = '' }: { query?: string } = {}) {
     command({ id, name, args }: { id: string; name: string; args: string[] }) {
       ws.send(JSON.stringify({ type: 'command', id, name, args }))
     },
-    // Nothing arrives within a short quiet period.
     async idle() {
       await new Promise(r => setTimeout(r, 150))
       assert.deepEqual(queue, [])
@@ -258,7 +252,6 @@ test('hook events on the socket become cards and reach open tabs', async () => {
   assert.deepEqual(await t.next(), { type: 'snapshot', seq: 0, state: loadBoard({ board: 'default' }).state })
 
   const event = JSON.stringify(hookEvent({ id: 'hook-1', key: 'session-a', title: 'Fix the parser' }))
-  // A repeated event id is ingested once; a line that is not JSON is dropped.
   await sendToSocket({ path: server.socket!, text: `${event}\nnot json\n${event}` })
   const message = await t.next()
   assert.equal(message.type, 'event')
@@ -294,18 +287,15 @@ test('a tab resumes from its cursor, gets CLI writes, and resyncs with a snapsho
   const current = await tab({ query: '?after=2' })
   await current.idle()
 
-  // A cursor the server cannot continue from gets the whole board instead.
   const ahead = await tab({ query: '?after=99' })
   const snapshot = await ahead.next()
   assert.equal(snapshot.type, 'snapshot')
   assert.equal(snapshot.type === 'snapshot' && snapshot.seq, 2)
 
-  // A tab that notices a gap itself asks for a snapshot.
   current.ws.send(JSON.stringify({ type: 'resync' }))
   const resynced = await current.next()
   assert.equal(resynced.type === 'snapshot' && resynced.seq, 2)
 
-  // The CLI stays a writer of the same log; the server pushes what it appends.
   const cardId = loadBoard({ board: 'default' }).state.keys.a!
   cli({ args: ['move', cardId, 'done'] })
   const moved = await current.next()
@@ -469,7 +459,6 @@ test('web preferences, custom moves and read queries share the authenticated soc
     assert.equal(reply.code, 'NO_ROUTE')
   }
 
-  // A setting change takes the reply's route, so it is refused the same way.
   t.command({ id: 'agent-1', name: 'agent', args: [card, 'effort', 'high', 'id'] })
   const agent = await t.next(); assert.equal(agent.type, 'error')
 
@@ -577,7 +566,6 @@ test('browser reply delivery uses only configured fixture homes and never resend
 
   assert.equal(loadBoard({ board: 'default' }).state.cards[card]?.attention.length, 1)
 
-  // A setting change goes through the same worker, as a request note to the task's orchestrator.
   const sends = readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8')
   t.command({ id: 'agent-1', name: 'agent', args: [card, 'effort', 'high', 'effort-1'] })
   const changed = await receipt({ id: 'agent-1' }); assert.equal(changed.type, 'receipt', JSON.stringify(changed))
@@ -646,7 +634,6 @@ test('the board search finds a card by a word only its transcript holds, includi
 
 test('a board search rebuilds a stale search index', async () => {
   const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
-  // An index another version left behind.
   writeFileSync(searchPath({ board: 'default' }), 'not a database')
   assert.equal(indexStatus({ board: 'default' })?.current, false)
   server = await startServer({ board: 'default' })
@@ -677,10 +664,8 @@ test("each card gets its conversation's last message, pushed again as the transc
   assert.deepEqual(await t.latest({ card }), { role: 'user', text: 'Ship it now.', at: '2026-10-13T11:01:00Z' })
   appendFileSync(fixture.transcript, assistantLine({ text: 'Shipped.', at: '2026-10-13T11:02:00Z' }))
   assert.deepEqual(await t.latest({ card }), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
-  // A tab that connects later gets every card's last message at once.
   const later = await tab(); await later.next()
   assert.deepEqual(await later.latest({ card }), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
-  // A tab that resyncs, such as one dropped while lagging, gets them again after its snapshot.
   t.ws.send(JSON.stringify({ type: 'resync' }))
   assert.equal((await t.next()).type, 'snapshot')
   assert.deepEqual(await t.latest({ card }), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
@@ -751,7 +736,6 @@ test('with semantic search on, the board search finds a transcript-only card by 
     assert.deepEqual(hits.filter(h => !h.weak).map(h => [h.card, h.match]), [[fixture.state.keys.layout, 'semantic']])
     t.ws.close()
   } finally {
-    // Stops the worker for this home within seconds.
     writeSetting({ key: 'search.semantic', value: 'off' })
     process.env.PNYX_SEMANTIC = 'off'
     delete process.env.PNYX_SEMANTIC_STUB
@@ -762,7 +746,6 @@ test('a stopped server leaves no open handles, even with board and transcript ch
   const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
   const card = fixture.state.keys.layout!
   const settle = () => new Promise(r => setTimeout(r, 300))
-  // Resources this process held before the server, such as the test runner's own.
   await settle()
   const before = process.getActiveResourcesInfo().sort()
   server = await startServer({ board: 'default' })
@@ -890,7 +873,6 @@ test('board tabs list, create, rename and open boards, each on its own server', 
   t.command({ id: 'b2', name: 'boards', args: ['rename', 'default', 'Work'] })
   assert.deepEqual((await receipt({ id: 'b2' })).boards?.map(b => b.name), ['Work'])
 
-  // A new board gets the next free id and its own running server.
   t.command({ id: 'b3', name: 'boards', args: ['create', 'Side'] })
   // That server runs detached from this test, so it is stopped by the pid it announces, even when it starts after the test gave up on it.
   const announced = infoPath({ board: 'board-2' })
@@ -902,7 +884,6 @@ test('board tabs list, create, rename and open boards, each on its own server', 
   assert.deepEqual(created.boards?.map(b => [b.id, b.name]), [['board-2', 'Side'], ['default', 'Work']])
   assert.match(created.url!, /^http:\/\/127\.0\.0\.1:\d+$/)
   assert.notEqual(created.url, `http://127.0.0.1:${server.port}`)
-  // Opening it again finds the same server.
   t.command({ id: 'b4', name: 'boards', args: ['open', 'board-2'] })
   assert.equal((await receipt({ id: 'b4' })).url, created.url)
 

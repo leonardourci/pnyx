@@ -1,4 +1,3 @@
-// Thread interactions against synthetic transcripts and a disposable reply route.
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -70,7 +69,6 @@ const focus = ({ selector }: { selector: string }) => {
   return browser({ args: ['eval', `() => { document.querySelector(${JSON.stringify(selector)}).focus(); return true; }`] })
 }
 
-// The caret is in the messages and inside `block`, an element expression.
 const caretIn = ({ block }: { block: string }) => `document.activeElement.matches("[data-caret-host]") && getSelection().isCollapsed && (${block}).contains(getSelection().focusNode)`
 
 const changeView = async ({ patch }: { patch: unknown }) => {

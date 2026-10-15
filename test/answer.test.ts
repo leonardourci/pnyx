@@ -21,7 +21,6 @@ const TTY = '/dev/ttys042'
 
 const fixture = ({ name }: { name: string }) => JSON.parse(readFileSync(join(ROOT, 'test', 'fixtures', 'hooks', `${name}.json`), 'utf8'))
 
-// The request a hook event opens on a card that had none.
 const opened = ({ harness, event, name }: { harness: 'claude' | 'codex'; event: string; name: string }): Attention => {
   const envelope: HookEnvelope = { v: 1, id: 'hook-1', at: '2026-10-14T17:00:00Z', harness, event, payload: fixture({ name }) }
 
@@ -83,7 +82,6 @@ test('a Claude Code AskUserQuestion request keeps every question with its option
       multiSelect: true,
     },
   ])
-  // A malformed question is left out entirely, so it is answered in the terminal.
   const broken = { ...fixture({ name: 'claude-pre-tool-ask' }), tool_input: { questions: [{ question: 'Which?', options: [] }] } }
   const envelope: HookEnvelope = { v: 1, id: 'hook-2', at: '2026-10-14T17:00:00Z', harness: 'claude', event: 'PreToolUse', payload: broken }
   const request = attend({ current: [], change: observe({ envelope })[0]!.attend! })[0]!
@@ -142,7 +140,6 @@ test('each harness gets the keys its own prompt expects', () => {
   // toggles numbers and moves on with Right; several questions end on the review's Submit.
   assert.deepEqual(claude({ request: multi, value: { answers: [{ pick: [2] }, { pick: [1, 3] }] } }), ['2', '1', '3', KEY.right, '1'])
   assert.deepEqual(claude({ request: single, value: { answers: [{ pick: [2] }] } }), ['2'])
-  // Free text goes on the line after the options, then Enter.
   assert.deepEqual(claude({ request: single, value: { answers: [{ text: 'Purple' }] } }), ['3', 'Purple', KEY.enter])
   assert.deepEqual(claude({ request: permission, value: { choice: 'allow' } }), ['1'])
   assert.deepEqual(claude({ request: permission, value: { choice: 'deny' } }), [KEY.escape])
@@ -298,7 +295,6 @@ test('an answer is typed as keys into the tmux pane, once, and marks the request
   assert.match(run({ args: ['card', 's1'] }), /answered: a1/)
   assert.ok(readFileSync(join(root, 'pnyx', 'boards', 'default', 'events.jsonl'), 'utf8')
     .includes(`"text":"Pick a color → Blue\\nPick sizes → Small, Large","answers":"${seen}"`))
-  // The same key never answers twice, and an answered request takes no other answer.
   assert.match(run({ args: ['reply', 's1', '--answer', multi.key, '--json', answer, '--idempotency-key', 'a1'] }), /sent: false/)
   fails({ args: ['reply', 's1', '--answer', multi.key, '--json', answer], pattern: /no open request/ })
 })

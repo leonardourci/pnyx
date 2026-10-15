@@ -11,7 +11,6 @@ import { promisify } from 'node:util'
 const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 const run$ = promisify(execFile)
 
-// The card ids of a search's results, best first.
 const cards = ({ out }: { out: string }) => [...out.matchAll(/^ {2}- card: (\S+)$/gm)].map(m => m[1])
 
 // A board in a temporary home. With stub, the worker embeds with hash vectors and
@@ -45,13 +44,11 @@ function board({ extra = {} }: { extra?: Record<string, string> } = {}) {
   // Turning semantic search off stops the worker within seconds.
   const stop = () => run({ args: ['settings', 'set', 'search.semantic', 'off'] })
 
-  // The same command with semantic search off for this process: the full-text output.
   const lexical = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env: { ...env, PNYX_SEMANTIC: 'off' }, encoding: 'utf8' })
 
   return { home, env, run, lexical, fails, push, stop }
 }
 
-// Waits until the background worker has its models and has embedded every entry.
 async function embedded({ run }: {
   run: (
     { args }: {
@@ -118,7 +115,6 @@ test('bad settings are refused; PNYX_SEMANTIC=off and the setting turn semantic 
   fails({ args: ['settings', 'set', 'search.model', 'huge'], code: 'VALIDATION_ERROR' })
   fails({ args: ['settings', 'set', 'nope', 'on'], code: 'VALIDATION_ERROR' })
   fails({ args: ['search', 'setup'], code: 'VALIDATION_ERROR' })
-  // The variable wins over the file but is never written to it.
   run({ args: ['settings', 'set', 'search.rerank', 'off'] })
   assert.match(readFileSync(join(home, 'settings.json'), 'utf8'), /"search\.semantic": "on"/)
   const out = run({ args: ['search', 'orders'] })
@@ -158,7 +154,6 @@ test('the worker socket sits in a folder only this user can use', { skip: proces
     const { workerSocket } = await import('../src/search/semantic.ts')
     const dir = join(tmp, `pnyx-${process.getuid!()}`)
     const socket = workerSocket()
-    // The long home is hashed into the name, so the path's length depends only on the temp folder.
     assert.match(socket, new RegExp(`^${dir}/semantic-[0-9a-f]{16}\\.sock$`))
     assert.equal(statSync(dir).mode & 0o777, 0o700)
     chmodSync(dir, 0o777)
@@ -197,19 +192,16 @@ test('setup turns semantic search on; hybrid search finds cards by meaning and b
     assert.match(meaning, /^ {4}match: semantic$/m)
     assert.match(meaning, /^ {6}event,"[^"]+",deploy reverted because the migration locked the orders table$/m)
 
-    // A card found both ways ranks first, with its full-text snippets.
     const both = run({ args: ['search', 'orders'] })
     assert.equal(cards({ out: both })[0], 'c1')
     assert.match(both, /^ {4}match: both$/m)
     assert.match(both, /\[orders\] table/)
 
-    // Filters apply to both legs; with semantic search off, words only.
     const homeOnly = cards({ out: run({ args: ['search', 'reverted', 'cookie', '--workspace', 'home'] }) })
     assert.equal(homeOnly[0], 'c3')
     assert.ok(!homeOnly.includes('c1'))
     assert.match(lexical({ args: ['search', 'reverted', 'cookie'] }), /^mode: lexical\nresults: "none: /m)
 
-    // --card ranks one card's entries the same way: no entry holds both words, yet meaning finds one.
     const entries = run({ args: ['search', 'table', 'dinosaur', '--card', 'c1'] })
     assert.match(entries, /^mode: hybrid$/m)
     assert.match(entries, /^ {4}match: semantic$/m)
@@ -300,7 +292,6 @@ test('a changed model drops the vectors and embeds again; the worker answers eve
     run({ args: ['search', 'setup', '--semantic'] })
     await embedded({ run })
     const db = join(home, 'boards', 'default', 'search.db')
-    // Another backend's vectors are not used: the key no longer matches, so they are re-made.
     const { sqlite } = await import('../src/search/index.ts')
     const { DatabaseSync } = sqlite()
     const w = new DatabaseSync(db)
@@ -309,7 +300,6 @@ test('a changed model drops the vectors and embeds again; the worker answers eve
     assert.match(run({ args: ['search', 'status'] }), /^vectors: 0 of \d+ entries embedded$/m)
     run({ args: ['search', 'orders'] })
     await embedded({ run })
-    // A second board shares the worker.
     const other = await run$(process.execPath, [BIN, 'search', 'anything', '--board', 'second'], { env })
     assert.match(other.stdout, /^results: "none: /m)
   } finally {

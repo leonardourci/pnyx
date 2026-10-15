@@ -1,4 +1,3 @@
-// Real browser smoke against a disposable board. Run with pnpm test:web.
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -266,7 +265,6 @@ try {
   await click({ role: 'button', name: 'History' }); await browser({ args: ['fill', await ref({ role: 'searchbox', name: 'Search history' }), 'conversation readable'] }); await browser({ args: ['wait', 'Shape the first working board'] })
   await check({ condition: 'document.title === "(1) History · Pnyx"', label: 'history tab title uses the updated attention count' })
   await check({ condition: 'document.querySelectorAll(".result-title").length === 1', label: 'full-text transcript search works' })
-  // The viewport change reloads the tab, which restores the open page.
   await browser({ args: ['emulate', '--viewport', '1440x900x1'] }); await browser({ args: ['wait', 'History'] }); await click({ role: 'button', name: 'History' }); await browser({ args: ['fill', await ref({ role: 'searchbox', name: 'Search history' }), 'conversation readable'] }); await browser({ args: ['wait', 'Shape the first working board'] }); await screenshot({ name: 'history.png' }); await click({ role: 'button', name: 'Board' })
   await browser({ args: ['open', server.url] }); await browser({ args: ['wait', 'Later'] })
   assert.equal(loadBoard({ board: 'default' }).state.board?.columns.filter(c => c.id.startsWith('custom:')).length, 1)
@@ -295,7 +293,6 @@ try {
 
   for (const [key, width] of [['Home', 240], ['End', 640], ['Home', 240], ['Shift+ArrowRight', 272]] as const) {
     await resizeColumn({ key })
-    // A column never grows past the board, which Hydra's chat and an open side panel narrow.
     await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === Math.min(${width}, document.querySelector('.kanban').clientWidth - 2) && ${fits}`, label: `column and card content fit at ${width}px` })
   }
 
@@ -306,7 +303,6 @@ try {
   await resizeColumn({ key: 'End' }); await screenshot({ name: 'columns-wide.png' })
   await click({ role: 'button', name: 'Settings' }); await click({ role: 'combobox', name: 'Conversation placement' }); await click({ role: 'option', name: 'Inline with cards' }); await click({ role: 'button', name: 'Back to board' })
   await click({ role: 'button', name: 'Open conversation for Check the empty-state experience' })
-  // An open card keeps its column's width: only the owner resizes columns.
   await resizeColumn({ key: 'Home' }); await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === 240 && ${fits}`, label: 'inline detail keeps the column width the owner set' })
   await resizeColumn({ key: 'End' }); await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === 640 && ${fits}`, label: 'inline detail respects wide column resize' })
   await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] }); await browser({ args: ['wait', 'Needs you'] })
@@ -326,7 +322,6 @@ try {
   await click({ role: 'button', name: 'Undo' }); await browser({ args: ['wait', 'Column and its cards restored.'] })
   const restored = loadBoard({ board: 'default' }).state
   assert.equal(restored.cards[fixture.state.keys.layout!]!.column, later!.id)
-  // An agent's own question shows in its conversation with the options its terminal shows.
   withWriter({
     board: 'default',
     fn: ({ writer: w }) => {
