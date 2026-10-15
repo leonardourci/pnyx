@@ -86,7 +86,7 @@ function hydraId() {
   withWriter({
     hydraId: 'lab',
     fn: ({ writer }) => {
-      const decision = decidePush({ state: writer.state, key: 'work', input: { title: 'Lab task', activity: 'waiting' }, meta: { at, actor: 'test' } })
+      const decision = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: 'work', input: { title: 'Lab task', activity: 'waiting' }, meta: { at, actor: 'test' } })
       assert.ok('event' in decision)
       writer.append({ event: decision.event })
     },

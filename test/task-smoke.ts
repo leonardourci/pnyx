@@ -17,7 +17,7 @@ withWriter({
     for (const [key, title] of [['task', 'Attachment test task'], ['a', 'Alpha work'], ['b', 'Beta work']]) {
       const transcript = join(home, `${key}.jsonl`)
       writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: `${title} message from its session` } }) + '\n')
-      const decision = decidePush({ state: writer.state, key: key!, input: { title, ...(key !== 'task' ? { agent: { provider: 'claude-code', sessionId: key, transcriptPath: transcript, cwd: home }, terminal: { tty: '/dev/ttys123' }, activity: key === 'a' ? 'ended' : 'working' } : {}) }, meta: { at: '2026-10-14T12:00:00Z', actor: 'fixture' } })
+      const decision = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: key!, input: { title, ...(key !== 'task' ? { agent: { provider: 'claude-code', sessionId: key, transcriptPath: transcript, cwd: home }, terminal: { tty: '/dev/ttys123' }, activity: key === 'a' ? 'ended' : 'working' } : {}) }, meta: { at: '2026-10-14T12:00:00Z', actor: 'fixture' } })
       assert.ok('event' in decision); writer.append({ event: decision.event })
     }
   },
@@ -78,7 +78,7 @@ try {
     hydraId: 'default',
     fn: ({ writer }) => {
       const card = writer.state.cards.c1!
-      const decision = decidePush({ state: writer.state, key: card.key, input: { agent: { ...card.agent!, cwd: join(home, 'missing') }, activity: 'ended', source: { adapter: 'hooks', instanceId: 'claude', objectId: 'b', observedAt: new Date().toISOString() } }, meta: { at: new Date().toISOString(), actor: 'fixture' } })
+      const decision = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: card.key, input: { agent: { ...card.agent!, cwd: join(home, 'missing') }, activity: 'ended', source: { adapter: 'hooks', instanceId: 'claude', objectId: 'b', observedAt: new Date().toISOString() } }, meta: { at: new Date().toISOString(), actor: 'fixture' } })
       assert.ok('event' in decision); writer.append({ event: decision.event })
     },
   })

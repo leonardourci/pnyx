@@ -24,7 +24,7 @@ withWriter({
   hydraId: 'default',
   fn: ({ writer }) => {
     const meta = { actor: 'fixture', at: new Date().toISOString() }
-    const pushed = decidePush({ state: writer.state, key: 'codex:outside-thread', input: { agent: { provider: 'codex', sessionId: 'outside-thread', cwd: root, transcriptPath: fixture.transcript }, terminal: { tty: '/dev/ttys123' }, activity: 'ended', source: { adapter: 'hooks', instanceId: 'codex', objectId: 'outside-thread', observedAt: meta.at } }, meta })
+    const pushed = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: 'codex:outside-thread', input: { agent: { provider: 'codex', sessionId: 'outside-thread', cwd: root, transcriptPath: fixture.transcript }, terminal: { tty: '/dev/ttys123' }, activity: 'ended', source: { adapter: 'hooks', instanceId: 'codex', objectId: 'outside-thread', observedAt: meta.at } }, meta })
     assert.ok('event' in pushed); writer.append({ event: pushed.event })
     const attached = decideSession({ state: writer.state, ref: 'codex:outside-thread', task: writer.state.keys.outside!, meta })
     assert.ok('event' in attached); writer.append({ event: attached.event })

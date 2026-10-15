@@ -25,7 +25,7 @@ const event = ({ d }: { d: Decision }): HydraEvent => {
 }
 
 const push = ({ state, key, fields }: { state: HydraState; key: string; fields: unknown }) =>
-  reduce({ state, event: event({ d: decidePush({ state, key, input: fields, meta }) }) })
+  reduce({ state, event: event({ d: decidePush({ state, newCardId: `c${state.seq + 1}`, key, input: fields, meta }) }) })
 
 test('the task Hydra and its semantic matches exclude ad-hoc sessions', () => {
   let state = push({ state: emptyHydra(), key: 'work', fields: { title: 'Shared work', attention: [{ key: 'task-question', kind: 'question', blocking: true }] } })
@@ -283,7 +283,7 @@ test('long transcript messages and reply history page without losing text or dup
   const state = withWriter({
     hydraId: 'default',
     fn: ({ writer: w }) => {
-      w.append({ event: event({ d: decidePush({ state: w.state, key: 'a', input: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } }, meta }) }) })
+      w.append({ event: event({ d: decidePush({ state: w.state, newCardId: `c${w.state.seq + 1}`, key: 'a', input: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } }, meta }) }) })
 
       for (let i = 0; i < 90; i++) {
         w.append({ event: event({ d: decideReply({ state: w.state, ref: 'a', data: { reply: `r${i}`, state: 'queued', route: 'fixture', text: `reply ${i}` }, meta }) }) })
@@ -377,8 +377,8 @@ test('deleting a populated column is atomic, replayable, undoable and guarded', 
     return e
   }
 
-  apply({ d: decidePush({ state, key: 'question', input: { attention: [{ kind: 'question', key: 'q', blocking: true }] }, meta }) })
-  apply({ d: decidePush({ state, key: 'worker', input: {}, meta }) })
+  apply({ d: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'question', input: { attention: [{ kind: 'question', key: 'q', blocking: true }] }, meta }) })
+  apply({ d: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'worker', input: {}, meta }) })
   apply({ d: decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }], columnWidths: { 'custom:later': 400 } }, meta }) })
   apply({ d: decideMove({ state, ref: 'question', column: 'custom:later', meta }) })
   apply({ d: decideMove({ state, ref: 'worker', column: 'custom:later', meta }) })

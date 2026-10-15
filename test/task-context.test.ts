@@ -19,7 +19,7 @@ function fixture() {
   const push = ({ key, input }: { key: string; input: object }) => withWriter({
     hydraId: 'default',
     fn: ({ writer }) => {
-      const d = decidePush({ state: writer.state, key, input, meta: { at: '2026-10-15T12:00:00Z', actor: 'test' } })
+      const d = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key, input, meta: { at: '2026-10-15T12:00:00Z', actor: 'test' } })
 
       if ('event' in d) {
         writer.append({ event: d.event })
