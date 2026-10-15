@@ -1,18 +1,48 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const exec = promisify(execFile)
 
+export async function smokeEnvironment(
+  { session }: { session: string },
+): Promise<NodeJS.ProcessEnv> {
+  const probe = createServer()
+  await new Promise<void>((resolve, reject) => {
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', resolve)
+  })
+  const address = probe.address()
+  await promisify(probe.close.bind(probe))()
+
+  if (!address || typeof address === 'string') {
+    throw new Error('No private browser port was allocated')
+  }
+
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    CHROME_DEVTOOLS_AXI_SESSION: `${session}-${process.pid}-${randomUUID().slice(0, 8)}`,
+    CHROME_DEVTOOLS_AXI_PORT: String(address.port),
+  }
+
+  for (const key of ['AUTO_CONNECT', 'HEADED', 'BROWSER_URL', 'USER_DATA_DIR', 'MCP_SERVER_URL']) {
+    delete env[`CHROME_DEVTOOLS_AXI_${key}`]
+  }
+
+  return env
+}
+
 export function smokeBrowser({ home, session }: { home: string; session: string }) {
-  const env = { ...process.env, CHROME_DEVTOOLS_AXI_SESSION: `${session}-${process.pid}` }
+  const environment = smokeEnvironment({ session })
   const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(home, 'evidence')
   mkdirSync(evidence, { recursive: true })
 
   const browser = async ({ args }: { args: string[] }) => {
-    const { stdout } = await exec('chrome-devtools-axi', args, { env, timeout: 45000, maxBuffer: 2 * 1024 * 1024 })
+    const { stdout } = await exec('chrome-devtools-axi', args, { env: await environment, timeout: 45000, maxBuffer: 2 * 1024 * 1024 })
     assert.doesNotMatch(stdout, /^error:/m)
 
     return stdout

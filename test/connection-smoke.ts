@@ -8,6 +8,7 @@ import { startServer } from '../src/server/server.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
+import { smokeEnvironment } from './browser.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 const home = mkdtempSync(join(tmpdir(), 'pnyx-connection-'))
@@ -16,7 +17,7 @@ const fixture = seedWebFixture({ home })
 let server = await startServer({ hydraId: 'default', homes: [fixture.nativeHome] })
 const port = server.port, url = server.url
 const exec = promisify(execFile)
-const env = { ...process.env, CHROME_DEVTOOLS_AXI_SESSION: `pnyx-connection-${process.pid}` }
+const env = await smokeEnvironment({ session: 'pnyx-connection' })
 
 const browser = async ({ args }: { args: string[] }) => {
   const { stdout } = await exec('chrome-devtools-axi', args, { env, timeout: 45000, maxBuffer: 2 * 1024 * 1024 })
