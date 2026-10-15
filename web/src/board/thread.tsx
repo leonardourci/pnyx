@@ -3,7 +3,7 @@ import type { Card, ViewPreferences } from '../../../src/core/model.ts'
 import { traces } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Button, Switch } from '../components/ui/controls.tsx'
-import { joinMessageParts, type ChatComment } from './chat.ts'
+import { joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 import { Composer } from './composer.tsx'
 import { Messages } from './messages.tsx'
 import { agentActivity } from './view.ts'
@@ -118,7 +118,12 @@ export function Thread({
         )}
         {page?.unavailable && <p className="empty">{page.unavailable}</p>}
         {!page && <p className="empty">{connected ? 'Loading conversation…' : 'Reconnect to load conversation.'}</p>}
-        <Messages entries={entries} comments={comments} setComments={setComments} />
+        <Messages
+          entries={entries}
+          comments={comments}
+          setComments={setComments}
+          quote={({ text }) => setDraft({ text: quoteInto({ draft, text }) })}
+        />
         {page && entries.length === 0 && !page.unavailable && <p className="empty">No recorded messages yet.</p>}
         {agentActivity({ card }) === 'working' && (
           <p className="running" role="status" title="Recorded activity; listener presence is unverified">

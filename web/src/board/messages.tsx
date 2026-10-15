@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent as KeyEvent } from 'react'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 import { Markdown } from '../components/ui/markdown.tsx'
 import { Icon } from '../components/ui/icon.tsx'
-import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
+import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
+import { CARET_HOST, CARET_KEY, caretBox, caretInto, focusReply, latestReply, reveal } from './caret.ts'
 import type { ChatComment } from './chat.ts'
 import { receiptLabel } from './view.ts'
 
@@ -11,25 +12,25 @@ type Quote = Omit<ChatComment, 'id' | 'text'>
 const blockKey = ({ messageId, offset }: { messageId: string; offset: number }) => `${messageId}/block-${offset}`
 const roleLabel = ({ role }: { role: string }) => role === 'assistant' ? 'Agent' : role === 'user' ? 'You' : role
 
-// Thread messages: Markdown for prompts and replies, dim text for traces. Each
-// Markdown block can be selected with the keyboard and commented on.
-export function Messages({ entries, comments, setComments }: {
+// Thread messages: Markdown for prompts and replies, dim text for traces, with a keyboard caret.
+export function Messages({ entries, comments, setComments, quote }: {
   entries: ThreadEntry[]
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
+  quote({ text }: { text: string }): void
 }) {
   const root = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState<string | null>(null)
   const [selection, setSelection] = useState<Quote | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
-  const { label } = useKeyboard()
+  const { label, platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
   const blockFor = ({ key }: { key: string | null }) =>
     blocks().find(e => e.dataset.messageBlock === key)
 
   const focusBlock = ({ element }: { element?: HTMLElement }) => {
-    if (element) {
-      setActive(element.dataset.messageBlock!); element.focus({ preventScroll: true }); element.scrollIntoView({ block: 'nearest' })
+    if (element && root.current) {
+      setActive(element.dataset.messageBlock!); caretInto({ host: root.current, target: element, edge: 'start' })
     }
   }
 
@@ -39,6 +40,19 @@ export function Messages({ entries, comments, setComments }: {
     offset: Number(element.dataset.blockOffset),
     quote: element.dataset.quote!,
   })
+
+  const blockOf = ({ node }: { node?: Node | null }) =>
+    (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>('[data-message-block]')
+
+  const readSelection = (): Quote | null => {
+    const selected = window.getSelection()
+    const range = selected?.rangeCount ? selected.getRangeAt(0) : null
+    const text = selected?.toString().trim(), element = blockOf({ node: range?.startContainer })
+
+    return text && element && range && root.current?.contains(range.endContainer) && !document.activeElement?.closest('.inline-comment')
+      ? { ...quoteFrom({ element }), quote: text }
+      : null
+  }
 
   const addComment = ({ quote, text = '' }: { quote: Quote; text?: string }) => {
     const comment = { ...quote, id: crypto.randomUUID(), text }
@@ -59,7 +73,7 @@ export function Messages({ entries, comments, setComments }: {
 
       if (event.defaultPrevented || event.isComposing ||
         event.ctrlKey || event.metaKey || event.altKey ||
-        event.key.length !== 1 || target?.closest('input,textarea,[contenteditable=true]') ||
+        event.key.length !== 1 || (target && isEditing({ target })) ||
         !selected?.toString().trim() || !root.current?.contains(selected.anchorNode) ||
         !root.current.contains(selected.focusNode)) {
         return
@@ -73,6 +87,130 @@ export function Messages({ entries, comments, setComments }: {
 
     return () => window.removeEventListener('keydown', typeComment, true)
   })
+
+  // Mouse selections count on mouseup so the comment offer never moves text under the pointer.
+  useEffect(() => {
+    const track = ({ buttons }: { buttons: number }) => {
+      if (buttons) {
+        return
+      }
+
+      const focusNode = window.getSelection()?.focusNode ?? null
+      const block = root.current?.contains(focusNode) ? blockOf({ node: focusNode }) : null
+      const next = readSelection()
+      const same = ({ prior }: { prior: Quote | null }) =>
+        prior?.quote === next?.quote && prior?.offset === next?.offset
+        && prior?.messageId === next?.messageId
+
+      if (block && !document.activeElement?.closest('.inline-comment')) {
+        setActive(block.dataset.messageBlock!)
+      }
+
+      setSelection(prior => same({ prior }) ? prior : next)
+    }
+
+    let buttons = 0
+
+    const press = (event: MouseEvent) => {
+      buttons = event.buttons
+    }
+
+    const release = (event: MouseEvent) => {
+      buttons = event.buttons; track({ buttons })
+    }
+
+    const change = () => track({ buttons })
+    document.addEventListener('selectionchange', change)
+    document.addEventListener('mousedown', press); document.addEventListener('mouseup', release)
+
+    return () => {
+      document.removeEventListener('selectionchange', change)
+      document.removeEventListener('mousedown', press); document.removeEventListener('mouseup', release)
+    }
+  }, [])
+
+  // Nothing typed, pasted, dropped or undone changes the messages.
+  useEffect(() => {
+    const host = root.current
+
+    const keep = (event: InputEvent) => {
+      if (event.target === host) {
+        event.preventDefault()
+      }
+    }
+
+    host?.addEventListener('beforeinput', keep)
+
+    return () => host?.removeEventListener('beforeinput', keep)
+  }, [])
+
+  useEffect(() => {
+    const jump = (event: KeyboardEvent) => {
+      const host = root.current, focused = document.activeElement
+      const mod = platform === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+
+      if (!host || !mod || event.shiftKey || event.altKey || event.key.toLowerCase() !== 'l') {
+        return
+      }
+
+      if (focused === host) {
+        event.preventDefault(); focusReply({ host })
+      } else if (focused?.matches('.composer textarea') && focused.closest('.thread')?.contains(host)) {
+        event.preventDefault(); caretInto({ host, target: latestReply({ host }), edge: 'start' })
+      }
+    }
+
+    window.addEventListener('keydown', jump)
+
+    return () => window.removeEventListener('keydown', jump)
+  }, [platform])
+
+  const caretKey = ({ event }: { event: KeyEvent<HTMLDivElement> }) => {
+    const host = event.currentTarget, { key, shiftKey, altKey, ctrlKey, metaKey } = event
+
+    if (event.target !== host || event.nativeEvent.isComposing) {
+      return
+    }
+
+    if (key === 'Escape' && !shiftKey && !altKey && !ctrlKey && !metaKey) {
+      event.preventDefault(); window.getSelection()?.removeAllRanges(); host.closest<HTMLElement>('.thread')?.focus({ preventScroll: true })
+
+      return
+    }
+
+    const selected = readSelection()
+
+    if (key === 'Enter' && selected && !altKey && !ctrlKey && !metaKey) {
+      event.preventDefault()
+
+      if (shiftKey) {
+        quote({ text: selected.quote }); setSelection(null)
+        window.getSelection()?.removeAllRanges()
+        requestAnimationFrame(() => focusReply({ host }))
+      } else {
+        addComment({ quote: selected })
+      }
+
+      return
+    }
+
+    if (!CARET_KEY.test(key)) {
+      return
+    }
+
+    const scroller = host.closest('.thread')!, before = caretBox(), top = (before?.top ?? 0) + scroller.scrollTop
+    setTimeout(() => {
+      const after = caretBox()
+      const moved = after ? Math.abs(after.top + scroller.scrollTop - top) : 0
+      const stuck = !after || moved < (before?.height ?? 0) / 2
+
+      if (key === 'ArrowDown' && before && stuck && !shiftKey && !altKey && !ctrlKey && !metaKey) {
+        focusReply({ host })
+      } else {
+        reveal({ host })
+      }
+    })
+  }
 
   const step = ({ to }: { to: 'up' | 'down' | 'first' | 'last' }) => {
     const elements = blocks()
@@ -122,18 +260,24 @@ export function Messages({ entries, comments, setComments }: {
     <div
       className="messages"
       ref={root}
-      onMouseUp={() => {
-        const selected = window.getSelection()
-        const text = selected?.toString().trim()
-        const range = selected?.rangeCount ? selected.getRangeAt(0) : null
-        const start = range?.startContainer
-        const element = (start instanceof Element ? start : start?.parentElement)?.closest<HTMLElement>('[data-message-block]')
-
-        if (text && element && range && root.current?.contains(range.endContainer) && !document.activeElement?.closest('.inline-comment')) {
-          setSelection({ ...quoteFrom({ element }), quote: text })
-          setActive(element.dataset.messageBlock!)
-        } else {
-          setSelection(null)
+      contentEditable
+      suppressContentEditableWarning
+      {...{ [CARET_HOST]: '' }}
+      role="document"
+      aria-label="Messages"
+      tabIndex={-1}
+      inputMode="none"
+      spellCheck={false}
+      data-gramm="false"
+      onKeyDown={event => caretKey({ event })}
+      onCut={event => {
+        if (!(event.target instanceof Element && isEditing({ target: event.target }))) {
+          event.preventDefault(); event.clipboardData.setData('text/plain', window.getSelection()?.toString() ?? '')
+        }
+      }}
+      onCompositionStart={event => {
+        if (event.target === event.currentTarget) {
+          focusReply({ host: event.currentTarget })
         }
       }}
     >
@@ -166,30 +310,27 @@ export function Messages({ entries, comments, setComments }: {
                     data-block-offset={offset}
                     data-quote={quote}
                     data-active={active === key}
-                    tabIndex={-1}
                     role="group"
                     aria-label={`Message block ${index + 1}`}
-                    onFocus={e => {
-                      if (e.target === e.currentTarget) {
-                        setActive(key)
-                      }
-                    }}
                   >
                     {children}
                     <Button
                       className={`block-comment-action ${selected ? 'has-selection' : ''}`}
                       aria-label="Comment on this block"
-                      title={selected ? 'Type to comment on your selection' : `Comment · ${label({ id: 'thread.comment' })}`}
+                      title={selected ? 'Enter or type to comment on your selection; Shift+Enter quotes it' : `Comment · ${label({ id: 'thread.comment' })}`}
                       onMouseDown={e => e.preventDefault()}
                       onClick={() => addComment({ quote: selected ? selection : whole })}
                     >
                       <Icon name="typing" size={14} />
-                      {(selected || active === key) && (
-                        <>
-                          Comment
-                          {selected ? <span className="small">or start typing</span> : <kbd>{label({ id: 'thread.comment' })}</kbd>}
-                        </>
-                      )}
+                      {selected
+                        ? (
+                          <>
+                            Comment
+                            <kbd>Enter</kbd>
+                            <span className="small">or type · Shift+Enter quotes</span>
+                          </>
+                        )
+                        : active === key && <kbd>{label({ id: 'thread.comment' })}</kbd>}
                     </Button>
                     {own.map(comment => (
                       <InlineComment

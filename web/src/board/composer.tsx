@@ -9,6 +9,7 @@ import { slashMatches, slashPrefix } from './view.ts'
 import { commentReply, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
+import { caretInto, hostOf, latestReply } from './caret.ts'
 
 export function Composer({
   card,
@@ -242,6 +243,13 @@ export function Composer({
 
               return
             }
+
+            const host = hostOf({ from: e.currentTarget })
+
+            if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && prefix === null &&
+              e.currentTarget.selectionEnd === 0 && host && caretInto({ host, target: latestReply({ host }), edge: 'end' })) {
+              e.preventDefault()
+            }
           }}
         />
       </div>
@@ -255,7 +263,7 @@ export function Composer({
           {' '}
           {label({ id: 'cancel' })}
           {' '}
-          leave
+          or ↑ comment on the conversation
         </span>
         <Button type="submit" variant="primary" disabled={sending || !outgoing.trim() || !connected || !thread?.route}>
           {sending ? 'Sending…' : 'Send reply'}
