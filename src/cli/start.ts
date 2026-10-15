@@ -78,10 +78,11 @@ function quotaModel({ harness, quota }: {
 }
 
 // The agent a start uses: the named kind, else `default` (or `hydra`), else Claude Code's defaults.
-export function agentFor({ state, board, kind }: {
+export function agentFor({ state, board, kind, harness }: {
   state: BoardState
   board: string
   kind: string
+  harness?: string
 }): AgentConfig {
   const agents = boardConfig({ state, id: board }).agents ?? {}
   const configured = Object.hasOwn(agents, kind) ? agents[kind] : undefined
@@ -90,7 +91,14 @@ export function agentFor({ state, board, kind }: {
     throw new BoardError({ message: `no agent configured for kind ${kind}`, code: 'NOT_FOUND', help: [`Run \`pnyx-axi kind set ${kind} --harness claude --board ${board}\``] })
   }
 
-  const agent: AgentConfig = { ...(configured ?? { harness: 'claude' }) }
+  if (harness !== undefined && harness !== 'claude' && harness !== 'codex') {
+    throw new BoardError({ message: `unknown harness: ${harness}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
+  }
+
+  const defaults = configured ?? { harness: 'claude' as const }
+  const agent: AgentConfig = harness && harness !== defaults.harness
+    ? { harness, ...(defaults.quota ? { quota: defaults.quota } : {}) }
+    : { ...defaults }
 
   if (agent.quota) {
     agent.model = quotaModel({ harness: agent.harness, quota: agent.quota }) ?? agent.model
@@ -142,7 +150,7 @@ export async function startTask({
   const state = loadBoard({ board }).state
   const card = findCard({ state, ref: task })
   const agent = via === 'firstmate' || via === 'command' || (!via && state.board?.hydra.kind === 'firstmate')
-    ? undefined : agentFor({ state, board, kind: kind ?? 'default' })
+    ? undefined : agentFor({ state, board, kind: kind ?? 'default', harness })
   const how = chooseVia({ state, via })
 
   if (how === 'firstmate') {

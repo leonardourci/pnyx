@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, realpathSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
@@ -165,4 +165,45 @@ test('a concurrent start is refused and shutdown closes a Codex process still in
   const child = fixture.children[0]!
   await until({ check: () => child.exitCode !== null || child.signalCode !== null })
   assert.equal(task().agent, undefined)
+})
+
+test('switching a Claude kind to Codex uses Codex defaults instead of Claude settings', async () => {
+  const { root, fixture, task } = await lab()
+  await workerCommands.kind(['set', 'default', '--harness', 'claude', '--model', 'opus', '--effort', 'max', '--mode', 'acceptEdits', '--board', 'lab'])
+  await startTask({ board: 'lab', task: 'ship', harness: 'codex', meta })
+  await until({ check: () => task().sessionActivity === 'finished' })
+  assert.deepEqual(fixture.messages().find(m => m.method === 'thread/start')!.params, { cwd: root })
+  const turn = fixture.messages().find(m => m.method === 'turn/start')!.params!
+  assert.equal(turn.model, undefined)
+  assert.equal(turn.effort, undefined)
+  assert.equal(turn.approvalPolicy, undefined)
+  assert.equal(task().settings, undefined)
+})
+
+test('a provider override resolves the kind quota for the chosen provider', async () => {
+  const { root, fixture, task } = await lab()
+  const bin = join(root, 'bin'), args = join(root, 'quota-args')
+  mkdirSync(bin)
+  const command = join(bin, 'quota-axi')
+  writeFileSync(command, `#!/bin/sh
+printf '%s\\n' "$@" > "$PNYX_TEST_QUOTA_ARGS"
+printf '%s\\n' '{"models":[{"provider":"codex","id":"gpt-6-luna"}]}'
+`)
+  chmodSync(command, 0o755)
+  const before = process.env.PATH
+  process.env.PATH = `${bin}:${before}`
+  process.env.PNYX_TEST_QUOTA_ARGS = args
+
+  try {
+    await workerCommands.kind(['set', 'default', '--harness', 'claude', '--model', 'opus', '--effort', 'max', '--mode', 'acceptEdits', '--quota', 'high', '--board', 'lab'])
+    await startTask({ board: 'lab', task: 'ship', harness: 'codex', meta })
+  } finally {
+    process.env.PATH = before
+    delete process.env.PNYX_TEST_QUOTA_ARGS
+  }
+
+  await until({ check: () => task().sessionActivity === 'finished' })
+  assert.match(readFileSync(args, 'utf8'), /--provider\ncodex\n/)
+  assert.equal(fixture.messages().find(m => m.method === 'thread/start')!.params!.model, 'gpt-6-luna')
+  assert.deepEqual(task().settings, { model: 'gpt-6-luna' })
 })
