@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 import { hydraDir, spoolWrite } from '../src/store/hydra-store.ts'
-import { lockedColumn, migrateColumns } from '../src/core/hydra.ts'
+import { DEFAULT_COLUMNS, lockedColumn, migrateColumns } from '../src/core/hydra.ts'
 import { decideUndo } from '../src/core/decide.ts'
 import { HydraError } from '../src/core/model.ts'
 import { emptyHydra, reduce } from '../src/core/reducer.ts'
@@ -197,8 +197,8 @@ test('concurrent writers get one contiguous sequence', async () => {
   assert.equal(existsSync(join(env.PNYX_HOME, 'boards', 'default', 'writer.lock')), false)
 })
 
-test('only a Firstmate-linked Hydra locks its default columns, and the move onto them cannot be undone', () => {
-  const firstmate = { ...emptyHydra(), config: { id: 'default', name: 'default', hydra: { id: 'fm', kind: 'firstmate' as const, name: 'Hydra', home: '/home' }, columns: [] } }
+test('only a Firstmate-linked Hydra keeps its default columns from deletion, and the move onto them cannot be undone', () => {
+  const firstmate = { ...emptyHydra(), config: { id: 'default', name: 'default', hydra: { id: 'fm', kind: 'firstmate' as const, name: 'Hydra', home: '/home' }, columns: [...DEFAULT_COLUMNS, { id: 'custom:mine' as const, title: 'Mine' }] } }
   assert.equal(lockedColumn({ state: firstmate, id: 'needs_you' }), true)
   assert.equal(lockedColumn({ state: firstmate, id: 'custom:mine' }), false)
   assert.equal(lockedColumn({ state: { ...firstmate, config: { ...firstmate.config, hydra: { id: 'h', kind: 'agent', name: 'Hydra' } } }, id: 'needs_you' }), false)

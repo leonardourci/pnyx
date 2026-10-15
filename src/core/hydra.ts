@@ -24,9 +24,13 @@ export function hydraConfig({ state, id = 'default' }: { state: HydraState; id?:
   return state.config ?? { id, name: id, hydra: { id: 'hydra', kind: 'agent', name: 'Hydra' }, columns: [...structuredClone(DEFAULT_COLUMNS), ...(state.view?.customColumns ?? [])] }
 }
 
-// A Firstmate-linked Hydra's default columns follow Firstmate's records, so they cannot be renamed or deleted.
+export const LOCKED_DELETE = "Can't delete: this column is tied to Firstmate's records"
+
+// A Firstmate-linked Hydra's default columns follow Firstmate's records by role, so they can be renamed but not deleted.
 export function lockedColumn({ state, id }: { state: HydraState; id: string }): boolean {
-  return state.config?.hydra.kind === 'firstmate' && DEFAULT_COLUMNS.some(c => c.id === id)
+  const role = state.config?.columns.find(c => c.id === id)?.role
+
+  return state.config?.hydra.kind === 'firstmate' && DEFAULT_COLUMNS.some(c => c.role === role)
 }
 
 // The column a role names on this Hydra, when it still has one.
@@ -47,17 +51,16 @@ function statusRole({ card }: { card: Card }): Role | undefined {
         : state === 'working' || card.column === LEGACY_IN_PROGRESS ? 'in_progress' : undefined
 }
 
-// A legacy layout, or a Firstmate-linked Hydra whose default columns are missing or
-// renamed, moves onto the five defaults in order, followed by the owner's own columns.
+// A legacy layout, or a Firstmate-linked Hydra missing a default role, moves onto the five
+// defaults in order, keeping the ones it has, followed by the owner's own columns.
 function withDefaultColumns({ columns, locked }: {
   columns: HydraColumn[]
   locked: boolean
 }): HydraColumn[] {
   const legacy = columns.some(c => legacyColumn({ id: c.id }) || c.role === LEGACY_IN_PROGRESS)
-  const drifted = locked
-    && DEFAULT_COLUMNS.some(d => columns.find(c => c.id === d.id)?.title !== d.title)
+  const missing = locked && DEFAULT_COLUMNS.some(d => !columns.some(c => c.role === d.role))
 
-  if (!legacy && !drifted) {
+  if (!legacy && !missing) {
     return columns
   }
 
@@ -65,15 +68,7 @@ function withDefaultColumns({ columns, locked }: {
     && !DEFAULT_COLUMNS.some(d => d.id === c.id))
 
   return [
-    ...DEFAULT_COLUMNS.map(d => {
-      const same = columns.find(c => c.id === d.id)
-
-      return {
-        ...d,
-        ...(same && !locked ? { title: same.title } : {}),
-        ...(same?.description ? { description: same.description } : {}),
-      }
-    }),
+    ...DEFAULT_COLUMNS.map(d => structuredClone(columns.find(c => c.role === d.role) ?? d)),
     ...structuredClone(own),
   ]
 }
