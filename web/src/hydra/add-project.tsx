@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FolderListing } from '../../../src/projects/folders.ts'
 import { Button, Input } from '../components/ui/controls.tsx'
 import { FolderSearch } from '../components/ui/folder-search.tsx'
@@ -58,6 +58,11 @@ export function AddProject({ command, connected, notify, attached, cancel }: {
   attached?(): void
   cancel?(): void
 }) {
+  const heading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    heading.current?.scrollIntoView({ block: 'start' })
+    heading.current?.focus({ preventScroll: true })
+  }, [])
   const [mode, setMode] = useState<'folder' | 'clone' | null>(null)
   const [path, setPath] = useState(''), [repository, setRepository] = useState('')
   const [busy, setBusy] = useState(false)
@@ -95,7 +100,7 @@ export function AddProject({ command, connected, notify, attached, cancel }: {
 
   return (
     <section className="add-project-box" aria-label="Add a project">
-      <h2>Give Hydra a project</h2>
+      <h2 ref={heading} tabIndex={-1}>Give Hydra a project</h2>
       <p className="small muted">Attach a folder on this laptop, or clone a repository here.</p>
       <div className="project-actions">
         <Button

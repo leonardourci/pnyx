@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { commands } from '../src/cli/commands.ts'
 import { project } from '../src/projects/cli.ts'
 import { startServer } from '../src/server/server.ts'
+import { HYDRA_CARD, hydraEvent } from '../src/core/hydra.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { smokeBrowser } from './browser.ts'
@@ -53,6 +54,7 @@ try {
   await text({ label: 'Add project' })
   await eventually({ condition: '!!document.querySelector(".project-sharing")', label: 'sharing asks inline' })
   await check({ condition: 'document.querySelectorAll(".project-sharing a").length === 2 && [...document.querySelectorAll(".project-sharing a")].every(a => a.target === "_blank") && document.querySelector(".project-sharing").textContent.includes("Other Hydra") && document.querySelector(".project-sharing").textContent.includes("Third Hydra") && !document.querySelector("dialog")', label: 'sharing names every Hydra with new-tab links' })
+  await evaluate({ code: 'const links = [...document.querySelectorAll(\'.project-sharing a\')]; for (const a of links) { const response = await fetch(a.href); const html = await response.text(); if (response.url !== a.href || !html.includes(\'<base href="\' + new URL(a.href).pathname + \'"\')) throw new Error(\'Sharing link did not open the selected Hydra\'); } return true;' })
   assert.equal(loadHydra({ hydraId: 'default' }).state.projects, undefined)
   await screenshot({ name: 'projects-confirmation.png' })
   await text({ label: 'Cancel' })
@@ -61,8 +63,18 @@ try {
   await eventually({ condition: '!!document.querySelector(".project-sharing")', label: 'sharing can be requested again' })
   await text({ label: 'Add anyway' })
   await eventually({ condition: '!document.querySelector(".hydra-project-setup") && !!document.querySelector(".hydra-chat")', label: 'first attached project folds setup into Hydra chat' })
+  withWriter({
+    hydraId: 'default',
+    fn: ({ writer }) => {
+      const decision = hydraEvent({ state: writer.state, meta: { actor: 'fixture', at: '2026-10-15T13:00:00Z' }, cardId: HYDRA_CARD, change: { type: 'hydra.message', data: { action: 'send', text: 'Earlier conversation.\n\n'.repeat(80), hydra: 'hydra' } } })
+      assert.ok('event' in decision); writer.append({ event: decision.event })
+    },
+  })
+  await eventually({ condition: 'document.querySelector(".hydra-messages").scrollHeight > document.querySelector(".hydra-messages").clientHeight', label: 'long Hydra conversation is scrollable' })
+  await evaluate({ code: 'const stream = document.querySelector(".hydra-messages"); stream.scrollTop = stream.scrollHeight; return true;' })
   await text({ label: '＋ Add project' })
   await eventually({ condition: '!!document.querySelector(".hydra-project-setup")', label: 'panel Add project opens the same actions' })
+  await check({ condition: 'document.activeElement === document.querySelector(".add-project-box h2") && document.querySelector(".add-project-box h2").getBoundingClientRect().top >= document.querySelector(".hydra-messages").getBoundingClientRect().top', label: 'Add project scrolls into view and receives focus above a long transcript' })
   await text({ label: '＋ Add a folder' })
   await eventually({ condition: '!!document.querySelector(".recent-folders button")', label: 'recent folders shown again' })
   await click({ selector: '.recent-folders button' })
