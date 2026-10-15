@@ -15,7 +15,14 @@ const BIN = join(import.meta.dirname, '..', 'dist', 'cli', 'pnyx-axi.js')
 function board() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-board-'))
   const env = { ...process.env, PNYX_HOME: home }
-  const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
+
+  const run = ({ args }: { args: string[] }): string => {
+    const out = execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
+    const token = /^token: ([a-f0-9]+)$/m.exec(out)?.[1]
+
+    return token ? run({ args: [...args, '--confirm', token] }) : out
+  }
+
   const fails = ({ args, status, code }: { args: string[]; status: number; code: string }) =>
     assert.throws(() => run({ args: [...args] }), (error: { status: number; stdout: string }) => {
       assert.equal(error.status, status)

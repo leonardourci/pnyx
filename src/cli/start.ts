@@ -105,6 +105,16 @@ export function workerPrompt({ board, id, title }: {
   ].join(' ')
 }
 
+export function taskPrompt({ board, card, prompt }: {
+  board: string
+  card: Card
+  prompt?: string
+}): string {
+  const instructions = prompt ?? workerPrompt({ board, id: card.id, title: card.title })
+
+  return card.brief?.trim() ? `${card.brief}\n\n${instructions}` : instructions
+}
+
 const hydraPrompt = ({ board }: { board: string }) =>
   `You are Hydra, the orchestrator of the Pnyx board "${board}". Read ${HYDRA_SKILL} and follow it. `
   + `Start with \`pnyx-axi task list --board ${board}\` and \`pnyx-axi hydra messages --board ${board}\`.`
@@ -142,7 +152,7 @@ export async function startTask({
     task,
     harness: harness ?? agent.harness,
     agent,
-    prompt: prompt ?? workerPrompt({ board, id: card.id, title: card.title }),
+    prompt: taskPrompt({ board, card, prompt }),
     folder,
     url,
     meta,
@@ -172,6 +182,7 @@ function askFirstmate({ board, task, prompt, meta }: {
 
       const text = [
         `Pnyx board ${board} asks for a worker on task ${card.id} "${card.title}"${card.folder ? ` in ${card.folder}` : ''}.`,
+        ...(card.brief?.trim() ? [`Task brief (give this to the worker as its first prompt):\n${card.brief}`] : []),
         ...(prompt ? [`Request: ${prompt}`] : []),
         `Use the pnyx-hydra skill: read \`pnyx-axi task show ${card.id} --board ${board}\`, dispatch the worker, and keep the task's status current.`,
       ].join('\n')
@@ -248,7 +259,8 @@ function startCommand({ board, role, task, prompt, folder, harness, meta }: {
       PNYX_TASK: target,
       PNYX_ROLE: role,
       PNYX_TASK_TITLE: claimed.card?.title ?? 'Hydra',
-      PNYX_PROMPT: prompt ?? (role === 'hydra' ? hydraPrompt({ board }) : ''),
+      PNYX_PROMPT: claimed.card
+        ? taskPrompt({ board, card: claimed.card, prompt }) : prompt ?? hydraPrompt({ board }),
       PNYX_HARNESS: harness ?? '',
       PNYX_FOLDER: claimed.cwd,
     },

@@ -1,6 +1,8 @@
 import { BoardError, COLUMNS, type BoardState, type ViewPreferences } from './model.ts'
 import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from './keyboard.ts'
 
+export const DEFAULT_WIDTHS = { column: 290, hydra: 360 } as const
+
 export const DEFAULT_VIEW: ViewPreferences = {
   theme: 'system',
   keyboard: DEFAULT_KEYBOARD,
@@ -9,6 +11,7 @@ export const DEFAULT_VIEW: ViewPreferences = {
   codeFontSize: 13,
   panelPlacement: 'inline',
   panelWidth: 440,
+  hydraWidth: DEFAULT_WIDTHS.hydra,
   composerHeight: 180,
   cardHeight: 250,
   cardColors: true,
@@ -21,6 +24,7 @@ export const DEFAULT_VIEW: ViewPreferences = {
 }
 
 export const VIEW_SIZE_LIMITS = {
+  hydraWidth: { min: 240, max: 720 },
   panelWidth: { min: 320, max: 720 },
   panelHeight: { min: 280 },
   composerHeight: { min: 140, max: 420 },
@@ -74,6 +78,11 @@ export const viewFor = ({ state }: { state: Pick<BoardState, 'view'> }): ViewPre
 
   return {
     ...view,
+    hydraWidth: persistedSize({
+      value: view.hydraWidth,
+      fallback: DEFAULT_VIEW.hydraWidth,
+      ...VIEW_SIZE_LIMITS.hydraWidth,
+    }),
     fontSize: persistedSize(
       {
         value: view.fontSize,
@@ -239,6 +248,7 @@ export function patchView({ state, input: rawInput }: {
           key,
         }); break
       case 'panelWidth': next.panelWidth = size({ value, min: VIEW_SIZE_LIMITS.panelWidth.min, max: VIEW_SIZE_LIMITS.panelWidth.max, key }); break
+      case 'hydraWidth': next.hydraWidth = size({ value, ...VIEW_SIZE_LIMITS.hydraWidth, key }); break
       case 'composerHeight': next.composerHeight = size({ value, min: VIEW_SIZE_LIMITS.composerHeight.min, max: VIEW_SIZE_LIMITS.composerHeight.max, key }); break
       case 'cardHeight': next.cardHeight = size({ value, min: VIEW_SIZE_LIMITS.cardHeight.min, max: VIEW_SIZE_LIMITS.cardHeight.max, key }); break
       case 'panelPlacement':
@@ -269,7 +279,7 @@ export function patchView({ state, input: rawInput }: {
             return invalid({ detail: id })
           }
 
-          if (key === 'columnWidths' && ![...COLUMNS, ...boardColumnIds, ...next.customColumns.map(c => c.id)].includes(id as never)) {
+          if (key === 'columnWidths' && n !== null && ![...COLUMNS, ...boardColumnIds, ...next.customColumns.map(c => c.id)].includes(id as never)) {
             return invalid({ detail: id })
           }
 
