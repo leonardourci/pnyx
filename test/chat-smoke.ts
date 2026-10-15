@@ -81,7 +81,7 @@ const changeView = async ({ patch }: { patch: unknown }) => {
     },
   })
   const revision = loadBoard({ board: 'default' }).state.seq
-  await browser({ args: ['wait', `${revision} recorded events`] })
+  await browser({ args: ['eval', `async () => { for (let i = 0; i < 100; i++) { if (Number(document.querySelector('.app').dataset.seq) >= ${revision}) return true; await new Promise(r => setTimeout(r, 100)); } throw new Error('the board never showed event ${revision}'); }`] })
 }
 
 const screenshot = async ({ name }: { name: string }) => {
@@ -98,7 +98,7 @@ const screenshot = async ({ name }: { name: string }) => {
 }
 
 try {
-  await browser({ args: ['open', server.url] }); await browser({ args: ['resize', '1440', '1000'] }); await browser({ args: ['wait', 'The working board'] })
+  await browser({ args: ['open', server.url] }); await browser({ args: ['resize', '1440', '1000'] }); await browser({ args: ['wait', 'Needs you'] })
   const platform = await browser({ args: ['eval', "() => /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other'"] })
   const mod = platform.includes('mac') ? 'Meta' : 'Control'
   await click({ role: 'button', name: 'Open conversation for Shape the first working board' })
@@ -114,7 +114,7 @@ try {
   await check({ condition: 'document.activeElement.matches(".composer textarea") && document.activeElement.value.startsWith("> Thread plan\\n> A readable") && !/Comment|Enter|type/.test(document.activeElement.value)', label: 'a quote across blocks carries only message text' })
   await browser({ args: ['eval', '() => { const input = document.querySelector(".composer textarea"); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(input, ""); input.dispatchEvent(new Event("input", { bubbles: true })); return true; }'] })
   await click({ role: 'switch', name: 'Focus' }); await browser({ args: ['wait', 'Prompts and agent messages only'] })
-  await browser({ args: ['open', server.url] }); await browser({ args: ['wait', 'The working board'] }); await click({ role: 'button', name: 'Open conversation for Shape the first working board' }); await browser({ args: ['wait', 'Thread plan'] })
+  await browser({ args: ['open', server.url] }); await browser({ args: ['wait', 'Needs you'] }); await click({ role: 'button', name: 'Open conversation for Shape the first working board' }); await browser({ args: ['wait', 'Thread plan'] })
   await check({ condition: 'document.querySelector("[role=switch]").getAttribute("aria-checked") === "true"', label: 'Focus survives reload' })
   await check({ condition: 'document.querySelectorAll(".markdown h1").length === 1 && !!document.querySelector(".markdown ul li") && !!document.querySelector(".markdown ol li") && !!document.querySelector(".markdown table") && !!document.querySelector(".code-block code") && !!document.querySelector(".task-marker")', label: 'GFM headings, lists, tables, task lists and code blocks render' })
   await check({ condition: '!window.pnyxUnsafe && !document.querySelector(".messages script,.messages img,.messages iframe,.messages [onclick],.messages a[href^=javascript],.messages a[href^=data]") && [...document.querySelectorAll(".messages a")].some(a => a.href === "https://example.com/plan")', label: 'HTML cannot execute and only safe links render' })
@@ -174,7 +174,7 @@ try {
   await check({ condition: '[...document.querySelectorAll(".message p")].some(p => p.textContent === "Earlier note 0")', label: 'older pages survive switching tabs' })
   step = 'Switch to mobile emulation (reloads the document), then reopen the card'
   await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] })
-  await browser({ args: ['wait', 'The working board'] })
+  await browser({ args: ['wait', 'Needs you'] })
   // On a phone the open panel can cover the card's centre, so open it by its own element.
   await browser({ args: ['eval', '() => { document.querySelector("[aria-label=\\"Open conversation for Shape the first working board\\"]").click(); return true }'] }); await browser({ args: ['wait', 'Thread plan'] })
   await focus({ selector: '.composer textarea' })

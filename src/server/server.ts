@@ -448,7 +448,7 @@ export async function startServer({
       return fail({ error: 'command needs a string id', code: 'VALIDATION_ERROR' })
     }
 
-    if (['thread', 'search', 'reply', 'agent', 'catalog', 'settings', 'boards'].includes(String(name))) {
+    if (['thread', 'search', 'reply', 'answer', 'agent', 'catalog', 'settings', 'boards'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail({ error: 'args must be strings', code: 'VALIDATION_ERROR' })
       }
@@ -545,13 +545,22 @@ export async function startServer({
           }, (error: Error) => fail({ error: error.message, code: error instanceof BoardError ? error.code : 'UNKNOWN' }))
         } else {
           const agent = name === 'agent'
+          // answer: card, request key, the answer as JSON, idempotency key and the requestId it was written for.
+          const answering = name === 'answer'
 
           const valid = agent
             ? args.length === 4 && !!args[3]
-            : args.length === 3 && !!args[2] && args[1].length <= 32000
+            : answering
+              ? args.length === 5 && args.every(Boolean) && args[2].length <= 32000
+              : args.length === 3 && !!args[2] && args[1].length <= 32000
 
           if (!valid) {
-            throw new BoardError({ message: agent ? 'agent expects card, setting, value and idempotency key' : 'reply expects card, text and idempotency key', code: 'VALIDATION_ERROR' })
+            throw new BoardError({
+              message: agent
+                ? 'agent expects card, setting, value and idempotency key'
+                : answering ? 'answer expects card, request key, answer, idempotency key and request id' : 'reply expects card, text and idempotency key',
+              code: 'VALIDATION_ERROR',
+            })
           }
 
           const card = findCard({ state, ref: args[0] })
@@ -564,9 +573,12 @@ export async function startServer({
 
           // A setting change is sent like a reply: `pnyx-axi agent` picks the harness's command and reads
           // it back. Its setting and value come last, after --, so neither can read as a flag.
+          // An answer's values are passed as --name=value, so none can read as a flag.
           const [command, rest] = agent
             ? [['agent', card.id, '--idempotency-key', args[3]!], ['--', args[1]!, args[2]!]]
-            : [['reply', card.id, '--text', args[1], '--idempotency-key', args[2]], []]
+            : answering
+              ? [['reply', card.id, `--answer=${args[1]}`, `--json=${args[2]}`, `--idempotency-key=${args[3]}`, `--seen=${args[4]}`], []]
+              : [['reply', card.id, '--text', args[1], '--idempotency-key', args[2]], []]
 
           // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.
           execFile(process.execPath, [join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js'), ...command, '--board', board, '--actor', 'web', ...homes.flatMap(h => ['--home', h]), ...rest], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {

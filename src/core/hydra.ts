@@ -64,6 +64,8 @@ export function refreshTasks({ state, ids }: {
         terminal: session?.terminal && { ...session.terminal },
       },
     })
+    // Hydra's own open prompts, so its chat can answer them.
+    hydra.attention = session ? [...session.attention] : []
     hydra.hidden = true
   }
 }

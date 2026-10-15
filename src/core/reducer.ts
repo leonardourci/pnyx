@@ -9,8 +9,9 @@ import {
   type Link,
   type SourceRef,
 } from './model.ts'
-import { applyAttachment, observeSession, sessionId } from './tasks.ts'
+import { applyAttachment, cardSessionId, observeSession, sessionId } from './tasks.ts'
 import { applyHydra, refreshTasks } from './hydra.ts'
+import { requestId } from './answer.ts'
 
 export function emptyBoard(): BoardState {
   return { v: EVENT_VERSION, seq: 0, cards: {}, keys: {}, eventIds: {}, undone: {} }
@@ -269,11 +270,29 @@ function apply({ state, event }: { state: BoardState; event: BoardEvent }): bool
         ? (current ? card.links.map(l => (l.url === url ? after : l)) : [...others, after])
         : others
     } else if (event.type === 'card.replied') {
+      const answers = event.data.answers
       const reply = { id: event.data.reply, state: event.data.state }
+      const kept = answers ? { ...reply, answers } : reply
       const replies = card.replies ?? []
       card.replies = replies.some(r => r.id === reply.id)
-        ? replies.map(r => (r.id === reply.id ? reply : r))
-        : [...replies, reply]
+        ? replies.map(r => (r.id === reply.id ? kept : r))
+        : [...replies, kept]
+
+      // A task shows its session's requests, which hooks read back from the
+      // session's own card, so the answer is marked on all of them.
+      if (answers && event.data.state === 'delivered') {
+        const id = cardSessionId({ card })
+        const session = id ? state.sessions?.[id] : undefined
+        const origin = session && state.cards[session.originCardId]
+        const task = session?.taskId ? state.cards[session.taskId] : undefined
+
+        for (const holder of new Set([card, session, origin, task])) {
+          if (holder) {
+            holder.attention = holder.attention
+              .map(a => (requestId({ request: a }) === answers ? { ...a, answered: reply.id } : a))
+          }
+        }
+      }
     } else if (event.type === 'card.noted') {
       const { kind, source, at, text } = event.data
       card.notes = [...(card.notes ?? []), { id: event.id, kind, source, ...(at ? { at } : {}) }]

@@ -295,7 +295,17 @@ test('codex payloads map the same way; unknown events and payloads without a ses
 })
 
 type Case = [harness: 'claude' | 'codex', event: string, fixture: string, activity: string | undefined, attention?: Attention[]]
-const ask: Attention = { kind: 'question', key: 'hook:tool:AskUserQuestion', blocking: true, text: 'Do you prefer red or blue?' }
+const ask: Attention = {
+  kind: 'question',
+  key: 'hook:tool:AskUserQuestion',
+  blocking: true,
+  text: 'Do you prefer red or blue?',
+  questions: [{
+    question: 'Do you prefer red or blue?',
+    header: 'Color',
+    options: [{ label: 'Red', description: 'Choose red' }, { label: 'Blue', description: 'Choose blue' }],
+  }],
+}
 const allowTouch = ({ tool }: { tool: string }): Attention =>
   ({ kind: 'permission', key: `hook:tool:${tool}`, blocking: true, text: `Allow ${tool}: touch hello.txt && echo made` })
 const NOTHING = Symbol('no observation')
@@ -347,7 +357,13 @@ const CASES: (Case | [Case[0], string, string, typeof NOTHING])[] = [
     'Elicitation',
     'claude-elicitation',
     undefined,
-    [{ kind: 'input', key: 'hook:elicitation', blocking: true, text: 'my-mcp-server: Please provide your username' }]],
+    [{
+      kind: 'input',
+      key: 'hook:elicitation',
+      blocking: true,
+      text: 'my-mcp-server: Please provide your username',
+      form: [{ name: 'username', title: 'Username', type: 'string' }],
+    }]],
   ['claude', 'ElicitationResult', 'claude-elicitation-result', undefined, []],
   ['claude', 'SubagentStart', 'claude-subagent-start', 'working'],
   ['claude', 'SubagentStop', 'claude-subagent-stop', 'finished', []],

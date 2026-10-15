@@ -45,6 +45,7 @@ import { terminalFacts } from '../core/route.ts'
 import { readServer } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
+import { answerPrompt } from '../core/answer.ts'
 import { HARNESSES, TERMINAL_EVENTS, attend, isHookEnvelope, observe, type Harness, type HookEnvelope } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { boardDir, pnyxHome, loadBoard, readEvents, repairBoard, spoolFiles, withWriter, type Writer } from '../store/board-store.ts'
@@ -1227,6 +1228,12 @@ const card = guard({
       help.push(`Run \`pnyx-axi harvest --card ${found.id}\` to collect its summaries, decisions and context`)
     }
 
+    const asking = found.attention.find(request => answerPrompt({ card: found, request }))
+
+    if (asking) {
+      help.unshift(`Run \`pnyx-axi reply ${found.id} --answer ${asking.key} --json <answer>\` to answer its ${asking.kind} (see \`pnyx-axi reply --help\`)`)
+    }
+
     return { card: cardDetail({ card: found }), notes, help }
   },
 })
@@ -1672,7 +1679,7 @@ The default route is firstmate for a board whose Hydra is a Firstmate home, othe
   push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
 card.json fields (all optional): title, autoTitle {from: session|prompt|agent|folder, text} (used only while no title is set), workspace, tags[], parent (card id or key, null to clear), activity,
-  agent {provider, sessionId, agentId, agentType, cwd, transcriptPath}, attention[] {kind, key, blocking, text},
+  agent {provider, sessionId, agentId, agentType, cwd, transcriptPath}, attention[] {kind, key, blocking, text, questions[] {question, header, options[] {label, description}, multiSelect}, form[] {name, title, type, options[], required}, answered},
   settings {<name>: <value>, or null to remove it} merged into the card's settings, such as model, effort, mode, fast,
   terminal {tty, pid, program, tmux, tmuxPane, paseoTerminal, paseoHome, herdrSession, herdrPane},
   folder (absolute path, null to clear; a hook session started there reports to this card),

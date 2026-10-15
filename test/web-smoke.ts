@@ -85,7 +85,7 @@ const rapid = ({ selector, events }: { selector: string; events: string }) => br
 const view = () => loadBoard({ board: 'default' }).state.view
 
 try {
-  await browser({ args: ['open', server.url] }); await browser({ args: ['resize', '1440', '900'] }); await browser({ args: ['wait', 'The working board'] })
+  await browser({ args: ['open', server.url] }); await browser({ args: ['resize', '1440', '900'] }); await browser({ args: ['wait', 'Needs you'] })
   await check({ condition: 'document.querySelectorAll("[data-card]").length === 6', label: 'fixture cards appear' })
   await check({ condition: 'document.title === "(2) Board · Pnyx"', label: 'board tab title includes attention count' })
   await check({ condition: 'await Promise.all([...document.querySelectorAll(\'link[rel="icon"],link[rel="apple-touch-icon"]\')].map(async link => { const response = await fetch(link.href); const blob = await response.blob(); const image = new Image(); image.src = URL.createObjectURL(blob); try { await image.decode(); return response.ok && (link.type === \'image/svg+xml\' ? blob.type === link.type : image.width === Number(link.sizes.value.split(\'x\')[0]) && image.height === image.width); } finally { URL.revokeObjectURL(image.src); } })).then(results => results.length === 4 && results.every(Boolean))', label: 'favicon and apple-touch assets load at their declared sizes' })
@@ -135,7 +135,7 @@ try {
   assert.equal(tools(), false)
   await check({ condition: 'document.querySelector("[role=switch]").getAttribute("aria-checked") === "true"', label: 'switch shows the saved value' })
   await browser({ args: ['fill', await ref({ role: 'textbox', name: 'Reply to Shape the first working board' }), 'First line'] }); await browser({ args: ['press', 'Enter'] })
-  await check({ condition: 'document.querySelector("textarea").value === "First line\\n"', label: 'Enter inserts a newline' })
+  await check({ condition: 'document.querySelector(".composer textarea").value === "First line\\n"', label: 'Enter inserts a newline' })
   await click({ role: 'button', name: 'Settings' })
   await check({ condition: 'document.title === "(2) Settings · Pnyx"', label: 'settings tab title replaces selected card' })
   from = seq()
@@ -163,11 +163,11 @@ try {
   await click({ role: 'combobox', name: 'Theme' }); await click({ role: 'option', name: 'System' }); await browser({ args: ['wait', 'Preferences saved'] })
   await browser({ args: ['emulate', '--color-scheme', 'auto'] })
   await click({ role: 'button', name: 'Back to board' })
-  await check({ condition: 'document.querySelector("textarea").value === "First line\\n"', label: 'draft survives settings' })
+  await check({ condition: 'document.querySelector(".composer textarea").value === "First line\\n"', label: 'draft survives settings' })
   await browser({ args: ['fill', await ref({ role: 'textbox', name: 'Reply to Shape the first working board' }), '/'] })
   await browser({ args: ['wait', 'No working folder is recorded'] })
   await check({ condition: 'document.querySelector(".slash-menu").textContent.includes("No working folder")', label: 'slash catalog absence is explicit' })
-  await browser({ args: ['press', 'Escape'] }); await check({ condition: '!document.querySelector(".slash-menu") && document.querySelector("textarea").value === "/"', label: 'Escape preserves literal draft' })
+  await browser({ args: ['press', 'Escape'] }); await check({ condition: '!document.querySelector(".slash-menu") && document.querySelector(".composer textarea").value === "/"', label: 'Escape preserves literal draft' })
   await browser({ args: ['fill', await ref({ role: 'textbox', name: 'Reply to Shape the first working board' }), 'The fixture layout looks good.'] }); await check({ condition: '!document.querySelector(".composer [type=submit]").disabled', label: 'configured fixture route is available' }); await click({ role: 'button', name: 'Send reply' }); await browser({ args: ['wait', 'Delivered'] })
   assert.equal(loadBoard({ board: 'default' }).state.cards[fixture.state.keys.layout!]!.replies?.at(-1)?.state, 'delivered')
   assert.match(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), /The fixture layout looks good/)
@@ -243,7 +243,7 @@ try {
   await check({ condition: 'document.querySelectorAll("[data-card]").length === 3 && document.querySelector(".detail").textContent.includes("Outside current filters")', label: 'workspace filters preserve the open conversation' })
   await click({ role: 'combobox', name: 'Workspace' }); await click({ role: 'option', name: 'All workspaces' })
   await click({ role: 'button', name: 'Settings' }); await click({ role: 'combobox', name: 'Conversation placement' }); await click({ role: 'option', name: 'Inline with cards' }); await click({ role: 'button', name: 'Back to board' })
-  await check({ condition: '!!document.querySelector(".column-cards > .detail") && document.querySelector("textarea").value === "Keep this draft"', label: 'inline placement preserves drafts' })
+  await check({ condition: '!!document.querySelector(".column-cards > .detail") && document.querySelector(".composer textarea").value === "Keep this draft"', label: 'inline placement preserves drafts' })
   await screenshot({ name: 'inline.png' })
   await click({ role: 'button', name: 'Settings' }); await click({ role: 'combobox', name: 'Conversation placement' }); await click({ role: 'option', name: 'Right panel' }); await click({ role: 'button', name: 'Back to board' })
   await click({ role: 'button', name: 'Close detail' }); await click({ role: 'button', name: '+ Add column' })
@@ -295,7 +295,8 @@ try {
 
   for (const [key, width] of [['Home', 240], ['End', 640], ['Home', 240], ['Shift+ArrowRight', 272]] as const) {
     await resizeColumn({ key })
-    await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === ${width} && ${fits}`, label: `column and card content fit at ${width}px` })
+    // A column never grows past the board, which Hydra's chat and an open side panel narrow.
+    await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === Math.min(${width}, document.querySelector('.kanban').clientWidth - 2) && ${fits}`, label: `column and card content fit at ${width}px` })
   }
 
   await browser({ args: ['eval', `() => { document.querySelector('[data-card="${fixture.state.keys.coverage}"]').closest('.card').querySelector('.resize-y').focus(); return true; }`] })
@@ -305,14 +306,15 @@ try {
   await resizeColumn({ key: 'End' }); await screenshot({ name: 'columns-wide.png' })
   await click({ role: 'button', name: 'Settings' }); await click({ role: 'combobox', name: 'Conversation placement' }); await click({ role: 'option', name: 'Inline with cards' }); await click({ role: 'button', name: 'Back to board' })
   await click({ role: 'button', name: 'Open conversation for Check the empty-state experience' })
-  await resizeColumn({ key: 'Home' }); await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === 340 && document.querySelector('.column-cards > .detail').getBoundingClientRect().width >= 320 && ${fits}`, label: 'inline detail keeps its readable minimum when the column is narrowed' })
+  // An open card keeps its column's width: only the owner resizes columns.
+  await resizeColumn({ key: 'Home' }); await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === 240 && ${fits}`, label: 'inline detail keeps the column width the owner set' })
   await resizeColumn({ key: 'End' }); await check({ condition: `document.querySelector('.column-needs_you').getBoundingClientRect().width === 640 && ${fits}`, label: 'inline detail respects wide column resize' })
-  await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] }); await browser({ args: ['wait', 'The working board'] })
+  await browser({ args: ['emulate', '--viewport', '390x844x1,mobile,touch'] }); await browser({ args: ['wait', 'Needs you'] })
   await check({ condition: `document.documentElement.scrollWidth === innerWidth && document.querySelector('.column-needs_you').getBoundingClientRect().width <= document.querySelector('.kanban').clientWidth && ${fits}`, label: 'wide column fits mobile viewport without internal horizontal scrolling' })
   await screenshot({ name: 'columns-mobile.png' })
-  await browser({ args: ['emulate', '--viewport', '320x640x1,mobile,touch'] }); await browser({ args: ['wait', 'The working board'] })
+  await browser({ args: ['emulate', '--viewport', '320x640x1,mobile,touch'] }); await browser({ args: ['wait', 'Needs you'] })
   await check({ condition: `document.documentElement.scrollWidth === innerWidth && document.querySelector('.column-needs_you').getBoundingClientRect().width <= document.querySelector('.kanban').clientWidth && ${fits}`, label: 'inline detail column fits a 320px viewport without horizontal scrolling' })
-  await browser({ args: ['emulate', '--viewport', '1440x900x1'] }); await browser({ args: ['wait', 'The working board'] })
+  await browser({ args: ['emulate', '--viewport', '1440x900x1'] }); await browser({ args: ['wait', 'Needs you'] })
   from = seq()
   await click({ role: 'button', name: 'Delete Later column' }); await screenshot({ name: 'column-delete.png' }); await click({ role: 'button', name: 'Delete column' }); await browser({ args: ['wait', 'Column deleted'] })
   await oneEvent({ from, label: 'deleting a column is one event' })
@@ -324,6 +326,25 @@ try {
   await click({ role: 'button', name: 'Undo' }); await browser({ args: ['wait', 'Column and its cards restored.'] })
   const restored = loadBoard({ board: 'default' }).state
   assert.equal(restored.cards[fixture.state.keys.layout!]!.column, later!.id)
+  // An agent's own question shows in its conversation with the options its terminal shows.
+  withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      const questions = [{ question: 'Which database?', header: 'DB', options: [{ label: 'Postgres', description: 'relational' }, { label: 'SQLite' }] }]
+      const input = {
+        agent: { provider: 'claude-code', sessionId: 'ask' },
+        terminal: { tty: '/dev/ttys042', pid: '4242', program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' },
+        attention: [{ kind: 'question', key: 'hook:tool:AskUserQuestion', blocking: true, text: 'Which database?', questions }],
+      }
+      const d = decidePush({ state: w.state, key: 'coverage', input, meta: layoutMeta })
+      assert.ok('event' in d); w.append({ event: d.event })
+    },
+  })
+  await click({ role: 'button', name: 'Open conversation for Check the empty-state experience' }); await browser({ args: ['wait', 'Asking you'] })
+  await check({ condition: 'document.querySelector(".ask legend").textContent.includes("Which database?") && document.querySelectorAll(".ask .ask-option").length === 2 && document.querySelector(".ask button[type=submit]").disabled', label: 'an agent question shows inline with its options' })
+  await click({ role: 'button', name: 'Postgres relational' })
+  await check({ condition: 'document.querySelector(".ask .ask-option[aria-pressed=true]").textContent.startsWith("Postgres") && !document.querySelector(".ask button[type=submit]").disabled', label: 'picking an option enables the answer' })
+  await screenshot({ name: 'inline-question.png' })
   const consoleOutput = await browser({ args: ['console'] }); assert.doesNotMatch(consoleOutput, /(?:TypeError|ReferenceError|Uncaught)/)
   process.stdout.write(`Browser smoke passed; screenshots: ${evidence}\n`)
 } finally {

@@ -8,12 +8,13 @@ import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import type { Key } from '../../core/control.ts'
 import type { ReplyState } from '../../core/model.ts'
 import type { TerminalRoute } from '../../core/route.ts'
+import type { KeyStep } from './answer.ts'
 
 const STEP_TIMEOUT_MS = 15_000
 const DETAIL_MAX = 300
 // Claude Code and Codex open a completion popup for a leading / or $; Enter
 // pressed before it settles can pick an entry instead of submitting.
-const SETTLE_MS = 400
+export const SETTLE_MS = 400
 const POPUP_SETTLE_MS = 1500
 // The bytes a terminal sends for each key, for hosts that type input literally, and
 // tmux's names for them.
@@ -100,7 +101,7 @@ function pasted({ text }: { text: string }): string {
   return text.includes('\n') ? `\u001b[200~${text}\u001b[201~` : text
 }
 
-function settle({ text }: { text: string }): number {
+export function settle({ text }: { text: string }): number {
   return /^[/$]/.test(text) ? POPUP_SETTLE_MS : SETTLE_MS
 }
 
@@ -332,4 +333,36 @@ export function pressKey({ route, key }: { route: TerminalRoute; key: Key | 'ent
       // do script with no text types only its Return.
       return key === 'enter' ? appleScript({ route, text: '' }) : { state: 'failed', detail: 'Terminal types whole lines, so Pnyx cannot press keys there; nothing was sent' }
   }
+}
+
+// Types an inline answer into the session's tmux pane, one keystroke chunk at a
+// time with its settle after it: typed with send-keys -l, never pasted, since a
+// pasted digit would not pick an option. Once a chunk went in, a failure leaves the
+// prompt half answered, so it is delivery_unknown and never retyped. Only tmux was
+// checked by hand against each harness's prompt.
+export function pressKeys({ route, steps }: { route: TerminalRoute; steps: KeyStep[] }): Delivery {
+  if (route.kind !== 'tmux') {
+    return { state: 'failed', detail: 'Pnyx answers prompts only in tmux, so answer in the session itself' }
+  }
+
+  const gone = checkProcess({ route }) ?? checkPane({ route })
+
+  if (gone) {
+    return gone
+  }
+
+  for (const [i, step] of steps.entries()) {
+    const result = run({ command: 'tmux', args: ['-S', route.socket, 'send-keys', '-t', route.pane, '-l', '--', step.keys] })
+    const failed = outcome({ result, command: 'tmux', typed: i > 0 })
+
+    if (failed) {
+      return i > 0
+        ? { state: 'delivery_unknown', detail: `the answer was typed only in part${failed.detail ? `: ${failed.detail}` : ''}; check the session before answering again` }
+        : failed
+    }
+
+    sleep({ ms: step.settleMs })
+  }
+
+  return { state: 'delivered' }
 }

@@ -47,7 +47,7 @@ async function browser({ args }: { args: string[] }): Promise<string> {
 const evaluate = ({ code }: { code: string }) => browser({ args: ['eval', `() => { ${code} }`] })
 const click = ({ text }: { text: string }) => evaluate({ code: `const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(text)}); if (!button) throw new Error('Missing button'); button.click(); return true;` })
 const wait = ({ text }: { text: string }) => browser({ args: ['wait', text] })
-const fill = ({ label, text }: { label: string; text: string }) => evaluate({ code: `const input = [...document.querySelectorAll('input')].find(i => i.getAttribute('aria-label') === ${JSON.stringify(label)}); if (!input) throw new Error('Missing input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(text)}); input.dispatchEvent(new Event('input', {bubbles: true})); return true;` })
+const fill = ({ label, text }: { label: string; text: string }) => evaluate({ code: `const input = [...document.querySelectorAll('input,textarea')].find(i => i.getAttribute('aria-label') === ${JSON.stringify(label)}); if (!input) throw new Error('Missing input'); Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value').set.call(input, ${JSON.stringify(text)}); input.dispatchEvent(new Event('input', {bubbles: true})); return true;` })
 
 const controls = async () => {
   await evaluate({ code: 'const agent = [...document.querySelectorAll(\'.detail-tabs button\')].find(b => b.textContent.trim() === \'Agent\'); if (agent) agent.click(); const section = document.querySelector(\'[aria-label="Task agent"]\'); const details = section?.closest(\'details\'); if (details) details.open = true; return true;' })
@@ -86,8 +86,6 @@ try {
   await browser({ args: ['wait', '150'] })
   await evaluate({
     code: `
-    const toggle = document.querySelector('.hydra-chat > button');
-    if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
     const send = WebSocket.prototype.send;
     window.pendingHydra = [];
     WebSocket.prototype.send = function(data) {
@@ -183,7 +181,6 @@ try {
   await evaluate({ code: 'const columns = [...document.querySelectorAll(\'.column\')]; const dt = new DataTransfer(); columns[0].querySelector(\'.column-header\').dispatchEvent(new DragEvent(\'dragstart\', {bubbles: true, dataTransfer: dt})); columns.at(-1).dispatchEvent(new DragEvent(\'drop\', {bubbles: true, dataTransfer: dt})); return true;' })
   await browser({ args: ['wait', '150'] })
   assert.equal(loadBoard({ board: 'default' }).state.board?.columns.at(-1)?.id, 'parked')
-  await evaluate({ code: 'const toggle = document.querySelector(\'.hydra-chat > button\'); if (toggle.getAttribute(\'aria-expanded\') !== \'true\') toggle.click(); return true;' })
   await fill({ label: 'Message Hydra', text: '- check the CI' })
   await evaluate({ code: 'document.querySelector(\'[aria-label="Message Hydra"]\').form.requestSubmit(); return true;' })
   await browser({ args: ['wait', '150'] })

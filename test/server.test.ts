@@ -596,6 +596,22 @@ test('browser reply delivery uses only configured fixture homes and never resend
 
   assert.match(readFileSync(join(fixture.nativeHome, 'inbox.log'), 'utf8'), /arg=pnyx:default:c\d+:effort-1\narg=--json\narg=--\narg=Pnyx: please switch the worker on task api-v2 \(Claude Code\) to effort high\.\n---\n$/)
   assert.equal(readFileSync(join(fixture.nativeHome, 'sent.log'), 'utf8'), sends)
+  // An inline answer goes through the same worker; its values, even one starting with
+  // a dash, reach the CLI as values, which refuses a request it cannot answer here.
+  t.command({ id: 'answer-1', name: 'answer', args: [card, '-hook:tool:Bash', '{"choice":"allow"}', 'answer-1', '-seen'] })
+  const refused = await receipt({ id: 'answer-1' }); assert.equal(refused.type, 'error', JSON.stringify(refused))
+
+  if (refused.type === 'error') {
+    assert.match(JSON.stringify(refused), /no open request with key -hook:tool:Bash/)
+  }
+
+  t.command({ id: 'answer-2', name: 'answer', args: [card, 'hook:tool:Bash', '{}'] })
+  const short = await receipt({ id: 'answer-2' }); assert.equal(short.type, 'error')
+
+  if (short.type === 'error') {
+    assert.equal(short.code, 'VALIDATION_ERROR')
+  }
+
   t.command({ id: 'search-1', name: 'search', args: ['conversation readable'] })
   const found = await receipt({ id: 'search-1' }); assert.equal(found.type, 'receipt')
 

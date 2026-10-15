@@ -202,6 +202,24 @@ test('task messages remain in history and chat after the worker transcript is re
   }
 })
 
+test("Hydra's own open prompt shows on its card, so its chat can answer it", () => {
+  const f = fixture()
+
+  try {
+    f.run({ args: ['board', 'create', 'default'] })
+    const session = { agent: { provider: 'claude-code', sessionId: 'hydra-q' }, terminal: { tty: '/dev/ttys123', pid: '123', program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%1' }, source: { adapter: 'hooks', instanceId: 'claude', objectId: 'hydra-q' } }
+    f.push({ key: 'claude:hydra-q', input: session })
+    f.run({ args: ['board', 'set', '--session', 'claude-code:hydra-q'] })
+    const ask = { kind: 'permission', key: 'hook:tool:Bash', blocking: true, text: 'Allow Bash: ls' }
+    f.push({ key: 'claude:hydra-q', input: { ...session, attention: [ask] } })
+    assert.match(f.run({ args: ['card', '$hydra'] }), /reply \$hydra --answer hook:tool:Bash/)
+    f.push({ key: 'claude:hydra-q', input: { ...session, attention: [] } })
+    assert.doesNotMatch(f.run({ args: ['card', '$hydra'] }), /--answer/)
+  } finally {
+    rmSync(f.root, { recursive: true, force: true })
+  }
+})
+
 test('Hydra chat drained from turn-end hooks stays in history after its transcript is removed', () => {
   const f = fixture()
 

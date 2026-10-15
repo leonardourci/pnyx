@@ -3,7 +3,8 @@
 // never run. Every mapping is a fixed rule on fields the harness sends; nothing
 // is classified by a model.
 import { basename } from 'node:path'
-import type { Attention } from '../../core/model.ts'
+import { MAX_OPTIONS } from '../../core/answer.ts'
+import { FORM_FIELD_TYPES, type Attention, type FormField, type Question } from '../../core/model.ts'
 import { terminalFacts } from '../../core/route.ts'
 import { hookSettings } from './settings.ts'
 
@@ -104,6 +105,64 @@ function createsPr({ payload }: { payload: Record<string, unknown> }): boolean {
   })
 }
 
+// AskUserQuestion's questions with their options, as its prompt shows them; a
+// question without a text or options is left out, so it is answered in the terminal.
+function questions({ value }: { value: unknown }): Question[] | undefined {
+  const found = (Array.isArray(value) ? value : []).flatMap((item): Question[] => {
+    const q = (item ?? {}) as Record<string, unknown>
+    const question = str({ value: q.question })
+    const options = (Array.isArray(q.options) ? q.options : []).flatMap(o => {
+      const option = (o ?? {}) as Record<string, unknown>
+      const label = str({ value: option.label })
+      const description = str({ value: option.description })
+
+      return label ? [{ label, ...(description ? { description } : {}) }] : []
+    })
+    const header = str({ value: q.header })
+    const multiSelect = q.multiSelect === true ? { multiSelect: true } : {}
+
+    return question && options.length
+      ? [{ question, ...(header ? { header } : {}), options, ...multiSelect }]
+      : []
+  })
+
+  return Array.isArray(value) && found.length && found.length === value.length ? found : undefined
+}
+
+// What the board can fill as the terminal would: anything else (a default, a format,
+// titled choices, limits) changes what the prompt shows, so it is left to the terminal.
+const FIELD_KEYS = ['type', 'title', 'description', 'enum']
+
+// An MCP form's fields in the order its prompt lists them; undefined for a URL
+// elicitation or a field the board cannot fill, so the form is filled in the terminal.
+function form({ payload }: { payload: Record<string, unknown> }): FormField[] | undefined {
+  const schema = (payload.requested_schema ?? {}) as { properties?: unknown; required?: unknown }
+  type Property = Record<string, unknown> | null
+  const properties = Object.entries((schema.properties ?? {}) as Record<string, Property>)
+  const required = Array.isArray(schema.required) ? schema.required : []
+  const fields = properties.flatMap(([name, p]): FormField[] => {
+    const type = FORM_FIELD_TYPES.find(t => t === p?.type)
+    const options = Array.isArray(p?.enum) && p.enum.every(o => typeof o === 'string') ? p.enum as string[] : undefined
+    const title = str({ value: p?.title })
+
+    if (!p || !type
+      || Object.keys(p).some(k => !FIELD_KEYS.includes(k))
+      || (p.enum !== undefined && (!options || type !== 'string' || options.length > MAX_OPTIONS))) {
+      return []
+    }
+
+    return [{
+      name,
+      ...(title ? { title } : {}),
+      type,
+      ...(options ? { options } : {}),
+      ...(required.includes(name) ? { required: true } : {}),
+    }]
+  })
+
+  return str({ value: payload.mode }) !== 'url' && fields.length && fields.length === properties.length ? fields : undefined
+}
+
 // The request a tool call puts to the user: its question, a plan to approve, or
 // permission to run it with what it would run.
 function request(
@@ -117,9 +176,16 @@ function request(
   const key = `${HOOK}tool:${tool}`
 
   if (tool === 'AskUserQuestion') {
-    const question = (input.questions as { question?: unknown }[] | undefined)?.[0]?.question
+    const asked = questions({ value: input.questions })
+    const first = (input.questions as { question?: unknown }[] | undefined)?.[0]?.question
 
-    return { kind: 'question', key, blocking: true, text: short({ value: str({ value: question }) }) ?? 'Answer a question' }
+    return {
+      kind: 'question',
+      key,
+      blocking: true,
+      text: short({ value: str({ value: first }) }) ?? 'Answer a question',
+      ...(asked ? { questions: asked } : {}),
+    }
   }
 
   if (tool === 'ExitPlanMode') {
@@ -204,8 +270,10 @@ function signal({ event, payload }: {
       return notification({ payload })
     case 'Elicitation': {
       const text = short({ value: [str({ value: payload.mcp_server_name }), str({ value: payload.message })].filter(Boolean).join(': ') })
+      const fields = form({ payload })
+      const add: Attention = { kind: 'input', key: ELICITATION, blocking: true, text: text || 'Input needed' }
 
-      return { attend: { add: { kind: 'input', key: ELICITATION, blocking: true, text: text || 'Input needed' } } }
+      return { attend: { add: fields ? { ...add, form: fields } : add } }
     }
     case 'ElicitationResult':
       return { attend: { clear: [ELICITATION] } }
@@ -245,7 +313,7 @@ export function attend({ current, change }: { current: Attention[]; change: Atte
   const kept = current.filter(a => !change.clear?.some(prefix => a.key.startsWith(prefix)))
   const add = change.add
 
-  if (!add || (change.ifNone && kept.some(a => a.blocking))) {
+  if (!add || (change.ifNone && kept.some(a => a.blocking && !a.answered))) {
     return kept
   }
 

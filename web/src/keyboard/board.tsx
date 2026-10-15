@@ -37,6 +37,7 @@ export function useBoardKeyboard({
   notify,
   newColumn,
   cancelColumn,
+  toggleTopbar,
 }: {
   state: BoardState
   groups: ColumnCards[]
@@ -50,6 +51,7 @@ export function useBoardKeyboard({
   notify({ text }: { text: string }): void
   newColumn: boolean
   cancelColumn(): void
+  toggleTopbar(): void
 }) {
   const [remembered, setRemembered] = useState<Record<string, string>>({}), [overlay, setOverlay] = useState<Overlay | null>(null), [hints, setHints] = useState<Hint[]>([]), [hintPrefix, setHintPrefix] = useState('')
   const focus = useRef<{ anchor?: BoardAnchor; owned: boolean }>({ owned: false })
@@ -218,6 +220,12 @@ export function useBoardKeyboard({
       return true
     }
 
+    if (id === 'topbar') {
+      toggleTopbar()
+
+      return true
+    }
+
     if (id === 'find') {
       return (page === 'board' || page === 'history')
         && focusElement({ selector: page === 'board' ? "[aria-label='Find a card']" : "[aria-label='Search history']" })
@@ -377,26 +385,6 @@ export function KeyboardToolbar({
         <kbd>{label({ id: 'hints' })}</kbd>
       </Button>
     </div>
-  )
-}
-
-export function KeyboardFooter() {
-  const { label } = useKeyboard()
-
-  return (
-    <span>
-      {label({ id: 'board.down' })}
-      {' '}
-      next ·
-      {' '}
-      {label({ id: 'board.open' })}
-      {' '}
-      open ·
-      {' '}
-      {label({ id: 'reply' })}
-      {' '}
-      reply
-    </span>
   )
 }
 

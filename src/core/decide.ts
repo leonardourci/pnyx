@@ -19,8 +19,11 @@ import {
   type Column,
   type Link,
   type Note,
+  FORM_FIELD_TYPES,
   type Outcome,
+  type FormField,
   type PushFields,
+  type Question,
   type RepliedEvent,
   type SourceRef,
   type TerminalFacts,
@@ -177,19 +180,101 @@ function parseAttention({ value }: { value: unknown }): Attention[] {
       throw invalid({ message: `attention[${i}] must be an object` })
     }
 
-    onlyKeys({ value: item, allowed: ['kind', 'key', 'blocking', 'text'], what: `attention[${i}]` })
+    onlyKeys({ value: item, allowed: ['kind', 'key', 'blocking', 'text', 'questions', 'form', 'answered'], what: `attention[${i}]` })
 
     if (item.blocking !== undefined && typeof item.blocking !== 'boolean') {
       throw invalid({ message: `attention[${i}].blocking must be true or false` })
     }
 
     const note = optionalText({ value: item.text, what: `attention[${i}].text` })
+    const answered = optionalText({ value: item.answered, what: `attention[${i}].answered` })
 
     return {
       kind: text({ value: item.kind, what: `attention[${i}].kind` }),
       key: text({ value: item.key, what: `attention[${i}].key` }),
       blocking: item.blocking === true,
       ...(note ? { text: note } : {}),
+      ...(item.questions !== undefined ? { questions: parseQuestions({ value: item.questions, what: `attention[${i}].questions` }) } : {}),
+      ...(item.form !== undefined ? { form: parseForm({ value: item.form, what: `attention[${i}].form` }) } : {}),
+      ...(answered ? { answered } : {}),
+    }
+  })
+}
+
+function parseForm({ value, what }: { value: unknown; what: string }): FormField[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw invalid({ message: `${what} must be a non-empty list` })
+  }
+
+  return value.map((rawItem, i) => {
+    const at = `${what}[${i}]`
+    const item = asRecord({ value: rawItem })
+
+    if (!item) {
+      throw invalid({ message: `${at} must be an object` })
+    }
+
+    onlyKeys({ value: item, allowed: ['name', 'title', 'type', 'options', 'required'], what: at })
+    const type = FORM_FIELD_TYPES.find(t => t === item.type)
+
+    if (!type) {
+      throw invalid({ message: `${at}.type must be one of ${FORM_FIELD_TYPES.join(', ')}` })
+    }
+
+    if (item.options !== undefined && (!Array.isArray(item.options) || !item.options.every(o => typeof o === 'string' && o !== ''))) {
+      throw invalid({ message: `${at}.options must be a list of strings` })
+    }
+
+    const title = optionalText({ value: item.title, what: `${at}.title` })
+
+    return {
+      name: text({ value: item.name, what: `${at}.name` }),
+      ...(title ? { title } : {}),
+      type,
+      ...(item.options ? { options: item.options as string[] } : {}),
+      ...(item.required === true ? { required: true } : {}),
+    }
+  })
+}
+
+function parseQuestions({ value, what }: { value: unknown; what: string }): Question[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw invalid({ message: `${what} must be a non-empty list` })
+  }
+
+  return value.map((rawItem, i) => {
+    const at = `${what}[${i}]`
+    const item = asRecord({ value: rawItem })
+
+    if (!item) {
+      throw invalid({ message: `${at} must be an object` })
+    }
+
+    onlyKeys({ value: item, allowed: ['question', 'header', 'options', 'multiSelect'], what: at })
+
+    if (!Array.isArray(item.options)) {
+      throw invalid({ message: `${at}.options must be a list` })
+    }
+
+    const header = optionalText({ value: item.header, what: `${at}.header` })
+    const options = item.options.map((rawOption, j) => {
+      const option = asRecord({ value: rawOption })
+
+      if (!option) {
+        throw invalid({ message: `${at}.options[${j}] must be an object` })
+      }
+
+      onlyKeys({ value: option, allowed: ['label', 'description'], what: `${at}.options[${j}]` })
+      const description = optionalText({ value: option.description, what: `${at}.options[${j}].description` })
+
+      return { label: text({ value: option.label, what: `${at}.options[${j}].label` }), ...(description ? { description } : {}) }
+    })
+
+    return {
+      question: text({ value: item.question, what: `${at}.question` }),
+      ...(header ? { header } : {}),
+      options,
+      ...(item.multiSelect === true ? { multiSelect: true } : {}),
     }
   })
 }
