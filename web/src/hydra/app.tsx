@@ -383,6 +383,8 @@ export function App() {
                                 <HydraCard
                                   key={item.id}
                                   card={item}
+                                  doneAfterHours={state.config?.doneAfterHours}
+                                  notify={notify}
                                   latest={latest[item.id]}
                                   selected={selected === item.id}
                                   view={view}

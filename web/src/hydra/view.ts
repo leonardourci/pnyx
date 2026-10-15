@@ -1,4 +1,5 @@
 import type { HydraState, Card, Link } from '../../../src/core/model.ts'
+import { cardDoneDeadline, HOUR_MS } from '../../../src/core/retention.ts'
 import { liveTask, rankOf } from '../../../src/core/tasks.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 
@@ -7,7 +8,7 @@ export const columnsFor = ({ state }: { state: HydraState }) => {
 }
 
 export function pageTitle({ page, cards, selected = null }: { page: string; cards: HydraState['cards']; selected?: string | null }): string {
-  const count = Object.values(cards).filter(c => liveTask({ card: c }) && c.column === 'needs_you').length
+  const count = Object.values(cards).filter(c => liveTask({ card: c }) && (c.attention.some(a => a.blocking && !a.answered) || c.status?.state === 'needs_you' || c.status?.state === 'blocked')).length
   const label = page === 'history' ? 'History' : page === 'settings' ? 'Settings'
     : (selected && cards[selected]?.title) || 'Hydra'
 
@@ -108,4 +109,45 @@ export const needsAgent = ({ card }: { card: Card }) => !card.agent && !card.sou
 export function projectTitle({ project }: { project: string }): string {
   return project.startsWith('/') ? project.split('/').filter(Boolean)
     .at(-1) ?? project : project
+}
+
+export function elapsedTime({ at, now }: { at: string; now: number }): string {
+  const elapsed = Math.max(0, now - Date.parse(at))
+
+  return elapsed < 60_000 ? 'just now' : elapsed < HOUR_MS ? `${Math.floor(elapsed / 60_000)}m ago`
+    : elapsed < 24 * HOUR_MS ? `${Math.floor(elapsed / HOUR_MS)}h ago` : `${Math.floor(elapsed / (24 * HOUR_MS))}d ago`
+}
+
+export function cardState({ card, hours, now }: {
+  card: Card
+  hours?: number
+  now: number
+}): { kind: string; text: string; at?: string } {
+  if (card.doneAt) {
+    const deadline = cardDoneDeadline({ card, hours })
+    const remaining = deadline === undefined ? undefined : deadline - now
+
+    return {
+      kind: 'done',
+      text: remaining !== undefined && remaining <= 6 * HOUR_MS
+        ? `hidden in ${remaining > HOUR_MS ? `${Math.ceil(remaining / HOUR_MS)}h` : `${Math.max(1, Math.ceil(remaining / 60_000))}m`}`
+        : `done · ${elapsedTime({ at: card.doneAt, now })}`,
+      at: card.doneAt,
+    }
+  }
+
+  if (card.attention.some(a => a.blocking && !a.answered) || card.permissions?.some(p => p.status === 'pending')
+    || card.status?.state === 'needs_you' || card.status?.state === 'blocked') {
+    return { kind: 'asks', text: 'asks' }
+  }
+
+  const activity = agentActivity({ card })
+
+  if (activity === 'stopped') {
+    const at = card.stoppedAt ?? card.updatedAt
+
+    return { kind: 'stopped', text: `stopped · ${elapsedTime({ at, now })}`, at }
+  }
+
+  return { kind: activity ?? 'not-started', text: activity === 'working' ? 'working' : activity === 'finished' ? 'finished its turn' : 'not started' }
 }
