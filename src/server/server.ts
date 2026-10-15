@@ -44,7 +44,7 @@ const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) =>
 
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
-const CLI_COMMANDS = ['task', 'column', 'hydra', 'kind', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card', 'integrations'] as const
+const CLI_COMMANDS = ['task', 'column', 'hydra', 'layout', 'kind', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card', 'integrations'] as const
 const WEB_ROOT = join(import.meta.dirname, '..', '..', 'dist', 'web')
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
