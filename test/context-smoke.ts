@@ -33,7 +33,7 @@ try {
   await browser({
     args: ['eval', `async () => {
     const token = document.querySelector('meta[name="pnyx-token"]').content;
-    const socket = new WebSocket(location.origin.replace('http', 'ws') + '/ws?token=' + token);
+    const socket = new WebSocket(new URL('ws?token=' + token, document.baseURI).href.replace('http', 'ws'));
     await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
     let next = 0;
     const command = (name, args) => new Promise((resolve, reject) => {
