@@ -7,7 +7,7 @@ export const DEFAULT_VIEW: ViewPreferences = {
   fontSize: 14,
   chatFontSize: 16,
   codeFontSize: 13,
-  panelPlacement: 'right',
+  panelPlacement: 'inline',
   panelWidth: 440,
   composerHeight: 180,
   cardHeight: 250,
