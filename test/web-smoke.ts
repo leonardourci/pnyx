@@ -183,7 +183,7 @@ try {
   await browser({ args: ['wait', 'invalid view preference'] })
   await check({ condition: panelWidthShown, label: 'a failed save stays at the saved value' })
   await browser({ args: ['eval', "() => { const state = Object.getOwnPropertyDescriptor(WebSocket.prototype, \"readyState\"); Object.defineProperty(WebSocket.prototype, \"readyState\", { configurable: true, get: () => WebSocket.CLOSED }); document.querySelector(\"[aria-label='Increase Panel width']\").click(); Object.defineProperty(WebSocket.prototype, \"readyState\", state); return true; }"] })
-  await browser({ args: ['wait', 'The board is offline'] })
+  await browser({ args: ['wait', 'Could not complete this action. Try again.'] })
   await check({ condition: panelWidthShown, label: 'an offline save stays at the saved value' })
   assert.equal(seq(), from); assert.equal(view()?.panelWidth, 448)
   await screenshot({ name: 'settings.png' })

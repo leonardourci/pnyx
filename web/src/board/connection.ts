@@ -225,7 +225,7 @@ export function useBoard() {
   const command: Command = useCallback(({ name, args }) => new Promise((resolve, reject) => {
     const retry = retryable({ name, args })
 
-    if (!ready.current && !retry) {
+    if ((!ready.current || socket.current?.readyState !== WebSocket.OPEN) && !retry) {
       reject(new Error('Could not complete this action. Try again.'))
 
       return

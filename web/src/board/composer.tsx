@@ -87,13 +87,15 @@ export function Composer({
     const cursor = input.current?.selectionStart ?? draft.length; setDraft({ text: command + ' ' + draft.slice(cursor) }); setPrefix(null); setActive(-1); input.current?.focus(); requestAnimationFrame(() => input.current?.setSelectionRange(command.length + 1, command.length + 1))
   }
 
-  const send = async () => {
-    if (sending || !outgoing.trim()) {
+  const send = async ({ restore = false }: { restore?: boolean } = {}) => {
+    const text = restore && attempt.current ? attempt.current.text : outgoing
+
+    if (sending || !text.trim()) {
       return
     }
 
-    if (attempt.current?.text !== outgoing) {
-      attempt.current = { text: outgoing, id: crypto.randomUUID(), pending: true }
+    if (attempt.current?.text !== text) {
+      attempt.current = { text, id: crypto.randomUUID(), pending: true }
     }
 
     attempt.current.pending = true
@@ -101,7 +103,7 @@ export function Composer({
     setFailure(''); setSending(true)
 
     try {
-      const r = await command({ name: 'reply', args: [card, outgoing, attempt.current.id] }); const receipt = r.reply as { state: string; detail?: string } | undefined
+      const r = await command({ name: 'reply', args: [card, text, attempt.current.id] }); const receipt = r.reply as { state: string; detail?: string } | undefined
       const why = receipt?.detail ? ` (${receipt.detail})` : ''
 
       if (receipt?.state !== 'delivered') {
@@ -114,12 +116,15 @@ export function Composer({
 
       if (receipt?.state === 'delivered') {
         // Keep anything typed or commented while the reply was in flight.
-        if (current.current.draft === draft) {
+        if (text === outgoing && current.current.draft === draft) {
           setDraft({ text: '' })
         }
 
-        const sent = new Set(comments.map(c => `${c.id}\n${c.text}`))
-        setComments({ items: current.current.comments.filter(c => !sent.has(`${c.id}\n${c.text}`)) })
+        if (text === outgoing) {
+          const sent = new Set(comments.map(c => `${c.id}\n${c.text}`))
+          setComments({ items: current.current.comments.filter(c => !sent.has(`${c.id}\n${c.text}`)) })
+        }
+
         attempt.current = null
       }
     } catch (e) {
@@ -135,8 +140,8 @@ export function Composer({
   }
 
   useEffect(() => {
-    if (attempt.current?.pending && attempt.current.text === outgoing) {
-      void send()
+    if (attempt.current?.pending) {
+      void send({ restore: true })
     }
   }, [])
 

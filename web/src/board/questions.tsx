@@ -208,10 +208,9 @@ function Choices({ request, choices, busy, send }: ChoicesProps) {
 
 const TITLE: Record<string, string> = { question: 'Asking you', permission: 'Asking permission', plan: 'Plan to approve', input: 'Asking for input' }
 
-export function InlineQuestions({ card, command, connected, notify }: {
+export function InlineQuestions({ card, command, notify }: {
   card: Card
   command: Command
-  connected: boolean
   notify({ text }: { text: string }): void
 }) {
   const [busy, setBusy] = useState<string | null>(null)
@@ -260,20 +259,18 @@ export function InlineQuestions({ card, command, connected, notify }: {
             {request.kind !== 'question' && <p>{request.text}</p>}
             {request.answered
               ? <span className="receipt">Answered · waiting for the session to move on</span>
-              : !connected
-                ? <p className="small muted">Reconnect to answer.</p>
-                : prompt?.kind === 'questions'
-                  ? <Questions request={request} busy={pending} send={send} />
-                  : prompt?.kind === 'form'
-                    ? <Form request={request} busy={pending} send={send} />
-                    : prompt && (
-                      <Choices
-                        request={request}
-                        choices={prompt.choices}
-                        busy={pending}
-                        send={send}
-                      />
-                    )}
+              : prompt?.kind === 'questions'
+                ? <Questions request={request} busy={pending} send={send} />
+                : prompt?.kind === 'form'
+                  ? <Form request={request} busy={pending} send={send} />
+                  : prompt && (
+                    <Choices
+                      request={request}
+                      choices={prompt.choices}
+                      busy={pending}
+                      send={send}
+                    />
+                  )}
           </article>
         )
       })}

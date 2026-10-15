@@ -124,7 +124,6 @@ export function Thread({
         <InlineQuestions
           card={card}
           command={command}
-          connected={connected}
           notify={notify}
         />
         <Composer

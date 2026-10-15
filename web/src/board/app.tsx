@@ -474,7 +474,6 @@ export function App() {
                 <HydraChat
                   state={state}
                   command={command}
-                  connected={connected}
                   openTask={open}
                   notify={notify}
                 />

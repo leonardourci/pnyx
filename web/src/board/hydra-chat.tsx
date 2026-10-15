@@ -6,10 +6,9 @@ import { Button, Textarea, useBusy } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
 
-export function HydraChat({ state, command, connected, openTask, notify }: {
+export function HydraChat({ state, command, openTask, notify }: {
   state: BoardState
   command: Command
-  connected: boolean
   openTask({ id }: { id: string }): void
   notify({ text }: { text: string }): void
 }) {
@@ -23,7 +22,9 @@ export function HydraChat({ state, command, connected, openTask, notify }: {
   const attempt = useRef(readAttempt({ key: '$hydra' }))
   const [failure, setFailure] = useState('')
   useEffect(() => {
-    sessionStorage.setItem('pnyx-hydra-draft', draft)
+    try {
+      sessionStorage.setItem('pnyx-hydra-draft', draft)
+    } catch { /* Retained in memory when storage is unavailable. */ }
   }, [draft])
   const [busy, run] = useBusy()
   const end = useRef<HTMLDivElement>(null)
@@ -33,8 +34,10 @@ export function HydraChat({ state, command, connected, openTask, notify }: {
     end.current?.scrollIntoView({ block: 'end' })
   }, [messages.length])
 
-  const send = () => {
-    if (!draft.trim()) {
+  const send = ({ restore = false }: { restore?: boolean } = {}) => {
+    const submitted = restore && attempt.current ? attempt.current.text : draft
+
+    if (!submitted.trim()) {
       return
     }
 
@@ -43,7 +46,6 @@ export function HydraChat({ state, command, connected, openTask, notify }: {
     }
 
     setFailure('')
-    const submitted = draft
 
     if (attempt.current?.text !== submitted) {
       attempt.current = { text: submitted, id: crypto.randomUUID(), pending: true }
@@ -56,6 +58,13 @@ export function HydraChat({ state, command, connected, openTask, notify }: {
       save: () => command({ name: 'hydra', args: ['send', `--text=${submitted}`, '--event-id', id] })
         .then(() => {
           attempt.current = null
+
+          try {
+            if (sessionStorage.getItem('pnyx-hydra-draft') === submitted) {
+              sessionStorage.removeItem('pnyx-hydra-draft')
+            }
+          } catch { /* Retained in memory when storage is unavailable. */ }
+
           setDraft(current => current === submitted ? '' : current)
         })
         .catch(e => setFailure(e.message))
@@ -70,8 +79,8 @@ export function HydraChat({ state, command, connected, openTask, notify }: {
   }
 
   useEffect(() => {
-    if (attempt.current?.pending && attempt.current.text === draft) {
-      send()
+    if (attempt.current?.pending) {
+      send({ restore: true })
     }
   }, [])
 
@@ -98,7 +107,6 @@ export function HydraChat({ state, command, connected, openTask, notify }: {
           <InlineQuestions
             card={state.cards[HYDRA_CARD]}
             command={command}
-            connected={connected}
             notify={notify}
           />
         )}
