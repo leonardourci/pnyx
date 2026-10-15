@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { appendFileSync, cpSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
+import { syncHome } from '../src/integrations/firstmate/sync.ts'
+import { homeKey } from '../src/integrations/firstmate/home.ts'
 import { commands } from '../src/cli/commands.ts'
 import { hydraCheck } from '../src/cli/workers.ts'
 import { hydraConfig, hydraEvent } from '../src/core/hydra.ts'
@@ -131,7 +133,7 @@ test('server catches missed reminders at startup and exposes the waiting list an
   })
   server = await startServer({ hydraId })
   await waitForDue()
-  assert.equal(task().column, 'needs_you')
+  assert.equal(task().column, hydraConfig({ state: state() }).columns.find(column => column.role === 'needs_you')!.id)
   run({ args: ['remind', 'work', later] })
   let result: { count: number; reminders: { task: string }[] } | undefined
 
@@ -204,4 +206,32 @@ test('an expanded-year reminder cannot delay a nearer due reminder', () => {
   assert.equal(state().cards[state().keys.near!]?.reminder?.dueAt, later)
   assert.equal(task().reminder?.dueAt, undefined)
   assert.equal(fireReminders({ hydraId, at: later }), 0)
+})
+
+test('unchanged Firstmate records keep a due reminder in Needs you until cleared or updated', () => {
+  const nativePath = join(home, 'firstmate-fixture')
+  cpSync(join(import.meta.dirname, 'fixtures/firstmate-home'), nativePath, { recursive: true })
+  const nativeHome = realpathSync(nativePath)
+  commands.hydra(['set', '--hydra', hydraId, '--firstmate', nativeHome])
+  syncHome({ hydraId, home: nativeHome, at: now })
+  const ref = `${homeKey({ home: nativeHome })}:later-1`
+  const id = state().keys[ref]!
+  const card = () => state().cards[id]!
+  assert.equal(card().column, 'queued')
+  run({ args: ['remind', ref, later] })
+  fireReminders({ hydraId, at: later })
+  assert.equal(card().column, 'needs_you')
+  const reason = card().status?.note
+  syncHome({ hydraId, home: nativeHome, at: later })
+  assert.equal(card().column, 'needs_you')
+  assert.equal(card().status?.note, reason)
+  run({ args: ['remind', ref, 'clear'] })
+  syncHome({ hydraId, home: nativeHome, at: later })
+  assert.equal(card().column, 'queued')
+  run({ args: ['remind', ref, later] })
+  fireReminders({ hydraId, at: later })
+  appendFileSync(join(nativeHome, 'state/later-1.status'), 'working: started the task\n')
+  syncHome({ hydraId, home: nativeHome, at: later })
+  assert.equal(card().column, 'queued')
+  assert.equal(card().status?.state, 'working')
 })
