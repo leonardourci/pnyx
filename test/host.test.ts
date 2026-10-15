@@ -341,6 +341,8 @@ test('continuation refuses running and unknown presence without changing the ses
     assert.throws(() => host.continue({ task: 'ship', id: 'adopt', actor: 'test' }), state === 'present' ? /still runs in its terminal/ : /cannot confirm/)
     assert.equal(loadBoard({ board: 'lab' }).state.seq, before)
     assert.equal(task().agent?.host, undefined)
+    assert.throws(() => host.start({ task: 'ship', replacement: 'claude-code:native-session', id: 'fresh', actor: 'test', settings: {}, folder, prompt: 'Fresh' }), state === 'present' ? /still runs/ : /cannot confirm/)
+    assert.equal(task().agent?.sessionId, 'native-session')
     host.close()
   }
 })
@@ -365,4 +367,28 @@ test('continuation reports a missing folder with a fresh-start hint and rejects 
   outside({ folder, provider: 'codex' })
   assert.throws(() => empty.continue({ task: 'ship', id: 'codex', actor: 'test' }), /outside Claude Code/)
   empty.close()
+})
+
+test('starting fresh validates the replacement before detaching and starts once from the saved brief', async () => {
+  const { folder, task } = await lab()
+  outside({ folder })
+  const sdk = fakeSdk()
+  server = await startServer({ board: 'lab', query: sdk.query })
+  const replacement = 'claude-code:native-session'
+  const before = loadBoard({ board: 'lab' }).state.seq
+  await assert.rejects(startTask({ board: 'lab', task: 'ship', replacement, folder: join(folder, 'missing'), meta: { ...meta, id: 'fresh-1' } }), /folder not found/)
+  assert.equal(task().agent?.sessionId, 'native-session')
+  assert.equal(loadBoard({ board: 'lab' }).state.seq, before)
+  await assert.rejects(startTask({ board: 'lab', task: 'ship', replacement: 'claude-code:other', folder, meta: { ...meta, id: 'stale' } }), /different session/)
+  await assert.rejects(startTask({ board: 'lab', task: 'ship', replacement, via: 'paseo', folder, meta }), /uses Pnyx/)
+  assert.equal(sdk.calls.length, 0)
+  const started = await startTask({ board: 'lab', task: 'ship', replacement, folder, meta: { ...meta, id: 'fresh-1' } })
+  assert.equal((started.agent as { host: string }).host, 'pnyx')
+  assert.notEqual(task().agent?.sessionId, 'native-session')
+  assert.equal(loadBoard({ board: 'lab' }).state.sessions?.[replacement]?.taskId, null)
+  await until({ check: () => sdk.calls[0]?.messages.length === 1, what: 'fresh opening prompt' })
+  assert.match(sdk.calls[0]!.messages[0]!, /^Release the canary\./)
+  assert.equal(sdk.calls[0]!.options.resume, undefined)
+  assert.equal((await startTask({ board: 'lab', task: 'ship', replacement, folder, meta: { ...meta, id: 'fresh-1' } })).event, 'none: duplicate')
+  assert.equal(sdk.calls.length, 1)
 })

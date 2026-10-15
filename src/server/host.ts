@@ -15,10 +15,11 @@ export type QueryFn = typeof query
 type UserMessage = Parameters<QueryFn>[0]['prompt'] extends string | AsyncIterable<infer M> ? M : never
 
 export interface Host {
-  start({ task, prompt, folder, settings, id, actor, reason }: {
+  start({ task, prompt, folder, settings, id, actor, reason, replacement }: {
     task: string
     prompt: string
     folder?: string
+    replacement?: string
     settings: AgentSettings
     id: string
     actor: string
@@ -219,6 +220,29 @@ export function createHost({
     return card as Card & { agent: AgentRef }
   }
 
+  const outsideSession = ({ writer, card }: { writer: Writer; card: Card }): AgentSession => {
+    const agent = card.agent
+
+    if (!liveTask({ card }) || !agent || agent.provider !== PROVIDER
+      || agent.host || agent.agentId || agent.paseoAgentId) {
+      throw new BoardError({ message: 'Continue in Pnyx needs an outside Claude Code session attached to a task', code: 'NO_ROUTE' })
+    }
+
+    const session = writer.state.sessions?.[sessionId({ agent })]
+
+    if (!session || session.taskId !== card.id) {
+      throw new BoardError({ message: 'the session is no longer attached to this task', code: 'SESSION_CONFLICT' })
+    }
+
+    return session
+  }
+
+  const requireGone = ({ current }: { current: Presence }) => {
+    if (current.state !== 'gone') {
+      throw new BoardError({ message: current.state === 'present' ? 'the outside session still runs in its terminal; end it before continuing in Pnyx' : `cannot confirm the outside session has ended: ${current.detail}`, code: 'SESSION_RUNNING', help: ['End the outside session, then try Continue in Pnyx again'] })
+    }
+  }
+
   // The task waits on its owner or Hydra: Claude Code keeps no turn half done, so the
   // next message continues the conversation.
   const interrupt = ({ writer, agent, note }: {
@@ -360,7 +384,7 @@ export function createHost({
   }
 
   return {
-    start: ({ task, prompt, folder, settings, id, actor, reason }) => {
+    start: ({ task, prompt, folder, settings, id, actor, reason, replacement }) => {
       const claimed = write({
         fn: ({ writer }) => {
           const card = findCard({ state: writer.state, ref: task })
@@ -369,7 +393,18 @@ export function createHost({
             return { card, duplicate: true as const }
           }
 
-          freeTask({ state: writer.state, ref: task })
+          const previous = replacement ? outsideSession({ writer, card }) : undefined
+
+          if (previous) {
+            if (previous.id !== replacement) {
+              throw new BoardError({ message: 'the task has a different session now; reopen its card before starting fresh', code: 'SESSION_CONFLICT' })
+            }
+
+            requireGone({ current: presence({ session: previous }) })
+          } else {
+            freeTask({ state: writer.state, ref: task })
+          }
+
           const cwd = folder ?? card.folder
 
           if (!cwd || !isFolder({ path: cwd })) {
@@ -377,6 +412,11 @@ export function createHost({
           }
 
           const meta = { at: at(), actor, ...(reason ? { reason } : {}) }
+
+          if (previous) {
+            apply({ writer, decision: decideSession({ state: writer.state, ref: previous.id, task: null, meta: { ...meta, id: `${id}:detach` } }) })
+          }
+
           // A marker left by an earlier agent belongs to it, not to the one starting now.
           const attention = card.attention.filter(a => a.key !== INTERRUPTED)
           const input = {
@@ -430,18 +470,8 @@ export function createHost({
           return { task: card.id, event: 'none: duplicate' }
         }
 
-        const agent = card.agent
-
-        if (!liveTask({ card }) || !agent || agent.provider !== PROVIDER
-          || agent.host || agent.agentId || agent.paseoAgentId) {
-          throw new BoardError({ message: 'Continue in Pnyx needs an outside Claude Code session attached to a task', code: 'NO_ROUTE' })
-        }
-
-        const session = writer.state.sessions?.[sessionId({ agent })]
-
-        if (!session || session.taskId !== card.id) {
-          throw new BoardError({ message: 'the session is no longer attached to this task', code: 'SESSION_CONFLICT' })
-        }
+        const session = outsideSession({ writer, card })
+        const agent = session.agent
 
         const current = presence({ session })
 
@@ -449,9 +479,7 @@ export function createHost({
           return { task: card.id, canContinue: current.state === 'gone', folderMissing: !agent.cwd || !isFolder({ path: agent.cwd }), ...current }
         }
 
-        if (current.state !== 'gone') {
-          throw new BoardError({ message: current.state === 'present' ? 'the outside session still runs in its terminal; end it before continuing in Pnyx' : `cannot confirm the outside session has ended: ${current.detail}`, code: 'SESSION_RUNNING', help: ['End the outside session, then try Continue in Pnyx again'] })
-        }
+        requireGone({ current })
 
         const cwd = folderOf({ card: { ...card, agent } })
         const meta = { at: at(), actor, ...(reason ? { reason } : {}) }
@@ -565,7 +593,7 @@ export async function hostRequest({ host, body: raw }: {
         throw new BoardError({ message: 'folder must be an absolute path', code: 'VALIDATION_ERROR' })
       }
 
-      return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
+      return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, replacement: field({ body, name: 'replacement', optional: true }), id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
     }
 
     case 'continue':
