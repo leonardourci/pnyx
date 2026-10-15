@@ -76,9 +76,9 @@ export function HydraChat({
 
     const result = await command({ name: 'hydra', args: ['send', `--text=${args[1] ?? ''}`, '--event-id', args[2] ?? crypto.randomUUID()] })
 
-    const sent = result.sent as string | undefined
+    const queued = result.state === 'queued'
 
-    return { reply: { state: sent === 'failed' || sent === 'delivery_unknown' ? sent : 'delivered' } }
+    return { reply: { state: queued ? 'queued' : 'failed' } }
   }, [command])
   const route: ThreadPage = { ...page, card: HYDRA_CARD, entries, route: true, watching: 'unknown' }
 

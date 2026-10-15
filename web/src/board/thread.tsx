@@ -60,9 +60,37 @@ export function Thread({
       keep({ entries: page.entries })
     }
   }, [page, keep])
+
+  const scrollToLatest = () => {
+    scroller.current?.querySelector('.composer')?.scrollIntoView({ block: 'end', inline: 'nearest' })
+    atBottom.current = true; setLatest(false)
+  }
+
   useEffect(() => {
-    if (atBottom.current && scroller.current) {
-      scroller.current.scrollTop = scroller.current.scrollHeight
+    const column = scroller.current?.closest<HTMLElement>('.column-cards')
+
+    if (!column) {
+      return
+    }
+
+    const track = () => {
+      const threadBox = scroller.current?.getBoundingClientRect()
+      const viewBox = column.getBoundingClientRect()
+      atBottom.current = !!threadBox && threadBox.bottom <= viewBox.bottom + 40
+        && threadBox.bottom >= viewBox.top
+
+      if (atBottom.current) {
+        setLatest(false)
+      }
+    }
+
+    column.addEventListener('scroll', track, { passive: true })
+
+    return () => column.removeEventListener('scroll', track)
+  }, [])
+  useEffect(() => {
+    if (atBottom.current) {
+      scrollToLatest()
     } else {
       setLatest(true)
     }
@@ -81,14 +109,6 @@ export function Thread({
         aria-label="Agent conversation"
         tabIndex={0}
         ref={scroller}
-        onScroll={e => {
-          const el = e.currentTarget
-          atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-
-          if (atBottom.current) {
-            setLatest(false)
-          }
-        }}
       >
         {olderCursor !== undefined && (
           <Button
@@ -153,13 +173,7 @@ export function Thread({
           className="jump"
           aria-label="Jump to latest"
           title="Jump to latest"
-          onClick={() => {
-            if (scroller.current) {
-              scroller.current.scrollTop = scroller.current.scrollHeight
-            }
-
-            atBottom.current = true; setLatest(false)
-          }}
+          onClick={scrollToLatest}
         >
           <span aria-hidden="true">↓</span>
         </Button>

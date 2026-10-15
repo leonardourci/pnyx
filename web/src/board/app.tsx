@@ -89,7 +89,7 @@ export function App() {
   }, [view.theme])
   const columns = columnsFor({ state })
   const found = useFoundCards({ command, query, workspace })
-  const cards = findBoxCards({
+  const filteredCards = findBoxCards({
     state,
     workspace,
     tag,
@@ -97,6 +97,8 @@ export function App() {
     meaning: found.map(h => h.card),
   })
   const card = selected ? state.cards[selected] : undefined
+  const cards = card && !filteredCards.some(item => item.id === card.id)
+    ? [...filteredCards, card] : filteredCards
   const attachedSession = card ? cardSessionId({ card }) : undefined
   const title = pageTitle({ page, cards: state.cards, selected })
   useEffect(() => {
@@ -164,13 +166,13 @@ export function App() {
 
   const open = ({ id }: { id: string }) => {
     if (state.cards[id]) {
-      setSelected(current => current === id ? null : id); setPage('board')
+      setSelected(id); setPage('board')
       requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.detail .composer textarea' })))
     }
   }
 
   const close = () => {
-    const target = cards.find(c => c.id === selected) ?? cards.find(c => c.column === card?.column) ?? cards[0]; setSelected(null); requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-empty-column="${CSS.escape(card?.column ?? 'needs_you')}"]` }))
+    const target = filteredCards.find(c => c.id === selected) ?? filteredCards.find(c => c.column === card?.column) ?? filteredCards[0]; setSelected(null); requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-column-heading="${CSS.escape(card?.column ?? 'needs_you')}"]` }))
   }
 
   const createTask = ({ column, parent }: { column: string; parent?: string }) => {
@@ -350,7 +352,7 @@ export function App() {
                                   latest={latest[item.id]}
                                   selected={selected === item.id}
                                   view={view}
-                                  open={open}
+                                  open={({ id }) => selected === id ? close() : open({ id })}
                                   command={command}
                                   connected={connected}
                                   editingTitle={editingTask === item.id}

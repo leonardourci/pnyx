@@ -119,9 +119,9 @@ export function Composer({
       }
 
       const why = receipt?.detail ? ` (${receipt.detail})` : ''
-      notify({ text: receipt?.state === 'delivery_unknown' ? `Delivery unknown${why}. Check the native session before sending again.` : receipt?.state === 'failed' ? `Delivery failed${why}. Your draft is retained.` : 'Reply delivered to the route. This does not confirm it was handled.' })
+      notify({ text: receipt?.state === 'queued' ? 'Message queued for Hydra.' : receipt?.state === 'delivery_unknown' ? `Delivery unknown${why}. Check the native session before sending again.` : receipt?.state === 'failed' ? `Delivery failed${why}. Your draft is retained.` : 'Reply delivered to the route. This does not confirm it was handled.' })
 
-      if (receipt?.state === 'delivered') {
+      if ((receipt?.state === 'delivered' || receipt?.state === 'queued')) {
         if (commented) {
           setTaught(true)
 
@@ -241,7 +241,6 @@ export function Composer({
           value={draft}
           placeholder={`Reply to the agent, type / for commands, or ${label({ id: 'cancel' })} or ↑ to comment above`}
           aria-label={`Reply to ${title}`}
-          aria-describedby={thread?.route ? undefined : `reply-note-${card}`}
           aria-controls={catalogOpen ? `suggestions-${card}` : undefined}
           aria-activedescendant={active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
           onChange={e => {

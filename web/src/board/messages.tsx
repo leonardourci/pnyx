@@ -249,6 +249,19 @@ export function Messages({
     return true
   }
 
+  const pageStep = ({ target, direction }: { target: HTMLElement; direction: number }) => {
+    if (!root.current?.closest('.thread')?.contains(target)) {
+      return false
+    }
+
+    const scroller = root.current.closest<HTMLElement>('.hydra-messages, .column-cards')
+    scroller?.scrollBy({ top: scroller.clientHeight * direction })
+
+    return !!scroller
+  }
+
+  useKeyAction({ id: 'thread.pageUp', handler: ({ context }) => pageStep({ target: context.target, direction: -1 }) })
+  useKeyAction({ id: 'thread.pageDown', handler: ({ context }) => pageStep({ target: context.target, direction: 1 }) })
   useKeyAction({ id: 'thread.up', handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'up' }) })
   useKeyAction({ id: 'thread.down', handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'down' }) })
   useKeyAction({ id: 'thread.first', handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'first' }) })

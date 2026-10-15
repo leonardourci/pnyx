@@ -36,6 +36,8 @@ try {
   await eventually({ condition: 'document.querySelectorAll(".column")[2].dataset.column === "workers_on_it"', label: 'Mod+arrows move the highlighted column' })
   await focus({ selector: card }); await press({ key: 'Enter' }); await browser({ args: ['wait', 'The first pass is ready to review.'] })
   await check({ condition: 'document.activeElement.matches(".detail .composer textarea")', label: 'opening a card focuses its composer' })
+  await focus({ selector: card }); await press({ key: 'r' })
+  await check({ condition: '!!document.querySelector(".detail") && document.activeElement.matches(".detail .composer textarea")', label: 'r focuses an already-open card without closing it' })
   await fill({ label: 'Reply to Shape the first working board', value: 'Literal hjkl / ? m' }); await press({ key: 'Enter' }); await press({ key: 'j' })
   await check({ condition: 'document.querySelector(".detail .composer textarea").value === "Literal hjkl / ? m\\nj" && !document.querySelector("[role=dialog]")', label: 'typing stays literal in the composer' })
   await press({ key: 'Escape' })

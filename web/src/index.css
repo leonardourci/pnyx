@@ -809,3 +809,4 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .fast-toggle { font-size: 12px; color: var(--color-muted); padding: 3px 6px; min-height: 26px; }
 
 .fast-toggle[aria-checked=true] { color: var(--color-gold); background: var(--color-gold-wash); }
+.detail > .jump { position: sticky; bottom: 12px; }
