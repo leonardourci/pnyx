@@ -1,4 +1,3 @@
-// Hydra's work records. No I/O, timers or inferred state transitions.
 import { BoardError, EVENT_VERSION, TASK_STATES, type BoardColumn, type BoardConfig, type BoardEvent, type BoardState, type Column, type HydraEvent, type TaskStatus } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { assignDefined } from './tasks.ts'
@@ -21,7 +20,6 @@ export function fallbackColumn({ columns }: { columns: BoardColumn[] }): Column 
   return (columns.find(c => c.role === 'parked') ?? columns[0]!).id
 }
 
-// Refreshes the given cards, or every card when a board-wide event changed the rules.
 export function refreshTasks({ state, ids }: {
   state: BoardState
   ids?: (string | null | undefined)[]
@@ -64,7 +62,6 @@ export function refreshTasks({ state, ids }: {
         terminal: session?.terminal && { ...session.terminal },
       },
     })
-    // Hydra's own open prompts, so its chat can answer them.
     hydra.attention = session ? [...session.attention] : []
     hydra.hidden = true
   }

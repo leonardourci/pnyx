@@ -1,7 +1,3 @@
-// Chooses the route a reply to a card takes, from facts its sources recorded: a
-// Firstmate task replies through Firstmate's send command; any other agent
-// session through the terminal its hooks found. Pure: delivery and the live
-// checks before it happen in the integrations.
 import type { Card, TerminalFacts } from './model.ts'
 import { localPaseoUrl } from './paseo.ts'
 
@@ -22,7 +18,6 @@ export const TERMINAL_FIELDS: Record<keyof TerminalFacts, RegExp> = {
   herdrPane: SAFE,
 }
 
-// The recorded facts that have the accepted shape; undefined when none do.
 export function terminalFacts({ value }: { value: unknown }): TerminalFacts | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return undefined
@@ -85,8 +80,6 @@ function host({ facts }: { facts: TerminalFacts }): TerminalHost | undefined {
   return undefined
 }
 
-// The route for a reply to this card, or the reason there is none. homes are the
-// canonical Firstmate homes configured for replies.
 export function replyRoute(
   { card, homes }: { card: Card; homes: string[] },
 ): { route: ReplyRoute } | { reason: string } {
@@ -114,7 +107,6 @@ export function replyRoute(
     return { reason: "A subagent takes input through its parent session's card." }
   }
 
-  // A Paseo agent takes messages through its daemon, like Paseo's own composer.
   if (card.agent.paseoAgentId && card.agent.paseoUrl) {
     try {
       return { route: { kind: 'paseo-agent', agent: card.agent.paseoAgentId, url: localPaseoUrl({ url: card.agent.paseoUrl }) } }
