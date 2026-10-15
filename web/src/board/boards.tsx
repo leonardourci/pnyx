@@ -52,7 +52,7 @@ export function BoardTabs({ command, connected, notify }: {
         >
           <InlineTitle
             value={b.name}
-            label="Board name"
+            label={`Rename board ${b.name}`}
             doubleClick
             startEditing={renaming}
             save={({ title }) => command({ name: 'boards', args: ['rename', b.id, title] }).then(r => {

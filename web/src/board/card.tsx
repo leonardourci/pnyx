@@ -9,7 +9,7 @@ import { Resize } from '../components/ui/resize.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
 import { Harness, SettingChips } from './agent-settings.tsx'
-import { agentActivity, needsAgent, receiptLabel, safeLink, taskLabel, visibleParent } from './view.ts'
+import { agentActivity, receiptLabel, safeLink, taskLabel, visibleParent } from './view.ts'
 
 export function Links({ links }: { links: Link[] }) {
   return (
@@ -134,7 +134,6 @@ export function BoardCard({
           </Button>
         )}
         {!parent && card.parentId && <span className="muted small">Child task</span>}
-        {needsAgent({ card }) && <Button className="start" onClick={() => open({ id: card.id })}>Start worker</Button>}
         {card.attention.slice(0, 1).map(a => <div key={a.key} className="request">{a.text ?? a.kind}</div>)}
         {match?.snippets[0] && <p className="search-match">{match.snippets[0].snippet}</p>}
         {latest && <LastMessage message={latest} />}
