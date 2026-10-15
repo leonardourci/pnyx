@@ -1,31 +1,40 @@
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import { claudeProvider, type QueryFn } from './claude.ts'
+import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
 import type { HostedSession, PermissionDecision } from './provider.ts'
+import { terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained, postLine } from '../cli/commands.ts'
 import { permissionEvent } from '../core/permissions.ts'
 import { freeTask } from '../cli/start.ts'
-import { decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { HydraError, type AgentRef, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
+import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
+import { HydraError, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
 import { harnessControls } from '../core/control.ts'
-import { INTERRUPTED, sessionId } from '../core/tasks.ts'
+import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
 import { pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
 
 export type { QueryFn } from './claude.ts'
 
 export interface Host {
-  start({ task, prompt, folder, settings, id, actor, reason }: {
+  start({ task, prompt, folder, settings, id, actor, reason, replacement }: {
     task: string
     prompt: string
     folder?: string
+    replacement?: string
     settings: AgentSettings
     id: string
     actor: string
     reason?: string
   }): Promise<Record<string, unknown>>
+  continue({ task, id, actor, reason, check }: {
+    task: string
+    id: string
+    actor: string
+    reason?: string
+    check?: boolean
+  }): Record<string, unknown>
   send({ card, text, actor }: { card: string; text: string; actor: string }): void
   set({ card, setting, value, actor }: {
     card: string
@@ -104,10 +113,14 @@ interface Live {
   idle?: ReturnType<typeof setTimeout>
 }
 
-export function createHost({ hydraId, query, spawnCodex, changed }: {
+export function createHost({
+  hydraId, query, spawnCodex, changed,
+  presence = ({ session }) => terminalPresence({ session, verifyProcess: true }),
+}: {
   hydraId: string
   query?: QueryFn
   spawnCodex?: SpawnCodex
+  presence?({ session }: { session: AgentSession }): Presence
   changed(): void
 }): Host {
   const providers = { 'claude-code': claudeProvider({ query }), codex: codexProvider({ spawnCodex }) }
@@ -187,7 +200,7 @@ export function createHost({ hydraId, query, spawnCodex, changed }: {
     const { cwd } = card.agent
 
     if (!cwd || !isFolder({ path: cwd })) {
-      throw new HydraError({ message: `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`, code: 'FOLDER_MISSING', help: [`Run \`pnyx-axi task detach ${card.id}\`, then \`pnyx-axi task start ${card.id}\` to start fresh from the brief`] })
+      throw new HydraError({ message: `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`, code: 'FOLDER_MISSING', help: [card.agent.host === 'pnyx' ? `Run \`pnyx-axi task detach ${card.id}\`, then \`pnyx-axi task start ${card.id} --folder <absolute path>\` to start fresh from the brief` : `Run \`pnyx-axi task start ${card.id} --via pnyx --replace-session ${sessionId({ agent: card.agent })} --folder <absolute path>\` to start fresh from the brief`] })
     }
 
     return cwd
@@ -224,6 +237,50 @@ export function createHost({ hydraId, query, spawnCodex, changed }: {
     }
 
     return card as Card & { agent: AgentRef }
+  }
+
+  const outsideSession = ({ writer, card }: { writer: Writer; card: Card }): AgentSession => {
+    const agent = card.agent
+
+    if (!liveTask({ card }) || !agent || !['claude-code', 'codex'].includes(agent.provider)
+      || agent.host || agent.agentId || agent.paseoAgentId) {
+      throw new HydraError({ message: 'Continue in Pnyx needs an outside Claude Code or Codex session attached to a task', code: 'NO_ROUTE' })
+    }
+
+    const session = writer.state.sessions?.[sessionId({ agent })]
+
+    if (!session || session.taskId !== card.id) {
+      throw new HydraError({ message: 'the session is no longer attached to this task', code: 'SESSION_CONFLICT' })
+    }
+
+    return session
+  }
+
+  const requireGone = ({ current }: { current: Presence }) => {
+    if (current.state !== 'gone') {
+      throw new HydraError({ message: current.state === 'present' ? 'the outside session still runs in its terminal; end it before continuing in Pnyx' : `cannot confirm the outside session has ended: ${current.detail}`, code: 'SESSION_RUNNING', help: ['End the outside session, then try Continue in Pnyx again'] })
+    }
+  }
+
+  const startTarget = ({ writer, ref, replacement }: {
+    writer: Writer
+    ref: string
+    replacement?: string
+  }): Card => {
+    if (!replacement) {
+      return freeTask({ state: writer.state, ref })
+    }
+
+    const card = findCard({ state: writer.state, ref })
+    const previous = outsideSession({ writer, card })
+
+    if (previous.id !== replacement) {
+      throw new HydraError({ message: 'the task has a different session now; reopen its card before starting fresh', code: 'SESSION_CONFLICT' })
+    }
+
+    requireGone({ current: presence({ session: previous }) })
+
+    return card
   }
 
   // Interrupted turns wait for a new message from the owner or Hydra.
@@ -427,14 +484,14 @@ export function createHost({ hydraId, query, spawnCodex, changed }: {
   }
 
   return {
-    start: async ({ task, prompt, folder, settings, id, actor, reason }) => {
+    start: async ({ task, prompt, folder, settings, id, actor, reason, replacement }) => {
       const { target, duplicate } = write({
         fn: ({ writer }) => {
           const target = findCard({ state: writer.state, ref: task })
           const duplicate = `${id}:attach` in writer.state.eventIds
 
           if (!duplicate) {
-            freeTask({ state: writer.state, ref: task })
+            startTarget({ writer, ref: task, replacement })
           }
 
           return { target, duplicate }
@@ -480,7 +537,7 @@ export function createHost({ hydraId, query, spawnCodex, changed }: {
               return { card, duplicate: true as const }
             }
 
-            freeTask({ state: writer.state, ref: task })
+            startTarget({ writer, ref: task, replacement })
 
             if ((folder ?? card.folder) !== cwd) {
               throw new HydraError({ message: 'the task folder changed while its agent was starting; retry the start', code: 'CONFLICT' })
@@ -491,6 +548,11 @@ export function createHost({ hydraId, query, spawnCodex, changed }: {
             }
 
             const meta = { at: at(), actor, ...(reason ? { reason } : {}) }
+
+            if (replacement) {
+              apply({ writer, decision: decideSession({ state: writer.state, ref: replacement, task: null, meta: { ...meta, id: `${id}:detach` } }) })
+            }
+
             // A marker left by an earlier agent belongs to it, not to the one starting now.
             const attention = card.attention.filter(a => a.key !== INTERRUPTED)
             const input = {
@@ -542,6 +604,37 @@ export function createHost({ hydraId, query, spawnCodex, changed }: {
         starting.delete(target.id)
       }
     },
+
+    continue: ({ task, id, actor, reason, check }) => write({
+      fn: ({ writer }) => {
+        const card = findCard({ state: writer.state, ref: task })
+
+        if (!check && `${id}:continue` in writer.state.eventIds) {
+          return { task: card.id, event: 'none: duplicate' }
+        }
+
+        const session = outsideSession({ writer, card })
+        const agent = session.agent
+
+        const current = presence({ session })
+
+        if (check) {
+          return { task: card.id, canContinue: current.state === 'gone', folderMissing: !agent.cwd || !isFolder({ path: agent.cwd }), ...current }
+        }
+
+        requireGone({ current })
+
+        const cwd = folderOf({ card: { ...card, agent } })
+        const meta = { at: at(), actor, ...(reason ? { reason } : {}) }
+        apply({ writer, decision: decidePush({ state: writer.state, key: card.key, input: { agent: { ...agent, host: 'pnyx', resume: true, ...(agent.provider === 'claude-code' && !agent.transcriptPath ? { transcriptPath: transcriptPath({ cwd, session: agent.sessionId }) } : {}) }, terminal: {}, activity: 'finished', source: { adapter: 'pnyx', objectId: agent.sessionId, observedAt: meta.at }, attention: card.attention.filter(a => !a.key.startsWith('hook:')) }, meta: { ...meta, id: `${id}:continue` } }) })
+
+        if (card.outcome?.source === 'hooks') {
+          apply({ writer, decision: decideOutcome({ state: writer.state, ref: card.id, outcome: null, source: 'hooks', meta: { ...meta, id: `${id}:outcome` } }) })
+        }
+
+        return { task: card.id, agent: { harness: agent.provider === 'codex' ? 'codex' : 'claude', session: agent.sessionId, folder: agent.cwd, host: 'pnyx' }, help: [`Send a message with \`pnyx-axi reply ${card.id} --text <text>\` to resume the session in Pnyx`] }
+      },
+    }),
 
     send,
 
@@ -717,7 +810,7 @@ export async function hostRequest({ host, body: raw }: {
         throw new HydraError({ message: 'folder must be an absolute path', code: 'VALIDATION_ERROR' })
       }
 
-      return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
+      return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, replacement: field({ body, name: 'replacement', optional: true }), id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
     }
 
     case 'permission': {
@@ -729,6 +822,8 @@ export async function hostRequest({ host, body: raw }: {
 
       return host.permission({ task: field({ body, name: 'task' })!, request: field({ body, name: 'request' })!, choice, actor, reason: field({ body, name: 'reason', optional: true }), details: field({ body, name: 'details', optional: true }) })
     }
+    case 'continue':
+      return host.continue({ task: field({ body, name: 'task' })!, id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }), check: body.check === true })
 
     case 'send':
       host.send({ card: field({ body, name: 'card' })!, text: field({ body, name: 'text' })!, actor })
@@ -748,6 +843,6 @@ export async function hostRequest({ host, body: raw }: {
     }
 
     default:
-      throw new HydraError({ message: 'action must be start, send, set or permission', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'action must be start, continue, send, set or permission', code: 'VALIDATION_ERROR' })
   }
 }

@@ -134,10 +134,11 @@ const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
   + `Start with \`pnyx-axi task list --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`
 
 export async function startTask({
-  hydraId, task, via, kind, harness, prompt, folder, url, meta, connect,
+  hydraId, task, via, kind, harness, prompt, folder, replacement, url, meta, connect,
 }: {
   hydraId: string
   task: string
+  replacement?: string
   via?: string
   kind?: string
   harness?: string
@@ -152,6 +153,10 @@ export async function startTask({
   const agent = via === 'firstmate' || via === 'command' || (!via && state.config?.hydra.kind === 'firstmate')
     ? undefined : agentFor({ state, hydraId, kind: kind ?? 'default', harness })
   const how = chooseVia({ state, via })
+
+  if (replacement && how !== 'pnyx') {
+    throw new HydraError({ message: 'starting fresh from an outside session uses Pnyx', code: 'VALIDATION_ERROR' })
+  }
 
   if (how === 'firstmate') {
     return askFirstmate({ hydraId, task, prompt, meta })
@@ -175,6 +180,7 @@ export async function startTask({
       body: {
         action: 'start',
         task: card.id,
+        ...(replacement ? { replacement } : {}),
         prompt: taskPrompt({ hydraId, card, prompt }),
         ...(canonical({ path: folder }) ? { folder: canonical({ path: folder }) } : {}),
         settings: Object.fromEntries(Object.entries(settings).filter(([, v]) => v)),

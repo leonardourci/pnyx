@@ -84,10 +84,13 @@ function host({ facts }: { facts: TerminalFacts }): TerminalHost | undefined {
 export function replyRoute(
   { card, homes }: { card: Card; homes: string[] },
 ): { route: ReplyRoute } | { reason: string } {
+  if (card.agent?.host === 'pnyx' && !card.agent.agentId) {
+    return { route: { kind: 'pnyx' } }
+  }
+
   const firstmate = card.sourceRefs.find(r => r.adapter === 'firstmate')
 
-  // Firstmate's own send command stays authoritative for its work, so a task card
-  // never falls back to typing into the worker's terminal.
+  // Outside workers on Firstmate tasks keep replies through the home's own send command.
   if (firstmate) {
     if (!firstmate.instanceId || firstmate.objectId === '@home') {
       return { reason: 'A Firstmate home takes replies through its task cards.' }
@@ -106,11 +109,6 @@ export function replyRoute(
 
   if (card.agent.agentId) {
     return { reason: "A subagent takes input through its parent session's card." }
-  }
-
-  // The Pnyx server runs this agent, so a message reaches it whether or not its process is up.
-  if (card.agent.host === 'pnyx') {
-    return { route: { kind: 'pnyx' } }
   }
 
   if (card.agent.paseoAgentId && card.agent.paseoUrl) {

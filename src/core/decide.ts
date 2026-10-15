@@ -341,7 +341,7 @@ function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
   }
 
   const fields = ['agentId', 'agentType', 'cwd', 'transcriptPath', 'paseoAgentId', 'paseoUrl'] as const
-  onlyKeys({ value, allowed: ['provider', 'sessionId', 'host', ...fields], what: 'agent' })
+  onlyKeys({ value, allowed: ['provider', 'sessionId', 'host', 'resume', ...fields], what: 'agent' })
   const agent: AgentRef = { provider: text({ value: value.provider, what: 'agent.provider' }), sessionId: text({ value: value.sessionId, what: 'agent.sessionId' }) }
 
   for (const field of fields) {
@@ -358,6 +358,14 @@ function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
     }
 
     agent.host = 'pnyx'
+  }
+
+  if (value.resume !== undefined) {
+    if (value.resume !== true) {
+      throw invalid({ message: 'agent.resume must be true' })
+    }
+
+    agent.resume = true
   }
 
   return agent
