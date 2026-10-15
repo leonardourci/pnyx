@@ -1,10 +1,3 @@
-// Reads a Firstmate task status log (`state/<task>.status`): append-only lines
-// shaped `<verb> [key=<slug>] [at=<epoch>]: <note>`. Pure, so the same log always
-// folds to the same open decisions. Follows Firstmate's own keyed-decision fold
-// (bin/fm-classify-lib.sh): needs-decision and blocked open a key, resolved and
-// captain-held close it, a ship or scout terminal line closes every key, and a
-// line without a key uses the key "default".
-
 export interface StatusLine {
   verb: string
   note: string
@@ -15,8 +8,7 @@ export interface StatusLine {
   colon: boolean
 }
 
-// A status line kept as a card note: the decision asked or answered, or the report
-// of finished work. line is the raw line, which names the note.
+// The raw line is the stable identity of a status note.
 export interface StatusNote {
   kind: 'decision' | 'summary'
   text: string
@@ -35,32 +27,6 @@ const CORR = /^corr=[0-9A-Fa-f]{16}$/
 // A reserved key may only be opened or closed by a note in its owner's vocabulary.
 const RESERVED_PREFIXES = ['pending-reply-']
 
-// Drops the worker-written `[at=...]` stamp runs that sit before the first colon,
-// so a readable time like [at=10:30] cannot move the head/note boundary.
-function unstamped({ line }: { line: string }): string {
-  let keep = ''
-  let rest = line
-
-  for (;;) {
-    const tag = rest.indexOf('[at=')
-
-    if (tag < 0 || rest.indexOf(']', tag) < 0) {
-      break
-    }
-
-    const before = rest.slice(0, tag)
-
-    if (before.includes(':')) {
-      break
-    }
-
-    keep += before.trimEnd()
-    rest = rest.slice(rest.indexOf(']', tag) + 1)
-  }
-
-  return keep + rest
-}
-
 function verbOf({ head }: { head: string }): string {
   const words = head.split('[')[0]!.trim()
 
@@ -73,20 +39,17 @@ function verbOf({ head }: { head: string }): string {
   return [first, ...others.filter(w => !CORR.test(w))].join(' ')
 }
 
-function noteHeadKey({ note }: { note: string }): string | undefined {
-  return /^\[key=([^\]]*)\]/.exec(note)?.[1]
-}
-
 export function parseStatusLine({ line }: { line: string }): StatusLine {
-  const text = unstamped({ line })
-  const colon = text.includes(':')
-  const head = colon ? text.slice(0, text.indexOf(':')) : text
-  let note = colon ? text.slice(text.indexOf(':') + 1).trimStart() : text
+  // A complete header timestamp may contain colons; timestamps in the note stay literal.
+  const separator = [...line.matchAll(/\[at=[^\]]*\]|:/g)].find(token => token[0] === ':')?.index ?? -1
+  const colon = separator >= 0
+  const head = (colon ? line.slice(0, separator) : line).replace(/\s*\[at=[^\]]*\]/g, '')
+  let note = colon ? line.slice(separator + 1).trimStart() : head
   const before = /\[key=([^\]]*)\]/.exec(head)?.[1]
   let key: string | null = before ?? 'default'
 
   if (before === undefined && colon) {
-    const atHead = noteHeadKey({ note })
+    const atHead = /^\[key=([^\]]*)\]/.exec(note)?.[1]
 
     if (atHead !== undefined) {
       key = atHead
@@ -101,7 +64,7 @@ export function parseStatusLine({ line }: { line: string }): StatusLine {
     key = null
   }
 
-  return { verb: verbOf({ head }), note, key, declares: colon || /\[key=.*\]/.test(text), colon }
+  return { verb: verbOf({ head }), note, key, declares: colon || /\[key=.*\]/.test(head), colon }
 }
 
 function transitionAllowed({ key, note }: { key: string; note: string }): boolean {
@@ -110,8 +73,7 @@ function transitionAllowed({ key, note }: { key: string; note: string }): boolea
   return prefix === undefined || (note.startsWith(prefix) && note.includes(':'))
 }
 
-// The decisions still open after the whole log, oldest-opened first. kind is the
-// task's meta kind; only ship and scout terminal lines close every decision.
+// Only ship and scout terminal lines close every decision.
 export function openDecisions({ log, kind }: { log: string; kind: string }): OpenDecision[] {
   const open = new Map<string, OpenDecision>()
 
@@ -169,8 +131,7 @@ export function latestActivity({ log }: { log: string }): string | undefined {
 
 const NOTE_VERBS: Record<string, StatusNote['kind']> = { 'needs-decision': 'decision', resolved: 'decision', done: 'summary' }
 
-// needs-decision, resolved and done lines with their text, oldest first. A
-// numeric [at=<epoch>] stamp gives the note its time.
+// Only numeric epoch stamps supply a note timestamp.
 export function statusNotes({ log }: { log: string }): StatusNote[] {
   const notes: StatusNote[] = []
 
@@ -178,7 +139,7 @@ export function statusNotes({ log }: { log: string }): StatusNote[] {
     const line = parseStatusLine({ line: raw })
     const kind = NOTE_VERBS[line.verb]
 
-    // A malformed key moves nothing in Firstmate's fold, so it records nothing here.
+    // Malformed keys cannot change decisions or produce notes.
     if (!kind || !line.colon || line.key === null || !line.note.trim()) {
       continue
     }

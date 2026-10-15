@@ -49,6 +49,30 @@ test("status lines follow Firstmate's key grammar", () => {
   assert.equal(parseStatusLine({ line: 'just prose' }).declares, false)
 })
 
+test('status headers ignore complete timestamps and preserve note text', () => {
+  for (const line of [
+    'blocked [at=10:30] [key=api] [at=<epoch>]: [at=11:00] waiting: retry later',
+    'blocked\t[at=10:30] [at=11:00] [key=api]: [at=11:00] waiting: retry later',
+    'blocked [key=api]: [at=11:00] waiting: retry later',
+  ]) {
+    assert.deepEqual(parseStatusLine({ line }), {
+      verb: 'blocked',
+      note: '[at=11:00] waiting: retry later',
+      key: 'api',
+      declares: true,
+      colon: true,
+    })
+  }
+
+  assert.equal(parseStatusLine({ line: 'blocked [at=10:30: waiting' }).note, '30: waiting')
+  assert.equal(parseStatusLine({ line: 'working [at=[key=hidden]]' }).declares, false)
+  assert.equal(parseStatusLine({ line: 'resolved: [key=api] [key=later] keep this' }).note, '[key=later] keep this')
+  assert.equal(parseStatusLine({ line: 'resolved [key=api]: [key=later] keep this' }).note, '[key=later] keep this')
+  assert.equal(parseStatusLine({ line: 'resolved: [key=bad slug] keep this' }).note, '[key=bad slug] keep this')
+  assert.equal(parseStatusLine({ line: 'resolved corr=invalid [key=api]: keep this' }).verb, 'resolved corr=invalid')
+  assert.equal(parseStatusLine({ line: 'resolved corr=0123456789abcdef corr=fedcba9876543210 [key=api]: keep this' }).verb, 'resolved')
+})
+
 test('the decision fold opens, closes and clears keys like Firstmate', () => {
   const log = [
     'needs-decision [key=a]: first',

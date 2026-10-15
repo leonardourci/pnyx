@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
-import { canonical } from '../../cli/commands.ts'
 import { basename, join } from 'node:path'
 import { BoardError, type FirstmateRecord, type SourceNote } from '../../core/model.ts'
+import { canonical } from '../../store/paths.ts'
 import { TERMINAL_FIELDS } from '../../core/route.ts'
 import { latestActivity, latestLine, openDecisions, statusNotes, type OpenDecision } from './status.ts'
 

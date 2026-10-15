@@ -4,7 +4,9 @@ import { decidePush, decideSession, findCard, type Meta } from '../../core/decid
 import { BoardError, type AgentConfig, type AgentRef } from '../../core/model.ts'
 import { paseoUrl } from '../../core/paseo.ts'
 import { sessionId } from '../../core/tasks.ts'
-import { canonical, drainSpool, type Output } from '../../cli/commands.ts'
+import { drainSpool } from '../hooks/ingest.ts'
+import type { Output } from '../../cli/commands.ts'
+import { canonical } from '../../store/paths.ts'
 import { pnyxHome, withWriter } from '../../store/board-store.ts'
 import { openPaseo, type Connect } from './client.ts'
 

@@ -12,8 +12,10 @@ import { resolveHome } from '../integrations/firstmate/home.ts'
 import { fmNote } from '../integrations/firstmate/reply.ts'
 import { HARNESSES, createPaseoAgent, startAgent, type Harness } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
+import { drainSpool } from '../integrations/hooks/ingest.ts'
+import { canonical } from '../store/paths.ts'
 import { loadBoard, pnyxHome, withWriter, type Writer } from '../store/board-store.ts'
-import { canonical, drainSpool, type Output } from './commands.ts'
+import type { Output } from './commands.ts'
 
 export const VIAS = ['paseo', 'firstmate', 'command'] as const
 type Via = (typeof VIAS)[number]
