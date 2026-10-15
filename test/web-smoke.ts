@@ -325,6 +325,25 @@ try {
   await click({ role: 'button', name: 'Undo' }); await browser({ args: ['wait', 'Column and its cards restored.'] })
   const restored = loadBoard({ board: 'default' }).state
   assert.equal(restored.cards[fixture.state.keys.layout!]!.manualColumn, later!.id)
+  // An agent's own question shows in its conversation with the options its terminal shows.
+  withWriter({
+    board: 'default',
+    fn: ({ writer: w }) => {
+      const questions = [{ question: 'Which database?', header: 'DB', options: [{ label: 'Postgres', description: 'relational' }, { label: 'SQLite' }] }]
+      const input = {
+        agent: { provider: 'claude-code', sessionId: 'ask' },
+        terminal: { tty: '/dev/ttys042', pid: '4242', program: 'tmux', tmux: '/tmp/tmux-1/default', tmuxPane: '%3' },
+        attention: [{ kind: 'question', key: 'hook:tool:AskUserQuestion', blocking: true, text: 'Which database?', questions }],
+      }
+      const d = decidePush({ state: w.state, key: 'coverage', input, meta: layoutMeta })
+      assert.ok('event' in d); w.append({ event: d.event })
+    },
+  })
+  await click({ role: 'button', name: 'Open conversation for Check the empty-state experience' }); await browser({ args: ['wait', 'Asking you'] })
+  await check({ condition: 'document.querySelector(".ask legend").textContent.includes("Which database?") && document.querySelectorAll(".ask .ask-option").length === 2 && document.querySelector(".ask button[type=submit]").disabled', label: 'an agent question shows inline with its options' })
+  await click({ role: 'button', name: 'Postgres relational' })
+  await check({ condition: 'document.querySelector(".ask .ask-option[aria-pressed=true]").textContent.startsWith("Postgres") && !document.querySelector(".ask button[type=submit]").disabled', label: 'picking an option enables the answer' })
+  await screenshot({ name: 'inline-question.png' })
   const consoleOutput = await browser({ args: ['console'] }); assert.doesNotMatch(consoleOutput, /(?:TypeError|ReferenceError|Uncaught)/)
   process.stdout.write(`Browser smoke passed; screenshots: ${evidence}\n`)
 } finally {

@@ -172,3 +172,17 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .board-tabs form { display: flex; align-items: center; gap: 4px; }.board-tabs form .input { width: 140px; }
 .integrations dd { display: flex; flex-direction: column; gap: 3px; }.integrations dd .ok { color: var(--color-green); }.integrations code { overflow-wrap: anywhere; font-size: .95em; }
 .settings-box.integrations > .button { margin-top: 14px; }
+/* An agent's own open prompt, answered in its conversation with the options its terminal shows. */
+.ask { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; padding: 12px 14px; border: 1px solid var(--color-gold-line); border-radius: 12px; background: var(--color-gold-wash); }
+.ask.answered { border-color: var(--color-line); background: transparent; }
+.ask > p { white-space: pre-wrap; font-size: .8em; }
+.ask-title { display: flex; align-items: center; gap: 6px; font-size: .72em; font-weight: 550; color: var(--color-gold); }
+.ask form, .ask-choices { display: flex; flex-direction: column; gap: 10px; }
+.ask-question { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.ask-question legend { padding: 0; margin-bottom: 7px; font: var(--text-chat)/1.5 var(--font-chat); color: var(--color-ink); }
+.ask-header { margin-right: 7px; padding: 1px 6px; border-radius: 4px; background: var(--color-subtle); color: var(--color-gold); font: .7em var(--font-sans); text-transform: uppercase; letter-spacing: .06em; vertical-align: middle; }
+.ask-options { display: flex; flex-direction: column; gap: 5px; }
+.ask-option { justify-content: flex-start; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 10px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); text-align: left; }
+.ask-option[aria-pressed=true] { border-color: var(--color-gold); color: var(--color-gold); }
+.ask-label { font-size: .78em; }
+.ask-description { font-size: .68em; color: var(--color-muted); }

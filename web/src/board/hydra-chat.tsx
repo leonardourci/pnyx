@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BoardState } from '../../../src/core/model.ts'
-import { boardConfig } from '../../../src/core/hydra.ts'
+import { HYDRA_CARD, boardConfig } from '../../../src/core/hydra.ts'
 import { Button, Textarea, useBusy } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
+import { InlineQuestions } from './questions.tsx'
 
 // The board's Hydra chat, docked beside the columns: what was sent to Hydra, newest
 // at the bottom, and the composer under it. Enter sends, Shift+Enter adds a line.
@@ -54,6 +55,14 @@ export function HydraChat({ state, command, connected, openTask, notify }: {
             <time>{new Date(m.at).toLocaleString()}</time>
           </article>
         )) : <p className="empty">No messages yet. Write to Hydra here, or use Send to Hydra on a task.</p>}
+        {state.cards[HYDRA_CARD] && (
+          <InlineQuestions
+            card={state.cards[HYDRA_CARD]}
+            command={command}
+            connected={connected}
+            notify={notify}
+          />
+        )}
         <div ref={end} />
       </div>
       <form

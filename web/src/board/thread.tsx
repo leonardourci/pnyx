@@ -7,6 +7,7 @@ import { joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 import { ComposerSettings } from './agent-settings.tsx'
 import { Composer } from './composer.tsx'
 import { Messages } from './messages.tsx'
+import { InlineQuestions } from './questions.tsx'
 import { agentActivity } from './view.ts'
 import type { Command } from './connection.ts'
 
@@ -122,6 +123,12 @@ export function Thread({
             Agent is running
           </p>
         )}
+        <InlineQuestions
+          card={card}
+          command={command}
+          connected={connected}
+          notify={notify}
+        />
         <Composer
           card={card.id}
           title={card.title}
