@@ -1,8 +1,6 @@
-import { readdirSync } from 'node:fs'
-import { join } from 'node:path'
 import { commands } from '../cli/commands.ts'
 import { hydraConfig } from '../core/hydra.ts'
-import { loadHydra, pnyxHome } from '../store/hydra-store.ts'
+import { hydraIds, loadHydra } from '../store/hydra-store.ts'
 import { projectsFor } from '../projects/read.ts'
 import { liveTask } from '../core/tasks.ts'
 
@@ -18,16 +16,6 @@ export interface HydraSummary {
   name: string
   hydra: string
   projects: HydraProjectSummary[]
-}
-
-export function hydraIds(): string[] {
-  try {
-    return readdirSync(join(pnyxHome(), 'boards'), { withFileTypes: true }).filter(d => d.isDirectory())
-      .map(d => d.name)
-      .sort()
-  } catch {
-    return []
-  }
 }
 
 // Unreadable Hydras remain reachable so opening one reports the error.

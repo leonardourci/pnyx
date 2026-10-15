@@ -243,6 +243,12 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
       card.activity = activity
     }
 
+    if (activity === 'ended') {
+      card.stoppedAt ??= event.at
+    } else if (typeof activity === 'string' && (source?.adapter === 'hooks' || source?.adapter === 'pnyx' || !card.sessionActivity)) {
+      delete card.stoppedAt
+    }
+
     // A hosted agent's activity comes from the host as its session's own.
     if ((source?.adapter === 'hooks' || source?.adapter === 'pnyx') && typeof activity === 'string') {
       card.sessionActivity = activity
@@ -316,6 +322,10 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
     } else if (event.type === 'card.outcome') {
       if (event.data.after) {
         card.outcome = event.data.after
+
+        if (event.data.after.state === 'ended') {
+          card.stoppedAt ??= event.at
+        }
       } else {
         delete card.outcome
       }

@@ -9,7 +9,7 @@ const bin = join(import.meta.dirname, '../dist/cli/pnyx-axi.js')
 
 function fixture() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-task-cli-'))
-  const dir = join(home, 'boards/default')
+  const dir = join(home, 'hydras/default')
   const env = { ...process.env, PNYX_HOME: home, PNYX_SEMANTIC: 'off' }
   const run = ({ args }: { args: string[] }) => execFileSync(process.execPath, [bin, ...args], { env, encoding: 'utf8' })
 
@@ -134,4 +134,33 @@ test('Done delay is a validated per-Hydra setting and CLI reads expire only Done
   assert.match(f.run({ args: ['oracle', 'Retained'] }), /Retained result/)
   f.run({ args: ['task', 'unhide', 'done'] })
   assert.match(f.run({ args: ['task', 'list'] }), /Retained result/)
+})
+
+test('new Hydra columns and tasks have UUIDs, role aliases work, and card hide overrides validate', () => {
+  const f = fixture()
+  f.run({ args: ['hydra', 'create', 'default', '--done-after-hours', '72'] })
+  const columns = f.state().config.columns
+  assert.equal(new Set(columns.map((c: { id: string }) => c.id)).size, 5)
+
+  for (const column of columns) {
+    assert.match(column.id, /^custom:[0-9a-f-]{36}$/)
+  }
+
+  f.run({ args: ['task', 'create', '--key', 'work', '--title', 'Work', '--event-id', 'create-once'] })
+  const id = f.state().keys.work
+  assert.match(id, /^task-[0-9a-f-]{36}$/)
+  f.run({ args: ['task', 'create', '--key', 'work', '--title', 'Work', '--event-id', 'create-once'] })
+  assert.equal(f.state().keys.work, id)
+  f.run({ args: ['move', id, 'done', '--actor', 'web'] })
+  assert.equal(f.state().cards[id].column, columns.find((c: { role?: string }) => c.role === 'done').id)
+  f.run({ args: ['task', 'hide-after', id, '1', '--event-id', 'one-hour'] })
+  f.run({ args: ['task', 'hide-after', id, '1', '--event-id', 'one-hour'] })
+  assert.equal(f.state().cards[id].doneAfterHours, 1)
+  f.run({ args: ['task', 'hide-after', id, '0'] })
+  assert.equal(f.state().cards[id].doneAfterHours, 0)
+  f.run({ args: ['task', 'hide-after', id, 'default'] })
+  assert.equal(f.state().cards[id].doneAfterHours, undefined)
+  assert.throws(() => f.run({ args: ['task', 'hide-after', id, '-1'] }))
+  assert.throws(() => f.run({ args: ['task', 'hide-after', id, 'NaN'] }))
+  assert.throws(() => f.run({ args: ['task', 'hide-after', id, ''] }))
 })

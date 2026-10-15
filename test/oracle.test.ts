@@ -1,3 +1,4 @@
+import { fixtureCli } from './cli-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
@@ -113,7 +114,7 @@ const cards = ({ out }: { out: string }) => [...out.matchAll(/^ {2}- card: (\S+)
 function hydraId() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-oracle-'))
   const env = { ...process.env, PNYX_HOME: home }
-  const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const run = fixtureCli({ home, execute: ({ args }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) })
   const fails = ({ args, code }: { args: string[]; code: string }) =>
     assert.throws(() => run({ args: [...args] }), (error: { stdout: string }) => {
       assert.match(error.stdout, new RegExp(`^code: ${code}$`, 'm'))
@@ -171,7 +172,7 @@ test('search finds titles, links, notes and transcript text, ranked one per card
   assert.match(status, /^index: current through seq 5$/m)
   assert.match(status, /^semantic: "off: run `pnyx-axi settings set oracle.semantic on` to turn it on"$/m)
   assert.match(status, /^ {2}tracked: 1$/m)
-  assert.equal(statSync(join(home, 'boards', 'default', 'search.db')).mode & 0o777, 0o600)
+  assert.equal(statSync(join(home, 'hydras', 'default', 'search.db')).mode & 0o777, 0o600)
 })
 
 test("a Codex session's messages are searchable", () => {
@@ -243,7 +244,7 @@ test('a replaced or shortened transcript is read again from the start', () => {
 test('rebuild recreates the index from the sources', () => {
   const { run, home } = hydraId()
   run({ args: ['oracle', 'reverted'] })
-  const db = join(home, 'boards', 'default', 'search.db')
+  const db = join(home, 'hydras', 'default', 'search.db')
   writeFileSync(db, 'not a database')
   assert.match(run({ args: ['oracle', 'status'] }), /^index: "stale: /m)
   assert.match(run({ args: ['oracle', 'reverted'] }), /^results\[1\]/m)

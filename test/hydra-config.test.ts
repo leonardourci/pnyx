@@ -1,3 +1,4 @@
+import { fixtureCli } from './cli-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFile, execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -20,8 +21,10 @@ function hydraId() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-hydra-'))
   const env = { ...process.env, PNYX_HOME: home }
 
+  const execute = fixtureCli({ home, execute: ({ args }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' }) })
+
   const run = ({ args }: { args: string[] }): string => {
-    const out = execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
+    const out = execute({ args })
     const token = /^token: ([a-f0-9]+)$/m.exec(out)?.[1]
 
     return token ? run({ args: [...args, '--confirm', token] }) : out
@@ -141,7 +144,7 @@ test('errors are structured', () => {
 test('a torn tail blocks writes until repair', () => {
   const { home, run, fails, card } = hydraId()
   run({ args: ['push', '--key', 'k', '--file', card({ json: { title: 'a' } })] })
-  appendFileSync(join(home, 'boards', 'default', 'events.jsonl'), '{"v":1,"seq":2,"id":"ev')
+  appendFileSync(join(home, 'hydras', 'default', 'events.jsonl'), '{"v":1,"seq":2,"id":"ev')
   assert.match(run({ args: [] }), /torn tail/)
   fails({ args: ['move', 'c1', 'done'], status: 1, code: 'TORN_TAIL' })
   assert.match(run({ args: ['repair'] }), /set aside 23 torn bytes/)
@@ -190,11 +193,11 @@ test('concurrent writers get one contiguous sequence', async () => {
   await Promise.all(
     Array.from({ length: 8 }, (_, i) => exec(process.execPath, [BIN, 'push', '--key', `k${i}`, '--file', file], { env })),
   )
-  const log = readFileSync(join(env.PNYX_HOME, 'boards', 'default', 'events.jsonl'), 'utf8').trimEnd()
+  const log = readFileSync(join(env.PNYX_HOME, 'hydras', 'default', 'events.jsonl'), 'utf8').trimEnd()
     .split('\n')
   assert.deepEqual(log.map(l => JSON.parse(l).seq), [1, 2, 3, 4, 5, 6, 7, 8])
   assert.match(run({ args: [] }), /^ {2}in_progress: 8$/m)
-  assert.equal(existsSync(join(env.PNYX_HOME, 'boards', 'default', 'writer.lock')), false)
+  assert.equal(existsSync(join(env.PNYX_HOME, 'hydras', 'default', 'writer.lock')), false)
 })
 
 test('only a Firstmate-linked Hydra keeps its default columns from deletion, and the move onto them cannot be undone', () => {

@@ -436,7 +436,7 @@ function outside({ folder, provider = 'claude-code', activity = 'ended', pid, tr
     hydraId: 'lab',
     fn: ({ writer }) => {
       const stamp = { ...meta, at: new Date().toISOString() }
-      const pushed = decidePush({ state: writer.state, key: 'outside', input: { agent: { provider, sessionId: 'native-session', cwd: folder, ...(transcriptPath ? { transcriptPath } : {}) }, terminal: { tty: '/dev/ttys123', ...(pid ? { pid } : {}) }, settings: provider === 'codex' ? { model: 'gpt-6.1-sol', effort: 'high', mode: 'never' } : { model: 'sonnet', effort: 'high' }, activity, source: { adapter: 'hooks', instanceId: provider === 'codex' ? 'codex' : 'claude', objectId: 'native-session', observedAt: stamp.at } }, meta: stamp })
+      const pushed = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: 'outside', input: { agent: { provider, sessionId: 'native-session', cwd: folder, ...(transcriptPath ? { transcriptPath } : {}) }, terminal: { tty: '/dev/ttys123', ...(pid ? { pid } : {}) }, settings: provider === 'codex' ? { model: 'gpt-6.1-sol', effort: 'high', mode: 'never' } : { model: 'sonnet', effort: 'high' }, activity, source: { adapter: 'hooks', instanceId: provider === 'codex' ? 'codex' : 'claude', objectId: 'native-session', observedAt: stamp.at } }, meta: stamp })
       assert.ok('event' in pushed); writer.append({ event: pushed.event })
       const ended = decideOutcome({ state: writer.state, ref: 'outside', outcome: { state: 'ended' }, source: 'hooks', meta: stamp })
       assert.ok('event' in ended); writer.append({ event: ended.event })

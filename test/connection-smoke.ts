@@ -54,7 +54,7 @@ try {
   withWriter({
     hydraId: 'default',
     fn: ({ writer }) => {
-      const d = decidePush({ state: writer.state, key: 'layout', input: { title: 'Recovered task' }, meta: { actor: 'fixture', at: new Date().toISOString() } })
+      const d = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: 'layout', input: { title: 'Recovered task' }, meta: { actor: 'fixture', at: new Date().toISOString() } })
       assert.ok('event' in d); writer.append({ event: d.event })
     },
   })

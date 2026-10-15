@@ -29,7 +29,7 @@ export async function smokeEnvironment(
     CHROME_DEVTOOLS_AXI_PORT: String(address.port),
   }
 
-  for (const key of ['AUTO_CONNECT', 'HEADED', 'BROWSER_URL', 'USER_DATA_DIR', 'MCP_SERVER_URL']) {
+  for (const key of ['AUTO_CONNECT', 'HEADED', 'BROWSER_URL', 'USER_DATA_DIR', 'MCP_SERVER_URL', 'WS_HEADERS', 'CHROME_ARGS']) {
     delete env[`CHROME_DEVTOOLS_AXI_${key}`]
   }
 

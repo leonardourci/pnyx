@@ -1,3 +1,4 @@
+import { fixtureCli } from './cli-fixture.ts'
 // Harvested notes: summaries, decisions and context that transcripts and linked
 // pull requests already hold, folded into cards and search. Fixtures and a temp
 // PNYX_HOME only; gh-axi is a fake.
@@ -66,7 +67,7 @@ function hydraId() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-notes-'))
   process.env.PNYX_HOME = home
   const env = { ...process.env, PNYX_HOME: home, PNYX_GH_AXI: GH_AXI }
-  const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const run = fixtureCli({ home, execute: ({ args }) => execFileSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) })
   const fails = ({ args, code }: { args: string[]; code: string }) =>
     assert.throws(() => run({ args: [...args] }), (error: { stdout: string }) => {
       assert.match(error.stdout, new RegExp(`^code: ${code}$`, 'm'))
@@ -135,7 +136,7 @@ test('harvest reads only what a transcript gained, and a lost cursor appends not
   assert.match(run({ args: ['harvest', '--card', 'claude:s1'] }), /^ {2}notes: 6 new$/m)
   appendFileSync(path, `${JSON.stringify({ type: 'custom-title', customTitle: 'Renamed', sessionId: 's1' })}\n`)
   assert.match(run({ args: ['harvest'] }), /^ {2}notes: 1 new$/m)
-  writeFileSync(join(home, 'boards', 'default', 'harvest.json'), 'not json')
+  writeFileSync(join(home, 'hydras', 'default', 'harvest.json'), 'not json')
   assert.match(run({ args: ['harvest'] }), /none: nothing new/)
   assert.equal(noted().length, 7)
 })
@@ -175,14 +176,14 @@ test('a harvested note neither reorders cards nor changes when they were updated
   const { run, push, transcript } = hydraId()
   push({ key: 'claude:s1', card: { title: 'Invoices', agent: { provider: 'claude-code', sessionId: 's1', transcriptPath: transcript({ name: 's1.jsonl', from: CLAUDE }) } } })
   push({ key: 'other', card: { title: 'Other' } })
-  const before = loadHydra({ hydraId: 'default' }).state.cards.c1!
+  const before = loadHydra({ hydraId: 'default' }).state.cards[loadHydra({ hydraId: 'default' }).state.keys['claude:s1']!]!
   assert.match(run({ args: ['harvest'] }), /^ {2}notes: 6 new$/m)
-  const after = loadHydra({ hydraId: 'default' }).state.cards.c1!
+  const after = loadHydra({ hydraId: 'default' }).state.cards[loadHydra({ hydraId: 'default' }).state.keys['claude:s1']!]!
   assert.equal(after.notes?.length, 6)
   assert.equal(after.revision, before.revision + 6)
   assert.equal(after.updatedSeq, before.updatedSeq)
   assert.equal(after.updatedAt, before.updatedAt)
-  assert.ok(after.updatedSeq < loadHydra({ hydraId: 'default' }).state.cards.c2!.updatedSeq)
+  assert.ok(after.updatedSeq < loadHydra({ hydraId: 'default' }).state.cards[loadHydra({ hydraId: 'default' }).state.keys.other!]!.updatedSeq)
 })
 
 test('building the search index first harvests every transcript, so compaction summaries stay searchable', () => {
@@ -266,7 +267,7 @@ test('a session renamed back to an earlier title takes that title again', () => 
   appendFileSync(index, `${JSON.stringify({ id: 'x2', thread_name: 'Alpha', updated_at: '2026-10-12T13:00:00Z' })}\n`)
   appendFileSync(path, `${JSON.stringify({ type: 'custom-title', customTitle: 'Alpha', sessionId: 's1' })}\n`)
   assert.match(run({ args: ['harvest'] }), /none: nothing new/)
-  writeFileSync(join(home, 'boards', 'default', 'harvest.json'), 'not json')
+  writeFileSync(join(home, 'hydras', 'default', 'harvest.json'), 'not json')
   assert.match(run({ args: ['harvest'] }), /none: nothing new/)
   assert.match(run({ args: ['card', 'c1'] }), /^ {2}title: Alpha$/m)
 })

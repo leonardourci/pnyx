@@ -77,7 +77,7 @@ try {
   withWriter({
     hydraId: 'default',
     fn: ({ writer }) => {
-      const d = decidePush({ state: writer.state, key: 'worker', input: { agent: { provider: 'claude-code', sessionId: 'worker', transcriptPath: transcript }, terminal: { tty: '/dev/ttys123' } }, meta: { at: new Date().toISOString(), actor: 'fixture' } })
+      const d = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: 'worker', input: { agent: { provider: 'claude-code', sessionId: 'worker', transcriptPath: transcript }, terminal: { tty: '/dev/ttys123' } }, meta: { at: new Date().toISOString(), actor: 'fixture' } })
       assert.ok('event' in d)
       writer.append({ event: d.event })
     },

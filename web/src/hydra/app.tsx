@@ -147,7 +147,7 @@ export function App() {
   const cards = card && !filteredCards.some(item => item.id === card.id)
     ? [...filteredCards, card] : filteredCards
   const attachedSession = card ? cardSessionId({ card }) : undefined
-  const title = pageTitle({ page, cards: state.cards, selected })
+  const title = pageTitle({ page, cards: state.cards, selected, needsYou: columns.find(c => c.role === 'needs_you')?.id })
   useEffect(() => {
     document.title = title
   }, [title])
@@ -427,6 +427,8 @@ export function App() {
                                 <HydraCard
                                   key={item.id}
                                   card={item}
+                                  doneAfterHours={state.config?.doneAfterHours}
+                                  notify={notify}
                                   latest={latest[item.id]}
                                   selected={selected === item.id}
                                   view={view}

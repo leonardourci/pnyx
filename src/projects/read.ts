@@ -1,9 +1,9 @@
 import { projectLabel } from '../core/decide.ts'
-import { readdirSync, realpathSync, statSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { realpathSync, statSync } from 'node:fs'
+import { basename, resolve } from 'node:path'
 import { HydraError, type HydraProject, type HydraState } from '../core/model.ts'
 import { hydraConfig } from '../core/hydra.ts'
-import { loadHydra, pnyxHome } from '../store/hydra-store.ts'
+import { hydraIds, loadHydra } from '../store/hydra-store.ts'
 import { firstmateProjects } from '../integrations/firstmate/projects.ts'
 
 export function projectsFor({ state, aliases = false }: {
@@ -75,20 +75,6 @@ export function projectFolder({ path }: { path: string }): string {
   } catch { /* Missing paths cannot be attached. */ }
 
   throw new HydraError({ message: `project folder not found: ${path}`, code: 'NOT_FOUND' })
-}
-
-export function hydraIds(): string[] {
-  try {
-    return readdirSync(join(pnyxHome(), 'boards'), { withFileTypes: true }).filter(d => d.isDirectory())
-      .map(d => d.name)
-      .sort()
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw error
-    }
-
-    return []
-  }
 }
 
 export function sharingHydras({ hydraId, path }: { hydraId: string; path: string }) {

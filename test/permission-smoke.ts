@@ -45,6 +45,7 @@ await commands.task(['create', '--title', 'Permission example', '--key', 'permis
 let server = await startServer({ hydraId: 'default', query })
 const state = () => loadHydra({ hydraId: 'default' }).state
 const task = () => state().cards[state().keys.permission!]!
+const column = task().column
 const { browser, eventually, check, click, text, screenshot, close } = smokeBrowser({ home, session: 'pnyx-permissions' })
 await startTask({ hydraId: 'default', task: 'permission', meta: { at: new Date().toISOString(), actor: 'fixture' } })
 
@@ -56,12 +57,12 @@ try {
   await screenshot({ name: 'permission-before.png' })
   release?.()
   await eventually({ condition: '!!document.querySelector(".ask button")', label: 'permission buttons appear' })
-  await check({ condition: 'document.querySelector("[data-column=in_progress]").textContent.includes("Needs you · permission") && document.querySelector(".permission-input").textContent.includes("touch allowed.txt")', label: 'request shows tool input and Needs you in the original column' })
+  await check({ condition: `document.querySelector('[data-column="${column}"] .activity-asks')?.textContent === 'asks' && document.querySelector('.permission-input').textContent.includes('touch allowed.txt')`, label: 'request shows tool input and asks in the original column' })
   await screenshot({ name: 'permission-pending.png' })
   await text({ label: 'Allow' })
   await eventually({ condition: 'document.querySelector(".ask .receipt")?.textContent === "Allowed"', label: 'Allow resolves the request' })
   assert.deepEqual(results, [{ behavior: 'allow' }])
-  assert.equal(task().column, 'in_progress')
+  assert.equal(task().column, column)
   await sendReply({ hydraId: 'default', request: { card: task().id, text: 'Ask again', homes: [], actor: 'fixture' } })
   await eventually({ condition: '!!document.querySelector(".ask button")', label: 'second request appears' })
   await text({ label: 'Deny' })

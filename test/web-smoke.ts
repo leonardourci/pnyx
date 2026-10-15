@@ -30,7 +30,7 @@ try {
   await check({ condition: 'document.querySelector(".hydra-chat").getBoundingClientRect().height === document.querySelector(".column").getBoundingClientRect().height && document.querySelector(".hydra-head").textContent === "Hydra"', label: 'Hydra and columns fill the Hydra height' })
   await check({ condition: 'document.querySelector(".card").getBoundingClientRect().height < 150 && !document.querySelector(".card .setting-chip,.card .tags,.card .links,.card .resize")', label: 'cards size to their titles and agent activity' })
   await check({ condition: '!document.querySelector(".last-message")', label: 'last messages are off by default' })
-  await screenshot({ name: 'board.png' })
+  await screenshot({ name: 'hydra.png' })
   await text({ label: 'Settings' }); await click({ selector: '[aria-label="Last message on cards"]' })
   await eventually({ condition: 'document.querySelector("[aria-label=\\"Last message on cards\\"]").getAttribute("aria-checked") === "true"', label: 'card setting saved' })
   await click({ selector: '[data-hydra-current]' })

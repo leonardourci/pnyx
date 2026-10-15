@@ -1,10 +1,41 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from './controls.tsx'
 
 export function Menu({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const element = menu.current
+
+    if (!open || !element) {
+      return
+    }
+
+    element.showPopover()
+
+    const position = () => {
+      const anchor = trigger.current?.getBoundingClientRect()
+
+      if (anchor) {
+        element.style.left = `${Math.max(8, Math.min(anchor.right - element.offsetWidth, innerWidth - element.offsetWidth - 8))}px`
+        element.style.top = `${Math.max(8, Math.min(anchor.bottom + 5, innerHeight - element.offsetHeight - 8))}px`
+      }
+    }
+
+    position()
+    const observer = new ResizeObserver(position)
+    observer.observe(element)
+    window.addEventListener('resize', position)
+    document.addEventListener('scroll', position, true)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', position)
+      document.removeEventListener('scroll', position, true)
+    }
+  }, [open])
   useEffect(() => {
     if (!open) {
       return
@@ -41,6 +72,8 @@ export function Menu({ label, children }: { label: string; children: ReactNode }
       {open && (
         <div
           className="menu-items"
+          ref={menu}
+          popover="manual"
           onClick={e => {
             const button = (e.target as Element).closest('button')
 

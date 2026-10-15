@@ -6,9 +6,9 @@ import { hydraConfig, hydraEvent } from '../core/hydra.ts'
 import { HydraError, type Card, type HydraProject, type HydraState, type TaskCopy } from '../core/model.ts'
 import { liveTask } from '../core/tasks.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
-import { hydraIds, projectsFor } from '../projects/read.ts'
+import { projectsFor } from '../projects/read.ts'
 import { canonical } from '../store/paths.ts'
-import { hydraDir, loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
+import { hydraDir, hydraIds, loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
 
 const COPY_TIMEOUT_MS = 120_000
 

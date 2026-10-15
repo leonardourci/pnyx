@@ -523,7 +523,7 @@ test("overlapping catalog requests share or queue the socket's read and answer e
     withWriter({
       hydraId: 'default',
       fn: ({ writer: w }) => {
-        const d = decidePush({ state: w.state, key, input: { title: key, agent: { provider: 'claude', sessionId: key, cwd } }, meta: { actor: 'test', at: '2026-10-14T10:00:00Z' } }); assert.ok('event' in d); w.append({ event: d.event })
+        const d = decidePush({ state: w.state, newCardId: `c${w.state.seq + 1}`, key, input: { title: key, agent: { provider: 'claude', sessionId: key, cwd } }, meta: { actor: 'test', at: '2026-10-14T10:00:00Z' } }); assert.ok('event' in d); w.append({ event: d.event })
       },
     })
   }
@@ -710,7 +710,7 @@ test("a tab whose snapshot alone fills its send buffer still gets every card's l
   withWriter({
     hydraId: 'default',
     fn: ({ writer: w }) => {
-      const d = decidePush({ state: w.state, key: 'big', input: { title: 'x'.repeat(4 << 20) }, meta: { actor: 'test', at: '2026-10-14T10:00:00Z' } }); assert.ok('event' in d); w.append({ event: d.event })
+      const d = decidePush({ state: w.state, newCardId: `c${w.state.seq + 1}`, key: 'big', input: { title: 'x'.repeat(4 << 20) }, meta: { actor: 'test', at: '2026-10-14T10:00:00Z' } }); assert.ok('event' in d); w.append({ event: d.event })
     },
   })
   assert.equal((await first.next()).type, 'event')
@@ -821,7 +821,7 @@ test('the open task follows attachment identity and watches only its current tra
           terminal: { tty: '/dev/ttys123', pid: '123' },
           source: { adapter: 'hooks', instanceId: 'claude', objectId: key },
         }
-        const decision = decidePush({ state: writer.state, key, input, meta: { at: '2026-10-14T12:00:00Z', actor: 'test' } })
+        const decision = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key, input, meta: { at: '2026-10-14T12:00:00Z', actor: 'test' } })
         assert.ok('event' in decision)
         writer.append({ event: decision.event })
       }
@@ -958,7 +958,7 @@ test('project workload changes in another Hydra are pushed to subscribed tabs', 
 test('one server serves every Hydra with its own hook socket, skips one that fails to load and serves one created later', async () => {
   cli({ args: ['hydra', 'create', 'work', '--name', 'Work'] })
   // A folder whose name is not a Hydra id cannot be loaded.
-  mkdirSync(join(process.env.PNYX_HOME!, 'boards', 'not a hydra'))
+  mkdirSync(join(process.env.PNYX_HOME!, 'hydras', 'not a hydra'))
   server = await startServer({ hydraId: 'default' })
   assert.deepEqual(Object.keys(server.skipped), ['not a hydra'])
   const health = JSON.parse((await http({ method: 'GET', path: '/health' })).text) as { hydras: string[]; skipped: Record<string, string> }
@@ -1009,7 +1009,7 @@ test('Hydra and the open task keep independent live transcripts on one socket', 
       const meta = { actor: 'fixture', at: '2026-10-15T00:00:00Z' }
 
       for (const [key, path] of [['worker', paths[0]], ['hydra-session', paths[1]]] as const) {
-        const decision = decidePush({ state: writer.state, key, input: { title: key, agent: { provider: 'claude-code', sessionId: key, transcriptPath: path } }, meta })
+        const decision = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key, input: { title: key, agent: { provider: 'claude-code', sessionId: key, transcriptPath: path } }, meta })
         assert.ok('event' in decision); writer.append({ event: decision.event })
       }
 

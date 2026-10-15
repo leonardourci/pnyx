@@ -10,7 +10,7 @@ description: Use when reading or updating the Pnyx app with the pnyx-axi CLI.
 Pnyx is named after the hill in Athens where the citizens' assembly met to decide. Three names follow that theme, and they are the same in the app, the docs, the CLI and the code:
 
 - **Pnyx**: this app, where every agent and its work is shown.
-- **Hydra**: an orchestrator, many heads and one body. Each board is a Hydra: creating a Hydra creates its board, and the board shows that Hydra's tasks.
+- **Hydra**: an orchestrator, many heads and one body. Each Hydra has its own columns and tasks, and creating a Hydra creates them.
 - **Oracle**: the search field. Ask it in words or by meaning; it returns matching tasks, messages, settings and actions, never made-up answers.
 
 Everything else uses its plain name: actions, Settings, History, Focus mode, Hydra's memory, columns, tasks, subtasks, workers, briefs, conversations and comments. Column names are the user's own. Do not invent other themed names.
