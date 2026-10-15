@@ -47,7 +47,7 @@ test('typing, IME, dead keys, AltGraph and repeats cannot activate board command
     }
   }
 
-  assert.equal(resolve({ event: { key: 'k', metaKey: true }, change: { scope: 'composer', editing: true } }).action, undefined)
+  assert.equal(resolve({ event: { key: 'k', metaKey: true }, change: { scope: 'composer', editing: true } }).action, 'palette')
   assert.equal(resolve({ event: { key: 'Enter', metaKey: true }, change: { scope: 'composer', editing: true } }).action, 'send')
 
   for (const scope of ['composer', 'overlay'] as const) {
