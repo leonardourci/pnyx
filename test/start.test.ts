@@ -56,7 +56,8 @@ test('task start --via command runs the board command once and its session joins
   run({ args: ['task', 'create', '--title', 'Write the docs', '--folder', folder] })
   const task = Object.values(state().cards).find(c => c.title === 'Write the docs')!.id
 
-  const started = await startTask({ board: 'lab', task, via: 'command', prompt: 'Draft it', meta: { ...meta, id: 's1' } })
+  await run({ args: ['task', 'brief', task, '--text', 'Draft it'] })
+  const started = await startTask({ board: 'lab', task, via: 'command', meta: { ...meta, id: 's1' } })
   assert.equal(started.via, 'command')
   const env = environment({ text: await written({ path: out }) })
   assert.equal(env.PNYX_TASK, task)

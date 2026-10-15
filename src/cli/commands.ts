@@ -615,6 +615,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     options: {
       ...WRITE,
       title: { type: 'string' },
+      text: { type: 'string' },
       key: { type: 'string' },
       folder: { type: 'string' },
       session: { type: 'string' },
@@ -753,6 +754,26 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     return commit({ board, meta: m, intent: { type: 'task.declared', card: ref }, decide: ({ state }) => declareTask({ state, ref, status: required({ value: positionals[2], what: 'status' }), note: String(values.note ?? ''), meta: m }) })
   }
 
+  if (action === 'brief') {
+    const ref = required({ value: positionals[1], what: 'task id' })
+    const text = String(values.text ?? '')
+
+    if (text.length > 32000) {
+      throw new BoardError({ message: 'brief is too long', code: 'VALIDATION_ERROR' })
+    }
+
+    return commit({
+      board,
+      meta: m,
+      intent: { type: 'task.brief', card: ref },
+      decide: ({ state }) => {
+        const card = findCard({ state, ref })
+
+        return hydraEvent({ state, meta: m, cardId: card.id, change: { type: 'task.brief', data: { text, ...(card.brief !== undefined ? { before: card.brief } : {}) } } })
+      },
+    })
+  }
+
   if (action === 'rename') {
     const ref = required({ value: positionals[1], what: 'task id' })
 
@@ -760,7 +781,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (action !== 'attach' && action !== 'detach') {
-    throw new AxiError('Use task create, list, show, status, history, rename, start, paseo, sessions, attach or detach', 'VALIDATION_ERROR')
+    throw new AxiError('Use task create, list, show, status, history, rename, brief, start, paseo, sessions, attach or detach', 'VALIDATION_ERROR')
   }
 
   const ref = required({ value: positionals[1], what: 'task id' })
@@ -988,7 +1009,7 @@ function firstmateHomes({ base }: { base?: string }): Output {
 const boardCommandHandler = guard({ handler: ({ args }) => boardCommand({ args }) })
 
 function columnCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, board } = parse({ args, options: { ...WRITE, title: { type: 'string' }, id: { type: 'string' }, to: { type: 'string' }, before: { type: 'string' } }, positionals: 2 })
+  const { values, positionals, board } = parse({ args, options: { ...WRITE, description: { type: 'string' }, title: { type: 'string' }, id: { type: 'string' }, to: { type: 'string' }, before: { type: 'string' } }, positionals: 2 })
   const action = positionals[0]
 
   if (action === 'list') {
@@ -1028,6 +1049,14 @@ function columnCommand({ args }: { args: string[] }): Output {
         columns.push({ id: id as Column, title: required({ value: values.title as string, what: '--title' }) })
       } else if (action === 'rename') {
         selected!.title = required({ value: values.title as string, what: '--title' })
+      } else if (action === 'describe') {
+        const description = String(values.description ?? '')
+
+        if (description.length > 4000) {
+          throw new BoardError({ message: 'description is too long', code: 'VALIDATION_ERROR' })
+        }
+
+        selected!.description = description
       } else if (action === 'delete') {
         columns = columns.filter(c => c.id !== ref)
         fallback = values.to ? columns.find(c => c.id === values.to)?.id : columns[0]?.id
@@ -1051,7 +1080,7 @@ function columnCommand({ args }: { args: string[] }): Output {
           return { skipped: 'unchanged' }
         }
       } else {
-        throw new BoardError({ message: 'Use column list, create, rename, delete or reorder', code: 'VALIDATION_ERROR' })
+        throw new BoardError({ message: 'Use column list, create, rename, describe, delete or reorder', code: 'VALIDATION_ERROR' })
       }
 
       validateColumns({ columns })
@@ -1329,6 +1358,7 @@ export function summarize({ event }: { event: BoardEvent }): string {
   switch (event.type) {
     case 'chat.message': return `${event.data.role}: ${event.data.text}`
     case 'board.configured': return `Board ${event.data.name}; Hydra ${event.data.hydra.id}`
+    case 'task.brief': return 'Task brief updated'
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
     case 'task.declared': return `${event.data.state}: ${event.data.note}`
@@ -1605,6 +1635,7 @@ in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workfl
   column: `usage: pnyx-axi column list
 pnyx-axi column create --title <title> [--id custom:<id>]
 pnyx-axi column rename <id> --title <title>
+pnyx-axi column describe <id> --description <text>
 pnyx-axi column delete <id> [--to <remaining-column>]
 pnyx-axi column reorder <id> [--before <id>]
 All columns, including template columns, can be edited. Deletion moves cards to the fallback;
@@ -1625,6 +1656,7 @@ check is Hydra's light check: it lists only what Hydra tracks (messages, task cr
 and with --wait it blocks up to that many seconds until one appears. Pass the printed through as the next --after.
 `,
   task: `usage: pnyx-axi task create --title <title> [--key <key>] [--folder <path>] [--column <id>] [--parent <task>]
+pnyx-axi task brief <id> --text <brief>
 pnyx-axi task list | show <id> [--full]
 pnyx-axi task rename <id> --title <title>
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
