@@ -106,9 +106,16 @@ test('Hydra exposes provider failures and Firstmate Hydras never start a hosted 
     await commands.hydra(['send', '--hydra', 'lab', '--text', 'Hello'])
     await until({ check: () => state().cards[HYDRA_CARD]?.attention.some(a => a.kind === 'interrupted') ?? false })
     assert.match(state().cards[HYDRA_CARD]!.attention[0]!.text ?? '', /Harness login is missing/)
+    sdk.control.fail = false
+    const session = state().cards[HYDRA_CARD]!.agent!.sessionId
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'Retry after sign-in'])
+    await until({ check: () => sdk.calls[1]?.messages.length === 1 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+    assert.equal(sdk.calls[1]!.options.resume, undefined)
+    assert.equal(sdk.calls[1]!.options.sessionId, session)
+    assert.ok(!state().cards[HYDRA_CARD]!.attention.some(a => a.kind === 'interrupted'))
     commands.hydra(['set', '--hydra', 'lab', '--firstmate', join(home, 'firstmate')])
     await commands.hydra(['send', '--hydra', 'lab', '--text', 'Firstmate message'])
-    assert.equal(sdk.calls.length, 1)
+    assert.equal(sdk.calls.length, 2)
     assert.equal(state().hydraMessages?.at(-1)?.text, 'Firstmate message')
   } finally {
     await server.close(); rmSync(home, { recursive: true, force: true })

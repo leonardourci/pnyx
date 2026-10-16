@@ -617,7 +617,7 @@ export function createHost({
             })
           }
 
-          const ref: AgentRef = agent ?? { provider, sessionId: prepared!.id, cwd, host: 'pnyx', resume: true, ...(prepared?.path ? { transcriptPath: prepared.path } : {}), ...(dispatch ? { account: dispatch.account, loginFolder: dispatch.folder } : {}) }
+          const ref: AgentRef = agent ?? { provider, sessionId: prepared!.id, cwd, host: 'pnyx', ...(prepared?.path ? { transcriptPath: prepared.path } : {}), ...(dispatch ? { account: dispatch.account, loginFolder: dispatch.folder } : {}) }
           const claimed = write({
             fn: ({ writer }) => {
               const meta = { at: at(), actor }
