@@ -9,6 +9,7 @@ import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
+import { withTaskReceipts } from '../thread/task.ts'
 import { findCard } from '../core/decide.ts'
 import { replyRoute } from '../core/route.ts'
 import { PASEO_CURSOR, paseoConversation, type PaseoConversation } from '../integrations/paseo/thread.ts'
@@ -395,7 +396,7 @@ async function mountOwnedHydra({
         if (sub.native) {
           void sub.native.then(n => n.read({})).then(thread => {
             if (map.get(ws) === sub && ws.readyState === ws.OPEN) {
-              send({ ws, message: { type: 'thread', thread } })
+              send({ ws, message: { type: 'thread', thread: withTaskReceipts({ native: thread, saved: readThread({ hydraId, state, card, homes }) }) } })
             }
           }, unavailable)
 
@@ -421,7 +422,9 @@ async function mountOwnedHydra({
     }
 
     try {
-      return await (await sub.native).read({ before })
+      const native = await (await sub.native).read({ before })
+
+      return withTaskReceipts({ native, saved: readThread({ hydraId, state, card, homes }) })
     } catch (error) {
       // Replies sent from here still show while Paseo cannot be read.
       return { ...readThread({ hydraId, state, card, homes }), unavailable: `${error instanceof HydraError ? error.message : 'Paseo could not read this conversation'}; it shows again once Paseo answers.` }
@@ -786,7 +789,7 @@ async function mountOwnedHydra({
       return fail({ error: 'command needs a string id', code: 'VALIDATION_ERROR' })
     }
 
-    if (['thread', 'oracle', 'oracle-commands', 'reply', 'answer', 'agent', 'catalog', 'settings', 'hydras'].includes(String(name))) {
+    if (['thread', 'oracle', 'oracle-commands', 'reply', 'task-message', 'answer', 'agent', 'catalog', 'settings', 'hydras'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail({ error: 'args must be strings', code: 'VALIDATION_ERROR' })
       }
@@ -919,7 +922,7 @@ async function mountOwnedHydra({
 
           const found = replyRoute({ card, homes })
 
-          if ('reason' in found) {
+          if ('reason' in found && name !== 'task-message') {
             throw new HydraError({ message: `${found.reason}${agent ? '' : ' Your draft stays here.'}`, code: 'NO_ROUTE' })
           }
 
@@ -930,7 +933,7 @@ async function mountOwnedHydra({
             ? [['agent', card.id, '--idempotency-key', args[3]!], ['--', args[1]!, args[2]!]]
             : answering
               ? [['reply', card.id, `--answer=${args[1]}`, `--json=${args[2]}`, `--idempotency-key=${args[3]}`, `--seen=${args[4]}`], []]
-              : [['reply', card.id, '--text', args[1], '--idempotency-key', args[2]], []]
+              : [['reply', card.id, '--text', args[1], '--idempotency-key', args[2], ...(name === 'task-message' ? ['--task-message'] : [])], []]
 
           // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.
           execFile(process.execPath, [join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js'), ...command, '--hydra', hydraId, '--actor', 'web', ...homes.flatMap(h => ['--home', h]), ...rest], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {

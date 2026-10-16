@@ -8,7 +8,7 @@ import { traces, viewFor } from '../core/view.ts'
 import { cardSessionId } from '../core/tasks.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
-export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; messageId?: string; part?: number }
+export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; delivery?: { agent?: { state: ReplyState; detail?: string }; hydra: { state: ReplyState; detail?: string } }; task?: string; initial?: boolean; messageId?: string; part?: number }
 export interface ThreadPage { card: string; session?: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; routeKind?: ReplyRoute['kind']; noRoute?: string; watching: 'unknown' }
 const MAX_BYTES = 10 * 1024 * 1024
 // Chunk long entries instead of losing their tail. Sixty bounded entries stay
@@ -95,8 +95,7 @@ function clip({ text }: { text: string }): string {
   return `${cut.trimEnd()}…`
 }
 
-// The last typed user message or assistant reply among complete transcript lines;
-// tool calls and output, thinking and injected text are skipped.
+// Only agent-authored text can become a card update.
 function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
   for (let i = lines.length - 1; i >= 0; i--) {
     let record: unknown
@@ -109,16 +108,17 @@ function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
 
     const messages = transcriptMessages({ record })
 
-    if (!messages.length) {
+    const r = obj({ v: record }), role = obj({ v: r.payload }).role ?? r.type
+
+    if (!messages.length || !['assistant', 'response_item'].includes(String(role))) {
       continue
     }
 
-    const r = obj({ v: record }), role = obj({ v: r.payload }).role ?? r.type
     const text = redact({ text: messages.map(m => m.text).join(' ') }).replace(/\s+/g, ' ')
       .trim()
 
     return {
-      role: role === 'user' ? 'user' : 'assistant',
+      role: 'assistant',
       text: clip({ text }),
       ...(messages[0]!.at ? { at: messages[0]!.at } : {}),
     }
@@ -329,13 +329,16 @@ export function readThread(
   const [replySeq, replyPart] = replyCursor?.split(':').map(Number) ?? [Infinity, Infinity]
   let archived = false
 
+  const seenReplies = new Set<string>()
+
   for (const e of repliedEvents({ hydraId })) {
     if (e.type === 'chat.message') {
       const session = cardSessionId({ card })
 
-      const participant = session ? e.data.session === session : e.cardId === card.id
+      const sameSession = session && e.data.session === session
+      const participant = e.cardId === card.id || sameSession
 
-      if (!result.unavailable || !participant || e.seq > replySeq!) {
+      if ((!result.unavailable && sameSession) || !participant || e.seq > replySeq!) {
         continue
       }
 
@@ -348,11 +351,15 @@ export function readThread(
       continue
     }
 
-    if (e.cardId !== card.id || e.seq > replySeq!) {
+    if (e.cardId !== card.id || e.seq > replySeq! || seenReplies.has(e.data.reply)) {
       continue
     }
 
-    splitEntry({ entry: { id: e.id, role: 'You', kind: 'message', text: e.data.text!, at: e.at, receipt: state.cards[card.id]?.replies?.find(r => r.id === e.data.reply)?.state ?? 'queued' } }).forEach((item, index) => {
+    seenReplies.add(e.data.reply)
+    const receipt = state.cards[card.id]?.replies?.find(r => r.id === e.data.reply)
+    const hydra = e.data.taskMessage ? state.cards[card.id]?.replies?.find(r => r.id === `hydra:${e.data.reply}`) : undefined
+    const delivery = e.data.taskMessage ? { ...(receipt?.route !== 'hydra' ? { agent: { state: receipt?.state ?? 'queued', detail: receipt?.detail } } : {}), hydra: { state: hydra?.state ?? 'failed', detail: hydra?.detail ?? (!hydra ? 'Hydra queue was not confirmed' : undefined) } } : undefined
+    splitEntry({ entry: { id: e.id, role: 'You', kind: 'message', text: e.data.text!, at: e.at, receipt: receipt?.state ?? 'queued', ...(e.data.reply.startsWith('brief:') ? { initial: true } : {}), ...(delivery ? { delivery } : {}) } }).forEach((item, index) => {
       if (e.seq < replySeq! || index < replyPart!) {
         candidates.push({ item, reply: `${e.seq}:${index}` })
       }

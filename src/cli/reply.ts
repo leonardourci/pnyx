@@ -39,6 +39,7 @@ export interface ReplyRequest {
   answer?: { request: string; value: unknown; seen?: string }
   // A setting a Pnyx-hosted agent takes directly, in place of typed text.
   setting?: { name: string; value: string }
+  taskMessage?: boolean
 }
 
 export interface ReplyReceipt {
@@ -295,6 +296,7 @@ export async function sendReply({ hydraId, request }: {
         state: 'queued' as const,
         route: routeName({ route, control: request.control }),
         text,
+        ...(request.taskMessage ? { taskMessage: true } : {}),
         ...(request.control || request.key ? { control: true } : {}),
         ...(resolveKey ? { resolveKey } : {}),
         ...(answers ? { answers } : {}),
@@ -356,9 +358,15 @@ export const reply = guard({
       answer: { type: 'string' },
       json: { type: 'string' },
       seen: { type: 'string' },
+      'task-message': { type: 'boolean' },
     }
     const { values, positionals, hydraId } = parse({ args, options, positionals: 1 })
     const ref = required({ value: positionals[0], what: 'card id' })
+
+    if (values['task-message'] && (values.answer !== undefined || values['resolve-key'] !== undefined)) {
+      throw invalid({ message: '--task-message takes context text; answer requests with reply --answer or --resolve-key' })
+    }
+
     const file = values.file as string | undefined
     const request = values.answer as string | undefined
     let answer: ReplyRequest['answer']
@@ -391,7 +399,8 @@ export const reply = guard({
       }
     }
 
-    const receipt = await sendReply({
+    const send = values['task-message'] ? (await import('./task-message.ts')).sendTaskMessage : sendReply
+    const receipt = await send({
       hydraId,
       request: {
         card: ref,
@@ -405,9 +414,9 @@ export const reply = guard({
     })
     const out: Output = { reply: receipt }
 
-    if (receipt.recordError && receipt.state === 'failed') {
+    if ('recordError' in receipt && receipt.recordError && receipt.state === 'failed') {
       out.help = ['The send failed and nothing was delivered; once the cause is fixed, send again without --idempotency-key']
-    } else if (receipt.recordError) {
+    } else if ('recordError' in receipt && receipt.recordError) {
       out.help = [
         `The send ended ${receipt.state} but was not recorded, so the Hydra still shows it queued; check the task's inbox or the session before sending again`,
       ]
@@ -601,10 +610,11 @@ through the home's bin/fm-inbox.sh note --request-id <id> (a retry with the same
 A setting the session has not reported yet is confirmed by its next hook or turn.
 `
 
-export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <file|-> [--home <path>]... [--resolve-key <key>] [--idempotency-key <key>]
+export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <file|-> [--home <path>]... [--resolve-key <key>] [--idempotency-key <key>] [--task-message]
        pnyx-axi reply <id> --answer <request key> --json <answer> [--seen <request id>] [--idempotency-key <key>]
 A Firstmate task card replies through its home's bin/fm-send.sh, with FM_HOME set; its home must
-be passed with --home, and --resolve-key answers that open decision. An agent Pnyx runs (task start)
+be passed with --home, and --resolve-key answers that open decision.
+--task-message also queues the text for Hydra with its task reference and returns both route receipts; without an agent, only Hydra is addressed. An agent Pnyx runs (task start)
 gets the text straight through the Hydra's server, which must be running. Any other agent session is
 typed into the terminal its hooks recorded: a tmux pane, a Herdr pane, a Paseo terminal, or an
 iTerm2 or Terminal session found by its TTY (macOS asks once to allow controlling those apps).

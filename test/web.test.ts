@@ -335,12 +335,10 @@ test("a card's last message comes from the transcript tail, without tool calls, 
   assert.match(claude.text, /^Paragraph 0 about the orders table backfill\. Rows are copied/)
   assert.ok(claude.text.length <= 280 && claude.text.endsWith('…'))
   assert.deepEqual(latestMessage({ path: fixture({ name: 'codex-session.jsonl' }) }).message, { role: 'assistant', text: 'The export query scans every invoice without an index.', at: '2026-10-12T10:00:07.000Z' })
-  // A newer Codex user message wins over the reply, its injected context stripped, even
-  // when tool output after it overflows the first read window.
   const dir = mkdtempSync(join(tmpdir(), 'pnyx-latest-')), path = join(dir, 'codex.jsonl')
   const line = ({ payload }: { payload: unknown }) => JSON.stringify({ timestamp: '2026-10-12T10:01:00.000Z', type: 'response_item', payload }) + '\n'
   writeFileSync(path, readFileSync(fixture({ name: 'codex-session.jsonl' }), 'utf8') + line({ payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>\n<cwd>/work</cwd>\n</environment_context>Now add the index.' }] } }) + line({ payload: { type: 'function_call_output', call_id: 'c2', output: 'x'.repeat(200_000) } }))
-  assert.deepEqual(latestMessage({ path }).message, { role: 'user', text: 'Now add the index.', at: '2026-10-12T10:01:00.000Z' })
+  assert.deepEqual(latestMessage({ path }).message, { role: 'assistant', text: 'The export query scans every invoice without an index.', at: '2026-10-12T10:00:07.000Z' })
   assert.equal(latestMessage({ path: join(dir, 'missing.jsonl') }).message, null)
   writeFileSync(path, line({ payload: { type: 'reasoning', summary: [] } }))
   assert.equal(latestMessage({ path }).message, null)
@@ -362,7 +360,7 @@ test("a card's last message is read again from only what its transcript gained",
   appendFileSync(path, torn.slice(20))
   const fd = openSync(path, 'r+'); writeSync(fd, 'x', 0); closeSync(fd)
   const third = latestMessage({ path, prev: second })
-  assert.equal(third.message?.text, 'Ship it.')
+  assert.equal(third.message?.text, 'First reply.')
   writeFileSync(path, line({ type: 'assistant', text: 'Fresh.', at: '2026-10-12T11:00:00.000Z' }))
   assert.equal(latestMessage({ path, prev: third }).message?.text, 'Fresh.')
 })
@@ -469,10 +467,10 @@ test('a dropped card goes above the card it lands on, or below it on its lower h
   assert.equal(dropBefore({ cards, below: false }), undefined, 'empty column space is the end')
 })
 
-test('only a working turn shows as working, an ended session is stopped and any other state is finished', () => {
+test('only a working turn shows as working, an ended session is stopped and unobserved activity stays unknown', () => {
   const card = push({ state: emptyHydra(), key: 'k', fields: { agent: { provider: 'claude', sessionId: 's' } } }).cards.c1!
 
-  for (const [sessionActivity, expected] of [['working', 'working'], ['finished', 'finished'], ['ended', 'stopped'], [undefined, 'finished'], ['running Bash', 'finished']] as const) {
+  for (const [sessionActivity, expected] of [['working', 'working'], ['finished', 'finished'], ['ended', 'stopped'], [undefined, undefined], ['running Bash', undefined]] as const) {
     const shown = agentActivity({ card: { ...card, sessionActivity } })
     assert.equal(shown, expected, String(sessionActivity))
   }

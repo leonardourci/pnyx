@@ -687,10 +687,8 @@ test("each card gets its conversation's last message, pushed again as the transc
   server = await startServer({ hydraId: 'default' })
   const t = await tab(); await t.next()
   assert.deepEqual(await t.latest({ card }), { role: 'assistant', text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.', at: '2026-10-13T10:49:00Z' })
-  // Tool calls and thinking never replace the last message; a newer typed user message does.
   appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: '2026-10-13T11:00:00Z', message: { content: [{ type: 'thinking', thinking: 'hidden' }, { type: 'tool_use', name: 'Bash', input: {} }] } }) + '\n')
   appendFileSync(fixture.transcript, JSON.stringify({ type: 'user', timestamp: '2026-10-13T11:01:00Z', message: { content: 'Ship   it\nnow.' } }) + '\n')
-  assert.deepEqual(await t.latest({ card }), { role: 'user', text: 'Ship it now.', at: '2026-10-13T11:01:00Z' })
   appendFileSync(fixture.transcript, assistantLine({ text: 'Shipped.', at: '2026-10-13T11:02:00Z' }))
   assert.deepEqual(await t.latest({ card }), { role: 'assistant', text: 'Shipped.', at: '2026-10-13T11:02:00Z' })
   const later = await tab(); await later.next()
