@@ -362,7 +362,7 @@ export function applyHydra({ state, event }: { state: HydraState; event: HydraEv
     const role = columns.find(c => c.id === column)?.role
     const initial = role && ROLE_STATUS[role] && { id: event.id, at: event.at, actor: event.actor, state: ROLE_STATUS[role], note: '' }
     state.cards[event.cardId] = {
-      id: event.cardId, key, title, ...(project ? { project } : {}), ...(brief !== undefined ? { brief } : {}), titleSet: true, workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], sessionIds: [], tracking: 'declared', statusLog: initial ? [initial] : [], ...(initial ? { status: initial } : {}), ...(parentId ? { parentId } : {}), ...(folder ? { folder } : {}), column: column ?? roleColumn({ columns, role: 'queued' }) ?? 'parked', revision: 1, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
+      id: event.cardId, key, title, ...(project ? { project } : {}), ...(brief !== undefined ? { brief, initialPrompt: brief } : {}), titleSet: true, workspace: 'unassigned', tags: [], attention: [], links: [], sourceRefs: [], sessionIds: [], tracking: 'declared', statusLog: initial ? [initial] : [], ...(initial ? { status: initial } : {}), ...(parentId ? { parentId } : {}), ...(folder ? { folder } : {}), column: column ?? roleColumn({ columns, role: 'queued' }) ?? 'parked', revision: 1, createdSeq: event.seq, updatedSeq: event.seq, updatedAt: event.at,
     }
     state.keys[key] = event.cardId
     refreshTasks({ state, ids: [event.cardId] })
