@@ -2,7 +2,7 @@ import { HOST_LABEL, replyRoute } from '../../core/route.ts'
 import { HydraError, type Card } from '../../core/model.ts'
 import { localPaseoUrl } from '../../core/paseo.ts'
 import { cardSessionId } from '../../core/tasks.ts'
-import { splitEntry, type ThreadEntry, type ThreadPage } from '../../thread/read.ts'
+import { replyEntryId, splitEntry, type ThreadEntry, type ThreadPage } from '../../thread/read.ts'
 import { openPaseo, type Connect } from './client.ts'
 
 // An older page's cursor: p, then Paseo's own {epoch, seq} as base64url JSON.
@@ -67,7 +67,14 @@ export async function paseoConversation({
   }
 }
 
-type Item = { type: string; text?: unknown; message?: unknown; name?: unknown; detail?: unknown }
+type Item = {
+  type: string
+  text?: unknown
+  message?: unknown
+  name?: unknown
+  detail?: unknown
+  clientMessageId?: unknown
+}
 
 function timelineEntry({ item, id, at }: {
   item: Item
@@ -76,8 +83,10 @@ function timelineEntry({ item, id, at }: {
 }): ThreadEntry | undefined {
   const text = ({ value }: { value: unknown }) => (typeof value === 'string' ? value : '')
 
+  const replyId = typeof item.clientMessageId === 'string' ? item.clientMessageId : undefined
+
   switch (item.type) {
-    case 'user_message': return { id, at, kind: 'message', role: 'user', text: text({ value: item.text }) }
+    case 'user_message': return { id: replyId ? replyEntryId({ reply: replyId }) : id, at, kind: 'message', role: 'user', text: text({ value: item.text }), ...(typeof item.clientMessageId === 'string' ? { replyId: item.clientMessageId } : {}) }
     case 'assistant_message': return { id, at, kind: 'message', role: 'assistant', text: text({ value: item.text }) }
     case 'reasoning': return { id, at, kind: 'thinking', role: 'assistant', text: text({ value: item.text }) }
     case 'tool_call': return { id, at, kind: 'tool', role: text({ value: item.name }) || 'tool', text: item.detail === undefined ? 'Recorded details unavailable' : JSON.stringify(item.detail) }
