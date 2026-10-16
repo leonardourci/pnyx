@@ -1,6 +1,6 @@
 import { Icon } from '../components/ui/icon.tsx'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import type { Card, ViewPreferences } from '../../../src/core/model.ts'
+import type { Card, HydraState, ViewPreferences } from '../../../src/core/model.ts'
 import { traces } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
@@ -24,6 +24,8 @@ export const merge = ({ kept, page }: { kept: ThreadEntry[]; page: ThreadEntry[]
 
 export function Thread({
   card,
+  state,
+  openTask,
   view,
   thread,
   kept,
@@ -41,6 +43,8 @@ export function Thread({
   children,
 }: {
   card: Card
+  state: HydraState
+  openTask({ id }: { id: string }): void
   view: ViewPreferences
   thread: ThreadPage | null
   kept: ThreadEntry[]
@@ -142,6 +146,7 @@ export function Thread({
         {!page && <p className="empty">Loading conversation…</p>}
         <Messages
           entries={entries}
+          openTask={openTask}
           comments={comments}
           setComments={setComments}
           quote={({ text }) => setDraft({ text: quoteInto({ draft, text }) })}
@@ -165,6 +170,8 @@ export function Thread({
       <p className="task-recipient">{card.agent ? 'To agent and Hydra' : 'To Hydra · context saved for assignment'}</p>
       <Composer
         card={card.id}
+        cards={Object.values(state.cards)}
+        openTask={openTask}
         title={card.title}
         draft={draft}
         setDraft={setDraft}

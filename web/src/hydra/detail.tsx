@@ -17,6 +17,7 @@ import type { Command } from './connection.ts'
 export function Detail({
   card,
   state,
+  openTask,
   view,
   thread,
   command,
@@ -32,6 +33,7 @@ export function Detail({
 }: {
   card: Card
   state: HydraState
+  openTask({ id }: { id: string }): void
   view: ViewPreferences
   thread: ThreadPage | null
   command: Command
@@ -104,6 +106,8 @@ export function Detail({
       {card.launch?.dispatch && <p className="muted small" aria-label="Heads dispatch choice">{card.launch.dispatch}</p>}
       <Thread
         card={card}
+        state={state}
+        openTask={openTask}
         view={view}
         thread={thread}
         kept={kept}

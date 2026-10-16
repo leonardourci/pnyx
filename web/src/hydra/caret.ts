@@ -3,7 +3,7 @@ export const CARET_SUPPORTED = CSS.supports('-webkit-user-modify', 'read-only')
 export const CARET_HOST = 'data-caret-host'
 export const CARET_KEY = /^(Arrow(Up|Down|Left|Right)|Home|End|Page(Up|Down))$/
 const MESSAGE_CONTROLS = '.block-comment-action, .inline-comment, .receipt, .code-language, .trace summary'
-const NON_MESSAGE_TEXT = `${MESSAGE_CONTROLS}, .trace, a[href]`
+const NON_MESSAGE_TEXT = `${MESSAGE_CONTROLS}, .trace, a[href], .task-mention`
 export const CARET_CSS = `[${CARET_HOST}] :is(${NON_MESSAGE_TEXT}) { -webkit-user-modify: read-only; } [${CARET_HOST}] :is(${MESSAGE_CONTROLS}) { user-select: none; }`
 
 const selectableMessageText = ({ node }: { node: Text }) =>

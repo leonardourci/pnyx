@@ -349,6 +349,7 @@ export interface HydraMessage {
   action: 'send' | 'worker'
   text: string
   details?: string
+  context?: string
   at: string
   actor: string
   hydra: string
@@ -409,6 +410,7 @@ export type RepliedEvent = EventBase & {
     state: ReplyState
     route: string
     text?: string
+    context?: string
     resolveKey?: string
     answers?: string
     detail?: string

@@ -16,8 +16,10 @@ import { receiptLabel } from './view.ts'
 const roleLabel = ({ role }: { role: string }) => role === 'assistant' ? 'Agent' : role === 'user' ? 'You' : role
 
 export function Messages({
-  entries, comments, setComments, quote, toolDetails = true, thinkingDetails = true, taskTitles,
+  entries, comments, setComments, quote,
+  toolDetails = true, thinkingDetails = true, taskTitles, openTask,
 }: {
+  openTask?({ id }: { id: string }): void
   taskTitles?: Record<string, string>
   toolDetails?: boolean
   thinkingDetails?: boolean
@@ -308,6 +310,7 @@ export function Messages({
             {entry.kind === 'message' ? (
               <Markdown
                 text={entry.text}
+                openTask={openTask}
                 block={({ index, offset: local, quote, children }) => {
                   const messageId = entry.messageId ?? entry.id
                   const offset = (entry.part ?? 0) + local
