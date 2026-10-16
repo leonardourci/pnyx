@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Command } from './connection.ts'
 import type { HybridHit as Hit } from '../../../src/oracle/semantic.ts'
+import { Markdown } from '../components/ui/markdown.tsx'
 import { Button, Input, Select } from '../components/ui/controls.tsx'
 
 interface EventRow {
@@ -10,6 +11,7 @@ interface EventRow {
   card: string
   summary: string
   type: string
+  data?: Record<string, unknown>
 }
 
 export function History({
@@ -33,7 +35,7 @@ export function History({
     const gen = ++generation.current
     const timer = setTimeout(() => {
       setLoading(true)
-      const args = [...(workspace ? ['--workspace', workspace] : []), ...(kind ? ['--kind', kind] : []), ...(before ? ['--before', String(before)] : []), '--limit', '50']
+      const args = ['--full', ...(workspace ? ['--workspace', workspace] : []), ...(kind ? ['--kind', kind] : []), ...(before ? ['--before', String(before)] : []), '--limit', '50']
       void command({ name: query.trim() ? 'oracle' : 'history', args: query.trim() ? [query, workspace] : args }).then(r => {
         if (gen !== generation.current) {
           return
@@ -101,21 +103,30 @@ export function History({
           <article className="history-entry" key={hit.card}>
             <Button className="result-title" onClick={() => open({ id: hit.card })}>{hit.title}</Button>
             {hit.match === 'semantic' && <span className="small muted">similar meaning</span>}
-            {hit.snippets.map((s,i) => <p key={i} className="muted">{s.snippet}</p>)}
+            {hit.snippets.map((s,i) => <Markdown key={i} text={s.snippet} />)}
           </article>
-        )) : events.map(e => (
-          <article className="history-entry" key={e.id}>
-            <span className="eyebrow">
-              {new Date(e.at).toLocaleString()}
-              {' '}
-              · event
-              {' '}
-              {e.seq}
-            </span>
-            <Button onClick={() => open({ id: e.card })} disabled={e.card === '$board'}>{e.summary}</Button>
-            <span className="small muted">{e.type}</span>
-          </article>
-        ))}
+        )) : events.map(e => {
+          const message = ['chat.message', 'hydra.message'].includes(e.type)
+            && typeof e.data?.text === 'string'
+            ? [e.data.text, e.data.details].filter(v => typeof v === 'string').join('\n\n') : null
+
+          return (
+            <article className="history-entry" key={e.id}>
+              <span className="eyebrow">
+                {new Date(e.at).toLocaleString()}
+                {' '}
+                · event
+                {' '}
+                {e.seq}
+              </span>
+              <Button onClick={() => open({ id: e.card })} disabled={e.card === '$board'}>
+                {e.card === '$board' ? 'Hydra' : 'Open task'}
+              </Button>
+              <Markdown text={message ?? e.summary} />
+              <span className="small muted">{e.type}</span>
+            </article>
+          )
+        })}
         {!loading && !(query.trim() ? hits.length : events.length) && <p className="empty">No matching history.</p>}
       </div>
       {!query.trim() && (

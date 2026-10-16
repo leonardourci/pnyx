@@ -39,6 +39,7 @@ const inline = ({ tokens }: { tokens: Token[] }): ReactNode => tokens.map((token
         <a
           key={i}
           href={href}
+          contentEditable={false}
           target="_blank"
           rel="noreferrer noopener"
         >

@@ -22,7 +22,7 @@
     "test:web": "pnpm run build && node test/web-smoke.ts && node test/panel-smoke.ts && node test/task-smoke.ts && node test/card-states-smoke.ts && node test/done-labels-smoke.ts && node test/context-smoke.ts && node test/codex-host-smoke.ts && node test/permission-smoke.ts && node test/skills-smoke.ts && node test/project-smoke.ts && node test/reminders-smoke.ts",
     "test:keyboard": "pnpm run build && node test/keyboard-smoke.ts",
     "test:connection": "pnpm run build && node test/connection-smoke.ts",
-    "test:chat": "pnpm run build && node test/chat-smoke.ts",
+    "test:chat": "pnpm run build && node test/chat-smoke.ts && node test/markdown-previews-smoke.ts",
     "lint:fix": "eslint --fix .",
     "test:semantic": "pnpm run build && node test/semantic-golden.ts"
   },

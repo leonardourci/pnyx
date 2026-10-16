@@ -3,6 +3,7 @@ import type { AgentConfig, HydraState, ViewPreferences } from '../../../src/core
 import { KEY_ACTIONS, bindingsFor } from '../../../src/core/keyboard.ts'
 import type { HybridHit } from '../../../src/oracle/semantic.ts'
 import { Button, Input, NumberField, Select, Switch } from '../components/ui/controls.tsx'
+import { Markdown } from '../components/ui/markdown.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import { InlineConfirm } from '../components/ui/inline-confirm.tsx'
 import { Icon } from '../components/ui/icon.tsx'
@@ -420,7 +421,22 @@ export function Oracle({
         >
           {!commandQuery({ query }) && query.trim() && (
             <>
-              {visibleHits.map(hit => <div className="oracle-row" key={hit.card}><Button className="oracle-hit" onClick={() => run({ work: () => hit.kind === 'hydra' ? openHydra() : openTask({ id: hit.card }) })}><strong>{hit.title}</strong><small>{hit.kind === 'hydra' ? 'Hydra conversation' : 'Task'}{hit.match === 'semantic' ? ' · similar meaning' : ''}</small>{hit.snippets.map((snippet, index) => <span key={index}>{snippet.snippet}</span>)}</Button></div>)}
+              {visibleHits.map(hit => (
+                <div className="oracle-row" key={hit.card}>
+                  <div className="oracle-hit">
+                    <Button onClick={() => run({ work: () => hit.kind === 'hydra' ? openHydra() : openTask({ id: hit.card }) })}>
+                      <strong>{hit.title}</strong>
+                    </Button>
+                    <small>
+                      {hit.kind === 'hydra' ? 'Hydra conversation' : 'Task'}
+                      {hit.match === 'semantic' ? ' · similar meaning' : ''}
+                    </small>
+                    {hit.snippets.map((snippet, index) => (
+                      <Markdown key={index} text={snippet.snippet} />
+                    ))}
+                  </div>
+                </div>
+              ))}
               {!visibleHits.length && <p className="muted oracle-row">No matching tasks or messages.</p>}
               <div className="oracle-row"><Button onClick={() => run({ work: history })}>Search history</Button><small className="muted">Hidden tasks and recorded history</small></div>
             </>
