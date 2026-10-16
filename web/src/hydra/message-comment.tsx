@@ -1,3 +1,4 @@
+import { Markdown } from '../components/ui/markdown.tsx'
 import type { ChatComment } from './chat.ts'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 
@@ -29,7 +30,7 @@ export function MessageComment({ comment, editing, edit, change, finish, remove 
             }
           }}
         />
-      ) : <p>{comment.text || 'Empty comment'}</p>}
+      ) : <Markdown text={comment.text || 'Empty comment'} />}
       <div className="row">
         <Button onClick={editing ? finish : edit}>{editing ? 'Done' : 'Edit comment'}</Button>
         <Button onClick={remove}>Remove comment</Button>

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { ReminderEditor, ReminderLabel } from './reminder.tsx'
 import type { Card as CardData, ViewPreferences } from '../../../src/core/model.ts'
 import type { LatestMessage } from '../../../src/thread/read.ts'
+import { Markdown } from '../components/ui/markdown.tsx'
 import { Button } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
@@ -14,7 +15,7 @@ function LastMessage({ message }: { message: LatestMessage }) {
   return (
     <div className="last-message" title={message.text}>
       <strong>{message.role === 'user' ? 'You' : 'Agent'}</strong>
-      <p>{message.text}</p>
+      <Markdown text={message.text} />
     </div>
   )
 }

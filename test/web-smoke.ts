@@ -41,7 +41,7 @@ try {
   await fill({ label: 'Oracle', value: 'lunch' })
   await eventually({ condition: 'document.querySelector(".oracle-hit")?.textContent.includes("Hydra conversation") && document.querySelectorAll("[data-card]").length === 0', label: 'search includes the Hydra conversation' })
   await screenshot({ name: 'oracle.png' })
-  await click({ selector: '.oracle-hit' })
+  await click({ selector: '.oracle-hit button' })
   await check({ condition: 'document.activeElement.matches(".hydra-chat textarea")', label: 'Hydra search result focuses its composer' })
   await fill({ label: 'Oracle', value: '> theme' })
   await check({ condition: 'document.querySelectorAll("[data-card]").length === 6 && !document.querySelector(".oracle-hit") && !!document.querySelector(".oracle-results [aria-label=Theme]")', label: 'command search leaves the Hydra intact' })

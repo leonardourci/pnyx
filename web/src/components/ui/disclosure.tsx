@@ -1,4 +1,5 @@
 import { useId, useState, type ReactNode } from 'react'
+import { Markdown } from './markdown.tsx'
 import { Button } from './controls.tsx'
 
 export function Disclosure({ title, children, className = '' }: {
@@ -23,7 +24,7 @@ export function CollapsibleText({ text }: { text: string }) {
 
   return (
     <div>
-      <p id={id} className={!expanded && long ? 'text-preview' : undefined}>{text}</p>
+      <div id={id} className={!expanded && long ? 'text-preview' : undefined}><Markdown text={text} /></div>
       {long && (
         <Button aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(!expanded)}>
           {expanded ? 'Show less' : 'Read more'}

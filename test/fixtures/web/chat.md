@@ -38,4 +38,6 @@ Fish &amp; chips, escaped as `&amp;` in HTML. [unsafe encoded](jav&#x61;script:a
 
 > A quoted reminder stays readable.
 
+PR: https://github.com/example/project/pull/42
+
 Final step: preserve the reply and every inline comment until delivery succeeds.

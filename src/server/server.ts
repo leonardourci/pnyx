@@ -823,7 +823,7 @@ async function mountOwnedHydra({
             throw new HydraError({ message: 'oracle expects text, optional workspace and optional Hydra scope', code: 'VALIDATION_ERROR' })
           }
 
-          const query = { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), ...(args[2] === 'hydra' ? { live: true } : {}), limit: ORACLE_LIMIT }
+          const query = { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), ...(args[2] === 'hydra' ? { live: true } : {}), limit: ORACLE_LIMIT, highlight: false }
 
           void queryOracle({ hydraId, query })
             .then(result => send({ ws, message: { type: 'receipt', id, ...result } }))
