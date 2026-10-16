@@ -143,9 +143,16 @@ export function refreshTasks({ state, ids }: {
       values: {
         agent: session && { ...session.agent },
         terminal: session?.terminal && { ...session.terminal },
+        ...(session?.agent.host === 'pnyx' ? {
+          settings: session.settings && { ...session.settings },
+          activity: session.activity,
+          sessionActivity: session.sessionActivity ?? session.activity,
+        } : {}),
       },
     })
-    hydra.attention = session ? [...session.attention] : []
+    hydra.attention = session?.agent.host === 'pnyx'
+      ? [...hydra.attention.filter(a => !a.key.startsWith('hook:')), ...session.attention]
+      : session ? [...session.attention] : []
     hydra.hidden = true
   }
 }

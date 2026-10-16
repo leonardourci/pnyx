@@ -286,6 +286,7 @@ export interface FirstmateRecord {
   present?: { meta: boolean; status: boolean }
 }
 export interface HydraIdentity {
+  agent?: AgentConfig
   id: string
   kind: 'agent' | 'firstmate'
   name: string
