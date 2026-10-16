@@ -30,8 +30,9 @@ export function InlineTitle({
     setBusy(true)
 
     try {
-      await save({ title })
+      const saving = save({ title })
       setEditing(false); finished?.()
+      await saving
       setError('')
     } catch (e) {
       setError((e as Error).message)
@@ -83,6 +84,7 @@ export function InlineTitle({
       }}
     >
       {value}
+      {error && <span role="alert">{error}</span>}
     </Button>
   )
 }

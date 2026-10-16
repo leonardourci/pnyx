@@ -31,7 +31,7 @@ export function HydraChat({
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
 }) {
-  const [page, setPage] = useState<ThreadPage | null>(null)
+  const [page, setPage] = useState<ThreadPage | null>(liveThread)
   const [width, setWidth] = useState<number | null>(null)
   const stream = useRef<HTMLDivElement>(null), follow = useRef(true)
   const hydra = hydraConfig({ state }).hydra, card = state.cards[HYDRA_CARD]

@@ -29,10 +29,11 @@ export function History({
   open({ id }: { id: string }): void
   notify({ text }: { text: string }): void
 }) {
-  const [kind, setKind] = useState(''), [hits, setHits] = useState<Hit[]>([]), [events, setEvents] = useState<EventRow[]>([]), [loading, setLoading] = useState(false), [before, setBefore] = useState<number | null>(null), [note, setNote] = useState('')
+  const [kind, setKind] = useState(''), [hits, setHits] = useState<Hit[]>([]), [events, setEvents] = useState<EventRow[]>([]), [loading, setLoading] = useState(true), [before, setBefore] = useState<number | null>(null), [note, setNote] = useState('')
   const generation = useRef(0)
   useEffect(() => {
     const gen = ++generation.current
+    setLoading(true)
     const timer = setTimeout(() => {
       setLoading(true)
       const args = ['--full', ...(workspace ? ['--workspace', workspace] : []), ...(kind ? ['--kind', kind] : []), ...(before ? ['--before', String(before)] : []), '--limit', '50']
@@ -98,6 +99,7 @@ export function History({
         </Button>
       </div>
       <div className="history-results" aria-busy={loading}>
+        {loading && <p className="muted" role="status">Loading history…</p>}
         {query.trim() && note && <p className="muted" role="status">{note}</p>}
         {query.trim() ? hits.map(hit => (
           <article className="history-entry" key={hit.card}>

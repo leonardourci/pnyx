@@ -7,8 +7,10 @@ import type { Command } from './connection.ts'
 
 export function Hydras({
   command, connected, notify, hydras, current, project, resolveProject, selectProject,
-  showHydra, addProject,
+  showHydra, addProject, navigate, loading,
 }: {
+  loading: boolean
+  navigate({ url }: { url: string }): Promise<void>
   command: Command
   connected: boolean
   hydras: HydraSummary[]
@@ -37,14 +39,30 @@ export function Hydras({
 
     const clean = new URL(location.href)
     clean.searchParams.delete('open-hydra'); history.replaceState(null, '', clean)
-    void command({ name: 'hydras', args: ['open', target] }).then(r => location.assign(r.url as string), (e: Error) => notify({ text: e.message }))
-  }, [connected, command, notify])
+    void navigate({ url: `/hydra/${encodeURIComponent(target)}/` }).catch((e: Error) => notify({ text: e.message }))
+  }, [connected, navigate, notify])
 
   const go = ({ args, path, projects = false }: {
     args: string[]
     path?: string
     projects?: boolean
   }) => {
+    if (args[0] === 'open') {
+      const url = new URL(`/hydra/${encodeURIComponent(args[1]!)}/`, location.href)
+
+      if (path) {
+        url.searchParams.set('open-project', path)
+      }
+
+      if (projects) {
+        url.searchParams.set('projects', '1')
+      }
+
+      void navigate({ url: url.href }).catch((e: Error) => notify({ text: e.message }))
+
+      return
+    }
+
     setBusy(true)
     void command({ name: 'hydras', args }).then(r => {
       const url = new URL(r.url as string)
@@ -113,16 +131,16 @@ export function Hydras({
                     label={`Rename Hydra ${h.name}`}
                     startEditing
                     finished={() => setRenaming(false)}
-                    save={({ title }) => command({ name: 'hydras', args: ['rename', h.id, title] })}
+                    save={({ title }) => command({ name: 'hydra', args: ['set', '--name', title, '--event-id', crypto.randomUUID()] })}
                   />
                 ) : (
                   <Button
                     className="hydra-name"
                     data-hydra-current={active ? '' : undefined}
                     aria-current={active ? 'page' : undefined}
-                    disabled={!connected || busy}
+                    disabled={busy}
                     onDoubleClick={() => active && setRenaming(true)}
-                    onClick={() => active ? showHydra() : go({ args: ['open', h.id] })}
+                    onClick={() => active && !loading ? showHydra() : go({ args: ['open', h.id] })}
                   ><Icon name="hydra" size={20} />{h.name}
                   </Button>
                 )}

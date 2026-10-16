@@ -125,7 +125,8 @@ export function Composer({
 
     return () => observer.disconnect()
   }, [draft, comments, failure])
-  const attempt = useRef(readAttempt({ key: card }))
+  const hydraId = useRef(document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content).current
+  const attempt = useRef(readAttempt({ key: card, hydraId }))
   // Comments travel with the draft as one reply, and stay until it is delivered.
   const commentKey = `pnyx-comments:${card}:${thread?.session ?? ''}`
   const [taught, setTaught] = useState(() => {
@@ -192,7 +193,7 @@ export function Composer({
     }
 
     attempt.current.pending = true
-    saveAttempt({ key: card, attempt: attempt.current })
+    saveAttempt({ key: card, hydraId, attempt: attempt.current })
     setFailure(''); setSending(true)
 
     try {
@@ -235,7 +236,7 @@ export function Composer({
         attempt.current.pending = false
       }
 
-      saveAttempt({ key: card, attempt: attempt.current })
+      saveAttempt({ key: card, hydraId, attempt: attempt.current })
       setSending(false)
     }
   }

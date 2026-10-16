@@ -2,7 +2,7 @@ import { Icon } from '../components/ui/icon.tsx'
 import { storageKey } from './outbox.ts'
 import { HYDRA_CARD, lockedColumn } from '../../../src/core/hydra.ts'
 import { cardSessionId } from '../../../src/core/tasks.ts'
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { viewFor } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
@@ -27,7 +27,6 @@ import { useHydraKeyboard } from '../keyboard/hydra.tsx'
 
 // What a reload (by hand, or after the server serves a new build) would otherwise lose:
 // the open card, the page, unsent drafts and how far the Hydra was scrolled. Kept per tab.
-const RESTORE_KEY = storageKey({ key: 'restore' })
 type Restore = {
   selected?: string | null
   page?: string
@@ -36,23 +35,34 @@ type Restore = {
   comments?: Record<string, ChatComment[]>
   scroll?: Record<string, [number, number]>
 }
-const restored: Restore = (() => {
-  try {
-    const value = JSON.parse(sessionStorage.getItem(RESTORE_KEY) ?? '{}') as Restore
-    sessionStorage.removeItem(RESTORE_KEY)
 
-    return value
+function restoreView({ key }: { key: string }): Restore {
+  try {
+    return JSON.parse(sessionStorage.getItem(key) ?? '{}') as Restore
   } catch {
     return {}
   }
-})()
+}
+
 const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [data-column] > .column-cards')]
   .map(el => [el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban', el] as const)
 
+const hydraViews = new Map<string, Restore>()
+
 export function App() {
+  const hydra = useHydra()
+
+  return <HydraView key={hydra.navigation.hydraId} hydra={hydra} />
+}
+
+function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const {
     state, command, connected, thread, setThread, hydraThread, latest, navigation,
-  } = useHydra()
+    navigate, loading, loaded, error,
+  } = hydra
+  const restoreKey = useRef(storageKey({ key: 'restore' })).current
+  const [restored] = useState(() => hydraViews.get(navigation.hydraId)
+    ?? restoreView({ key: restoreKey }))
   const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') || new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
@@ -130,6 +140,22 @@ export function App() {
       document.removeEventListener('scroll', scroll, true); timers.forEach(timer => clearTimeout(timer))
     }
   }, [])
+  useLayoutEffect(() => () => {
+    const value: Restore = {
+      selected,
+      page,
+      panel,
+      drafts,
+      comments,
+      scroll: Object.fromEntries(scrollers()
+        .map(([key, el]) => [key, [el.scrollLeft, el.scrollTop]])),
+    }
+    hydraViews.set(navigation.hydraId, value)
+
+    try {
+      sessionStorage.setItem(restoreKey, JSON.stringify(value))
+    } catch { /* The in-memory view still preserves drafts when storage is full. */ }
+  }, [navigation.hydraId, selected, page, panel, drafts, comments, restoreKey])
   const pendingScroll = useRef(restored.scroll)
   const view = viewFor({ state })
   useEffect(() => {
@@ -192,7 +218,7 @@ export function App() {
       try {
         const scroll = Object.fromEntries(scrollers()
           .map(([key, el]) => [key, [el.scrollLeft, el.scrollTop]]))
-        sessionStorage.setItem(RESTORE_KEY, JSON.stringify({
+        sessionStorage.setItem(restoreKey, JSON.stringify({
           selected, page, panel, drafts, comments, scroll,
         }))
       } catch { /* Storage full or blocked: the reload starts fresh. */ }
@@ -201,7 +227,7 @@ export function App() {
     addEventListener('pagehide', keep)
 
     return () => removeEventListener('pagehide', keep)
-  }, [selected, page, panel, drafts, comments])
+  }, [selected, page, panel, drafts, comments, restoreKey])
   useEffect(() => {
     const scroll = pendingScroll.current
 
@@ -353,6 +379,8 @@ export function App() {
             notify={notify}
             hydras={navigation.hydras}
             current={navigation.hydraId}
+            navigate={navigate}
+            loading={!!loading}
             project={project}
             resolveProject={resolveProject}
             selectProject={({ path }) => {
@@ -366,7 +394,9 @@ export function App() {
             }}
           />
         </Panel>
-        <main className="shell">
+        <main className="shell" aria-busy={!!loading || !loaded}>
+          {(loading || !loaded) && <p className="loading-status" role="status">Loading {loading ? navigation.hydras.find(h => h.id === loading)?.name ?? 'Hydra' : 'Hydra'}…</p>}
+          {error && <p className="error-banner" role="alert">{error}</p>}
           {page === 'settings' ? (
             <Settings
               state={state}
@@ -498,7 +528,14 @@ export function App() {
             </>
           )}
         </main>
-        <span className="sr-only" role="status">{notice}</span>
+        {notice && (
+          <div className="notice" role="status">
+            <span>{notice}</span>
+            <Button aria-label="Dismiss notification" onClick={() => setNotice('')}>
+              <Icon name="close" />
+            </Button>
+          </div>
+        )}
       </div>
     </KeyboardProvider>
   )

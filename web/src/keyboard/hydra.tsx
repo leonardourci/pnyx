@@ -54,7 +54,6 @@ export function useHydraKeyboard({
 }) {
   const [remembered, setRemembered] = useState<Record<string, string>>({})
   const focus = useRef<HydraAnchor | undefined>(undefined)
-  const moving = useRef(false)
   useEffect(() => {
     const track = (event: FocusEvent) => {
       const anchor = readAnchor({ target: event.target as HTMLElement })
@@ -83,7 +82,7 @@ export function useHydraKeyboard({
   }
 
   const move = ({ direction, anchor }: { direction: string; anchor: HydraAnchor }) => {
-    if (moving.current || !connected) {
+    if (!connected) {
       return
     }
 
@@ -123,15 +122,10 @@ export function useHydraKeyboard({
       name = 'column'; args = ['reorder', column.id, ...(before ? ['--before', before] : []), '--if-revision', String(state.configRevision ?? 0)]
     }
 
-    moving.current = true
     void command({ name, args: [...args, '--event-id', crypto.randomUUID()] })
-      .then(() => requestAnimationFrame(() => {
-        focusElement({ selector: anchorElement({ anchor: next }) })
-      }))
       .catch(e => notify({ text: e.message }))
-      .finally(() => {
-        moving.current = false
-      })
+    focus.current = next
+    requestAnimationFrame(() => focusElement({ selector: anchorElement({ anchor: next }) }))
   }
 
   const onAction = ({ id, context }: { id: string; context: ActionContext }): boolean => {
