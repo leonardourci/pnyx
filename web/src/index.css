@@ -522,8 +522,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .message-block { position: relative; min-width: 0; border-radius: 3px; }
 
-.message-block[data-active=true] { box-shadow: -3px 0 var(--color-gold-line); }
-
 .block-comment-action { position: relative; margin: 4px 0; color: var(--color-gold); background: var(--color-gold-wash); }
 
 .block-comment-action .small { font-size: var(--text-ui); color: var(--color-muted); }
