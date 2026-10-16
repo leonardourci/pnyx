@@ -18,6 +18,7 @@ export const DEFAULT_VIEW: ViewPreferences = {
   panelPlacement: 'inline',
   panelWidth: 440,
   composerHeight: 80,
+  taskComposerHeight: 80,
   cardHeight: 250,
   cardColors: true,
   toolDetails: false,
@@ -147,6 +148,11 @@ export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> 
         max: VIEW_SIZE_LIMITS.composerHeight.max,
       },
     ),
+    taskComposerHeight: persistedSize({
+      value: view.taskComposerHeight,
+      fallback: DEFAULT_VIEW.taskComposerHeight,
+      ...VIEW_SIZE_LIMITS.composerHeight,
+    }),
     cardHeight: persistedSize(
       {
         value: view.cardHeight,
@@ -284,6 +290,7 @@ export function patchView({ state, input: rawInput }: {
       case 'hydraWidth': next.hydraWidth = size({ value, min: VIEW_SIZE_LIMITS.hydraWidth.min, max: VIEW_SIZE_LIMITS.hydraWidth.max, key }); break
       case 'panelWidth': next.panelWidth = size({ value, min: VIEW_SIZE_LIMITS.panelWidth.min, max: VIEW_SIZE_LIMITS.panelWidth.max, key }); break
       case 'composerHeight': next.composerHeight = size({ value, min: VIEW_SIZE_LIMITS.composerHeight.min, max: VIEW_SIZE_LIMITS.composerHeight.max, key }); break
+      case 'taskComposerHeight': next.taskComposerHeight = size({ value, ...VIEW_SIZE_LIMITS.composerHeight, key }); break
       case 'cardHeight': next.cardHeight = size({ value, min: VIEW_SIZE_LIMITS.cardHeight.min, max: VIEW_SIZE_LIMITS.cardHeight.max, key }); break
       case 'panelPlacement':
         if (value !== 'right' && value !== 'inline') {

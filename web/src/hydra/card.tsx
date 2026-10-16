@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ReminderEditor, ReminderLabel } from './reminder.tsx'
 import type { Card as CardData, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
 import { Label } from '../components/ui/label.tsx'
@@ -12,6 +12,10 @@ import { CopyId } from '../components/ui/copy-id.tsx'
 import { HideAfter } from './hide-after.tsx'
 import { useStartRequest } from './start-request.ts'
 import { cardState, projectTitle } from './view.ts'
+import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
+import { Resize } from '../components/ui/resize.tsx'
+
+const MIN_THREAD_HEIGHT = 48
 
 function LastMessage({ message }: { message: LatestMessage }) {
   return (
@@ -29,6 +33,7 @@ export function HydraCard({
   latest,
   selected,
   view,
+  save,
   open,
   tabIndex,
   command,
@@ -45,12 +50,57 @@ export function HydraCard({
   latest?: LatestMessage
   selected: boolean
   view: ViewPreferences
+  save({ patch }: { patch: unknown }): Promise<boolean>
   open({ id }: { id: string }): void
   tabIndex: number
   command: Command
   connected: boolean
   children?: ReactNode
 }) {
+  const element = useRef<HTMLElement>(null)
+  const [preview, setPreview] = useState<number | null>(null)
+  const [minimum, setMinimum] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.min)
+  const [limit, setLimit] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.max)
+  const height = Math.max(minimum, Math.min(limit, view.cardHeights[card.id] ?? 480))
+  useLayoutEffect(() => {
+    const card = element.current
+    const pane = card?.closest('.column-cards')
+    const thread = card?.querySelector<HTMLElement>('.detail .thread')
+    const composer = card?.querySelector<HTMLElement>('.composer')
+
+    if (!selected || !card || !pane || !thread || !composer) {
+      return
+    }
+
+    const measure = () => {
+      const style = getComputedStyle(pane)
+      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+      const available = Math.floor(pane.clientHeight - padding)
+      const cardStyle = getComputedStyle(card)
+      const messages = thread.getBoundingClientRect()
+      const frame = messages.top - card.getBoundingClientRect().top
+        + composer.getBoundingClientRect().bottom - messages.bottom
+        + parseFloat(cardStyle.paddingBottom) + parseFloat(cardStyle.borderBottomWidth)
+      const readable = Math.min(VIEW_SIZE_LIMITS.cardHeight.max, Math.max(
+        VIEW_SIZE_LIMITS.cardHeight.min,
+        Math.ceil(frame + MIN_THREAD_HEIGHT),
+      ))
+      setMinimum(readable)
+      setLimit(Math.max(
+        readable,
+        Math.min(VIEW_SIZE_LIMITS.cardHeight.max, available),
+      ))
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(pane)
+    observer.observe(card)
+    observer.observe(thread)
+    observer.observe(composer)
+
+    return () => observer.disconnect()
+  }, [selected])
   const [reminding, setReminding] = useState(false)
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
@@ -67,11 +117,13 @@ export function HydraCard({
 
   return (
     <article
+      ref={element}
       className={`card ${selected ? 'selected' : ''}`}
+      style={selected ? { height: `min(${preview ?? height}px, 100cqh)` } : undefined}
       data-task={card.id}
       data-label-color={tint?.color}
       onClick={e => {
-        if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, form, .detail, .menu') && !window.getSelection()?.toString()) {
+        if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, form, .detail, .menu, .resize') && !window.getSelection()?.toString()) {
           open({ id: card.id })
         }
       }}
@@ -148,6 +200,17 @@ export function HydraCard({
       )}
       <ReminderLabel card={card} />
       {children}
+      {selected && (
+        <Resize
+          label="Resize card"
+          axis="y"
+          value={height}
+          min={minimum}
+          max={limit}
+          onPreview={({ value }) => setPreview(value)}
+          onCommit={({ value }) => save({ patch: { cardHeights: { [card.id]: value } } })}
+        />
+      )}
     </article>
   )
 }
