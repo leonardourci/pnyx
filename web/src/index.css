@@ -69,7 +69,9 @@ h1 { font-size: var(--text-pane); }
 
 h2 { font-size: var(--text-pane); }
 
-h1, h2, .hydra-head { font-family: var(--font-brand); font-weight: 700; }
+h1, h2 { font-weight: 700; }
+
+.settings > h1, .settings-box > h2, .keyboard-settings h2, .history-page > h1, .hydra-head { font-family: var(--font-brand); font-weight: 700; }
 
 .hydra-head strong { font-weight: inherit; }
 
@@ -624,7 +626,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .column-header h2 { font-size: var(--text-pane); min-width: 0; }
 
-.column-header .inline-title { font-weight: inherit; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.column-header .inline-title { font-family: var(--font-brand); font-weight: inherit; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .column-add { margin-left: auto; padding: 0; width: 26px; font-size: var(--text-pane); }
 
