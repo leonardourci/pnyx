@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { dispatchCommands, DISPATCH_HELP } from '../dispatch/cli.ts'
 import { project, PROJECT_HELP } from '../projects/cli.ts'
 import { createRequire } from 'node:module'
 import { AxiError, runAxiCli } from 'axi-sdk-js'
@@ -7,7 +8,7 @@ import { firstmateCommands, firstmateHelp } from '../integrations/firstmate/cli.
 import { ORACLE_HELP, SETTINGS_HELP, oracleCommands } from '../oracle/cli.ts'
 import { TOP_LEVEL_HELP, commandHelp, commands, home } from './commands.ts'
 import { AGENT_HELP, REPLY_HELP, agent, reply } from './reply.ts'
-import { WORKER_HELP, workerCommands } from './workers.ts'
+import { workerCommands } from './workers.ts'
 import { INTEGRATIONS_HELP, integrationsCommand } from './integrations.ts'
 
 const { version } = createRequire(import.meta.url)('../../package.json') as { version: string }
@@ -17,7 +18,7 @@ const HELP: Record<string, string> = {
   project: PROJECT_HELP,
   reply: REPLY_HELP,
   agent: AGENT_HELP,
-  ...WORKER_HELP,
+  ...DISPATCH_HELP,
   integrations: INTEGRATIONS_HELP,
 }
 
@@ -32,6 +33,7 @@ await runAxiCli({
     ...commands,
     project,
     ...workerCommands,
+    ...dispatchCommands,
     serve,
     stop,
     ...firstmateCommands,

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { agent, sendReply } from '../src/cli/reply.ts'
 import { startTask } from '../src/cli/start.ts'
-import { workerCommands } from '../src/cli/workers.ts'
+import { dispatchCommands } from '../src/dispatch/cli.ts'
+import { fakeDispatch } from './dispatch-fixture.ts'
 import { harvestTranscripts } from '../src/integrations/hooks/harvest.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
@@ -35,11 +36,12 @@ async function until({ check }: { check: () => boolean }) {
 async function lab({ refuse }: { refuse?: string } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-codex-')))
   process.env.PNYX_HOME = join(root, 'pnyx')
+  fakeDispatch({ root })
   process.env.CODEX_HOME = join(root, 'codex')
   await commands.hydra(['create', 'lab', '--hydra', 'lab'])
   await commands.task(['create', '--title', 'Ship it', '--key', 'ship', '--folder', root, '--hydra', 'lab'])
   await commands.task(['brief', 'ship', '--brief', 'Release the canary.', '--hydra', 'lab'])
-  await workerCommands.kind(['set', 'default', '--harness', 'codex', '--model', 'gpt-6.1-sol', '--effort', 'high', '--mode', 'on-request', '--hydra', 'lab'])
+  await dispatchCommands.rule(['set', 'default', '--harness', 'codex', '--model', 'gpt-6.1-sol', '--effort', 'high', '--mode', 'on-request', '--hydra', 'lab'])
   const fixture = fakeCodex({ root, refuse })
   server = await startServer({ hydraId: 'lab', spawnCodex: fixture.spawnCodex })
   const state = () => loadHydra({ hydraId: 'lab' }).state
@@ -55,6 +57,9 @@ test('Codex starts through app-server by default and records its native thread, 
   assert.deepEqual(result.agent, { harness: 'codex', session: '0199f00d-1111-7000-8000-000000000001', folder: root, host: 'pnyx' })
   await until({ check: () => task().sessionActivity === 'finished' })
   assert.equal(task().agent?.provider, 'codex')
+  assert.equal(fixture.environments[0]?.CODEX_HOME, join(root, 'codex'))
+  assert.equal(task().agent?.loginFolder, join(root, 'codex'))
+  assert.match(task().launch?.dispatch ?? '', /on codex:test/)
   assert.equal(task().agent?.transcriptPath, fixture.transcript)
   assert.deepEqual(task().settings, { model: 'gpt-6.1-sol', effort: 'high', mode: 'on-request' })
   const start = fixture.messages().find(m => m.method === 'thread/start')!
@@ -171,45 +176,21 @@ test('a concurrent start is refused and shutdown closes a Codex process still in
   assert.equal(task().agent, undefined)
 })
 
-test('switching a Claude kind to Codex uses Codex defaults instead of Claude settings', async () => {
-  const { root, fixture, task } = await lab()
-  await workerCommands.kind(['set', 'default', '--harness', 'claude', '--model', 'opus', '--effort', 'max', '--mode', 'acceptEdits', '--hydra', 'lab'])
-  await startTask({ hydraId: 'lab', task: 'ship', harness: 'codex', meta })
-  await until({ check: () => task().sessionActivity === 'finished' })
-  assert.deepEqual(fixture.messages().find(m => m.method === 'thread/start')!.params, { cwd: root })
-  const turn = fixture.messages().find(m => m.method === 'turn/start')!.params!
-  assert.equal(turn.model, undefined)
-  assert.equal(turn.effort, undefined)
-  assert.equal(turn.approvalPolicy, undefined)
-  assert.equal(task().settings, undefined)
+test('a harness filter never invents an unlisted candidate', async () => {
+  const { fixture, task } = await lab()
+  await dispatchCommands.rule(['set', 'default', '--harness', 'claude', '--model', 'opus', '--hydra', 'lab'])
+  await assert.rejects(startTask({ hydraId: 'lab', task: 'ship', harness: 'codex', meta }), /no usable candidates/)
+  assert.equal(fixture.children.length, 0)
+  assert.equal(task().agent, undefined)
 })
 
-test('a provider override resolves the kind quota for the chosen provider', async () => {
-  const { root, fixture, task } = await lab()
-  const bin = join(root, 'bin'), args = join(root, 'quota-args')
-  mkdirSync(bin)
-  const command = join(bin, 'quota-axi')
-  writeFileSync(command, `#!/bin/sh
-printf '%s\\n' "$@" > "$PNYX_TEST_QUOTA_ARGS"
-printf '%s\\n' '{"models":[{"provider":"codex","id":"gpt-6-luna"}]}'
-`)
-  chmodSync(command, 0o755)
-  const before = process.env.PATH
-  process.env.PATH = `${bin}:${before}`
-  process.env.PNYX_TEST_QUOTA_ARGS = args
-
-  try {
-    await workerCommands.kind(['set', 'default', '--harness', 'claude', '--model', 'opus', '--effort', 'max', '--mode', 'acceptEdits', '--quota', 'high', '--hydra', 'lab'])
-    await startTask({ hydraId: 'lab', task: 'ship', harness: 'codex', meta })
-  } finally {
-    process.env.PATH = before
-    delete process.env.PNYX_TEST_QUOTA_ARGS
-  }
-
+test('a harness filter keeps the selected candidate settings', async () => {
+  const { fixture, task } = await lab()
+  await dispatchCommands.rule(['set', 'default', '--candidates', JSON.stringify([{ harness: 'claude', model: 'opus', effort: 'max' }, { harness: 'codex', model: 'gpt-6-luna', effort: 'low' }]), '--hydra', 'lab'])
+  await startTask({ hydraId: 'lab', task: 'ship', harness: 'codex', meta })
   await until({ check: () => task().sessionActivity === 'finished' })
-  assert.match(readFileSync(args, 'utf8'), /--provider\ncodex\n/)
   assert.equal(fixture.messages().find(m => m.method === 'thread/start')!.params!.model, 'gpt-6-luna')
-  assert.deepEqual(task().settings, { model: 'gpt-6-luna' })
+  assert.deepEqual(task().settings, { model: 'gpt-6-luna', effort: 'low' })
 })
 
 test('native hook and transcript settings preserve hosted picker changes across restart', async () => {

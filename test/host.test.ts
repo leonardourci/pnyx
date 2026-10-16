@@ -1,3 +1,4 @@
+import { configPath, writeConfig, effectiveDispatch } from '../src/dispatch/config.ts'
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,6 +11,8 @@ import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { agent, sendReply } from '../src/cli/reply.ts'
 import { startTask } from '../src/cli/start.ts'
 import { workerCommands } from '../src/cli/workers.ts'
+import { dispatchCommands } from '../src/dispatch/cli.ts'
+import { fakeDispatch } from './dispatch-fixture.ts'
 import { decideOutcome, decidePush, decideSession } from '../src/core/decide.ts'
 import type { Card } from '../src/core/model.ts'
 import { createHost, type QueryFn } from '../src/server/host.ts'
@@ -104,6 +107,7 @@ async function until({ check, what }: { check: () => boolean; what: string }) {
 async function lab() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-host-')))
   process.env.PNYX_HOME = join(root, 'pnyx')
+  fakeDispatch({ root })
   process.env.CLAUDE_CONFIG_DIR = join(root, 'claude')
   const folder = join(root, 'work')
   mkdirSync(folder)
@@ -132,7 +136,7 @@ const hook = ({ id, event, session, cwd }: {
 
 test('task start runs Claude Code through the server, records it on the task and takes replies', async () => {
   const { folder, task, cards } = await lab()
-  await workerCommands.kind(['set', 'default', '--harness', 'claude', '--model', 'opus', '--effort', 'high', '--mode', 'acceptEdits', '--hydra', 'lab'])
+  await dispatchCommands.rule(['set', 'default', '--harness', 'claude', '--model', 'opus', '--effort', 'high', '--mode', 'acceptEdits', '--hydra', 'lab'])
   const sdk = fakeSdk()
   server = await startServer({ hydraId: 'lab', query: sdk.query })
 
@@ -150,6 +154,9 @@ test('task start runs Claude Code through the server, records it on the task and
   assert.equal(options.sessionId, agentRef.sessionId)
   assert.equal(options.resume, undefined)
   assert.equal(options.cwd, folder)
+  assert.equal(options.env?.CLAUDE_CONFIG_DIR, join(folder, '..', 'claude'))
+  assert.equal(agentRef.loginFolder, options.env?.CLAUDE_CONFIG_DIR)
+  assert.match(task().launch?.dispatch ?? '', /default: opus on claude:test/)
   assert.deepEqual(options.settingSources, ['user', 'project', 'local'])
   assert.equal(options.permissionPrompts, 'host')
   assert.equal(typeof options.canUseTool, 'function')
@@ -590,4 +597,31 @@ test('an ended outside Codex thread continues lazily in Pnyx and resumes the sam
   assert.equal(task().agent?.host, 'pnyx')
   assert.notEqual(task().sessionActivity, 'ended')
   assert.equal(cards(), count)
+})
+
+test('hosted account fallback is recorded and retained across hooks and a server restart', async () => {
+  const { folder, task } = await lab()
+  const root = join(folder, '..'), spent = join(root, 'claude-work')
+  mkdirSync(spent)
+  writeFileSync(join(spent, 'quota.json'), JSON.stringify({ provider: { quotaSemantics: { effectiveAvailability: [{ scope: 'all_models', status: 'known', effectivePercentRemaining: 0, runway: { status: 'exhausted_now' } }] } } }))
+  const config = effectiveDispatch({ hydraId: 'lab', state: loadHydra({ hydraId: 'lab' }).state })
+  writeConfig({ path: configPath({ hydraId: 'lab', accounts: true }), accounts: true, value: { accounts: { ...config.accounts, 'claude:work': { provider: 'claude', folder: spent } } } })
+  writeConfig({ path: configPath({ hydraId: 'lab' }), value: { main: 'claude:test', workers: { claude: ['claude:work', 'claude:test'] } } })
+  const sdk = fakeSdk()
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
+  await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'fallback' } })
+  await until({ check: () => task().sessionActivity === 'finished', what: 'fallback worker finish' })
+  const chosenFolder = task().agent?.loginFolder
+  assert.equal(chosenFolder, join(folder, '..', 'claude'))
+  assert.match(task().launch?.dispatch ?? '', /claude:work: 0%/)
+  hook({ id: 'fallback-hook', event: 'PostToolUse', session: task().agent!.sessionId, cwd: folder })
+  assert.equal(task().agent?.loginFolder, chosenFolder)
+  assert.match(task().launch?.dispatch ?? '', /on claude:test/)
+  await server.close()
+  process.env.CLAUDE_CONFIG_DIR = spent
+  const resumed = fakeSdk()
+  server = await startServer({ hydraId: 'lab', query: resumed.query })
+  await sendReply({ hydraId: 'lab', request: { card: 'ship', text: 'Continue', homes: [], actor: 'test' } })
+  await until({ check: () => resumed.calls.length === 1, what: 'resume on chosen account' })
+  assert.equal(resumed.calls[0]?.options.env?.CLAUDE_CONFIG_DIR, chosenFolder)
 })

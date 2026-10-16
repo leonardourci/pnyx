@@ -16,7 +16,8 @@ import { paseoConversation } from '../src/integrations/paseo/thread.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { startTask } from '../src/cli/start.ts'
 import { commands } from '../src/cli/commands.ts'
-import { workerCommands } from '../src/cli/workers.ts'
+import { dispatchCommands } from '../src/dispatch/cli.ts'
+import { fakeDispatch } from './dispatch-fixture.ts'
 
 const at = '2026-10-14T12:00:00Z'
 const url = 'ws://127.0.0.1:16767/ws'
@@ -82,6 +83,7 @@ function fakePaseo({ send }: { send?: () => Promise<void> } = {}) {
 function hydraId() {
   const home = mkdtempSync(join(tmpdir(), 'pnyx-paseo-'))
   process.env.PNYX_HOME = home
+  fakeDispatch({ root: home })
   const folder = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-paseo-work-')))
   withWriter({
     hydraId: 'lab',
@@ -218,7 +220,7 @@ test('pnyx-axi task start and task paseo report a stopped daemon as structured e
   const start = run({ args: ['task', 'start', 'work', '--via', 'paseo', '--harness', 'claude', '--prompt', 'Go', '--folder', folder] })
   assert.notEqual(start.status, 0)
   assert.match(start.stdout, /PASEO_UNAVAILABLE/)
-  assert.match(run({ args: ['task', '--help'] }).stdout, /task start <task> \[--via pnyx\|paseo\] \[--kind <kind>\] \[--harness claude\|codex\] \[--prompt <text>\]/)
+  assert.match(run({ args: ['task', '--help'] }).stdout, /task start <task> \[--via pnyx\|paseo\] \[--rule <name>\] \[--harness claude\|codex\] \[--prompt <text>\]/)
 })
 
 test('an agent started from a lab home reports its hooks to that home, never to the installed one', async () => {
@@ -240,20 +242,20 @@ test('an agent started from a lab home reports its hooks to that home, never to 
   assert.deepEqual(readdirSync(installed), ['hooks'])
 })
 
-test('task start uses the task kind\'s model, effort and mode, and opens with the worker prompt', async () => {
+test('task start uses the dispatch rule\'s model, effort and mode, and opens with the worker prompt', async () => {
   const { folder } = hydraId()
-  workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'codex-small', '--effort', 'high', '--mode', 'full-access', '--fast', 'off', '--hydra', 'lab'])
+  dispatchCommands.rule(['set', 'review', '--harness', 'codex', '--model', 'codex-small', '--effort', 'high', '--mode', 'full-access', '--fast', 'off', '--hydra', 'lab'])
   commands.task(['brief', 'work', '--brief', 'Verify the canary.', '--hydra', 'lab'])
   const paseo = fakePaseo()
-  await startTask({ hydraId: 'lab', task: 'work', via: 'paseo', kind: 'review', folder, url, meta: { at, actor: 'test', id: 'kind-1' }, connect: paseo.connect })
+  await startTask({ hydraId: 'lab', task: 'work', via: 'paseo', rule: 'review', folder, url, meta: { at, actor: 'test', id: 'kind-1' }, connect: paseo.connect })
   const created = paseo.calls.create[0]!
   assert.deepEqual(created.config, { provider: 'codex/codex-small', thinkingOptionId: 'high', modeId: 'full-access', featureValues: { fast_mode: false } })
   assert.match(String(created.prompt), /^Verify the canary\.\n\n/)
   assert.match(String(created.prompt), /Pnyx worker for task c1 "Lab task" on Hydra lab/)
 
   const other = hydraId()
-  workerCommands.kind(['set', 'review', '--harness', 'codex', '--model', 'missing', '--hydra', 'lab'])
+  dispatchCommands.rule(['set', 'review', '--harness', 'codex', '--model', 'missing', '--hydra', 'lab'])
   const refused = fakePaseo()
-  await assert.rejects(startTask({ hydraId: 'lab', task: 'work', via: 'paseo', kind: 'review', folder: other.folder, url, meta: { at, actor: 'test', id: 'kind-2' }, connect: refused.connect }), /no codex model missing/)
+  await assert.rejects(startTask({ hydraId: 'lab', task: 'work', via: 'paseo', rule: 'review', folder: other.folder, url, meta: { at, actor: 'test', id: 'kind-2' }, connect: refused.connect }), /no usable candidates/)
   assert.equal(refused.calls.create.length, 0)
 })
