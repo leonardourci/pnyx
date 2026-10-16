@@ -1,3 +1,4 @@
+import { taskMention } from '../src/mentions/mentions.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -114,6 +115,17 @@ test('Hydra sends appear before a reply, consume one native echo, and keep a lat
     f.message({ role: 'user', text: 'Keep running.' })
     assert.equal((await f.check({ after: Number(next.through) })).conversations, undefined)
     assert.match(readFileSync(join(home, 'sent.log'), 'utf8'), /continue/)
+
+    commands.task(['create', '--key', 'referenced', '--title', 'Related task', '--brief', 'Context for the receiver'])
+    const referenced = f.state().keys.referenced!
+    const mention = taskMention({ id: referenced, title: 'Related task' })
+    const beforeMention = f.state().seq
+    await sendReply({ hydraId: 'default', request: { card: f.task, text: mention, actor: 'web', homes: [home], id: 'mention-1' } })
+    const mentionCheck = await f.check({ after: beforeMention })
+    const event = readEvents({ hydraId: 'default' }).find(e => e.type === 'card.replied' && e.data.reply === 'mention-1' && e.data.context)
+    assert.ok(event?.type === 'card.replied')
+    f.message({ role: 'user', text: [mention, event.data.context].join('\n\n') })
+    assert.equal((await f.check({ after: Number(mentionCheck.through) })).conversations, undefined)
   } finally {
     rmSync(f.home, { recursive: true, force: true })
   }

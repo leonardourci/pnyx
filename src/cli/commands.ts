@@ -1,3 +1,4 @@
+import { mentionContext } from '../mentions/mentions.ts'
 import { reminderTime } from '../reminders/time.ts'
 import { waitingReminders } from '../reminders/state.ts'
 import { findProject, projectRows, taskProject } from '../projects/read.ts'
@@ -1381,7 +1382,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
         ? page.map(e => {
           const data = e.type === 'task.reminder-due' ? e.data.message : e.data
 
-          return values.full ? e : { seq: e.seq, id: e.id, at: e.at, actor: e.type === 'task.reminder-due' ? HYDRA_ACTOR : e.actor, task: data.task ?? 'none', action: data.action, text: data.text, ...(data.details ? { details: data.details } : {}) }
+          return values.full ? e : { seq: e.seq, id: e.id, at: e.at, actor: e.type === 'task.reminder-due' ? HYDRA_ACTOR : e.actor, task: data.task ?? 'none', action: data.action, text: data.text, ...(data.details ? { details: data.details } : {}), ...('context' in data && data.context ? { context: data.context } : {}) }
         })
         : `none: no messages after seq ${after}`,
       through,
@@ -1421,7 +1422,8 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       const text = task
         ? String(values.text ?? `${action === 'worker' ? 'Create a worker for' : 'Work with me on'} task ${task.id}: ${task.title}. Read its task history and current record before continuing.`)
         : required({ value: values.text as string | undefined, what: '--text' })
-      const decision = hydraEvent({ state, meta: m, cardId: task?.id ?? '$board', change: { type: 'hydra.message', data: { ...(task ? { task: task.id } : {}), action, text, ...(m.details ? { details: m.details } : {}), hydra: hydraConfig({ state, id: hydraId }).hydra.id } } })
+      const context = mentionContext({ state, text })
+      const decision = hydraEvent({ state, meta: m, cardId: task?.id ?? '$board', change: { type: 'hydra.message', data: { ...(task ? { task: task.id } : {}), action, text, ...(m.details ? { details: m.details } : {}), ...(context ? { context } : {}), hydra: hydraConfig({ state, id: hydraId }).hydra.id } } })
 
       if ('event' in decision) {
         decision.event.messageId = decision.event.id

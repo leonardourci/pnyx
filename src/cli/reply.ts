@@ -1,3 +1,4 @@
+import { mentionContext } from '../mentions/mentions.ts'
 import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
 import { answerPrompt, answerText, checkAnswer, requestId } from '../core/answer.ts'
@@ -290,12 +291,16 @@ export async function sendReply({ hydraId, request }: {
         throw invalid({ message: `card ${card.id} has no open decision with key ${resolveKey}`, help: [`Run \`pnyx-axi card ${card.id}\` to see its attention keys`] })
       }
 
+      const context = !request.control && !request.key && !answer
+        ? mentionContext({ state: writer.state, text: request.text }) : ''
+
       // A retry after a failed send queues again, so every attempt has its own receipts.
       const data = {
         reply,
         state: 'queued' as const,
         route: routeName({ route, control: request.control }),
         text,
+        ...(context ? { context } : {}),
         ...(request.taskMessage ? { taskMessage: true } : {}),
         ...(request.control || request.key ? { control: true } : {}),
         ...(resolveKey ? { resolveKey } : {}),
@@ -307,7 +312,7 @@ export async function sendReply({ hydraId, request }: {
         writer.append({ event: decision.event })
       }
 
-      return { card: card.id, reply, state: 'queued' as ReplyState, route, resend: true, keys, answers }
+      return { card: card.id, reply, state: 'queued' as ReplyState, route, resend: true, keys, answers, text: [request.text, context].filter(Boolean).join('\n\n') }
     },
   })
 
@@ -317,7 +322,9 @@ export async function sendReply({ hydraId, request }: {
 
   // Sent outside the writer lock: a send can take a while and must not block other writers.
   const { card, reply, route, keys, answers } = queued
-  const outcome = await deliver({ hydraId, card, reply, route, request, keys })
+  const outcome = await deliver({
+    hydraId, card, reply, route, request: { ...request, text: queued.text ?? request.text }, keys,
+  })
   const receipt = { card, reply, sent: true, ...outcome }
 
   try {

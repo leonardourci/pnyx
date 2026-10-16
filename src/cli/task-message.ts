@@ -1,3 +1,4 @@
+import { mentionContext } from '../mentions/mentions.ts'
 import { randomUUID } from 'node:crypto'
 import { decideReply, findCard } from '../core/decide.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
@@ -40,7 +41,7 @@ export async function sendTaskMessage({ hydraId, request }: {
 
       const hydra = hydraConfig({ state: writer.state, id: hydraId }).hydra
 
-      return { id: card.id, title: card.title, agent: known?.route ? known.route !== 'hydra' : !!card.agent, session: card.sessionIds?.[0], receipt: known?.route && known.route !== 'hydra' ? known : undefined, home: hydra.kind === 'firstmate' ? hydra.home : undefined }
+      return { context: mentionContext({ state: writer.state, text: request.text }), id: card.id, title: card.title, agent: known?.route ? known.route !== 'hydra' : !!card.agent, session: card.sessionIds?.[0], receipt: known?.route && known.route !== 'hydra' ? known : undefined, home: hydra.kind === 'firstmate' ? hydra.home : undefined }
     },
   })
   let hydra: TaskDelivery
@@ -52,7 +53,7 @@ export async function sendTaskMessage({ hydraId, request }: {
         const id = `task-context:${target.id}:${reply}`
 
         if (!(id in writer.state.eventIds)) {
-          const decision = hydraEvent({ state: writer.state, meta: { ...meta, id }, cardId: target.id, change: { type: 'hydra.message', data: { task: target.id, text: request.text, action: 'send', hydra: hydraConfig({ state: writer.state, id: hydraId }).hydra.id } } })
+          const decision = hydraEvent({ state: writer.state, meta: { ...meta, id }, cardId: target.id, change: { type: 'hydra.message', data: { task: target.id, text: request.text, ...(target.context ? { context: target.context } : {}), action: 'send', hydra: hydraConfig({ state: writer.state, id: hydraId }).hydra.id } } })
 
           if ('event' in decision) {
             decision.event.messageId = reply
@@ -77,7 +78,7 @@ export async function sendTaskMessage({ hydraId, request }: {
     })
 
     if (target.home && (hydra.state === 'queued' || hydra.state === 'failed')) {
-      hydra = fmNote({ home: target.home, requestId: `pnyx:${hydraId}:${target.id}:${reply}`, text: `Message on task ${target.id}: ${target.title}\n\n${request.text}` })
+      hydra = fmNote({ home: target.home, requestId: `pnyx:${hydraId}:${target.id}:${reply}`, text: `Message on task ${target.id}: ${target.title}\n\n${[request.text, target.context].filter(Boolean).join('\n\n')}` })
       const outcome = hydra
       withWriter({
         hydraId,

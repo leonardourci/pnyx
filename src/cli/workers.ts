@@ -183,7 +183,7 @@ export async function hydraCheck({ args, connect }: {
         const key = ({ text }: { text: string }) => `${e.sessionId ?? e.cardId}\n${redact({ text })}`
 
         if (e.type === 'card.replied' && e.data.state === 'queued' && e.data.text) {
-          const parts = splitEntry({ entry: { id: e.data.reply, role: 'user', kind: 'message', text: e.data.text ?? '' } })
+          const parts = splitEntry({ entry: { id: e.data.reply, role: 'user', kind: 'message', text: [e.data.text, e.data.context].filter(Boolean).join('\n\n') } })
 
           for (const part of parts) {
             const echo = key({ text: part.text })
