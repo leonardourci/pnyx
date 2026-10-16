@@ -1,3 +1,4 @@
+import { fakeDispatch } from './dispatch-fixture.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -47,6 +48,7 @@ const state = () => loadHydra({ hydraId: 'default' }).state
 const task = () => state().cards[state().keys.permission!]!
 const column = task().column
 const { browser, eventually, check, click, text, screenshot, close } = smokeBrowser({ home, session: 'pnyx-permissions' })
+fakeDispatch({ root: process.env.PNYX_HOME!, hydraId: 'default' })
 await startTask({ hydraId: 'default', task: 'permission', meta: { at: new Date().toISOString(), actor: 'fixture' } })
 
 try {

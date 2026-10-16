@@ -1,0 +1,254 @@
+import { hydraEvent } from '../src/core/hydra.ts'
+import { withWriter } from '../src/store/hydra-store.ts'
+import assert from 'node:assert/strict'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { test } from 'node:test'
+import { emptyHydra } from '../src/core/reducer.ts'
+import { configPath, effectiveDispatch, parseAccounts, parseDispatch, writeConfig, type EffectiveDispatch } from '../src/dispatch/config.ts'
+import { accountEnvironment, chooseCandidate, readQuota, validateChoice, type QuotaReading } from '../src/dispatch/select.ts'
+import { dispatchCommands, STARTER_ACCOUNTS, STARTER_DISPATCH } from '../src/dispatch/cli.ts'
+import { fakeDispatch } from './dispatch-fixture.ts'
+
+function config(): EffectiveDispatch {
+  return {
+    dispatch: { main: 'claude:main', workers: { claude: ['claude:work', 'claude:main'], codex: ['codex:work'] }, projects: {}, rules: { build: { when: 'Implementation', candidates: [{ harness: 'claude', model: 'opus' }, { harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' }] } }, default: [{ harness: 'claude', model: 'haiku' }] },
+    accounts: {
+      'claude:main': { provider: 'claude', folder: '/fake/main' }, 'claude:work': { provider: 'claude', folder: '/fake/work' }, 'codex:work': { provider: 'codex', folder: '/fake/codex' },
+    },
+  }
+}
+
+function reading({ remaining, priority, exhausted = false, stale = false }: {
+  remaining?: number
+  priority?: number
+  exhausted?: boolean
+  stale?: boolean
+}): QuotaReading {
+  const effective = {
+    status: remaining === undefined ? 'unknown' : 'known',
+    effectivePercentRemaining: remaining,
+    runway: { status: exhausted ? 'exhausted_now' : 'unknown' },
+    selection: { status: priority === undefined ? 'unknown' : 'known', spendPriority: priority },
+  }
+
+  return {
+    auth: 'usable',
+    effective,
+    models: [
+      { provider: 'claude', id: 'claude-opus-5-5', effective, state: { stale } },
+      { provider: 'codex', id: 'gpt-6.1-sol', effective, state: { stale } },
+    ],
+  }
+}
+
+function lab() {
+  const root = mkdtempSync(join(tmpdir(), 'pnyx-dispatch-'))
+  process.env.PNYX_HOME = join(root, 'pnyx')
+
+  return { root, state: emptyHydra() }
+}
+
+test('sections inherit shared config; nonempty local sections replace whole sections', () => {
+  const { root, state } = lab()
+  fakeDispatch({ root })
+  writeConfig({ path: configPath({ hydraId: 'lab', shared: true }), value: STARTER_DISPATCH })
+  writeConfig({ path: configPath({ hydraId: 'lab' }), value: { rules: {}, default: [], workers: {}, projects: {}, main: '' } })
+  let effective = effectiveDispatch({ hydraId: 'lab', state })
+  assert.deepEqual(effective.dispatch, STARTER_DISPATCH)
+  writeConfig({ path: configPath({ hydraId: 'lab' }), value: { rules: { docs: { when: 'Documentation', candidates: [{ harness: 'codex' }] } }, workers: { codex: ['codex:test'] } } })
+  effective = effectiveDispatch({ hydraId: 'lab', state })
+  assert.deepEqual(Object.keys(effective.dispatch.rules), ['docs'])
+  assert.deepEqual(effective.dispatch.default, STARTER_DISPATCH.default)
+  assert.deepEqual(effective.dispatch.workers, { codex: ['codex:test'] })
+  writeConfig({ path: configPath({ hydraId: 'lab', accounts: true }), accounts: true, value: { accounts: {} } })
+  assert.equal(Object.keys(effectiveDispatch({ hydraId: 'lab', state }).accounts).length, 2)
+  writeConfig({ path: configPath({ hydraId: 'lab', accounts: true }), accounts: true, value: { accounts: { only: { provider: 'codex', folder: root } } } })
+  assert.deepEqual(Object.keys(effectiveDispatch({ hydraId: 'lab', state }).accounts), ['only'])
+})
+
+test('old agent data loads as rules and migrates without changing its event log', () => {
+  const { state } = lab()
+  state.config = { id: 'lab', name: 'lab', hydra: { id: 'hydra', name: 'Hydra', kind: 'agent' }, columns: [], agents: { review: { harness: 'codex', model: 'gpt-6.1-sol', quota: 'high' }, default: { harness: 'claude', model: 'opus' } } }
+  const effective = effectiveDispatch({ hydraId: 'lab', state })
+  assert.deepEqual(effective.dispatch.rules.review?.candidates, [{ harness: 'codex', model: 'gpt-6.1-sol' }])
+  assert.deepEqual(effective.dispatch.default, [{ harness: 'claude', model: 'opus' }])
+  assert.equal(state.config.agents?.review?.quota, 'high')
+})
+
+test('candidate choice uses spendPriority rather than percent remaining or list order', () => {
+  const current = config()
+  const quota = ({ account }: { account: { provider: string } }) => account.provider === 'claude' ? reading({ remaining: 25, priority: 12 }) : reading({ remaining: 82, priority: 4 })
+  const chosen = chooseCandidate({ config: current, rule: 'build', task: 'task-1', quota })
+  assert.equal(chosen.account, 'claude:work')
+  assert.match(chosen.reason, /25%.*82%/)
+  assert.match(chosen.reason, /spendPriority/)
+  current.dispatch.rules.build!.candidates.reverse()
+  assert.deepEqual(chooseCandidate({ config: current, rule: 'build', task: 'task-1', quota }), chosen)
+})
+
+test('ties use task identity without candidate list bias', () => {
+  const current = config(), quota = () => reading({ remaining: 50, priority: 0 })
+  const first = Array.from({ length: 50 }, (_, index) => chooseCandidate({ config: current, rule: 'build', task: `task-${index}`, quota }).provider)
+  current.dispatch.rules.build!.candidates.reverse()
+  const second = Array.from({ length: 50 }, (_, index) => chooseCandidate({ config: current, rule: 'build', task: `task-${index}`, quota }).provider)
+  assert.deepEqual(second, first)
+  assert.deepEqual(new Set(first), new Set(['claude', 'codex']))
+})
+
+test('spent accounts fall back in provider order, with per-project overrides', () => {
+  const current = config(), visited: string[] = []
+
+  const quota = ({ account }: { account: { folder: string } }) => {
+    visited.push(account.folder)
+
+    return reading({ remaining: account.folder === '/fake/work' ? 0 : 25, priority: 4 })
+  }
+
+  const chosen = chooseCandidate({ config: current, rule: 'build', harness: 'claude', task: 'task', quota })
+  assert.equal(chosen.account, 'claude:main')
+  assert.deepEqual(visited, ['/fake/work', '/fake/main'])
+  current.dispatch.projects['/project'] = { claude: ['claude:main'] }
+  visited.length = 0
+  assert.equal(chooseCandidate({ config: current, rule: 'build', harness: 'claude', task: 'task', project: '/project', quota }).account, 'claude:main')
+  assert.deepEqual(visited, ['/fake/main'])
+})
+
+test('signed-out accounts stop rather than falling through; unlisted accounts are never read', () => {
+  const visited: string[] = []
+  assert.throws(() => chooseCandidate({
+    config: config(),
+    rule: 'build',
+    task: 'task',
+    quota: ({ account }) => {
+      visited.push(account.folder)
+
+      return { auth: 'signed-out' }
+    },
+  }), /claude:work is signed out/)
+  assert.deepEqual(visited, ['/fake/work'])
+  const current = config()
+  current.dispatch.workers = { claude: [] }
+  assert.throws(() => chooseCandidate({ config: current, rule: 'build', task: 'task', quota: () => assert.fail('unlisted quota read') }), /no usable candidates/)
+})
+
+test('exhausted rules stop without using the default rule, including explicit runway exhaustion', () => {
+  const readings = [
+    () => reading({ remaining: 0 }),
+    () => reading({ remaining: 50, exhausted: true }),
+  ]
+
+  for (const quota of readings) {
+    assert.throws(() => chooseCandidate({ config: config(), rule: 'build', task: 'task', quota }), /rule build; start stopped/)
+  }
+
+  assert.throws(() => chooseCandidate({ config: config(), rule: 'missing', task: 'task', quota: () => assert.fail('quota read') }), /no heads dispatch rule missing/)
+})
+
+test('unknown and stale quotas are usable and recorded as unknown', () => {
+  for (const quota of [() => ({ auth: 'unknown' as const }), () => reading({ remaining: 0, stale: true })]) {
+    const chosen = chooseCandidate({ config: config(), rule: 'build', task: 'task', quota })
+    assert.match(chosen.reason, /unknown/)
+    assert.doesNotMatch(chosen.reason, /0%/)
+  }
+})
+
+test('models unavailable through a harness are skipped without downgrading', () => {
+  const quota = () => reading({ remaining: 50 })
+  const chosen = chooseCandidate({ config: config(), rule: 'build', task: 'task', quota, offers: { claude: [], codex: ['gpt-6.1-sol'] } })
+  assert.equal(chosen.provider, 'codex')
+  assert.match(chosen.reason, /not offered/)
+  assert.throws(() => chooseCandidate({ config: config(), rule: 'build', task: 'task', quota, offers: { claude: [], codex: [] } }), /no usable candidates/)
+})
+
+test('account folders isolate quota-axi and hosted environments from inherited credentials', () => {
+  const { root } = lab()
+  const { claude, codex } = fakeDispatch({ root })
+  writeFileSync(join(claude, 'quota.json'), JSON.stringify({ provider: { state: { status: 'auth_required', authStatus: 'unusable' } } }))
+  assert.equal(readQuota({ account: { provider: 'claude', folder: claude } }).auth, 'signed-out')
+  assert.equal(readQuota({ account: { provider: 'codex', folder: codex } }).auth, 'usable')
+  const env = accountEnvironment({ account: { provider: 'codex', folder: codex }, env: { PATH: '/fake', OPENAI_API_KEY: 'discard', ANTHROPIC_API_KEY: 'discard', CLAUDE_CODE_OAUTH_TOKEN: 'discard', CLAUDE_CONFIG_DIR: '/wrong', CODEX_HOME: '/wrong' } })
+  assert.deepEqual(env, { PATH: '/fake', CODEX_HOME: codex })
+})
+
+test('CLI initializes starter files, edits rules and accounts, and rejects secret fields', () => {
+  const { root } = lab()
+  dispatchCommands.rule(['init', '--shared', '--hydra', 'lab'])
+  const global = configPath({ hydraId: 'lab', shared: true })
+  assert.deepEqual(JSON.parse(readFileSync(global, 'utf8')), STARTER_DISPATCH)
+  assert.deepEqual(JSON.parse(readFileSync(configPath({ hydraId: 'lab', shared: true, accounts: true }), 'utf8')), STARTER_ACCOUNTS)
+  dispatchCommands.rule(['set', 'docs', '--when', 'Writing docs', '--candidates', '[{"harness":"codex","model":"gpt-6-luna"}]', '--hydra', 'lab'])
+  dispatchCommands.rule(['accounts', '--main', 'codex:personal', '--provider', 'codex', '--order', 'codex:work,codex:personal', '--project', root, '--hydra', 'lab'])
+  const effective = dispatchCommands.rule(['list', '--hydra', 'lab']) as unknown as EffectiveDispatch
+  assert.equal(effective.dispatch.rules.docs?.when, 'Writing docs')
+  assert.equal(effective.dispatch.main, 'codex:personal')
+  assert.deepEqual(effective.dispatch.projects[root]?.codex, ['codex:work', 'codex:personal'])
+  dispatchCommands.account(['set', 'codex:lab', '--provider', 'codex', '--folder', root, '--hydra', 'lab'])
+  assert.equal(effectiveDispatch({ hydraId: 'lab', state: emptyHydra() }).accounts['codex:lab']?.folder, root)
+  assert.throws(() => parseAccounts({ value: { accounts: { test: { provider: 'claude', folder: root, token: 'secret' } } } }), /unknown fields token/)
+  assert.throws(() => parseDispatch({ value: { rules: { bad: { when: '', candidates: [] } } } }), /plain-language when/)
+  mkdirSync(join(root, 'pnyx', 'hydras', 'bad'), { recursive: true })
+  writeFileSync(configPath({ hydraId: 'bad' }), '{')
+  assert.throws(() => effectiveDispatch({ hydraId: 'bad', state: emptyHydra() }), /invalid JSON/)
+})
+
+test('shipped starter templates match the initializer', () => {
+  assert.deepEqual(JSON.parse(readFileSync(new URL('../setup/config/hydra-heads-dispatch.json', import.meta.url), 'utf8')), STARTER_DISPATCH)
+  assert.deepEqual(JSON.parse(readFileSync(new URL('../setup/config/hydra-accounts.json', import.meta.url), 'utf8')), STARTER_ACCOUNTS)
+})
+
+test('migration writes local rules once and later edits preserve the migrated default', () => {
+  lab()
+  withWriter({
+    hydraId: 'lab',
+    fn: ({ writer }) => {
+      const decision = hydraEvent({ state: writer.state, meta: { at: '2026-10-16T00:00:00Z', actor: 'test' }, cardId: '$board', change: { type: 'board.agents', data: { before: {}, agents: { default: { harness: 'codex', model: 'gpt-6.1-sol' }, review: { harness: 'claude', model: 'opus' } } } } })
+      assert.ok('event' in decision)
+      writer.append({ event: decision.event })
+    },
+  })
+  const log = join(process.env.PNYX_HOME!, 'hydras', 'lab', 'events.jsonl')
+  const before = readFileSync(log, 'utf8')
+  dispatchCommands.rule(['migrate', '--hydra', 'lab'])
+  const migrated = JSON.parse(readFileSync(configPath({ hydraId: 'lab' }), 'utf8'))
+  assert.deepEqual(migrated.default, [{ harness: 'codex', model: 'gpt-6.1-sol' }])
+  assert.equal(migrated.rules.review.when, 'Use for review work')
+  assert.match(String(dispatchCommands.rule(['migrate', '--hydra', 'lab']).event), /already exists/)
+  dispatchCommands.rule(['set', 'docs', '--harness', 'claude', '--model', 'haiku', '--hydra', 'lab'])
+  const edited = JSON.parse(readFileSync(configPath({ hydraId: 'lab' }), 'utf8'))
+  assert.deepEqual(edited.default, migrated.default)
+  assert.equal(readFileSync(log, 'utf8'), before)
+})
+
+test('hosted choice validation rejects unlisted accounts, changed rules and provider mismatches', () => {
+  const current = config()
+  const chosen = chooseCandidate({ config: current, rule: 'build', task: 'task', harness: 'claude', quota: () => reading({ remaining: 50 }) })
+  assert.deepEqual(validateChoice({ value: chosen, config: current }), chosen)
+  assert.throws(() => validateChoice({ value: { ...chosen, account: 'claude:main', folder: '/fake/main', provider: 'codex' }, config: current }), /choice is invalid/)
+  current.dispatch.workers.claude = ['claude:main']
+  assert.throws(() => validateChoice({ value: chosen, config: current }), /choice is invalid/)
+  current.dispatch.workers.claude = ['claude:work']
+  current.dispatch.rules.build!.candidates = [{ harness: 'codex' }]
+  assert.throws(() => validateChoice({ value: chosen, config: current }), /choice is invalid/)
+})
+
+test('AXI edits materialize inherited sections without dropping sibling settings', () => {
+  const { root } = lab()
+  fakeDispatch({ root })
+  writeConfig({ path: configPath({ hydraId: 'lab' }), value: { rules: {}, workers: {}, projects: {} } })
+  dispatchCommands.rule(['accounts', '--provider', 'claude', '--order', 'claude:test', '--hydra', 'lab'])
+  const effective = effectiveDispatch({ hydraId: 'lab', state: emptyHydra() })
+  assert.deepEqual(effective.dispatch.workers.codex, ['codex:test'])
+  dispatchCommands.account(['set', 'codex:extra', '--provider', 'codex', '--folder', root, '--hydra', 'lab'])
+  assert.deepEqual(Object.keys(effectiveDispatch({ hydraId: 'lab', state: emptyHydra() }).accounts).sort(), ['claude:test', 'codex:extra', 'codex:test'])
+})
+
+test('a stale quota model catalog does not exclude a model the harness offers', () => {
+  const current = config()
+  const candidate = { harness: 'claude' as const, model: 'claude-opus-5-5' }
+  current.dispatch.rules.build!.candidates = [candidate]
+  const chosen = chooseCandidate({ config: current, rule: 'build', task: 'task', quota: () => ({ auth: 'usable', models: [{ provider: 'claude', id: 'claude-opus-4-5' }] }) })
+  assert.deepEqual(chosen.candidate, candidate)
+  assert.match(chosen.reason, /unknown/)
+})

@@ -1,18 +1,21 @@
+import { chooseCandidate, accountEnvironment, dispatchTask, type DispatchChoice } from '../dispatch/select.ts'
+import { effectiveDispatch } from '../dispatch/config.ts'
+import { openPaseo } from '../integrations/paseo/client.ts'
 import { findProject } from '../projects/read.ts'
 import { randomUUID } from 'node:crypto'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { decideNote, decidePush, findCard, type Decision, type Meta } from '../core/decide.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
-import { HydraError, type AgentConfig, type HydraConfig, type HydraState, type Card } from '../core/model.ts'
+import { HydraError, type HydraConfig, type HydraState, type Card } from '../core/model.ts'
 import { paseoUrl } from '../core/paseo.ts'
 import { liveTask, sessionId } from '../core/tasks.ts'
 import { runCommand } from '../integrations/command/run.ts'
 import { taskFolder } from '../copies/copies.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
 import { fmNote } from '../integrations/firstmate/reply.ts'
-import { HARNESSES, createPaseoAgent, startAgent, type Harness } from '../integrations/paseo/launch.ts'
+import { createPaseoAgent, startAgent, type Harness } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { canonical } from '../store/paths.ts'
@@ -58,57 +61,6 @@ export function freeTask({ state, ref }: { state: HydraState; ref: string }): Ca
   return card
 }
 
-interface QuotaModel {
-  provider: string
-  id: string
-  effective?: { effectivePercentRemaining?: number }
-}
-
-function quotaModel({ harness, quota }: {
-  harness: AgentConfig['harness']
-  quota: NonNullable<AgentConfig['quota']>
-}): string | undefined {
-  try {
-    const out = execFileSync('quota-axi', ['models', '--intelligence', quota, '--sort', 'runway', '--json', '--max-age', '5m', '--provider', harness], { encoding: 'utf8', timeout: 15000, stdio: ['ignore', 'pipe', 'ignore'] })
-    const { models = [] } = JSON.parse(out) as { models?: QuotaModel[] }
-
-    return models.find(m => m.provider === harness
-      && (m.effective?.effectivePercentRemaining ?? 1) > 0)?.id
-  } catch {
-    return undefined
-  }
-}
-
-// The agent a start uses: the named kind, else `default` (or `hydra`), else Claude Code's defaults.
-export function agentFor({ state, hydraId, kind, harness }: {
-  state: HydraState
-  hydraId: string
-  kind: string
-  harness?: string
-}): AgentConfig {
-  const agents = hydraConfig({ state, id: hydraId }).agents ?? {}
-  const configured = Object.hasOwn(agents, kind) ? agents[kind] : undefined
-
-  if (!configured && kind !== 'default' && kind !== 'hydra') {
-    throw new HydraError({ message: `no agent configured for kind ${kind}`, code: 'NOT_FOUND', help: [`Run \`pnyx-axi kind set ${kind} --harness claude --hydra ${hydraId}\``] })
-  }
-
-  if (harness !== undefined && harness !== 'claude' && harness !== 'codex') {
-    throw new HydraError({ message: `unknown harness: ${harness}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
-  }
-
-  const defaults = configured ?? { harness: 'claude' as const }
-  const agent: AgentConfig = harness && harness !== defaults.harness
-    ? { harness, ...(defaults.quota ? { quota: defaults.quota } : {}) }
-    : { ...defaults }
-
-  if (agent.quota) {
-    agent.model = quotaModel({ harness: agent.harness, quota: agent.quota }) ?? agent.model
-  }
-
-  return agent
-}
-
 export function workerPrompt({ hydraId, id, title }: {
   hydraId: string
   id: string
@@ -152,7 +104,7 @@ function namedProjectCommand({ state, card, name }: {
 }
 
 export async function startTask({
-  hydraId, task, via, kind, harness, prompt, folder: given, inPlace, replacement, commandName,
+  hydraId, task, via, rule, harness, prompt, folder: given, inPlace, replacement, commandName,
   url, meta, connect,
 }: {
   hydraId: string
@@ -160,7 +112,7 @@ export async function startTask({
   replacement?: string
   commandName?: string
   via?: string
-  kind?: string
+  rule?: string
   harness?: string
   prompt?: string
   folder?: string
@@ -171,8 +123,6 @@ export async function startTask({
 }): Promise<Output> {
   const state = loadHydra({ hydraId }).state
   const card = findCard({ state, ref: task })
-  const agent = via === 'firstmate' || via === 'command' || (!via && state.config?.hydra.kind === 'firstmate')
-    ? undefined : agentFor({ state, hydraId, kind: kind ?? 'default', harness })
   const how = chooseVia({ state, via })
 
   if (commandName && how !== 'command') {
@@ -187,6 +137,42 @@ export async function startTask({
     return askFirstmate({ hydraId, task, prompt, meta })
   }
 
+  if (meta.id && (how === 'pnyx' || how === 'paseo') && `${meta.id}:attach` in state.eventIds) {
+    return { task: card.id, event: 'none: duplicate' }
+  }
+
+  let dispatch: DispatchChoice | undefined
+
+  if (how !== 'command') {
+    let offers: Partial<Record<Harness, string[]>> | undefined
+
+    if (how === 'paseo') {
+      offers = {}
+      const client = await (connect ?? openPaseo)({ url: paseoUrl({ url }) })
+
+      try {
+        const effective = effectiveDispatch({ hydraId, state }).dispatch
+        const list = !rule || rule === 'default' ? effective.default : effective.rules[rule]?.candidates ?? []
+
+        for (const candidate of list) {
+          if (!offers[candidate.harness]) {
+            const { models } = await client.providers.listModels(candidate.harness, {
+              cwd: given ?? card.folder ?? process.cwd(),
+            })
+            offers[candidate.harness] = models?.map(m => m.id) ?? []
+          }
+        }
+      } finally {
+        await client.close()
+      }
+    }
+
+    dispatch = dispatchTask({
+      hydraId, state, task: card.id, project: card.project, rule, harness, offers,
+    })
+  }
+
+  const agent = dispatch?.candidate
   const command = how === 'command' || !agent
   const selectedCommand = commandName
     ? namedProjectCommand({ state, card, name: commandName }) : undefined
@@ -213,6 +199,7 @@ export async function startTask({
       hydraId,
       body: {
         action: 'start',
+        dispatch,
         task: card.id,
         ...(replacement ? { replacement } : {}),
         prompt: taskPrompt({ hydraId, card, prompt }),
@@ -230,6 +217,7 @@ export async function startTask({
     task,
     harness: harness ?? agent.harness,
     agent,
+    dispatch,
     prompt: taskPrompt({ hydraId, card, prompt }),
     folder,
     url,
@@ -379,11 +367,11 @@ function startCommand({ hydraId, role, task, prompt, folder, harness, commandNam
 }
 
 export async function startHydra({
-  hydraId, via, kind, harness, prompt, folder, home, url, meta, connect,
+  hydraId, via, rule, harness, prompt, folder, home, url, meta, connect,
 }: {
   hydraId: string
   via?: string
-  kind?: string
+  rule?: string
   harness?: string
   prompt?: string
   folder?: string
@@ -413,12 +401,33 @@ export async function startHydra({
     throw new HydraError({ message: `unknown start route: ${how}`, code: 'VALIDATION_ERROR', help: ['Use --via paseo|firstmate|command'] })
   }
 
-  const agent = agentFor({ state: loadHydra({ hydraId }).state, hydraId, kind: kind ?? 'hydra' })
-  const chosen = (harness ?? agent.harness) as Harness
-
-  if (!Object.hasOwn(HARNESSES, chosen)) {
-    throw new HydraError({ message: `unknown harness: ${chosen}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
+  if (meta.id && `${meta.id}:hydra` in loadHydra({ hydraId }).state.eventIds) {
+    return { hydra: HYDRA_CARD, event: 'none: duplicate' }
   }
+
+  const config = effectiveDispatch({ hydraId, state: loadHydra({ hydraId }).state })
+  const selectedRule = rule ?? (config.dispatch.rules.hydra ? 'hydra' : 'default')
+  const mainName = config.dispatch.main
+  const main = mainName && Object.hasOwn(config.accounts, mainName)
+    ? config.accounts[mainName] : undefined
+
+  if (!main || !mainName) {
+    throw new HydraError({ message: 'heads dispatch needs a registered main account', code: 'NO_ACCOUNTS' })
+  }
+
+  const chosen = (harness ?? main.provider) as Harness
+  const client = await (connect ?? openPaseo)({ url: paseoUrl({ url }) })
+  let offered: string[]
+
+  try {
+    const { models } = await client.providers.listModels(chosen, { cwd: folder ?? process.cwd() })
+    offered = models?.map(m => m.id) ?? []
+  } finally {
+    await client.close()
+  }
+
+  const dispatch = chooseCandidate({ config: { ...config, dispatch: { ...config.dispatch, workers: { [main.provider]: [mainName] }, projects: {} } }, rule: selectedRule, task: '$hydra', harness: chosen, offers: { [chosen]: offered } })
+  const agent = dispatch.candidate
 
   const id = meta.id ?? randomUUID()
   const cwd = canonical({ path: folder }) ?? process.cwd()
@@ -452,7 +461,10 @@ export async function startHydra({
     title: `Hydra · ${hydraId}`,
     id,
     // No PNYX_TASK: the Paseo agent is recorded as Hydra here, not by its hooks.
-    env: { PNYX_HOME: pnyxHome(), PNYX_HYDRA: hydraId },
+    env: accountEnvironment({
+      account: { provider: dispatch.provider, folder: dispatch.folder },
+      env: { PNYX_HOME: pnyxHome(), PNYX_HYDRA: hydraId },
+    }) as Record<string, string>,
     labels: { 'pnyx.hydra': hydraId, 'pnyx.role': 'hydra' },
     url: endpoint,
     connect,

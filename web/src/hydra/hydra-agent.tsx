@@ -1,3 +1,4 @@
+import { useHeadsDispatch } from './heads-dispatch.ts'
 import { useState } from 'react'
 import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
@@ -11,7 +12,8 @@ export function HydraAgent({ state, command, connected, notify }: {
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
-  const agent = state.config?.agents?.hydra ?? { harness: 'claude' }
+  const { effective } = useHeadsDispatch({ command, seq: state.seq })
+  const agent = effective?.dispatch.rules.hydra?.candidates[0] ?? { harness: 'claude' }
 
   if (state.config?.hydra.kind === 'firstmate') {
     return null
@@ -95,7 +97,7 @@ function HydraSettings({ agent, command, connected, notify, close }: {
         disabled={busy || !connected}
         onClick={() => {
           setBusy(true)
-          void command({ name: 'kind', args: ['set', 'hydra', '--harness', draft.harness, '--model', draft.model ?? '', '--mode', draft.mode ?? '', '--effort', draft.effort ?? '', '--fast', draft.fast === undefined ? 'default' : draft.fast ? 'on' : 'off', '--quota', draft.harness === agent.harness && draft.model === agent.model ? agent.quota ?? 'off' : 'off', '--event-id', crypto.randomUUID()] })
+          void command({ name: 'rule', args: ['set', 'hydra', '--harness', draft.harness, '--model', draft.model ?? '', '--mode', draft.mode ?? '', '--effort', draft.effort ?? '', '--fast', draft.fast === undefined ? 'default' : draft.fast ? 'on' : 'off', '--event-id', crypto.randomUUID()] })
             .then(() => {
               notify({ text: 'Hydra agent saved for its next start.' }); close()
             }, (error: Error) => notify({ text: error.message }))

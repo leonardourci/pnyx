@@ -12,8 +12,12 @@ const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'] sat
 const MODES: readonly string[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk', 'auto'] satisfies PermissionMode[]
 
 // ponytail: folder names past 200 characters get a hash suffix we do not reproduce; the first hook corrects it.
-export const transcriptPath = ({ cwd, session }: { cwd: string; session: string }) =>
-  join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${session}.jsonl`)
+export const transcriptPath = ({ cwd, session, folder }: {
+  cwd: string
+  session: string
+  folder?: string
+}) =>
+  join(folder || process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${session}.jsonl`)
 
 function sdkOptions({ settings }: { settings: AgentSettings }): Partial<Options> {
   const { model, effort, mode } = settings
@@ -38,7 +42,9 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
   return {
     async open({ cwd, agent, settings, env }) {
       const id = agent?.sessionId ?? randomUUID()
-      const path = agent?.transcriptPath ?? transcriptPath({ cwd, session: id })
+      const path = agent?.transcriptPath ?? transcriptPath({
+        cwd, session: id, folder: env.CLAUDE_CONFIG_DIR,
+      })
       let running: ReturnType<QueryFn> | undefined
       let closed = false
 

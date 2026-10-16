@@ -1,3 +1,4 @@
+import { useHeadsDispatch } from './heads-dispatch.ts'
 import { Projects } from './projects.tsx'
 import type { HydraState, ViewPreferences } from '../../../src/core/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
@@ -22,6 +23,8 @@ export function Settings({ state, connected, view, save, command, notify }: {
   command: Command
   notify({ text }: { text: string }): void
 }) {
+  const { effective } = useHeadsDispatch({ command, seq: state.seq })
+  const hydraAgent = effective?.dispatch.rules.hydra?.candidates[0]
   const config = hydraConfig({ state })
 
   return (
@@ -107,12 +110,14 @@ export function Settings({ state, connected, view, save, command, notify }: {
           />
           <label className="setting-label">Default model</label>
           <Input
+            key={hydraAgent?.model ?? ''}
             aria-label="Hydra default model"
-            defaultValue={config.agents?.hydra?.model ?? ''}
+            disabled={!connected || !effective}
+            defaultValue={hydraAgent?.model ?? ''}
             placeholder="Harness default"
             onBlur={e => {
-              if (e.target.value !== (config.agents?.hydra?.model ?? '')) {
-                void command({ name: 'kind', args: ['set', 'hydra', '--harness', config.agents?.hydra?.harness ?? 'claude', '--model', e.target.value] }).catch(e => notify({ text: e.message }))
+              if (e.target.value !== (hydraAgent?.model ?? '')) {
+                void command({ name: 'rule', args: ['set', 'hydra', '--harness', hydraAgent?.harness ?? 'claude', '--model', e.target.value] }).catch(e => notify({ text: e.message }))
               }
             }}
           />

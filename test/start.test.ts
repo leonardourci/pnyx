@@ -9,7 +9,8 @@ import { project } from '../src/projects/cli.ts'
 import { HYDRA_CARD } from '../src/core/hydra.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { commands } from '../src/cli/commands.ts'
-import { workerCommands } from '../src/cli/workers.ts'
+import { dispatchCommands } from '../src/dispatch/cli.ts'
+import { fakeDispatch } from './dispatch-fixture.ts'
 import { integrations } from '../src/cli/integrations.ts'
 import { HYDRA_SKILL, setupHydra, startHydra, startTask } from '../src/cli/start.ts'
 import { loadHydra, spoolWrite } from '../src/store/hydra-store.ts'
@@ -21,6 +22,7 @@ const ROOT = join(import.meta.dirname, '..')
 function lab() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-start-')))
   process.env.PNYX_HOME = join(root, 'pnyx')
+  fakeDispatch({ root })
   const folder = join(root, 'work')
   mkdirSync(folder)
   const run = ({ args }: { args: string[] }) => commands[args[0] as keyof typeof commands]([...args.slice(1), '--hydra', 'lab'])
@@ -116,7 +118,7 @@ test('hydra start --via command makes its first session the Hydra, never a worke
 
 test('hydra start --via paseo records the Paseo agent as the Hydra', async () => {
   const { folder, state } = lab()
-  workerCommands.kind(['set', 'hydra', '--model', 'default', '--effort', 'high', '--fast', 'on', '--hydra', 'lab'])
+  dispatchCommands.rule(['set', 'hydra', '--model', 'default', '--effort', 'high', '--fast', 'on', '--hydra', 'lab'])
   const created: Record<string, unknown>[] = []
   const client = {
     providers: { listModels: async () => ({ models: [{ id: 'default', isDefault: true }] }) },
@@ -135,7 +137,7 @@ test('hydra start --via paseo records the Paseo agent as the Hydra', async () =>
   const out = await startHydra({ hydraId: 'lab', via: 'paseo', folder, url, meta: { ...meta, id: 'p1' }, connect })
   assert.deepEqual(out.hydra, { session: 'claude-code:hydra-agent', paseo: 'hydra-agent', folder })
   assert.deepEqual(created[0]!.config, { provider: 'claude/default', thinkingOptionId: 'high', featureValues: { fast_mode: true } })
-  assert.deepEqual(created[0]!.env, { PNYX_HOME: process.env.PNYX_HOME, PNYX_HYDRA: 'lab' })
+  assert.deepEqual(created[0]!.env, { PNYX_HOME: process.env.PNYX_HOME, PNYX_HYDRA: 'lab', CLAUDE_CONFIG_DIR: join(process.env.PNYX_HOME!, '..', 'claude') })
   assert.equal(created[0]!.cwd, folder)
   assert.equal(state().config?.hydra.session, 'claude-code:hydra-agent')
   assert.equal((await startHydra({ hydraId: 'lab', via: 'paseo', folder, url, meta: { ...meta, id: 'p1' }, connect })).event, 'none: duplicate')

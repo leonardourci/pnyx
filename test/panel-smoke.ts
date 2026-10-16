@@ -1,3 +1,4 @@
+import { effectiveDispatch } from '../src/dispatch/config.ts'
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -90,12 +91,12 @@ try {
   await click({ selector: '[role=listbox][aria-label="Model"] [role=option]:nth-child(2)' })
   await click({ selector: '.hydra-chat [aria-label="Effort"]' })
   await click({ selector: '[role=listbox][aria-label="Effort"] [role=option]:nth-child(4)' })
-  assert.equal(state().config?.agents?.hydra, undefined)
+  assert.equal(effectiveDispatch({ hydraId: 'default', state: state() }).dispatch.rules.hydra?.candidates[0], undefined)
   await check({ condition: '!document.querySelector(`.hydra-chat [aria-label="Fast"]`)', label: 'unsupported Fast is absent for hosted Hydra' })
   await focus({ selector: '.hydra-chat .agent-configuration > button' })
   await press({ key: 'Enter' })
   await eventually({ condition: 'document.querySelector(`.hydra-chat .agent-picker > button`).textContent.includes("gpt-6.1-sol")', label: 'Hydra settings apply together' })
-  assert.deepEqual(state().config?.agents?.hydra, { harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' })
+  assert.deepEqual(effectiveDispatch({ hydraId: 'default', state: state() }).dispatch.rules.hydra?.candidates[0], { harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' })
   assert.equal(state().config?.hydra.session, undefined)
   await evaluate({ code: 'location.reload(); return true;' })
   await eventually({ condition: 'document.querySelector(`.hydra-chat .agent-picker > button`)?.textContent.includes("gpt-6.1-sol")', label: 'launch settings persist without starting Hydra' })

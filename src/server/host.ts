@@ -1,3 +1,5 @@
+import { accountEnvironment, dispatchTask, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
+import { effectiveDispatch } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -8,20 +10,23 @@ import { terminalPresence, type Presence } from '../integrations/presence/check.
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained, postLine } from '../cli/commands.ts'
 import { permissionEvent } from '../core/permissions.ts'
+import { hydraEvent } from '../core/hydra.ts'
 import { freeTask } from '../cli/start.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
 import { HydraError, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
 import { harnessControls } from '../core/control.ts'
 import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
-import { pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
+import { loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
 
 export type { QueryFn } from './claude.ts'
 
 export interface Host {
-  start({ task, prompt, folder, settings, id, actor, reason, replacement }: {
+  hydraId: string
+  start({ task, prompt, folder, settings, id, actor, reason, replacement, dispatch }: {
     task: string
     prompt: string
     folder?: string
+    dispatch?: DispatchChoice
     replacement?: string
     settings: AgentSettings
     id: string
@@ -386,7 +391,7 @@ export function createHost({
         cwd: folderOf({ card }),
         agent: card.agent,
         settings: card.settings ?? {},
-        env: environment(),
+        env: card.agent.loginFolder ? accountEnvironment({ account: { provider: card.agent.provider === 'codex' ? 'codex' : 'claude', folder: card.agent.loginFolder }, env: environment() }) : environment(),
         signal: controller.signal,
       })
 
@@ -484,7 +489,8 @@ export function createHost({
   }
 
   return {
-    start: async ({ task, prompt, folder, settings, id, actor, reason, replacement }) => {
+    hydraId,
+    start: async ({ task, prompt, folder, settings, id, actor, reason, replacement, dispatch }) => {
       const { target, duplicate } = write({
         fn: ({ writer }) => {
           const target = findCard({ state: writer.state, ref: task })
@@ -521,7 +527,12 @@ export function createHost({
 
       try {
         const prepared = await providerOf({ provider }).open({
-          cwd, settings, env: environment(), signal: controller.signal,
+          cwd,
+          settings,
+          env: dispatch ? accountEnvironment({
+            account: { provider: dispatch.provider, folder: dispatch.folder }, env: environment(),
+          }) : environment(),
+          signal: controller.signal,
         })
         session = prepared
 
@@ -564,7 +575,7 @@ export function createHost({
               apply({ writer, decision: decidePush({ state: writer.state, key: card.key, input, meta: { ...meta, id: `${id}:folder` } }) })
             }
 
-            const agent: AgentRef = { provider, sessionId: prepared.id, cwd, ...(prepared.path ? { transcriptPath: prepared.path } : {}), host: 'pnyx' }
+            const agent: AgentRef = { provider, sessionId: prepared.id, cwd, ...(prepared.path ? { transcriptPath: prepared.path } : {}), host: 'pnyx', ...(dispatch ? { account: dispatch.account, loginFolder: dispatch.folder } : {}) }
             apply({
               writer,
               decision: decidePush({
@@ -575,6 +586,10 @@ export function createHost({
               }),
             })
             apply({ writer, decision: decideSession({ state: writer.state, ref: sessionId({ agent }), task: card.id, meta: { ...meta, id: `${id}:attach` } }) })
+
+            if (dispatch) {
+              apply({ writer, decision: hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:dispatch` }, cardId: card.id, change: { type: 'task.launched', data: { via: 'pnyx', at: meta.at, folder: cwd, harness: dispatch.provider, dispatch: dispatch.reason } } }) })
+            }
 
             const started = writer.state.cards[card.id] as Card & { agent: AgentRef }
 
@@ -810,7 +825,38 @@ export async function hostRequest({ host, body: raw }: {
         throw new HydraError({ message: 'folder must be an absolute path', code: 'VALIDATION_ERROR' })
       }
 
-      return host.start({ task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, replacement: field({ body, name: 'replacement', optional: true }), id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
+      const task = field({ body, name: 'task' })!
+      const current = loadHydra({ hydraId: host.hydraId }).state
+      const project = findCard({ state: current, ref: task }).project
+      const dispatch = body.dispatch
+        ? validateChoice({
+          value: body.dispatch,
+          config: effectiveDispatch({ hydraId: host.hydraId, state: current }),
+          project,
+        })
+        : dispatchTask({
+          hydraId: host.hydraId,
+          state: current,
+          task,
+          project,
+          rule: field({ body, name: 'rule', optional: true }),
+        })
+
+      for (const key of Object.keys(settings)) {
+        delete settings[key]
+      }
+
+      for (const key of SETTINGS) {
+        const value = dispatch.candidate[key as 'model' | 'effort' | 'mode']
+
+        if (value) {
+          settings[key] = value
+        }
+      }
+
+      settings.provider = dispatch.provider === 'codex' ? 'codex' : 'claude-code'
+
+      return host.start({ dispatch, task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, replacement: field({ body, name: 'replacement', optional: true }), id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
     }
 
     case 'permission': {
