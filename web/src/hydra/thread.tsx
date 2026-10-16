@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
 import { traces } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
@@ -37,6 +37,7 @@ export function Thread({
   comments,
   setComments,
   notify,
+  children,
 }: {
   card: Card
   view: ViewPreferences
@@ -53,6 +54,7 @@ export function Thread({
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
   notify({ text }: { text: string }): void
+  children?: ReactNode
 }) {
   const [latest, setLatest] = useState(false)
   const scroller = useRef<HTMLDivElement>(null), atBottom = useRef(true)
@@ -123,6 +125,7 @@ export function Thread({
           }
         }}
       >
+        {children}
         {olderCursor !== undefined && (
           <Button
             onClick={() => {

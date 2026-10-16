@@ -111,18 +111,22 @@ export function HydraCard({
         )}
       </div>
       {card.copy?.state === 'flagged' && <span className="copy-warning" title={card.copy.reason}>copy not cleaned</span>}
-      {view.lastMessageOnCards && !selected && (
-        factual ? <LastMessage message={factual} /> : <p className="last-message">No agent update yet.</p>
+      {(!selected || reminding) && (
+        <div className="card-rest">
+          {view.lastMessageOnCards && !selected && (
+            factual ? <LastMessage message={factual} /> : <p className="last-message">No agent update yet.</p>
+          )}
+          {reminding && (
+            <ReminderEditor
+              card={card}
+              command={command}
+              connected={connected}
+              close={() => setReminding(false)}
+            />
+          )}
+        </div>
       )}
       <ReminderLabel card={card} />
-      {reminding && (
-        <ReminderEditor
-          card={card}
-          command={command}
-          connected={connected}
-          close={() => setReminding(false)}
-        />
-      )}
       {children}
     </article>
   )

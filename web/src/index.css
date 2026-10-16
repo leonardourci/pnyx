@@ -675,7 +675,7 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .card > .project-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.card > .last-message { min-height: 0; overflow: auto; flex: 1; }
+.card-rest { min-height: 0; overflow: auto; flex: 1; }
 
 .card .last-message > .markdown { display: block; overflow: visible; }
 

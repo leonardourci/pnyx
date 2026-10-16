@@ -24,7 +24,7 @@ for (const column of columns) {
 commands.task(['create', '--key', 'review', '--title', 'Review cursor pagination', '--column', parked])
 const id = state().keys.review!
 const server = await startServer({ hydraId: 'default' })
-const { browser, eventually, check, click, text, fill, screenshot, close } = smokeBrowser({ home, session: 'pnyx-reminders' })
+const { browser, eventually, check, click, text, fill, screenshot, close, evaluate } = smokeBrowser({ home, session: 'pnyx-reminders' })
 const menu = () => click({ selector: '[aria-label="Card menu for Review cursor pagination"]' })
 
 try {
@@ -36,6 +36,9 @@ try {
   await check({ condition: '!!document.querySelector(".reminder-editor") && !document.querySelector("[role=dialog]")', label: 'Remind me opens an inline editor' })
   await click({ selector: '.reminder-editor label' })
   await check({ condition: '!document.querySelector(".detail") && document.querySelector(".card").draggable === false', label: 'editing a reminder keeps the card closed and prevents dragging' })
+  await fill({ label: 'Reminder time', value: 'tomorrow 9:00' })
+  await evaluate({ code: 'const button = document.querySelector(".reminder-editor button[type=submit]"); button.focus(); return true;' })
+  await check({ condition: 'document.querySelector(".card").getBoundingClientRect().height === 176 && document.querySelector(".reminder-editor button[type=submit]").getBoundingClientRect().bottom <= document.querySelector(".card-rest").getBoundingClientRect().bottom + 1', label: 'closed-card reminder controls scroll into view without growing the card' })
   await fill({ label: 'Reminder time', value: 'yesterday' }); await text({ label: 'Set reminder' })
   await eventually({ condition: '!!document.querySelector(".reminder-editor [role=alert]")', label: 'invalid time stays in the editor with an error' })
   await fill({ label: 'Reminder time', value: 'tomorrow 9:00' }); await text({ label: 'Set reminder' })

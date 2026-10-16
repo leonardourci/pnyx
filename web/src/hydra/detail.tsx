@@ -101,35 +101,6 @@ export function Detail({
           <Button aria-label="Close detail" onClick={close}><Icon name="close" size={14} /></Button>
         </div>
       </header>
-      {renaming && (
-        <InlineTitle
-          value={card.title}
-          label="Task title"
-          finished={() => setRenaming(false)}
-          startEditing
-          save={({ title }) => command({ name: 'task', args: ['rename', card.id, '--title', title, '--event-id', crypto.randomUUID()] }).then(() => setRenaming(false))}
-        />
-      )}
-      {renaming && (
-        <Input
-          aria-label="Task project label"
-          defaultValue={card.project ?? ''}
-          placeholder="Project label"
-          onBlur={e => {
-            if (e.target.value !== (card.project ?? '')) {
-              void command({ name: 'task', args: ['rename', card.id, '--project', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
-            }
-          }}
-        />
-      )}
-      {reminding && (
-        <ReminderEditor
-          card={card}
-          command={command}
-          connected={connected}
-          close={() => setReminding(false)}
-        />
-      )}
       <Thread
         card={card}
         view={view}
@@ -146,7 +117,37 @@ export function Detail({
         comments={comments}
         setComments={setComments}
         notify={notify}
-      />
+      >
+        {renaming && (
+          <InlineTitle
+            value={card.title}
+            label="Task title"
+            finished={() => setRenaming(false)}
+            startEditing
+            save={({ title }) => command({ name: 'task', args: ['rename', card.id, '--title', title, '--event-id', crypto.randomUUID()] }).then(() => setRenaming(false))}
+          />
+        )}
+        {renaming && (
+          <Input
+            aria-label="Task project label"
+            defaultValue={card.project ?? ''}
+            placeholder="Project label"
+            onBlur={e => {
+              if (e.target.value !== (card.project ?? '')) {
+                void command({ name: 'task', args: ['rename', card.id, '--project', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+              }
+            }}
+          />
+        )}
+        {reminding && (
+          <ReminderEditor
+            card={card}
+            command={command}
+            connected={connected}
+            close={() => setReminding(false)}
+          />
+        )}
+      </Thread>
     </section>
   )
 }
