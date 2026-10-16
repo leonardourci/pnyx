@@ -12,7 +12,7 @@ export function HydraAgent({ state, command, connected, notify }: {
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
-  const { effective } = useHeadsDispatch({ command, seq: state.seq })
+  const { effective } = useHeadsDispatch({ command })
   const agent = effective?.dispatch.rules.hydra?.candidates[0] ?? { harness: 'claude' }
 
   if (state.config?.hydra.kind === 'firstmate') {

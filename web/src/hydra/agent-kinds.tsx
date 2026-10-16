@@ -2,12 +2,12 @@ import { useHeadsDispatch } from './heads-dispatch.ts'
 import type { HydraState } from '../../../src/core/model.ts'
 import type { Command } from './connection.ts'
 
-export function AgentKinds({ state, command }: {
+export function AgentKinds({ command }: {
   state: HydraState
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const { effective, error } = useHeadsDispatch({ command, seq: state.seq })
+  const { effective, error } = useHeadsDispatch({ command })
 
   return (
     <section className="settings-box" aria-label="Agents">

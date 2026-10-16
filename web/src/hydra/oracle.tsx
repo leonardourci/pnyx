@@ -1,3 +1,4 @@
+import { useOraclePreferences } from './oracle-preferences.ts'
 import { useHeadsDispatch } from './heads-dispatch.ts'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AgentConfig, HydraState, ViewPreferences } from '../../../src/core/model.ts'
@@ -45,7 +46,10 @@ export function Oracle({
     matches: string[]
   } | null>(null)
   const [expanded, setExpanded] = useState(false)
-  const [settings, setSettings] = useState<Record<string, string>>({})
+  const { settings: preferences, set: persistSetting } = useOraclePreferences({
+    command, notify, enabled: expanded && connected,
+  })
+  const settings = preferences ?? {}
   const input = useRef<HTMLInputElement>(null), root = useRef<HTMLDivElement>(null)
   const context = useRef<ActionContext>({ scope: 'navigation', target: document.body })
   const { handlers } = useKeyboard()
@@ -64,12 +68,9 @@ export function Oracle({
 
   useKeyAction({ id: 'palette', handler: focus })
   useKeyAction({ id: 'find', handler: () => page === 'settings' ? false : page === 'history' ? focusElement({ selector: '[aria-label="Search history"]' }) : focus() })
-  useEffect(() => {
-    if (expanded && connected) {
-      void command({ name: 'settings', args: [] }).then(r => setSettings(r.settings as Record<string, string>), (e: Error) => notify({ text: e.message }))
-    }
-  }, [expanded, connected, command, notify])
-  const persist = ({ key, value }: { key: string; value: string }) => command({ name: 'settings', args: ['set', key, value] }).then(r => setSettings(r.settings as Record<string, string>), (e: Error) => notify({ text: e.message }))
+  const persist = ({ key, value }: { key: string; value: string }) =>
+    persistSetting({ key, value }).catch((e: Error) => notify({ text: e.message }))
+
   const editColumn = ({ args }: { args: string[] }) => command({ name: 'column', args: [...args, '--if-revision', String(state.configRevision ?? 0), '--event-id', crypto.randomUUID()] })
 
   const run = ({ work }: { work: () => unknown }) => {
@@ -267,14 +268,11 @@ export function Oracle({
       </>
     ),
   })
-  const { effective } = useHeadsDispatch({ command, seq: state.seq })
+  const { effective, saveHydra } = useHeadsDispatch({ command })
   const agent = effective?.dispatch.rules.hydra?.candidates[0] ?? { harness: 'claude' }
 
-  const saveAgent = ({ patch }: { patch: Partial<AgentConfig> }) => {
-    const next = { ...agent, ...patch }
-
-    return command({ name: 'rule', args: ['set', 'hydra', '--harness', next.harness, '--model', next.model ?? '', '--effort', next.effort ?? '', '--mode', next.mode ?? ''] }).catch((e: Error) => notify({ text: e.message }))
-  }
+  const saveAgent = ({ patch }: { patch: Partial<AgentConfig> }) =>
+    saveHydra({ patch }).catch((e: Error) => notify({ text: e.message }))
 
   add({
     id: 'hydra-harness',
@@ -285,6 +283,7 @@ export function Oracle({
         <span>Hydra harness</span>
         <Select
           label="Hydra harness"
+          disabled={!effective}
           value={agent.harness}
           options={[{ value: 'claude', label: 'Claude Code' }, { value: 'codex', label: 'Codex' }]}
           onChange={({ value }) => void saveAgent({ patch: { harness: value as AgentConfig['harness'] } })}
@@ -305,6 +304,7 @@ export function Oracle({
           <Input
             key={agent[field] ?? ''}
             aria-label={label}
+            disabled={!effective}
             defaultValue={agent[field] ?? ''}
             placeholder="Harness default"
             onBlur={e => {
