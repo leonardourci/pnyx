@@ -9,10 +9,10 @@ import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
-import { withTaskReceipts } from '../thread/task.ts'
+import { paseoHistory, PASEO_HISTORY_CURSOR } from '../integrations/paseo/history.ts'
 import { findCard } from '../core/decide.ts'
 import { replyRoute } from '../core/route.ts'
-import { PASEO_CURSOR, paseoConversation, type PaseoConversation } from '../integrations/paseo/thread.ts'
+import { paseoConversation, type PaseoConversation } from '../integrations/paseo/thread.ts'
 import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
 import { queryOracle, matchActions } from '../oracle/semantic.ts'
@@ -394,9 +394,14 @@ async function mountOwnedHydra({
         const unavailable = () => send({ ws, message: { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' } })
 
         if (sub.native) {
-          void sub.native.then(n => n.read({})).then(thread => {
+          const native = sub.native
+          void paseoHistory({
+            card: card.id,
+            conversation: { read: async ({ before }) => (await native).read({ before }) },
+            readSaved: ({ before }) => readThread({ hydraId, state, card, homes, before }),
+          }).then(thread => {
             if (map.get(ws) === sub && ws.readyState === ws.OPEN) {
-              send({ ws, message: { type: 'thread', thread: withTaskReceipts({ native: thread, saved: readThread({ hydraId, state, card, homes }) }) } })
+              send({ ws, message: { type: 'thread', thread } })
             }
           }, unavailable)
 
@@ -417,18 +422,18 @@ async function mountOwnedHydra({
     card: Card
     before?: string
   }): Promise<ThreadPage> => {
-    if (!sub.native) {
+    const native = sub.native
+
+    if (!native) {
       return readThread({ hydraId, state, card, homes, before })
     }
 
-    try {
-      const native = await (await sub.native).read({ before })
-
-      return withTaskReceipts({ native, saved: readThread({ hydraId, state, card, homes }) })
-    } catch (error) {
-      // Replies sent from here still show while Paseo cannot be read.
-      return { ...readThread({ hydraId, state, card, homes }), unavailable: `${error instanceof HydraError ? error.message : 'Paseo could not read this conversation'}; it shows again once Paseo answers.` }
-    }
+    return paseoHistory({
+      card: card.id,
+      conversation: { read: async ({ before }) => (await native).read({ before }) },
+      readSaved: ({ before }) => readThread({ hydraId, state, card, homes, before }),
+      before,
+    })
   }
 
   const bindThread = ({ ws, card }: { ws: WebSocket; card: Card }) => {
@@ -886,9 +891,10 @@ async function mountOwnedHydra({
 
           const card = findCard({ state, ref: args[0] })
 
-          const cursor = card.agent?.paseoAgentId ? PASEO_CURSOR : THREAD_CURSOR
+          const cursor = card.agent?.paseoAgentId ? PASEO_HISTORY_CURSOR : THREAD_CURSOR
+          const cursorLimit = card.agent?.paseoAgentId ? 600 : 200
 
-          if (args[1] !== undefined && (args[1].length > 200 || !cursor.test(args[1]))) {
+          if (args[1] !== undefined && (args[1].length > cursorLimit || !cursor.test(args[1]))) {
             throw new HydraError({ message: 'invalid thread cursor', code: 'VALIDATION_ERROR' })
           }
 
