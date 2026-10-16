@@ -17,8 +17,9 @@ export interface HostedSession {
 }
 
 export interface Provider {
-  open({ cwd, agent, settings, env, signal }: {
+  open({ cwd, agent, settings, env, signal, instructions }: {
     cwd: string
+    instructions?: string
     agent?: AgentRef
     settings: AgentSettings
     env: NodeJS.ProcessEnv

@@ -235,7 +235,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
 
 export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['app-server', '--listen', 'stdio://'], { cwd, env, stdio: 'pipe' }) }: { spawnCodex?: SpawnCodex }): Provider {
   return {
-    async open({ cwd, agent, settings, env, signal }) {
+    async open({ cwd, agent, settings, env, signal, instructions }) {
       const rpc = connection({ child: spawnCodex({ cwd, env }) })
 
       const close = () => {
@@ -258,7 +258,9 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
           params: {
             ...(agent ? { threadId: agent.sessionId } : {}),
             cwd,
+            ...(instructions ? { developerInstructions: instructions } : {}),
             ...(options.model ? { model: options.model } : {}),
+            ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
             ...(options.mode ? { approvalPolicy: options.mode } : {}),
           },
         })
@@ -296,6 +298,7 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
                   threadId: id,
                   input: [{ type: 'text', text, text_elements: [] }],
                   ...(options.model ? { model: options.model } : {}),
+                  ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
                   ...(options.effort ? { effort: options.effort } : {}),
                   ...(options.mode ? { approvalPolicy: options.mode } : {}),
                 },
