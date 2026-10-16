@@ -1,7 +1,7 @@
 import { fixtureCli } from './cli-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -397,4 +397,46 @@ test('a live Hydra transcript joins its Hydra conversation before a turn-end hoo
   writeFileSync(transcript, `${JSON.stringify({ type: 'assistant', message: { content: 'The canary review is ready.' } })}\n`)
   assert.match(run({ args: ['oracle', 'flamingo'] }), /^results: "none: /m)
   assert.match(run({ args: ['oracle', 'canary'] }), /kind: hydra/)
+})
+
+test('unhighlighted snippets preserve Markdown URLs, brackets and line breaks', () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-oracle-markdown-'))
+  const previous = process.env.PNYX_HOME
+  process.env.PNYX_HOME = home
+  const text = '[PR](https://github.com/example/project/pull/42)\n\n- **Ready** [literal].'
+
+  try {
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          seq: 1,
+          id: 'markdown',
+          at: '2026-10-15T10:00:00Z',
+          actor: 'fixture',
+          cardId: '$board',
+          type: 'hydra.message',
+          data: { action: 'send', text, hydra: 'hydra' },
+        },
+      }),
+    })
+    updateIndex({ hydraId: 'default' })
+
+    for (const query of ['project', 'github']) {
+      const result = search({ hydraId: 'default', query: { text: query, limit: 1, highlight: false } })
+      assert.equal(result.hits[0]?.snippets[0]?.snippet, text)
+    }
+
+    const highlighted = search({ hydraId: 'default', query: { text: 'project', limit: 1 } })
+    assert.match(highlighted.hits[0]!.snippets[0]!.snippet, /example\/\[project\]\/pull/)
+  } finally {
+    if (previous === undefined) {
+      delete process.env.PNYX_HOME
+    } else {
+      process.env.PNYX_HOME = previous
+    }
+
+    rmSync(home, { recursive: true, force: true })
+  }
 })
