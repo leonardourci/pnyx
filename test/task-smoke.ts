@@ -15,6 +15,20 @@ commands.task(['create', '--key', 'review', '--title', 'Review the migration pla
 commands.task(['create', '--key', 'long', '--title', 'A very long title '.repeat(15), '--column', 'in_progress'])
 const state = () => loadHydra({ hydraId: 'default' }).state
 const task = () => state().cards[state().keys.review!]!
+withWriter({
+  hydraId: 'default',
+  fn: ({ writer }) => {
+    for (const key of ['review', 'long']) {
+      const decision = decidePush({
+        state: writer.state,
+        key,
+        input: { project: key === 'review' ? 'payments-api' : undefined, tags: ['canary'] },
+        meta: { actor: 'fixture', at: new Date().toISOString() },
+      })
+      assert.ok('event' in decision); writer.append({ event: decision.event })
+    }
+  },
+})
 const transcript = join(home, 'worker.jsonl')
 writeFileSync(transcript, Array.from({ length: 12 }, (_, i) => JSON.stringify({ type: i % 2 ? 'assistant' : 'user', timestamp: `2026-10-16T01:${String(i).padStart(2, '0')}:00Z`, message: { content: i % 2 ? 'The migration passes locally. I am checking the rollback path and the canary gate.\n\n' + 'A factual update from the worker. '.repeat(4) : 'Please inspect the migration and preserve its existing data.' } })).join('\n') + '\n')
 commands.task(['status', 'review', 'working', '--note', 'The migration passes locally; checking the rollback path.', '--actor', 'worker'])
@@ -33,6 +47,10 @@ const menu = () => click({ selector: '[aria-label="Task menu"]' })
 try {
   await browser({ args: ['open', server.url] }); await browser({ args: ['resize', '1440', '900'] }); await browser({ args: ['wait', 'Review the migration plan'] })
   await check({ condition: '[...document.querySelectorAll(".card")].every(c => c.getBoundingClientRect().height === 176)', label: 'closed cards stay 176 px despite long titles' })
+  const colors = state().labelColors!
+  const projectColor = colors.find(entry => entry.label === 'payments-api')!.color
+  const tagColor = colors.find(entry => entry.label === 'canary')!.color
+  await check({ condition: `document.querySelector('[data-task="${task().id}"]').dataset.labelColor === '${projectColor}' && document.querySelector('[data-task="${state().keys.long}"]').dataset.labelColor === '${tagColor}'`, label: 'the saved project color supplies the tint, with a saved label fallback' })
   await check({ condition: 'document.querySelector(".last-message").textContent.includes("migration passes locally")', label: 'a factual worker update appears at rest' })
   await screenshot({ name: 'cards-closed-after.png' })
   await click({ selector: '.card-open' })

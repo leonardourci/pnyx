@@ -60,6 +60,8 @@ export function HydraCard({
   }, [])
   const { resume, busy } = useStartRequest({ card, firstmate, command, notify })
   const status = cardState({ card, hours: doneAfterHours, now })
+  const tint = labelColors?.find(entry => entry.label === card.project)
+    ?? labelColors?.find(entry => card.tags.includes(entry.label))
   const update = taskUpdates({ card }).at(-1)
   const factual = update ? { role: 'assistant' as const, text: update.text, at: update.at } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
 
@@ -67,7 +69,7 @@ export function HydraCard({
     <article
       className={`card ${selected ? 'selected' : ''}`}
       data-task={card.id}
-      data-label-color={(labelColors?.find(entry => entry.label === card.project) ?? labelColors?.find(entry => card.tags.includes(entry.label)))?.color}
+      data-label-color={tint?.color}
       onClick={e => {
         if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, form, .detail, .menu') && !window.getSelection()?.toString()) {
           open({ id: card.id })
