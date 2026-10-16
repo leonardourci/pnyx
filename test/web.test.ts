@@ -142,6 +142,7 @@ test('saved resize preferences load within readable size limits', () => {
         ...view,
         panelWidth: 1,
         composerHeight: 999,
+        taskComposerHeight: 1,
         cardHeight: 1,
         columnWidths: { needs_you: 1, review: 900 },
         cardHeights: { c1: 1 },
@@ -151,6 +152,7 @@ test('saved resize preferences load within readable size limits', () => {
 
   assert.equal(loaded.panelWidth, VIEW_SIZE_LIMITS.panelWidth.min)
   assert.equal(loaded.composerHeight, VIEW_SIZE_LIMITS.composerHeight.max)
+  assert.equal(loaded.taskComposerHeight, VIEW_SIZE_LIMITS.composerHeight.min)
   assert.equal(loaded.cardHeight, VIEW_SIZE_LIMITS.cardHeight.min)
   assert.equal(loaded.columnWidths.needs_you, VIEW_SIZE_LIMITS.columnWidth.min)
   assert.equal(loaded.columnWidths.review, VIEW_SIZE_LIMITS.columnWidth.max)
@@ -158,6 +160,24 @@ test('saved resize preferences load within readable size limits', () => {
   assert.equal(clampViewSize({ value: 100, min: 320, max: 720 }), 320)
   assert.equal(clampViewSize({ value: 800, min: 320, max: 720 }), 720)
   assert.equal(clampViewSize({ value: 320.5, min: 320, max: 720 }), 321)
+})
+
+test('Hydra and task composer heights replay independently', () => {
+  const initial = emptyHydra()
+  assert.equal(viewFor({ state: initial }).taskComposerHeight, 80)
+  const hydra = reduce({
+    state: initial,
+    event: event({ d: decideView({ state: initial, patch: { composerHeight: 180 }, meta }) }),
+  })
+  const edit = event({ d: decideView({ state: hydra, patch: { taskComposerHeight: 120 }, meta }) })
+  const state = reduce({ state: hydra, event: edit })
+  assert.equal(viewFor({ state }).composerHeight, 180)
+  assert.equal(viewFor({ state }).taskComposerHeight, 120)
+  assert.deepEqual(reduce({ state: hydra, event: edit }), state)
+
+  for (const taskComposerHeight of [79, 421, 100.5, null, '120']) {
+    assert.throws(() => patchView({ state, input: { taskComposerHeight } }), HydraError)
+  }
 })
 
 test('custom columns take moved cards and send them to the fallback column when deleted', () => {
