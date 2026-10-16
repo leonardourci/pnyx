@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { clampViewSize } from '../../../../src/core/view.ts'
-import { useBusy } from './controls.tsx'
 
 export function Resize({ label, value, min, max, axis = 'x', reverse = false, onPreview, onCommit }: { label: string; value: number; min: number; max: number; axis?: 'x' | 'y'; reverse?: boolean; onPreview({ value }: { value: number | null }): void; onCommit({ value }: { value: number }): unknown }) {
-  const [preview, setPreview] = useState<number | null>(null), [busy, run] = useBusy()
+  const [preview, setPreview] = useState<number | null>(null)
   const current = useRef<number | null>(null)
   const drag = useRef<{ start: number; value: number } | null>(null)
 
@@ -22,7 +21,7 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
     onPreview({ value: null })
 
     if (!cancel && n !== null && n !== value) {
-      run({ save: () => onCommit({ value: clampViewSize({ value: n, min, max }) }) })
+      void onCommit({ value: clampViewSize({ value: n, min, max }) })
     }
   }
 
@@ -39,10 +38,9 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={preview ?? value}
-      aria-busy={busy}
       className={`resize resize-${axis}`}
       onPointerDown={e => {
-        if (e.button !== 0 || busy) {
+        if (e.button !== 0) {
           return
         }
 
@@ -75,10 +73,6 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
         }
 
         e.preventDefault(); e.stopPropagation()
-
-        if (busy) {
-          return
-        }
 
         previewAt({ size: e.key === 'Home' ? min : e.key === 'End' ? max : (current.current ?? value) + (e.key === keys[1] ? 1 : -1) * (reverse ? -1 : 1) * (e.shiftKey ? 32 : 8) })
       }}

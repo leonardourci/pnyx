@@ -78,8 +78,11 @@ export function Detail({
             {!card.automaticTask && (
               <Button
                 disabled={!connected}
-                onClick={() => void command({ name: 'task', args: [card.hidden ? 'unhide' : 'hide', card.id, '--event-id', crypto.randomUUID()] }).then(() => close())
-                  .catch(e => notify({ text: e.message }))}
+                onClick={() => {
+                  void command({ name: 'task', args: [card.hidden ? 'unhide' : 'hide', card.id, '--event-id', crypto.randomUUID()] })
+                    .catch(e => notify({ text: e.message }))
+                  close()
+                }}
               >{card.hidden ? 'Bring back to Hydra' : 'Hide from Hydra'}
               </Button>
             )}
@@ -134,6 +137,7 @@ export function Detail({
         )}
         {renaming && (
           <Input
+            key={card.project}
             aria-label="Task project label"
             defaultValue={card.project ?? ''}
             placeholder="Project label"

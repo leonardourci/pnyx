@@ -23,13 +23,15 @@ export function Settings({ state, connected, view, save, command, notify }: {
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const { effective } = useHeadsDispatch({ command, seq: state.seq })
+  const { effective, error, saveHydra } = useHeadsDispatch({ command })
   const hydraAgent = effective?.dispatch.rules.hydra?.candidates[0]
   const config = hydraConfig({ state })
 
   return (
     <section className="settings" aria-label="Settings">
       <h1 data-settings-heading tabIndex={-1}>Settings</h1>
+      {!effective && !error && <p className="muted" role="status">Loading agent settings…</p>}
+      {error && <p role="alert">{error}</p>}
       <div className="settings-grid">
         <section className="settings-box">
           <h2>Appearance</h2>
@@ -68,6 +70,7 @@ export function Settings({ state, connected, view, save, command, notify }: {
             <div className="column-template" key={column.id}>
               <label className="setting-label">{column.title}</label>
               <Input
+                key={column.description}
                 aria-label={`${column.title} description`}
                 defaultValue={column.description ?? ''}
                 onBlur={e => {
@@ -100,6 +103,7 @@ export function Settings({ state, connected, view, save, command, notify }: {
           <p className="muted small">0 keeps Done cards visible. Hidden cards stay in History and Oracle and can be brought back.</p>
           <label className="setting-label">Identity</label>
           <Input
+            key={config.hydra.id}
             aria-label="Hydra identity"
             defaultValue={config.hydra.id}
             onBlur={e => {
@@ -117,7 +121,8 @@ export function Settings({ state, connected, view, save, command, notify }: {
             placeholder="Harness default"
             onBlur={e => {
               if (e.target.value !== (hydraAgent?.model ?? '')) {
-                void command({ name: 'rule', args: ['set', 'hydra', '--harness', hydraAgent?.harness ?? 'claude', '--model', e.target.value] }).catch(e => notify({ text: e.message }))
+                void saveHydra({ patch: { model: e.target.value || undefined } })
+                  .catch(e => notify({ text: e.message }))
               }
             }}
           />

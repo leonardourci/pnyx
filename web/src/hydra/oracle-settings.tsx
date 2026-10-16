@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useOraclePreferences } from './oracle-preferences.ts'
 import type { Command } from './connection.ts'
 import { Select, Switch } from '../components/ui/controls.tsx'
-
-type Entries = Record<string, string>
 
 const RERANK = [
   { value: 'auto', label: 'Auto: on with a GPU' },
@@ -14,14 +12,9 @@ export function OracleSettings({ command, notify }: {
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const [settings, setSettings] = useState<Entries | null>(null)
-  useEffect(() => {
-    void command({ name: 'settings', args: [] }).then(r => setSettings(r.settings as Entries))
-      .catch(e => notify({ text: e.message }))
-  }, [command, notify])
-  const set = ({ key, value }: { key: string; value: string }) => command({ name: 'settings', args: ['set', key, value] }).then(r => {
-    setSettings(r.settings as Entries); notify({ text: 'Oracle settings saved' })
-  }, e => notify({ text: e.message }))
+  const { settings, set: persist, error } = useOraclePreferences({ command, notify })
+  const set = ({ key, value }: { key: string; value: string }) => persist({ key, value })
+    .then(() => notify({ text: 'Oracle settings saved' }), e => notify({ text: e.message }))
 
   return (
     <section className="settings-box" aria-label="Oracle">
@@ -30,6 +23,8 @@ export function OracleSettings({ command, notify }: {
         Every search finds cards by meaning, in any language, as well as by words. It runs
         local models on this machine, downloaded on first use. Turn it off on a slow laptop.
       </p>
+      {!settings && !error && <p className="muted" role="status">Loading Oracle settings…</p>}
+      {error && <p role="alert">{error}</p>}
       {settings && (
         <>
           <Switch label="Semantic search" checked={settings['oracle.semantic'] === 'on'} onChange={({ value: on }) => set({ key: 'oracle.semantic', value: on ? 'on' : 'off' })} />

@@ -11,7 +11,7 @@ export function HydraAgent({ state, command, connected, notify }: {
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
-  const { effective } = useHeadsDispatch({ command, seq: state.seq })
+  const { effective } = useHeadsDispatch({ command })
   const [busy, setBusy] = useState(false)
   const agent = state.config?.hydra.agent ?? effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0] ?? { harness: 'claude' }
   const controls = harnessControls({ provider: agent.harness === 'claude' ? 'claude-code' : 'codex', hosted: true })

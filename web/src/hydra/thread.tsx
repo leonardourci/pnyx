@@ -143,7 +143,7 @@ export function Thread({
           </Button>
         )}
         {page?.unavailable && card.agent && <p className="empty">{page.unavailable}</p>}
-        {!page && <p className="empty">Loading conversation…</p>}
+        {!page && <p className="empty" role="status">Loading conversation…</p>}
         <Messages
           entries={entries}
           openTask={openTask}
