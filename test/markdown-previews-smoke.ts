@@ -43,6 +43,13 @@ try {
   await screenshot({ name: 'oracle-markdown.png' })
   await check({ condition: '!!document.querySelector(".oracle-hit .markdown strong") && [...document.querySelectorAll(".oracle-hit a")].some(a => a.href === "https://github.com/example/project/pull/42") && !document.querySelector(".oracle-hit button a")', label: 'Oracle previews render Markdown links outside the task button' })
   await check({ condition: '[...document.querySelectorAll(".oracle-hit a")].every(a => a.target === "_blank" && a.relList.contains("noopener") && a.relList.contains("noreferrer"))', label: 'Oracle links open safely in a new tab' })
+
+  for (const query of ['project', 'github']) {
+    await fill({ label: 'Oracle', value: query })
+    await eventually({ condition: '!!document.querySelector(".oracle-hit .markdown a")', label: `Oracle finds URL match ${query}` })
+    await check({ condition: '[...document.querySelectorAll(".oracle-hit .markdown a")].some(a => a.getAttribute("href") === "https://github.com/example/project/pull/42")', label: `Oracle keeps the original PR URL when matching ${query}` })
+  }
+
   await text({ label: 'History' })
   await eventually({ condition: '!!document.querySelector(".history-entry .markdown h1") && !!document.querySelector(".history-entry .markdown table") && !!document.querySelector(".history-entry .markdown .code-block")', label: 'History events render full Hydra messages as Markdown' })
   await check({ condition: '[...document.querySelectorAll(".history-entry .markdown")].every(el => el.scrollWidth <= el.clientWidth + 1)', label: 'History keeps long messages inside its results pane' })
@@ -50,6 +57,15 @@ try {
   await eventually({ condition: '!!document.querySelector(".history-entry")', label: 'History finds the message' })
   await screenshot({ name: 'history-markdown.png' })
   await check({ condition: '!!document.querySelector(".history-entry .markdown strong") && [...document.querySelectorAll(".history-entry a")].some(a => a.href === "https://github.com/example/project/pull/42")', label: 'History previews render emphasis and clickable PR links' })
+
+  for (const query of ['project', 'github']) {
+    await fill({ label: 'Search history', value: 'quuxxyzmissing abcdefmissing' })
+    await eventually({ condition: 'document.querySelector(".history-results .empty")?.textContent === "No matching history."', label: 'History clears previous results before the next URL match' })
+    await fill({ label: 'Search history', value: query })
+    await eventually({ condition: 'document.querySelector(".history-results").getAttribute("aria-busy") === "false" && !!document.querySelector(".history-entry .markdown a")', label: `History finds URL match ${query}` })
+    await check({ condition: '[...document.querySelectorAll(".history-entry .markdown a")].some(a => a.getAttribute("href") === "https://github.com/example/project/pull/42")', label: `History keeps the original PR URL when matching ${query}` })
+  }
+
   const consoleOutput = await browser({ args: ['console'] }); assert.doesNotMatch(consoleOutput, /TypeError|ReferenceError|Uncaught/)
   process.stdout.write('Markdown previews browser smoke passed.\n')
 } finally {
