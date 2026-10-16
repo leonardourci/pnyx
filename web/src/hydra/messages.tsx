@@ -29,7 +29,7 @@ export function Messages({
   const [active, setActive] = useState<string | null>(null)
   const [selection, setSelection] = useState<CommentPassage | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
-  const { label, platform } = useKeyboard()
+  const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
   const blockFor = ({ key }: { key: string | null }) =>
     blocks().find(e => e.dataset.messageBlock === key)
@@ -311,9 +311,6 @@ export function Messages({
                   const offset = (entry.part ?? 0) + local
                   const key = messageBlockKey({ messageId, offset })
                   const selected = selection?.messageId === messageId && selection.offset === offset
-                  const whole: CommentPassage = {
-                    messageId, block: index, offset, quote, paragraph: quote, at: entry.at,
-                  }
                   const own = comments.filter(c => c.messageId === messageId && c.offset === offset)
 
                   return (
@@ -330,24 +327,20 @@ export function Messages({
                       aria-label={`Message block ${index + 1}`}
                     >
                       {children}
-                      <Button
-                        className={`block-comment-action ${selected ? 'has-selection' : ''}`}
-                        aria-label="Comment on this block"
-                        title={selected ? 'Enter or type to comment on your selection; Shift+Enter quotes it' : `Comment · ${label({ id: 'thread.comment' })}`}
-                        onMouseDown={e => e.preventDefault()}
-                        onClick={() => addComment({ quote: selected ? selection : whole })}
-                      >
-                        <Icon name="typing" size={14} />
-                        {selected
-                          ? (
-                            <>
-                              Comment
-                              <kbd>Enter</kbd>
-                              <span className="small">or type · Shift+Enter quotes</span>
-                            </>
-                          )
-                          : active === key && <kbd>{label({ id: 'thread.comment' })}</kbd>}
-                      </Button>
+                      {selected && (
+                        <Button
+                          className="block-comment-action has-selection"
+                          aria-label="Comment on this block"
+                          title="Enter or type to comment on your selection; Shift+Enter quotes it"
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => addComment({ quote: selection })}
+                        >
+                          <Icon name="typing" size={14} />
+                          Comment
+                          <kbd>Enter</kbd>
+                          <span className="small">or type · Shift+Enter quotes</span>
+                        </Button>
+                      )}
                       {own.map(comment => (
                         <MessageComment
                           key={comment.id}
