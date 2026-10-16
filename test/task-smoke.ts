@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,6 +11,7 @@ import { smokeBrowser } from './browser.ts'
 
 const home = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-task-smoke-')))
 process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
+process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
 commands.hydra(['create', 'default'])
 commands.task(['create', '--key', 'review', '--title', 'Review the migration plan', '--brief', 'Check the rollback path before rollout.', '--column', 'in_progress'])
 commands.task(['create', '--key', 'long', '--title', 'A very long title '.repeat(15), '--column', 'in_progress'])
@@ -35,11 +37,9 @@ commands.task(['status', 'review', 'working', '--note', 'The migration passes lo
 const native = join(home, 'firstmate')
 cpSync(join(import.meta.dirname, 'fixtures/firstmate-home'), native, { recursive: true })
 const server = await startServer({
+  query: hydraSdk().query,
   hydraId: 'default',
   homes: [native],
-  query: () => {
-    throw new Error('A UI task request must never start an agent')
-  },
 })
 const { browser, evaluate, check, click, text, fill, screenshot, eventually, close } = smokeBrowser({ home, session: 'pnyx-tasks' })
 const menu = () => click({ selector: '[aria-label="Task menu"]' })
@@ -59,7 +59,7 @@ try {
   await menu()
   await check({ condition: '!document.querySelector(".detail").textContent.match(/Attach agent|Change agent|Detach agent|Continue in Pnyx/)', label: 'manual assignment controls are absent' })
   await text({ label: 'Start' })
-  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Create a worker for task")', label: 'Start requests Hydra without launching an agent' })
+  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Create a worker for task")', label: 'Start requests Hydra without launching a worker' })
   assert.equal(task().agent, undefined)
   await fill({ label: 'Reply to Review the migration plan', value: 'Please preserve the rollback notes for assignment.' })
   await click({ selector: '.detail .composer-send' })

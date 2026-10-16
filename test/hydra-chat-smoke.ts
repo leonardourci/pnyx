@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { commands } from '../src/cli/commands.ts'
+import { HYDRA_CARD } from '../src/core/hydra.ts'
+import { configPath, writeConfig } from '../src/dispatch/config.ts'
+import { loadHydra } from '../src/store/hydra-store.ts'
+import { startServer } from '../src/server/server.ts'
+import { smokeBrowser } from './browser.ts'
+import { hydraSdk } from './hydra-host-fixture.ts'
+
+const home = mkdtempSync(join(tmpdir(), 'pnyx-hydra-chat-smoke-'))
+process.env.PNYX_HOME = home
+process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
+process.env.PNYX_SEMANTIC = 'off'
+commands.hydra(['create', 'default'])
+writeConfig({ path: configPath({ hydraId: 'default', shared: true }), value: { default: [{ harness: 'claude', model: 'sonnet', effort: 'high' }] } })
+const sdk = hydraSdk(); sdk.control.hold = true
+let server = await startServer({ hydraId: 'default', query: sdk.query })
+const b = smokeBrowser({ home, session: 'pnyx-hydra-chat' })
+const state = () => loadHydra({ hydraId: 'hydra-2' }).state
+
+try {
+  await b.browser({ args: ['open', server.url] })
+  await b.browser({ args: ['resize', '1440', '1000'] })
+  await b.eventually({ condition: '!!document.querySelector(\'[aria-label="Create Hydra"]\')', label: 'loaded' })
+  await b.click({ selector: '[aria-label="Create Hydra"]' })
+  await b.eventually({ condition: 'location.pathname.includes("hydra-2") && document.activeElement.matches(".hydra-chat textarea")', label: 'one click opens and focuses an empty Hydra' })
+  await b.check({ condition: '!document.querySelector(\'[aria-label="New Hydra name"]\') && !document.querySelector(\'dialog\') && !!document.querySelector(\'.hydra-project-setup\')', label: 'projects remain available without a creation form' })
+  await b.eventually({ condition: 'document.querySelector(".hydra-agent-pickers [aria-label=Model]")?.textContent.includes("sonnet")', label: 'composer uses shared heads-dispatch defaults' })
+  await b.screenshot({ name: 'after-empty.png' })
+  await b.fill({ label: 'Reply to Hydra', value: 'Hello Hydra' })
+  await b.click({ selector: '.hydra-chat .composer-send' })
+  await b.eventually({ condition: 'document.querySelector(".hydra-messages").textContent.includes("Hydra is replying")', label: 'hosted turn has a replying indicator' })
+  assert.equal(sdk.calls[0]?.options.model, 'sonnet')
+  await b.screenshot({ name: 'after-replying.png' })
+  await b.click({ selector: '.hydra-agent-pickers [aria-label=Model]' })
+  await b.click({ selector: '.hydra-agent-pickers [role=listbox][aria-label=Model] [role=option]:nth-child(2)' })
+  await b.eventually({ condition: 'document.querySelector(".hydra-agent-pickers [aria-label=Model]").textContent.includes("opus") && !document.querySelector(".hydra-agent-pickers [aria-label=Model]").disabled', label: 'model choice saves during a turn' })
+  assert.equal(sdk.calls[0]?.options.model, 'sonnet')
+  sdk.release()
+  await b.eventually({ condition: 'document.querySelector(".hydra-messages").textContent.includes("Hydra: Hello Hydra") && !document.querySelector(".hydra-messages").textContent.includes("Hydra is replying")', label: 'answer streams into Hydra chat and clears the indicator' })
+  await b.fill({ label: 'Reply to Hydra', value: 'Use the next model' })
+  await b.click({ selector: '.hydra-chat .composer-send' })
+  await b.eventually({ condition: 'document.querySelector(".hydra-messages").textContent.includes("Hydra: Use the next model")', label: 'the next message resumes and answers' })
+  assert.equal(sdk.calls[1]?.options.model, 'opus')
+  assert.equal(sdk.calls[1]?.options.resume, sdk.calls[0]?.options.sessionId)
+  const session = state().config?.hydra.session
+  const port = server.port
+  await server.close(); server = await startServer({ hydraId: 'hydra-2', port, query: sdk.query })
+  await b.browser({ args: ['open', server.url] })
+  await b.eventually({ condition: 'document.querySelector(".hydra-messages")?.textContent.includes("Hydra: Use the next model")', label: 'transcript survives a server restart' })
+  sdk.control.fail = true
+  await b.fill({ label: 'Reply to Hydra', value: 'Show an error' })
+  await b.click({ selector: '.hydra-chat .composer-send' })
+  await b.eventually({ condition: 'document.querySelector(".hydra-messages [role=alert]")?.textContent.includes("Harness login is missing")', label: 'harness failure appears inline' })
+  assert.equal(state().config?.hydra.session, session)
+  assert.equal(state().cards[HYDRA_CARD]?.sessionActivity, 'interrupted')
+  await b.screenshot({ name: 'after-error.png' })
+  const consoleOutput = await b.browser({ args: ['console'] })
+  assert.doesNotMatch(consoleOutput, /TypeError|ReferenceError|Uncaught/)
+  process.stdout.write('Hydra chat browser smoke passed.\n')
+} finally {
+  sdk.release(); await b.close(); await server.close()
+  rmSync(home, { recursive: true, force: true })
+}

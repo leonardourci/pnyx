@@ -105,6 +105,8 @@ export function Composer({
       ))
       element.style.height = `${DRAFT_MIN}px`
       const draftHeight = draft ? element.scrollHeight : DRAFT_MIN
+      const controls = form.current?.querySelector<HTMLElement>('.composer-bar')
+      const controlsHeight = Math.max(COMPOSER_CONTROLS, (controls?.offsetHeight ?? 0) + 12)
       const context = form.current?.querySelector<HTMLElement>('.pending-comments')
       const error = form.current?.querySelector<HTMLElement>('.reply-failure')
       const references = form.current?.querySelector<HTMLElement>('.draft-mentions')
@@ -113,7 +115,7 @@ export function Composer({
         + (references ? references.offsetHeight + 4 : 0)
       setContentHeight(
         Math.min(DRAFT_MAX, Math.max(DRAFT_MIN, draftHeight))
-        + COMPOSER_CONTROLS + contextHeight + errorHeight,
+        + controlsHeight + contextHeight + errorHeight,
       )
       element.style.height = ''
     }
@@ -122,6 +124,11 @@ export function Composer({
     const observer = new ResizeObserver(measure)
     observer.observe(pane)
     observer.observe(element)
+    const controls = form.current?.querySelector<HTMLElement>('.composer-bar')
+
+    if (controls) {
+      observer.observe(controls)
+    }
 
     return () => observer.disconnect()
   }, [draft, comments, failure])

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { execFile } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -13,8 +14,9 @@ import { smokeEnvironment } from './browser.ts'
 process.env.PNYX_SEMANTIC = 'off'
 const home = mkdtempSync(join(tmpdir(), 'pnyx-connection-'))
 process.env.PNYX_HOME = home
+process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
 const fixture = seedWebFixture({ home })
-let server = await startServer({ hydraId: 'default', homes: [fixture.nativeHome] })
+let server = await startServer({ query: hydraSdk().query, hydraId: 'default', homes: [fixture.nativeHome] })
 const port = server.port, url = server.url
 const exec = promisify(execFile)
 const env = await smokeEnvironment({ session: 'pnyx-connection' })
@@ -58,7 +60,7 @@ try {
       assert.ok('event' in d); writer.append({ event: d.event })
     },
   })
-  server = await startServer({ hydraId: 'default', port, homes: [fixture.nativeHome] })
+  server = await startServer({ query: hydraSdk().query, hydraId: 'default', port, homes: [fixture.nativeHome] })
   await until({ condition: '(document.querySelector(".app").dataset.connected === "true") && document.querySelector(".detail .composer textarea").value === "" && document.querySelector(".hydra-chat .composer textarea").value === "" && document.body.textContent.includes("Recovered task")' })
   assert.equal(delivery({ text: 'Queued during restart' }), 1)
   assert.equal(loadHydra({ hydraId: 'default' }).state.hydraMessages?.filter(m => m.text === 'Hydra offline message').length, 1)
@@ -98,7 +100,7 @@ try {
   assert.equal(loadHydra({ hydraId: 'other' }).state.seq, loadHydra({ hydraId: 'default' }).state.seq)
   await fill({ selector: '.detail .composer textarea', text: 'Only for the original Hydra' })
   await server.close()
-  server = await startServer({ hydraId: 'other', port, homes: [fixture.nativeHome] })
+  server = await startServer({ query: hydraSdk().query, hydraId: 'other', port, homes: [fixture.nativeHome] })
   // Both Hydras share the server's address; the other one's page keeps none of this one's tab state.
   await browser({ args: ['open', new URL('/hydra/other/', url).href] })
   await browser({ args: ['wait', 'Different Hydra'] })

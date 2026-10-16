@@ -24,6 +24,7 @@ function sdkOptions({ settings }: { settings: AgentSettings }): Partial<Options>
 
   return {
     ...(model ? { model } : {}),
+    ...(settings.fast !== undefined ? { settings: { fastMode: settings.fast === 'true' } } : {}),
     ...(effort && EFFORTS.includes(effort) ? { effort: effort as EffortLevel } : {}),
     ...(mode && MODES.includes(mode) ? { permissionMode: mode as PermissionMode } : {}),
     ...(mode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
@@ -40,7 +41,7 @@ function turnOf({ message }: { message: SDKMessage }): 'working' | 'finished' | 
 
 export function claudeProvider({ query }: { query?: QueryFn }): Provider {
   return {
-    async open({ cwd, agent, settings, env }) {
+    async open({ cwd, agent, settings, env, instructions }) {
       const id = agent?.sessionId ?? randomUUID()
       const path = agent?.transcriptPath ?? transcriptPath({
         cwd, session: id, folder: env.CLAUDE_CONFIG_DIR,
@@ -70,7 +71,7 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
               cwd,
               ...(agent?.resume || existsSync(path) ? { resume: id } : { sessionId: id }),
               settingSources: ['user', 'project', 'local'],
-              systemPrompt: { type: 'preset', preset: 'claude_code' },
+              systemPrompt: { type: 'preset', preset: 'claude_code', ...(instructions ? { append: instructions } : {}) },
               tools: { type: 'preset', preset: 'claude_code' },
               permissionPrompts: 'host',
               // eslint-disable-next-line pnyx/object-params -- The SDK owns this callback signature.
@@ -83,6 +84,10 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
           })
 
           for await (const message of running) {
+            if (message.type === 'result' && message.is_error) {
+              throw new Error('errors' in message ? message.errors.join('; ') : 'Claude Code could not complete this turn')
+            }
+
             const activity = turnOf({ message })
 
             if (activity) {

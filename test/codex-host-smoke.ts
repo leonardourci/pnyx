@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,9 +15,11 @@ import { fakeCodex } from './codex-fixture.ts'
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-codex-smoke-')))
 process.env.PNYX_HOME = join(root, 'pnyx')
 process.env.CODEX_HOME = join(root, 'codex')
+process.env.CLAUDE_CONFIG_DIR = join(root, 'claude')
 process.env.PNYX_SEMANTIC = 'off'
 await commands.hydra(['create', 'default'])
 fakeDispatch({ root: process.env.PNYX_HOME!, hydraId: 'default' })
+await dispatchCommands.rule(['set', 'hydra', '--harness', 'claude', '--model', 'sonnet'])
 await dispatchCommands.rule(['set', 'default', '--harness', 'codex', '--model', 'gpt-6.1-sol', '--effort', 'high', '--mode', 'on-request'])
 await commands.task(['create', '--title', 'Hosted Codex smoke', '--key', 'smoke', '--folder', root])
 await commands.task(['brief', 'smoke', '--brief', 'Explain the provider boundary.'])
@@ -32,7 +35,7 @@ withWriter({
     assert.ok('event' in attached); writer.append({ event: attached.event })
   },
 })
-const server = await startServer({ hydraId: 'default', spawnCodex: fixture.spawnCodex })
+const server = await startServer({ query: hydraSdk().query, hydraId: 'default', spawnCodex: fixture.spawnCodex })
 const { browser, evaluate, text, click, fill, check, eventually, screenshot, close } = smokeBrowser({ home: root, session: 'pnyx-codex' })
 
 const task = () => {
