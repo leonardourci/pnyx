@@ -7,6 +7,7 @@ import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
 import type { HostedSession, PermissionDecision } from './provider.ts'
 import { terminalPresence, type Presence } from '../integrations/presence/check.ts'
+import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained, postLine } from '../cli/commands.ts'
 import { permissionEvent } from '../core/permissions.ts'
@@ -619,6 +620,11 @@ export function createHost({
           const claimed = write({
             fn: ({ writer }) => {
               const meta = { at: at(), actor }
+
+              if (previousAgent && !agent) {
+                harvestTranscripts({ writer, cardIds: [HYDRA_CARD], at: meta.at })
+              }
+
               apply({
                 writer,
                 decision: decidePush({

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
-import { HYDRA_CARD } from '../src/core/hydra.ts'
-import { loadHydra } from '../src/store/hydra-store.ts'
+import { HYDRA_CARD, hydraEvent } from '../src/core/hydra.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { startServer } from '../src/server/server.ts'
 import { readThread } from '../src/thread/read.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
@@ -135,5 +135,36 @@ test('messages queue during a running Hydra turn without blocking delivery', asy
     assert.deepEqual(sdk.calls[0]?.messages, ['First', 'Second'])
   } finally {
     sdk.release(); await server.close(); rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('changing Hydra harness preserves the earlier conversation', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-hydra-switch-'))
+  process.env.PNYX_HOME = home
+  process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
+  process.env.PNYX_SEMANTIC = 'off'
+  commands.hydra(['create', 'lab'])
+  const sdk = hydraSdk(), codex = fakeCodex({ root: home })
+  const server = await startServer({ hydraId: 'lab', query: sdk.query, spawnCodex: codex.spawnCodex })
+  const state = () => loadHydra({ hydraId: 'lab' }).state
+
+  try {
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'Earlier message'])
+    await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const config = writer.state.config!
+        const decision = hydraEvent({ state: writer.state, meta: { at: new Date().toISOString(), actor: 'test' }, cardId: HYDRA_CARD, change: { type: 'board.configured', data: { ...config, hydra: { ...config.hydra, agent: { harness: 'codex' } } } } })
+        assert.ok('event' in decision); writer.append({ event: decision.event })
+      },
+    })
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'Later message'])
+    await until({ check: () => state().cards[HYDRA_CARD]?.agent?.provider === 'codex' && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+    const thread = readThread({ hydraId: 'lab', state: state(), card: state().cards[HYDRA_CARD]!, homes: [] })
+    assert.ok(thread.entries.some(e => e.role === 'assistant' && e.text === 'Hydra: Earlier message'))
+    assert.ok(thread.entries.some(e => e.role === 'assistant' && e.text === 'Codex: Later message'))
+  } finally {
+    await server.close(); rmSync(home, { recursive: true, force: true })
   }
 })
