@@ -910,3 +910,21 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .popover { position: relative; min-width: 0; }
 
 .popover-panel { position: fixed; inset: auto; margin: 0; padding: 14px; width: min(320px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; color: var(--color-ink); border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-raised); box-shadow: 0 8px 24px var(--color-shadow); }
+
+.agent-picker > .button { max-width: 100%; min-height: 28px; padding: 2px 5px; gap: 5px; color: var(--color-muted); font-size: var(--text-ui); }
+
+.agent-picker > .button > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.composer-settings { min-width: 0; flex: 1; display: block; }
+
+.agent-configuration { display: flex; flex-direction: column; gap: 12px; font-size: var(--text-ui); }
+
+.agent-configuration p, .picker-field small { color: var(--color-muted); font-size: 12px; line-height: 1.4; }
+
+.picker-field { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 6px; }
+
+.picker-field small { grid-column: 1 / -1; }
+
+.picker-field .select > .button { width: 100%; justify-content: space-between; border: 1px solid var(--color-line); border-radius: 6px; font-size: var(--text-ui); }
+
+.picker-field .select-menu { position: relative; inset: auto; max-height: 160px; margin-top: 4px; }

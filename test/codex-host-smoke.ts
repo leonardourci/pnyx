@@ -59,9 +59,13 @@ try {
   await fill({ label: 'Reply to Hosted Codex smoke', value: 'Continue from the browser' })
   await click({ selector: '.detail [aria-label="Send reply"]' })
   await browser({ args: ['wait', 'Codex: Continue from the browser'] })
-  await click({ selector: '.composer-settings [aria-label=Effort]' })
+  await click({ selector: '.detail [aria-label="Agent settings"]' })
+  await click({ selector: '.detail .composer-settings [aria-label=Effort]' })
   await evaluate({ code: 'const option = [...document.querySelectorAll(\'[role=option]\')].find(o => o.textContent.trim() === \'low\'); option.click(); return true;' })
-  await eventually({ condition: 'document.querySelector(".composer-settings [aria-label=Effort]")?.textContent.includes("low")', label: 'Codex effort picker applies directly' })
+  await check({ condition: 'document.querySelector(".detail [aria-label=Effort]")?.textContent.includes("low")', label: 'Codex effort is staged in the picker' })
+  assert.notEqual(task().settings?.effort, 'low')
+  await text({ label: 'Apply settings' })
+  await eventually({ condition: 'document.querySelector(".detail .agent-picker > button")?.textContent.includes("low")', label: 'Codex effort picker applies directly' })
 
   for (let i = 0; i < 100 && task().settings?.effort !== 'low'; i++) {
     await new Promise(resolve => setTimeout(resolve, 20))
