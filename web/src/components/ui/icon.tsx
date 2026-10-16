@@ -2,7 +2,7 @@ import {
   IconAdjustments, IconAlertTriangle, IconArrowDown, IconArrowUpRight, IconArrowFork,
   IconBolt, IconBulb, IconCheck, IconChevronDown, IconChevronRight, IconCircleCheck,
   IconClipboardList, IconClock, IconCode, IconCpu, IconCube, IconDeviceDesktop,
-  IconDots, IconEye, IconGauge, IconGitPullRequest, IconHistory, IconKeyboard,
+  IconDots, IconEye, IconGauge, IconGitPullRequest, IconGitFork, IconHistory, IconKeyboard,
   IconLink, IconList, IconMaximize, IconMinus, IconPlayerPause, IconPlayerPlay,
   IconPlus, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag, IconX,
 } from '@tabler/icons-react'
@@ -48,6 +48,7 @@ const icons: Record<string, typeof IconRobot> = {
   external: IconArrowUpRight,
   reminder: IconClock,
   custom: IconAdjustments,
+  clone: IconGitFork,
 }
 
 // Harnesses, as their makers' marks from Simple Icons 16.35.0 (https://simpleicons.org,

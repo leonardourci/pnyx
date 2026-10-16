@@ -120,7 +120,7 @@ export function AddProject({ command, connected, notify, attached, cancel }: {
           onClick={() => {
             setMode('clone'); setConfirmation(null)
           }}
-        >⎘ Clone a repo
+        ><Icon name="clone" />Clone a repo
         </Button>
         {cancel && <Button disabled={busy} onClick={cancel} aria-label="Close add project"><Icon name="close" /></Button>}
       </div>

@@ -875,7 +875,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 @media (max-width: 760px) {
 .left-panel { width: 208px; flex-basis: 208px; padding: 16px 10px 8px; }
 }
-.reminder-label { display: block; margin-top: 8px; color: var(--color-gold); font-size: var(--text-meta); }
+.reminder-label { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; color: var(--color-gold); font-size: var(--text-meta); }
 .reminder-editor { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
 .reminder-editor [role=alert] { color: var(--color-red); }
 .card-menu { position: absolute; top: 4px; right: 6px; z-index: 2; }

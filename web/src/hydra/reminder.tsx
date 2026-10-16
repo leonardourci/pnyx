@@ -1,3 +1,4 @@
+import { Icon } from '../components/ui/icon.tsx'
 import { useId, useState } from 'react'
 import type { Card } from '../../../src/core/model.ts'
 import { Button, Input } from '../components/ui/controls.tsx'
@@ -11,7 +12,7 @@ export function ReminderLabel({ card }: { card: Card }) {
   const date = new Date(card.reminder.at)
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 
-  return <span className="reminder-label" title={date.toISOString()}>⏰ reminds you {when}</span>
+  return <span className="reminder-label" title={date.toISOString()}><Icon name="reminder" size={14} />reminds you {when}</span>
 }
 
 export function ReminderEditor({ card, command, connected, close }: {
