@@ -86,6 +86,14 @@ export function useHydra() {
     setState(projectEdits({
       state: stateRef.current,
       edits: [...pending.current.values()].filter(p => p.optimistic).map(p => p.message),
+      invalid: ({ edit, error }) => {
+        for (const [id, p] of pending.current) {
+          if (p.message === edit) {
+            pending.current.delete(id); clearTimeout(p.timer)
+            p.reject({ error }); setError(error.message)
+          }
+        }
+      },
     }))
   }, [endpoint])
   const flushRef = useRef<() => void>(() => {})
@@ -154,6 +162,18 @@ export function useHydra() {
 
     addEventListener('pagehide', persist)
 
+    const cacheThread = ({ page }: { page: ThreadPage }) => {
+      const entry = cache.current.get(pathname)
+
+      if (entry) {
+        if (page.card === HYDRA_CARD) {
+          entry.hydraThread = page
+        } else {
+          entry.thread = page
+        }
+      }
+    }
+
     const connect = () => {
       const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
 
@@ -220,7 +240,16 @@ export function useHydra() {
               closed = true; ws.close(); location.reload()
             }
           } else if (m.type === 'snapshot') {
-            hasSnapshot.current = true; stateRef.current = m.state; publish(); setLoaded(true)
+            hasSnapshot.current = true; stateRef.current = m.state
+            const previous = cache.current.get(pathname)
+            cache.current.set(pathname, {
+              identity: identity.current,
+              state: m.state,
+              thread: previous?.thread ?? null,
+              hydraThread: previous?.hydraThread ?? null,
+              latest: previous?.latest ?? {},
+            })
+            publish(); setLoaded(true)
 
             if (active) {
               setNavigation(old => ({ ...old, hydraId: pathname.split('/')[2] ?? m.state.config?.id ?? 'default' }))
@@ -242,9 +271,22 @@ export function useHydra() {
             stateRef.current = reduce({
               state: stateRef.current,
               event: m.event,
-            }); publish()
+            })
+            const entry = cache.current.get(pathname)
+
+            if (entry) {
+              entry.state = stateRef.current
+            }
+
+            publish()
             clearTimeout(persistTimer); persistTimer = setTimeout(persist, 250)
-          } else if (m.type === 'thread' && active) {
+          } else if (m.type === 'thread') {
+            cacheThread({ page: m.thread })
+
+            if (!active) {
+              return
+            }
+
             if (m.thread.card === HYDRA_CARD) {
               setHydraThread(m.thread)
             } else {
@@ -262,23 +304,24 @@ export function useHydra() {
               window.dispatchEvent(new Event(DISPATCH_CHANGED))
             }
 
-            if (!active) {
-              return
+            const entry = cache.current.get(pathname)
+            const next = { ...entry?.latest }
+
+            for (const [card, message] of Object.entries(m.messages)) {
+              if (message) {
+                next[card] = message
+              } else {
+                delete next[card]
+              }
             }
 
-            setLatest(old => {
-              const next = { ...old }
+            if (entry) {
+              entry.latest = next
+            }
 
-              for (const [card, message] of Object.entries(m.messages)) {
-                if (message) {
-                  next[card] = message
-                } else {
-                  delete next[card]
-                }
-              }
-
-              return next
-            })
+            if (active) {
+              setLatest(next)
+            }
           } else if (m.type === 'hydras') {
             setNavigation(old => ({
               ...old, ...(active ? { hydraId: m.hydraId } : {}), hydras: m.hydras,
@@ -305,6 +348,10 @@ export function useHydra() {
 
               if (['rule', 'account'].includes(p.message.name) && !['list', undefined].includes(p.message.args[0])) {
                 window.dispatchEvent(new Event(DISPATCH_CHANGED))
+              }
+
+              if (p.message.name === 'thread' && m.thread) {
+                cacheThread({ page: m.thread as ThreadPage })
               }
 
               p.resolve({ receipt: m })
@@ -441,9 +488,6 @@ export function useHydra() {
       return
     }
 
-    cache.current.set(previous, {
-      identity: identity.current, state: stateRef.current, thread, hydraThread, latest,
-    })
     target.current = next.href
     setLoading(next.pathname.split('/')[2]!); setError('')
     const saved = cache.current.get(next.pathname)
@@ -469,9 +513,6 @@ export function useHydra() {
       return
     }
 
-    cache.current.set(previous, {
-      identity: identity.current, state: stateRef.current, thread, hydraThread, latest,
-    })
     document.querySelector('base')?.setAttribute('href', next.pathname)
 
     if (!saved) {
@@ -480,7 +521,7 @@ export function useHydra() {
 
     setConnected(false)
     setEndpoint(next.href)
-  }, [endpoint, thread, hydraThread, latest, publish])
+  }, [endpoint, publish])
   const navigateRef = useRef(navigate)
   navigateRef.current = navigate
   useEffect(() => {

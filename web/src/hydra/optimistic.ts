@@ -153,6 +153,18 @@ export function currentRevision({ state, edit }: { state: HydraState; edit: Edit
   return args
 }
 
-export function projectEdits({ state, edits }: { state: HydraState; edits: Edit[] }): HydraState {
-  return edits.reduce((state, edit) => optimisticState({ state, edit }), state)
+export function projectEdits({ state, edits, invalid }: {
+  state: HydraState
+  edits: Edit[]
+  invalid?({ edit, error }: { edit: Edit; error: Error }): void
+}): HydraState {
+  return edits.reduce((state, edit) => {
+    try {
+      return optimisticState({ state, edit })
+    } catch (error) {
+      invalid?.({ edit, error: error instanceof Error ? error : new Error(String(error)) })
+
+      return state
+    }
+  }, state)
 }

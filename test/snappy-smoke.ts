@@ -56,8 +56,9 @@ try {
   await b.evaluate({
     code: `
     window.nativeSocketSend = WebSocket.prototype.send;
-    window.saveDelay = 600; window.readDelay = 0; window.failNextSave = false; window.writes = [];
+    window.saveDelay = 600; window.readDelay = 0; window.failNextSave = false; window.writes = []; window.received = new Set();
     WebSocket.prototype.send = function(data) {
+      if (!this.snappyObserved) { this.snappyObserved = true; this.addEventListener('message', event => { const incoming = JSON.parse(event.data); if (incoming.id) window.received.add(incoming.id); }); }
       const m = JSON.parse(data);
       if (m.type === 'command' && (['view', 'move', 'column', 'task'].includes(m.name) || (['settings', 'rule'].includes(m.name) && m.args[0] === 'set'))) {
         window.writes.push(m);
@@ -126,6 +127,53 @@ try {
   await b.eventually({ condition: 'document.querySelector("[data-hydra-current]")?.textContent.trim() === "second" && document.querySelector(".app")?.dataset.connected === "true"', label: 'browser Back switches Hydras' })
   await b.evaluate({ code: 'history.forward(); return true;' })
   await b.eventually({ condition: 'document.querySelector("[data-hydra-current]")?.textContent.trim() === "default" && document.querySelector(".app")?.dataset.connected === "true"', label: 'browser Forward restores the Hydra' })
+  await b.evaluate({
+    code: `
+    window.scenarioStart = window.writes.length; window.failNextSave = true;
+    document.querySelector('.add-column button').click();
+    await new Promise(r => requestAnimationFrame(r));
+    const column = [...document.querySelectorAll('[data-column]')].find(el => el.dataset.column.startsWith('custom:'));
+    if (!column) throw new Error('Column creation waited for server');
+    for (const handle of [column.querySelector('.resize-x'), document.querySelector('.hydra-chat > .resize-x')]) {
+      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      handle.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }));
+    }
+    return true;`,
+  })
+  await b.eventually({ condition: 'window.writes.slice(window.scenarioStart).some(m => m.name === "view" && window.received.has(m.id)) && ![...document.querySelectorAll("[data-column]")].some(el => el.dataset.column.startsWith("custom:"))', label: 'failed creation settles its dependent resize and flushes the independent save' })
+  assert.equal(loadHydra({ hydraId: 'default' }).state.view?.hydraWidth, 376)
+  await b.evaluate({
+    code: `
+    window.nativeSocket = WebSocket; window.heldSockets = []; window.releaseCold = false;
+    window.WebSocket = class extends window.nativeSocket {
+      constructor(url) {
+        super(url);
+        if (new URL(url).pathname === '/hydra/third/ws') {
+          this.held = []; window.heldSockets.push(this);
+          this.addEventListener('message', event => { if (!window.releaseCold) { event.stopImmediatePropagation(); this.held.push(event.data); } });
+        }
+      }
+    };
+    [...document.querySelectorAll('.hydra-name')].find(el => el.textContent.trim() === 'third').click();
+    for (let i = 0; i < 30 && !window.heldSockets.length; i++) await new Promise(r => requestAnimationFrame(r));
+    if (!window.heldSockets.length) throw new Error('Cold socket not opened');
+    [...document.querySelectorAll('.hydra-name')].find(el => el.textContent.trim() === 'second').click();
+    return true;`,
+  })
+  await b.eventually({ condition: 'document.querySelector("[data-hydra-current]")?.textContent.trim() === "second" && document.querySelector(".app")?.dataset.connected === "true"', label: 'leaving a cold Hydra restores a confirmed cache' })
+  await b.evaluate({
+    code: `
+    [...document.querySelectorAll('.hydra-name')].find(el => el.textContent.trim() === 'third').click();
+    for (let i = 0; i < 30 && window.heldSockets.length < 2; i++) await new Promise(r => requestAnimationFrame(r));
+    if (document.querySelector('[data-hydra-current]')?.textContent.trim() !== 'second' || document.querySelectorAll('.card').length < 120 || document.querySelector('.hydra-chat .composer textarea').value !== 'Second Hydra draft') throw new Error('Unconfirmed Hydra exposed another Hydra restore state');
+    window.releaseCold = true;
+    for (const socket of window.heldSockets) if (socket.readyState === window.nativeSocket.OPEN) for (const data of socket.held) socket.dispatchEvent(new MessageEvent('message', { data }));
+    window.WebSocket = window.nativeSocket;
+    return true;`,
+  })
+  await b.eventually({ condition: 'document.querySelector("[data-hydra-current]")?.textContent.trim() === "third" && document.querySelector(".app")?.dataset.connected === "true"', label: 'uncached Hydra appears only after its own confirmed snapshot' })
+  await b.evaluate({ code: '[...document.querySelectorAll(\'.hydra-name\')].find(el => el.textContent.trim() === \'default\').click(); return true;' })
+  await b.eventually({ condition: 'document.querySelector("[data-hydra-current]")?.textContent.trim() === "default" && document.querySelector(".app")?.dataset.connected === "true"', label: 'original Hydra remains usable after interrupted switches' })
   await b.evaluate({ code: 'window.keepSampling = false; window.readDelay = 2000; return { cachedSwitchMs: window.cachedSwitchMs, blankFrames: window.blankFrames };' })
   await b.text({ label: 'Settings' })
   await b.evaluate({ code: 'document.querySelector(".settings").scrollTop = 0; document.querySelector(".settings h1").focus({ preventScroll: true }); return true;' })

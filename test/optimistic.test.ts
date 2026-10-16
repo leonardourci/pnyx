@@ -76,3 +76,22 @@ test('edits can target a column whose creation is still pending', () => {
   assert.equal(renamed.config?.columns.at(-1)?.title, 'Research')
   assert.ok(!state.config?.columns.some(c => c.id === 'custom:research'))
 })
+
+test('a rejected prerequisite drops invalid dependent previews and preserves independent edits', () => {
+  const state = fixture()
+  const invalid: string[] = []
+  const projected = projectEdits({
+    state,
+    edits: [
+      { name: 'view', args: ['set', '--json', '{"columnWidths":{"custom:pending":400}}'] },
+      { name: 'view', args: ['set', '--json', '{"theme":"dark"}'] },
+    ],
+    invalid: ({ edit }) => {
+      invalid.push(edit.name)
+    },
+  })
+  assert.deepEqual(invalid, ['view'])
+  assert.equal(projected.view?.theme, 'dark')
+  assert.equal(projected.view?.columnWidths['custom:pending'], undefined)
+  assert.equal(state.view, undefined)
+})
