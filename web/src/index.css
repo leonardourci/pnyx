@@ -780,19 +780,21 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .oracle { position: relative; display: flex; align-items: center; gap: 7px; flex: 1; max-width: 380px; min-width: 140px; }
 .oracle > .input { width: 100%; }
 .oracle-results { position: absolute; top: calc(100% + 12px); right: 0; width: min(560px, calc(100vw - 24px)); max-height: min(70dvh, 650px); overflow: auto; background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 8px; box-shadow: 0 12px 32px var(--color-shadow); z-index: 65; padding: 6px; }
-.oracle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 8px; border-bottom: 1px solid var(--color-subtle); font-size: var(--text-ui); }
-.oracle-row > span { flex: 1; }
-.oracle-row > .button { text-align: left; justify-content: flex-start; }
+.oracle-row { padding: 7px 8px; border-bottom: 1px solid var(--color-subtle); font-size: var(--text-ui); }
+.oracle-row > [role=gridcell] { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.oracle-row[aria-selected=true] { background: var(--color-raised); }
+.oracle-row > [role=gridcell] > span { flex: 1; }
+.oracle-row > [role=gridcell] > .button { text-align: left; justify-content: flex-start; }
 .oracle-row .number-field { width: 100%; }
 .oracle-row .switch-label { margin: 0; }
-.oracle-row > .input { max-width: 220px; }
+.oracle-row > [role=gridcell] > .input { max-width: 220px; }
 .oracle-hit { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; width: 100%; gap: 3px; }
 .oracle-hit > .button { padding: 0; text-align: left; }
 .oracle-hit > .markdown { width: 100%; color: var(--color-muted); font-size: inherit; }
 .oracle-hit strong { font-weight: 550; }
 .oracle-hit span, .oracle-hit small { color: var(--color-muted); white-space: normal; overflow-wrap: anywhere; }
 .oracle-caption { padding: 12px 8px 4px; font-size: var(--text-meta); color: var(--color-muted); }
-@media (max-width: 760px) { .oracle { order: 5; max-width: none; flex-basis: 100%; }.oracle-results { width: calc(100vw - 24px); }.oracle-row { flex-wrap: wrap; } }
+@media (max-width: 760px) { .oracle { order: 5; max-width: none; flex-basis: 100%; }.oracle-results { width: calc(100vw - 24px); }.oracle-row > [role=gridcell] { flex-wrap: wrap; } }
 
 .permission-input { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16rem; overflow: auto; }
 

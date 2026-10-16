@@ -17,7 +17,13 @@ export function InlineConfirm({ label, action, message, disabled, confirm }: {
   }
 
   return (
-    <div>
+    <div
+      onKeyDown={e => {
+        if (e.key === 'Escape' && open && !busy && !e.nativeEvent.isComposing) {
+          e.preventDefault(); e.stopPropagation(); cancel()
+        }
+      }}
+    >
       <Button
         ref={trigger}
         className="inline-confirm-trigger"
@@ -33,11 +39,6 @@ export function InlineConfirm({ label, action, message, disabled, confirm }: {
         <div
           id={id}
           className="inline-confirm"
-          onKeyDown={e => {
-            if (e.key === 'Escape' && !busy) {
-              e.stopPropagation(); cancel()
-            }
-          }}
         >
           <p>{message}</p>
           <div className="row">
