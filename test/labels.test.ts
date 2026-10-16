@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -13,7 +13,7 @@ import { hydraDir, loadHydra, readEvents, withWriter } from '../src/store/hydra-
 process.env.PNYX_SEMANTIC = 'off'
 
 function fixture() {
-  const home = mkdtempSync(join(tmpdir(), 'pnyx-labels-'))
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-labels-')))
   process.env.PNYX_HOME = home
   const state = () => loadHydra({ hydraId: 'default' }).state
   const push = ({ key, input }: { key: string; input: unknown }) => withWriter({
