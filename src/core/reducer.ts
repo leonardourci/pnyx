@@ -17,6 +17,7 @@ import { applyPermission } from './permissions.ts'
 import { refreshDone } from './retention.ts'
 import { applyReminder } from '../reminders/state.ts'
 import { requestId } from './answer.ts'
+import { applyLabelColors } from './labels.ts'
 
 export function emptyHydra(): HydraState {
   return { v: EVENT_VERSION, seq: 0, cards: {}, keys: {}, eventIds: {}, undone: {} }
@@ -107,6 +108,7 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
 
   state.seq = event.seq
   state.eventIds[event.id] = event.seq
+  applyLabelColors({ state, colors: event.labelColors })
 
   if (applyReminder({ state, event })
     || applyPermission({ state, event })
