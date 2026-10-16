@@ -1,3 +1,4 @@
+import { DISPATCH_CHANGED } from './heads-dispatch.ts'
 import { CLONE_TIMEOUT_MS } from '../../../src/projects/limits.ts'
 import { storageKey } from './outbox.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -180,6 +181,7 @@ export function useHydra() {
           } else if (m.type === 'latest') {
             if (!ready.current) {
               ready.current = true; attempt = 0; setConnected(true); flush()
+              window.dispatchEvent(new Event(DISPATCH_CHANGED))
             }
 
             setLatest(old => {
@@ -211,6 +213,10 @@ export function useHydra() {
             } else {
               if (p.message.name === 'hydras' && typeof m.hydraId === 'string' && Array.isArray(m.hydras)) {
                 setNavigation({ hydraId: m.hydraId, hydras: m.hydras as HydraSummary[] })
+              }
+
+              if (['rule', 'account'].includes(p.message.name) && !['list', undefined].includes(p.message.args[0])) {
+                window.dispatchEvent(new Event(DISPATCH_CHANGED))
               }
 
               p.resolve({ receipt: m })

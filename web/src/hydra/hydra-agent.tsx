@@ -1,3 +1,4 @@
+import { useHeadsDispatch } from './heads-dispatch.ts'
 import { useState } from 'react'
 import type { HydraState } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
@@ -10,13 +11,14 @@ export function HydraAgent({ state, command, connected, notify }: {
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
-  const agent = state.config?.agents?.hydra ?? { harness: 'claude' }
+  const { effective } = useHeadsDispatch({ command, seq: state.seq })
+  const agent = effective?.dispatch.rules.hydra?.candidates[0] ?? { harness: 'claude' }
   const [busy, setBusy] = useState(false)
   const controls = harnessControls({ provider: agent.harness === 'claude' ? 'claude-code' : 'codex', hosted: true })
 
   const save = ({ args }: { args: string[] }) => {
     setBusy(true)
-    void command({ name: 'kind', args: ['set', 'hydra', ...args, '--event-id', crypto.randomUUID()] })
+    void command({ name: 'rule', args: ['set', 'hydra', ...args, '--event-id', crypto.randomUUID()] })
       .then(() => notify({ text: 'Hydra agent saved for its next start.' }), (error: Error) => notify({ text: error.message }))
       .finally(() => setBusy(false))
   }
@@ -28,7 +30,7 @@ export function HydraAgent({ state, command, connected, notify }: {
         value={agent.harness}
         options={[{ value: 'claude', label: 'Claude Code' }, { value: 'codex', label: 'Codex' }]}
         disabled={!connected || busy}
-        onChange={({ value }) => save({ args: ['--harness', value, '--model', '', '--effort', '', '--mode', '', '--fast', 'default', '--quota', 'off'] })}
+        onChange={({ value }) => save({ args: ['--harness', value, '--model', '', '--effort', '', '--mode', '', '--fast', 'default'] })}
       />
       {(['model', 'effort'] as const).map(field => {
         const choices = controls?.controls.find(c => c.setting === field)?.options ?? []
@@ -46,7 +48,7 @@ export function HydraAgent({ state, command, connected, notify }: {
             value={value}
             options={options}
             disabled={!connected || busy}
-            onChange={({ value }) => save({ args: [`--${field}`, value, ...(field === 'model' ? ['--quota', 'off'] : [])] })}
+            onChange={({ value }) => save({ args: [`--${field}`, value ] })}
           />
         )
       })}

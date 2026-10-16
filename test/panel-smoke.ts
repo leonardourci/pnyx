@@ -1,3 +1,4 @@
+import { effectiveDispatch } from '../src/dispatch/config.ts'
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -94,7 +95,7 @@ try {
   await eventually({ condition: '!document.querySelector(`[aria-label="Hydra Fast"]`).disabled', label: 'Hydra effort saved' })
   await click({ selector: '[aria-label="Hydra Fast"]' })
   await eventually({ condition: 'document.querySelector(`[aria-label="Hydra Fast"]`).getAttribute("aria-checked") === "true"', label: 'Hydra Fast saved' })
-  assert.deepEqual(state().config?.agents?.hydra, { harness: 'codex', model: 'gpt-6.1-sol', effort: 'high', fast: true })
+  assert.deepEqual(effectiveDispatch({ hydraId: 'default', state: state() }).dispatch.rules.hydra?.candidates[0], { harness: 'codex', model: 'gpt-6.1-sol', effort: 'high', fast: true })
   assert.equal(state().config?.hydra.session, undefined)
   await evaluate({ code: 'location.reload(); return true;' })
   await eventually({ condition: 'document.querySelector(`[aria-label="Hydra Fast"]`)?.getAttribute("aria-checked") === "true"', label: 'launch settings persist without starting Hydra' })

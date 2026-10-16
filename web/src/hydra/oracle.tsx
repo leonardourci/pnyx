@@ -1,3 +1,4 @@
+import { useHeadsDispatch } from './heads-dispatch.ts'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AgentConfig, HydraState, ViewPreferences } from '../../../src/core/model.ts'
 import { KEY_ACTIONS, bindingsFor } from '../../../src/core/keyboard.ts'
@@ -266,12 +267,13 @@ export function Oracle({
       </>
     ),
   })
-  const agent = state.config?.agents?.hydra ?? { harness: 'claude' }
+  const { effective } = useHeadsDispatch({ command, seq: state.seq })
+  const agent = effective?.dispatch.rules.hydra?.candidates[0] ?? { harness: 'claude' }
 
   const saveAgent = ({ patch }: { patch: Partial<AgentConfig> }) => {
     const next = { ...agent, ...patch }
 
-    return command({ name: 'kind', args: ['set', 'hydra', '--harness', next.harness, '--model', next.model ?? '', '--effort', next.effort ?? '', '--mode', next.mode ?? '', '--quota', next.quota ?? 'off'] }).catch((e: Error) => notify({ text: e.message }))
+    return command({ name: 'rule', args: ['set', 'hydra', '--harness', next.harness, '--model', next.model ?? '', '--effort', next.effort ?? '', '--mode', next.mode ?? ''] }).catch((e: Error) => notify({ text: e.message }))
   }
 
   add({
@@ -317,7 +319,7 @@ export function Oracle({
     })
   }
 
-  add({ id: 'agents', label: 'Hydra identity and default model; agent kinds', words: `harness effort mode quota launch worker ${Object.keys(state.config?.agents ?? {}).join(' ')}`, content: <AgentKinds state={state} command={command} notify={notify} /> })
+  add({ id: 'agents', label: 'Hydra identity and default model; heads dispatch rules', words: `harness effort mode quota launch worker ${Object.keys(state.config?.agents ?? {}).join(' ')}`, content: <AgentKinds state={state} command={command} notify={notify} /> })
   const catalog = JSON.stringify(rows.map(row => ({ id: row.id, text: row.text.slice(0, 500) })))
   const words = queryWords({ query })
   useEffect(() => {

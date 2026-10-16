@@ -131,6 +131,7 @@ export function Detail({
           <Button aria-label="Close detail" onClick={close}><Icon name="close" size={14} /></Button>
         </div>
       </header>
+      {card.launch?.dispatch && <p className="muted small" aria-label="Heads dispatch choice">{card.launch.dispatch}</p>}
       {card.agent && ['claude-code', 'codex'].includes(card.agent.provider) && !card.agent.host && !card.agent.agentId && !card.agent.paseoAgentId && !card.automaticTask && (
         <ContinueAgent
           card={card}
