@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { ReminderEditor, ReminderLabel } from './reminder.tsx'
-import type { Card as CardData, ViewPreferences } from '../../../src/core/model.ts'
+import type { Card as CardData, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
+import { Label } from '../components/ui/label.tsx'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Markdown } from '../components/ui/markdown.tsx'
 import { Button } from '../components/ui/controls.tsx'
@@ -24,6 +25,7 @@ function LastMessage({ message }: { message: LatestMessage }) {
 export function HydraCard({
   card,
   firstmate,
+  labelColors,
   latest,
   selected,
   view,
@@ -37,6 +39,7 @@ export function HydraCard({
 }: {
   card: CardData
   firstmate: boolean
+  labelColors?: SavedLabelColor[]
   doneAfterHours?: number
   notify({ text }: { text: string }): void
   latest?: LatestMessage
@@ -64,6 +67,7 @@ export function HydraCard({
     <article
       className={`card ${selected ? 'selected' : ''}`}
       data-task={card.id}
+      data-label-color={(labelColors?.find(entry => entry.label === card.project) ?? labelColors?.find(entry => card.tags.includes(entry.label)))?.color}
       onClick={e => {
         if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, form, .detail, .menu') && !window.getSelection()?.toString()) {
           open({ id: card.id })
@@ -88,7 +92,21 @@ export function HydraCard({
           />
         </Menu>
       </div>
-      {card.project && <span className="project-label" title={card.project}>{projectTitle({ project: card.project })}</span>}
+      {(card.project || card.tags.length > 0) && (
+        <div className="card-labels">
+          {card.project && (
+            <Label
+              project
+              label={card.project}
+              text={projectTitle({ project: card.project })}
+              colors={labelColors}
+            />
+          )}
+          {card.tags.filter(tag => tag !== card.project).map(tag => (
+            <Label key={tag} label={tag} colors={labelColors} />
+          ))}
+        </div>
+      )}
       <Button
         className="card-open"
         aria-label={`Open conversation for ${card.title}`}

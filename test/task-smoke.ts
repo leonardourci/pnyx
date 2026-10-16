@@ -98,7 +98,7 @@ try {
   await click({ selector: '[aria-label="Close detail"]' })
   await click({ selector: '[aria-label="New task in Parked"]' }); await text({ label: 'Cancel' })
   assert.equal(Object.keys(state().cards).length, before + 1)
-  await text({ label: '+ Add column' }); await browser({ args: ['wait', 'New column'] })
+  await text({ label: 'Add column' }); await browser({ args: ['wait', 'New column'] })
   await fill({ label: 'Rename New column column', value: 'Research' }); await text({ label: 'Save title' })
   await click({ selector: '[aria-label="Research column menu"]' }); await text({ label: 'Edit description' })
   await fill({ label: 'Research description', value: 'Gather evidence before rollout.' }); await text({ label: 'Save description' })

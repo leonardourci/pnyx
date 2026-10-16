@@ -1,4 +1,7 @@
 import { spawnSync } from 'node:child_process'
+import { randomInt } from 'node:crypto'
+import { LABEL_COLORS } from '../core/model.ts'
+import { labelsForEvent } from '../core/labels.ts'
 import {
   chmodSync,
   closeSync,
@@ -397,6 +400,15 @@ export function withWriter<T>({ hydraId, fn }: {
         append({ event }) {
           if (event.seq !== state.seq + 1) {
             throw new Error(`append out of sequence: ${event.seq} after ${state.seq}`)
+          }
+
+          const knownLabels = new Set(state.labelColors?.map(entry => entry.label))
+          const labelColors = labelsForEvent({ state, event })
+            .filter(label => !knownLabels.has(label))
+            .map(label => ({ label, color: LABEL_COLORS[randomInt(LABEL_COLORS.length)] ?? 'slate' }))
+
+          if (labelColors.length) {
+            event = { ...event, labelColors }
           }
 
           const card = state.cards[event.cardId]

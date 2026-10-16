@@ -246,6 +246,7 @@ export interface PushFields {
 }
 
 interface EventBase {
+  labelColors?: SavedLabelColor[]
   v: typeof EVENT_VERSION
   seq: number
   id: string
@@ -502,6 +503,7 @@ export type EventType = HydraEvent['type']
 export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'task.retention', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched', 'task.permission', 'hydra.project', 'task.project', 'task.reminder', 'task.reminder-due', 'task.copy']
 
 export interface HydraState {
+  labelColors?: SavedLabelColor[]
   projects?: HydraProject[]
   projectsRevision?: number
   config?: HydraConfig
@@ -523,6 +525,10 @@ export interface HydraState {
   // undone event id -> id of the event that reversed it
   undone: Record<string, string>
 }
+
+export const LABEL_COLORS = ['slate', 'blue', 'gold', 'violet', 'green', 'rose', 'teal', 'coral'] as const
+export type LabelColor = (typeof LABEL_COLORS)[number]
+export interface SavedLabelColor { label: string; color: LabelColor }
 
 export class HydraError extends Error {
   code: string

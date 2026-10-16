@@ -1,3 +1,4 @@
+import { Icon } from '../components/ui/icon.tsx'
 import { storageKey } from './outbox.ts'
 import { HYDRA_CARD, lockedColumn } from '../../../src/core/hydra.ts'
 import { cardSessionId } from '../../../src/core/tasks.ts'
@@ -390,6 +391,7 @@ export function App() {
                 <HydraChat
                   projectSetup={state.config?.hydra.kind !== 'firstmate' && (addingProject || (connected && !(state.projects ?? []).some(p => !p.detached))) ? (
                     <AddProject
+                      autoFocus={addingProject}
                       command={command}
                       connected={connected}
                       notify={notify}
@@ -458,6 +460,7 @@ export function App() {
                                   key={item.id}
                                   card={item}
                                   firstmate={state.config?.hydra.kind === 'firstmate'}
+                                  labelColors={state.labelColors}
                                   doneAfterHours={state.config?.doneAfterHours}
                                   notify={notify}
                                   latest={latest[item.id]}
@@ -482,7 +485,7 @@ export function App() {
                           <Button
                             disabled={!connected}
                             onClick={createColumn}
-                          >+ Add column
+                          ><Icon name="plus" />Add column
                           </Button>
                         </div>
                       </div>

@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import { HydraError, type HydraEvent } from '../src/core/model.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
-import { hydraDir, hydraIds, loadHydra, repairHydra, withWriter } from '../src/store/hydra-store.ts'
+import { hydraDir, hydraIds, loadHydra, readEvents, repairHydra, withWriter } from '../src/store/hydra-store.ts'
 import { STREAMS, assertGolden, readStream } from './streams.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
@@ -38,13 +38,14 @@ test('appends are durable lines and the snapshot matches a full replay', () => {
   const dir = hydraDir({ hydraId: 'default' })
   const lines = readFileSync(join(dir, 'events.jsonl'), 'utf8').trimEnd()
     .split('\n')
-  const written = lines.map(l => JSON.parse(l))
+  const written: HydraEvent[] = lines.map(l => JSON.parse(l))
   assert.ok(written.every(e => e.boardId === 'default' && e.commandId === e.id))
   const original = written.map(({
     boardId, taskId, subtaskId, agentId,
-    sessionId, commandId, ...e
+    sessionId, commandId, labelColors, ...e
   }) => {
     assert.ok(boardId && taskId && commandId)
+    assert.ok(!labelColors || labelColors.every(entry => typeof entry.label === 'string'))
     assert.ok(subtaskId === undefined || typeof subtaskId === 'string')
     assert.ok(agentId === undefined || typeof agentId === 'string')
     assert.ok(sessionId === undefined || typeof sessionId === 'string')
@@ -52,7 +53,7 @@ test('appends are durable lines and the snapshot matches a full replay', () => {
     return e
   })
   assert.deepEqual(original, events)
-  const expected = replay({ state: emptyHydra(), events })
+  const expected = replay({ state: emptyHydra(), events: readEvents({ hydraId: 'default' }) })
   assert.deepEqual(loadHydra({ hydraId: 'default' }).state, expected)
   const snapshot = JSON.parse(readFileSync(join(dir, 'snapshot.json'), 'utf8'))
   assert.deepEqual(snapshot.state, expected)
@@ -64,7 +65,7 @@ test('a missing, corrupt or stale snapshot is rebuilt from the log', () => {
   const dir = hydraDir({ hydraId: 'default' })
   const early = readFileSync(join(dir, 'snapshot.json'))
   appendAll({ events: events.slice(4) })
-  const expected = replay({ state: emptyHydra(), events })
+  const expected = replay({ state: emptyHydra(), events: readEvents({ hydraId: 'default' }) })
 
   // Crash between the append and the snapshot write: the old snapshot plus the log tail.
   writeFileSync(join(dir, 'snapshot.json'), early)
@@ -116,7 +117,7 @@ test('repair skips a torn line even when it parses as an event', () => {
   writeFileSync(join(dir, 'events.jsonl'), readFileSync(join(dir, 'events.jsonl')).toString() + unacknowledged)
   repairHydra({ hydraId: 'default' })
   rmSync(join(dir, 'snapshot.json'))
-  assert.deepEqual(loadHydra({ hydraId: 'default' }).state, replay({ state: emptyHydra(), events }))
+  assert.deepEqual(loadHydra({ hydraId: 'default' }).state, replay({ state: emptyHydra(), events: readEvents({ hydraId: 'default' }) }))
 })
 
 test('a repair marker that names the wrong line is corruption', () => {
