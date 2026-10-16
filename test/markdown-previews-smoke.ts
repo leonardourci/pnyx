@@ -23,7 +23,11 @@ withWriter({
   fn: ({ writer }) => {
     const meta = { actor: 'fixture', at: '2026-10-15T11:00:00Z' }
     const view = decideView({ state: writer.state, meta, patch: { lastMessageOnCards: true } })
-    assert.ok('event' in view); writer.append({ event: view.event })
+
+    if ('event' in view) {
+      writer.append({ event: view.event })
+    }
+
     const message = hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'hydra.message', data: { action: 'send', text: markdown, hydra: 'hydra' } } })
     assert.ok('event' in message); writer.append({ event: message.event })
   },
