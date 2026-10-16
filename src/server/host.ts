@@ -1,8 +1,8 @@
-import { accountEnvironment, dispatchTask, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
+import { accountEnvironment, chooseCandidate, dispatchTask, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
-import { statSync } from 'node:fs'
-import { isAbsolute } from 'node:path'
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
 import type { HostedSession, PermissionDecision } from './provider.ts'
@@ -10,18 +10,23 @@ import { terminalPresence, type Presence } from '../integrations/presence/check.
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained, postLine } from '../cli/commands.ts'
 import { permissionEvent } from '../core/permissions.ts'
-import { hydraEvent } from '../core/hydra.ts'
-import { freeTask } from '../cli/start.ts'
+import { HYDRA_CARD, hydraConfig, hydraEvent } from '../core/hydra.ts'
+import { freeTask, HOME_SKILL, HYDRA_SKILL } from '../cli/start.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
 import { HydraError, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
 import { harnessControls } from '../core/control.ts'
 import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
-import { loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
+import { hydraDir, loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
 
 export type { QueryFn } from './claude.ts'
 
 export interface Host {
   hydraId: string
+  hydra({ text, actor, id }: {
+    text: string
+    actor: string
+    id: string
+  }): Promise<Record<string, unknown>>
   start({ task, prompt, folder, settings, id, actor, reason, replacement, dispatch }: {
     task: string
     prompt: string
@@ -138,6 +143,8 @@ export function createHost({
     finish({ result }: { result: PermissionDecision }): void
   }>()
   let closing = false
+  let hydraTurn = Promise.resolve()
+  const queuedHydra = new Set<string>()
 
   const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
     const result = withWriter({
@@ -296,7 +303,9 @@ export function createHost({
   }) => {
     record({ writer, agent, input: { activity: 'interrupted' }, actor: 'pnyx' })
     const session = writer.state.sessions?.[sessionId({ agent })]
-    const task = session?.taskId ? writer.state.cards[session.taskId] : undefined
+    const task = session?.id === writer.state.config?.hydra.session
+      ? writer.state.cards[HYDRA_CARD]
+      : session?.taskId ? writer.state.cards[session.taskId] : undefined
 
     if (task) {
       const attention: Attention[] = [{ kind: 'interrupted', key: INTERRUPTED, blocking: true, text: note }, ...task.attention.filter(a => a.key !== INTERRUPTED)]
@@ -318,6 +327,9 @@ export function createHost({
     PNYX_HOME: pnyxHome(),
     PNYX_HYDRA: hydraId,
   })
+
+  const hydraInstructions = () =>
+    `You are Hydra for Pnyx Hydra "${hydraId}". Read ${join(hydraDir({ hydraId }), 'agent', HOME_SKILL, 'SKILL.md')} and follow it. Use pnyx-axi with --hydra ${hydraId}. Projects attach later; your current folder belongs to Hydra.`
 
   const providerOf = ({ provider }: { provider: string }) => {
     if (provider !== 'claude-code' && provider !== 'codex') {
@@ -363,7 +375,9 @@ export function createHost({
         write({
           fn: ({ writer }) => {
             const session = writer.state.sessions?.[key]
-            const current = session?.taskId ? writer.state.cards[session.taskId] : undefined
+            const current = session?.id === writer.state.config?.hydra.session
+              ? writer.state.cards[HYDRA_CARD]
+              : session?.taskId ? writer.state.cards[session.taskId] : undefined
 
             if (!current || current.agent?.host !== 'pnyx' || sessionId({ agent: current.agent }) !== key) {
               throw new HydraError({ message: 'the agent is no longer attached to this task', code: 'NO_ROUTE' })
@@ -391,6 +405,7 @@ export function createHost({
         cwd: folderOf({ card }),
         agent: card.agent,
         settings: card.settings ?? {},
+        ...(card.id === HYDRA_CARD ? { instructions: hydraInstructions() } : {}),
         env: card.agent.loginFolder ? accountEnvironment({ account: { provider: card.agent.provider === 'codex' ? 'codex' : 'claude', folder: card.agent.loginFolder }, env: environment() }) : environment(),
         signal: controller.signal,
       })
@@ -490,6 +505,190 @@ export function createHost({
 
   return {
     hydraId,
+    hydra: ({ text, actor, id }) => {
+      if (queuedHydra.has(id)) {
+        return Promise.resolve({ state: 'queued' })
+      }
+
+      queuedHydra.add(id)
+      const turn = hydraTurn.then(async () => {
+        if (closing) {
+          return { state: 'queued' }
+        }
+
+        let state = loadHydra({ hydraId }).state
+        const config = hydraConfig({ state, id: hydraId })
+
+        if (config.hydra.kind === 'firstmate') {
+          return { state: 'queued' }
+        }
+
+        if (`${id}:hosted` in state.eventIds) {
+          return { state: 'queued' }
+        }
+
+        const previous = state.cards[HYDRA_CARD]
+
+        write({
+          fn: ({ writer }) => {
+            if (previous?.agent?.host === 'pnyx') {
+              record({ writer, agent: previous.agent, input: { activity: 'working' }, actor })
+            } else {
+              apply({ writer, decision: decidePush({ state: writer.state, key: HYDRA_CARD, input: { activity: 'working' }, meta: { at: at(), actor } }) })
+            }
+          },
+        })
+        let prepared: HostedSession | undefined
+
+        try {
+          if (previous?.agent && previous.agent.host !== 'pnyx') {
+            throw new HydraError({ message: 'This Hydra already has an outside agent. Continue it in its own harness.', code: 'NO_ROUTE' })
+          }
+
+          const effective = effectiveDispatch({ hydraId, state })
+          const candidate = config.hydra.agent
+            ?? effective.dispatch.rules.hydra?.candidates[0]
+            ?? effective.dispatch.default[0]
+            ?? { harness: 'claude' as const }
+          const main = effective.dispatch.main
+            && effective.accounts[effective.dispatch.main]?.provider === candidate.harness
+            ? effective.dispatch.main
+            : Object.keys(effective.accounts).find(name =>
+              effective.accounts[name]?.provider === candidate.harness)
+          const account = main ? effective.accounts[main] : undefined
+          const dispatch = previous?.agent?.provider !== (candidate.harness === 'codex' ? 'codex' : 'claude-code')
+            && account && main ? chooseCandidate({
+              config: {
+                ...effective,
+                dispatch: {
+                  ...effective.dispatch,
+                  default: [candidate],
+                  workers: { [account.provider]: [main] },
+                  projects: {},
+                },
+              },
+              task: HYDRA_CARD,
+            }) : undefined
+          const settings: AgentSettings = Object.fromEntries(Object.entries(candidate).filter(([key, value]) => key !== 'harness' && value !== undefined)
+            .map(([key, value]) => [key, String(value)]))
+          const provider = candidate.harness === 'codex' ? 'codex' : 'claude-code'
+          const cwd = join(hydraDir({ hydraId }), 'agent')
+          const skill = join(cwd, HOME_SKILL)
+          mkdirSync(skill, { recursive: true })
+          writeFileSync(join(skill, 'SKILL.md'), readFileSync(HYDRA_SKILL))
+          let card = previous
+          const previousAgent = card?.agent
+          const running = previousAgent && live.get(sessionId({ agent: previousAgent }))
+
+          while (previousAgent && running?.activity === 'working'
+            && live.get(sessionId({ agent: previousAgent })) === running && !closing) {
+            await new Promise(resolve => setTimeout(resolve, 20))
+          }
+
+          if (closing) {
+            throw new Error('Pnyx is stopping')
+          }
+
+          state = loadHydra({ hydraId }).state
+          card = state.cards[HYDRA_CARD]
+          const agent = card?.agent?.provider === provider ? card.agent : undefined
+          const changedSettings = JSON.stringify(card?.settings ?? {}) !== JSON.stringify(settings)
+
+          if (running && previousAgent && (!agent || changedSettings)) {
+            retire({ key: sessionId({ agent: previousAgent }), entry: running })
+          }
+
+          if (!agent || !live.has(sessionId({ agent }))) {
+            prepared = await providerOf({ provider }).open({
+              cwd,
+              agent,
+              settings,
+              instructions: hydraInstructions(),
+              env: agent?.loginFolder ? accountEnvironment({
+                account: { provider: candidate.harness, folder: agent.loginFolder },
+                env: environment(),
+              }) : dispatch ? accountEnvironment({
+                account: { provider: dispatch.provider, folder: dispatch.folder },
+                env: environment(),
+              }) : environment(),
+              signal: controller.signal,
+            })
+          }
+
+          const ref: AgentRef = agent ?? { provider, sessionId: prepared!.id, cwd, host: 'pnyx', resume: true, ...(prepared?.path ? { transcriptPath: prepared.path } : {}), ...(dispatch ? { account: dispatch.account, loginFolder: dispatch.folder } : {}) }
+          const claimed = write({
+            fn: ({ writer }) => {
+              const meta = { at: at(), actor }
+              apply({
+                writer,
+                decision: decidePush({
+                  state: writer.state,
+                  key: HYDRA_CARD,
+                  input: {
+                    attention: writer.state.cards[HYDRA_CARD]?.attention
+                      .filter(a => a.key !== INTERRUPTED) ?? [],
+                  },
+                  meta,
+                }),
+              })
+              apply({
+                writer,
+                decision: decidePush({
+                  state: writer.state,
+                  key: sessionKey({ agent: ref }),
+                  input: {
+                    agent: ref,
+                    title: 'Hydra',
+                    settings: {
+                      ...Object.fromEntries(Object.keys(card?.settings ?? {})
+                        .map(key => [key, null])),
+                      ...settings,
+                    },
+                    activity: 'working',
+                    attention: [],
+                    source: { adapter: 'pnyx', objectId: ref.sessionId, observedAt: meta.at },
+                  },
+                  meta,
+                }),
+              })
+              const current = hydraConfig({ state: writer.state, id: hydraId })
+              apply({ writer, decision: hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:hosted` }, cardId: HYDRA_CARD, change: { type: 'board.configured', data: { ...current, hydra: { ...current.hydra, session: sessionId({ agent: ref }) } } } }) })
+
+              return writer.state.cards[HYDRA_CARD] as Card & { agent: AgentRef }
+            },
+          })
+          const entry = open({ card: claimed, session: prepared })
+          prepared = undefined
+          entry.activity = 'working'
+          entry.input.push({ text })
+
+          return { state: 'queued' }
+        } catch (error) {
+          prepared?.close()
+
+          if (closing) {
+            return { state: 'failed' }
+          }
+
+          const detail = `Hydra could not start: ${(error as Error).message}. Check the harness login and settings, then send a message to retry.`
+          write({
+            fn: ({ writer }) => {
+              if (previous?.agent?.host === 'pnyx') {
+                record({ writer, agent: previous.agent, input: { activity: 'interrupted' }, actor: 'pnyx' })
+              }
+
+              apply({ writer, decision: decidePush({ state: writer.state, key: HYDRA_CARD, input: { activity: 'interrupted' }, meta: { at: at(), actor: 'pnyx' } }) })
+              apply({ writer, decision: hydraEvent({ state: writer.state, meta: { at: at(), actor: 'hydra' }, cardId: HYDRA_CARD, change: { type: 'hydra.message', data: { action: 'send', hydra: config.hydra.id, text: detail } } }) })
+            },
+          })
+
+          return { state: 'failed', detail }
+        }
+      })
+      hydraTurn = turn.then(() => {}, () => {}).finally(() => queuedHydra.delete(id))
+
+      return Promise.resolve({ state: 'queued' })
+    },
     start: async ({ task, prompt, folder, settings, id, actor, reason, replacement, dispatch }) => {
       const { target, duplicate } = write({
         fn: ({ writer }) => {
@@ -815,6 +1014,9 @@ export async function hostRequest({ host, body: raw }: {
   const actor = field({ body, name: 'actor', optional: true }) ?? 'cli'
 
   switch (body.action) {
+    case 'hydra':
+      return host.hydra({ text: field({ body, name: 'text' })!, id: field({ body, name: 'id' })!, actor })
+
     case 'start': {
       const given = (body.settings ?? {}) as Record<string, unknown>
       const settings = Object.fromEntries(Object.entries(given)

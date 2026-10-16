@@ -1,6 +1,8 @@
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { commands } from '../cli/commands.ts'
 import { hydraConfig } from '../core/hydra.ts'
-import { hydraIds, loadHydra } from '../store/hydra-store.ts'
+import { hydraDir, hydraIds, loadHydra } from '../store/hydra-store.ts'
 import { projectsFor } from '../projects/read.ts'
 import { liveTask } from '../core/tasks.ts'
 
@@ -53,6 +55,7 @@ export function createHydra({ name }: { name: string }): string {
 
   const id = `hydra-${n}`
   commands.hydra(['create', id, '--name', name, '--actor', 'web'])
+  mkdirSync(join(hydraDir({ hydraId: id }), 'agent'), { recursive: true })
 
   return id
 }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,6 +13,7 @@ import { smokeBrowser } from './browser.ts'
 process.env.PNYX_SEMANTIC = 'off'
 const home = mkdtempSync(join(tmpdir(), 'pnyx-mentions-smoke-'))
 process.env.PNYX_HOME = home
+process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
 seedWebFixture({ home })
 commands.task(['create', '--key', 'mention-reference', '--title', 'Migration plan', '--brief', 'Preserve violet rollback checks', '--project', 'API'])
 commands.task(['create', '--key', 'mention-receiver', '--title', 'Review task'])
@@ -19,7 +21,7 @@ commands.task(['status', 'mention-reference', 'working', '--note', 'Rollback ver
 const state = () => loadHydra({ hydraId: 'default' }).state
 const reference = state().keys['mention-reference']!
 const receiver = state().keys['mention-receiver']!
-const server = await startServer({ hydraId: 'default', homes: [] })
+const server = await startServer({ hydraId: 'default', query: hydraSdk().query, homes: [] })
 const { browser, evaluate, check, eventually, click, text, fill, press, focus, screenshot, close } = smokeBrowser({ home, session: 'pnyx-mentions' })
 
 try {

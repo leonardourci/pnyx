@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,8 +11,9 @@ import { smokeBrowser } from './browser.ts'
 process.env.PNYX_SEMANTIC = 'off'
 const home = mkdtempSync(join(tmpdir(), 'pnyx-keyboard-smoke-'))
 process.env.PNYX_HOME = home
+process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
 const fixture = seedWebFixture({ home })
-const server = await startServer({ hydraId: 'default', homes: [fixture.nativeHome] })
+const server = await startServer({ hydraId: 'default', query: hydraSdk().query, homes: [fixture.nativeHome] })
 const { browser, evaluate, eventually, check, fill, press, focus, screenshot, close } = smokeBrowser({ home, session: 'pnyx-keyboard' })
 const card = `[data-card="${fixture.state.keys.layout}"]`
 const state = () => loadHydra({ hydraId: 'default' }).state

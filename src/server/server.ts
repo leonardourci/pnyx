@@ -1,3 +1,4 @@
+import { candidates } from '../dispatch/config.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
 import { fireReminders } from '../reminders/fire.ts'
@@ -10,7 +11,7 @@ import { settleDone, settles } from '../copies/copies.ts'
 import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
-import { HYDRA_CARD } from '../core/hydra.ts'
+import { HYDRA_CARD, hydraConfig, hydraEvent } from '../core/hydra.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '../integrations/paseo/history.ts'
 import { findCard } from '../core/decide.ts'
 import { replyRoute } from '../core/route.ts'
@@ -34,7 +35,7 @@ import { integrationsCommand } from '../cli/integrations.ts'
 import { HydraError, type HydraEvent, type HydraState, type Card, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
-import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
+import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, withWriter, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
 import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 import { createHydra, listHydras, renameHydra, type HydraSummary } from './hydras.ts'
 import { createHost, hostRequest, type QueryFn } from './host.ts'
@@ -794,7 +795,7 @@ async function mountOwnedHydra({
       return fail({ error: 'command needs a string id', code: 'VALIDATION_ERROR' })
     }
 
-    if (['thread', 'oracle', 'oracle-commands', 'reply', 'task-message', 'answer', 'agent', 'catalog', 'settings', 'hydras'].includes(String(name))) {
+    if (['thread', 'oracle', 'oracle-commands', 'reply', 'task-message', 'answer', 'agent', 'catalog', 'settings', 'hydras', 'hydra-agent'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail({ error: 'args must be strings', code: 'VALIDATION_ERROR' })
       }
@@ -862,13 +863,37 @@ async function mountOwnedHydra({
             value: args[2]!,
           }) : readSettings({ })
           send({ ws, message: { type: 'receipt', id, settings: settingEntries({ settings }) } })
+        } else if (name === 'hydra-agent') {
+          if (args.length !== 1) {
+            throw new HydraError({ message: 'hydra-agent expects one agent configuration', code: 'VALIDATION_ERROR' })
+          }
+
+          const agent = candidates({ value: [JSON.parse(args[0]!)] })[0]!
+          withWriter({
+            hydraId,
+            fn: ({ writer }) => {
+              const config = hydraConfig({ state: writer.state, id: hydraId })
+
+              if (config.hydra.kind === 'firstmate') {
+                throw new HydraError({ message: 'Firstmate manages this Hydra’s agent', code: 'NO_ROUTE' })
+              }
+
+              const decision = hydraEvent({ state: writer.state, cardId: HYDRA_CARD, meta: { at: new Date().toISOString(), actor: 'web' }, change: { type: 'board.configured', data: { ...config, hydra: { ...config.hydra, agent } } } })
+
+              if ('event' in decision) {
+                writer.append({ event: decision.event })
+              }
+            },
+          })
+          kick()
+          send({ ws, message: { type: 'receipt', id, saved: true } })
         } else if (name === 'hydras') {
           hydraSubscribers.add(ws)
           const [action, first, second] = args
           const reply = ({ open }: { open?: string } = {}) => send({ ws, message: { type: 'receipt', id, hydraId, hydras: listHydras(), ...(open ? { url: open } : {}) } })
 
-          if (action === 'create' && first?.trim()) {
-            void open({ id: createHydra({ name: first.trim().slice(0, 100) }) }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
+          if (action === 'create') {
+            void open({ id: createHydra({ name: first?.trim().slice(0, 100) || 'New Hydra' }) }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
           } else if (action === 'open' && first) {
             void open({ id: first }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
           } else if (action === 'rename' && first && second?.trim() && listHydras().some(b => b.id === first)) {
