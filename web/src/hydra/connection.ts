@@ -17,14 +17,14 @@ const CACHE_KEY = storageKey({ key: 'hydra-state' })
 export const reconnectDelay = ({ attempt }: { attempt: number }) =>
   Math.min(500 * 2 ** Math.min(attempt, 5), 10000)
 export const retryable = ({ name, args }: { name: string; args: string[] }) =>
-  ['reply', 'answer', 'agent'].includes(name) || (name === 'hydra' && args[0] === 'send' && args.includes('--event-id'))
+  ['reply', 'task-message', 'answer', 'agent'].includes(name) || (name === 'hydra' && args[0] === 'send' && args.includes('--event-id'))
 
 export function commandTimeout({ name, args }: { name: string; args: string[] }): number {
   if (name === 'project' && args[0] === 'add' && args.includes('--clone')) {
     return CLONE_TIMEOUT_MS + 20_000
   }
 
-  return ['reply', 'answer', 'agent'].includes(name) ? 140000 : 60000
+  return ['reply', 'task-message', 'answer', 'agent'].includes(name) ? 140000 : 60000
 }
 
 function restoredHydra(): HydraState {

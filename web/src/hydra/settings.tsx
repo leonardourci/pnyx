@@ -48,7 +48,7 @@ export function Settings({ state, connected, view, save, command, notify }: {
               onChange={({ value }) => save({ patch: { [key]: value } })}
             />
           ))}
-          <Switch label="Last message on cards" checked={view.lastMessageOnCards} onChange={({ value }) => save({ patch: { lastMessageOnCards: value } })} />
+          <Switch label="Agent updates on cards" checked={view.lastMessageOnCards} onChange={({ value }) => save({ patch: { lastMessageOnCards: value } })} />
         </section>
         <section className="settings-box">
           <h2>Conversations</h2>

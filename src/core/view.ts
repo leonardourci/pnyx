@@ -7,7 +7,7 @@ export const DEFAULT_COLUMN_WIDTH = DEFAULT_WIDTHS.column
 export const DEFAULT_VIEW: ViewPreferences = {
   theme: 'system',
   focusMode: true,
-  lastMessageOnCards: false,
+  lastMessageOnCards: true,
   hydraWidth: DEFAULT_WIDTHS.hydra,
   defaultHydraWidth: DEFAULT_WIDTHS.hydra,
   defaultColumnWidths: Object.fromEntries(COLUMNS.map(id => [id, DEFAULT_COLUMN_WIDTH])),

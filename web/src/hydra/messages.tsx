@@ -16,8 +16,9 @@ import { receiptLabel } from './view.ts'
 const roleLabel = ({ role }: { role: string }) => role === 'assistant' ? 'Agent' : role === 'user' ? 'You' : role
 
 export function Messages({
-  entries, comments, setComments, quote, toolDetails = true, thinkingDetails = true,
+  entries, comments, setComments, quote, toolDetails = true, thinkingDetails = true, taskTitles,
 }: {
+  taskTitles?: Record<string, string>
   toolDetails?: boolean
   thinkingDetails?: boolean
   entries: ThreadEntry[]
@@ -299,10 +300,11 @@ export function Messages({
         {entries.map(entry => (
           <article
             key={entry.id}
-            className={`message ${entry.kind}${entry.role === 'user' || entry.role === 'You' ? ' mine' : ''}`}
+            className={`message ${entry.kind}${/^(user|You)( · continued)?$/.test(entry.role) ? ' mine' : ''}`}
             aria-label={roleLabel(entry)}
             title={entry.at ? new Date(entry.at).toLocaleString() : undefined}
           >
+            {entry.task && taskTitles && <span className="message-task" data-task-ref={entry.task}>{taskTitles[entry.task] ?? 'Task update'}</span>}
             {entry.kind === 'message' ? (
               <Markdown
                 text={entry.text}
@@ -364,7 +366,13 @@ export function Messages({
             ) : (
               <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
             )}
-            {entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
+            {entry.delivery ? (
+              <span className="receipt" role="status">
+                {Object.entries(entry.delivery).map(([route, delivery]) => (
+                  <span key={route} className={`receipt-${delivery.state}`} title={delivery.detail}>{route === 'hydra' ? 'Hydra' : 'Agent'}: {receiptLabel({ state: delivery.state })}{delivery.detail ? ` · ${delivery.detail}` : ''} </span>
+                ))}
+              </span>
+            ) : entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
           </article>
         ))}
       </div>

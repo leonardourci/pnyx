@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { commands } from '../src/cli/commands.ts'
 import { startServer } from '../src/server/server.ts'
 import { decideView } from '../src/core/decide.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
@@ -22,11 +23,16 @@ withWriter({
   fn: ({ writer }) => {
     const meta = { actor: 'fixture', at: '2026-10-15T11:00:00Z' }
     const view = decideView({ state: writer.state, meta, patch: { lastMessageOnCards: true } })
-    assert.ok('event' in view); writer.append({ event: view.event })
+
+    if ('event' in view) {
+      writer.append({ event: view.event })
+    }
+
     const message = hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'hydra.message', data: { action: 'send', text: markdown, hydra: 'hydra' } } })
     assert.ok('event' in message); writer.append({ event: message.event })
   },
 })
+commands.task(['status', fixture.state.keys.layout!, 'working', '--note', preview, '--actor', 'worker'])
 const server = await startServer({ hydraId: 'default', homes: [fixture.nativeHome] })
 const { browser, check, eventually, click, text, fill, screenshot, close } = smokeBrowser({ home, session: 'pnyx-markdown-previews' })
 

@@ -64,7 +64,7 @@ function fakePaseo({ send }: { send?: () => Promise<void> } = {}) {
                 timestamp: at,
                 item: seq === 2
                   ? { type: 'assistant_message', text: 'Lab answer' }
-                  : { type: 'user_message', text: 'Lab prompt' },
+                  : { type: 'user_message', text: 'Lab prompt', clientMessageId: 'fixture-prompt' },
               }],
             }
           },
@@ -200,6 +200,8 @@ test('a started task replies through Paseo and reads its conversation from the d
     const earlier = await conversation.read({ before: latest.older })
     assert.deepEqual(earlier.entries.map(e => [e.role, e.text]), [['user', 'Lab prompt']])
     assert.equal(earlier.older, undefined)
+    assert.equal(earlier.entries[0]?.replyId, 'fixture-prompt')
+    assert.equal(earlier.entries[0]?.id, 'reply:fixture-prompt')
   } finally {
     conversation.close()
   }
