@@ -251,6 +251,7 @@ export function App() {
     const id = `custom:${crypto.randomUUID()}`
     void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--if-revision', String(state.configRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => {
       setPage('hydra'); setNewColumn(id)
+      requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: `[data-column="${CSS.escape(id)}"] input` })))
     })
       .catch(e => notify({ text: e.message }))
   }
