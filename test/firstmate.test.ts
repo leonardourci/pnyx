@@ -278,6 +278,100 @@ test('a done declaration neither moves Hydra work nor closes its backlog record'
   assert.equal(cardOf({ home, task: 'docs-scout' }).column, columnId({ role: 'in_progress' }))
 })
 
+test('an archived closure moves a mirrored task to Done after its worker records are removed', () => {
+  const { home } = copyFixture()
+  rmSync(join(home, 'state', 'api-v2.status'))
+  syncHome({ hydraId: 'default', home })
+  const before = cardOf({ home, task: 'api-v2' })
+  assert.equal(before.column, columnId({ role: 'in_progress' }))
+  const backlog = join(home, 'data', 'backlog.md')
+  const rows = readFileSync(backlog, 'utf8').split('\n')
+  const [row] = rows.splice(rows.findIndex(line => line.startsWith('- [ ] api-v2')), 1)
+  writeFileSync(backlog, rows.join('\n'))
+  rmSync(join(home, 'state', 'api-v2.meta'))
+  syncHome({ hydraId: 'default', home })
+  assert.equal(cardOf({ home, task: 'api-v2' }).column, before.column, 'disappearance alone does not close a task')
+  assert.equal(cardOf({ home, task: 'api-v2' }).outcome, undefined)
+
+  writeFileSync(join(home, 'data', 'done-archive.md'), `# Done archive\n\n## 2026-10\n${row!.replace('[ ]', '[x]')}\n- [x] ancient - unrelated archived task\n`)
+  syncHome({ hydraId: 'default', home })
+  const archived = cardOf({ home, task: 'api-v2' })
+  assert.equal(archived.title, before.title)
+  assert.equal(archived.project, before.project)
+  assert.equal(archived.folder, undefined)
+  assert.deepEqual(archived.attention, [])
+  assert.deepEqual(archived.outcome, { state: 'done', source: 'firstmate' })
+  assert.equal(archived.status?.state, 'done')
+  assert.equal(archived.column, columnId({ role: 'done' }))
+  const move = readEvents({ hydraId: 'default' }).filter(e => e.type === 'card.moved' && e.cardId === archived.id)
+    .at(-1)
+  assert.equal(move?.reason, 'Closed in Firstmate')
+  assert.equal(cardOf({ home, task: 'ancient' }), undefined)
+  assert.equal(syncHome({ hydraId: 'default', home }).appended, 0)
+
+  appendFileSync(backlog, `\n## In flight\n${row}\n`)
+  syncHome({ hydraId: 'default', home })
+  assert.equal(cardOf({ home, task: 'api-v2' }).column, columnId({ role: 'in_progress' }))
+  assert.equal(cardOf({ home, task: 'api-v2' }).outcome, undefined)
+})
+
+test('archiving a closed failure preserves its outcome after worker records are removed', () => {
+  const { home } = copyFixture()
+  const backlog = join(home, 'data', 'backlog.md')
+  const rows = readFileSync(backlog, 'utf8').split('\n')
+  const [row] = rows.splice(rows.findIndex(line => line.startsWith('- [ ] hotfix-2')), 1)
+  const closed = row!.replace('[ ]', '[x]')
+  rows.splice(rows.indexOf('## Done') + 1, 0, closed)
+  writeFileSync(backlog, rows.join('\n'))
+  syncHome({ hydraId: 'default', home })
+  const before = cardOf({ home, task: 'hotfix-2' })
+  assert.equal(before.outcome?.state, 'failed')
+
+  writeFileSync(backlog, rows.filter(line => line !== closed).join('\n'))
+  writeFileSync(join(home, 'data', 'done-archive.md'), `# Done archive\n${closed}\n`)
+  rmSync(join(home, 'state', 'hotfix-2.meta'))
+  rmSync(join(home, 'state', 'hotfix-2.status'))
+  syncHome({ hydraId: 'default', home })
+  const archived = cardOf({ home, task: 'hotfix-2' })
+  assert.deepEqual(archived.outcome, before.outcome)
+  assert.equal(archived.activity, before.activity)
+  assert.equal(archived.column, columnId({ role: 'done' }))
+  assert.equal(syncHome({ hydraId: 'default', home }).appended, 0)
+})
+
+test('watch reconciles a closure added only to the done archive', async () => {
+  const { home } = copyFixture()
+  const backlog = join(home, 'data', 'backlog.md')
+  writeFileSync(backlog, readFileSync(backlog, 'utf8').replace(/^- \[ \] api-v2.*\n/m, ''))
+  appendFileSync(join(home, 'state', 'api-v2.status'), 'done: shipped API\n')
+  let closed: () => void = () => {}
+  const changed = new Promise<void>(resolve => (closed = resolve))
+  const watcher = watchHome({
+    hydraId: 'default',
+    home,
+    onSync: ({ result }) => {
+      if (result instanceof Error) {
+        throw result
+      }
+
+      if (cardOf({ home, task: 'api-v2' }).column === columnId({ role: 'done' })) {
+        closed()
+      }
+    },
+  })
+
+  try {
+    writeFileSync(join(home, 'data', 'done-archive.md'), '# Done archive\n- [x] api-v2 - app: v2 API (repo: app)\n')
+    await Promise.race([changed, new Promise((_, reject) => setTimeout(() => reject(new Error('no sync after archive change')), 5000))])
+    const api = cardOf({ home, task: 'api-v2' })
+    const move = readEvents({ hydraId: 'default' }).filter(e => e.type === 'card.moved' && e.cardId === api.id)
+      .at(-1)
+    assert.equal(move?.reason, 'done: shipped API')
+  } finally {
+    watcher.close()
+  }
+})
+
 test('sync never overwrites a link state another source refreshed', () => {
   const { home } = copyFixture()
   appendFileSync(join(home, 'state', 'api-v2.meta'), 'pr=https://github.com/example/app/pull/41\n')

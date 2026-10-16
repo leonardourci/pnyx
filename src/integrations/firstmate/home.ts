@@ -19,8 +19,7 @@ export interface TaskObservation {
   title: string
   repo?: string
   pr?: string
-  // The backlog lists the task under Done, which Firstmate's cleanup does once the
-  // task is closed; merged when its pull request merged too.
+  // Firstmate closes tasks in Done before moving older rows to its done archive.
   done: boolean
   merged: boolean
   activity?: string
@@ -132,7 +131,10 @@ const ROW_FACTS = new Set(['repo', 'kind', 'priority', 'since', 'merged', 'repor
 // Backlog rows: `- [ ] <id> - <title> (repo: x) (kind: y) (since d)`, grouped
 // under `## In flight`, `## Queued` and `## Done`; a done row ends `(merged d)`
 // when its pull request merged.
-export function parseBacklog({ text }: { text: string }): Map<string, BacklogRow> {
+export function parseBacklog({ text, archived = false }: {
+  text: string
+  archived?: boolean
+}): Map<string, BacklogRow> {
   const rows = new Map<string, BacklogRow>()
   let section = ''
   let last: BacklogRow | undefined
@@ -167,8 +169,8 @@ export function parseBacklog({ text }: { text: string }): Map<string, BacklogRow
     last = {
       title: title || row[1]!,
       ...(facts.repo ? { repo: facts.repo } : {}),
-      done: section === 'done',
-      merged: section === 'done' && facts.merged !== undefined,
+      done: archived || section === 'done',
+      merged: (archived || section === 'done') && facts.merged !== undefined,
       raw: line,
       section,
       ...(held ? { hold: { ...(facts.hold ? { reason: facts.hold } : {}), ...(facts['hold-kind'] ? { kind: facts['hold-kind'] } : {}), ...(facts['hold-until'] ? { until: facts['hold-until'] } : {}), ...(facts.since ? { set: facts.since } : {}), blockers: [...title.matchAll(/blocked-by:\s+([^\s)]+)/g)].map(m => m[1]!) } } : {}),
@@ -212,12 +214,18 @@ function taskNotes({ home, task, log }: { home: string; task: string; log: strin
 
 // Every task with a meta record, in id order. The pull request comes only from the
 // meta's pr= field, which Firstmate records when the pull request is ready.
-export function readHome({ home }: { home: string }): HomeObservation {
+export function readHome({ home, mirroredTasks = [] }: {
+  home: string
+  mirroredTasks?: Pick<FirstmateRecord, 'task' | 'status'>[]
+}): HomeObservation {
   const state = join(home, 'state')
   const backlog = parseBacklog({ text: readRegular({ path: join(home, 'data', 'backlog.md') }) ?? '' })
+  const archive = parseBacklog({ text: readRegular({ path: join(home, 'data', 'done-archive.md') }) ?? '', archived: true })
+  const mirroredStatus = new Map(mirroredTasks.map(({ task, status }) => [task, status]))
   const tasks: TaskObservation[] = []
 
-  const taskIds = new Set([...backlog.keys(), ...readdirSync(state).filter(f => f.endsWith('.meta'))
+  // Old archive entries only reconcile tasks this Hydra already knows.
+  const taskIds = new Set([...backlog.keys(), ...mirroredTasks.map(t => t.task).filter(task => archive.has(task)), ...readdirSync(state).filter(f => f.endsWith('.meta'))
     .map(f => f.slice(0, -'.meta'.length))])
 
   for (const task of [...taskIds].sort()) {
@@ -228,8 +236,9 @@ export function readHome({ home }: { home: string }): HomeObservation {
     const metaText = readRegular({ path: join(state, `${task}.meta`) })
     const statusText = readRegular({ path: join(state, `${task}.status`) })
     const meta = parseMeta({ text: metaText ?? '' })
-    const log = statusText ?? ''
-    const row = backlog.get(task)
+    const row = backlog.get(task) ?? archive.get(task)
+    // Cleanup can remove the worker log after Firstmate has closed the task.
+    const log = statusText ?? (row?.done ? mirroredStatus.get(task) : undefined) ?? ''
     // The mirrored row keeps its shape: an extra field would read as a changed Firstmate record.
     const mirroredRow = row && { ...row }
     delete mirroredRow?.hold
