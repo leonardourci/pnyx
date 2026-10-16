@@ -1,7 +1,7 @@
 import { Icon } from '../components/ui/icon.tsx'
 import { useEffect, useState } from 'react'
 import type { HydraSummary } from '../../../src/server/hydras.ts'
-import { Button, Input } from '../components/ui/controls.tsx'
+import { Button } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
 
@@ -21,7 +21,7 @@ export function Hydras({
   notify({ text }: { text: string }): void
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [busy, setBusy] = useState(false), [creating, setCreating] = useState(false), [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
   const [renaming, setRenaming] = useState(false)
   useEffect(() => {
     const chosen = hydras.find(h => h.id === current)?.projects.find(p => p.path === project)
@@ -57,6 +57,10 @@ export function Hydras({
         url.searchParams.set('projects', '1')
       }
 
+      if (args[0] === 'create') {
+        url.searchParams.set('new-chat', '1')
+      }
+
       location.assign(url)
     }, (e: Error) => {
       setBusy(false); notify({ text: e.message })
@@ -66,32 +70,7 @@ export function Hydras({
   return (
     <section className="hydras-panel" aria-label="Hydras">
       <div className="hydras-heading"><h2>Hydras</h2>
-        {creating ? (
-          <form
-            onSubmit={e => {
-              e.preventDefault()
-
-              if (name.trim() && !busy) {
-                go({ args: ['create', name.trim()] })
-              }
-            }}
-          >
-            <Input
-              autoFocus
-              aria-label="New Hydra name"
-              placeholder="Name your Hydra"
-              maxLength={100}
-              value={name}
-              disabled={busy || !connected}
-              onChange={e => setName(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Escape') {
-                  e.preventDefault(); e.stopPropagation(); setCreating(false); setName('')
-                }
-              }}
-            />
-          </form>
-        ) : <Button aria-label="Create Hydra" disabled={!connected || busy} onClick={() => setCreating(true)}><Icon name="plus" /></Button>}
+        <Button aria-label="Create Hydra" disabled={!connected || busy} onClick={() => go({ args: ['create'] })}><Icon name="plus" /></Button>
       </div>
       <div className="hydras-tree">
         {hydras.map(h => {
