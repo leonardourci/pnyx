@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,6 +13,7 @@ import { smokeBrowser } from './browser.ts'
 
 const home = mkdtempSync(join(tmpdir(), 'pnyx-card-states-'))
 process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
+process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
 commands.hydra(['create', 'default'])
 const now = Date.now()
 withWriter({
@@ -50,7 +52,7 @@ withWriter({
 const state = () => loadHydra({ hydraId: 'default' }).state
 const stopped = state().keys.stopped!, soon = state().keys.soon!
 const initialLaunch = state().cards[stopped]?.launch
-const server = await startServer({ hydraId: 'default' })
+const server = await startServer({ query: hydraSdk().query, hydraId: 'default' })
 const { browser, evaluate, check, click, text, eventually, screenshot, close } = smokeBrowser({ home, session: 'pnyx-card-states' })
 
 try {
