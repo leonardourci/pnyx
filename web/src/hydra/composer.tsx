@@ -345,7 +345,7 @@ export function Composer({
         />
       </div>
       <div className="composer-bar">
-        <Popover label="Add to message" className="composer-add" trigger={<span aria-hidden="true">+</span>}>
+        <Popover label="Add to message" className="composer-add" trigger={<Icon name="plus" size={16} />}>
           {({ close }) => (
             <>
               <Button

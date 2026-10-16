@@ -10,7 +10,7 @@ export function AgentPicker({ provider, summary, children }: {
 }) {
   return (
     <div className="composer-settings">
-      <Popover label="Agent settings" className="agent-picker" trigger={<><Icon name={provider} size={14} /><span title={summary}>{summary}</span><span aria-hidden="true">⌄</span></>}>
+      <Popover label="Agent settings" className="agent-picker" trigger={<><Icon name={provider} size={14} /><span title={summary}>{summary}</span><Icon name="chevron_down" size={12} /></>}>
         {children}
       </Popover>
     </div>
