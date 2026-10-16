@@ -81,6 +81,22 @@ try {
     })
     await check({ condition: '[\'queued\',\'in_progress\',\'needs_you\',\'parked\',\'done\'].every(id => { const column = document.querySelector(\'[data-column="\'+id+\'"]\'); const heading = column.querySelector(\'h2\'); return !!heading.querySelector(\'svg\') && heading.textContent.trim().length > 0 && getComputedStyle(column).backgroundColor !== getComputedStyle(document.documentElement).backgroundColor; })', label: `${theme} columns have tinted wells, text and state icons` })
     await check({ condition: 'new Set([...document.querySelectorAll(\'.column-header h2 .inline-title\')].map(el => getComputedStyle(el).color)).size === 5', label: `${theme} column headings have five distinct mineral colors` })
+    await check({ condition: 'new Set([...document.querySelectorAll(\'.column\')].map(el => getComputedStyle(el).backgroundColor)).size === 5 && [...document.querySelectorAll(\'.column\')].every(column => { const heading = getComputedStyle(column.querySelector(\'h2\')); const badge = getComputedStyle(column.querySelector(\'.count\')); return getComputedStyle(column).borderTopWidth === \'3px\' && getComputedStyle(column).borderTopColor === heading.color && Number(heading.fontWeight) >= 700 && badge.backgroundColor === heading.color; })', label: `${theme} tinted wells, top accents and count badges carry each column color` })
+    await evaluate({
+      code: `
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      const luminance = ({ color }) => { ctx.fillStyle = color; ctx.fillRect(0, 0, 1, 1); const rgb = [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3).map(n => { const v = n / 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722; };
+      const contrast = ({ a, b }) => (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+      for (const column of document.querySelectorAll('.column')) {
+        const well = luminance({ color: getComputedStyle(column).backgroundColor });
+        const heading = luminance({ color: getComputedStyle(column.querySelector('h2')).color });
+        const badge = getComputedStyle(column.querySelector('.count'));
+        if (contrast({ a: well, b: heading }) < 4.5 || contrast({ a: luminance({ color: badge.color }), b: luminance({ color: badge.backgroundColor }) }) < 4.5) throw new Error('Low column contrast: ' + column.getAttribute('aria-label'));
+      }
+      return 'Column headings and counts meet 4.5:1 contrast';
+    `,
+    })
     await check({ condition: '[...document.querySelectorAll(\'.task-label\')].every(el => el.dataset.labelColor && getComputedStyle(el).borderTopStyle === \'solid\' && getComputedStyle(el).backgroundColor !== \'rgba(0, 0, 0, 0)\')', label: `${theme} project labels and tags have a saved color, fill and outline` })
   }
 

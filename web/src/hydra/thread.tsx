@@ -178,7 +178,7 @@ export function Thread({
         comments={comments}
         setComments={setComments}
         thread={page}
-        height={view.composerHeight}
+        height={view.taskComposerHeight}
         command={deliver}
         save={save}
         connected={connected}
