@@ -1,3 +1,4 @@
+import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
 import { CLONE_TIMEOUT_MS } from '../../../src/projects/limits.ts'
 import { storageKey } from './outbox.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -265,6 +266,13 @@ export function useHydra() {
     }
 
     const id = crypto.randomUUID()
+
+    if (commandBytes({ id, name, args }) > MAX_MESSAGE_BYTES) {
+      reject(new Error('Message exceeds the 64 KiB limit. Shorten the draft or file contents. Draft kept.'))
+
+      return
+    }
+
     pending.current.set(id, {
       resolve: ({ receipt }) => resolve(receipt),
       reject: ({ error }) => reject(error),

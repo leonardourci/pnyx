@@ -1,3 +1,5 @@
+import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
+import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ThreadPage } from '../../../src/thread/read.ts'
@@ -387,8 +389,8 @@ export function Composer({
             void (async () => {
               try {
                 const contents = await Promise.all(selected.map(async file => {
-                  if (file.size > 256 * 1024) {
-                    throw new Error(`${file.name} exceeds the 256 KB text-file limit.`)
+                  if (file.size > MAX_MESSAGE_BYTES) {
+                    throw new Error(`${file.name} exceeds the 64 KiB message limit.`)
                   }
 
                   const bytes = await file.arrayBuffer()
@@ -400,7 +402,20 @@ export function Composer({
 
                   return `File: ${file.name}\n\n${text}`
                 }))
-                setDraft({ text: [current.current.draft, ...contents].filter(Boolean).join('\n\n') })
+                const next = [current.current.draft, ...contents].filter(Boolean).join('\n\n')
+                const text = commentReply({
+                  draft: next, comments: current.current.comments, firstComment: !taught,
+                })
+                const id = crypto.randomUUID()
+                const name = card === HYDRA_CARD ? 'hydra' : 'reply'
+                const args = card === HYDRA_CARD
+                  ? ['send', `--text=${text}`, '--event-id', id] : [card, text, id]
+
+                if (commandBytes({ name, args }) > MAX_MESSAGE_BYTES) {
+                  throw new Error('Files and draft exceed the 64 KiB message limit. Draft kept.')
+                }
+
+                setDraft({ text: next })
                 input.current?.focus()
               } catch (error) {
                 notify({ text: error instanceof Error ? error.message : 'Could not read the selected files.' })
