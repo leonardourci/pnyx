@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { decidePush, decideSession } from '../src/core/decide.ts'
 import { commands } from '../src/cli/commands.ts'
-import { workerCommands } from '../src/cli/workers.ts'
+import { dispatchCommands } from '../src/dispatch/cli.ts'
+import { fakeDispatch } from './dispatch-fixture.ts'
 import { startServer } from '../src/server/server.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { smokeBrowser } from './browser.ts'
@@ -15,7 +16,8 @@ process.env.PNYX_HOME = join(root, 'pnyx')
 process.env.CODEX_HOME = join(root, 'codex')
 process.env.PNYX_SEMANTIC = 'off'
 await commands.hydra(['create', 'default'])
-await workerCommands.kind(['set', 'default', '--harness', 'codex', '--model', 'gpt-6.1-sol', '--effort', 'high', '--mode', 'on-request'])
+fakeDispatch({ root: process.env.PNYX_HOME!, hydraId: 'default' })
+await dispatchCommands.rule(['set', 'default', '--harness', 'codex', '--model', 'gpt-6.1-sol', '--effort', 'high', '--mode', 'on-request'])
 await commands.task(['create', '--title', 'Hosted Codex smoke', '--key', 'smoke', '--folder', root])
 await commands.task(['brief', 'smoke', '--brief', 'Explain the provider boundary.'])
 await commands.task(['create', '--title', 'Outside Codex smoke', '--key', 'outside', '--folder', root])

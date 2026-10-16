@@ -1,3 +1,5 @@
+import { accountEnvironment, type DispatchChoice } from '../../dispatch/select.ts'
+import { hydraEvent } from '../../core/hydra.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { decidePush, decideSession, findCard, type Meta } from '../../core/decide.ts'
@@ -15,12 +17,13 @@ export type Harness = keyof typeof HARNESSES
 const MAX_PROMPT = 32000
 
 export async function startAgent({
-  hydraId, task, harness, agent: chosen, prompt, folder, url, meta, connect = openPaseo,
+  hydraId, task, harness, agent: chosen, prompt, folder, url, meta, dispatch, connect = openPaseo,
 }: {
   hydraId: string
   task: string
   harness: string
   agent?: AgentConfig
+  dispatch?: DispatchChoice
   prompt: string
   folder?: string
   url?: string
@@ -88,7 +91,10 @@ export async function startAgent({
     id,
     // No PNYX_TASK: the task attaches the Paseo session below, so the agent's own
     // hooks must not race it onto the task.
-    env: { PNYX_HOME: pnyxHome(), PNYX_HYDRA: hydraId },
+    env: dispatch ? accountEnvironment({
+      account: { provider: dispatch.provider, folder: dispatch.folder },
+      env: { PNYX_HOME: pnyxHome(), PNYX_HYDRA: hydraId },
+    }) as Record<string, string> : { PNYX_HOME: pnyxHome(), PNYX_HYDRA: hydraId },
     labels: { 'pnyx.task': claimed.card.id },
     url: endpoint,
     connect,
@@ -104,7 +110,10 @@ export async function startAgent({
           key: `paseo:${agent.id}`,
           input: {
             title: claimed.card.title,
-            agent: ref,
+            agent: {
+              ...ref,
+              ...(dispatch ? { account: dispatch.account, loginFolder: dispatch.folder } : {}),
+            },
             activity: 'working',
             source: { adapter: 'paseo', instanceId: endpoint, objectId: agent.id, observedAt: meta.at },
           },
@@ -124,6 +133,14 @@ export async function startAgent({
 
         if ('event' in attached) {
           writer.append({ event: attached.event })
+        }
+
+        if (dispatch) {
+          const event = hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:dispatch` }, cardId: claimed.card.id, change: { type: 'task.launched', data: { via: 'paseo', at: meta.at, folder: claimed.cwd, harness, dispatch: dispatch.reason } } })
+
+          if ('event' in event) {
+            writer.append({ event: event.event })
+          }
         }
 
         return {
@@ -165,8 +182,7 @@ export async function createPaseoAgent({
     const kind = chosen?.harness === harness ? chosen : undefined
     const wanted = kind?.model ? models?.find(m => m.id === kind.model) : undefined
 
-    // A quota pick Paseo does not offer falls back to its default; a named model must exist.
-    if (kind?.model && !wanted && !kind.quota) {
+    if (kind?.model && !wanted) {
       throw new HydraError({
         message: `Paseo has no ${harness} model ${kind.model}`,
         code: 'VALIDATION_ERROR',

@@ -401,6 +401,11 @@ export function applyHydra({ state, event }: { state: HydraState; event: HydraEv
         card.copy = structuredClone(event.data.after)
       } else {
         card.launch = structuredClone(event.data)
+        const session = card.sessionIds?.[0] && state.sessions?.[card.sessionIds[0]]
+
+        if (session) {
+          session.launch = structuredClone(event.data)
+        }
       }
 
       card.revision++

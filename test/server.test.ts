@@ -881,17 +881,21 @@ test('the open task follows attachment identity and watches only its current tra
   }
 })
 
-test('the Hydra edits task kinds over the socket', async () => {
+test('the Hydra edits heads dispatch rules over the socket', async () => {
   await hydraWithCard()
   const t = await tab(); await t.next()
-  t.command({ id: 'kind-1', name: 'kind', args: ['set', 'review', '--harness', 'codex', '--quota', 'high'] })
-  assert.equal((await t.next()).type, 'event'); assert.equal((await t.next()).type, 'receipt')
-  const hydraId = loadHydra({ hydraId: 'default' }).state
-  assert.deepEqual(hydraId.config?.agents, { review: { harness: 'codex', quota: 'high' } })
-  const last = readFileSync(join(hydraDir({ hydraId: 'default' }), 'events.jsonl'), 'utf8').trim()
-    .split('\n')
-    .at(-1)!
-  assert.equal(JSON.parse(last).actor, 'web')
+  t.command({ id: 'rule-1', name: 'rule', args: ['set', 'review', '--harness', 'codex', '--model', 'gpt-6.1-sol', '--when', 'Independent review'] })
+  const receipt = await t.next()
+  assert.equal(receipt.type, 'receipt')
+  t.command({ id: 'rule-list', name: 'rule', args: ['list'] })
+  const result = await t.next()
+  assert.equal(result.type, 'receipt')
+  const effective = result as unknown as {
+    dispatch: { rules: Record<string, { when: string; candidates: unknown[] }> }
+  }
+  assert.deepEqual(effective.dispatch.rules.review, { when: 'Independent review', candidates: [{ harness: 'codex', model: 'gpt-6.1-sol' }] })
+  t.command({ id: 'old-kind', name: 'kind', args: ['list'] })
+  assert.equal((await t.next()).type, 'error')
   t.ws.close()
 })
 

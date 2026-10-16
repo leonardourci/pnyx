@@ -1,0 +1,56 @@
+{
+  "main": "claude:personal",
+  "workers": {
+    "claude": [
+      "claude:work",
+      "claude:personal"
+    ],
+    "codex": [
+      "codex:work",
+      "codex:personal"
+    ]
+  },
+  "projects": {},
+  "rules": {
+    "build": {
+      "when": "Implementation and difficult debugging",
+      "candidates": [
+        {
+          "harness": "claude",
+          "model": "claude-opus-5-5",
+          "effort": "high"
+        },
+        {
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "effort": "high"
+        }
+      ]
+    },
+    "review": {
+      "when": "Independent code review",
+      "candidates": [
+        {
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "effort": "high"
+        },
+        {
+          "harness": "claude",
+          "model": "claude-opus-5-5",
+          "effort": "high"
+        }
+      ]
+    }
+  },
+  "default": [
+    {
+      "harness": "claude",
+      "model": "claude-sonnet-5-5"
+    },
+    {
+      "harness": "codex",
+      "model": "gpt-6-luna"
+    }
+  ]
+}

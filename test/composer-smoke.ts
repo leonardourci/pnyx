@@ -1,3 +1,4 @@
+import { effectiveDispatch } from '../src/dispatch/config.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -49,7 +50,7 @@ try {
   await check({ condition: '[...document.querySelectorAll(".hydra-chat .picker-field > span")].map(x => x.textContent).join(",") === "Agent,Model,Mode,Effort" && !document.querySelector(".hydra-chat [aria-label=Fast]")', label: 'single picker follows capability order and hides unsupported Fast' })
   await click({ selector: '.hydra-chat [aria-label=Agent]' })
   await click({ selector: '[role=listbox][aria-label=Agent] [role=option]:nth-child(2)' })
-  assert.equal(state().config?.agents?.hydra, undefined)
+  assert.equal(effectiveDispatch({ hydraId: 'default', state: state() }).dispatch.rules.hydra, undefined)
   await press({ key: 'Escape' })
   await check({ condition: '!document.querySelector(".hydra-chat [role=dialog]") && document.activeElement.matches(".hydra-chat .agent-picker > button")', label: 'Escape discards staged settings and restores focus' })
   await click({ selector: '.hydra-chat [aria-label="Agent settings"]' })

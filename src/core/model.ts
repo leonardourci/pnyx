@@ -53,6 +53,8 @@ export interface AgentRef {
   agentType?: string
   cwd?: string
   transcriptPath?: string
+  account?: string
+  loginFolder?: string
   paseoAgentId?: string
   paseoUrl?: string
   // Set when the Pnyx server runs this agent itself instead of a terminal.
@@ -334,7 +336,7 @@ export interface HydraConfig {
   name: string
   hydra: HydraIdentity
   columns: HydraColumn[]
-  // Task kind -> agent; `hydra` is the kind Hydra itself starts on.
+  // Retained so pre-dispatch event logs still replay.
   agents?: Record<string, AgentConfig>
   command?: string
   // The command makes its own folder, so starts through it skip the task copy.
@@ -454,6 +456,7 @@ export type ViewEvent = EventBase & {
 export type NotedEvent = EventBase & { type: 'card.noted'; data: Note }
 
 export interface AgentLaunch {
+  dispatch?: string
   via: 'paseo' | 'command' | 'hooks' | 'pnyx'
   at: string
   folder?: string

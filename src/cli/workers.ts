@@ -1,10 +1,8 @@
 import { projectRows } from '../projects/read.ts'
 import { checkAttachments } from '../integrations/presence/check.ts'
-import { isDeepStrictEqual } from 'node:util'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
-import { hydraConfig, hydraEvent } from '../core/hydra.ts'
-import { HydraError, HARNESS_NAMES, HYDRA_ACTOR, QUOTA_BUCKETS, type AgentConfig, type HydraEvent, type EventType, type SessionEvent } from '../core/model.ts'
+import { HydraError, HYDRA_ACTOR, type HydraEvent, type EventType, type SessionEvent } from '../core/model.ts'
 import { hydraDir, loadHydra, readEvents, readEventsFrom, withWriter } from '../store/hydra-store.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { harvestPaseoChats } from '../integrations/paseo/harvest.ts'
@@ -12,100 +10,7 @@ import type { Connect } from '../integrations/paseo/client.ts'
 import { redact } from '../oracle/text.ts'
 import { splitEntry } from '../thread/read.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
-import { COMMON, WRITE, commit, commands, guard, integer, meta, parse, required, summarize, type Output } from './commands.ts'
-
-const SAFE = /^[\w.:/[\]-]{1,100}$/
-
-function kindCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, harness: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, mode: { type: 'string' }, fast: { type: 'string' }, quota: { type: 'string' } }, positionals: 2 })
-  const action = positionals[0] ?? 'list'
-
-  if (action === 'list') {
-    const agents = hydraConfig({ state: loadHydra({ hydraId }).state, id: hydraId }).agents ?? {}
-
-    return {
-      hydraId,
-      kinds: Object.keys(agents).length ? Object.entries(agents).map(([kind, a]) => ({ kind, harness: a.harness, model: a.model ?? 'default', effort: a.effort ?? 'default', mode: a.mode ?? 'default', quota: a.quota ?? 'off', fast: a.fast === undefined ? 'default' : a.fast ? 'on' : 'off' })) : 'none: workers launch on Claude Code with its own defaults',
-      help: [`Run \`pnyx-axi kind set <kind> --harness claude|codex [--model <m>] [--effort <e>] [--mode <m>] [--fast on|off|default] [--quota high|medium|low] --hydra ${hydraId}\``],
-    }
-  }
-
-  if (action !== 'set' && action !== 'remove') {
-    throw new HydraError({ message: 'Use kind list, set <kind> or remove <kind>', code: 'VALIDATION_ERROR' })
-  }
-
-  const kind = required({ value: positionals[1], what: 'kind' })
-
-  if (!/^[a-z][a-z0-9-]{0,39}$/.test(kind)) {
-    throw new HydraError({ message: 'kinds use lowercase letters, digits and dashes', code: 'VALIDATION_ERROR' })
-  }
-
-  const harness = values.harness as string | undefined
-  const quota = values.quota as string | undefined
-
-  if (values.fast !== undefined && !['on', 'off', 'default'].includes(String(values.fast))) {
-    throw new HydraError({ message: '--fast must be on, off or default', code: 'VALIDATION_ERROR' })
-  }
-
-  if (harness !== undefined && !(HARNESS_NAMES as readonly string[]).includes(harness)) {
-    throw new HydraError({ message: `--harness must be ${HARNESS_NAMES.join(' or ')}`, code: 'VALIDATION_ERROR' })
-  }
-
-  if (quota !== undefined && quota !== 'off' && !(QUOTA_BUCKETS as readonly string[]).includes(quota)) {
-    throw new HydraError({ message: `--quota must be ${QUOTA_BUCKETS.join(', ')} or off`, code: 'VALIDATION_ERROR' })
-  }
-
-  for (const flag of ['model', 'effort', 'mode'] as const) {
-    if (values[flag] && !SAFE.test(String(values[flag]))) {
-      throw new HydraError({ message: `--${flag} has characters a harness flag cannot take`, code: 'VALIDATION_ERROR' })
-    }
-  }
-
-  const m = meta({ values })
-
-  return commit({
-    hydraId,
-    meta: m,
-    intent: { type: 'board.agents', card: '$board' },
-    decide: ({ state }) => {
-      const before = hydraConfig({ state, id: hydraId }).agents ?? {}
-      const agents = { ...before }
-      const existing = Object.hasOwn(before, kind) ? before[kind] : undefined
-
-      if (action === 'remove') {
-        if (!existing) {
-          return { skipped: 'unchanged' }
-        }
-
-        delete agents[kind]
-      } else {
-        const agent: AgentConfig = { ...existing, harness: (harness ?? existing?.harness ?? 'claude') as AgentConfig['harness'] }
-
-        if (values.fast === 'default') {
-          delete agent.fast
-        } else if (values.fast !== undefined) {
-          agent.fast = values.fast === 'on'
-        }
-
-        for (const [flag, value] of [['model', values.model], ['effort', values.effort], ['mode', values.mode], ['quota', quota === 'off' ? '' : quota]] as const) {
-          if (value === '') {
-            delete agent[flag]
-          } else if (value !== undefined) {
-            Object.assign(agent, { [flag]: String(value) })
-          }
-        }
-
-        if (isDeepStrictEqual(agent, existing)) {
-          return { skipped: 'unchanged' }
-        }
-
-        agents[kind] = agent
-      }
-
-      return hydraEvent({ state, meta: m, cardId: '$board', change: { type: 'board.agents', data: { agents, before } } })
-    },
-  })
-}
+import { COMMON, commands, guard, integer, parse, summarize, type Output } from './commands.ts'
 
 const TRACKED: readonly EventType[] = ['task.reminder', 'task.reminder-due', 'hydra.project', 'task.project', 'task.permission', 'hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked', 'task.launched']
 const CHECK_LIMIT = 20
@@ -287,18 +192,7 @@ const hydraCheckHandler = guard({
 })
 
 export const workerCommands = {
-  kind: guard({ handler: kindCommand }),
   hydra: guard({
     handler: ({ args }) => (args[0] === 'check' ? hydraCheckHandler(args) : commands.hydra(args)),
   }),
-}
-
-export const WORKER_HELP: Record<string, string> = {
-  kind: `usage: pnyx-axi kind list
-pnyx-axi kind set <kind> [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off|default] [--quota high|medium|low|off]
-pnyx-axi kind remove <kind>
-set changes only the flags given: an empty --model, --effort or --mode, or --quota off, clears that field; --fast default restores the harness default; a new kind starts on claude.
-The agent \`task start --via paseo\` starts for each kind of task. \`default\` is used when --kind is not given, and \`hydra\` is what \`hydra start --via paseo\` starts; both fall back to Claude Code with its own defaults.
---effort is the Paseo thinking option and --mode the Paseo mode (for Claude Code: plan, default, acceptEdits, auto or bypassPermissions); --harness on a start overrides the kind's harness. --quota picks, at launch, the model with the most runway in that intelligence bucket for the harness through quota-axi, keeping --model when quota-axi cannot tell.
-`,
 }

@@ -571,7 +571,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       check: { type: 'boolean' },
       via: { type: 'string' },
       command: { type: 'string' },
-      kind: { type: 'string' },
+      rule: { type: 'string' },
       'in-place': { type: 'boolean' },
       safe: { type: 'boolean' },
       discard: { type: 'boolean' },
@@ -650,7 +650,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       replacement: values['replace-session'] as string | undefined,
       commandName: values.command as string | undefined,
       via: values.via as string | undefined,
-      kind: values.kind as string | undefined,
+      rule: values.rule as string | undefined,
       harness: values.harness as string | undefined,
       prompt: values.prompt as string | undefined,
       folder: values.folder as string | undefined,
@@ -1298,7 +1298,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     return hydraConfigCommand({ args })
   }
 
-  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, task: { type: 'string' }, action: { type: 'string' }, key: { type: 'string' }, width: { type: 'string' }, text: { type: 'string' }, after: { type: 'string' }, limit: { type: 'string' }, full: { type: 'boolean' }, via: { type: 'string' }, kind: { type: 'string' }, harness: { type: 'string' }, prompt: { type: 'string' }, folder: { type: 'string' }, home: { type: 'string' }, 'paseo-url': { type: 'string' } }, positionals: 2 })
+  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, task: { type: 'string' }, action: { type: 'string' }, key: { type: 'string' }, width: { type: 'string' }, text: { type: 'string' }, after: { type: 'string' }, limit: { type: 'string' }, full: { type: 'boolean' }, via: { type: 'string' }, rule: { type: 'string' }, harness: { type: 'string' }, prompt: { type: 'string' }, folder: { type: 'string' }, home: { type: 'string' }, 'paseo-url': { type: 'string' } }, positionals: 2 })
 
   if (positionals[0] === 'resize') {
     const width = integer({ value: values.width, flag: '--width' })
@@ -1352,7 +1352,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     return startHydra({
       hydraId,
       via: values.via as string | undefined,
-      kind: values.kind as string | undefined,
+      rule: values.rule as string | undefined,
       harness: values.harness as string | undefined,
       prompt: values.prompt as string | undefined,
       folder: values.folder as string | undefined,
@@ -1633,7 +1633,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
     case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
     case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
-    case 'board.agents': return `Agent kinds: ${Object.keys(event.data.agents).join(', ') || 'none'}`
+    case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
     case 'card.pushed':
@@ -1898,7 +1898,7 @@ commands:
   task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
-  kind list|set|remove                       The agent (harness, model, effort, mode, quota) each task kind starts on
+  rule; account list|set|remove              Heads dispatch rules and worker login folders
   task sessions                              List recorded sessions, including background runs
   task attach|detach <task> [--session <id>]  Attach an interactive session or detach it
   push --key <key> --file <card.json|->      Create or update the card with this key
@@ -1947,10 +1947,10 @@ pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
-pnyx-axi hydra start [--via paseo|command] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
+pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
 pnyx-axi hydra start --via firstmate --home <firstmate home>
 hydra start starts Hydra: in Paseo (Claude Code by default) or with the configured command, its
-session becomes Hydra (in Paseo on the hydra kind's agent unless --kind names another); a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
+session becomes Hydra (in Paseo on the hydra rule's agent unless --rule names another); a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
 prompt points Hydra at the pnyx-hydra skill.
 Messages are durable entries in Hydra’s chat; one without --task is about the Hydra, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
@@ -1986,7 +1986,7 @@ pnyx-axi task project <task> --project <name|path>
 pnyx-axi task remind <task> <when|clear>
 pnyx-axi task reminders
 pnyx-axi task continue <task> [--check]
-pnyx-axi task start <task> [--via pnyx|paseo] [--kind <kind>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
+pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
 pnyx-axi task copy <task> [remove [--safe | --discard]]
@@ -2016,7 +2016,7 @@ your Codex configuration. Codex applies picker changes on the next turn and queu
 Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
 and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.
 Repeating the same --event-id never starts a second agent.
---kind picks the agent (see pnyx-axi kind; default: the default kind, else Claude Code); --harness overrides its harness and
+--rule chooses the heads dispatch candidate list (default: default); --harness filters that list and
 --prompt its opening message, which otherwise names the task and the pnyx-worker skill.
 --via firstmate puts a worker request in Hydra's chat and sends it to the Hydra's Firstmate home as an inbox note.
 --via command --command <name> selects the assigned project’s named command (project list); without --command it runs the configured Hydra command. It runs in the task's folder with PNYX_TASK and the rest of its context in the
@@ -2099,7 +2099,7 @@ for the --hydra Hydra instead: replies to its cards go through it, and its tasks
 Hook events arrive on each Hydra's server.sock or through its spool. Browsers get one WebSocket per Hydra at /hydra/<id>/ws:
 a snapshot on connect, then events by sequence; ?after=<seq> resumes, a gap gets a fresh snapshot.
 The handshake needs ?token=<token>: each Hydra page served here carries it, local programs read $PNYX_HOME/token.
-Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo|kind","args":[...]}
+Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo|rule|account","args":[...]}
 gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write that socket's Hydra;
 --hydra is refused and the actor defaults to web. GET /hydra/<id>/health answers {"hydraId","pid","build"};
 GET /health answers {"pid","build","hydras","skipped"}.

@@ -1,3 +1,4 @@
+import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
 import { fireReminders } from '../reminders/fire.ts'
 import { reminderDeadline, waitingReminders } from '../reminders/state.ts'
@@ -30,7 +31,6 @@ import { WebSocketServer, type WebSocket } from 'ws'
 import { ingestSpool } from '../integrations/hooks/ingest.ts'
 import { commands as cliCommands } from '../cli/commands.ts'
 import { integrationsCommand } from '../cli/integrations.ts'
-import { workerCommands } from '../cli/workers.ts'
 import { HydraError, type HydraEvent, type HydraState, type Card, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
@@ -40,8 +40,7 @@ import { createHydra, listHydras, renameHydra, type HydraSummary } from './hydra
 import { createHost, hostRequest, type QueryFn } from './host.ts'
 import type { SpawnCodex } from './codex.ts'
 
-// The browser edits kinds; Hydra's check and start stay in the CLI.
-const commands = { ...cliCommands, project, kind: workerCommands.kind }
+const commands = { ...cliCommands, project, ...dispatchCommands }
 // Events kept in memory for cursor resume; an older cursor gets a snapshot instead.
 const RESUME_LIMIT = 1000
 // A tab with more than this unsent is dropped from the event stream and resynced with a snapshot.
@@ -58,7 +57,7 @@ const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) =>
 
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
-const CLI_COMMANDS = ['project', 'task', 'column', 'hydra', 'layout', 'kind', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card', 'integrations'] as const
+const CLI_COMMANDS = ['project', 'task', 'column', 'hydra', 'layout', 'rule', 'account', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card', 'integrations'] as const
 const WEB_ROOT = join(import.meta.dirname, '..', '..', 'dist', 'web')
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',

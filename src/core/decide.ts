@@ -354,7 +354,7 @@ function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
     throw invalid({ message: 'agent must be an object' })
   }
 
-  const fields = ['agentId', 'agentType', 'cwd', 'transcriptPath', 'paseoAgentId', 'paseoUrl'] as const
+  const fields = ['agentId', 'agentType', 'cwd', 'transcriptPath', 'paseoAgentId', 'paseoUrl', 'account', 'loginFolder'] as const
   onlyKeys({ value, allowed: ['provider', 'sessionId', 'host', 'resume', ...fields], what: 'agent' })
   const agent: AgentRef = { provider: text({ value: value.provider, what: 'agent.provider' }), sessionId: text({ value: value.sessionId, what: 'agent.sessionId' }) }
 
