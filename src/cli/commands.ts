@@ -1402,7 +1402,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     throw new HydraError({ message: '--action needs --task', code: 'VALIDATION_ERROR' })
   }
 
-  return commit({
+  const result = commit({
     hydraId,
     meta: m,
     intent: { type: 'hydra.message', card: ref ?? '$board' },
@@ -1432,6 +1432,18 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       return decision
     },
   })
+
+  const config = hydraConfig({ state: loadHydra({ hydraId }).state, id: hydraId })
+
+  if (config.hydra.kind === 'firstmate' || m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
+    return result
+  }
+
+  const message = loadHydra({ hydraId }).state.hydraMessages
+    ?.find(message => message.id === result.message)
+  const text = message ? [message.text, message.details, message.context].filter(Boolean).join('\n\n') : String(values.text ?? '')
+
+  return readServer({ hydraId }).then(server => server ? askHost({ hydraId, body: { action: 'hydra', id: String(result.message), text, actor: m.actor } }).then(hosted => ({ ...result, ...hosted, help: ['The Pnyx server runs Hydra; replies and startup errors appear in its chat'] })) : result)
 }
 
 const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })

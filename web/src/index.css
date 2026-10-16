@@ -999,3 +999,12 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .loading-status { position: absolute; top: 8px; left: 50%; z-index: 70; padding: 8px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-muted); box-shadow: 0 2px 8px var(--color-shadow); }
 
 .notice { position: fixed; bottom: 16px; right: 16px; z-index: 80; display: flex; align-items: center; gap: 12px; max-width: min(480px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 2px 12px var(--color-shadow); }
+
+.hydra-chat .composer-bar { height: auto; align-items: flex-end; }
+.hydra-agent-pickers { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 2px; min-width: 0; }
+.hydra-agent-pickers .picker-field { display: block; min-width: 0; font-size: var(--text-meta); }
+.hydra-agent-pickers .picker-field > span { display: none; }
+.hydra-agent-pickers .select > .button { min-height: 26px; border: 0; padding: 2px 5px; background: transparent; color: var(--color-muted); font-size: var(--text-meta); }
+.hydra-agent-pickers .select-menu { position: absolute; top: auto; bottom: calc(100% + 5px); }
+
+.hydra-agent-pickers .select { min-width: 0; }

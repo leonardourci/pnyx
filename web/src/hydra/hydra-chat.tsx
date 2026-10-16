@@ -31,6 +31,13 @@ export function HydraChat({
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
 }) {
+  useEffect(() => {
+    if (new URLSearchParams(location.search).has('new-chat')) {
+      stream.current?.parentElement?.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus()
+      const url = new URL(location.href)
+      url.searchParams.delete('new-chat'); history.replaceState(null, '', url)
+    }
+  }, [])
   const [page, setPage] = useState<ThreadPage | null>(liveThread)
   const [width, setWidth] = useState<number | null>(null)
   const stream = useRef<HTMLDivElement>(null), follow = useRef(true)
@@ -84,7 +91,7 @@ export function HydraChat({
 
     const queued = result.state === 'queued'
 
-    return { reply: { state: queued ? 'queued' : 'failed' } }
+    return { reply: { state: queued ? 'queued' : 'failed', detail: result.detail } }
   }, [command])
   const route: ThreadPage = { ...page, card: HYDRA_CARD, entries, route: true, watching: 'unknown' }
 
@@ -115,6 +122,8 @@ export function HydraChat({
           thinkingDetails={view.thinkingDetails}
         />
         {!entries.length && !projectSetup && <p className="hydra-empty">What are we working on?</p>}
+        {hydra.kind !== 'firstmate' && (card?.sessionActivity ?? card?.activity) === 'working' && <p role="status">{card?.agent ? 'Hydra is replying…' : 'Starting Hydra…'}</p>}
+        {card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted').map(a => <p key={a.key} role="alert">{a.text}</p>)}
         {card && (
           <InlineQuestions
             card={card}
