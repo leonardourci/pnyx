@@ -7,6 +7,7 @@ import { Markdown } from '../components/ui/markdown.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import { InlineConfirm } from '../components/ui/inline-confirm.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import { ResultGrid, type ResultRow } from '../components/ui/result-grid.tsx'
 import { focusElement, useKeyboard, useKeyAction, type ActionContext } from '../keyboard/registry.tsx'
 import type { Command } from './connection.ts'
 import { hydraConfig, LOCKED_DELETE, lockedColumn } from '../../../src/core/hydra.ts'
@@ -75,7 +76,7 @@ export function Oracle({
     context.current.target.focus(); work()
   }
 
-  const rows: { id: string; text: string; content: ReactNode }[] = []
+  const rows: (ResultRow & { text: string })[] = []
 
   const add = ({ id, label, words = '', content }: {
     id: string
@@ -83,7 +84,7 @@ export function Oracle({
     words?: string
     content: ReactNode
   }) => {
-    rows.push({ id, text: `${label} ${words}`, content })
+    rows.push({ id, label, text: `${label} ${words}`, content })
   }
 
   for (const setting of oracleSettings({ state, view })) {
@@ -342,6 +343,26 @@ export function Oracle({
     matchesCommand({ query, text: row.text.slice(0, 500) }) || meaning.includes(row.id))
 
   const visibleHits = commandQuery({ query }) ? [] : hits.filter(hit => hit.kind === 'hydra' || (state.cards[hit.card] && !state.cards[hit.card].hidden))
+  const searchRows: ResultRow[] = visibleHits.map(hit => ({
+    id: `hit:${hit.card}`,
+    label: hit.title,
+    content: (
+      <div className="oracle-hit">
+        <Button onClick={() => run({ work: () => hit.kind === 'hydra' ? openHydra() : openTask({ id: hit.card }) })}>
+          <strong>{hit.title}</strong>
+        </Button>
+        <small>
+          {hit.kind === 'hydra' ? 'Hydra conversation' : 'Task'}
+          {hit.match === 'semantic' ? ' · similar meaning' : ''}
+        </small>
+        {hit.snippets.map((snippet, index) => <Markdown key={index} text={snippet.snippet} />)}
+      </div>
+    ),
+  }))
+
+  if (!commandQuery({ query }) && query.trim()) {
+    searchRows.push({ id: 'history', label: 'Search history', content: <><Button onClick={() => run({ work: history })}>Search history</Button><small className="muted">Hidden tasks and recorded history</small></> })
+  }
 
   return (
     <div
@@ -359,12 +380,6 @@ export function Oracle({
           }
 
           setExpanded(false)
-        }
-      }}
-      onKeyDownCapture={e => {
-        if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.target instanceof HTMLInputElement
-          && e.target !== input.current && !e.target.closest('form')) {
-          e.preventDefault(); e.stopPropagation(); input.current?.focus()
         }
       }}
       onFocus={e => {
@@ -407,44 +422,23 @@ export function Oracle({
             } else {
               focusElement({ selector: '[data-card]' })
             }
-          } else if (e.key === 'ArrowDown' || e.key === 'Enter') {
-            e.preventDefault(); root.current?.querySelector<HTMLElement>('.oracle-results button:not(:disabled), .oracle-results input')?.focus()
+          } else if (['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) {
+            e.preventDefault(); e.stopPropagation()
+            const results = root.current?.querySelectorAll<HTMLElement>('[data-result-id]')
+            results?.[e.key === 'ArrowUp' ? results.length - 1 : 0]?.focus()
           }
         }}
       />
       {expanded && (
-        <div
-          className="oracle-results"
+        <ResultGrid
           id="hydra-oracle-results"
-          role="region"
-          aria-label="Oracle results"
-        >
-          {!commandQuery({ query }) && query.trim() && (
-            <>
-              {visibleHits.map(hit => (
-                <div className="oracle-row" key={hit.card}>
-                  <div className="oracle-hit">
-                    <Button onClick={() => run({ work: () => hit.kind === 'hydra' ? openHydra() : openTask({ id: hit.card }) })}>
-                      <strong>{hit.title}</strong>
-                    </Button>
-                    <small>
-                      {hit.kind === 'hydra' ? 'Hydra conversation' : 'Task'}
-                      {hit.match === 'semantic' ? ' · similar meaning' : ''}
-                    </small>
-                    {hit.snippets.map((snippet, index) => (
-                      <Markdown key={index} text={snippet.snippet} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {!visibleHits.length && <p className="muted oracle-row">No matching tasks or messages.</p>}
-              <div className="oracle-row"><Button onClick={() => run({ work: history })}>Search history</Button><small className="muted">Hidden tasks and recorded history</small></div>
-            </>
-          )}
-          <div className="oracle-caption">Settings & actions</div>
-          {matchingRows.map(row => <div className="oracle-row" key={row.id}>{row.content}</div>)}
-          {!matchingRows.length && <p className="muted oracle-row">No matching settings or actions.</p>}
-        </div>
+          label="Oracle results"
+          search={() => input.current?.focus()}
+          groups={[
+            ...(!commandQuery({ query }) && query.trim() ? [{ label: 'Tasks & messages', rows: searchRows, message: !visibleHits.length ? 'No matching tasks or messages.' : undefined }] : []),
+            { label: 'Settings & actions', rows: matchingRows, message: !matchingRows.length ? 'No matching settings or actions.' : undefined },
+          ]}
+        />
       )}
     </div>
   )
