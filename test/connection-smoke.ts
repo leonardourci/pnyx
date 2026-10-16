@@ -66,7 +66,7 @@ try {
   appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: new Date().toISOString(), message: { content: 'Subscription restored' } }) + '\n')
   await browser({ args: ['wait', 'Subscription restored'] })
   await fill({ selector: '.detail .composer textarea', text: 'Pending send across reload' })
-  await evaluate({ code: '() => { const send = WebSocket.prototype.send; WebSocket.prototype.send = function(data) { const m = JSON.parse(data); if (m.type !== \'command\' || m.name !== \'reply\') send.call(this, data); }; return true; }' })
+  await evaluate({ code: '() => { const send = WebSocket.prototype.send; WebSocket.prototype.send = function(data) { const m = JSON.parse(data); if (m.type !== \'command\' || m.name !== \'task-message\') send.call(this, data); }; return true; }' })
   await send()
   assert.equal(delivery({ text: 'Pending send across reload' }), 0)
   await fill({ selector: '.detail .composer textarea', text: 'Next draft while sending' })
