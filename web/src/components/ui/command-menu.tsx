@@ -1,3 +1,4 @@
+import { Icon } from './icon.tsx'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button, Input } from './controls.tsx'
 
@@ -98,7 +99,7 @@ export function CommandMenu({
       >
         <header className="row between">
           <h2 id={`${id}-title`}>{title}</h2>
-          <Button aria-label={`Close ${title}`} onClick={close}>×</Button>
+          <Button aria-label={`Close ${title}`} onClick={close}><Icon name="close" /></Button>
         </header>
         <p id={`${id}-description`} className="muted small">{description}</p>
         <Input

@@ -1,3 +1,4 @@
+import { Icon } from '../components/ui/icon.tsx'
 import { storageKey } from './outbox.ts'
 import { HYDRA_CARD, lockedColumn } from '../../../src/core/hydra.ts'
 import { cardSessionId } from '../../../src/core/tasks.ts'
@@ -444,6 +445,7 @@ export function App() {
                                 <HydraCard
                                   key={item.id}
                                   card={item}
+                                  labelColors={state.labelColors}
                                   doneAfterHours={state.config?.doneAfterHours}
                                   notify={notify}
                                   latest={latest[item.id]}
@@ -470,7 +472,7 @@ export function App() {
                           <Button
                             disabled={!connected}
                             onClick={createColumn}
-                          >+ Add column
+                          ><Icon name="plus" />Add column
                           </Button>
                         </div>
                       </div>

@@ -106,7 +106,7 @@ try {
   await click({ selector: '[aria-label="New task in Parked"]' }); await browser({ args: ['wait', 'New task'] })
   await fill({ label: 'Rename task New task', value: 'Browser task' }); await text({ label: 'Save title' }); await browser({ args: ['wait', 'Browser task'] })
   await check({ condition: 'document.querySelector("[data-column=parked] .column-cards .card:first-child").textContent.includes("Browser task")', label: 'column plus creates the task at the top' })
-  await text({ label: '+ Add column' }); await browser({ args: ['wait', 'New column'] })
+  await text({ label: 'Add column' }); await browser({ args: ['wait', 'New column'] })
   await fill({ label: 'Rename New column column', value: 'Research' }); await text({ label: 'Save title' }); await browser({ args: ['wait', 'Research'] })
   await click({ selector: '[aria-label="Research column menu"]' }); await text({ label: 'Edit description' })
   await fill({ label: 'Research description', value: 'Keep tasks here while gathering evidence.' }); await text({ label: 'Save description' })

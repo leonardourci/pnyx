@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react'
 import { Markdown } from './markdown.tsx'
+import { Icon } from './icon.tsx'
 import { Button } from './controls.tsx'
 
 export function Disclosure({ title, children, className = '' }: {
@@ -11,7 +12,7 @@ export function Disclosure({ title, children, className = '' }: {
     <details className={`disclosure ${className}`}>
       <summary>
         {title}
-        <span className="disclosure-chevron" aria-hidden="true">›</span>
+        <span className="disclosure-chevron" aria-hidden="true"><Icon name="chevron_right" size={14} /></span>
       </summary>
       <div className="disclosure-body">{children}</div>
     </details>

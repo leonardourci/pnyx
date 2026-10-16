@@ -1,3 +1,4 @@
+import { Icon } from './icon.tsx'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from './controls.tsx'
 
@@ -67,7 +68,7 @@ export function Menu({ label, children }: { label: string; children: ReactNode }
         aria-label={label}
         aria-expanded={open}
         onClick={() => setOpen(value => !value)}
-      >⋯
+      ><Icon name="more" />
       </Button>
       {open && (
         <div
