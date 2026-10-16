@@ -60,15 +60,13 @@ export function HydraAgent({ state, command, connected, notify }: {
           />
         )
       })}
-      {(
-        <PickerField
-          label="Fast"
-          value={agent.fast ? 'on' : 'off'}
-          options={[{ value: 'off', label: 'Fast off' }, { value: 'on', label: 'Fast on' }]}
-          disabled={busy || !connected}
-          onChange={({ value }) => save({ next: { ...agent, fast: value === 'on' } })}
-        />
-      )}
+      <PickerField
+        label="Fast"
+        value={agent.fast === undefined ? 'default' : agent.fast ? 'on' : 'off'}
+        options={[{ value: 'default', label: 'Fast default' }, { value: 'off', label: 'Fast off' }, { value: 'on', label: 'Fast on' }]}
+        disabled={busy || !connected}
+        onChange={({ value }) => save({ next: { ...agent, fast: value === 'default' ? undefined : value === 'on' } })}
+      />
     </div>
   )
 }
