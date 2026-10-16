@@ -280,7 +280,7 @@ test('a done declaration neither moves Hydra work nor closes its backlog record'
 
 test('an archived closure moves a mirrored task to Done after its worker records are removed', () => {
   const { home } = copyFixture()
-  writeFileSync(join(home, 'state', 'api-v2.status'), 'working: implementing\n')
+  rmSync(join(home, 'state', 'api-v2.status'))
   syncHome({ hydraId: 'default', home })
   const before = cardOf({ home, task: 'api-v2' })
   assert.equal(before.column, columnId({ role: 'in_progress' }))
@@ -289,7 +289,6 @@ test('an archived closure moves a mirrored task to Done after its worker records
   const [row] = rows.splice(rows.findIndex(line => line.startsWith('- [ ] api-v2')), 1)
   writeFileSync(backlog, rows.join('\n'))
   rmSync(join(home, 'state', 'api-v2.meta'))
-  rmSync(join(home, 'state', 'api-v2.status'))
   syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home, task: 'api-v2' }).column, before.column, 'disappearance alone does not close a task')
   assert.equal(cardOf({ home, task: 'api-v2' }).outcome, undefined)
@@ -314,6 +313,30 @@ test('an archived closure moves a mirrored task to Done after its worker records
   syncHome({ hydraId: 'default', home })
   assert.equal(cardOf({ home, task: 'api-v2' }).column, columnId({ role: 'in_progress' }))
   assert.equal(cardOf({ home, task: 'api-v2' }).outcome, undefined)
+})
+
+test('archiving a closed failure preserves its outcome after worker records are removed', () => {
+  const { home } = copyFixture()
+  const backlog = join(home, 'data', 'backlog.md')
+  const rows = readFileSync(backlog, 'utf8').split('\n')
+  const [row] = rows.splice(rows.findIndex(line => line.startsWith('- [ ] hotfix-2')), 1)
+  const closed = row!.replace('[ ]', '[x]')
+  rows.splice(rows.indexOf('## Done') + 1, 0, closed)
+  writeFileSync(backlog, rows.join('\n'))
+  syncHome({ hydraId: 'default', home })
+  const before = cardOf({ home, task: 'hotfix-2' })
+  assert.equal(before.outcome?.state, 'failed')
+
+  writeFileSync(backlog, rows.filter(line => line !== closed).join('\n'))
+  writeFileSync(join(home, 'data', 'done-archive.md'), `# Done archive\n${closed}\n`)
+  rmSync(join(home, 'state', 'hotfix-2.meta'))
+  rmSync(join(home, 'state', 'hotfix-2.status'))
+  syncHome({ hydraId: 'default', home })
+  const archived = cardOf({ home, task: 'hotfix-2' })
+  assert.deepEqual(archived.outcome, before.outcome)
+  assert.equal(archived.activity, before.activity)
+  assert.equal(archived.column, columnId({ role: 'done' }))
+  assert.equal(syncHome({ hydraId: 'default', home }).appended, 0)
 })
 
 test('watch reconciles a closure added only to the done archive', async () => {

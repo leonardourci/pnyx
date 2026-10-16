@@ -216,15 +216,16 @@ function taskNotes({ home, task, log }: { home: string; task: string; log: strin
 // meta's pr= field, which Firstmate records when the pull request is ready.
 export function readHome({ home, mirroredTasks = [] }: {
   home: string
-  mirroredTasks?: string[]
+  mirroredTasks?: Pick<FirstmateRecord, 'task' | 'status'>[]
 }): HomeObservation {
   const state = join(home, 'state')
   const backlog = parseBacklog({ text: readRegular({ path: join(home, 'data', 'backlog.md') }) ?? '' })
   const archive = parseBacklog({ text: readRegular({ path: join(home, 'data', 'done-archive.md') }) ?? '', archived: true })
+  const mirroredStatus = new Map(mirroredTasks.map(({ task, status }) => [task, status]))
   const tasks: TaskObservation[] = []
 
   // Old archive entries only reconcile tasks this Hydra already knows.
-  const taskIds = new Set([...backlog.keys(), ...mirroredTasks.filter(task => archive.has(task)), ...readdirSync(state).filter(f => f.endsWith('.meta'))
+  const taskIds = new Set([...backlog.keys(), ...mirroredTasks.map(t => t.task).filter(task => archive.has(task)), ...readdirSync(state).filter(f => f.endsWith('.meta'))
     .map(f => f.slice(0, -'.meta'.length))])
 
   for (const task of [...taskIds].sort()) {
@@ -235,8 +236,9 @@ export function readHome({ home, mirroredTasks = [] }: {
     const metaText = readRegular({ path: join(state, `${task}.meta`) })
     const statusText = readRegular({ path: join(state, `${task}.status`) })
     const meta = parseMeta({ text: metaText ?? '' })
-    const log = statusText ?? ''
     const row = backlog.get(task) ?? archive.get(task)
+    // Cleanup can remove the worker log after Firstmate has closed the task.
+    const log = statusText ?? (row?.done ? mirroredStatus.get(task) : undefined) ?? ''
     // The mirrored row keeps its shape: an extra field would read as a changed Firstmate record.
     const mirroredRow = row && { ...row }
     delete mirroredRow?.hold

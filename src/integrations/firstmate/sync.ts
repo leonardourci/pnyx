@@ -210,7 +210,8 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         .flatMap(card => {
           const ref = firstmateRef({ card })
 
-          return ref?.instanceId === home && ref.objectId !== HOME_OBJECT ? [ref.objectId] : []
+          return ref?.instanceId === home && ref.objectId !== HOME_OBJECT
+            ? [{ task: ref.objectId, status: card.mirror?.status ?? '' }] : []
         })
       const observed = readHome({ home, mirroredTasks })
       let configured = 0
