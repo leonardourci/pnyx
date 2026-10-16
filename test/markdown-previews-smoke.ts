@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { commands } from '../src/cli/commands.ts'
 import { startServer } from '../src/server/server.ts'
 import { decideView } from '../src/core/decide.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
@@ -27,6 +28,7 @@ withWriter({
     assert.ok('event' in message); writer.append({ event: message.event })
   },
 })
+commands.task(['status', fixture.state.keys.layout!, 'working', '--note', preview, '--actor', 'worker'])
 const server = await startServer({ hydraId: 'default', homes: [fixture.nativeHome] })
 const { browser, check, eventually, click, text, fill, screenshot, close } = smokeBrowser({ home, session: 'pnyx-markdown-previews' })
 

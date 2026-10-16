@@ -9,6 +9,7 @@ import { AddProject } from './add-project.tsx'
 import { HydraChat } from './hydra-chat.tsx'
 import { useHydra } from './connection.ts'
 import { HydraCard } from './card.tsx'
+import { TaskCreate } from './task-create.tsx'
 import { Column } from './column.tsx'
 import { Detail } from './detail.tsx'
 import type { ChatComment } from './chat.ts'
@@ -54,7 +55,7 @@ export function App() {
   const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') || new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
-  const [editingTask, setEditingTask] = useState<string | null>(null)
+  const [creatingTask, setCreatingTask] = useState<{ column: string; parent?: string } | null>(null)
   const [historyQuery, setHistoryQuery] = useState('')
   const [addingProject, setAddingProject] = useState(new URLSearchParams(location.search).has('projects'))
   const [panel, setPanel] = useState(restored.panel ?? true)
@@ -241,17 +242,8 @@ export function App() {
   }
 
   const createTask = ({ column, parent }: { column: string; parent?: string }) => {
-    void command({ name: 'task', args: ['create', '--title', parent ? 'New subtask' : 'New task', '--column', column, ...(parent ? ['--parent', parent] : []), '--event-id', crypto.randomUUID()] }).then(receipt => {
-      setPage('hydra'); setWorkspace(''); setTag(''); setQuery(''); filterProject({ path: '' })
-      const id = (receipt.card as { id: string }).id
-      const first = cards.find(c => c.column === column)
-      setEditingTask(id)
-
-      if (first) {
-        void command({ name: 'move', args: [id, column, '--before', first.id, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
-      }
-    })
-      .catch(e => notify({ text: e.message }))
+    setPage('hydra'); setWorkspace(''); setTag(''); setQuery(''); filterProject({ path: '' }); setSelected(null)
+    setCreatingTask({ column, ...(parent ? { parent } : {}) })
   }
 
   const createColumn = () => {
@@ -440,10 +432,30 @@ export function App() {
                               titleFinished={() => setNewColumn(null)}
                               createTask={createTask}
                             >
+                              {creatingTask?.column === c.id && (
+                                <TaskCreate
+                                  key={`${c.id}:${creatingTask.parent ?? ''}`}
+                                  {...creatingTask}
+                                  command={command}
+                                  connected={connected}
+                                  notify={notify}
+                                  cancel={() => setCreatingTask(null)}
+                                  saved={({ id }) => {
+                                    setCreatingTask(null); setSelected(id)
+                                    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.detail .composer textarea' })))
+                                    const first = items[0]
+
+                                    if (first) {
+                                      void command({ name: 'move', args: [id, c.id, '--before', first.id, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+                                    }
+                                  }}
+                                />
+                              )}
                               {items.map(item => (
                                 <HydraCard
                                   key={item.id}
                                   card={item}
+                                  firstmate={state.config?.hydra.kind === 'firstmate'}
                                   doneAfterHours={state.config?.doneAfterHours}
                                   notify={notify}
                                   latest={latest[item.id]}
@@ -452,8 +464,6 @@ export function App() {
                                   open={({ id }) => selected === id ? close() : open({ id })}
                                   command={command}
                                   connected={connected}
-                                  editingTitle={editingTask === item.id}
-                                  titleFinished={() => setEditingTask(null)}
                                   tabIndex={
                                     (items.some(i => i.id === keyboard.remembered[c.id])
                                       ? keyboard.remembered[c.id]

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
 import { traces } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
@@ -9,6 +9,9 @@ import { Composer } from './composer.tsx'
 import { Messages } from './messages.tsx'
 import { InlinePermissions } from './permissions.tsx'
 import { InlineQuestions } from './questions.tsx'
+import { taskConversation } from '../../../src/thread/task.ts'
+import type { TaskMessageReceipt } from '../../../src/cli/task-message.ts'
+import { receiptLabel } from './view.ts'
 import { agentActivity } from './view.ts'
 import type { Command } from './connection.ts'
 
@@ -63,46 +66,47 @@ export function Thread({
   }, [page, keep])
 
   const scrollToLatest = () => {
-    scroller.current?.querySelector('.composer')?.scrollIntoView({ block: 'end', inline: 'nearest' })
+    const stream = scroller.current
+
+    if (stream) {
+      stream.scrollTop = stream.scrollHeight
+    }
+
     atBottom.current = true; setLatest(false)
   }
 
-  useEffect(() => {
-    const column = scroller.current?.closest<HTMLElement>('.column-cards')
-
-    if (!column) {
-      return
-    }
-
-    const track = () => {
-      const threadBox = scroller.current?.getBoundingClientRect()
-      const viewBox = column.getBoundingClientRect()
-      atBottom.current = !!threadBox && threadBox.bottom <= viewBox.bottom + 40
-        && threadBox.bottom >= viewBox.top
-
-      if (atBottom.current) {
-        setLatest(false)
-      }
-    }
-
-    column.addEventListener('scroll', track, { passive: true })
-
-    return () => column.removeEventListener('scroll', track)
-  }, [])
   useEffect(() => {
     if (atBottom.current) {
       scrollToLatest()
     } else {
       setLatest(true)
     }
-  }, [page])
+  }, [page, card.statusLog?.length])
+
+  useEffect(() => {
+    scroller.current?.closest('.detail')?.querySelector<HTMLTextAreaElement>('.composer textarea')
+      ?.focus({ preventScroll: true })
+  }, [])
+
+  const deliver = useCallback<Command>(async ({ name, args }) => {
+    if (name !== 'reply') {
+      return command({ name, args })
+    }
+
+    const result = await command({ name: 'task-message', args })
+    const receipt = result.reply as TaskMessageReceipt
+    const detail = Object.entries(receipt.routes).map(([route, delivery]) => `${route === 'hydra' ? 'Hydra' : 'Agent'}: ${receiptLabel({ state: delivery.state })}${delivery.detail ? ` (${delivery.detail})` : ''}`)
+      .join(' · ')
+
+    return { ...result, reply: { ...receipt, detail } }
+  }, [command])
 
   const shown = merge({ kept, page: page?.entries ?? [] })
     .filter(e => e.kind === 'message' || (e.kind === 'tool' ? tools : thinking))
-  const entries = joinMessageParts({ entries: shown })
+  const entries = taskConversation({ card, entries: joinMessageParts({ entries: shown }) })
 
   return (
-    <>
+    <div className="task-conversation">
       <div
         className="thread"
         data-key-scope="thread"
@@ -110,6 +114,14 @@ export function Thread({
         aria-label="Agent conversation"
         tabIndex={0}
         ref={scroller}
+        onScroll={e => {
+          const stream = e.currentTarget
+          atBottom.current = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 40
+
+          if (atBottom.current) {
+            setLatest(false)
+          }
+        }}
       >
         {olderCursor !== undefined && (
           <Button
@@ -122,7 +134,7 @@ export function Thread({
             Load older messages
           </Button>
         )}
-        {page?.unavailable && <p className="empty">{page.unavailable}</p>}
+        {page?.unavailable && card.agent && <p className="empty">{page.unavailable}</p>}
         {!page && <p className="empty">Loading conversation…</p>}
         <Messages
           entries={entries}
@@ -145,30 +157,31 @@ export function Thread({
           command={command}
           notify={notify}
         />
-        <Composer
-          card={card.id}
-          title={card.title}
-          draft={draft}
-          setDraft={setDraft}
-          comments={comments}
-          setComments={setComments}
-          thread={page}
-          height={view.composerHeight}
-          command={command}
-          save={save}
-          connected={connected}
-          notify={notify}
-          settings={(
-            <ComposerSettings
-              card={card}
-              thread={thread}
-              command={command}
-              connected={connected}
-              notify={notify}
-            />
-          )}
-        />
       </div>
+      <p className="task-recipient">{card.agent ? 'To agent and Hydra' : 'To Hydra · context saved for assignment'}</p>
+      <Composer
+        card={card.id}
+        title={card.title}
+        draft={draft}
+        setDraft={setDraft}
+        comments={comments}
+        setComments={setComments}
+        thread={page}
+        height={view.composerHeight}
+        command={deliver}
+        save={save}
+        connected={connected}
+        notify={notify}
+        settings={(
+          <ComposerSettings
+            card={card}
+            thread={thread}
+            command={command}
+            connected={connected}
+            notify={notify}
+          />
+        )}
+      />
       {latest && (
         <Button
           className="jump"
@@ -179,6 +192,6 @@ export function Thread({
           <span aria-hidden="true">↓</span>
         </Button>
       )}
-    </>
+    </div>
   )
 }

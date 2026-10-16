@@ -62,7 +62,7 @@ try {
   await evaluate({ code: 'const probe = document.createElement("span"); probe.style.color = "var(--color-red)"; document.body.append(probe); if (getComputedStyle(probe).color !== getComputedStyle(document.querySelector(".activity-stopped")).color) throw new Error("Stopped worker must be red"); probe.remove(); return true;' })
   await screenshot({ name: 'card-states-after.png' })
   await click({ selector: `[data-task="${stopped}"] .card-resume` })
-  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Resume the stopped worker")', label: 'Resume request appears in Hydra chat' })
+  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Resume the worker on task")', label: 'Resume request appears in Hydra chat' })
   assert.equal(state().hydraMessages?.at(-1)?.task, stopped)
   assert.equal(state().hydraMessages?.at(-1)?.actor, 'web')
   assert.deepEqual(state().cards[stopped]?.launch, initialLaunch)

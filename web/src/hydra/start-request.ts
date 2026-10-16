@@ -9,29 +9,31 @@ export function useStartRequest({ card, firstmate, command, notify }: {
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const attempt = useRef(crypto.randomUUID())
+  const attempts = useRef({
+    Start: crypto.randomUUID(), Resume: crypto.randomUUID(), Reassign: crypto.randomUUID(),
+  })
   const [busy, run] = useBusy()
-  const start = () => run({
+  const request = ({ intent }: { intent: 'Start' | 'Resume' | 'Reassign' }) => run({
     save: async () => {
       try {
-        const fresh = card.agent ? `Start fresh from the brief for task ${card.id}: ${card.title}. Inspect its current attachment and task history before deciding how to replace it.` : undefined
+        const fresh = intent === 'Resume' ? `Resume the worker on task ${card.id}: ${card.title}. Read its history and confirm the session can continue before resuming.` : intent === 'Reassign' ? `Reassign task ${card.id}: ${card.title}. Read its history and preserved context before choosing and attaching its next agent.` : card.agent ? `Start fresh from the brief for task ${card.id}: ${card.title}. Inspect its current attachment and task history before deciding how to replace it.` : undefined
         const result = await command(firstmate
-          ? { name: 'task', args: ['start', card.id, '--via', 'firstmate', '--event-id', attempt.current, ...(fresh ? ['--prompt', fresh] : [])] }
-          : { name: 'hydra', args: ['send', '--task', card.id, '--action', 'worker', '--event-id', attempt.current, ...(fresh ? ['--text', fresh] : [])] })
+          ? { name: 'task', args: ['start', card.id, '--via', 'firstmate', '--event-id', attempts.current[intent], ...(fresh ? ['--prompt', fresh] : [])] }
+          : { name: 'hydra', args: ['send', '--task', card.id, '--action', intent === 'Resume' ? 'send' : 'worker', '--event-id', attempts.current[intent], ...(fresh ? ['--text', fresh] : [])] })
 
-        if (result.sent === 'failed') {
-          notify({ text: 'Request saved in Hydra’s chat. Firstmate could not be reached; try Start again to resend.' })
+        if (firstmate && result.sent !== 'delivered') {
+          notify({ text: result.sent === 'failed' ? 'Request saved in Hydra’s chat. Firstmate could not be reached; retry the request to resend.' : 'Request saved in Hydra’s chat, but Firstmate delivery is unconfirmed. Check its inbox before retrying.' })
 
           return
         }
 
-        attempt.current = crypto.randomUUID()
-        notify({ text: firstmate ? 'Sent to Firstmate; it dispatches the worker.' : 'Start requested in Hydra’s chat.' })
+        attempts.current[intent] = crypto.randomUUID()
+        notify({ text: firstmate ? `Sent to Firstmate; Hydra decides how to ${intent.toLowerCase()}.` : `${intent} requested in Hydra’s chat.` })
       } catch (error) {
         notify({ text: (error as Error).message })
       }
     },
   })
 
-  return { start, busy }
+  return { start: () => request({ intent: 'Start' }), resume: () => request({ intent: 'Resume' }), reassign: () => request({ intent: 'Reassign' }), busy }
 }
