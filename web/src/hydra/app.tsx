@@ -280,6 +280,7 @@ export function App() {
     <Detail
       key={`${card.id}:${attachedSession ?? ''}`}
       card={card}
+      openTask={open}
       state={state}
       view={view}
       thread={thread?.session === attachedSession ? thread : null}

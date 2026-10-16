@@ -1,3 +1,6 @@
+import type { Card } from '../../../src/core/model.ts'
+import { matchingTasks, mentionQuery, taskMention, taskMentions } from '../../../src/mentions/mentions.ts'
+import { MentionPicker } from './mention-picker.tsx'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
 import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
@@ -20,6 +23,8 @@ const COMPOSER_MIN = VIEW_SIZE_LIMITS.composerHeight.min
 
 export function Composer({
   card,
+  cards,
+  openTask,
   title,
   draft,
   setDraft,
@@ -32,9 +37,10 @@ export function Composer({
   connected,
   notify,
   settings,
-  onMention,
 }: {
   card: string
+  cards: Card[]
+  openTask({ id }: { id: string }): void
   title: string
   draft: string
   setDraft({ text }: { text: string }): void
@@ -47,13 +53,37 @@ export function Composer({
   connected: boolean
   notify({ text }: { text: string }): void
   settings?: ReactNode
-  onMention?({ input }: { input: HTMLTextAreaElement }): void
 }) {
   const [preview, setPreview] = useState<number | null>(null)
   const [failure, setFailure] = useState('')
   const [sending, setSending] = useState(false)
   const [prefix, setPrefix] = useState<string | null>(null)
   const [active, setActive] = useState(-1)
+  const [mention, setMention] = useState<ReturnType<typeof mentionQuery>>(null)
+  const [mentionActive, setMentionActive] = useState(0)
+  const matches = matchingTasks({ cards, query: mention?.query ?? '' })
+  const mentions = taskMentions({ text: draft })
+  const mentionList = `mentions-${card}`
+
+  const trackMention = ({ text, cursor }: { text: string; cursor: number }) => {
+    setMention(mentionQuery({ text, cursor })); setMentionActive(0)
+  }
+
+  const chooseMention = ({ card }: { card: Card }) => {
+    const element = input.current
+
+    if (!mention || !element) {
+      return
+    }
+
+    const reference = taskMention({ id: card.id, title: card.title }) + ' '
+    const cursor = mention.start + reference.length
+    const text = draft.slice(0, mention.start) + reference + draft.slice(element.selectionStart)
+    setDraft({ text })
+    setMention(null); element.focus()
+    requestAnimationFrame(() => element.setSelectionRange(cursor, cursor))
+  }
+
   const input = useRef<HTMLTextAreaElement>(null), form = useRef<HTMLFormElement>(null)
   const files = useRef<HTMLInputElement>(null)
   const [contentHeight, setContentHeight] = useState<number>(COMPOSER_MIN)
@@ -74,8 +104,10 @@ export function Composer({
       const draftHeight = draft ? element.scrollHeight : DRAFT_MIN
       const context = form.current?.querySelector<HTMLElement>('.pending-comments')
       const error = form.current?.querySelector<HTMLElement>('.reply-failure')
+      const references = form.current?.querySelector<HTMLElement>('.draft-mentions')
       const contextHeight = context ? Math.min(64, context.scrollHeight) + 4 : 0
-      const errorHeight = error ? error.scrollHeight + 4 : 0
+      const errorHeight = (error ? error.scrollHeight + 4 : 0)
+        + (references ? references.offsetHeight + 4 : 0)
       setContentHeight(
         Math.min(DRAFT_MAX, Math.max(DRAFT_MIN, draftHeight))
         + COMPOSER_CONTROLS + contextHeight + errorHeight,
@@ -183,7 +215,7 @@ export function Composer({
 
         // Keep anything typed or commented while the reply was in flight.
         if (text === outgoing && current.current.draft === draft) {
-          setDraft({ text: '' })
+          setDraft({ text: '' }); setMention(null)
         }
 
         if (text === outgoing) {
@@ -226,11 +258,11 @@ export function Composer({
   useKeyAction({
     id: 'cancel',
     handler: ({ context: { scope, target } }) => {
-      if (scope !== 'composer' || !input.current?.form?.contains(target) || prefix === null) {
+      if (scope !== 'composer' || !input.current?.form?.contains(target) || prefix === null && mention === null) {
         return false
       }
 
-      setPrefix(null); setActive(-1)
+      setPrefix(null); setActive(-1); setMention(null)
 
       return true
     },
@@ -273,7 +305,21 @@ export function Composer({
           </ul>
         </div>
       )}
+      {mentions.length > 0 && (
+        <div className="draft-mentions" aria-label="Referenced tasks">
+          {mentions.map((mention, index) => <Button key={index} className="task-mention" onClick={() => openTask({ id: mention.id })}>@{mention.title}</Button>)}
+        </div>
+      )}
       <div className="composer-input">
+        {mention && (
+          <MentionPicker
+            anchor={input}
+            id={mentionList}
+            matches={matches}
+            active={Math.min(mentionActive, matches.length - 1)}
+            choose={chooseMention}
+          />
+        )}
         {prefix !== null && (
           <div className="slash-menu">
             <span className="eyebrow">Session commands</span>
@@ -307,19 +353,51 @@ export function Composer({
           value={draft}
           placeholder={title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…'}
           aria-label={`Reply to ${title}`}
-          aria-controls={catalogOpen ? `suggestions-${card}` : undefined}
-          aria-activedescendant={active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
+          aria-controls={mention ? mentionList : catalogOpen ? `suggestions-${card}` : undefined}
+          aria-activedescendant={mention && matches.length ? `${mentionList}-${Math.min(mentionActive, matches.length - 1)}` : active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
+          onClick={event => {
+            trackMention({ text: draft, cursor: event.currentTarget.selectionStart })
+          }}
+          onBlur={() => setMention(null)}
           onChange={e => {
             setDraft({ text: e.target.value })
             setPrefix(slashPrefix({ text: e.target.value, cursor: e.target.selectionStart }))
             setActive(-1)
+            trackMention({ text: e.target.value, cursor: e.target.selectionStart })
           }}
           onKeyDown={e => {
             if (e.nativeEvent.isComposing || e.key === 'Process') {
               return
             }
 
+            if (mention && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+              e.preventDefault(); e.stopPropagation()
+
+              if (e.key === 'Escape') {
+                setMention(null)
+              } else if (e.key === 'Enter') {
+                const selected = matches[Math.min(mentionActive, matches.length - 1)]
+
+                if (selected) {
+                  chooseMention({ card: selected.card })
+                }
+              } else {
+                setMentionActive(index => Math.max(0, Math.min(matches.length - 1, index + (e.key === 'ArrowDown' ? 1 : -1))))
+              }
+
+              return
+            }
+
+            if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+              requestAnimationFrame(() => {
+                if (input.current) {
+                  trackMention({ text: input.current.value, cursor: input.current.selectionStart })
+                }
+              })
+            }
+
             if (e.key === 'Tab') {
+              setMention(null)
               setPrefix(null); setActive(-1)
             }
 
@@ -337,7 +415,7 @@ export function Composer({
 
             const host = conversationMessages({ from: e.currentTarget })
 
-            if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && prefix === null &&
+            if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && prefix === null && mention === null &&
               e.currentTarget.selectionEnd === 0 && host && placeMessageCaret({ host, target: latestAgentMessage({ host }), edge: 'end' })) {
               e.preventDefault()
             }
@@ -362,13 +440,12 @@ export function Composer({
                   if (element) {
                     element.focus()
 
-                    if (onMention) {
-                      onMention({ input: element })
-                    } else {
-                      const cursor = element.selectionStart
-                      setDraft({ text: draft.slice(0, cursor) + '@' + draft.slice(element.selectionEnd) })
-                      requestAnimationFrame(() => element.setSelectionRange(cursor + 1, cursor + 1))
-                    }
+                    const cursor = element.selectionStart
+                    const boundary = cursor > 0 && !/\s/.test(draft[cursor - 1]!) ? ' ' : ''
+                    const text = draft.slice(0, cursor) + boundary + '@' + draft.slice(element.selectionEnd)
+                    const start = cursor + boundary.length
+                    setDraft({ text }); setMention({ start, query: '' }); setMentionActive(0); setPrefix(null)
+                    requestAnimationFrame(() => element.setSelectionRange(start + 1, start + 1))
                   }
                 }}
               >Mention a task

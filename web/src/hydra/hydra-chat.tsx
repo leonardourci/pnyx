@@ -15,7 +15,7 @@ import { joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 
 export function HydraChat({
   state, command, connected, notify, view, save, draft, setDraft, comments, setComments,
-  liveThread, projectSetup,
+  liveThread, projectSetup, openTask,
 }: {
   projectSetup?: ReactNode
   liveThread: ThreadPage | null
@@ -106,6 +106,7 @@ export function HydraChat({
         {projectSetup && <div className="hydra-project-setup">{projectSetup}</div>}
         <Messages
           entries={entries}
+          openTask={openTask}
           taskTitles={Object.fromEntries(Object.values(state.cards).map(c => [c.id, c.title]))}
           comments={comments}
           setComments={setComments}
@@ -124,6 +125,8 @@ export function HydraChat({
       </div>
       <Composer
         card={HYDRA_CARD}
+        cards={Object.values(state.cards)}
+        openTask={openTask}
         title="Hydra"
         draft={draft}
         setDraft={setDraft}

@@ -1,3 +1,5 @@
+import { Button } from './controls.tsx'
+import { mentionId } from '../../../../src/mentions/mentions.ts'
 import { Fragment, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
 
@@ -22,34 +24,52 @@ export function markdownHref({ href }: { href: string }): string | undefined {
   }
 }
 
-const inline = ({ tokens }: { tokens: Token[] }): ReactNode => tokens.map((token, i) => {
-  const children = 'tokens' in token && token.tokens ? inline({ tokens: token.tokens })
-    : 'text' in token ? decodeEntities({ text: String(token.text) }) : token.raw
+type TaskLink = { openTask?({ id }: { id: string }): void }
 
-  switch (token.type) {
-    case 'strong': return <strong key={i}>{children}</strong>
-    case 'em': return <em key={i}>{children}</em>
-    case 'del': return <del key={i}>{children}</del>
-    case 'codespan': return <code key={i}>{token.text}</code>
-    case 'br': return <br key={i} />
-    case 'link': case 'image': {
-      const href = markdownHref({ href: token.href })
+const inline = ({ tokens, openTask }: { tokens: Token[] } & TaskLink): ReactNode =>
+  tokens.map((token, i) => {
+    const children = 'tokens' in token && token.tokens ? inline({ tokens: token.tokens, openTask })
+      : 'text' in token ? decodeEntities({ text: String(token.text) }) : token.raw
 
-      return href ? (
-        <a
-          key={i}
-          href={href}
-          contentEditable={false}
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          {children}
-        </a>
-      ) : <Fragment key={i}>{children}</Fragment>
+    switch (token.type) {
+      case 'strong': return <strong key={i}>{children}</strong>
+      case 'em': return <em key={i}>{children}</em>
+      case 'del': return <del key={i}>{children}</del>
+      case 'codespan': return <code key={i}>{token.text}</code>
+      case 'br': return <br key={i} />
+      case 'link': case 'image': {
+        const task = token.type === 'link' ? mentionId({ href: token.href }) : undefined
+
+        if (task && openTask) {
+          return (
+            <Button
+              key={i}
+              className="task-mention"
+              contentEditable={false}
+              onClick={() => openTask({ id: task })}
+              title="Open referenced task"
+            >{children}
+            </Button>
+          )
+        }
+
+        const href = markdownHref({ href: token.href })
+
+        return href ? (
+          <a
+            key={i}
+            href={href}
+            contentEditable={false}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            {children}
+          </a>
+        ) : <Fragment key={i}>{children}</Fragment>
+      }
+      default: return <Fragment key={i}>{children}</Fragment>
     }
-    default: return <Fragment key={i}>{children}</Fragment>
-  }
-})
+  })
 
 function Code({ text, language }: { text: string; language?: string }) {
   const lang = language?.split(/\s/)[0]?.toLowerCase() ?? ''
@@ -64,10 +84,10 @@ function Code({ text, language }: { text: string; language?: string }) {
   )
 }
 
-function Table({ token }: { token: Tokens.Table }) {
+function Table({ token, openTask }: { token: Tokens.Table } & TaskLink) {
   const align = token.align.map(a => ({ textAlign: a ?? undefined }))
   const cells = ({ row, Cell }: { row: Tokens.TableCell[]; Cell: 'th' | 'td' }) => row.map((cell, n) => (
-    <Cell key={n} style={align[n]}>{inline({ tokens: cell.tokens })}</Cell>
+    <Cell key={n} style={align[n]}>{inline({ tokens: cell.tokens, openTask })}</Cell>
   ))
 
   return (
@@ -83,10 +103,10 @@ function Table({ token }: { token: Tokens.Table }) {
 export interface MarkdownBlock { index: number; offset: number; quote: string }
 type Render = { tokens: Token[]; inItem?: boolean; base?: number }
 
-export function Markdown({ text, block }: {
+export function Markdown({ text, block, openTask }: {
   text: string
   block?({ index, offset, quote, children }: MarkdownBlock & { children: ReactNode }): ReactNode
-}) {
+} & TaskLink) {
   const tokens = useMemo(() => markdown.lexer(text), [text])
   let index = 0
 
@@ -112,10 +132,11 @@ export function Markdown({ text, block }: {
         case 'list': return <Fragment key={i}>{list({ token: token as Tokens.List, offset })}</Fragment>
         case 'heading': {
           const Heading = `h${Math.min(6, token.depth)}` as 'h1'
-          node = <Heading>{inline({ tokens: token.tokens ?? [] })}</Heading>; break
+          node = <Heading>{inline({ tokens: token.tokens ?? [], openTask })}</Heading>; break
         }
         case 'paragraph': case 'text': {
-          const paragraph = <p>{token.tokens ? inline({ tokens: token.tokens }) : token.text}</p>
+          const content = token.tokens ? inline({ tokens: token.tokens, openTask }) : token.text
+          const paragraph = <p>{content}</p>
 
           if (inItem) {
             return <Fragment key={i}>{paragraph}</Fragment>
@@ -124,7 +145,7 @@ export function Markdown({ text, block }: {
           node = paragraph; break
         }
         case 'code': node = <Code text={token.text} language={token.lang} />; break
-        case 'table': node = <Table token={token as Tokens.Table} />; break
+        case 'table': node = <Table token={token as Tokens.Table} openTask={openTask} />; break
         default: node = <p>{token.raw}</p>
       }
 
