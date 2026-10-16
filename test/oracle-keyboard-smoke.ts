@@ -99,6 +99,13 @@ try {
   await check({ condition: 'document.activeElement.dataset.resultId === "rename:queued" && !document.querySelector(".oracle-results form")', label: 'Escape cancels the inline edit and restores its row' })
   await press({ key: 'Escape' })
 
+  await fill({ label: 'Oracle', value: '> delete parked column' }); await press({ key: 'ArrowDown' }); await press({ key: 'Enter' }); await press({ key: 'Enter' })
+  await check({ condition: '!!document.querySelector(".oracle-results .inline-confirm") && document.activeElement.matches(".inline-confirm-trigger")', label: 'a destructive confirmation opens with its trigger focused' })
+  await press({ key: 'Escape' })
+  await check({ condition: 'document.activeElement.dataset.resultId === "delete:parked" && !document.querySelector(".oracle-results .inline-confirm")', label: 'Escape dismisses the confirmation before returning to its row' })
+  assert.equal(state().configRevision, initial.configRevision)
+  await press({ key: 'Escape' })
+
   await fill({ label: 'Oracle', value: 'readable' })
   await eventually({ condition: '!!document.querySelector(`[data-result-id^="hit:"]`)', label: 'task search results arrived' })
   await press({ key: 'ArrowDown' })
