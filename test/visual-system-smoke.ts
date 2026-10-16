@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { commands } from '../src/cli/commands.ts'
@@ -13,6 +13,11 @@ import { seedWebFixture } from './web-fixture.ts'
 const home = mkdtempSync(join(tmpdir(), 'pnyx-visual-smoke-'))
 process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
 const fixture = seedWebFixture({ home })
+appendFileSync(fixture.transcript, `${JSON.stringify({
+  type: 'assistant',
+  timestamp: '2026-10-16T10:00:00Z',
+  message: { content: [{ type: 'text', text: 'Inline `ready`.\n\n```typescript\nconst ready = true\n```' }] },
+})}\n`)
 commands.task(['create', '--key', 'queue', '--title', 'Plan the next release', '--column', 'queued'])
 withWriter({
   hydraId: 'default',
@@ -73,6 +78,7 @@ try {
   await check({ condition: 'Math.abs(parseFloat(getComputedStyle(document.querySelector(\'.column-header h2\')).fontSize) - 18 * 9 / 7) < .01 && Math.abs(parseFloat(getComputedStyle(document.querySelector(\'.task-label\')).fontSize) - 18 * 6 / 7) < .01', label: 'pane headings and metadata follow the saved UI font preference' })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
   await eventually({ condition: 'document.querySelector(\'.detail .message .markdown\') && getComputedStyle(document.querySelector(\'.detail .message .markdown\')).fontSize === \'20px\'', label: 'saved chat font size applies independently' })
+  await check({ condition: '[...document.querySelectorAll(\'.detail .markdown code\')].length === 2 && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontSize === \'15px\') && getComputedStyle(document.querySelector(\'.detail .code-block pre\')).fontSize === \'15px\'', label: 'inline and fenced code follow the independent saved code font size' })
   const colors = loadHydra({ hydraId: 'default' }).state.labelColors
   assert.ok(colors?.some(entry => entry.label === 'payments-api'))
   process.stdout.write('Visual system smoke passed.\n')

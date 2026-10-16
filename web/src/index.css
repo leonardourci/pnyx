@@ -506,7 +506,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .code-block pre, .trace-text { margin: 0; overflow: auto; max-width: 100%; padding: 10px; font: var(--text-code)/1.65 var(--font-mono); white-space: pre; }
 
-.markdown .code-block code { padding: 0; font-size: var(--text-ui); background: transparent; }
+.markdown .code-block code { padding: 0; font-size: var(--text-code); background: transparent; }
 
 .trace-text { background: var(--color-background); border-radius: 5px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; }
 
