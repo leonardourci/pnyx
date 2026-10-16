@@ -682,17 +682,15 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .task-conversation > .composer .composer-input { min-height: 0; }
 
-.card > :is(.project-label, .card-state, .copy-warning, .reminder-label), .detail-header { flex-shrink: 0; }
-
-.card > .project-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card > :is(.card-labels, .card-state, .copy-warning, .reminder-label), .detail-header { flex-shrink: 0; }
 
 .card-rest { min-height: 0; overflow: auto; flex: 1; }
 
 .card .last-message > .markdown { display: block; overflow: visible; }
 
-.task-recipient { flex-shrink: 0; color: var(--color-muted); font-size: 12px; margin: 4px 0 0; }
+.task-recipient { flex-shrink: 0; color: var(--color-muted); font-size: var(--text-meta); margin: 4px 0 0; }
 
-.message-task { display: block; font-size: 12px; color: var(--color-muted); }
+.message-task { display: block; font-size: var(--text-meta); color: var(--color-muted); }
 
 .task-create { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); }
 
