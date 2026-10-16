@@ -15,7 +15,7 @@
   --color-gold: #72500e;
   --color-gold-line: #a38956;
   --color-gold-wash: #f3ead7;
-  --color-slate: #536174;
+  --color-slate: #505e71;
   --color-rose: #8b4561;
   --color-teal: #276a69;
   --color-coral: #924b36;
@@ -614,19 +614,21 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .kanban { padding: 0; gap: 12px; }
 
-.column { border-radius: 12px; background: color-mix(in srgb, var(--column-color, var(--color-slate)) 7%, var(--color-background)); max-width: none; }
+.column { border-radius: 12px; border-color: color-mix(in srgb, var(--column-color, var(--color-slate)) 40%, var(--color-line)); border-top: 3px solid var(--column-color, var(--color-slate)); background: color-mix(in srgb, var(--column-color, var(--color-slate)) 18%, var(--color-background)); max-width: none; }
 
 .column-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: grab; border-bottom: 0; }
 
-.column-header h2 { font-size: var(--text-pane); min-width: 0; }
+.column-header h2 { font-size: var(--text-pane); font-weight: 700; min-width: 0; }
 
-.column-header .inline-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.column-header .inline-title { font-weight: inherit; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .column-add { margin-left: auto; padding: 0; width: 26px; font-size: var(--text-pane); }
 
 .column-header .menu > .button { padding: 0; width: 26px; font-size: var(--text-pane); }
 
 .count { font-size: var(--text-meta); }
+
+.column-header .count { min-width: 22px; padding: 1px 6px; border-radius: 999px; text-align: center; color: var(--color-surface); background: var(--column-color, var(--color-slate)); }
 
 .column-cards { padding: 2px 10px 10px; gap: 8px; container-type: size; }
 
