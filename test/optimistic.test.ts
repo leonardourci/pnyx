@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { DEFAULT_COLUMNS } from '../src/core/hydra.ts'
-import { optimisticState, currentRevision } from '../web/src/hydra/optimistic.ts'
+import { optimisticState, currentRevision, projectEdits } from '../web/src/hydra/optimistic.ts'
 
 const fixture = () => {
   const events: HydraEvent[] = [
@@ -66,4 +66,13 @@ test('queued writes use the acknowledged revision while reads stay unchanged', (
   assert.deepEqual(currentRevision({ state, edit: { name: 'move', args: ['one', 'parked', '--if-revision', '0'] } }), ['one', 'parked', '--if-revision', String(state.cards.one?.revision)])
   assert.equal(optimisticState({ state, edit: { name: 'thread', args: ['one'] } }), state)
   assert.throws(() => optimisticState({ state, edit: { name: 'view', args: ['set', '--json', '{"composerHeight":-1}'] } }))
+})
+
+test('edits can target a column whose creation is still pending', () => {
+  const state = fixture()
+  const created = projectEdits({ state, edits: [{ name: 'column', args: ['create', '--id', 'custom:research', '--title', 'New column'] }] })
+  const renamed = optimisticState({ state: created, edit: { name: 'column', args: ['rename', 'custom:research', '--title', 'Research'] } })
+  assert.notEqual(renamed, created)
+  assert.equal(renamed.config?.columns.at(-1)?.title, 'Research')
+  assert.ok(!state.config?.columns.some(c => c.id === 'custom:research'))
 })

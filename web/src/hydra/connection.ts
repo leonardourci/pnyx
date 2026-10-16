@@ -1,5 +1,5 @@
 import { reminderTime } from '../../../src/reminders/time.ts'
-import { optimisticState, currentRevision } from './optimistic.ts'
+import { optimisticState, currentRevision, projectEdits } from './optimistic.ts'
 import { DISPATCH_CHANGED } from './heads-dispatch.ts'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
 import { CLONE_TIMEOUT_MS } from '../../../src/projects/limits.ts'
@@ -83,15 +83,10 @@ export function useHydra() {
       return
     }
 
-    let next = stateRef.current
-
-    for (const p of pending.current.values()) {
-      if (p.optimistic) {
-        next = optimisticState({ state: next, edit: p.message })
-      }
-    }
-
-    setState(next)
+    setState(projectEdits({
+      state: stateRef.current,
+      edits: [...pending.current.values()].filter(p => p.optimistic).map(p => p.message),
+    }))
   }, [endpoint])
   const flushRef = useRef<() => void>(() => {})
   const flush = useCallback(() => {
@@ -385,9 +380,11 @@ export function useHydra() {
     let optimistic: boolean
 
     try {
-      optimistic = optimisticState({
-        state: stateRef.current, edit: { name, args },
-      }) !== stateRef.current
+      const visible = projectEdits({
+        state: stateRef.current,
+        edits: [...pending.current.values()].filter(p => p.optimistic).map(p => p.message),
+      })
+      optimistic = optimisticState({ state: visible, edit: { name, args } }) !== visible
     } catch (error) {
       reject(error)
 

@@ -152,3 +152,7 @@ export function currentRevision({ state, edit }: { state: HydraState; edit: Edit
 
   return args
 }
+
+export function projectEdits({ state, edits }: { state: HydraState; edits: Edit[] }): HydraState {
+  return edits.reduce((state, edit) => optimisticState({ state, edit }), state)
+}
