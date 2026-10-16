@@ -242,7 +242,7 @@ h3 { font-weight: 550; }
 
 .jump { align-self: center; z-index: 2; width: 34px; height: 34px; margin-top: -46px; margin-bottom: 12px; padding: 0; justify-content: center; border: 1px solid var(--color-line); border-radius: 50%; background: var(--color-raised); color: var(--color-ink); box-shadow: 0 4px 12px var(--color-shadow); }
 
-.composer { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 11px 12px; border-top: 1px solid var(--color-line); background: var(--color-raised); flex-shrink: 0; min-height: 140px; max-height: 45%; }
+.composer { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 11px 12px; border-top: 1px solid var(--color-line); background: var(--color-raised); flex-shrink: 0; min-height: 80px; max-height: 35%; }
 
 .composer > .resize-y { top: -3px; bottom: auto; }
 
@@ -340,7 +340,7 @@ h1 { font-size: 1.4em; }
 
 .detail > .resize-x { display: none; }
 
-.composer { padding: 9px 10px; max-height: 40%; }
+.composer { padding: 4px 10px; max-height: 35%; }
 
 .settings-grid { grid-template-columns: minmax(0, 1fr); }
 
@@ -541,9 +541,9 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .running i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
-.thread > .composer { margin: 16px 0 4px; padding: 12px 14px 10px; border: 1px solid var(--color-line); border-radius: 16px; max-height: none; }
+.thread > .composer { margin: 0; padding: 4px 10px; border: 0; border-radius: 0; }
 
-.thread > .composer:focus-within { border-color: var(--color-gold-line); }
+
 
 .thread > .composer .textarea { padding: 0; border: 0; background: transparent; outline: none; font-size: var(--text-chat); }
 
@@ -673,11 +673,11 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .trace summary > svg, .trace-summary > svg { background: var(--color-raised); border-radius: 50%; width: 20px; height: 20px; padding: 3px; }
 
-.composer, .thread > .composer { min-height: 140px; max-height: none; padding: 10px 12px; margin: 8px 0 0; border: 1px solid var(--color-gold-line); border-radius: 16px; background: var(--color-raised); }
+.composer, .thread > .composer { min-height: 80px; max-height: none; padding: 4px 10px; margin: 0; gap: 4px; border: 0; border-radius: 0; background: transparent; }
 
 .composer .textarea { padding: 0; border: 0; background: transparent; outline: none; font-size: var(--text-chat); }
 
-.composer .resize-y { display: none; }
+.composer .resize-y { display: block; }
 
 .composer-settings .select > .button { padding: 3px 5px; }
 
@@ -691,7 +691,7 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 
 .hydra-empty { margin-top: 12px; color: var(--color-muted); font-size: .9em; }
 
-.hydra-chat > .composer { margin: 8px 10px 10px; }
+.hydra-chat > .composer { margin: 0; }
 
 .settings, .history-page { width: min(100%, 780px); margin: 0 auto; padding: 24px 12px 48px; flex: 1; }
 
@@ -892,3 +892,21 @@ kbd { font: .85em var(--font-mono); border: 1px solid var(--color-line); border-
 .panel-reminders .button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; padding: 8px 10px; text-align: left; }
 .panel-reminders .button > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85em; }
 .panel-reminders time { color: var(--color-muted); font-size: .7em; }
+
+.composer-input { min-height: 36px; }
+
+.composer .textarea { min-height: 0; line-height: 1.5; overflow-y: auto; }
+
+.composer-bar { min-height: 32px; height: 32px; flex-wrap: nowrap; }
+
+.composer-add > .button { width: 28px; height: 28px; padding: 0; justify-content: center; font-size: 22px; }
+
+.composer-add .popover-panel { width: 180px; padding: 5px; }
+
+.composer-add .popover-panel > .button { display: flex; width: 100%; justify-content: flex-start; }
+
+.pending-comments { flex-shrink: 1; min-height: 0; overflow: auto; }
+
+.popover { position: relative; min-width: 0; }
+
+.popover-panel { position: fixed; inset: auto; margin: 0; padding: 14px; width: min(320px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; color: var(--color-ink); border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-raised); box-shadow: 0 8px 24px var(--color-shadow); }
