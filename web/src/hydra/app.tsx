@@ -244,6 +244,7 @@ export function App() {
   const createTask = ({ column, parent }: { column: string; parent?: string }) => {
     setPage('hydra'); setWorkspace(''); setTag(''); setQuery(''); filterProject({ path: '' }); setSelected(null)
     setCreatingTask({ column, ...(parent ? { parent } : {}) })
+    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.task-create [aria-label="Task title"]' })))
   }
 
   const createColumn = () => {
