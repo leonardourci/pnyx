@@ -1,3 +1,4 @@
+import { MAX_MESSAGE_BYTES } from '../src/server/protocol.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
@@ -450,6 +451,23 @@ test('a server.json left by a dead server is not trusted, even when its pid was 
   assert.equal(other.exitCode, null)
   assert.equal(other.signalCode, null)
   server = await startServer({ hydraId: 'default' })
+})
+
+test('oversized WebSocket frames close only their connection and keep the server running', async () => {
+  await hydraWithCard()
+  const t = await tab(); await t.next()
+  const envelope = JSON.stringify({ type: 'ping', padding: '' })
+  const padding = 'x'.repeat(MAX_MESSAGE_BYTES - Buffer.byteLength(envelope))
+  const atLimit = JSON.stringify({ type: 'ping', padding })
+  assert.equal(Buffer.byteLength(atLimit), MAX_MESSAGE_BYTES)
+  t.ws.send(atLimit)
+  assert.equal((await t.next()).type, 'pong')
+  const closed = once(t.ws, 'close')
+  t.ws.send(JSON.stringify({ type: 'ping', padding: padding + 'x' }))
+  assert.equal((await closed)[0], 1009)
+  const other = await tab(); await other.next()
+  other.ws.send(JSON.stringify({ type: 'ping' }))
+  assert.equal((await other.next()).type, 'pong')
 })
 
 test('web preferences, custom moves and read queries share the authenticated socket', async () => {

@@ -1,3 +1,4 @@
+import { MAX_MESSAGE_BYTES } from './protocol.ts'
 import { fireReminders } from '../reminders/fire.ts'
 import { reminderDeadline, waitingReminders } from '../reminders/state.ts'
 import { project } from '../projects/cli.ts'
@@ -1013,7 +1014,7 @@ async function mountOwnedHydra({
     }
   }
 
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 })
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES })
 
   // The server has already checked the path, Host and Origin.
   const upgrade = ({ req, socket, head, url }: HydraUpgrade) => {
@@ -1024,6 +1025,7 @@ async function mountOwnedHydra({
     }
 
     wss.handleUpgrade(req, socket, head, ws => {
+      ws.on('error', () => ws.close())
       ws.on('close', () => {
         for (const map of threadSubscriptions) {
           map.get(ws)?.watcher?.close(); map.delete(ws)
