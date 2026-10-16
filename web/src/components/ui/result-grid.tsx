@@ -94,7 +94,7 @@ export function ResultGrid({ id, label, groups, search }: {
           const row = (e.target as HTMLElement).closest<HTMLElement>('[data-result-id]')
           e.preventDefault()
           // Let the control dismiss its own popup or inline edit before restoring row focus.
-          queueMicrotask(() => row?.focus())
+          requestAnimationFrame(() => row?.focus())
         } else if (e.key === 'Enter' && e.target instanceof HTMLInputElement && !e.target.closest('form')) {
           e.preventDefault(); e.stopPropagation()
           e.target.closest<HTMLElement>('[data-result-id]')?.focus()
