@@ -5,15 +5,18 @@ import { hydraDir, readEventsFrom } from '../store/hydra-store.ts'
 import { redact, transcriptMessages } from '../oracle/text.ts'
 import { HOST_LABEL, replyRoute, type ReplyRoute } from '../core/route.ts'
 import { traces, viewFor } from '../core/view.ts'
+import { taskReceipt } from './task.ts'
 import { cardSessionId } from '../core/tasks.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
-export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; delivery?: { agent?: { state: ReplyState; detail?: string }; hydra: { state: ReplyState; detail?: string } }; task?: string; initial?: boolean; messageId?: string; part?: number }
+export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; delivery?: { agent?: { state: ReplyState; detail?: string }; hydra: { state: ReplyState; detail?: string } }; task?: string; initial?: boolean; replyId?: string; messageId?: string; part?: number }
 export interface ThreadPage { card: string; session?: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; routeKind?: ReplyRoute['kind']; noRoute?: string; watching: 'unknown' }
 const MAX_BYTES = 10 * 1024 * 1024
 // Chunk long entries instead of losing their tail. Sixty bounded entries stay
 // below the socket budget even for JSON-escaped control characters.
 const MAX_TEXT = 1000
+
+export const replyEntryId = ({ reply }: { reply: string }) => `reply:${reply}`
 
 export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => {
   const text = redact({ text: entry.text })
@@ -356,10 +359,8 @@ export function readThread(
     }
 
     seenReplies.add(e.data.reply)
-    const receipt = state.cards[card.id]?.replies?.find(r => r.id === e.data.reply)
-    const hydra = e.data.taskMessage ? state.cards[card.id]?.replies?.find(r => r.id === `hydra:${e.data.reply}`) : undefined
-    const delivery = e.data.taskMessage ? { ...(receipt?.route !== 'hydra' ? { agent: { state: receipt?.state ?? 'queued', detail: receipt?.detail } } : {}), hydra: { state: hydra?.state ?? 'failed', detail: hydra?.detail ?? (!hydra ? 'Hydra queue was not confirmed' : undefined) } } : undefined
-    splitEntry({ entry: { id: e.id, role: 'You', kind: 'message', text: e.data.text!, at: e.at, receipt: receipt?.state ?? 'queued', ...(e.data.reply.startsWith('brief:') ? { initial: true } : {}), ...(delivery ? { delivery } : {}) } }).forEach((item, index) => {
+    const receipt = taskReceipt({ card: state.cards[card.id] ?? card, reply: e.data.reply })
+    splitEntry({ entry: { id: replyEntryId({ reply: e.data.reply }), replyId: e.data.reply, role: 'You', kind: 'message', text: e.data.text!, at: e.at, receipt: 'queued', ...receipt, ...(e.data.reply.startsWith('brief:') ? { initial: true } : {}) } }).forEach((item, index) => {
       if (e.seq < replySeq! || index < replyPart!) {
         candidates.push({ item, reply: `${e.seq}:${index}` })
       }
