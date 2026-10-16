@@ -1,4 +1,5 @@
 import { DISPATCH_CHANGED } from './heads-dispatch.ts'
+import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
 import { CLONE_TIMEOUT_MS } from '../../../src/projects/limits.ts'
 import { storageKey } from './outbox.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -17,14 +18,14 @@ const CACHE_KEY = storageKey({ key: 'hydra-state' })
 export const reconnectDelay = ({ attempt }: { attempt: number }) =>
   Math.min(500 * 2 ** Math.min(attempt, 5), 10000)
 export const retryable = ({ name, args }: { name: string; args: string[] }) =>
-  ['reply', 'answer', 'agent'].includes(name) || (name === 'hydra' && args[0] === 'send' && args.includes('--event-id'))
+  ['reply', 'task-message', 'answer', 'agent'].includes(name) || (name === 'hydra' && args[0] === 'send' && args.includes('--event-id'))
 
 export function commandTimeout({ name, args }: { name: string; args: string[] }): number {
   if (name === 'project' && args[0] === 'add' && args.includes('--clone')) {
     return CLONE_TIMEOUT_MS + 20_000
   }
 
-  return ['reply', 'answer', 'agent'].includes(name) ? 140000 : 60000
+  return ['reply', 'task-message', 'answer', 'agent'].includes(name) ? 140000 : 60000
 }
 
 function restoredHydra(): HydraState {
@@ -271,6 +272,13 @@ export function useHydra() {
     }
 
     const id = crypto.randomUUID()
+
+    if (commandBytes({ id, name, args }) > MAX_MESSAGE_BYTES) {
+      reject(new Error('Message exceeds the 64 KiB limit. Shorten the draft or file contents. Draft kept.'))
+
+      return
+    }
+
     pending.current.set(id, {
       resolve: ({ receipt }) => resolve(receipt),
       reject: ({ error }) => reject(error),

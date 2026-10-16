@@ -79,7 +79,7 @@ export function agentActivity({ card }: { card: Card }): 'working' | 'finished' 
 
   const activity = card.sessionActivity ?? card.activity
 
-  return activity === 'ended' || card.outcome?.state === 'ended' ? 'stopped' : activity === 'working' ? 'working' : 'finished'
+  return activity === 'ended' || card.outcome?.state === 'ended' ? 'stopped' : activity === 'working' ? 'working' : activity === 'finished' ? 'finished' : undefined
 }
 
 // The card a dragged task goes above when dropped on `over`: `over` itself, or the
@@ -155,5 +155,5 @@ export function cardState({ card, hours, now }: {
     return { kind: 'stopped', text: `stopped · ${elapsedTime({ at, now })}`, at }
   }
 
-  return { kind: activity ?? 'not-started', text: activity === 'working' ? 'working' : activity === 'finished' ? 'finished its turn' : 'not started' }
+  return { kind: activity ?? 'not-started', text: activity === 'working' ? 'working' : activity === 'finished' ? 'finished its turn' : card.agent ? 'activity unknown' : 'not started' }
 }

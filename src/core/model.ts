@@ -131,6 +131,8 @@ export interface Reply {
   id: string
   state: ReplyState
   answers?: string
+  route?: string
+  detail?: string
 }
 
 export interface Note {
@@ -178,6 +180,7 @@ export interface Card {
   key: string
   title: string
   brief?: string
+  initialPrompt?: string
   project?: string
   reminder?: TaskReminder
   doneAt?: string
@@ -410,6 +413,7 @@ export type RepliedEvent = EventBase & {
     answers?: string
     detail?: string
     control?: boolean
+    taskMessage?: boolean
   }
 }
 

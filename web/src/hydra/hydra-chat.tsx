@@ -2,6 +2,7 @@ import { Icon } from '../components/ui/icon.tsx'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { HYDRA_ACTOR, type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
 import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
+import { taskUpdates } from '../../../src/thread/task.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { Resize } from '../components/ui/resize.tsx'
@@ -64,7 +65,9 @@ export function HydraChat({
   const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
   const recorded: ThreadEntry[] = messages.map(m => ({ id: m.id, kind: 'message', role: m.actor === HYDRA_ACTOR ? 'assistant' : 'user', text: m.details ? `${m.text}\n\n${m.details}` : m.text, at: m.at }))
   const transcript = joinMessageParts({ entries: page?.entries ?? [] })
-  const entries = [...recorded.filter(m => !transcript.some(t => t.kind === 'message' && t.role === 'user' && t.text === m.text)), ...transcript]
+  const updates = Object.values(state.cards).filter(c => !c.automaticTask && c.id !== HYDRA_CARD)
+    .flatMap(card => taskUpdates({ card }))
+  const entries = [...updates, ...recorded.filter(m => !transcript.some(t => t.kind === 'message' && t.role === 'user' && t.text === m.text)), ...transcript]
     .filter(e => e.kind === 'message' || (e.kind === 'tool' ? tools : thinking))
     .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))
   useEffect(() => {
@@ -103,6 +106,7 @@ export function HydraChat({
         {projectSetup && <div className="hydra-project-setup">{projectSetup}</div>}
         <Messages
           entries={entries}
+          taskTitles={Object.fromEntries(Object.values(state.cards).map(c => [c.id, c.title]))}
           comments={comments}
           setComments={setComments}
           quote={({ text }) => setDraft({ text: quoteInto({ draft, text }) })}

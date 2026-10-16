@@ -1,154 +1,144 @@
 import assert from 'node:assert/strict'
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { decidePush } from '../src/core/decide.ts'
 import { commands } from '../src/cli/commands.ts'
-import type { QueryFn } from '../src/server/host.ts'
 import { startServer } from '../src/server/server.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { smokeBrowser } from './browser.ts'
 
-const home = mkdtempSync(join(tmpdir(), 'pnyx-task-smoke-'))
+const home = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-task-smoke-')))
 process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
+commands.hydra(['create', 'default'])
+commands.task(['create', '--key', 'review', '--title', 'Review the migration plan', '--brief', 'Check the rollback path before rollout.', '--column', 'in_progress'])
+commands.task(['create', '--key', 'long', '--title', 'A very long title '.repeat(15), '--column', 'in_progress'])
+const state = () => loadHydra({ hydraId: 'default' }).state
+const task = () => state().cards[state().keys.review!]!
 withWriter({
   hydraId: 'default',
   fn: ({ writer }) => {
-    for (const [key, title] of [['task', 'Attachment test task'], ['a', 'Alpha work'], ['b', 'Beta work']]) {
-      const transcript = join(home, `${key}.jsonl`)
-      writeFileSync(transcript, JSON.stringify({ type: 'assistant', message: { content: `${title} message from its session` } }) + '\n')
-      const decision = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: key!, input: { title, ...(key !== 'task' ? { agent: { provider: 'claude-code', sessionId: key, transcriptPath: transcript, cwd: home }, terminal: { tty: '/dev/ttys123' }, activity: key === 'a' ? 'ended' : 'working' } : {}) }, meta: { at: '2026-10-14T12:00:00Z', actor: 'fixture' } })
+    for (const key of ['review', 'long']) {
+      const decision = decidePush({
+        state: writer.state,
+        key,
+        input: { project: key === 'review' ? 'payments-api' : undefined, tags: ['canary'] },
+        meta: { actor: 'fixture', at: new Date().toISOString() },
+      })
       assert.ok('event' in decision); writer.append({ event: decision.event })
     }
   },
 })
-commands.hydra(['create', 'default', '--identity', 'fixture'])
-const received: string[] = []
-const query = (({ prompt, options }) => {
-  if (options?.resume) {
-    assert.equal(options.resume, 'a')
-  } else {
-    assert.ok(options?.sessionId)
-  }
-
-  async function* turn() {
-    for await (const message of prompt as AsyncIterable<{ message: { content: string } }>) {
-      received.push(message.message.content)
-      yield { type: 'result' }
-    }
-  }
-
-  return Object.assign(turn(), { close: () => {} })
-}) as QueryFn
-const server = await startServer({ hydraId: 'default', query })
-const { browser, evaluate, eventually, check, click, text, fill, screenshot, close } = smokeBrowser({ home, session: 'pnyx-tasks' })
-const hydraId = () => loadHydra({ hydraId: 'default' }).state
+const transcript = join(home, 'worker.jsonl')
+writeFileSync(transcript, Array.from({ length: 12 }, (_, i) => JSON.stringify({ type: i % 2 ? 'assistant' : 'user', timestamp: `2026-10-16T01:${String(i).padStart(2, '0')}:00Z`, message: { content: i % 2 ? 'The migration passes locally. I am checking the rollback path and the canary gate.\n\n' + 'A factual update from the worker. '.repeat(4) : 'Please inspect the migration and preserve its existing data.' } })).join('\n') + '\n')
+commands.task(['status', 'review', 'working', '--note', 'The migration passes locally; checking the rollback path.', '--actor', 'worker'])
+const native = join(home, 'firstmate')
+cpSync(join(import.meta.dirname, 'fixtures/firstmate-home'), native, { recursive: true })
+const server = await startServer({
+  hydraId: 'default',
+  homes: [native],
+  query: () => {
+    throw new Error('A UI task request must never start an agent')
+  },
+})
+const { browser, evaluate, check, click, text, fill, screenshot, eventually, close } = smokeBrowser({ home, session: 'pnyx-tasks' })
 const menu = () => click({ selector: '[aria-label="Task menu"]' })
 
-const attach = async ({ title }: { title: string }) => {
-  await menu(); await text({ label: hydraId().cards.c1?.agent ? 'Change agent' : 'Attach agent' })
-  await click({ selector: '[aria-label="Attach agent session"]' })
-  await evaluate({ code: `const option = [...document.querySelectorAll('[role=option]')].find(o => o.textContent.includes(${JSON.stringify(title)})); option.click(); return true;` })
-  await browser({ args: ['wait', `${title} message from its session`] })
-}
-
 try {
-  await browser({ args: ['open', server.url] }); await browser({ args: ['resize', '1440', '900'] }); await browser({ args: ['wait', 'Attachment test task'] })
+  await browser({ args: ['open', server.url] }); await browser({ args: ['resize', '1440', '900'] }); await browser({ args: ['wait', 'Review the migration plan'] })
+  await check({ condition: '[...document.querySelectorAll(".card")].every(c => c.getBoundingClientRect().height === 176)', label: 'closed cards stay 176 px despite long titles' })
+  const colors = state().labelColors!
+  const projectColor = colors.find(entry => entry.label === 'payments-api')!.color
+  const tagColor = colors.find(entry => entry.label === 'canary')!.color
+  await check({ condition: `document.querySelector('[data-task="${task().id}"]').dataset.labelColor === '${projectColor}' && document.querySelector('[data-task="${state().keys.long}"]').dataset.labelColor === '${tagColor}'`, label: 'the saved project color supplies the tint, with a saved label fallback' })
+  await check({ condition: 'document.querySelector(".last-message").textContent.includes("migration passes locally")', label: 'a factual worker update appears at rest' })
+  await screenshot({ name: 'cards-closed-after.png' })
   await click({ selector: '.card-open' })
-  await check({ condition: '!!document.querySelector(".card > .detail .task-brief") && !document.querySelector(".start-agent")', label: 'an unattached task opens to its editable brief' })
-  await fill({ label: 'Task brief', value: 'Read the component and explain the edge cases.' }); await text({ label: 'Save brief' })
-  await eventually({ condition: 'document.querySelector(".task-brief button").disabled', label: 'brief saved' })
-  assert.equal(hydraId().cards.c1?.brief, 'Read the component and explain the edge cases.')
-  await menu(); await text({ label: 'Start' })
-  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Create a worker for task")', label: 'Start posts the task request visibly in Hydra chat' })
-  assert.equal(hydraId().hydraMessages?.at(-1)?.task, 'c1')
-  assert.equal(hydraId().hydraMessages?.at(-1)?.action, 'worker')
-  assert.equal(hydraId().cards.c1?.agent, undefined)
-  assert.equal(received.length, 0)
-  await check({ condition: '!document.querySelector(".start-agent")', label: 'Start leaves worker choices to Hydra' })
-  await screenshot({ name: 'start-request-after.png' })
-  await attach({ title: 'Alpha work' }); assert.equal(hydraId().cards.c1?.agent?.sessionId, 'a')
-  await eventually({ condition: '[...document.querySelectorAll(".detail button")].some(b => b.textContent === "Continue in Pnyx")', label: 'ended outside session offers continuation' })
-  await screenshot({ name: 'continue-before.png' })
-  await text({ label: 'Continue in Pnyx' })
-  await eventually({ condition: 'document.querySelector(".detail .agent-chip")?.textContent === "Claude Code · Pnyx"', label: 'continuation changes the host on the same card' })
-  assert.equal(hydraId().cards.c1?.agent?.sessionId, 'a')
-  assert.equal(received.length, 0)
-  await fill({ label: 'Reply to Attachment test task', value: 'Continue the same conversation' }); await click({ selector: '.detail .composer-send' })
-  await eventually({ condition: 'document.querySelector(".detail .composer textarea").value === ""', label: 'hosted reply clears the composer' })
-  assert.deepEqual(received, ['Continue the same conversation'])
-  await screenshot({ name: 'continue-after.png' })
-  await menu(); await text({ label: 'Change agent' }); await text({ label: 'Detach agent' })
-  await eventually({ condition: '!!document.querySelector(".task-brief")', label: 'detaching restores the brief' })
-  await attach({ title: 'Beta work' }); assert.equal(hydraId().cards.c1?.agent?.sessionId, 'b')
-  await check({ condition: '!document.querySelector(".detail .thread").textContent.includes("Alpha work message")', label: 'changing agents discards the previous conversation' })
+  await check({ condition: 'document.activeElement.matches(".detail .composer textarea") && document.querySelector(".card.selected").getBoundingClientRect().height === 480', label: 'opening a card fixes it at 480 px and focuses its composer' })
+  await check({ condition: 'document.querySelector(".detail .message.mine").textContent.includes("Check the rollback path") && !!document.querySelector(".detail .message:not(.mine)")', label: 'initial prompt and factual updates share one stream' })
+  await menu()
+  await check({ condition: '!document.querySelector(".detail").textContent.match(/Attach agent|Change agent|Detach agent|Continue in Pnyx/)', label: 'manual assignment controls are absent' })
+  await text({ label: 'Start' })
+  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Create a worker for task")', label: 'Start requests Hydra without launching an agent' })
+  assert.equal(task().agent, undefined)
+  await fill({ label: 'Reply to Review the migration plan', value: 'Please preserve the rollback notes for assignment.' })
+  await click({ selector: '.detail .composer-send' })
+  await eventually({ condition: 'document.querySelector(".detail .composer textarea").value === "" && document.querySelector(".detail .messages").textContent.includes("Hydra: Queued")', label: 'unassigned messages are preserved with a Hydra queue receipt' })
+  assert.equal(state().hydraMessages?.at(-1)?.task, task().id)
+  assert.equal(state().hydraMessages?.at(-1)?.text, 'Please preserve the rollback notes for assignment.')
   withWriter({
     hydraId: 'default',
     fn: ({ writer }) => {
-      const card = writer.state.cards.c1!
-      const decision = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: card.key, input: { agent: { ...card.agent!, cwd: join(home, 'missing') }, activity: 'ended', source: { adapter: 'hooks', instanceId: 'claude', objectId: 'b', observedAt: new Date().toISOString() } }, meta: { at: new Date().toISOString(), actor: 'fixture' } })
+      const decision = decidePush({ state: writer.state, key: 'review', input: { agent: { provider: 'claude-code', sessionId: 'fixture', transcriptPath: transcript, cwd: home }, activity: 'finished', source: { adapter: 'firstmate', instanceId: native, objectId: 'work' } }, meta: { at: new Date().toISOString(), actor: 'hydra' } })
       assert.ok('event' in decision); writer.append({ event: decision.event })
     },
   })
-  await eventually({ condition: '[...document.querySelectorAll(".detail button")].some(b => b.textContent === "Ask Hydra to start fresh")', label: 'a missing folder offers a fresh start' })
-  await text({ label: 'Ask Hydra to start fresh' })
-  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Create a worker for task")', label: 'fresh start requests a worker in Hydra chat' })
-  await check({ condition: '!document.querySelector(".start-agent")', label: 'start never opens a one-off form' })
-  assert.equal(hydraId().cards.c1?.agent?.sessionId, 'b')
-  assert.equal(received.length, 1)
-  assert.equal(hydraId().hydraMessages?.at(-1)?.action, 'worker')
-  await screenshot({ name: 'start-after.png' })
-
-  await menu(); await text({ label: 'Add subtask' }); await browser({ args: ['wait', 'New subtask'] })
-  await fill({ label: 'Rename task New subtask', value: 'Browser subtask' }); await text({ label: 'Save title' }); await browser({ args: ['wait', 'Browser subtask'] })
-  assert.equal(Object.values(hydraId().cards).filter(c => c.parentId).length, 1)
+  await eventually({ condition: 'document.querySelectorAll(".detail .message").length > 10', label: 'the assigned worker history enters the same stream' })
+  await check({ condition: 'document.querySelector(".card.selected").getBoundingClientRect().height === 480 && document.querySelector(".detail .thread").scrollHeight > document.querySelector(".detail .thread").clientHeight', label: 'long conversations scroll inside a fixed card' })
+  await check({ condition: '!document.querySelector(".card.selected").textContent.includes("done ·") && !document.querySelector(".running") && document.querySelector(".card-state").textContent.includes("finished its turn")', label: 'a finished turn is neither Running nor task Done' })
+  await evaluate({ code: 'window.composerBottom = document.querySelector(".detail .composer").getBoundingClientRect().bottom; document.querySelector(".detail .thread").scrollTop = 0; return true;' })
+  await check({ condition: 'document.querySelector(".detail .composer").getBoundingClientRect().bottom === window.composerBottom', label: 'scrolling the stream keeps the composer anchored' })
+  await menu(); await text({ label: 'Resume' })
+  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Resume the worker on task")', label: 'Resume is a task-scoped Hydra request' })
+  const attached = task().agent
+  await menu(); await text({ label: 'Reassign' })
+  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Reassign task")', label: 'Reassign asks Hydra to choose its next agent' })
+  assert.deepEqual(task().agent, attached)
+  await fill({ label: 'Reply to Review the migration plan', value: 'Confirm both routes' }); await click({ selector: '.detail .composer-send' })
+  await eventually({ condition: 'document.querySelector(".detail .composer textarea").value === "" && document.querySelector(".detail .messages").textContent.includes("Agent: Delivered")', label: 'worker delivery and Hydra queue each have a receipt' })
+  assert.match(readFileSync(join(native, 'sent.log'), 'utf8'), /Confirm both routes/)
+  writeFileSync(join(native, 'send-exit'), '2')
+  await fill({ label: 'Reply to Review the migration plan', value: 'Retain this failed route' }); await click({ selector: '.detail .composer-send' })
+  await eventually({ condition: '!!document.querySelector(".detail .reply-failure") && document.querySelector(".detail .messages").textContent.includes("Agent: Delivery failed")', label: 'a worker route failure is shown alongside the Hydra receipt' })
+  await check({ condition: 'document.querySelector(".detail .composer textarea").value === "Retain this failed route"', label: 'partial failure preserves the draft' })
+  rmSync(join(native, 'send-exit'))
+  await click({ selector: '.detail .composer-send' })
+  await eventually({ condition: 'document.querySelector(".detail .composer textarea").value === ""', label: 'retry repairs only the failed route' })
+  assert.equal(state().hydraMessages?.filter(m => m.text === 'Retain this failed route').length, 1)
+  await click({ selector: '.detail .jump' })
+  await screenshot({ name: 'cards-open-after.png' })
+  await browser({ args: ['resize', '1440', '400'] })
+  await check({ condition: 'document.querySelector(".card.selected").getBoundingClientRect().height <= document.querySelector(".column-cards").clientHeight && document.querySelector(".card.selected").getBoundingClientRect().height < 480', label: 'short panes cap the fixed card height' })
+  await check({ condition: 'document.querySelector(".detail .composer").getBoundingClientRect().bottom <= document.querySelector(".card.selected").getBoundingClientRect().bottom', label: 'short panes retain an accessible composer' })
+  await screenshot({ name: 'cards-short-pane.png' })
+  await browser({ args: ['resize', '1440', '900'] })
+  await menu(); await text({ label: 'Add subtask' })
+  await check({ condition: '!!document.querySelector(".task-create") && document.activeElement.getAttribute("aria-label") === "Task title"', label: 'plus creates a task inline and focuses its title' })
+  const before = Object.keys(state().cards).length
+  await fill({ label: 'Task title', value: 'Inspect the canary' }); await fill({ label: 'Initial prompt', value: 'Check the canary gate before rollout.' })
+  assert.equal(Object.keys(state().cards).length, before)
+  await text({ label: 'Save task' })
+  await eventually({ condition: 'document.querySelector(".card.selected")?.textContent.includes("Inspect the canary") && document.activeElement.matches(".detail .composer textarea")', label: 'saving opens the task and focuses its composer without starting it' })
+  const created = Object.values(state().cards).find(c => c.title === 'Inspect the canary')!
+  assert.equal(created.brief, 'Check the canary gate before rollout.')
+  assert.equal(created.parentId, task().id)
+  assert.equal(created.agent, undefined)
   await click({ selector: '[aria-label="Close detail"]' })
-  await click({ selector: '[aria-label="New task in Parked"]' }); await browser({ args: ['wait', 'New task'] })
-  await fill({ label: 'Rename task New task', value: 'Browser task' }); await text({ label: 'Save title' }); await browser({ args: ['wait', 'Browser task'] })
-  await check({ condition: 'document.querySelector("[data-column=parked] .column-cards .card:first-child").textContent.includes("Browser task")', label: 'column plus creates the task at the top' })
+  await click({ selector: '[aria-label="New task in Parked"]' }); await text({ label: 'Cancel' })
+  assert.equal(Object.keys(state().cards).length, before + 1)
   await text({ label: 'Add column' }); await browser({ args: ['wait', 'New column'] })
-  await fill({ label: 'Rename New column column', value: 'Research' }); await text({ label: 'Save title' }); await browser({ args: ['wait', 'Research'] })
+  await fill({ label: 'Rename New column column', value: 'Research' }); await text({ label: 'Save title' })
   await click({ selector: '[aria-label="Research column menu"]' }); await text({ label: 'Edit description' })
-  await fill({ label: 'Research description', value: 'Keep tasks here while gathering evidence.' }); await text({ label: 'Save description' })
-  await eventually({ condition: 'document.querySelector("[aria-label=Research] h2").title === "Keep tasks here while gathering evidence."', label: 'column descriptions are saved and appear on hover' })
+  await fill({ label: 'Research description', value: 'Gather evidence before rollout.' }); await text({ label: 'Save description' })
+  await eventually({ condition: 'document.querySelector("[aria-label=Research] h2").title === "Gather evidence before rollout."', label: 'column descriptions remain editable' })
   await evaluate({ code: 'const columns = [...document.querySelectorAll(".column")]; const dt = new DataTransfer(); columns.at(-1).querySelector(".column-header").dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: dt })); columns[0].dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: dt })); return true;' })
-  await eventually({ condition: 'document.querySelector(".column").getAttribute("aria-label") === "Research"', label: 'columns move by dragging the header' })
-  const task = Object.values(hydraId().cards).find(c => c.title === 'Browser task')!
-  await evaluate({ code: `const task = document.querySelector('[data-task="${task.id}"]'); const dt = new DataTransfer(); task.dispatchEvent(new DragEvent('dragstart', {bubbles:true, dataTransfer:dt})); document.querySelector('[aria-label=Research]').dispatchEvent(new DragEvent('drop', {bubbles:true, dataTransfer:dt})); return true;` })
-  await eventually({ condition: 'document.querySelector("[aria-label=Research] .card")?.textContent.includes("Browser task")', label: 'owner drag moves a task' })
+  await eventually({ condition: 'document.querySelector(".column").getAttribute("aria-label") === "Research"', label: 'columns still move by dragging the header' })
+  await evaluate({ code: `const task = document.querySelector('[data-task="${created.id}"]'); const dt = new DataTransfer(); task.dispatchEvent(new DragEvent('dragstart', {bubbles:true, dataTransfer:dt})); document.querySelector('[aria-label=Research]').dispatchEvent(new DragEvent('drop', {bubbles:true, dataTransfer:dt})); return true;` })
+  await eventually({ condition: 'document.querySelector("[aria-label=Research] .card")?.textContent.includes("Inspect the canary")', label: 'fixed cards still move by dragging' })
   await click({ selector: '[aria-label="Research column menu"]' }); await text({ label: 'Delete column' })
-  await check({ condition: '!!document.querySelector(".delete-confirm") && !document.querySelector("[role=dialog]")', label: 'delete confirms in place with Yes and No' })
+  await check({ condition: '!!document.querySelector(".delete-confirm") && !document.querySelector("[role=dialog]")', label: 'column deletion still confirms inline' })
   await text({ label: 'No' }); await text({ label: 'Delete column' }); await text({ label: 'Yes' })
-  await eventually({ condition: '!document.querySelector("[aria-label=Research]")', label: 'confirmed column deletion removes the column' })
-  assert.equal(hydraId().config?.columns.length, 5)
-  await fill({ label: 'Reply to Hydra', value: 'Keep this Hydra focused.' }); await click({ selector: '.hydra-chat .composer-send' })
-  await eventually({ condition: 'document.querySelector(".hydra-chat .composer textarea").value === ""', label: 'Hydra send clears the delivered draft' })
-  assert.equal(hydraId().hydraMessages?.at(-1)?.text, 'Keep this Hydra focused.')
-  await screenshot({ name: 'task-attachment.png' })
-  const firstmate = join(home, 'firstmate-fixture')
-  cpSync(join(import.meta.dirname, 'fixtures', 'firstmate-home'), firstmate, { recursive: true })
-  commands.hydra(['set', '--firstmate', firstmate])
-  commands.task(['create', '--title', 'Firstmate request', '--key', 'firstmate-request'])
-  await eventually({ condition: 'document.body.textContent.includes("Firstmate request")', label: 'Firstmate task arrives' })
-  const requested = hydraId().keys['firstmate-request']!
-  await click({ selector: `[data-task="${requested}"] .card-open` })
+  await eventually({ condition: '!document.querySelector("[aria-label=Research]")', label: 'confirmed deletion removes the column' })
+  assert.equal(state().config?.columns.length, 5)
+  commands.hydra(['set', '--firstmate', native])
+  await click({ selector: `[data-task="${created.id}"] .card-open` })
   await menu(); await text({ label: 'Start' })
-  await eventually({ condition: 'document.body.textContent.includes("Sent to Firstmate")', label: 'Firstmate Start preserves inbox delivery' })
-  const notes = JSON.parse(readFileSync(join(firstmate, 'inbox.json'), 'utf8')) as { body: string }[]
+  await eventually({ condition: 'document.body.textContent.includes("Sent to Firstmate")', label: 'Firstmate Start uses its inbox delivery' })
+  const notes = JSON.parse(readFileSync(join(native, 'inbox.json'), 'utf8')) as { body: string }[]
   assert.match(notes.at(-1)?.body ?? '', /asks for a worker on task/)
-  assert.equal(hydraId().hydraMessages?.at(-1)?.task, requested)
-  assert.equal(hydraId().cards[requested]?.agent, undefined)
-  await click({ selector: '[aria-label="Close detail"]' })
-  await click({ selector: '[data-task="c1"] .card-open' })
-  const oldSession = hydraId().cards.c1?.agent?.sessionId
-  await text({ label: 'Ask Hydra to start fresh' })
-  await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Inspect its current attachment")', label: 'Firstmate fresh request appears in Hydra chat' })
-  const freshNotes = JSON.parse(readFileSync(join(firstmate, 'inbox.json'), 'utf8')) as { body: string }[]
-  assert.match(freshNotes.at(-1)?.body ?? '', /Start fresh from the brief.*Inspect its current attachment/)
-  assert.equal(hydraId().cards.c1?.agent?.sessionId, oldSession)
-  assert.equal(received.length, 1)
-
-  process.stdout.write('Task, brief, attachment and column browser smoke passed.\n')
+  assert.equal(state().hydraMessages?.at(-1)?.task, created.id)
+  assert.equal(created.agent, undefined)
+  process.stdout.write('Fixed cards, task streams, Hydra requests and route receipts browser smoke passed.\n')
 } finally {
   await server.close(); await close(); rmSync(home, { recursive: true, force: true })
 }

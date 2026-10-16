@@ -1,16 +1,22 @@
+import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
+import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import type { Catalog } from '../../../src/thread/catalog.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
-import { Button, Textarea } from '../components/ui/controls.tsx'
+import { Button, Input, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import { Popover } from '../components/ui/popover.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { slashMatches, slashPrefix } from './view.ts'
 import { commentReply, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
+
+const DRAFT_MIN = 36, DRAFT_MAX = 128, COMPOSER_CONTROLS = 44
+const COMPOSER_MIN = VIEW_SIZE_LIMITS.composerHeight.min
 
 export function Composer({
   card,
@@ -26,6 +32,7 @@ export function Composer({
   connected,
   notify,
   settings,
+  onMention,
 }: {
   card: string
   title: string
@@ -40,13 +47,49 @@ export function Composer({
   connected: boolean
   notify({ text }: { text: string }): void
   settings?: ReactNode
+  onMention?({ input }: { input: HTMLTextAreaElement }): void
 }) {
   const [preview, setPreview] = useState<number | null>(null)
   const [failure, setFailure] = useState('')
   const [sending, setSending] = useState(false)
   const [prefix, setPrefix] = useState<string | null>(null)
   const [active, setActive] = useState(-1)
-  const input = useRef<HTMLTextAreaElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null), form = useRef<HTMLFormElement>(null)
+  const files = useRef<HTMLInputElement>(null)
+  const [contentHeight, setContentHeight] = useState<number>(COMPOSER_MIN)
+  const [limit, setLimit] = useState<number>(VIEW_SIZE_LIMITS.composerHeight.max)
+  const savedSize = Math.min(limit, Math.max(height, contentHeight))
+  const size = Math.min(limit, Math.max(preview ?? savedSize, contentHeight))
+  useLayoutEffect(() => {
+    const pane = form.current?.closest('.hydra-chat, .column') ?? form.current?.parentElement
+    const element = input.current
+
+    if (!pane || !element) {
+      return
+    }
+
+    const measure = () => {
+      setLimit(Math.max(COMPOSER_MIN, Math.floor(pane.clientHeight * .35)))
+      element.style.height = `${DRAFT_MIN}px`
+      const draftHeight = draft ? element.scrollHeight : DRAFT_MIN
+      const context = form.current?.querySelector<HTMLElement>('.pending-comments')
+      const error = form.current?.querySelector<HTMLElement>('.reply-failure')
+      const contextHeight = context ? Math.min(64, context.scrollHeight) + 4 : 0
+      const errorHeight = error ? error.scrollHeight + 4 : 0
+      setContentHeight(
+        Math.min(DRAFT_MAX, Math.max(DRAFT_MIN, draftHeight))
+        + COMPOSER_CONTROLS + contextHeight + errorHeight,
+      )
+      element.style.height = ''
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(pane)
+    observer.observe(element)
+
+    return () => observer.disconnect()
+  }, [draft, comments, failure])
   const attempt = useRef(readAttempt({ key: card }))
   // Comments travel with the draft as one reply, and stay until it is delivered.
   const commentKey = `pnyx-comments:${card}:${thread?.session ?? ''}`
@@ -195,9 +238,10 @@ export function Composer({
 
   return (
     <form
+      ref={form}
       aria-busy={sending}
       className="composer"
-      style={{ height: preview ?? height }}
+      style={{ height: size }}
       onSubmit={e => {
         e.preventDefault(); void send()
       }}
@@ -206,9 +250,9 @@ export function Composer({
         label="Resize composer"
         axis="y"
         reverse
-        value={height}
+        value={savedSize}
         min={VIEW_SIZE_LIMITS.composerHeight.min}
-        max={VIEW_SIZE_LIMITS.composerHeight.max}
+        max={Math.min(limit, VIEW_SIZE_LIMITS.composerHeight.max)}
         onPreview={({ value }) => setPreview(value)}
         onCommit={({ value: n }) => save({ patch: { composerHeight: n } })}
       />
@@ -261,7 +305,7 @@ export function Composer({
           data-key-scope="composer"
           id={`reply-${card}`}
           value={draft}
-          placeholder={`Reply to the agent, type / for commands, or ${label({ id: 'cancel' })} or ↑ to comment above`}
+          placeholder={title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…'}
           aria-label={`Reply to ${title}`}
           aria-controls={catalogOpen ? `suggestions-${card}` : undefined}
           aria-activedescendant={active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
@@ -301,6 +345,84 @@ export function Composer({
         />
       </div>
       <div className="composer-bar">
+        <Popover label="Add to message" className="composer-add" trigger={<Icon name="plus" size={16} />}>
+          {({ close }) => (
+            <>
+              <Button
+                onClick={() => {
+                  close(); files.current?.click()
+                }}
+              >Insert text files
+              </Button>
+              <Button
+                onClick={() => {
+                  close()
+                  const element = input.current
+
+                  if (element) {
+                    element.focus()
+
+                    if (onMention) {
+                      onMention({ input: element })
+                    } else {
+                      const cursor = element.selectionStart
+                      setDraft({ text: draft.slice(0, cursor) + '@' + draft.slice(element.selectionEnd) })
+                      requestAnimationFrame(() => element.setSelectionRange(cursor + 1, cursor + 1))
+                    }
+                  }
+                }}
+              >Mention a task
+              </Button>
+            </>
+          )}
+        </Popover>
+        <Input
+          ref={files}
+          type="file"
+          multiple
+          hidden
+          aria-label="Insert text files"
+          onChange={event => {
+            const selected = [...(event.target.files ?? [])]
+            event.target.value = ''
+
+            void (async () => {
+              try {
+                const contents = await Promise.all(selected.map(async file => {
+                  if (file.size > MAX_MESSAGE_BYTES) {
+                    throw new Error(`${file.name} exceeds the 64 KiB message limit.`)
+                  }
+
+                  const bytes = await file.arrayBuffer()
+                  const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+
+                  if (text.includes('\0')) {
+                    throw new Error(`${file.name} is not a UTF-8 text file.`)
+                  }
+
+                  return `File: ${file.name}\n\n${text}`
+                }))
+                const next = [current.current.draft, ...contents].filter(Boolean).join('\n\n')
+                const text = commentReply({
+                  draft: next, comments: current.current.comments, firstComment: !taught,
+                })
+                const id = crypto.randomUUID()
+                const name = card === HYDRA_CARD ? 'hydra' : 'reply'
+                const args = card === HYDRA_CARD
+                  ? ['send', `--text=${text}`, '--event-id', id] : [card, text, id]
+
+                if (commandBytes({ name, args }) > MAX_MESSAGE_BYTES) {
+                  throw new Error('Files and draft exceed the 64 KiB message limit. Draft kept.')
+                }
+
+                setDraft({ text: next })
+                input.current?.focus()
+              } catch (error) {
+                notify({ text: error instanceof Error ? error.message : 'Could not read the selected files.' })
+              }
+            })()
+          }}
+        />
         {settings}
         <Button
           type="submit"

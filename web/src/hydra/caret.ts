@@ -65,7 +65,7 @@ export function caretBounds(): DOMRect | null {
 }
 
 export function revealCaret({ host }: { host: HTMLElement }) {
-  const scroller = host.closest('.hydra-messages, .column-cards')
+  const scroller = host.closest('.thread')
   const caret = caretBounds()
 
   if (!scroller || !caret) {

@@ -1,8 +1,9 @@
 import { useHeadsDispatch } from './heads-dispatch.ts'
 import { useState } from 'react'
-import type { HydraState } from '../../../src/core/model.ts'
+import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
-import { Button, Select } from '../components/ui/controls.tsx'
+import { Button } from '../components/ui/controls.tsx'
+import { AgentPicker, PickerField } from './agent-picker.tsx'
 import type { Command } from './connection.ts'
 
 export function HydraAgent({ state, command, connected, notify }: {
@@ -13,54 +14,96 @@ export function HydraAgent({ state, command, connected, notify }: {
 }) {
   const { effective } = useHeadsDispatch({ command, seq: state.seq })
   const agent = effective?.dispatch.rules.hydra?.candidates[0] ?? { harness: 'claude' }
-  const [busy, setBusy] = useState(false)
-  const controls = harnessControls({ provider: agent.harness === 'claude' ? 'claude-code' : 'codex', hosted: true })
 
-  const save = ({ args }: { args: string[] }) => {
-    setBusy(true)
-    void command({ name: 'rule', args: ['set', 'hydra', ...args, '--event-id', crypto.randomUUID()] })
-      .then(() => notify({ text: 'Hydra agent saved for its next start.' }), (error: Error) => notify({ text: error.message }))
-      .finally(() => setBusy(false))
+  if (state.config?.hydra.kind === 'firstmate') {
+    return null
   }
 
+  const summary = [agent.harness === 'claude' ? 'Claude Code' : 'Codex', agent.model ?? 'Default model', agent.mode, agent.effort, agent.fast ? 'Fast' : ''].filter(Boolean).join(' · ')
+
   return (
-    <div className="composer-settings" role="group" aria-label="Hydra agent for next start">
-      <Select
-        label="Hydra harness"
-        value={agent.harness}
+    <AgentPicker provider={agent.harness === 'claude' ? 'claude-code' : 'codex'} summary={summary}>
+      {({ close }) => (
+        <HydraSettings
+          agent={agent}
+          command={command}
+          connected={connected}
+          notify={notify}
+          close={close}
+        />
+      )}
+    </AgentPicker>
+  )
+}
+
+function HydraSettings({ agent, command, connected, notify, close }: {
+  agent: AgentConfig
+  command: Command
+  connected: boolean
+  notify({ text }: { text: string }): void
+  close(): void
+}) {
+  const [draft, setDraft] = useState(agent), [busy, setBusy] = useState(false)
+  const controls = harnessControls({ provider: draft.harness === 'claude' ? 'claude-code' : 'codex', hosted: true })
+
+  return (
+    <div className="agent-configuration">
+      <strong>Hydra’s next start</strong>
+      <PickerField
+        label="Agent"
+        value={draft.harness}
         options={[{ value: 'claude', label: 'Claude Code' }, { value: 'codex', label: 'Codex' }]}
-        disabled={!connected || busy}
-        onChange={({ value }) => save({ args: ['--harness', value, '--model', '', '--effort', '', '--mode', '', '--fast', 'default'] })}
+        disabled={busy || !connected}
+        onChange={({ value }) => {
+          if (value === 'claude' || value === 'codex') {
+            setDraft({ harness: value })
+          }
+        }}
       />
-      {(['model', 'effort'] as const).map(field => {
+      {(['model', 'mode', 'effort'] as const).map(field => {
         const choices = controls?.controls.find(c => c.setting === field)?.options ?? []
-        const value = agent[field] ?? ''
-        const options = [{ value: '', label: field === 'model' ? 'Default model' : 'Default effort' }, ...choices.map(o => ({ value: o.value, label: o.label }))]
+        const value = draft[field] ?? ''
+        const options = [{ value: '', label: `Default ${field}` }, ...choices.map(o => ({ value: o.value, label: o.label }))]
 
         if (value && !options.some(o => o.value === value)) {
           options.push({ value, label: value })
         }
 
         return (
-          <Select
+          <PickerField
             key={field}
-            label={`Hydra ${field}`}
+            label={field[0].toUpperCase() + field.slice(1)}
             value={value}
             options={options}
-            disabled={!connected || busy}
-            onChange={({ value }) => save({ args: [`--${field}`, value ] })}
+            disabled={busy || !connected}
+            onChange={({ value }) => {
+              setDraft(current => ({ ...current, [field]: value || undefined }))
+            }}
           />
         )
       })}
+      {controls?.controls.some(control => control.setting === 'fast') && (
+        <PickerField
+          label="Fast"
+          value={draft.fast ? 'on' : 'off'}
+          options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]}
+          disabled={busy || !connected}
+          onChange={({ value }) => setDraft(current => ({ ...current, fast: value === 'on' }))}
+        />
+      )}
+      <p>Saved for Hydra’s next start. This does not start or attach an agent.</p>
       <Button
-        className="fast-toggle"
-        role="switch"
-        aria-label="Hydra Fast"
-        aria-checked={agent.fast === true}
-        disabled={!connected || busy}
-        title="Fast for Hydra’s next start"
-        onClick={() => save({ args: ['--fast', agent.fast ? 'off' : 'on'] })}
-      >Fast
+        variant="primary"
+        disabled={busy || !connected}
+        onClick={() => {
+          setBusy(true)
+          void command({ name: 'rule', args: ['set', 'hydra', '--harness', draft.harness, '--model', draft.model ?? '', '--mode', draft.mode ?? '', '--effort', draft.effort ?? '', '--fast', draft.fast === undefined ? 'default' : draft.fast ? 'on' : 'off', '--event-id', crypto.randomUUID()] })
+            .then(() => {
+              notify({ text: 'Hydra agent saved for its next start.' }); close()
+            }, (error: Error) => notify({ text: error.message }))
+            .finally(() => setBusy(false))
+        }}
+      >Apply settings
       </Button>
     </div>
   )

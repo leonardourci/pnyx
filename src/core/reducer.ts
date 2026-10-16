@@ -295,7 +295,14 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
         : others
     } else if (event.type === 'card.replied') {
       const answers = event.data.answers
-      const reply = { id: event.data.reply, state: event.data.state }
+      const previous = card.replies?.find(r => r.id === event.data.reply)
+      const taskMessage = event.data.taskMessage || previous?.route
+      const reply = {
+        id: event.data.reply,
+        state: event.data.state,
+        ...(taskMessage ? { route: event.data.route } : {}),
+        ...(taskMessage && event.data.detail ? { detail: event.data.detail } : {}),
+      }
       const kept = answers ? { ...reply, answers } : reply
       const replies = card.replies ?? []
       card.replies = replies.some(r => r.id === reply.id)

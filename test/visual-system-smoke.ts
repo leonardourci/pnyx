@@ -77,6 +77,7 @@ try {
   await check({ condition: 'Math.abs(parseFloat(getComputedStyle(document.querySelector(\'.column-header h2 .inline-title\')).fontSize) - 18 * 9 / 7) < .01 && Math.abs(parseFloat(getComputedStyle(document.querySelector(\'.task-label\')).fontSize) - 18 * 6 / 7) < .01', label: 'pane headings and metadata follow the saved UI font preference' })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
   await eventually({ condition: 'document.querySelector(\'.detail .message .markdown\') && getComputedStyle(document.querySelector(\'.detail .message .markdown\')).fontSize === \'20px\'', label: 'saved chat font size applies independently' })
+  await check({ condition: 'Math.abs(parseFloat(getComputedStyle(document.querySelector(\'.task-recipient\')).fontSize) - 18 * 6 / 7) < .01', label: 'task delivery metadata follows the saved UI font preference' })
   await check({ condition: '[...document.querySelectorAll(\'.detail .markdown code\')].length === 2 && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontSize === \'15px\') && getComputedStyle(document.querySelector(\'.detail .code-block pre\')).fontSize === \'15px\'', label: 'inline and fenced code follow the independent saved code font size' })
   const colors = loadHydra({ hydraId: 'default' }).state.labelColors
   assert.ok(colors?.some(entry => entry.label === 'payments-api'))
