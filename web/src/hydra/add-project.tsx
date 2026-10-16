@@ -51,18 +51,23 @@ function useFolders({ path, repository, connected }: {
   return result?.query === query ? result : undefined
 }
 
-export function AddProject({ command, connected, notify, attached, cancel }: {
+export function AddProject({ command, connected, notify, attached, cancel, autoFocus = true }: {
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
   attached?(): void
   cancel?(): void
+  autoFocus?: boolean
 }) {
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
+    if (!autoFocus) {
+      return
+    }
+
     heading.current?.scrollIntoView({ block: 'start' })
     heading.current?.focus({ preventScroll: true })
-  }, [])
+  }, [autoFocus])
   const [mode, setMode] = useState<'folder' | 'clone' | null>(null)
   const [path, setPath] = useState(''), [repository, setRepository] = useState('')
   const [busy, setBusy] = useState(false)
