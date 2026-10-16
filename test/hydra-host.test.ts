@@ -168,3 +168,37 @@ test('changing Hydra harness preserves the earlier conversation', async () => {
     await server.close(); rmSync(home, { recursive: true, force: true })
   }
 })
+
+test('queued Hydra messages retain the settings selected when sent', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-hydra-settings-'))
+  process.env.PNYX_HOME = home
+  process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
+  process.env.PNYX_SEMANTIC = 'off'
+  commands.hydra(['create', 'lab'])
+  const sdk = hydraSdk(); sdk.control.hold = true
+  const server = await startServer({ hydraId: 'lab', query: sdk.query })
+  const choose = ({ model }: { model: string }) => withWriter({
+    hydraId: 'lab',
+    fn: ({ writer }) => {
+      const config = writer.state.config!
+      const decision = hydraEvent({ state: writer.state, meta: { at: new Date().toISOString(), actor: 'test' }, cardId: HYDRA_CARD, change: { type: 'board.configured', data: { ...config, hydra: { ...config.hydra, agent: { harness: 'claude', model } } } } })
+      assert.ok('event' in decision); writer.append({ event: decision.event })
+    },
+  })
+
+  try {
+    choose({ model: 'sonnet' })
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'First'])
+    await until({ check: () => sdk.calls[0]?.messages.length === 1 })
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'Second'])
+    choose({ model: 'opus' })
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'Third'])
+    choose({ model: 'haiku' })
+    sdk.release()
+    await until({ check: () => sdk.calls.some(c => c.messages.includes('Third')) })
+    assert.equal(sdk.calls.find(c => c.messages.includes('Second'))?.options.model, 'sonnet')
+    assert.equal(sdk.calls.find(c => c.messages.includes('Third'))?.options.model, 'opus')
+  } finally {
+    sdk.release(); await server.close(); rmSync(home, { recursive: true, force: true })
+  }
+})

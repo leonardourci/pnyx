@@ -511,6 +511,7 @@ export function createHost({
         return Promise.resolve({ state: 'queued' })
       }
 
+      const requestedAgent = loadHydra({ hydraId }).state.config?.hydra.agent
       queuedHydra.add(id)
       const turn = hydraTurn.then(async () => {
         if (closing) {
@@ -547,7 +548,7 @@ export function createHost({
           }
 
           const effective = effectiveDispatch({ hydraId, state })
-          const candidate = config.hydra.agent
+          const candidate = requestedAgent
             ?? effective.dispatch.rules.hydra?.candidates[0]
             ?? effective.dispatch.default[0]
             ?? { harness: 'claude' as const }
