@@ -1,3 +1,4 @@
+import { Icon } from '../components/ui/icon.tsx'
 import { useEffect, useRef, useState } from 'react'
 import type { FolderListing } from '../../../src/projects/folders.ts'
 import { Button, Input } from '../components/ui/controls.tsx'
@@ -115,7 +116,7 @@ export function AddProject({ command, connected, notify, attached, cancel, autoF
           onClick={() => {
             setMode('folder'); setConfirmation(null)
           }}
-        >＋ Add a folder
+        ><Icon name="plus" />Add a folder
         </Button>
         <Button
           variant={mode === 'clone' ? 'surface' : 'quiet'}
@@ -124,9 +125,9 @@ export function AddProject({ command, connected, notify, attached, cancel, autoF
           onClick={() => {
             setMode('clone'); setConfirmation(null)
           }}
-        >⎘ Clone a repo
+        ><Icon name="clone" />Clone a repo
         </Button>
-        {cancel && <Button disabled={busy} onClick={cancel} aria-label="Close add project">×</Button>}
+        {cancel && <Button disabled={busy} onClick={cancel} aria-label="Close add project"><Icon name="close" /></Button>}
       </div>
       {mode && !confirmation && (
         <form
@@ -198,7 +199,7 @@ export function ProjectSharing({ confirmation, disabled, cancel, confirm }: {
 }) {
   return (
     <div className="project-sharing" role="status">
-      <span><strong>{confirmation.name}</strong> · also in {confirmation.hydras.map((hydra, n) => <span key={hydra.id}>{n > 0 ? ', ' : ''}<a href={hydra.url} target="_blank" rel="noreferrer">{hydra.name} ↗</a></span>)}</span>
+      <span><strong>{confirmation.name}</strong> · also in {confirmation.hydras.map((hydra, n) => <span key={hydra.id}>{n > 0 ? ', ' : ''}<a href={hydra.url} target="_blank" rel="noreferrer">{hydra.name} <Icon name="external" size={12} /></a></span>)}</span>
       <p className="small muted">Each worker normally gets its own copy. Only one Hydra at a time may have a worker editing the folder itself.</p>
       <div className="project-actions"><Button disabled={disabled} variant="surface" onClick={confirm}>Add anyway</Button><Button disabled={disabled} onClick={cancel}>Cancel</Button></div>
     </div>

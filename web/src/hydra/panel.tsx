@@ -1,3 +1,4 @@
+import { Icon } from '../components/ui/icon.tsx'
 import type { HydraState } from '../../../src/core/model.ts'
 import { waitingReminders } from '../../../src/reminders/state.ts'
 import { useState, type ReactNode } from 'react'
@@ -18,10 +19,10 @@ export function Panel({ shown, connected, page, navigate, state, openTask, oracl
 
   return (
     <aside className="left-panel" aria-label="Pnyx navigation" hidden={!shown}>
-      <div className="brand"><span>pnyx</span>{!connected && <span className="offline" role="status">offline</span>}</div>
+      <div className="brand"><Icon name="pnyx" size={24} /><span>pnyx</span>{!connected && <span className="offline" role="status">offline</span>}</div>
       {oracle}
       <nav aria-label="Main pages">
-        <Button aria-expanded={reminders} aria-controls="panel-reminders" onClick={() => setReminders(open => !open)}>Reminders <span className="panel-count">{waiting.length}</span></Button>
+        <Button aria-expanded={reminders} aria-controls="panel-reminders" onClick={() => setReminders(open => !open)}><Icon name="reminder" />Reminders <span className="panel-count">{waiting.length}</span></Button>
         {reminders && (
           <div id="panel-reminders">
             {waiting.length ? (
@@ -38,7 +39,7 @@ export function Panel({ shown, connected, page, navigate, state, openTask, oracl
             ) : <p className="panel-empty">No waiting reminders.</p>}
           </div>
         )}
-        {[['history', 'History'], ['settings', 'Settings']].map(([id, label]) => <Button key={id} aria-pressed={page === id} onClick={() => navigate({ page: id })}>{label}</Button>)}
+        {[['history', 'History'], ['settings', 'Settings']].map(([id, label]) => <Button key={id} aria-pressed={page === id} onClick={() => navigate({ page: id })}><Icon name={id ?? 'agent'} />{label}</Button>)}
       </nav>
       {children}
     </aside>

@@ -1,3 +1,4 @@
+import { Icon } from '../components/ui/icon.tsx'
 import { useEffect, useState } from 'react'
 import type { HydraSummary } from '../../../src/server/hydras.ts'
 import { Button, Input } from '../components/ui/controls.tsx'
@@ -90,7 +91,7 @@ export function Hydras({
               }}
             />
           </form>
-        ) : <Button aria-label="Create Hydra" disabled={!connected || busy} onClick={() => setCreating(true)}>＋</Button>}
+        ) : <Button aria-label="Create Hydra" disabled={!connected || busy} onClick={() => setCreating(true)}><Icon name="plus" /></Button>}
       </div>
       <div className="hydras-tree">
         {hydras.map(h => {
@@ -104,7 +105,7 @@ export function Hydras({
                   aria-expanded={open}
                   aria-controls={`projects-${h.id}`}
                   onClick={() => setExpanded(e => ({ ...e, [h.id]: !open }))}
-                >{open ? '⌄' : '›'}
+                ><Icon name={open ? 'chevron_down' : 'chevron_right'} />
                 </Button>
                 {active && renaming ? (
                   <InlineTitle
@@ -122,7 +123,7 @@ export function Hydras({
                     disabled={!connected || busy}
                     onDoubleClick={() => active && setRenaming(true)}
                     onClick={() => active ? showHydra() : go({ args: ['open', h.id] })}
-                  >{h.name}
+                  ><Icon name="hydra" size={20} />{h.name}
                   </Button>
                 )}
               </div>
@@ -141,7 +142,7 @@ export function Hydras({
                       <small aria-label={`${p.live} live, ${p.asks} asks`}><span>{p.live} live</span><span className={p.asks ? 'project-asks' : ''}>{p.asks} asks</span></small>
                     </Button>
                   ))}
-                  <Button className="add-project" disabled={!connected || busy} onClick={() => active ? addProject() : go({ args: ['open', h.id], projects: true })}>＋ Add project</Button>
+                  <Button className="add-project" disabled={!connected || busy} onClick={() => active ? addProject() : go({ args: ['open', h.id], projects: true })}><Icon name="plus" />Add project</Button>
                 </div>
               )}
             </div>

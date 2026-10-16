@@ -1,3 +1,4 @@
+import { Icon } from '../components/ui/icon.tsx'
 import { useEffect, useRef, useState } from 'react'
 import type { Card, ViewPreferences } from '../../../src/core/model.ts'
 import { traces } from '../../../src/core/view.ts'
@@ -176,7 +177,7 @@ export function Thread({
           title="Jump to latest"
           onClick={scrollToLatest}
         >
-          <span aria-hidden="true">↓</span>
+          <Icon name="arrow_down" size={14} />
         </Button>
       )}
     </>

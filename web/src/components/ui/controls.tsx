@@ -1,3 +1,4 @@
+import { Icon } from './icon.tsx'
 import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 
 export function Button({ className = '', variant = 'quiet', ...props }: ComponentProps<'button'> & { variant?: 'quiet' | 'primary' | 'surface' }) {
@@ -129,7 +130,7 @@ export function Select({
         aria-activedescendant={open ? `${id}-${active}` : undefined}
       >
         {display ?? options.find(o => o.value === value)?.label ?? label}
-        <span aria-hidden="true">⌄</span>
+        <Icon name="chevron_down" size={14} />
       </Button>
       {open && (
         <div
@@ -150,7 +151,7 @@ export function Select({
               onClick={() => choose({ position: n })}
             >
               {o.label}
-              <span aria-hidden="true">{o.value === value ? '✓' : ''}</span>
+              <span aria-hidden="true">{o.value === value && <Icon name="check" size={14} />}</span>
             </div>
           ))}
         </div>
@@ -183,7 +184,7 @@ export function NumberField({
     <div className="number-field" aria-busy={busy}>
       <label htmlFor={id}>{label}</label>
       <span className="number-control">
-        <Button aria-label={`Decrease ${label}`} disabled={value <= min} onClick={() => onChange({ next: Math.max(min, value - step) })}>−</Button>
+        <Button aria-label={`Decrease ${label}`} disabled={value <= min} onClick={() => onChange({ next: Math.max(min, value - step) })}><Icon name="minus" size={14} /></Button>
         <Input
           id={id}
           aria-label={label}
@@ -204,7 +205,7 @@ export function NumberField({
           }}
         />
         <span>px</span>
-        <Button aria-label={`Increase ${label}`} disabled={value >= max} onClick={() => onChange({ next: Math.min(max, value + step) })}>+</Button>
+        <Button aria-label={`Increase ${label}`} disabled={value >= max} onClick={() => onChange({ next: Math.min(max, value + step) })}><Icon name="plus" size={14} /></Button>
       </span>
     </div>
   )
