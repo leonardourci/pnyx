@@ -1,3 +1,4 @@
+import { Icon } from '../components/ui/icon.tsx'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { HYDRA_ACTOR, type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
 import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
@@ -86,7 +87,7 @@ export function HydraChat({
 
   return (
     <aside className="hydra-chat" aria-label="Hydra’s chat" style={{ width: width ?? view.hydraWidth, flexBasis: width ?? view.hydraWidth }}>
-      <header className="hydra-head"><strong>Hydra</strong></header>
+      <header className="hydra-head"><Icon name="hydra" size={24} /><strong>Hydra</strong></header>
       <div
         className="hydra-messages thread"
         ref={stream}

@@ -1,3 +1,4 @@
+import { Icon } from '../components/ui/icon.tsx'
 import { useState, type ReactNode } from 'react'
 import type { HydraColumn, Card, Column as ColumnId, ViewPreferences } from '../../../src/core/model.ts'
 import { LOCKED_DELETE } from '../../../src/core/hydra.ts'
@@ -105,6 +106,7 @@ export function Column({
           data-key-scope="hydra"
           tabIndex={0}
         >
+          <Icon name={role ?? (id.startsWith('custom:') ? 'custom' : id)} />
           <InlineTitle
             value={title}
             label={`Rename ${title} column`}
@@ -124,7 +126,7 @@ export function Column({
           aria-label={`New task in ${title}`}
           disabled={!connected}
           onClick={() => createTask({ column: id })}
-        >＋
+        ><Icon name="plus" />
         </Button>
         <Menu label={`${title} column menu`}>
           <CopyId id={id} notify={notify} />
