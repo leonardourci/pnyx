@@ -396,6 +396,7 @@ export function App() {
                 <HydraChat
                   projectSetup={state.config?.hydra.kind !== 'firstmate' && (addingProject || (connected && !(state.projects ?? []).some(p => !p.detached))) ? (
                     <AddProject
+                      autoFocus={addingProject}
                       command={command}
                       connected={connected}
                       notify={notify}
