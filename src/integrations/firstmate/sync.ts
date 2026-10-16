@@ -150,7 +150,7 @@ function firstmatePlace({ task, today }: {
   const hold = task.hold
 
   if (task.done) {
-    return { role: 'done', reason: because({ fallback: 'Closed in the Firstmate backlog' }) }
+    return { role: 'done', reason: because({ fallback: 'Closed in Firstmate' }) }
   }
 
   if (task.decisions.length || task.stalled) {
@@ -195,7 +195,6 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
   home: string
   at?: string
 }): SyncResult {
-  const observed = readHome({ home })
   const meta: Meta = { at, actor: ADAPTER }
 
   return withWriter({
@@ -207,6 +206,13 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         return { tasks: 0, appended: 0, ignored: `Hydra ${hydraId} has Hydra ${writer.state.config!.hydra.id}, not this home` }
       }
 
+      const mirroredTasks = Object.values(writer.state.cards)
+        .flatMap(card => {
+          const ref = firstmateRef({ card })
+
+          return ref?.instanceId === home && ref.objectId !== HOME_OBJECT ? [ref.objectId] : []
+        })
+      const observed = readHome({ home, mirroredTasks })
       let configured = 0
 
       if (!writer.state.configured) {
@@ -313,7 +319,7 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         const expected = task.done ? 'done' : task.decisions.length ? 'needs_you' : declared ?? 'paused'
 
         if (expected && expected !== currentStatus && !reminded) {
-          const note = task.done ? 'Closed in Firstmate backlog'
+          const note = task.done ? 'Closed in Firstmate'
             : task.decisions.length ? 'Firstmate has unresolved decisions'
               : declared ? 'Latest Firstmate status declaration' : 'No active Firstmate worker declaration'
           appended += apply({
@@ -455,7 +461,7 @@ export interface HomeWatch {
 
 // Files whose change can alter an observation; the home's other state files are
 // locks and queues that churn constantly.
-const RELEVANT = /\.(meta|status)$|^backlog\.md$/
+const RELEVANT = /\.(meta|status)$|^(backlog|done-archive)\.md$/
 const SETTLE_MS = 50
 const RETRY_MS = 1000
 
