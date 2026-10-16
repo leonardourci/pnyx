@@ -662,8 +662,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .resize-x::after { top: 0; bottom: 0; height: auto; width: 1px; }
 
-.resize-y::after { opacity: 0; }
-
 .detail { border: 0; border-radius: 0; padding-top: 8px; margin-top: 3px; border-top: 1px solid var(--color-line); background: transparent; overflow: hidden; flex: 1; min-height: 0; }
 
 .detail-header { display: flex; align-items: center; justify-content: space-between; padding: 0 0 4px; max-height: none; border: 0; overflow: visible; gap: 6px; }
@@ -680,7 +678,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .task-conversation { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-.task-conversation > .composer { min-height: 0; max-height: 50%; margin-top: 6px; }
+.task-conversation > .composer { min-height: 0; margin-top: 6px; }
 
 .task-conversation > .composer .composer-input { min-height: 0; }
 
@@ -710,7 +708,19 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .composer .textarea { padding: 0; border: 0; background: transparent; outline: none; font-size: var(--text-chat); }
 
-.composer .resize-y { display: block; }
+.composer > .resize-y, .card > .resize-y { height: 24px; width: 96px; left: calc(50% - 48px); right: auto; }
+
+.composer > .resize-y { top: -20px; bottom: auto; }
+
+.composer > .resize-y::after, .card > .resize-y::after { opacity: .7; background: var(--color-muted); transition: background .12s, opacity .12s; }
+
+.composer > .resize-y::after { top: 10px; }
+
+.card > .resize-y { bottom: 0; }
+
+.card > .resize-y::after { top: 17px; }
+
+.composer > .resize-y:hover::after, .composer > .resize-y:focus::after, .card > .resize-y:hover::after, .card > .resize-y:focus::after { background: var(--color-gold); opacity: 1; }
 
 .composer-settings .select > .button { padding: 3px 5px; }
 

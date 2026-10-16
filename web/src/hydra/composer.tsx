@@ -91,7 +91,7 @@ export function Composer({
   const savedSize = Math.min(limit, Math.max(height, contentHeight))
   const size = Math.min(limit, Math.max(preview ?? savedSize, contentHeight))
   useLayoutEffect(() => {
-    const pane = form.current?.closest('.hydra-chat, .column') ?? form.current?.parentElement
+    const pane = form.current?.closest('.hydra-chat, .card') ?? form.current?.parentElement
     const element = input.current
 
     if (!pane || !element) {
@@ -99,7 +99,10 @@ export function Composer({
     }
 
     const measure = () => {
-      setLimit(Math.max(COMPOSER_MIN, Math.floor(pane.clientHeight * .35)))
+      setLimit(Math.min(
+        VIEW_SIZE_LIMITS.composerHeight.max,
+        Math.max(COMPOSER_MIN, Math.floor(pane.clientHeight * .35)),
+      ))
       element.style.height = `${DRAFT_MIN}px`
       const draftHeight = draft ? element.scrollHeight : DRAFT_MIN
       const context = form.current?.querySelector<HTMLElement>('.pending-comments')
@@ -286,7 +289,9 @@ export function Composer({
         min={VIEW_SIZE_LIMITS.composerHeight.min}
         max={Math.min(limit, VIEW_SIZE_LIMITS.composerHeight.max)}
         onPreview={({ value }) => setPreview(value)}
-        onCommit={({ value: n }) => save({ patch: { composerHeight: n } })}
+        onCommit={({ value: n }) => save({
+          patch: card === HYDRA_CARD ? { composerHeight: n } : { taskComposerHeight: n },
+        })}
       />
       {commented > 0 && (
         <div className="pending-comments small">

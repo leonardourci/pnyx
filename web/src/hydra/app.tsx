@@ -467,6 +467,7 @@ export function App() {
                                   latest={latest[item.id]}
                                   selected={selected === item.id}
                                   view={view}
+                                  save={save}
                                   open={({ id }) => selected === id ? close() : open({ id })}
                                   command={command}
                                   connected={connected}
