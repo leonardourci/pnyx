@@ -15,6 +15,8 @@ import { cardState, projectTitle } from './view.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { Resize } from '../components/ui/resize.tsx'
 
+const MIN_THREAD_HEIGHT = 48
+
 function LastMessage({ message }: { message: LatestMessage }) {
   return (
     <div className="last-message" title={message.text}>
@@ -57,12 +59,16 @@ export function HydraCard({
 }) {
   const element = useRef<HTMLElement>(null)
   const [preview, setPreview] = useState<number | null>(null)
+  const [minimum, setMinimum] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.min)
   const [limit, setLimit] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.max)
-  const height = Math.min(limit, view.cardHeights[card.id] ?? 480)
+  const height = Math.max(minimum, Math.min(limit, view.cardHeights[card.id] ?? 480))
   useLayoutEffect(() => {
-    const pane = element.current?.closest('.column-cards')
+    const card = element.current
+    const pane = card?.closest('.column-cards')
+    const thread = card?.querySelector<HTMLElement>('.detail .thread')
+    const composer = card?.querySelector<HTMLElement>('.composer')
 
-    if (!selected || !pane) {
+    if (!selected || !card || !pane || !thread || !composer) {
       return
     }
 
@@ -70,8 +76,18 @@ export function HydraCard({
       const style = getComputedStyle(pane)
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
       const available = Math.floor(pane.clientHeight - padding)
-      setLimit(Math.max(
+      const cardStyle = getComputedStyle(card)
+      const messages = thread.getBoundingClientRect()
+      const frame = messages.top - card.getBoundingClientRect().top
+        + composer.getBoundingClientRect().bottom - messages.bottom
+        + parseFloat(cardStyle.paddingBottom) + parseFloat(cardStyle.borderBottomWidth)
+      const readable = Math.min(VIEW_SIZE_LIMITS.cardHeight.max, Math.max(
         VIEW_SIZE_LIMITS.cardHeight.min,
+        Math.ceil(frame + MIN_THREAD_HEIGHT),
+      ))
+      setMinimum(readable)
+      setLimit(Math.max(
+        readable,
         Math.min(VIEW_SIZE_LIMITS.cardHeight.max, available),
       ))
     }
@@ -79,6 +95,9 @@ export function HydraCard({
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(pane)
+    observer.observe(card)
+    observer.observe(thread)
+    observer.observe(composer)
 
     return () => observer.disconnect()
   }, [selected])
@@ -186,7 +205,7 @@ export function HydraCard({
           label="Resize card"
           axis="y"
           value={height}
-          min={VIEW_SIZE_LIMITS.cardHeight.min}
+          min={minimum}
           max={limit}
           onPreview={({ value }) => setPreview(value)}
           onCommit={({ value }) => save({ patch: { cardHeights: { [card.id]: value } } })}

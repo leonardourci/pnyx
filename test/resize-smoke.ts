@@ -12,7 +12,7 @@ process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
 const fixture = seedWebFixture({ home })
 appendFileSync(fixture.transcript, Array.from({ length: 12 }, (_, i) => JSON.stringify({ type: 'assistant', timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text: `Update ${i}: ` + 'The worker is checking the migration and its rollback path. '.repeat(8) }] } })).join('\n') + '\n')
 const server = await startServer({ hydraId: 'default', homes: [fixture.nativeHome] })
-const { browser, check, eventually, click, drag, screenshot, close } = smokeBrowser({ home, session: 'pnyx-resize' })
+const { browser, check, eventually, click, drag, focus, press, screenshot, close } = smokeBrowser({ home, session: 'pnyx-resize' })
 const state = () => loadHydra({ hydraId: 'default' }).state
 const card = `[data-card="${fixture.state.keys.layout}"]`
 
@@ -41,6 +41,10 @@ try {
   await eventually({ condition: 'document.querySelector(".hydra-chat .composer")?.clientHeight === 180', label: 'Hydra composer height survives reload' })
   await click({ selector: card })
   await eventually({ condition: 'document.querySelector(".card.selected")?.getBoundingClientRect().height === 580 && document.querySelector(".detail .composer").clientHeight === 120', label: 'card and task composer heights survive reload' })
+  await focus({ selector: '.card.selected > [aria-label="Resize card"]' })
+  await press({ key: 'Home' })
+  await check({ condition: 'document.querySelector(".detail .thread").clientHeight >= 48 && document.querySelector(".detail .composer-bar").getBoundingClientRect().bottom <= document.querySelector(".card.selected").getBoundingClientRect().bottom && document.querySelector(".detail .composer").getBoundingClientRect().bottom <= document.querySelector(".card.selected").getBoundingClientRect().bottom', label: 'shrinking to the minimum preserves a readable stream and the composer controls' })
+  await press({ key: 'End' })
   await drag({ selector: '.detail [aria-label="Resize composer"]', dy: -150 })
   await check({ condition: 'document.querySelector(".detail .composer").clientHeight <= document.querySelector(".card.selected").clientHeight * .35', label: 'task composer drag stops at 35 percent of its card' })
   await browser({ args: ['resize', '1440', '400'] })
