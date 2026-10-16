@@ -110,7 +110,9 @@ export function Settings({ state, connected, view, save, command, notify }: {
           />
           <label className="setting-label">Default model</label>
           <Input
+            key={hydraAgent?.model ?? ''}
             aria-label="Hydra default model"
+            disabled={!connected || !effective}
             defaultValue={hydraAgent?.model ?? ''}
             placeholder="Harness default"
             onBlur={e => {
