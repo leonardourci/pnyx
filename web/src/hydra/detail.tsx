@@ -8,7 +8,7 @@ import { CopyId } from '../components/ui/copy-id.tsx'
 import { HideAfter } from './hide-after.tsx'
 import { Menu } from '../components/ui/menu.tsx'
 import { Icon } from '../components/ui/icon.tsx'
-import { harnessName } from './agent-settings.tsx'
+import { harnessName } from './view.ts'
 import { useStartRequest } from './start-request.ts'
 import type { Command } from './connection.ts'
 

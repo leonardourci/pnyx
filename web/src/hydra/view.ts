@@ -3,6 +3,10 @@ import { cardDoneDeadline, HOUR_MS } from '../../../src/core/retention.ts'
 import { liveTask, rankOf } from '../../../src/core/tasks.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 
+const HARNESSES: Record<string, string> = { 'claude-code': 'Claude Code', codex: 'Codex' }
+
+export const harnessName = ({ provider }: { provider: string }) => HARNESSES[provider] ?? provider
+
 export const columnsFor = ({ state }: { state: HydraState }) => {
   return hydraConfig({ state }).columns
 }
