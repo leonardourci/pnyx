@@ -284,7 +284,11 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
             const model = object({ value: raw })
 
             if (typeof model.model === 'string' && typeof model.displayName === 'string') {
-              models.push({ value: model.model, label: model.displayName })
+              models.push({
+                value: model.model,
+                label: model.displayName,
+                ...(model.isDefault === true ? { isDefault: true } : {}),
+              })
             }
           }
 

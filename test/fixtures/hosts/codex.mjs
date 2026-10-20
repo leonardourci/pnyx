@@ -55,7 +55,7 @@ createInterface({ input: process.stdin }).on('line', line => {
       result: {
         data: params.cursor
           ? [{ id: 'catalog-id-two', model: 'gpt-catalog-two', displayName: 'Catalog Two' }]
-          : [{ id: 'catalog-id-one', model: 'gpt-catalog-one', displayName: 'Catalog One' }],
+          : [{ id: 'catalog-id-one', model: 'gpt-catalog-one', displayName: 'Catalog One', isDefault: true }],
         nextCursor: params.cursor ? null : 'second-page',
       },
     })

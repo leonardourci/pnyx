@@ -105,7 +105,7 @@ test('Codex lists every page and starts the selected wire model', async () => {
   try {
     const models = await provider.models({ cwd: root, env: process.env })
     assert.deepEqual(models, [
-      { value: 'gpt-catalog-one', label: 'Catalog One' },
+      { value: 'gpt-catalog-one', label: 'Catalog One', isDefault: true },
       { value: 'gpt-catalog-two', label: 'Catalog Two' },
     ])
     assert.deepEqual(fixture.messages().filter(m => m.method === 'model/list')
