@@ -5,8 +5,8 @@ import { openPaseo } from '../integrations/paseo/client.ts'
 import { findProject } from '../projects/read.ts'
 import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { basename, dirname, isAbsolute, join } from 'node:path'
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative } from 'node:path'
 import { decideNote, decidePush, findCard, type Decision, type Meta } from '../core/decide.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
 import { HydraError, type HydraConfig, type HydraState, type Card } from '../core/model.ts'
@@ -15,6 +15,7 @@ import { liveTask, sessionId } from '../core/tasks.ts'
 import { runCommand } from '../integrations/command/run.ts'
 import { taskFolder } from '../copies/copies.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
+import { copySkills, HYDRA_SKILLS } from '../integrations/skills/install.ts'
 import { fmNote } from '../integrations/firstmate/reply.ts'
 import { createPaseoAgent, startAgent, type Harness } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
@@ -85,8 +86,8 @@ export function taskPrompt({ hydraId, card, prompt }: {
 }
 
 const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
-  `You are Hydra, the orchestrator of the Pnyx Hydra "${hydraId}". Read ${HYDRA_SKILL} and follow it. `
-  + `Start with \`pnyx-axi task list --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`
+  `You are Hydra, the orchestrator of the Pnyx Hydra "${hydraId}". Read ${HYDRA_SKILL} and follow it; the skills it names are beside it in ${dirname(dirname(HYDRA_SKILL))}. `
+  + `Start with \`pnyx-axi hydra digest --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`
 
 function namedProjectCommand({ state, card, name }: {
   state: HydraState
@@ -555,9 +556,9 @@ export function setupHydra({ hydraId, home, meta }: {
 }): Output {
   const real = resolveHome({ path: home })
   const dir = join(real, HOME_SKILL)
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'SKILL.md'), readFileSync(HYDRA_SKILL))
-  const excluded = exclude({ home: real, path: `/${HOME_SKILL}/` })
+  const excluded = copySkills({ folder: real, names: HYDRA_SKILLS })
+    .map(folder => exclude({ home: real, path: `/${relative(real, folder)}/` }))
+    .every(Boolean)
 
   withWriter({
     hydraId,
@@ -577,7 +578,7 @@ export function setupHydra({ hydraId, home, meta }: {
   const text = [
     `Pnyx Hydra ${hydraId} uses this home as its Hydra.`,
     `Load the pnyx-hydra skill (${join(HOME_SKILL, 'SKILL.md')}) and follow it for that Hydra.`,
-    `Start with \`pnyx-axi task list --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`,
+    `Start with \`pnyx-axi hydra digest --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`,
   ].join('\n')
   const sent = fmNote({ home: real, requestId: `pnyx:${hydraId}:hydra-skill`, text })
 
