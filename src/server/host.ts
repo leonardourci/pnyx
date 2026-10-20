@@ -8,7 +8,7 @@ import { codexProvider, type SpawnCodex } from './codex.ts'
 import { modelIds, type HostedSession, type ModelOption, type PermissionDecision } from './provider.ts'
 import { liveReplies } from './streaming.ts'
 import type { ThreadPage } from '../thread/read.ts'
-import { terminalPresence, type Presence } from '../integrations/presence/check.ts'
+import { seenAt, terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained, postLine } from '../cli/commands.ts'
@@ -79,6 +79,8 @@ export const SETTINGS = ['model', 'effort', 'mode']
 const IDLE_MS = 10 * 60 * 1000
 // A wake waits this long so a worker's declaration and finished turn share one check turn.
 const WAKE_MS = 5000
+// As Firstmate does: a request left pending or a working worker quiet this long wakes Hydra again.
+const STALL_MS = 240_000
 // The agent must not inherit the server's terminal, task or actor.
 const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
@@ -147,7 +149,8 @@ interface Live {
 }
 
 export function createHost({
-  hydraId, query, spawnCodex, changed, streamed = () => {}, wakeDelay = WAKE_MS,
+  hydraId, query, spawnCodex, changed, streamed = () => {},
+  wakeDelay = WAKE_MS, stallDelay = STALL_MS,
   presence = ({ session }) => terminalPresence({ session, verifyProcess: true }),
 }: {
   hydraId: string
@@ -157,6 +160,7 @@ export function createHost({
   changed(): void
   streamed?({ session }: { session: string }): void
   wakeDelay?: number
+  stallDelay?: number
 }): Host {
   const providers = { 'claude-code': claudeProvider({ query }), codex: codexProvider({ spawnCodex }) }
   const modelCatalogs = new Map<string, Promise<ModelOption[]>>()
@@ -602,6 +606,50 @@ export function createHost({
 
     void host.hydra({ id: wakeId({ through: wakeThrough }), actor: 'pnyx', text: `<pnyx-wake>A worker or reminder changed something you track. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` and handle what it lists. If nothing needs the owner, write no other text and reply only ${QUIET_REPLY}.</pnyx-wake>` })
   }
+
+  // A stall makes no event, so it is polled: each pending request, and each quiet stretch of a working worker, wakes Hydra once.
+  const checkStalls = () => {
+    const state = loadHydra({ hydraId }).state
+    const hydraCard = state.cards[HYDRA_CARD]
+    const session = state.config?.hydra.session
+
+    if (closing || !hostedHydra({ state }) || queuedHydra.size
+      || (hydraCard?.sessionActivity ?? hydraCard?.activity) === 'interrupted'
+      || hydraCard?.attention.some(a => a.key === INTERRUPTED)
+      || (session && live.get(session)?.activity === 'working')) {
+      return
+    }
+
+    const now = Date.now()
+    const stalls = Object.values(state.cards).flatMap(card => {
+      if (card.id === HYDRA_CARD || !card.agent || card.agent.host !== 'pnyx') {
+        return []
+      }
+
+      const requests = (card.permissions ?? []).filter(p => p.status === 'pending')
+      const agent = state.sessions?.[sessionId({ agent: card.agent })]
+      const seen = agent ? seenAt({ session: agent }) : 0
+      const working = live.get(sessionId({ agent: card.agent }))?.activity === 'working'
+
+      return requests.length
+        ? requests.filter(p => p.at && now - Date.parse(p.at) >= stallDelay)
+          .map(p => ({ id: `stall:${p.id}`, text: `${p.tool} on ${card.id} has waited ${Math.round((now - Date.parse(p.at!)) / 1000)} s for an answer` }))
+        : working && seen && now - seen >= stallDelay
+          ? [{ id: `stall:${card.id}:${seen}`, text: `the worker on ${card.id} has been working with no sign of life for ${Math.round((now - seen) / 1000)} s` }]
+          : []
+    })
+      .filter(stall => !stalled.has(stall.id))
+
+    if (stalls.length) {
+      stalls.forEach(stall => stalled.add(stall.id))
+      const after = wakeCursor({ state, fallback: wakeStart ?? 0 })
+      void host.hydra({ id: stalls[0]!.id, actor: 'pnyx', text: `<pnyx-wake>Stalled: ${stalls.map(s => s.text).join('; ')}. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text; otherwise answer it or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.</pnyx-wake>` })
+    }
+  }
+
+  const stalled = new Set<string>()
+  const stallTimer = setInterval(checkStalls, Math.min(stallDelay / 4, 15_000))
+  stallTimer.unref()
 
   const host: Host = {
     async models({ harness }) {
@@ -1161,6 +1209,7 @@ export function createHost({
     close: () => {
       closing = true
       clearTimeout(wakeTimer)
+      clearInterval(stallTimer)
       controller.abort()
 
       for (const [key, entry] of live) {

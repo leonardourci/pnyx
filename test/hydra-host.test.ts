@@ -7,6 +7,8 @@ import { commands } from '../src/cli/commands.ts'
 import { HYDRA_CARD, hydraEvent, wakesHydra } from '../src/core/hydra.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { startTask } from '../src/cli/start.ts'
+import { hydraCheck } from '../src/cli/workers.ts'
+import { sendReply } from '../src/cli/reply.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { startServer } from '../src/server/server.ts'
@@ -373,5 +375,75 @@ test('a busy Hydra gets one wake after its turn, and a failed wake waits for the
     assert.match(wakes()[2]!, new RegExp(`--after ${through} `))
   } finally {
     sdk.release(); await server.close(); rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('a stalled request or a quiet working worker wakes Hydra once, and hydra check lists what waits', async () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-hydra-stall-')))
+  process.env.PNYX_HOME = join(home, 'pnyx')
+  process.env.PNYX_SEMANTIC = 'off'
+  fakeDispatch({ root: home })
+  process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
+  const folder = join(home, 'work')
+  mkdirSync(folder)
+  commands.hydra(['create', 'lab'])
+  await commands.task(['create', '--title', 'Fix add', '--key', 'fix', '--folder', folder, '--hydra', 'lab'])
+  const sdk = hydraSdk()
+  const server = await startServer({ hydraId: 'lab', query: sdk.query, wakeDelay: 50, stallDelay: 600 })
+  const state = () => loadHydra({ hydraId: 'lab' }).state
+  const task = () => state().cards[state().keys.fix!]!
+  const stalls = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
+    .filter(m => m.startsWith('<pnyx-wake>Stalled'))
+  const settled = () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished'
+
+  try {
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'Watch the fix'])
+    await until({ check: settled })
+
+    // The worker's request stays pending; its own wake comes first, the stall wake later.
+    sdk.control.ask = true
+    await startTask({ hydraId: 'lab', task: 'fix', meta: { at: new Date().toISOString(), actor: 'hydra', reason: 'start it', id: 'start-fix' } })
+    await until({ check: () => task().permissions?.some(p => p.status === 'pending') ?? false })
+    sdk.control.ask = false
+    const worker = sdk.calls.find(c => c.options.cwd === folder)!
+    assert.equal(worker.options.env?.PNYX_ACTOR, `worker:${task().id}`)
+    const request = task().permissions![0]!
+    assert.ok(request.at)
+
+    const check = await hydraCheck({ args: ['check', '--after', '0', '--hydra', 'lab'] }) as {
+      requests: { id: string; task: string; tool: string; command: string }[]
+      changes: { actor: string }[]
+      agents: { task: string; quiet: string; activity: string }[]
+    }
+    assert.deepEqual(check.requests.map(r => [r.id, r.task, r.tool, r.command]), [[request.id, task().id, 'Bash', 'ls']])
+    assert.ok(check.changes.some(c => c.actor === 'owner (cli)'))
+    assert.match(check.agents.find(a => a.task === task().id)!.quiet, /^\d+s$/)
+
+    for (let i = 0; i < 150 && !(stalls().length && settled()); i++) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+
+    assert.equal(stalls().length, 1)
+    assert.match(stalls()[0]!, /Bash on .* has waited \d+ s for an answer/)
+    await new Promise(resolve => setTimeout(resolve, 900))
+    assert.equal(stalls().length, 1, 'one wake per stalled request')
+
+    // Answered, the worker finishes; a later turn that goes quiet wakes Hydra again.
+    await commands.task(['permission', 'fix', request.id, 'allow', '--hydra', 'lab'])
+    await until({ check: () => task().sessionActivity === 'finished' })
+    // Hydra's wake for that finished turn must not hold too.
+    await new Promise(resolve => setTimeout(resolve, 300))
+    await until({ check: settled })
+    sdk.control.hold = true
+    await sendReply({ hydraId: 'lab', request: { card: 'fix', text: 'Keep going', homes: [], actor: 'test' } })
+
+    for (let i = 0; i < 150 && stalls().length < 2; i++) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+
+    assert.match(stalls()[1] ?? '', /working with no sign of life/)
+    sdk.release()
+  } finally {
+    await server.close(); rmSync(home, { recursive: true, force: true })
   }
 })
