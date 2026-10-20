@@ -1093,7 +1093,7 @@ export function createHost({
           const last = writer.state.hydraMessages?.at(-1)
 
           // ponytail: folds a run of allows on one task into its first line; the reasons stay in the task's history.
-          if (actor === 'hydra' && choice === 'allow' && last?.actor === HYDRA_ACTOR && last.task === card.id && last.text.startsWith(`${ALLOWED} `)) {
+          if (actor === 'hydra' && choice === 'allow' && !request.questions && !request.form && last?.actor === HYDRA_ACTOR && last.task === card.id && last.text.startsWith(`${ALLOWED} `)) {
             posted = `none: folded into the previous ${ALLOWED} line`
           } else if (actor === 'hydra') {
             try {
