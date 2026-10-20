@@ -1,12 +1,17 @@
 import { HYDRA_ACTOR, type HydraMessage } from '../../../src/core/model.ts'
+import { QUIET_REPLY } from '../../../src/core/hydra.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
+
+// A streamed start of Hydra's quiet reply hides too.
+const quiet = ({ entry }: { entry: ThreadEntry }) => entry.kind === 'message' && entry.role.startsWith('assistant')
+  && Boolean(entry.text.trim()) && QUIET_REPLY.startsWith(entry.text.trim())
 
 export function hydraMessages({ messages, transcript, provider }: {
   messages: HydraMessage[]
   transcript: ThreadEntry[]
   provider?: string
 }): ThreadEntry[] {
-  transcript = transcript.filter(entry => !(provider === 'codex' && entry.kind === 'message'
+  transcript = transcript.filter(entry => !quiet({ entry }) && !(provider === 'codex' && entry.kind === 'message'
     && /^(user|You)( · continued)?$/.test(entry.role)
     && /^# AGENTS\.md instructions(?: for [^\n]*)?\s*<INSTRUCTIONS>[\s\S]*<\/INSTRUCTIONS>\s*$/.test(entry.text.trim())))
   const remaining = [...transcript]
