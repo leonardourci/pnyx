@@ -75,7 +75,8 @@ export function HydraChat({
   const transcript = joinMessageParts({ entries: page?.entries ?? [] })
   const updates = Object.values(state.cards).filter(c => !c.automaticTask && c.id !== HYDRA_CARD)
     .flatMap(card => taskUpdates({ card }))
-  const entries = [...updates, ...hydraMessages({ messages, transcript })]
+  const chat = hydraMessages({ messages, transcript, provider: card?.agent?.provider })
+  const entries = [...updates, ...chat]
     .filter(e => e.kind === 'message' || (e.kind === 'tool' ? tools : thinking))
     .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))
   useEffect(() => {
@@ -114,6 +115,7 @@ export function HydraChat({
         {projectSetup && <div className="hydra-project-setup">{projectSetup}</div>}
         <Messages
           entries={entries}
+          assistantLabel="Hydra"
           openTask={openTask}
           taskTitles={Object.fromEntries(Object.values(state.cards).map(c => [c.id, c.title]))}
           comments={comments}
