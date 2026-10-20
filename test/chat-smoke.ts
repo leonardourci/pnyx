@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { hydraSdk } from './hydra-host-fixture.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
+import { commands } from '../src/cli/commands.ts'
 import { startServer } from '../src/server/server.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import { smokeBrowser } from './browser.ts'
@@ -31,6 +32,16 @@ const { browser, evaluate, check, eventually, click, fill, press, screenshot, cl
 const select = ({ start, end }: { start: number; end: number }) => evaluate({ code: `const p = [...document.querySelectorAll('.hydra-chat .message-block p')].find(p => p.textContent.startsWith('A readable paragraph')); const range = document.createRange(); range.setStart(p.firstChild, ${start}); range.setEnd(p.firstChild, ${end}); const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range); p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })); return true;` })
 
 try {
+  await commands.hydra(['send', '--text', 'Initialize chat smoke.'])
+
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (loadHydra({ hydraId: 'default' }).state.cards['$hydra']?.sessionActivity === 'finished') {
+      break
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+
   await browser({ args: ['open', server.url] }); await browser({ args: ['resize', '1440', '1000'] }); await browser({ args: ['wait', 'Needs you'] })
   await browser({ args: ['wait', 'Thread plan'] })
   await click({ selector: '.hydra-chat .message-block' })

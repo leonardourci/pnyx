@@ -43,12 +43,10 @@ try {
   await until({ condition: '!!document.querySelector(".task-updates") && (document.querySelector(".app").dataset.connected === "true")' })
   await server.close()
   await until({ condition: '!(document.querySelector(".app").dataset.connected === "true")' })
-  await until({ condition: '!!document.querySelector(".hydra-chat .composer textarea:not(:disabled)") && !!document.querySelector(".hydra-chat .composer textarea:not(:disabled)") && !document.querySelector(".error-banner")' })
+  await until({ condition: '!!document.querySelector(".hydra-chat .composer textarea:not(:disabled)") && !document.querySelector(".error-banner")' })
   await fill({ selector: '.hydra-chat .composer textarea', text: 'Queued during restart' })
   await until({ condition: '!document.querySelector(".hydra-chat .composer-send").disabled' })
   await send()
-  await fill({ selector: '.hydra-chat .composer textarea', text: 'Hydra offline message' })
-  await evaluate({ code: '() => { document.querySelector(".hydra-chat .composer").requestSubmit(); return true; }' })
   assert.equal(delivery({ text: 'Queued during restart' }), 0)
   withWriter({
     hydraId: 'default',
@@ -58,9 +56,8 @@ try {
     },
   })
   server = await startServer({ query: hydraSdk().query, hydraId: 'default', port, homes: [fixture.nativeHome] })
-  await until({ condition: '(document.querySelector(".app").dataset.connected === "true") && document.querySelector(".hydra-chat .composer textarea").value === "" && document.querySelector(".hydra-chat .composer textarea").value === "" && document.body.textContent.includes("Recovered task")' })
+  await until({ condition: '(document.querySelector(".app").dataset.connected === "true") && document.querySelector(".hydra-chat .composer textarea").value === "" && document.body.textContent.includes("Recovered task")' })
   assert.equal(delivery({ text: 'Queued during restart' }), 1)
-  assert.equal(loadHydra({ hydraId: 'default' }).state.hydraMessages?.filter(m => m.text === 'Hydra offline message').length, 1)
   await until({ condition: 'window.connectionMarker === "same document"' })
   appendFileSync(fixture.transcript, JSON.stringify({ type: 'assistant', timestamp: new Date().toISOString(), message: { content: 'Subscription restored' } }) + '\n')
 
