@@ -68,6 +68,7 @@ test('Codex starts through app-server by default and records its native thread, 
     config: { 'shell_environment_policy.set.PNYX_HOME': process.env.PNYX_HOME, 'shell_environment_policy.set.PNYX_HYDRA': 'lab', 'features.default_mode_request_user_input': true },
     model: 'gpt-6.1-sol',
     approvalPolicy: 'on-request',
+    sandbox: 'workspace-write',
   })
   const turns = () => fixture.messages().filter(m => m.method === 'turn/start')
   assert.match(String((turns()[0]!.params!.input as {
@@ -75,6 +76,7 @@ test('Codex starts through app-server by default and records its native thread, 
   }[])[0]!.text), /^Release the canary\.\n\nYou are the Pnyx worker/)
   assert.equal(turns()[0]!.params!.effort, 'high')
   assert.equal(turns()[0]!.params!.approvalPolicy, 'on-request')
+  assert.deepEqual(turns()[0]!.params!.sandboxPolicy, { type: 'workspaceWrite', writableRoots: [process.env.PNYX_HOME] })
   assert.equal((await startTask({ hydraId: 'lab', task: 'ship', meta })).event, 'none: duplicate')
   assert.equal(fixture.children.length, 1)
   const count = Object.keys(state().cards).length
@@ -97,6 +99,7 @@ test('Codex starts through app-server by default and records its native thread, 
   assert.equal(turns()[1]!.params!.model, 'gpt-6-luna')
   assert.equal(turns()[1]!.params!.effort, 'low')
   assert.equal(turns()[1]!.params!.approvalPolicy, 'never')
+  assert.deepEqual(turns()[1]!.params!.sandboxPolicy, { type: 'dangerFullAccess' })
 })
 
 test('Codex closes with the server and lazily resumes its interrupted thread on the next message', async () => {

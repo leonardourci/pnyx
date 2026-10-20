@@ -2043,9 +2043,9 @@ task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's fold
 Pnyx server (\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its native session, folder
 and settings on the task. Replies and setting changes from the Hydra or \`pnyx-axi reply\` and \`pnyx-axi agent\`
 go straight to it; after a server restart the next message resumes the same session. A turn that was
-running when the server stopped is marked interrupted and waits for a message. Permission prompts are
-refused for now. Codex mode is its approval policy (untrusted, on-request or never); its sandbox follows
-your Codex configuration. Codex applies picker changes on the next turn and queues messages during a turn.
+running when the server stopped is marked interrupted and waits for a message. Permission prompts and
+questions wait on the task for task permission. Codex mode is its approval policy (untrusted, on-request or
+never) with its sandbox: never runs with full access, the others write only in the folder and Pnyx's home. Codex applies picker changes on the next turn and queues messages during a turn.
 --via paseo asks the local Paseo daemon (PNYX_PASEO_URL, default ws://127.0.0.1:6767/ws) to start a
 Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
 and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.

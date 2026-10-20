@@ -1,4 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { Question } from '../core/model.ts'
 import { form } from '../integrations/hooks/observe.ts'
@@ -316,6 +318,14 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
   }
 }
 
+// A mode is an approval policy with the sandbox it implies: an agent that never asks gets full access, and
+// one that asks writes only in its folder and Pnyx's home until an approval lets a command out.
+const SANDBOX: Record<string, string> = { never: 'danger-full-access' }
+
+const sandboxPolicy = ({ mode, env }: { mode: string; env: NodeJS.ProcessEnv }) => SANDBOX[mode] === 'danger-full-access'
+  ? { type: 'dangerFullAccess' }
+  : { type: 'workspaceWrite', writableRoots: [env.PNYX_HOME || join(homedir(), '.pnyx')] }
+
 // A shell_environment_policy that inherits only core variables would drop Pnyx's own, so they are set explicitly.
 const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fromEntries(Object
   .entries(env)
@@ -385,7 +395,7 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
             ...(instructions ? { developerInstructions: instructions } : {}),
             ...(options.model ? { model: options.model } : {}),
             ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
-            ...(options.mode ? { approvalPolicy: options.mode } : {}),
+            ...(options.mode ? { approvalPolicy: options.mode, sandbox: SANDBOX[options.mode] ?? 'workspace-write' } : {}),
           },
         })
         const thread = object({ value: result.thread })
@@ -424,7 +434,12 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
                   ...(options.model ? { model: options.model } : {}),
                   ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
                   ...(options.effort ? { effort: options.effort } : {}),
-                  ...(options.mode ? { approvalPolicy: options.mode } : {}),
+                  ...(options.mode
+                    ? {
+                      approvalPolicy: options.mode,
+                      sandboxPolicy: sandboxPolicy({ mode: options.mode, env }),
+                    }
+                    : {}),
                 },
               })
               const turn = object({ value: result.turn })
