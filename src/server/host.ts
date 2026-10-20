@@ -1,11 +1,11 @@
-import { accountEnvironment, chooseCandidate, dispatchTask, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
+import { accountEnvironment, chooseCandidate, chosenSettings, hostedOverride, overrideOf, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
-import type { HostedSession, ModelOption, PermissionDecision } from './provider.ts'
+import { modelIds, type HostedSession, type ModelOption, type PermissionDecision } from './provider.ts'
 import { liveReplies } from './streaming.ts'
 import type { ThreadPage } from '../thread/read.ts'
 import { terminalPresence, type Presence } from '../integrations/presence/check.ts'
@@ -689,12 +689,8 @@ export function createHost({
                   projects: {},
                 },
               },
-              offers: candidate.model ? await host.models({ harness: candidate.harness })
-                .then(models => ({
-                  [candidate.harness]: models.flatMap(model =>
-                    [model.value, ...(model.resolvedModel ? [model.resolvedModel] : [])]),
-                }))
-                .catch(() => undefined) : undefined,
+              offers: candidate.model
+                ? await catalogOffers({ host, harnesses: [candidate.harness] }) : undefined,
             }) : undefined
           const settings: AgentSettings = Object.fromEntries(Object.entries(candidate).filter(([key, value]) => key !== 'harness' && value !== undefined)
             .map(([key, value]) => [key, String(value)]))
@@ -919,7 +915,7 @@ export function createHost({
             apply({ writer, decision: decideSession({ state: writer.state, ref: sessionId({ agent }), task: card.id, meta: { ...meta, id: `${id}:attach` } }) })
 
             if (dispatch) {
-              apply({ writer, decision: hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:dispatch` }, cardId: card.id, change: { type: 'task.launched', data: { via: 'pnyx', at: meta.at, folder: cwd, harness: dispatch.provider, dispatch: dispatch.reason } } }) })
+              apply({ writer, decision: hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:dispatch` }, cardId: card.id, change: { type: 'task.launched', data: { via: 'pnyx', at: meta.at, folder: cwd, harness: dispatch.provider, dispatch: dispatch.reason, ...(dispatch.override ? { override: dispatch.override } : {}) } } }) })
             }
 
             const started = writer.state.cards[card.id] as Card & { agent: AgentRef }
@@ -1170,6 +1166,14 @@ export function createHost({
   return host
 }
 
+// A harness whose catalog cannot be read is left out, so its models are not checked.
+async function catalogOffers({ host, harnesses }: { host: Host; harnesses: ('claude' | 'codex')[] }) {
+  const read = await Promise.all(harnesses.map(harness => host.models({ harness })
+    .then(models => [[harness, modelIds({ models })]], () => [])))
+
+  return Object.fromEntries(read.flat()) as Partial<Record<'claude' | 'codex', string[]>>
+}
+
 const field = ({ body, name, optional = false }: {
   body: Record<string, unknown>
   name: string
@@ -1200,9 +1204,6 @@ export async function hostRequest({ host, body: raw }: {
       return host.hydra({ text: field({ body, name: 'text' })!, id: field({ body, name: 'id' })!, actor })
 
     case 'start': {
-      const given = (body.settings ?? {}) as Record<string, unknown>
-      const settings = Object.fromEntries(Object.entries(given)
-        .filter((e): e is [string, string] => [...SETTINGS, 'provider'].includes(e[0]) && typeof e[1] === 'string' && e[1] !== ''))
       const folder = field({ body, name: 'folder', optional: true })
 
       if (folder !== undefined && !isAbsolute(folder)) {
@@ -1212,34 +1213,32 @@ export async function hostRequest({ host, body: raw }: {
       const task = field({ body, name: 'task' })!
       const current = loadHydra({ hydraId: host.hydraId }).state
       const project = findCard({ state: current, ref: task }).project
+      const config = effectiveDispatch({ hydraId: host.hydraId, state: current })
       const dispatch = body.dispatch
-        ? validateChoice({
-          value: body.dispatch,
-          config: effectiveDispatch({ hydraId: host.hydraId, state: current }),
-          project,
-        })
-        : dispatchTask({
-          hydraId: host.hydraId,
-          state: current,
+        ? validateChoice({ value: body.dispatch, config, project })
+        : chooseCandidate({
+          config,
           project,
           rule: field({ body, name: 'rule', optional: true }),
+          override: overrideOf({ value: body.override }),
+          offers: await catalogOffers({ host, harnesses: ['claude', 'codex'] }),
         })
 
-      for (const key of Object.keys(settings)) {
-        delete settings[key]
+      hostedOverride({ harness: dispatch.provider, override: dispatch.override })
+      // The rule's own settings, Fast included, apply from the first turn, with any override on top.
+      const settings = { ...chosenSettings({ choice: dispatch }), provider: dispatch.provider === 'codex' ? 'codex' : 'claude-code' }
+
+      return host.start({ dispatch, task, prompt: field({ body, name: 'prompt' })!, folder, settings, replacement: field({ body, name: 'replacement', optional: true }), id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
+    }
+
+    case 'models': {
+      const harness = field({ body, name: 'harness' })
+
+      if (harness !== 'claude' && harness !== 'codex') {
+        throw new HydraError({ message: 'models expects claude or codex', code: 'VALIDATION_ERROR' })
       }
 
-      for (const key of SETTINGS) {
-        const value = dispatch.candidate[key as 'model' | 'effort' | 'mode']
-
-        if (value) {
-          settings[key] = value
-        }
-      }
-
-      settings.provider = dispatch.provider === 'codex' ? 'codex' : 'claude-code'
-
-      return host.start({ dispatch, task: field({ body, name: 'task' })!, prompt: field({ body, name: 'prompt' })!, folder, settings, replacement: field({ body, name: 'replacement', optional: true }), id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
+      return { models: await host.models({ harness }) }
     }
 
     case 'permission': {

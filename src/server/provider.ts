@@ -28,6 +28,10 @@ export interface ModelOption {
   isDefault?: boolean
 }
 
+// The model names a catalog answers to: each option and the model it resolves to.
+export const modelIds = ({ models }: { models: ModelOption[] }) =>
+  models.flatMap(model => [model.value, ...(model.resolvedModel ? [model.resolvedModel] : [])])
+
 export interface Provider {
   models({ cwd, env }: { cwd: string; env: NodeJS.ProcessEnv }): Promise<ModelOption[]>
   open({ cwd, agent, settings, env, signal, instructions, allow }: {
