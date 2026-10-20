@@ -318,9 +318,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
   }
 }
 
-// A mode is an approval policy with the sandbox it implies: an agent that never asks gets full access, and
-// one that asks writes only in its folder and Pnyx's home until an approval lets a command out. Network
-// stays open so pnyx-axi reaches the local server.
+// An agent that asks writes only in its folder and Pnyx's home; network stays on so pnyx-axi reaches the server.
 const sandboxPolicy = ({ mode, env }: { mode: string; env: NodeJS.ProcessEnv }) => mode === 'never'
   ? { type: 'dangerFullAccess' }
   : { type: 'workspaceWrite', writableRoots: [env.PNYX_HOME || pnyxHome()], networkAccess: true }

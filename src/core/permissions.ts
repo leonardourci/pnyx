@@ -42,8 +42,6 @@ function permissionText({ request }: { request: PermissionRequest }): string {
   return `${request.tool}: ${asked || (details.length ? details.map(d => d.text).join(' · ') : JSON.stringify(request.input))}`
 }
 
-// Turns an answer given as the browser or `task permission --answer` sends it into
-// each question's chosen labels or typed text, or the form's checked values.
 export function permissionAnswer({ request, value }: {
   request: PermissionRequest
   value: unknown

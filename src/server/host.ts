@@ -60,7 +60,6 @@ export interface Host {
     task: string
     request: string
     choice: 'allow' | 'deny'
-    // Answers to a question or form request, checked against what it asked.
     answer?: unknown
     actor: string
     reason?: string

@@ -1,6 +1,5 @@
 import type { AgentRef, AgentSettings, PermissionRequest } from '../core/model.ts'
 
-// An allowed question or form carries the owner's answers or values.
 export type PermissionDecision = ({ behavior: 'allow' } & Pick<PermissionRequest, 'answers' | 'values'>) | { behavior: 'deny'; message: string }
 export type HostedText = { type: 'text'; id: string; text: string; append?: boolean }
 export type HostedEvent = 'working' | 'finished' | HostedText
