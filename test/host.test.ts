@@ -208,6 +208,8 @@ test('a start applies the rule\'s Fast and a checked override from the first tur
   const sdk = fakeSdk()
   server = await startServer({ hydraId: 'lab', query: sdk.query })
   await assert.rejects(async () => commands.task(['start', 'ship', '--fast', 'maybe', '--hydra', 'lab']), /--fast takes on or off/)
+  await assert.rejects(async () => commands.task(['start', 'ship', '--model', '', '--hydra', 'lab']), /--model needs a value/)
+  await assert.rejects(askHost({ hydraId: 'lab', body: { action: 'models', harness: 'pi' } }), /models expects claude or codex/)
   await assert.rejects(async () => commands.task(['start', 'ship', '--via', 'command', '--model', 'sonnet', '--hydra', 'lab']), /apply to an agent Pnyx or Paseo starts/)
   await assert.rejects(startTask({ hydraId: 'lab', task: 'ship', override: { model: 'gpt-6-luna' }, meta: { ...meta, id: 'unoffered' } }), /claude\/gpt-6-luna: not offered/)
   await assert.rejects(startTask({ hydraId: 'lab', task: 'ship', override: { effort: 'extreme' }, meta: { ...meta, id: 'bad-effort' } }), /claude has no effort extreme/)

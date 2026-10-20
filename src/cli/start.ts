@@ -1,4 +1,4 @@
-import { chooseCandidate, accountEnvironment, dispatchTask, hostedOverride, type DispatchChoice, type Override } from '../dispatch/select.ts'
+import { chooseCandidate, accountEnvironment, dispatchTask, hostedOverride, ruleCandidates, type DispatchChoice, type Override } from '../dispatch/select.ts'
 import { modelIds, type ModelOption } from '../server/provider.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
 import { openPaseo } from '../integrations/paseo/client.ts'
@@ -111,7 +111,7 @@ async function hostedOffers({ hydraId, harnesses }: {
 }): Promise<Partial<Record<Harness, string[]>>> {
   const offers: Partial<Record<Harness, string[]>> = {}
 
-  for (const harness of new Set(harnesses)) {
+  await Promise.all([...new Set(harnesses)].map(async harness => {
     try {
       const { models } = await askHost({ hydraId, body: { action: 'models', harness } }) as { models: ModelOption[] }
       offers[harness] = modelIds({ models })
@@ -120,7 +120,7 @@ async function hostedOffers({ hydraId, harnesses }: {
         throw error
       }
     }
-  }
+  }))
 
   return offers
 }
@@ -173,8 +173,8 @@ export async function startTask({
 
   if (how !== 'command') {
     let offers: Partial<Record<Harness, string[]>> | undefined
-    const effective = effectiveDispatch({ hydraId, state }).dispatch
-    const list = !rule || rule === 'default' ? effective.default : effective.rules[rule]?.candidates ?? []
+    const { dispatch: effective } = effectiveDispatch({ hydraId, state })
+    const list = ruleCandidates({ dispatch: effective, rule }) ?? []
 
     if (how === 'pnyx') {
       // Only a candidate that names a model needs its harness's catalog.
@@ -204,6 +204,10 @@ export async function startTask({
     dispatch = dispatchTask({
       hydraId, state, project: card.project, rule, harness, override, offers,
     })
+
+    if (how === 'pnyx') {
+      hostedOverride({ harness: dispatch.candidate.harness, override: dispatch.override })
+    }
   }
 
   const agent = dispatch?.candidate
@@ -221,8 +225,6 @@ export async function startTask({
   }
 
   if (how === 'pnyx') {
-    hostedOverride({ harness: agent.harness, override: dispatch!.override })
-
     return askHost({
       hydraId,
       body: {
@@ -453,10 +455,25 @@ export async function startHydra({
     await client.close()
   }
 
+  const candidates = ruleCandidates({ dispatch: config.dispatch, rule: selectedRule })
+  // Hydra runs on its rule's first candidate for the harness, as a hosted Hydra does, so none can tie.
+  const first = candidates?.filter(c => c.harness === chosen).slice(0, 1)
+  const rules = first && selectedRule !== 'default'
+    ? {
+      ...config.dispatch.rules,
+      [selectedRule]: { ...config.dispatch.rules[selectedRule]!, candidates: first },
+    }
+    : config.dispatch.rules
   const dispatch = chooseCandidate({
     config: {
       ...config,
-      dispatch: { ...config.dispatch, workers: { [main.provider]: [mainName] }, projects: {} },
+      dispatch: {
+        ...config.dispatch,
+        rules,
+        ...(first && selectedRule === 'default' ? { default: first } : {}),
+        workers: { [main.provider]: [mainName] },
+        projects: {},
+      },
     },
     rule: selectedRule,
     harness: chosen,

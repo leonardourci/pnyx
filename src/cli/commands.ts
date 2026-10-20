@@ -12,7 +12,7 @@ import { sendReply } from './reply.ts'
 import { findSession, interactive, liveTask, rankOf, selfSession } from '../core/tasks.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import { setupHydra, startHydra, startTask } from './start.ts'
-import { overrideOf, type Override } from '../dispatch/select.ts'
+import { OVERRIDE_FIELDS, overrideOf, type Override } from '../dispatch/select.ts'
 import { copyCommand } from '../copies/cli.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -549,7 +549,6 @@ const push = guard({
   },
 })
 
-// task start's --model, --effort, --mode and --fast on|off, in place of the dispatch candidate's settings.
 function startOverride({ values }: { values: Record<string, unknown> }): Override | undefined {
   const { fast } = values
 
@@ -557,12 +556,18 @@ function startOverride({ values }: { values: Record<string, unknown> }): Overrid
     throw new HydraError({ message: '--fast takes on or off', code: 'VALIDATION_ERROR' })
   }
 
-  const given = Object.fromEntries([
-    ...(['model', 'effort', 'mode'] as const).flatMap(name => values[name] === undefined ? [] : [[name, values[name]]]),
-    ...(fast === undefined ? [] : [['fast', fast === 'on']]),
-  ])
+  const named = OVERRIDE_FIELDS.filter(name => name !== 'fast' && values[name] !== undefined)
+  const empty = named.find(name => !String(values[name]).trim())
 
-  return Object.keys(given).length ? overrideOf({ value: given }) : undefined
+  if (empty) {
+    throw new HydraError({ message: `--${empty} needs a value`, code: 'VALIDATION_ERROR' })
+  }
+
+  return overrideOf({
+    value: Object.fromEntries([
+      ...named.map(name => [name, values[name]]), ...(fast === undefined ? [] : [['fast', fast === 'on']]),
+    ]),
+  })
 }
 
 function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
