@@ -18,7 +18,12 @@ export interface HeadsDispatch {
 }
 export interface Account { provider: Harness; folder: string }
 export interface Accounts { accounts: Record<string, Account> }
-export interface EffectiveDispatch { dispatch: HeadsDispatch; accounts: Record<string, Account> }
+export interface EffectiveDispatch {
+  dispatch: HeadsDispatch
+  accounts: Record<string, Account>
+  // Set when the accounts are the harnesses' default logins, whose folders follow each process's environment.
+  fallback?: true
+}
 
 export function configPath({ hydraId, accounts = false, shared = false }: {
   hydraId: string
@@ -260,7 +265,7 @@ export function effectiveDispatch({ hydraId, state }: {
     .filter(provider => existsSync(defaultLogin({ provider })))
     .map(provider => [`${provider}:default`, { provider, folder: defaultLogin({ provider }) }]))
   const names = Object.keys(accounts)
-  const main = dispatch.main && Object.hasOwn(accounts, dispatch.main) ? dispatch.main : names[0]
+  const main = dispatch.main ?? names[0]
   const workers = Object.fromEntries(names.map(key => [accounts[key]!.provider, [key]]))
 
   return {
@@ -268,6 +273,7 @@ export function effectiveDispatch({ hydraId, state }: {
       ...dispatch, ...(main ? { main } : {}), workers: { ...workers, ...dispatch.workers },
     },
     accounts,
+    fallback: true,
   }
 }
 

@@ -10,6 +10,7 @@ import { configPath, effectiveDispatch, parseAccounts, parseDispatch, writeConfi
 import { accountEnvironment, chooseCandidate, readQuota, validateChoice, type QuotaReading } from '../src/dispatch/select.ts'
 import { dispatchCommands, STARTER_ACCOUNTS, STARTER_DISPATCH } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
+import { commands } from '../src/cli/commands.ts'
 
 // Keeps the default-login fallback away from the real harness logins.
 const noLogin = join(mkdtempSync(join(tmpdir(), 'pnyx-no-login-')), 'missing')
@@ -51,6 +52,7 @@ function reading({ remaining, priority, exhausted = false, stale = false }: {
 function lab() {
   const root = mkdtempSync(join(tmpdir(), 'pnyx-dispatch-'))
   process.env.PNYX_HOME = join(root, 'pnyx')
+  commands.hydra(['create', 'lab'])
 
   return { root, state: emptyHydra() }
 }
@@ -209,7 +211,11 @@ test('with no registered accounts, dispatch falls back to the harnesses’ own l
     assert.deepEqual(effective.accounts, { 'claude:default': { provider: 'claude', folder: claude } })
     assert.equal(effective.dispatch.main, 'claude:default')
     assert.deepEqual(effective.dispatch.workers, { claude: ['claude:default'] })
-    assert.equal(chooseCandidate({ config: effective, task: 'task', quota: () => ({ auth: 'unknown' }) }).account, 'claude:default')
+    const chosen = chooseCandidate({ config: effective, task: 'task', quota: () => ({ auth: 'unknown' }) })
+    assert.equal(chosen.account, 'claude:default')
+    assert.equal(validateChoice({ value: { ...chosen, folder: '/caller/login' }, config: effective }).folder, claude)
+    writeConfig({ path: configPath({ hydraId: 'lab', shared: true }), value: { main: 'claude:work' } })
+    assert.throws(() => chooseCandidate({ config: effectiveDispatch({ hydraId: 'lab', state }), task: 'task', quota: () => ({ auth: 'unknown' }) }), /registered main account/)
     dispatchCommands.account(['set', 'claude:work', '--provider', 'claude', '--folder', claude, '--hydra', 'lab'])
     assert.deepEqual(Object.keys(effectiveDispatch({ hydraId: 'lab', state }).accounts), ['claude:work'])
   } finally {

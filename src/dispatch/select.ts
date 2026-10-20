@@ -238,9 +238,12 @@ export function validateChoice({ value, config, project }: {
   config: EffectiveDispatch
   project?: string
 }): DispatchChoice {
-  const choice = value as DispatchChoice | null
-  const account = choice && Object.hasOwn(config.accounts, choice.account)
-    ? config.accounts[choice.account] : undefined
+  const sent = value as DispatchChoice | null
+  const account = sent && Object.hasOwn(config.accounts, sent.account)
+    ? config.accounts[sent.account] : undefined
+  // A default login's folder is the server's own, whatever the caller's environment named.
+  const choice = sent && account && config.fallback
+    ? { ...sent, folder: loginFolder({ account }) } : sent
   const rule = choice?.rule === 'default' ? config.dispatch.default
     : choice && Object.hasOwn(config.dispatch.rules, choice.rule)
       ? config.dispatch.rules[choice.rule]?.candidates : undefined
