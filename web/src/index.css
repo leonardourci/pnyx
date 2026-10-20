@@ -1023,5 +1023,5 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .update-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; margin-bottom: 4px; }
 .update-heading time { color: var(--color-muted); font-size: var(--text-meta); }
 
-.select-menu[aria-label=Model] { max-height: min(360px, 60dvh); scrollbar-width: none; }
-.select-menu[aria-label=Model]::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.composer .select-menu { max-height: none; overflow: visible; scrollbar-width: none; }
+.composer .select-menu::-webkit-scrollbar { display: none; width: 0; height: 0; }
