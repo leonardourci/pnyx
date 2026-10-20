@@ -13,7 +13,7 @@ import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained, postLine } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
-import { HYDRA_CARD, hostedHydra, hydraConfig, hydraEvent, wakesHydra } from '../core/hydra.ts'
+import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraEvent, wakesHydra } from '../core/hydra.ts'
 import { freeTask, HOME_SKILL, HYDRA_SKILL } from '../cli/start.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
 import { HydraError, HYDRA_ACTOR, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
@@ -600,7 +600,7 @@ export function createHost({
       return
     }
 
-    void host.hydra({ id: wakeId({ through: wakeThrough }), actor: 'pnyx', text: `<pnyx-wake>A worker or reminder changed something you track. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` and handle what it lists. Speak up only if the owner must act.</pnyx-wake>` })
+    void host.hydra({ id: wakeId({ through: wakeThrough }), actor: 'pnyx', text: `<pnyx-wake>A worker or reminder changed something you track. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` and handle what it lists. If nothing needs the owner, write no other text and reply only ${QUIET_REPLY}.</pnyx-wake>` })
   }
 
   const host: Host = {
@@ -1024,7 +1024,12 @@ export function createHost({
           })
           let posted: string | undefined
 
-          if (actor === 'hydra') {
+          const last = writer.state.hydraMessages?.at(-1)
+
+          // ponytail: folds a run of allows on one task into its first line; the reasons stay in the task's history.
+          if (actor === 'hydra' && choice === 'allow' && last?.actor === HYDRA_ACTOR && last.task === card.id && last.text.startsWith('Allowed ')) {
+            posted = 'none: folded into the previous Allowed line'
+          } else if (actor === 'hydra') {
             try {
               posted = postLine({ writer, hydraId, meta: { at: at(), actor, details }, cardId: card.id, action: `${request.questions || request.form ? (choice === 'allow' ? 'Answered' : 'Skipped') : choice === 'allow' ? 'Allowed' : 'Denied'} ${request.tool} on ${card.title}`, reason: why })
             } catch (error) {
