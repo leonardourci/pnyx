@@ -76,7 +76,7 @@ test('Codex starts through app-server by default and records its native thread, 
   }[])[0]!.text), /^Release the canary\.\n\nYou are the Pnyx worker/)
   assert.equal(turns()[0]!.params!.effort, 'high')
   assert.equal(turns()[0]!.params!.approvalPolicy, 'on-request')
-  assert.deepEqual(turns()[0]!.params!.sandboxPolicy, { type: 'workspaceWrite', writableRoots: [process.env.PNYX_HOME] })
+  assert.deepEqual(turns()[0]!.params!.sandboxPolicy, { type: 'workspaceWrite', writableRoots: [process.env.PNYX_HOME], networkAccess: true })
   assert.equal((await startTask({ hydraId: 'lab', task: 'ship', meta })).event, 'none: duplicate')
   assert.equal(fixture.children.length, 1)
   const count = Object.keys(state().cards).length

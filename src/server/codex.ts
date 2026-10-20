@@ -1,9 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { Question } from '../core/model.ts'
 import { form } from '../integrations/hooks/observe.ts'
+import { pnyxHome } from '../store/paths.ts'
 import type { AskPermission, HostedText, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({ cwd, env }: {
@@ -319,12 +318,11 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
 }
 
 // A mode is an approval policy with the sandbox it implies: an agent that never asks gets full access, and
-// one that asks writes only in its folder and Pnyx's home until an approval lets a command out.
-const SANDBOX: Record<string, string> = { never: 'danger-full-access' }
-
-const sandboxPolicy = ({ mode, env }: { mode: string; env: NodeJS.ProcessEnv }) => SANDBOX[mode] === 'danger-full-access'
+// one that asks writes only in its folder and Pnyx's home until an approval lets a command out. Network
+// stays open so pnyx-axi reaches the local server.
+const sandboxPolicy = ({ mode, env }: { mode: string; env: NodeJS.ProcessEnv }) => mode === 'never'
   ? { type: 'dangerFullAccess' }
-  : { type: 'workspaceWrite', writableRoots: [env.PNYX_HOME || join(homedir(), '.pnyx')] }
+  : { type: 'workspaceWrite', writableRoots: [env.PNYX_HOME || pnyxHome()], networkAccess: true }
 
 // A shell_environment_policy that inherits only core variables would drop Pnyx's own, so they are set explicitly.
 const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fromEntries(Object
@@ -395,7 +393,7 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
             ...(instructions ? { developerInstructions: instructions } : {}),
             ...(options.model ? { model: options.model } : {}),
             ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
-            ...(options.mode ? { approvalPolicy: options.mode, sandbox: SANDBOX[options.mode] ?? 'workspace-write' } : {}),
+            ...(options.mode ? { approvalPolicy: options.mode, sandbox: options.mode === 'never' ? 'danger-full-access' : 'workspace-write' } : {}),
           },
         })
         const thread = object({ value: result.thread })
