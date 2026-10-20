@@ -1,7 +1,7 @@
 import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
 import { effectiveDispatch, type Harness } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
@@ -14,7 +14,9 @@ import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained, postLine } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
 import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraEvent, wakesHydra } from '../core/hydra.ts'
-import { freeTask, HOME_SKILL, HYDRA_SKILL } from '../cli/start.ts'
+import { freeTask } from '../cli/start.ts'
+import { hydraDigest } from '../core/digest.ts'
+import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
 import { HydraError, HYDRA_ACTOR, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
 import { harnessControls } from '../core/control.ts'
@@ -368,9 +370,10 @@ export function createHost({
   })
 
   const hydraInstructions = () =>
-    `You are Hydra for Pnyx Hydra "${hydraId}". Read ${join(hydraDir({ hydraId }), 'agent', HOME_SKILL, 'SKILL.md')} and follow it. Use pnyx-axi with --hydra ${hydraId}; PNYX_ACTOR=hydra is already set. Projects attach later; your current folder belongs to Hydra.`
+    `You are Hydra for Pnyx Hydra "${hydraId}". Your contract is AGENTS.md in your current folder; follow it. Use pnyx-axi with --hydra ${hydraId}; PNYX_ACTOR=hydra is already set. Projects attach later; your current folder belongs to Hydra.`
+  const digest = () => hydraDigest({ hydraId, state: loadHydra({ hydraId }).state })
   // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.
-  const hydraSession = () => ({ instructions: hydraInstructions(), allow: ['pnyx-axi'] })
+  const hydraSession = () => ({ instructions: hydraInstructions(), allow: ['pnyx-axi'], context: digest })
 
   const providerOf = ({ provider }: { provider: string }) => {
     if (provider !== 'claude-code' && provider !== 'codex') {
@@ -765,9 +768,7 @@ export function createHost({
             .map(([key, value]) => [key, String(value)]))
           const provider = candidate.harness === 'codex' ? 'codex' : 'claude-code'
           const cwd = join(hydraDir({ hydraId }), 'agent')
-          const skill = join(cwd, HOME_SKILL)
-          mkdirSync(skill, { recursive: true })
-          writeFileSync(join(skill, 'SKILL.md'), readFileSync(HYDRA_SKILL))
+          prepareHydraFolder({ folder: cwd })
           let card = previous
           const previousAgent = card?.agent
           const running = previousAgent && live.get(sessionId({ agent: previousAgent }))
@@ -854,10 +855,13 @@ export function createHost({
               return writer.state.cards[HYDRA_CARD] as Card & { agent: AgentRef }
             },
           })
+          // A session that opens puts the digest before its first message; a wake into a running one carries it.
+          const opened = Boolean(prepared)
           const entry = open({ card: claimed, session: prepared })
           prepared = undefined
+          const waking = /^(wake|stall):/.test(id) && !opened && Boolean(entry.session)
           entry.activity = 'working'
-          entry.input.push({ text })
+          entry.input.push({ text: waking ? `${text}\n\n${digest()}` : text })
 
           return { state: 'queued' }
         } catch (error) {

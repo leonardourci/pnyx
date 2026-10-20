@@ -25,6 +25,10 @@ const finish = ({ id, text }) => {
     return
   }
 
+  if (text === 'COMPACT') {
+    send({ method: 'item/completed', params: { threadId, turnId: id, item: { type: 'contextCompaction', id: 'compaction' } } })
+  }
+
   const status = text === 'FAIL' ? 'failed' : 'completed'
   appendFileSync(path, `${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: `Codex: ${text}` }] } })}\n`)
   send({ method: 'turn/completed', params: { threadId, turn: { id, status, error: status === 'failed' ? { message: 'fixture failure' } : null } } })
@@ -71,7 +75,8 @@ createInterface({ input: process.stdin }).on('line', line => {
     send({ id, result: { thread: { id: threadId, path } } })
   } else if (method === 'turn/start') {
     const turnId = `turn-${++turn}`
-    const text = params.input[0].text
+    // The turn answers the message, past the digest Pnyx puts first.
+    const text = params.input[0].text.replace(/^<pnyx-digest[\s\S]*?<\/pnyx-digest>\n\n/, '')
     appendFileSync(path, `${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } })}\n`)
 
     if (text === 'QUESTION' || text === 'ELICIT') {
