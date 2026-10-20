@@ -145,6 +145,25 @@ test('hydra start --via paseo records the Paseo agent as the Hydra', async () =>
   assert.equal(created.length, 1)
 })
 
+test('hydra start --via paseo takes its rule\'s first candidate for the harness rather than a tie', async () => {
+  const { folder } = lab()
+  dispatchCommands.rule(['set', 'hydra', '--candidates', JSON.stringify([{ harness: 'claude', model: 'opus' }, { harness: 'claude', model: 'sonnet' }]), '--hydra', 'lab'])
+  const created: Record<string, unknown>[] = []
+  const client = {
+    providers: { listModels: async () => ({ models: [{ id: 'opus' }, { id: 'sonnet', isDefault: true }] }) },
+    agents: {
+      create: async (options: Record<string, unknown>) => {
+        created.push(options)
+
+        return { id: 'hydra-agent' }
+      },
+    },
+    close: async () => undefined,
+  }
+  await startHydra({ hydraId: 'lab', via: 'paseo', folder, url: 'ws://127.0.0.1:16767/ws', meta: { ...meta, id: 'p1' }, connect: async () => client as unknown as PaseoClient })
+  assert.equal((created[0]!.config as { provider: string }).provider, 'claude/opus')
+})
+
 test('setup hydra gives a Firstmate home the skill and a note, and task start asks it for workers', async () => {
   const { root, run, state } = lab()
   cpSync(join(ROOT, 'test', 'fixtures', 'firstmate-home'), join(root, 'home'), { recursive: true })

@@ -11,6 +11,7 @@ import { fakeDispatch } from './dispatch-fixture.ts'
 import { harvestTranscripts } from '../src/integrations/hooks/harvest.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
+import { askHost } from '../src/server/state.ts'
 import { loadHydra, readEvents, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { fakeCodex } from './codex-fixture.ts'
 
@@ -42,8 +43,16 @@ async function lab({ refuse }: { refuse?: string } = {}) {
   await commands.task(['create', '--title', 'Ship it', '--key', 'ship', '--folder', root, '--hydra', 'lab'])
   await commands.task(['brief', 'ship', '--brief', 'Release the canary.', '--hydra', 'lab'])
   await dispatchCommands.rule(['set', 'default', '--harness', 'codex', '--model', 'gpt-6.1-sol', '--effort', 'high', '--mode', 'on-request', '--hydra', 'lab'])
-  const fixture = fakeCodex({ root, refuse })
+  const fixture = fakeCodex({ root, refuse, models: ['gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-astra'] })
   server = await startServer({ hydraId: 'lab', spawnCodex: fixture.spawnCodex })
+
+  // A start checks the model against the catalog, read once per server; the thread processes come after it.
+  if (refuse !== 'initialize') {
+    await askHost({ hydraId: 'lab', body: { action: 'models', harness: 'codex' } })
+    fixture.children.splice(0)
+    fixture.environments.splice(0)
+  }
+
   const state = () => loadHydra({ hydraId: 'lab' }).state
   const task = () => state().cards[state().keys.ship!]!
   const send = ({ text }: { text: string }) => sendReply({ hydraId: 'lab', request: { card: 'ship', text, homes: [], actor: 'test' } })
@@ -172,6 +181,8 @@ test('an idle Codex process that exits is resumed before accepting the next mess
 
 test('a concurrent start is refused and shutdown closes a Codex process still initializing', async () => {
   const { fixture, task } = await lab({ refuse: 'initialize' })
+  // A candidate without a model needs no catalog, which this Codex could not give.
+  await dispatchCommands.rule(['set', 'default', '--harness', 'codex', '--hydra', 'lab'])
   const starting = startTask({ hydraId: 'lab', task: 'ship', meta })
   void starting.catch(() => {})
   await until({ check: () => fixture.messages().some(m => m.method === 'initialize') })
@@ -182,6 +193,22 @@ test('a concurrent start is refused and shutdown closes a Codex process still in
   const child = fixture.children[0]!
   await until({ check: () => child.exitCode !== null || child.signalCode !== null })
   assert.equal(task().agent, undefined)
+})
+
+test('a Codex start takes the rule\'s Fast and an override on its first turn', async () => {
+  const { fixture, task } = await lab()
+  await dispatchCommands.rule(['set', 'default', '--harness', 'codex', '--model', 'gpt-6-luna', '--effort', 'low', '--mode', 'on-request', '--fast', 'on', '--hydra', 'lab'])
+  await assert.rejects(startTask({ hydraId: 'lab', task: 'ship', override: { mode: 'acceptEdits' }, meta: { ...meta, id: 'bad-mode' } }), /codex has no mode acceptEdits/)
+  await startTask({ hydraId: 'lab', task: 'ship', override: { model: 'gpt-6-astra', effort: 'medium' }, meta })
+  await until({ check: () => task().sessionActivity === 'finished' })
+  const start = fixture.messages().find(m => m.method === 'thread/start')!
+  assert.equal(start.params!.model, 'gpt-6-astra')
+  assert.equal(start.params!.serviceTier, 'fast')
+  const turn = fixture.messages().find(m => m.method === 'turn/start')!
+  assert.equal(turn.params!.model, 'gpt-6-astra')
+  assert.equal(turn.params!.effort, 'medium')
+  assert.equal(turn.params!.serviceTier, 'fast')
+  assert.deepEqual(task().launch?.override, { model: 'gpt-6-astra', effort: 'medium' })
 })
 
 test('a harness filter never invents an unlisted candidate', async () => {

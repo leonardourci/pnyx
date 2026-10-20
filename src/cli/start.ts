@@ -1,4 +1,5 @@
-import { chooseCandidate, accountEnvironment, dispatchTask, type DispatchChoice } from '../dispatch/select.ts'
+import { chooseCandidate, accountEnvironment, dispatchTask, hostedOverride, ruleCandidates, type DispatchChoice, type Override } from '../dispatch/select.ts'
+import { modelIds, type ModelOption } from '../server/provider.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
 import { openPaseo } from '../integrations/paseo/client.ts'
 import { findProject } from '../projects/read.ts'
@@ -103,8 +104,30 @@ function namedProjectCommand({ state, card, name }: {
   return selected
 }
 
+// The harness catalogs the Hydra's server reads; one it cannot read is left out, so its models are not checked.
+async function hostedOffers({ hydraId, harnesses }: {
+  hydraId: string
+  harnesses: Harness[]
+}): Promise<Partial<Record<Harness, string[]>>> {
+  const offers: Partial<Record<Harness, string[]>> = {}
+
+  await Promise.all([...new Set(harnesses)].map(async harness => {
+    try {
+      const { models } = await askHost({ hydraId, body: { action: 'models', harness } }) as { models: ModelOption[] }
+      offers[harness] = modelIds({ models })
+    } catch (error) {
+      if (error instanceof HydraError && error.code === 'NOT_RUNNING') {
+        throw error
+      }
+    }
+  }))
+
+  return offers
+}
+
 export async function startTask({
-  hydraId, task, via, rule, harness, prompt, folder: given, inPlace, replacement, commandName,
+  hydraId, task, via, rule, harness, override, prompt, folder: given, inPlace, replacement,
+  commandName,
   url, meta, connect,
 }: {
   hydraId: string
@@ -114,6 +137,7 @@ export async function startTask({
   via?: string
   rule?: string
   harness?: string
+  override?: Override
   prompt?: string
   folder?: string
   inPlace?: boolean
@@ -133,6 +157,10 @@ export async function startTask({
     throw new HydraError({ message: 'starting fresh from an outside session uses Pnyx', code: 'VALIDATION_ERROR' })
   }
 
+  if (override && (how === 'firstmate' || how === 'command')) {
+    throw new HydraError({ message: '--model, --effort, --mode and --fast apply to an agent Pnyx or Paseo starts', code: 'VALIDATION_ERROR', help: ['Use --via pnyx or --via paseo'] })
+  }
+
   if (how === 'firstmate') {
     return askFirstmate({ hydraId, task, prompt, meta })
   }
@@ -145,15 +173,21 @@ export async function startTask({
 
   if (how !== 'command') {
     let offers: Partial<Record<Harness, string[]>> | undefined
+    const { dispatch: effective } = effectiveDispatch({ hydraId, state })
+    const list = ruleCandidates({ dispatch: effective, rule }) ?? []
+
+    if (how === 'pnyx') {
+      // Only a candidate that names a model needs its harness's catalog.
+      const named = list.filter(c => (!harness || c.harness === harness)
+        && (override?.model || c.model))
+      offers = await hostedOffers({ hydraId, harnesses: named.map(c => c.harness) })
+    }
 
     if (how === 'paseo') {
       offers = {}
       const client = await (connect ?? openPaseo)({ url: paseoUrl({ url }) })
 
       try {
-        const effective = effectiveDispatch({ hydraId, state }).dispatch
-        const list = !rule || rule === 'default' ? effective.default : effective.rules[rule]?.candidates ?? []
-
         for (const candidate of list) {
           if (!offers[candidate.harness]) {
             const { models } = await client.providers.listModels(candidate.harness, {
@@ -168,8 +202,12 @@ export async function startTask({
     }
 
     dispatch = dispatchTask({
-      hydraId, state, task: card.id, project: card.project, rule, harness, offers,
+      hydraId, state, project: card.project, rule, harness, override, offers,
     })
+
+    if (how === 'pnyx') {
+      hostedOverride({ harness: dispatch.candidate.harness, override: dispatch.override })
+    }
   }
 
   const agent = dispatch?.candidate
@@ -187,14 +225,6 @@ export async function startTask({
   }
 
   if (how === 'pnyx') {
-    const chosen = harness ?? agent.harness
-
-    if (chosen !== 'claude' && chosen !== 'codex') {
-      throw new HydraError({ message: `unknown harness: ${chosen}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
-    }
-
-    const settings = { model: agent.model, effort: agent.effort, mode: agent.mode, provider: chosen === 'codex' ? 'codex' : 'claude-code' }
-
     return askHost({
       hydraId,
       body: {
@@ -204,7 +234,6 @@ export async function startTask({
         ...(replacement ? { replacement } : {}),
         prompt: taskPrompt({ hydraId, card, prompt }),
         ...(canonical({ path: folder }) ? { folder: canonical({ path: folder }) } : {}),
-        settings: Object.fromEntries(Object.entries(settings).filter(([, v]) => v)),
         id: meta.id ?? randomUUID(),
         actor: meta.actor,
         ...(meta.reason ? { reason: meta.reason } : {}),
@@ -216,7 +245,7 @@ export async function startTask({
     hydraId,
     task,
     harness: harness ?? agent.harness,
-    agent,
+    agent: { ...agent, ...dispatch?.override },
     dispatch,
     prompt: taskPrompt({ hydraId, card, prompt }),
     folder,
@@ -426,7 +455,30 @@ export async function startHydra({
     await client.close()
   }
 
-  const dispatch = chooseCandidate({ config: { ...config, dispatch: { ...config.dispatch, workers: { [main.provider]: [mainName] }, projects: {} } }, rule: selectedRule, task: '$hydra', harness: chosen, offers: { [chosen]: offered } })
+  const candidates = ruleCandidates({ dispatch: config.dispatch, rule: selectedRule })
+  // Hydra runs on its rule's first candidate for the harness, as a hosted Hydra does, so none can tie.
+  const first = candidates?.filter(c => c.harness === chosen).slice(0, 1)
+  const rules = first && selectedRule !== 'default'
+    ? {
+      ...config.dispatch.rules,
+      [selectedRule]: { ...config.dispatch.rules[selectedRule]!, candidates: first },
+    }
+    : config.dispatch.rules
+  const dispatch = chooseCandidate({
+    config: {
+      ...config,
+      dispatch: {
+        ...config.dispatch,
+        rules,
+        ...(first && selectedRule === 'default' ? { default: first } : {}),
+        workers: { [main.provider]: [mainName] },
+        projects: {},
+      },
+    },
+    rule: selectedRule,
+    harness: chosen,
+    offers: { [chosen]: offered },
+  })
   const agent = dispatch.candidate
 
   const id = meta.id ?? randomUUID()

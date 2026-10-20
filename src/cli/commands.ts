@@ -12,6 +12,7 @@ import { sendReply } from './reply.ts'
 import { findSession, interactive, liveTask, rankOf, selfSession } from '../core/tasks.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import { setupHydra, startHydra, startTask } from './start.ts'
+import { OVERRIDE_FIELDS, overrideOf, type Override } from '../dispatch/select.ts'
 import { copyCommand } from '../copies/cli.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -548,6 +549,27 @@ const push = guard({
   },
 })
 
+function startOverride({ values }: { values: Record<string, unknown> }): Override | undefined {
+  const { fast } = values
+
+  if (fast !== undefined && fast !== 'on' && fast !== 'off') {
+    throw new HydraError({ message: '--fast takes on or off', code: 'VALIDATION_ERROR' })
+  }
+
+  const named = OVERRIDE_FIELDS.filter(name => name !== 'fast' && values[name] !== undefined)
+  const empty = named.find(name => !String(values[name]).trim())
+
+  if (empty) {
+    throw new HydraError({ message: `--${empty} needs a value`, code: 'VALIDATION_ERROR' })
+  }
+
+  return overrideOf({
+    value: Object.fromEntries([
+      ...named.map(name => [name, values[name]]), ...(fast === undefined ? [] : [['fast', fast === 'on']]),
+    ]),
+  })
+}
+
 function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   const { values, positionals, hydraId } = parse({
     args,
@@ -574,6 +596,10 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       command: { type: 'string' },
       rule: { type: 'string' },
       answer: { type: 'string' },
+      model: { type: 'string' },
+      effort: { type: 'string' },
+      mode: { type: 'string' },
+      fast: { type: 'string' },
       'in-place': { type: 'boolean' },
       safe: { type: 'boolean' },
       discard: { type: 'boolean' },
@@ -671,6 +697,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       via: values.via as string | undefined,
       rule: values.rule as string | undefined,
       harness: values.harness as string | undefined,
+      override: startOverride({ values }),
       prompt: values.prompt as string | undefined,
       folder: values.folder as string | undefined,
       inPlace: Boolean(values['in-place']),
@@ -2020,7 +2047,7 @@ pnyx-axi task project <task> --project <name|path>
 pnyx-axi task remind <task> <when|clear>
 pnyx-axi task reminders
 pnyx-axi task continue <task> [--check]
-pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
+pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
 pnyx-axi task copy <task> [remove [--safe | --discard]]
@@ -2051,7 +2078,10 @@ Claude Code or Codex agent instead, then attaches it; replies and the conversati
 and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.
 Repeating the same --event-id never starts a second agent.
 --rule chooses the heads dispatch candidate list (default: default); --harness filters that list and
---prompt its opening message, which otherwise names the task and the pnyx-worker skill.
+--prompt its opening message, which otherwise names the task and the pnyx-worker skill. Known quota ranks
+by spendPriority above unknown quota; a tie, or several candidates with unknown quota, stops the start.
+--model, --effort, --mode and --fast on|off replace the chosen candidate's settings from the first turn; the model
+must be in the harness's catalog and the task records the override.
 --via firstmate puts a worker request in Hydra's chat and sends it to the Hydra's Firstmate home as an inbox note.
 --via command --command <name> selects the assigned project’s named command (project list); without --command it runs the configured Hydra command. It runs in the task's folder with PNYX_TASK and the rest of its context in the
 environment; the session it starts attaches to the task when its hooks first report.

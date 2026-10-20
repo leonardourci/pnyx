@@ -465,8 +465,12 @@ export type ViewEvent = EventBase & {
 
 export type NotedEvent = EventBase & { type: 'card.noted'; data: Note }
 
+// Settings a start asks for in place of its heads dispatch candidate's own.
+export type StartOverride = Partial<Pick<AgentConfig, 'model' | 'effort' | 'mode' | 'fast'>>
+
 export interface AgentLaunch {
   dispatch?: string
+  override?: StartOverride
   via: 'paseo' | 'command' | 'hooks' | 'pnyx'
   at: string
   folder?: string

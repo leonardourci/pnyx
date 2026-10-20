@@ -223,7 +223,7 @@ test('pnyx-axi task start and task paseo report a stopped daemon as structured e
   const start = run({ args: ['task', 'start', 'work', '--via', 'paseo', '--harness', 'claude', '--prompt', 'Go', '--folder', folder] })
   assert.notEqual(start.status, 0)
   assert.match(start.stdout, /PASEO_UNAVAILABLE/)
-  assert.match(run({ args: ['task', '--help'] }).stdout, /task start <task> \[--via pnyx\|paseo\] \[--rule <name>\] \[--harness claude\|codex\] \[--prompt <text>\]/)
+  assert.match(run({ args: ['task', '--help'] }).stdout, /task start <task> \[--via pnyx\|paseo\] \[--rule <name>\] \[--harness claude\|codex\] \[--model <model>\] \[--effort <effort>\] \[--mode <mode>\] \[--fast on\|off\] \[--prompt <text>\]/)
 })
 
 test('an agent started from a lab home reports its hooks to that home, never to the installed one', async () => {
@@ -255,6 +255,13 @@ test('task start uses the dispatch rule\'s model, effort and mode, and opens wit
   assert.deepEqual(created.config, { provider: 'codex/codex-small', thinkingOptionId: 'high', modeId: 'full-access', featureValues: { fast_mode: false } })
   assert.match(String(created.prompt), /^Verify the canary\.\n\n/)
   assert.match(String(created.prompt), /Pnyx worker for task c1 "Lab task" on Hydra lab/)
+
+  const overridden = hydraId()
+  dispatchCommands.rule(['set', 'review', '--harness', 'codex', '--model', 'codex-small', '--effort', 'high', '--mode', 'full-access', '--fast', 'off', '--hydra', 'lab'])
+  const asked = fakePaseo()
+  await startTask({ hydraId: 'lab', task: 'work', via: 'paseo', rule: 'review', override: { model: 'codex-default', mode: 'auto', fast: true }, folder: overridden.folder, url, meta: { at, actor: 'test', id: 'kind-3' }, connect: asked.connect })
+  assert.deepEqual(asked.calls.create[0]!.config, { provider: 'codex/codex-default', thinkingOptionId: 'high', modeId: 'auto', featureValues: { fast_mode: true } })
+  assert.deepEqual(loadHydra({ hydraId: 'lab' }).state.cards.c1?.launch?.override, { model: 'codex-default', mode: 'auto', fast: true })
 
   const other = hydraId()
   dispatchCommands.rule(['set', 'review', '--harness', 'codex', '--model', 'missing', '--hydra', 'lab'])
