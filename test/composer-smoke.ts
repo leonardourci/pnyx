@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { decidePush } from '../src/core/decide.ts'
 import { hydraConfig, hydraEvent } from '../src/core/hydra.ts'
 import { startServer } from '../src/server/server.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
@@ -53,38 +52,6 @@ try {
   assert.equal(effectiveDispatch({ hydraId: 'default', state: state() }).dispatch.rules.hydra, undefined)
   assert.equal(state().config?.hydra.agent?.harness, 'codex')
   await screenshot({ name: 'composer-picker.png' })
-  await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
-  await eventually({ condition: '!!document.querySelector(".detail .agent-picker")', label: 'attached session exposes the same picker' })
-  await click({ selector: '.detail .agent-picker > button' })
-  await check({ condition: 'document.querySelector(".detail .agent-configuration [aria-label=Agent]").disabled && document.querySelector(".detail .agent-configuration").textContent.includes("Hydra assigns agents")', label: 'settings cannot attach or reassign a task agent' })
-  await evaluate({ code: 'window.agentRequests = []; const send = WebSocket.prototype.send; WebSocket.prototype.send = function(data) { const message = JSON.parse(data); if (message.name === "agent") { window.agentRequests.push(message); this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "result", id: message.id, agent: { sent: message.args[1] === window.failSetting ? "failed" : "delivered", confirmed: window.confirmAgent && message.args[1] !== window.failSetting, now: message.args[2] } }) })); return; } return send.call(this, data); }; return true;' })
-  await click({ selector: '.detail .agent-configuration [aria-label=Effort]' })
-  await click({ selector: '.detail [role=listbox][aria-label=Effort] [role=option]:nth-child(2)' })
-  await check({ condition: 'window.agentRequests.length === 0', label: 'selecting a setting does not send it' })
-  await text({ label: 'Apply settings' })
-  await eventually({ condition: 'document.querySelector(".detail .agent-picker > button").textContent.includes("Pending confirmation")', label: 'unconfirmed delivery remains pending' })
-  await click({ selector: '.detail .agent-picker > button' })
-  await check({ condition: 'document.querySelector(".detail .agent-configuration [aria-label=Effort]").disabled && document.querySelector(".detail .agent-configuration [aria-label=Effort]").textContent.includes("Pending")', label: 'pending control awaits a real session report' })
-  withWriter({
-    hydraId: 'default',
-    fn: ({ writer }) => {
-      const decision = decidePush({ state: writer.state, newCardId: 'unused', key: 'layout', input: { settings: { effort: 'low' } }, meta: { actor: 'fixture', at: new Date().toISOString() } })
-      assert.ok('event' in decision); writer.append({ event: decision.event })
-    },
-  })
-  await eventually({ condition: '!document.querySelector(".detail .agent-picker > button").textContent.includes("Pending confirmation") && !document.querySelector(".detail .agent-configuration [aria-label=Effort]").disabled', label: 'session report confirms the setting' })
-  await evaluate({ code: 'window.agentRequests = []; window.confirmAgent = true; window.failSetting = "effort"; return true;' })
-  await click({ selector: '.detail .agent-configuration [aria-label=Mode]' })
-  await click({ selector: '.detail [role=listbox][aria-label=Mode] [role=option]:nth-child(2)' })
-  await click({ selector: '.detail .agent-configuration [aria-label=Effort]' })
-  await evaluate({ code: 'const option = [...document.querySelectorAll(\'[role=listbox][aria-label=Effort] [role=option]\')].find(o => o.textContent.trim() === "high"); option.click(); return true;' })
-  await text({ label: 'Apply settings' })
-  await eventually({ condition: 'window.agentRequests.length === 2 && !document.querySelector(".detail .agent-configuration > button").disabled', label: 'failed setting stays staged after a successful earlier setting' })
-  await evaluate({ code: 'window.failSetting = ""; return true;' })
-  await text({ label: 'Apply settings' })
-  await eventually({ condition: 'window.agentRequests.length === 3 && !document.querySelector(".detail [role=dialog]")', label: 'retry sends only the remaining setting' })
-  await check({ condition: 'window.agentRequests.filter(message => message.args[1] === "mode").length === 1', label: 'a successfully delivered mode cycle is never repeated on retry' })
-  await click({ selector: '[aria-label="Close detail"]' })
   withWriter({
     hydraId: 'default',
     fn: ({ writer }) => {

@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react'
 import { useHeadsDispatch } from './heads-dispatch.ts'
 import { Projects } from './projects.tsx'
 import type { HydraState, ViewPreferences } from '../../../src/core/model.ts'
@@ -14,7 +15,16 @@ import { AgentKinds } from './agent-kinds.tsx'
 import { IntegrationSettings } from './integrations.tsx'
 import { About } from './about.tsx'
 
-export function Settings({ state, connected, view, save, command, notify }: {
+export function Settings({ connected, ...props }: ComponentProps<typeof ConnectedSettings>) {
+  return connected ? <ConnectedSettings connected={connected} {...props} /> : (
+    <section className="settings" aria-label="Settings">
+      <h1>Settings</h1>
+      <p role="status" className="muted">Waiting for connection…</p>
+    </section>
+  )
+}
+
+function ConnectedSettings({ state, connected, view, save, command, notify }: {
   state: HydraState
   connected: boolean
   view: ViewPreferences

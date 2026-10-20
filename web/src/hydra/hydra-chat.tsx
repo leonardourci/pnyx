@@ -1,17 +1,17 @@
 import { Icon } from '../components/ui/icon.tsx'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { HYDRA_ACTOR, type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
+import { type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
 import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { taskUpdates } from '../../../src/thread/task.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
-import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
+import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Resize } from '../components/ui/resize.tsx'
 import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
 import { Messages } from './messages.tsx'
 import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
-import { joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
+import { hydraMessages, joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 
 export function HydraChat({
   state, command, connected, notify, view, save, draft, setDraft, comments, setComments,
@@ -70,11 +70,10 @@ export function HydraChat({
     }
   }, [liveThread])
   const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
-  const recorded: ThreadEntry[] = messages.map(m => ({ id: m.id, kind: 'message', role: m.actor === HYDRA_ACTOR ? 'assistant' : 'user', text: m.details ? `${m.text}\n\n${m.details}` : m.text, at: m.at }))
   const transcript = joinMessageParts({ entries: page?.entries ?? [] })
   const updates = Object.values(state.cards).filter(c => !c.automaticTask && c.id !== HYDRA_CARD)
     .flatMap(card => taskUpdates({ card }))
-  const entries = [...updates, ...recorded.filter(m => !transcript.some(t => t.kind === 'message' && t.role === 'user' && t.text === m.text)), ...transcript]
+  const entries = [...updates, ...hydraMessages({ messages, transcript })]
     .filter(e => e.kind === 'message' || (e.kind === 'tool' ? tools : thinking))
     .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))
   useEffect(() => {

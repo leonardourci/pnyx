@@ -51,8 +51,8 @@ try {
   await b.eventually({ condition: 'document.querySelectorAll(".card").length >= 120 && document.querySelector(".app")?.dataset.connected === "true"', label: 'realistic Hydra loaded' })
   await b.evaluate({ code: 'window.snappyDocument = performance.timeOrigin; window.blankFrames = 0; window.keepSampling = true; const sample = () => { if (!document.querySelector(\'.card\')) window.blankFrames++; if (window.keepSampling) requestAnimationFrame(sample); }; sample(); return true;' })
   await b.click({ selector: card })
-  await b.eventually({ condition: 'document.querySelector(".detail .thread")?.textContent.includes("Update 199")', label: 'long conversation loaded' })
-  await b.fill({ label: 'Reply to Shape the first working Hydra', value: 'Draft kept on this Hydra' })
+  await b.eventually({ condition: '!!document.querySelector(".task-updates")', label: 'Updates loaded' })
+  await b.fill({ label: 'Reply to Hydra', value: 'Draft kept on this Hydra' })
   await b.evaluate({
     code: `
     window.nativeSocketSend = WebSocket.prototype.send;
@@ -83,12 +83,12 @@ try {
   await b.screenshot({ name: 'snappy-resize.png' })
   await b.evaluate({
     code: `
-    window.originalThread = document.querySelector('.detail .thread');
+    window.originalThread = document.querySelector('.task-updates');
     const transfer = new DataTransfer(); transfer.setData('application/pnyx-task', 'default-0');
     document.querySelector('[data-column="in_progress"]').dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer }));
     await new Promise(r => requestAnimationFrame(r));
     if (document.querySelector('[data-card="default-0"]').closest('[data-column]').dataset.column !== 'in_progress') throw new Error('Move waited for server');
-    if (document.querySelector('.detail .thread') !== window.originalThread) throw new Error('Unrelated conversation remounted');
+    if (document.querySelector('.task-updates') !== window.originalThread) throw new Error('Unrelated Updates remounted');
     return true;`,
   })
   await b.eventually({ condition: 'window.writes.filter(m => m.name === "move").length === 1', label: 'move saved once' })
@@ -121,7 +121,7 @@ try {
     for (let i = 0; i < 6; i++) { await new Promise(r => requestAnimationFrame(r)); if (document.querySelector('[data-hydra-current]')?.textContent.trim() === 'default') { window.cachedSwitchMs = performance.now() - at; return true; } }
     throw new Error('Cached Hydra did not switch immediately');`,
   })
-  await b.eventually({ condition: 'document.querySelector(".app")?.dataset.connected === "true" && document.querySelector(".detail .composer textarea")?.value === "Draft kept on this Hydra"', label: 'cached Hydra restores its selection and draft' })
+  await b.eventually({ condition: 'document.querySelector(".app")?.dataset.connected === "true" && document.querySelector(".hydra-chat .composer textarea")?.value === "Draft kept on this Hydra"', label: 'cached Hydra restores its selection and draft' })
   await b.check({ condition: 'performance.timeOrigin === window.snappyDocument && window.blankFrames === 0', label: 'Hydra switches keep the document and never show an empty frame' })
   await b.evaluate({ code: 'history.back(); return true;' })
   await b.eventually({ condition: 'document.querySelector("[data-hydra-current]")?.textContent.trim() === "second" && document.querySelector(".app")?.dataset.connected === "true"', label: 'browser Back switches Hydras' })

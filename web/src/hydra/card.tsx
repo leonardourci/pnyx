@@ -15,7 +15,7 @@ import { cardState, projectTitle } from './view.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { Resize } from '../components/ui/resize.tsx'
 
-const MIN_THREAD_HEIGHT = 48
+const MIN_UPDATES_HEIGHT = 80
 
 function LastMessage({ message }: { message: LatestMessage }) {
   return (
@@ -65,10 +65,8 @@ export function HydraCard({
   useLayoutEffect(() => {
     const card = element.current
     const pane = card?.closest('.column-cards')
-    const thread = card?.querySelector<HTMLElement>('.detail .thread')
-    const composer = card?.querySelector<HTMLElement>('.composer')
 
-    if (!selected || !card || !pane || !thread || !composer) {
+    if (!selected || !card || !pane) {
       return
     }
 
@@ -76,18 +74,17 @@ export function HydraCard({
       const style = getComputedStyle(pane)
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
       const available = Math.floor(pane.clientHeight - padding)
+      const updates = card.querySelector<HTMLElement>('.task-updates')
       const cardStyle = getComputedStyle(card)
-      const messages = thread.getBoundingClientRect()
-      const frame = messages.top - card.getBoundingClientRect().top
-        + composer.getBoundingClientRect().bottom - messages.bottom
-        + parseFloat(cardStyle.paddingBottom) + parseFloat(cardStyle.borderBottomWidth)
+      const frame = updates ? updates.getBoundingClientRect().top - card.getBoundingClientRect().top
+        + parseFloat(cardStyle.paddingBottom) + parseFloat(cardStyle.borderBottomWidth) : 0
       const readable = Math.min(VIEW_SIZE_LIMITS.cardHeight.max, Math.max(
         VIEW_SIZE_LIMITS.cardHeight.min,
-        Math.ceil(frame + MIN_THREAD_HEIGHT),
+        Math.ceil(frame + MIN_UPDATES_HEIGHT),
       ))
-      setMinimum(readable)
+      setMinimum(Math.min(readable, available))
       setLimit(Math.max(
-        readable,
+        Math.min(readable, available),
         Math.min(VIEW_SIZE_LIMITS.cardHeight.max, available),
       ))
     }
@@ -96,8 +93,11 @@ export function HydraCard({
     const observer = new ResizeObserver(measure)
     observer.observe(pane)
     observer.observe(card)
-    observer.observe(thread)
-    observer.observe(composer)
+    const detail = card.querySelector('.detail')
+
+    if (detail) {
+      observer.observe(detail)
+    }
 
     return () => observer.disconnect()
   }, [selected])
@@ -163,7 +163,7 @@ export function HydraCard({
       )}
       <Button
         className="card-open"
-        aria-label={`Open conversation for ${card.title}`}
+        aria-label={`Open task ${card.title}`}
         aria-expanded={selected}
         onClick={() => open({ id: card.id })}
         data-card={card.id}

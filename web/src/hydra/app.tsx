@@ -1,10 +1,8 @@
 import { Icon } from '../components/ui/icon.tsx'
 import { storageKey } from './outbox.ts'
 import { HYDRA_CARD, lockedColumn } from '../../../src/core/hydra.ts'
-import { cardSessionId } from '../../../src/core/tasks.ts'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { viewFor } from '../../../src/core/view.ts'
-import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { AddProject } from './add-project.tsx'
 import { HydraChat } from './hydra-chat.tsx'
@@ -57,14 +55,14 @@ export function App() {
 
 function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const {
-    state, command, connected, thread, setThread, hydraThread, latest, navigation,
+    state, command, connected, hydraThread, latest, navigation,
     navigate, loading, loaded, error,
   } = hydra
   const restoreKey = useRef(storageKey({ key: 'restore' })).current
   const [restored] = useState(() => hydraViews.get(navigation.hydraId)
     ?? restoreView({ key: restoreKey }))
   const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') || new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState<{ text: string } | null>(null), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
   const [creatingTask, setCreatingTask] = useState<{ column: string; parent?: string } | null>(null)
   const [historyQuery, setHistoryQuery] = useState('')
@@ -110,8 +108,18 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     history.replaceState(null, '', url)
   }
 
+  useEffect(() => {
+    if (!notice) {
+      return
+    }
+
+    const timer = setTimeout(() => setNotice(null), 5000)
+
+    return () => clearTimeout(timer)
+  }, [notice])
+
   const notify = useCallback(({ text }: { text: string }) => {
-    setNotice(text)
+    setNotice({ text })
   }, [])
   useEffect(() => {
     if (connected) {
@@ -181,7 +189,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const card = selected ? state.cards[selected] : undefined
   const cards = card && !filteredCards.some(item => item.id === card.id)
     ? [...filteredCards, card] : filteredCards
-  const attachedSession = card ? cardSessionId({ card }) : undefined
   const title = pageTitle({ page, cards: state.cards, selected, needsYou: columns.find(c => c.role === 'needs_you')?.id })
   useEffect(() => {
     document.title = title
@@ -193,26 +200,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
     return false
   }), [command, notify, state.viewRevision])
-  useEffect(() => {
-    if (!connected) {
-      return
-    }
 
-    let cancelled = false; void command({ name: 'thread', args: [selected ?? ''] }).then(r => {
-      if (!cancelled && r.thread) {
-        setThread(r.thread as ThreadPage)
-      }
-    })
-      .catch(e => {
-        if (!cancelled) {
-          notify({ text: e.message })
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [selected, attachedSession, connected, command, setThread, notify])
   useEffect(() => {
     const keep = () => {
       try {
@@ -260,7 +248,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
     if (state.cards[id]) {
       setSelected(id); setPage('hydra')
-      requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.detail .composer textarea' })))
+      requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.task-updates' })))
     }
   }
 
@@ -304,20 +292,12 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   })
   const detail = card && (
     <Detail
-      key={`${card.id}:${attachedSession ?? ''}`}
+      key={card.id}
       card={card}
-      openTask={open}
       state={state}
-      view={view}
-      thread={thread?.session === attachedSession ? thread : null}
       command={command}
       connected={connected}
       close={close}
-      save={save}
-      draft={drafts[card.id] ?? ''}
-      setDraft={({ text }) => setDrafts(d => ({ ...d, [card.id]: text }))}
-      comments={comments[card.id] ?? []}
-      setComments={({ items }) => setComments(c => ({ ...c, [card.id]: items }))}
       createTask={createTask}
       notify={notify}
     />
@@ -477,7 +457,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                   cancel={() => setCreatingTask(null)}
                                   saved={({ id }) => {
                                     setCreatingTask(null); setSelected(id)
-                                    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.detail .composer textarea' })))
+                                    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.task-updates' })))
                                     const first = items[0]
 
                                     if (first) {
@@ -530,8 +510,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         </main>
         {notice && (
           <div className="notice" role="status">
-            <span>{notice}</span>
-            <Button aria-label="Dismiss notification" onClick={() => setNotice('')}>
+            <span>{notice.text}</span>
+            <Button aria-label="Dismiss notification" onClick={() => setNotice(null)}>
               <Icon name="close" />
             </Button>
           </div>
