@@ -81,9 +81,7 @@ const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CO
 const wakeId = ({ through }: { through: number }) => `wake:${through}`
 const WAKE_TURN = /^wake:(\d+):hosted$/
 
-// The last change a started wake covered, so a restart resumes after it; a wake that
-// never started leaves it, and before any wake, the given fallback. A started wake that
-// fails mid-turn still counts: its prompt is already in Hydra's session.
+// A wake counts once its turn starts, as its prompt is then in Hydra's session.
 function wakeCursor({ state, fallback }: { state: HydraState; fallback: number }): number {
   const covered = Object.keys(state.eventIds).flatMap(id => WAKE_TURN.exec(id)?.[1] ?? [])
     .map(Number)
@@ -165,8 +163,7 @@ export function createHost({
   let closing = false
   let hydraTurn = Promise.resolve()
   const queuedHydra = new Set<string>()
-  // The latest change that should wake Hydra; the recorded wakes say how far it has checked,
-  // and before the first one, wakeStart.
+  // Recorded wakes, or wakeStart before the first, say how far Hydra has checked.
   let wakeThrough = 0, wakeStart: number | undefined
   let wakeTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -533,8 +530,7 @@ export function createHost({
     entry.input.push({ text })
   }
 
-  // One check turn at a time: a busy Hydra is woken when its turn finishes, and the turn
-  // that follows covers every change since the last started wake.
+  // One check turn at a time; a busy Hydra is woken when its turn finishes.
   const armWake = () => {
     if (!closing && !wakeTimer && wakeThrough) {
       wakeTimer = setTimeout(fireWake, wakeDelay)
@@ -1046,8 +1042,7 @@ export function createHost({
         },
       })
 
-      // Changes that landed while the server was stopped wake Hydra once it is back, from its
-      // last wake or, before any, its last turn.
+      // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state
 
       if (hostedHydra({ state })) {

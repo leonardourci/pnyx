@@ -240,9 +240,7 @@ export function hostedHydra({ state }: { state: HydraState }): boolean {
   return hydraConfig({ state }).hydra.kind !== 'firstmate' && state.cards[HYDRA_CARD]?.agent?.host === 'pnyx'
 }
 
-// A change that wakes a hosted Hydra for a check turn: a worker's declaration, new
-// question or finished turn, a pending permission or a due reminder. Hydra's own writes
-// and its own card never wake it.
+// Changes that wake a hosted Hydra for a check turn; never Hydra's own writes or card.
 export function wakesHydra({ state, event }: { state: HydraState; event: HydraEvent }): boolean {
   const card = state.cards[event.cardId]
 
