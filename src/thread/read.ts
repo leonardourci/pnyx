@@ -9,7 +9,7 @@ import { taskReceipt } from './task.ts'
 import { cardSessionId } from '../core/tasks.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
-export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; receipt?: ReplyState; delivery?: { agent?: { state: ReplyState; detail?: string }; hydra: { state: ReplyState; detail?: string } }; task?: string; initial?: boolean; replyId?: string; messageId?: string; part?: number }
+export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; streaming?: boolean; receipt?: ReplyState; delivery?: { agent?: { state: ReplyState; detail?: string }; hydra: { state: ReplyState; detail?: string } }; task?: string; initial?: boolean; replyId?: string; messageId?: string; part?: number }
 export interface ThreadPage { card: string; session?: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; routeKind?: ReplyRoute['kind']; noRoute?: string; watching: 'unknown' }
 const MAX_BYTES = 10 * 1024 * 1024
 // Chunk long entries instead of losing their tail. Sixty bounded entries stay

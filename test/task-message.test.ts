@@ -11,6 +11,7 @@ import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { readThread, type ThreadEntry } from '../src/thread/read.ts'
 import { paseoHistory } from '../src/integrations/paseo/history.ts'
 import { taskConversation, taskUpdates, withTaskReceipts } from '../src/thread/task.ts'
+import { taskPrompt } from '../src/cli/start.ts'
 
 function fixture() {
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-task-message-')))
@@ -59,6 +60,23 @@ test('an unassigned task preserves its prompt and messages in one stream and que
     assert.equal(repeated.length, 2)
     assert.deepEqual(entries.at(-1)?.delivery, { hydra: { state: 'queued', detail: undefined } })
     assert.deepEqual(replay({ state: emptyHydra(), events: readEvents({ hydraId: 'default' }) }), f.state())
+  } finally {
+    f.close()
+  }
+})
+
+test('the task conversation shows the brief once and hides hosted launch instructions', () => {
+  const f = fixture()
+
+  try {
+    const entries = taskConversation({
+      card: f.card(),
+      entries: [
+        { id: 'launch', kind: 'message', role: 'user', text: taskPrompt({ hydraId: 'default', card: f.card() }) },
+        { id: 'answer', kind: 'message', role: 'assistant', text: 'I will read the plan.' },
+      ],
+    })
+    assert.deepEqual(entries.map(e => e.text), ['Read the migration plan', 'I will read the plan.'])
   } finally {
     f.close()
   }
