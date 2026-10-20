@@ -1,7 +1,9 @@
+import type { HydraMessage } from '../src/core/model.ts'
+import type { ThreadEntry } from '../src/thread/read.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { recordEntries } from '../src/thread/read.ts'
-import { commentReply, joinMessageParts, quoteInto } from '../web/src/hydra/chat.ts'
+import { hydraMessages, commentReply, joinMessageParts, quoteInto } from '../web/src/hydra/chat.ts'
 import { DEFAULT_KEYBOARD, keyboardError, resolveKey } from '../src/core/keyboard.ts'
 
 test('Markdown messages split for transport reassemble across older pages without losing text', () => {
@@ -50,4 +52,30 @@ test('Enter replies and c comments in the thread without consuming typed text', 
 test('a quoted selection follows the draft as Markdown, ready for an answer under it', () => {
   assert.equal(quoteInto({ draft: '', text: ' First line\nSecond line ' }), '> First line\n> Second line\n\n')
   assert.equal(quoteInto({ draft: 'Context\n\n', text: 'Quoted' }), 'Context\n\n> Quoted\n\n')
+})
+
+const message = ({ id, actor = 'web', text = 'Check this task' }: { id: string; actor?: string; text?: string }): HydraMessage =>
+  ({ id, actor, text, at: '2026-10-20T10:00:00Z', action: 'send', hydra: 'hydra' })
+
+test('Hydra chat labels system lines and matches user transcript copies once despite whitespace', () => {
+  const transcript: ThreadEntry[] = [
+    { id: 'native', kind: 'message', role: 'user', text: '  Check\nthis task\n' },
+    { id: 'answer', kind: 'message', role: 'assistant', text: 'Check this task' },
+  ]
+  const entries = hydraMessages({
+    messages: [
+      message({ id: 'a' }),
+      message({ id: 'b' }),
+      message({ id: 'system', actor: 'pnyx' }),
+      message({ id: 'hydra', actor: 'hydra' }),
+    ],
+    transcript,
+  })
+
+  assert.equal(entries.filter(entry => entry.role === 'user').length, 2)
+  assert.equal(entries.find(entry => entry.id === 'system')?.role, 'Pnyx')
+  assert.equal(entries.find(entry => entry.id === 'hydra')?.role, 'assistant')
+  assert.equal(entries.find(entry => entry.id === 'a'), undefined)
+  assert.ok(entries.some(entry => entry.id === 'answer'))
+  assert.equal(transcript[0]!.text, '  Check\nthis task\n')
 })

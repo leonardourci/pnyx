@@ -1,4 +1,29 @@
+import { HYDRA_ACTOR, type HydraMessage } from '../../../src/core/model.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
+
+export function hydraMessages({ messages, transcript }: {
+  messages: HydraMessage[]
+  transcript: ThreadEntry[]
+}): ThreadEntry[] {
+  const remaining = [...transcript]
+  const normalized = ({ text }: { text: string }) => text.trim().replace(/\s+/g, ' ')
+  const recorded: ThreadEntry[] = []
+
+  for (const message of messages) {
+    const role = message.actor === HYDRA_ACTOR ? 'assistant' : message.actor === 'pnyx' ? 'Pnyx' : 'user'
+    const text = message.details ? `${message.text}\n\n${message.details}` : message.text
+    const match = role === 'user' ? remaining.findIndex(entry => entry.kind === 'message'
+      && /^(user|You)( · continued)?$/.test(entry.role) && normalized(entry) === normalized({ text })) : -1
+
+    if (match >= 0) {
+      remaining.splice(match, 1)
+    } else {
+      recorded.push({ id: message.id, kind: 'message', role, text, at: message.at })
+    }
+  }
+
+  return [...recorded, ...transcript]
+}
 
 export interface ChatComment {
   id: string
