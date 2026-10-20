@@ -233,6 +233,12 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
   }
 }
 
+// A shell_environment_policy that inherits only core variables would drop Pnyx's own, so they are set explicitly.
+const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fromEntries(Object
+  .entries(env)
+  .filter(([name, value]) => name.startsWith('PNYX_') && value !== undefined)
+  .map(([name, value]) => [`shell_environment_policy.set.${name}`, value]))
+
 export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['app-server', '--listen', 'stdio://'], { cwd, env, stdio: 'pipe' }) }: { spawnCodex?: SpawnCodex }): Provider {
   return {
     async open({ cwd, agent, settings, env, signal, instructions }) {
@@ -258,6 +264,7 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
           params: {
             ...(agent ? { threadId: agent.sessionId } : {}),
             cwd,
+            config: pnyxShellEnvironment({ env }),
             ...(instructions ? { developerInstructions: instructions } : {}),
             ...(options.model ? { model: options.model } : {}),
             ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
