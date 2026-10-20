@@ -30,6 +30,21 @@ test('--help prints concise help', () => {
   assert.ok(out.split('\n').length < 40)
 })
 
+test('task permission takes --actor hydra and names what it parsed when the choice is missing', () => {
+  const failure = ({ args }: { args: string[] }) => {
+    try {
+      run({ args })
+    } catch (error) {
+      return (error as { stdout: string }).stdout
+    }
+
+    return assert.fail('expected a failure')
+  }
+
+  assert.match(failure({ args: ['task', 'permission', 'task-1 request-1', 'allow', '--actor', 'hydra', '--reason', 'Scoped'] }), /allow\|deny \(got 'task-1 request-1' 'allow'\)/)
+  assert.match(failure({ args: ['task', 'permission', 'task-1', 'request-1', 'allow', '--actor', 'hydra', '--reason', 'Scoped'] }), /^code: NOT_RUNNING$/m)
+})
+
 test('update fails with a structured error while unpublished', () => {
   assert.throws(() => run({ args: ['update'] }), (error: { status: number; stdout: string }) => {
     assert.equal(error.status, 2)

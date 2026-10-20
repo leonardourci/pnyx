@@ -617,7 +617,15 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const choice = positionals[3]
 
     if (choice !== 'allow' && choice !== 'deny') {
-      throw new HydraError({ message: 'Use task permission <task> <request> allow|deny', code: 'VALIDATION_ERROR' })
+      // A quoted "<task> <request>" arrives as one argument, so say what was parsed.
+      const got = positionals.slice(1).map(arg => `'${arg}'`)
+        .join(' ') || 'nothing'
+
+      throw new HydraError({
+        message: `Use task permission <task> <request> allow|deny (got ${got})`,
+        code: 'VALIDATION_ERROR',
+        help: ['Pass the task, the request id and allow or deny as separate arguments'],
+      })
     }
 
     return askHost({
