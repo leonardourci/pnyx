@@ -121,8 +121,12 @@ test('task conversations keep one owner message and its receipt when the transcr
       [mentioned],
     )
     const question: ThreadEntry = {
-      id: 'question', kind: 'message', role: 'assistant', text: 'Run the checks again?',
-      at: '2026-10-21T10:00:00Z', session: 'codex:second',
+      id: 'question',
+      kind: 'message',
+      role: 'assistant',
+      text: 'Run the checks again?',
+      at: '2026-10-21T10:00:00Z',
+      session: 'codex:second',
     }
     const anotherSession = {
       ...native, session: 'codex:second', at: '2026-10-21T10:00:01Z',
