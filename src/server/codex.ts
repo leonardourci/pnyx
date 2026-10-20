@@ -241,6 +241,7 @@ const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fro
 
 export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['app-server', '--listen', 'stdio://'], { cwd, env, stdio: 'pipe' }) }: { spawnCodex?: SpawnCodex }): Provider {
   return {
+    // ponytail: Codex has no per-command allow list here, so `allow` is unused and a Codex Hydra asks in its chat.
     async open({ cwd, agent, settings, env, signal, instructions }) {
       const rpc = connection({ child: spawnCodex({ cwd, env }) })
 

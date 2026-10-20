@@ -299,6 +299,24 @@ test('a new agent on the task does not inherit the old one\'s interrupted turn',
   assert.equal(task().attention.some(a => a.key === 'pnyx:interrupted'), false)
 })
 
+test('hosted Hydra runs pnyx-axi unasked, as itself, and leaves its other prompts to the owner', async () => {
+  await lab()
+  const sdk = fakeSdk()
+  sdk.control.permission = true
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
+  const hydra = () => loadHydra({ hydraId: 'lab' }).state.cards.$hydra!
+  await commands.hydra(['send', '--text', 'Start the canary', '--event-id', 'hydra-ask', '--hydra', 'lab'])
+  await until({ check: () => hydra().permissions?.[0]?.status === 'pending', what: 'Hydra permission request' })
+  const { options } = sdk.calls[0]!
+  assert.deepEqual(options.allowedTools, ['Bash(pnyx-axi:*)'])
+  assert.equal(options.env?.PNYX_ACTOR, 'hydra')
+  const request = hydra().permissions![0]!
+  await assert.rejects(async () => commands.task(['permission', '$hydra', request.id, 'allow', '--actor', 'hydra', '--reason', 'Mine', '--hydra', 'lab']), /own permission request/)
+  await commands.task(['permission', '$hydra', request.id, 'allow', '--actor', 'web', '--hydra', 'lab'])
+  await until({ check: () => sdk.permissions.length === 1, what: 'permission result' })
+  assert.deepEqual(sdk.permissions[0], { behavior: 'allow' })
+})
+
 test('hosted permissions survive hooks, wake Hydra and accept exactly one answer without moving the task', async () => {
   const { folder, task } = await lab()
   const sdk = fakeSdk()

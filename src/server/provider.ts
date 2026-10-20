@@ -17,9 +17,11 @@ export interface HostedSession {
 }
 
 export interface Provider {
-  open({ cwd, agent, settings, env, signal, instructions }: {
+  open({ cwd, agent, settings, env, signal, instructions, allow }: {
     cwd: string
     instructions?: string
+    // Commands the session runs without asking, such as Pnyx's own CLI for Hydra.
+    allow?: string[]
     agent?: AgentRef
     settings: AgentSettings
     env: NodeJS.ProcessEnv

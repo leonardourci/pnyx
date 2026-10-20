@@ -41,7 +41,7 @@ function turnOf({ message }: { message: SDKMessage }): 'working' | 'finished' | 
 
 export function claudeProvider({ query }: { query?: QueryFn }): Provider {
   return {
-    async open({ cwd, agent, settings, env, instructions }) {
+    async open({ cwd, agent, settings, env, instructions, allow }) {
       const id = agent?.sessionId ?? randomUUID()
       const path = agent?.transcriptPath ?? transcriptPath({
         cwd, session: id, folder: env.CLAUDE_CONFIG_DIR,
@@ -73,6 +73,7 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
               settingSources: ['user', 'project', 'local'],
               systemPrompt: { type: 'preset', preset: 'claude_code', ...(instructions ? { append: instructions } : {}) },
               tools: { type: 'preset', preset: 'claude_code' },
+              ...(allow?.length ? { allowedTools: allow.map(command => `Bash(${command}:*)`) } : {}),
               permissionPrompts: 'host',
               // eslint-disable-next-line pnyx/object-params -- The SDK owns this callback signature.
               canUseTool: (tool, input, { signal, decisionReason }) => permission({
