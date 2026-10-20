@@ -1,4 +1,4 @@
-import { HydraError, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraState, type Column, type HydraChange, type TaskStatus } from './model.ts'
+import { HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraState, type Column, type HydraChange, type TaskStatus } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { permissionAttention } from './permissions.ts'
 import { assignDefined } from './tasks.ts'
@@ -231,6 +231,50 @@ export function declareTask({ state, ref, status, note, meta, source, raw }: {
   }
 
   return hydraEvent({ state, meta, cardId: card.id, change: { type: 'task.declared', data: { state: normalized as TaskStatus, note, ...(source ? { source } : {}), ...(raw ? { raw } : {}) } } })
+}
+
+const AGENT_ACTOR = /^(pnyx$|hook:|session:)/
+
+// Hydra is a session the Pnyx server runs, not a Firstmate home or an outside agent.
+export function hostedHydra({ state }: { state: HydraState }): boolean {
+  return hydraConfig({ state }).hydra.kind !== 'firstmate' && state.cards[HYDRA_CARD]?.agent?.host === 'pnyx'
+}
+
+// A change that wakes a hosted Hydra for a check turn: a worker's declaration, new
+// question or finished turn, a pending permission or a due reminder. Hydra's own writes
+// and its own card never wake it.
+export function wakesHydra({ state, event }: { state: HydraState; event: HydraEvent }): boolean {
+  const card = state.cards[event.cardId]
+
+  if (event.actor === HYDRA_ACTOR || event.cardId === HYDRA_CARD || !card || card.automaticTask
+    || !hostedHydra({ state })) {
+    return false
+  }
+
+  switch (event.type) {
+    case 'task.declared':
+    case 'task.reminder-due':
+      return true
+    case 'task.permission':
+      return event.data.status === 'pending'
+    // An agent's own observation on a task, not a person's edit such as continuing a session.
+    case 'card.pushed': {
+      if (card.tracking !== 'declared' || !AGENT_ACTOR.test(event.actor)) {
+        return false
+      }
+
+      const { before, attention, activity } = event.data
+      const open = ({ list }: { list?: Card['attention'] }) =>
+        (list ?? []).filter(a => a.blocking && !a.answered).map(a => a.key)
+      const asked = open({ list: before?.attention })
+      const asks = Boolean(before?.attention)
+        && open({ list: attention }).some(key => !asked.includes(key))
+
+      return asks || (activity === 'finished' && Boolean(before?.activity))
+    }
+    default:
+      return false
+  }
 }
 
 export function applyHydra({ state, event }: { state: HydraState; event: HydraEvent }): boolean {
