@@ -42,7 +42,7 @@ try {
   await check({ condition: '!!document.querySelector(".last-message .markdown strong") && [...document.querySelectorAll(".last-message a")].some(a => a.href === "https://github.com/example/project/pull/42")', label: 'card message previews render emphasis and clickable PR links' })
   await check({ condition: '!!document.querySelector(".hydra-chat .markdown h1") && !!document.querySelector(".hydra-chat .markdown table") && !!document.querySelector(".hydra-chat .markdown blockquote") && !!document.querySelector(".hydra-chat .markdown .code-block")', label: 'Hydra messages render the complete Markdown document' })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
-  await eventually({ condition: '!!document.querySelector(".detail .message.mine .markdown h1")', label: 'user messages share the Markdown renderer' })
+  await eventually({ condition: '!!document.querySelector(".task-updates .markdown strong")', label: 'task Updates share the Markdown renderer' })
   await check({ condition: '[...document.querySelectorAll(".messages .markdown")].every(el => el.scrollWidth <= el.clientWidth + 1) && !window.pnyxUnsafe && !document.querySelector(".messages script,.messages img,.messages iframe,.messages [onerror]")', label: 'full Markdown stays contained and raw HTML stays inert in both conversations' })
   await fill({ label: 'Oracle', value: 'Needle' })
   await eventually({ condition: '!!document.querySelector(".oracle-hit")', label: 'Oracle finds the message' })

@@ -43,6 +43,7 @@ withWriter({
     assert.ok('event' in result); writer.append({ event: result.event })
   },
 })
+commands.task(['status', fixture.state.keys.layout!, 'working', '--note', '## Release notes\n\nInline `ready`.\n\n```typescript\nconst ready = true\n```'])
 const server = await startServer({ hydraId: 'default', homes: [fixture.nativeHome] })
 const { browser, check, eventually, click, text, fill, press, focus, screenshot, close, evaluate } = smokeBrowser({ home, session: 'pnyx-visual' })
 
@@ -111,8 +112,8 @@ try {
   await press({ key: 'Escape' })
   await eventually({ condition: '!!document.querySelector(\'.column-header .inline-title\') && !document.querySelector(\'.column-header h2 form\')', label: 'column title editing cancels without saving' })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
-  await eventually({ condition: '!!document.querySelector(\'.detail .message .markdown\')', label: 'synthetic conversation appears' })
-  await check({ condition: 'getComputedStyle(document.querySelector(\'.detail .message .markdown\')).fontSize === \'16px\' && getComputedStyle(document.querySelector(\'.detail .message .markdown\')).fontFamily.includes(\'-apple-system\') && getComputedStyle(document.querySelector(\'.detail .composer textarea\')).fontFamily.includes(\'-apple-system\')', label: 'conversation and draft use system sans at the chat size' })
+  await eventually({ condition: '!!document.querySelector(\'.task-updates .markdown\')', label: 'synthetic conversation appears' })
+  await check({ condition: 'getComputedStyle(document.querySelector(\'.task-updates .markdown\')).fontSize === \'16px\' && getComputedStyle(document.querySelector(\'.task-updates .markdown\')).fontFamily.includes(\'-apple-system\')', label: 'Updates use system sans at the chat size' })
   await check({ condition: 'getComputedStyle(document.querySelector(\'.detail .markdown h2\')).fontFamily.includes(\'-apple-system\') && getComputedStyle(document.querySelector(\'.detail .markdown h2\')).fontWeight === \'700\' && getComputedStyle(document.querySelector(\'.detail .markdown h2\')).letterSpacing === \'normal\'', label: 'message headings keep the conversation font and natural spacing' })
   await check({ condition: '!!document.querySelector(\'.detail .code-block code\') && [...document.querySelectorAll(\'.detail .markdown code\')].length === 2 && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontFamily.includes(\'JetBrains Mono\') && getComputedStyle(el).fontSize === \'13px\')', label: 'inline and fenced Markdown keep JetBrains Mono and the accepted code size' })
   await click({ selector: '[aria-label="Close detail"]' })
@@ -133,8 +134,7 @@ try {
   await click({ selector: '[data-hydra-current]' })
   await check({ condition: 'Math.abs(parseFloat(getComputedStyle(document.querySelector(\'.column-header h2 .inline-title\')).fontSize) - 18 * 9 / 7) < .01 && Math.abs(parseFloat(getComputedStyle(document.querySelector(\'.task-label\')).fontSize) - 18 * 6 / 7) < .01', label: 'pane headings and metadata follow the saved UI font preference' })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
-  await eventually({ condition: 'document.querySelector(\'.detail .message .markdown\') && getComputedStyle(document.querySelector(\'.detail .message .markdown\')).fontSize === \'20px\'', label: 'saved chat font size applies independently' })
-  await check({ condition: 'Math.abs(parseFloat(getComputedStyle(document.querySelector(\'.task-recipient\')).fontSize) - 18 * 6 / 7) < .01', label: 'task delivery metadata follows the saved UI font preference' })
+  await eventually({ condition: 'document.querySelector(\'.task-updates .markdown\') && getComputedStyle(document.querySelector(\'.task-updates .markdown\')).fontSize === \'20px\'', label: 'saved chat font size applies independently' })
   await check({ condition: '[...document.querySelectorAll(\'.detail .markdown code\')].length === 2 && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontSize === \'15px\') && getComputedStyle(document.querySelector(\'.detail .code-block pre\')).fontSize === \'15px\'', label: 'inline and fenced code follow the independent saved code font size' })
   const colors = loadHydra({ hydraId: 'default' }).state.labelColors
   assert.ok(colors?.some(entry => entry.label === 'payments-api'))

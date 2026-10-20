@@ -72,7 +72,7 @@ export function useHydraKeyboard({
 
     return () => document.removeEventListener('focusin', track)
   }, [])
-  const focusComposer = () => requestAnimationFrame(() => focusElement({ selector: '.detail .composer textarea' }))
+  const focusUpdates = () => requestAnimationFrame(() => focusElement({ selector: '.task-updates' }))
 
   const leaveField = () => {
     if (page === 'hydra' && focus.current) {
@@ -172,7 +172,7 @@ export function useHydraKeyboard({
     }
 
     if ((id === 'board.open' || id === 'reply') && anchor?.card) {
-      open({ id: anchor.card }); focusComposer()
+      open({ id: anchor.card }); focusUpdates()
 
       return true
     }

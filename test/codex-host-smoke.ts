@@ -36,7 +36,7 @@ withWriter({
   },
 })
 const server = await startServer({ query: hydraSdk().query, hydraId: 'default', spawnCodex: fixture.spawnCodex })
-const { browser, evaluate, text, click, fill, check, eventually, screenshot, close } = smokeBrowser({ home: root, session: 'pnyx-codex' })
+const { browser, text, click, check, eventually, screenshot, close } = smokeBrowser({ home: root, session: 'pnyx-codex' })
 
 const task = () => {
   const state = loadHydra({ hydraId: 'default' }).state
@@ -58,38 +58,19 @@ try {
   await screenshot({ name: 'codex-start.png' })
   await commands.task(['start', 'smoke', '--actor', 'hydra', '--reason', 'Use the project’s default agent'])
   await eventually({ condition: 'document.querySelector(".agent-chip")?.textContent === "Codex · Pnyx"', label: 'Codex attaches as a hosted agent' })
-  await browser({ args: ['wait', 'Codex: Explain the provider boundary.'] })
-  assert.equal(task().agent?.host, 'pnyx')
-  assert.equal(task().agent?.provider, 'codex')
-  await fill({ label: 'Reply to Hosted Codex smoke', value: 'Continue from the browser' })
-  await click({ selector: '.detail [aria-label="Send reply"]' })
-  await browser({ args: ['wait', 'Codex: Continue from the browser'] })
-  await click({ selector: '.detail [aria-label="Agent settings"]' })
-  await click({ selector: '.detail .composer-settings [aria-label=Effort]' })
-  await evaluate({ code: 'const option = [...document.querySelectorAll(\'[role=option]\')].find(o => o.textContent.trim() === \'low\'); option.click(); return true;' })
-  await check({ condition: 'document.querySelector(".detail [aria-label=Effort]")?.textContent.includes("low")', label: 'Codex effort is staged in the picker' })
-  assert.notEqual(task().settings?.effort, 'low')
-  await text({ label: 'Apply settings' })
-  await eventually({ condition: 'document.querySelector(".detail .agent-picker > button")?.textContent.includes("low")', label: 'Codex effort picker applies directly' })
-
-  for (let i = 0; i < 100 && task().settings?.effort !== 'low'; i++) {
-    await new Promise(resolve => setTimeout(resolve, 20))
-  }
-
-  assert.equal(task().settings?.effort, 'low')
+  await commands.task(['status', 'smoke', 'done', '--note', 'Provider boundary explained.'])
+  await eventually({ condition: 'document.querySelector(".task-updates")?.textContent.includes("Provider boundary explained")', label: 'hosted Codex task shows factual Updates' })
   await screenshot({ name: 'codex-hosted.png' })
   await click({ selector: '[aria-label="Close detail"]' })
-  await click({ selector: '[aria-label="Open conversation for Outside Codex smoke"]' })
+  await click({ selector: '[aria-label="Open task Outside Codex smoke"]' })
   await click({ selector: '[aria-label="Task menu"]' }); await text({ label: 'Resume' })
   await eventually({ condition: 'document.querySelector(".hydra-chat").textContent.includes("Resume the worker on task")', label: 'an ended outside Codex session asks Hydra to resume' })
   assert.equal(fixture.children.length, 1)
   await commands.task(['continue', 'outside', '--actor', 'hydra', '--reason', 'Resume the recorded session'])
   await eventually({ condition: 'document.querySelector(".detail .agent-chip")?.textContent === "Codex · Pnyx"', label: 'Codex continuation changes the host' })
   assert.equal(fixture.children.length, 1)
-  await fill({ label: 'Reply to Outside Codex smoke', value: 'Resume the outside thread' })
-  await click({ selector: '.detail [aria-label="Send reply"]' })
-  await browser({ args: ['wait', 'Codex: Resume the outside thread'] })
-  assert.equal(fixture.messages().find(m => m.method === 'thread/resume')?.params?.threadId, 'outside-thread')
+  await commands.task(['status', 'outside', 'working', '--note', 'Resumed the outside thread.'])
+  await eventually({ condition: 'document.querySelector(".task-updates")?.textContent.includes("Resumed the outside thread")', label: 'continued task shows recorded Updates' })
   await screenshot({ name: 'codex-continue-after.png' })
   process.stdout.write('Hosted Codex and outside continuation browser smoke passed.\n')
 } finally {

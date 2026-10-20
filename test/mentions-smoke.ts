@@ -22,7 +22,7 @@ const state = () => loadHydra({ hydraId: 'default' }).state
 const reference = state().keys['mention-reference']!
 const receiver = state().keys['mention-receiver']!
 const server = await startServer({ hydraId: 'default', query: hydraSdk().query, homes: [] })
-const { browser, evaluate, check, eventually, click, text, fill, press, focus, screenshot, close } = smokeBrowser({ home, session: 'pnyx-mentions' })
+const { browser, evaluate, check, eventually, click, fill, press, focus, screenshot, close } = smokeBrowser({ home, session: 'pnyx-mentions' })
 
 try {
   await browser({ args: ['open', server.url] })
@@ -61,17 +61,7 @@ try {
   await eventually({ condition: '!!document.querySelector(\'.detail[aria-label="Details for Renamed migration"]\')', label: 'chip opens the same task after rename' })
   await click({ selector: '[aria-label="Close detail"]' })
   await click({ selector: `[data-card="${receiver}"]` })
-  await eventually({ condition: '!!document.querySelector(".detail textarea")', label: 'card stream composer opens' })
-  await click({ selector: '.detail [aria-label="Add to message"]' })
-  await text({ label: 'Mention a task' })
-  await check({ condition: '!!document.querySelector(".mention-menu") && document.activeElement.matches(".detail textarea")', label: 'card plus opens the same mention picker' })
-  await fill({ label: 'Reply to Review task', value: '@violet' })
-  await screenshot({ name: 'mentions-card.png' })
-  await click({ selector: '.mention-menu [role=option]' })
-  await check({ condition: 'document.querySelector(".detail textarea").value.includes("[@Renamed migration](pnyx-task:")', label: 'mouse selection captures the current title' })
-  await click({ selector: '.detail .composer-send' })
-  await eventually({ condition: '!!document.querySelector(".detail .messages .task-mention")', label: 'card history renders the mention chip' })
-  await screenshot({ name: 'mentions-sent.png' })
+  await check({ condition: '!!document.querySelector(".task-updates") && !document.querySelector(".detail textarea")', label: 'task mention opens Updates without a second composer' })
   assert.equal(state().cards[receiver]?.agent, undefined)
   assert.equal(state().cards[reference]?.agent, undefined)
   assert.equal(state().cards[reference]?.replies?.length ?? 0, 0)
