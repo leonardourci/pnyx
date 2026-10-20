@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as KeyEvent } from 'react'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
-import { Markdown } from '../components/ui/markdown.tsx'
+import { MessageText } from '../components/ui/streaming.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import {
@@ -304,12 +304,14 @@ export function Messages({
             key={entry.id}
             className={`message ${entry.kind}${/^(user|You)( · continued)?$/.test(entry.role) ? ' mine' : ''}`}
             aria-label={roleLabel(entry)}
+            data-streaming={entry.streaming || undefined}
             title={entry.at ? new Date(entry.at).toLocaleString() : undefined}
           >
             {entry.task && taskTitles && <span className="message-task" data-task-ref={entry.task}>{taskTitles[entry.task] ?? 'Task update'}</span>}
             {entry.kind === 'message' ? (
-              <Markdown
+              <MessageText
                 text={entry.text}
+                streaming={entry.streaming}
                 openTask={openTask}
                 block={({ index, offset: local, quote, children }) => {
                   const messageId = entry.messageId ?? entry.id

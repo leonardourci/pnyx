@@ -1,6 +1,6 @@
 import { TaskUpdates } from './task-updates.tsx'
 import { ReminderEditor } from './reminder.tsx'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { HydraState, Card } from '../../../src/core/model.ts'
 import { Button, Input } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
@@ -20,6 +20,7 @@ export function Detail({
   close,
   createTask,
   notify,
+  conversation,
 }: {
   card: Card
   state: HydraState
@@ -28,6 +29,7 @@ export function Detail({
   close(): void
   createTask({ column, parent }: { column: string; parent?: string }): void
   notify({ text }: { text: string }): void
+  conversation?: ReactNode
 }) {
   const [reminding, setReminding] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -113,6 +115,7 @@ export function Detail({
         />
       )}
       <TaskUpdates card={card} command={command} connected={connected} />
+      {conversation}
     </section>
   )
 }

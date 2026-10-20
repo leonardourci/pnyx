@@ -6,6 +6,8 @@ import { isAbsolute, join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
 import type { HostedSession, PermissionDecision } from './provider.ts'
+import { liveReplies } from './streaming.ts'
+import type { ThreadPage } from '../thread/read.ts'
 import { terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
@@ -66,6 +68,7 @@ export interface Host {
   wake({ seq }: { seq: number }): void
   // Marks a hosted turn that was running when the server last stopped as interrupted.
   recover(): void
+  thread({ card, page }: { card: Card; page: ThreadPage }): ThreadPage
   close(): void
 }
 
@@ -132,6 +135,7 @@ function inbox() {
 
 interface Live {
   input: ReturnType<typeof inbox>
+  replies: ReturnType<typeof liveReplies>
   // The provider may still be loading when the first message arrives.
   session?: HostedSession
   activity: string
@@ -141,7 +145,7 @@ interface Live {
 }
 
 export function createHost({
-  hydraId, query, spawnCodex, changed, wakeDelay = WAKE_MS,
+  hydraId, query, spawnCodex, changed, streamed = () => {}, wakeDelay = WAKE_MS,
   presence = ({ session }) => terminalPresence({ session, verifyProcess: true }),
 }: {
   hydraId: string
@@ -149,6 +153,7 @@ export function createHost({
   spawnCodex?: SpawnCodex
   presence?({ session }: { session: AgentSession }): Presence
   changed(): void
+  streamed?({ session }: { session: string }): void
   wakeDelay?: number
 }): Host {
   const providers = { 'claude-code': claudeProvider({ query }), codex: codexProvider({ spawnCodex }) }
@@ -227,6 +232,7 @@ export function createHost({
 
     entry.input.end()
     entry.session?.close()
+    streamed({ session: key })
   }
 
   const folderOf = ({ card }: { card: Card & { agent: AgentRef } }): string => {
@@ -442,12 +448,46 @@ export function createHost({
         return
       }
 
+      const offsets: number[] = []
+      let completedOffset = 0
+
+      const transcriptSize = () => {
+        try {
+          return statSync(entry.session?.path ?? card.agent.transcriptPath ?? '').size
+        } catch {
+          return 0
+        }
+      }
+
+      const input = async function* () {
+        for await (const text of entry.input) {
+          offsets.push(transcriptSize())
+          yield text
+        }
+      }
+
       for await (const activity of entry.session.run({
-        input: entry.input,
+        input: input(),
         permission: ({ tool, input, signal, description }) => askPermission({
           key, entry, tool, input, signal, description,
         }),
       })) {
+        if (typeof activity !== 'string') {
+          entry.replies.update(activity)
+          streamed({ session: key })
+
+          continue
+        }
+
+        if (activity === 'finished') {
+          completedOffset = transcriptSize()
+          entry.replies.finish()
+          streamed({ session: key })
+        } else {
+          entry.replies.start({ offset: Math.max(offsets.shift() ?? 0, completedOffset) })
+          streamed({ session: key })
+        }
+
         if (activity === 'finished' && entry.input.pending()) {
           continue
         }
@@ -499,7 +539,7 @@ export function createHost({
     }
 
     folderOf({ card })
-    const entry: Live = { input: inbox(), activity: 'finished', session }
+    const entry: Live = { input: inbox(), replies: liveReplies(), activity: 'finished', session }
     live.set(key, entry)
     void consume({ key, card, entry })
 
@@ -1018,6 +1058,12 @@ export function createHost({
       wakeStart ??= seq - 1
       wakeThrough = Math.max(wakeThrough, seq)
       armWake()
+    },
+
+    thread: ({ card, page }) => {
+      const entry = card.agent && live.get(sessionId({ agent: card.agent }))
+
+      return entry ? entry.replies.page({ page }) : page
     },
 
     reconcile: ({ state }) => {

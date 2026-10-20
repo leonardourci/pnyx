@@ -423,7 +423,7 @@ async function mountOwnedHydra({
         }
 
         try {
-          send({ ws, message: { type: 'thread', thread: readThread({ hydraId, state, card, homes }) } })
+          send({ ws, message: { type: 'thread', thread: agents.thread({ card, page: readThread({ hydraId, state, card, homes }) }) } })
         } catch {
           unavailable()
         }
@@ -439,7 +439,9 @@ async function mountOwnedHydra({
     const native = sub.native
 
     if (!native) {
-      return readThread({ hydraId, state, card, homes, before })
+      const page = readThread({ hydraId, state, card, homes, before })
+
+      return before ? page : agents.thread({ card, page })
     }
 
     return paseoHistory({
@@ -753,7 +755,24 @@ async function mountOwnedHydra({
     return token.length > 0 && bytes.length === token.length && timingSafeEqual(bytes, token)
   }
 
-  const agents = createHost({ hydraId, query, spawnCodex, wakeDelay, changed: () => kick() })
+  const agents = createHost({
+    hydraId,
+    query,
+    spawnCodex,
+    wakeDelay,
+    changed: () => kick(),
+    streamed: ({ session }) => {
+      for (const map of threadSubscriptions) {
+        for (const [ws, sub] of map) {
+          const agent = state.cards[sub.card]?.agent
+
+          if (agent && `${agent.provider}:${agent.sessionId}` === session) {
+            refreshThread({ ws })
+          }
+        }
+      }
+    },
+  })
 
   // The server has already checked Host and Origin.
   const request = ({ req, res, path }: HydraRequest) => {

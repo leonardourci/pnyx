@@ -6,6 +6,7 @@ import { taskUpdates } from '../../../src/thread/task.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Resize } from '../components/ui/resize.tsx'
+import { Working } from '../components/ui/streaming.tsx'
 import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
 import { InlinePermissions } from './permissions.tsx'
@@ -122,7 +123,7 @@ export function HydraChat({
           thinkingDetails={view.thinkingDetails}
         />
         {!entries.length && !projectSetup && <p className="hydra-empty">What are we working on?</p>}
-        {hydra.kind !== 'firstmate' && (card?.sessionActivity ?? card?.activity) === 'working' && <p role="status">{card?.agent ? 'Hydra is replying…' : 'Starting Hydra…'}</p>}
+        {hydra.kind !== 'firstmate' && (card?.sessionActivity ?? card?.activity) === 'working' && !entries.some(e => e.streaming) && <Working label={card?.agent ? 'Hydra is working' : 'Starting Hydra'} />}
         {card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted').map(a => <p key={a.key} role="alert">{a.text}</p>)}
         {card && (
           <InlinePermissions

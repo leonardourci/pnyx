@@ -33,7 +33,13 @@ export function taskConversation({ card, entries }: {
   const initial: ThreadEntry[] = prompt?.trim() ? [{ id: `brief:${card.id}`, kind: 'message', role: 'user', text: prompt, task: card.id }] : []
   const updates = taskUpdates({ card })
   const ids = new Set(entries.map(e => e.id))
-  const stream = [...updates.filter(e => !ids.has(e.id)), ...entries.filter(e => !e.initial)].sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))
+  const launch = `You are the Pnyx worker for task ${card.id} `
+  const conversation = entries.filter(entry => !entry.initial && !(entry.kind === 'message'
+    && /^(user|You)$/.test(entry.role)
+    && (entry.text.startsWith(launch) || [prompt, card.brief].some(text =>
+      text?.trim() && entry.text.startsWith(`${text}\n\n${launch}`)))))
+  const stream = [...updates.filter(e => !ids.has(e.id)), ...conversation]
+    .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))
 
   return [...initial, ...stream.map(entry => entry.replyId
     ? { ...entry, ...taskReceipt({ card, reply: entry.replyId }) } : entry)]

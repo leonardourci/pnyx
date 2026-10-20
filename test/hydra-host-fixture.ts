@@ -5,7 +5,7 @@ import { transcriptPath, type QueryFn } from '../src/server/claude.ts'
 
 export function hydraSdk() {
   const calls: { options: Options; messages: string[] }[] = []
-  const control = { hold: false, fail: false, ask: false }
+  const control = { hold: false, fail: false, ask: false, stream: false }
   const permissions: PermissionResult[] = []
   let release = () => {}
   const query = (({ prompt, options }: {
@@ -32,6 +32,12 @@ export function hydraSdk() {
         call.messages.push(text)
         record({ role: 'user', text })
         yield { type: 'system', subtype: 'session_state_changed', state: 'running' }
+        const reply = `Hydra: ${text.split('\n\n').at(-1)}`
+
+        if (control.stream) {
+          yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'message_start', message: { id: `reply-${call.messages.length}` } } }
+          yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: reply.slice(0, 8) } } }
+        }
 
         if (control.ask) {
           const result = await options.canUseTool!('Bash', { command: 'ls' }, { signal: new AbortController().signal, toolUseID: 'hydra-tool', requestId: 'hydra-request', decisionReason: 'List the folder' })
@@ -44,7 +50,11 @@ export function hydraSdk() {
           })
         }
 
-        record({ role: 'assistant', text: `Hydra: ${text.split('\n\n').at(-1)}` })
+        if (control.stream) {
+          yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: reply.slice(8) } } }
+        }
+
+        record({ role: 'assistant', text: reply })
         yield { type: 'system', subtype: 'session_state_changed', state: 'idle' }
       }
     }
