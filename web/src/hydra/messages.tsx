@@ -55,7 +55,8 @@ export function Messages({
     const rendered = blocks(), present = new Set(rendered.map(b => b.dataset.messageId))
     let moved = false
     const items = comments.map(comment => {
-      const block = present.has(comment.messageId) ? undefined : rendered
+      const settled = !comment.messageId.startsWith('live:') || present.has(comment.messageId)
+      const block = settled ? undefined : rendered
         .filter(b => Number(b.dataset.blockOffset) === comment.offset
           && !!comment.paragraph && !!b.dataset.quote?.startsWith(comment.paragraph))
         .at(-1)
