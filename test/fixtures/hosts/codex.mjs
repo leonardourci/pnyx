@@ -54,7 +54,8 @@ createInterface({ input: process.stdin }).on('line', line => {
       id,
       result: {
         data: params.cursor
-          ? [{ id: 'catalog-id-two', model: 'gpt-catalog-two', displayName: 'Catalog Two' }]
+          ? [{ id: 'catalog-id-two', model: 'gpt-catalog-two', displayName: 'Catalog Two' }, ...(process.env.FAKE_CODEX_MODELS ?? '').split(',').filter(Boolean)
+            .map(model => ({ id: model, model, displayName: model }))]
           : [{ id: 'catalog-id-one', model: 'gpt-catalog-one', displayName: 'Catalog One', isDefault: true }],
         nextCursor: params.cursor ? null : 'second-page',
       },

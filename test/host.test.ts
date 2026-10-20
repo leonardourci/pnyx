@@ -202,6 +202,28 @@ test('task start runs Claude Code through the server, records it on the task and
   assert.equal(sdk.calls.length, 1)
 })
 
+test('a start applies the rule\'s Fast and a checked override from the first turn and records the override', async () => {
+  const { task } = await lab()
+  await dispatchCommands.rule(['set', 'default', '--harness', 'claude', '--model', 'opus', '--effort', 'high', '--fast', 'on', '--hydra', 'lab'])
+  const sdk = fakeSdk()
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
+  await assert.rejects(async () => commands.task(['start', 'ship', '--fast', 'maybe', '--hydra', 'lab']), /--fast takes on or off/)
+  await assert.rejects(async () => commands.task(['start', 'ship', '--via', 'command', '--model', 'sonnet', '--hydra', 'lab']), /apply to an agent Pnyx or Paseo starts/)
+  await assert.rejects(startTask({ hydraId: 'lab', task: 'ship', override: { model: 'gpt-6-luna' }, meta: { ...meta, id: 'unoffered' } }), /claude\/gpt-6-luna: not offered/)
+  await assert.rejects(startTask({ hydraId: 'lab', task: 'ship', override: { effort: 'extreme' }, meta: { ...meta, id: 'bad-effort' } }), /claude has no effort extreme/)
+  assert.equal(sdk.calls.length, 0)
+
+  await commands.task(['start', 'ship', '--model', 'sonnet', '--effort', 'low', '--hydra', 'lab', '--event-id', 'override'])
+  await until({ check: () => sdk.calls[0]?.messages.length === 1, what: 'the opening prompt' })
+  const { options } = sdk.calls[0]!
+  assert.equal(options.model, 'sonnet')
+  assert.equal(options.effort, 'low')
+  assert.deepEqual(options.settings, { fastMode: true })
+  assert.deepEqual(task().launch?.override, { model: 'sonnet', effort: 'low' })
+  assert.match(task().launch?.dispatch ?? '', /default: sonnet on claude:test; .*override model sonnet, effort low/)
+  assert.deepEqual(task().settings, { model: 'sonnet', effort: 'low', fast: 'true' })
+})
+
 test('after a server restart the task keeps its agent, marks an interrupted turn and resumes the session', async () => {
   const { folder, task } = await lab()
   const first = fakeSdk()
