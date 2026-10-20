@@ -95,7 +95,7 @@ function createsPr({ payload }: { payload: Record<string, unknown> }): boolean {
 
 // AskUserQuestion's questions with their options, as its prompt shows them; a
 // question without a text or options is left out, so it is answered in the terminal.
-function questions({ value }: { value: unknown }): Question[] | undefined {
+export function questions({ value }: { value: unknown }): Question[] | undefined {
   const found = (Array.isArray(value) ? value : []).flatMap((item): Question[] => {
     const q = (item ?? {}) as Record<string, unknown>
     const question = str({ value: q.question })
@@ -123,7 +123,7 @@ const FIELD_KEYS = ['type', 'title', 'description', 'enum']
 
 // An MCP form's fields in the order its prompt lists them; undefined for a URL
 // elicitation or a field the Hydra cannot fill, so the form is filled in the terminal.
-function form({ payload }: { payload: Record<string, unknown> }): FormField[] | undefined {
+export function form({ payload }: { payload: Record<string, unknown> }): FormField[] | undefined {
   const schema = (payload.requested_schema ?? {}) as { properties?: unknown; required?: unknown }
   type Property = Record<string, unknown> | null
   const properties = Object.entries((schema.properties ?? {}) as Record<string, Property>)

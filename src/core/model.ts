@@ -162,6 +162,12 @@ export interface PermissionRequest {
   input: Record<string, unknown>
   description?: string
   status: 'pending' | 'allow' | 'deny' | 'expired'
+  // Set when the agent asks the owner questions or fills a form instead of asking to run a tool.
+  questions?: Question[]
+  form?: FormField[]
+  // The answer that allowed it: each question's picked labels or typed text, or the form's values.
+  answers?: string[][]
+  values?: Record<string, string | number | boolean>
 }
 
 export type PermissionEvent = EventBase & {
