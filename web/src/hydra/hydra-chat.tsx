@@ -8,6 +8,7 @@ import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Resize } from '../components/ui/resize.tsx'
 import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
+import { InlinePermissions } from './permissions.tsx'
 import { Messages } from './messages.tsx'
 import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
@@ -123,6 +124,13 @@ export function HydraChat({
         {!entries.length && !projectSetup && <p className="hydra-empty">What are we working on?</p>}
         {hydra.kind !== 'firstmate' && (card?.sessionActivity ?? card?.activity) === 'working' && <p role="status">{card?.agent ? 'Hydra is replying…' : 'Starting Hydra…'}</p>}
         {card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted').map(a => <p key={a.key} role="alert">{a.text}</p>)}
+        {card && (
+          <InlinePermissions
+            card={{ ...card, permissions: card.permissions?.filter(p => p.status === 'pending') }}
+            command={command}
+            notify={notify}
+          />
+        )}
         {card && (
           <InlineQuestions
             card={card}

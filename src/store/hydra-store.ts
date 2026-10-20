@@ -30,6 +30,7 @@ import { pnyxHome } from './paths.ts'
 
 export { pnyxHome } from './paths.ts'
 
+export const DEFAULT_HYDRA = 'default'
 const LOCK_TIMEOUT_MS = 5000
 const STALE_EMPTY_LOCK_MS = 10_000
 
@@ -373,10 +374,19 @@ export interface Writer {
   append({ event }: { event: HydraEvent }): void
 }
 
+// A Hydra exists once its log does; a bare folder, such as one a config write made, does not count.
+export function requireHydra({ hydraId }: { hydraId: string }): void {
+  if (hydraId !== DEFAULT_HYDRA && !existsSync(logPath({ dir: hydraDir({ hydraId }) }))) {
+    throw new HydraError({ message: `unknown Hydra: ${hydraId}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi hydra list` for the Hydras, or `pnyx-axi hydra create <id>` to add one'] })
+  }
+}
+
 // Runs `fn` as the Hydra's single writer. Each append is flushed to disk before
 // the state advances; the snapshot is replaced afterwards.
-export function withWriter<T>({ hydraId, fn }: {
+export function withWriter<T>({ hydraId, fn, create = false }: {
   hydraId: string
+  // Only `hydra create` makes a new Hydra; the default Hydra is made on first use.
+  create?: boolean
   fn: (
     { writer }: {
       writer: Writer
@@ -384,6 +394,11 @@ export function withWriter<T>({ hydraId, fn }: {
   ) => T
 }): T {
   const dir = hydraDir({ hydraId })
+
+  if (!create) {
+    requireHydra({ hydraId })
+  }
+
   privateDir({ dir })
   const release = acquireLock({ dir })
 
@@ -480,6 +495,7 @@ export interface Repair {
 // never acknowledged as written, so no accepted event is lost.
 // ponytail: a crash while appending the marker leaves a corrupt interior line; inspect it by hand.
 export function repairHydra({ hydraId }: { hydraId: string }): Repair {
+  requireHydra({ hydraId })
   const dir = hydraDir({ hydraId })
   privateDir({ dir })
   const release = acquireLock({ dir })

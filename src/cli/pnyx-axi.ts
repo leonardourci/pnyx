@@ -10,6 +10,7 @@ import { TOP_LEVEL_HELP, commandHelp, commands, home } from './commands.ts'
 import { AGENT_HELP, REPLY_HELP, agent, reply } from './reply.ts'
 import { workerCommands } from './workers.ts'
 import { INTEGRATIONS_HELP, integrationsCommand } from './integrations.ts'
+import { ownerOnly } from './hydra-session.ts'
 
 const { version } = createRequire(import.meta.url)('../../package.json') as { version: string }
 const HELP: Record<string, string> = {
@@ -29,23 +30,25 @@ await runAxiCli({
   home,
   getCommandHelp: command => commandHelp({ command })
     ?? firstmateHelp({ command }) ?? HELP[command],
-  commands: {
-    ...commands,
-    project,
-    ...workerCommands,
-    ...dispatchCommands,
-    serve,
-    stop,
-    ...firstmateCommands,
-    reply,
-    agent,
-    integrations: integrationsCommand,
-    ...oracleCommands,
-    // Shadows the SDK's npm self-update: pnyx-axi is not published while pre-v1.
-    update: () => {
-      throw new AxiError('pnyx-axi is not published yet', 'VALIDATION_ERROR', [
-        'Pull the repository and run `pnpm install && pnpm run build`',
-      ])
+  commands: ownerOnly({
+    commands: {
+      ...commands,
+      project,
+      ...workerCommands,
+      ...dispatchCommands,
+      serve,
+      stop,
+      ...firstmateCommands,
+      reply,
+      agent,
+      integrations: integrationsCommand,
+      ...oracleCommands,
+      // Shadows the SDK's npm self-update: pnyx-axi is not published while pre-v1.
+      update: () => {
+        throw new AxiError('pnyx-axi is not published yet', 'VALIDATION_ERROR', [
+          'Pull the repository and run `pnpm install && pnpm run build`',
+        ])
+      },
     },
-  },
+  }),
 })

@@ -2,7 +2,7 @@ import { hydraEvent } from '../src/core/hydra.ts'
 import { withWriter } from '../src/store/hydra-store.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { emptyHydra } from '../src/core/reducer.ts'
@@ -10,6 +10,12 @@ import { configPath, effectiveDispatch, parseAccounts, parseDispatch, writeConfi
 import { accountEnvironment, chooseCandidate, readQuota, validateChoice, type QuotaReading } from '../src/dispatch/select.ts'
 import { dispatchCommands, STARTER_ACCOUNTS, STARTER_DISPATCH } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
+import { commands } from '../src/cli/commands.ts'
+
+// Keeps the default-login fallback away from the real harness logins.
+const noLogin = join(mkdtempSync(join(tmpdir(), 'pnyx-no-login-')), 'missing')
+process.env.CLAUDE_CONFIG_DIR = join(noLogin, 'claude')
+process.env.CODEX_HOME = join(noLogin, 'codex')
 
 function config(): EffectiveDispatch {
   return {
@@ -46,6 +52,7 @@ function reading({ remaining, priority, exhausted = false, stale = false }: {
 function lab() {
   const root = mkdtempSync(join(tmpdir(), 'pnyx-dispatch-'))
   process.env.PNYX_HOME = join(root, 'pnyx')
+  commands.hydra(['create', 'lab'])
 
   return { root, state: emptyHydra() }
 }
@@ -193,6 +200,34 @@ test('CLI initializes starter files, edits rules and accounts, and rejects secre
   assert.throws(() => effectiveDispatch({ hydraId: 'bad', state: emptyHydra() }), /invalid JSON/)
 })
 
+test('with no registered accounts, dispatch falls back to the harnesses’ own logins', () => {
+  const { root, state } = lab()
+  const claude = join(root, 'claude')
+  mkdirSync(claude)
+  process.env.CLAUDE_CONFIG_DIR = claude
+
+  try {
+    const effective = effectiveDispatch({ hydraId: 'lab', state })
+    assert.deepEqual(effective.accounts, { 'claude:default': { provider: 'claude', folder: claude } })
+    assert.equal(effective.dispatch.main, 'claude:default')
+    assert.deepEqual(effective.dispatch.workers, { claude: ['claude:default'] })
+    const chosen = chooseCandidate({ config: effective, task: 'task', quota: () => ({ auth: 'unknown' }) })
+    assert.equal(chosen.account, 'claude:default')
+    assert.equal(validateChoice({ value: { ...chosen, folder: '/caller/login' }, config: effective }).folder, claude)
+    writeConfig({ path: configPath({ hydraId: 'lab', shared: true }), value: { main: 'claude:work' } })
+    assert.throws(() => chooseCandidate({ config: effectiveDispatch({ hydraId: 'lab', state }), task: 'task', quota: () => ({ auth: 'unknown' }) }), /registered main account/)
+    dispatchCommands.account(['set', 'claude:work', '--provider', 'claude', '--folder', claude, '--hydra', 'lab'])
+    assert.deepEqual(Object.keys(effectiveDispatch({ hydraId: 'lab', state }).accounts), ['claude:work'])
+  } finally {
+    process.env.CLAUDE_CONFIG_DIR = join(noLogin, 'claude')
+  }
+
+  const env = { PATH: '/fake', ANTHROPIC_API_KEY: 'kept' }
+  const own = { provider: 'claude' as const, folder: '~/.claude' }
+  assert.equal(accountEnvironment({ account: own, env }), env)
+  assert.equal(accountEnvironment({ account: own, env: { ...env, CLAUDE_CONFIG_DIR: '/other' } }).CLAUDE_CONFIG_DIR, join(homedir(), '.claude'))
+})
+
 test('shipped starter templates match the initializer', () => {
   assert.deepEqual(JSON.parse(readFileSync(new URL('../setup/config/hydra-heads-dispatch.json', import.meta.url), 'utf8')), STARTER_DISPATCH)
   assert.deepEqual(JSON.parse(readFileSync(new URL('../setup/config/hydra-accounts.json', import.meta.url), 'utf8')), STARTER_ACCOUNTS)
@@ -202,6 +237,7 @@ test('migration writes local rules once and later edits preserve the migrated de
   lab()
   withWriter({
     hydraId: 'lab',
+    create: true,
     fn: ({ writer }) => {
       const decision = hydraEvent({ state: writer.state, meta: { at: '2026-10-16T00:00:00Z', actor: 'test' }, cardId: '$board', change: { type: 'board.agents', data: { before: {}, agents: { default: { harness: 'codex', model: 'gpt-6.1-sol' }, review: { harness: 'claude', model: 'opus' } } } } })
       assert.ok('event' in decision)

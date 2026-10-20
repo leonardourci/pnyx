@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { isDeepStrictEqual } from 'node:util'
 import { WRITE, guard, parse, required, type Output } from '../cli/commands.ts'
-import { loadHydra, withRegistryLock } from '../store/hydra-store.ts'
+import { loadHydra, requireHydra, withRegistryLock } from '../store/hydra-store.ts'
 import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, readConfig, writeConfig, type Candidate, type HeadsDispatch, type Harness } from './config.ts'
 
 const OPTIONS = { ...WRITE, shared: { type: 'boolean' }, when: { type: 'string' }, candidates: { type: 'string' }, harness: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, mode: { type: 'string' }, fast: { type: 'string' }, main: { type: 'string' }, provider: { type: 'string' }, order: { type: 'string' }, project: { type: 'string' }, folder: { type: 'string' } } as const
@@ -36,6 +36,10 @@ function ruleCommand({ args }: { args: string[] }): Output {
 
   const shared = Boolean(values.shared)
   const path = configPath({ hydraId, shared })
+
+  if (!shared) {
+    requireHydra({ hydraId })
+  }
 
   return withRegistryLock({
     fn: () => {
@@ -185,12 +189,17 @@ function accountCommand({ args }: { args: string[] }): Output {
 
   const path = configPath({ hydraId, accounts: true, shared: Boolean(values.shared) })
 
+  if (!values.shared) {
+    requireHydra({ hydraId })
+  }
+
   return withRegistryLock({
     fn: () => {
       const file = parseAccounts({ value: readConfig({ path }) })
 
       if (!Object.keys(file.accounts).length && !values.shared) {
-        file.accounts = structuredClone(effectiveDispatch({ hydraId, state }).accounts)
+        const shared = configPath({ hydraId, accounts: true, shared: true })
+        file.accounts = parseAccounts({ value: readConfig({ path: shared }) }).accounts
       }
 
       const key = name({ value: required({ value: positionals[1], what: 'account name' }) })

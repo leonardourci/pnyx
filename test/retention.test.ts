@@ -63,6 +63,7 @@ test('expiry appends hiding once, keeps history, restores on reopen, and honors 
   const f = fixture()
   const append = ({ change, cardId = 't1', at = later }: { change: Pick<HydraChange, 'type' | 'data'>; cardId?: string; at?: string }) => withWriter({
     hydraId,
+    create: true,
     fn: ({ writer }) => {
       const decision = hydraEvent({ state: writer.state, meta: { at, actor: 'test' }, cardId, change })
       assert.ok('event' in decision); writer.append({ event: decision.event })
@@ -70,7 +71,9 @@ test('expiry appends hiding once, keeps history, restores on reopen, and honors 
   })
 
   try {
-    withWriter({ hydraId, fn: ({ writer }) => writer.append({ event: f.events[0]! }) })
+    withWriter({
+      hydraId, create: true, fn: ({ writer }) => writer.append({ event: f.events[0]! }),
+    })
     const original = readFileSync(path, 'utf8')
     assert.equal(hideDone({ hydraId, at: '2026-10-15T11:59:59.999Z' }), 0)
     assert.equal(hideDone({ hydraId, at: later }), 1)
@@ -83,15 +86,15 @@ test('expiry appends hiding once, keeps history, restores on reopen, and honors 
     assert.equal(hideDone({ hydraId, at: '2030-01-01T00:00:00Z' }), 0)
     assert.equal(loadHydra({ hydraId }).state.cards.t1?.keepDone, true)
     const moved: HydraEvent = { ...f.events[0]!, seq: loadHydra({ hydraId }).state.seq + 1, id: 'leave', at: later, type: 'card.moved', data: { before: 'done', after: 'parked' } }
-    withWriter({ hydraId, fn: ({ writer }) => writer.append({ event: moved }) })
+    withWriter({ hydraId, create: true, fn: ({ writer }) => writer.append({ event: moved }) })
     assert.equal(loadHydra({ hydraId }).state.cards.t1?.keepDone, undefined)
-    withWriter({ hydraId, fn: ({ writer }) => writer.append({ event: { ...moved, seq: writer.state.seq + 1, id: 'return', data: { before: 'parked', after: 'done' } } }) })
+    withWriter({ hydraId, create: true, fn: ({ writer }) => writer.append({ event: { ...moved, seq: writer.state.seq + 1, id: 'return', data: { before: 'parked', after: 'done' } } }) })
     const config = hydraConfig({ state: loadHydra({ hydraId }).state, id: hydraId })
     append({ cardId: '$board', change: { type: 'board.configured', data: { ...config, doneAfterHours: 0 } } })
     assert.equal(hideDone({ hydraId, at: '2030-01-01T00:00:00Z' }), 0)
     append({ cardId: '$board', change: { type: 'board.configured', data: { ...config, doneAfterHours: 1 } } })
     assert.equal(hideDone({ hydraId, at: '2026-10-15T13:00:00Z' }), 1)
-    withWriter({ hydraId, fn: ({ writer }) => writer.append({ event: { ...moved, seq: writer.state.seq + 1, id: 'reopened', data: { before: 'done', after: 'parked' } } }) })
+    withWriter({ hydraId, create: true, fn: ({ writer }) => writer.append({ event: { ...moved, seq: writer.state.seq + 1, id: 'reopened', data: { before: 'done', after: 'parked' } } }) })
     state = loadHydra({ hydraId }).state
     assert.equal(state.cards.t1?.hidden, undefined)
     assert.equal(state.cards.t1?.expired, undefined)
@@ -136,7 +139,7 @@ test('expiry rechecks wall time without another event using a fake clock', t => 
 
   try {
     const f = fixture()
-    withWriter({ hydraId: 'clock', fn: ({ writer }) => writer.append({ event: f.events[0]! }) })
+    withWriter({ hydraId: 'clock', create: true, fn: ({ writer }) => writer.append({ event: f.events[0]! }) })
     t.mock.timers.tick(DEFAULT_DONE_HOURS * HOUR_MS - 1)
     assert.equal(hideDone({ hydraId: 'clock' }), 0)
     t.mock.timers.tick(1)
@@ -178,7 +181,7 @@ test('expiry uses each card delay even when the Hydra keeps Done visible', () =>
   f.change({ cardId: 't2', type: 'task.created', data: { key: 'kept', title: 'Kept', column: 'done' } })
 
   try {
-    withWriter({ hydraId: 'delays', fn: ({ writer }) => f.events.forEach(event => writer.append({ event })) })
+    withWriter({ hydraId: 'delays', create: true, fn: ({ writer }) => f.events.forEach(event => writer.append({ event })) })
     assert.equal(hideDone({ hydraId: 'delays', at: '2026-10-14T12:59:59Z' }), 0)
     assert.equal(hideDone({ hydraId: 'delays', at: '2026-10-14T13:00:00Z' }), 1)
     const state = loadHydra({ hydraId: 'delays' }).state

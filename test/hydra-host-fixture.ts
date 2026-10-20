@@ -1,11 +1,12 @@
 import { mkdirSync, appendFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { Options } from '@anthropic-ai/claude-agent-sdk'
+import type { Options, PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 import { transcriptPath, type QueryFn } from '../src/server/claude.ts'
 
 export function hydraSdk() {
   const calls: { options: Options; messages: string[] }[] = []
-  const control = { hold: false, fail: false }
+  const control = { hold: false, fail: false, ask: false }
+  const permissions: PermissionResult[] = []
   let release = () => {}
   const query = (({ prompt, options }: {
     prompt: AsyncIterable<{ message: { content: string } }>
@@ -32,6 +33,11 @@ export function hydraSdk() {
         record({ role: 'user', text })
         yield { type: 'system', subtype: 'session_state_changed', state: 'running' }
 
+        if (control.ask) {
+          const result = await options.canUseTool!('Bash', { command: 'ls' }, { signal: new AbortController().signal, toolUseID: 'hydra-tool', requestId: 'hydra-request', decisionReason: 'List the folder' })
+          permissions.push(result!)
+        }
+
         if (control.hold) {
           await new Promise<void>(resolve => {
             release = resolve
@@ -50,6 +56,7 @@ export function hydraSdk() {
     query,
     calls,
     control,
+    permissions,
     release: () => {
       control.hold = false; release()
     },

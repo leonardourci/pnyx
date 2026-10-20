@@ -352,7 +352,9 @@ export function createHost({
   })
 
   const hydraInstructions = () =>
-    `You are Hydra for Pnyx Hydra "${hydraId}". Read ${join(hydraDir({ hydraId }), 'agent', HOME_SKILL, 'SKILL.md')} and follow it. Use pnyx-axi with --hydra ${hydraId}. Projects attach later; your current folder belongs to Hydra.`
+    `You are Hydra for Pnyx Hydra "${hydraId}". Read ${join(hydraDir({ hydraId }), 'agent', HOME_SKILL, 'SKILL.md')} and follow it. Use pnyx-axi with --hydra ${hydraId}; PNYX_ACTOR=hydra is already set. Projects attach later; your current folder belongs to Hydra.`
+  // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.
+  const hydraSession = () => ({ instructions: hydraInstructions(), allow: ['pnyx-axi'] })
 
   const providerOf = ({ provider }: { provider: string }) => {
     if (provider !== 'claude-code' && provider !== 'codex') {
@@ -422,14 +424,15 @@ export function createHost({
     entry: Live
   }) => {
     let failure: string | undefined
+    const env = environment({ hydra: card.id === HYDRA_CARD })
 
     try {
       entry.session ??= await providerOf({ provider: card.agent.provider }).open({
         cwd: folderOf({ card }),
         agent: card.agent,
         settings: card.settings ?? {},
-        ...(card.id === HYDRA_CARD ? { instructions: hydraInstructions() } : {}),
-        env: card.agent.loginFolder ? accountEnvironment({ account: { provider: card.agent.provider === 'codex' ? 'codex' : 'claude', folder: card.agent.loginFolder }, env: environment({ hydra: card.id === HYDRA_CARD }) }) : environment({ hydra: card.id === HYDRA_CARD }),
+        ...(card.id === HYDRA_CARD ? hydraSession() : {}),
+        env: card.agent.loginFolder ? accountEnvironment({ account: { provider: card.agent.provider === 'codex' ? 'codex' : 'claude', folder: card.agent.loginFolder }, env }) : env,
         signal: controller.signal,
       })
 
@@ -656,7 +659,7 @@ export function createHost({
               cwd,
               agent,
               settings,
-              instructions: hydraInstructions(),
+              ...hydraSession(),
               env: agent?.loginFolder ? accountEnvironment({
                 account: { provider: candidate.harness, folder: agent.loginFolder },
                 env: environment({ hydra: true }),
@@ -924,6 +927,11 @@ export function createHost({
 
           if (request.status !== 'pending') {
             throw new HydraError({ message: `permission request is already ${request.status}`, code: 'PERMISSION_CLOSED' })
+          }
+
+          // Hydra runs pnyx-axi unasked, so it must not clear its own prompts with it.
+          if (card.id === HYDRA_CARD && actor === HYDRA_ACTOR) {
+            throw new HydraError({ message: 'Hydra cannot answer its own permission request', code: 'NO_ROUTE', help: ['The owner answers it in Hydra’s chat'] })
           }
 
           if (!waiting || waiting.card !== card.id || card.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
