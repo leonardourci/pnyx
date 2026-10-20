@@ -110,6 +110,26 @@ test('a torn tail is skipped on read, blocks writes and is set aside by repair',
   assert.equal(repairHydra({ hydraId: 'default' }).tornBytes, 0)
 })
 
+test('repeated reads return appended events, honour a repair and notice a new file', () => {
+  const events = readStream({ name: 'lifecycle' })
+  const ids = () => readEvents({ hydraId: 'default' }).map(e => e.id)
+  appendAll({ events: events.slice(0, 2) })
+  assert.deepEqual(ids(), ['evt_1', 'evt_2'])
+  appendAll({ events: events.slice(2) })
+  assert.deepEqual(ids(), events.map(e => e.id))
+
+  const path = join(hydraDir({ hydraId: 'default' }), 'events.jsonl')
+  const ghost = JSON.stringify({ ...events[0]!, seq: 99, id: 'evt_99' })
+  writeFileSync(path, readFileSync(path, 'utf8') + ghost)
+  repairHydra({ hydraId: 'default' })
+  assert.deepEqual(ids(), events.map(e => e.id))
+
+  rmSync(path)
+  assert.deepEqual(ids(), [])
+  appendAll({ events: events.slice(0, 1) })
+  assert.deepEqual(ids(), ['evt_1'])
+})
+
 test('repair skips a torn line even when it parses as an event', () => {
   const dir = seedLog({ stream: 'lifecycle' })
   const events = readStream({ name: 'lifecycle' })

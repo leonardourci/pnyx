@@ -189,8 +189,38 @@ function readLog({ dir, from = 0 }: { dir: string; from?: number }): LogRead | n
   }
 }
 
+// ponytail: the log only grows, so the server keeps every parsed event (65 MB of heap for a 45 MB log); index offsets per card if that is too much.
+const parsed = new Map<string, { file: string; events: HydraEvent[]; end: number }>()
+
 export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
-  return readLog({ dir: hydraDir({ hydraId }) })?.events ?? []
+  const dir = hydraDir({ hydraId })
+  let file: string
+
+  try {
+    const { dev, ino, birthtimeMs } = statSync(logPath({ dir }))
+    file = `${dev}:${ino}:${birthtimeMs}`
+  } catch {
+    parsed.delete(dir)
+
+    return []
+  }
+
+  const cached = parsed.get(dir)
+  let log: { events: HydraEvent[]; end: number } | null = null
+
+  if (cached?.file === file) {
+    try {
+      const next = readLog({ dir, from: cached.end })
+      log = next && { events: cached.events.concat(next.events), end: next.end }
+    } catch {
+      // A repair marker for a line before `end` needs the whole log.
+    }
+  }
+
+  log ??= readLog({ dir }) ?? { events: [], end: 0 }
+  parsed.set(dir, { file, ...log })
+
+  return log.events.slice()
 }
 
 // Complete events at or after byte `offset`, and the offset just past them.
