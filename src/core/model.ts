@@ -467,6 +467,8 @@ export type NotedEvent = EventBase & { type: 'card.noted'; data: Note }
 
 export interface AgentLaunch {
   dispatch?: string
+  // Settings the start asked for in place of the dispatch candidate's own.
+  override?: Partial<Pick<AgentConfig, 'model' | 'effort' | 'mode' | 'fast'>>
   via: 'paseo' | 'command' | 'hooks' | 'pnyx'
   at: string
   folder?: string
