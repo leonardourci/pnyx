@@ -175,6 +175,8 @@ test('task start runs Claude Code through the server, records it on the task and
   assert.equal(options.model, 'opus')
   assert.equal(options.effort, 'high')
   assert.equal(options.permissionMode, 'acceptEdits')
+  // Allowed from the start, so a picker can still switch it to bypass permissions.
+  assert.equal(options.allowDangerouslySkipPermissions, true)
   assert.equal(options.env?.PNYX_HYDRA, 'lab')
   assert.equal(options.env?.PNYX_TASK, undefined)
   await until({ check: () => task().sessionActivity === 'finished', what: 'the turn to finish' })

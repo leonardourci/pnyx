@@ -71,7 +71,7 @@ test('Claude lists SDK display names and closes its catalog without running a tu
 
     return {
       supportedModels: async () => [
-        { value: 'opus', displayName: 'Opus 5.5', resolvedModel: 'claude-opus-5-5' },
+        { value: 'opus', displayName: 'Opus 5.5', resolvedModel: 'claude-opus-5-5', supportsEffort: true },
         { value: 'future-model', displayName: 'Future Model' },
       ],
       close: () => {
@@ -82,8 +82,8 @@ test('Claude lists SDK display names and closes its catalog without running a tu
   const models = await claudeProvider({ query }).models({ cwd: tmpdir(), env: {} })
 
   assert.deepEqual(models, [
-    { value: 'opus', label: 'Opus 5.5', resolvedModel: 'claude-opus-5-5' },
-    { value: 'future-model', label: 'Future Model' },
+    { value: 'opus', label: 'Opus 5.5', resolvedModel: 'claude-opus-5-5', defaultEffort: 'high', defaultMode: 'default' },
+    { value: 'future-model', label: 'Future Model', defaultMode: 'default' },
   ])
   assert.equal(closed, true)
 })

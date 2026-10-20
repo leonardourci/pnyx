@@ -28,7 +28,8 @@ function sdkOptions({ settings }: { settings: AgentSettings }): Partial<Options>
     ...(settings.fast !== undefined ? { settings: { fastMode: settings.fast === 'true' } } : {}),
     ...(effort && EFFORTS.includes(effort) ? { effort: effort as EffortLevel } : {}),
     ...(mode && MODES.includes(mode) ? { permissionMode: mode as PermissionMode } : {}),
-    ...(mode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
+    // A running session can only switch to bypass permissions if it started allowed to.
+    allowDangerouslySkipPermissions: true,
   }
 }
 
@@ -56,6 +57,9 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
           value: model.value,
           label: model.displayName,
           ...(model.resolvedModel ? { resolvedModel: model.resolvedModel } : {}),
+          // ponytail: Claude Code reports no default effort before a turn, so Pnyx names the API's default, high.
+          ...(model.supportsEffort ? { defaultEffort: 'high' } : {}),
+          defaultMode: 'default',
         }))
       } finally {
         clearTimeout(timer)
