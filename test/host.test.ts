@@ -162,7 +162,7 @@ test('task start runs Claude Code through the server, records it on the task and
   await until({ check: () => sdk.calls[0]?.messages.length === 1, what: 'the opening prompt' })
 
   const { options, messages } = sdk.calls[0]!
-  assert.match(messages[0]!, /^Release the canary\.\n\nYou are the Pnyx worker for task/)
+  assert.match(messages[0]!, /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nRelease the canary\.\n\nYou are the Pnyx worker for task/)
   assert.equal(options.sessionId, agentRef.sessionId)
   assert.equal(options.resume, undefined)
   assert.equal(options.cwd, folder)
@@ -369,7 +369,7 @@ test('hosted permissions survive hooks, wake Hydra and accept exactly one answer
   assert.equal(task().attention.some(a => a.key.endsWith(request.id) && a.blocking), true)
   const event = readEvents({ hydraId: 'lab' }).find(e => e.type === 'task.permission')!
   const checked = await workerCommands.hydra(['check', '--after', String(event.seq - 1), '--hydra', 'lab'])
-  assert.ok((checked.changes as { type: string }[]).some(e => e.type === 'task.permission'))
+  assert.ok(((checked as Record<string, unknown>).changes as { type: string }[]).some(e => e.type === 'task.permission'))
   const shown = await commands.task(['show', 'ship', '--full', '--hydra', 'lab'])
   assert.deepEqual((shown.task as Card).permissions, task().permissions)
   await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--actor', 'hydra', '--hydra', 'lab']), /need --reason/)
@@ -637,7 +637,7 @@ test('starting fresh validates the replacement before detaching and starts once 
   assert.notEqual(task().agent?.sessionId, 'native-session')
   assert.equal(loadHydra({ hydraId: 'lab' }).state.sessions?.[replacement]?.taskId, null)
   await until({ check: () => sdk.calls[0]?.messages.length === 1, what: 'fresh opening prompt' })
-  assert.match(sdk.calls[0]!.messages[0]!, /^Release the canary\./)
+  assert.match(sdk.calls[0]!.messages[0]!, /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nRelease the canary\./)
   assert.equal(sdk.calls[0]!.options.resume, undefined)
   assert.equal((await startTask({ hydraId: 'lab', task: 'ship', replacement, folder, meta: { ...meta, id: 'fresh-1' } })).event, 'none: duplicate')
   assert.equal(sdk.calls.length, 1)

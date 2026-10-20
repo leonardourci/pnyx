@@ -62,7 +62,7 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
         catalog.close()
       }
     },
-    async open({ cwd, agent, settings, env, instructions, allow }) {
+    async open({ cwd, agent, settings, env, instructions, allow, context }) {
       const id = agent?.sessionId ?? randomUUID()
       const path = agent?.transcriptPath ?? transcriptPath({
         cwd, session: id, folder: env.CLAUDE_CONFIG_DIR,
@@ -80,9 +80,14 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
             return
           }
 
+          // SessionStart fires too early for an SDK hook on startup and resume, so the context leads the first message.
+          let fresh = true
+
           const prompt = async function* (): AsyncGenerator<UserMessage> {
             for await (const text of input) {
-              yield { type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null }
+              const content = fresh && context ? `${context()}\n\n${text}` : text
+              fresh = false
+              yield { type: 'user', message: { role: 'user', content }, parent_tool_use_id: null }
             }
           }
 
@@ -97,6 +102,8 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
               systemPrompt: { type: 'preset', preset: 'claude_code', ...(instructions ? { append: instructions } : {}) },
               tools: { type: 'preset', preset: 'claude_code' },
               ...(allow?.length ? { allowedTools: allow.map(command => `Bash(${command}:*)`) } : {}),
+              // After a compaction, even mid-turn, the context comes back.
+              ...(context ? { hooks: { SessionStart: [{ matcher: 'compact', hooks: [async () => ({ hookSpecificOutput: { hookEventName: 'SessionStart' as const, additionalContext: context() } })] }] } } : {}),
               permissionPrompts: 'host',
               // eslint-disable-next-line pnyx/object-params -- The SDK owns this callback signature.
               canUseTool: async (tool, input, { signal, decisionReason }) => {

@@ -1,4 +1,5 @@
 import { projectRows } from '../projects/read.ts'
+import { hydraDigest } from '../core/digest.ts'
 import { checkAttachments } from '../integrations/presence/check.ts'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
@@ -208,8 +209,16 @@ const hydraCheckHandler = guard({
   }),
 })
 
+const hydraDigestHandler = guard({
+  handler: ({ args }) => {
+    const { hydraId } = parse({ args, options: COMMON, positionals: 1 })
+
+    return hydraDigest({ hydraId, state: loadHydra({ hydraId }).state })
+  },
+})
+
 export const workerCommands = {
   hydra: guard({
-    handler: ({ args }) => (args[0] === 'check' ? hydraCheckHandler(args) : commands.hydra(args)),
+    handler: ({ args }) => (args[0] === 'check' ? hydraCheckHandler(args) : args[0] === 'digest' ? hydraDigestHandler(args) : commands.hydra(args)),
   }),
 }

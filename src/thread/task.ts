@@ -1,6 +1,7 @@
 import type { Card } from '../core/model.ts'
 import type { ThreadEntry, ThreadPage } from './read.ts'
 import { taskMentions } from '../mentions/mentions.ts'
+import { withoutInjected } from '../oracle/text.ts'
 
 export function taskUpdates({ card }: { card: Card }): ThreadEntry[] {
   return (card.statusLog ?? []).filter(s => s.note.trim() && s.actor !== 'web')
@@ -35,10 +36,17 @@ export function taskConversation({ card, entries }: {
   const updates = taskUpdates({ card })
   const ids = new Set(entries.map(e => e.id))
   const launch = `You are the Pnyx worker for task ${card.id} `
+
+  // The launch prompt opens with the worker header, which the thread does not show.
+  const launched = ({ text }: { text: string }) => {
+    const shown = withoutInjected({ text })
+
+    return shown.startsWith(launch) || [prompt, card.brief].some(given =>
+      given?.trim() && shown.startsWith(`${given}\n\n${launch}`))
+  }
+
   const conversation = entries.filter(entry => !entry.initial && !(entry.kind === 'message'
-    && /^(user|You)$/.test(entry.role)
-    && (entry.text.startsWith(launch) || [prompt, card.brief].some(text =>
-      text?.trim() && entry.text.startsWith(`${text}\n\n${launch}`)))))
+    && /^(user|You)$/.test(entry.role) && launched({ text: entry.text })))
   const matched = new Set<string>()
 
   for (const receipt of conversation) {

@@ -2,6 +2,8 @@
 
 Pnyx is a deterministic view of every agent and its work in Hydras, with an AXI CLI named `pnyx-axi`.
 
+Vocabulary: Pnyx is the app, a **Hydra** holds its tasks (always say Hydra, never board), search is the **Oracle**, and **inscribe** is how Hydra curates and saves its memory before a reset. Everything else uses its plain name.
+
 ## Build and test
 
 Node 22.13 or newer (for the built-in `node:sqlite`) and pnpm (the version is pinned in `package.json`).
@@ -33,7 +35,7 @@ One folder per feature. Code for a feature lives in its folder. There are no per
 | `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery |
 | `web/` | the React + Vite + Tailwind Hydra; its own UI primitives in `web/src/components/ui/` |
 | `setup/` | hook templates per harness |
-| `skills/` | the agent skills shipped with the CLI: `pnyx`, `pnyx-hydra` and `pnyx-worker` |
+| `skills/` | the agent skills shipped with the CLI: `pnyx`, `pnyx-worker`, and Hydra's `pnyx-hydra` contract with its detail skills (`pnyx-hydra-workers`, `pnyx-hydra-columns`, `pnyx-hydra-firstmate`, `inscribe`) |
 | `test/` | tests; synthetic inputs in `test/fixtures/` |
 | `docs/media/` | the README's demo GIF |
 
@@ -46,10 +48,10 @@ Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links t
 - The reducer is pure and deterministic: no I/O, clock or randomness inside it. Replaying the same log gives the same Hydra.
 - No database for Hydra state, and no AI model calls or model tokens anywhere in the Hydra's logic. `search.db` is a derived, deletable full-text index (SQLite FTS5 through `node:sqlite`), not a store: it is rebuilt from the log and transcripts and never read as Hydra state. Semantic search (on by default, through optional dependencies) adds vectors to it from local, open-weight models that run in `src/oracle`'s own worker process (`oracle setup` also loads them once, in its own process, for their golden check), never in the reducer, hooks or the server. The server's only token is a local per-install auth token for writes. Updates are pushed, and the browser uses one WebSocket.
 - Hooks are silent (no stdout or stderr), fast, and always exit 0. They never wait on a network call, browser or model.
-- The Firstmate integration only reads a Firstmate home's files and replies through Firstmate's own send and inbox commands. The one write is `setup hydra`, which adds the `pnyx-hydra` skill as a local, git-excluded skill in the home; Firstmate's tracked files never change.
+- The Firstmate integration only reads a Firstmate home's files and replies through Firstmate's own send and inbox commands. The one write is `setup hydra`, which adds the Hydra skills as local, git-excluded skills in the home; Firstmate's tracked files never change.
 - GitHub pull request state comes from `gh-axi`.
 - The CLI follows [AXI](https://axi.md/): compact TOON output, minimal default fields, explicit empty states, structured errors, no prompts and next-step hints.
 
 ## Runtime data
 
-Hydras live in `~/.pnyx/hydras/<hydra>/` (`$PNYX_HOME/hydras/<hydra>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock, the spool, the `search.db` index and the `harvest.json` transcript cursors. Nothing at runtime writes inside the repository.
+Hydras live in `~/.pnyx/hydras/<hydra>/` (`$PNYX_HOME/hydras/<hydra>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock, the spool, the `search.db` index, the `harvest.json` transcript cursors, and `agent/`, the hosted Hydra's folder, whose contract and skills Pnyx rewrites before each Hydra turn. Nothing at runtime writes inside the repository.

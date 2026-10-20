@@ -10,7 +10,7 @@ test('global skill links cover both harnesses, stay current and remove only link
   t.after(() => rmSync(userHome, { recursive: true, force: true }))
   const options = { userHome, claudeConfigDir: join(userHome, 'custom-claude') }
   const preview = setupSkills({ ...options, preview: true })
-  assert.equal(preview.skills.length, 4)
+  assert.equal(preview.skills.length, 12)
   assert.ok(preview.skills.every(link => link.change === 'installed' && !existsSync(link.path)))
   assert.match(skillStatus(options), /missing:/)
   const installed = setupSkills(options)
@@ -64,7 +64,7 @@ test('shared global folders and linked config parents install each skill once', 
   mkdirSync(join(userHome, '.agents'))
   symlinkSync(join(userHome, '.agents'), join(userHome, '.claude'), 'dir')
   const options = { userHome, claudeConfigDir: '' }
-  assert.equal(setupSkills(options).skills.length, 2)
+  assert.equal(setupSkills(options).skills.length, 6)
   assert.equal(skillStatus(options), 'ready')
   setupSkills({ ...options, remove: true })
   assert.ok(!existsSync(join(userHome, '.agents', 'skills', 'pnyx-worker')))

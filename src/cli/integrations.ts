@@ -2,12 +2,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { hydraConfig } from '../core/hydra.ts'
 import { hookStatus } from '../integrations/hooks/install.ts'
-import { skillStatus } from '../integrations/skills/install.ts'
+import { HYDRA_SKILLS, skillSource, skillStatus } from '../integrations/skills/install.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
 import { loadHydra } from '../store/hydra-store.ts'
 import { COMMON, guard, parse, type Output } from './commands.ts'
-import { HOME_SKILL, HYDRA_SKILL } from './start.ts'
 
 const onPath = ({ name }: { name: string }) =>
   (process.env.PATH ?? '').split(delimiter).some(dir => dir && existsSync(join(dir, name)))
@@ -21,9 +20,9 @@ export async function integrations({ hydraId, url, connect }: {
   const hooks = hookStatus()
   const paseo = await paseoStatus({ url, connect }).then(() => 'running', (error: Error) => `not running: ${error.message}`)
   const home = config.hydra.kind === 'firstmate' ? config.hydra.home : undefined
-  const skill = home && join(home, HOME_SKILL, 'SKILL.md')
-  const skillState = !skill || !existsSync(skill) ? 'missing'
-    : readFileSync(skill).equals(readFileSync(HYDRA_SKILL)) ? 'current' : 'outdated'
+  const skills = home ? HYDRA_SKILLS.map(name => ({ name, path: join(home, '.agents', 'skills', name, 'SKILL.md') })) : []
+  const skillState = !home || skills.some(({ path }) => !existsSync(path)) ? 'missing'
+    : skills.every(({ name, path }) => readFileSync(path).equals(readFileSync(skillSource({ name })))) ? 'current' : 'outdated'
 
   return {
     hydraId,
@@ -32,7 +31,7 @@ export async function integrations({ hydraId, url, connect }: {
         name: 'skills',
         status: skillStatus(),
         setup: 'pnyx-axi setup skills',
-        docs: 'pnyx-hydra and pnyx-worker are available in every project or copy through global skill links',
+        docs: 'The Hydra skills and pnyx-worker are available in every project or copy through global skill links',
       },
       {
         name: 'hooks',
@@ -48,7 +47,7 @@ export async function integrations({ hydraId, url, connect }: {
       },
       {
         name: 'firstmate',
-        status: home ? `Hydra ${home}; skill ${skillState}` : 'not configured for this Hydra',
+        status: home ? `Hydra ${home}; skills ${skillState}` : 'not configured for this Hydra',
         setup: `pnyx-axi setup hydra --home <firstmate home> --hydra ${hydraId}`,
         docs: 'Run `pnyx-axi hydra homes` to list the Firstmate homes and their Hydras',
       },

@@ -4,7 +4,8 @@ import type { Options, PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 import { transcriptPath, type QueryFn } from '../src/server/claude.ts'
 
 export function hydraSdk() {
-  const calls: { options: Options; messages: string[] }[] = []
+  // messages leave out the digest Pnyx puts before a session's first message; raw keeps it.
+  const calls: { options: Options; messages: string[]; raw: string[] }[] = []
   const control = { hold: false, fail: false, ask: false, stream: false }
   const permissions: PermissionResult[] = []
   let release = () => {}
@@ -19,7 +20,7 @@ export function hydraSdk() {
       }
     }
 
-    const call = { options, messages: [] as string[] }
+    const call = { options, messages: [] as string[], raw: [] as string[] }
     calls.push(call)
     const path = transcriptPath({
       cwd: options.cwd!,
@@ -36,7 +37,8 @@ export function hydraSdk() {
 
       for await (const message of prompt) {
         const text = message.message.content
-        call.messages.push(text)
+        call.raw.push(text)
+        call.messages.push(text.replace(/^<pnyx-digest[\s\S]*?<\/pnyx-digest>\n\n/, ''))
         record({ role: 'user', text })
         yield { type: 'system', subtype: 'session_state_changed', state: 'running' }
         const reply = `Hydra: ${text.split('\n\n').at(-1)}`

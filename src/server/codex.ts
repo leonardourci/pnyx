@@ -52,7 +52,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     turn: unknown
   }>()
   const items = new Map<string, ObjectValue>()
-  let next = 0, stopped = false, failure: Error | undefined, stderr = ''
+  let next = 0, stopped = false, compacted = false, failure: Error | undefined, stderr = ''
   const pending = new Map<number, {
     resolve({ value }: { value: ObjectValue }): void
     reject({ error }: { error: Error }): void
@@ -198,6 +198,8 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
           if (message.method === 'item/agentMessage/delta' || item.type === 'agentMessage') {
             events.push({ ...params, method: message.method })
             wake?.()
+          } else if (item.type === 'contextCompaction') {
+            compacted = true
           }
         } else if (message.method === 'item/started') {
           const item = object({ value: object({ value: message.params }).item })
@@ -257,6 +259,12 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
       } finally {
         clearTimeout(timer)
       }
+    },
+    compacted() {
+      const was = compacted
+      compacted = false
+
+      return was
     },
     notify({ method }: { method: string }) {
       write({ message: { method } })
@@ -364,7 +372,7 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
       }
     },
     // ponytail: Codex has no per-command allow list here, so `allow` is unused and a Codex Hydra asks in its chat.
-    async open({ cwd, agent, settings, env, signal, instructions }) {
+    async open({ cwd, agent, settings, env, signal, instructions, context }) {
       const rpc = connection({ child: spawnCodex({ cwd, env }) })
 
       const close = () => {
@@ -409,6 +417,8 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
           async* run({ input, permission }) {
             rpc.permissions({ ask: permission, thread: id })
             const messages = input[Symbol.asyncIterator]()
+            // ponytail: Codex has no session hooks here, so the context leads the first turn and the turn after a compaction; a compaction mid-turn waits for the next turn.
+            let fresh = true
 
             for (;;) {
               const next = await Promise.race([
@@ -421,7 +431,8 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
                 return
               }
 
-              const text = next.value
+              const text = context && (rpc.compacted() || fresh) ? `${context()}\n\n${next.value}` : next.value
+              fresh = false
               yield 'working'
               const result = await rpc.request({
                 method: 'turn/start',

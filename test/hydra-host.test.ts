@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -51,7 +51,16 @@ test('Hydra starts in its own folder, replies, resumes after restart and dedupli
     const agent = state().cards[HYDRA_CARD]!.agent!
     assert.equal(agent.host, 'pnyx')
     assert.equal(agent.cwd, join(home, 'hydras', 'existing', 'agent'))
-    assert.match(readFileSync(join(agent.cwd!, '.agents/skills/pnyx-hydra/SKILL.md'), 'utf8'), /Hydra/)
+    assert.equal(readFileSync(join(agent.cwd!, 'CLAUDE.md'), 'utf8'), '@AGENTS.md\n')
+    assert.match(readFileSync(join(agent.cwd!, 'AGENTS.md'), 'utf8'), /^# Hydra\n[\s\S]*## Load before/)
+    assert.match(readFileSync(join(agent.cwd!, '.claude/skills/inscribe/SKILL.md'), 'utf8'), /^---\nname: inscribe/)
+    assert.ok(!existsSync(join(agent.cwd!, '.agents/skills/pnyx-hydra')))
+    type SessionStart = () => Promise<{ hookSpecificOutput: { additionalContext: string } }>
+    const hook = sdk.calls[0]!.options.hooks!.SessionStart![0]!.hooks[0] as unknown as SessionStart
+    const started = await hook()
+    assert.match(started.hookSpecificOutput.additionalContext, /^<pnyx-digest hydra="existing" through="\d+">[\s\S]*Owner preferences/)
+    assert.equal(sdk.calls[0]!.options.hooks!.SessionStart![0]!.matcher, 'compact')
+    assert.match(sdk.calls[0]!.raw[0]!, /^<pnyx-digest hydra="existing"[\s\S]*<\/pnyx-digest>\n\nHello Hydra$/)
     assert.match(JSON.stringify(sdk.calls[0]!.options.systemPrompt), /You are Hydra.*existing/)
     assert.ok(readThread({ hydraId: 'existing', state: state(), card: state().cards[HYDRA_CARD]!, homes: [] }).entries.some(e => e.role === 'assistant' && e.text.includes('Hello Hydra')))
     await send({ text: 'Hello Hydra', id: 'hello' })
@@ -91,6 +100,17 @@ test('Hydra hosts Codex and resumes its thread after restart', async () => {
     assert.equal(state().config!.hydra.session, session)
     assert.ok(codex.messages().some(m => m.method === 'thread/resume'))
     assert.match(String(codex.messages().find(m => m.method === 'thread/start')?.params?.developerInstructions), /You are Hydra/)
+    // The digest leads the first turn of each opened thread and the turn after a compaction.
+    const inputs = () => codex.messages().filter(m => m.method === 'turn/start')
+      .map(m => (m.params!.input as { text: string }[])[0]!.text)
+    assert.match(inputs()[0]!, /^<pnyx-digest hydra="lab"[\s\S]*<\/pnyx-digest>\n\nHello Codex$/)
+    assert.match(inputs()[1]!, /^<pnyx-digest hydra="lab"[\s\S]*\n\nContinue Codex$/)
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'COMPACT'])
+    await until({ check: () => inputs().length === 3 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+    assert.equal(inputs()[2], 'COMPACT')
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'After compaction'])
+    await until({ check: () => inputs().length === 4 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+    assert.match(inputs()[3]!, /^<pnyx-digest hydra="lab"[\s\S]*\n\nAfter compaction$/)
     await commands.hydra(['send', '--hydra', 'lab', '--text', 'ALLOW'])
     await until({ check: () => state().cards[HYDRA_CARD]?.permissions?.some(p => p.status === 'pending') ?? false })
     const request = state().cards[HYDRA_CARD]!.permissions!.find(p => p.status === 'pending')!
@@ -234,7 +254,7 @@ test('a hosted Hydra wakes once for worker changes, never for its own, and after
   let server = await startServer({ hydraId: 'lab', query: sdk.query, wakeDelay: 300 })
   const state = () => loadHydra({ hydraId: 'lab' }).state
   const hydra = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
-  const wakes = () => hydra().filter(m => m.startsWith('<pnyx-wake>'))
+  const wakes = () => hydra().filter(m => m.includes('<pnyx-wake>'))
   const declare = ({ status, actor = 'cli' }: { status: string; actor?: string }) =>
     commands.task(['status', 'fix', status, '--note', status, '--actor', actor, '--reason', 'testing', '--hydra', 'lab'])
 
@@ -253,6 +273,8 @@ test('a hosted Hydra wakes once for worker changes, never for its own, and after
     // It starts just before the first change it covers.
     const first = Number(/hydra check --after (\d+) --hydra lab/.exec(wakes()[0]!)![1])
     assert.ok(first >= before)
+    // A wake into the running session carries the Hydra's live state after its prompt.
+    assert.match(wakes()[0]!, /<\/pnyx-wake>\n\n<pnyx-digest hydra="lab" through="\d+">[\s\S]*Fix add · [^\n]* · claude-code/)
     const through = state().seq
 
     // Hydra's own writes and turns never wake it.
@@ -334,7 +356,7 @@ test('a busy Hydra gets one wake after its turn, and a failed wake waits for the
   const sdk = hydraSdk()
   let server = await startServer({ hydraId: 'lab', query: sdk.query, wakeDelay: 50 })
   const state = () => loadHydra({ hydraId: 'lab' }).state
-  const wakes = () => sdk.calls.flatMap(c => c.messages).filter(m => m.startsWith('<pnyx-wake>'))
+  const wakes = () => sdk.calls.flatMap(c => c.messages).filter(m => m.includes('<pnyx-wake>'))
   const declare = ({ status }: { status: string }) => commands.task(['status', 'fix', status, '--note', status, '--hydra', 'lab'])
   const settle = () => new Promise(resolve => setTimeout(resolve, 300))
 

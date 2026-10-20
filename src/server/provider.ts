@@ -34,9 +34,11 @@ export const modelIds = ({ models }: { models: ModelOption[] }) =>
 
 export interface Provider {
   models({ cwd, env }: { cwd: string; env: NodeJS.ProcessEnv }): Promise<ModelOption[]>
-  open({ cwd, agent, settings, env, signal, instructions, allow }: {
+  open({ cwd, agent, settings, env, signal, instructions, allow, context }: {
     cwd: string
     instructions?: string
+    // Live state the session gets when it starts or resumes and again after each compaction.
+    context?(): string
     // Commands the session runs without asking, such as Pnyx's own CLI for Hydra.
     allow?: string[]
     agent?: AgentRef

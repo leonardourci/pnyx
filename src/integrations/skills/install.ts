@@ -1,10 +1,47 @@
-import { existsSync, lstatSync, mkdirSync, readlinkSync, realpathSync, symlinkSync, unlinkSync } from 'node:fs'
+import {
+  existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync,
+  unlinkSync, writeFileSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { HydraError } from '../../core/model.ts'
 
-const SKILLS = ['pnyx-hydra', 'pnyx-worker'] as const
+// pnyx-hydra is Hydra's contract; the others are the details it loads on demand.
+export const HYDRA_SKILLS = ['pnyx-hydra', 'pnyx-hydra-workers', 'pnyx-hydra-columns', 'pnyx-hydra-firstmate', 'inscribe'] as const
+const SKILLS = [...HYDRA_SKILLS, 'pnyx-worker'] as const
 const SOURCE = join(import.meta.dirname, '..', '..', '..', 'skills')
+
+export const skillSource = ({ name }: { name: string }) => join(SOURCE, name, 'SKILL.md')
+
+export function copySkills({ folder, names }: {
+  folder: string
+  names: readonly string[]
+}): string[] {
+  return names.map(name => {
+    const dir = join(folder, '.agents', 'skills', name)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'SKILL.md'), readFileSync(skillSource({ name })))
+
+    return dir
+  })
+}
+
+// The hosted Hydra's folder: its contract, which both harnesses load every turn, and the skills it loads on demand.
+export function prepareHydraFolder({ folder }: { folder: string }) {
+  const contract = readFileSync(skillSource({ name: 'pnyx-hydra' }), 'utf8').replace(/^---\n[\s\S]*?\n---\n+/, '')
+  mkdirSync(folder, { recursive: true })
+  writeFileSync(join(folder, 'AGENTS.md'), contract)
+  writeFileSync(join(folder, 'CLAUDE.md'), '@AGENTS.md\n')
+  // Earlier versions copied the whole contract here as a skill.
+  rmSync(join(folder, '.agents', 'skills', 'pnyx-hydra'), { recursive: true, force: true })
+  copySkills({ folder, names: HYDRA_SKILLS.filter(name => name !== 'pnyx-hydra') })
+  const claude = join(folder, '.claude', 'skills')
+
+  if (!lstatSync(claude, { throwIfNoEntry: false })) {
+    mkdirSync(dirname(claude), { recursive: true })
+    symlinkSync(join('..', '.agents', 'skills'), claude, 'dir')
+  }
+}
 
 export interface SkillLocation {
   userHome?: string
@@ -81,6 +118,6 @@ export function setupSkills(
   return {
     skills,
     ...(preview ? { preview: 'nothing written; rerun without --preview to apply' } : {}),
-    help: [remove ? 'Run `pnyx-axi setup skills` to install them again' : 'New sessions can load pnyx-hydra and pnyx-worker in any project or copy'],
+    help: [remove ? 'Run `pnyx-axi setup skills` to install them again' : 'New sessions can load the Hydra skills and pnyx-worker in any project or copy'],
   }
 }
