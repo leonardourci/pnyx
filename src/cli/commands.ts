@@ -7,6 +7,7 @@ import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
 import { setupSkills } from '../integrations/skills/install.ts'
 import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths, viewFor } from '../core/view.ts'
+import { MEMORY_BUDGET, MEMORY_SKILL, memorySize } from '../core/digest.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { sendReply } from './reply.ts'
 import { findSession, interactive, liveTask, rankOf, selfSession } from '../core/tasks.ts'
@@ -1363,10 +1364,11 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const action = positionals[1] ?? 'list'
 
     if (action === 'list') {
-      const entries = Object.entries(loadHydra({ hydraId }).state.hydraMemory ?? {})
+      const state = loadHydra({ hydraId }).state
+      const entries = Object.entries(state.hydraMemory ?? {})
         .map(([key, entry]) => ({ key, ...entry }))
 
-      return { memory: entries.length ? entries : 'none: no Hydra memory yet' }
+      return { memory: entries.length ? entries : 'none: no Hydra memory yet', used: `${memorySize({ state })} of ${MEMORY_BUDGET} characters` }
     }
 
     const key = required({ value: values.key as string | undefined, what: '--key' })
@@ -1377,8 +1379,8 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
     const after = action === 'forget' ? null : required({ value: values.text as string | undefined, what: '--text' }).trim()
 
-    if (after !== null && (!after || after.length > 4000)) {
-      throw new HydraError({ message: 'memory text must have 1–4000 characters', code: 'VALIDATION_ERROR' })
+    if (after !== null && !after) {
+      throw new HydraError({ message: 'memory text must not be empty', code: 'VALIDATION_ERROR' })
     }
 
     const m = meta({ values })
@@ -1389,6 +1391,11 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       intent: { type: 'hydra.memory', card: '$board' },
       decide: ({ state }) => {
         const before = state.hydraMemory?.[key]?.text ?? null
+        const size = memorySize({ state }) - (before?.length ?? 0) + (after?.length ?? 0)
+
+        if (after !== null && size > MEMORY_BUDGET && size > memorySize({ state })) {
+          throw new HydraError({ message: `Hydra memory would use ${size} of ${MEMORY_BUDGET} characters`, code: 'MEMORY_FULL', help: [`Load the ${MEMORY_SKILL} skill: merge, shorten or forget entries, then save again`] })
+        }
 
         return before === after ? { skipped: 'unchanged' } : hydraEvent({ state, meta: m, cardId: '$board', change: { type: 'hydra.memory', data: { key, before, after } } })
       },
@@ -2004,6 +2011,9 @@ pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--det
 pnyx-axi hydra send --text <message> [--details <text>]
 pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
+All memory shares one budget of ${MEMORY_BUDGET} characters; keep owner preferences under the key preferences and learnings under learnings.
+pnyx-axi hydra digest
+Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, and its memory.
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
 pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]

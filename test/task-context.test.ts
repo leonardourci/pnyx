@@ -8,6 +8,7 @@ import { startTask } from '../src/cli/start.ts'
 import { hydraCheck, workerCommands } from '../src/cli/workers.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { DEFAULT_WIDTHS, viewFor } from '../src/core/view.ts'
+import { MEMORY_BUDGET } from '../src/core/digest.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
@@ -190,6 +191,42 @@ test('Hydra lines name starts, undos and returns, and the receipt carries the cu
     assert.equal(undone.posted, 'Moved Docs back to Queued: the work is not finished')
     const rows = (await f.run({ name: 'hydra', args: ['messages', '--after', '0'] }) as { messages: { text: string; details?: string }[] }).messages
     assert.deepEqual(rows.find(r => r.details), { ...rows.find(r => r.details), text: 'Returned Docs to the Hydra: the owner resumed it', details: 'Resume after the release.' })
+  } finally {
+    rmSync(f.home, { recursive: true, force: true })
+  }
+})
+
+test('the digest prints columns, open tasks, what waits and memory, within one memory budget', async () => {
+  const f = fixture()
+
+  try {
+    await f.run({ name: 'task', args: ['create', '--key', 'api', '--title', 'API cleanup', '--column', 'in_progress'] })
+    await f.run({ name: 'task', args: ['create', '--key', 'old', '--title', 'Old work', '--column', 'done'] })
+    await f.run({ name: 'task', args: ['status', 'api', 'needs_you', '--note', 'Which schema?'] })
+    f.push({ key: 'api', input: { attention: [{ kind: 'question', key: 'q1', blocking: true, text: 'Use v2 or v3?' }] } })
+    await f.run({ name: 'hydra', args: ['memory', 'set', '--key', 'preferences', '--text', 'Short PRs.'] })
+    const digest = await workerCommands.hydra(['digest', '--hydra', 'default']) as unknown as string
+    assert.match(digest, new RegExp(`^<pnyx-digest hydra="default" through="${f.state().seq}">`))
+    assert.match(digest, /- in_progress · In progress · 1 · Work a live worker/)
+    assert.match(digest, /· API cleanup · In progress · needs_you: Which schema\? · no worker\n {2}waiting: question "Use v2 or v3\?"/)
+    assert.doesNotMatch(digest, /Old work/)
+    assert.match(digest, /1 done tasks not listed/)
+    assert.match(digest, /Owner preferences \(memory key preferences\):\nShort PRs\.\n/)
+    assert.match(digest, /Learnings \(memory key learnings\):\nnone yet/)
+    assert.match(digest, /Memory uses 10 of 6000 characters\.\n<\/pnyx-digest>$/)
+
+    await f.run({ name: 'hydra', args: ['memory', 'set', '--key', 'constructor', '--text', 'Kept.'] })
+    assert.match(await workerCommands.hydra(['digest', '--hydra', 'default']) as unknown as string, /Other memory:\n- constructor: Kept\./)
+    await f.run({ name: 'hydra', args: ['memory', 'forget', '--key', 'constructor'] })
+
+    for (const skill of ['pnyx-hydra', 'inscribe']) {
+      assert.match(readFileSync(join(import.meta.dirname, '..', 'skills', skill, 'SKILL.md'), 'utf8'), new RegExp(`${MEMORY_BUDGET} characters`))
+    }
+
+    assert.throws(() => f.run({ name: 'hydra', args: ['memory', 'set', '--key', 'learnings', '--text', 'x'.repeat(5991)] }), /would use 6001 of 6000/)
+    await f.run({ name: 'hydra', args: ['memory', 'set', '--key', 'learnings', '--text', 'x'.repeat(5990)] })
+    assert.match(JSON.stringify(await f.run({ name: 'hydra', args: ['memory'] })), /6000 of 6000 characters/)
+    assert.match(await workerCommands.hydra(['digest', '--hydra', 'default']) as unknown as string, /Load the inscribe skill/)
   } finally {
     rmSync(f.home, { recursive: true, force: true })
   }

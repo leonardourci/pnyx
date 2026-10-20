@@ -369,7 +369,7 @@ test('hosted permissions survive hooks, wake Hydra and accept exactly one answer
   assert.equal(task().attention.some(a => a.key.endsWith(request.id) && a.blocking), true)
   const event = readEvents({ hydraId: 'lab' }).find(e => e.type === 'task.permission')!
   const checked = await workerCommands.hydra(['check', '--after', String(event.seq - 1), '--hydra', 'lab'])
-  assert.ok((checked.changes as { type: string }[]).some(e => e.type === 'task.permission'))
+  assert.ok(((checked as Record<string, unknown>).changes as { type: string }[]).some(e => e.type === 'task.permission'))
   const shown = await commands.task(['show', 'ship', '--full', '--hydra', 'lab'])
   assert.deepEqual((shown.task as Card).permissions, task().permissions)
   await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--actor', 'hydra', '--hydra', 'lab']), /need --reason/)
