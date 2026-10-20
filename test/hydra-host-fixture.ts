@@ -8,6 +8,7 @@ export function hydraSdk() {
   const calls: { options: Options; messages: string[]; raw: string[] }[] = []
   const control = { hold: false, fail: false, ask: false, stream: false }
   const permissions: PermissionResult[] = []
+  const sets: string[] = []
   let release = () => {}
   const query = (({ prompt, options }: {
     prompt: AsyncIterable<{ message: { content: string } }>
@@ -68,7 +69,21 @@ export function hydraSdk() {
       }
     }
 
-    return Object.assign(run(), { close: () => release() })
+    return Object.assign(run(), {
+      close: () => release(),
+      // eslint-disable-next-line pnyx/object-params -- The SDK owns this method signature.
+      setModel: async (model: string) => {
+        sets.push(`model ${model}`)
+      },
+      // eslint-disable-next-line pnyx/object-params -- The SDK owns this method signature.
+      setPermissionMode: async (mode: string) => {
+        sets.push(`mode ${mode}`)
+      },
+      // eslint-disable-next-line pnyx/object-params -- The SDK owns this method signature.
+      applyFlagSettings: async (settings: Record<string, unknown>) => {
+        sets.push(`effort ${String(settings.effortLevel)}`)
+      },
+    })
   }) as unknown as QueryFn
 
   return {
@@ -76,6 +91,7 @@ export function hydraSdk() {
     calls,
     control,
     permissions,
+    sets,
     release: () => {
       control.hold = false; release()
     },

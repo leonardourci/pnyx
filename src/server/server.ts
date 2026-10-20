@@ -920,7 +920,7 @@ async function mountOwnedHydra({
           }
 
           const agent = candidates({ value: [JSON.parse(args[0]!)] })[0]!
-          withWriter({
+          const { previous, running } = withWriter({
             hydraId,
             fn: ({ writer }) => {
               const config = hydraConfig({ state: writer.state, id: hydraId })
@@ -934,9 +934,21 @@ async function mountOwnedHydra({
               if ('event' in decision) {
                 writer.append({ event: decision.event })
               }
+
+              const running = writer.state.cards[HYDRA_CARD]?.agent
+
+              return { previous: config.hydra.agent, running }
             },
           })
           kick()
+
+          // A new permission mode reaches Hydra's running turn at once; other settings wait for the next message.
+          if (agent.mode && agent.mode !== previous?.mode && running?.host === 'pnyx'
+            && running.provider === (agent.harness === 'codex' ? 'codex' : 'claude-code')) {
+            void agents.set({ card: HYDRA_CARD, setting: 'mode', value: agent.mode, actor: 'web' })
+              .catch((error: Error) => console.error(`pnyx-axi serve: Hydra kept its mode: ${error.message}`))
+          }
+
           send({ ws, message: { type: 'receipt', id, saved: true } })
         } else if (name === 'hydras') {
           hydraSubscribers.add(ws)
