@@ -11,7 +11,7 @@ import { settleDone, settles } from '../copies/copies.ts'
 import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
-import { HYDRA_CARD, hydraConfig, hydraEvent } from '../core/hydra.ts'
+import { HYDRA_CARD, hydraConfig, hydraEvent, wakesHydra } from '../core/hydra.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '../integrations/paseo/history.ts'
 import { findCard } from '../core/decide.ts'
 import { replyRoute } from '../core/route.ts'
@@ -120,6 +120,8 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
+  // How long a hosted Hydra's wake waits for more changes; tests shorten it.
+  wakeDelay?: number
 }): Promise<RunningServer> {
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
@@ -305,7 +307,7 @@ async function mountHydra({
   url,
   homes,
   catalogLocations,
-  query, spawnCodex,
+  query, spawnCodex, wakeDelay,
   open,
   hydrasChanged,
 }: {
@@ -316,6 +318,7 @@ async function mountHydra({
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
+  wakeDelay?: number
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
 }): Promise<MountedHydra> {
@@ -323,7 +326,16 @@ async function mountHydra({
 
   try {
     return await mountOwnedHydra({
-      hydraId, url, homes, catalogLocations, query, spawnCodex, open, release, hydrasChanged,
+      hydraId,
+      url,
+      homes,
+      catalogLocations,
+      query,
+      spawnCodex,
+      wakeDelay,
+      open,
+      release,
+      hydrasChanged,
     })
   } catch (error) {
     release()
@@ -336,7 +348,7 @@ async function mountOwnedHydra({
   url,
   homes: given,
   catalogLocations,
-  query, spawnCodex,
+  query, spawnCodex, wakeDelay,
   open,
   release,
   hydrasChanged,
@@ -347,6 +359,7 @@ async function mountOwnedHydra({
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
+  wakeDelay?: number
   open({ id }: { id: string }): Promise<string>
   release(): void
   hydrasChanged(): void
@@ -665,6 +678,10 @@ async function mountOwnedHydra({
       recent.push(event)
       broadcast({ event })
       touchLatest({ ids: [event.cardId] })
+
+      if (wakesHydra({ state, event })) {
+        agents.wake({ seq: event.seq })
+      }
     }
 
     offset = read.end
@@ -736,7 +753,7 @@ async function mountOwnedHydra({
     return token.length > 0 && bytes.length === token.length && timingSafeEqual(bytes, token)
   }
 
-  const agents = createHost({ hydraId, query, spawnCodex, changed: () => kick() })
+  const agents = createHost({ hydraId, query, spawnCodex, wakeDelay, changed: () => kick() })
 
   // The server has already checked Host and Origin.
   const request = ({ req, res, path }: HydraRequest) => {

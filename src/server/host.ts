@@ -11,13 +11,13 @@ import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained, postLine } from '../cli/commands.ts'
 import { permissionEvent } from '../core/permissions.ts'
-import { HYDRA_CARD, hydraConfig, hydraEvent } from '../core/hydra.ts'
+import { HYDRA_CARD, hostedHydra, hydraConfig, hydraEvent, wakesHydra } from '../core/hydra.ts'
 import { freeTask, HOME_SKILL, HYDRA_SKILL } from '../cli/start.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { HydraError, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
+import { HydraError, HYDRA_ACTOR, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
 import { harnessControls } from '../core/control.ts'
 import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
-import { hydraDir, loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
+import { hydraDir, loadHydra, pnyxHome, readEvents, withWriter, type Writer } from '../store/hydra-store.ts'
 
 export type { QueryFn } from './claude.ts'
 
@@ -62,6 +62,8 @@ export interface Host {
     details?: string
   }): Record<string, unknown>
   reconcile({ state }: { state: HydraState }): void
+  // Queues a check turn for a hosted Hydra once a change it tracks lands at seq.
+  wake({ seq }: { seq: number }): void
   // Marks a hosted turn that was running when the server last stopped as interrupted.
   recover(): void
   close(): void
@@ -70,8 +72,24 @@ export interface Host {
 export const SETTINGS = ['model', 'effort', 'mode']
 // An idle session's process is closed after this long; its next message resumes it.
 const IDLE_MS = 10 * 60 * 1000
+// A wake waits this long so a worker's declaration and finished turn share one check turn.
+const WAKE_MS = 5000
 // The agent must not inherit the server's terminal, task or actor.
 const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
+
+// A wake's turn id names the last change it covers; its turn is recorded as `<id>:hosted`.
+const wakeId = ({ through }: { through: number }) => `wake:${through}`
+const WAKE_TURN = /^wake:(\d+):hosted$/
+
+// The last change a started wake covered, so a restart resumes after it; a wake that
+// never started leaves it, and before any wake, the given fallback. A started wake that
+// fails mid-turn still counts: its prompt is already in Hydra's session.
+function wakeCursor({ state, fallback }: { state: HydraState; fallback: number }): number {
+  const covered = Object.keys(state.eventIds).flatMap(id => WAKE_TURN.exec(id)?.[1] ?? [])
+    .map(Number)
+
+  return covered.length ? Math.max(...covered) : fallback
+}
 
 function isFolder({ path }: { path: string }): boolean {
   try {
@@ -125,7 +143,7 @@ interface Live {
 }
 
 export function createHost({
-  hydraId, query, spawnCodex, changed,
+  hydraId, query, spawnCodex, changed, wakeDelay = WAKE_MS,
   presence = ({ session }) => terminalPresence({ session, verifyProcess: true }),
 }: {
   hydraId: string
@@ -133,6 +151,7 @@ export function createHost({
   spawnCodex?: SpawnCodex
   presence?({ session }: { session: AgentSession }): Presence
   changed(): void
+  wakeDelay?: number
 }): Host {
   const providers = { 'claude-code': claudeProvider({ query }), codex: codexProvider({ spawnCodex }) }
   const controller = new AbortController()
@@ -146,6 +165,10 @@ export function createHost({
   let closing = false
   let hydraTurn = Promise.resolve()
   const queuedHydra = new Set<string>()
+  // The latest change that should wake Hydra; the recorded wakes say how far it has checked,
+  // and before the first one, wakeStart.
+  let wakeThrough = 0, wakeStart: number | undefined
+  let wakeTimer: ReturnType<typeof setTimeout> | undefined
 
   const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
     const result = withWriter({
@@ -323,10 +346,12 @@ export function createHost({
     }
   }
 
-  const environment = () => ({
+  // Hydra's own commands are recorded as its writes, so they never wake it.
+  const environment = ({ hydra = false }: { hydra?: boolean } = {}) => ({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
     PNYX_HOME: pnyxHome(),
     PNYX_HYDRA: hydraId,
+    ...(hydra ? { PNYX_ACTOR: HYDRA_ACTOR } : {}),
   })
 
   const hydraInstructions = () =>
@@ -407,7 +432,7 @@ export function createHost({
         agent: card.agent,
         settings: card.settings ?? {},
         ...(card.id === HYDRA_CARD ? { instructions: hydraInstructions() } : {}),
-        env: card.agent.loginFolder ? accountEnvironment({ account: { provider: card.agent.provider === 'codex' ? 'codex' : 'claude', folder: card.agent.loginFolder }, env: environment() }) : environment(),
+        env: card.agent.loginFolder ? accountEnvironment({ account: { provider: card.agent.provider === 'codex' ? 'codex' : 'claude', folder: card.agent.loginFolder }, env: environment({ hydra: card.id === HYDRA_CARD }) }) : environment({ hydra: card.id === HYDRA_CARD }),
         signal: controller.signal,
       })
 
@@ -433,6 +458,10 @@ export function createHost({
           clearTimeout(entry.idle)
 
           if (activity === 'finished') {
+            if (card.id === HYDRA_CARD) {
+              armWake()
+            }
+
             if (entry.stale) {
               retire({ key, entry })
             } else {
@@ -504,7 +533,33 @@ export function createHost({
     entry.input.push({ text })
   }
 
-  return {
+  // One check turn at a time: a busy Hydra is woken when its turn finishes, and the turn
+  // that follows covers every change since the last started wake.
+  const armWake = () => {
+    if (!closing && !wakeTimer && wakeThrough) {
+      wakeTimer = setTimeout(fireWake, wakeDelay)
+    }
+  }
+
+  const fireWake = () => {
+    wakeTimer = undefined
+    const state = loadHydra({ hydraId }).state
+    const session = state.config?.hydra.session
+    const card = state.cards[HYDRA_CARD]
+    const after = wakeCursor({ state, fallback: wakeStart ?? 0 })
+
+    // An interrupted Hydra waits for the owner; the next change after that wakes it.
+    if (closing || !hostedHydra({ state }) || wakeThrough <= after
+      || (card?.sessionActivity ?? card?.activity) === 'interrupted'
+      || card?.attention.some(a => a.key === INTERRUPTED)
+      || queuedHydra.size || (session && live.get(session)?.activity === 'working')) {
+      return
+    }
+
+    void host.hydra({ id: wakeId({ through: wakeThrough }), actor: 'pnyx', text: `<pnyx-wake>A worker or reminder changed something you track. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` and handle what it lists. Speak up only if the owner must act.</pnyx-wake>` })
+  }
+
+  const host: Host = {
     hydraId,
     hydra: ({ text, actor, id }) => {
       if (queuedHydra.has(id)) {
@@ -608,11 +663,11 @@ export function createHost({
               instructions: hydraInstructions(),
               env: agent?.loginFolder ? accountEnvironment({
                 account: { provider: candidate.harness, folder: agent.loginFolder },
-                env: environment(),
+                env: environment({ hydra: true }),
               }) : dispatch ? accountEnvironment({
                 account: { provider: dispatch.provider, folder: dispatch.folder },
-                env: environment(),
-              }) : environment(),
+                env: environment({ hydra: true }),
+              }) : environment({ hydra: true }),
               signal: controller.signal,
             })
           }
@@ -955,6 +1010,12 @@ export function createHost({
       }
     },
 
+    wake: ({ seq }) => {
+      wakeStart ??= seq - 1
+      wakeThrough = Math.max(wakeThrough, seq)
+      armWake()
+    },
+
     reconcile: ({ state }) => {
       for (const [id, waiting] of pending) {
         const card = state.cards[waiting.card]
@@ -966,26 +1027,45 @@ export function createHost({
       }
     },
 
-    recover: () => write({
-      fn: ({ writer }) => {
-        for (const card of Object.values(writer.state.cards)) {
-          for (const request of card.permissions ?? []) {
-            if (request.status === 'pending' && !pending.has(request.id)) {
-              writer.append({ event: permissionEvent({ state: writer.state, card, request: { ...request, status: 'expired' }, meta: { at: at(), actor: 'pnyx' } }) })
+    recover: () => {
+      write({
+        fn: ({ writer }) => {
+          for (const card of Object.values(writer.state.cards)) {
+            for (const request of card.permissions ?? []) {
+              if (request.status === 'pending' && !pending.has(request.id)) {
+                writer.append({ event: permissionEvent({ state: writer.state, card, request: { ...request, status: 'expired' }, meta: { at: at(), actor: 'pnyx' } }) })
+              }
             }
           }
-        }
 
-        for (const session of Object.values(writer.state.sessions ?? {})) {
-          if (session.agent.host === 'pnyx' && !live.has(session.id) && (session.sessionActivity ?? session.activity) === 'working') {
-            interrupt({ writer, agent: session.agent, note: 'Pnyx stopped during this turn. Send a message to continue it.' })
+          for (const session of Object.values(writer.state.sessions ?? {})) {
+            if (session.agent.host === 'pnyx' && !live.has(session.id) && (session.sessionActivity ?? session.activity) === 'working') {
+              interrupt({ writer, agent: session.agent, note: 'Pnyx stopped during this turn. Send a message to continue it.' })
+            }
           }
+        },
+      })
+
+      // Changes that landed while the server was stopped wake Hydra once it is back, from its
+      // last wake or, before any, its last turn.
+      const state = loadHydra({ hydraId }).state
+
+      if (hostedHydra({ state })) {
+        const turns = Object.entries(state.eventIds).flatMap(([id, seq]) => id.endsWith(':hosted') ? [seq] : [])
+        const after = wakeCursor({ state, fallback: Math.max(0, ...turns) })
+        wakeStart = after
+        const missed = readEvents({ hydraId })
+          .findLast(event => event.seq > after && wakesHydra({ state, event }))
+
+        if (missed) {
+          host.wake({ seq: missed.seq })
         }
-      },
-    }),
+      }
+    },
 
     close: () => {
       closing = true
+      clearTimeout(wakeTimer)
       controller.abort()
 
       for (const [key, entry] of live) {
@@ -993,6 +1073,8 @@ export function createHost({
       }
     },
   }
+
+  return host
 }
 
 const field = ({ body, name, optional = false }: {

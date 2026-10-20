@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
-import { HYDRA_CARD, hydraEvent } from '../src/core/hydra.ts'
+import { HYDRA_CARD, hydraEvent, wakesHydra } from '../src/core/hydra.ts'
+import type { HydraEvent } from '../src/core/model.ts'
+import { startTask } from '../src/cli/start.ts'
+import { fakeDispatch } from './dispatch-fixture.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { startServer } from '../src/server/server.ts'
 import { readThread } from '../src/thread/read.ts'
@@ -205,6 +208,164 @@ test('queued Hydra messages retain the settings selected when sent', async () =>
     await until({ check: () => sdk.calls.some(c => c.messages.includes('Third')) })
     assert.equal(sdk.calls.find(c => c.messages.includes('Second'))?.options.model, 'sonnet')
     assert.equal(sdk.calls.find(c => c.messages.includes('Third'))?.options.model, 'opus')
+  } finally {
+    sdk.release(); await server.close(); rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('a hosted Hydra wakes once for worker changes, never for its own, and after a restart', async () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-hydra-wake-')))
+  process.env.PNYX_HOME = join(home, 'pnyx')
+  process.env.PNYX_SEMANTIC = 'off'
+  fakeDispatch({ root: home })
+  process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
+  const folder = join(home, 'work')
+  mkdirSync(folder)
+  commands.hydra(['create', 'lab'])
+  await commands.task(['create', '--title', 'Fix add', '--key', 'fix', '--folder', folder, '--hydra', 'lab'])
+  const sdk = hydraSdk()
+  let server = await startServer({ hydraId: 'lab', query: sdk.query, wakeDelay: 300 })
+  const state = () => loadHydra({ hydraId: 'lab' }).state
+  const hydra = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
+  const wakes = () => hydra().filter(m => m.startsWith('<pnyx-wake>'))
+  const declare = ({ status, actor = 'cli' }: { status: string; actor?: string }) =>
+    commands.task(['status', 'fix', status, '--note', status, '--actor', actor, '--reason', 'testing', '--hydra', 'lab'])
+
+  try {
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'Watch the fix'])
+    await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+    assert.equal(sdk.calls[0]!.options.env?.PNYX_ACTOR, 'hydra')
+    const before = state().seq
+
+    // The worker's finished turn and its declarations share one check turn.
+    await startTask({ hydraId: 'lab', task: 'fix', meta: { at: new Date().toISOString(), actor: 'hydra', reason: 'start it', id: 'start-fix' } })
+    await until({ check: () => state().cards[state().keys.fix!]?.sessionActivity === 'finished' })
+    declare({ status: 'working' })
+    declare({ status: 'done' })
+    await until({ check: () => wakes().length === 1 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+    // It starts just before the first change it covers.
+    const first = Number(/hydra check --after (\d+) --hydra lab/.exec(wakes()[0]!)![1])
+    assert.ok(first >= before)
+    const through = state().seq
+
+    // Hydra's own writes and turns never wake it.
+    declare({ status: 'working', actor: 'hydra' })
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    assert.equal(wakes().length, 1)
+
+    // The wake prompt is not an owner message in Hydra's chat.
+    const thread = readThread({ hydraId: 'lab', state: state(), card: state().cards[HYDRA_CARD]!, homes: [] })
+    assert.ok(!thread.entries.some(e => e.text.includes('pnyx-wake') || e.text.includes('hydra check --after')))
+
+    // A change while the server is stopped wakes Hydra when it is back, after the last wake.
+    await server.close()
+    declare({ status: 'done' })
+    server = await startServer({ hydraId: 'lab', query: sdk.query, wakeDelay: 300 })
+    await until({ check: () => wakes().length === 2 })
+    const after = Number(/--after (\d+)/.exec(wakes()[1]!)![1])
+    assert.ok(after > first && after < through, `${after} resumes after the first wake`)
+  } finally {
+    await server.close(); rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('wakes come from new questions, pending permissions, finished turns and due reminders on tasks', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-hydra-wakes-'))
+  process.env.PNYX_HOME = home
+  process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
+  process.env.PNYX_SEMANTIC = 'off'
+  commands.hydra(['create', 'lab'])
+  await commands.task(['create', '--title', 'Fix add', '--key', 'fix', '--hydra', 'lab'])
+  const id = loadHydra({ hydraId: 'lab' }).state.keys.fix!
+  const event = ({ change, actor = 'pnyx', cardId = id }: { change: object; actor?: string; cardId?: string }) =>
+    ({ v: 1, seq: 999, id: 'e', at: new Date().toISOString(), actor, cardId, ...change }) as HydraEvent
+  const ask = { key: 'q', kind: 'question', blocking: true, text: 'Which schema?' }
+  const pushed = ({ data, actor }: { data: object; actor?: string }) =>
+    event({ change: { type: 'card.pushed', data: { key: 'fix', ...data } }, actor })
+  const permission = ({ status }: { status: string }) =>
+    event({ change: { type: 'task.permission', data: { id: 'p', session: 's', tool: 'Bash', input: {}, status } } })
+  const due = event({ change: { type: 'task.reminder-due', data: { reminder: 'r', column: 'needs_you', message: {} } } })
+  let server: Awaited<ReturnType<typeof startServer>> | undefined
+
+  try {
+    // A Hydra the server does not run is never woken.
+    assert.equal(wakesHydra({ state: loadHydra({ hydraId: 'lab' }).state, event: due }), false)
+    server = await startServer({ hydraId: 'lab', query: hydraSdk().query })
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'Hello'])
+    await until({ check: () => loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+    await server.close()
+    server = undefined
+    const state = loadHydra({ hydraId: 'lab' }).state
+    const wakes = ({ e }: { e: HydraEvent }) => wakesHydra({ state, event: e })
+    const asked = ({ before }: { before: object[] }) =>
+      wakes({ e: pushed({ data: { attention: [ask], before: { attention: before } } }) })
+    assert.equal(asked({ before: [] }), true)
+    assert.equal(asked({ before: [ask] }), false)
+    assert.equal(wakes({ e: pushed({ data: { attention: [ask] } }) }), false)
+    assert.equal(wakes({ e: permission({ status: 'pending' }) }), true)
+    assert.equal(wakes({ e: permission({ status: 'expired' }) }), false)
+    assert.equal(wakes({ e: due }), true)
+    assert.equal(wakes({ e: event({ change: { type: 'task.reminder-due', data: due.data }, actor: 'hydra' }) }), false)
+    assert.equal(wakes({ e: event({ change: { type: 'task.permission', data: permission({ status: 'pending' }).data }, cardId: HYDRA_CARD }) }), false)
+    // A person's edit, such as continuing a session, is not a worker's finished turn.
+    const finished = ({ actor }: { actor: string }) => pushed({ data: { activity: 'finished', before: { activity: 'working' } }, actor })
+    assert.equal(wakes({ e: finished({ actor: 'pnyx' }) }), true)
+    assert.equal(wakes({ e: finished({ actor: 'hook:claude' }) }), true)
+    assert.equal(wakes({ e: finished({ actor: 'cli' }) }), false)
+  } finally {
+    await server?.close(); rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('a busy Hydra gets one wake after its turn, and a failed wake waits for the owner', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-hydra-busy-'))
+  process.env.PNYX_HOME = home
+  process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
+  process.env.PNYX_SEMANTIC = 'off'
+  commands.hydra(['create', 'lab'])
+  await commands.task(['create', '--title', 'Fix add', '--key', 'fix', '--hydra', 'lab'])
+  const sdk = hydraSdk()
+  let server = await startServer({ hydraId: 'lab', query: sdk.query, wakeDelay: 50 })
+  const state = () => loadHydra({ hydraId: 'lab' }).state
+  const wakes = () => sdk.calls.flatMap(c => c.messages).filter(m => m.startsWith('<pnyx-wake>'))
+  const declare = ({ status }: { status: string }) => commands.task(['status', 'fix', status, '--note', status, '--hydra', 'lab'])
+  const settle = () => new Promise(resolve => setTimeout(resolve, 300))
+
+  try {
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'Hello'])
+    await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+
+    // Changes during a held wake turn wait for it, then share one more wake.
+    sdk.control.hold = true
+    declare({ status: 'working' })
+    await until({ check: () => wakes().length === 1 })
+    const first = state().seq
+    declare({ status: 'blocked' })
+    declare({ status: 'working' })
+    await settle()
+    assert.equal(wakes().length, 1)
+    sdk.release()
+    await until({ check: () => wakes().length === 2 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+    assert.ok(Number(/--after (\d+)/.exec(wakes()[1]!)![1]) < first)
+
+    // A wake whose turn fails leaves Hydra interrupted: later changes wait for the owner's
+    // next message, and the wake after it starts where the last started wake ended.
+    const started = () => Math.max(...Object.keys(state().eventIds)
+      .flatMap(id => /^wake:(\d+):hosted$/.exec(id)?.[1] ?? [])
+      .map(Number))
+    await server.close()
+    sdk.control.fail = true
+    declare({ status: 'done' })
+    server = await startServer({ hydraId: 'lab', query: sdk.query, wakeDelay: 50 })
+    await until({ check: () => state().cards[HYDRA_CARD]?.attention.some(a => a.kind === 'interrupted') ?? false })
+    const calls = sdk.calls.length, through = started()
+    declare({ status: 'working' })
+    await settle()
+    assert.equal(sdk.calls.length, calls)
+    sdk.control.fail = false
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'Carry on'])
+    await until({ check: () => wakes().length === 3 })
+    assert.match(wakes()[2]!, new RegExp(`--after ${through} `))
   } finally {
     sdk.release(); await server.close(); rmSync(home, { recursive: true, force: true })
   }
