@@ -2,7 +2,7 @@ import { hydraEvent } from '../src/core/hydra.ts'
 import { withWriter } from '../src/store/hydra-store.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { emptyHydra } from '../src/core/reducer.ts'
@@ -10,6 +10,11 @@ import { configPath, effectiveDispatch, parseAccounts, parseDispatch, writeConfi
 import { accountEnvironment, chooseCandidate, readQuota, validateChoice, type QuotaReading } from '../src/dispatch/select.ts'
 import { dispatchCommands, STARTER_ACCOUNTS, STARTER_DISPATCH } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
+
+// Keeps the default-login fallback away from the real harness logins.
+const noLogin = join(mkdtempSync(join(tmpdir(), 'pnyx-no-login-')), 'missing')
+process.env.CLAUDE_CONFIG_DIR = join(noLogin, 'claude')
+process.env.CODEX_HOME = join(noLogin, 'codex')
 
 function config(): EffectiveDispatch {
   return {
@@ -191,6 +196,30 @@ test('CLI initializes starter files, edits rules and accounts, and rejects secre
   mkdirSync(join(root, 'pnyx', 'hydras', 'bad'), { recursive: true })
   writeFileSync(configPath({ hydraId: 'bad' }), '{')
   assert.throws(() => effectiveDispatch({ hydraId: 'bad', state: emptyHydra() }), /invalid JSON/)
+})
+
+test('with no registered accounts, dispatch falls back to the harnesses’ own logins', () => {
+  const { root, state } = lab()
+  const claude = join(root, 'claude')
+  mkdirSync(claude)
+  process.env.CLAUDE_CONFIG_DIR = claude
+
+  try {
+    const effective = effectiveDispatch({ hydraId: 'lab', state })
+    assert.deepEqual(effective.accounts, { 'claude:default': { provider: 'claude', folder: claude } })
+    assert.equal(effective.dispatch.main, 'claude:default')
+    assert.deepEqual(effective.dispatch.workers, { claude: ['claude:default'] })
+    assert.equal(chooseCandidate({ config: effective, task: 'task', quota: () => ({ auth: 'unknown' }) }).account, 'claude:default')
+    dispatchCommands.account(['set', 'claude:work', '--provider', 'claude', '--folder', claude, '--hydra', 'lab'])
+    assert.deepEqual(Object.keys(effectiveDispatch({ hydraId: 'lab', state }).accounts), ['claude:work'])
+  } finally {
+    process.env.CLAUDE_CONFIG_DIR = join(noLogin, 'claude')
+  }
+
+  const env = { PATH: '/fake', ANTHROPIC_API_KEY: 'kept' }
+  const own = { provider: 'claude' as const, folder: '~/.claude' }
+  assert.equal(accountEnvironment({ account: own, env }), env)
+  assert.equal(accountEnvironment({ account: own, env: { ...env, CLAUDE_CONFIG_DIR: '/other' } }).CLAUDE_CONFIG_DIR, join(homedir(), '.claude'))
 })
 
 test('shipped starter templates match the initializer', () => {

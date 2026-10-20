@@ -249,8 +249,42 @@ export function effectiveDispatch({ hydraId, state }: {
   const localPath = configPath({ hydraId, accounts: true })
   const globalAccounts = parseAccounts({ value: readConfig({ path: globalPath }) }).accounts
   const localAccounts = parseAccounts({ value: readConfig({ path: localPath }) }).accounts
+  const registered = Object.keys(localAccounts).length ? localAccounts : globalAccounts
 
-  return { dispatch, accounts: Object.keys(localAccounts).length ? localAccounts : globalAccounts }
+  if (Object.keys(registered).length) {
+    return { dispatch, accounts: registered }
+  }
+
+  // With no registered accounts, Hydra and workers run on each harness's own login, as an unconfigured harness does.
+  const accounts: Record<string, Account> = Object.fromEntries((['claude', 'codex'] as const)
+    .filter(provider => existsSync(defaultLogin({ provider })))
+    .map(provider => [`${provider}:default`, { provider, folder: defaultLogin({ provider }) }]))
+  const names = Object.keys(accounts)
+  const main = dispatch.main && Object.hasOwn(accounts, dispatch.main) ? dispatch.main : names[0]
+  const workers = Object.fromEntries(names.map(key => [accounts[key]!.provider, [key]]))
+
+  return {
+    dispatch: {
+      ...dispatch, ...(main ? { main } : {}), workers: { ...workers, ...dispatch.workers },
+    },
+    accounts,
+  }
+}
+
+const DEFAULT_LOGINS: Record<Harness, { variable: string; folder: string }> = {
+  claude: { variable: 'CLAUDE_CONFIG_DIR', folder: '.claude' },
+  codex: { variable: 'CODEX_HOME', folder: '.codex' },
+}
+
+export function loginVariable({ provider }: { provider: Harness }): string {
+  return DEFAULT_LOGINS[provider].variable
+}
+
+export function defaultLogin({ provider, env = process.env }: {
+  provider: Harness
+  env?: NodeJS.ProcessEnv
+}): string {
+  return env[loginVariable({ provider })] || join(homedir(), DEFAULT_LOGINS[provider].folder)
 }
 
 export function loginFolder({ account }: { account: Account }): string {

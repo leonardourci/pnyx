@@ -15,6 +15,11 @@ import { hydraSdk } from './hydra-host-fixture.ts'
 import { fakeCodex } from './codex-fixture.ts'
 import { configPath, writeConfig } from '../src/dispatch/config.ts'
 
+// Keeps the default-login fallback away from the real harness logins.
+const noLogin = join(mkdtempSync(join(tmpdir(), 'pnyx-no-login-')), 'missing')
+process.env.CLAUDE_CONFIG_DIR = join(noLogin, 'claude')
+process.env.CODEX_HOME = join(noLogin, 'codex')
+
 async function until({ check }: { check(): boolean }) {
   for (let i = 0; i < 200; i++) {
     if (check()) {

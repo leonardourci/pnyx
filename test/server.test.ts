@@ -30,6 +30,11 @@ const TIMEOUT_MS = 30000
 // CLI children start a fresh node process; under a parallel test run that can take far longer than a poll.
 const CLI_TIMEOUT_MS = 30000
 
+// Keeps the default-login fallback away from the real harness logins.
+const noLogin = join(mkdtempSync(join(tmpdir(), 'pnyx-no-login-')), 'missing')
+process.env.CLAUDE_CONFIG_DIR = join(noLogin, 'claude')
+process.env.CODEX_HOME = join(noLogin, 'codex')
+
 let server: RunningServer | undefined
 const tabs = new Set<WebSocket>()
 

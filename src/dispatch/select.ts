@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { HydraError, type HydraState } from '../core/model.ts'
-import { candidates as parseCandidates, effectiveDispatch, loginFolder, type Account, type Candidate, type EffectiveDispatch, type Harness } from './config.ts'
+import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness } from './config.ts'
 
 interface EffectiveQuota {
   status?: string
@@ -46,9 +46,17 @@ export function accountEnvironment({ account, env = process.env }: {
   account: Account
   env?: NodeJS.ProcessEnv
 }): NodeJS.ProcessEnv {
+  const { provider } = account
+  const variable = loginVariable({ provider })
+
+  // Naming the default folder explicitly is not the default login: Claude Code then looks for other credentials.
+  if (!env[variable] && loginFolder({ account }) === defaultLogin({ provider, env })) {
+    return env
+  }
+
   return {
     ...Object.fromEntries(Object.entries(env).filter(([key]) => !AUTH_ENV.test(key))),
-    [account.provider === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME']: loginFolder({ account }),
+    [variable]: loginFolder({ account }),
   }
 }
 

@@ -190,7 +190,8 @@ function accountCommand({ args }: { args: string[] }): Output {
       const file = parseAccounts({ value: readConfig({ path }) })
 
       if (!Object.keys(file.accounts).length && !values.shared) {
-        file.accounts = structuredClone(effectiveDispatch({ hydraId, state }).accounts)
+        const shared = configPath({ hydraId, accounts: true, shared: true })
+        file.accounts = parseAccounts({ value: readConfig({ path: shared }) }).accounts
       }
 
       const key = name({ value: required({ value: positionals[1], what: 'account name' }) })
