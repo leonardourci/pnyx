@@ -6,7 +6,10 @@ export function runCommand({ command, cwd, env }: {
   cwd: string
   env: Record<string, string>
 }): { pid: number } {
-  const child = spawn('/bin/sh', ['-c', command], { cwd, env: { ...process.env, ...env }, detached: true, stdio: 'ignore' })
+  // A worker never writes as the actor that started it, such as Hydra.
+  const { PNYX_ACTOR: _actor, ...inherited } = process.env
+  void _actor
+  const child = spawn('/bin/sh', ['-c', command], { cwd, env: { ...inherited, ...env }, detached: true, stdio: 'ignore' })
   // A failed spawn reports here as well as through the missing pid.
   child.on('error', () => undefined)
   child.unref()
