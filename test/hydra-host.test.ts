@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { WebSocket } from 'ws'
 import { commands } from '../src/cli/commands.ts'
 import { HYDRA_CARD, hydraEvent, wakesHydra } from '../src/core/hydra.ts'
 import type { HydraEvent } from '../src/core/model.ts'
@@ -12,6 +13,7 @@ import { sendReply } from '../src/cli/reply.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { startServer } from '../src/server/server.ts'
+import { localToken } from '../src/server/state.ts'
 import { readThread } from '../src/thread/read.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 import { fakeCodex } from './codex-fixture.ts'
@@ -237,6 +239,55 @@ test('queued Hydra messages retain the settings selected when sent', async () =>
     assert.equal(sdk.calls.find(c => c.messages.includes('Third'))?.options.model, 'opus')
   } finally {
     sdk.release(); await server.close(); rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('a running Hydra takes bypass permissions from its composer during the turn and keeps it', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-hydra-mode-'))
+  process.env.PNYX_HOME = home
+  process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
+  process.env.PNYX_SEMANTIC = 'off'
+  commands.hydra(['create', 'lab'])
+  const sdk = hydraSdk(); sdk.control.hold = true
+  const server = await startServer({ hydraId: 'lab', query: sdk.query })
+  const state = () => loadHydra({ hydraId: 'lab' }).state
+  const ws = new WebSocket(`ws://127.0.0.1:${server.port}/hydra/lab/ws?token=${localToken()}`)
+
+  const choose = ({ mode }: { mode: string }) => new Promise<void>((resolve, reject) => {
+    const id = `agent-${mode}`
+
+    // eslint-disable-next-line pnyx/object-params -- ws owns this listener signature.
+    const receipt = (data: unknown) => {
+      const message = JSON.parse(String(data)) as { id?: string; type: string }
+
+      if (message.id === id) {
+        ws.off('message', receipt)
+        void (message.type === 'receipt' ? resolve() : reject(new Error(String(data))))
+      }
+    }
+
+    ws.on('message', receipt)
+    ws.send(JSON.stringify({ type: 'command', id, name: 'hydra-agent', args: [JSON.stringify({ harness: 'claude', model: 'sonnet', effort: 'high', mode })] }))
+  })
+
+  try {
+    await new Promise(resolve => ws.once('open', resolve))
+    await choose({ mode: 'default' })
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'First'])
+    await until({ check: () => sdk.calls[0]?.messages.length === 1 })
+    assert.equal(sdk.calls[0]!.options.permissionMode, 'default')
+    assert.equal(sdk.calls[0]!.options.allowDangerouslySkipPermissions, true)
+    await choose({ mode: 'bypassPermissions' })
+    await until({ check: () => sdk.sets.includes('mode bypassPermissions') })
+    assert.deepEqual(sdk.sets, ['mode bypassPermissions'])
+    assert.equal(state().cards[HYDRA_CARD]?.settings?.mode, 'bypassPermissions')
+    sdk.release()
+    await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'Second'])
+    await until({ check: () => sdk.calls.some(c => c.messages.includes('Second')) })
+    assert.deepEqual(sdk.calls.map(c => c.messages), [['First', 'Second']])
+  } finally {
+    ws.close(); sdk.release(); await server.close(); rmSync(home, { recursive: true, force: true })
   }
 })
 

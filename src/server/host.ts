@@ -19,7 +19,7 @@ import { hydraDigest } from '../core/digest.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
 import { HydraError, HYDRA_ACTOR, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
-import { harnessControls } from '../core/control.ts'
+import { findOption, harnessControls } from '../core/control.ts'
 import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
 import { hydraDir, loadHydra, pnyxHome, readEvents, withWriter, type Writer } from '../store/hydra-store.ts'
 
@@ -84,6 +84,8 @@ const WAKE_MS = 5000
 // A request left pending or a working worker quiet this long wakes Hydra again.
 const STALL_MS = 240_000
 const ALLOWED = 'Allowed'
+// A worker runs the pnyx-worker skill's own commands without asking; any other pnyx-axi command still asks.
+const WORKER_COMMANDS = ['task show', 'task history', 'task status', 'task chat', 'hydra send', 'link'].map(command => `pnyx-axi ${command}`)
 // The agent must not inherit the server's terminal, task or actor.
 const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
@@ -452,7 +454,7 @@ export function createHost({
         cwd: folderOf({ card }),
         agent: card.agent,
         settings: card.settings ?? {},
-        ...(card.id === HYDRA_CARD ? hydraSession() : {}),
+        ...(card.id === HYDRA_CARD ? hydraSession() : { allow: WORKER_COMMANDS }),
         env: card.agent.loginFolder ? accountEnvironment({ account: { provider: card.agent.provider === 'codex' ? 'codex' : 'claude', folder: card.agent.loginFolder }, env }) : env,
         signal: controller.signal,
       })
@@ -929,6 +931,7 @@ export function createHost({
         const prepared = await providerOf({ provider }).open({
           cwd,
           settings,
+          allow: WORKER_COMMANDS,
           env: dispatch ? accountEnvironment({
             account: { provider: dispatch.provider, folder: dispatch.folder },
             env: environment({ task: target.id }),
@@ -1311,7 +1314,18 @@ export async function hostRequest({ host, body: raw }: {
         })
 
       // A setting changed after the start would reach only the next turn.
-      const settings = { ...chosenSettings({ choice: dispatch }), provider: dispatch.provider === 'codex' ? 'codex' : 'claude-code' }
+      const settings: Record<string, string> = { ...chosenSettings({ choice: dispatch }), provider: dispatch.provider === 'codex' ? 'codex' : 'claude-code' }
+      const running = current.cards[HYDRA_CARD]?.settings?.mode
+      const chosen = hydraConfig({ state: current, id: host.hydraId }).hydra.agent
+      // Only a mode the composer and the running Hydra agree on passes on, never one mid-switch.
+      const hydraMode = hostedHydra({ state: current }) && (!chosen || chosen.mode === running)
+        ? running : undefined
+
+      // A rule without a mode inherits Hydra's; never plan, which would stall a worker.
+      if (!settings.mode && hydraMode && hydraMode !== 'plan'
+        && findOption({ provider: settings.provider, setting: 'mode', value: hydraMode, hosted: true })) {
+        settings.mode = hydraMode
+      }
 
       return host.start({ dispatch, task, prompt: field({ body, name: 'prompt' })!, folder, settings, replacement: field({ body, name: 'replacement', optional: true }), id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
     }

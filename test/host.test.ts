@@ -15,6 +15,7 @@ import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { decideOutcome, decidePush, decideSession } from '../src/core/decide.ts'
 import type { Card } from '../src/core/model.ts'
+import { HYDRA_CARD, hydraConfig, hydraEvent } from '../src/core/hydra.ts'
 import { createHost, type QueryFn } from '../src/server/host.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
 import { askHost } from '../src/server/state.ts'
@@ -175,6 +176,10 @@ test('task start runs Claude Code through the server, records it on the task and
   assert.equal(options.model, 'opus')
   assert.equal(options.effort, 'high')
   assert.equal(options.permissionMode, 'acceptEdits')
+  // Allowed from the start, so a picker can still switch it to bypass permissions.
+  assert.equal(options.allowDangerouslySkipPermissions, true)
+  assert.ok(options.allowedTools?.includes('Bash(pnyx-axi task status:*)'))
+  assert.ok(!options.allowedTools?.some(tool => /agent|permission|rule/.test(tool)), 'a worker never changes its own mode or answers itself unasked')
   assert.equal(options.env?.PNYX_HYDRA, 'lab')
   assert.equal(options.env?.PNYX_TASK, undefined)
   await until({ check: () => task().sessionActivity === 'finished', what: 'the turn to finish' })
@@ -224,6 +229,66 @@ test('a start applies the rule\'s Fast and a checked override from the first tur
   assert.deepEqual(task().launch?.override, { model: 'sonnet', effort: 'low' })
   assert.match(task().launch?.dispatch ?? '', /default: sonnet on claude:test; .*override model sonnet, effort low/)
   assert.deepEqual(task().settings, { model: 'sonnet', effort: 'low', fast: 'true' })
+})
+
+test('a worker takes a hosted Hydra’s permission mode unless its rule names one, and never plan', async () => {
+  const { folder } = await lab()
+  await dispatchCommands.rule(['set', 'default', '--harness', 'claude', '--model', 'opus', '--hydra', 'lab'])
+  const sdk = fakeSdk()
+  const codex = fakeCodex({ root: dirname(folder) })
+  server = await startServer({ hydraId: 'lab', query: sdk.query, spawnCodex: codex.spawnCodex })
+
+  const choose = ({ agent }: { agent: Record<string, string> }) => withWriter({
+    hydraId: 'lab',
+    fn: ({ writer }) => {
+      const config = hydraConfig({ state: writer.state, id: 'lab' })
+      const decision = hydraEvent({ state: writer.state, meta, cardId: HYDRA_CARD, change: { type: 'board.configured', data: { ...config, hydra: { ...config.hydra, agent: agent as { harness: 'claude' } } } } })
+      assert.ok('event' in decision); writer.append({ event: decision.event })
+    },
+  })
+
+  const hydraMode = ({ mode }: { mode: string }) => withWriter({
+    hydraId: 'lab',
+    fn: ({ writer }) => {
+      const agent = { provider: 'claude-code', sessionId: 'hydra-session', cwd: folder, host: 'pnyx' }
+      const session = decidePush({ state: writer.state, key: 'claude:hydra-session', input: { agent, title: 'Hydra', settings: { mode }, source: { adapter: 'pnyx', objectId: agent.sessionId, observedAt: meta.at } }, meta })
+      assert.ok('event' in session); writer.append({ event: session.event })
+      const config = hydraConfig({ state: writer.state, id: 'lab' })
+      const attach = hydraEvent({ state: writer.state, meta, cardId: HYDRA_CARD, change: { type: 'board.configured', data: { ...config, hydra: { ...config.hydra, session: 'claude-code:hydra-session' } } } })
+
+      if ('event' in attach) {
+        writer.append({ event: attach.event })
+      }
+    },
+  })
+
+  const start = async ({ key }: { key: string }) => {
+    await commands.task(['create', '--title', key, '--key', key, '--folder', folder, '--hydra', 'lab'])
+    await startTask({ hydraId: 'lab', task: key, meta: { ...meta, id: `start-${key}` } })
+    await until({ check: () => sdk.calls.length === Number(key.slice(-1)), what: `worker ${key}` })
+
+    return sdk.calls.at(-1)!.options.permissionMode
+  }
+
+  hydraMode({ mode: 'bypassPermissions' })
+  assert.equal(await start({ key: 'worker-1' }), 'bypassPermissions')
+  hydraMode({ mode: 'plan' })
+  assert.equal(await start({ key: 'worker-2' }), undefined)
+  hydraMode({ mode: 'bypassPermissions' })
+  await dispatchCommands.rule(['set', 'default', '--harness', 'claude', '--model', 'opus', '--mode', 'acceptEdits', '--hydra', 'lab'])
+  assert.equal(await start({ key: 'worker-3' }), 'acceptEdits')
+  await dispatchCommands.rule(['set', 'default', '--harness', 'claude', '--model', 'opus', '--mode', '', '--hydra', 'lab'])
+  choose({ agent: { harness: 'codex', mode: 'on-request' } })
+  assert.equal(await start({ key: 'worker-4' }), undefined)
+
+  // A Codex worker takes a Claude Hydra's bypass as never with full access.
+  choose({ agent: { harness: 'claude', mode: 'bypassPermissions' } })
+  await dispatchCommands.rule(['set', 'default', '--harness', 'codex', '--model', 'gpt-catalog-one', '--hydra', 'lab'])
+  await commands.task(['create', '--title', 'Codex worker', '--key', 'codex-worker', '--folder', folder, '--hydra', 'lab'])
+  await startTask({ hydraId: 'lab', task: 'codex-worker', meta: { ...meta, id: 'start-codex-worker' } })
+  const thread = codex.messages().find(m => m.method === 'thread/start')!
+  assert.equal(thread.params!.approvalPolicy, 'never')
+  assert.equal(thread.params!.sandbox, 'danger-full-access')
 })
 
 test('after a server restart the task keeps its agent, marks an interrupted turn and resumes the session', async () => {

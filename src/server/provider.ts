@@ -26,6 +26,9 @@ export interface ModelOption {
   label: string
   resolvedModel?: string
   isDefault?: boolean
+  // The effort and permission mode the harness runs this model with when none is chosen.
+  defaultEffort?: string
+  defaultMode?: string
 }
 
 // The model names a catalog answers to: each option and the model it resolves to.

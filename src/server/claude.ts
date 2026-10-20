@@ -2,12 +2,13 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { EffortLevel, Options, PermissionMode, SDKMessage, query } from '@anthropic-ai/claude-agent-sdk'
+import type { EffortLevel, Options, PermissionMode, SDKMessage, Settings, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from '../core/model.ts'
 import { questions } from '../integrations/hooks/observe.ts'
 import type { Provider } from './provider.ts'
 
 export type QueryFn = typeof query
+export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
 type UserMessage = Parameters<QueryFn>[0]['prompt'] extends string | AsyncIterable<infer M> ? M : never
 const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'] satisfies EffortLevel[]
 const MODES: readonly string[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk', 'auto'] satisfies PermissionMode[]
@@ -28,7 +29,8 @@ function sdkOptions({ settings }: { settings: AgentSettings }): Partial<Options>
     ...(settings.fast !== undefined ? { settings: { fastMode: settings.fast === 'true' } } : {}),
     ...(effort && EFFORTS.includes(effort) ? { effort: effort as EffortLevel } : {}),
     ...(mode && MODES.includes(mode) ? { permissionMode: mode as PermissionMode } : {}),
-    ...(mode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
+    // A running session can only switch to bypass permissions if it started allowed to.
+    allowDangerouslySkipPermissions: true,
   }
 }
 
@@ -40,7 +42,18 @@ function turnOf({ message }: { message: SDKMessage }): 'working' | 'finished' | 
   return message.type === 'result' ? 'finished' : undefined
 }
 
-export function claudeProvider({ query }: { query?: QueryFn }): Provider {
+// The settings a new session starts from, with repo-committed escalating modes dropped as Claude Code drops them.
+// ponytail: read with this process's CLAUDE_CONFIG_DIR, so a second login folder's own settings are not seen.
+const userSettings: ReadSettings = async ({ cwd }) => {
+  const sdk = await import('@anthropic-ai/claude-agent-sdk')
+
+  return sdk.filterEscalatingDefaultMode(await sdk.resolveSettings({ cwd, settingSources: ['user', 'project', 'local'] }))
+}
+
+export function claudeProvider({ query, readSettings = userSettings }: {
+  query?: QueryFn
+  readSettings?: ReadSettings
+}): Provider {
   return {
     async models({ cwd, env }) {
       const run = query ?? (await import('@anthropic-ai/claude-agent-sdk')).query
@@ -52,10 +65,18 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
       })
 
       try {
-        return (await catalog.supportedModels()).map(model => ({
+        const [models, own] = await Promise.all([
+          catalog.supportedModels(),
+          readSettings({ cwd }).catch((): Settings => ({})),
+        ])
+
+        return models.map(model => ({
           value: model.value,
           label: model.displayName,
           ...(model.resolvedModel ? { resolvedModel: model.resolvedModel } : {}),
+          // ponytail: with no saved effort, Pnyx names the API's own default, high.
+          ...(model.supportsEffort ? { defaultEffort: own.modelSettings?.[model.resolvedModel ?? model.value]?.effortLevel ?? own.effortLevel ?? 'high' } : {}),
+          defaultMode: own.permissions?.defaultMode ?? 'default',
         }))
       } finally {
         clearTimeout(timer)

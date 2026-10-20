@@ -66,12 +66,13 @@ const HARNESS_CONTROLS: Record<string, Controls> = {
   },
 }
 
-const set = ({ values, name }: {
+const set = ({ values, name, labels = {} }: {
   values: string[]
   name: string
+  labels?: Record<string, string>
 }): ControlOption[] => values.map(value => ({
   value,
-  label: value,
+  label: labels[value] ?? value,
   input: { set: value },
   ask: `switch <worker> to ${name} ${value}`,
 }))
@@ -81,7 +82,7 @@ const HOSTED_CLAUDE: Controls = {
   controls: [
     { setting: 'model', confirm: 'includes', options: set({ values: ['opus', 'sonnet', 'haiku', 'fable'], name: 'model' }) },
     { setting: 'effort', confirm: 'equals', options: set({ values: ['low', 'medium', 'high', 'xhigh', 'max'], name: 'effort' }) },
-    { setting: 'mode', confirm: 'equals', options: set({ values: ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'], name: 'permission mode' }) },
+    { setting: 'mode', confirm: 'equals', options: set({ values: ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'], name: 'permission mode', labels: { default: 'Ask permissions', acceptEdits: 'Accept edits', plan: 'Plan', auto: 'Auto', bypassPermissions: 'Bypass permissions' } }) },
   ],
   note: 'Pnyx runs this agent, so a change applies to this session only and is kept for its next turns. Permission requests appear on the task with Allow and Deny.',
 }
@@ -91,9 +92,10 @@ const HOSTED_CODEX: Controls = {
   controls: [
     { setting: 'model', confirm: 'equals', options: set({ values: ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'], name: 'model' }) },
     { setting: 'effort', confirm: 'equals', options: set({ values: ['low', 'medium', 'high', 'xhigh'], name: 'effort' }) },
-    { setting: 'mode', confirm: 'equals', options: set({ values: ['untrusted', 'on-request', 'never'], name: 'approval policy' }) },
+    // bypassPermissions is never under Claude Code's name, so a bypass Hydra can pass it to a Codex worker.
+    { setting: 'mode', confirm: 'equals', options: set({ values: ['untrusted', 'on-request', 'never', 'bypassPermissions'], name: 'approval policy', labels: { 'untrusted': 'Ask unless trusted', 'on-request': 'Ask on request', 'never': 'Never ask, full access', 'bypassPermissions': 'Bypass permissions' } }) },
   ],
-  note: 'Pnyx keeps these settings for the next turn. Permission requests appear on the task with Allow and Deny; the sandbox follows your Codex configuration.',
+  note: 'Pnyx keeps these settings for the next turn. Permission requests appear on the task with Allow and Deny. Never and Bypass permissions run with full access; the other modes write only in the task folder and Pnyx’s home.',
 }
 
 const CODEX_REQUESTS: Control[] = [

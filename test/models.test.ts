@@ -29,7 +29,7 @@ test('Claude discovers and runs models through the installed CLI', async () => {
 
     return sdk.query({ options, prompt })
   }) as unknown as QueryFn
-  const provider = claudeProvider({ query })
+  const provider = claudeProvider({ query, readSettings: async () => ({}) })
 
   try {
     const env = { CLAUDE_CONFIG_DIR: join(root, 'claude') }
@@ -71,7 +71,7 @@ test('Claude lists SDK display names and closes its catalog without running a tu
 
     return {
       supportedModels: async () => [
-        { value: 'opus', displayName: 'Opus 5.5', resolvedModel: 'claude-opus-5-5' },
+        { value: 'opus', displayName: 'Opus 5.5', resolvedModel: 'claude-opus-5-5', supportsEffort: true },
         { value: 'future-model', displayName: 'Future Model' },
       ],
       close: () => {
@@ -79,12 +79,14 @@ test('Claude lists SDK display names and closes its catalog without running a tu
       },
     }
   }) as unknown as QueryFn
-  const models = await claudeProvider({ query }).models({ cwd: tmpdir(), env: {} })
+  const readSettings = async () => ({ effortLevel: 'medium' as const, modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' as const } }, permissions: { defaultMode: 'acceptEdits' as const } })
+  const models = await claudeProvider({ query, readSettings }).models({ cwd: tmpdir(), env: {} })
 
   assert.deepEqual(models, [
-    { value: 'opus', label: 'Opus 5.5', resolvedModel: 'claude-opus-5-5' },
-    { value: 'future-model', label: 'Future Model' },
+    { value: 'opus', label: 'Opus 5.5', resolvedModel: 'claude-opus-5-5', defaultEffort: 'xhigh', defaultMode: 'acceptEdits' },
+    { value: 'future-model', label: 'Future Model', defaultMode: 'acceptEdits' },
   ])
+  assert.equal((await claudeProvider({ query, readSettings: async () => ({}) }).models({ cwd: tmpdir(), env: {} }))[0]!.defaultEffort, 'high')
   assert.equal(closed, true)
 })
 
@@ -99,7 +101,7 @@ test('Claude closes a failed catalog so reopening the picker can retry', async (
     },
   })) as unknown as QueryFn
 
-  await assert.rejects(claudeProvider({ query }).models({ cwd: tmpdir(), env: {} }), /unavailable/)
+  await assert.rejects(claudeProvider({ query, readSettings: async () => ({}) }).models({ cwd: tmpdir(), env: {} }), /unavailable/)
   assert.equal(closed, true)
 })
 
@@ -111,8 +113,8 @@ test('Codex lists every page and starts the selected wire model', async () => {
   try {
     const models = await provider.models({ cwd: root, env: process.env })
     assert.deepEqual(models, [
-      { value: 'gpt-catalog-one', label: 'Catalog One', isDefault: true },
-      { value: 'gpt-catalog-two', label: 'Catalog Two' },
+      { value: 'gpt-catalog-one', label: 'Catalog One', isDefault: true, defaultEffort: 'low', defaultMode: 'bypassPermissions' },
+      { value: 'gpt-catalog-two', label: 'Catalog Two', defaultEffort: 'medium', defaultMode: 'bypassPermissions' },
     ])
     assert.deepEqual(fixture.messages().filter(m => m.method === 'model/list')
       .map(m => m.params), [

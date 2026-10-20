@@ -29,11 +29,23 @@ try {
   await b.eventually({ condition: 'location.pathname.includes("hydra-2") && document.activeElement.matches(".hydra-chat textarea")', label: 'one click opens and focuses an empty Hydra' })
   await b.check({ condition: '!document.querySelector(\'[aria-label="New Hydra name"]\') && !document.querySelector(\'dialog\') && !!document.querySelector(\'.hydra-project-setup\')', label: 'projects remain available without a creation form' })
   await b.eventually({ condition: 'document.querySelector(".hydra-agent-pickers [aria-label=Model]")?.textContent.includes("sonnet")', label: 'composer uses shared heads-dispatch defaults' })
+  await b.eventually({ condition: 'document.querySelector(".hydra-agent-pickers [aria-label=Effort]")?.textContent.includes("high") && document.querySelector(".hydra-agent-pickers [aria-label=Permissions]")?.textContent.includes("Ask permissions")', label: 'effort and permissions show named values' })
+
+  for (const field of ['Effort', 'Permissions']) {
+    await b.click({ selector: `.hydra-agent-pickers [aria-label=${field}]` })
+    await b.eventually({ condition: `[...document.querySelectorAll(".hydra-agent-pickers [role=listbox][aria-label=${field}] [role=option]")].length > 2`, label: `${field} list opens` })
+    await b.check({ condition: `[...document.querySelectorAll(".hydra-agent-pickers [role=listbox][aria-label=${field}] [role=option]")].every(option => option.textContent.trim() && !/default|^${field}$/i.test(option.textContent.trim()))`, label: `${field} list has no Default row` })
+    await b.click({ selector: `.hydra-agent-pickers [aria-label=${field}]` })
+  }
+
+  await b.eventually({ condition: '!document.querySelector(".hydra-agent-pickers [role=listbox]")', label: 'pickers closed' })
+  assert.deepEqual(state().config?.hydra.agent, { harness: 'claude', model: 'sonnet', effort: 'high', mode: 'default' })
   await b.screenshot({ name: 'after-empty.png' })
   await b.fill({ label: 'Reply to Hydra', value: 'Hello Hydra' })
   await b.click({ selector: '.hydra-chat .composer-send' })
   await b.eventually({ condition: 'document.querySelector(".hydra-messages").textContent.includes("Hydra is working")', label: 'hosted turn has a working indicator' })
   assert.equal(sdk.calls[0]?.options.model, 'sonnet')
+  assert.equal(sdk.calls[0]?.options.permissionMode, 'default')
   await b.screenshot({ name: 'after-replying.png' })
   await b.click({ selector: '.hydra-agent-pickers [aria-label=Model]' })
   await b.eventually({ condition: '[...document.querySelectorAll(".hydra-agent-pickers [role=listbox][aria-label=Model] [role=option]")].some(option => option.textContent.trim() === "opus")', label: 'SDK model catalog loads in the picker' })
