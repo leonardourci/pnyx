@@ -134,7 +134,7 @@ export function applyPermission({ state, event }: {
             ...(event.data.values ? { values: event.data.values } : {}),
           }
           : p)
-        : [...requests, structuredClone(event.data)]
+        : [...requests, { ...structuredClone(event.data), at: event.at }]
       permissionAttention({ card })
       card.revision++
       card.updatedSeq = event.seq

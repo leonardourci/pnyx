@@ -170,6 +170,8 @@ export interface PermissionRequest {
   // The answer that allowed it: each question's picked labels or typed text, or the form's values.
   answers?: string[][]
   values?: Record<string, string | number | boolean>
+  // When the request was first recorded, so a stalled one can be noticed.
+  at?: string
 }
 
 export type PermissionEvent = EventBase & {
