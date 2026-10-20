@@ -12,6 +12,7 @@ import { readThread, type ThreadEntry } from '../src/thread/read.ts'
 import { paseoHistory } from '../src/integrations/paseo/history.ts'
 import { taskConversation, taskUpdates, withTaskReceipts } from '../src/thread/task.ts'
 import { taskPrompt } from '../src/cli/start.ts'
+import { mentionContext, taskMention } from '../src/mentions/mentions.ts'
 
 function fixture() {
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-task-message-')))
@@ -85,8 +86,8 @@ test('the task conversation shows the brief once and hides hosted launch instruc
 test('task conversations keep one owner message and its receipt when the transcript catches up', () => {
   const f = fixture()
   const at = '2026-10-20T10:00:00Z'
-  const native: ThreadEntry = { id: 'native', kind: 'message', role: 'user', text: 'Check\n the rollback path', at }
-  const sent: ThreadEntry = { id: 'sent', replyId: 'reply-1', kind: 'message', role: 'You', text: 'Check the rollback path', at, receipt: 'delivered', delivery: { agent: { state: 'delivered' }, hydra: { state: 'queued' } } }
+  const native: ThreadEntry = { id: 'native', kind: 'message', role: 'user', text: 'Check\n the rollback path', at, session: 'codex:first' }
+  const sent: ThreadEntry = { id: 'sent', replyId: 'reply-1', kind: 'message', role: 'You', text: 'Check the rollback path', at, session: 'codex:first', receipt: 'delivered', delivery: { agent: { state: 'delivered' }, hydra: { state: 'queued' } } }
 
   try {
     const entries = taskConversation({ card: f.card(), entries: [sent, native] })
@@ -112,6 +113,29 @@ test('task conversations keep one owner message and its receipt when the transcr
     assert.deepEqual(taskConversation({ card: f.card(), entries: [sent, identified] }).slice(1), [
       sent, identified,
     ])
+    const mentioned = { ...sent, text: `Check ${taskMention({ id: f.card().id, title: f.card().title })}` }
+    const context = mentionContext({ state: f.state(), text: mentioned.text })
+    const expanded = { ...native, text: `${mentioned.text}\n\n${context}` }
+    assert.deepEqual(
+      taskConversation({ card: f.card(), entries: [mentioned, expanded] }).slice(1),
+      [mentioned],
+    )
+    const question: ThreadEntry = {
+      id: 'question', kind: 'message', role: 'assistant', text: 'Run the checks again?',
+      at: '2026-10-21T10:00:00Z', session: 'codex:second',
+    }
+    const anotherSession = {
+      ...native, session: 'codex:second', at: '2026-10-21T10:00:01Z',
+    }
+    assert.deepEqual(
+      taskConversation({ card: f.card(), entries: [sent, question, anotherSession] }).slice(1),
+      [sent, question, anotherSession],
+    )
+    const legacy = { ...sent, session: undefined }
+    assert.deepEqual(
+      taskConversation({ card: f.card(), entries: [legacy, native] }).slice(1),
+      [legacy, native],
+    )
   } finally {
     f.close()
   }
