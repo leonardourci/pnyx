@@ -136,7 +136,7 @@ export async function startAgent({
         }
 
         if (dispatch) {
-          const event = hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:dispatch` }, cardId: claimed.card.id, change: { type: 'task.launched', data: { via: 'paseo', at: meta.at, folder: claimed.cwd, harness, dispatch: dispatch.reason } } })
+          const event = hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:dispatch` }, cardId: claimed.card.id, change: { type: 'task.launched', data: { via: 'paseo', at: meta.at, folder: claimed.cwd, harness, dispatch: dispatch.reason, ...(dispatch.override ? { override: dispatch.override } : {}) } } })
 
           if ('event' in event) {
             writer.append({ event: event.event })
