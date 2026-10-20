@@ -30,34 +30,34 @@ export const DEFAULT_VIEW: ViewPreferences = {
 }
 
 export const VIEW_SIZE_LIMITS = {
-  panelWidth: { min: 320, max: 720 },
-  hydraWidth: { min: 240, max: 720 },
+  panelWidth: { min: 320 },
+  hydraWidth: { min: 240 },
   panelHeight: { min: 280 },
   composerHeight: { min: 80, max: 420 },
   fontSize: { min: 12, max: 20 },
   chatFontSize: { min: 12, max: 22 },
   codeFontSize: { min: 10, max: 20 },
   cardHeight: { min: 200, max: 600 },
-  columnWidth: { min: 240, max: 640 },
+  columnWidth: { min: 240 },
   cardWidth: { min: 200 },
   columnHeight: { min: 200 },
 } as const
 
-export const clampViewSize = ({ value, min, max }: { value: number; min: number; max: number }) =>
-  Math.round(Math.max(min, Math.min(max, value)))
+export const clampViewSize = ({ value, min, max }: { value: number; min: number; max?: number }) =>
+  Math.round(Math.max(min, Math.min(max ?? Infinity, value)))
 
 const persistedSize = ({ value, fallback, min, max }: {
   value: unknown
   fallback: number
   min: number
-  max: number
+  max?: number
 }) =>
   typeof value === 'number' && Number.isFinite(value) ? clampViewSize({ value, min, max }) : fallback
 
 const persistedMap = ({ values, min, max }: {
   values: Record<string, number> | undefined
   min: number
-  max: number
+  max?: number
 }) =>
   Object.fromEntries(
     Object.entries(values ?? {}).map(([key, value]) =>
@@ -130,14 +130,12 @@ export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> 
       value: view.hydraWidth,
       fallback: DEFAULT_VIEW.hydraWidth,
       min: VIEW_SIZE_LIMITS.hydraWidth.min,
-      max: VIEW_SIZE_LIMITS.hydraWidth.max,
     }),
     panelWidth: persistedSize(
       {
         value: view.panelWidth,
         fallback: DEFAULT_VIEW.panelWidth,
         min: VIEW_SIZE_LIMITS.panelWidth.min,
-        max: VIEW_SIZE_LIMITS.panelWidth.max,
       },
     ),
     composerHeight: persistedSize(
@@ -165,7 +163,6 @@ export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> 
       {
         values: view.columnWidths,
         min: VIEW_SIZE_LIMITS.columnWidth.min,
-        max: VIEW_SIZE_LIMITS.columnWidth.max,
       },
     ),
     cardHeights: persistedMap(
@@ -200,10 +197,11 @@ const safeKey = ({ key }: { key: string }) => !['__proto__', 'prototype', 'const
 const size = ({ value, min, max, key }: {
   value: unknown
   min: number
-  max: number
+  max?: number
   key: string
 }) => {
-  if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) {
+  if (!Number.isInteger(value)
+    || (value as number) < min || (value as number) > (max ?? Infinity)) {
     invalid({ detail: key })
   }
 
@@ -287,8 +285,8 @@ export function patchView({ state, input: rawInput }: {
           key,
         }); break
       case 'defaultHydraWidth': next.defaultHydraWidth = size({ value, ...VIEW_SIZE_LIMITS.hydraWidth, key }); break
-      case 'hydraWidth': next.hydraWidth = size({ value, min: VIEW_SIZE_LIMITS.hydraWidth.min, max: VIEW_SIZE_LIMITS.hydraWidth.max, key }); break
-      case 'panelWidth': next.panelWidth = size({ value, min: VIEW_SIZE_LIMITS.panelWidth.min, max: VIEW_SIZE_LIMITS.panelWidth.max, key }); break
+      case 'hydraWidth': next.hydraWidth = size({ value, ...VIEW_SIZE_LIMITS.hydraWidth, key }); break
+      case 'panelWidth': next.panelWidth = size({ value, ...VIEW_SIZE_LIMITS.panelWidth, key }); break
       case 'composerHeight': next.composerHeight = size({ value, min: VIEW_SIZE_LIMITS.composerHeight.min, max: VIEW_SIZE_LIMITS.composerHeight.max, key }); break
       case 'taskComposerHeight': next.taskComposerHeight = size({ value, ...VIEW_SIZE_LIMITS.composerHeight, key }); break
       case 'cardHeight': next.cardHeight = size({ value, min: VIEW_SIZE_LIMITS.cardHeight.min, max: VIEW_SIZE_LIMITS.cardHeight.max, key }); break
@@ -328,7 +326,7 @@ export function patchView({ state, input: rawInput }: {
             delete next[key][id]
           } else {
             const limits = key === 'cardHeights' ? VIEW_SIZE_LIMITS.cardHeight : VIEW_SIZE_LIMITS.columnWidth
-            next[key][id] = size({ value: n, min: limits.min, max: limits.max, key })
+            next[key][id] = size({ value: n, ...limits, key })
           }
         }
 
