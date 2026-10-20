@@ -94,3 +94,17 @@ test('Codex Hydra chat hides injected instructions while retaining owner message
   assert.deepEqual(hydraMessages({ messages: [], transcript: [reply], provider: 'codex' }), [reply])
   assert.equal(transcript.length, 3)
 })
+
+test('Hydra chat hides a quiet reply, even while it streams in', () => {
+  const entries = hydraMessages({
+    messages: [],
+    transcript: [
+      { id: 'quiet', kind: 'message', role: 'assistant', text: 'NO_REPLY\n' },
+      { id: 'streaming', kind: 'message', role: 'assistant · continued', text: 'NO_RE' },
+      { id: 'said', kind: 'message', role: 'assistant', text: 'NO_REPLY is not all I said' },
+      { id: 'owner', kind: 'message', role: 'user', text: 'NO' },
+    ],
+  })
+
+  assert.deepEqual(entries.map(entry => entry.id), ['said', 'owner'])
+})

@@ -74,7 +74,7 @@ test('Codex starts through app-server by default and records its native thread, 
   const start = fixture.messages().find(m => m.method === 'thread/start')!
   assert.deepEqual(start.params, {
     cwd: root,
-    config: { 'shell_environment_policy.set.PNYX_HOME': process.env.PNYX_HOME, 'shell_environment_policy.set.PNYX_HYDRA': 'lab', 'features.default_mode_request_user_input': true },
+    config: { 'shell_environment_policy.set.PNYX_ACTOR': `worker:${task().id}`, 'shell_environment_policy.set.PNYX_HOME': process.env.PNYX_HOME, 'shell_environment_policy.set.PNYX_HYDRA': 'lab', 'features.default_mode_request_user_input': true },
     model: 'gpt-6.1-sol',
     approvalPolicy: 'on-request',
     sandbox: 'workspace-write',
@@ -289,7 +289,9 @@ test('Codex command and file approvals use the same inline permission events and
   const file = task().permissions![1]!
   assert.equal(file.tool, 'File change')
   assert.deepEqual(file.input.changes, [{ path: 'allowed.txt', diff: '+approved', kind: { type: 'add' } }])
-  await commands.task(['permission', 'ship', file.id, 'allow', '--hydra', 'lab'])
+  const second = await commands.task(['permission', 'ship', file.id, 'allow', '--actor', 'hydra', '--reason', 'Same file', '--hydra', 'lab']) as { posted?: string }
+  assert.match(second.posted ?? '', /^none: folded/)
+  assert.equal(loadHydra({ hydraId: 'lab' }).state.hydraMessages?.filter(m => m.text.startsWith('Allowed ')).length, 1)
   await until({ check: () => task().sessionActivity === 'finished' })
   assert.deepEqual(fixture.messages().filter(m => m.id === 'approval')
     .map(m => m.result?.decision), ['accept', 'accept'])

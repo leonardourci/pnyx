@@ -78,7 +78,7 @@ test('hydra check lists only tracked changes by others and waits for the next on
   await new Promise(resolve => setTimeout(resolve, 500))
   f.run({ args: ['hydra', 'send', '--text', 'plan the week'] })
   const { stdout } = await waiting
-  assert.match(stdout, /hydra\.message,none,send,cli,"Send to Hydra: plan the week"/)
+  assert.match(stdout, /hydra\.message,none,send,owner \(cli\),"Send to Hydra: plan the week"/)
 
   const before = f.state().seq
 

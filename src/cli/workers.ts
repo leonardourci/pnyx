@@ -10,11 +10,14 @@ import type { Connect } from '../integrations/paseo/client.ts'
 import { redact } from '../oracle/text.ts'
 import { splitEntry } from '../thread/read.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
+import { commandText } from '../integrations/hooks/observe.ts'
 import { COMMON, commands, guard, integer, parse, summarize, type Output } from './commands.ts'
 
 const TRACKED: readonly EventType[] = ['task.reminder', 'task.reminder-due', 'hydra.project', 'task.project', 'task.permission', 'hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked', 'task.launched']
 const CHECK_LIMIT = 20
 const POLL_MS = 2000
+// The Hydra page and an unlabelled CLI are usually the owner; workers Pnyx runs write as `worker:<task>`.
+const OWNER_ACTORS = ['web', 'cli']
 
 export async function hydraCheck({ args, connect }: {
   args: string[]
@@ -153,7 +156,7 @@ export async function hydraCheck({ args, connect }: {
     type: e.type,
     task: e.cardId === '$board' ? 'none' : e.cardId,
     action: e.type === 'hydra.message' ? e.data.action : 'none',
-    actor: e.actor,
+    actor: OWNER_ACTORS.includes(e.actor) ? `owner (${e.actor})` : e.actor,
     summary: compact({
       text: e.type === 'card.pushed' ? e.data.attention?.filter(a => a.blocking && !a.answered)
         .map(a => a.text ?? a.kind)
@@ -161,15 +164,29 @@ export async function hydraCheck({ args, connect }: {
     }),
   })
 
+  const state = loadHydra({ hydraId }).state
+  const requests = Object.values(state.cards).flatMap(card => (card.permissions ?? [])
+    .filter(p => p.status === 'pending')
+    .map(p => ({
+      id: p.id,
+      task: card.id,
+      tool: p.tool,
+      command: compact({
+        text: commandText({ input: p.input }) ?? [p.input.file_path, p.input.path].find(v => typeof v === 'string') ?? p.description ?? JSON.stringify(p.input),
+      }),
+      age: p.at ? `${Math.max(0, Math.round((Date.now() - Date.parse(p.at)) / 1000))}s` : 'unknown',
+    })))
+
   return {
     hydraId,
-    projects: projectRows({ state: loadHydra({ hydraId }).state }),
+    projects: projectRows({ state }),
     changes: page.length ? page.map(e => row({ e })) : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
-    agents: await checkAttachments({ state: loadHydra({ hydraId }).state, connect }),
+    requests: requests.length ? requests : 'none: no open permission requests',
+    agents: await checkAttachments({ state, connect }),
     ...(digest.size ? { conversations: [...digest.values()] } : {}),
     ...(unavailable.length ? { unavailable } : {}),
-    help: [...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []), `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`],
+    help: [...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []), ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []), `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`],
   }
 }
 

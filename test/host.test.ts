@@ -296,7 +296,7 @@ test('the host keeps the server\'s own context out of the agent, and refuses wha
 
   await until({ check: () => sdk.calls[0]?.messages.length === 1, what: 'the opening prompt' })
   const env = sdk.calls[0]!.options.env!
-  assert.equal(env.PNYX_ACTOR, undefined)
+  assert.equal(env.PNYX_ACTOR, `worker:${loadHydra({ hydraId: 'lab' }).state.keys.ship}`)
   assert.equal(env.TMUX_PANE, undefined)
   assert.equal(env.PNYX_HYDRA, 'lab')
 

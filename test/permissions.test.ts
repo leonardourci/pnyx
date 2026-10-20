@@ -32,7 +32,7 @@ test('permission replay keeps the first decision, its original input and the col
   const late = permissionEvent({ state: after, card: after.cards.task!, request: { ...request, status: 'deny', input: { command: 'other' } }, meta })
   const events = [created, pending, allowed, late]
   const state = replay({ state: emptyHydra(), events })
-  assert.deepEqual(state.cards.task!.permissions, [{ ...request, status: 'allow' }])
+  assert.deepEqual(state.cards.task!.permissions, [{ ...request, status: 'allow', at: meta.at }])
   assert.equal(state.cards.task!.column, 'in_progress')
   assert.equal(state.cards.task!.attention.length, 0)
   assert.deepEqual(replay({ state: emptyHydra(), events }), state)

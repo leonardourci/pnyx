@@ -233,7 +233,10 @@ export function declareTask({ state, ref, status, note, meta, source, raw }: {
   return hydraEvent({ state, meta, cardId: card.id, change: { type: 'task.declared', data: { state: normalized as TaskStatus, note, ...(source ? { source } : {}), ...(raw ? { raw } : {}) } } })
 }
 
-const AGENT_ACTOR = /^(pnyx$|hook:|session:)/
+// Hydra ends a turn that needs nothing from the owner with only this reply, which its chat hides.
+export const QUIET_REPLY = 'NO_REPLY'
+
+const AGENT_ACTOR = /^(pnyx$|hook:|session:|worker:)/
 
 // Hydra is a session the Pnyx server runs, not a Firstmate home or an outside agent.
 export function hostedHydra({ state }: { state: HydraState }): boolean {

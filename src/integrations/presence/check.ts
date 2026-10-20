@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { statSync } from 'node:fs'
 import { uptime } from 'node:os'
 import type { AgentSession, HydraState } from '../../core/model.ts'
 import { liveTask } from '../../core/tasks.ts'
@@ -6,6 +7,19 @@ import { localPaseoUrl } from '../../core/paseo.ts'
 import { openPaseo, type Connect } from '../paseo/client.ts'
 
 export type Presence = { state: 'present' | 'gone' | 'unknown'; detail: string }
+
+// A worker's latest sign of life: its last observation or its transcript growing.
+export function seenAt({ session }: { session: AgentSession }): number {
+  let written = 0
+
+  try {
+    written = session.agent.transcriptPath ? statSync(session.agent.transcriptPath).mtimeMs : 0
+  } catch {
+    // A transcript not written yet leaves the recorded observation.
+  }
+
+  return Math.max(Date.parse(session.lastSeen ?? '') || 0, written)
+}
 
 export function terminalPresence({ session, verifyProcess = false, bootedAt = Date.now() - uptime() * 1000, run = ({ pid }) => execFileSync('ps', ['-o', 'tty=', '-p', pid], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }) }: {
   session: AgentSession
@@ -99,6 +113,8 @@ export async function checkAttachments({ state, connect = openPaseo, probe = ter
       presence = probe({ session })
     }
 
-    return { task: session.taskId ?? '$hydra', session: session.id, harness: session.agent.provider, folder: session.agent.cwd ?? session.launch?.folder ?? 'unknown', via: session.launch?.via ?? 'unknown', started: session.launch?.at ?? 'unknown', lastSeen: session.lastSeen ?? 'unknown', ...presence }
+    const seen = seenAt({ session })
+
+    return { task: session.taskId ?? '$hydra', session: session.id, harness: session.agent.provider, folder: session.agent.cwd ?? session.launch?.folder ?? 'unknown', via: session.launch?.via ?? 'unknown', started: session.launch?.at ?? 'unknown', activity: session.sessionActivity ?? session.activity ?? 'unknown', lastSeen: session.lastSeen ?? 'unknown', quiet: seen ? `${Math.max(0, Math.round((Date.now() - seen) / 1000))}s` : 'unknown', ...presence }
   }))
 }
