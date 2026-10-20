@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, mkdtempSync, realpathSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
@@ -14,6 +14,7 @@ import { startServer, type RunningServer } from '../src/server/server.ts'
 import { askHost } from '../src/server/state.ts'
 import { loadHydra, readEvents, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { fakeCodex } from './codex-fixture.ts'
+import { MAX_IMAGE_BYTES } from '../src/attachments/images.ts'
 
 const meta = { at: '2026-10-15T00:00:00Z', actor: 'test', id: 'start-1' }
 let server: RunningServer | undefined
@@ -121,6 +122,33 @@ test('Codex starts through app-server by default and records its native thread, 
   assert.equal(turns()[3]!.params!.approvalPolicy, 'on-request')
   assert.equal((turns()[3]!.params!.sandboxPolicy as { type: string }).type, 'workspaceWrite')
   assert.equal(fixture.children.length, 1)
+})
+
+test('an image added in the web is stored, served with the token and reaches Codex as a local image', async () => {
+  const { fixture, task, send } = await lab()
+  await startTask({ hydraId: 'lab', task: 'ship', meta })
+  await until({ check: () => task().sessionActivity === 'finished' })
+  const token = readFileSync(join(process.env.PNYX_HOME!, 'token'), 'utf8').trim()
+  const png = new Uint8Array(Buffer.from('89504e470d0a1a0a', 'hex'))
+  const upload = ({ type, auth = token, body = png }: { type: string; auth?: string; body?: Uint8Array<ArrayBuffer> }) => fetch(new URL('attachments', server!.url), { method: 'POST', headers: { authorization: `Bearer ${auth}`, 'content-type': type }, body })
+  assert.equal((await upload({ type: 'image/png', auth: 'wrong' })).status, 401)
+  assert.equal((await upload({ type: 'image/png', body: new Uint8Array(MAX_IMAGE_BYTES + 1) })).status, 413)
+  assert.equal((await upload({ type: 'text/html' })).status, 415)
+  const { path, line } = await (await upload({ type: 'image/png' })).json() as { path: string; line: string }
+  assert.equal(line, `[image: ${path}]`)
+  assert.ok(path.startsWith(join(process.env.PNYX_HOME!, 'hydras', 'lab', 'attachments')))
+  const served = new URL(`attachments/${path.split('/').at(-1)}`, server!.url)
+  assert.equal((await fetch(served)).status, 401)
+  served.searchParams.set('token', token)
+  const image = await fetch(served)
+  assert.equal(image.headers.get('content-type'), 'image/png')
+  assert.deepEqual(new Uint8Array(await image.arrayBuffer()), png)
+
+  assert.equal((await send({ text: `What broke?\n\n${line}\n\n[image: /etc/passwd]` })).state, 'delivered')
+  const turns = () => fixture.messages().filter(m => m.method === 'turn/start')
+  await until({ check: () => turns().length === 2 })
+  const input = turns()[1]!.params!.input as { type: string; path?: string }[]
+  assert.deepEqual(input.slice(1), [{ type: 'localImage', path }])
 })
 
 test('Codex closes with the server and lazily resumes its interrupted thread on the next message', async () => {

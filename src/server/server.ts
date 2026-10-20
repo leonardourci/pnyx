@@ -1,6 +1,7 @@
 import { candidates } from '../dispatch/config.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
+import { ATTACHMENT_NAME, IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine, imageType } from '../attachments/images.ts'
 import { fireReminders } from '../reminders/fire.ts'
 import { reminderDeadline, waitingReminders } from '../reminders/state.ts'
 import { project } from '../projects/cli.ts'
@@ -20,7 +21,7 @@ import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
 import { queryOracle, matchActions } from '../oracle/semantic.ts'
 import { readSettings, settingEntries, writeSetting } from '../oracle/settings.ts'
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
@@ -795,8 +796,54 @@ async function mountOwnedHydra({
         )
     }
 
+    // An image dropped or pasted into a composer; the message then carries its path.
+    if (req.method === 'POST' && path === '/attachments') {
+      if (!authorized({ given: req.headers.authorization?.replace(/^Bearer /, '') ?? null })) {
+        return reply({ res, status: 401, body: { error: 'missing or wrong token', code: 'UNAUTHORIZED' } })
+      }
+
+      const extension = imageExtension({ type: req.headers['content-type'] ?? '' })
+
+      if (!extension) {
+        return reply({ res, status: 415, body: { error: `images only: ${Object.values(IMAGE_TYPES).join(', ')}`, code: 'VALIDATION_ERROR' } })
+      }
+
+      return void readBytes({ req, limit: MAX_IMAGE_BYTES }).then(bytes => {
+        const folder = join(dir, 'attachments'), file = join(folder, `${randomUUID()}${extension}`)
+
+        try {
+          privateDir({ dir: folder })
+          writeFileSync(file, bytes, { mode: 0o600 })
+        } catch (error) {
+          return reply({ res, status: 500, body: { error: `could not store the image: ${(error as Error).message}`, code: 'UNKNOWN' } })
+        }
+
+        reply({ res, status: 200, body: { path: file, line: imageLine({ path: file }) } })
+      }, (error: Error) => reply({ res, status: 413, body: { error: error.message, code: 'VALIDATION_ERROR' } }))
+    }
+
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return reply({ res, status: 405, body: { error: 'method not allowed', code: 'METHOD_NOT_ALLOWED' } })
+    }
+
+    const attachment = /^\/attachments\/([^/]+)$/.exec(path)?.[1]
+
+    // An <img> cannot send a header, so the page passes its token in the query, as for the WebSocket.
+    if (attachment !== undefined) {
+      if (!authorized({ given: new URL(req.url ?? '/', 'http://localhost').searchParams.get('token') })) {
+        return reply({ res, status: 401, body: { error: 'missing or wrong token', code: 'UNAUTHORIZED' } })
+      }
+
+      try {
+        if (!ATTACHMENT_NAME.test(attachment)) {
+          throw new Error('not an attachment')
+        }
+
+        return void res.writeHead(200, { 'content-type': imageType({ path: attachment })!, 'x-content-type-options': 'nosniff', 'cache-control': 'private, max-age=31536000, immutable' })
+          .end(readFileSync(join(dir, 'attachments', attachment)))
+      } catch {
+        return reply({ res, status: 404, body: { error: 'attachment not found', code: 'NOT_FOUND' } })
+      }
     }
 
     if (path === '/folders') {
@@ -1307,6 +1354,26 @@ async function listenIngest(
   chmodSync(path, 0o600)
 
   return server
+}
+
+function readBytes({ req, limit }: { req: IncomingMessage; limit: number }): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    // Past the limit the rest is read and dropped, so the client still gets the answer.
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+
+      if (size > limit) {
+        chunks.length = 0
+        reject(new Error(`images up to ${limit / 1024 / 1024} MB`))
+      } else {
+        chunks.push(chunk)
+      }
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks)))
+    req.on('error', reject)
+  })
 }
 
 function readBody({ req }: { req: IncomingMessage }): Promise<unknown> {
