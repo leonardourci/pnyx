@@ -181,7 +181,6 @@ export function Column({
         label={`Resize ${title} column`}
         value={size}
         min={VIEW_SIZE_LIMITS.columnWidth.min}
-        max={VIEW_SIZE_LIMITS.columnWidth.max}
         onPreview={({ value }) => setWidth(value)}
         onCommit={({ value }) => save({ patch: { columnWidths: { [id]: value } } }).then(saved => {
           setWidth(null)

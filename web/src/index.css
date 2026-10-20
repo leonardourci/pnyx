@@ -313,7 +313,7 @@ h3 { font-weight: 600; }
 
 .settings > .row p, .history-page > div > p { font-size: var(--text-ui); margin-top: 5px; }
 
-.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; max-width: 1160px; }
+.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; max-width: none; }
 
 .settings-box { padding: 20px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); min-width: 0; }
 
@@ -399,7 +399,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .keymap-row small, .slash-menu small { display: block; font-size: var(--text-meta); color: var(--color-muted); margin-top: 3px; }
 
-.keyboard-settings { max-width: 1160px; flex-shrink: 0; }
+.keyboard-settings { max-width: none; flex-shrink: 0; }
 
 .keyboard-settings > .input { margin: 16px 0; width: min(380px, 100%); }
 
@@ -431,7 +431,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .keymap-row .row { flex-wrap: wrap; } }
 
-.work-area > .detail { max-width: 70%; }
+.work-area > .detail { max-width: none; }
 @media (max-width: 760px) {
 
 .work-area > .detail { max-width: 100%; } }
@@ -750,7 +750,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-chat > .composer { margin: 0; }
 
-.settings, .history-page { width: min(100%, 780px); margin: 0 auto; padding: 24px 12px 48px; flex: 1; }
+.settings, .history-page { width: 100%; margin: 0 auto; padding: 24px 12px 48px; flex: 1; }
 
 .settings > h1 { margin-bottom: 8px; }
 
@@ -1022,3 +1022,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .task-updates > ol > li:first-child { padding-top: 2px; }
 .update-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; margin-bottom: 4px; }
 .update-heading time { color: var(--color-muted); font-size: var(--text-meta); }
+
+.composer .select-menu { max-height: none; overflow: visible; scrollbar-width: none; }
+.composer .select-menu::-webkit-scrollbar { display: none; width: 0; height: 0; }

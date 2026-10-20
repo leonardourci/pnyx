@@ -93,6 +93,12 @@ export function Select({
     return () => document.removeEventListener('pointerdown', close)
   }, [open])
 
+  useEffect(() => {
+    if (open) {
+      document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [open, active, id])
+
   const choose = ({ position: n }: { position: number }) => {
     if (options[n]) {
       onChange({ value: options[n].value })

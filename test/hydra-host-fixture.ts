@@ -12,6 +12,13 @@ export function hydraSdk() {
     prompt: AsyncIterable<{ message: { content: string } }>
     options: Options
   }) => {
+    if (options.persistSession === false) {
+      return {
+        supportedModels: async () => ['opus', 'sonnet', 'haiku', 'fable'].map(value => ({ value, displayName: value, description: '' })),
+        close: () => {},
+      }
+    }
+
     const call = { options, messages: [] as string[] }
     calls.push(call)
     const path = transcriptPath({

@@ -168,7 +168,6 @@ export function HydraChat({
         label="Resize Hydra panel"
         value={view.hydraWidth}
         min={VIEW_SIZE_LIMITS.hydraWidth.min}
-        max={VIEW_SIZE_LIMITS.hydraWidth.max}
         onPreview={({ value }) => setWidth(value)}
         onCommit={({ value }) => save({ patch: { hydraWidth: value } }).then(saved => {
           setWidth(null)

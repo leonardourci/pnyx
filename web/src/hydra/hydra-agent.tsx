@@ -2,7 +2,7 @@ import { useHeadsDispatch } from './heads-dispatch.ts'
 import { useState } from 'react'
 import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
-import { PickerField } from './agent-picker.tsx'
+import { ModelPicker, PickerField } from './agent-picker.tsx'
 import type { Command } from './connection.ts'
 
 export function HydraAgent({ state, command, connected, notify }: {
@@ -13,7 +13,8 @@ export function HydraAgent({ state, command, connected, notify }: {
 }) {
   const { effective } = useHeadsDispatch({ command })
   const [busy, setBusy] = useState(false)
-  const agent = state.config?.hydra.agent ?? effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0] ?? { harness: 'claude' }
+  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
+  const agent: AgentConfig = state.config?.hydra.agent ?? effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0] ?? { harness: 'claude' }
   const controls = harnessControls({ provider: agent.harness === 'claude' ? 'claude-code' : 'codex', hosted: true })
 
   if (state.config?.hydra.kind === 'firstmate') {
@@ -40,10 +41,20 @@ export function HydraAgent({ state, command, connected, notify }: {
           }
         }}
       />
-      {(['model', 'effort', 'mode'] as const).map(field => {
+      <ModelPicker
+        key={agent.harness}
+        harness={agent.harness}
+        selected={agent.model ?? (rule?.harness === agent.harness ? rule.model : undefined)}
+        command={command}
+        disabled={busy || !connected}
+        connected={connected}
+        resolveDefault={!!effective && (!agent.model || agent.model === 'default')}
+        onChange={({ value }) => save({ next: { ...agent, model: value } })}
+      />
+      {(['effort', 'mode'] as const).map(field => {
         const choices = controls?.controls.find(c => c.setting === field)?.options ?? []
         const value = agent[field] ?? ''
-        const options = [{ value: '', label: field === 'mode' ? 'Permissions' : field[0].toUpperCase() + field.slice(1) }, ...choices.map(o => ({ value: o.value, label: o.label }))]
+        const options = [{ value: '', label: field === 'mode' ? 'Permissions' : 'Effort' }, ...choices.map(o => ({ value: o.value, label: o.label }))]
 
         if (value && !options.some(o => o.value === value)) {
           options.push({ value, label: value })

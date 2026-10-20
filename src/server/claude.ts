@@ -41,6 +41,26 @@ function turnOf({ message }: { message: SDKMessage }): 'working' | 'finished' | 
 
 export function claudeProvider({ query }: { query?: QueryFn }): Provider {
   return {
+    async models({ cwd, env }) {
+      const run = query ?? (await import('@anthropic-ai/claude-agent-sdk')).query
+      const abortController = new AbortController()
+      const timer = setTimeout(() => abortController.abort(), 20000).unref()
+      const catalog = run({
+        prompt: (async function* () {})(),
+        options: { cwd, env, abortController, pathToClaudeCodeExecutable: 'claude', persistSession: false, settingSources: ['user', 'project', 'local'] },
+      })
+
+      try {
+        return (await catalog.supportedModels()).map(model => ({
+          value: model.value,
+          label: model.displayName,
+          ...(model.resolvedModel ? { resolvedModel: model.resolvedModel } : {}),
+        }))
+      } finally {
+        clearTimeout(timer)
+        catalog.close()
+      }
+    },
     async open({ cwd, agent, settings, env, instructions, allow }) {
       const id = agent?.sessionId ?? randomUUID()
       const path = agent?.transcriptPath ?? transcriptPath({
@@ -70,6 +90,7 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
             options: {
               cwd,
               includePartialMessages: true,
+              pathToClaudeCodeExecutable: 'claude',
               ...(agent?.resume || existsSync(path) ? { resume: id } : { sessionId: id }),
               settingSources: ['user', 'project', 'local'],
               systemPrompt: { type: 'preset', preset: 'claude_code', ...(instructions ? { append: instructions } : {}) },

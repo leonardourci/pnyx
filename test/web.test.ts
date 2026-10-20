@@ -155,7 +155,7 @@ test('saved resize preferences load within readable size limits', () => {
   assert.equal(loaded.taskComposerHeight, VIEW_SIZE_LIMITS.composerHeight.min)
   assert.equal(loaded.cardHeight, VIEW_SIZE_LIMITS.cardHeight.min)
   assert.equal(loaded.columnWidths.needs_you, VIEW_SIZE_LIMITS.columnWidth.min)
-  assert.equal(loaded.columnWidths.review, VIEW_SIZE_LIMITS.columnWidth.max)
+  assert.equal(loaded.columnWidths.review, 900)
   assert.equal(loaded.cardHeights.c1, VIEW_SIZE_LIMITS.cardHeight.min)
   assert.equal(clampViewSize({ value: 100, min: 320, max: 720 }), 320)
   assert.equal(clampViewSize({ value: 800, min: 320, max: 720 }), 720)
@@ -494,4 +494,33 @@ test('only a working turn shows as working, an ended session is stopped and unob
     const shown = agentActivity({ card: { ...card, sessionActivity } })
     assert.equal(shown, expected, String(sessionActivity))
   }
+})
+
+test('section widths keep their minimums without an upper cap', () => {
+  const state = emptyHydra()
+  const input = {
+    hydraWidth: 1800,
+    defaultHydraWidth: 1900,
+    panelWidth: 2000,
+    columnWidths: { needs_you: 2100 },
+    defaultColumnWidths: { needs_you: 2200 },
+  }
+  const view = patchView({ state, input })
+  const loaded = viewFor({ state: { ...state, view } })
+
+  for (const [key, value] of Object.entries(input)) {
+    const actual = loaded[key as keyof typeof loaded]
+
+    if (typeof value === 'object') {
+      for (const [id, width] of Object.entries(value)) {
+        assert.equal((actual as Record<string, number>)[id], width)
+      }
+    } else {
+      assert.equal(actual, value)
+    }
+  }
+
+  assert.equal(clampViewSize({ value: 2500, min: 240 }), 2500)
+  assert.throws(() => patchView({ state, input: { hydraWidth: Infinity } }), HydraError)
+  assert.throws(() => patchView({ state, input: { hydraWidth: 239 } }), HydraError)
 })

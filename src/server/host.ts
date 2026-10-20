@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
-import type { HostedSession, PermissionDecision } from './provider.ts'
+import type { HostedSession, ModelOption, PermissionDecision } from './provider.ts'
 import { liveReplies } from './streaming.ts'
 import type { ThreadPage } from '../thread/read.ts'
 import { terminalPresence, type Presence } from '../integrations/presence/check.ts'
@@ -25,6 +25,7 @@ export type { QueryFn } from './claude.ts'
 
 export interface Host {
   hydraId: string
+  models({ harness }: { harness: 'claude' | 'codex' }): Promise<ModelOption[]>
   hydra({ text, actor, id }: {
     text: string
     actor: string
@@ -157,6 +158,7 @@ export function createHost({
   wakeDelay?: number
 }): Host {
   const providers = { 'claude-code': claudeProvider({ query }), codex: codexProvider({ spawnCodex }) }
+  const modelCatalogs = new Map<string, Promise<ModelOption[]>>()
   const controller = new AbortController()
   const starting = new Set<string>()
   const live = new Map<string, Live>()
@@ -599,6 +601,27 @@ export function createHost({
   }
 
   const host: Host = {
+    async models({ harness }) {
+      const state = loadHydra({ hydraId }).state
+      const effective = effectiveDispatch({ hydraId, state })
+      const main = effective.dispatch.main
+        && effective.accounts[effective.dispatch.main]?.provider === harness
+        ? effective.dispatch.main : Object.keys(effective.accounts).find(name =>
+          effective.accounts[name]?.provider === harness)
+      const account = main ? effective.accounts[main] : undefined
+      const env = account ? accountEnvironment({ account, env: environment() }) : environment()
+
+      const key = `${harness}:${account?.folder ?? ''}`
+      let catalog = modelCatalogs.get(key)
+
+      if (!catalog) {
+        catalog = providerOf({ provider: harness === 'claude' ? 'claude-code' : 'codex' }).models({ cwd: hydraDir({ hydraId }), env })
+        modelCatalogs.set(key, catalog)
+        void catalog.catch(() => modelCatalogs.delete(key))
+      }
+
+      return catalog
+    },
     hydraId,
     hydra: ({ text, actor, id }) => {
       if (queuedHydra.has(id)) {
@@ -664,6 +687,12 @@ export function createHost({
                 },
               },
               task: HYDRA_CARD,
+              offers: candidate.model ? await host.models({ harness: candidate.harness })
+                .then(models => ({
+                  [candidate.harness]: models.flatMap(model =>
+                    [model.value, ...(model.resolvedModel ? [model.resolvedModel] : [])]),
+                }))
+                .catch(() => undefined) : undefined,
             }) : undefined
           const settings: AgentSettings = Object.fromEntries(Object.entries(candidate).filter(([key, value]) => key !== 'harness' && value !== undefined)
             .map(([key, value]) => [key, String(value)]))

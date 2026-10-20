@@ -21,7 +21,15 @@ export interface HostedSession {
   close(): void
 }
 
+export interface ModelOption {
+  value: string
+  label: string
+  resolvedModel?: string
+  isDefault?: boolean
+}
+
 export interface Provider {
+  models({ cwd, env }: { cwd: string; env: NodeJS.ProcessEnv }): Promise<ModelOption[]>
   open({ cwd, agent, settings, env, signal, instructions, allow }: {
     cwd: string
     instructions?: string

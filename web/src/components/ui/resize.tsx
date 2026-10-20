@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { clampViewSize } from '../../../../src/core/view.ts'
 
-export function Resize({ label, value, min, max, axis = 'x', reverse = false, onPreview, onCommit }: { label: string; value: number; min: number; max: number; axis?: 'x' | 'y'; reverse?: boolean; onPreview({ value }: { value: number | null }): void; onCommit({ value }: { value: number }): unknown }) {
+export function Resize({ label, value, min, max, axis = 'x', reverse = false, onPreview, onCommit }: { label: string; value: number; min: number; max?: number; axis?: 'x' | 'y'; reverse?: boolean; onPreview({ value }: { value: number | null }): void; onCommit({ value }: { value: number }): unknown }) {
   const [preview, setPreview] = useState<number | null>(null)
   const current = useRef<number | null>(null)
   const drag = useRef<{ start: number; value: number } | null>(null)
@@ -36,7 +36,8 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
       aria-label={label}
       aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'}
       aria-valuemin={min}
-      aria-valuemax={max}
+      aria-valuemax={max ?? Number.MAX_SAFE_INTEGER}
+      aria-valuetext={max === undefined ? `${preview ?? value} pixels` : undefined}
       aria-valuenow={preview ?? value}
       className={`resize resize-${axis}`}
       onPointerDown={e => {
@@ -68,13 +69,13 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
 
         const keys = axis === 'x' ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown']
 
-        if (![...keys, 'Home', 'End'].includes(e.key)) {
+        if (![...keys, 'Home', ...(max === undefined ? [] : ['End'])].includes(e.key)) {
           return
         }
 
         e.preventDefault(); e.stopPropagation()
 
-        previewAt({ size: e.key === 'Home' ? min : e.key === 'End' ? max : (current.current ?? value) + (e.key === keys[1] ? 1 : -1) * (reverse ? -1 : 1) * (e.shiftKey ? 32 : 8) })
+        previewAt({ size: e.key === 'Home' ? min : e.key === 'End' && max !== undefined ? max : (current.current ?? value) + (e.key === keys[1] ? 1 : -1) * (reverse ? -1 : 1) * (e.shiftKey ? 32 : 8) })
       }}
       onKeyUp={e => {
         if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
