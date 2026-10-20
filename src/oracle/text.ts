@@ -17,7 +17,7 @@ const SECRETS = [
 
 // Text a harness injects into a user turn: reminders, hook output, command tags,
 // Codex's context blocks and the AGENTS.md instructions Codex adds under a header line.
-const INJECTED = /(?:# AGENTS\.md instructions for [^\n]*\s*)?<(system-reminder|environment_context|user_instructions|INSTRUCTIONS|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|user-prompt-submit-hook)>[\s\S]*?<\/\1>/g
+const INJECTED = /(?:# AGENTS\.md instructions for [^\n]*\s*)?<(system-reminder|environment_context|user_instructions|INSTRUCTIONS|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|user-prompt-submit-hook|pnyx-wake)>[\s\S]*?<\/\1>/g
 
 export function redact({ text }: { text: string }): string {
   return SECRETS.reduce((t, re) => t.replace(re, '[redacted]'), text)
