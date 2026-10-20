@@ -120,7 +120,7 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  // How long a hosted Hydra's wake waits for more changes, and how long a stall lasts before it wakes Hydra; tests shorten them.
+  // How long a hosted Hydra's wake waits for more changes, and a stall lasts before waking it; tests shorten both.
   wakeDelay?: number
   stallDelay?: number
 }): Promise<RunningServer> {

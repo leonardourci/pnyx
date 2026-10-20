@@ -289,7 +289,6 @@ test('Codex command and file approvals use the same inline permission events and
   const file = task().permissions![1]!
   assert.equal(file.tool, 'File change')
   assert.deepEqual(file.input.changes, [{ path: 'allowed.txt', diff: '+approved', kind: { type: 'add' } }])
-  // A second allow on the same task folds into Hydra's first Allowed line.
   const second = await commands.task(['permission', 'ship', file.id, 'allow', '--actor', 'hydra', '--reason', 'Same file', '--hydra', 'lab']) as { posted?: string }
   assert.match(second.posted ?? '', /^none: folded/)
   assert.equal(loadHydra({ hydraId: 'lab' }).state.hydraMessages?.filter(m => m.text.startsWith('Allowed ')).length, 1)

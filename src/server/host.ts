@@ -79,7 +79,7 @@ export const SETTINGS = ['model', 'effort', 'mode']
 const IDLE_MS = 10 * 60 * 1000
 // A wake waits this long so a worker's declaration and finished turn share one check turn.
 const WAKE_MS = 5000
-// As Firstmate does: a request left pending or a working worker quiet this long wakes Hydra again.
+// A request left pending or a working worker quiet this long wakes Hydra again.
 const STALL_MS = 240_000
 const ALLOWED = 'Allowed'
 // The agent must not inherit the server's terminal, task or actor.
@@ -611,7 +611,7 @@ export function createHost({
     void host.hydra({ id: wakeId({ through: wakeThrough }), actor: 'pnyx', text: `<pnyx-wake>A worker or reminder changed something you track. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` and handle what it lists. If nothing needs the owner, write no other text and reply only ${QUIET_REPLY}.</pnyx-wake>` })
   }
 
-  // A stall makes no event, so it is polled: each pending request, and each quiet stretch of a working worker, wakes Hydra once.
+  // A stall makes no event, so it is polled; each one wakes Hydra once.
   const checkStalls = () => {
     try {
       wakeOnStall()
