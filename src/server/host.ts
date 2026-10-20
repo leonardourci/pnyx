@@ -1031,7 +1031,7 @@ export function createHost({
 
           if (actor === 'hydra') {
             try {
-              posted = postLine({ writer, hydraId, meta: { at: at(), actor, details }, cardId: card.id, action: `${choice === 'allow' ? 'Allowed' : 'Denied'} ${request.tool} on ${card.title}`, reason: why })
+              posted = postLine({ writer, hydraId, meta: { at: at(), actor, details }, cardId: card.id, action: `${request.questions || request.form ? (choice === 'allow' ? 'Answered' : 'Skipped') : choice === 'allow' ? 'Allowed' : 'Denied'} ${request.tool} on ${card.title}`, reason: why })
             } catch (error) {
               posted = `none: ${(error as Error).message}`
             }

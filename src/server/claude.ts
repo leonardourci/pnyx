@@ -115,9 +115,11 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
                   return decision
                 }
 
+                const picked = asked && decision.answers
+
                 // Claude Code reads the answers keyed by question text, several picks joined as its own prompt joins them.
-                return asked && decision.answers
-                  ? { behavior: 'allow', updatedInput: { ...input, answers: Object.fromEntries(asked.map((q, i) => [q.question, decision.answers![i]?.join(', ') ?? ''])) } }
+                return picked
+                  ? { behavior: 'allow', updatedInput: { ...input, answers: Object.fromEntries(asked.map((q, i) => [q.question, picked[i]?.join(', ') ?? ''])) } }
                   : { behavior: 'allow' }
               },
               env,
