@@ -53,14 +53,16 @@ createInterface({ input: process.stdin }).on('line', line => {
     const response = JSON.stringify({ id, result: {} })
     process.stdout.write(response.slice(0, 4))
     setImmediate(() => process.stdout.write(`${response.slice(4)}\n`))
+  } else if (method === 'config/read') {
+    send({ id, result: { config: { approval_policy: 'never', sandbox_mode: 'danger-full-access' }, origins: {} } })
   } else if (method === 'model/list') {
     send({
       id,
       result: {
         data: params.cursor
-          ? [{ id: 'catalog-id-two', model: 'gpt-catalog-two', displayName: 'Catalog Two' }, ...(process.env.FAKE_CODEX_MODELS ?? '').split(',').filter(Boolean)
+          ? [{ id: 'catalog-id-two', model: 'gpt-catalog-two', displayName: 'Catalog Two', defaultReasoningEffort: 'medium' }, ...(process.env.FAKE_CODEX_MODELS ?? '').split(',').filter(Boolean)
             .map(model => ({ id: model, model, displayName: model }))]
-          : [{ id: 'catalog-id-one', model: 'gpt-catalog-one', displayName: 'Catalog One', isDefault: true }],
+          : [{ id: 'catalog-id-one', model: 'gpt-catalog-one', displayName: 'Catalog One', isDefault: true, defaultReasoningEffort: 'low' }],
         nextCursor: params.cursor ? null : 'second-page',
       },
     })

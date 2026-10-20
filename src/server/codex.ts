@@ -345,6 +345,12 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
       try {
         await rpc.request({ method: 'initialize', params: { clientInfo: { name: 'pnyx', version: '0.0.0' }, capabilities: null } })
         rpc.notify({ method: 'initialized' })
+        const config = object({ value: (await rpc.request({ method: 'config/read', params: { cwd } }).catch((): ObjectValue => ({}))).config })
+        const approval = config.approval_policy
+        // Every Pnyx mode brings its own sandbox, so a never without full access is named on-request, never wider.
+        const defaultMode = approval === 'never' && config.sandbox_mode === 'danger-full-access'
+          ? 'bypassPermissions'
+          : typeof approval === 'string' && approval !== 'never' ? approval : 'on-request'
         const models: ModelOption[] = []
         let cursor: string | undefined
 
@@ -355,10 +361,13 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
             const model = object({ value: raw })
 
             if (typeof model.model === 'string' && typeof model.displayName === 'string') {
+              const effort = config.model_reasoning_effort ?? model.defaultReasoningEffort
               models.push({
                 value: model.model,
                 label: model.displayName,
                 ...(model.isDefault === true ? { isDefault: true } : {}),
+                ...(typeof effort === 'string' ? { defaultEffort: effort } : {}),
+                defaultMode,
               })
             }
           }
@@ -371,7 +380,7 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
         rpc.close()
       }
     },
-    // ponytail: Codex has no per-command allow list here, so `allow` is unused and a Codex Hydra asks in its chat.
+    // ponytail: Codex has no per-command allow list here, so `allow` is unused and a Codex Hydra or worker asks in its chat.
     async open({ cwd, agent, settings, env, signal, instructions, context }) {
       const rpc = connection({ child: spawnCodex({ cwd, env }) })
 
@@ -390,6 +399,8 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
         await rpc.request({ method: 'initialize', params: { clientInfo: { name: 'pnyx', version: '0.0.0' }, capabilities: null } })
         rpc.notify({ method: 'initialized' })
         const options = { ...settings }
+        // Bypass permissions is Codex's never: no approvals, full access.
+        const policy = () => (options.mode === 'bypassPermissions' ? 'never' : options.mode ?? '')
         const result = await rpc.request({
           method: agent ? 'thread/resume' : 'thread/start',
           params: {
@@ -400,7 +411,7 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
             ...(instructions ? { developerInstructions: instructions } : {}),
             ...(options.model ? { model: options.model } : {}),
             ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
-            ...(options.mode ? { approvalPolicy: options.mode, sandbox: options.mode === 'never' ? 'danger-full-access' : 'workspace-write' } : {}),
+            ...(policy() ? { approvalPolicy: policy(), sandbox: policy() === 'never' ? 'danger-full-access' : 'workspace-write' } : {}),
           },
         })
         const thread = object({ value: result.thread })
@@ -442,10 +453,10 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
                   ...(options.model ? { model: options.model } : {}),
                   ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
                   ...(options.effort ? { effort: options.effort } : {}),
-                  ...(options.mode
+                  ...(policy()
                     ? {
-                      approvalPolicy: options.mode,
-                      sandboxPolicy: sandboxPolicy({ mode: options.mode, env }),
+                      approvalPolicy: policy(),
+                      sandboxPolicy: sandboxPolicy({ mode: policy(), env }),
                     }
                     : {}),
                 },

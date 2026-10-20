@@ -102,13 +102,25 @@ test('Codex starts through app-server by default and records its native thread, 
   await agent(['ship', 'model', 'gpt-6-luna', '--hydra', 'lab'])
   await agent(['ship', 'effort', 'low', '--hydra', 'lab'])
   await agent(['ship', 'mode', 'never', '--hydra', 'lab'])
-  await assert.rejects(agent(['ship', 'mode', 'bypassPermissions', '--hydra', 'lab']), /offers no mode/)
   assert.equal((await send({ text: 'Next turn' })).state, 'delivered')
   await until({ check: () => turns().length === 2 && task().sessionActivity === 'finished' })
   assert.equal(turns()[1]!.params!.model, 'gpt-6-luna')
   assert.equal(turns()[1]!.params!.effort, 'low')
   assert.equal(turns()[1]!.params!.approvalPolicy, 'never')
   assert.deepEqual(turns()[1]!.params!.sandboxPolicy, { type: 'dangerFullAccess' })
+
+  await agent(['ship', 'mode', 'bypassPermissions', '--hydra', 'lab'])
+  await send({ text: 'Bypass turn' })
+  await until({ check: () => turns().length === 3 && task().sessionActivity === 'finished' })
+  assert.equal(turns()[2]!.params!.approvalPolicy, 'never')
+  assert.deepEqual(turns()[2]!.params!.sandboxPolicy, { type: 'dangerFullAccess' })
+
+  await agent(['ship', 'mode', 'on-request', '--hydra', 'lab'])
+  await send({ text: 'Sandboxed turn' })
+  await until({ check: () => turns().length === 4 && task().sessionActivity === 'finished' })
+  assert.equal(turns()[3]!.params!.approvalPolicy, 'on-request')
+  assert.equal((turns()[3]!.params!.sandboxPolicy as { type: string }).type, 'workspaceWrite')
+  assert.equal(fixture.children.length, 1)
 })
 
 test('Codex closes with the server and lazily resumes its interrupted thread on the next message', async () => {
