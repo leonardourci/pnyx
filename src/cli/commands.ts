@@ -573,6 +573,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       via: { type: 'string' },
       command: { type: 'string' },
       rule: { type: 'string' },
+      answer: { type: 'string' },
       'in-place': { type: 'boolean' },
       safe: { type: 'boolean' },
       discard: { type: 'boolean' },
@@ -628,6 +629,14 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       })
     }
 
+    let answer: unknown
+
+    try {
+      answer = typeof values.answer === 'string' ? JSON.parse(values.answer) : undefined
+    } catch {
+      throw new HydraError({ message: '--answer must be JSON', code: 'VALIDATION_ERROR' })
+    }
+
     return askHost({
       hydraId,
       body: {
@@ -635,6 +644,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         task: required({ value: positionals[1], what: 'task id' }),
         request: required({ value: positionals[2], what: 'request id' }),
         choice,
+        ...(answer !== undefined ? { answer } : {}),
         actor: m.actor,
         ...(reason ? { reason } : {}),
         ...(m.details ? { details: m.details } : {}),
@@ -2003,7 +2013,9 @@ pnyx-axi task rename <id> [--title <title>] [--project <name>]
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
-pnyx-axi task permission <task> <request> allow|deny [--reason <text>]
+pnyx-axi task permission <task> <request> allow|deny [--answer <json>] [--reason <text>]
+A question request is allowed with its answers, --answer '{"answers":[{"pick":[1]},{"text":"..."}]}' (one per question, picks
+numbered from 1), and a form with --answer '{"values":{"<field>":"<value>"}}'; deny skips it.
 pnyx-axi task project <task> --project <name|path>
 pnyx-axi task remind <task> <when|clear>
 pnyx-axi task reminders
