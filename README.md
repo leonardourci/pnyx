@@ -12,6 +12,16 @@ Pnyx records tasks, attaches one agent session to each task, and queues your rep
 
 The demo uses a synthetic fixture Hydra. It shows `pnyx-axi setup hooks`, `pnyx-axi serve --home`, a Hydra and its columns, a card opened on its conversation, a card moved with `m`, a history search with `/`, and `pnyx-axi stop` plus `pnyx-axi setup hooks --remove`.
 
+## Ideas borrowed
+
+Pnyx draws on ideas from Paseo and Firstmate:
+
+- Live replies stream into Hydra and task conversations, inspired by [Paseo](https://github.com/getpaseo/paseo): [Pnyx PR](https://github.com/leonardourci/pnyx/pull/91).
+- Tool permission prompts can be answered inline, inspired by [Paseo](https://github.com/getpaseo/paseo): [Pnyx PR](https://github.com/leonardourci/pnyx/pull/62).
+- Workers declare their status explicitly and wake Hydra when work needs attention, inspired by [Firstmate](https://github.com/kunchenguid/firstmate): [worker declarations](https://github.com/leonardourci/pnyx/pull/44) and [Hydra wakes](https://github.com/leonardourci/pnyx/pull/89).
+- Heads dispatch rules choose provider accounts using quota-axi, inspired by [Firstmate](https://github.com/kunchenguid/firstmate): [Pnyx PR](https://github.com/leonardourci/pnyx/pull/82).
+- Hooks report whether an agent is working or has finished its turn, following [Paseo](https://github.com/getpaseo/paseo): [Pnyx PR](https://github.com/leonardourci/pnyx/pull/45).
+
 ## Install
 
 Needs Node 22.13 or newer and pnpm (the version pinned in `package.json`).
