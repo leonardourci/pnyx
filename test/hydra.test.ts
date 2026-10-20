@@ -259,6 +259,7 @@ test('Hydra’s chat drained from turn-end hooks stays in history after its tran
 test('writes naming an unknown Hydra are refused instead of creating it', () => {
   const f = fixture({ hydraId: 'typo-hydra' })
   assert.throws(() => f.run({ args: ['task', 'create', '--title', 'Lost'] }), (error: { stdout: string }) => /unknown Hydra: typo-hydra/.test(error.stdout))
+  assert.throws(() => f.run({ args: ['account', 'set', 'claude:lost', '--provider', 'claude', '--folder', f.root] }), (error: { stdout: string }) => /unknown Hydra/.test(error.stdout))
   assert.equal(existsSync(join(f.root, 'hydras', 'typo-hydra')), false)
   f.run({ args: ['hydra', 'create', 'typo-hydra'] })
   f.run({ args: ['task', 'create', '--title', 'Found'] })
@@ -268,6 +269,7 @@ test('writes naming an unknown Hydra are refused instead of creating it', () => 
 test('role columns record a declaration, column edits keep the Hydra unconfigured and outcome undo restores status', () => {
   const f = fixture({ hydraId: 'work' })
   mkdirSync(join(f.root, 'hydras', 'work'), { recursive: true })
+  writeFileSync(join(f.root, 'hydras', 'work', 'events.jsonl'), '')
 
   try {
     f.run({ args: ['column', 'rename', 'needs_you', '--title', 'Your turn'] })

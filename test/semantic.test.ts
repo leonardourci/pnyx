@@ -2,7 +2,7 @@ import { fixtureCli } from './cli-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmodSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -301,6 +301,8 @@ test('a changed model drops the vectors and embeds again; the worker answers eve
     assert.match(run({ args: ['oracle', 'status'] }), /^vectors: 0 of \d+ entries embedded$/m)
     run({ args: ['oracle', 'orders'] })
     await embedded({ run })
+    mkdirSync(join(home, 'hydras', 'second'), { recursive: true })
+    writeFileSync(join(home, 'hydras', 'second', 'events.jsonl'), '')
     const other = await run$(process.execPath, [BIN, 'oracle', 'anything', '--hydra', 'second'], { env })
     assert.match(other.stdout, /^results: "none: /m)
   } finally {

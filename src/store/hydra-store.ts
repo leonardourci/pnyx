@@ -374,6 +374,13 @@ export interface Writer {
   append({ event }: { event: HydraEvent }): void
 }
 
+// A Hydra exists once its log does; a bare folder, such as one a config write made, does not count.
+export function requireHydra({ hydraId }: { hydraId: string }): void {
+  if (hydraId !== DEFAULT_HYDRA && !existsSync(logPath({ dir: hydraDir({ hydraId }) }))) {
+    throw new HydraError({ message: `unknown Hydra: ${hydraId}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi hydra list` for the Hydras, or `pnyx-axi hydra create <id>` to add one'] })
+  }
+}
+
 // Runs `fn` as the Hydra's single writer. Each append is flushed to disk before
 // the state advances; the snapshot is replaced afterwards.
 export function withWriter<T>({ hydraId, fn, create = false }: {
@@ -388,8 +395,8 @@ export function withWriter<T>({ hydraId, fn, create = false }: {
 }): T {
   const dir = hydraDir({ hydraId })
 
-  if (!create && hydraId !== DEFAULT_HYDRA && !existsSync(dir)) {
-    throw new HydraError({ message: `unknown Hydra: ${hydraId}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi hydra list` for the Hydras, or `pnyx-axi hydra create <id>` to add one'] })
+  if (!create) {
+    requireHydra({ hydraId })
   }
 
   privateDir({ dir })
@@ -488,6 +495,7 @@ export interface Repair {
 // never acknowledged as written, so no accepted event is lost.
 // ponytail: a crash while appending the marker leaves a corrupt interior line; inspect it by hand.
 export function repairHydra({ hydraId }: { hydraId: string }): Repair {
+  requireHydra({ hydraId })
   const dir = hydraDir({ hydraId })
   privateDir({ dir })
   const release = acquireLock({ dir })

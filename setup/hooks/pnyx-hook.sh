@@ -60,7 +60,7 @@ set -- $(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
 id="hook-$1-$$"
 hydra_dir=$home/hydras/$hydra_name
 # An unknown Hydra id is dropped instead of starting a new Hydra; only the default one is made on first use.
-[ -d "$hydra_dir" ] || [ "$hydra_name" = default ] || exit 0
+[ -f "$hydra_dir/events.jsonl" ] || [ -f "$home/boards/$hydra_name/events.jsonl" ] || [ "$hydra_name" = default ] || exit 0
 spool=$hydra_dir/spool
 [ -d "$spool" ] || mkdir -p "$spool" || exit 0
 # ponytail: names order by whole seconds, then by the zero-padded process id, which

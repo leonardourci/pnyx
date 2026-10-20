@@ -207,6 +207,7 @@ async function handshakeStatus(
 
 async function hydraWithCard({ hydraId = 'default' }: { hydraId?: string } = {}) {
   mkdirSync(hydraDir({ hydraId }), { recursive: true })
+  appendFileSync(join(hydraDir({ hydraId }), 'events.jsonl'), '')
   server = await startServer({ hydraId })
   await sendToSocket({ path: server.socket!, text: JSON.stringify(hookEvent({ id: 'hook-1', key: 'a', title: 'A' })) })
   await seqIs({ seq: 1, hydraId })
@@ -1157,6 +1158,7 @@ test('a Hydra another live server holds is skipped, then served once that server
   track({ child: other })
   const dir = hydraDir({ hydraId: 'held' })
   mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'events.jsonl'), '')
   const started = execFileSync('ps', ['-o', 'lstart=', '-p', String(other.pid)], { encoding: 'utf8', env: { ...process.env, TZ: 'UTC', LC_ALL: 'C' } }).trim()
   writeFileSync(join(dir, 'server.lock'), JSON.stringify({ pid: other.pid, processStart: started }))
   server = await startServer({ hydraId: 'default' })
