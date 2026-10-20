@@ -47,7 +47,7 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
       const timer = setTimeout(() => abortController.abort(), 20000).unref()
       const catalog = run({
         prompt: (async function* () {})(),
-        options: { cwd, env, abortController, persistSession: false, settingSources: ['user', 'project', 'local'] },
+        options: { cwd, env, abortController, pathToClaudeCodeExecutable: 'claude', persistSession: false, settingSources: ['user', 'project', 'local'] },
       })
 
       try {
@@ -90,6 +90,7 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
             options: {
               cwd,
               includePartialMessages: true,
+              pathToClaudeCodeExecutable: 'claude',
               ...(agent?.resume || existsSync(path) ? { resume: id } : { sessionId: id }),
               settingSources: ['user', 'project', 'local'],
               systemPrompt: { type: 'preset', preset: 'claude_code', ...(instructions ? { append: instructions } : {}) },

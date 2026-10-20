@@ -11,6 +11,52 @@ import { commands } from '../src/cli/commands.ts'
 import { createHost } from '../src/server/host.ts'
 import { hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { hydraSdk } from './hydra-host-fixture.ts'
+
+test('Claude discovers and runs models through the installed CLI', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pnyx-installed-claude-'))
+  const sdk = hydraSdk()
+  let catalogExecutable: string | undefined
+  const query = (({ options, prompt }: Parameters<QueryFn>[0]) => {
+    if (options?.persistSession === false) {
+      catalogExecutable = options.pathToClaudeCodeExecutable
+
+      return {
+        supportedModels: async () => [{ value: 'haiku', displayName: 'Haiku 5.5' }],
+        close: () => {},
+      }
+    }
+
+    return sdk.query({ options, prompt })
+  }) as unknown as QueryFn
+  const provider = claudeProvider({ query })
+
+  try {
+    const env = { CLAUDE_CONFIG_DIR: join(root, 'claude') }
+    const models = await provider.models({ cwd: root, env })
+    assert.equal(catalogExecutable, 'claude')
+    const session = await provider.open({
+      cwd: root, env, settings: { model: models[0]!.value }, signal: new AbortController().signal,
+    })
+
+    try {
+      async function* input() {
+        yield 'Use the selected model'
+      }
+
+      for await (const activity of session.run({ input: input(), permission: async () => ({ behavior: 'deny', message: 'Test' }) })) {
+        assert.ok(['working', 'finished'].includes(activity))
+      }
+
+      assert.equal(sdk.calls[0]?.options.pathToClaudeCodeExecutable, catalogExecutable)
+      assert.equal(sdk.calls[0]?.options.model, 'haiku')
+    } finally {
+      session.close()
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
 
 test('Claude lists SDK display names and closes its catalog without running a turn', async () => {
   let closed = false
