@@ -156,6 +156,8 @@ test('Firstmate project folders are canonical, read-only and refreshed from the 
   assert.deepEqual(summary, { name: 'project', path: folder, references: [folder, 'project', 'linked'], live: 1, asks: 1 })
   rmSync(join(home, 'projects', 'linked'))
   assert.deepEqual(firstmateProjects({ home }), [])
+  // The sidebar follows the Firstmate home even though no event was written.
+  assert.deepEqual(listHydras().find(h => h.id === 'default')?.projects, [])
 })
 
 test('CLI exposes projects without touching the real Pnyx home', () => {
