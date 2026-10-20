@@ -1,0 +1,57 @@
+import { splitEntry, type ThreadEntry, type ThreadPage } from '../thread/read.ts'
+import { redact } from '../oracle/text.ts'
+import type { HostedText } from './provider.ts'
+
+// These are disposable transport entries; the harness transcript remains the history.
+export function liveReplies() {
+  const messages = new Map<string, ThreadEntry>()
+  let offset = 0, working = false
+
+  return {
+    start({ offset: start }: { offset: number }) {
+      messages.clear()
+      offset = start
+      working = true
+    },
+    update({ id, text, append }: Omit<HostedText, 'type'>) {
+      const prior = messages.get(id)
+      messages.set(id, {
+        id: `live:${id}`,
+        kind: 'message',
+        role: 'assistant',
+        text: (append ? prior?.text ?? '' : '') + text,
+        at: prior?.at ?? new Date().toISOString(),
+      })
+    },
+    finish() {
+      working = false
+    },
+    page({ page }: { page: ThreadPage }): ThreadPage {
+      const saved = new Map<string, string>()
+
+      for (const entry of page.entries) {
+        const id = entry.messageId ?? entry.id
+
+        if (entry.kind === 'message' && entry.role.startsWith('assistant') && Number.parseInt(id) >= offset) {
+          saved.set(id, (saved.get(id) ?? '') + entry.text)
+        }
+      }
+
+      const entries: ThreadEntry[] = []
+
+      for (const entry of messages.values()) {
+        const text = redact({ text: entry.text })
+        const match = [...saved].find(([, value]) => value === text
+          || (working && text.length > 0 && value.startsWith(text)))
+
+        if (match) {
+          saved.delete(match[0])
+        } else if (text) {
+          entries.push(...splitEntry({ entry: { ...entry, streaming: working } }))
+        }
+      }
+
+      return { ...page, entries: [...page.entries, ...entries].slice(-60) }
+    },
+  }
+}

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import type { AskPermission, Provider } from './provider.ts'
+import type { AskPermission, HostedText, Provider } from './provider.ts'
 
 export type SpawnCodex = ({ cwd, env }: {
   cwd: string
@@ -133,6 +133,14 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
           items.clear()
           events.push(params)
           wake?.()
+        } else if (message.method === 'item/agentMessage/delta' || message.method === 'item/completed') {
+          const params = object({ value: message.params })
+          const item = object({ value: params.item })
+
+          if (message.method === 'item/agentMessage/delta' || item.type === 'agentMessage') {
+            events.push({ ...params, method: message.method })
+            wake?.()
+          }
         } else if (message.method === 'item/started') {
           const item = object({ value: object({ value: message.params }).item })
 
@@ -195,7 +203,10 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     notify({ method }: { method: string }) {
       write({ message: { method } })
     },
-    async completed({ threadId, turnId }: { threadId: string; turnId: string }) {
+    async* completed({ threadId, turnId }: {
+      threadId: string
+      turnId: string
+    }): AsyncGenerator<HostedText | { turn: ObjectValue }> {
       for (;;) {
         if (failure) {
           throw failure
@@ -206,8 +217,24 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
         if (event) {
           const turn = object({ value: event.turn })
 
-          if (event.threadId === threadId && turn.id === turnId) {
-            return turn
+          if (event.threadId !== threadId) {
+            continue
+          }
+
+          if (turn.id === turnId) {
+            yield { turn }
+
+            return
+          }
+
+          if (event.turnId === turnId) {
+            const item = object({ value: event.item })
+            const id = event.method === 'item/agentMessage/delta' ? event.itemId : item.id
+            const text = event.method === 'item/agentMessage/delta' ? event.delta : item.text
+
+            if (typeof id === 'string' && typeof text === 'string') {
+              yield { type: 'text', id, text, append: event.method === 'item/agentMessage/delta' }
+            }
           }
         } else {
           await new Promise<void>(resolve => {
@@ -317,10 +344,16 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
                 throw new Error('Codex returned no turn id')
               }
 
-              const completed = await rpc.completed({ threadId: id, turnId: turn.id })
+              for await (const event of rpc.completed({ threadId: id, turnId: turn.id })) {
+                if (!('turn' in event)) {
+                  yield event
 
-              if (completed.status !== 'completed') {
-                throw new Error(String(object({ value: completed.error }).message ?? `Codex turn ${completed.status}`))
+                  continue
+                }
+
+                if (event.turn.status !== 'completed') {
+                  throw new Error(String(object({ value: event.turn.error }).message ?? `Codex turn ${event.turn.status}`))
+                }
               }
 
               yield 'finished'

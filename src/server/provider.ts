@@ -1,6 +1,8 @@
 import type { AgentRef, AgentSettings } from '../core/model.ts'
 
 export type PermissionDecision = { behavior: 'allow' } | { behavior: 'deny'; message: string }
+export type HostedText = { type: 'text'; id: string; text: string; append?: boolean }
+export type HostedEvent = 'working' | 'finished' | HostedText
 export type AskPermission = ({ tool, input, signal, description }: {
   tool: string
   input: Record<string, unknown>
@@ -11,7 +13,10 @@ export type AskPermission = ({ tool, input, signal, description }: {
 export interface HostedSession {
   id: string
   path?: string
-  run({ input, permission }: { input: AsyncIterable<string>; permission: AskPermission }): AsyncIterable<'working' | 'finished'>
+  run({ input, permission }: {
+    input: AsyncIterable<string>
+    permission: AskPermission
+  }): AsyncIterable<HostedEvent>
   set({ setting, value }: { setting: string; value: string }): Promise<void>
   close(): void
 }

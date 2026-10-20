@@ -16,6 +16,15 @@ const finish = ({ id, text }) => {
     return
   }
 
+  if (text === 'STREAM') {
+    held = id
+    send({ method: 'item/agentMessage/delta', params: { threadId: 'unrelated', turnId: id, itemId: 'other', delta: 'Hidden' } })
+    send({ method: 'item/agentMessage/delta', params: { threadId, turnId: id, itemId: 'answer', delta: 'Hello' } })
+    send({ method: 'item/agentMessage/delta', params: { threadId, turnId: id, itemId: 'answer', delta: ' world' } })
+
+    return
+  }
+
   const status = text === 'FAIL' ? 'failed' : 'completed'
   appendFileSync(path, `${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: `Codex: ${text}` }] } })}\n`)
   send({ method: 'turn/completed', params: { threadId, turn: { id, status, error: status === 'failed' ? { message: 'fixture failure' } : null } } })

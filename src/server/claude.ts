@@ -69,6 +69,7 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
             prompt: prompt(),
             options: {
               cwd,
+              includePartialMessages: true,
               ...(agent?.resume || existsSync(path) ? { resume: id } : { sessionId: id }),
               settingSources: ['user', 'project', 'local'],
               systemPrompt: { type: 'preset', preset: 'claude_code', ...(instructions ? { append: instructions } : {}) },
@@ -84,15 +85,46 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
             },
           })
 
+          let messageId = '', active = false
+
           for await (const message of running) {
+            const activity = turnOf({ message })
+            const starts = activity === 'working'
+              || (message.type === 'stream_event' && !message.parent_tool_use_id && message.event.type === 'message_start')
+              || (message.type === 'assistant' && !message.parent_tool_use_id)
+
+            if (starts && !active) {
+              active = true
+              yield 'working'
+            }
+
+            if (message.type === 'assistant' && !message.parent_tool_use_id) {
+              for (const [index, block] of message.message.content.entries()) {
+                if (block.type === 'text') {
+                  yield { type: 'text' as const, id: `${message.message.id}:${index}`, text: block.text }
+                }
+              }
+            }
+
+            if (message.type === 'stream_event' && !message.parent_tool_use_id) {
+              const event = message.event
+
+              if (event.type === 'message_start') {
+                messageId = event.message.id
+              } else if (event.type === 'content_block_start' && event.content_block.type === 'text' && event.content_block.text) {
+                yield { type: 'text' as const, id: `${messageId}:${event.index}`, text: event.content_block.text, append: true }
+              } else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+                yield { type: 'text' as const, id: `${messageId}:${event.index}`, text: event.delta.text, append: true }
+              }
+            }
+
             if (message.type === 'result' && message.is_error) {
               throw new Error('errors' in message ? message.errors.join('; ') : 'Claude Code could not complete this turn')
             }
 
-            const activity = turnOf({ message })
-
-            if (activity) {
-              yield activity
+            if (activity === 'finished') {
+              active = false
+              yield 'finished'
             }
           }
         },
