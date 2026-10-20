@@ -82,7 +82,7 @@ test('Codex starts through app-server by default and records its native thread, 
   const turns = () => fixture.messages().filter(m => m.method === 'turn/start')
   assert.match(String((turns()[0]!.params!.input as {
     text: string
-  }[])[0]!.text), /^Release the canary\.\n\nYou are the Pnyx worker/)
+  }[])[0]!.text), /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nRelease the canary\.\n\nYou are the Pnyx worker/)
   assert.equal(turns()[0]!.params!.effort, 'high')
   assert.equal(turns()[0]!.params!.approvalPolicy, 'on-request')
   assert.deepEqual(turns()[0]!.params!.sandboxPolicy, { type: 'workspaceWrite', writableRoots: [process.env.PNYX_HOME], networkAccess: true })

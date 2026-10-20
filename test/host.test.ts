@@ -162,7 +162,7 @@ test('task start runs Claude Code through the server, records it on the task and
   await until({ check: () => sdk.calls[0]?.messages.length === 1, what: 'the opening prompt' })
 
   const { options, messages } = sdk.calls[0]!
-  assert.match(messages[0]!, /^Release the canary\.\n\nYou are the Pnyx worker for task/)
+  assert.match(messages[0]!, /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nRelease the canary\.\n\nYou are the Pnyx worker for task/)
   assert.equal(options.sessionId, agentRef.sessionId)
   assert.equal(options.resume, undefined)
   assert.equal(options.cwd, folder)
@@ -637,7 +637,7 @@ test('starting fresh validates the replacement before detaching and starts once 
   assert.notEqual(task().agent?.sessionId, 'native-session')
   assert.equal(loadHydra({ hydraId: 'lab' }).state.sessions?.[replacement]?.taskId, null)
   await until({ check: () => sdk.calls[0]?.messages.length === 1, what: 'fresh opening prompt' })
-  assert.match(sdk.calls[0]!.messages[0]!, /^Release the canary\./)
+  assert.match(sdk.calls[0]!.messages[0]!, /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nRelease the canary\./)
   assert.equal(sdk.calls[0]!.options.resume, undefined)
   assert.equal((await startTask({ hydraId: 'lab', task: 'ship', replacement, folder, meta: { ...meta, id: 'fresh-1' } })).event, 'none: duplicate')
   assert.equal(sdk.calls.length, 1)

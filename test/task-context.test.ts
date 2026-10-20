@@ -296,7 +296,7 @@ test('the Hydra command receives the task brief before explicit opening instruct
       await new Promise(resolve => setTimeout(resolve, 20))
     }
 
-    assert.equal(JSON.parse(readFileSync(path, 'utf8')), 'Verify the canary.\n\nThen report the result.')
+    assert.match(JSON.parse(readFileSync(path, 'utf8')), /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nVerify the canary\.\n\nThen report the result\.$/)
   } finally {
     rmSync(f.home, { recursive: true, force: true })
   }

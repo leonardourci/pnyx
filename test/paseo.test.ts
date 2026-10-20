@@ -253,7 +253,7 @@ test('task start uses the dispatch rule\'s model, effort and mode, and opens wit
   await startTask({ hydraId: 'lab', task: 'work', via: 'paseo', rule: 'review', folder, url, meta: { at, actor: 'test', id: 'kind-1' }, connect: paseo.connect })
   const created = paseo.calls.create[0]!
   assert.deepEqual(created.config, { provider: 'codex/codex-small', thinkingOptionId: 'high', modeId: 'full-access', featureValues: { fast_mode: false } })
-  assert.match(String(created.prompt), /^Verify the canary\.\n\n/)
+  assert.match(String(created.prompt), /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nVerify the canary\.\n\n/)
   assert.match(String(created.prompt), /Pnyx worker for task c1 "Lab task" on Hydra lab/)
 
   const overridden = hydraId()

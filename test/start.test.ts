@@ -76,7 +76,7 @@ test('task start --via command runs the Hydra command once and its session joins
   assert.equal(env.PNYX_HYDRA, 'lab')
   assert.equal(env.PNYX_HOME, process.env.PNYX_HOME)
   assert.equal(env.PNYX_ROLE, 'worker')
-  assert.match(env.PNYX_PROMPT!, /^Draft it\n\nYou are the Pnyx worker/)
+  assert.match(env.PNYX_PROMPT!, /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nDraft it\n\nYou are the Pnyx worker/)
   assert.equal(env.PNYX_FOLDER, folder)
   assert.equal(state().cards[task]!.notes?.at(-1)?.source, 'pnyx:start')
 

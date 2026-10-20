@@ -75,14 +75,27 @@ export function workerPrompt({ hydraId, id, title }: {
   ].join(' ')
 }
 
+// Every worker Pnyx starts opens with the same scope and authority.
+export function workerHeader({ hydraId, id }: { hydraId: string; id: string }): string {
+  return [
+    `<pnyx-worker task="${id}" hydra="${hydraId}">`,
+    `You are a worker that Hydra supervises on Pnyx Hydra ${hydraId}, for task ${id} only. Report only through pnyx-axi on this task; Hydra reads your declarations and answers your questions.`,
+    'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
+    'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking.',
+    `Escalate only real decisions, with \`pnyx-axi task status ${id} needs_you --note "<question and options>" --hydra ${hydraId}\`: merges, destructive actions, writes to shared or production systems, and work outside this task. Then wait for the answer.`,
+    '</pnyx-worker>',
+  ].join('\n')
+}
+
 export function taskPrompt({ hydraId, card, prompt }: {
   hydraId: string
   card: Card
   prompt?: string
 }): string {
   const instructions = prompt ?? workerPrompt({ hydraId, id: card.id, title: card.title })
+  const header = workerHeader({ hydraId, id: card.id })
 
-  return card.brief?.trim() ? `${card.brief}\n\n${instructions}` : instructions
+  return card.brief?.trim() ? `${header}\n\n${card.brief}\n\n${instructions}` : `${header}\n\n${instructions}`
 }
 
 const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
