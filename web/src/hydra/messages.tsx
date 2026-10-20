@@ -50,6 +50,30 @@ export function Messages({
     window.getSelection()?.removeAllRanges()
   }
 
+  // A streamed reply settles into the transcript under a new id; its comments follow the passage there.
+  useEffect(() => {
+    const rendered = blocks(), present = new Set(rendered.map(b => b.dataset.messageId))
+    let moved = false
+    const items = comments.map(comment => {
+      const block = present.has(comment.messageId) ? undefined : rendered
+        .filter(b => Number(b.dataset.blockOffset) === comment.offset
+          && !!comment.paragraph && !!b.dataset.quote?.startsWith(comment.paragraph))
+        .at(-1)
+
+      if (!block) {
+        return comment
+      }
+
+      moved = true
+
+      return { ...comment, ...blockPassage({ block }), quote: comment.quote }
+    })
+
+    if (moved) {
+      setComments({ items })
+    }
+  })
+
   useEffect(() => {
     if (!selection) {
       return
