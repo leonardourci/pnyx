@@ -48,7 +48,7 @@ export function HydraAgent({ state, command, connected, notify }: {
         command={command}
         disabled={busy || !connected}
         connected={connected}
-        resolveDefault={!agent.model || agent.model === 'default'}
+        resolveDefault={!!effective && (!agent.model || agent.model === 'default')}
         onChange={({ value }) => save({ next: { ...agent, model: value } })}
       />
       {(['effort', 'mode'] as const).map(field => {
