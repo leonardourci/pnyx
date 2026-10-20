@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process'
 import { isDeepStrictEqual } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from '../core/control.ts'
-import { HydraError, type HydraState } from '../core/model.ts'
-import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness } from './config.ts'
+import { HydraError, type HydraState, type StartOverride } from '../core/model.ts'
+import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness, type HeadsDispatch } from './config.ts'
 
 interface EffectiveQuota {
   status?: string
@@ -31,9 +31,8 @@ export interface QuotaReading {
   effective?: EffectiveQuota
 }
 export type ReadQuota = ({ account }: { account: Account }) => QuotaReading
-// Settings a start asks for in place of the chosen candidate's own.
-export type Override = Partial<Pick<Candidate, 'model' | 'effort' | 'mode' | 'fast'>>
-const OVERRIDE_FIELDS: readonly (keyof Override)[] = ['model', 'effort', 'mode', 'fast']
+export type Override = StartOverride
+export const OVERRIDE_FIELDS: readonly (keyof Override)[] = ['model', 'effort', 'mode', 'fast']
 export interface DispatchChoice {
   rule: string
   candidate: Candidate
@@ -104,11 +103,18 @@ export function readQuota({ account }: { account: Account }): QuotaReading {
   return reading
 }
 
+// Claude Code takes a 1M-context suffix on any model it lists, such as opus[1m].
+const ONE_MILLION = /\[1m\]$/
+
+export const ruleCandidates = ({ dispatch, rule = 'default' }: { dispatch: HeadsDispatch; rule?: string }) =>
+  rule === 'default' ? dispatch.default
+    : Object.hasOwn(dispatch.rules, rule) ? dispatch.rules[rule]!.candidates : undefined
+
 function nativeModel({ candidate, rows }: {
   candidate: Candidate
   rows?: ModelQuota[]
 }): ModelQuota | undefined {
-  const id = candidate.model
+  const id = candidate.model?.replace(ONE_MILLION, '')
 
   return rows?.find(row => row.id === id || (candidate.harness === 'claude' && id && ['opus', 'sonnet', 'haiku', 'fable'].includes(id) && row.id.startsWith(`claude-${id}-`)))
 }
@@ -117,13 +123,12 @@ function exhausted({ effective }: { effective?: EffectiveQuota }): boolean {
   return effective?.runway?.status === 'exhausted_now' || (effective?.status === 'known' && effective.effectivePercentRemaining !== undefined && effective.effectivePercentRemaining <= 0)
 }
 
-// Claude Code takes a 1M-context suffix on any model its catalog lists, such as opus[1m].
 const offered = ({ harness, model, available }: {
   harness: Harness
   model: string
   available: string[]
 }) =>
-  available.includes(harness === 'claude' ? model.replace(/\[1m\]$/, '') : model)
+  available.includes(harness === 'claude' ? model.replace(ONE_MILLION, '') : model)
 
 const known = ({ row }: { row: EffectiveQuota }): number | undefined => {
   const score = row.selection?.status === 'known' ? row.selection.spendPriority : undefined
@@ -138,7 +143,7 @@ const described = ({ override }: { override?: Override }) => Object.entries(over
   .map(([key, value]) => `${key} ${value === true ? 'on' : value === false ? 'off' : value}`)
   .join(', ')
 
-// Known spendPriority ranks first and unknown quota after it; a tie or an unranked choice stops the start.
+// Known spendPriority ranks first and unknown quota after it; a tie or several unranked choices stop the start.
 export function chooseCandidate({ config, rule = 'default', project, harness, override, quota = readQuota, offers }: {
   config: EffectiveDispatch
   rule?: string
@@ -149,7 +154,7 @@ export function chooseCandidate({ config, rule = 'default', project, harness, ov
   offers?: Partial<Record<Harness, string[]>>
 }): DispatchChoice {
   const { dispatch, accounts } = config
-  const candidates = rule === 'default' ? dispatch.default : Object.hasOwn(dispatch.rules, rule) ? dispatch.rules[rule]!.candidates : undefined
+  const candidates = ruleCandidates({ dispatch, rule })
 
   if (!candidates) {
     throw new HydraError({ message: `no heads dispatch rule ${rule}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi rule list`; Hydra must choose a rule for the task'] })
@@ -213,9 +218,9 @@ export function chooseCandidate({ config, rule = 'default', project, harness, ov
       const rows = [reading.effective, row?.state?.stale ? undefined : row?.effective]
         .filter((scope): scope is EffectiveQuota => Boolean(scope))
       const percents = rows.flatMap(scope => scope.status === 'known' && scope.effectivePercentRemaining !== undefined ? [scope.effectivePercentRemaining] : [])
-      const scores = rows.map(scope => known({ row: scope }))
-      const priority = scores.length && scores.every(score => score !== undefined)
-        ? Math.min(...scores as number[]) : undefined
+      const scores = rows.flatMap(scope => known({ row: scope }) ?? [])
+      const priority = scores.length && scores.length === rows.length
+        ? Math.min(...scores) : undefined
       evidence.add(`${key}${model ? `/${model}` : ''}: ${percents.length ? `${Math.min(...percents)}%` : 'unknown'}${priority === undefined ? '' : `, spendPriority ${priority}`}`)
 
       if (rows.some(scope => exhausted({ effective: scope }))) {
@@ -235,24 +240,29 @@ export function chooseCandidate({ config, rule = 'default', project, harness, ov
     }
   }
 
-  const ranked = choices.filter(c => c.priority !== undefined)
-    .sort((a, b) => b.priority! - a.priority!)
-  const tied = ranked.length ? ranked.filter(c => c.priority === ranked[0]!.priority) : choices
+  const ranked = choices
+    .flatMap(c => c.priority === undefined ? [] : [{ ...c, priority: c.priority }])
+    .sort((a, b) => b.priority - a.priority)
+  const best = ranked[0]
+  const tied = best ? ranked.filter(c => c.priority === best.priority) : choices
 
   if (!choices.length) {
     throw new HydraError({ message: `no usable candidates for rule ${rule}; start stopped: ${[...evidence].join('; ')}`, code: 'DISPATCH_EXHAUSTED', help: ['Tell the owner; Pnyx never switches to a weaker rule or an unlisted account'] })
   }
 
   if (tied.length > 1) {
+    const harnesses = [...new Set(tied.map(c => c.choice.provider))]
     throw new HydraError({
-      message: `rule ${rule} has no single best candidate; start stopped: ${tied.map(c => named({ choice: c.choice })).join(', ')} ${ranked.length ? `tie at spendPriority ${ranked[0]!.priority}` : 'all have unknown quota'}; ${[...evidence].sort().join('; ')}`,
+      message: `rule ${rule} has no single best candidate; start stopped: ${tied.map(c => named({ choice: c.choice })).join(', ')} ${best ? `tie at spendPriority ${best.priority}` : 'all have unknown quota'}; ${[...evidence].sort().join('; ')}`,
       code: 'DISPATCH_TIE',
-      help: ['Pick one with --harness, or ask the owner; Pnyx never chooses between equal candidates'],
+      help: [harnesses.length > 1
+        ? `Pick one with --harness ${harnesses.join('|')}, or ask the owner; Pnyx never chooses between equal candidates`
+        : `Ask the owner to split rule ${rule} or narrow it to one candidate; Pnyx never chooses between equal candidates`],
     })
   }
 
-  const chosen = (ranked[0] ?? choices[0])!.choice
-  const how = ranked.length ? 'selected by highest known spendPriority; unknown quota ranks below known' : 'only usable candidate; quota unknown'
+  const chosen = (best ?? tied[0]!).choice
+  const how = best ? 'selected by highest known spendPriority; unknown quota ranks below known' : 'only usable candidate; quota unknown'
   const changed = described({ override: chosen.override })
 
   return { ...chosen, reason: `${rule}: ${chosen.override?.model ?? chosen.candidate.model ?? `${chosen.provider} default`} on ${chosen.account}; ${[...evidence].sort().join('; ')}; ${how}${changed ? `; override ${changed}` : ''}` }
@@ -301,10 +311,11 @@ export function overrideOf({ value }: { value: unknown }): Override | undefined 
     throw new HydraError({ message: 'an override may only set model, effort, mode and fast', code: 'VALIDATION_ERROR' })
   }
 
-  const { harness: _harness, ...checked } = parseCandidates({ value: [{ harness: 'claude', ...given }] })[0]!
+  const [parsed] = parseCandidates({ value: [{ harness: 'claude', ...given }] })
+  const { harness: _harness, ...checked } = parsed ?? { harness: 'claude' }
   void _harness
 
-  return checked
+  return Object.keys(checked).length ? checked : undefined
 }
 
 export function validateChoice({ value, config, project }: {

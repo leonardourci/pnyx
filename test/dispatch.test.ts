@@ -99,7 +99,11 @@ test('a genuine spendPriority tie stops the start and names every tied candidate
   const current = config(), quota = () => reading({ remaining: 50, priority: 0.4 })
   assert.throws(() => chooseCandidate({ config: current, rule: 'build', quota }), (error: Error & { code?: string }) =>
     error.code === 'DISPATCH_TIE' && /claude\/opus on claude:work, codex\/gpt-6\.1-sol on codex:work tie at spendPriority 0\.4/.test(error.message))
+  assert.throws(() => chooseCandidate({ config: current, rule: 'build', quota }), (error: Error & { help?: string[] }) => /Pick one with --harness claude\|codex/.test(error.help?.[0] ?? ''))
   assert.equal(chooseCandidate({ config: current, rule: 'build', harness: 'codex', quota }).provider, 'codex')
+  current.dispatch.rules.build!.candidates = [{ harness: 'claude', model: 'opus' }, { harness: 'claude', model: 'sonnet' }]
+  assert.throws(() => chooseCandidate({ config: current, rule: 'build', quota: () => ({ auth: 'unknown' }) }), (error: Error & { help?: string[] }) =>
+    /all have unknown quota/.test(error.message) && /split rule build/.test(error.help?.[0] ?? ''))
 })
 
 test('known quota outranks unknown quota, even overdrawn, as Firstmate ranks it', () => {
@@ -184,6 +188,8 @@ test('models unavailable through a harness are skipped without downgrading', () 
   assert.equal(chosen.provider, 'codex')
   assert.match(chosen.reason, /not offered/)
   assert.throws(() => chooseCandidate({ config: config(), rule: 'build', quota, offers: { claude: [], codex: [] } }), /no usable candidates/)
+  // A catalog that was not read leaves that harness's model unchecked.
+  assert.equal(chooseCandidate({ config: config(), rule: 'build', harness: 'claude', quota, offers: { codex: [] } }).provider, 'claude')
 })
 
 test('account folders isolate quota-axi and hosted environments from inherited credentials', () => {
@@ -237,6 +243,7 @@ test('a start override replaces the candidate settings, must be offered and is n
   assert.throws(() => hostedOverride({ harness: 'claude', override: { mode: 'never' } }), /claude has no mode never/)
   assert.throws(() => overrideOf({ value: { harness: 'codex' } }), /may only set model, effort, mode and fast/)
   assert.throws(() => overrideOf({ value: { fast: 'yes' } }), /fast must be boolean/)
+  assert.equal(overrideOf({ value: {} }), undefined)
   const sent = chooseCandidate({ config: config(), rule: 'build', harness: 'codex', quota, override: { effort: 'low' } })
   assert.deepEqual(validateChoice({ value: JSON.parse(JSON.stringify(sent)), config: config() }).override, { effort: 'low' })
   assert.throws(() => validateChoice({ value: { ...sent, override: { effort: 'max' } }, config: config() }), /codex has no effort max/)
