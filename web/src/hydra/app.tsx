@@ -11,6 +11,7 @@ import { HydraCard } from './card.tsx'
 import { TaskCreate } from './task-create.tsx'
 import { Column } from './column.tsx'
 import { Detail } from './detail.tsx'
+import { TaskConversation } from './task-conversation.tsx'
 import type { ChatComment } from './chat.ts'
 import { Settings } from './settings.tsx'
 import { Hydras } from './hydras.tsx'
@@ -55,7 +56,7 @@ export function App() {
 
 function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const {
-    state, command, connected, hydraThread, latest, navigation,
+    state, command, connected, thread, hydraThread, latest, navigation,
     navigate, loading, loaded, error,
   } = hydra
   const restoreKey = useRef(storageKey({ key: 'restore' })).current
@@ -300,6 +301,24 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       close={close}
       createTask={createTask}
       notify={notify}
+      conversation={card.agent ? (
+        <TaskConversation
+          card={card}
+          liveThread={thread}
+          cards={Object.values(state.cards)}
+          openTask={open}
+          title={card.title}
+          draft={drafts[card.id] ?? ''}
+          setDraft={({ text }) => setDrafts(d => ({ ...d, [card.id]: text }))}
+          comments={comments[card.id] ?? []}
+          setComments={({ items }) => setComments(c => ({ ...c, [card.id]: items }))}
+          height={view.composerHeight}
+          command={command}
+          save={save}
+          connected={connected}
+          notify={notify}
+        />
+      ) : undefined}
     />
   )
 
