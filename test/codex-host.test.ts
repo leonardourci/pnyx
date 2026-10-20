@@ -74,7 +74,7 @@ test('Codex starts through app-server by default and records its native thread, 
   const start = fixture.messages().find(m => m.method === 'thread/start')!
   assert.deepEqual(start.params, {
     cwd: root,
-    config: { 'shell_environment_policy.set.PNYX_HOME': process.env.PNYX_HOME, 'shell_environment_policy.set.PNYX_HYDRA': 'lab', 'features.default_mode_request_user_input': true },
+    config: { 'shell_environment_policy.set.PNYX_ACTOR': `worker:${task().id}`, 'shell_environment_policy.set.PNYX_HOME': process.env.PNYX_HOME, 'shell_environment_policy.set.PNYX_HYDRA': 'lab', 'features.default_mode_request_user_input': true },
     model: 'gpt-6.1-sol',
     approvalPolicy: 'on-request',
     sandbox: 'workspace-write',

@@ -352,12 +352,12 @@ export function createHost({
     }
   }
 
-  // Hydra's own commands are recorded as its writes, so they never wake it.
-  const environment = ({ hydra = false }: { hydra?: boolean } = {}) => ({
+  // Hydra's own commands are recorded as its writes, so they never wake it; a worker's carry its task.
+  const environment = ({ hydra = false, task }: { hydra?: boolean; task?: string } = {}) => ({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
     PNYX_HOME: pnyxHome(),
     PNYX_HYDRA: hydraId,
-    ...(hydra ? { PNYX_ACTOR: HYDRA_ACTOR } : {}),
+    ...(hydra ? { PNYX_ACTOR: HYDRA_ACTOR } : task ? { PNYX_ACTOR: `worker:${task}` } : {}),
   })
 
   const hydraInstructions = () =>
@@ -435,7 +435,7 @@ export function createHost({
     entry: Live
   }) => {
     let failure: string | undefined
-    const env = environment({ hydra: card.id === HYDRA_CARD })
+    const env = environment(card.id === HYDRA_CARD ? { hydra: true } : { task: card.id })
 
     try {
       entry.session ??= await providerOf({ provider: card.agent.provider }).open({
@@ -857,8 +857,9 @@ export function createHost({
           cwd,
           settings,
           env: dispatch ? accountEnvironment({
-            account: { provider: dispatch.provider, folder: dispatch.folder }, env: environment(),
-          }) : environment(),
+            account: { provider: dispatch.provider, folder: dispatch.folder },
+            env: environment({ task: target.id }),
+          }) : environment({ task: target.id }),
           signal: controller.signal,
         })
         session = prepared
