@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -6,10 +6,29 @@ import type { EffortLevel, Options, PermissionMode, SDKMessage, Settings, query 
 import type { AgentSettings } from '../core/model.ts'
 import { questions } from '../integrations/hooks/observe.ts'
 import type { Provider } from './provider.ts'
+import { attachedImages, imageType } from '../attachments/images.ts'
+import { pnyxHome } from '../store/paths.ts'
 
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
 type UserMessage = Parameters<QueryFn>[0]['prompt'] extends string | AsyncIterable<infer M> ? M : never
+type Content = Exclude<UserMessage['message']['content'], string>
+
+// A stored image that can no longer be read stays a path in the text.
+function content({ text }: { text: string }): string | Content {
+  const images = attachedImages({ text, hydras: join(pnyxHome(), 'hydras') }).flatMap(path => {
+    const media_type = imageType({ path })
+
+    try {
+      return media_type ? [{ type: 'image' as const, source: { type: 'base64' as const, media_type, data: readFileSync(path).toString('base64') } }] : []
+    } catch {
+      return []
+    }
+  })
+
+  return images.length ? [{ type: 'text', text }, ...images] : text
+}
+
 const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'] satisfies EffortLevel[]
 const MODES: readonly string[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk', 'auto'] satisfies PermissionMode[]
 
@@ -106,9 +125,9 @@ export function claudeProvider({ query, readSettings = userSettings }: {
 
           const prompt = async function* (): AsyncGenerator<UserMessage> {
             for await (const text of input) {
-              const content = fresh && context ? `${context()}\n\n${text}` : text
+              const message = fresh && context ? `${context()}\n\n${text}` : text
               fresh = false
-              yield { type: 'user', message: { role: 'user', content }, parent_tool_use_id: null }
+              yield { type: 'user', message: { role: 'user', content: content({ text: message }) }, parent_tool_use_id: null }
             }
           }
 
