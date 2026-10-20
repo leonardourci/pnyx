@@ -168,7 +168,7 @@ export async function startTask({
     }
 
     dispatch = dispatchTask({
-      hydraId, state, task: card.id, project: card.project, rule, harness, offers,
+      hydraId, state, project: card.project, rule, harness, offers,
     })
   }
 
@@ -426,7 +426,7 @@ export async function startHydra({
     await client.close()
   }
 
-  const dispatch = chooseCandidate({ config: { ...config, dispatch: { ...config.dispatch, workers: { [main.provider]: [mainName] }, projects: {} } }, rule: selectedRule, task: '$hydra', harness: chosen, offers: { [chosen]: offered } })
+  const dispatch = chooseCandidate({ config: { ...config, dispatch: { ...config.dispatch, workers: { [main.provider]: [mainName] }, projects: {} } }, rule: selectedRule, harness: chosen, offers: { [chosen]: offered } })
   const agent = dispatch.candidate
 
   const id = meta.id ?? randomUUID()

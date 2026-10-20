@@ -689,7 +689,6 @@ export function createHost({
                   projects: {},
                 },
               },
-              task: HYDRA_CARD,
               offers: candidate.model ? await host.models({ harness: candidate.harness })
                 .then(models => ({
                   [candidate.harness]: models.flatMap(model =>
@@ -1222,7 +1221,6 @@ export async function hostRequest({ host, body: raw }: {
         : dispatchTask({
           hydraId: host.hydraId,
           state: current,
-          task,
           project,
           rule: field({ body, name: 'rule', optional: true }),
         })
