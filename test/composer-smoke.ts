@@ -45,7 +45,7 @@ try {
   await evaluate({ code: 'const input = document.querySelector(".hydra-chat input[type=file]"); const files = new DataTransfer(); files.items.add(new File(["const result = 42"], "example.ts", { type: "text/plain" })); input.files = files.files; input.dispatchEvent(new Event("change", { bubbles: true })); return true;' })
   await eventually({ condition: 'document.querySelector(".hydra-chat textarea").value.includes("File: example.ts\\n\\nconst result = 42")', label: 'file contents enter the draft as real context' })
   await fill({ label: 'Reply to Hydra', value: '' })
-  await check({ condition: '[...document.querySelectorAll(".hydra-chat [role=combobox]")].map(x => x.getAttribute("aria-label")).join(",") === "Harness,Model,Effort,Mode,Fast" && !document.querySelector(".hydra-chat [role=dialog]")', label: 'Hydra settings are directly in the composer' })
+  await check({ condition: '[...document.querySelectorAll(".hydra-chat [role=combobox]")].map(x => x.getAttribute("aria-label")).join(",") === "Harness,Model,Effort,Permissions,Fast" && !document.querySelector(".hydra-chat [role=dialog]")', label: 'Hydra settings are directly in the composer' })
   await click({ selector: '.hydra-chat [aria-label=Harness]' })
   await click({ selector: '[role=listbox][aria-label=Harness] [role=option]:nth-child(2)' })
   await eventually({ condition: 'document.querySelector(".hydra-chat [aria-label=Harness]").textContent.includes("Codex") && !document.querySelector(".hydra-chat [aria-label=Harness]").disabled', label: 'harness selection saves for the next message' })
