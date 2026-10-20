@@ -26,8 +26,10 @@ try {
   await b.eventually({ condition: 'document.querySelector(".task-updates")?.textContent.includes("Created task")', label: 'Updates loads existing factual history' })
   await b.check({ condition: '!document.querySelector(".detail [role=tab], .detail .composer, .detail .thread")', label: 'open card contains Updates without tabs, conversation or composer' })
   await b.check({ condition: 'document.querySelector(".task-updates li").textContent.includes("Which canary") && document.querySelectorAll(".task-updates time").length >= 3', label: 'newest declaration shows state, note and time' })
-  commands.task(['status', 'migration', 'paused', '--note', 'Waiting for the canary decision.', '--actor', 'worker'])
+  commands.task(['status', 'migration', 'paused', '--note', 'Waiting for the canary decision.\n\n1. Choose a canary.\n2. Confirm the rollout.', '--actor', 'worker'])
   await b.eventually({ condition: 'document.querySelector(".task-updates li")?.textContent.includes("Waiting for the canary decision")', label: 'worker declarations arrive without a refresh' })
+
+  await b.check({ condition: '(() => { const list = document.querySelector(".task-updates .markdown ol"); return getComputedStyle(list).listStyleType === "decimal" && parseFloat(getComputedStyle(list).paddingLeft) > 0 && getComputedStyle(list.querySelector("li")).borderBottomWidth === "0px"; })()', label: 'numbered steps keep their markers and are not styled as timeline rows' })
 
   for (const [width, height, size] of [[1440, 900, 'desktop'], [390, 844, 'phone']] as const) {
     await b.browser({ args: ['emulate', '--viewport', `${width}x${height}x1${size === 'phone' ? ',mobile,touch' : ''}`] })
