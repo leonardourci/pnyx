@@ -1,5 +1,5 @@
-import { accountEnvironment, chooseCandidate, chosenSettings, hostedOverride, overrideOf, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
-import { effectiveDispatch } from '../dispatch/config.ts'
+import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
+import { effectiveDispatch, type Harness } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
@@ -1167,11 +1167,15 @@ export function createHost({
 }
 
 // A harness whose catalog cannot be read is left out, so its models are not checked.
-async function catalogOffers({ host, harnesses }: { host: Host; harnesses: ('claude' | 'codex')[] }) {
-  const read = await Promise.all(harnesses.map(harness => host.models({ harness })
-    .then(models => [[harness, modelIds({ models })]], () => [])))
+async function catalogOffers({ host, harnesses }: { host: Host; harnesses: Harness[] }) {
+  const offers: Partial<Record<Harness, string[]>> = {}
 
-  return Object.fromEntries(read.flat()) as Partial<Record<'claude' | 'codex', string[]>>
+  await Promise.all([...new Set(harnesses)].map(harness => host.models({ harness })
+    .then(models => {
+      offers[harness] = modelIds({ models })
+    }, () => {})))
+
+  return offers
 }
 
 const field = ({ body, name, optional = false }: {
@@ -1214,18 +1218,18 @@ export async function hostRequest({ host, body: raw }: {
       const current = loadHydra({ hydraId: host.hydraId }).state
       const project = findCard({ state: current, ref: task }).project
       const config = effectiveDispatch({ hydraId: host.hydraId, state: current })
+      const rule = field({ body, name: 'rule', optional: true })
+      const named = (ruleCandidates({ dispatch: config.dispatch, rule }) ?? []).filter(c => c.model)
       const dispatch = body.dispatch
         ? validateChoice({ value: body.dispatch, config, project })
         : chooseCandidate({
           config,
           project,
-          rule: field({ body, name: 'rule', optional: true }),
-          override: overrideOf({ value: body.override }),
-          offers: await catalogOffers({ host, harnesses: ['claude', 'codex'] }),
+          rule,
+          offers: await catalogOffers({ host, harnesses: named.map(c => c.harness) }),
         })
 
-      hostedOverride({ harness: dispatch.provider, override: dispatch.override })
-      // The rule's own settings, Fast included, apply from the first turn, with any override on top.
+      // A setting changed after the start would reach only the next turn.
       const settings = { ...chosenSettings({ choice: dispatch }), provider: dispatch.provider === 'codex' ? 'codex' : 'claude-code' }
 
       return host.start({ dispatch, task, prompt: field({ body, name: 'prompt' })!, folder, settings, replacement: field({ body, name: 'replacement', optional: true }), id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }) })
@@ -1271,6 +1275,6 @@ export async function hostRequest({ host, body: raw }: {
     }
 
     default:
-      throw new HydraError({ message: 'action must be start, continue, send, set or permission', code: 'VALIDATION_ERROR' })
+      throw new HydraError({ message: 'action must be hydra, start, models, continue, send, set or permission', code: 'VALIDATION_ERROR' })
   }
 }
