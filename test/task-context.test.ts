@@ -164,7 +164,7 @@ test('Hydra changes need one reason, which Pnyx posts as its chat line, and the 
     const check = await hydraCheck({ args: ['check', '--after', '0', '--hydra', 'default'] }) as { changes: { type: string; actor: string; summary: string }[] }
     const own = check.changes.filter(c => c.type === 'hydra.message').map(c => c.summary)
     assert.deepEqual(own, [`Hydra: ${lines[0]}`, `Hydra: ${lines[1]} (It found two schemas: v1 in the API and v2 in the migration.)`])
-    assert.ok(check.changes.some(c => c.actor === 'web'))
+    assert.ok(check.changes.some(c => c.actor === 'owner (web)'))
     assert.ok(!check.changes.some(c => c.actor === 'hydra' && c.type !== 'hydra.message'))
   } finally {
     rmSync(f.home, { recursive: true, force: true })
