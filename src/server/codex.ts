@@ -37,6 +37,7 @@ function userQuestions({ value }: { value: unknown }): (Question & { id: string 
         id: q.id,
         question: q.question,
         ...(typeof q.header === 'string' && q.header ? { header: q.header } : {}),
+        ...(q.isSecret === true ? { secret: true } : {}),
         options: options.map(o => ({ label: o.label as string, ...(typeof o.description === 'string' && o.description ? { description: o.description } : {}) })),
       }]
       : []

@@ -1016,11 +1016,14 @@ export function createHost({
           const answered = choice === 'allow' && (request.questions || request.form || answer !== undefined)
             ? permissionAnswer({ request, value: answer })
             : {}
+          const recorded = answered.answers
+            ? { answers: answered.answers.map((picked, i) => request.questions?.[i]?.secret ? ['(hidden)'] : picked) }
+            : answered
           writer.append({
             event: permissionEvent({
               state: writer.state,
               card,
-              request: { ...request, status: choice, ...answered },
+              request: { ...request, status: choice, ...recorded },
               meta: { at: at(), actor, reason: why },
             }),
           })
@@ -1041,7 +1044,7 @@ export function createHost({
               task: card.id,
               request: id,
               status: choice,
-              ...answered,
+              ...recorded,
               ...(posted ? { posted } : {}),
             },
           }

@@ -91,6 +91,8 @@ export interface Question {
   header?: string
   options: { label: string; description?: string }[]
   multiSelect?: boolean
+  // Its answer reaches the agent but is never recorded.
+  secret?: boolean
 }
 
 export const FORM_FIELD_TYPES = ['string', 'number', 'integer', 'boolean'] as const

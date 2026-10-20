@@ -76,7 +76,7 @@ createInterface({ input: process.stdin }).on('line', line => {
     if (text === 'QUESTION' || text === 'ELICIT') {
       waiting = { id: turnId, text }
       send(text === 'QUESTION'
-        ? { id: 'approval', method: 'item/tool/requestUserInput', params: { threadId, turnId, itemId: 'ask-item', isBlocking: true, questions: [{ id: 'scheme', header: 'Scheme', question: 'Cover http links?', options: [{ label: 'Yes', description: 'Test both schemes' }, { label: 'No', description: 'Only https' }] }, { id: 'name', header: 'Name', question: 'What should the test be called?', options: null }] } }
+        ? { id: 'approval', method: 'item/tool/requestUserInput', params: { threadId, turnId, itemId: 'ask-item', isBlocking: true, questions: [{ id: 'scheme', header: 'Scheme', question: 'Cover http links?', options: [{ label: 'Yes', description: 'Test both schemes' }, { label: 'No', description: 'Only https' }] }, { id: 'name', header: 'Name', question: 'What should the test be called?', isSecret: true, options: null }] } }
         : { id: 'approval', method: 'mcpServer/elicitation/request', params: { threadId, turnId, serverName: 'tracker', mode: 'form', message: 'Pick a priority', requestedSchema: { type: 'object', properties: { priority: { type: 'string', enum: ['low', 'high'] } }, required: ['priority'] } } })
     } else if (['DENY', 'ALLOW', 'FILE', 'CANCEL', 'PERMISSIONS_ALLOW', 'PERMISSIONS_DENY'].includes(text)) {
       waiting = { id: turnId, text }
