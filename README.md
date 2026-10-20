@@ -68,6 +68,8 @@ One server runs every Hydra in the Pnyx data folder (`~/.pnyx`, or `PNYX_HOME`):
 
 The browser reconnects automatically with capped backoff and a heartbeat, resumes Hydra events and restores the open conversation subscription. Composers stay usable during an outage; submitting a message keeps its draft and sends it when the connection returns, using the same delivery key on retries. A failed send leaves one short line in the conversation. The pnyx name in the left panel shows an offline mark when the server cannot be reached. Session identities and attachments live in the event log and survive browser reloads and server restarts.
 
+Replies from Claude Code and Codex agents that Pnyx runs appear as they are written in Hydra’s chat and the task’s Conversation section. Working dots appear before the reply starts, and new messages arrive with a short animation. Reduced-motion preferences turn off the animations and text pacing. The completed reply stays in the harness’s recorded transcript.
+
 When the server restarts on a new build at the same port, an open Hydra reloads itself and keeps the open card, unsent drafts and scroll position.
 
 To keep it running in the background:
