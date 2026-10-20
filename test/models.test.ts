@@ -44,9 +44,15 @@ test('Claude discovers and runs models through the installed CLI', async () => {
         yield 'Use the selected model'
       }
 
-      for await (const activity of session.run({ input: input(), permission: async () => ({ behavior: 'deny', message: 'Test' }) })) {
-        assert.ok(['working', 'finished'].includes(activity))
+      const states: string[] = []
+
+      for await (const event of session.run({ input: input(), permission: async () => ({ behavior: 'deny', message: 'Test' }) })) {
+        if (typeof event === 'string') {
+          states.push(event)
+        }
       }
+
+      assert.deepEqual(states, ['working', 'finished'])
 
       assert.equal(sdk.calls[0]?.options.pathToClaudeCodeExecutable, catalogExecutable)
       assert.equal(sdk.calls[0]?.options.model, 'haiku')
@@ -126,9 +132,15 @@ test('Codex lists every page and starts the selected wire model', async () => {
         yield 'Use the selected model'
       }
 
-      for await (const activity of session.run({ input: input(), permission: async () => ({ behavior: 'deny', message: 'Test' }) })) {
-        assert.ok(['working', 'finished'].includes(activity))
+      const states: string[] = []
+
+      for await (const event of session.run({ input: input(), permission: async () => ({ behavior: 'deny', message: 'Test' }) })) {
+        if (typeof event === 'string') {
+          states.push(event)
+        }
       }
+
+      assert.deepEqual(states, ['working', 'finished'])
 
       assert.equal(fixture.messages().find(m => m.method === 'thread/start')?.params?.model, 'gpt-catalog-two')
       assert.equal(fixture.messages().find(m => m.method === 'turn/start')?.params?.model, 'gpt-catalog-two')
