@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -256,8 +256,18 @@ test('Hydra’s chat drained from turn-end hooks stays in history after its tran
   }
 })
 
+test('writes naming an unknown Hydra are refused instead of creating it', () => {
+  const f = fixture({ hydraId: 'typo-hydra' })
+  assert.throws(() => f.run({ args: ['task', 'create', '--title', 'Lost'] }), (error: { stdout: string }) => /unknown Hydra: typo-hydra/.test(error.stdout))
+  assert.equal(existsSync(join(f.root, 'hydras', 'typo-hydra')), false)
+  f.run({ args: ['hydra', 'create', 'typo-hydra'] })
+  f.run({ args: ['task', 'create', '--title', 'Found'] })
+  assert.equal(Object.values(f.state().cards).some(c => c.title === 'Found'), true)
+})
+
 test('role columns record a declaration, column edits keep the Hydra unconfigured and outcome undo restores status', () => {
   const f = fixture({ hydraId: 'work' })
+  mkdirSync(join(f.root, 'hydras', 'work'), { recursive: true })
 
   try {
     f.run({ args: ['column', 'rename', 'needs_you', '--title', 'Your turn'] })

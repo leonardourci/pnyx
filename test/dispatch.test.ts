@@ -202,6 +202,7 @@ test('migration writes local rules once and later edits preserve the migrated de
   lab()
   withWriter({
     hydraId: 'lab',
+    create: true,
     fn: ({ writer }) => {
       const decision = hydraEvent({ state: writer.state, meta: { at: '2026-10-16T00:00:00Z', actor: 'test' }, cardId: '$board', change: { type: 'board.agents', data: { before: {}, agents: { default: { harness: 'codex', model: 'gpt-6.1-sol' }, review: { harness: 'claude', model: 'opus' } } } } })
       assert.ok('event' in decision)

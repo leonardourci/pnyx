@@ -87,6 +87,7 @@ function hydraId() {
   const folder = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-paseo-work-')))
   withWriter({
     hydraId: 'lab',
+    create: true,
     fn: ({ writer }) => {
       const decision = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: 'work', input: { title: 'Lab task', activity: 'waiting' }, meta: { at, actor: 'test' } })
       assert.ok('event' in decision)

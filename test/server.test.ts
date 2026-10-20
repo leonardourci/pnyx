@@ -201,6 +201,7 @@ async function handshakeStatus(
 }
 
 async function hydraWithCard({ hydraId = 'default' }: { hydraId?: string } = {}) {
+  mkdirSync(hydraDir({ hydraId }), { recursive: true })
   server = await startServer({ hydraId })
   await sendToSocket({ path: server.socket!, text: JSON.stringify(hookEvent({ id: 'hook-1', key: 'a', title: 'A' })) })
   await seqIs({ seq: 1, hydraId })

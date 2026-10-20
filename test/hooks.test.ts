@@ -98,6 +98,16 @@ async function hook({ script, args, input }: { script: string; args: string[]; i
   return child
 }
 
+test('hook drops events for an unknown Hydra instead of creating it', async () => {
+  const { script, home } = sandbox()
+  const child = execFileAsync('/bin/sh', [script, 'claude', 'UserPromptSubmit'], { encoding: 'utf8', env: { PATH: process.env.PATH, PNYX_HYDRA: 'typo-hydra' } })
+  // The hook exits before reading its input, so the write may meet a closed pipe.
+  child.child.stdin!.on('error', () => {}).end(fixture({ name: 'claude-user-prompt' }))
+  const { stdout, stderr } = await child
+  assert.equal(stdout + stderr, '')
+  assert.equal(existsSync(join(home, 'hydras', 'typo-hydra')), false)
+})
+
 test('hook spools one silent JSON line when no service is listening', async () => {
   const { script, spool, spooled } = sandbox()
   const { stdout, stderr } = await hook({ script, args: ['claude', 'UserPromptSubmit'], input: fixture({ name: 'claude-user-prompt' }) })

@@ -30,6 +30,7 @@ import { pnyxHome } from './paths.ts'
 
 export { pnyxHome } from './paths.ts'
 
+export const DEFAULT_HYDRA = 'default'
 const LOCK_TIMEOUT_MS = 5000
 const STALE_EMPTY_LOCK_MS = 10_000
 
@@ -375,8 +376,10 @@ export interface Writer {
 
 // Runs `fn` as the Hydra's single writer. Each append is flushed to disk before
 // the state advances; the snapshot is replaced afterwards.
-export function withWriter<T>({ hydraId, fn }: {
+export function withWriter<T>({ hydraId, fn, create = false }: {
   hydraId: string
+  // Only `hydra create` makes a new Hydra; the default Hydra is made on first use.
+  create?: boolean
   fn: (
     { writer }: {
       writer: Writer
@@ -384,6 +387,11 @@ export function withWriter<T>({ hydraId, fn }: {
   ) => T
 }): T {
   const dir = hydraDir({ hydraId })
+
+  if (!create && hydraId !== DEFAULT_HYDRA && !existsSync(dir)) {
+    throw new HydraError({ message: `unknown Hydra: ${hydraId}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi hydra list` for the Hydras, or `pnyx-axi hydra create <id>` to add one'] })
+  }
+
   privateDir({ dir })
   const release = acquireLock({ dir })
 

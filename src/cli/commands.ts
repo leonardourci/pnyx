@@ -56,9 +56,8 @@ import { answerPrompt } from '../core/answer.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
-import { hydraDir, hydraIds, loadHydra, readEvents, repairHydra, spoolFiles, withWriter, type Writer } from '../store/hydra-store.ts'
+import { DEFAULT_HYDRA, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, spoolFiles, withWriter, type Writer } from '../store/hydra-store.ts'
 
-const DEFAULT_HYDRA = 'default'
 const HISTORY_LIMIT = 20
 const HISTORY_MAX = 100
 const HOME_LIMIT = 50
@@ -320,8 +319,9 @@ function originalReceipt(
 // A repeated --event-id answers with the original receipt before any other check,
 // so a retry of a write that already landed never reports a conflict.
 export function commit(
-  { hydraId, meta, intent, decide, confirmation }: {
+  { hydraId, meta, intent, decide, confirmation, create }: {
     hydraId: string
+    create?: boolean
     meta: Meta
     intent: Intent
     decide: ({ state, meta }: { state: HydraState; meta: Meta }) => Decision
@@ -332,6 +332,7 @@ export function commit(
 
   return withWriter({
     hydraId,
+    create,
     fn: ({ writer }) => {
       const spool = drainSpool({ writer })
       const seq = meta.id === undefined ? undefined : writer.state.eventIds[meta.id]
@@ -1062,6 +1063,7 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
 
   return commit({
     hydraId: id,
+    create: action === 'create',
     meta: m,
     intent: { type: 'board.configured', card: '$board' },
     decide: ({ state }) => {
