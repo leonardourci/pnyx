@@ -11,7 +11,7 @@ import { fakeDispatch } from './dispatch-fixture.ts'
 import { harvestTranscripts } from '../src/integrations/hooks/harvest.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
-import { loadHydra, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, readEvents, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { fakeCodex } from './codex-fixture.ts'
 
 const meta = { at: '2026-10-15T00:00:00Z', actor: 'test', id: 'start-1' }
@@ -65,9 +65,10 @@ test('Codex starts through app-server by default and records its native thread, 
   const start = fixture.messages().find(m => m.method === 'thread/start')!
   assert.deepEqual(start.params, {
     cwd: root,
-    config: { 'shell_environment_policy.set.PNYX_HOME': process.env.PNYX_HOME, 'shell_environment_policy.set.PNYX_HYDRA': 'lab' },
+    config: { 'shell_environment_policy.set.PNYX_HOME': process.env.PNYX_HOME, 'shell_environment_policy.set.PNYX_HYDRA': 'lab', 'features.default_mode_request_user_input': true },
     model: 'gpt-6.1-sol',
     approvalPolicy: 'on-request',
+    sandbox: 'workspace-write',
   })
   const turns = () => fixture.messages().filter(m => m.method === 'turn/start')
   assert.match(String((turns()[0]!.params!.input as {
@@ -75,6 +76,7 @@ test('Codex starts through app-server by default and records its native thread, 
   }[])[0]!.text), /^Release the canary\.\n\nYou are the Pnyx worker/)
   assert.equal(turns()[0]!.params!.effort, 'high')
   assert.equal(turns()[0]!.params!.approvalPolicy, 'on-request')
+  assert.deepEqual(turns()[0]!.params!.sandboxPolicy, { type: 'workspaceWrite', writableRoots: [process.env.PNYX_HOME], networkAccess: true })
   assert.equal((await startTask({ hydraId: 'lab', task: 'ship', meta })).event, 'none: duplicate')
   assert.equal(fixture.children.length, 1)
   const count = Object.keys(state().cards).length
@@ -97,6 +99,7 @@ test('Codex starts through app-server by default and records its native thread, 
   assert.equal(turns()[1]!.params!.model, 'gpt-6-luna')
   assert.equal(turns()[1]!.params!.effort, 'low')
   assert.equal(turns()[1]!.params!.approvalPolicy, 'never')
+  assert.deepEqual(turns()[1]!.params!.sandboxPolicy, { type: 'dangerFullAccess' })
 })
 
 test('Codex closes with the server and lazily resumes its interrupted thread on the next message', async () => {
@@ -300,4 +303,44 @@ test('Codex permission profiles grant only the requested turn scope and denial g
     const response = fixture.messages().filter(m => m.id === 'approval')[index]!
     assert.deepEqual(response.result, { permissions: choice === 'allow' ? { network: { enabled: true } } : {}, scope: 'turn' })
   }
+})
+
+test('Codex questions and MCP forms wait on the task and get the owner’s answer', async () => {
+  const { fixture, task, send } = await lab()
+  await startTask({ hydraId: 'lab', task: 'ship', meta })
+  await until({ check: () => task().sessionActivity === 'finished' })
+  await send({ text: 'QUESTION' })
+  await until({ check: () => task().permissions?.length === 1 })
+  const question = task().permissions![0]!
+  assert.equal(question.tool, 'Question')
+  assert.deepEqual(question.questions?.map(q => [q.question, q.options.map(o => o.label)]), [['Cover http links?', ['Yes', 'No']], ['What should the test be called?', []]])
+  assert.equal(question.input.threadId, undefined)
+  await assert.rejects(async () => commands.task(['permission', 'ship', question.id, 'allow', '--hydra', 'lab']), /needs an answer/)
+  await assert.rejects(async () => commands.task(['permission', 'ship', question.id, 'allow', '--answer', '{"answers":[{"pick":[3]},{"text":"x"}]}', '--hydra', 'lab']), /option numbers from 1 to 2/)
+  await commands.task(['permission', 'ship', question.id, 'allow', '--answer', '{"answers":[{"pick":[1]},{"text":"covers http"}]}', '--hydra', 'lab'])
+  await until({ check: () => task().sessionActivity === 'finished' })
+  assert.deepEqual(fixture.messages().find(m => m.id === 'approval')?.result, { answers: { scheme: { answers: ['Yes'] }, name: { answers: ['covers http'] } } })
+  assert.deepEqual(task().permissions![0]!.answers, [['Yes'], ['(hidden)']])
+  assert.equal(JSON.stringify(readEvents({ hydraId: 'lab' })).includes('covers http'), false)
+
+  await send({ text: 'QUESTION' })
+  await until({ check: () => task().permissions?.length === 2 })
+  await commands.task(['permission', 'ship', task().permissions![1]!.id, 'deny', '--hydra', 'lab'])
+  await until({ check: () => task().sessionActivity === 'finished' })
+  assert.deepEqual(fixture.messages().filter(m => m.id === 'approval')[1]?.result, { answers: {} })
+
+  await send({ text: 'ELICIT' })
+  await until({ check: () => task().permissions?.length === 3 })
+  const elicitation = task().permissions![2]!
+  assert.deepEqual(elicitation.form, [{ name: 'priority', type: 'string', options: ['low', 'high'], required: true }])
+  await commands.task(['permission', 'ship', elicitation.id, 'allow', '--answer', '{"values":{"priority":"high"}}', '--hydra', 'lab'])
+  await until({ check: () => task().sessionActivity === 'finished' })
+  assert.deepEqual(fixture.messages().filter(m => m.id === 'approval')[2]?.result, { action: 'accept', content: { priority: 'high' } })
+
+  await send({ text: 'ALLOW' })
+  await until({ check: () => task().permissions?.length === 4 })
+  const command = task().permissions![3]!
+  await assert.rejects(async () => commands.task(['permission', 'ship', command.id, 'allow', '--answer', '{"answers":[]}', '--hydra', 'lab']), /takes allow or deny without an answer/)
+  await commands.task(['permission', 'ship', command.id, 'allow', '--hydra', 'lab'])
+  await until({ check: () => task().sessionActivity === 'finished' })
 })

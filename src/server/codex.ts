@@ -1,6 +1,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import type { AskPermission, HostedText, ModelOption, Provider } from './provider.ts'
+import type { Question } from '../core/model.ts'
+import { form } from '../integrations/hooks/observe.ts'
+import { pnyxHome } from '../store/paths.ts'
+import type { AskPermission, HostedText, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({ cwd, env }: {
   cwd: string
@@ -10,6 +13,36 @@ export type SpawnCodex = ({ cwd, env }: {
 type ObjectValue = Record<string, unknown>
 const object = ({ value }: { value: unknown }): ObjectValue =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ? value as ObjectValue : {}
+
+// The server requests Pnyx answers, each shown to the owner as this tool.
+const TOOLS: Record<string, string> = {
+  'item/commandExecution/requestApproval': 'Command',
+  'item/fileChange/requestApproval': 'File change',
+  'item/permissions/requestApproval': 'Turn permissions',
+  'item/tool/requestUserInput': 'Question',
+  'mcpServer/elicitation/request': 'MCP input',
+}
+const ASKS = Object.keys(TOOLS)
+// Protocol ids a person never needs to judge a request.
+const HIDDEN = ['threadId', 'turnId', 'itemId', 'approvalId', 'startedAtMs']
+
+// request_user_input questions; one without options takes typed text only.
+function userQuestions({ value }: { value: unknown }): (Question & { id: string })[] {
+  return (Array.isArray(value) ? value : []).flatMap(raw => {
+    const q = object({ value: raw })
+    const options = (Array.isArray(q.options) ? q.options : []).map(o => object({ value: o })).filter(o => typeof o.label === 'string')
+
+    return typeof q.id === 'string' && typeof q.question === 'string'
+      ? [{
+        id: q.id,
+        question: q.question,
+        ...(typeof q.header === 'string' && q.header ? { header: q.header } : {}),
+        ...(q.isSecret === true ? { secret: true } : {}),
+        options: options.map(o => ({ label: o.label as string, ...(typeof o.description === 'string' && o.description ? { description: o.description } : {}) })),
+      }]
+      : []
+  })
+}
 
 function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
   let permission: AskPermission | undefined, activeThread: string | undefined
@@ -80,7 +113,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
             return
           }
 
-          if (!['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval'].includes(message.method)) {
+          if (!ASKS.includes(message.method)) {
             write({ message: { id, error: { code: -32601, message: 'Pnyx cannot answer this request yet' } } })
 
             return
@@ -90,31 +123,56 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
           const abort = new AbortController()
           approvals.set(id, { abort, thread: params.threadId, turn: params.turnId })
           const item = typeof params.itemId === 'string' ? items.get(params.itemId) : undefined
-          const turnPermissions = message.method === 'item/permissions/requestApproval'
-          const input = { ...params, ...(turnPermissions ? { scope: 'turn' } : {}), ...(item?.changes ? { changes: item.changes } : {}) }
-          const tool = turnPermissions ? 'Turn permissions' : message.method === 'item/commandExecution/requestApproval' ? 'Command' : 'File change'
+          const method = message.method
+          const asked = method === 'item/tool/requestUserInput'
+            ? userQuestions({ value: params.questions })
+            : []
+          const elicitation = method === 'mcpServer/elicitation/request'
+          const fields = elicitation
+            ? form({ payload: { requested_schema: params.requestedSchema, mode: params.mode } })
+            : undefined
+          const shown = Object.fromEntries(Object.entries(params)
+            .filter(([key]) => !HIDDEN.includes(key)))
+          const input = {
+            ...shown,
+            ...(method === 'item/permissions/requestApproval' ? { scope: 'turn' } : {}),
+            ...(item?.changes ? { changes: item.changes } : {}),
+          }
           const answer = permission && params.threadId === activeThread ? permission({
-            tool,
+            tool: TOOLS[method]!,
             input,
             signal: abort.signal,
             ...(typeof params.reason === 'string' ? { description: params.reason } : {}),
-          }) : Promise.resolve({ behavior: 'deny' as const })
+            ...(asked.length ? { questions: asked } : {}),
+            ...(fields ? { form: fields } : {}),
+          }) : Promise.resolve({ behavior: 'deny' as const, message: '' })
 
-          const respond = ({ allow }: { allow: boolean }) => {
+          const respond = ({ decision }: { decision: PermissionDecision }) => {
             if (!failure && approvals.get(id)?.abort === abort) {
               approvals.delete(id)
+              const allow = decision.behavior === 'allow'
               const requested = object({ value: params.permissions })
               const permissions = Object.fromEntries(
                 Object.entries(requested).filter(([, value]) => value !== null),
               )
-              const result = turnPermissions
+              const result = method === 'item/permissions/requestApproval'
                 ? { permissions: allow ? permissions : {}, scope: 'turn' }
-                : { decision: allow ? 'accept' : 'decline' }
+                : method === 'item/tool/requestUserInput'
+                  ? {
+                    answers: allow
+                      ? Object.fromEntries(asked.map((q, i) => [
+                        q.id, { answers: decision.answers?.[i] ?? [] },
+                      ]))
+                      : {},
+                  }
+                  : elicitation
+                    ? allow ? { action: 'accept', content: decision.values ?? {} } : { action: 'decline' }
+                    : { decision: allow ? 'accept' : 'decline' }
               write({ message: { id, result } })
             }
           }
 
-          void answer.then(result => respond({ allow: result.behavior === 'allow' }), () => respond({ allow: false }))
+          void answer.then(decision => respond({ decision }), () => respond({ decision: { behavior: 'deny', message: '' } }))
         } else if (message.method === 'serverRequest/resolved' || message.method === 'turn/completed') {
           const params = object({ value: message.params })
           const turn = object({ value: params.turn })
@@ -260,6 +318,11 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
   }
 }
 
+// An agent that asks writes only in its folder and Pnyx's home; network stays on so pnyx-axi reaches the server.
+const sandboxPolicy = ({ mode, env }: { mode: string; env: NodeJS.ProcessEnv }) => mode === 'never'
+  ? { type: 'dangerFullAccess' }
+  : { type: 'workspaceWrite', writableRoots: [env.PNYX_HOME || pnyxHome()], networkAccess: true }
+
 // A shell_environment_policy that inherits only core variables would drop Pnyx's own, so they are set explicitly.
 const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fromEntries(Object
   .entries(env)
@@ -324,11 +387,12 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
           params: {
             ...(agent ? { threadId: agent.sessionId } : {}),
             cwd,
-            config: pnyxShellEnvironment({ env }),
+            // Lets a worker ask the owner with request_user_input outside plan mode.
+            config: { ...pnyxShellEnvironment({ env }), 'features.default_mode_request_user_input': true },
             ...(instructions ? { developerInstructions: instructions } : {}),
             ...(options.model ? { model: options.model } : {}),
             ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
-            ...(options.mode ? { approvalPolicy: options.mode } : {}),
+            ...(options.mode ? { approvalPolicy: options.mode, sandbox: options.mode === 'never' ? 'danger-full-access' : 'workspace-write' } : {}),
           },
         })
         const thread = object({ value: result.thread })
@@ -367,7 +431,12 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
                   ...(options.model ? { model: options.model } : {}),
                   ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
                   ...(options.effort ? { effort: options.effort } : {}),
-                  ...(options.mode ? { approvalPolicy: options.mode } : {}),
+                  ...(options.mode
+                    ? {
+                      approvalPolicy: options.mode,
+                      sandboxPolicy: sandboxPolicy({ mode: options.mode, env }),
+                    }
+                    : {}),
                 },
               })
               const turn = object({ value: result.turn })

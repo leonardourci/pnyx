@@ -1,14 +1,14 @@
-import type { AgentRef, AgentSettings } from '../core/model.ts'
+import type { AgentRef, AgentSettings, PermissionRequest } from '../core/model.ts'
 
-export type PermissionDecision = { behavior: 'allow' } | { behavior: 'deny'; message: string }
+export type PermissionDecision = ({ behavior: 'allow' } & Pick<PermissionRequest, 'answers' | 'values'>) | { behavior: 'deny'; message: string }
 export type HostedText = { type: 'text'; id: string; text: string; append?: boolean }
 export type HostedEvent = 'working' | 'finished' | HostedText
-export type AskPermission = ({ tool, input, signal, description }: {
+export type AskPermission = ({ tool, input, signal, description, questions, form }: {
   tool: string
   input: Record<string, unknown>
   signal: AbortSignal
   description?: string
-}) => Promise<PermissionDecision>
+} & Pick<PermissionRequest, 'questions' | 'form'>) => Promise<PermissionDecision>
 
 export interface HostedSession {
   id: string

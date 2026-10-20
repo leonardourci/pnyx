@@ -573,6 +573,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       via: { type: 'string' },
       command: { type: 'string' },
       rule: { type: 'string' },
+      answer: { type: 'string' },
       'in-place': { type: 'boolean' },
       safe: { type: 'boolean' },
       discard: { type: 'boolean' },
@@ -617,7 +618,23 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const choice = positionals[3]
 
     if (choice !== 'allow' && choice !== 'deny') {
-      throw new HydraError({ message: 'Use task permission <task> <request> allow|deny', code: 'VALIDATION_ERROR' })
+      // A quoted "<task> <request>" arrives as one argument, so say what was parsed.
+      const got = positionals.slice(1).map(arg => `'${arg}'`)
+        .join(' ') || 'nothing'
+
+      throw new HydraError({
+        message: `Use task permission <task> <request> allow|deny (got ${got})`,
+        code: 'VALIDATION_ERROR',
+        help: ['Pass the task, the request id and allow or deny as separate arguments'],
+      })
+    }
+
+    let answer: unknown
+
+    try {
+      answer = typeof values.answer === 'string' ? JSON.parse(values.answer) : undefined
+    } catch {
+      throw new HydraError({ message: '--answer must be JSON', code: 'VALIDATION_ERROR' })
     }
 
     return askHost({
@@ -627,6 +644,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         task: required({ value: positionals[1], what: 'task id' }),
         request: required({ value: positionals[2], what: 'request id' }),
         choice,
+        ...(answer !== undefined ? { answer } : {}),
         actor: m.actor,
         ...(reason ? { reason } : {}),
         ...(m.details ? { details: m.details } : {}),
@@ -1995,7 +2013,9 @@ pnyx-axi task rename <id> [--title <title>] [--project <name>]
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
-pnyx-axi task permission <task> <request> allow|deny [--reason <text>]
+pnyx-axi task permission <task> <request> allow|deny [--answer <json>] [--reason <text>]
+A question request is allowed with its answers, --answer '{"answers":[{"pick":[1]},{"text":"..."}]}' (one per question, picks
+numbered from 1), and a form with --answer '{"values":{"<field>":"<value>"}}'; deny skips it.
 pnyx-axi task project <task> --project <name|path>
 pnyx-axi task remind <task> <when|clear>
 pnyx-axi task reminders
@@ -2023,9 +2043,9 @@ task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's fold
 Pnyx server (\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its native session, folder
 and settings on the task. Replies and setting changes from the Hydra or \`pnyx-axi reply\` and \`pnyx-axi agent\`
 go straight to it; after a server restart the next message resumes the same session. A turn that was
-running when the server stopped is marked interrupted and waits for a message. Permission prompts are
-refused for now. Codex mode is its approval policy (untrusted, on-request or never); its sandbox follows
-your Codex configuration. Codex applies picker changes on the next turn and queues messages during a turn.
+running when the server stopped is marked interrupted and waits for a message. Permission prompts and
+questions wait on the task for task permission. Codex mode is its approval policy (untrusted, on-request or
+never) with its sandbox: never runs with full access, the others write only in the folder and Pnyx's home. Codex applies picker changes on the next turn and queues messages during a turn.
 --via paseo asks the local Paseo daemon (PNYX_PASEO_URL, default ws://127.0.0.1:6767/ws) to start a
 Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
 and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.

@@ -12,7 +12,7 @@ import { terminalPresence, type Presence } from '../integrations/presence/check.
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained, postLine } from '../cli/commands.ts'
-import { permissionEvent } from '../core/permissions.ts'
+import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
 import { HYDRA_CARD, hostedHydra, hydraConfig, hydraEvent, wakesHydra } from '../core/hydra.ts'
 import { freeTask, HOME_SKILL, HYDRA_SKILL } from '../cli/start.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
@@ -56,10 +56,11 @@ export interface Host {
     value: string
     actor: string
   }): Promise<void>
-  permission({ task, request, choice, actor, reason, details }: {
+  permission({ task, request, choice, answer, actor, reason, details }: {
     task: string
     request: string
     choice: 'allow' | 'deny'
+    answer?: unknown
     actor: string
     reason?: string
     details?: string
@@ -372,14 +373,14 @@ export function createHost({
     return providers[provider]
   }
 
-  const askPermission = ({ key, entry, tool, input, signal, description }: {
+  const askPermission = ({ key, entry, tool, input, signal, description, questions, form }: {
     tool: string
     input: Record<string, unknown>
     signal: AbortSignal
     description?: string
     key: string
     entry: Live
-  }): Promise<PermissionDecision> => {
+  } & Pick<PermissionRequest, 'questions' | 'form'>): Promise<PermissionDecision> => {
     if (closing || signal.aborted) {
       return Promise.resolve({ behavior: 'deny', message: 'This permission request expired.' })
     }
@@ -401,6 +402,8 @@ export function createHost({
         input,
         status: 'pending',
         ...(description ? { description } : {}),
+        ...(questions?.length ? { questions } : {}),
+        ...(form ? { form } : {}),
       }
       signal.addEventListener('abort', abort, { once: true })
 
@@ -470,8 +473,8 @@ export function createHost({
 
       for await (const activity of entry.session.run({
         input: input(),
-        permission: ({ tool, input, signal, description }) => askPermission({
-          key, entry, tool, input, signal, description,
+        permission: ({ tool, input, signal, description, questions, form }) => askPermission({
+          key, entry, tool, input, signal, description, questions, form,
         }),
       })) {
         if (typeof activity !== 'string') {
@@ -982,7 +985,7 @@ export function createHost({
 
     send,
 
-    permission: ({ task, request: id, choice, actor, reason, details }) => {
+    permission: ({ task, request: id, choice, answer, actor, reason, details }) => {
       const why = explained({ meta: { at: at(), actor, reason } })
       const waiting = pending.get(id)
       const result = write({
@@ -1009,11 +1012,17 @@ export function createHost({
             return { expired: true as const }
           }
 
+          const answered = choice === 'allow' && (request.questions || request.form || answer !== undefined)
+            ? permissionAnswer({ request, value: answer })
+            : {}
+          const recorded = answered.answers
+            ? { answers: answered.answers.map((picked, i) => request.questions?.[i]?.secret ? ['(hidden)'] : picked) }
+            : answered
           writer.append({
             event: permissionEvent({
               state: writer.state,
               card,
-              request: { ...request, status: choice },
+              request: { ...request, status: choice, ...recorded },
               meta: { at: at(), actor, reason: why },
             }),
           })
@@ -1021,7 +1030,7 @@ export function createHost({
 
           if (actor === 'hydra') {
             try {
-              posted = postLine({ writer, hydraId, meta: { at: at(), actor, details }, cardId: card.id, action: `${choice === 'allow' ? 'Allowed' : 'Denied'} ${request.tool} on ${card.title}`, reason: why })
+              posted = postLine({ writer, hydraId, meta: { at: at(), actor, details }, cardId: card.id, action: `${request.questions || request.form ? (choice === 'allow' ? 'Answered' : 'Skipped') : choice === 'allow' ? 'Allowed' : 'Denied'} ${request.tool} on ${card.title}`, reason: why })
             } catch (error) {
               posted = `none: ${(error as Error).message}`
             }
@@ -1029,7 +1038,14 @@ export function createHost({
 
           return {
             expired: false as const,
-            receipt: { task: card.id, request: id, status: choice, ...(posted ? { posted } : {}) },
+            answered,
+            receipt: {
+              task: card.id,
+              request: id,
+              status: choice,
+              ...recorded,
+              ...(posted ? { posted } : {}),
+            },
           }
         },
       })
@@ -1039,7 +1055,7 @@ export function createHost({
         throw new HydraError({ message: 'the agent no longer waits for this request', code: 'PERMISSION_CLOSED' })
       }
 
-      waiting?.finish({ result: choice === 'allow' ? { behavior: 'allow' } : { behavior: 'deny', message: why || 'Permission denied from Pnyx.' } })
+      waiting?.finish({ result: choice === 'allow' ? { behavior: 'allow', ...result.answered } : { behavior: 'deny', message: why || 'Permission denied from Pnyx.' } })
 
       return result.receipt
     },
@@ -1235,7 +1251,7 @@ export async function hostRequest({ host, body: raw }: {
         throw new HydraError({ message: 'choice must be allow or deny', code: 'VALIDATION_ERROR' })
       }
 
-      return host.permission({ task: field({ body, name: 'task' })!, request: field({ body, name: 'request' })!, choice, actor, reason: field({ body, name: 'reason', optional: true }), details: field({ body, name: 'details', optional: true }) })
+      return host.permission({ task: field({ body, name: 'task' })!, request: field({ body, name: 'request' })!, choice, ...(body.answer !== undefined ? { answer: body.answer } : {}), actor, reason: field({ body, name: 'reason', optional: true }), details: field({ body, name: 'details', optional: true }) })
     }
     case 'continue':
       return host.continue({ task: field({ body, name: 'task' })!, id: field({ body, name: 'id' })!, actor, reason: field({ body, name: 'reason', optional: true }), check: body.check === true })

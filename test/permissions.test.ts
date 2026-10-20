@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { decidePush } from '../src/core/decide.ts'
-import { permissionEvent } from '../src/core/permissions.ts'
+import { permissionDetails, permissionEvent } from '../src/core/permissions.ts'
 import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import type { HydraEvent, PermissionRequest } from '../src/core/model.ts'
 
@@ -52,4 +52,19 @@ test('permission attention survives a source clearing its own attention and cann
   state = reduce({ state, event: permissionEvent({ state, card: state.cards.task!, request: { ...request, session: 'other', status: 'allow' }, meta }) })
   assert.equal(state.cards.task!.permissions![0]!.status, 'pending')
   assert.equal(state.cards.task!.attention[0]!.blocking, true)
+})
+
+test('a permission request reads as its command, files, folder and reason', () => {
+  const base = { id: 'r', session: 's', status: 'pending' as const }
+  assert.deepEqual(permissionDetails({ request: { ...base, tool: 'Command', input: { command: 'touch a.txt', cwd: '/work', reason: 'Make a file', commandActions: [] } } }), [
+    { label: 'Command', text: 'touch a.txt' },
+    { label: 'Folder', text: '/work' },
+    { label: 'Reason', text: 'Make a file' },
+  ])
+  assert.equal(permissionDetails({ request: { ...base, tool: 'Command', input: { command: "/bin/zsh -lc 'ls -a'", commandActions: [{ type: 'unknown', command: 'ls -a' }] } } })[0]!.text, 'ls -a')
+  assert.deepEqual(permissionDetails({ request: { ...base, tool: 'File change', description: 'Write files', input: { changes: [{ path: 'a.txt' }, { path: 'b.txt' }] } } }), [
+    { label: 'Files', text: 'a.txt, b.txt' },
+    { label: 'Reason', text: 'Write files' },
+  ])
+  assert.deepEqual(permissionDetails({ request: { ...base, tool: 'Turn permissions', input: { permissions: {} } } }), [])
 })

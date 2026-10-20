@@ -46,6 +46,7 @@ function QuestionField({ question, index, draft, change }: {
       </div>
       {!question.multiSelect && (
         <Input
+          type={question.secret ? 'password' : undefined}
           aria-label={`Other answer to question ${index + 1}`}
           placeholder="Or type your own answer"
           value={draft.text}
@@ -59,7 +60,11 @@ function QuestionField({ question, index, draft, change }: {
   )
 }
 
-function Questions({ request, busy, send }: { request: Attention; busy: boolean; send: Send }) {
+export function Questions({ request, busy, send }: {
+  request: Attention
+  busy: boolean
+  send: Send
+}) {
   const questions = request.questions ?? []
   const [drafts, setDrafts] = useState<Draft[]>(() => questions.map(() => ({ pick: [], text: '' })))
   const answers: QuestionAnswer[] = drafts
@@ -138,7 +143,7 @@ function FormInput({ field, value, change }: {
   )
 }
 
-function Form({ request, busy, send }: { request: Attention; busy: boolean; send: Send }) {
+export function Form({ request, busy, send }: { request: Attention; busy: boolean; send: Send }) {
   const fields = request.form ?? []
   const [values, setValues] = useState<Values>({})
   const filled = Object.fromEntries(fields.flatMap(f => {

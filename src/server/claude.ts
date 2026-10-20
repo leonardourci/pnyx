@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { EffortLevel, Options, PermissionMode, SDKMessage, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from '../core/model.ts'
+import { questions } from '../integrations/hooks/observe.ts'
 import type { Provider } from './provider.ts'
 
 export type QueryFn = typeof query
@@ -98,9 +99,29 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
               ...(allow?.length ? { allowedTools: allow.map(command => `Bash(${command}:*)`) } : {}),
               permissionPrompts: 'host',
               // eslint-disable-next-line pnyx/object-params -- The SDK owns this callback signature.
-              canUseTool: (tool, input, { signal, decisionReason }) => permission({
-                tool, input, signal, description: decisionReason,
-              }),
+              canUseTool: async (tool, input, { signal, decisionReason }) => {
+                const asked = tool === 'AskUserQuestion'
+                  ? questions({ value: input.questions })
+                  : undefined
+                const decision = await permission({
+                  tool,
+                  input,
+                  signal,
+                  description: decisionReason,
+                  ...(asked ? { questions: asked } : {}),
+                })
+
+                if (decision.behavior === 'deny') {
+                  return decision
+                }
+
+                const picked = asked && decision.answers
+
+                // Claude Code reads the answers keyed by question text, several picks joined as its own prompt joins them.
+                return picked
+                  ? { behavior: 'allow', updatedInput: { ...input, answers: Object.fromEntries(asked.map((q, i) => [q.question, picked[i]?.join(', ') ?? ''])) } }
+                  : { behavior: 'allow' }
+              },
               env,
               ...sdkOptions({ settings }),
             },

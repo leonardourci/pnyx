@@ -34,7 +34,11 @@ afterEach(async () => {
 function fakeSdk() {
   const calls: { options: Options; messages: string[]; set: string[]; closed: boolean }[] = []
   const gates: (() => void)[] = []
-  const control = { hold: false, permission: false }
+  const control: {
+    hold: boolean
+    permission: boolean
+    tool?: [string, Record<string, unknown>]
+  } = { hold: false, permission: false }
   const permissions: PermissionResult[] = []
   const aborts: AbortController[] = []
 
@@ -60,7 +64,8 @@ function fakeSdk() {
         if (control.permission) {
           const abort = new AbortController()
           aborts.push(abort)
-          const result = await options.canUseTool!('Bash', { command: 'touch allowed.txt' }, { signal: abort.signal, toolUseID: 'tool-1', requestId: 'sdk-request', decisionReason: 'Run a shell command' })
+          const [tool, input] = control.tool ?? ['Bash', { command: 'touch allowed.txt' }]
+          const result = await options.canUseTool!(tool, input, { signal: abort.signal, toolUseID: 'tool-1', requestId: 'sdk-request', decisionReason: 'Run a shell command' })
           assert.ok(result)
           permissions.push(result)
         }
@@ -362,6 +367,35 @@ test('hosted permissions survive hooks, wake Hydra and accept exactly one answer
     assert.deepEqual(sdk.permissions[0], { behavior: 'allow' })
     assert.match(loadHydra({ hydraId: 'lab' }).state.hydraMessages!.at(-1)!.text, /Allowed Bash on Ship it: The command is scoped/)
   }
+})
+
+test('an AskUserQuestion request is answered with the owner’s picks as Claude Code reads them', async () => {
+  const { task } = await lab()
+  const sdk = fakeSdk()
+  const input = {
+    questions: [
+      { question: 'Cover http links?', header: 'Scheme', multiSelect: false, options: [{ label: 'Yes', description: 'Both' }, { label: 'No', description: 'Only https' }] },
+      { question: 'Which cases?', header: 'Cases', multiSelect: true, options: [{ label: 'Null', description: '' }, { label: 'Empty', description: '' }, { label: 'Long', description: '' }] },
+    ],
+  }
+  sdk.control.permission = true
+  sdk.control.tool = ['AskUserQuestion', input]
+  server = await startServer({ hydraId: 'lab', query: sdk.query })
+  await startTask({ hydraId: 'lab', task: 'ship', meta: { ...meta, id: 'question-start' } })
+  await until({ check: () => task().permissions?.[0]?.status === 'pending', what: 'question request' })
+  const request = task().permissions![0]!
+  assert.equal(request.questions?.length, 2)
+  assert.match(task().attention.find(a => a.key.endsWith(request.id))!.text!, /Cover http links\?/)
+  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--hydra', 'lab']), /needs an answer/)
+  await assert.rejects(async () => commands.task(['permission', 'ship', request.id, 'allow', '--answer', '{"answers":[{"pick":[1,2]},{"pick":[1]}]}', '--hydra', 'lab']), /takes one option/)
+  const receipt = await commands.task(['permission', 'ship', request.id, 'allow', '--answer', '{"answers":[{"text":"Only for the README"},{"pick":[3,1]}]}', '--actor', 'web', '--hydra', 'lab'])
+  assert.deepEqual(receipt.answers, [['Only for the README'], ['Null', 'Long']])
+  await until({ check: () => sdk.permissions.length === 1, what: 'question result' })
+  assert.deepEqual(sdk.permissions[0], {
+    behavior: 'allow',
+    updatedInput: { ...input, answers: { 'Cover http links?': 'Only for the README', 'Which cases?': 'Null, Long' } },
+  })
+  assert.deepEqual(task().permissions![0]!.answers, [['Only for the README'], ['Null', 'Long']])
 })
 
 test('denial tells the provider why and neither denied nor unknown requests can be answered again', async () => {
