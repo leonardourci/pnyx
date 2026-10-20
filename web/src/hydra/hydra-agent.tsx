@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
 import { PickerField } from './agent-picker.tsx'
+import type { ModelOption } from '../../../src/server/provider.ts'
 import type { Command } from './connection.ts'
 
 export function HydraAgent({ state, command, connected, notify }: {
@@ -13,11 +14,31 @@ export function HydraAgent({ state, command, connected, notify }: {
 }) {
   const { effective } = useHeadsDispatch({ command })
   const [busy, setBusy] = useState(false)
-  const agent = state.config?.hydra.agent ?? effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0] ?? { harness: 'claude' }
+  const [catalogs, setCatalogs] = useState<Partial<Record<AgentConfig['harness'], ModelOption[]>>>({})
+  const [loading, setLoading] = useState<AgentConfig['harness'] | null>(null)
+  const [catalogError, setCatalogError] = useState('')
+  const agent: AgentConfig = state.config?.hydra.agent ?? effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0] ?? { harness: 'claude' }
   const controls = harnessControls({ provider: agent.harness === 'claude' ? 'claude-code' : 'codex', hosted: true })
 
   if (state.config?.hydra.kind === 'firstmate') {
     return null
+  }
+
+  const loadModels = () => {
+    const harness = agent.harness
+
+    if (catalogs[harness] || loading === harness) {
+      return
+    }
+
+    setLoading(harness); setCatalogError('')
+    void command({ name: 'models', args: [harness] })
+      .then(receipt => {
+        const models = receipt.models as ModelOption[]
+        setCatalogs(current => ({ ...current, [harness]: models }))
+      })
+      .catch((error: Error) => setCatalogError(error.message))
+      .finally(() => setLoading(null))
   }
 
   const save = ({ next }: { next: AgentConfig }) => {
@@ -41,9 +62,10 @@ export function HydraAgent({ state, command, connected, notify }: {
         }}
       />
       {(['model', 'effort', 'mode'] as const).map(field => {
-        const choices = controls?.controls.find(c => c.setting === field)?.options ?? []
-        const value = agent[field] ?? ''
-        const options = [{ value: '', label: field === 'mode' ? 'Permissions' : field[0].toUpperCase() + field.slice(1) }, ...choices.map(o => ({ value: o.value, label: o.label }))]
+        const choices = field === 'model' ? catalogs[agent.harness] ?? [] : controls?.controls.find(c => c.setting === field)?.options ?? []
+        const selected = agent[field] ?? ''
+        const value = field === 'model' ? catalogs[agent.harness]?.find(model => model.value === selected || (model.value !== 'default' && model.resolvedModel === selected))?.value ?? selected : selected
+        const options = [{ value: '', label: field === 'model' && loading === agent.harness ? 'Loading models…' : field === 'mode' ? 'Permissions' : field[0].toUpperCase() + field.slice(1) }, ...choices.map(o => ({ value: o.value, label: o.label }))]
 
         if (value && !options.some(o => o.value === value)) {
           options.push({ value, label: value })
@@ -56,10 +78,12 @@ export function HydraAgent({ state, command, connected, notify }: {
             value={value}
             options={options}
             disabled={busy || !connected}
+            onOpen={field === 'model' ? loadModels : undefined}
             onChange={({ value }) => save({ next: { ...agent, [field]: value || undefined } })}
           />
         )
       })}
+      {catalogError && <small role="alert">{catalogError}</small>}
       <PickerField
         label="Fast"
         value={agent.fast === undefined ? 'default' : agent.fast ? 'on' : 'off'}

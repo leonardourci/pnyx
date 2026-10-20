@@ -36,6 +36,7 @@ try {
   assert.equal(sdk.calls[0]?.options.model, 'sonnet')
   await b.screenshot({ name: 'after-replying.png' })
   await b.click({ selector: '.hydra-agent-pickers [aria-label=Model]' })
+  await b.eventually({ condition: '[...document.querySelectorAll(".hydra-agent-pickers [role=listbox][aria-label=Model] [role=option]")].some(option => option.textContent.trim() === "opus")', label: 'SDK model catalog loads in the picker' })
   await b.click({ selector: '.hydra-agent-pickers [role=listbox][aria-label=Model] [role=option]:nth-child(2)' })
   await b.eventually({ condition: 'document.querySelector(".hydra-agent-pickers [aria-label=Model]").textContent.includes("opus") && !document.querySelector(".hydra-agent-pickers [aria-label=Model]").disabled', label: 'model choice saves during a turn' })
   assert.equal(sdk.calls[0]?.options.model, 'sonnet')

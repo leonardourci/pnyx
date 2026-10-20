@@ -66,12 +66,14 @@ export function Select({
   disabled = false,
   display,
   title,
+  onOpen,
 }: {
   label: string
   value: string
   options: Option[]
   onChange({ value }: { value: string }): void
   disabled?: boolean
+  onOpen?(): void
   display?: ReactNode
   title?: string
 }) {
@@ -92,6 +94,12 @@ export function Select({
 
     return () => document.removeEventListener('pointerdown', close)
   }, [open])
+
+  useEffect(() => {
+    if (open) {
+      document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [open, active, id])
 
   const choose = ({ position: n }: { position: number }) => {
     if (options[n]) {
@@ -114,12 +122,20 @@ export function Select({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => {
+          if (!open) {
+            onOpen?.()
+          }
+
           setActive(Math.max(0, options.findIndex(o => o.value === value))); setOpen(!open)
         }}
         onKeyDown={e => {
           if (e.key === 'Escape' && open) {
             e.preventDefault(); e.stopPropagation(); setOpen(false)
           } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+            if (!open) {
+              onOpen?.()
+            }
+
             e.preventDefault(); setOpen(true); setActive(n => e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1 : Math.max(0, Math.min(options.length - 1, n + (e.key === 'ArrowDown' ? 1 : -1))))
           } else if (open && e.key === 'Enter') {
             e.preventDefault(); choose({ position: active })

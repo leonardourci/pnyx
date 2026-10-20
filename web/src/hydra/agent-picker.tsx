@@ -1,11 +1,12 @@
 import { Select, type Option } from '../components/ui/controls.tsx'
 
-export function PickerField({ label, value, options, disabled, reason, onChange }: {
+export function PickerField({ label, value, options, disabled, reason, onOpen, onChange }: {
   label: string
   value: string
   options: Option[]
   disabled?: boolean
   reason?: string
+  onOpen?(): void
   onChange({ value }: { value: string }): void
 }) {
   return (
@@ -17,6 +18,7 @@ export function PickerField({ label, value, options, disabled, reason, onChange 
         options={options}
         disabled={disabled || !!reason}
         title={reason}
+        onOpen={onOpen}
         onChange={onChange}
       />
       {reason && <small>{reason}</small>}
