@@ -831,13 +831,23 @@ async function mountOwnedHydra({
       return fail({ error: 'command needs a string id', code: 'VALIDATION_ERROR' })
     }
 
-    if (['thread', 'oracle', 'oracle-commands', 'reply', 'task-message', 'answer', 'agent', 'catalog', 'settings', 'hydras', 'hydra-agent'].includes(String(name))) {
+    if (['thread', 'oracle', 'oracle-commands', 'reply', 'task-message', 'answer', 'agent', 'catalog', 'settings', 'hydras', 'hydra-agent', 'models'].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail({ error: 'args must be strings', code: 'VALIDATION_ERROR' })
       }
 
       try {
-        if (name === 'catalog') {
+        if (name === 'models') {
+          const harness = args[0]
+
+          if (args.length !== 1 || (harness !== 'claude' && harness !== 'codex')) {
+            throw new HydraError({ message: 'models expects claude or codex', code: 'VALIDATION_ERROR' })
+          }
+
+          void agents.models({ harness })
+            .then(models => send({ ws, message: { type: 'receipt', id, models } }))
+            .catch(() => fail({ error: 'Harness model catalog unavailable. Reopen the picker to retry.', code: 'CATALOG_UNAVAILABLE' }))
+        } else if (name === 'catalog') {
           if (args.length !== 1) {
             throw new HydraError({ message: 'catalog expects a card', code: 'VALIDATION_ERROR' })
           }

@@ -42,6 +42,13 @@ function fakeSdk() {
     prompt: AsyncIterable<{ message: { content: unknown } }>
     options: Options
   }) => {
+    if (options.persistSession === false) {
+      return {
+        supportedModels: async () => ['opus', 'sonnet', 'haiku', 'fable'].map(value => ({ value, displayName: value, description: '' })),
+        close: () => {},
+      }
+    }
+
     const call = { options, messages: [] as string[], set: [] as string[], closed: false }
     calls.push(call)
 

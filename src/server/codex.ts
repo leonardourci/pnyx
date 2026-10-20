@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import type { AskPermission, HostedText, Provider } from './provider.ts'
+import type { AskPermission, HostedText, ModelOption, Provider } from './provider.ts'
 
 export type SpawnCodex = ({ cwd, env }: {
   cwd: string
@@ -268,6 +268,34 @@ const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fro
 
 export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['app-server', '--listen', 'stdio://'], { cwd, env, stdio: 'pipe' }) }: { spawnCodex?: SpawnCodex }): Provider {
   return {
+    async models({ cwd, env }) {
+      const rpc = connection({ child: spawnCodex({ cwd, env }) })
+
+      try {
+        await rpc.request({ method: 'initialize', params: { clientInfo: { name: 'pnyx', version: '0.0.0' }, capabilities: null } })
+        rpc.notify({ method: 'initialized' })
+        const models: ModelOption[] = []
+        let cursor: string | undefined
+
+        do {
+          const page = await rpc.request({ method: 'model/list', params: { ...(cursor ? { cursor } : {}) } })
+
+          for (const raw of Array.isArray(page.data) ? page.data : []) {
+            const model = object({ value: raw })
+
+            if (typeof model.model === 'string' && typeof model.displayName === 'string') {
+              models.push({ value: model.model, label: model.displayName })
+            }
+          }
+
+          cursor = typeof page.nextCursor === 'string' && page.nextCursor ? page.nextCursor : undefined
+        } while (cursor)
+
+        return models
+      } finally {
+        rpc.close()
+      }
+    },
     // ponytail: Codex has no per-command allow list here, so `allow` is unused and a Codex Hydra asks in its chat.
     async open({ cwd, agent, settings, env, signal, instructions }) {
       const rpc = connection({ child: spawnCodex({ cwd, env }) })

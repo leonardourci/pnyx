@@ -49,6 +49,16 @@ createInterface({ input: process.stdin }).on('line', line => {
     const response = JSON.stringify({ id, result: {} })
     process.stdout.write(response.slice(0, 4))
     setImmediate(() => process.stdout.write(`${response.slice(4)}\n`))
+  } else if (method === 'model/list') {
+    send({
+      id,
+      result: {
+        data: params.cursor
+          ? [{ id: 'catalog-id-two', model: 'gpt-catalog-two', displayName: 'Catalog Two' }]
+          : [{ id: 'catalog-id-one', model: 'gpt-catalog-one', displayName: 'Catalog One' }],
+        nextCursor: params.cursor ? null : 'second-page',
+      },
+    })
   } else if (method === 'thread/start' || method === 'thread/resume') {
     if (process.env.FAKE_CODEX_REFUSE === method) {
       send({ id, error: { code: -32000, message: 'fixture refused thread' } })
