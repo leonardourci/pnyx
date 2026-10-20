@@ -127,7 +127,8 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
             },
           })
 
-          let messageId = '', active = false
+          // The SDK sends each finished block as its own message at index 0, so its text reuses the index it streamed under.
+          let messageId = '', textIndex = 0, active = false
 
           for await (const message of running) {
             const activity = turnOf({ message })
@@ -141,9 +142,11 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
             }
 
             if (message.type === 'assistant' && !message.parent_tool_use_id) {
-              for (const [index, block] of message.message.content.entries()) {
+              const { id, content } = message.message
+
+              for (const [index, block] of content.entries()) {
                 if (block.type === 'text') {
-                  yield { type: 'text' as const, id: `${message.message.id}:${index}`, text: block.text }
+                  yield { type: 'text' as const, id: `${id}:${id === messageId && content.length === 1 ? textIndex : index}`, text: block.text }
                 }
               }
             }
@@ -153,8 +156,12 @@ export function claudeProvider({ query }: { query?: QueryFn }): Provider {
 
               if (event.type === 'message_start') {
                 messageId = event.message.id
-              } else if (event.type === 'content_block_start' && event.content_block.type === 'text' && event.content_block.text) {
-                yield { type: 'text' as const, id: `${messageId}:${event.index}`, text: event.content_block.text, append: true }
+              } else if (event.type === 'content_block_start' && event.content_block.type === 'text') {
+                textIndex = event.index
+
+                if (event.content_block.text) {
+                  yield { type: 'text' as const, id: `${messageId}:${event.index}`, text: event.content_block.text, append: true }
+                }
               } else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
                 yield { type: 'text' as const, id: `${messageId}:${event.index}`, text: event.delta.text, append: true }
               }

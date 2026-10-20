@@ -45,6 +45,35 @@ test('Claude forwards text before the result and excludes nested agent output', 
   assert.equal((await events.next()).value, 'finished')
 })
 
+test('Claude keeps one id for a text block after thinking, streamed and finished', async () => {
+  // The SDK repeats each finished block as its own assistant message, always at index 0.
+  const query = (() => (async function* () {
+    yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'message_start', message: { id: 'reply' } } }
+    yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } } }
+    yield { type: 'assistant', parent_tool_use_id: null, message: { id: 'reply', content: [{ type: 'thinking', thinking: 'Plan' }] } }
+    yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } } }
+    yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Seven' } } }
+    yield { type: 'assistant', parent_tool_use_id: null, message: { id: 'reply', content: [{ type: 'text', text: 'Seven' }] } }
+    yield { type: 'result', is_error: false }
+  })()) as unknown as QueryFn
+  const session = await claudeProvider({ query }).open({ cwd: '/tmp', settings: {}, env: {}, signal: new AbortController().signal })
+  const stream = liveReplies()
+  stream.start({ offset: 0 })
+
+  for await (const event of session.run({
+    input: (async function* () {
+      yield 'Hi'
+    })(),
+    permission: async () => ({ behavior: 'deny', message: 'unused' }),
+  })) {
+    if (typeof event !== 'string') {
+      assert.equal(event.id, 'reply:1'); stream.update(event)
+    }
+  }
+
+  assert.deepEqual(stream.page({ page: { card: 'hydra', entries: [], route: true, watching: 'unknown' } }).entries.map(e => e.text), ['Seven'])
+})
+
 test('Codex exposes native deltas before a held turn completes and ignores other threads', async () => {
   const root = mkdtempSync(join(tmpdir(), 'pnyx-stream-'))
   const fixture = fakeCodex({ root })

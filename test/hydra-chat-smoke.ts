@@ -47,6 +47,20 @@ try {
   await b.eventually({ condition: 'document.querySelector(".hydra-messages").textContent.includes("Hydra: Use the next model")', label: 'the next message resumes and answers' })
   assert.equal(sdk.calls[1]?.options.model, 'opus')
   assert.equal(sdk.calls[1]?.options.resume, sdk.calls[0]?.options.sessionId)
+  sdk.control.stream = true; sdk.control.hold = true
+  await b.fill({ label: 'Reply to Hydra', value: 'Comment while streaming' })
+  await b.click({ selector: '.hydra-chat .composer-send' })
+  await b.eventually({ condition: '!!document.querySelector(".hydra-chat [data-streaming] .message-block")', label: 'reply streams before its turn finishes' })
+  await b.evaluate({ code: 'document.querySelector(".hydra-chat .hydra-messages").focus(); return true;' })
+  await b.press({ key: 'c' })
+  await b.fill({ label: 'Comment on selected text', value: 'Keep this streamed passage.' }); await b.press({ key: 'Escape' })
+  sdk.release()
+  await b.eventually({ condition: '!document.querySelector(".hydra-chat [data-streaming]") && !document.querySelector(".hydra-chat .message-block[data-message-id^=\'live:\']") && document.querySelector(".hydra-chat .inline-comment")?.textContent.includes("Keep this streamed passage.")', label: 'a comment on a streamed reply stays with it once the transcript saves it' })
+  sdk.control.stream = false
+  await b.fill({ label: 'Reply to Hydra', value: 'Apply the comment' })
+  await b.click({ selector: '.hydra-chat .composer-send' })
+  await b.eventually({ condition: '!document.querySelector(".hydra-chat .inline-comment")', label: 'the comment goes with the next message' })
+  assert.match(sdk.calls[1]?.messages.at(-1) ?? '', /## Comments on your reply from [\s\S]*Keep this streamed passage\.[\s\S]*## Message\n\nApply the comment/)
   const session = state().config?.hydra.session
   const port = server.port
   await server.close(); server = await startServer({ hydraId: 'hydra-2', port, query: sdk.query })
