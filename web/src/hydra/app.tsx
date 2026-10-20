@@ -62,7 +62,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const [restored] = useState(() => hydraViews.get(navigation.hydraId)
     ?? restoreView({ key: restoreKey }))
   const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') || new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState(''), [newColumn, setNewColumn] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState<{ text: string } | null>(null), [newColumn, setNewColumn] = useState<string | null>(null)
   const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
   const [creatingTask, setCreatingTask] = useState<{ column: string; parent?: string } | null>(null)
   const [historyQuery, setHistoryQuery] = useState('')
@@ -108,8 +108,18 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     history.replaceState(null, '', url)
   }
 
+  useEffect(() => {
+    if (!notice) {
+      return
+    }
+
+    const timer = setTimeout(() => setNotice(null), 5000)
+
+    return () => clearTimeout(timer)
+  }, [notice])
+
   const notify = useCallback(({ text }: { text: string }) => {
-    setNotice(text)
+    setNotice({ text })
   }, [])
   useEffect(() => {
     if (connected) {
@@ -500,8 +510,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         </main>
         {notice && (
           <div className="notice" role="status">
-            <span>{notice}</span>
-            <Button aria-label="Dismiss notification" onClick={() => setNotice('')}>
+            <span>{notice.text}</span>
+            <Button aria-label="Dismiss notification" onClick={() => setNotice(null)}>
               <Icon name="close" />
             </Button>
           </div>
