@@ -38,7 +38,32 @@ export function taskConversation({ card, entries }: {
     && /^(user|You)$/.test(entry.role)
     && (entry.text.startsWith(launch) || [prompt, card.brief].some(text =>
       text?.trim() && entry.text.startsWith(`${text}\n\n${launch}`)))))
-  const stream = [...updates.filter(e => !ids.has(e.id)), ...conversation]
+  const matched = new Set<string>()
+
+  for (const receipt of conversation) {
+    const state = receipt.delivery?.agent?.state ?? receipt.receipt
+    const at = receipt.at
+
+    if (!receipt.replyId || !state || state === 'failed' || !at
+      || (receipt.delivery && !receipt.delivery.agent)) {
+      continue
+    }
+
+    const copy = conversation.find(entry => !matched.has(entry.id) && !entry.replyId
+      && entry.kind === 'message' && /^(user|You)( · continued)?$/.test(entry.role)
+      && entry.at && entry.at >= at
+      && (entry.part ?? 0) === (receipt.part ?? 0)
+      && entry.text.trim().replace(/\s+/g, ' ') === receipt.text.trim().replace(/\s+/g, ' '))
+
+    if (copy) {
+      matched.add(copy.id)
+    }
+  }
+
+  const stream = [
+    ...updates.filter(e => !ids.has(e.id)),
+    ...conversation.filter(e => !matched.has(e.id)),
+  ]
     .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))
 
   return [...initial, ...stream.map(entry => entry.replyId

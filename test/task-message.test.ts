@@ -82,6 +82,41 @@ test('the task conversation shows the brief once and hides hosted launch instruc
   }
 })
 
+test('task conversations keep one owner message and its receipt when the transcript catches up', () => {
+  const f = fixture()
+  const at = '2026-10-20T10:00:00Z'
+  const native: ThreadEntry = { id: 'native', kind: 'message', role: 'user', text: 'Check\n the rollback path', at }
+  const sent: ThreadEntry = { id: 'sent', replyId: 'reply-1', kind: 'message', role: 'You', text: 'Check the rollback path', at, receipt: 'delivered', delivery: { agent: { state: 'delivered' }, hydra: { state: 'queued' } } }
+
+  try {
+    const entries = taskConversation({ card: f.card(), entries: [sent, native] })
+    assert.deepEqual(entries.slice(1), [sent])
+    assert.deepEqual(taskConversation({ card: f.card(), entries: [sent] }).slice(1), [sent])
+    const older = { ...native, id: 'older', at: '2026-10-19T10:00:00Z' }
+    assert.deepEqual(
+      taskConversation({ card: f.card(), entries: [older, sent, native] }).slice(1),
+      [older, sent],
+    )
+    const repeated = { ...sent, id: 'sent-again', replyId: 'reply-2' }
+    assert.deepEqual(
+      taskConversation({ card: f.card(), entries: [sent, repeated, native] }).slice(1),
+      [sent, repeated],
+    )
+    const failed: ThreadEntry = {
+      ...sent, receipt: 'failed', delivery: { agent: { state: 'failed' }, hydra: { state: 'queued' } },
+    }
+    assert.deepEqual(taskConversation({ card: f.card(), entries: [failed, native] }).slice(1), [
+      failed, native,
+    ])
+    const identified = { ...native, replyId: 'other-reply' }
+    assert.deepEqual(taskConversation({ card: f.card(), entries: [sent, identified] }).slice(1), [
+      sent, identified,
+    ])
+  } finally {
+    f.close()
+  }
+})
+
 test('a missing worker route retains the message and exposes failure while Hydra remains queued', async () => {
   const f = fixture()
 
