@@ -10,12 +10,13 @@ import type { Connect } from '../integrations/paseo/client.ts'
 import { redact } from '../oracle/text.ts'
 import { splitEntry } from '../thread/read.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
+import { commandText } from '../integrations/hooks/observe.ts'
 import { COMMON, commands, guard, integer, parse, summarize, type Output } from './commands.ts'
 
 const TRACKED: readonly EventType[] = ['task.reminder', 'task.reminder-due', 'hydra.project', 'task.project', 'task.permission', 'hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked', 'task.launched']
 const CHECK_LIMIT = 20
 const POLL_MS = 2000
-// Writes from the Hydra page and an unlabelled CLI are the owner's; workers Pnyx runs write as `worker:<task>`.
+// The Hydra page and an unlabelled CLI are usually the owner; workers Pnyx runs write as `worker:<task>`.
 const OWNER_ACTORS = ['web', 'cli']
 
 export async function hydraCheck({ args, connect }: {
@@ -171,7 +172,7 @@ export async function hydraCheck({ args, connect }: {
       task: card.id,
       tool: p.tool,
       command: compact({
-        text: requestText({ input: p.input }) ?? p.description ?? JSON.stringify(p.input),
+        text: commandText({ input: p.input }) ?? [p.input.file_path, p.input.path].find(v => typeof v === 'string') ?? p.description ?? JSON.stringify(p.input),
       }),
       age: p.at ? `${Math.max(0, Math.round((Date.now() - Date.parse(p.at)) / 1000))}s` : 'unknown',
     })))
@@ -187,13 +188,6 @@ export async function hydraCheck({ args, connect }: {
     ...(unavailable.length ? { unavailable } : {}),
     help: [...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []), ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []), `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`],
   }
-}
-
-// The command or path a request is about, when its harness names one.
-function requestText({ input }: { input: Record<string, unknown> }): string | undefined {
-  const value = input.command ?? input.file_path ?? input.path
-
-  return Array.isArray(value) ? value.join(' ') : typeof value === 'string' ? value : undefined
 }
 
 function compact({ text }: { text: string }): string {

@@ -71,7 +71,7 @@ function short({ value }: { value: string | undefined }): string | undefined {
   return line && (line.length > 200 ? `${line.slice(0, 199)}…` : line)
 }
 
-function commandText({ input }: { input: unknown }): string | undefined {
+export function commandText({ input }: { input: unknown }): string | undefined {
   const command = (input as { command?: unknown } | null)?.command
 
   if (!Array.isArray(command)) {
