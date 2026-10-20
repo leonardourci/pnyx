@@ -9,7 +9,7 @@ import { taskReceipt } from './task.ts'
 import { cardSessionId } from '../core/tasks.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
-export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; streaming?: boolean; receipt?: ReplyState; delivery?: { agent?: { state: ReplyState; detail?: string }; hydra: { state: ReplyState; detail?: string } }; task?: string; initial?: boolean; replyId?: string; messageId?: string; part?: number }
+export interface ThreadEntry { id: string; role: string; kind: 'message' | 'tool' | 'thinking'; text: string; at?: string; session?: string; streaming?: boolean; receipt?: ReplyState; delivery?: { agent?: { state: ReplyState; detail?: string }; hydra: { state: ReplyState; detail?: string } }; task?: string; initial?: boolean; replyId?: string; messageId?: string; part?: number }
 export interface ThreadPage { card: string; session?: string; entries: ThreadEntry[]; unavailable?: string; older?: string; route: boolean; via?: string; routeKind?: ReplyRoute['kind']; noRoute?: string; watching: 'unknown' }
 const MAX_BYTES = 10 * 1024 * 1024
 // Chunk long entries instead of losing their tail. Sixty bounded entries stay
@@ -226,9 +226,10 @@ export function readThread(
   },
 ): ThreadPage {
   const found = replyRoute({ card, homes })
+  const session = cardSessionId({ card })
   const result: ThreadPage = {
     card: card.id,
-    ...(cardSessionId({ card }) ? { session: cardSessionId({ card }) } : {}),
+    ...(session ? { session } : {}),
     entries: [],
     route: 'route' in found,
     ...('route' in found ? { via: HOST_LABEL[found.route.kind], routeKind: found.route.kind } : { noRoute: found.reason }),
@@ -294,7 +295,7 @@ export function readThread(
                 || offset < beforeOffset
                 || (offset === beforeOffset && index < beforeItem)
               ) {
-                found.push({ native: `${offset}:${index}`, item })
+                found.push({ native: `${offset}:${index}`, item: { ...item, ...(session ? { session } : {}) } })
               }
             })
           } catch { /* Unsupported or incomplete records are not messages. */ }
@@ -345,7 +346,7 @@ export function readThread(
         continue
       }
 
-      splitEntry({ entry: { id: e.id, role: e.data.role, kind: 'message', text: e.data.text, at: e.at } }).forEach((item, index) => {
+      splitEntry({ entry: { id: e.id, role: e.data.role, kind: 'message', text: e.data.text, at: e.at, session: e.data.session } }).forEach((item, index) => {
         if (e.seq < replySeq! || index < replyPart!) {
           candidates.push({ item, reply: `${e.seq}:${index}` })
           archived = true
@@ -360,7 +361,7 @@ export function readThread(
 
     seenReplies.add(e.data.reply)
     const receipt = taskReceipt({ card: state.cards[card.id] ?? card, reply: e.data.reply })
-    splitEntry({ entry: { id: replyEntryId({ reply: e.data.reply }), replyId: e.data.reply, role: 'You', kind: 'message', text: e.data.text!, at: e.at, receipt: 'queued', ...receipt, ...(e.data.reply.startsWith('brief:') ? { initial: true } : {}) } }).forEach((item, index) => {
+    splitEntry({ entry: { id: replyEntryId({ reply: e.data.reply }), replyId: e.data.reply, role: 'You', kind: 'message', text: e.data.text!, at: e.at, ...(e.sessionId ? { session: e.sessionId } : {}), receipt: 'queued', ...receipt, ...(e.data.reply.startsWith('brief:') ? { initial: true } : {}) } }).forEach((item, index) => {
       if (e.seq < replySeq! || index < replyPart!) {
         candidates.push({ item, reply: `${e.seq}:${index}` })
       }

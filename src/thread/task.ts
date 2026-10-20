@@ -1,5 +1,6 @@
 import type { Card } from '../core/model.ts'
 import type { ThreadEntry, ThreadPage } from './read.ts'
+import { taskMentions } from '../mentions/mentions.ts'
 
 export function taskUpdates({ card }: { card: Card }): ThreadEntry[] {
   return (card.statusLog ?? []).filter(s => s.note.trim() && s.actor !== 'web')
@@ -38,7 +39,37 @@ export function taskConversation({ card, entries }: {
     && /^(user|You)$/.test(entry.role)
     && (entry.text.startsWith(launch) || [prompt, card.brief].some(text =>
       text?.trim() && entry.text.startsWith(`${text}\n\n${launch}`)))))
-  const stream = [...updates.filter(e => !ids.has(e.id)), ...conversation]
+  const matched = new Set<string>()
+
+  for (const receipt of conversation) {
+    const state = receipt.delivery?.agent?.state ?? receipt.receipt
+    const at = receipt.at
+
+    if (!receipt.replyId || !receipt.session || !state || state === 'failed' || !at
+      || (receipt.delivery && !receipt.delivery.agent)) {
+      continue
+    }
+
+    const text = receipt.text.trim().replace(/\s+/g, ' ')
+    const mentioned = taskMentions({ text: receipt.text }).length > 0
+    const copy = conversation.find(entry => !matched.has(entry.id) && !entry.replyId
+      && entry.session === receipt.session
+      && entry.kind === 'message' && /^(user|You)( · continued)?$/.test(entry.role)
+      && entry.at && entry.at >= at
+      && (entry.part ?? 0) === (receipt.part ?? 0)
+      && (entry.text.trim().replace(/\s+/g, ' ') === text || (mentioned
+        && entry.text.trim().replace(/\s+/g, ' ')
+          .startsWith(`${text} Referenced tasks (context only): `))))
+
+    if (copy) {
+      matched.add(copy.id)
+    }
+  }
+
+  const stream = [
+    ...updates.filter(e => !ids.has(e.id)),
+    ...conversation.filter(e => !matched.has(e.id)),
+  ]
     .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))
 
   return [...initial, ...stream.map(entry => entry.replyId

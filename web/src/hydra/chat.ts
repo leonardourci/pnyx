@@ -1,10 +1,14 @@
 import { HYDRA_ACTOR, type HydraMessage } from '../../../src/core/model.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 
-export function hydraMessages({ messages, transcript }: {
+export function hydraMessages({ messages, transcript, provider }: {
   messages: HydraMessage[]
   transcript: ThreadEntry[]
+  provider?: string
 }): ThreadEntry[] {
+  transcript = transcript.filter(entry => !(provider === 'codex' && entry.kind === 'message'
+    && /^(user|You)( · continued)?$/.test(entry.role)
+    && /^# AGENTS\.md instructions(?: for [^\n]*)?\s*<INSTRUCTIONS>[\s\S]*<\/INSTRUCTIONS>\s*$/.test(entry.text.trim())))
   const remaining = [...transcript]
   const normalized = ({ text }: { text: string }) => text.trim().replace(/\s+/g, ' ')
   const recorded: ThreadEntry[] = []

@@ -13,16 +13,17 @@ import { MessageComment } from './message-comment.tsx'
 import { blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage } from './message-selection.ts'
 import { receiptLabel } from './view.ts'
 
-const roleLabel = ({ role }: { role: string }) => role === 'assistant' ? 'Agent' : role === 'user' ? 'You' : role
+const roleLabel = ({ role, assistantLabel = 'Agent' }: { role: string; assistantLabel?: string }) => role === 'assistant' ? assistantLabel : role === 'user' ? 'You' : role
 
 export function Messages({
   entries, comments, setComments, quote,
-  toolDetails = true, thinkingDetails = true, taskTitles, openTask,
+  toolDetails = true, thinkingDetails = true, taskTitles, openTask, assistantLabel,
 }: {
   openTask?({ id }: { id: string }): void
   taskTitles?: Record<string, string>
   toolDetails?: boolean
   thinkingDetails?: boolean
+  assistantLabel?: string
   entries: ThreadEntry[]
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
@@ -303,7 +304,7 @@ export function Messages({
           <article
             key={entry.id}
             className={`message ${entry.kind}${/^(user|You)( · continued)?$/.test(entry.role) ? ' mine' : ''}`}
-            aria-label={roleLabel(entry)}
+            aria-label={roleLabel({ role: entry.role, assistantLabel })}
             data-streaming={entry.streaming || undefined}
             title={entry.at ? new Date(entry.at).toLocaleString() : undefined}
           >

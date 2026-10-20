@@ -79,3 +79,18 @@ test('Hydra chat labels system lines and matches user transcript copies once des
   assert.ok(entries.some(entry => entry.id === 'answer'))
   assert.equal(transcript[0]!.text, '  Check\nthis task\n')
 })
+
+test('Codex Hydra chat hides injected instructions while retaining owner messages and replies', () => {
+  const transcript: ThreadEntry[] = [
+    { id: 'instructions', kind: 'message', role: 'user', text: '# AGENTS.md instructions for /work\n\n<INSTRUCTIONS>\nUse the local skill.\n</INSTRUCTIONS>' },
+    { id: 'owner', kind: 'message', role: 'user', text: 'Explain AGENTS.md instructions.' },
+    { id: 'answer', kind: 'message', role: 'assistant', text: 'Hydra is ready.' },
+  ]
+  assert.deepEqual(hydraMessages({ messages: [], transcript, provider: 'codex' }).map(e => e.id), ['owner', 'answer'])
+  assert.deepEqual(hydraMessages({ messages: [], transcript, provider: 'claude-code' }), transcript)
+  const mixed = { ...transcript[0]!, text: `${transcript[0]!.text}\n\nExplain this policy.` }
+  assert.deepEqual(hydraMessages({ messages: [], transcript: [mixed], provider: 'codex' }), [mixed])
+  const reply = { ...transcript[0]!, role: 'assistant' }
+  assert.deepEqual(hydraMessages({ messages: [], transcript: [reply], provider: 'codex' }), [reply])
+  assert.equal(transcript.length, 3)
+})
