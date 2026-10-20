@@ -17,6 +17,8 @@ import { commentReply, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
+import { MAX_IMAGE_BYTES, imageExtension, imagePaths } from '../../../src/attachments/images.ts'
+import { AttachedImage } from '../components/ui/attached-image.tsx'
 
 const DRAFT_MIN = 36, DRAFT_MAX = 128, COMPOSER_CONTROLS = 44
 const COMPOSER_MIN = VIEW_SIZE_LIMITS.composerHeight.min
@@ -110,9 +112,11 @@ export function Composer({
       const context = form.current?.querySelector<HTMLElement>('.pending-comments')
       const error = form.current?.querySelector<HTMLElement>('.reply-failure')
       const references = form.current?.querySelector<HTMLElement>('.draft-mentions')
+      const images = form.current?.querySelector<HTMLElement>('.draft-images')
       const contextHeight = context ? Math.min(64, context.scrollHeight) + 4 : 0
       const errorHeight = (error ? error.scrollHeight + 4 : 0)
         + (references ? references.offsetHeight + 4 : 0)
+        + (images ? images.offsetHeight + 4 : 0)
       setContentHeight(
         Math.min(DRAFT_MAX, Math.max(DRAFT_MIN, draftHeight))
         + controlsHeight + contextHeight + errorHeight,
@@ -186,6 +190,42 @@ export function Composer({
 
   const choose = ({ command }: { command: string }) => {
     const cursor = input.current?.selectionStart ?? draft.length; setDraft({ text: command + ' ' + draft.slice(cursor) }); setPrefix(null); setActive(-1); input.current?.focus(); requestAnimationFrame(() => input.current?.setSelectionRange(command.length + 1, command.length + 1))
+  }
+
+  // Each image is stored by the server and becomes its own paragraph in the draft.
+  const attach = async ({ files }: { files: File[] }) => {
+    const images = files.filter(file => imageExtension({ type: file.type }))
+    const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content ?? ''
+    const failures = images.length < files.length ? ['Only PNG, JPEG, GIF and WebP images can be added here.'] : []
+    const uploads = await Promise.allSettled(images.map(async file => {
+      if (file.size > MAX_IMAGE_BYTES) {
+        throw new Error(`${file.name || 'An image'} is over ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`)
+      }
+
+      const response = await fetch('attachments', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': file.type }, body: file })
+      const body = await response.json().catch(() => ({})) as { line?: string; error?: string }
+
+      if (!response.ok || !body.line) {
+        throw new Error(body.error ?? `Could not add ${file.name || 'an image'}.`)
+      }
+
+      return body.line
+    }))
+    const lines = uploads.flatMap(upload => upload.status === 'fulfilled' ? [upload.value] : [])
+    failures.push(...uploads.flatMap(upload => upload.status === 'rejected' ? [(upload.reason as Error).message] : []))
+
+    if (failures.length) {
+      notify({ text: failures.join(' ') })
+    }
+
+    if (lines.length) {
+      const text = current.current.draft, cursor = input.current?.selectionEnd ?? text.length
+      const before = text.slice(0, cursor).trimEnd(), added = lines.join('\n\n')
+      const caret = (before ? before.length + 2 : 0) + added.length + 2
+      setDraft({ text: [before, added, text.slice(cursor).trimStart()].filter(Boolean).join('\n\n') + (text.slice(cursor).trim() ? '' : '\n\n') })
+      input.current?.focus()
+      requestAnimationFrame(() => input.current?.setSelectionRange(caret, caret))
+    }
   }
 
   const send = async ({ restore = false }: { restore?: boolean } = {}) => {
@@ -288,6 +328,16 @@ export function Composer({
       onSubmit={e => {
         e.preventDefault(); void send()
       }}
+      onDragOver={event => {
+        if (event.dataTransfer.types.includes('Files')) {
+          event.preventDefault()
+        }
+      }}
+      onDrop={event => {
+        if (event.dataTransfer.files.length) {
+          event.preventDefault(); void attach({ files: [...event.dataTransfer.files] })
+        }
+      }}
     >
       <Resize
         label="Resize composer"
@@ -321,6 +371,11 @@ export function Composer({
       {mentions.length > 0 && (
         <div className="draft-mentions" aria-label="Referenced tasks">
           {mentions.map((mention, index) => <Button key={index} className="task-mention" onClick={() => openTask({ id: mention.id })}>@{mention.title}</Button>)}
+        </div>
+      )}
+      {imagePaths({ text: draft }).length > 0 && (
+        <div className="draft-images" aria-label="Attached images">
+          {imagePaths({ text: draft }).map(path => <AttachedImage key={path} path={path} />)}
         </div>
       )}
       <div className="composer-input">
@@ -372,6 +427,12 @@ export function Composer({
             trackMention({ text: draft, cursor: event.currentTarget.selectionStart })
           }}
           onBlur={() => setMention(null)}
+          onPaste={event => {
+            // Office apps put a picture of copied text next to the text itself.
+            if (event.clipboardData.files.length && !event.clipboardData.types.includes('text/plain')) {
+              event.preventDefault(); void attach({ files: [...event.clipboardData.files] })
+            }
+          }}
           onChange={e => {
             setDraft({ text: e.target.value })
             setPrefix(slashPrefix({ text: e.target.value, cursor: e.target.selectionStart }))
@@ -443,7 +504,7 @@ export function Composer({
                 onClick={() => {
                   close(); files.current?.click()
                 }}
-              >Insert text files
+              >Insert files or images
               </Button>
               <Button
                 onClick={() => {
@@ -471,10 +532,20 @@ export function Composer({
           type="file"
           multiple
           hidden
-          aria-label="Insert text files"
+          aria-label="Insert files or images"
           onChange={event => {
-            const selected = [...(event.target.files ?? [])]
+            const chosen = [...(event.target.files ?? [])]
+            const images = chosen.filter(file => file.type.startsWith('image/'))
+            const selected = chosen.filter(file => !images.includes(file))
             event.target.value = ''
+
+            if (images.length) {
+              void attach({ files: images })
+            }
+
+            if (!selected.length) {
+              return
+            }
 
             void (async () => {
               try {

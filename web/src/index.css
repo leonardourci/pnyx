@@ -1007,6 +1007,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .button.task-mention { display: inline-flex; max-width: 100%; padding: 1px 6px; min-height: 0; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); font: inherit; white-space: normal; overflow-wrap: anywhere; vertical-align: baseline; }
 
 .draft-mentions { display: flex; flex-wrap: wrap; gap: 4px; max-height: 56px; overflow: auto; flex-shrink: 0; }
+.draft-images { display: flex; gap: 6px; overflow-x: auto; flex-shrink: 0; }
+.attached-image { display: inline-block; max-width: 100%; }
+.attached-image img { display: block; max-width: 100%; max-height: 240px; border: 1px solid var(--color-line); border-radius: 6px; }
+.draft-images .attached-image img { height: 48px; width: auto; }
 
 .loading-status { position: absolute; top: 8px; left: 50%; z-index: 70; padding: 8px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-muted); box-shadow: 0 2px 8px var(--color-shadow); }
 

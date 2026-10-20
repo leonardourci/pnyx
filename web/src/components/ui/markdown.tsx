@@ -2,6 +2,8 @@ import { Button } from './controls.tsx'
 import { mentionId } from '../../../../src/mentions/mentions.ts'
 import { Fragment, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
+import { imageLine, imagePaths } from '../../../../src/attachments/images.ts'
+import { AttachedImage } from './attached-image.tsx'
 
 const markdown = new Marked({ gfm: true })
 const decodeEntities = ({ text }: { text: string }) => text.replace(/&(?:#x[\da-f]+|#\d+|[a-z][a-z\d]+);/gi, entity => {
@@ -135,7 +137,10 @@ export function Markdown({ text, block, openTask }: {
           node = <Heading>{inline({ tokens: token.tokens ?? [], openTask })}</Heading>; break
         }
         case 'paragraph': case 'text': {
-          const content = token.tokens ? inline({ tokens: token.tokens, openTask }) : token.text
+          const image = imagePaths({ text: token.text.trim() })[0]
+          const content = image !== undefined && imageLine({ path: image }) === token.text.trim()
+            ? <AttachedImage path={image} />
+            : token.tokens ? inline({ tokens: token.tokens, openTask }) : token.text
           const paragraph = <p>{content}</p>
 
           if (inItem) {
