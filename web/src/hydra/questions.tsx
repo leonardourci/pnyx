@@ -46,6 +46,7 @@ function QuestionField({ question, index, draft, change }: {
       </div>
       {!question.multiSelect && (
         <Input
+          type={question.secret ? 'password' : undefined}
           aria-label={`Other answer to question ${index + 1}`}
           placeholder="Or type your own answer"
           value={draft.text}
