@@ -29,7 +29,7 @@ test('Claude discovers and runs models through the installed CLI', async () => {
 
     return sdk.query({ options, prompt })
   }) as unknown as QueryFn
-  const provider = claudeProvider({ query })
+  const provider = claudeProvider({ query, readSettings: async () => ({}) })
 
   try {
     const env = { CLAUDE_CONFIG_DIR: join(root, 'claude') }
@@ -79,12 +79,14 @@ test('Claude lists SDK display names and closes its catalog without running a tu
       },
     }
   }) as unknown as QueryFn
-  const models = await claudeProvider({ query }).models({ cwd: tmpdir(), env: {} })
+  const readSettings = async () => ({ effortLevel: 'medium' as const, modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' as const } }, permissions: { defaultMode: 'acceptEdits' as const } })
+  const models = await claudeProvider({ query, readSettings }).models({ cwd: tmpdir(), env: {} })
 
   assert.deepEqual(models, [
-    { value: 'opus', label: 'Opus 5.5', resolvedModel: 'claude-opus-5-5', defaultEffort: 'high', defaultMode: 'default' },
-    { value: 'future-model', label: 'Future Model', defaultMode: 'default' },
+    { value: 'opus', label: 'Opus 5.5', resolvedModel: 'claude-opus-5-5', defaultEffort: 'xhigh', defaultMode: 'acceptEdits' },
+    { value: 'future-model', label: 'Future Model', defaultMode: 'acceptEdits' },
   ])
+  assert.equal((await claudeProvider({ query, readSettings: async () => ({}) }).models({ cwd: tmpdir(), env: {} }))[0]!.defaultEffort, 'high')
   assert.equal(closed, true)
 })
 
@@ -99,7 +101,7 @@ test('Claude closes a failed catalog so reopening the picker can retry', async (
     },
   })) as unknown as QueryFn
 
-  await assert.rejects(claudeProvider({ query }).models({ cwd: tmpdir(), env: {} }), /unavailable/)
+  await assert.rejects(claudeProvider({ query, readSettings: async () => ({}) }).models({ cwd: tmpdir(), env: {} }), /unavailable/)
   assert.equal(closed, true)
 })
 
