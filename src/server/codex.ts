@@ -1,8 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { Question } from '../core/model.ts'
 import { form } from '../integrations/hooks/observe.ts'
 import { pnyxHome } from '../store/paths.ts'
+import { attachedImages } from '../attachments/images.ts'
 import type { AskPermission, HostedText, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({ cwd, env }: {
@@ -449,7 +452,8 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
                 method: 'turn/start',
                 params: {
                   threadId: id,
-                  input: [{ type: 'text', text, text_elements: [] }],
+                  input: [{ type: 'text', text, text_elements: [] }, ...attachedImages({ text, hydras: join(pnyxHome(), 'hydras') }).filter(path => existsSync(path))
+                    .map(path => ({ type: 'localImage', path }))],
                   ...(options.model ? { model: options.model } : {}),
                   ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
                   ...(options.effort ? { effort: options.effort } : {}),

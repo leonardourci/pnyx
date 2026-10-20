@@ -190,6 +190,9 @@ function apply({ writer, decision }: { writer: Writer; decision: Decision }): nu
 // nothing, so syncing twice is a no-op. A task whose records are gone keeps its
 // card but drops its open decisions, since nothing can answer them any more, and
 // its folder.
+// ponytail: an unchanged task skips its decisions, which clone the Hydra; a change to another card waits for this task's own next change.
+const synced = new Map<string, string>()
+
 export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
   hydraId: string
   home: string
@@ -248,6 +251,14 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
 
       for (const task of observed.tasks) {
         const key = `${observed.key}:${task.task}`
+        const seen = `${hydraId}\n${home}\n${key}`
+        const stamp = ({ card }: { card?: Card }) =>
+          JSON.stringify([task, card, writer.state.configRevision, at.slice(0, 10)])
+
+        if (synced.get(seen) === stamp({ card: writer.state.cards[writer.state.keys[key] ?? ''] })) {
+          continue
+        }
+
         const card = taskCard({
           home: observed,
           task,
@@ -412,6 +423,8 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
             },
           )
         }
+
+        synced.set(seen, stamp({ card: writer.state.cards[mirrored.id] }))
       }
 
       const live = new Set(observed.tasks.map(t => t.task))

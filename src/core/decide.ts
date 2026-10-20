@@ -107,7 +107,8 @@ function decided({ state, meta, event }: {
 
   checkRevision({ card: state.cards[event.cardId], ifRevision: meta.ifRevision })
   const before = strip({ card: state.cards[event.cardId] })
-  const reduced = reduce({ state, event })
+  // The reducer reads eventIds only for the duplicate check above; cloning them is half of each decision's cost.
+  const reduced = reduce({ state: { ...state, eventIds: {} }, event })
   const after = strip({ card: reduced.cards[event.cardId] })
 
   return before && isDeepStrictEqual(before, after) && isDeepStrictEqual(state.sessions, reduced.sessions) ? { skipped: 'unchanged' } : { event }
