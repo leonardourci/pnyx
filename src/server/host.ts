@@ -81,6 +81,7 @@ const IDLE_MS = 10 * 60 * 1000
 const WAKE_MS = 5000
 // As Firstmate does: a request left pending or a working worker quiet this long wakes Hydra again.
 const STALL_MS = 240_000
+const ALLOWED = 'Allowed'
 // The agent must not inherit the server's terminal, task or actor.
 const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
@@ -143,6 +144,8 @@ interface Live {
   // The provider may still be loading when the first message arrives.
   session?: HostedSession
   activity: string
+  // When its latest message went in, so a turn that has not written yet is not read as quiet.
+  sentAt?: number
   // A setting this process could not take: it is replaced once its turn is over.
   stale?: boolean
   idle?: ReturnType<typeof setTimeout>
@@ -579,6 +582,7 @@ export function createHost({
     })
     const entry = open({ card })
     entry.activity = 'working'
+    entry.sentAt = Date.now()
     entry.input.push({ text })
   }
 
@@ -609,6 +613,14 @@ export function createHost({
 
   // A stall makes no event, so it is polled: each pending request, and each quiet stretch of a working worker, wakes Hydra once.
   const checkStalls = () => {
+    try {
+      wakeOnStall()
+    } catch (error) {
+      console.error(`pnyx-axi serve: ${(error as Error).message}`)
+    }
+  }
+
+  const wakeOnStall = () => {
     const state = loadHydra({ hydraId }).state
     const hydraCard = state.cards[HYDRA_CARD]
     const session = state.config?.hydra.session
@@ -628,22 +640,27 @@ export function createHost({
 
       const requests = (card.permissions ?? []).filter(p => p.status === 'pending')
       const agent = state.sessions?.[sessionId({ agent: card.agent })]
-      const seen = agent ? seenAt({ session: agent }) : 0
-      const working = live.get(sessionId({ agent: card.agent }))?.activity === 'working'
+      const entry = live.get(sessionId({ agent: card.agent }))
+      const seen = Math.max(agent ? seenAt({ session: agent }) : 0, entry?.sentAt ?? 0)
 
       return requests.length
-        ? requests.filter(p => p.at && now - Date.parse(p.at) >= stallDelay)
-          .map(p => ({ id: `stall:${p.id}`, text: `${p.tool} on ${card.id} has waited ${Math.round((now - Date.parse(p.at!)) / 1000)} s for an answer` }))
-        : working && seen && now - seen >= stallDelay
+        ? requests.flatMap(p => {
+          const waited = p.at ? now - Date.parse(p.at) : 0
+
+          return waited >= stallDelay ? [{ id: `stall:${p.id}`, text: `${p.tool} on ${card.id} has waited ${Math.round(waited / 1000)} s for an answer` }] : []
+        })
+        : entry?.activity === 'working' && seen && now - seen >= stallDelay
           ? [{ id: `stall:${card.id}:${seen}`, text: `the worker on ${card.id} has been working with no sign of life for ${Math.round((now - seen) / 1000)} s` }]
           : []
     })
       .filter(stall => !stalled.has(stall.id))
 
-    if (stalls.length) {
+    const [first] = stalls
+
+    if (first) {
       stalls.forEach(stall => stalled.add(stall.id))
       const after = wakeCursor({ state, fallback: wakeStart ?? 0 })
-      void host.hydra({ id: stalls[0]!.id, actor: 'pnyx', text: `<pnyx-wake>Stalled: ${stalls.map(s => s.text).join('; ')}. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text; otherwise answer it or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.</pnyx-wake>` })
+      void host.hydra({ id: first.id, actor: 'pnyx', text: `<pnyx-wake>Stalled: ${stalls.map(s => s.text).join('; ')}. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text; otherwise answer it or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.</pnyx-wake>` })
     }
   }
 
@@ -981,6 +998,7 @@ export function createHost({
 
         const entry = open({ card: claimed.card, session })
         entry.activity = 'working'
+        entry.sentAt = Date.now()
         entry.input.push({ text: prompt })
 
         return {
@@ -1075,11 +1093,11 @@ export function createHost({
           const last = writer.state.hydraMessages?.at(-1)
 
           // ponytail: folds a run of allows on one task into its first line; the reasons stay in the task's history.
-          if (actor === 'hydra' && choice === 'allow' && last?.actor === HYDRA_ACTOR && last.task === card.id && last.text.startsWith('Allowed ')) {
-            posted = 'none: folded into the previous Allowed line'
+          if (actor === 'hydra' && choice === 'allow' && last?.actor === HYDRA_ACTOR && last.task === card.id && last.text.startsWith(`${ALLOWED} `)) {
+            posted = `none: folded into the previous ${ALLOWED} line`
           } else if (actor === 'hydra') {
             try {
-              posted = postLine({ writer, hydraId, meta: { at: at(), actor, details }, cardId: card.id, action: `${request.questions || request.form ? (choice === 'allow' ? 'Answered' : 'Skipped') : choice === 'allow' ? 'Allowed' : 'Denied'} ${request.tool} on ${card.title}`, reason: why })
+              posted = postLine({ writer, hydraId, meta: { at: at(), actor, details }, cardId: card.id, action: `${request.questions || request.form ? (choice === 'allow' ? 'Answered' : 'Skipped') : choice === 'allow' ? ALLOWED : 'Denied'} ${request.tool} on ${card.title}`, reason: why })
             } catch (error) {
               posted = `none: ${(error as Error).message}`
             }
