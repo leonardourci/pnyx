@@ -621,6 +621,10 @@ export function createHost({
   }
 
   const wakeOnStall = () => {
+    if (!pending.size && ![...live.values()].some(entry => entry.activity === 'working')) {
+      return
+    }
+
     const state = loadHydra({ hydraId }).state
     const hydraCard = state.cards[HYDRA_CARD]
     const session = state.config?.hydra.session
