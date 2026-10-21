@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const exec = promisify(execFile)
+const DRAG_ATTEMPTS = 5
 
 export async function smokeEnvironment(
   { session }: { session: string },
@@ -149,7 +150,7 @@ export function smokeBrowser({
     await evaluate({ code: `const handle = document.querySelector(${JSON.stringify(selector)}); handle.scrollIntoView({ block: 'nearest' }); handle.dataset.smokeLabel = handle.getAttribute('aria-label'); handle.setAttribute('aria-label', 'Smoke drag handle'); const rect = handle.getBoundingClientRect(); const target = document.createElement('button'); target.id = 'smoke-drag-target'; target.textContent = 'Smoke drag target'; Object.assign(target.style, { position: 'fixed', left: (rect.left + rect.width / 2 - 2) + 'px', top: (rect.top + rect.height / 2 + ${dy} - 2) + 'px', width: '4px', height: '4px', padding: '0', overflow: 'hidden', zIndex: '9999' }); document.body.append(target); return true;` })
 
     try {
-      for (let attempt = 0; attempt < 5; attempt++) {
+      for (let attempt = 0; attempt < DRAG_ATTEMPTS; attempt++) {
         const snapshot = await browser({
           args: [
             'snapshot',
@@ -174,7 +175,7 @@ export function smokeBrowser({
 
           return
         } catch (error) {
-          if (!(error instanceof Error) || !('stdout' in error) || !String(error.stdout).includes('STALE_REF') || attempt === 4) {
+          if (!(error instanceof Error) || !('stdout' in error) || !String(error.stdout).includes('STALE_REF') || attempt === DRAG_ATTEMPTS - 1) {
             throw error
           }
         }

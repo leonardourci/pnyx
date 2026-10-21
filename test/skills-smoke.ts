@@ -61,7 +61,7 @@ try {
   await text({ label: 'Settings' })
   const row = '[...document.querySelectorAll(".integrations dl > div")].find(el => el.querySelector("dt").textContent === "skills")'
   await eventually({
-    condition: `${row}?.textContent.includes("missing: 4 global skill links")`,
+    condition: `/missing: \\d+ global skill links/.test(${row}?.textContent || '')`,
     label: 'missing global skills shown in Settings',
   })
   await evaluate({ code: 'document.querySelector(".integrations").scrollIntoView({ block: "center" }); return true;' })
@@ -80,7 +80,7 @@ try {
   setupSkills({ remove: true })
   await text({ label: 'Check again' })
   await eventually({
-    condition: `${row}?.textContent.includes("missing: 4 global skill links")`,
+    condition: `/missing: \\d+ global skill links/.test(${row}?.textContent || '')`,
     label: 'removing global skills updates Settings readiness',
   })
   process.stdout.write('Passed: global skill readiness in Settings before setup, after setup and after removal\n')

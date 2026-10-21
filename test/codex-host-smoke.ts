@@ -176,7 +176,7 @@ try {
     label: 'Codex task Start requests Hydra’s choice',
   })
   assert.equal(
-    fixture.children.length,
+    fixture.messages().filter(message => message.method === 'thread/start').length,
     0,
   )
   assert.equal(
@@ -220,7 +220,7 @@ try {
     label: 'an ended outside Codex session asks Hydra to resume',
   })
   assert.equal(
-    fixture.children.length,
+    fixture.messages().filter(message => message.method === 'thread/start').length,
     1,
   )
   await commands.task([
@@ -236,7 +236,7 @@ try {
     label: 'Codex continuation changes the host',
   })
   assert.equal(
-    fixture.children.length,
+    fixture.messages().filter(message => message.method === 'thread/start').length,
     1,
   )
   await commands.task([

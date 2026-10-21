@@ -231,13 +231,13 @@ try {
     initialLaunch,
   )
   await evaluate({ code: 'window.copiedId = null; Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async value => { window.copiedId = value; } } }); return true;' })
-  await click({ selector: `[data-task="${soon}"] .card-menu .menu > button` })
-  await text({ label: 'Copy ID' })
+  await evaluate({ code: `const card = document.querySelector('[data-task="${soon}"]'); [...card.querySelectorAll('.card-menu > button')].find(button => button.textContent.trim() === 'Copy ID').click(); return true;` })
   await check({
     condition: `window.copiedId === ${JSON.stringify(soon)}`,
     label: 'card Copy ID copies its actual ID',
   })
-  await click({ selector: '[aria-label="Done column menu"]' }); await text({ label: 'Copy ID' })
+  await click({ selector: '[aria-label="Done column menu"]' })
+  await evaluate({ code: '[...document.querySelectorAll(\'.menu-items button\')].find(button => button.textContent.trim() === \'Copy ID\').click(); return true;' })
   const doneColumn = state().config!.columns.find(c => c.role === 'done')!.id
   await check({
     condition: `window.copiedId === ${JSON.stringify(doneColumn)}`,
