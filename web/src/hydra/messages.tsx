@@ -91,7 +91,7 @@ export function Messages({
   const remove = ({ id }: { id: string }) =>
     update({ items: latest.current.filter(c => c.id !== id) })
 
-  // An empty comment goes once left, unless an image for it is still on its way.
+  // Pending uploads keep an empty note alive until its attachment arrives.
   const release = ({ id }: { id: string }) => {
     const comment = latest.current.find(c => c.id === id)
 
@@ -186,7 +186,7 @@ export function Messages({
     }
   }
 
-  // Paste never edits the output: over a selection it comments, text as the note and images attached.
+  // The caret host is contenteditable for navigation, so native paste must be intercepted.
   const paste = ({ event }: { event: PasteEvent<HTMLDivElement> }) => {
     if (event.target instanceof Element && event.target.closest('.comment-card')) {
       return
@@ -362,7 +362,6 @@ export function Messages({
     () => {
       const host = root.current
 
-      // Dictation and speech-to-text insert over the selection: their text becomes its comment.
       const keep = (event: InputEvent) => {
         if (event.target !== host) {
           return

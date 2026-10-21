@@ -5,7 +5,6 @@ import { Icon } from '../components/ui/icon.tsx'
 import { groupComments, sendableComment, type ChatComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
 
-// With more than one comment, the ✕ asks first until it loses focus.
 export function CommentsPill({
   count,
   open,
@@ -48,7 +47,6 @@ const replyLabel = ({ at }: { at?: string }) => at
   )}`
   : 'On an earlier reply'
 
-// The comments going with the next message, grouped and ordered as the agent will number them.
 export function CommentsDialog({
   comments,
   shown,

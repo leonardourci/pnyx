@@ -4,7 +4,6 @@ import { MAX_IMAGE_BYTES, imageExtension } from '../../../src/attachments/images
 export const pastedImages = ({ clipboardData }: { clipboardData: DataTransfer }) =>
   clipboardData.types.includes('text/plain') ? [] : [...clipboardData.files]
 
-// The server stores each image and answers with the line that carries it in a message.
 export async function uploadImages({ files }: { files: File[] }) {
   const images = files.filter(file => imageExtension({ type: file.type }))
   const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content ?? ''

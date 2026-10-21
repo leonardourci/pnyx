@@ -75,7 +75,6 @@ function quoteRange({
 
 export const HIGHLIGHT_SUPPORTED = typeof CSS !== 'undefined' && 'highlights' in CSS
 
-// Every comment's passage, marked in the messages for as long as the comment exists.
 export function paintComments({
   host,
   name,
