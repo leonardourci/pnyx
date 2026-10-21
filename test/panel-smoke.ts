@@ -1,3 +1,5 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
+import { fakeCodex } from './codex-fixture.ts'
 import { effectiveDispatch } from '../src/dispatch/config.ts'
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -18,6 +20,14 @@ const home = realpathSync(mkdtempSync(join(
 process.env.PNYX_HOME = join(
   home,
   'pnyx',
+)
+process.env.CLAUDE_CONFIG_DIR = join(
+  home,
+  'claude',
+)
+process.env.CODEX_HOME = join(
+  home,
+  'codex',
 )
 commands.hydra([
   'create',
@@ -73,8 +83,12 @@ commands.task([
   '--hydra',
   'personal',
 ])
+const sdk = hydraSdk()
+const codex = fakeCodex({ root: home })
 let server = await startServer({
   hydraId: 'default',
+  query: sdk.query,
+  spawnCodex: codex.spawnCodex,
   port: 0,
   homes: [fixture.nativeHome],
 })
@@ -287,7 +301,7 @@ try {
     saved,
     {
       harness: 'codex',
-      model: 'gpt-6.1-sol',
+      model: 'gpt-catalog-two',
       effort: 'high',
     },
   )
@@ -301,7 +315,7 @@ try {
   )
   await evaluate({ code: 'location.reload(); return true;' })
   await eventually({
-    condition: 'document.querySelector(`.hydra-chat [aria-label="Model"]`)?.textContent.includes("gpt-6.1-sol")',
+    condition: 'document.querySelector(`.hydra-chat [aria-label="Model"]`)?.textContent.includes("Catalog Two")',
     label: 'next-message settings persist across reload',
   })
   await screenshot({ name: 'panel-agent.png' })
@@ -432,6 +446,8 @@ try {
   await screenshot({ name: 'panel-offline.png' })
   server = await startServer({
     hydraId: 'default',
+    query: sdk.query,
+    spawnCodex: codex.spawnCodex,
     port,
   })
   await eventually({

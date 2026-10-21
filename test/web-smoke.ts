@@ -247,8 +247,8 @@ try {
   await click({ selector: '[data-hydra-current]' })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
   await check({
-    condition: '!document.querySelector(".detail .thread,.detail .composer") && !!document.querySelector(".task-updates")',
-    label: 'card contains factual Updates without the session stream',
+    condition: '!!document.querySelector(".task-updates") && !!document.querySelector(".detail .task-conversation .thread") && !!document.querySelector(".detail .task-conversation .composer")',
+    label: 'attached card keeps factual Updates and its session conversation',
   })
   await text({ label: 'History' }); await fill({
     label: 'Oracle',
