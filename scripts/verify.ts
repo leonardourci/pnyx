@@ -6,12 +6,15 @@ import {
 } from 'node:child_process'
 import {
   closeSync,
-  mkdirSync,
+  mkdtempSync,
   openSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { withMarker } from './marker.ts'
+import {
+  markerBlockers,
+  withMarker,
+} from './marker.ts'
 
 interface Step {
   name: string
@@ -64,10 +67,10 @@ const STEPS: Step[] = [
     needs: 'build',
   },
 ]
-const LOGS = join(
+const LOGS = mkdtempSync(join(
   tmpdir(),
-  'pnyx-verify',
-)
+  'pnyx-verify-',
+))
 
 function read({ args }: { args: string[] }): string {
   return execFileSync(
@@ -105,23 +108,35 @@ function head(): string {
   })
 }
 
+// The first line gh printed for a failed call.
+function failure({ error }: { error: unknown }): string {
+  const { stderr } = error as { stderr?: Buffer | string }
+
+  return (stderr?.toString() || String(error)).trim().split('\n')[0]!
+}
+
 function openPullRequest(): {
-  number: number
-  headRefOid: string
-  body: string
-} | undefined {
+  pullRequest?: {
+    number: number
+    headRefOid: string
+    body: string
+  }
+  error?: string
+} {
   try {
-    return JSON.parse(read({
-      args: [
-        'gh',
-        'pr',
-        'view',
-        '--json',
-        'number,headRefOid,body',
-      ],
-    }))
-  } catch {
-    return undefined
+    return {
+      pullRequest: JSON.parse(read({
+        args: [
+          'gh',
+          'pr',
+          'view',
+          '--json',
+          'number,headRefOid,body',
+        ],
+      })),
+    }
+  } catch (error) {
+    return { error: failure({ error }) }
   }
 }
 
@@ -176,18 +191,8 @@ function runStep({
   return 'passed'
 }
 
-mkdirSync(
-  LOGS,
-  { recursive: true },
-)
-
 const headSha = head()
-const pullRequest = openPullRequest()
-const blockers = [
-  changedPaths().length > 0 ? 'the tree has uncommitted changes' : '',
-  pullRequest ? '' : 'no open PR for this branch (gh pr view failed)',
-  pullRequest && pullRequest.headRefOid !== headSha ? `HEAD ${headSha} is not the PR head ${pullRequest.headRefOid}, push first` : '',
-].filter(Boolean)
+const dirtyAtStart = changedPaths().length
 const failed = new Set<string>()
 const summary: string[] = []
 
@@ -205,51 +210,60 @@ for (const step of STEPS) {
   summary.push(`  ${step.name.padEnd(11)}${outcome}`)
 }
 
-if (head() !== headSha) {
-  blockers.push('HEAD moved during the run')
-}
+// Read after the run, so an edit made to the description meanwhile is kept.
+const found = openPullRequest()
+const blockers = markerBlockers({
+  failedSteps: failed.size,
+  changedPaths: dirtyAtStart + changedPaths().length,
+  headSha,
+  headAfter: head(),
+  pullRequestHead: found.pullRequest?.headRefOid,
+})
+let marker = `not written: ${[
+  ...blockers,
+  ...found.error ? [`gh pr view: ${found.error}`] : [],
+].join('; ')}`
 
-if (failed.size > 0) {
-  blockers.unshift(`${failed.size} step(s) failed`)
-}
+if (blockers.length === 0 && found.pullRequest) {
+  const { pullRequest } = found
 
-let marker = `not written: ${blockers.join('; ')}`
-
-if (blockers.length === 0 && pullRequest) {
-  const body = withMarker({
-    body: pullRequest.body,
-    marker: {
-      head_sha: headSha,
-      head_tree: read({
-        args: [
-          'git',
-          'rev-parse',
-          `${headSha}^{tree}`,
-        ],
-      }),
-      finished_at: new Date().toISOString(),
-    },
-  })
-
-  execFileSync(
-    'gh',
-    [
-      'pr',
-      'edit',
-      String(pullRequest.number),
-      '--body-file',
-      '-',
-    ],
-    {
-      input: `${body}\n`,
-      stdio: [
-        'pipe',
-        'ignore',
-        'inherit',
+  try {
+    execFileSync(
+      'gh',
+      [
+        'pr',
+        'edit',
+        String(pullRequest.number),
+        '--body-file',
+        '-',
       ],
-    },
-  )
-  marker = `written to PR #${pullRequest.number} for ${headSha}`
+      {
+        input: `${withMarker({
+          body: pullRequest.body,
+          marker: {
+            head_sha: headSha,
+            head_tree: read({
+              args: [
+                'git',
+                'rev-parse',
+                `${headSha}^{tree}`,
+              ],
+            }),
+            finished_at: new Date().toISOString(),
+          },
+        })}\n`,
+        stdio: [
+          'pipe',
+          'ignore',
+          'pipe',
+        ],
+      },
+    )
+    marker = `written to PR #${pullRequest.number} for ${headSha}`
+  } catch (error) {
+    blockers.push('gh pr edit failed')
+    marker = `not written: gh pr edit failed: ${failure({ error })}`
+  }
 }
 
 console.log(`\nverify summary:\n${summary.join('\n')}\n  ${'marker'.padEnd(11)}${marker}`)
