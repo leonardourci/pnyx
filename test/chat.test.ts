@@ -352,6 +352,44 @@ test(
 )
 
 test(
+  'an owner message that references a task shows once, without the context Hydra received',
+  () => {
+    const entries = hydraMessages({
+      messages: [
+        {
+          ...message({
+            id: 'ask',
+            text: 'Is [@Fix login](pnyx-task:t1) done?',
+          }),
+          context: 'Referenced tasks (context only):\n\nTask t1: Fix login',
+        },
+      ],
+      transcript: [
+        {
+          id: 'native',
+          kind: 'message',
+          role: 'user',
+          text: 'Is [@Fix login](pnyx-task:t1) done?\n\nReferenced tasks (context only):\n\nTask t1: Fix login',
+          at: '2026-10-20T10:00:01Z',
+        },
+      ],
+    })
+    assert.deepEqual(
+      entries.map(entry => [
+        entry.id,
+        entry.text,
+      ]),
+      [
+        [
+          'native',
+          'Is [@Fix login](pnyx-task:t1) done?',
+        ],
+      ],
+    )
+  },
+)
+
+test(
   'Codex Hydra chat hides injected instructions while retaining owner messages and replies',
   () => {
     const transcript: ThreadEntry[] = [

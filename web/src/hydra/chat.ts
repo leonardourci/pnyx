@@ -15,27 +15,39 @@ export function hydraMessages({
   transcript: ThreadEntry[]
   provider?: string
 }): ThreadEntry[] {
-  transcript = transcript.filter(entry => !quiet({ entry }) && !(provider === 'codex' && entry.kind === 'message'
-    && /^(user|You)( · continued)?$/.test(entry.role)
+  transcript = transcript.filter(entry => !quiet({ entry }) && !(provider === 'codex' && ownMessage({ entry })
     && /^# AGENTS\.md instructions(?: for [^\n]*)?\s*<INSTRUCTIONS>[\s\S]*<\/INSTRUCTIONS>\s*$/.test(entry.text.trim())))
   const remaining = [...transcript]
   const normalized = ({ text }: { text: string }) => text.trim().replace(
     /\s+/g,
     ' ',
   )
-  const recorded: ThreadEntry[] = []
+  const recorded: ThreadEntry[] = [], replaced = new Set<ThreadEntry>()
 
   for (const message of messages) {
     const role = message.actor === HYDRA_ACTOR ? 'assistant' : message.actor === 'pnyx' ? 'Pnyx' : 'user'
     const text = message.details ? `${message.text}\n\n${message.details}` : message.text
-    const match = role === 'user' ? remaining.findIndex(entry => entry.kind === 'message'
-      && /^(user|You)( · continued)?$/.test(entry.role) && normalized(entry) === normalized({ text })) : -1
+    // Hydra's copy also carries the context Pnyx adds for referenced tasks; the chat shows the owner's words.
+    const sent = message.context ? `${text}\n\n${message.context}` : text
+    const match = role === 'user' ? remaining.findIndex(entry => ownMessage({ entry })
+      && [
+        text,
+        sent,
+      ].some(copy => normalized(entry) === normalized({ text: copy }))) : -1
 
     if (match >= 0) {
-      remaining.splice(
+      const [entry] = remaining.splice(
         match,
         1,
       )
+
+      if (sent !== text && normalized(entry!) === normalized({ text: sent })) {
+        replaced.add(entry!)
+        recorded.push({
+          ...entry!,
+          text,
+        })
+      }
     } else {
       recorded.push({
         id: message.id,
@@ -49,7 +61,7 @@ export function hydraMessages({
 
   return [
     ...recorded,
-    ...transcript,
+    ...transcript.filter(entry => !replaced.has(entry)),
   ]
 }
 
@@ -300,3 +312,6 @@ export function quoteInto({
   ]
     .filter(Boolean).join('\n\n') + '\n\n'
 }
+
+export const ownMessage = ({ entry }: { entry: ThreadEntry }) =>
+  entry.kind === 'message' && /^(user|You)( · continued)?$/.test(entry.role)
