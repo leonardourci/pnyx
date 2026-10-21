@@ -17,6 +17,10 @@ type ObjectValue = Record<string, unknown>
 const object = ({ value }: { value: unknown }): ObjectValue =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ? value as ObjectValue : {}
 
+// Codex's approval policies Pnyx names: never with full access is Pnyx's bypass permissions.
+const NEVER = 'never', ON_REQUEST = 'on-request', BYPASS = 'bypassPermissions'
+const FULL_ACCESS = 'danger-full-access', WORKSPACE_WRITE = 'workspace-write'
+
 // The server requests Pnyx answers, each shown to the owner as this tool.
 const TOOLS: Record<string, string> = {
   'item/commandExecution/requestApproval': 'Command',
@@ -329,8 +333,15 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
   }
 }
 
+const initialize = ({ rpc }: { rpc: ReturnType<typeof connection> }) => rpc
+  .request({ method: 'initialize', params: { clientInfo: { name: 'pnyx', version: '0.0.0' }, capabilities: null } })
+  .then(() => rpc.notify({ method: 'initialized' }))
+
+const serviceTier = ({ fast }: { fast?: string }) =>
+  fast !== undefined ? { serviceTier: fast === 'true' ? 'fast' : 'default' } : {}
+
 // An agent that asks writes only in its folder and Pnyx's home; network stays on so pnyx-axi reaches the server.
-const sandboxPolicy = ({ mode, env }: { mode: string; env: NodeJS.ProcessEnv }) => mode === 'never'
+const sandboxPolicy = ({ mode, env }: { mode: string; env: NodeJS.ProcessEnv }) => mode === NEVER
   ? { type: 'dangerFullAccess' }
   : { type: 'workspaceWrite', writableRoots: [env.PNYX_HOME || pnyxHome()], networkAccess: true }
 
@@ -346,8 +357,7 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
       const rpc = connection({ child: spawnCodex({ cwd, env }) })
 
       try {
-        await rpc.request({ method: 'initialize', params: { clientInfo: { name: 'pnyx', version: '0.0.0' }, capabilities: null } })
-        rpc.notify({ method: 'initialized' })
+        await initialize({ rpc })
         const models: ModelOption[] = []
         let cursor: string | undefined
 
@@ -379,19 +389,14 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
       const rpc = connection({ child: spawnCodex({ cwd, env }) })
 
       try {
-        const read = rpc.request({ method: 'initialize', params: { clientInfo: { name: 'pnyx', version: '0.0.0' }, capabilities: null } })
-          .then(() => {
-            rpc.notify({ method: 'initialized' })
-
-            return rpc.request({ method: 'config/read', params: { cwd } })
-          })
+        const read = initialize({ rpc }).then(() => rpc.request({ method: 'config/read', params: { cwd } }))
         // A Codex that cannot start or read its config still offers the stored list, with its own defaults.
         const config = object({ value: (await read.catch((): ObjectValue => ({}))).config })
         const approval = config.approval_policy
         // Every Pnyx mode brings its own sandbox, so a never without full access is named on-request, never wider.
-        const defaultMode = approval === 'never' && config.sandbox_mode === 'danger-full-access'
-          ? 'bypassPermissions'
-          : typeof approval === 'string' && approval !== 'never' ? approval : 'on-request'
+        const defaultMode = approval === NEVER && config.sandbox_mode === FULL_ACCESS
+          ? BYPASS
+          : typeof approval === 'string' && approval !== NEVER ? approval : ON_REQUEST
 
         return models.map(model => {
           const effort = config.model_reasoning_effort ?? model.defaultEffort
@@ -418,11 +423,10 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
       }
 
       try {
-        await rpc.request({ method: 'initialize', params: { clientInfo: { name: 'pnyx', version: '0.0.0' }, capabilities: null } })
-        rpc.notify({ method: 'initialized' })
+        await initialize({ rpc })
         const options = { ...settings }
         // Bypass permissions is Codex's never: no approvals, full access.
-        const policy = () => (options.mode === 'bypassPermissions' ? 'never' : options.mode ?? '')
+        const policy = () => (options.mode === BYPASS ? NEVER : options.mode ?? '')
         const result = await rpc.request({
           method: agent ? 'thread/resume' : 'thread/start',
           params: {
@@ -432,8 +436,13 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
             config: { ...pnyxShellEnvironment({ env }), 'features.default_mode_request_user_input': true },
             ...(instructions ? { developerInstructions: instructions } : {}),
             ...(options.model ? { model: options.model } : {}),
-            ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
-            ...(policy() ? { approvalPolicy: policy(), sandbox: policy() === 'never' ? 'danger-full-access' : 'workspace-write' } : {}),
+            ...serviceTier({ fast: options.fast }),
+            ...(policy()
+              ? {
+                approvalPolicy: policy(),
+                sandbox: policy() === NEVER ? FULL_ACCESS : WORKSPACE_WRITE,
+              }
+              : {}),
           },
         })
         const thread = object({ value: result.thread })
@@ -474,7 +483,7 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
                   input: [{ type: 'text', text, text_elements: [] }, ...attachedImages({ text, hydras: join(pnyxHome(), 'hydras') }).filter(path => existsSync(path))
                     .map(path => ({ type: 'localImage', path }))],
                   ...(options.model ? { model: options.model } : {}),
-                  ...(options.fast !== undefined ? { serviceTier: options.fast === 'true' ? 'fast' : 'default' } : {}),
+                  ...serviceTier({ fast: options.fast }),
                   ...(options.effort ? { effort: options.effort } : {}),
                   ...(policy()
                     ? {
