@@ -178,7 +178,7 @@ try {
     ],
   })
   await check({
-    condition: `document.querySelector(".card.selected").getBoundingClientRect().height === ${opened} && document.querySelector(".column-cards").scrollHeight > document.querySelector(".column-cards").clientHeight`,
+    condition: `(() => { const card = document.querySelector(".card.selected"); const pane = card.closest(".column-cards"); return card.getBoundingClientRect().height === ${opened} && pane.scrollHeight > pane.clientHeight; })()`,
     label: 'a card taller than a short pane keeps its height and the column scrolls',
   })
   await browser({
