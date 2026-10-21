@@ -133,11 +133,13 @@ function Table({
   return (
     <div className="markdown-table">
       <table>
-        <thead><tr>{cells({
-          row: token.header,
-          Cell: 'th',
-        })}
-               </tr>
+        <thead>
+          <tr>
+            {cells({
+              row: token.header,
+              Cell: 'th',
+            })}
+          </tr>
         </thead>
         <tbody>{token.rows.map((
           row,

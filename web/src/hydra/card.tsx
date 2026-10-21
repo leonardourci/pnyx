@@ -92,8 +92,10 @@ export function HydraCard({
         const available = Math.floor(pane.clientHeight - padding)
         const updates = card.querySelector<HTMLElement>('.task-updates')
         const cardStyle = getComputedStyle(card)
-        const frame = updates ? updates.getBoundingClientRect().top - card.getBoundingClientRect().top
-        + parseFloat(cardStyle.paddingBottom) + parseFloat(cardStyle.borderBottomWidth) : 0
+        const frame = updates
+          ? updates.getBoundingClientRect().top - card.getBoundingClientRect().top
+            + parseFloat(cardStyle.paddingBottom) + parseFloat(cardStyle.borderBottomWidth)
+          : 0
         const readable = Math.min(
           VIEW_SIZE_LIMITS.cardHeight.max,
           Math.max(

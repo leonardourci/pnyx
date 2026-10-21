@@ -21,22 +21,31 @@ process.env.PNYX_HOME = join(
   'pnyx',
 )
 const folder = join(
-    home,
-    'sample-project',
-  ), source = join(
-    home,
-    'source',
-  ), into = join(
-    home,
-    'cloned-project',
-  ), recent = join(
-    home,
-    'recent-project',
-  ), parent = join(
-    home,
-    'repos',
-  )
-mkdirSync(folder); mkdirSync(source); mkdirSync(recent); mkdirSync(into); mkdirSync(parent); mkdirSync(join(
+  home,
+  'sample-project',
+)
+const source = join(
+  home,
+  'source',
+)
+const into = join(
+  home,
+  'cloned-project',
+)
+const recent = join(
+  home,
+  'recent-project',
+)
+const parent = join(
+  home,
+  'repos',
+)
+mkdirSync(folder)
+mkdirSync(source)
+mkdirSync(recent)
+mkdirSync(into)
+mkdirSync(parent)
+mkdirSync(join(
   parent,
   'existing',
 ))

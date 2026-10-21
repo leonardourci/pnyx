@@ -590,15 +590,19 @@ function Trace({
   entry: ThreadEntry
   details: boolean
 }) {
+  const firstLine = entry.text.split(
+    '\n',
+    1,
+  )[0]?.slice(
+    0,
+    200,
+  )
+  const label = entry.kind === 'thinking' ? 'Thinking' : roleLabel(entry)
   const summary = (
-    <><Icon name={entry.kind} size={14} /><strong>{entry.kind === 'thinking' ? 'Thinking' : roleLabel(entry)}</strong><span>{entry.text.split(
-      '\n',
-      1,
-    )[0]?.slice(
-      0,
-      200,
-    )}
-                                                                                                                      </span>
+    <>
+      <Icon name={entry.kind} size={14} />
+      <strong>{label}</strong>
+      <span>{firstLine}</span>
     </>
   )
 

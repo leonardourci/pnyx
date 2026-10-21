@@ -26,12 +26,16 @@ export function CommandMenu({
   search?({ query }: { query: string }): Promise<MenuItem[]>
 }) {
   const [
-      query,
-      setQuery,
-    ] = useState(''), [
-      active,
-      setActive,
-    ] = useState(0), root = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null), id = useId()
+    query,
+    setQuery,
+  ] = useState('')
+  const [
+    active,
+    setActive,
+  ] = useState(0)
+  const root = useRef<HTMLDivElement>(null)
+  const input = useRef<HTMLInputElement>(null)
+  const id = useId()
   const [
     found,
     setFound,

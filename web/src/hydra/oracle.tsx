@@ -258,13 +258,21 @@ export function Oracle({
     id: 'reset-widths',
     label: 'Reset widths to defaults',
     words: 'layout resize panel column restore',
-    content: <Button onClick={() => void save({ patch: resetWidths({ view }) })}>Reset widths to defaults</Button>,
+    content: (
+      <Button onClick={() => void save({ patch: resetWidths({ view }) })}>
+        Reset widths to defaults
+      </Button>
+    ),
   })
   add({
     id: 'new-column',
     label: 'New column',
     words: 'create add layout',
-    content: <Button disabled={!connected} onClick={() => run({ work: createColumn })}>New column</Button>,
+    content: (
+      <Button disabled={!connected} onClick={() => run({ work: createColumn })}>
+        New column
+      </Button>
+    ),
   })
 
   for (const column of columnsFor({ state })) {
@@ -272,7 +280,14 @@ export function Oracle({
       id: `task:${column.id}`,
       label: `New task in ${column.title}`,
       words: 'create add card',
-      content: <Button disabled={!connected} onClick={() => run({ work: () => createTask({ column: column.id }) })}>New task in {column.title}</Button>,
+      content: (
+        <Button
+          disabled={!connected}
+          onClick={() => run({ work: () => createTask({ column: column.id }) })}
+        >
+          New task in {column.title}
+        </Button>
+      ),
     })
     add({
       id: `describe:${column.id}`,
@@ -306,18 +321,22 @@ export function Oracle({
       id: `rename:${column.id}`,
       label: `Rename ${column.title} column`,
       words: 'layout title name',
-      content: <><span>Rename column</span><InlineTitle
-        value={column.title}
-        label={`Rename ${column.title} column from Oracle`}
-        save={({ title }) => editColumn({
-          args: [
-            'rename',
-            column.id,
-            `--title=${title}`,
-          ],
-        })}
-      />
-      </>,
+      content: (
+        <>
+          <span>Rename column</span>
+          <InlineTitle
+            value={column.title}
+            label={`Rename ${column.title} column from Oracle`}
+            save={({ title }) => editColumn({
+              args: [
+                'rename',
+                column.id,
+                `--title=${title}`,
+              ],
+            })}
+          />
+        </>
+      ),
     })
     add({
       id: `delete:${column.id}`,

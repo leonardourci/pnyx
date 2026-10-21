@@ -1895,11 +1895,13 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     }
   }
 
-  const id = action !== 'create' ? hydraId
-    : positionals[1] ?? (values.firstmate ? homeHydraId({ home: String(values.firstmate) }) : required({
-      value: undefined,
-      what: 'Hydra id',
-    }))
+  const id = action !== 'create'
+    ? hydraId
+    : positionals[1]
+      ?? (values.firstmate ? homeHydraId({ home: String(values.firstmate) }) : required({
+        value: undefined,
+        what: 'Hydra id',
+      }))
   hydraDir({ hydraId: id })
 
   if (action === 'show') {
@@ -2955,7 +2957,8 @@ const move = guard({
       decide: ({ state }) => decideMove({
         state,
         ref,
-        column: hydraConfig({ state }).columns.find(c => c.id === target || c.role === target)?.id ?? target,
+        column: hydraConfig({ state }).columns
+          .find(c => c.id === target || c.role === target)?.id ?? target,
         before,
         meta: m,
       }),

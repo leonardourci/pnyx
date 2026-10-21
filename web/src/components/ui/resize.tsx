@@ -82,7 +82,10 @@ export function Resize({
           return
         }
 
-        e.preventDefault(); e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId); drag.current = {
+        e.preventDefault()
+        e.currentTarget.focus()
+        e.currentTarget.setPointerCapture(e.pointerId)
+        drag.current = {
           start: axis === 'x' ? e.clientX : e.clientY,
           value,
         }

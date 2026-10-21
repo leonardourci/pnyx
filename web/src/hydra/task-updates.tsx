@@ -9,6 +9,22 @@ import { taskTimeline, type TaskEvent } from './task-updates.ts'
 
 const PAGE_SIZE = 50
 
+const stateLabel = ({ state }: { state: string }) =>
+  state === 'needs_you' ? 'Needs you' : state.replace(
+    /^./,
+    c => c.toUpperCase(),
+  )
+
+const shortTime = ({ at }: { at: string }) => new Date(at).toLocaleString(
+  [],
+  {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  },
+)
+
 export function TaskUpdates({
   card,
   command,
@@ -126,20 +142,9 @@ export function TaskUpdates({
           {updates.map(update => (
             <li key={update.id}>
               <div className="update-heading">
-                <strong>{update.state === 'needs_you' ? 'Needs you' : update.state.replace(
-                  /^./,
-                  c => c.toUpperCase(),
-                )}
-                </strong>
-                <time dateTime={update.at} title={new Date(update.at).toLocaleString()}>{new Date(update.at).toLocaleString(
-                  [],
-                  {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  },
-                )}
+                <strong>{stateLabel({ state: update.state })}</strong>
+                <time dateTime={update.at} title={new Date(update.at).toLocaleString()}>
+                  {shortTime({ at: update.at })}
                 </time>
               </div>
               {update.note && <Markdown text={update.note} />}

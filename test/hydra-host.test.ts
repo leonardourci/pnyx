@@ -146,8 +146,11 @@ test(
         agent.cwd!,
         '.agents/skills/pnyx-hydra',
       )))
-      type SessionStart = () => Promise<{ hookSpecificOutput: { additionalContext: string } }>
-      const hook = sdk.calls[0]!.options.hooks!.SessionStart![0]!.hooks[0] as unknown as SessionStart
+      type SessionStart = () => Promise<{
+        hookSpecificOutput: { additionalContext: string }
+      }>
+      const hooks = sdk.calls[0]!.options.hooks!.SessionStart![0]!.hooks
+      const hook = hooks[0] as unknown as SessionStart
       const started = await hook()
       assert.match(
         started.hookSpecificOutput.additionalContext,
