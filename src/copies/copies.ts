@@ -1,3 +1,4 @@
+import { workerQueue } from '../queue/state.ts'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, realpathSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, join } from 'node:path'
@@ -749,7 +750,11 @@ export function settleDone({
     return 0
   }
 
-  const due = Object.values(state.cards).filter(card => settles({ card }))
+  const due = Object.values(state.cards).filter(card => settles({ card })
+    && !workerQueue({
+      state,
+      session: card.sessionIds?.[0] ?? '',
+    }).length)
 
   for (const card of due) {
     settleCopy({
