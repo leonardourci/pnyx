@@ -12,7 +12,7 @@ import { TaskCreate } from './task-create.tsx'
 import { Column } from './column.tsx'
 import { Detail } from './detail.tsx'
 import { TaskConversation } from './task-conversation.tsx'
-import type { ChatComment } from './chat.ts'
+import { sendableComment, type ChatComment } from './chat.ts'
 import { Settings } from './settings.tsx'
 import { Hydras } from './hydras.tsx'
 import { Panel } from './panel.tsx'
@@ -35,9 +35,18 @@ type Restore = {
 }
 
 // Comment drafts outlive the tab: a reload or a new tab finds them where they were left.
-function readComments({ key }: { key: string }): Record<string, ChatComment[]> {
+function readComments({ value }: { value: string | null }): Record<string, ChatComment[]> {
   try {
-    return JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, ChatComment[]>
+    const saved = JSON.parse(value ?? '{}') as Record<string, ChatComment[]>
+
+    // An empty note was only kept for a return that a reload ends.
+    return Object.fromEntries(Object.entries(saved).map(([
+      card,
+      items,
+    ]) => [
+      card,
+      items.filter(comment => sendableComment({ comment })),
+    ]))
   } catch {
     return {}
   }
@@ -115,7 +124,34 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const [
     comments,
     setComments,
-  ] = useState(() => readComments({ key: commentsKey }))
+  ] = useState(() => readComments({ value: localStorage.getItem(commentsKey) }))
+  // Another tab's edits arrive here, so the next write from this tab doesn't undo them.
+  useEffect(
+    () => {
+      const sync = ({
+        key,
+        newValue,
+      }: StorageEvent) => {
+        if (key === commentsKey && newValue !== JSON.stringify(comments)) {
+          setComments(readComments({ value: newValue }))
+        }
+      }
+
+      addEventListener(
+        'storage',
+        sync,
+      )
+
+      return () => removeEventListener(
+        'storage',
+        sync,
+      )
+    },
+    [
+      comments,
+      commentsKey,
+    ],
+  )
   useEffect(
     () => {
       try {
