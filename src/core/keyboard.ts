@@ -29,7 +29,7 @@ export const KEY_ACTIONS = [
   action({ id: 'thread.reply', label: 'Reply at the end of the conversation', keys: ['Enter'], scopes: ['thread'] }),
   action({ id: 'thread.comment', label: 'Comment on selected block', keys: ['c'], scopes: ['thread'] }),
   action({ id: 'reply', label: 'Focus reply composer', keys: ['r'], scopes: ['hydra', 'thread'] }),
-  action({ id: 'send', label: 'Send reply', keys: ['Mod+Enter'], scopes: ['composer'] }),
+  action({ id: 'send', label: 'Send reply', keys: ['Enter', 'Mod+Enter'], scopes: ['composer'] }),
   action({ id: 'cancel', label: 'Close the current layer', keys: ['Escape'], scopes: [...navigation, 'composer', 'overlay', 'hints'] }),
   action({ id: 'move.left', label: 'Move highlighted left', keys: ['Mod+ArrowLeft'], scopes: ['hydra'] }),
   action({ id: 'move.right', label: 'Move highlighted right', keys: ['Mod+ArrowRight'], scopes: ['hydra'] }),
@@ -137,8 +137,8 @@ export function keyboardError({ prefs }: { prefs: KeyboardPreferences }): string
           return 'Close the current layer needs Escape, a function key, or a command modifier; keep editing keys available'
         }
 
-        if (a.id === 'send' && strokes.some(([mods]) => !mods.some(m => m === 'Control' || m === 'Meta'))) {
-          return 'Send reply needs Mod, Control or Meta; Enter always adds a newline'
+        if (a.id === 'send' && strokes.some(([mods, , key]) => key === 'Enter' && mods.join() === 'Shift')) {
+          return 'Send reply cannot use Shift+Enter; Shift+Enter always adds a newline'
         }
 
         for (const prior of all) {
