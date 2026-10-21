@@ -18,7 +18,7 @@ export function hydraSdk() {
   }
   const permissions: PermissionResult[] = []
   const sets: string[] = []
-  let release = () => {}
+  const releases = new Set<() => void>()
   const query = (({
     prompt,
     options,
@@ -42,6 +42,7 @@ export function hydraSdk() {
       }
     }
 
+    let release = () => {}
     const call = {
       options,
       messages: [] as string[],
@@ -140,7 +141,12 @@ export function hydraSdk() {
 
         if (control.hold) {
           await new Promise<void>(resolve => {
-            release = resolve
+            release = () => {
+              releases.delete(release)
+              resolve()
+            }
+
+            releases.add(release)
           })
         }
 
@@ -198,7 +204,11 @@ export function hydraSdk() {
     permissions,
     sets,
     release: () => {
-      control.hold = false; release()
+      control.hold = false
+
+      for (const release of releases) {
+        release()
+      }
     },
   }
 }

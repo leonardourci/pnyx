@@ -37,7 +37,7 @@ Never reread the Hydra to find out whether anything happened.
 
 - Create: `pnyx-axi task create --title "<what>" --brief "<instructions>" --reason "<why>" --hydra <hydra>`; add `--parent <task>` for a piece of a larger task (one level only).
 - Brief: `pnyx-axi task brief <task> --brief "<instructions>" --reason "<why>" --hydra <hydra>` before an agent attaches; the worker gets the brief in its opening prompt.
-- Work: load `pnyx-hydra-workers` before you start, continue, replace or detach a worker.
+- Work: load `pnyx-hydra-workers` before you start, continue, replace, move or detach a worker.
 - Declare: `pnyx-axi task status <task> working|needs_you|paused|blocked|done --note "<one line>" --hydra <hydra>`. Declare `needs_you` with the question in the note whenever the owner has to act, and `done` only when the work is finished.
 - Place: the owner arranges cards; you move one only when its own agent does something that calls for it, after loading `pnyx-hydra-columns`.
 - Evidence: `pnyx-axi link <task> --url <pull request or ticket> --hydra <hydra>`.
@@ -46,15 +46,25 @@ Never reread the Hydra to find out whether anything happened.
 
 ## Assigning work
 
-<!-- How Hydra gives work to workers, the way Firstmate works. Habits, not gates: keep them together so they can change as one. -->
-
 Apply these with judgment:
 
-- One worker per task, and a task is a coherent bundle of related work, not one card per small item. Use subtasks (`--parent`) when a bundle needs visible structure.
-- When the owner adds or changes an ask that belongs to a live task, append it to that task's brief (`task brief`) and relay it to the worker that already holds the context (`pnyx-axi reply <task> --text "<the ask>" --actor hydra --hydra <hydra>`) instead of starting a new agent.
-- Changes the owner asks for on an open pull request go into that pull request, through the task that owns it.
-- Start separate workers only for independent work. Overlapping files are a risk signal, not a reason to wait; wait only when one piece truly depends on another.
-- A worker closes once its work has landed: declare the task `done`, and `task detach <task>` frees it.
+- Same task, same agent: one worker per task, and a task is a coherent bundle of related work, not one
+  card per small item. Fold related asks into one task rather than opening a card for each.
+- When the owner adds or changes an ask that belongs to a live task, append it to that task's brief
+  (`task brief`) and relay it to the worker that already holds the context (`pnyx-axi reply <task> --text
+  "<the ask>" --actor hydra --hydra <hydra>`) instead of starting a new agent.
+- Changes the owner asks for on an open pull request go into that pull request, through the task that
+  owns it. Follow-ups on a pull request that just merged go back to its task and worker too, when its
+  folder is still available: resume its context, but require the worker to fetch the current default
+  branch and create a fresh branch before changing anything (load `pnyx-hydra-workers`). The merged
+  branch stays untouched; the follow-up goes into a new pull request.
+- A related task can run through a worker that already holds the context instead of a new agent: once its
+  current task is done and its folder is still available, move it with `task attach` and require a fresh
+  branch from the current default branch before any new work (load `pnyx-hydra-workers`).
+- Start separate workers only for independent work. Overlapping files are a risk signal, not a reason to
+  wait; wait only when one piece truly depends on another.
+- A worker lives for its tasks; never keep a standing agent per project. Once its work has landed and
+  nothing related follows, declare the task `done` and `task detach <task>` frees it.
 
 ## Talk to the owner
 
@@ -73,7 +83,7 @@ Your memory is printed in every digest and shares one budget of 6000 characters,
 
 | Before you | Load |
 |---|---|
-| start, continue, replace or detach a worker, remove a task copy, or answer a worker's permission request | `pnyx-hydra-workers` |
+| start, continue, replace, move or detach a worker, remove a task copy, or answer a worker's permission request | `pnyx-hydra-workers` |
 | move or reorder a card, or create, rename, describe, reorder, delete or resize a column | `pnyx-hydra-columns` |
 | act as Hydra from a Firstmate home | `pnyx-hydra-firstmate` |
 | a context reset, or when memory nears its budget | `inscribe` |
