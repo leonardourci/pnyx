@@ -2381,3 +2381,92 @@ test(
     }
   },
 )
+
+test(
+  'hydra stop ends only Hydra’s running turn and keeps its session for the next message',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-stop-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const sdk = hydraSdk()
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+
+    try {
+      assert.deepEqual(
+        await commands.hydra([
+          'stop',
+          '--hydra',
+          'lab',
+        ]),
+        { stopped: 'none: Hydra is not working on a turn' },
+      )
+      sdk.control.hold = true
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Take a long look',
+      ])
+      await until({ check: () => sdk.calls[0]?.messages.length === 1 && state().cards[HYDRA_CARD]?.sessionActivity === 'working' })
+      const since = state().cards[HYDRA_CARD]!.workingSince
+      assert.ok(since && Date.parse(since) <= Date.now())
+      assert.deepEqual(
+        await commands.hydra([
+          'stop',
+          '--hydra',
+          'lab',
+        ]),
+        { stopped: 'hydra' },
+      )
+      await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      assert.equal(
+        sdk.interrupts.length,
+        1,
+      )
+      assert.equal(
+        state().cards[HYDRA_CARD]!.workingSince,
+        undefined,
+      )
+      assert.ok(!state().cards[HYDRA_CARD]!.attention.some(a => a.kind === 'interrupted'))
+      sdk.control.hold = false
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Carry on',
+      ])
+      await until({ check: () => sdk.calls[0]?.messages.length === 2 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      assert.equal(
+        sdk.calls.length,
+        1,
+      )
+    } finally {
+      await server.close()
+      sdk.release()
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
