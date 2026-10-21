@@ -15,6 +15,8 @@ export function Dialog({
   children: ReactNode
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
+  // A text selection dragged out of the panel ends on the backdrop; only a press there closes.
+  const pressed = useRef<EventTarget | null>(null)
   useEffect(
     () => {
       const element = dialog.current
@@ -32,8 +34,11 @@ export function Dialog({
       onCancel={e => {
         e.preventDefault(); close()
       }}
+      onMouseDown={e => {
+        pressed.current = e.target
+      }}
       onClick={e => {
-        if (e.target === e.currentTarget) {
+        if (e.target === e.currentTarget && pressed.current === e.currentTarget) {
           close()
         }
       }}
