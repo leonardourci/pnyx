@@ -2,6 +2,7 @@ import { projectDigest } from '../projects/context.ts'
 import { queuePosition } from '../queue/state.ts'
 import { projectRows } from '../projects/read.ts'
 import { hydraDigest } from '../core/digest.ts'
+import { ownerMemory } from '../store/owner-memory.ts'
 import { checkAttachments } from '../integrations/presence/check.ts'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
@@ -352,10 +353,12 @@ const hydraDigestHandler = guard({
       positionals: 1,
     })
 
+    const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
 
     return hydraDigest({
       hydraId,
+      owner,
       state,
       projects: projectDigest({ state }),
     })

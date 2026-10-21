@@ -123,15 +123,13 @@ test(
       '--text',
       'Prefer small project PRs.',
     ])
-    commands.hydra([
+    commands.owner([
       'memory',
       'set',
       '--key',
       'preferences',
       '--text',
       'Hydra owner preference.',
-      '--hydra',
-      'existing',
     ])
     const sdk = hydraSdk()
     let server = await startServer({
@@ -1091,7 +1089,7 @@ test(
       assert.ok(first >= before)
       assert.match(
         wakes()[0]!,
-        /<\/pnyx-wake>\n\nMemory changed; load Hydra memory/,
+        /<\/pnyx-wake>\n\nMemory changed; load owner memory/,
       )
       assert.doesNotMatch(
         sdk.calls[0]!.raw[0]!,
@@ -1145,6 +1143,27 @@ test(
       assert.ok(
         after > first && after < through,
         `${after} resumes after the first wake`,
+      )
+
+      // A change to owner memory alone is noted on the next wake.
+      await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      await commands.owner([
+        'memory',
+        'set',
+        '--key',
+        'learnings',
+        '--text',
+        'Releases ship on Fridays.',
+      ])
+      declare({ status: 'paused' })
+      await until({ check: () => wakes().length === 4 })
+      assert.match(
+        wakes()[3]!,
+        /<\/pnyx-wake>\n\nMemory changed; load owner memory/,
+      )
+      assert.doesNotMatch(
+        wakes()[3]!,
+        /Releases ship on Fridays/,
       )
     } finally {
       await server.close(); rmSync(

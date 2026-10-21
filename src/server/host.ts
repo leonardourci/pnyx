@@ -17,6 +17,7 @@ import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
 import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraEvent, wakesHydra } from '../core/hydra.ts'
 import { freeTask } from '../cli/start.ts'
 import { hydraDigest } from '../core/digest.ts'
+import { ownerMemory } from '../store/owner-memory.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
 import { HydraError, HYDRA_ACTOR, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
@@ -587,10 +588,12 @@ export function createHost({
   let memoryStamp: string | undefined
 
   const digest = () => {
+    const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
 
     const projects = projectDigest({ state })
     memoryStamp = JSON.stringify({
+      owner,
       hydra: state.hydraMemory,
       projects,
     })
@@ -598,20 +601,23 @@ export function createHost({
     return hydraDigest({
       hydraId,
       state,
+      owner,
       projects,
     })
   }
 
   const memoryChangeNote = () => {
+    const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
     const stamp = JSON.stringify({
+      owner,
       hydra: state.hydraMemory,
       projects: projectDigest({ state }),
     })
     const changed = memoryStamp !== undefined && memoryStamp !== stamp
     memoryStamp = stamp
 
-    return changed ? '\n\nMemory changed; load Hydra memory with hydra memory list or project memory with project show <name|path> when needed.' : ''
+    return changed ? '\n\nMemory changed; load owner memory with owner memory list, Hydra memory with hydra memory list or project memory with project show <name|path> when needed.' : ''
   }
 
   // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.

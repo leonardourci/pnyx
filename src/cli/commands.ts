@@ -10,7 +10,8 @@ import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
 import { setupSkills } from '../integrations/skills/install.ts'
 import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths, viewFor } from '../core/view.ts'
-import { MEMORY_BUDGET, MEMORY_SKILL, memorySize } from '../core/digest.ts'
+import { checkBudget, HYDRA_MEMORY_BUDGET, memorySize, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
+import { ownerMemory, ownerRevision, saveOwnerMemory } from '../store/owner-memory.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { sendReply } from './reply.ts'
 import { findSession, interactive, liveTask, rankOf, selfSession } from '../core/tasks.ts'
@@ -2515,45 +2516,31 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
     if (action === 'list') {
       const state = loadHydra({ hydraId }).state
-      const entries = Object.entries(state.hydraMemory ?? {})
-        .map(([
-          key,
-          entry,
-        ]) => ({
-          key,
-          ...entry,
-        }))
 
-      return {
-        memory: entries.length ? entries : 'none: no Hydra memory yet',
-        used: `${memorySize({ state })} of ${MEMORY_BUDGET} characters`,
-      }
-    }
-
-    const key = required({
-      value: values.key as string | undefined,
-      what: '--key',
-    })
-
-    if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(key) || ![
-      'set',
-      'forget',
-    ].includes(action)) {
-      throw new HydraError({
-        message: 'use hydra memory list|set|forget; keys use lowercase letters, digits and dashes',
-        code: 'VALIDATION_ERROR',
+      return memoryList({
+        memory: state.hydraMemory ?? {},
+        budget: HYDRA_MEMORY_BUDGET,
+        empty: 'none: no Hydra memory yet',
       })
     }
 
-    const after = action === 'forget' ? null : required({
-      value: values.text as string | undefined,
-      what: '--text',
-    }).trim()
+    const {
+      key,
+      after,
+    } = memoryChange({
+      action,
+      values,
+      usage: 'use hydra memory list|set|forget',
+    })
 
-    if (after !== null && !after) {
+    if (after !== null && Object.hasOwn(
+      OWNER_DOCUMENTS,
+      key,
+    )) {
       throw new HydraError({
-        message: 'memory text must not be empty',
+        message: `${OWNER_DOCUMENTS[key as keyof typeof OWNER_DOCUMENTS]} are Pnyx-wide owner memory`,
         code: 'VALIDATION_ERROR',
+        help: [`Run \`pnyx-axi owner memory set --key ${key} --text "<document>"\`, or save a note only this Hydra needs under another key`],
       })
     }
 
@@ -2568,15 +2555,13 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       },
       decide: ({ state }) => {
         const before = state.hydraMemory?.[key]?.text ?? null
-        const size = memorySize({ state }) - (before?.length ?? 0) + (after?.length ?? 0)
-
-        if (after !== null && size > MEMORY_BUDGET && size > memorySize({ state })) {
-          throw new HydraError({
-            message: `Hydra memory would use ${size} of ${MEMORY_BUDGET} characters`,
-            code: 'MEMORY_FULL',
-            help: [`Load the ${MEMORY_SKILL} skill: merge, shorten or forget entries, then save again`],
-          })
-        }
+        checkBudget({
+          memory: state.hydraMemory ?? {},
+          key,
+          after,
+          budget: HYDRA_MEMORY_BUDGET,
+          layer: 'Hydra',
+        })
 
         return before === after ? { skipped: 'unchanged' } : hydraEvent({
           state,
@@ -2785,7 +2770,141 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   })) : result)
 }
 
+function memoryList({
+  memory,
+  budget,
+  empty,
+}: {
+  memory: Memory
+  budget: number
+  empty: string
+}): Output {
+  const entries = Object.entries(memory).map(([
+    key,
+    entry,
+  ]) => ({
+    key,
+    ...entry,
+  }))
+
+  return {
+    memory: entries.length ? entries : empty,
+    used: `${memorySize({ memory })} of ${budget} characters`,
+  }
+}
+
+function memoryChange({
+  action,
+  values,
+  usage,
+}: {
+  action: string
+  values: Record<string, string | boolean | undefined>
+  usage: string
+}): {
+  key: string
+  after: string | null
+} {
+  const key = required({
+    value: values.key as string | undefined,
+    what: '--key',
+  })
+
+  if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(key) || ![
+    'set',
+    'forget',
+  ].includes(action)) {
+    throw new HydraError({
+      message: `${usage}; keys use lowercase letters, digits and dashes`,
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  const after = action === 'forget' ? null : required({
+    value: values.text as string | undefined,
+    what: '--text',
+  }).trim()
+
+  if (after !== null && !after) {
+    throw new HydraError({
+      message: 'memory text must not be empty',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  return {
+    key,
+    after,
+  }
+}
+
 const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
+
+const owner = guard({
+  handler: ({ args }) => {
+    const {
+      values,
+      positionals,
+    } = parse({
+      args,
+      // Owner memory has no events or cards, so it takes only the write flags it honours.
+      options: {
+        ...COMMON,
+        actor: WRITE.actor!,
+        reason: WRITE.reason!,
+        'if-revision': WRITE['if-revision']!,
+        key: { type: 'string' },
+        text: { type: 'string' },
+      },
+      positionals: 2,
+    })
+    const usage = 'use owner memory list|set|forget'
+
+    if (positionals[0] !== 'memory') {
+      throw new HydraError({
+        message: usage,
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    const action = positionals[1] ?? 'list'
+
+    if (action === 'list') {
+      return {
+        ...memoryList({
+          memory: ownerMemory(),
+          budget: OWNER_MEMORY_BUDGET,
+          empty: 'none: no owner memory yet',
+        }),
+        revision: ownerRevision(),
+      }
+    }
+
+    const {
+      key,
+      after,
+    } = memoryChange({
+      action,
+      values,
+      usage,
+    })
+    const entry = saveOwnerMemory({
+      key,
+      after,
+      meta: meta({ values }),
+    })
+
+    return entry ? {
+      memory: key,
+      state: after === null ? 'forgotten' : 'saved',
+      revision: entry.seq,
+      used: `${memorySize({ memory: ownerMemory() })} of ${OWNER_MEMORY_BUDGET} characters`,
+    } : {
+      memory: key,
+      skipped: 'unchanged',
+    }
+  },
+})
 
 const NOTES_SHOWN = 3
 const NOTE_CUT = 280
@@ -3625,6 +3744,7 @@ export const commands = {
   layout,
   column: columnCommandHandler,
   hydra: hydraCommandHandler,
+  owner,
   task,
   view,
   push,
@@ -3643,7 +3763,7 @@ export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Pnyx shows every agent and its work in Hydras
 commands:
   pnyx-axi                                   Show the Hydra summary
-  hydra create|list|homes|show|set            Create, list or configure Hydras
+  hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
   project add|list|set|remove                   Attach, list or detach projects
   column create|rename|describe|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
@@ -3696,9 +3816,9 @@ pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--det
 pnyx-axi hydra send --text <message> [--details <text>]
 pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
-All memory shares one budget of ${MEMORY_BUDGET} characters; keep owner preferences under the key preferences and learnings under learnings.
+Hydra memory holds only what this Hydra needs (its scope, where it left off, its check cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
 pnyx-axi hydra digest
-Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, and its memory.
+Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
 pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
@@ -3712,6 +3832,12 @@ check is Hydra's light check: it lists only what Hydra tracks (messages, task cr
 except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It also records native task conversations
 and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
 for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
+`,
+  owner: `usage: pnyx-axi owner memory list|set|forget [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
+Owner memory is Pnyx-wide: every Hydra's digest prints it. Keep the owner's preferences under the key preferences and general learnings under learnings,
+one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET} characters; a save over budget is refused.
+Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
+Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/.pnyx).
 `,
   column: `usage: pnyx-axi column list
 pnyx-axi column create --title <title> [--id custom:<id>]
