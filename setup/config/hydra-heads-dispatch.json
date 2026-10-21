@@ -12,8 +12,23 @@
   },
   "projects": {},
   "rules": {
+    "mechanical": {
+      "when": "Trivial mechanical edit with an obvious path: rename, typo, formatting sweep, version bump, file gathering.",
+      "candidates": [
+        {
+          "harness": "codex",
+          "model": "gpt-6-luna",
+          "effort": "low"
+        },
+        {
+          "harness": "claude",
+          "model": "claude-haiku-5-5",
+          "effort": "low"
+        }
+      ]
+    },
     "build": {
-      "when": "Implementation and difficult debugging",
+      "when": "Large or risky but well-defined implementation: multi-file features, refactors, migrations where the path is clear.",
       "candidates": [
         {
           "harness": "claude",
@@ -27,18 +42,18 @@
         }
       ]
     },
-    "review": {
-      "when": "Independent code review",
+    "investigate": {
+      "when": "Ambiguous or open-ended work: unclear requirements, design, investigation, root-cause analysis, with or without code.",
       "candidates": [
-        {
-          "harness": "codex",
-          "model": "gpt-6.1-sol",
-          "effort": "high"
-        },
         {
           "harness": "claude",
           "model": "claude-opus-5-5",
-          "effort": "high"
+          "effort": "xhigh"
+        },
+        {
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "effort": "xhigh"
         }
       ]
     }
@@ -46,11 +61,13 @@
   "default": [
     {
       "harness": "claude",
-      "model": "claude-sonnet-5-5"
+      "model": "claude-sonnet-5-5",
+      "effort": "medium"
     },
     {
       "harness": "codex",
-      "model": "gpt-6-luna"
+      "model": "gpt-6.1-sol",
+      "effort": "medium"
     }
   ]
 }

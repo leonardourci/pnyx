@@ -1,3 +1,4 @@
+import { DEFAULT_DISPATCH } from './defaults.ts'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
@@ -410,8 +411,7 @@ export function effectiveDispatch({
   const local = existsSync(path)
     ? parseDispatch({ value: readConfig({ path }) }) : legacyDispatch({ state })
   const dispatch: HeadsDispatch = {
-    rules: {},
-    default: [{ harness: 'claude' }],
+    ...structuredClone(DEFAULT_DISPATCH),
     workers: {},
     projects: {},
   }

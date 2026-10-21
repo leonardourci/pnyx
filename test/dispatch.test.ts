@@ -479,10 +479,15 @@ test(
       })
     }
 
+    current.dispatch.rules.build!.candidates = [
+      {
+        harness: 'claude',
+        model: 'opus',
+      },
+    ]
     const chosen = chooseCandidate({
       config: current,
       rule: 'build',
-      harness: 'claude',
       quota,
     })
     assert.equal(
@@ -502,7 +507,6 @@ test(
       chooseCandidate({
         config: current,
         rule: 'build',
-        harness: 'claude',
         project: '/project',
         quota,
       }).account,
@@ -607,7 +611,7 @@ test(
       )
       assert.match(
         chosen.reason,
-        /only usable candidate/,
+        /owner override/,
       )
       assert.doesNotMatch(
         chosen.reason,
@@ -921,7 +925,7 @@ test(
           ],
         },
       }),
-      /claude\/gpt-6-luna: not offered/,
+      /gpt-6-luna: not offered/,
     )
     assert.equal(
       chooseCandidate({
@@ -1398,10 +1402,15 @@ test(
   'hosted choice validation rejects unlisted accounts, changed rules and provider mismatches',
   () => {
     const current = config()
+    current.dispatch.rules.build!.candidates = [
+      {
+        harness: 'claude',
+        model: 'opus',
+      },
+    ]
     const chosen = chooseCandidate({
       config: current,
       rule: 'build',
-      harness: 'claude',
       quota: () => reading({ remaining: 50 }),
     })
     assert.deepEqual(
