@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startServer } from '../src/server/server.ts'
 import { loadHydra } from '../src/store/hydra-store.ts'
 import { smokeBrowser } from './browser.ts'
 import { seedWebFixture } from './web-fixture.ts'
+import { hydraSdk } from './hydra-host-fixture.ts'
 
 const home = mkdtempSync(join(
   tmpdir(),
@@ -37,6 +38,7 @@ appendFileSync(
 const server = await startServer({
   hydraId: 'default',
   homes: [fixture.nativeHome],
+  query: hydraSdk().query,
 })
 const {
   browser,
@@ -47,6 +49,7 @@ const {
   drag,
   focus,
   press,
+  settle,
   screenshot,
   close,
 } = smokeBrowser({
@@ -77,6 +80,7 @@ try {
     condition: '(() => { const grip = document.querySelector(".hydra-chat .composer > .resize-y"); const style = getComputedStyle(grip); return Number(getComputedStyle(grip, "::after").opacity) >= .5 && grip.clientHeight >= 24 && style.touchAction === "none"; })()',
     label: 'composer grip is visible with a touch-sized hit area',
   })
+  await settle()
   await evaluate({ code: 'window.hydraDragHeight = document.querySelector(".hydra-chat .composer").clientHeight + 100; return true;' })
   await drag({
     selector: '.hydra-chat [aria-label="Resize composer"]',
@@ -194,7 +198,56 @@ try {
     condition: 'document.querySelector(".task-updates").clientHeight >= 80',
     label: 'minimum card height retains readable Updates',
   })
+  await evaluate({ code: 'window.unboundedHeight = document.querySelector(".card.selected").getBoundingClientRect().height; return true;' })
+
+  for (let step = 0; step < 25; step++) {
+    await press({ key: 'Shift+ArrowDown' })
+  }
+
+  await eventually({
+    condition: '(() => { const card = document.querySelector(".card.selected"); const pane = card.closest(".column-cards"); return card.getBoundingClientRect().height === window.unboundedHeight + 800 && card.clientHeight > 600 && card.clientHeight > pane.clientHeight && pane.scrollHeight > pane.clientHeight; })()',
+    label: 'keyboard resizing exceeds the old cap and the column height',
+  })
+  const unbounded = state().view?.cardHeights[fixture.state.keys.layout!]
+  assert.ok(unbounded && unbounded > 600)
+  await browser({
+    args: [
+      'open',
+      server.url,
+    ],
+  })
+  await eventually({
+    condition: `document.querySelector(".app")?.dataset.connected === "true" && !!document.querySelector(${JSON.stringify(card)})`,
+    label: 'cards reload with the current saved layout',
+  })
+  await evaluate({ code: `const button = document.querySelector(${JSON.stringify(card)}); if (!button.closest('.card').classList.contains('selected')) button.click(); return true;` })
+  await eventually({
+    condition: `document.querySelector(".card.selected")?.getBoundingClientRect().height === ${unbounded}`,
+    label: 'unbounded card height survives reload',
+  })
   process.stdout.write('Composer and card drag resize browser smoke passed.\n')
+} catch (error) {
+  const evidence = process.env.PNYX_EVIDENCE_DIR ?? home
+  writeFileSync(
+    join(
+      evidence,
+      'resize-failure-state.json',
+    ),
+    JSON.stringify(
+      state(),
+      null,
+      2,
+    ),
+  )
+  writeFileSync(
+    join(
+      evidence,
+      'resize-failure-browser.txt',
+    ),
+    await evaluate({ code: `const selected = document.querySelector('.card.selected'); const card = document.querySelector('[data-task="${fixture.state.keys.layout}"]'); const column = card?.closest('.column-cards'); const style = card && getComputedStyle(card); return {selected: selected?.dataset.task, card: card?.outerHTML, rendered: card?.getBoundingClientRect().toJSON(), column: column?.getBoundingClientRect().toJSON(), columnClient: column?.clientHeight, style: style && {height: style.height, minHeight: style.minHeight, maxHeight: style.maxHeight, flex: style.flex}, cache: sessionStorage.getItem(Object.keys(sessionStorage).find(key => key.includes('hydra-state')))};` }),
+  )
+  await screenshot({ name: 'resize-failure.png' })
+  throw error
 } finally {
   await close(); await server.close(); rmSync(
     home,

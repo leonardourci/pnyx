@@ -139,6 +139,8 @@ export function smokeBrowser({
   })
   const focus = ({ selector }: { selector: string }) => evaluate({ code: `document.querySelector(${JSON.stringify(selector)}).focus(); return true;` })
 
+  const settle = () => evaluate({ code: 'await document.fonts.ready; await new Promise((resolve, reject) => { let quiet; const observer = new MutationObserver(settle); const deadline = setTimeout(() => { observer.disconnect(); clearTimeout(quiet); reject(new Error(\'Page did not settle before drag\')); }, 5000); function settle() { clearTimeout(quiet); quiet = setTimeout(() => { observer.disconnect(); clearTimeout(deadline); resolve(true); }, 100); } observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true }); settle(); }); return true;' })
+
   const drag = async ({
     selector,
     dy,
@@ -146,6 +148,7 @@ export function smokeBrowser({
     selector: string
     dy: number
   }) => {
+    await settle()
     await evaluate({ code: `const handle = document.querySelector(${JSON.stringify(selector)}); handle.scrollIntoView({ block: 'nearest' }); handle.dataset.smokeLabel = handle.getAttribute('aria-label'); handle.setAttribute('aria-label', 'Smoke drag handle'); const rect = handle.getBoundingClientRect(); const target = document.createElement('button'); target.id = 'smoke-drag-target'; target.textContent = 'Smoke drag target'; Object.assign(target.style, { position: 'fixed', left: (rect.left + rect.width / 2 - 2) + 'px', top: (rect.top + rect.height / 2 + ${dy} - 2) + 'px', width: '4px', height: '4px', padding: '0', overflow: 'hidden', zIndex: '9999' }); document.body.append(target); return true;` })
 
     try {
@@ -212,6 +215,7 @@ export function smokeBrowser({
     fill,
     press,
     focus,
+    settle,
     drag,
     screenshot,
     close,
