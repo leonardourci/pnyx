@@ -23,6 +23,7 @@ import {
   blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage,
 } from './message-selection.ts'
 import { receiptLabel } from './view.ts'
+import { pnyxCalls, type PnyxCall, type PnyxLookup } from './pnyx-action.ts'
 
 const PILL_GAP = 6
 let highlights = 0
@@ -39,8 +40,9 @@ const roleLabel = ({
 }) => role === 'assistant' ? assistantLabel : role === 'user' ? 'You' : role
 
 export function Messages({
-  entries,
+  entries: all,
   working = false,
+  lookup,
   comments,
   setComments,
   quote,
@@ -60,6 +62,7 @@ export function Messages({
   entries: ChatEntry[]
   // Whether the latest turn is still running, so it has no footer yet.
   working?: boolean
+  lookup?: PnyxLookup
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
   quote({ text }: { text: string }): void
@@ -85,6 +88,13 @@ export function Messages({
     index + 1,
   ]))
   const uploading = useRef(new Map<string, number>())
+  const {
+    entries,
+    calls,
+  } = pnyxCalls({
+    entries: all,
+    lookup,
+  })
   const turns = turnTimings({
     entries,
     working,
@@ -817,7 +827,9 @@ export function Messages({
                   }}
                 />
               ) : (
-                <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
+                calls.has(entry.id)
+                  ? <PnyxCallRow call={calls.get(entry.id)!} openTask={openTask} />
+                  : <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
               )}
               {entry.delivery ? (
                 <span className="receipt" role="status">
@@ -915,6 +927,43 @@ function TurnFooter({ turn }: { turn: TurnTiming }) {
           </span>
         )}
     </div>
+  )
+}
+
+// Pnyx's own commands read as what they did; the command itself is one click away.
+function PnyxCallRow({
+  call,
+  openTask,
+}: {
+  call: PnyxCall
+  openTask?({ id }: { id: string }): void
+}) {
+  return (
+    <details className="trace pnyx-call" data-expandable="true" data-failed={!!call.failed || undefined}>
+      <summary>
+        <Icon name="pnyx" size={14} />
+        <span className="pnyx-sentence">
+          {call.sentence.map((
+            part,
+            index,
+          ) => typeof part === 'string' ? <Fragment key={index}>{part}</Fragment> : (
+            <Button
+              key={index}
+              className="task-mention"
+              contentEditable={false}
+              title="Open task"
+              onClick={event => {
+                event.preventDefault(); openTask?.({ id: part.task })
+              }}
+            >{part.label}
+            </Button>
+          ))}
+          {call.failed && <span className="pnyx-failed"> · failed: {call.failed}</span>}
+        </span>
+        <CopyButton className="trace-copy" label="Copy command" text={() => call.command} />
+      </summary>
+      <pre className="trace-text">{call.output ? `${call.command}\n\n${call.output}` : call.command}</pre>
+    </details>
   )
 }
 

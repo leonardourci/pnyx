@@ -12,6 +12,7 @@ import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
 import { InlinePermissions } from './permissions.tsx'
 import { Messages, type ChatEntry } from './messages.tsx'
+import { pnyxLookup } from './pnyx-action.ts'
 import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
 import { clock, duration, hydraMessages, joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
@@ -306,6 +307,7 @@ export function HydraChat({
             <Messages
               entries={entries}
               working={running}
+              lookup={pnyxLookup({ state })}
               assistantLabel="Hydra"
               notify={notify}
               openTask={openTask}
