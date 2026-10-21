@@ -15,6 +15,8 @@ export const OWNER_DOCUMENTS = {
 } as const
 // The share of a budget past which the digest asks Hydra to curate that memory.
 const NEARLY_FULL = 0.8
+// Shown while heads dispatch runs on the shipped template because the owner has no dispatch file yet.
+export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules; ask the owner to run `pnyx-axi rule init --shared` and edit the local copy in the Pnyx home'
 // ponytail: a Hydra with more live tasks lists the first ones by column and rank; page the rest with task list.
 const TASK_LIMIT = 40
 
@@ -147,11 +149,13 @@ export function hydraDigest({
   state,
   owner,
   projects = [],
+  dispatchTemplate = false,
 }: {
   hydraId: string
   state: HydraState
   owner: Memory
   projects?: string[]
+  dispatchTemplate?: boolean
 }): string {
   const config = hydraConfig({
     state,
@@ -243,6 +247,10 @@ export function hydraDigest({
     ...(projects.length ? [
       '',
       ...projects,
+    ] : []),
+    ...(dispatchTemplate ? [
+      '',
+      TEMPLATE_NUDGE,
     ] : []),
     '</pnyx-digest>',
   ].join('\n')
