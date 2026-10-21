@@ -20,10 +20,7 @@ import { paseoStatus } from '../integrations/paseo/launch.ts'
 import { setupHydra, startHydra, startTask } from './start.ts'
 import { OVERRIDE_FIELDS, overrideOf, type Override } from '../dispatch/select.ts'
 import { copyCommand } from '../copies/cli.ts'
-import {
-  moveCopy,
-  POOL_IDLE,
-} from '../copies/copies.ts'
+import { POOL_IDLE } from '../copies/copies.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -1753,7 +1750,6 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         attachment,
         meta: m,
       })
-
     }
   }
 
@@ -1762,10 +1758,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
 type Attachment = Extract<HydraEvent, { type: 'task.session' }>
 
-const message = ({ error }: { error: unknown }) =>
-  error instanceof Error ? error.message : String(error)
-
-// The attachment is already recorded, so a failed copy move or brief is reported, not thrown.
+// Attachment is durable even when delivery fails.
 async function afterAttach({
   hydraId,
   result,
@@ -1777,17 +1770,8 @@ async function afterAttach({
   attachment: Attachment
   meta: Meta
 }): Promise<Output> {
-  const out = {
-    ...result,
-    ...movedCopy({
-      hydraId,
-      attachment,
-      meta,
-    }),
-  }
-
   if (!attachment.data.brief) {
-    return out
+    return result
   }
 
   const state = loadHydra({ hydraId }).state
@@ -1815,54 +1799,17 @@ async function afterAttach({
     })
 
     return {
-      ...out,
+      ...result,
       brief,
     }
   } catch (error) {
     return {
-      ...out,
+      ...result,
       brief: {
         state: 'failed',
-        detail: message({ error }),
+        detail: error instanceof Error ? error.message : String(error),
       },
       help: ['The attachment was recorded; inspect the task before retrying its brief with the same --event-id'],
-    }
-  }
-}
-
-function movedCopy({
-  hydraId,
-  attachment,
-  meta,
-}: {
-  hydraId: string
-  attachment: Attachment
-  meta: Meta
-}): Output {
-  const {
-    before,
-    after,
-  } = attachment.data
-
-  if (!before || !after) {
-    return {}
-  }
-
-  try {
-    const copy = moveCopy({
-      hydraId,
-      from: before,
-      to: after,
-      meta,
-    })
-
-    return copy ? { copy } : {}
-  } catch (error) {
-    return {
-      copy: {
-        state: 'failed',
-        detail: message({ error }),
-      },
     }
   }
 }
@@ -4005,7 +3952,8 @@ The default route is firstmate for a Hydra run by a Firstmate home, otherwise pn
 A task with an attached project starts in its own copy: a git worktree slot copies/<project>-<n> on branch
 pnyx/<hydra>-<task> (or the project's copy command, see project set), taken once and reused by later starts. A start
 takes a clean idle slot from the project's pool when there is one, keeping its ignored files such as installed
-dependencies, and starts the branch from the fetched origin default branch. --in-place works in the project folder
+dependencies, and starts the branch from the fetched origin default branch. A failed refresh stops allocation;
+projects without origin use local HEAD. --in-place works in the project folder
 itself and is refused while a worker of another Hydra runs there; --folder names the folder outright. Firstmate Hydras
 make their own copies.
 When the task reaches Done and its agent stops working, Pnyx releases its copy if it has no uncommitted changes and its
@@ -4013,7 +3961,7 @@ commit is on the default branch or its linked pull request merged; the branch st
 command are only released. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
 A released slot goes back to the pool when fewer than ${POOL_IDLE} clean idle slots of the project are already there, or
 when an attached worker still runs in it; otherwise it is deleted. A slot a worker runs in is never handed to another task.
-task attach takes a moved worker's copy onto the new task's branch when the old copy is clean and landed, or already pooled.
+Queued handoff prepares the next branch and transfers the folder; manual task attach only moves the session.
 task copy shows the copy and that check. task copy remove settles it again; --safe (Hydra) confirms a clean copy whose work
 already landed or is empty; --discard removes work that never landed and needs the owner's --confirm <token>, never Hydra's.
 `,
