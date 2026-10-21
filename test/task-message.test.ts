@@ -10,9 +10,7 @@ import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { readThread, type ThreadEntry } from '../src/thread/read.ts'
 import { paseoHistory } from '../src/integrations/paseo/history.ts'
-import { taskConversation, taskUpdates, withTaskReceipts } from '../src/thread/task.ts'
-import { taskPrompt } from '../src/cli/start.ts'
-import { mentionContext, taskMention } from '../src/mentions/mentions.ts'
+import { taskReceipt, taskUpdates, withTaskReceipts } from '../src/thread/task.ts'
 
 function fixture() {
   const home = realpathSync(mkdtempSync(join(
@@ -122,7 +120,7 @@ function fixture() {
 }
 
 test(
-  'an unassigned task preserves its prompt and messages in one stream and queues Hydra once',
+  'an unassigned task queues Hydra once and reports the queued delivery',
   async () => {
     const f = fixture()
 
@@ -155,34 +153,11 @@ test(
         f.card().agent,
         undefined,
       )
-      const entries = taskConversation({
-        card: f.card(),
-        entries: f.thread().entries,
-      })
       assert.deepEqual(
-        entries.map(e => e.text),
-        [
-          'Read the migration plan',
-          'Check the rollback path',
-        ],
-      )
-      const repeated = taskConversation({
-        card: f.card(),
-        entries: [
-          {
-            id: 'repeat',
-            kind: 'message',
-            role: 'You',
-            text: 'Read the migration plan',
-          },
-        ],
-      })
-      assert.equal(
-        repeated.length,
-        2,
-      )
-      assert.deepEqual(
-        entries.at(-1)?.delivery,
+        taskReceipt({
+          card: f.card(),
+          reply: 'message-1',
+        })?.delivery,
         {
           hydra: {
             state: 'queued',
@@ -196,244 +171,6 @@ test(
           events: readEvents({ hydraId: 'default' }),
         }),
         f.state(),
-      )
-    } finally {
-      f.close()
-    }
-  },
-)
-
-test(
-  'the task conversation shows the brief once and hides hosted launch instructions',
-  () => {
-    const f = fixture()
-
-    try {
-      const entries = taskConversation({
-        card: f.card(),
-        entries: [
-          {
-            id: 'launch',
-            kind: 'message',
-            role: 'user',
-            text: taskPrompt({
-              hydraId: 'default',
-              card: f.card(),
-            }),
-          },
-          {
-            id: 'answer',
-            kind: 'message',
-            role: 'assistant',
-            text: 'I will read the plan.',
-          },
-        ],
-      })
-      assert.deepEqual(
-        entries.map(e => e.text),
-        [
-          'Read the migration plan',
-          'I will read the plan.',
-        ],
-      )
-    } finally {
-      f.close()
-    }
-  },
-)
-
-test(
-  'task conversations keep one owner message and its receipt when the transcript catches up',
-  () => {
-    const f = fixture()
-    const at = '2026-10-20T10:00:00Z'
-    const native: ThreadEntry = {
-      id: 'native',
-      kind: 'message',
-      role: 'user',
-      text: 'Check\n the rollback path',
-      at,
-      session: 'codex:first',
-    }
-    const sent: ThreadEntry = {
-      id: 'sent',
-      replyId: 'reply-1',
-      kind: 'message',
-      role: 'You',
-      text: 'Check the rollback path',
-      at,
-      session: 'codex:first',
-      receipt: 'delivered',
-      delivery: {
-        agent: { state: 'delivered' },
-        hydra: { state: 'queued' },
-      },
-    }
-
-    try {
-      const entries = taskConversation({
-        card: f.card(),
-        entries: [
-          sent,
-          native,
-        ],
-      })
-      assert.deepEqual(
-        entries.slice(1),
-        [sent],
-      )
-      assert.deepEqual(
-        taskConversation({
-          card: f.card(),
-          entries: [sent],
-        }).slice(1),
-        [sent],
-      )
-      const older = {
-        ...native,
-        id: 'older',
-        at: '2026-10-19T10:00:00Z',
-      }
-      assert.deepEqual(
-        taskConversation({
-          card: f.card(),
-          entries: [
-            older,
-            sent,
-            native,
-          ],
-        }).slice(1),
-        [
-          older,
-          sent,
-        ],
-      )
-      const repeated = {
-        ...sent,
-        id: 'sent-again',
-        replyId: 'reply-2',
-      }
-      assert.deepEqual(
-        taskConversation({
-          card: f.card(),
-          entries: [
-            sent,
-            repeated,
-            native,
-          ],
-        }).slice(1),
-        [
-          sent,
-          repeated,
-        ],
-      )
-      const failed: ThreadEntry = {
-        ...sent,
-        receipt: 'failed',
-        delivery: {
-          agent: { state: 'failed' },
-          hydra: { state: 'queued' },
-        },
-      }
-      assert.deepEqual(
-        taskConversation({
-          card: f.card(),
-          entries: [
-            failed,
-            native,
-          ],
-        }).slice(1),
-        [
-          failed,
-          native,
-        ],
-      )
-      const identified = {
-        ...native,
-        replyId: 'other-reply',
-      }
-      assert.deepEqual(
-        taskConversation({
-          card: f.card(),
-          entries: [
-            sent,
-            identified,
-          ],
-        }).slice(1),
-        [
-          sent,
-          identified,
-        ],
-      )
-      const mentioned = {
-        ...sent,
-        text: `Check ${taskMention({
-          id: f.card().id,
-          title: f.card().title,
-        })}`,
-      }
-      const context = mentionContext({
-        state: f.state(),
-        text: mentioned.text,
-      })
-      const expanded = {
-        ...native,
-        text: `${mentioned.text}\n\n${context}`,
-      }
-      assert.deepEqual(
-        taskConversation({
-          card: f.card(),
-          entries: [
-            mentioned,
-            expanded,
-          ],
-        }).slice(1),
-        [mentioned],
-      )
-      const question: ThreadEntry = {
-        id: 'question',
-        kind: 'message',
-        role: 'assistant',
-        text: 'Run the checks again?',
-        at: '2026-10-21T10:00:00Z',
-        session: 'codex:second',
-      }
-      const anotherSession = {
-        ...native,
-        session: 'codex:second',
-        at: '2026-10-21T10:00:01Z',
-      }
-      assert.deepEqual(
-        taskConversation({
-          card: f.card(),
-          entries: [
-            sent,
-            question,
-            anotherSession,
-          ],
-        }).slice(1),
-        [
-          sent,
-          question,
-          anotherSession,
-        ],
-      )
-      const legacy = {
-        ...sent,
-        session: undefined,
-      }
-      assert.deepEqual(
-        taskConversation({
-          card: f.card(),
-          entries: [
-            legacy,
-            native,
-          ],
-        }).slice(1),
-        [
-          legacy,
-          native,
-        ],
       )
     } finally {
       f.close()
@@ -643,13 +380,6 @@ test(
       assert.equal(
         updates[0]?.text,
         'The migration passes locally',
-      )
-      assert.deepEqual(
-        taskConversation({
-          card: f.card(),
-          entries: [],
-        }).slice(1),
-        updates,
       )
     } finally {
       f.close()
@@ -1100,16 +830,16 @@ test(
         earlier.older,
         undefined,
       )
-      const projected = taskConversation({
+      const current = taskReceipt({
         card: f.card(),
-        entries: earlier.entries,
+        reply: earlier.entries.at(-1)!.replyId!,
       })
       assert.equal(
-        projected.at(-1)?.receipt,
+        current?.receipt,
         'queued',
       )
       assert.equal(
-        projected.at(-1)?.delivery?.hydra.state,
+        current?.delivery?.hydra.state,
         'queued',
       )
     } finally {
