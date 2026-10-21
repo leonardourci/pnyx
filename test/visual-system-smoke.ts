@@ -221,6 +221,45 @@ try {
       condition: '[...document.querySelectorAll(\'.task-label\')].every(el => el.dataset.labelColor && getComputedStyle(el).borderTopStyle === \'solid\' && getComputedStyle(el).backgroundColor !== \'rgba(0, 0, 0, 0)\')',
       label: `${theme} project labels and tags have a saved color, fill and outline`,
     })
+    const resting = await browser({
+      args: [
+        'snapshot',
+        '--full',
+      ],
+    })
+    const settings = resting.match(/uid=(\S+) button "Settings"/)
+    assert.ok(
+      settings,
+      resting,
+    )
+    await browser({
+      args: [
+        'hover',
+        `@${settings[1]}`,
+      ],
+    })
+    await evaluate({ code: 'window.restingTitleColor=getComputedStyle(document.querySelector(".card-open")).color;return true;' })
+    const snapshot = await browser({
+      args: [
+        'snapshot',
+        '--full',
+      ],
+    })
+    const title = snapshot.match(/uid=(\S+) button "Open task /)
+    assert.ok(
+      title,
+      snapshot,
+    )
+    await browser({
+      args: [
+        'hover',
+        `@${title[1]}`,
+      ],
+    })
+    await check({
+      condition:'document.querySelector(".card-open").matches(":hover") && getComputedStyle(document.querySelector(".card-open")).color === window.restingTitleColor',
+      label:`${theme} title keeps its foreground color on a real pointer hover`,
+    })
   }
 
   await check({

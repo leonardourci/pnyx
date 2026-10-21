@@ -125,6 +125,61 @@ try {
     condition: 'document.querySelector(".task-updates li").textContent.includes("Which canary")',
     label: 'newest declaration shows state, note and time',
   })
+  await b.evaluate({
+    code:`
+    const send=WebSocket.prototype.send;
+    window.olderIds=new Set();window.refreshIds=new Set();
+    WebSocket.prototype.send=function(data){
+      const message=JSON.parse(data);
+      if(message.type==='command' && message.name==='history'){
+        const older=message.args.includes('--before');
+        (older?window.olderIds:window.refreshIds).add(message.id);
+        if(older && !window.releaseOlder){
+          const receive=this.onmessage;
+          this.onmessage=function(event){
+            receive.call(this,event);
+            const result=JSON.parse(event.data);
+            if(Array.isArray(result.events)){
+              if(window.refreshIds.has(result.id)) window.refreshed=true;
+              if(window.olderIds.has(result.id) && result.events.length<50) requestAnimationFrame(()=>requestAnimationFrame(()=>{window.olderFinished=true}));
+            }
+          };
+          window.releaseOlder=()=>send.call(this,data);
+          return;
+        }
+      }
+      return send.call(this,data);
+    };
+    return true;
+  `,
+  })
+  await b.text({ label: 'Older updates' })
+  await b.eventually({
+    condition:'typeof window.releaseOlder === "function"',
+    label:'An older-page request waits while new events arrive',
+  })
+  appendHistory({
+    title:'Overlapping migration rename',
+    noise:60,
+  })
+  await b.eventually({
+    condition:'window.refreshed && !document.querySelector(".task-updates [role=status]")',
+    label:'A refresh replaces the cached range while Older is pending',
+  })
+  await b.evaluate({code:'window.releaseOlder();return true;'})
+  await b.eventually({
+    condition:'window.olderFinished',
+    label:'The old range finishes after the refresh',
+  })
+  await b.check({
+    condition:'[...document.querySelectorAll(".task-updates button")].some(button=>button.textContent === "Older updates") && !document.querySelector(".task-updates").textContent.includes("Created")',
+    label:'A stale Older response cannot hide pagination or append across a refresh gap',
+  })
+  await b.text({ label: 'Older updates' })
+  await b.eventually({
+    condition:'document.querySelector(".task-updates")?.textContent.includes("Overlapping migration rename") && !document.querySelector(".task-updates [role=status]")',
+    label:'Fresh pagination reaches the intermediate rename after the discarded response',
+  })
   await b.text({ label: 'Older updates' })
   await b.eventually({
     condition: 'document.querySelector(".task-updates")?.textContent.includes("Older migration rename") && document.querySelector(".task-updates")?.textContent.includes("Created")',

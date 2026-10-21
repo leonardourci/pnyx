@@ -525,7 +525,7 @@ test(
       state,
       input: {
         cardHeights: { c1: 2400 },
-        closedCardHeights: { c1: 300 },
+        closedCardHeights: { c1: 1200 },
       },
     })
     assert.deepEqual(
@@ -535,7 +535,7 @@ test(
       ],
       [
         2400,
-        300,
+        1200,
       ],
     )
     assert.equal(

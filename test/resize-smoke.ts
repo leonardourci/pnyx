@@ -159,6 +159,20 @@ try {
     state().view?.closedCardHeights[fixture.state.keys.layout!],
     350,
   )
+  await focus({ selector: `[data-task="${fixture.state.keys.layout}"] > [aria-label="Resize card"]` })
+
+  for (let step = 0; step < 25; step++) {
+    await press({ key: 'Shift+ArrowDown' })
+  }
+
+  await eventually({
+    condition: `(() => {const card=document.querySelector(${JSON.stringify(card)}).closest('.card'),pane=card.closest('.column-cards');return !card.classList.contains('selected') && card.getBoundingClientRect().height===1036 && card.clientHeight>pane.clientHeight && pane.scrollHeight>pane.clientHeight;})()`,
+    label: 'closed resizing exceeds the former cap and column while staying closed',
+  })
+  assert.equal(
+    state().view?.closedCardHeights[fixture.state.keys.layout!],
+    1036,
+  )
   await browser({
     args: [
       'open',
