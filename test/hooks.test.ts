@@ -2469,6 +2469,7 @@ test(
       run,
       claude,
       spooled,
+      env,
     } = sandbox()
     run({
       args: [
@@ -2491,6 +2492,7 @@ test(
         command,
       ],
       {
+        env,
         input: fixture({ name: 'claude-stop' }),
         encoding: 'utf8',
       },
