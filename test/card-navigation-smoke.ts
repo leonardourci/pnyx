@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { project } from '../src/projects/cli.ts'
 import { commands } from '../src/cli/commands.ts'
 import { HYDRA_CARD, hydraEvent } from '../src/core/hydra.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
@@ -54,6 +55,22 @@ for (const [
   }
 }
 
+const projectFolder = join(
+  home,
+  'project-a',
+)
+mkdirSync(projectFolder)
+await project([
+  'add',
+  projectFolder,
+])
+commands.task([
+  'project',
+  'a0',
+  '--project',
+  realpathSync(projectFolder),
+])
+const projectPath = state().cards[state().keys.a0!]!.project!
 const keys = state().keys
 const a0 = keys.a0!, a1 = keys.a1!, b0 = keys.b0!, target = keys.b11!
 withWriter({
@@ -362,6 +379,76 @@ try {
       ],
     }),
     label: 'navigation preserves expanded cards in other columns',
+  })
+  const projectUrl = new URL(server.url)
+  projectUrl.searchParams.set(
+    'open-project',
+    projectPath,
+  )
+  await b.browser({
+    args: [
+      'open',
+      projectUrl.href,
+    ],
+  })
+  await b.eventually({
+    condition: `document.querySelectorAll('.card').length === 1 && !!document.querySelector(${JSON.stringify(article({ id: a0 }))})`,
+    label: 'project filtering initially includes only its own task',
+  })
+  await openCard({
+    id: b0,
+    fromReference: true,
+  })
+  await b.click({ selector: `${article({ id: b0 })} .card-state` })
+  await b.eventually({
+    condition: `!!document.querySelector(${JSON.stringify(article({ id: b0 }))}) && !document.querySelector(${JSON.stringify(article({ id: b0 }))}).classList.contains('selected') && document.querySelectorAll('.card').length === 2 && document.activeElement?.dataset.card === ${JSON.stringify(b0)}`,
+    label: 'a revealed Parked card remains visible after closing outside the project filter',
+  })
+  await b.check({
+    condition: `new URL(location.href).searchParams.get('project') === ${JSON.stringify(projectPath)}`,
+    label: 'revealing a card preserves the active project filter',
+  })
+  await b.evaluate({ code: 'location.reload(); return true;' })
+  await b.eventually({
+    condition: `!!document.querySelector(${JSON.stringify(article({ id: b0 }))}) && !document.querySelector(${JSON.stringify(article({ id: b0 }))}).classList.contains('selected') && document.querySelectorAll('.card').length === 2`,
+    label: 'reload preserves the explicitly revealed closed card',
+  })
+  commands.task([
+    'hide',
+    'b0',
+  ])
+  await b.eventually({
+    condition: `!document.querySelector(${JSON.stringify(article({ id: b0 }))}) && document.querySelectorAll('.card').length === 1`,
+    label: 'explicit Hide still removes a previously revealed task',
+  })
+  await openCard({
+    id: a1,
+    fromReference: true,
+  })
+  await b.click({ selector: `${article({ id: a1 })} .card-state` })
+  await b.eventually({
+    condition: `!!document.querySelector(${JSON.stringify(article({ id: a1 }))}) && !document.querySelector(${JSON.stringify(article({ id: a1 }))}).classList.contains('selected')`,
+    label: 'a second out-of-filter task remains after closing',
+  })
+  await b.browser({
+    args: [
+      'open',
+      server.url,
+    ],
+  })
+  await b.eventually({
+    condition: "document.querySelectorAll('.card').length === 23",
+    label: 'clearing the project filter restores the remaining tasks',
+  })
+  await b.browser({
+    args: [
+      'open',
+      projectUrl.href,
+    ],
+  })
+  await b.eventually({
+    condition: `document.querySelectorAll('.card').length === 1 && !document.querySelector(${JSON.stringify(article({ id: a1 }))})`,
+    label: 'changing filters clears prior reveals without resurrecting them on return',
   })
   const consoleOutput = await b.browser({ args: ['console'] })
   assert.doesNotMatch(

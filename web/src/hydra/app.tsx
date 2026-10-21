@@ -3,6 +3,7 @@ import { Icon } from '../components/ui/icon.tsx'
 import { storageKey } from './outbox.ts'
 import { HYDRA_CARD, lockedColumn } from '../../../src/core/hydra.ts'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { liveTask } from '../../../src/core/tasks.ts'
 import { viewFor } from '../../../src/core/view.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { AddProject } from './add-project.tsx'
@@ -29,6 +30,10 @@ import { afterTaskLayout, scrollTask } from './scroll-task.ts'
 type Restore = {
   selected?: string | null
   expanded?: string[]
+  revealed?: {
+    scope: string
+    ids: string[]
+  }
   page?: string
   panel?: boolean
   drafts?: Record<string, string>
@@ -127,6 +132,16 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     setExpanded,
   ] = useState<string[]>(new URLSearchParams(location.search).has('open-project')
     ? [] : restored.expanded ?? (restored.selected ? [restored.selected] : []))
+  const [
+    revealed,
+    setRevealed,
+  ] = useState<{
+    scope: string
+    ids: string[]
+  }>(restored.revealed ?? {
+    scope: '',
+    ids: [],
+  })
   const currentCards = useRef(state.cards)
   currentCards.current = state.cards
   const pendingColumns = useRef<Record<string, string>>({})
@@ -379,6 +394,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       const value: Restore = {
         selected,
         expanded,
+        revealed,
         page,
         panel,
         drafts,
@@ -411,6 +427,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       navigation.hydraId,
       selected,
       expanded,
+      revealed,
       page,
       panel,
       drafts,
@@ -454,11 +471,37 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     query: commandQuery({ query }) ? '' : query,
     meaning: found.map(h => h.card),
   }).filter(c => !project || c.project === project || projectReferences.includes(c.project ?? ''))
+  const filterScope = JSON.stringify([
+    workspace,
+    tag,
+    query,
+    project,
+  ])
+  useEffect(
+    () => {
+      if (revealed.scope && revealed.scope !== filterScope) {
+        setRevealed({
+          scope: '',
+          ids: [],
+        })
+      }
+    },
+    [
+      filterScope,
+      revealed.scope,
+    ],
+  )
+  const revealedIds = revealed.scope === filterScope ? revealed.ids.filter(id => {
+    const card = state.cards[id]
+
+    return !!card && liveTask({ card })
+  }) : []
   const cards = [
     ...filteredCards,
     ...[
       ...new Set([
         ...expandedIds,
+        ...revealedIds,
         ...(revealing ? [revealing] : []),
       ]),
     ]
@@ -526,6 +569,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             JSON.stringify({
               selected,
               expanded,
+              revealed,
               page,
               panel,
               drafts,
@@ -549,6 +593,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     [
       selected,
       expanded,
+      revealed,
       page,
       panel,
       drafts,
@@ -591,6 +636,22 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
   }
 
+  const keepRevealed = ({ id }: { id: string }) => {
+    const card = currentCards.current[id]
+
+    if (card && liveTask({ card }) && !filteredCards.some(card => card.id === id)) {
+      setRevealed(kept => ({
+        scope: filterScope,
+        ids: [
+          ...new Set([
+            ...(kept.scope === filterScope ? kept.ids : []),
+            id,
+          ]),
+        ],
+      }))
+    }
+  }
+
   const expand = ({
     id,
     column,
@@ -604,6 +665,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       pendingColumns.current[id] = column
     }
 
+    keepRevealed({ id })
     pendingFocus.current = focus ? id : null
     setExpanded(ids => expandedByColumn({
       ids: [
@@ -700,9 +762,12 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
     cancelOpen()
     const closing = state.cards[id]
+
+    keepRevealed({ id })
+
     const remaining = expandedIds.filter(item => item !== id)
-    const target = filteredCards.find(c => c.id === id)
-      ?? filteredCards.find(c => c.column === closing?.column) ?? filteredCards[0]
+    const target = closing && liveTask({ card: closing }) ? closing
+      : filteredCards.find(c => c.column === closing?.column) ?? filteredCards[0]
     setExpanded(remaining)
 
     if (selected === id) {
