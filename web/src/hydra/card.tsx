@@ -184,7 +184,10 @@ export function HydraCard({
       data-task={card.id}
       data-label-color={tint?.color}
       onClick={e => {
-        if (e.target instanceof Element && !e.target.closest('a, button, input, textarea, form, .detail, .menu, .resize') && !window.getSelection()?.toString()) {
+        const control = e.target instanceof Element
+          && e.target.closest('a, button, input, textarea, form, .menu, .resize')
+
+        if (!selected && !control && !window.getSelection()?.toString()) {
           open({ id: card.id })
         }
       }}
