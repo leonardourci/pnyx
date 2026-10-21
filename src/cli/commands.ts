@@ -1,3 +1,4 @@
+import { projectWorkerContext } from '../projects/context.ts'
 import { mentionContext } from '../mentions/mentions.ts'
 import { reminderTime } from '../reminders/time.ts'
 import { waitingReminders } from '../reminders/state.ts'
@@ -1675,13 +1676,22 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const attachment = readEvents({ hydraId }).find(e => e.id === eventId)
 
     if (attachment?.type === 'task.session' && attachment.data.brief) {
-      const home = loadHydra({ hydraId }).state.config?.hydra.home
+      const state = loadHydra({ hydraId }).state
+      const home = state.config?.hydra.home
+      const context = projectWorkerContext({
+        hydraId,
+        state,
+        project: state.cards[attachment.cardId]?.project,
+      })
 
       return sendReply({
         hydraId,
         request: {
           card: attachment.cardId,
-          text: attachment.data.brief,
+          text: [
+            context,
+            attachment.data.brief,
+          ].filter(Boolean).join('\n\n'),
           expectedSession: attachment.data.session,
           homes: home ? [home] : [],
           actor: m.actor,

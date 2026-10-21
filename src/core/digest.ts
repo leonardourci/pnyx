@@ -77,13 +77,14 @@ function taskLine({
   ].join('\n')
 }
 
-// What Hydra knows at the start of a session, after compaction and with each wake.
 export function hydraDigest({
   hydraId,
   state,
+  projects = [],
 }: {
   hydraId: string
   state: HydraState
+  projects?: string[]
 }): string {
   const config = hydraConfig({
     state,
@@ -157,6 +158,10 @@ export function hydraDigest({
       '',
     ] : []),
     `Memory uses ${memorySize({ state })} of ${MEMORY_BUDGET} characters.${memorySize({ state }) > MEMORY_BUDGET * NEARLY_FULL ? ` Load the ${MEMORY_SKILL} skill and curate it before it fills.` : ''}`,
+    ...(projects.length ? [
+      '',
+      ...projects,
+    ] : []),
     '</pnyx-digest>',
   ].join('\n')
 }

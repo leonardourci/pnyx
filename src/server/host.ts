@@ -1,3 +1,4 @@
+import { projectDigest } from '../projects/context.ts'
 import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
 import { effectiveDispatch, type Harness } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
@@ -582,10 +583,37 @@ export function createHost({
 
   const hydraInstructions = () =>
     `You are Hydra for Pnyx Hydra "${hydraId}". Your contract is AGENTS.md in your current folder; follow it. Use pnyx-axi with --hydra ${hydraId}; PNYX_ACTOR=hydra is already set. Projects attach later; your current folder belongs to Hydra.`
-  const digest = () => hydraDigest({
-    hydraId,
-    state: loadHydra({ hydraId }).state,
-  })
+
+  let memoryStamp: string | undefined
+
+  const digest = () => {
+    const state = loadHydra({ hydraId }).state
+
+    const projects = projectDigest({ state })
+    memoryStamp = JSON.stringify({
+      hydra: state.hydraMemory,
+      projects,
+    })
+
+    return hydraDigest({
+      hydraId,
+      state,
+      projects,
+    })
+  }
+
+  const memoryChangeNote = () => {
+    const state = loadHydra({ hydraId }).state
+    const stamp = JSON.stringify({
+      hydra: state.hydraMemory,
+      projects: projectDigest({ state }),
+    })
+    const changed = memoryStamp !== undefined && memoryStamp !== stamp
+    memoryStamp = stamp
+
+    return changed ? '\n\nMemory changed; load Hydra memory with hydra memory list or project memory with project show <name|path> when needed.' : ''
+  }
+
   // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.
   const hydraSession = () => ({
     instructions: hydraInstructions(),
@@ -1420,7 +1448,7 @@ export function createHost({
           prepared = undefined
           const waking = /^(wake|stall):/.test(id) && !opened && Boolean(entry.session)
           entry.activity = 'working'
-          entry.input.push({ text: waking ? `${text}\n\n${digest()}` : text })
+          entry.input.push({ text: waking ? `${text}${memoryChangeNote()}` : text })
 
           return { state: 'queued' }
         } catch (error) {

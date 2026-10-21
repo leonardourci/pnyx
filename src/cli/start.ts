@@ -1,3 +1,4 @@
+import { projectWorkerContext } from '../projects/context.ts'
 import { chooseCandidate, accountEnvironment, dispatchTask, hostedOverride, ruleCandidates, type DispatchChoice, type Override } from '../dispatch/select.ts'
 import { modelIds, type ModelOption } from '../server/provider.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
@@ -135,6 +136,7 @@ export function workerHeader({
   return [
     `<pnyx-worker task="${id}" hydra="${hydraId}">`,
     `You are a worker that Hydra supervises on Pnyx Hydra ${hydraId}, for task ${id} only. Report only through pnyx-axi on this task; Hydra reads your declarations and answers your questions.`,
+    'Before starting, follow the repository conventions, skills and context files in your current copy: read AGENTS.md and CLAUDE.md when present, plus the relevant skills, docs and context files they point to. Follow the project skills named in your task brief.',
     'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking.',
     `Escalate only real decisions, with \`pnyx-axi task status ${id} needs_you --note "<question and options>" --hydra ${hydraId}\`: merges, destructive actions, writes to shared or production systems, and work outside this task. Then wait for the answer.`,
@@ -161,7 +163,18 @@ export function taskPrompt({
     id: card.id,
   })
 
-  return card.brief?.trim() ? `${header}\n\n${card.brief}\n\n${instructions}` : `${header}\n\n${instructions}`
+  const project = projectWorkerContext({
+    hydraId,
+    state: loadHydra({ hydraId }).state,
+    project: card.project,
+  })
+
+  return [
+    header,
+    project,
+    card.brief?.trim(),
+    instructions,
+  ].filter(Boolean).join('\n\n')
 }
 
 const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
@@ -487,8 +500,11 @@ function askFirstmate({
 
       const text = [
         `Pnyx Hydra ${hydraId} asks for a worker on task ${card.id} "${card.title}"${card.folder ? ` in ${card.folder}` : ''}.`,
-        ...(card.brief?.trim() ? [`Task brief (give this to the worker as its first prompt):\n${card.brief}`] : []),
-        ...(prompt ? [`Request: ${prompt}`] : []),
+        `Task brief (give this to the worker as its first prompt):\n${taskPrompt({
+          hydraId,
+          card,
+          prompt: prompt ? `Request: ${prompt}` : undefined,
+        })}`,
         `Use the pnyx-hydra skill: read \`pnyx-axi task show ${card.id} --hydra ${hydraId}\`, dispatch the worker, and keep the task's status current.`,
       ].join('\n')
       const id = meta.id ?? randomUUID()
