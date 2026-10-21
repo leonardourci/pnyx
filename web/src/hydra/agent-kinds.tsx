@@ -50,7 +50,7 @@ export function AgentKinds({ command }: {
               <strong>{key}</strong> · {account.provider} · <code>{account.folder}</code>
             </p>
           ))}
-          {!Object.keys(effective.accounts).length && <p className="muted">No accounts configured. Run <code>pnyx-axi rule init --shared</code> to create the starter files.</p>}
+          {!Object.keys(effective.accounts).length && <p className="muted">No accounts configured. Run <code>pnyx-axi rule init --shared</code> to copy the templates.</p>}
           <h3>Worker account order</h3>
           {Object.entries(effective.dispatch.workers).map(([
             provider,
