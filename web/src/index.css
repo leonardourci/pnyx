@@ -1104,8 +1104,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .decision > summary:focus-visible, .card-metadata > summary:focus-visible { outline: 1px solid var(--color-gold); outline-offset: 1px; }
 .card-metadata > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .card-metadata .disclosure-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; }
-.task-updates > ol > .pending-question { padding-left: 0; }
-.task-updates > ol > .pending-question::before { display: none; }
+.pending-decision { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.pending-question .task-requests { margin-top: 6px; }
+.pending-question .ask { margin: 0; padding: 0; border: 0; background: transparent; }
+.pending-question .ask-title { display: none; }
 @media (prefers-reduced-motion: reduce) { .disclosure-chevron { transition: none; } }
 
 .decision > summary > .disclosure-chevron, .card-metadata > summary > .disclosure-chevron { top: 8px; }

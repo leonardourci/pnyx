@@ -5,10 +5,16 @@ import { InlinePermissions } from './permissions.tsx'
 import { InlineQuestions } from './questions.tsx'
 import type { Command } from './connection.ts'
 
-export const hasTaskQuestion = ({ card }: { card: Card }) =>
+export const hasTaskQuestion = ({
+  card,
+  answered = false,
+}: {
+  card: Card
+  answered?: boolean
+}) =>
   card.permissions?.some(request => request.status === 'pending')
   || card.attention.some(request => request.blocking && !request.answered)
-  || card.status?.state === 'needs_you'
+  || (!answered && card.status?.state === 'needs_you')
 
 export function TaskQuestion({
   card,
@@ -47,8 +53,7 @@ export function TaskQuestion({
         pendingOnly
       />
       {!permissions.length && !structured && text && (
-        <div className="card-question">
-          <strong className="eyebrow">Question</strong>
+        <div className="pending-decision">
           <p>{text}</p>
           <Button variant="primary" onClick={() => answer({ card })}>Answer</Button>
         </div>

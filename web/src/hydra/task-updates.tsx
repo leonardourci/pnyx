@@ -183,9 +183,16 @@ export function TaskUpdates({
     events,
     columns,
   })
-  const updates = oldestFirst ? timeline.toReversed() : timeline
-  const pending = hasTaskQuestion({ card }) ? (
+  const questionPending = hasTaskQuestion({
+    card,
+    answered: timeline.some(update => update.id === card.status?.id && !!update.decision),
+  })
+  const history = timeline.filter(update => !questionPending || update.id !== card.status?.id
+    || update.state !== 'needs_you' || !!update.decision)
+  const updates = oldestFirst ? history.toReversed() : history
+  const pending = questionPending ? (
     <li key="pending-question" className="pending-question">
+      <div className="update-heading"><strong>Decision needed</strong></div>
       <TaskQuestion
         card={card}
         command={command}

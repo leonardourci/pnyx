@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { commands } from '../src/cli/commands.ts'
 import { hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
-import { decidePush } from '../src/core/decide.ts'
+import { decidePush, decideReply } from '../src/core/decide.ts'
 import { permissionEvent } from '../src/core/permissions.ts'
 import { startServer } from '../src/server/server.ts'
 import { withWriter } from '../src/store/hydra-store.ts'
@@ -395,6 +395,10 @@ try {
     label:'open card folds secondary details and moves its question into Updates',
   })
   await b.check({
+    condition:'document.querySelector(".pending-question .update-heading strong").textContent === "Decision needed" && !document.querySelector(".task-updates .card-question") && [...document.querySelectorAll(".task-updates ol > li")].filter(row=>row.textContent.includes("Updates above chat, or tabs?") && !row.querySelector(".decision")).length === 1',
+    label:'one integrated Decision needed entry replaces the duplicate status and Question box',
+  })
+  await b.check({
     condition:'document.querySelector(".task-updates ol").firstElementChild.classList.contains("pending-question")',
     label:'newest first pins the pending question above updates',
   })
@@ -431,10 +435,43 @@ try {
     condition: '!document.querySelector(".decision").open',
     label: 'decision folds again',
   })
-  await b.click({ selector: '.card-question button' })
+  await b.click({ selector: '.pending-question button' })
   await b.eventually({
     condition: 'document.activeElement?.getAttribute("aria-label") === "Reply to Hydra" && document.activeElement.value.includes("Choose the conversation layout")',
     label: 'declaration question prepares an answer in Hydra chat',
+  })
+
+  withWriter({
+    hydraId: 'default',
+    fn: ({ writer }) => {
+      const card = writer.state.cards[writer.state.keys.layout!]!
+      const reply = decideReply({
+        state: writer.state,
+        ref: card.id,
+        meta: {
+          actor: 'web',
+          at: new Date().toISOString(),
+        },
+        data: {
+          reply: 'layout-delivered',
+          state: 'delivered',
+          route: 'fixture',
+          decision: {
+            questionId: card.status!.id,
+            question: card.status!.note,
+            answer: 'Keep Updates above chat',
+          },
+        },
+      })
+
+      if ('event' in reply) {
+        writer.append({ event: reply.event })
+      }
+    },
+  })
+  await b.eventually({
+    condition:'!document.querySelector(".pending-question") && [...document.querySelectorAll(".decision")].some(row=>!row.open && row.textContent.includes("Keep Updates above chat"))',
+    label:'a delivered answer replaces the pending question with its folded Decision',
   })
 
   await b.check({
