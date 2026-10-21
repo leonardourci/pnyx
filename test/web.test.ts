@@ -540,8 +540,6 @@ test(
         view: {
           ...view,
           panelWidth: 1,
-          composerHeight: 999,
-          taskComposerHeight: 1,
           cardHeight: 1,
           columnWidths: {
             needs_you: 1,
@@ -555,14 +553,6 @@ test(
     assert.equal(
       loaded.panelWidth,
       VIEW_SIZE_LIMITS.panelWidth.min,
-    )
-    assert.equal(
-      loaded.composerHeight,
-      VIEW_SIZE_LIMITS.composerHeight.max,
-    )
-    assert.equal(
-      loaded.taskComposerHeight,
-      VIEW_SIZE_LIMITS.composerHeight.min,
     )
     assert.equal(
       loaded.cardHeight,
@@ -604,69 +594,6 @@ test(
       }),
       321,
     )
-  },
-)
-
-test(
-  'Hydra and task composer heights replay independently',
-  () => {
-    const initial = emptyHydra()
-    assert.equal(
-      viewFor({ state: initial }).taskComposerHeight,
-      80,
-    )
-    const hydra = reduce({
-      state: initial,
-      event: event({
-        d: decideView({
-          state: initial,
-          patch: { composerHeight: 180 },
-          meta,
-        }),
-      }),
-    })
-    const edit = event({
-      d: decideView({
-        state: hydra,
-        patch: { taskComposerHeight: 120 },
-        meta,
-      }),
-    })
-    const state = reduce({
-      state: hydra,
-      event: edit,
-    })
-    assert.equal(
-      viewFor({ state }).composerHeight,
-      180,
-    )
-    assert.equal(
-      viewFor({ state }).taskComposerHeight,
-      120,
-    )
-    assert.deepEqual(
-      reduce({
-        state: hydra,
-        event: edit,
-      }),
-      state,
-    )
-
-    for (const taskComposerHeight of [
-      79,
-      421,
-      100.5,
-      null,
-      '120',
-    ]) {
-      assert.throws(
-        () => patchView({
-          state,
-          input: { taskComposerHeight },
-        }),
-        HydraError,
-      )
-    }
   },
 )
 

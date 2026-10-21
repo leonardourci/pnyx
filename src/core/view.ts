@@ -23,8 +23,6 @@ export const DEFAULT_VIEW: ViewPreferences = {
   codeFontSize: 13,
   panelPlacement: 'inline',
   panelWidth: 440,
-  composerHeight: 80,
-  taskComposerHeight: 80,
   cardHeight: 250,
   cardColors: true,
   toolDetails: false,
@@ -39,10 +37,6 @@ export const VIEW_SIZE_LIMITS = {
   panelWidth: { min: 320 },
   hydraWidth: { min: 240 },
   panelHeight: { min: 280 },
-  composerHeight: {
-    min: 80,
-    max: 420,
-  },
   fontSize: {
     min: 12,
     max: 20,
@@ -211,19 +205,6 @@ export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> 
         min: VIEW_SIZE_LIMITS.panelWidth.min,
       },
     ),
-    composerHeight: persistedSize(
-      {
-        value: view.composerHeight,
-        fallback: DEFAULT_VIEW.composerHeight,
-        min: VIEW_SIZE_LIMITS.composerHeight.min,
-        max: VIEW_SIZE_LIMITS.composerHeight.max,
-      },
-    ),
-    taskComposerHeight: persistedSize({
-      value: view.taskComposerHeight,
-      fallback: DEFAULT_VIEW.taskComposerHeight,
-      ...VIEW_SIZE_LIMITS.composerHeight,
-    }),
     cardHeight: persistedSize(
       {
         value: view.cardHeight,
@@ -402,17 +383,6 @@ export function patchView({
       case 'panelWidth': next.panelWidth = size({
         value,
         ...VIEW_SIZE_LIMITS.panelWidth,
-        key,
-      }); break
-      case 'composerHeight': next.composerHeight = size({
-        value,
-        min: VIEW_SIZE_LIMITS.composerHeight.min,
-        max: VIEW_SIZE_LIMITS.composerHeight.max,
-        key,
-      }); break
-      case 'taskComposerHeight': next.taskComposerHeight = size({
-        value,
-        ...VIEW_SIZE_LIMITS.composerHeight,
         key,
       }); break
       case 'cardHeight': next.cardHeight = size({

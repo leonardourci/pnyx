@@ -667,8 +667,6 @@ export interface ViewPreferences {
   panelPlacement: 'right' | 'inline'
   panelWidth: number
   hydraWidth: number
-  composerHeight: number
-  taskComposerHeight: number
   cardHeight: number
   cardColors: boolean
   toolDetails: boolean
