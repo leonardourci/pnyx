@@ -34,13 +34,61 @@ After an outside Claude Code or Codex session ends, `pnyx-axi task continue <tas
 
 ## Move a worker to another task
 
-A worker whose task is done can take the next related task instead of a new agent starting cold. Write the next task's brief, declare the current one `done`, then
+A worker whose task is done can take the next related task instead of a new agent starting cold. First
+confirm the worker is idle, its work has landed, and the next task uses the same project. Declare the
+current task `done`, then inspect its copy and folder: Done cleanup can remove a managed copy. Reuse only
+after copy settlement is complete and the folder will remain. If the folder is gone or still due for
+automatic removal, start a new worker from the current default branch instead; `task attach` cannot
+restore or retain a managed copy.
+
+For a surviving folder, write the next task's brief with the branch preparation below as its first step,
+then
 
 ```sh
 pnyx-axi task attach <next> --session <session> --hydra <hydra>
 ```
 
-moves the session to `<next>` (the old task is left without a worker, so no detach first) and sends `<next>`'s brief as its next message. `<next>` must have no worker of its own, and only a session Pnyx or Paseo runs, or one in a terminal, can be attached. The worker keeps working in its current folder; see Task copies.
+moves the session to `<next>` (the old task is left without a worker, so no detach first) and sends
+`<next>`'s brief as its next message. `<next>` must have no worker of its own, and only a session Pnyx or
+Paseo runs, or one in a terminal, can be attached. The worker retains its session and current folder;
+attachment does not fetch Git history or switch branches. Check the command's brief delivery result
+before treating the handoff as delivered.
+
+### Prepare the branch before new work
+
+Include these instructions in every moved worker's brief and every post-merge follow-up sent to its
+original task. A resumed session keeps context, not permission to continue on a merged branch. Before
+editing or committing, the worker must:
+
+1. Verify it is in the intended project's isolated folder, no other worker is using it, and `git status
+   --porcelain` is empty. If work remains uncommitted or unlanded, stop and report it to Hydra; never
+   reset, discard or hide it to make reuse possible.
+2. Fetch the remote and discover its current default branch:
+
+   ```sh
+   git fetch origin
+   git remote set-head origin --auto
+   git symbolic-ref --short refs/remotes/origin/HEAD
+   ```
+
+      Use the remote-tracking ref printed by the last command, such as `origin/main`. If fetch or
+   default-branch discovery fails, stop and report it; a stale local branch is not a substitute. Confirm
+   all commits on the old branch, including any unpushed commits, have landed on the fetched default
+   branch or through their merged pull request.
+3. Create a new, unused branch for this task from that fetched default ref:
+
+   ```sh
+   git switch --no-track -c <unique-task-branch> <fetched-default-ref>
+   ```
+
+      Give a post-merge follow-up its own new branch too. Leave the old branch and its commits intact;
+   never reuse its name, reset it, or base the new work on it.
+4. Begin the brief only after the switch succeeds. Link the new pull request to the task; a merged pull
+   request cannot receive the follow-up commits.
+
+For folders created by a project's copy command, follow that project's preparation contract as well. If
+its folder cannot safely serve the next task, start a fresh worker instead. Copy retention and pooling
+are separate from session attachment.
 
 ## Task copies
 

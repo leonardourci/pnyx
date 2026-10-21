@@ -46,16 +46,25 @@ Never reread the Hydra to find out whether anything happened.
 
 ## Assigning work
 
-<!-- How Hydra gives work to workers, the way Firstmate works. Habits, not gates: keep them together so they can change as one. -->
-
 Apply these with judgment:
 
-- Same task, same agent: one worker per task, and a task is a coherent bundle of related work, not one card per small item. Fold related asks into one task rather than opening a card for each.
-- When the owner adds or changes an ask that belongs to a live task, append it to that task's brief (`task brief`) and relay it to the worker that already holds the context (`pnyx-axi reply <task> --text "<the ask>" --actor hydra --hydra <hydra>`) instead of starting a new agent.
-- Changes the owner asks for on an open pull request go into that pull request, through the task that owns it. Follow-ups on a pull request that just merged go back to its task and worker too: a reply resumes its session with the context, so do not open a new task for them.
-- A related task can run through a worker that already holds the context instead of a new agent: once its current task is done, move it with `task attach` (load `pnyx-hydra-workers`).
-- Start separate workers only for independent work. Overlapping files are a risk signal, not a reason to wait; wait only when one piece truly depends on another.
-- A worker lives for its tasks; never keep a standing agent per project. Once its work has landed and nothing related follows, declare the task `done` and `task detach <task>` frees it.
+- Same task, same agent: one worker per task, and a task is a coherent bundle of related work, not one
+  card per small item. Fold related asks into one task rather than opening a card for each.
+- When the owner adds or changes an ask that belongs to a live task, append it to that task's brief
+  (`task brief`) and relay it to the worker that already holds the context (`pnyx-axi reply <task> --text
+  "<the ask>" --actor hydra --hydra <hydra>`) instead of starting a new agent.
+- Changes the owner asks for on an open pull request go into that pull request, through the task that
+  owns it. Follow-ups on a pull request that just merged go back to its task and worker too, when its
+  folder is still available: resume its context, but require the worker to fetch the current default
+  branch and create a fresh branch before changing anything (load `pnyx-hydra-workers`). The merged
+  branch stays untouched; the follow-up goes into a new pull request.
+- A related task can run through a worker that already holds the context instead of a new agent: once its
+  current task is done and its folder is still available, move it with `task attach` and require a fresh
+  branch from the current default branch before any new work (load `pnyx-hydra-workers`).
+- Start separate workers only for independent work. Overlapping files are a risk signal, not a reason to
+  wait; wait only when one piece truly depends on another.
+- A worker lives for its tasks; never keep a standing agent per project. Once its work has landed and
+  nothing related follows, declare the task `done` and `task detach <task>` frees it.
 
 ## Talk to the owner
 
