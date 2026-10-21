@@ -1,4 +1,5 @@
 import js from '@eslint/js'
+import itemNewline from './eslint/item-newline.js'
 import objectParams from './eslint/object-params.js'
 import stylistic from '@stylistic/eslint-plugin'
 import globals from 'globals'
@@ -17,7 +18,7 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
-    plugins: { '@stylistic': stylistic, pnyx: { rules: { 'object-params': objectParams } } },
+    plugins: { '@stylistic': stylistic, pnyx: { rules: { 'object-params': objectParams, 'item-newline': itemNewline } } },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       'pnyx/object-params': 'error',
@@ -59,13 +60,21 @@ export default tseslint.config(
         // Stacked case labels share one body, so keep them together.
         { blankLine: 'any', prev: '*', next: ['case', 'default'] }],
 
-      // Once an object, array or call spans lines, give each item its own line.
-      '@stylistic/object-curly-newline': ['error', { multiline: true, consistent: true }],
-      '@stylistic/object-property-newline': ['error', { allowAllPropertiesOnSameLine: true }],
-      '@stylistic/array-bracket-newline': ['error', 'consistent'],
-      '@stylistic/array-element-newline': ['error', 'consistent'],
+      // More than one property, element, parameter or argument goes one per line; a single one may stay inline.
+      '@stylistic/object-curly-newline': ['error', {
+        ObjectExpression: { multiline: true, minProperties: 2, consistent: true },
+        ObjectPattern: { multiline: true, minProperties: 2, consistent: true },
+        TSTypeLiteral: { multiline: true, minProperties: 2, consistent: true },
+        TSInterfaceBody: { multiline: true, minProperties: 2, consistent: true },
+        ImportDeclaration: { multiline: true, consistent: true },
+        ExportDeclaration: { multiline: true, consistent: true },
+      }],
+      '@stylistic/object-property-newline': 'error',
+      '@stylistic/array-bracket-newline': ['error', { multiline: true, minItems: 2 }],
+      '@stylistic/array-element-newline': ['error', { multiline: true, minItems: 2 }],
       '@stylistic/function-paren-newline': ['error', 'multiline-arguments'],
-      '@stylistic/function-call-argument-newline': ['error', 'consistent'],
+      '@stylistic/function-call-argument-newline': ['error', 'always'],
+      'pnyx/item-newline': 'error',
     },
   },
   {
