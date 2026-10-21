@@ -15,6 +15,7 @@ export const OWNER_DOCUMENTS = {
 } as const
 // The share of a budget past which the digest asks Hydra to curate that memory.
 const NEARLY_FULL = 0.8
+export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules until `pnyx-axi rule init --shared` copies them into the Pnyx home to edit'
 // ponytail: a Hydra with more live tasks lists the first ones by column and rank; page the rest with task list.
 const TASK_LIMIT = 40
 
@@ -147,11 +148,13 @@ export function hydraDigest({
   state,
   owner,
   projects = [],
+  setup = [],
 }: {
   hydraId: string
   state: HydraState
   owner: Memory
   projects?: string[]
+  setup?: string[]
 }): string {
   const config = hydraConfig({
     state,
@@ -191,6 +194,10 @@ export function hydraDigest({
     ...(hydra?.attention.some(a => a.blocking && !a.answered) ? [
       `Your own chat waits on: ${hydra.attention.filter(a => a.blocking && !a.answered).map(a => clip({ text: a.text ?? a.kind }))
         .join('; ')}`,
+    ] : []),
+    ...(setup.length ? [
+      '',
+      ...setup,
     ] : []),
     '',
     'Columns (id · title · tasks · when):',

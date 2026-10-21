@@ -573,19 +573,25 @@ test(
       }),
       /uncommitted changes/,
     )
-    await assert.rejects(
-      async () => run({
-        args: [
-          'task',
-          'copy',
-          task,
-          'remove',
-          '--discard',
-          '--actor',
-          'hydra',
-        ],
-      }),
-      /needs the owner/,
+    const proposed = await run({
+      args: [
+        'task',
+        'copy',
+        task,
+        'remove',
+        '--discard',
+        '--actor',
+        'hydra',
+      ],
+    })
+    assert.ok('confirmation' in proposed && 'help' in proposed)
+    assert.equal(
+      proposed.confirmation,
+      'needed',
+    )
+    assert.match(
+      JSON.stringify(proposed.help),
+      /Confirm or Dismiss/,
     )
     const asked = await run({
       args: [

@@ -1,3 +1,4 @@
+import { proposeOwnerCommand } from '../confirmations/commands.ts'
 import { createHash } from 'node:crypto'
 import type { Output } from '../cli/commands.ts'
 import { findCard, type Meta } from '../core/decide.ts'
@@ -51,10 +52,15 @@ export function copyCommand({
   }
 
   if (values.discard && meta.actor === HYDRA_ACTOR) {
-    throw new HydraError({
-      message: 'discarding work that never landed needs the owner',
-      code: 'FORBIDDEN',
-      help: ['Ask the owner to run `pnyx-axi task copy <task> remove --discard`'],
+    return proposeOwnerCommand({
+      hydraId,
+      name: 'task',
+      args: [
+        'copy',
+        ref,
+        'remove',
+        '--discard',
+      ],
     })
   }
 

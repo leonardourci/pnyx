@@ -1,8 +1,10 @@
+import { saveOrPropose, resolveProposal } from './proposals.ts'
 import { existsSync } from 'node:fs'
+import { TEMPLATE_NUDGE } from '../core/digest.ts'
 import { isDeepStrictEqual } from 'node:util'
-import { WRITE, guard, parse, required, type Output } from '../cli/commands.ts'
+import { WRITE, guard, parse, required, meta, type Output } from '../cli/commands.ts'
 import { loadHydra, requireHydra, withRegistryLock } from '../store/hydra-store.ts'
-import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, readConfig, writeConfig, type Candidate, type HeadsDispatch, type Harness } from './config.ts'
+import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateRules, writeConfig, type Candidate, type Harness } from './config.ts'
 
 const OPTIONS = {
   ...WRITE,
@@ -21,84 +23,9 @@ const OPTIONS = {
   folder: { type: 'string' },
 } as const
 
-export const STARTER_DISPATCH: HeadsDispatch = {
-  main: 'claude:personal',
-  workers: {
-    claude: [
-      'claude:work',
-      'claude:personal',
-    ],
-    codex: [
-      'codex:work',
-      'codex:personal',
-    ],
-  },
-  projects: {},
-  rules: {
-    build: {
-      when: 'Implementation and difficult debugging',
-      candidates: [
-        {
-          harness: 'claude',
-          model: 'claude-opus-5-5',
-          effort: 'high',
-        },
-        {
-          harness: 'codex',
-          model: 'gpt-6.1-sol',
-          effort: 'high',
-        },
-      ],
-    },
-    review: {
-      when: 'Independent code review',
-      candidates: [
-        {
-          harness: 'codex',
-          model: 'gpt-6.1-sol',
-          effort: 'high',
-        },
-        {
-          harness: 'claude',
-          model: 'claude-opus-5-5',
-          effort: 'high',
-        },
-      ],
-    },
-  },
-  default: [
-    {
-      harness: 'claude',
-      model: 'claude-sonnet-5-5',
-    },
-    {
-      harness: 'codex',
-      model: 'gpt-6-luna',
-    },
-  ],
-}
-export const STARTER_ACCOUNTS = {
-  accounts: {
-    'claude:personal': {
-      provider: 'claude',
-      folder: '~/.claude',
-    },
-    'claude:work': {
-      provider: 'claude',
-      folder: '~/.claude-work',
-    },
-    'codex:personal': {
-      provider: 'codex',
-      folder: '~/.codex',
-    },
-    'codex:work': {
-      provider: 'codex',
-      folder: '~/.codex-work',
-    },
-  },
-}
-
 function ruleCommand({ args }: { args: string[] }): Output {
+  const propose = args[0] === 'propose'
+  args = propose ? args.slice(1) : args
   const {
     values,
     positionals,
@@ -109,6 +36,28 @@ function ruleCommand({ args }: { args: string[] }): Output {
     positionals: 2,
   })
   const action = positionals[0] ?? 'list'
+
+  if (propose && ![
+    'set',
+    'remove',
+    'accounts',
+  ].includes(action)) {
+    return invalid({ message: 'Use rule propose set|remove|accounts with the change arguments' })
+  }
+
+  if (action === 'confirm' || action === 'dismiss') {
+    return resolveProposal({
+      hydraId,
+      action,
+      token: required({
+        value: positionals[1],
+        what: 'proposal token',
+      }),
+      confirm: values.confirm as string | undefined,
+      values,
+    })
+  }
+
   const state = loadHydra({ hydraId }).state
 
   if (action === 'list') {
@@ -118,7 +67,13 @@ function ruleCommand({ args }: { args: string[] }): Output {
         hydraId,
         state,
       }),
-      help: ['Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading'],
+      help: [
+        'Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
+        ...(onTemplate({
+          hydraId,
+          state,
+        }) ? [TEMPLATE_NUDGE] : []),
+      ],
     }
   }
 
@@ -142,8 +97,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
         } : before)
       const inherited = shared
         ? {
-          rules: {},
-          default: [{ harness: 'claude' as const }],
+          ...templateRules(),
           workers: {},
           projects: {},
           ...before,
@@ -152,6 +106,12 @@ function ruleCommand({ args }: { args: string[] }): Output {
           hydraId,
           state,
         }).dispatch
+
+      if (action === 'migrate' || (action === 'init' && !shared)) {
+        if (propose || meta({ values }).actor === 'hydra') {
+          return invalid({ message: 'Propose a rule set, remove or accounts change instead' })
+        }
+      }
 
       if (action === 'init') {
         const accountPath = configPath({
@@ -163,14 +123,14 @@ function ruleCommand({ args }: { args: string[] }): Output {
         if (!existsSync(path)) {
           writeConfig({
             path,
-            value: STARTER_DISPATCH,
+            value: readTemplate(),
           })
         }
 
         if (!existsSync(accountPath)) {
           writeConfig({
             path: accountPath,
-            value: STARTER_ACCOUNTS,
+            value: readTemplate({ accounts: true }),
             accounts: true,
           })
         }
@@ -319,10 +279,18 @@ function ruleCommand({ args }: { args: string[] }): Output {
         return { event: 'none: unchanged' }
       }
 
-      writeConfig({
-        path,
+      const proposal = saveOrPropose({
+        hydraId,
+        shared,
         value: next,
+        values,
+        propose,
+        summary: `Rule ${action}${positionals[1] ? ` ${positionals[1]}` : ''}${shared ? ' (shared)' : ''}`,
       })
+
+      if (proposal) {
+        return proposal
+      }
 
       return {
         saved: path,
@@ -336,6 +304,8 @@ function ruleCommand({ args }: { args: string[] }): Output {
 }
 
 function accountCommand({ args }: { args: string[] }): Output {
+  const propose = args[0] === 'propose'
+  args = propose ? args.slice(1) : args
   const {
     values,
     positionals,
@@ -405,11 +375,19 @@ function accountCommand({ args }: { args: string[] }): Output {
         return invalid({ message: 'Use account list, set or remove' })
       }
 
-      writeConfig({
-        path,
-        value: file,
+      const proposal = saveOrPropose({
+        hydraId,
+        shared: Boolean(values.shared),
         accounts: true,
+        value: file,
+        values,
+        propose,
+        summary: `Account ${action} ${key}${values.shared ? ' (shared)' : ''}`,
       })
+
+      if (proposal) {
+        return proposal
+      }
 
       return {
         saved: path,
@@ -430,11 +408,14 @@ export const DISPATCH_HELP = {
   rule: `usage: pnyx-axi rule list|init|migrate [--shared]
 pnyx-axi rule set <name> --when "<work description>" --candidates '<JSON array>' [--shared]
 pnyx-axi rule set <name> [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off|default]
+pnyx-axi rule propose set|remove|accounts <same arguments>
+pnyx-axi rule confirm <token> --confirm <token> | dismiss <token>
 pnyx-axi rule remove <name> [--shared]
 pnyx-axi rule accounts [--main <account>] [--provider claude|codex --order <account,account>] [--project <absolute path>] [--shared]
 Empty sections inherit the shared file. Single-candidate flags replace a rule's candidate list. rule migrate preserves old agents as rules without changing the event log.`,
   account: `usage: pnyx-axi account list
 pnyx-axi account set <name> --provider claude|codex --folder <login folder> [--shared]
+pnyx-axi account propose set|remove <same arguments>
 pnyx-axi account remove <name> [--shared]
 Only login folders are stored. Account order is set through rule accounts.`,
 }

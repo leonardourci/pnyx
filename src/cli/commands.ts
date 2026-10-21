@@ -1,3 +1,4 @@
+import { setupCheckOutput } from '../setup/check.ts'
 import { projectWorkerContext } from '../projects/context.ts'
 import { decideQueue } from '../queue/decide.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
@@ -3311,6 +3312,9 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.declared': return `${event.data.state}: ${event.data.note}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
     case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
+    case 'hydra.dispatch-proposed': return `Proposed dispatch change: ${event.data.summary}`
+    case 'hydra.dispatch-progress': return `Owner question ${event.data.status}${event.data.error ? `: ${event.data.error}` : ''}`
+    case 'hydra.dispatch-resolved': return `Dispatch proposal ${event.data.action}`
     case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
@@ -3521,6 +3525,10 @@ const setup = guard({
       positionals: 1,
     })
 
+    if (positionals[0] === 'check') {
+      return setupCheckOutput({ hydraId })
+    }
+
     if (positionals[0] === 'skills') {
       return setupSkills({
         remove: !!values.remove,
@@ -3562,7 +3570,7 @@ const setup = guard({
       throw new AxiError(
         `unknown setup target: ${positionals[0] ?? '(none)'}`,
         'VALIDATION_ERROR',
-        ['Run `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
+        ['Run `pnyx-axi setup check`, `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
       )
     }
 
@@ -3786,7 +3794,7 @@ commands:
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the running server
-  setup skills|hooks|service                Install global skills, reporting hooks or the macOS login service (--remove, --preview)
+  setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the macOS login service
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the pnyx-hydra skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
@@ -3902,8 +3910,8 @@ never) with its sandbox: never, or bypassPermissions, runs with full access, the
 Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
 and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.
 Repeating the same --event-id never starts a second agent.
---rule chooses the heads dispatch candidate list (default: default); --harness filters that list and
---prompt its opening message, which otherwise names the task and the pnyx-worker skill. Known quota ranks
+--rule chooses the heads dispatch candidate list (default: default); an explicit owner --harness or
+--model wins outside that list, checked against its own catalog and login. --prompt sets its opening message, which otherwise names the task and the pnyx-worker skill. Known quota ranks
 by spendPriority above unknown quota; a tie, or several candidates with unknown quota, stops the start.
 --model, --effort, --mode and --fast on|off replace the chosen candidate's settings from the first turn; the model
 must be in the harness's catalog and the task records the override.
@@ -3958,10 +3966,13 @@ Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
 Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
 Source observations, card creation and merges cannot be undone.
 `,
-  setup: `usage: pnyx-axi setup service [--port <n>] [--remove] [--preview]
+  setup: `usage: pnyx-axi setup check [--hydra <id>]
+pnyx-axi setup service [--port <n>] [--remove] [--preview]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
 pnyx-axi setup skills [--remove] [--preview]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
+setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
+project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
 setup skills links pnyx-hydra and pnyx-worker from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.
 Existing files and unrelated links are never replaced; --remove takes out only this install's links.

@@ -1,18 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { delimiter, join } from 'node:path'
+import { join } from 'node:path'
 import { hydraConfig } from '../core/hydra.ts'
 import { hookStatus } from '../integrations/hooks/install.ts'
 import { HYDRA_SKILLS, skillSource, skillStatus } from '../integrations/skills/install.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
 import { loadHydra } from '../store/hydra-store.ts'
+import { onPath } from '../setup/check.ts'
 import { COMMON, guard, parse, type Output } from './commands.ts'
-
-const onPath = ({ name }: { name: string }) =>
-  (process.env.PATH ?? '').split(delimiter).some(dir => dir && existsSync(join(
-    dir,
-    name,
-  )))
 
 export async function integrations({
   hydraId,

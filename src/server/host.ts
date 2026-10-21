@@ -1,5 +1,6 @@
+import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
-import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
+import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, overrideOf, hostedOverride, readQuota, type DispatchChoice } from '../dispatch/select.ts'
 import { effectiveDispatch, type Harness } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -603,6 +604,12 @@ export function createHost({
       state,
       owner,
       projects,
+      setup: setupDigest({
+        items: setupCheck({
+          hydraId,
+          state,
+        }),
+      }),
     })
   }
 
@@ -2433,6 +2440,12 @@ export async function hostRequest({
         name: 'rule',
         optional: true,
       })
+      const harness = field({
+        body,
+        name: 'harness',
+        optional: true,
+      })
+      const override = overrideOf({ value: body.override })
       const named = (ruleCandidates({
         dispatch: config.dispatch,
         rule,
@@ -2447,11 +2460,52 @@ export async function hostRequest({
           config,
           project,
           rule,
+          harness,
+          override,
           offers: await catalogOffers({
             host,
-            harnesses: named.map(c => c.harness),
+            harnesses: harness === 'claude' || harness === 'codex' ? [harness] : override?.model ? [
+              'claude',
+              'codex',
+            ] : named.map(c => c.harness),
           }),
         })
+
+      hostedOverride({
+        harness: dispatch.provider,
+        override: dispatch.override,
+      })
+
+      if (dispatch.ownerOverride) {
+        const settings = chosenSettings({ choice: dispatch })
+
+        if (settings.model) {
+          const models = modelIds({ models: await host.models({ harness: dispatch.provider }) })
+          const model = dispatch.provider === 'claude' ? settings.model.replace(
+            /\[1m\]$/,
+            '',
+          ) : settings.model
+
+          if (!models.includes(model)) {
+            throw new HydraError({
+              message: `${dispatch.provider}/${settings.model}: not offered`,
+              code: 'VALIDATION_ERROR',
+            })
+          }
+        }
+
+        if (readQuota({
+          account: {
+            provider: dispatch.provider,
+            folder: dispatch.folder,
+          },
+        }).auth === 'signed-out') {
+          throw new HydraError({
+            message: `account ${dispatch.account} is signed out`,
+            code: 'ACCOUNT_SIGNED_OUT',
+          })
+        }
+      }
 
       // A setting changed after the start would reach only the next turn.
       const settings: Record<string, string> = {
