@@ -149,7 +149,7 @@ export function TaskConversation({
           openTask={composer.openTask}
           notify={composer.notify}
         />
-        {working && !entries.some(e => e.streaming) && <Working />}
+        {working && <Working />}
         {page?.unavailable && <p className="muted">{page.unavailable}</p>}
         {error && <p role="alert">{error}</p>}
       </div>

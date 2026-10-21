@@ -245,7 +245,12 @@ export function HydraCard({
       >{card.title}
       </Button>
       <div className="card-state">
-        <span className={`agent-activity activity-${status.kind}`} title={status.at ? new Date(status.at).toLocaleString() : undefined}><i aria-hidden="true" />{status.text}</span>
+        <span className={`agent-activity activity-${status.kind}`} title={status.at ? new Date(status.at).toLocaleString() : undefined}>
+          {status.kind === 'working'
+            ? <span className="working-dots" aria-hidden="true"><i /><i /><i /></span>
+            : <i aria-hidden="true" />}
+          {status.text}
+        </span>
         {status.kind === 'stopped' && (
           <Button
             className="card-resume"
