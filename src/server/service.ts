@@ -74,6 +74,26 @@ const stableNode = ({
     .find(candidate => resolve({ path: candidate }) === real)) || node
 }
 
+// The launchd job of this Pnyx home's login service, named after the home so other homes keep their own.
+export function serviceFile({ userHome = homedir() }: { userHome?: string } = {}) {
+  const label = `local.pnyx.server.${createHash('sha256').update(pnyxHome())
+    .digest('hex')
+    .slice(
+      0,
+      16,
+    )}`
+
+  return {
+    label,
+    path: join(
+      userHome,
+      'Library',
+      'LaunchAgents',
+      `${label}.plist`,
+    ),
+  }
+}
+
 // One login service runs the one server of every Hydra in this Pnyx home.
 export function setupService({
   port = DEFAULT_PORT,
@@ -127,22 +147,11 @@ export function setupService({
   }
 
   const home = pnyxHome()
-  const key = createHash('sha256').update(home)
-    .digest('hex')
-    .slice(
-      0,
-      16,
-    )
-  const label = `local.pnyx.server.${key}`
-  const agents = join(
-    userHome,
-    'Library',
-    'LaunchAgents',
-  )
-  const path = join(
-    agents,
-    `${label}.plist`,
-  )
+  const {
+    label,
+    path,
+  } = serviceFile({ userHome })
+  const agents = dirname(path)
   const domain = `gui/${process.getuid!()}`
   const log = join(
     home,

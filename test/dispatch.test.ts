@@ -12,6 +12,7 @@ import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { commands } from '../src/cli/commands.ts'
 import { hydraDigest, TEMPLATE_NUDGE } from '../src/core/digest.ts'
+import { setupCheck, setupDigest } from '../src/setup/check.ts'
 
 const TEMPLATE_DISPATCH = parseDispatch({ value: readTemplate() })
 const TEMPLATE_ACCOUNTS = parseAccounts({ value: readTemplate({ accounts: true }) })
@@ -1281,11 +1282,13 @@ test(
       hydraId: 'lab',
       state,
       owner: {},
-      dispatchTemplate: onTemplate({
-        hydraId: 'lab',
-        state,
+      setup: setupDigest({
+        items: setupCheck({
+          hydraId: 'lab',
+          state,
+        }),
       }),
-    }).includes(TEMPLATE_NUDGE)
+    }).includes(`- config: ${TEMPLATE_NUDGE}`)
     const listed = () => (dispatchCommands.rule([
       'list',
       '--hydra',

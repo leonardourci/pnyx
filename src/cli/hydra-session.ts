@@ -17,12 +17,13 @@ const flag = ({
   args.some(arg => arg === name || arg.startsWith(`${name}=`))
 
 // What only the owner may change: what agents may run, which logins they use, and Hydra's own prompts.
+// Hydra may create the missing shared config (rule init never overwrites) and read the setup check.
 const OWNER_ONLY: Record<string, ({ args }: { args: string[] }) => boolean> = {
   agent: ({ args }) => args[1] === 'mode',
-  rule: ({ args }) => ![
+  rule: ({ args }) => !([
     'list',
     'propose',
-  ].includes(args[0] ?? 'list'),
+  ].includes(args[0] ?? 'list') || (args[0] === 'init' && args.includes('--shared'))),
   account: ({ args }) => ![
     'list',
     'propose',
@@ -35,7 +36,7 @@ const OWNER_ONLY: Record<string, ({ args }: { args: string[] }) => boolean> = {
     name: '--session',
   })),
   project: ({ args }) => args[0] === 'set',
-  setup: () => true,
+  setup: ({ args }) => args[0] !== 'check',
   task: ({ args }) => (args[0] === 'permission' && args[1] === HYDRA_CARD)
     || (args[0] === 'copy' && flag({
       args,
@@ -107,7 +108,8 @@ export function ownerOnly<T extends Record<string, Command>>({
           )
         }
 
-        const hydraId = typeof values.hydra === 'string' ? values.hydra : DEFAULT_HYDRA
+        // A Hydra Pnyx runs has PNYX_HYDRA, so a command copied without --hydra still lands in its own chat.
+        const hydraId = typeof values.hydra === 'string' ? values.hydra : env.PNYX_HYDRA || DEFAULT_HYDRA
 
         return proposeOwnerCommand({
           name,

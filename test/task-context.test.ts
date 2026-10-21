@@ -13,6 +13,20 @@ import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET, TEMPLATE_NUDGE } from '../src
 import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
+// The digest's setup check reads harness configs; keep it off the real ones.
+const harnesses = mkdtempSync(join(
+  tmpdir(),
+  'pnyx-context-harness-',
+))
+process.env.CLAUDE_CONFIG_DIR = join(
+  harnesses,
+  'claude',
+)
+process.env.CODEX_HOME = join(
+  harnesses,
+  'codex',
+)
+
 function fixture() {
   const home = realpathSync(mkdtempSync(join(
     tmpdir(),
@@ -1029,7 +1043,7 @@ test(
         digest,
         new RegExp(`Owner memory uses 10 of ${OWNER_MEMORY_BUDGET} characters\\.\n\nHydra memory \\(this Hydra only\\):\n- scope: API work\\.\nHydra memory uses 9 of ${HYDRA_MEMORY_BUDGET} characters\\.\n`),
       )
-      assert.ok(digest.endsWith(`\n\n${TEMPLATE_NUDGE}\n</pnyx-digest>`))
+      assert.ok(digest.includes(`\nSetup needed (load pnyx-setup):\n- config: ${TEMPLATE_NUDGE} · you: pnyx-axi rule init --shared --hydra default\n`))
       assert.throws(
         () => f.run({
           name: 'hydra',

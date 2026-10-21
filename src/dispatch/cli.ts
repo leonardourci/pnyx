@@ -107,7 +107,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
           state,
         }).dispatch
 
-      if (action === 'init' || action === 'migrate') {
+      if (action === 'migrate' || (action === 'init' && !shared)) {
         if (propose || meta({ values }).actor === 'hydra') {
           return invalid({ message: 'Propose a rule set, remove or accounts change instead' })
         }
