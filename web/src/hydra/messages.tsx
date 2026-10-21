@@ -941,7 +941,7 @@ function PnyxCallRow({
   return (
     <details className="trace pnyx-call" data-expandable="true" data-failed={!!call.failed || undefined}>
       <summary>
-        <Icon name="pnyx" size={14} />
+        <Icon name="tool" size={14} />
         <span className="pnyx-sentence">
           {call.sentence.map((
             part,

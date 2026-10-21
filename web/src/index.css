@@ -270,8 +270,6 @@ h3 { font-weight: 600; }
 
 .trace-copy { margin-left: auto; opacity: 0; }
 
-.pnyx-call summary > img { width: 20px; height: 20px; padding: 3px; border-radius: 50%; background: var(--color-gold-wash); }
-
 .trace.pnyx-call summary .pnyx-sentence { flex: 1; opacity: 1; color: var(--color-ink); white-space: normal; overflow-wrap: anywhere; }
 
 .pnyx-sentence .button.task-mention { display: inline; padding: 0 5px; font-size: inherit; line-height: inherit; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
