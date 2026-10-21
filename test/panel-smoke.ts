@@ -1,3 +1,4 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { effectiveDispatch } from '../src/dispatch/config.ts'
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -9,6 +10,7 @@ import { startServer } from '../src/server/server.ts'
 import { loadHydra } from '../src/store/hydra-store.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import { smokeBrowser } from './browser.ts'
+import { fakeCodex } from './codex-fixture.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 const home = realpathSync(mkdtempSync(join(
@@ -19,6 +21,18 @@ process.env.PNYX_HOME = join(
   home,
   'pnyx',
 )
+process.env.CLAUDE_CONFIG_DIR = join(
+  home,
+  'claude',
+)
+process.env.CODEX_HOME = join(
+  home,
+  'codex',
+)
+const codex = fakeCodex({
+  root: home,
+  models: ['gpt-6.1-sol'],
+})
 commands.hydra([
   'create',
   'default',
@@ -74,6 +88,8 @@ commands.task([
   'personal',
 ])
 let server = await startServer({
+  query: hydraSdk().query,
+  spawnCodex: codex.spawnCodex,
   hydraId: 'default',
   port: 0,
   homes: [fixture.nativeHome],
@@ -257,7 +273,7 @@ try {
     label: 'Hydra harness saves in the composer',
   })
   await click({ selector: '.hydra-chat [aria-label="Model"]' })
-  await click({ selector: '[role=listbox][aria-label="Model"] [role=option]:nth-child(2)' })
+  await evaluate({ code: 'const option = [...document.querySelectorAll(`[role=listbox][aria-label="Model"] [role=option]`)].find(el => el.textContent.trim() === "gpt-6.1-sol"); if (!option) throw new Error("Fixture model is missing"); option.click(); return true;' })
   await eventually({
     condition: '!document.querySelector(`.hydra-chat [aria-label="Effort"]`).disabled',
     label: 'model saved',
@@ -431,6 +447,8 @@ try {
   })
   await screenshot({ name: 'panel-offline.png' })
   server = await startServer({
+    query: hydraSdk().query,
+    spawnCodex: codex.spawnCodex,
     hydraId: 'default',
     port,
   })
