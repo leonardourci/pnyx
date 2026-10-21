@@ -34,18 +34,19 @@ type Restore = {
   scroll?: Record<string, [number, number]>
 }
 
+function savedComments({ comments }: { comments: Record<string, ChatComment[]> }) {
+  return Object.fromEntries(Object.entries(comments).map(([
+    card,
+    items,
+  ]) => [
+    card,
+    items.filter(comment => sendableComment({ comment })),
+  ]))
+}
+
 function readComments({ value }: { value: string | null }): Record<string, ChatComment[]> {
   try {
-    const saved = JSON.parse(value ?? '{}') as Record<string, ChatComment[]>
-
-    // An empty note was only kept for a return that a reload ends.
-    return Object.fromEntries(Object.entries(saved).map(([
-      card,
-      items,
-    ]) => [
-      card,
-      items.filter(comment => sendableComment({ comment })),
-    ]))
+    return savedComments({ comments: JSON.parse(value ?? '{}') as Record<string, ChatComment[]> })
   } catch {
     return {}
   }
@@ -123,7 +124,13 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const [
     comments,
     setComments,
-  ] = useState(() => readComments({ value: localStorage.getItem(commentsKey) }))
+  ] = useState<Record<string, ChatComment[]>>(() => {
+    try {
+      return readComments({ value: localStorage.getItem(commentsKey) })
+    } catch {
+      return {}
+    }
+  })
   // Another tab's edits arrive here, so the next write from this tab doesn't undo them.
   useEffect(
     () => {
@@ -131,8 +138,27 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         key,
         newValue,
       }: StorageEvent) => {
-        if (key === commentsKey && newValue !== JSON.stringify(comments)) {
-          setComments(readComments({ value: newValue }))
+        if (key === commentsKey && newValue !== JSON.stringify(savedComments({ comments }))) {
+          setComments(current => {
+            const incoming = readComments({ value: newValue })
+
+            for (const [
+              card,
+              items,
+            ] of Object.entries(current)) {
+              const pending = items.filter(comment => !sendableComment({ comment })
+                && !incoming[card]?.some(item => item.id === comment.id))
+
+              if (pending.length) {
+                incoming[card] = [
+                  ...incoming[card] ?? [],
+                  ...pending,
+                ]
+              }
+            }
+
+            return incoming
+          })
         }
       }
 
@@ -156,7 +182,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       try {
         localStorage.setItem(
           commentsKey,
-          JSON.stringify(comments),
+          JSON.stringify(savedComments({ comments })),
         )
       } catch { /* Storage full or blocked: comments last until the tab closes. */ }
     },

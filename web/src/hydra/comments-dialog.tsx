@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button } from '../components/ui/controls.tsx'
 import { Dialog } from '../components/ui/dialog.tsx'
 import { Icon } from '../components/ui/icon.tsx'
-import { groupComments, type ChatComment } from './chat.ts'
+import { groupComments, sendableComment, type ChatComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
 
 // With more than one comment, the ✕ asks first until it loses focus.
@@ -62,12 +62,19 @@ export function CommentsDialog({
   show({ id }: { id: string }): void
   close(): void
 }) {
-  // A note cleared while editing stays listed until the dialog closes.
   const listed = comments.filter(comment => shown.includes(comment.id))
   const replies = groupComments({ comments: listed })
 
+  const finish = () => {
+    setComments({
+      items: comments.filter(comment => !shown.includes(comment.id)
+        || sendableComment({ comment })),
+    })
+    close()
+  }
+
   return (
-    <Dialog title={`Comments · ${listed.length}`} className="comments-dialog" close={close}>
+    <Dialog title={`Comments · ${listed.length}`} className="comments-dialog" close={finish}>
       <div className="dialog-body">
         {[...replies.values()].map(items => (
           <section key={items[0]!.id} className="comment-group">
@@ -83,6 +90,11 @@ export function CommentsDialog({
                   } : c),
                 })}
                 remove={() => setComments({ items: comments.filter(c => c.id !== comment.id) })}
+                release={() => {
+                  if (!sendableComment({ comment })) {
+                    setComments({ items: comments.filter(c => c.id !== comment.id) })
+                  }
+                }}
                 show={() => show({ id: comment.id })}
               />
             ))}
@@ -91,7 +103,7 @@ export function CommentsDialog({
       </div>
       <footer className="dialog-foot">
         <span className="small muted">Numbered in this order under each reply.</span>
-        <Button variant="primary" onClick={close}>Done</Button>
+        <Button variant="primary" onClick={finish}>Done</Button>
       </footer>
     </Dialog>
   )

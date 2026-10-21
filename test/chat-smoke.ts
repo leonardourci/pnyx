@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createServer } from 'node:http'
 import { hydraSdk } from './hydra-host-fixture.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
@@ -469,6 +470,102 @@ try {
     condition: `${marked}.length === 0`,
     label: 'removing the comments removes their highlights',
   })
+  await select({
+    start: 2,
+    end: 10,
+  }); await click({ selector: pill })
+  await note({ value: 'A shared comment.' }); await press({ key: 'Escape' })
+  await evaluate({ code: `const peer = document.createElement('iframe'); peer.id = 'comments-peer'; peer.style.display = 'none'; peer.src = ${JSON.stringify(server.url)}; document.body.append(peer); return true;` })
+  const peer = 'document.querySelector("#comments-peer").contentDocument'
+  await eventually({
+    condition: `${peer}.querySelectorAll('.hydra-chat .comment-card').length === 1`,
+    label: 'another tab restores the saved comment',
+  })
+  await select({
+    start: 11,
+    end: 19,
+  }); await click({ selector: pill })
+  await evaluate({ code: `const el = ${peer}.querySelector('.hydra-chat .comment-card textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, 'Edited in the other tab.'); el.dispatchEvent(new Event('input', { bubbles: true })); return true;` })
+  await eventually({
+    condition: `${cards} === 2 && document.querySelector('.hydra-chat .comment-card textarea').value === 'Edited in the other tab.'`,
+    label: 'remote edits preserve an actively edited empty note',
+  })
+  await note({ value: 'A second local comment.' })
+  await eventually({
+    condition: `${peer}.querySelectorAll('.hydra-chat .comment-card').length === 2 && [...${peer}.querySelectorAll('.hydra-chat .comment-card textarea')].map(n => n.value).join('|') === 'Edited in the other tab.|A second local comment.'`,
+    label: 'the next local edit retains the remote change',
+  })
+  await evaluate({ code: `${peer}.querySelector('.hydra-chat .comment-card [aria-label="Remove comment"]').click(); return true;` })
+  await eventually({
+    condition: `${cards} === 1 && document.querySelector('.hydra-chat .comment-card textarea').value === 'A second local comment.'`,
+    label: 'remote removal updates the remaining local comment',
+  })
+  await evaluate({ code: 'document.querySelector("#comments-peer").remove(); return true;' })
+  await click({ selector: '.hydra-chat .composer-comments [aria-label="Show comments"]' })
+  await evaluate({ code: 'document.querySelector(".comments-dialog [aria-label=Close]").focus(); return true;' })
+  await press({ key: '/' })
+  await check({
+    condition: '!!document.querySelector(".comments-dialog[open]") && document.activeElement.matches(".comments-dialog [aria-label=Close]")',
+    label: 'comment dialog keys do not navigate the page underneath',
+  })
+  await evaluate({ code: 'const el = document.querySelector(".comments-dialog textarea"); el.focus(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(el, ""); el.dispatchEvent(new Event("input", { bubbles: true })); return true;' })
+  await press({ key: 'Escape' })
+  await eventually({
+    condition: `!document.querySelector('.comments-dialog') && ${cards} === 0 && ${marked}.length === 0 && !document.querySelector('.hydra-chat .composer-comments')`,
+    label: 'leaving a cleared dialog note removes its card and highlight',
+  })
+  const blockedStorage = createServer(async (
+    req,
+    res,
+  ) => {
+    const response = await fetch(new URL(
+      req.url ?? '/',
+      server.url,
+    ))
+    const contentType = response.headers.get('content-type') ?? 'application/octet-stream'
+    const body = Buffer.from(await response.arrayBuffer())
+    res.writeHead(
+      response.status,
+      { 'content-type': contentType },
+    )
+    res.end(contentType.includes('text/html') ? body.toString().replace(
+      '<head>',
+      `<head><script>
+      const get = Storage.prototype.getItem;
+      Storage.prototype.getItem = function(key) {
+        if (key.endsWith(':comments')) {
+          window.blockedCommentRead = true;
+          throw new DOMException('Storage is blocked', 'SecurityError');
+        }
+        return get.call(this, key);
+      };
+      new MutationObserver(() => {
+        if (window.blockedCommentRead && document.querySelector('.shell')) {
+          parent.postMessage('blocked-storage-ready', ${JSON.stringify(new URL(server.url).origin)});
+        }
+      }).observe(document, { childList: true, subtree: true });
+    </script>`,
+    ) : body)
+  })
+  await new Promise<void>(resolve => blockedStorage.listen(
+    0,
+    '127.0.0.1',
+    resolve,
+  ))
+
+  try {
+    const address = blockedStorage.address()
+    assert.ok(address && typeof address === 'object')
+    await evaluate({ code: `window.addEventListener('message', event => { if (event.origin === 'http://127.0.0.1:${address.port}' && event.data === 'blocked-storage-ready') window.blockedStorageReady = true; }); const frame = document.createElement('iframe'); frame.id = 'blocked-storage'; frame.style.display = 'none'; frame.src = 'http://127.0.0.1:${address.port}/'; document.body.append(frame); return true;` })
+    await eventually({
+      condition: 'window.blockedStorageReady === true',
+      label: 'blocked comment storage does not prevent the Hydra from rendering',
+    })
+    await evaluate({ code: 'document.querySelector("#blocked-storage").remove(); return true;' })
+  } finally {
+    await blockedStorage[Symbol.asyncDispose]()
+  }
+
   assert.equal(
     (loadHydra({ hydraId: 'default' }).state.hydraMessages?.filter(message => message.actor === 'web').map(message => message.text)
       .join('\n')
