@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Card, HydraColumn } from '../../../src/core/model.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { Markdown } from '../components/ui/markdown.tsx'
 import { InlinePermissions } from './permissions.tsx'
 import { InlineQuestions } from './questions.tsx'
 import type { Command } from './connection.ts'
-import { relevantUpdate, taskTimeline, type TaskEvent } from './task-updates.ts'
+import { loadRelevant, taskTimeline, type TaskEvent } from './task-updates.ts'
 
 const PAGE_SIZE = 50
-const MIN_ROWS = 20
 
 const stateLabel = ({ state }: { state: string }) =>
   state === 'needs_you' ? 'Needs you' : state.replace(
@@ -85,41 +84,7 @@ export function TaskUpdates({
       card.id,
     ],
   )
-  // Most raw events are not shown, so keep paging back until a screenful is.
-  const loadRelevant = useCallback(
-    async ({
-      before,
-      kept,
-    }: {
-      before?: number
-      kept: TaskEvent[]
-    }) => {
-      let page = await load({ before })
-      const found = [
-        ...kept,
-        ...page,
-      ]
-      const shown = () => found.filter(event => relevantUpdate({
-        cardId: card.id,
-        event,
-        columns: [],
-      })).length
-
-      while (page.length === PAGE_SIZE && shown() < MIN_ROWS) {
-        page = await load({ before: Math.min(...page.map(event => event.seq)) })
-        found.push(...page)
-      }
-
-      return {
-        found,
-        more: page.length === PAGE_SIZE,
-      }
-    },
-    [
-      load,
-      card.id,
-    ],
-  )
+  const filled = useRef(false)
 
   useEffect(
     () => {
@@ -133,19 +98,33 @@ export function TaskUpdates({
         setLoading(true)
 
         try {
-          const result = await loadRelevant({ kept: [] })
+          const result = filled.current
+            ? {
+              found: await load({}),
+              more: undefined,
+            }
+            : await loadRelevant({
+              cardId: card.id,
+              pageSize: PAGE_SIZE,
+              load,
+            })
 
           if (active) {
-            setEvents(kept => result.found.some(event => kept.some(prior => prior.id === event.id))
-              ? [
-                ...result.found,
-                ...kept.filter(event => !result.found.some(next => next.id === event.id)),
-              ] : result.found)
-            setMore(result.more); setError('')
+            filled.current = true
+            setEvents(kept => [
+              ...result.found,
+              ...kept.filter(event => !result.found.some(next => next.id === event.id)),
+            ])
+
+            if (result.more !== undefined) {
+              setMore(result.more)
+            }
+
+            setError('')
           }
         } catch (error) {
           if (active) {
-            setError((error as Error).message)
+            setError(error instanceof Error ? error.message : String(error))
           }
         } finally {
           if (active) {
@@ -162,7 +141,8 @@ export function TaskUpdates({
     },
     [
       connected,
-      loadRelevant,
+      load,
+      card.id,
       card.updatedSeq,
       retry,
     ],
@@ -173,13 +153,18 @@ export function TaskUpdates({
 
     try {
       const result = await loadRelevant({
+        cardId: card.id,
         before: Math.min(...events.map(event => event.seq)),
-        kept: events,
+        pageSize: PAGE_SIZE,
+        load,
       })
-      setEvents(result.found)
+      setEvents(kept => [
+        ...kept,
+        ...result.found.filter(event => !kept.some(prior => prior.id === event.id)),
+      ])
       setMore(result.more); setError('')
     } catch (error) {
-      setError((error as Error).message)
+      setError(error instanceof Error ? error.message : String(error))
     } finally {
       setLoading(false)
     }

@@ -5,7 +5,14 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadHydra } from '../src/store/hydra-store.ts'
-import { relevantUpdate, taskTimeline } from '../web/src/hydra/task-updates.ts'
+import {
+  loadRelevant,
+  MAX_PAGES,
+  MIN_ROWS,
+  relevantUpdate,
+  taskTimeline,
+  type TaskEvent,
+} from '../web/src/hydra/task-updates.ts'
 
 test(
   'task updates retain every declaration, deduplicate history and list relevant events newest first',
@@ -265,5 +272,132 @@ test(
         type,
       )
     }
+  },
+)
+
+test(
+  'busy task history pages back until enough relevant rows show, and stops at its end',
+  async () => {
+    const pageSize = 5
+    const event = ({
+      seq,
+      relevant,
+    }: {
+      seq: number
+      relevant: boolean
+    }): TaskEvent => ({
+      id: `e${seq}`,
+      seq,
+      at: '2026-10-21T10:00:00Z',
+      type: relevant ? 'task.brief' : 'card.pushed',
+      summary: '',
+      data: relevant ? {} : {
+        key: 'k',
+        activity: 'working',
+      },
+    })
+    const history = ({
+      total,
+      every,
+    }: {
+      total: number
+      every: number
+    }) =>
+      Array.from(
+        { length: total },
+        (
+          _,
+          i,
+        ) => event({
+          seq: total - i,
+          relevant: i % every === 0,
+        }),
+      )
+
+    const pager = ({ events }: { events: TaskEvent[] }) => {
+      const calls: (number | undefined)[] = []
+
+      const load = async ({ before }: { before?: number }) => {
+        calls.push(before)
+
+        return events.filter(e => before === undefined || e.seq < before).slice(
+          0,
+          pageSize,
+        )
+      }
+
+      return {
+        calls,
+        load,
+      }
+    }
+
+    const short = pager({
+      events: history({
+        total: 3,
+        every: 10,
+      }),
+    })
+    const ended = await loadRelevant({
+      cardId: 'c1',
+      pageSize,
+      load: short.load,
+    })
+    assert.deepEqual(
+      [
+        short.calls.length,
+        ended.more,
+      ],
+      [
+        1,
+        false,
+      ],
+    )
+
+    const sparse = pager({
+      events: history({
+        total: 1000,
+        every: 2,
+      }),
+    })
+    const enough = await loadRelevant({
+      cardId: 'c1',
+      pageSize,
+      load: sparse.load,
+    })
+    assert.ok(enough.found.filter(e => e.type === 'task.brief').length >= MIN_ROWS)
+    assert.equal(
+      enough.more,
+      true,
+    )
+    assert.equal(
+      sparse.calls.length,
+      Math.ceil(MIN_ROWS * 2 / pageSize),
+    )
+
+    const noise = pager({
+      events: history({
+        total: 1000,
+        every: 1000,
+      }),
+    })
+    const capped = await loadRelevant({
+      cardId: 'c1',
+      before: 900,
+      pageSize,
+      load: noise.load,
+    })
+    assert.equal(
+      noise.calls.length,
+      MAX_PAGES,
+    )
+    assert.equal(
+      noise.calls[0],
+      900,
+    )
+    assert.equal(
+      capped.more,
+      true,
+    )
   },
 )

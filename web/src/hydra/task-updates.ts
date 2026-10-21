@@ -86,8 +86,7 @@ const renamed = ({ data }: { data: Record<string, unknown> }) => {
   } : undefined
 }
 
-// Only what a person needs to follow the task; hook refreshes, copies, notes and
-// delivery receipts stay in History.
+// Hook refreshes, copies, notes and delivery receipts stay in History.
 export function relevantUpdate({
   cardId,
   event,
@@ -98,42 +97,45 @@ export function relevantUpdate({
   columns: Columns
 }): Pick<TaskUpdate, 'state' | 'note'> | undefined {
   const data = event.data ?? {}
-  const plain = ({
-    state,
-    note = '',
-  }: {
-    state: string
-    note?: string
-  }) => ({
-    state,
-    note,
-  })
 
   switch (event.type) {
-    case 'task.declared': return typeof data.state === 'string'
-      ? plain({
-        state: data.state,
-        note: String(data.note ?? ''),
-      })
-      : undefined
-    case 'task.created': return plain({ state: 'Created' })
-    case 'task.launched': return plain({ state: 'Worker started' })
-    case 'task.session': return plain({ state: data.after === cardId ? 'Worker attached' : 'Worker detached' })
-    case 'task.brief': return plain({ state: 'Brief updated' })
-    case 'task.project': return plain({
+    case 'task.declared': return typeof data.state === 'string' ? {
+      state: data.state,
+      note: String(data.note ?? ''),
+    } : undefined
+    case 'task.created': return {
+      state: 'Created',
+      note: '',
+    }
+    case 'task.launched': return {
+      state: 'Worker started',
+      note: '',
+    }
+    case 'task.session': return {
+      state: data.after === cardId ? 'Worker attached' : 'Worker detached',
+      note: '',
+    }
+    case 'task.brief': return {
+      state: 'Brief updated',
+      note: '',
+    }
+    case 'task.project': return {
       state: 'Project changed',
       note: String(data.after ?? 'none'),
-    })
-    case 'task.reminder': return data.after ? plain({
-      state: 'Reminder set',
-      note: String(data.after),
-    }) : plain({ state: 'Reminder cleared' })
-    case 'task.reminder-due': return plain({
+    }
+    case 'task.reminder': return {
+      state: data.after ? 'Reminder set' : 'Reminder cleared',
+      note: data.after ? String(data.after) : '',
+    }
+    case 'task.reminder-due': return {
       state: 'Reminder due',
       note: event.summary,
-    })
-    case 'task.visibility': return plain({ state: data.after ? 'Hidden from Hydra' : 'Back on the Hydra' })
-    case 'card.moved': return plain({
+    }
+    case 'task.visibility': return {
+      state: data.after ? 'Hidden from Hydra' : 'Back on the Hydra',
+      note: '',
+    }
+    case 'card.moved': return {
       state: 'Moved',
       note: `${columnName({
         columns,
@@ -142,11 +144,59 @@ export function relevantUpdate({
         columns,
         id: data.after,
       })}`,
-    })
+    }
     case 'card.linked': return linked({ data })
     case 'card.outcome': return outcome({ data })
     case 'card.pushed': return renamed({ data })
     default: return undefined
+  }
+}
+
+export const MIN_ROWS = 20
+export const MAX_PAGES = 10
+
+// Most raw events are hidden, so page back until enough new rows show or history ends.
+export async function loadRelevant({
+  cardId,
+  before,
+  pageSize,
+  load,
+}: {
+  cardId: string
+  before?: number
+  pageSize: number
+  load({ before }: { before?: number }): Promise<TaskEvent[]>
+}) {
+  const found: TaskEvent[] = []
+  let cursor = before
+
+  for (let pages = 0; pages < MAX_PAGES; pages++) {
+    const page = await load({ before: cursor })
+    found.push(...page)
+
+    if (page.length < pageSize) {
+      return {
+        found,
+        more: false,
+      }
+    }
+
+    const shown = found.filter(event => relevantUpdate({
+      cardId,
+      event,
+      columns: [],
+    })).length
+
+    if (shown >= MIN_ROWS) {
+      break
+    }
+
+    cursor = Math.min(...page.map(event => event.seq))
+  }
+
+  return {
+    found,
+    more: true,
   }
 }
 
