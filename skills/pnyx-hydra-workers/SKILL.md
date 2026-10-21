@@ -34,7 +34,7 @@ After an outside Claude Code or Codex session ends, `pnyx-axi task continue <tas
 
 ## Task copies
 
-A task with an attached project starts in its own copy (a git worktree on branch `pnyx/<hydra>-<task>`, or the project's copy command); `--in-place` works in the project folder itself and is refused while another Hydra's worker runs there. When the task reaches Done, Pnyx removes a clean copy whose work landed. Otherwise it keeps the copy, flags it and messages you: land the work and run `pnyx-axi task copy <task> remove --hydra <hydra>`, or, when it already landed another way or is empty, `pnyx-axi task copy <task> remove --safe --reason "<why>" --hydra <hydra>`. Never discard work that never landed; ask the owner, who runs `--discard`.
+A task with an attached project starts in its own copy (a git worktree on branch `pnyx/<hydra>-<task>`, or the project's copy command); `--in-place` works in the project folder itself and is refused while another Hydra's worker runs there. When the task reaches Done, Pnyx releases a clean copy whose work landed to the project's pool, where the next task's start takes it on a fresh branch; a copy a worker still runs in stays its own. Otherwise it keeps the copy, flags it and messages you: land the work and run `pnyx-axi task copy <task> remove --hydra <hydra>`, or, when it already landed another way or is empty, `pnyx-axi task copy <task> remove --safe --reason "<why>" --hydra <hydra>`. Never discard work that never landed; ask the owner, who runs `--discard`. When `task attach` moves a worker whose old copy is clean and landed, or already pooled, the copy goes with it onto the new task's branch.
 
 ## Permission requests
 
