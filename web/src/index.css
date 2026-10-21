@@ -1034,3 +1034,12 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .composer .select-menu { max-height: none; overflow: visible; scrollbar-width: none; }
 .composer .select-menu::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+.card:has(> .worker-queue):not(.selected) { height: min(260px, 100cqh); }
+.card.queueing { height: min(360px, 100cqh); }
+.queue-label { color: var(--color-blue); font-size: var(--text-meta); justify-content: flex-start; text-align: left; flex-shrink: 0; }
+.worker-queue, .queue-editor { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--color-line); font-size: var(--text-meta); }
+.worker-queue { max-height: 100px; overflow: auto; flex-shrink: 0; }
+.worker-queue ol { margin: 0; padding-left: 20px; list-style: decimal; }
+.worker-queue .button { padding: 0; text-align: left; }
+.queue-note { display: block; color: var(--color-muted); padding: 8px; }
