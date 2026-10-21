@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -205,6 +205,62 @@ test('Hydra dispatch accepts a catalog model beyond its legacy shortlist from sa
   } finally {
     host.close()
     process.env.PATH = previousPath
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('The model list is stored for every Hydra, answers before the harness and is rewritten when it changes', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pnyx-stored-models-'))
+  const previous = { PATH: process.env.PATH, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR }
+  process.env.PNYX_HOME = root
+  commands.hydra(['create', 'lab'])
+  const { claude } = fakeDispatch({ root })
+  process.env.CLAUDE_CONFIG_DIR = claude
+  const file = join(root, 'harness-models.json')
+  const stored = () => (JSON.parse(readFileSync(file, 'utf8')) as Record<string, { label: string }[]>)[`claude:${claude}`]?.map(m => m.label)
+  let reads = 0
+  let answer = async () => [{ value: 'opus', displayName: 'Opus 5.5' }]
+  const query = (() => ({
+    supportedModels: () => {
+      reads++
+
+      return answer()
+    },
+    close: () => {},
+  })) as unknown as QueryFn
+  const open = () => createHost({ hydraId: 'lab', query, changed: () => {} })
+
+  const cold = open()
+
+  try {
+    assert.deepEqual((await cold.models({ harness: 'claude' })).map(m => m.label), ['Opus 5.5'])
+    assert.deepEqual(stored(), ['Opus 5.5'])
+  } finally {
+    cold.close()
+  }
+
+  let release = () => {}
+  answer = () => new Promise(resolve => {
+    release = () => resolve([{ value: 'opus', displayName: 'Opus 6' }])
+  })
+  const warm = open()
+
+  try {
+    assert.deepEqual((await warm.models({ harness: 'claude' })).map(m => m.label), ['Opus 5.5'])
+    assert.equal(reads, 2)
+    release()
+
+    for (let attempt = 0; attempt < 200 && stored()?.[0] !== 'Opus 6'; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+
+    assert.deepEqual(stored(), ['Opus 6'])
+    assert.deepEqual((await warm.models({ harness: 'claude' })).map(m => m.label), ['Opus 6'])
+    assert.equal(reads, 2)
+  } finally {
+    warm.close()
+    process.env.PATH = previous.PATH
+    process.env.CLAUDE_CONFIG_DIR = previous.CLAUDE_CONFIG_DIR
     rmSync(root, { recursive: true, force: true })
   }
 })
