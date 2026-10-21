@@ -207,7 +207,12 @@ function Folded({ group }: { group: UpdateGroup }) {
           kind={workers ? 'status' : 'renamed'}
           at={group.updates.at(-1)!.at}
           plain
-          title={<>{group.updates.length} {workers ? 'worker updates' : 'card changes'} <span className="update-states">{states}</span></>}
+          title={(
+            <>
+              {group.updates.length} {workers ? 'worker updates' : 'card changes'} <span className="update-states">{states}</span>
+              <span className="update-fold-chevron" aria-hidden="true"><Icon name="chevron_right" size={14} /></span>
+            </>
+          )}
         />
       )}
     >
