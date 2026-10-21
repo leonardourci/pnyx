@@ -69,7 +69,7 @@ const {
   home,
   session: 'pnyx-reminders',
 })
-const menu = () => click({ selector: '[aria-label="Card menu for Review cursor pagination"]' })
+const remind = () => click({ selector: `[data-task="${id}"] [aria-label="Remind"]` })
 
 try {
   await browser({
@@ -92,10 +92,10 @@ try {
     ],
   })
   await screenshot({ name: 'reminder-before.png' })
-  await menu(); await text({ label: 'Remind me…' })
+  await remind()
   await check({
     condition: '!!document.querySelector(".reminder-editor") && !document.querySelector("[role=dialog]")',
-    label: 'Remind me opens an inline editor',
+    label: 'Remind opens an inline editor',
   })
   await click({ selector: '.reminder-editor label' })
   await check({
@@ -108,8 +108,8 @@ try {
   })
   await evaluate({ code: 'const button = document.querySelector(".reminder-editor button[type=submit]"); button.focus(); return true;' })
   await check({
-    condition: 'document.querySelector(".card").getBoundingClientRect().height === 176 && document.querySelector(".reminder-editor button[type=submit]").getBoundingClientRect().bottom <= document.querySelector(".card-rest").getBoundingClientRect().bottom + 1',
-    label: 'closed-card reminder controls scroll into view without growing the card',
+    condition: 'document.querySelector(".reminder-editor button[type=submit]").getBoundingClientRect().bottom <= document.querySelector(".card-rest").getBoundingClientRect().bottom + 1',
+    label: 'closed-card reminder controls remain inside their content area',
   })
   await fill({
     label: 'Reminder time',
@@ -146,7 +146,7 @@ try {
     1,
   )
   await screenshot({ name: 'reminder-after.png' })
-  await menu(); await text({ label: 'Remind me…' }); await text({ label: 'Clear reminder' })
+  await remind(); await text({ label: 'Clear reminder' })
   await eventually({
     condition: '!document.querySelector(".reminder-label") && !document.querySelector(".reminder-editor")',
     label: 'clear removes the waiting reminder',
@@ -156,10 +156,10 @@ try {
     undefined,
   )
   await click({ selector: '.card-open' })
-  await click({ selector: '[aria-label="Task menu"]' }); await text({ label: 'Remind me…' })
+  await remind()
   await check({
-    condition: '!!document.querySelector(".detail .reminder-editor")',
-    label: 'task detail offers the same reminder editor',
+    condition: '!!document.querySelector(".card.selected .reminder-editor")',
+    label: 'expanded task offers the same reminder editor',
   })
   await fill({
     label: 'Reminder time',

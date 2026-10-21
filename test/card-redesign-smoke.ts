@@ -142,7 +142,7 @@ withWriter({
         type:'hydra.message',
         data:{
           hydra:'hydra',
-          action:'reply',
+          action:'worker',
           task:card.id,
           text:`The work on [@old layout title](pnyx-task:${card.id}) is ready for your decision.`,
         },
@@ -210,52 +210,80 @@ try {
         `@${title[1]}`,
       ],
     })
-    const actions = await b.browser({
-      args: [
+    await b.check({
+      condition:'[...document.querySelector(".card-menu").querySelectorAll("button")].map(button=>button.getAttribute("aria-label")).join(",") === "Remind,Edit,Hide"',
+      label:`${state} pill has exactly the three supported icon actions`,
+    })
+    const actions=await b.browser({
+      args:[
         'snapshot',
         '--full',
       ],
     })
-    const more = actions.match(/uid=(\S+) button "Card menu for Choose the conversation layout"/)
+    const remind=actions.match(/uid=(\S+) button "Remind"/)
 
-    if (!more) {
+    if(!remind){
       throw new Error(actions)
     }
 
     await b.browser({
-      args: [
+      args:[
         'hover',
-        `@${more[1]}`,
+        `@${remind[1]}`,
       ],
     })
-    const hovered = await b.browser({
-      args: [
+    const hovered=await b.browser({
+      args:[
         'snapshot',
         '--full',
       ],
     })
-    const target = hovered.match(/uid=(\S+) button "Card menu for Choose the conversation layout"/)
+    const target=hovered.match(/uid=(\S+) button "Remind"/)
 
-    if (!target) {
+    if(!target){
       throw new Error(hovered)
     }
 
     await b.browser({
-      args: [
+      args:[
         'click',
         `@${target[1]}`,
       ],
     })
-    await b.check({
-      condition: '!!document.querySelector(".card-menu .menu-items:popover-open")',
-      label: `${state} floating pill survives pointer transit and opens its menu`,
+    await b.eventually({
+      condition:'!!document.querySelector(".reminder-editor")',
+      label:`${state} floating Remind opens its editor`,
     })
-    await b.press({ key: 'Escape' })
-    await b.focus({ selector: '.card-menu > .tooltip-anchor > button' })
+    const outside=await b.browser({
+      args:[
+        'snapshot',
+        '--full',
+      ],
+    })
+    const settings=outside.match(/uid=(\S+) button "Settings"/)
+
+    if(!settings){
+      throw new Error(outside)
+    }
+
+    await b.browser({
+      args:[
+        'hover',
+        `@${settings[1]}`,
+      ],
+    })
+    await b.eventually({
+      condition:'!document.querySelector(".card-menu:popover-open") && !document.querySelector(".card").matches(":hover")',
+      label:`${state} actions and hover clear after mouse leave even with editor focus`,
+    })
+    await b.text({label:'Cancel'})
     await b.press({ key: 'Tab' })
+    await b.evaluate({code:'document.querySelector(".card").dispatchEvent(new PointerEvent("pointerover",{bubbles:true}));return true'})
+    await b.focus({selector:'.card-menu [aria-label=Remind]'})
+    await b.press({key:'Tab'})
     await b.check({
-      condition: 'document.activeElement?.getAttribute("aria-label") === "Copy ID"',
-      label: `${state} floating pill supports keyboard navigation`,
+      condition:'document.activeElement?.getAttribute("aria-label") === "Edit"',
+      label:`${state} action pill supports keyboard navigation`,
     })
     await b.screenshot({ name: `card-redesign-${state}-hover.png` })
     await b.focus({ selector: '.card-open' })
@@ -363,6 +391,27 @@ try {
   })
   await checkHoverPill({ state: 'open' })
   await b.check({
+    condition:'!document.querySelector(".card-content > .card-question") && !!document.querySelector(".task-updates .pending-question") && !document.querySelector(".card-metadata").open',
+    label:'open card folds secondary details and moves its question into Updates',
+  })
+  await b.check({
+    condition:'document.querySelector(".task-updates ol").firstElementChild.classList.contains("pending-question")',
+    label:'newest first pins the pending question above updates',
+  })
+  await b.click({selector:'.updates-order'})
+  await b.check({
+    condition:'document.querySelector(".task-updates ol").lastElementChild.classList.contains("pending-question")',
+    label:'oldest first pins the pending question after updates',
+  })
+  await b.click({selector:'.updates-order'})
+  await b.click({selector:'.card-metadata summary'})
+  await b.check({
+    condition:'document.querySelector(".card-metadata").open && !!document.querySelector(".card-metadata .card-links")',
+    label:'Details reveals the labels and links on demand',
+  })
+  await b.click({selector:'.card-metadata summary'})
+
+  await b.check({
     condition: '(() => { const fold = document.querySelector(".decision"); return !fold.open && fold.textContent.includes("Updates above chat") && fold.textContent.includes("by Hydra") && ![...document.querySelectorAll(".detail button")].some(button => ["Reassign", "Add subtask"].includes(button.textContent.trim())); })()',
     label: 'decision starts folded and open card omits removed actions',
   })
@@ -397,6 +446,8 @@ try {
     condition:'!!document.querySelector(".card.selected")',
     label:'inline reference opens the task',
   })
+
+  await b.click({ selector: '.card-metadata summary' })
 
   for (const width of [
     390,
@@ -437,6 +488,10 @@ try {
   await b.eventually({
     condition:'[...document.querySelectorAll(".hydra-chat .task-reference")].every(ref=>ref.textContent.includes("Updated layout title") && ref.querySelector(".task-reference-state")?.getAttribute("aria-label").startsWith("Done"))',
     label:'old chat references track live title and completion',
+  })
+  await b.check({
+    condition:'[...document.querySelectorAll(".hydra-chat .task-reference")].every(ref=>ref.classList.contains("column-done") && getComputedStyle(ref).getPropertyValue("--column-color") === getComputedStyle(document.querySelector(".column-done")).getPropertyValue("--column-color"))',
+    label:'reference colors follow the live column after a move',
   })
 } finally {
   await b.close()
