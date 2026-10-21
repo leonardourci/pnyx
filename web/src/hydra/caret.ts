@@ -96,29 +96,11 @@ export function caretBounds(): DOMRect | null {
   return bounds?.height ? bounds : null
 }
 
-export function revealCaret({
-  host,
-  smooth = false,
-  finished,
-}: {
-  host: HTMLElement
-  smooth?: boolean
-  finished?(): void
-}) {
+export function revealCaret({ host }: { host: HTMLElement }) {
   const scroller = host.closest('.thread')
   const caret = caretBounds()
 
   if (!scroller || !caret) {
-    return
-  }
-
-  if (smooth) {
-    scrollMessage({
-      host,
-      bounds: caret,
-      finished,
-    })
-
     return
   }
 
@@ -345,11 +327,13 @@ const placeCaret = ({
   host,
   position,
   smooth = false,
+  passage,
   finished,
 }: {
   host: HTMLElement
   position: Position
   smooth?: boolean
+  passage?: DOMRect
   finished?(): void
 }) => {
   host.focus({ preventScroll: true })
@@ -357,11 +341,18 @@ const placeCaret = ({
     position.node,
     position.offset,
   )
-  revealCaret({
-    host,
-    smooth,
-    finished,
-  })
+  const bounds = passage ?? caretBounds()
+
+  if (smooth && bounds) {
+    scrollMessage({
+      host,
+      bounds,
+      finished,
+    })
+  } else {
+    revealCaret({ host })
+    finished?.()
+  }
 }
 
 // Escape, or a line key past the note's edge, leaves it. Worked out before the blur, which deletes an empty card.
@@ -369,15 +360,18 @@ export function leaveNote({
   host,
   note,
   direction,
+  passage,
 }: {
   host: HTMLElement
   note: HTMLTextAreaElement
   direction: CaretDirection | 'escape'
+  passage?: DOMRect
 }) {
   if (direction === 'escape') {
     const id = cardOf({ note }).getAttribute('data-comment-id')
     placeCaret({
       smooth: true,
+      passage,
       finished: () => id && host.dispatchEvent(new CustomEvent(
         COMMENT_REVEAL,
         { detail: id },

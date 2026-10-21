@@ -17,7 +17,7 @@ import { orderedComments, sendableComment, type ChatComment } from './chat.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageComment } from './message-comment.tsx'
-import { HIGHLIGHT_SUPPORTED, paintComments } from './comment-highlight.ts'
+import { HIGHLIGHT_SUPPORTED, commentRange, paintComments } from './comment-highlight.ts'
 import {
   blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage,
 } from './message-selection.ts'
@@ -782,6 +782,10 @@ export function Messages({
                             note,
                             direction,
                           }) => root.current && leaveNote({
+                            passage: commentRange({
+                              host: root.current,
+                              comment,
+                            })?.getClientRects()[0],
                             host: root.current,
                             note,
                             direction,
