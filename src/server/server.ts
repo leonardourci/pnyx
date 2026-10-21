@@ -2763,11 +2763,12 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const hydraId = values.hydra ?? 'default'
 
   // portless hands the app its port in PORT.
+  const source = values.port === undefined && process.env.PORT !== undefined ? 'PORT' : '--port'
   values.port ??= process.env.PORT
 
   if (values.port !== undefined && !/^\d+$/.test(values.port)) {
     throw new AxiError(
-      '--port must be a number',
+      `${source} must be a number`,
       'VALIDATION_ERROR',
     )
   }

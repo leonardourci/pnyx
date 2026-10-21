@@ -565,6 +565,76 @@ test(
 )
 
 test(
+  'serve takes its port from PORT when --port is not given',
+  async () => {
+    const holder = createServer().listen(
+      0,
+      '127.0.0.1',
+    )
+    await once(
+      holder,
+      'listening',
+    )
+    const { port } = holder.address() as { port: number }
+
+    try {
+      for (const [
+        value,
+        expected,
+      ] of [
+          [
+            String(port),
+            new RegExp(`port ${port} is in use`),
+          ],
+          [
+            'abc',
+            /PORT must be a number/,
+          ],
+        ] as const) {
+        const child = spawn(
+          process.execPath,
+          [
+            BIN,
+            'serve',
+          ],
+          {
+            env: {
+              ...process.env,
+              PORT: value,
+            },
+            stdio: [
+              'ignore',
+              'pipe',
+              'pipe',
+            ],
+          },
+        )
+        track({ child })
+        let out = ''
+        child.stdout.on(
+          'data',
+          chunk => (out += chunk),
+        )
+        const [code] = await once(
+          child,
+          'exit',
+        )
+        assert.notEqual(
+          code,
+          0,
+        )
+        assert.match(
+          out,
+          expected,
+        )
+      }
+    } finally {
+      holder.close()
+    }
+  },
+)
+
+test(
   'a second server for the same Hydra is refused',
   async () => {
     server = await startServer({ hydraId: 'default' })
