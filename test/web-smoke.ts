@@ -92,9 +92,9 @@ try {
     condition: 'document.querySelector(".hydra-chat").getBoundingClientRect().height === document.querySelector(".column").getBoundingClientRect().height && document.querySelector(".hydra-head").textContent === "Hydra"',
     label: 'Hydra and columns fill the Hydra height',
   })
-  await check({
-    condition: 'document.querySelector(".card").getBoundingClientRect().height === 176 && !document.querySelector(".card .setting-chip,.card .tags,.card .links") && getComputedStyle(document.querySelector(".card > .resize-y")).opacity === "0"',
-    label: 'closed cards keep their fixed height with title and activity',
+  await eventually({
+    condition: '(() => { const card=document.querySelector(".card"),grip=card.querySelector(":scope > .resize-y"),title=card.querySelector(".card-open"),rect=card.getBoundingClientRect();return rect.height >= Number(grip.getAttribute("aria-valuemin")) && rect.height <= Number(grip.getAttribute("aria-valuemax")) && title.getBoundingClientRect().bottom <= rect.bottom && !!card.querySelector(".card-state") && getComputedStyle(grip).opacity === "1" && !card.querySelector(".setting-chip,.tags,.links");})()',
+    label: 'closed cards contain their title and state within content bounds with a visible resize grip',
   })
   await check({
     condition: '!!document.querySelector(".last-message")',

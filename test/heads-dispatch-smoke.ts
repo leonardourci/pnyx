@@ -170,6 +170,11 @@ try {
   await click({ selector: '[data-hydra-current]' })
   await click({ selector: `[data-card="${card}"]` })
   await eventually({
+    condition:'!!document.querySelector(".card.selected .card-metadata-toggle")',
+    label:'task opens with collapsed metadata',
+  })
+  await click({selector:'.card.selected .card-metadata-toggle'})
+  await eventually({
     condition: 'document.querySelector(\'[aria-label="Heads dispatch choice"]\')?.textContent.includes("build: opus on claude:test")',
     label: 'task details show the recorded dispatch reason',
   })

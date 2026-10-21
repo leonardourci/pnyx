@@ -138,6 +138,12 @@ try {
     label: 'Reply to Hydra',
     value: 'Draft kept on this Hydra',
   })
+  await b.focus({selector:'.card.selected > [aria-label="Resize card"]'})
+  await b.press({key:'Home'})
+  await b.eventually({
+    condition:'(() => {const card=document.querySelector(".card.selected"),grip=card.querySelector(".resize-y");return card.getBoundingClientRect().height === Number(grip.getAttribute("aria-valuemin")) && Number(grip.getAttribute("aria-valuemax")) >= Number(grip.getAttribute("aria-valuemin")) + 16;})()',
+    label:'optimistic resize starts at the content minimum with room for two keyboard steps',
+  })
   await b.evaluate({
     code: `
     window.nativeSocketSend = WebSocket.prototype.send;
