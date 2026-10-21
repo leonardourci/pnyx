@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { commands } from '../src/cli/commands.ts'
+import { hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { permissionEvent } from '../src/core/permissions.ts'
 import { startServer } from '../src/server/server.ts'
@@ -130,6 +131,27 @@ withWriter({
         },
       }),
     })
+    const notice = hydraEvent({
+      state: writer.state,
+      cardId: HYDRA_CARD,
+      meta: {
+        actor:'hydra',
+        at:new Date().toISOString(),
+      },
+      change:{
+        type:'hydra.message',
+        data:{
+          hydra:'hydra',
+          action:'reply',
+          task:card.id,
+          text:`The work on [@old layout title](pnyx-task:${card.id}) is ready for your decision.`,
+        },
+      },
+    })
+
+    if ('event' in notice) {
+      writer.append({event: notice.event})
+    }
   },
 })
 const server = await startServer({
@@ -229,10 +251,10 @@ try {
       label: `${state} floating pill survives pointer transit and opens its menu`,
     })
     await b.press({ key: 'Escape' })
-    await b.focus({ selector: '.card-menu > button' })
+    await b.focus({ selector: '.card-menu > .tooltip-anchor > button' })
     await b.press({ key: 'Tab' })
     await b.check({
-      condition: 'document.activeElement?.textContent === "Copy ID"',
+      condition: 'document.activeElement?.getAttribute("aria-label") === "Copy ID"',
       label: `${state} floating pill supports keyboard navigation`,
     })
     await b.screenshot({ name: `card-redesign-${state}-hover.png` })
@@ -258,13 +280,42 @@ try {
   }
 
   await checkHoverPill({ state: 'closed' })
+  await b.click({ selector: '.card-state' })
+  await b.eventually({
+    condition: '!!document.querySelector(".card.selected")',
+    label: 'body opens the card',
+  })
+  await b.click({ selector: '.card-state' })
+  await b.eventually({
+    condition: '!document.querySelector(".card.selected")',
+    label: 'body closes the card',
+  })
+  await b.check({
+    condition: '!document.querySelector(".card-parent, .detail-header, .detail-footer")',
+    label: 'duplicate actions and subtask/footer rows are absent',
+  })
+  await b.focus({ selector: '.card > .resize-y' })
+  await b.press({ key: 'Home' })
+  await b.eventually({
+    condition: '(() => {const card=document.querySelector(".card"),grip=card.querySelector(".resize-y");return Math.abs(card.getBoundingClientRect().height-Number(grip.getAttribute("aria-valuemin")))<2})()',
+    label: 'card shrinks to its content minimum',
+  })
+  await b.check({
+    condition: '(() => {const card=document.querySelector(".card"),answer=card.querySelector(".card-question button"),links=card.querySelector(".card-links");return [answer,links].every(el=>el.getBoundingClientRect().bottom<=card.getBoundingClientRect().bottom)})()',
+    label: 'minimum includes the complete question, Answer and links',
+  })
+  await b.press({ key: 'End' })
+  await b.eventually({
+    condition: '(() => {const card=document.querySelector(".card"),grip=card.querySelector(".resize-y");return Math.abs(card.getBoundingClientRect().height-Number(grip.getAttribute("aria-valuemax")))<2})()',
+    label: 'card stops at its full content maximum',
+  })
   await b.screenshot({ name: 'card-redesign-closed.png' })
   await b.evaluate({ code: 'window.cardHeight = document.querySelector(".card").getBoundingClientRect().height; document.querySelector(".card-since").dispatchEvent(new PointerEvent("pointerover", { bubbles: true })); return true;' })
   await b.eventually({
     condition: 'document.querySelector("[role=tooltip]")?.textContent.startsWith("Created ")',
     label: 'time tooltip shows creation date',
   })
-  await b.check({
+  await b.eventually({
     condition: '(() => { const card = document.querySelector(".card"), tip = document.querySelector(".tooltip"); return card.getBoundingClientRect().height === window.cardHeight && getComputedStyle(card.querySelector(".card-menu")).opacity === "0" && tip.getBoundingClientRect().bottom <= card.querySelector(".card-since").getBoundingClientRect().top; })()',
     label: 'tooltip is above its trigger, hides actions, and preserves height',
   })
@@ -332,6 +383,16 @@ try {
     label: 'declaration question prepares an answer in Hydra chat',
   })
 
+  await b.check({
+    condition:'[...document.querySelectorAll(".hydra-chat .task-reference")].every(ref=>ref.textContent.includes("Choose the conversation layout") && ref.querySelector(".task-reference-state")?.textContent === "Needs you" && ref.querySelectorAll("svg").length === 2)',
+    label:'header and inline references show current title, state, task and open icons',
+  })
+  await b.click({selector:'.hydra-chat .markdown .task-reference'})
+  await b.eventually({
+    condition:'!!document.querySelector(".card.selected")',
+    label:'inline reference opens the task',
+  })
+
   for (const width of [
     390,
     1440,
@@ -348,6 +409,30 @@ try {
       label: `link titles stay inside the card at ${width}px`,
     })
   }
+
+  commands.task([
+    'rename',
+    'layout',
+    '--title',
+    'Updated layout title',
+  ])
+  commands.task([
+    'status',
+    'layout',
+    'done',
+    '--note',
+    'Decision implemented',
+  ])
+  commands.move([
+    'layout',
+    'done',
+    '--actor',
+    'web',
+  ])
+  await b.eventually({
+    condition:'[...document.querySelectorAll(".hydra-chat .task-reference")].every(ref=>ref.textContent.includes("Updated layout title") && ref.querySelector(".task-reference-state")?.textContent.startsWith("Done"))',
+    label:'old chat references track live title and completion',
+  })
 } finally {
   await b.close()
   await server.close()
