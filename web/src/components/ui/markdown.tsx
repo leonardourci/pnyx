@@ -1,4 +1,4 @@
-import { Button } from './controls.tsx'
+import { TaskReference } from './task-reference.tsx'
 import { mentionId } from '../../../../src/mentions/mentions.ts'
 import { Fragment, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
@@ -58,16 +58,14 @@ const inline = ({
       case 'link': case 'image': {
         const task = token.type === 'link' ? mentionId({ href: token.href }) : undefined
 
-        if (task && openTask) {
+        if (task) {
           return (
-            <Button
+            <TaskReference
               key={i}
-              className="task-mention"
-              contentEditable={false}
-              onClick={() => openTask({ id: task })}
-              title="Open referenced task"
+              id={task}
+              openTask={openTask}
             >{children}
-            </Button>
+            </TaskReference>
           )
         }
 

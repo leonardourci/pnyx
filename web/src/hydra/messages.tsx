@@ -3,6 +3,7 @@ import type { ThreadEntry } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { MessageText } from '../components/ui/streaming.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import { TaskReference, TaskReferencesProvider, type TaskReferenceData } from '../components/ui/task-reference.tsx'
 import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import {
   CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED,
@@ -28,12 +29,12 @@ export function Messages({
   quote,
   toolDetails = true,
   thinkingDetails = true,
-  taskTitles,
+  taskReferences,
   openTask,
   assistantLabel,
 }: {
   openTask?({ id }: { id: string }): void
-  taskTitles?: Record<string, string>
+  taskReferences?: Record<string, TaskReferenceData>
   toolDetails?: boolean
   thinkingDetails?: boolean
   assistantLabel?: string
@@ -450,7 +451,7 @@ export function Messages({
   }
 
   return (
-    <>
+    <TaskReferencesProvider references={taskReferences} openTask={openTask}>
       <style>{CARET_CSS}</style>
       <div
         className="messages"
@@ -491,15 +492,11 @@ export function Messages({
             data-streaming={entry.streaming || undefined}
             title={entry.at ? new Date(entry.at).toLocaleString() : undefined}
           >
-            {entry.task && taskTitles && (
-              <Button
-                className="message-task task-mention"
-                contentEditable={false}
-                data-task-ref={entry.task}
-                disabled={!openTask}
-                onClick={() => entry.task && openTask?.({ id: entry.task })}
-              >{taskTitles[entry.task] ?? 'Task update'}
-              </Button>
+            {entry.task && taskReferences && (
+              <div className="message-task">
+                <span className="message-task-label">About</span>
+                <TaskReference id={entry.task} />
+              </div>
             )}
             {entry.kind === 'message' ? (
               <MessageText
@@ -588,7 +585,7 @@ export function Messages({
           </article>
         ))}
       </div>
-    </>
+    </TaskReferencesProvider>
   )
 }
 

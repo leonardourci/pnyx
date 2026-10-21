@@ -14,6 +14,7 @@ import { InlinePermissions } from './permissions.tsx'
 import { Messages } from './messages.tsx'
 import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
+import { cardState } from './view.ts'
 import { hydraMessages, joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 
 export function HydraChat({
@@ -214,10 +215,27 @@ export function HydraChat({
           entries={entries}
           assistantLabel="Hydra"
           openTask={openTask}
-          taskTitles={Object.fromEntries(Object.values(state.cards).map(c => [
-            c.id,
-            c.title,
-          ]))}
+          taskReferences={Object.fromEntries(Object.values(state.cards)
+            .filter(c => c.id !== HYDRA_CARD && !c.automaticTask)
+            .map(c => {
+              const status = cardState({
+                card: c,
+                hours: state.config?.doneAfterHours,
+                now: Date.now(),
+              })
+
+              return [
+                c.id,
+                {
+                  title: c.title,
+                  state: status.kind === 'asks' ? 'Needs you' : status.text.replace(
+                    /^./,
+                    letter => letter.toUpperCase(),
+                  ),
+                  kind: status.kind,
+                },
+              ]
+            }))}
           comments={comments}
           setComments={setComments}
           quote={({ text }) => setDraft({
