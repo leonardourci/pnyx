@@ -3,6 +3,9 @@ import test from 'node:test'
 import {
   checkPullRequest,
   type Commit,
+  commitFacts,
+  MarkerError,
+  markerBlockers,
   type PullRequest,
   withMarker,
 } from '../scripts/marker.ts'
@@ -12,40 +15,92 @@ const marker = {
   head_tree: 'tree-tested',
   finished_at: '2026-10-21T00:00:00.000Z',
 }
+const passing = withMarker({
+  body: '',
+  marker,
+})
 
-// Commits as GitHub would report them: docs -> tested -> base.
+function commitOn({
+  tree,
+  files,
+}: {
+  tree: string
+  files: string[] | null
+}): Commit {
+  return {
+    tree,
+    parents: ['tested'],
+    files,
+  }
+}
+
+// Each head below is one commit on top of `tested`, the commit the run tested.
 const commits: Record<string, Commit> = {
-  'docs': {
-    tree: 'tree-docs',
-    parents: ['tested'],
-    files: ['README.md'],
-  },
-  'code': {
-    tree: 'tree-code',
-    parents: ['tested'],
-    files: [
-      'README.md',
-      'src/cli/pnyx-axi.ts',
-    ],
-  },
-  'renamed': {
-    tree: 'tree-renamed',
-    parents: ['tested'],
-    files: [
-      'notes.md',
-      'src/notes.ts',
-    ],
-  },
-  'same-code': {
-    tree: 'tree-tested',
-    parents: ['base'],
-    files: ['src/cli/pnyx-axi.ts'],
-  },
   'tested': {
     tree: 'tree-tested',
     parents: ['base'],
     files: ['src/cli/pnyx-axi.ts'],
   },
+  'base': {
+    tree: 'tree-base',
+    parents: [],
+    files: ['src/cli/pnyx-axi.ts'],
+  },
+  'docs': commitOn({
+    tree: 'tree-docs',
+    files: [
+      'README.md',
+      '.agents/skills/write-front-end/SKILL.md',
+    ],
+  }),
+  'same-code': {
+    tree: 'tree-tested',
+    parents: ['base'],
+    files: ['src/cli/pnyx-axi.ts'],
+  },
+  'code': commitOn({
+    tree: 'tree-code',
+    files: [
+      'README.md',
+      'src/cli/pnyx-axi.ts',
+    ],
+  }),
+  'shipped-skill': commitOn({
+    tree: 'tree-skill',
+    files: ['skills/pnyx/SKILL.md'],
+  }),
+  'fixture': commitOn({
+    tree: 'tree-fixture',
+    files: ['test/fixtures/firstmate-home/data/backlog.md'],
+  }),
+  'renamed': commitOn({
+    tree: 'tree-renamed',
+    files: commitFacts({
+      found: {
+        commit: { tree: { sha: 'tree-renamed' } },
+        parents: [{ sha: 'tested' }],
+        files: [
+          {
+            filename: 'notes.md',
+            previous_filename: 'src/notes.ts',
+          },
+        ],
+      },
+    }).files,
+  }),
+  'cut-short': commitOn({
+    tree: 'tree-cut',
+    files: null,
+  }),
+}
+
+// 21 docs-only commits on top of `tested`: one more than the walk follows.
+for (let i = 1; i <= 21; i++) {
+  commits[`docs-${i}`] = {
+    tree: `tree-docs-${i}`,
+    parents: [i === 1 ? 'tested' : `docs-${i - 1}`],
+    files: ['README.md'],
+  }
 }
 
 function check({
@@ -58,22 +113,20 @@ function check({
   linked?: Record<string, PullRequest[]>
 }) {
   return checkPullRequest({
-    pullRequest: {
-      number: 7,
-      body,
-    },
+    body,
     headSha,
-    commit: async ({ sha }) => commits[sha],
+    commit: async ({ sha }) => commits[sha]!,
     pullRequestsFor: async ({ sha }) => linked[sha] ?? [],
   })
 }
 
 test(
-  'the marker passes for the head it names, and a rerun replaces it',
+  'a rerun replaces the marker line and keeps the description, prose about the marker included',
   async () => {
+    const prose = 'pnpm verify adds a `<!-- pnyx-checks:v1 ... -->` line.'
     const body = withMarker({
       body: withMarker({
-        body: 'Fix the queue.',
+        body: prose,
         marker: {
           ...marker,
           head_sha: 'older',
@@ -82,118 +135,194 @@ test(
       marker,
     })
 
+    assert.ok(body.startsWith(`${prose}\n\n`))
     assert.equal(
-      body.split('pnyx-checks').length,
-      2,
+      body.split('\n').filter(line => line.startsWith('<!-- pnyx-checks:v1 ')).length,
+      1,
     )
-    assert.ok(body.startsWith('Fix the queue.\n\n<!-- pnyx-checks:v1 '))
-    assert.equal(
-      await check({
-        body,
-        headSha: 'tested',
-      }),
-      'Checks passed for tested.',
-    )
+    await check({
+      body,
+      headSha: 'tested',
+    })
   },
 )
 
 test(
-  'a missing, broken or doubled marker fails',
+  'a missing, broken, unclosed or doubled marker fails',
   async () => {
     for (const body of [
       'No marker here.',
       '<!-- pnyx-checks:v1 {"head_sha":"tested"} -->',
       '<!-- pnyx-checks:v1 not json -->',
-      `${withMarker({
-        body: '',
-        marker,
-      })}\n<!-- pnyx-checks:v1 {} -->`,
+      `<!-- pnyx-checks:v1 ${JSON.stringify(marker)}`,
+      `${passing}\n${passing}`,
     ]) {
       await assert.rejects(
         check({
           body,
           headSha: 'tested',
         }),
-        /pnpm verify/,
+        MarkerError,
+        body,
       )
     }
   },
 )
 
 test(
-  'a later Markdown-only commit or the same code under a new commit keeps the pass',
+  'docs-only commits after the run and the same code under a new commit keep the pass',
   async () => {
-    const body = withMarker({
-      body: '',
-      marker,
-    })
-
-    assert.match(
+    for (const headSha of [
+      'docs',
+      'same-code',
+      'docs-20',
+    ]) {
       await check({
-        body,
-        headSha: 'docs',
-      }),
-      /only Markdown changed after tested/,
-    )
-    assert.match(
-      await check({
-        body,
-        headSha: 'same-code',
-      }),
-      /tested the same code\.$/,
-    )
+        body: passing,
+        headSha,
+      })
+    }
   },
 )
 
 test(
-  'a code change after the run fails, a rename out of code included',
+  'code after the run fails: source, shipped skills, fixtures, a rename into Markdown, a cut-short list, a long docs chain',
   async () => {
-    const body = withMarker({
-      body: '',
-      marker,
-    })
-
     for (const headSha of [
       'code',
+      'shipped-skill',
+      'fixture',
       'renamed',
+      'cut-short',
+      'docs-21',
     ]) {
       await assert.rejects(
         check({
-          body,
+          body: passing,
           headSha,
         }),
-        /but the PR head is/,
+        MarkerError,
+        headSha,
       )
     }
   },
 )
 
 test(
-  'another PR that tested the same code lends its pass',
+  'another PR lends its pass only for the tree it tested',
   async () => {
-    const linked = {
-      tested: [
-        {
-          number: 7,
-          body: '',
-        },
-        {
-          number: 3,
-          body: withMarker({
-            body: '',
-            marker,
-          }),
-        },
-      ],
+    const lending = {
+      number: 3,
+      body: passing,
     }
 
-    assert.match(
-      await check({
+    await check({
+      body: 'No marker yet.',
+      headSha: 'docs',
+      linked: { tested: [lending] },
+    })
+    await assert.rejects(
+      check({
         body: 'No marker yet.',
-        headSha: 'docs',
-        linked,
+        headSha: 'code',
+        linked: { code: [lending] },
       }),
-      /PR #3's run tested the same code, and only Markdown changed after tested/,
+      MarkerError,
     )
+  },
+)
+
+test(
+  'a GitHub API failure fails the check',
+  async () => {
+    await assert.rejects(
+      checkPullRequest({
+        body: passing,
+        headSha: 'docs',
+        commit: async () => {
+          throw new MarkerError('HTTP 502')
+        },
+        pullRequestsFor: async () => [],
+      }),
+      /HTTP 502/,
+    )
+  },
+)
+
+test(
+  'GitHub commit facts count a rename by both paths and a 300-file list as cut short',
+  () => {
+    const found = {
+      commit: { tree: { sha: 't' } },
+      parents: [{ sha: 'p' }],
+    }
+
+    assert.deepEqual(
+      commitFacts({
+        found: {
+          ...found,
+          files: [
+            {
+              filename: 'notes.md',
+              previous_filename: 'src/notes.ts',
+            },
+          ],
+        },
+      }).files,
+      [
+        'notes.md',
+        'src/notes.ts',
+      ],
+    )
+    assert.equal(
+      commitFacts({
+        found: {
+          ...found,
+          files: Array.from(
+            { length: 300 },
+            (
+              _,
+              i,
+            ) => ({ filename: `${i}.md` }),
+          ),
+        },
+      }).files,
+      null,
+    )
+  },
+)
+
+test(
+  'the marker is written only for a passing, clean, unmoved run on the pushed PR head',
+  () => {
+    const ready = {
+      failedSteps: 0,
+      changedPaths: 0,
+      headSha: 'h',
+      headAfter: 'h',
+      pullRequestHead: 'h',
+    }
+
+    assert.deepEqual(
+      markerBlockers(ready),
+      [],
+    )
+
+    for (const change of [
+      { failedSteps: 1 },
+      { changedPaths: 1 },
+      { headAfter: 'moved' },
+      { pullRequestHead: undefined },
+      { pullRequestHead: 'unpushed' },
+    ]) {
+      assert.equal(
+        markerBlockers({
+          ...ready,
+          ...change,
+        }).length,
+        1,
+        JSON.stringify(change),
+      )
+    }
   },
 )

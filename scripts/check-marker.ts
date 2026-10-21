@@ -2,13 +2,11 @@
 // GITHUB_TOKEN=… GITHUB_REPOSITORY=owner/repo PR_NUMBER=<n> node scripts/check-marker.ts
 import {
   checkPullRequest,
-  type Commit,
+  commitFacts,
+  type GitHubCommit,
   MarkerError,
   type PullRequest,
 } from './marker.ts'
-
-// GitHub's commit endpoint lists at most 300 files, so a list that long may be cut short.
-const COMMIT_FILES_PAGE = 300
 
 async function github<T>({ endpoint }: { endpoint: string }): Promise<T> {
   const response = await fetch(
@@ -26,28 +24,6 @@ async function github<T>({ endpoint }: { endpoint: string }): Promise<T> {
   }
 
   return await response.json() as T
-}
-
-async function commit({ sha }: { sha: string }): Promise<Commit> {
-  const found = await github<{
-    commit: { tree: { sha: string } }
-    parents: { sha: string }[]
-    files: {
-      filename: string
-      previous_filename?: string
-    }[]
-  }>({ endpoint: `commits/${sha}` })
-  // A rename counts by both paths, so moving code into a .md file is not Markdown-only.
-  const files = found.files.flatMap(file => file.previous_filename ? [
-    file.filename,
-    file.previous_filename,
-  ] : [file.filename])
-
-  return {
-    tree: found.commit.tree.sha,
-    parents: found.parents.map(parent => parent.sha),
-    files: found.files.length < COMMIT_FILES_PAGE ? files : null,
-  }
 }
 
 async function pullRequestsFor({ sha }: { sha: string }): Promise<PullRequest[]> {
@@ -73,12 +49,9 @@ try {
   }>({ endpoint: `pulls/${process.env.PR_NUMBER}` })
 
   console.log(await checkPullRequest({
-    pullRequest: {
-      number: Number(process.env.PR_NUMBER),
-      body: pr.body ?? '',
-    },
+    body: pr.body ?? '',
     headSha: pr.head.sha,
-    commit,
+    commit: async ({ sha }) => commitFacts({ found: await github<GitHubCommit>({ endpoint: `commits/${sha}` }) }),
     pullRequestsFor,
   }))
 } catch (error) {
