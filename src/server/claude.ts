@@ -209,7 +209,7 @@ export function claudeProvider({
         folder: env.CLAUDE_CONFIG_DIR,
       })
       let running: ReturnType<QueryFn> | undefined
-      let closed = false
+      let closed = false, interrupted = false
 
       return {
         id,
@@ -391,12 +391,14 @@ export function claudeProvider({
               }
             }
 
-            if (message.type === 'result' && message.is_error) {
+            // A turn the owner stopped ends as an error result; it is a finished turn, not a failure.
+            if (message.type === 'result' && message.is_error && !interrupted) {
               throw new Error('errors' in message ? message.errors.join('; ') : 'Claude Code could not complete this turn')
             }
 
             if (activity === 'finished') {
               active = false
+              interrupted = false
               yield 'finished'
             }
           }
@@ -415,6 +417,12 @@ export function claudeProvider({
             await running.setPermissionMode(value as PermissionMode)
           } else if (setting === 'effort') {
             await running.applyFlagSettings({ effortLevel: value as EffortLevel })
+          }
+        },
+        async interrupt() {
+          if (running) {
+            interrupted = true
+            await running.interrupt()
           }
         },
         close() {

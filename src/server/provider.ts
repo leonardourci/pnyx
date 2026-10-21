@@ -42,6 +42,8 @@ export interface HostedSession {
     setting: string
     value: string
   }): Promise<void>
+  // Ends the running turn early; the session stays open for the next message.
+  interrupt(): Promise<void>
   close(): void
 }
 

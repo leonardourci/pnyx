@@ -677,6 +677,7 @@ export function codexProvider({
         }
 
         const id = thread.id
+        let turnId: string | undefined, interrupted = false
 
         return {
           id,
@@ -750,6 +751,8 @@ export function codexProvider({
                 throw new Error('Codex returned no turn id')
               }
 
+              turnId = turn.id
+
               for await (const event of rpc.completed({
                 threadId: id,
                 turnId: turn.id,
@@ -760,11 +763,14 @@ export function codexProvider({
                   continue
                 }
 
-                if (event.turn.status !== 'completed') {
+                // A turn the owner stopped is a finished turn, not a failure.
+                if (event.turn.status !== 'completed' && !(interrupted && event.turn.status === 'interrupted')) {
                   throw new Error(String(object({ value: event.turn.error }).message ?? `Codex turn ${event.turn.status}`))
                 }
               }
 
+              turnId = undefined
+              interrupted = false
               yield 'finished'
             }
           },
@@ -773,6 +779,18 @@ export function codexProvider({
             value,
           }) {
             options[setting] = value
+          },
+          async interrupt() {
+            if (turnId) {
+              interrupted = true
+              await rpc.request({
+                method: 'turn/interrupt',
+                params: {
+                  threadId: id,
+                  turnId,
+                },
+              })
+            }
           },
           close,
         }

@@ -40,6 +40,7 @@ export interface Host {
     actor: string
     id: string
   }): Promise<Record<string, unknown>>
+  stop(): Promise<Record<string, unknown>>
   start({
     task,
     prompt,
@@ -1539,6 +1540,19 @@ export function createHost({
 
       return Promise.resolve({ state: 'queued' })
     },
+    // Stops only Hydra's running turn; workers keep going.
+    stop: async () => {
+      const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
+      const entry = card?.agent?.host === 'pnyx' ? live.get(sessionId({ agent: card.agent })) : undefined
+
+      if (!entry?.session || entry.activity !== 'working') {
+        return { stopped: 'none: Hydra is not working on a turn' }
+      }
+
+      await entry.session.interrupt()
+
+      return { stopped: 'hydra' }
+    },
     start: async ({
       task,
       prompt,
@@ -2545,6 +2559,9 @@ export async function hostRequest({
         })!,
         actor,
       })
+
+    case 'stop':
+      return host.stop()
 
     case 'start': {
       const folder = field({

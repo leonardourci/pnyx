@@ -19,6 +19,7 @@ export function hydraSdk() {
   }
   const permissions: PermissionResult[] = []
   const sets: string[] = []
+  const interrupts: unknown[] = []
   const releases = new Set<() => void>()
   const query = (({
     prompt,
@@ -43,7 +44,7 @@ export function hydraSdk() {
       }
     }
 
-    let release = () => {}
+    let release = () => {}, interrupted = false
     const call = {
       options,
       messages: [] as string[],
@@ -151,6 +152,19 @@ export function hydraSdk() {
           })
         }
 
+        // The SDK ends an interrupted turn with an error result.
+        if (interrupted) {
+          interrupted = false
+          yield {
+            type: 'result',
+            subtype: 'error_during_execution',
+            is_error: true,
+            errors: ['Request was aborted.'],
+          }
+
+          continue
+        }
+
         if (control.stream) {
           yield {
             type: 'stream_event',
@@ -186,6 +200,11 @@ export function hydraSdk() {
             release()
           }
         },
+        interrupt: async () => {
+          interrupts.push(call)
+          interrupted = true
+          release()
+        },
         // eslint-disable-next-line pnyx/object-params -- The SDK owns this method signature.
         setModel: async (model: string) => {
           sets.push(`model ${model}`)
@@ -208,6 +227,7 @@ export function hydraSdk() {
     control,
     permissions,
     sets,
+    interrupts,
     release: () => {
       control.hold = false
 
