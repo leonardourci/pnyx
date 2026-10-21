@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -209,17 +209,23 @@ test('Hydra dispatch accepts a catalog model beyond its legacy shortlist from sa
   }
 })
 
-test('The model list is stored for every Hydra, answers before the harness and is rewritten when it changes', async () => {
+test('The model list is stored for every Hydra, answers before the harness and is rewritten only when it changes', async () => {
   const root = mkdtempSync(join(tmpdir(), 'pnyx-stored-models-'))
   const previous = { PATH: process.env.PATH, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR }
   process.env.PNYX_HOME = root
   commands.hydra(['create', 'lab'])
   const { claude } = fakeDispatch({ root })
   process.env.CLAUDE_CONFIG_DIR = claude
+  writeFileSync(join(claude, 'settings.json'), JSON.stringify({ permissions: { defaultMode: 'acceptEdits' } }))
   const file = join(root, 'harness-models.json')
-  const stored = () => (JSON.parse(readFileSync(file, 'utf8')) as Record<string, { label: string }[]>)[`claude:${claude}`]?.map(m => m.label)
+  const entry = () => (JSON.parse(readFileSync(file, 'utf8')) as Record<string, Record<string, string>[]>)[`claude:${claude}`]
+  const stored = () => entry()?.map(m => m.label)
   let reads = 0
-  let answer = async () => [{ value: 'opus', displayName: 'Opus 5.5' }]
+
+  let answer = async (): Promise<{ value: string; displayName: string }[]> => {
+    throw new Error('Catalog unavailable')
+  }
+
   const query = (() => ({
     supportedModels: () => {
       reads++
@@ -233,8 +239,11 @@ test('The model list is stored for every Hydra, answers before the harness and i
   const cold = open()
 
   try {
-    assert.deepEqual((await cold.models({ harness: 'claude' })).map(m => m.label), ['Opus 5.5'])
-    assert.deepEqual(stored(), ['Opus 5.5'])
+    await assert.rejects(cold.models({ harness: 'claude' }), /unavailable/)
+    answer = async () => [{ value: 'opus', displayName: 'Opus 5.5' }]
+    const models = await cold.models({ harness: 'claude' })
+    assert.deepEqual(models.map(m => [m.label, m.defaultMode]), [['Opus 5.5', 'acceptEdits']])
+    assert.deepEqual(entry(), [{ value: 'opus', label: 'Opus 5.5' }])
   } finally {
     cold.close()
   }
@@ -247,7 +256,7 @@ test('The model list is stored for every Hydra, answers before the harness and i
 
   try {
     assert.deepEqual((await warm.models({ harness: 'claude' })).map(m => m.label), ['Opus 5.5'])
-    assert.equal(reads, 2)
+    assert.equal(reads, 3)
     release()
 
     for (let attempt = 0; attempt < 200 && stored()?.[0] !== 'Opus 6'; attempt++) {
@@ -256,9 +265,25 @@ test('The model list is stored for every Hydra, answers before the harness and i
 
     assert.deepEqual(stored(), ['Opus 6'])
     assert.deepEqual((await warm.models({ harness: 'claude' })).map(m => m.label), ['Opus 6'])
-    assert.equal(reads, 2)
+    assert.equal(reads, 3)
   } finally {
     warm.close()
+  }
+
+  answer = async () => {
+    throw new Error('Catalog unavailable')
+  }
+
+  const offline = open()
+
+  try {
+    assert.deepEqual((await offline.models({ harness: 'claude' })).map(m => m.label), ['Opus 6'])
+    await new Promise(resolve => setTimeout(resolve, 10))
+    assert.equal(reads, 4)
+    assert.deepEqual((await offline.models({ harness: 'claude' })).map(m => m.label), ['Opus 6'])
+    assert.deepEqual(stored(), ['Opus 6'])
+  } finally {
+    offline.close()
     process.env.PATH = previous.PATH
     process.env.CLAUDE_CONFIG_DIR = previous.CLAUDE_CONFIG_DIR
     rmSync(root, { recursive: true, force: true })
