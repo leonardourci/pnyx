@@ -1,3 +1,4 @@
+import { DispatchProposals } from './dispatch-proposals.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
@@ -142,6 +143,7 @@ export function HydraChat({
     [
       messages.length,
       page,
+      state.dispatchProposals,
     ],
   )
   const deliver = useCallback<Command>(
@@ -226,6 +228,12 @@ export function HydraChat({
           })}
           toolDetails={view.toolDetails}
           thinkingDetails={view.thinkingDetails}
+        />
+        <DispatchProposals
+          state={state}
+          command={command}
+          connected={connected}
+          notify={notify}
         />
         {!entries.length && !projectSetup && <p className="hydra-empty">What are we working on?</p>}
         {hydra.kind !== 'firstmate' && (card?.sessionActivity ?? card?.activity) === 'working' && !entries.some(e => e.streaming) && <Working label={card?.agent ? 'Hydra is working' : 'Starting Hydra'} />}

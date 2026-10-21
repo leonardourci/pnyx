@@ -3311,6 +3311,9 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.declared': return `${event.data.state}: ${event.data.note}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
     case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
+    case 'hydra.dispatch-proposed': return `Proposed dispatch change: ${event.data.summary}`
+    case 'hydra.dispatch-progress': return `Owner question ${event.data.status}${event.data.error ? `: ${event.data.error}` : ''}`
+    case 'hydra.dispatch-resolved': return `Dispatch proposal ${event.data.action}`
     case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
@@ -3902,8 +3905,8 @@ never) with its sandbox: never, or bypassPermissions, runs with full access, the
 Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
 and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.
 Repeating the same --event-id never starts a second agent.
---rule chooses the heads dispatch candidate list (default: default); --harness filters that list and
---prompt its opening message, which otherwise names the task and the pnyx-worker skill. Known quota ranks
+--rule chooses the heads dispatch candidate list (default: default); an explicit owner --harness or
+--model wins outside that list, checked against its own catalog and login. --prompt sets its opening message, which otherwise names the task and the pnyx-worker skill. Known quota ranks
 by spendPriority above unknown quota; a tie, or several candidates with unknown quota, stops the start.
 --model, --effort, --mode and --fast on|off replace the chosen candidate's settings from the first turn; the model
 must be in the harness's catalog and the task records the override.

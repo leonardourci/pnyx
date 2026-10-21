@@ -1,3 +1,4 @@
+import { approval } from '../confirmations/commands.ts'
 import { advanceQueues } from '../queue/advance.ts'
 import { QUEUE_POLL_MS } from '../queue/state.ts'
 import { candidates } from '../dispatch/config.ts'
@@ -46,6 +47,7 @@ import type { SpawnCodex } from './codex.ts'
 
 const commands = {
   ...cliCommands,
+  approval,
   project,
   ...dispatchCommands,
 }
@@ -78,6 +80,7 @@ const shownTraces = ({
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
 const CLI_COMMANDS = [
+  'approval',
   'project',
   'task',
   'column',
