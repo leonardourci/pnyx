@@ -389,8 +389,8 @@ try {
   })
 
   await b.check({
-    condition:'[...document.querySelectorAll(".hydra-chat .task-reference")].every(ref=>ref.textContent.includes("Choose the conversation layout") && ref.querySelector(".task-reference-state")?.textContent === "Needs you" && ref.querySelectorAll("svg").length === 2)',
-    label:'header and inline references show current title, state, task and open icons',
+    condition:'[...document.querySelectorAll(".hydra-chat .task-reference")].every(ref=>ref.textContent.includes("Choose the conversation layout") && ref.querySelector(".task-reference-state")?.getAttribute("aria-label") === "Needs you" && ref.querySelectorAll("svg").length === 3 && ref.querySelector("svg").classList.contains("tabler-icon-calendar") && !ref.textContent.includes("Needs you"))',
+    label:'header and inline references show calendar, status icon, live title and open icon',
   })
   await b.click({selector:'.hydra-chat .markdown .task-reference'})
   await b.eventually({
@@ -435,7 +435,7 @@ try {
     'web',
   ])
   await b.eventually({
-    condition:'[...document.querySelectorAll(".hydra-chat .task-reference")].every(ref=>ref.textContent.includes("Updated layout title") && ref.querySelector(".task-reference-state")?.textContent.startsWith("Done"))',
+    condition:'[...document.querySelectorAll(".hydra-chat .task-reference")].every(ref=>ref.textContent.includes("Updated layout title") && ref.querySelector(".task-reference-state")?.getAttribute("aria-label").startsWith("Done"))',
     label:'old chat references track live title and completion',
   })
 } finally {
