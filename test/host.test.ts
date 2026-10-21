@@ -171,7 +171,7 @@ async function until({ check }: { check: () => boolean }) {
     ))
   }
 
-  assert.fail('timed out waiting for the hosted agent')
+  assert.fail(`timed out waiting for ${check}`)
 }
 
 async function lab() {
