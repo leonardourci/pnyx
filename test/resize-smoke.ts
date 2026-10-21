@@ -3,6 +3,7 @@ import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startServer } from '../src/server/server.ts'
+import { commands } from '../src/cli/commands.ts'
 import { loadHydra } from '../src/store/hydra-store.ts'
 import { smokeBrowser } from './browser.ts'
 import { seedWebFixture } from './web-fixture.ts'
@@ -18,6 +19,23 @@ process.env.CLAUDE_CONFIG_DIR = join(
   'claude',
 )
 const fixture = seedWebFixture({ home })
+const originalTitle = fixture.state.cards[fixture.state.keys.layout!]!.title
+
+for (let revision = 0; revision < 8; revision++) {
+  await commands.task([
+    'rename',
+    fixture.state.keys.layout!,
+    '--title',
+    `Layout resize check ${revision}`,
+  ])
+}
+
+await commands.task([
+  'rename',
+  fixture.state.keys.layout!,
+  '--title',
+  originalTitle,
+])
 appendFileSync(
   fixture.transcript,
   Array.from(
@@ -119,7 +137,7 @@ try {
     ].join('; '),
     label: 'an open card starts at half its column within its content bounds',
   })
-  await evaluate({ code: 'window.openHeight = document.querySelector(".card.selected").getBoundingClientRect().height; window.openTarget = Math.min(window.openHeight + 100, Number(document.querySelector(".card.selected > .resize-y").getAttribute("aria-valuemax"))); return true;' })
+  await evaluate({ code: 'window.openHeight = document.querySelector(".card.selected").getBoundingClientRect().height; window.openTarget = Math.min(window.openHeight + 100, Number(document.querySelector(".card.selected > .resize-y").getAttribute("aria-valuemax"))); if(window.openTarget === window.openHeight) throw new Error("Fixture must leave room for a saved resize"); return true;' })
   await drag({
     selector: '.card.selected > [aria-label="Resize card"]',
     dy: 100,
@@ -198,7 +216,7 @@ try {
   })
   await check({
     condition: `(() => { const card = document.querySelector(".card.selected"); const pane = card.closest(".column-cards"); return card.getBoundingClientRect().height === ${opened} && pane.scrollHeight > pane.clientHeight; })()`,
-    label: 'a card taller than a short pane keeps its height and the column scrolls',
+    label: 'a short pane retains the saved open height while its column scrolls',
   })
   await browser({
     args: [
