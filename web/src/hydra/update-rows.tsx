@@ -1,0 +1,265 @@
+import type { ReactNode } from 'react'
+import { CollapsibleText, Disclosure } from '../components/ui/disclosure.tsx'
+import { Icon } from '../components/ui/icon.tsx'
+import { Tooltip } from '../components/ui/tooltip.tsx'
+import { LinkChip } from './card-links.tsx'
+import type { TaskUpdate, UpdateGroup, UpdateKind } from './task-updates.ts'
+
+const KINDS: Record<UpdateKind, {
+  icon: string
+  label: string
+}> = {
+  ask: {
+    icon: 'you',
+    label: 'You asked',
+  },
+  hydra: {
+    icon: 'hydra',
+    label: 'Hydra, from its chat reply',
+  },
+  told: {
+    icon: 'send',
+    label: 'Hydra told the worker',
+  },
+  decision: {
+    icon: 'decision',
+    label: 'Decision',
+  },
+  status: {
+    icon: 'agent',
+    label: 'Worker update',
+  },
+  worker: {
+    icon: 'agent',
+    label: 'Worker',
+  },
+  link: {
+    icon: 'link',
+    label: 'Link',
+  },
+  created: {
+    icon: 'plus',
+    label: 'Created',
+  },
+  moved: {
+    icon: 'moved',
+    label: 'Moved',
+  },
+  renamed: {
+    icon: 'renamed',
+    label: 'Renamed',
+  },
+  done: {
+    icon: 'done',
+    label: 'Done',
+  },
+  plain: {
+    icon: 'summary',
+    label: 'Update',
+  },
+}
+
+// Words that need no heading: the icon says who wrote them.
+const SPOKEN = new Set<UpdateKind>([
+  'ask',
+  'hydra',
+  'told',
+])
+
+const LINK_ICONS: Record<string, string> = {
+  github_pr: 'github_pr',
+  linear: 'linear',
+}
+
+const stateLabel = ({ state }: { state: string }) =>
+  state === 'needs_you' ? 'Needs you' : state.replace(
+    /^./,
+    c => c.toUpperCase(),
+  )
+
+const shortTime = ({ at }: { at: string }) => new Date(at).toLocaleString(
+  [],
+  {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  },
+)
+
+function UpdateIcon({
+  kind,
+  icon = KINDS[kind].icon,
+  label = KINDS[kind].label,
+}: {
+  kind: UpdateKind
+  icon?: string
+  label?: string
+}) {
+  return (
+    <Tooltip content={label}>
+      <span className={`update-icon update-icon-${kind}`} role="img" aria-label={label}><Icon name={icon} size={14} /></span>
+    </Tooltip>
+  )
+}
+
+// A folded row's summary holds the time as plain text: a summary takes no focusable content.
+function UpdateTime({
+  at,
+  plain,
+}: {
+  at: string
+  plain?: boolean
+}) {
+  const time = <time dateTime={at} tabIndex={plain ? undefined : 0}>{shortTime({ at })}</time>
+
+  return plain ? time : <Tooltip content={new Date(at).toLocaleString()}>{time}</Tooltip>
+}
+
+function UpdateLine({
+  kind,
+  icon,
+  label,
+  at,
+  plain,
+  title,
+  children,
+}: {
+  kind: UpdateKind
+  icon?: string
+  label?: string
+  at?: string
+  plain?: boolean
+  title?: ReactNode
+  children?: ReactNode
+}) {
+  return (
+    <div className="update-line">
+      <UpdateIcon kind={kind} icon={icon} label={label} />
+      <div className="update-main">
+        {at && <UpdateTime at={at} plain={plain} />}
+        {title && <div className="update-title">{title}</div>}
+        {children}
+      </div>
+    </div>
+  )
+}
+
+const linkIcon = ({ update }: { update: TaskUpdate }) => LINK_ICONS[update.link?.kind ?? ''] ?? 'paperclip'
+
+function UpdateTitle({ update }: { update: TaskUpdate }) {
+  return update.kind === 'link' && update.link
+    ? <>{update.state} <LinkChip link={update.link} expanded={false} /></>
+    : <>{stateLabel({ state: update.state })}</>
+}
+
+function UpdateText({ update }: { update: TaskUpdate }) {
+  if (!update.note) {
+    return null
+  }
+
+  return update.kind === 'ask'
+    ? <blockquote className="update-quote"><CollapsibleText text={update.note} /></blockquote>
+    : <CollapsibleText text={update.note} />
+}
+
+function UpdateEntry({
+  update,
+  timed = true,
+}: {
+  update: TaskUpdate
+  timed?: boolean
+}) {
+  return (
+    <UpdateLine
+      kind={update.kind}
+      icon={update.kind === 'link' ? linkIcon({ update }) : undefined}
+      at={timed ? update.at : undefined}
+      title={SPOKEN.has(update.kind) ? undefined : <UpdateTitle update={update} />}
+    ><UpdateText update={update} />
+    </UpdateLine>
+  )
+}
+
+function Decisions({ updates }: { updates: TaskUpdate[] }) {
+  const many = updates.length > 1
+
+  return (
+    <>
+      <UpdateLine kind="decision" at={updates[0]!.at} title={many ? `${updates.length} decisions` : 'Decision'} />
+      <ol className="decision-list">
+        {updates.map((
+          update,
+          index,
+        ) => update.decision && (
+          <li key={update.id}>
+            <div className="decision-question">
+              {many && <span className="decision-number">{index + 1}</span>}
+              <CollapsibleText text={update.decision.question} />
+            </div>
+            {update.decision.answer ? (
+              <div className="decision-answer">
+                <UpdateIcon
+                  kind={update.decision.actor === 'You' ? 'ask' : 'hydra'}
+                  label={`Answered by ${update.decision.actor === 'You' ? 'you' : update.decision.actor}`}
+                />
+                <CollapsibleText text={update.decision.answer} />
+              </div>
+            ) : <p className="muted">Waiting for an answer</p>}
+            {update.decision.reason && <p className="decision-why">{update.decision.reason}</p>}
+          </li>
+        ))}
+      </ol>
+    </>
+  )
+}
+
+function Folded({ group }: { group: UpdateGroup }) {
+  const workers = group.type === 'workers'
+  const states = [...new Set(group.updates.map(update => stateLabel({ state: update.state })))].join(', ')
+
+  return (
+    <Disclosure
+      className="update-fold"
+      title={(
+        <UpdateLine
+          kind={workers ? 'status' : 'renamed'}
+          at={group.updates.at(-1)!.at}
+          plain
+          title={<>{group.updates.length} {workers ? 'worker updates' : 'card changes'} <span className="update-states">{states}</span></>}
+        />
+      )}
+    >
+      {group.updates.map(update => <UpdateEntry key={update.id} update={update} />)}
+    </Disclosure>
+  )
+}
+
+function Moment({ updates }: { updates: TaskUpdate[] }) {
+  const first = updates[0]!
+
+  return (
+    <UpdateLine
+      kind={first.kind}
+      at={first.at}
+      title={<span className="update-parts">{updates.map(update => <span key={update.id}><UpdateTitle update={update} /></span>)}</span>}
+    >{updates.map(update => <UpdateText key={update.id} update={update} />)}
+    </UpdateLine>
+  )
+}
+
+export function UpdateGroupRow({ group }: { group: UpdateGroup }) {
+  const first = group.updates[0]!
+  const decisions = group.type === 'decisions' || (group.type === 'single' && first.kind === 'decision')
+
+  return (
+    <li className={`update-row update-${group.type}${decisions ? ' update-decision' : ''}`}>
+      {group.type === 'workers' || group.type === 'changes' ? <Folded group={group} />
+        : decisions ? <Decisions updates={group.updates} />
+          : group.type === 'moment' ? <Moment updates={group.updates} />
+            : group.updates.map(update => (
+              <UpdateEntry key={update.id} update={update} timed={update === first} />
+            ))}
+    </li>
+  )
+}

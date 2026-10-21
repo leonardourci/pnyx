@@ -1,13 +1,14 @@
 import {
   IconBrandGithub, IconPaperclip,
-  IconAdjustments, IconAlertTriangle, IconArrowDown, IconArrowUpRight, IconArrowFork,
+  IconAdjustments, IconAlertTriangle, IconArrowDown, IconArrowRight, IconArrowUpRight,
+  IconArrowFork,
   IconBolt, IconBulb, IconCheck, IconChevronDown, IconChevronRight, IconCircleCheck,
   IconCalendar, IconClipboardList, IconClock, IconCode, IconCpu,
   IconCube, IconDeviceDesktop,
-  IconDots, IconEye, IconGauge, IconGitPullRequest, IconGitFork,
+  IconDots, IconExclamationCircle, IconEye, IconGauge, IconGitPullRequest, IconGitFork,
   IconLink, IconList, IconMaximize, IconMessage, IconMessagePlus, IconMinus, IconQuote,
-  IconPlayerPause, IconPlayerPlay,
-  IconPlus, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag, IconX,
+  IconPencil, IconPlayerPause, IconPlayerPlay,
+  IconPlus, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag, IconUser, IconX,
 } from '@tabler/icons-react'
 
 const icons: Record<string, typeof IconRobot> = {
@@ -55,6 +56,10 @@ const icons: Record<string, typeof IconRobot> = {
   comment: IconMessagePlus,
   comments: IconMessage,
   quote: IconQuote,
+  you: IconUser,
+  decision: IconExclamationCircle,
+  moved: IconArrowRight,
+  renamed: IconPencil,
 
 }
 

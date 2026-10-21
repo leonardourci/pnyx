@@ -5,13 +5,16 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadHydra } from '../src/store/hydra-store.ts'
+import type { Card } from '../src/core/model.ts'
 import {
+  groupUpdates,
   loadRelevant,
   MAX_PAGES,
   MIN_ROWS,
   relevantUpdate,
   taskTimeline,
   type TaskEvent,
+  type TaskUpdate,
 } from '../web/src/hydra/task-updates.ts'
 
 test(
@@ -141,7 +144,6 @@ test(
       data: Record<string, unknown>
       summary?: string
     }) => relevantUpdate({
-      cardId: 'c1',
       columns,
       event: {
         id: type,
@@ -175,6 +177,7 @@ test(
         },
       }),
       {
+        kind: 'renamed',
         state: 'Renamed',
         note: 'New name',
       },
@@ -188,8 +191,9 @@ test(
         },
       }),
       {
-        state: 'Moved',
-        note: 'In progress → Needs you',
+        kind: 'moved',
+        state: 'Moved to Needs you',
+        note: '',
       },
     )
     assert.equal(
@@ -197,7 +201,12 @@ test(
         type: 'card.linked',
         data: {
           url: 'u',
-          before: null,
+          before: {
+            kind: 'github_pr',
+            url: 'u',
+            number: 108,
+            state: 'open',
+          },
           after: {
             kind: 'github_pr',
             url: 'u',
@@ -208,28 +217,6 @@ test(
       })?.state,
       'PR #108 merged',
     )
-    assert.equal(
-      shown({
-        type: 'task.session',
-        data: {
-          session: 's',
-          before: 'c0',
-          after: 'c1',
-        },
-      })?.state,
-      'Worker attached',
-    )
-    assert.equal(
-      shown({
-        type: 'task.session',
-        data: {
-          session: 's',
-          before: 'c1',
-          after: null,
-        },
-      })?.state,
-      'Worker detached',
-    )
 
     for (const [
       type,
@@ -238,6 +225,43 @@ test(
         [
           'card.outcome',
           { after: { state: 'ended' } },
+        ],
+        [
+          'task.session',
+          {
+            session: 's',
+            before: 'c0',
+            after: 'c1',
+          },
+        ],
+        [
+          'task.project',
+          {
+            before: null,
+            after: 'pnyx',
+          },
+        ],
+        [
+          'task.reminder',
+          {
+            before: null,
+            after: '2030-01-01T00:00:00Z',
+          },
+        ],
+        [
+          'task.visibility',
+          {
+            before: false,
+            after: true,
+            automatic: true,
+          },
+        ],
+        [
+          'card.moved',
+          {
+            before: 'custom:a',
+            after: 'custom:a',
+          },
         ],
         [
           'card.replied',
@@ -339,7 +363,6 @@ test(
       }),
     })
     const ended = await loadRelevant({
-      cardId: 'c1',
       pageSize,
       load: short.load,
     })
@@ -361,7 +384,6 @@ test(
       }),
     })
     const enough = await loadRelevant({
-      cardId: 'c1',
       pageSize,
       load: sparse.load,
     })
@@ -382,7 +404,6 @@ test(
       }),
     })
     const capped = await loadRelevant({
-      cardId: 'c1',
       before: 900,
       pageSize,
       load: noise.load,
@@ -429,7 +450,6 @@ test(
       },
     }
     const shown = relevantUpdate({
-      cardId: 'c1',
       columns: [],
       event,
     })
@@ -454,7 +474,6 @@ test(
     }
     assert.equal(
       relevantUpdate({
-        cardId: 'c1',
         columns: [],
         event,
       }),
@@ -463,7 +482,6 @@ test(
     event.data.state = 'failed'
     assert.equal(
       relevantUpdate({
-        cardId: 'c1',
         columns: [],
         event,
       }),
@@ -472,7 +490,6 @@ test(
     event.data.state = 'delivered'
     assert.deepEqual(
       relevantUpdate({
-        cardId: 'c1',
         columns: [],
         event,
       })?.decision,
@@ -481,6 +498,572 @@ test(
         actor: 'Hydra',
         reason: 'The owner chose this earlier',
       },
+    )
+  },
+)
+
+const event = ({
+  seq,
+  type,
+  data = {},
+  actor,
+  reason,
+  at = `2026-10-13T13:${String(seq).padStart(
+    2,
+    '0',
+  )}:00Z`,
+}: {
+  seq: number
+  type: string
+  data?: Record<string, unknown>
+  actor?: string
+  reason?: string
+  at?: string
+}): TaskEvent => ({
+  id: `e${seq}`,
+  seq,
+  at,
+  type,
+  summary: '',
+  data,
+  ...(actor ? { actor } : {}),
+  ...(reason ? { reason } : {}),
+})
+
+const columns = [
+  {
+    id: 'in_progress' as const,
+    title: 'In progress',
+    role: 'in_progress' as const,
+  },
+  {
+    id: 'done' as const,
+    title: 'Done',
+    role: 'done' as const,
+  },
+]
+
+test(
+  'Updates show your asks, the Hydra’s words and its reasons, and hide what adds nothing',
+  () => {
+    const shown = ({
+      type,
+      data,
+      actor,
+      reason,
+    }: {
+      type: string
+      data: Record<string, unknown>
+      actor?: string
+      reason?: string
+    }) => relevantUpdate({
+      columns,
+      event: event({
+        seq: 1,
+        type,
+        data,
+        actor,
+        reason,
+      }),
+    })
+
+    assert.equal(
+      shown({
+        type: 'card.replied',
+        data: {
+          reply: 'r1',
+          state: 'queued',
+          text: 'Is quick add its own page?',
+        },
+        actor: 'web',
+      })?.kind,
+      'ask',
+    )
+    assert.deepEqual(
+      shown({
+        type: 'card.replied',
+        data: {
+          reply: 'r2',
+          state: 'queued',
+          text: 'Add one @Core alias.',
+        },
+        actor: 'hydra',
+      }),
+      {
+        kind: 'told',
+        state: 'Told the worker',
+        note: 'Add one @Core alias.',
+      },
+    )
+    assert.equal(
+      shown({
+        type: 'card.replied',
+        data: {
+          reply: 'r3',
+          state: 'queued',
+          text: 'enter',
+          control: true,
+        },
+        actor: 'web',
+      }),
+      undefined,
+    )
+    assert.equal(
+      shown({
+        type: 'hydra.message',
+        data: {
+          action: 'send',
+          text: 'Make this PR the whole restructure',
+        },
+        actor: 'web',
+      })?.kind,
+      'ask',
+    )
+
+    for (const message of [
+      {
+        actor: 'hydra',
+        data: {
+          action: 'send',
+          text: 'Moved it: ready',
+        },
+      },
+      {
+        actor: 'web',
+        data: {
+          action: 'worker',
+          text: 'Create a worker for task c1',
+        },
+      },
+    ]) {
+      assert.equal(
+        shown({
+          type: 'hydra.message',
+          ...message,
+        }),
+        undefined,
+      )
+    }
+
+    assert.deepEqual(
+      shown({
+        type: 'card.noted',
+        data: {
+          kind: 'context',
+          source: 'hydra',
+          text: 'Quick Add gets its own feature folder.',
+        },
+      }),
+      {
+        kind: 'hydra',
+        state: 'Hydra',
+        note: 'Quick Add gets its own feature folder.',
+      },
+    )
+    assert.deepEqual(
+      shown({
+        type: 'card.noted',
+        data: {
+          kind: 'context',
+          source: 'owner',
+          text: 'Is it its own page?',
+          at: '2026-10-13T13:11:00Z',
+        },
+      }),
+      {
+        kind: 'ask',
+        state: 'You asked',
+        note: 'Is it its own page?',
+        at: '2026-10-13T13:11:00Z',
+      },
+    )
+    assert.equal(
+      shown({
+        type: 'card.noted',
+        data: {
+          kind: 'summary',
+          source: 'claude-code',
+          text: 'Session summary',
+        },
+      }),
+      undefined,
+    )
+    assert.deepEqual(
+      shown({
+        type: 'card.moved',
+        data: {
+          before: 'in_progress',
+          after: 'done',
+        },
+        reason: 'PR #98 merged',
+      }),
+      {
+        kind: 'done',
+        state: 'Moved to Done',
+        note: 'PR #98 merged',
+      },
+    )
+
+    const pr = {
+      kind: 'github_pr',
+      url: 'https://github.com/o/r/pull/98',
+      number: 98,
+      state: 'open',
+    }
+    assert.equal(
+      shown({
+        type: 'card.linked',
+        data: {
+          url: pr.url,
+          before: null,
+          after: pr,
+        },
+      })?.state,
+      'Link attached',
+    )
+    assert.equal(
+      shown({
+        type: 'card.linked',
+        data: {
+          url: pr.url,
+          before: pr,
+          after: null,
+        },
+      })?.state,
+      'Link removed',
+    )
+    assert.equal(
+      shown({
+        type: 'card.linked',
+        data: {
+          url: pr.url,
+          before: pr,
+          after: {
+            ...pr,
+            checkedAt: 'later',
+          },
+        },
+      }),
+      undefined,
+    )
+  },
+)
+
+test(
+  'the timeline drops repeated reasons, pairs Firstmate decisions, shows new intent only and closes once',
+  () => {
+    const card = {
+      id: 'c1',
+      statusLog: [],
+    } as unknown as Card
+    const closedAt = '2026-10-20T16:42:09Z'
+    const updates = taskTimeline({
+      card,
+      columns,
+      events: [
+        event({
+          seq: 1,
+          type: 'card.noted',
+          data: {
+            kind: 'context',
+            source: 'firstmate',
+            text: "Captain's intent:\nInclude the whole restructure.",
+          },
+        }),
+        event({
+          seq: 2,
+          type: 'task.declared',
+          data: {
+            state: 'paused',
+            note: 'waiting for #72 to merge',
+          },
+        }),
+        event({
+          seq: 3,
+          type: 'card.moved',
+          data: {
+            before: 'done',
+            after: 'in_progress',
+          },
+          reason: 'paused: waiting for #72 to merge',
+        }),
+        event({
+          seq: 4,
+          type: 'card.noted',
+          data: {
+            kind: 'decision',
+            source: 'firstmate',
+            text: 'needs-decision [emulator]: Start one emulator?',
+          },
+        }),
+        event({
+          seq: 5,
+          type: 'card.noted',
+          data: {
+            kind: 'decision',
+            source: 'firstmate',
+            text: 'resolved [emulator]: answered: Yes, one.',
+          },
+        }),
+        event({
+          seq: 6,
+          type: 'card.noted',
+          data: {
+            kind: 'decision',
+            source: 'firstmate',
+            text: 'resolved [emulator]: firstmate approved one emulator',
+          },
+        }),
+        event({
+          seq: 7,
+          type: 'card.noted',
+          data: {
+            kind: 'context',
+            source: 'firstmate',
+            text: "Captain's intent:\nInclude the whole restructure.\nAdded: fold in the PR 72 comments.",
+          },
+        }),
+        ...[
+          {
+            type: 'task.declared',
+            data: {
+              state: 'done',
+              note: 'Closed in Firstmate',
+            },
+          },
+          {
+            type: 'card.outcome',
+            data: {
+              before: null,
+              after: { state: 'done' },
+            },
+          },
+          {
+            type: 'card.moved',
+            data: {
+              before: 'in_progress',
+              after: 'done',
+            },
+          },
+        ].map((
+          closing,
+          index,
+        ) => event({
+          seq: 8 + index,
+          at: closedAt,
+          ...closing,
+        })),
+      ],
+    }).toReversed()
+
+    assert.deepEqual(
+      updates.map(update => [
+        update.kind,
+        update.state,
+        update.note,
+      ]),
+      [
+        [
+          'ask',
+          'You asked',
+          'Include the whole restructure.',
+        ],
+        [
+          'status',
+          'paused',
+          'waiting for #72 to merge',
+        ],
+        [
+          'moved',
+          'Moved to In progress',
+          '',
+        ],
+        [
+          'decision',
+          'Decision',
+          '',
+        ],
+        [
+          'ask',
+          'You asked',
+          'Added: fold in the PR 72 comments.',
+        ],
+        [
+          'done',
+          'Done',
+          'Closed in Firstmate',
+        ],
+      ],
+    )
+    assert.deepEqual(
+      updates[3]!.decision,
+      {
+        questionId: 'firstmate:emulator',
+        question: 'Start one emulator?',
+        answer: 'Yes, one.',
+        actor: 'Hydra',
+        reason: undefined,
+      },
+    )
+  },
+)
+
+test(
+  'related updates fold only when two or more belong together',
+  () => {
+    const update = ({
+      id,
+      kind,
+      at,
+      state = kind,
+      note = '',
+    }: {
+      id: string
+      kind: TaskUpdate['kind']
+      at: string
+      state?: string
+      note?: string
+    }): TaskUpdate => ({
+      id,
+      kind,
+      at,
+      state,
+      note,
+    })
+    const groups = groupUpdates({
+      updates: [
+        update({
+          id: 'created',
+          kind: 'created',
+          at: '2026-10-13T12:59:56Z',
+        }),
+        update({
+          id: 'link',
+          kind: 'link',
+          at: '2026-10-13T12:59:56Z',
+        }),
+        update({
+          id: 'working',
+          kind: 'status',
+          at: '2026-10-13T12:59:56Z',
+        }),
+        update({
+          id: 'ask',
+          kind: 'ask',
+          at: '2026-10-13T13:03:00Z',
+        }),
+        update({
+          id: 'answer',
+          kind: 'hydra',
+          at: '2026-10-13T13:04:00Z',
+        }),
+        update({
+          id: 'paused-1',
+          kind: 'status',
+          at: '2026-10-13T13:17:00Z',
+        }),
+        update({
+          id: 'paused-2',
+          kind: 'status',
+          at: '2026-10-13T13:34:00Z',
+        }),
+        update({
+          id: 'late-ask',
+          kind: 'ask',
+          at: '2026-10-14T10:00:00Z',
+        }),
+        update({
+          id: 'late-answer',
+          kind: 'hydra',
+          at: '2026-10-14T10:30:00Z',
+        }),
+        update({
+          id: 'renamed',
+          kind: 'renamed',
+          at: '2026-10-15T20:36:00Z',
+        }),
+        update({
+          id: 'moved',
+          kind: 'moved',
+          state: 'Moved to In progress',
+          at: '2026-10-15T21:43:00Z',
+        }),
+        ...[
+          'reach',
+          'platforms',
+          'clean-up',
+        ].map(id => update({
+          id,
+          kind: 'decision',
+          at: '2026-10-17T14:59:21Z',
+        })),
+        update({
+          id: 'told',
+          kind: 'told',
+          at: '2026-10-17T14:59:21Z',
+        }),
+      ],
+    })
+
+    assert.deepEqual(
+      groups.map(group => [
+        group.type,
+        group.updates.map(item => item.id),
+      ]),
+      [
+        [
+          'moment',
+          [
+            'created',
+            'link',
+          ],
+        ],
+        [
+          'single',
+          ['working'],
+        ],
+        [
+          'exchange',
+          [
+            'ask',
+            'answer',
+          ],
+        ],
+        [
+          'workers',
+          [
+            'paused-1',
+            'paused-2',
+          ],
+        ],
+        [
+          'single',
+          ['late-ask'],
+        ],
+        [
+          'single',
+          ['late-answer'],
+        ],
+        [
+          'changes',
+          [
+            'renamed',
+            'moved',
+          ],
+        ],
+        [
+          'decisions',
+          [
+            'reach',
+            'platforms',
+            'clean-up',
+          ],
+        ],
+        [
+          'single',
+          ['told'],
+        ],
+      ],
     )
   },
 )

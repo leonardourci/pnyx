@@ -11,36 +11,56 @@ export interface TaskEvent {
   reason?: string
 }
 
+// hydra: a chat paragraph that starts with the task's chip; told: Hydra to the worker.
+export type UpdateKind = 'ask' | 'hydra' | 'told' | 'decision' | 'status' | 'worker' | 'link' | 'created' | 'moved' | 'renamed' | 'done' | 'plain'
+
+export interface UpdateDecision {
+  questionId?: string
+  question: string
+  answer: string
+  actor: string
+  reason?: string
+}
+
 export interface TaskUpdate {
   id: string
   at: string
+  kind: UpdateKind
   state: string
   note: string
   seq?: number
-  decision?: {
-    questionId?: string
-    question: string
-    answer: string
-    actor: string
-    reason?: string
-  }
+  link?: Link
+  decision?: UpdateDecision
 }
 
-type Columns = Pick<HydraColumn, 'id' | 'title'>[]
+type Row = Omit<TaskUpdate, 'id' | 'at' | 'seq'> & {
+  // A note recorded later than the moment it describes carries its own time.
+  at?: string
+}
+
+type Columns = Pick<HydraColumn, 'id' | 'title' | 'role'>[]
 
 const LINK_VERBS: Record<string, string> = {
-  open: 'opened',
   merged: 'merged',
   closed: 'closed',
 }
 
-const columnName = ({
+const HARNESSES: Record<string, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+}
+
+const INTENT = /^Captain's intent:\s*/
+const NEEDS_DECISION = /^needs-decision \[([^\]]+)\]:\s*([\s\S]+)$/
+const RESOLVED = /^resolved \[([^\]]+)\]:\s*(?:answered:\s*)?([\s\S]+)$/
+
+const column = ({
   columns,
   id,
 }: {
   columns: Columns
   id: unknown
-}) => columns.find(column => column.id === id)?.title ?? String(id ?? 'none')
+}) => columns.find(c => c.id === id)
 
 const linkName = ({ link }: { link: Link }) => {
   if (link.kind === 'github_pr') {
@@ -50,23 +70,40 @@ const linkName = ({ link }: { link: Link }) => {
   return link.kind === 'linear' ? link.title ?? 'Ticket' : 'Link'
 }
 
-const linked = ({ data }: { data: Record<string, unknown> }) => {
+const linked = ({ data }: { data: Record<string, unknown> }): Row | undefined => {
+  const before = data.before as Link | null
   const after = data.after as Link | null
-  const link = after ?? data.before as Link | null
 
-  if (!link) {
-    return undefined
+  if (!after) {
+    return before ? {
+      kind: 'link',
+      state: 'Link removed',
+      note: '',
+      link: before,
+    } : undefined
   }
 
-  const verb = after ? LINK_VERBS[after.state ?? ''] ?? 'linked' : 'removed'
+  if (!before) {
+    return {
+      kind: 'link',
+      state: 'Link attached',
+      note: '',
+      link: after,
+    }
+  }
 
-  return {
-    state: `${linkName({ link })} ${verb}`,
+  // A refresh that finds the same state says nothing new.
+  const verb = after.state !== before.state ? LINK_VERBS[after.state ?? ''] : undefined
+
+  return verb ? {
+    kind: 'link',
+    state: `${linkName({ link: after })} ${verb}`,
     note: '',
-  }
+    link: after,
+  } : undefined
 }
 
-const outcome = ({ data }: { data: Record<string, unknown> }) => {
+const outcome = ({ data }: { data: Record<string, unknown> }): Row | undefined => {
   const after = data.after as {
     state: string
     note?: string
@@ -77,10 +114,20 @@ const outcome = ({ data }: { data: Record<string, unknown> }) => {
     return undefined
   }
 
+  if (after?.state === 'done') {
+    return {
+      kind: 'done',
+      state: 'Done',
+      note: after.note ?? '',
+    }
+  }
+
   return after ? {
+    kind: 'plain',
     state: after.state,
     note: after.note ?? '',
   } : {
+    kind: 'plain',
     state: 'Outcome cleared',
     note: '',
   }
@@ -91,28 +138,115 @@ const decisionActor = ({ actor }: { actor?: string }) => {
     return 'Hydra'
   }
 
-  return !actor || actor === 'web' || actor === 'cli' ? 'You' : actor
+  return owner({ actor }) ? 'You' : actor!
 }
 
-const renamed = ({ data }: { data: Record<string, unknown> }) => {
+const owner = ({ actor }: { actor?: string }) => !actor || actor === 'web' || actor === 'cli'
+
+const renamed = ({ data }: { data: Record<string, unknown> }): Row | undefined => {
   const before = data.before as Record<string, unknown> | undefined
 
   return before && 'title' in before && typeof data.title === 'string' ? {
+    kind: 'renamed',
     state: 'Renamed',
     note: data.title,
   } : undefined
 }
 
-// Ordinary delivery receipts stay in recorded history; a delivered answer records its decision.
+const replied = ({
+  data,
+  actor,
+}: {
+  data: RepliedEvent['data']
+  actor?: string
+}): Row | undefined => {
+  if (data.state !== 'queued' || !data.text?.trim() || data.control || data.decision || data.answers) {
+    return undefined
+  }
+
+  if (actor === 'hydra') {
+    return {
+      kind: 'told',
+      state: 'Told the worker',
+      note: data.text,
+    }
+  }
+
+  return owner({ actor }) ? {
+    kind: 'ask',
+    state: 'You asked',
+    note: data.text,
+  } : undefined
+}
+
+// Transcript summaries a harvest collects stay out.
+const noted = ({ data }: { data: Record<string, unknown> }): Row | undefined => {
+  const text = String(data.text ?? '')
+  const at = typeof data.at === 'string' ? { at: data.at } : {}
+
+  if (data.source === 'hydra') {
+    return {
+      kind: 'hydra',
+      state: 'Hydra',
+      note: text,
+      ...at,
+    }
+  }
+
+  if (data.source === 'owner') {
+    return {
+      kind: 'ask',
+      state: 'You asked',
+      note: text,
+      ...at,
+    }
+  }
+
+  if (data.source !== 'firstmate') {
+    return undefined
+  }
+
+  if (data.kind === 'context' && INTENT.test(text)) {
+    return {
+      kind: 'ask',
+      state: 'You asked',
+      note: text.replace(
+        INTENT,
+        '',
+      ),
+      ...at,
+    }
+  }
+
+  const asked = NEEDS_DECISION.exec(text)
+  const resolved = RESOLVED.exec(text)
+
+  if (data.kind !== 'decision' || !(asked || resolved)) {
+    return undefined
+  }
+
+  return {
+    kind: 'decision',
+    state: 'Decision',
+    note: '',
+    decision: {
+      questionId: `firstmate:${(asked ?? resolved)![1]}`,
+      question: asked?.[2] ?? '',
+      answer: resolved?.[2] ?? '',
+      actor: 'Hydra',
+    },
+    ...at,
+  }
+}
+
+// Receipts, worker attachments, reminders and project changes stay in recorded history.
 export function relevantUpdate({
-  cardId,
   event,
   columns,
 }: {
-  cardId: string
   event: TaskEvent
   columns: Columns
-}): Pick<TaskUpdate, 'state' | 'note' | 'decision'> | undefined {
+}): Row | undefined {
   const data = event.data ?? {}
 
   switch (event.type) {
@@ -120,6 +254,7 @@ export function relevantUpdate({
       const reply = data as RepliedEvent['data']
 
       return reply.state === 'delivered' && reply.decision ? {
+        kind: 'decision',
         state: 'Decision',
         note: '',
         decision: {
@@ -127,7 +262,10 @@ export function relevantUpdate({
           actor: decisionActor({ actor: event.actor }),
           reason: event.reason,
         },
-      } : undefined
+      } : replied({
+        data: reply,
+        actor: event.actor,
+      })
     }
     case 'task.permission': {
       const request = data as unknown as PermissionRequest
@@ -137,6 +275,7 @@ export function relevantUpdate({
       }
 
       return {
+        kind: 'decision',
         state: 'Decision',
         note: '',
         decision: {
@@ -147,55 +286,64 @@ export function relevantUpdate({
         },
       }
     }
+    case 'hydra.message': return owner({ actor: event.actor }) && data.action === 'send' && typeof data.text === 'string' && data.text.trim() ? {
+      kind: 'ask',
+      state: 'You asked',
+      note: data.text,
+    } : undefined
     case 'task.declared': return typeof data.state === 'string' ? {
+      kind: data.state === 'done' ? 'done' : 'status',
       state: data.state,
       note: String(data.note ?? ''),
     } : undefined
     case 'task.created': return {
+      kind: 'created',
       state: 'Created',
       note: '',
     }
     case 'task.launched': return {
+      kind: 'worker',
       state: 'Worker started',
-      note: '',
-    }
-    case 'task.session': return {
-      state: data.after === cardId ? 'Worker attached' : 'Worker detached',
-      note: '',
+      note: [
+        HARNESSES[String(data.harness)],
+        event.reason,
+      ].filter(Boolean).join('. '),
     }
     case 'task.brief': return {
+      kind: 'plain',
       state: 'Brief updated',
       note: '',
     }
-    case 'task.project': return {
-      state: 'Project changed',
-      note: String(data.after ?? 'none'),
-    }
-    case 'task.reminder': return {
-      state: data.after ? 'Reminder set' : 'Reminder cleared',
-      note: data.after ? String(data.after) : '',
-    }
     case 'task.reminder-due': return {
+      kind: 'plain',
       state: 'Reminder due',
       note: event.summary,
     }
-    case 'task.visibility': return {
+    case 'task.visibility': return data.automatic ? undefined : {
+      kind: 'plain',
       state: data.after ? 'Hidden from Hydra' : 'Back on the Hydra',
       note: '',
     }
-    case 'card.moved': return {
-      state: 'Moved',
-      note: `${columnName({
-        columns,
-        id: data.before,
-      })} → ${columnName({
+    case 'card.moved': {
+      if (data.before === data.after) {
+        return undefined
+      }
+
+      const after = column({
         columns,
         id: data.after,
-      })}`,
+      })
+
+      return {
+        kind: after?.role === 'done' ? 'done' : 'moved',
+        state: `Moved to ${after?.title ?? String(data.after ?? 'none')}`,
+        note: event.reason ?? '',
+      }
     }
     case 'card.linked': return linked({ data })
     case 'card.outcome': return outcome({ data })
     case 'card.pushed': return renamed({ data })
+    case 'card.noted': return noted({ data })
     default: return undefined
   }
 }
@@ -205,12 +353,10 @@ export const MAX_PAGES = 10
 
 // Most raw events are hidden, so page back until enough new rows show or history ends.
 export async function loadRelevant({
-  cardId,
   before,
   pageSize,
   load,
 }: {
-  cardId: string
   before?: number
   pageSize: number
   load({ before }: { before?: number }): Promise<TaskEvent[]>
@@ -230,7 +376,6 @@ export async function loadRelevant({
     }
 
     const shown = found.filter(event => relevantUpdate({
-      cardId,
       event,
       columns: [],
     })).length
@@ -248,6 +393,21 @@ export async function loadRelevant({
   }
 }
 
+const mergeDecisions = ({
+  prior,
+  next,
+}: {
+  prior: UpdateDecision
+  next: UpdateDecision
+}): UpdateDecision => ({
+  ...prior,
+  question: prior.question || next.question,
+  // The first answer recorded is the one that settled it.
+  answer: prior.answer || next.answer,
+  actor: prior.answer ? prior.actor : next.actor,
+  reason: prior.reason ?? next.reason,
+})
+
 export function taskTimeline({
   card,
   events,
@@ -258,34 +418,71 @@ export function taskTimeline({
   columns: Columns
 }): TaskUpdate[] {
   const updates = new Map<string, TaskUpdate>()
+  let intent = ''
+  let lastWords = ''
 
-  for (const event of events) {
-    const update = relevantUpdate({
-      cardId: card.id,
+  for (const event of events.toSorted((
+    a,
+    b,
+  ) => a.seq - b.seq)) {
+    const row = relevantUpdate({
       event,
       columns,
     })
 
-    if (!update) {
+    if (!row) {
       continue
     }
 
-    const id = update.decision?.questionId || event.id
-    const prior = updates.get(id)
-
-    if (prior?.decision && (!update.decision || (prior.seq ?? 0) > event.seq)) {
-      continue
+    const update: TaskUpdate = {
+      id: row.decision?.questionId || event.id,
+      at: event.at,
+      seq: event.seq,
+      ...row,
     }
 
-    updates.set(
-      id,
-      {
-        id,
-        at: event.at,
-        seq: event.seq,
-        ...update,
-      },
-    )
+    if (event.type === 'card.noted' && row.kind === 'ask' && event.data?.source === 'firstmate') {
+      // Firstmate rewrites the whole intent when a request is added; show only what is new.
+      const added = update.note.startsWith(intent)
+        ? update.note.slice(intent.length).trim()
+        : update.note
+      intent = update.note
+
+      if (!added) {
+        continue
+      }
+
+      update.note = added
+    }
+
+    // A Firstmate move repeats the worker's last status as its reason.
+    if (event.type === 'card.moved' && lastWords && update.note.endsWith(lastWords)) {
+      update.note = ''
+    }
+
+    if (update.note && (row.kind === 'status' || event.type === 'card.moved')) {
+      lastWords = update.note
+    }
+
+    const prior = updates.get(update.id)
+
+    if (prior?.decision && update.decision) {
+      updates.set(
+        update.id,
+        {
+          ...prior,
+          decision: mergeDecisions({
+            prior: prior.decision,
+            next: update.decision,
+          }),
+        },
+      )
+    } else if (!prior?.decision) {
+      updates.set(
+        update.id,
+        update,
+      )
+    }
   }
 
   for (const declaration of card.statusLog ?? []) {
@@ -298,18 +495,111 @@ export function taskTimeline({
     updates.set(
       declaration.id,
       {
+        kind: declaration.state === 'done' ? 'done' : 'status',
         ...recorded,
         ...declaration,
         // A task's first declaration shares its id with the creation event and has no note.
-        state: !declaration.note && recorded ? recorded.state : declaration.state,
+        ...(!declaration.note && recorded ? {
+          kind: recorded.kind,
+          state: recorded.state,
+        } : {}),
         note: declaration.note || recorded?.note || '',
       },
     )
   }
 
-  return [...updates.values()].reverse().sort((
+  return closings({ updates: [...updates.values()] }).sort((
     a,
     b,
   ) =>
     b.at.localeCompare(a.at) || (b.seq ?? 0) - (a.seq ?? 0))
+}
+
+// Closing a task records a move, an outcome and a status at the same moment: one Done row.
+function closings({ updates }: { updates: TaskUpdate[] }): TaskUpdate[] {
+  const kept = new Map<string, TaskUpdate>()
+  const rest: TaskUpdate[] = []
+
+  for (const update of updates) {
+    const prior = update.kind === 'done' ? kept.get(update.at) : undefined
+
+    if (update.kind !== 'done') {
+      rest.push(update)
+    } else if (!prior) {
+      kept.set(
+        update.at,
+        { ...update },
+      )
+    } else {
+      prior.state = 'Done'
+      prior.note ||= update.note
+    }
+  }
+
+  return [
+    ...rest,
+    ...kept.values(),
+  ]
+}
+
+export type UpdateGroupType = 'single' | 'workers' | 'changes' | 'moment' | 'decisions' | 'exchange'
+
+export interface UpdateGroup {
+  type: UpdateGroupType
+  // Oldest first, whichever way the list reads.
+  updates: TaskUpdate[]
+}
+
+const EXCHANGE_MS = 10 * 60_000
+
+const spoken = ({ update }: { update?: TaskUpdate }) => update?.kind === 'ask' || update?.kind === 'hydra' || update?.kind === 'told'
+
+const bookkeeping = ({ update }: { update?: TaskUpdate }) => update?.kind === 'renamed'
+  || (update?.kind === 'moved' && !update.note)
+  || (update?.kind === 'plain' && update.state === 'Brief updated')
+
+// A group of one shows as its entry: only two or more related entries fold.
+export function groupUpdates({ updates }: { updates: TaskUpdate[] }): UpdateGroup[] {
+  const groups: UpdateGroup[] = []
+
+  for (const update of updates) {
+    const last = groups.at(-1)
+    const prev = last?.updates.at(-1)
+
+    if (update.kind === 'status') {
+      if (last?.type === 'workers') {
+        last.updates.push(update)
+      } else {
+        groups.push({
+          type: 'workers',
+          updates: [update],
+        })
+      }
+    } else if (last && prev?.at === update.at && !spoken({ update }) && !spoken({ update: prev })
+      && [
+        'single',
+        'moment',
+        'decisions',
+      ].includes(last.type)) {
+      last.updates.push(update)
+      last.type = last.updates.every(item => item.kind === 'decision') ? 'decisions' : 'moment'
+    } else if ((update.kind === 'hydra' || update.kind === 'told') && last?.type === 'single' && prev?.kind === 'ask'
+      && Date.parse(update.at) - Date.parse(prev.at) <= EXCHANGE_MS) {
+      last.type = 'exchange'
+      last.updates.push(update)
+    } else if (bookkeeping({ update }) && (last?.type === 'changes' || (last?.type === 'single' && bookkeeping({ update: prev })))) {
+      last.type = 'changes'
+      last.updates.push(update)
+    } else {
+      groups.push({
+        type: 'single',
+        updates: [update],
+      })
+    }
+  }
+
+  return groups.map(group => group.updates.length === 1 ? {
+    type: 'single',
+    updates: group.updates,
+  } : group)
 }
