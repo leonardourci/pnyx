@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { reference, taskMention } from '../src/mentions/mentions.ts'
-import { draftView, editDraft, fileBlock, replaceDisplay, snapCaret } from '../web/src/hydra/draft.ts'
+import { draftView, editDraft, fileBlock, ICON_SPACE, replaceDisplay, snapCaret } from '../web/src/hydra/draft.ts'
 
 const task = taskMention({
   id: 'task-1',
@@ -57,6 +57,26 @@ test(
     assert.match(
       text,
       /File: notes.txt\n\n````\none ``` two\n````/,
+    )
+    assert.deepEqual(
+      draftView({
+        text: `Move it to ${reference({
+          kind: 'column',
+          value: 'custom:1',
+          label: 'Needs you',
+        })}`,
+      }).chips.map(chip => [
+        chip.kind,
+        chip.value,
+        chip.label,
+      ]),
+      [
+        [
+          'column',
+          'custom:1',
+          `${ICON_SPACE}Needs you`,
+        ],
+      ],
     )
   },
 )

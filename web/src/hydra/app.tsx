@@ -671,6 +671,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             [card.id]: items,
           }))}
           projects={state.projects ?? []}
+          columns={columns}
           command={command}
           connected={connected}
           notify={notify}

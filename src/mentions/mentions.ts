@@ -25,7 +25,7 @@ export function reference({
   value,
   label,
 }: {
-  kind: 'task' | 'project' | 'image' | 'file'
+  kind: 'task' | 'project' | 'column' | 'image' | 'file'
   value: string
   label: string
 }): string {

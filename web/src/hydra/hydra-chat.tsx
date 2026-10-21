@@ -378,6 +378,7 @@ export function HydraChat({
         card={HYDRA_CARD}
         cards={Object.values(state.cards)}
         projects={state.projects ?? []}
+        columns={hydraConfig({ state }).columns}
         openTask={openTask}
         title="Hydra"
         draft={draft}

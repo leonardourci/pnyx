@@ -334,7 +334,17 @@ h3 { font-weight: 600; }
 
 .draft-chip.reference { background: var(--color-gold-wash); box-shadow: inset 0 0 0 1px var(--color-gold-line); color: var(--color-gold); }
 
-.draft-chip[data-kind=project], .draft-chip[data-kind=file] { cursor: default; }
+.draft-chip[data-kind=project], .draft-chip[data-kind=file], .draft-chip[data-kind=column] { cursor: default; }
+
+.draft-chip.reference[data-kind=column], .chip.column-chip { color: var(--column-color, var(--color-slate)); background: color-mix(in srgb, var(--column-color, var(--color-slate)) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--column-color, var(--color-slate)) 45%, transparent); }
+
+.chip-icon { display: inline-block; width: 1em; text-align: center; }
+
+.chip-icon > svg { vertical-align: -2px; }
+
+.chip.column-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 6px; font-size: .92em; vertical-align: baseline; }
+
+.mention-icon { display: inline-flex; color: var(--column-color, currentColor); }
 
 .send-error { display: flex; align-items: flex-start; gap: 8px; flex-shrink: 0; max-height: 96px; overflow: auto; margin: 0 0 8px; padding: 8px 6px 8px 10px; border: 1px solid color-mix(in srgb, var(--color-red) 35%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--color-red) 8%, transparent); color: var(--color-red); font-size: var(--text-ui); overflow-wrap: anywhere; }
 

@@ -4,8 +4,10 @@ import {
 } from 'react'
 import { flushSync } from 'react-dom'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
+import type { HydraColumn } from '../../../src/core/model.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { CopyButton } from '../components/ui/copy-button.tsx'
+import { ColumnChip } from '../components/ui/column-chip.tsx'
 import { MessageText } from '../components/ui/streaming.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
@@ -22,7 +24,7 @@ import { HIGHLIGHT_SUPPORTED, clearHighlights, commentHighlightName, commentRang
 import {
   blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage,
 } from './message-selection.ts'
-import { receiptLabel } from './view.ts'
+import { columnLook, receiptLabel } from './view.ts'
 import { pnyxCalls, type PnyxCall, type PnyxLookup } from './pnyx-action.ts'
 
 const PILL_GAP = 6
@@ -94,6 +96,9 @@ export function Messages({
   } = pnyxCalls({
     entries: all,
     lookup,
+  })
+  const lookColumn = ({ id }: { id: string }) => columnLook({
+    column: lookup?.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
   })
   const turns = turnTimings({
     entries,
@@ -758,6 +763,7 @@ export function Messages({
                   text={entry.text}
                   streaming={entry.streaming}
                   openTask={openTask}
+                  columnLook={lookColumn}
                   block={({
                     index,
                     offset: local,
@@ -946,7 +952,9 @@ function PnyxCallRow({
           {call.sentence.map((
             part,
             index,
-          ) => typeof part === 'string' ? <Fragment key={index}>{part}</Fragment> : (
+          ) => typeof part === 'string' ? <Fragment key={index}>{part}</Fragment> : 'column' in part ? (
+            <ColumnChip key={index} {...columnLook({ column: part.column })} label={part.label} />
+          ) : (
             <Button
               key={index}
               className="task-mention"

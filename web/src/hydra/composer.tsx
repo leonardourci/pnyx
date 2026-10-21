@@ -1,4 +1,4 @@
-import type { Card, HydraProject } from '../../../src/core/model.ts'
+import type { Card, HydraColumn, HydraProject } from '../../../src/core/model.ts'
 import { matchingTasks, mentionQuery, reference, taskMention } from '../../../src/mentions/mentions.ts'
 import { MentionPicker, type MentionItem } from './mention-picker.tsx'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
@@ -13,19 +13,20 @@ import { Button, Input, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Popover } from '../components/ui/popover.tsx'
 import { ImageViewer } from '../components/ui/attached-image.tsx'
-import { projectTitle, slashMatches, slashPrefix } from './view.ts'
+import { columnLook, projectTitle, slashMatches, slashPrefix } from './view.ts'
 import { clock, commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
-import { draftView, editDraft, fileBlock, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
+import { draftView, editDraft, fileBlock, ICON_SPACE, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
 
 export function Composer({
   card,
   cards,
   projects = [],
+  columns = [],
   openTask,
   title,
   draft,
@@ -42,6 +43,7 @@ export function Composer({
   card: string
   cards: Card[]
   projects?: HydraProject[]
+  columns?: HydraColumn[]
   openTask({ id }: { id: string }): void
   title: string
   draft: string
@@ -119,6 +121,18 @@ export function Composer({
         kind: 'project',
         value: project.path,
         label: project.name,
+      }),
+    })),
+    ...columns.filter(column => column.title.toLocaleLowerCase().includes(query)).map(column => ({
+      key: `column:${column.id}`,
+      kind: 'column' as const,
+      title: column.title,
+      detail: 'Column',
+      ...columnLook({ column }),
+      insert: reference({
+        kind: 'column',
+        value: column.id,
+        label: column.title,
       }),
     })),
     ...matchingTasks({
@@ -213,6 +227,12 @@ export function Composer({
     }))
     setMention(null); element.focus()
   }
+
+  const chipColumn = ({ chip }: { chip: PlacedChip }) => columnLook({
+    column: columns.find(column => column.id === chip.value) ?? {
+      id: chip.value as HydraColumn['id'],
+    },
+  })
 
   const openChip = ({ chip }: { chip: PlacedChip }) => {
     if (chip.kind === 'task') {
@@ -815,12 +835,18 @@ export function Composer({
                     chip.from,
                   )}
                   <span
-                    className={`draft-chip ${chip.attached ? 'attached' : 'reference'}`}
+                    className={`draft-chip ${chip.attached ? 'attached' : 'reference'} ${chip.kind === 'column' ? chipColumn({ chip }).tone : ''}`}
                     data-kind={chip.kind}
                     title={chip.kind === 'task' ? 'Open task' : chip.kind === 'image' ? 'Show image' : chip.kind === 'project' ? chip.value : undefined}
                     onMouseDown={event => event.preventDefault()}
                     onClick={() => openChip({ chip })}
-                  >{chip.label}
+                  >
+                    {chip.label.startsWith(ICON_SPACE) ? (
+                      <>
+                        <span className="chip-icon"><Icon name={chipColumn({ chip }).icon} size={14} /></span>
+                        {chip.label.slice(ICON_SPACE.length)}
+                      </>
+                    ) : chip.label}
                   </span>
                 </Fragment>
               ))}

@@ -8,7 +8,11 @@ const lookup: PnyxLookup = {
     id: 'task-1',
     title: 'Fix login loop',
   } : undefined,
-  column: ({ ref }) => ref === 'needs_you' ? 'Needs you' : undefined,
+  column: ({ ref }) => ref === 'needs_you' ? {
+    id: 'custom:1',
+    title: 'Needs you',
+    role: 'needs_you',
+  } : undefined,
 }
 
 const sentence = ({
@@ -35,7 +39,15 @@ test(
       [
         'Moved ',
         chip,
-        ' to Needs you: its agent asked which schema',
+        ' to ',
+        {
+          column: {
+            id: 'custom:1',
+            role: 'needs_you',
+          },
+          label: 'Needs you',
+        },
+        ': its agent asked which schema',
       ],
     )
     assert.deepEqual(

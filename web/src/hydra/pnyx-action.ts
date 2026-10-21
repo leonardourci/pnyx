@@ -1,10 +1,13 @@
-import type { HydraState } from '../../../src/core/model.ts'
+import type { HydraColumn, HydraState } from '../../../src/core/model.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 
-// A sentence about a Pnyx command, with the tasks it touched kept apart so they show as chips.
+// A sentence about a Pnyx command, with the tasks and columns it touched kept apart so they show as chips.
 export type Segment = string | {
   task: string
+  label: string
+} | {
+  column: Pick<HydraColumn, 'id' | 'role'>
   label: string
 }
 
@@ -20,7 +23,7 @@ export interface PnyxLookup {
     id: string
     title: string
   } | undefined
-  column({ ref }: { ref: string }): string | undefined
+  column({ ref }: { ref: string }): HydraColumn | undefined
 }
 
 export function pnyxLookup({ state }: { state: HydraState }): PnyxLookup {
@@ -36,7 +39,7 @@ export function pnyxLookup({ state }: { state: HydraState }): PnyxLookup {
       } : undefined
     },
     column: ({ ref }) => columns.find(column => column.id === ref || column.role === ref
-      || column.title.toLowerCase() === ref.toLowerCase())?.title,
+      || column.title.toLowerCase() === ref.toLowerCase()),
   }
 }
 
@@ -212,17 +215,22 @@ export function pnyxSentence({
 
   switch (area) {
     case 'move': {
-      const column = lookup?.column({ ref: positionals[2] ?? '' }) ?? positionals[2] ?? 'a column'
+      const found = lookup?.column({ ref: positionals[2] ?? '' })
+      const column: Segment = found ? {
+        column: {
+          id: found.id,
+          role: found.role,
+        },
+        label: found.title,
+      } : positionals[2] ?? 'a column'
 
-      return confirming ? [
-        'Asked to confirm moving ',
+      return [
+        confirming ? 'Asked to confirm moving ' : 'Moved ',
         task({ ref: positionals[1] ?? '' }),
-        ` to ${column}`,
-      ] : [
-        'Moved ',
-        task({ ref: positionals[1] ?? '' }),
-        ` to ${column}${because}`,
-      ]
+        ' to ',
+        column,
+        confirming ? '' : because,
+      ].filter(Boolean)
     }
     case 'reply':
       return flags.answer !== undefined ? [
