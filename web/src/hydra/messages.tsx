@@ -16,12 +16,14 @@ import {
 import { sendableComment, type ChatComment } from './chat.ts'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageComment } from './message-comment.tsx'
+import { HIGHLIGHT_SUPPORTED, paintComments } from './comment-highlight.ts'
 import {
   blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage,
 } from './message-selection.ts'
 import { receiptLabel } from './view.ts'
 
 const PILL_GAP = 6
+let highlights = 0
 
 const roleLabel = ({
   role,
@@ -433,6 +435,32 @@ export function Messages({
 
   // The pill floats under the selection, inside the messages so it scrolls with them and moves no text.
   const pill = useRef<HTMLDivElement>(null)
+  // Each conversation on screen paints its own highlight, so one doesn't clear the other's.
+  const [highlight] = useState(() => `pnyx-comments-${++highlights}`)
+  useLayoutEffect(
+    () => {
+      if (HIGHLIGHT_SUPPORTED && root.current) {
+        paintComments({
+          host: root.current,
+          name: highlight,
+          comments,
+        })
+      }
+    },
+    [
+      comments,
+      entries,
+      highlight,
+    ],
+  )
+  useEffect(
+    () => () => {
+      if (HIGHLIGHT_SUPPORTED) {
+        CSS.highlights.delete(highlight)
+      }
+    },
+    [highlight],
+  )
   useLayoutEffect(
     () => {
       const place = () => {
@@ -635,9 +663,10 @@ export function Messages({
 
   return (
     <>
-      <style>{CARET_CSS}</style>
+      <style>{`${CARET_CSS} ::highlight(${highlight}) { background-color: var(--comment-highlight); }`}</style>
       <div
         className="messages"
+        data-highlight={highlight}
         ref={root}
         contentEditable={CARET_SUPPORTED}
         suppressContentEditableWarning

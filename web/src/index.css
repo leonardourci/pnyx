@@ -36,7 +36,7 @@
   --text-code: 13px;
 }
 
-:root { color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+:root { --comment-highlight: color-mix(in srgb, var(--color-gold) 24%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
 
 :root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; }
 @media (prefers-color-scheme: dark) {
@@ -560,7 +560,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .comment-quote { overflow: hidden; color: var(--color-muted); font-size: var(--text-meta); line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 
-.comment-quote mark { padding: 0 1px; border-radius: 2px; background: var(--color-gold-wash); color: var(--color-ink); }
+.comment-quote mark { padding: 0 1px; border-radius: 2px; background: var(--comment-highlight); color: var(--color-ink); }
 
 .comment-row { display: flex; align-items: flex-start; gap: 6px; }
 
