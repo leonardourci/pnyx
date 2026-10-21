@@ -1,5 +1,6 @@
+import { project } from '../src/projects/cli.ts'
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -1239,6 +1240,25 @@ test(
           home,
         ],
       })
+      const projectPath = join(
+        home,
+        'projects',
+        'api',
+      )
+      mkdirSync(
+        projectPath,
+        { recursive: true },
+      )
+      await project([
+        'memory',
+        'set',
+        '--project',
+        projectPath,
+        '--key',
+        'preferences',
+        '--text',
+        'Project handoff preference.',
+      ])
       await f.run({
         name: 'task',
         args: [
@@ -1249,6 +1269,8 @@ test(
           'Work',
           '--brief',
           'Verify the canary.',
+          '--project',
+          projectPath,
         ],
       })
       f.push({
@@ -1297,6 +1319,14 @@ test(
       assert.match(
         log,
         /Verify the canary/,
+      )
+      assert.match(
+        log,
+        /Project handoff preference/,
+      )
+      assert.match(
+        log,
+        /project show.*--hydra default/,
       )
       await f.run({
         name: 'task',

@@ -1,3 +1,4 @@
+import { projectDigest } from '../projects/context.ts'
 import { projectRows } from '../projects/read.ts'
 import { hydraDigest } from '../core/digest.ts'
 import { checkAttachments } from '../integrations/presence/check.ts'
@@ -341,9 +342,12 @@ const hydraDigestHandler = guard({
       positionals: 1,
     })
 
+    const state = loadHydra({ hydraId }).state
+
     return hydraDigest({
       hydraId,
-      state: loadHydra({ hydraId }).state,
+      state,
+      projects: projectDigest({ state }),
     })
   },
 })
