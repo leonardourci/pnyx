@@ -1,6 +1,6 @@
 import { workerQueue } from '../queue/state.ts'
 import { spawnSync } from 'node:child_process'
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { decidePush, findCard, type Decision, type Meta } from '../core/decide.ts'
 import { hydraConfig, hydraEvent } from '../core/hydra.ts'
@@ -14,7 +14,6 @@ import { hydraDir, hydraIds, loadHydra, pnyxHome, withWriter, type Writer } from
 const COPY_TIMEOUT_MS = 120_000
 // A claim older than the git steps it guards was left by a start that crashed.
 const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
-// ponytail: a fixed cap per project and Hydra; make it a project setting if one size stops fitting.
 export const POOL_IDLE = 2
 
 function git({
@@ -135,14 +134,6 @@ function gitProject({ project }: { project: HydraProject }): void {
   }
 }
 
-const taskBranch = ({
-  hydraId,
-  card,
-}: {
-  hydraId: string
-  card: Card
-}) => `pnyx/${hydraId}-${card.id}`
-
 const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'removed' ? undefined : card.copy)
 
 const quiet = ({ meta }: { meta: Meta }): Meta => ({
@@ -155,7 +146,61 @@ function branchStart({ project }: { project: HydraProject }): {
   base?: string
   start: string
 } {
-  const remote = originHead({ cwd: project.path })
+  const origin = git({
+    cwd: project.path,
+    args: [
+      'remote',
+      'get-url',
+      'origin',
+    ],
+  })
+
+  if (origin.ok) {
+    for (const args of [
+      [
+        'fetch',
+        '--quiet',
+        'origin',
+      ],
+      [
+        'remote',
+        'set-head',
+        'origin',
+        '--auto',
+      ],
+    ]) {
+      const result = git({
+        cwd: project.path,
+        args,
+      })
+
+      if (!result.ok) {
+        throw new HydraError({
+          message: `could not refresh the project's default branch: ${result.err}`,
+          code: 'COPY_FAILED',
+          help: ['Fix origin and try again; the existing copies were kept'],
+        })
+      }
+    }
+
+    const remote = originHead({ cwd: project.path })
+
+    if (!remote) {
+      throw new HydraError({
+        message: 'origin has no default branch',
+        code: 'COPY_FAILED',
+      })
+    }
+
+    return {
+      base: remote.replace(
+        /^origin\//,
+        '',
+      ),
+      start: remote,
+    }
+  }
+
   const local = git({
     cwd: project.path,
     args: [
@@ -164,11 +209,8 @@ function branchStart({ project }: { project: HydraProject }): {
       'HEAD',
     ],
   }).out
-  const base = remote?.replace(
-    /^origin\//,
-    '',
-  ) ?? local
-  const start = remote ?? git({
+  const base = local
+  const start = git({
     cwd: project.path,
     args: [
       'rev-parse',
@@ -179,26 +221,6 @@ function branchStart({ project }: { project: HydraProject }): {
   return {
     ...(base && base !== 'HEAD' ? { base } : {}),
     start,
-  }
-}
-
-// Best effort: a failed fetch still starts the branch from the last fetched base.
-function fetchBase({ project }: { project: HydraProject }): void {
-  const remote = originHead({ cwd: project.path })
-
-  if (remote) {
-    git({
-      cwd: project.path,
-      args: [
-        'fetch',
-        '--quiet',
-        'origin',
-        remote.replace(
-          /^origin\//,
-          '',
-        ),
-      ],
-    })
   }
 }
 
@@ -360,27 +382,87 @@ const checkout = ({
       ],
     })
 
-// An O_EXCL file keeps two starts off one slot while git runs outside the writer lock.
-function claim({ path }: { path: string }): boolean {
-  const file = `${path}.claim`
-
-  if (existsSync(file) && Date.now() - statSync(file).mtimeMs > CLAIM_STALE_MS) {
-    rmSync(
-      file,
-      { force: true },
-    )
-  }
-
+function claimIsStale({ file }: { file: string }): boolean {
   try {
-    closeSync(openSync(
+    const pid = Number(readFileSync(
       file,
-      'wx',
+      'utf8',
     ))
 
-    return true
-  } catch {
-    return false // Another start holds the slot.
+    if (!Number.isInteger(pid) || pid <= 0) {
+      return Date.now() - statSync(file).mtimeMs > CLAIM_STALE_MS
+    }
+
+    process.kill(
+      pid,
+      0,
+    )
+
+    return false
+  } catch (error) {
+    if (error instanceof Error && 'code' in error) {
+      if (error.code === 'ESRCH' || error.code === 'ENOENT') {
+        return true
+      }
+
+      if (error.code === 'EPERM') {
+        return false
+      }
+    }
+
+    throw error
   }
+}
+
+// Claim creation and dead-owner recovery share the writer lock; Git work stays outside it.
+function claim({
+  hydraId,
+  path,
+}: {
+  hydraId: string
+  path: string
+}): boolean {
+  return withWriter({
+    hydraId,
+    fn: () => {
+      let fd: number
+
+      try {
+        fd = openSync(
+          `${path}.claim`,
+          'wx',
+        )
+      } catch (error) {
+        if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') {
+          throw error
+        }
+
+        if (!claimIsStale({ file: `${path}.claim` })) {
+          return false
+        }
+
+        rmSync(
+          `${path}.claim`,
+          { force: true },
+        )
+        fd = openSync(
+          `${path}.claim`,
+          'wx',
+        )
+      }
+
+      try {
+        writeFileSync(
+          fd,
+          String(process.pid),
+        )
+      } finally {
+        closeSync(fd)
+      }
+
+      return true
+    },
+  })
 }
 
 const unclaim = ({ path }: { path: string }) => rmSync(
@@ -395,17 +477,20 @@ function take({
   path,
 }: {
   hydraId: string
-  card: Card
+  card?: Card
   path: string
 }): boolean {
-  if (!claim({ path })) {
+  if (!claim({
+    hydraId,
+    path,
+  })) {
     return false
   }
 
   if (idle({
     state: loadHydra({ hydraId }).state,
     path,
-    except: card.id,
+    except: card?.id,
   })) {
     return true
   }
@@ -428,7 +513,10 @@ function freshSlot({
       `${project.name}-${n}`,
     )
 
-    if (!existsSync(path) && claim({ path })) {
+    if (!existsSync(path) && claim({
+      hydraId,
+      path,
+    })) {
       return path
     }
   }
@@ -445,15 +533,11 @@ function worktreeCopy({
   project: HydraProject
 }): TaskCopy {
   gitProject({ project })
-  fetchBase({ project })
   mkdirSync(
     copiesDir({ hydraId }),
     { recursive: true },
   )
-  const branch = taskBranch({
-    hydraId,
-    card,
-  })
+  const branch = `pnyx/${hydraId}-${card.id}`
   const {
     base,
     start,
@@ -480,8 +564,11 @@ function worktreeCopy({
     ],
   }).out
 
+  const common = commonDir({ cwd: project.path })
+
   // A copy made before its record was written, or this task's own slot still in the pool, is picked up again.
-  const own = pooled.find(path => head({ path }) === branch && take({
+  const own = pooled.find(path => commonDir({ cwd: path }) === common
+    && head({ path }) === branch && take({
     hydraId,
     card,
     path,
@@ -499,7 +586,6 @@ function worktreeCopy({
       'prune',
     ],
   })
-  const common = commonDir({ cwd: project.path })
 
   // Ignored files such as installed dependencies stay with the slot; the clean check leaves nothing else to reset.
   for (const path of pooled) {
@@ -732,7 +818,7 @@ export function taskFolder({
           ifRevision: undefined,
         }
 
-        if (now.copy?.path !== copy.path) {
+        if (now.copy?.path !== copy.path || now.copy.state !== 'active') {
           const change = {
             type: 'task.copy' as const,
             data: {
@@ -1146,6 +1232,72 @@ export function settleCopy({
   })
 }
 
+function trimPool({ hydraId }: { hydraId: string }): void {
+  const state = loadHydra({ hydraId }).state
+
+  for (const project of projectsFor({ state }).filter(p => !p.detached)) {
+    const pooled = slots({
+      hydraId,
+      project,
+    })
+
+    if (!pooled.length) {
+      continue
+    }
+
+    let kept = 0
+    const common = commonDir({ cwd: project.path })
+
+    for (const path of slots({
+      hydraId,
+      project,
+    })) {
+      if (!take({
+        hydraId,
+        path,
+      })) {
+        continue
+      }
+
+      try {
+        const current = loadHydra({ hydraId }).state
+        const branch = git({
+          cwd: path,
+          args: [
+            'symbolic-ref',
+            '--quiet',
+            '--short',
+            'HEAD',
+          ],
+        }).out
+        const owner = Object.values(current.cards).find(c => c.copy?.path === path
+          && c.copy.state === 'removed' && c.copy.project === project.path && c.copy.branch === branch)
+
+        if (!owner?.copy || !reusable({
+          path,
+          common,
+        }) || 'reason' in checkCopy({
+          card: owner,
+          copy: owner.copy,
+        })) {
+          continue
+        }
+
+        if (kept++ < POOL_IDLE) {
+          continue
+        }
+
+        removeCopy({
+          copy: owner.copy,
+          force: false,
+        })
+      } finally {
+        unclaim({ path })
+      }
+    }
+  }
+}
+
 // A task in Done whose agent is still working keeps its copy until the agent stops.
 export const settles = ({ card }: { card: Card }) => Boolean(card.doneAt) && card.copy?.state === 'active' && card.activity !== 'working'
 
@@ -1179,180 +1331,7 @@ export function settleDone({
     })
   }
 
+  trimPool({ hydraId })
+
   return due.length
-}
-
-function movable({
-  old,
-  copy,
-  project,
-}: {
-  old: Card
-  copy: TaskCopy
-  project: HydraProject
-}): boolean {
-  if (copy.state === 'removed') {
-    return reusable({
-      path: copy.path,
-      common: commonDir({ cwd: project.path }),
-    })
-  }
-
-  return !('reason' in checkCopy({
-    card: old,
-    copy,
-  }))
-}
-
-export function moveCopy({
-  hydraId,
-  from,
-  to,
-  meta,
-}: {
-  hydraId: string
-  from: string
-  to: string
-  meta: Meta
-}): TaskCopy | undefined {
-  const state = loadHydra({ hydraId }).state
-  const card = findCard({
-    state,
-    ref: to,
-  })
-  const cwd = card.agent?.cwd
-  const prior = state.cards[from]
-  // The worker may have passed through tasks without a copy since the one that holds its folder.
-  const holder = Object.values(state.cards)
-    .find(c => c.id !== card.id && liveCopy({ card: c })?.path === cwd)
-  const old = holder ?? (prior?.copy?.path === cwd ? prior : undefined)
-  const copy = old?.copy
-  const project = taskProject({
-    state,
-    card,
-  })
-  const fits = old && copy?.via === 'worktree' && project?.path === copy.project
-    && card.agent?.cwd === copy.path && !liveCopy({ card }) && isFolder({ path: copy.path })
-    && !holds({
-      state,
-      path: copy.path,
-      except: old.id,
-    })
-
-  if (!fits || !movable({
-    old,
-    copy,
-    project,
-  }) || !claim({ path: copy.path })) {
-    return undefined
-  }
-
-  try {
-    fetchBase({ project })
-    const {
-      base,
-      start,
-    } = branchStart({ project })
-    const branch = taskBranch({
-      hydraId,
-      card,
-    })
-
-    if (!checkout({
-      cwd: copy.path,
-      branch,
-      start,
-    }).ok) {
-      return undefined
-    }
-
-    const after: TaskCopy = {
-      path: copy.path,
-      project: copy.project,
-      via: 'worktree',
-      branch,
-      ...(base ? { base } : {}),
-      state: 'active',
-    }
-
-    return withWriter({
-      hydraId,
-      fn: ({ writer }) => {
-        drainSpool({ writer })
-        const now = findCard({
-          state: writer.state,
-          ref: card.id,
-        })
-        const was = writer.state.cards[old.id]
-        const left = was && liveCopy({ card: was })
-
-        if (!was || liveCopy({ card: now })) {
-          return undefined
-        }
-
-        if (left?.path === copy.path) {
-          const removed = {
-            ...left,
-            state: 'removed' as const,
-            reason: `its worker took it to task ${now.id}`,
-          }
-          const change = {
-            type: 'task.copy' as const,
-            data: {
-              before: left,
-              after: removed,
-            },
-          }
-          apply({
-            writer,
-            decision: hydraEvent({
-              state: writer.state,
-              meta: quiet({ meta }),
-              cardId: was.id,
-              change,
-            }),
-          })
-        }
-
-        if (was.folder === copy.path) {
-          pushFolder({
-            writer,
-            card: was,
-            folder: null,
-            meta: quiet({ meta }),
-          })
-        }
-
-        const change = {
-          type: 'task.copy' as const,
-          data: {
-            before: now.copy ?? null,
-            after,
-          },
-        }
-        apply({
-          writer,
-          decision: hydraEvent({
-            state: writer.state,
-            meta: quiet({ meta }),
-            cardId: now.id,
-            change,
-          }),
-        })
-        pushFolder({
-          writer,
-          card: findCard({
-            state: writer.state,
-            ref: now.id,
-          }),
-          folder: copy.path,
-          meta: quiet({ meta }),
-        })
-
-        return after
-      },
-    })
-  } finally {
-    unclaim({ path: copy.path })
-  }
 }
