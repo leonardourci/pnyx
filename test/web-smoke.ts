@@ -1,3 +1,4 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,6 +16,10 @@ const home = mkdtempSync(join(
   'pnyx-layout-smoke-',
 ))
 process.env.PNYX_HOME = home
+process.env.CLAUDE_CONFIG_DIR = join(
+  home,
+  'claude',
+)
 const fixture = seedWebFixture({ home })
 withWriter({
   hydraId: 'default',
@@ -39,6 +44,7 @@ withWriter({
   },
 })
 const server = await startServer({
+  query: hydraSdk().query,
   hydraId: 'default',
   homes: [fixture.nativeHome],
 })
@@ -247,8 +253,8 @@ try {
   await click({ selector: '[data-hydra-current]' })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
   await check({
-    condition: '!document.querySelector(".detail .thread,.detail .composer") && !!document.querySelector(".task-updates")',
-    label: 'card contains factual Updates without the session stream',
+    condition: '!!document.querySelector(".detail .task-updates") && !document.querySelector(".detail .composer")',
+    label: 'an attached task shows Updates without a conversation',
   })
   await text({ label: 'History' }); await fill({
     label: 'Oracle',

@@ -1,3 +1,4 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -100,6 +101,7 @@ appendFileSync(
   ).join('\n') + '\n',
 )
 const server = await startServer({
+  query: hydraSdk().query,
   hydraId: 'default',
   homes: [fixture.nativeHome],
 })

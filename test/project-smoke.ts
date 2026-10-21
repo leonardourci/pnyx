@@ -1,3 +1,4 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
@@ -19,6 +20,10 @@ const home = realpathSync(mkdtempSync(join(
 process.env.PNYX_HOME = join(
   home,
   'pnyx',
+)
+process.env.CLAUDE_CONFIG_DIR = join(
+  home,
+  'claude',
 )
 const folder = join(
   home,
@@ -119,6 +124,7 @@ await project([
   String(shared.token),
 ])
 let server = await startServer({
+  query: hydraSdk().query,
   hydraId: 'default',
   port: 0,
 })
@@ -413,6 +419,7 @@ try {
   await screenshot({ name: 'project-command-after.png' })
   const port = server.port
   await server.close(); server = await startServer({
+    query: hydraSdk().query,
     hydraId: 'default',
     port,
   })

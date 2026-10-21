@@ -13,6 +13,10 @@ const home = mkdtempSync(join(
   'pnyx-resize-',
 ))
 process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
+process.env.CLAUDE_CONFIG_DIR = join(
+  home,
+  'claude',
+)
 const fixture = seedWebFixture({ home })
 appendFileSync(
   fixture.transcript,
