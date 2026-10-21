@@ -22,12 +22,20 @@ export interface HydraSummary {
 }
 
 // A summary is reused until the Hydra's log, or the projects of its Firstmate home, change.
-type Cached = { log: string; home?: string; projects: string; summary: HydraSummary }
+type Cached = {
+  log: string
+  home?: string
+  projects: string
+  summary: HydraSummary
+}
 const summaries = new Map<string, Cached>()
 
 function projectStamp({ home }: { home?: string }): string {
   try {
-    return home ? JSON.stringify(firstmateProjects({ home, aliases: true })) : ''
+    return home ? JSON.stringify(firstmateProjects({
+      home,
+      aliases: true,
+    })) : ''
   } catch (error) {
     return String(error)
   }
@@ -35,7 +43,14 @@ function projectStamp({ home }: { home?: string }): string {
 
 function logStamp({ id }: { id: string }): string {
   try {
-    const { ino, size, mtimeMs } = statSync(join(hydraDir({ hydraId: id }), 'events.jsonl'))
+    const {
+      ino,
+      size,
+      mtimeMs,
+    } = statSync(join(
+      hydraDir({ hydraId: id }),
+      'events.jsonl',
+    ))
 
     return `${ino}:${size}:${mtimeMs}`
   } catch {
@@ -52,34 +67,81 @@ export function listHydras(): HydraSummary[] {
       return known.summary
     }
 
-    const { summary, home } = summarize({ id })
-    summaries.set(id, { log, home, projects: projectStamp({ home }), summary })
+    const {
+      summary,
+      home,
+    } = summarize({ id })
+    summaries.set(
+      id,
+      {
+        log,
+        home,
+        projects: projectStamp({ home }),
+        summary,
+      },
+    )
 
     return summary
   })
 }
 
-function summarize({ id }: { id: string }): { summary: HydraSummary; home?: string } {
+function summarize({ id }: { id: string }): {
+  summary: HydraSummary
+  home?: string
+} {
   try {
     const state = loadHydra({ hydraId: id }).state
-    const config = hydraConfig({ state, id })
+    const config = hydraConfig({
+      state,
+      id,
+    })
     const cards = Object.values(state.cards).filter(c => liveTask({ card: c }))
-    const projects = projectsFor({ state, aliases: true }).filter(p => !p.detached)
+    const projects = projectsFor({
+      state,
+      aliases: true,
+    }).filter(p => !p.detached)
       .map(p => {
-        const references = [p.path, ...(config.hydra.kind === 'firstmate' ? [p.name, ...p.aliases ?? []] : [])]
+        const references = [
+          p.path,
+          ...(config.hydra.kind === 'firstmate' ? [
+            p.name,
+            ...p.aliases ?? [],
+          ] : []),
+        ]
         const tasks = cards.filter(c => c.project && references.includes(c.project))
 
         const live = tasks.filter(c => c.agent && (c.sessionActivity ?? c.activity) === 'working')
         const asks = tasks.flatMap(c => c.attention).filter(a => !a.answered)
 
-        return { name: p.name, path: p.path, references, live: live.length, asks: asks.length }
+        return {
+          name: p.name,
+          path: p.path,
+          references,
+          live: live.length,
+          asks: asks.length,
+        }
       })
 
     const home = config.hydra.kind === 'firstmate' ? config.hydra.home : undefined
 
-    return { home, summary: { id, name: config.name, hydra: home ? `Firstmate ${home}` : config.hydra.name, projects } }
+    return {
+      home,
+      summary: {
+        id,
+        name: config.name,
+        hydra: home ? `Firstmate ${home}` : config.hydra.name,
+        projects,
+      },
+    }
   } catch {
-    return { summary: { id, name: id, hydra: 'could not be loaded', projects: [] } }
+    return {
+      summary: {
+        id,
+        name: id,
+        hydra: 'could not be loaded',
+        projects: [],
+      },
+    }
   }
 }
 
@@ -92,12 +154,39 @@ export function createHydra({ name }: { name: string }): string {
   }
 
   const id = `hydra-${n}`
-  commands.hydra(['create', id, '--name', name, '--actor', 'web'])
-  mkdirSync(join(hydraDir({ hydraId: id }), 'agent'), { recursive: true })
+  commands.hydra([
+    'create',
+    id,
+    '--name',
+    name,
+    '--actor',
+    'web',
+  ])
+  mkdirSync(
+    join(
+      hydraDir({ hydraId: id }),
+      'agent',
+    ),
+    { recursive: true },
+  )
 
   return id
 }
 
-export function renameHydra({ id, name }: { id: string; name: string }): void {
-  commands.hydra(['set', '--hydra', id, '--name', name, '--actor', 'web'])
+export function renameHydra({
+  id,
+  name,
+}: {
+  id: string
+  name: string
+}): void {
+  commands.hydra([
+    'set',
+    '--hydra',
+    id,
+    '--name',
+    name,
+    '--actor',
+    'web',
+  ])
 }

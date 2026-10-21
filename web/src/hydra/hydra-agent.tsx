@@ -6,22 +6,40 @@ import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
 import { modelOptions } from './model-options.ts'
 import type { Command } from './connection.ts'
 
-export function HydraAgent({ state, command, connected, notify }: {
+export function HydraAgent({
+  state,
+  command,
+  connected,
+  notify,
+}: {
   state: HydraState
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
   const { effective } = useHeadsDispatch({ command })
-  const [busy, setBusy] = useState(false)
+  const [
+    busy,
+    setBusy,
+  ] = useState(false)
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   const agent: AgentConfig = state.config?.hydra.agent ?? rule ?? { harness: 'claude' }
   const inherited = rule?.harness === agent.harness ? rule : undefined
-  const controls = harnessControls({ provider: agent.harness === 'claude' ? 'claude-code' : 'codex', hosted: true })
+  const controls = harnessControls({
+    provider: agent.harness === 'claude' ? 'claude-code' : 'codex',
+    hosted: true,
+  })
   const firstmate = state.config?.hydra.kind === 'firstmate'
-  const catalog = useModels({ harness: agent.harness, command, connected: connected && !firstmate })
+  const catalog = useModels({
+    harness: agent.harness,
+    command,
+    connected: connected && !firstmate,
+  })
   const selected = agent.model ?? inherited?.model
-  const picker = modelOptions({ models: catalog.models ?? [], selected })
+  const picker = modelOptions({
+    models: catalog.models ?? [],
+    selected,
+  })
   // A model the catalog does not list still runs with the harness's defaults.
   const defaults = catalog.models?.find(option => option.value === picker.value)
     ?? catalog.models?.find(option => option.isDefault || option.value === 'default') ?? catalog.models?.[0]
@@ -34,7 +52,10 @@ export function HydraAgent({ state, command, connected, notify }: {
 
   const save = ({ next }: { next: AgentConfig }) => {
     setBusy(true)
-    void command({ name: 'hydra-agent', args: [JSON.stringify(next)] })
+    void command({
+      name: 'hydra-agent',
+      args: [JSON.stringify(next)],
+    })
       .catch((error: Error) => notify({ text: error.message }))
       .finally(() => setBusy(false))
   }
@@ -46,7 +67,11 @@ export function HydraAgent({ state, command, connected, notify }: {
     ...(named.effort ? { effort: named.effort } : {}),
     ...(named.mode ? { mode: named.mode } : {}),
   }
-  const fields = ['model', 'effort', 'mode'] as const
+  const fields = [
+    'model',
+    'effort',
+    'mode',
+  ] as const
   const missing = !firstmate && !!effective && !!catalog.models
     && fields.some(field => next[field] !== agent[field])
   const key = JSON.stringify(next)
@@ -67,7 +92,16 @@ export function HydraAgent({ state, command, connected, notify }: {
       <PickerField
         label="Harness"
         value={agent.harness}
-        options={[{ value: 'claude', label: 'Claude Code' }, { value: 'codex', label: 'Codex' }]}
+        options={[
+          {
+            value: 'claude',
+            label: 'Claude Code',
+          },
+          {
+            value: 'codex',
+            label: 'Codex',
+          },
+        ]}
         disabled={busy || !connected}
         onChange={({ value }) => {
           if (value === 'claude' || value === 'codex') {
@@ -81,15 +115,29 @@ export function HydraAgent({ state, command, connected, notify }: {
         options={picker.options}
         disabled={busy || !connected}
         connected={connected}
-        onChange={({ value }) => save({ next: { ...agent, model: value } })}
+        onChange={({ value }) => save({
+          next: {
+            ...agent,
+            model: value,
+          },
+        })}
       />
-      {(['effort', 'mode'] as const).map(field => {
+      {([
+        'effort',
+        'mode',
+      ] as const).map(field => {
         const value = named[field]
         const choices = controls?.controls.find(c => c.setting === field)?.options ?? []
-        const options = choices.map(o => ({ value: o.value, label: o.label }))
+        const options = choices.map(o => ({
+          value: o.value,
+          label: o.label,
+        }))
 
         if (value && !options.some(o => o.value === value)) {
-          options.push({ value, label: value })
+          options.push({
+            value,
+            label: value,
+          })
         }
 
         // The picker keeps its place, disabled, until the catalog names the harness default.
@@ -100,16 +148,39 @@ export function HydraAgent({ state, command, connected, notify }: {
             value={value ?? ''}
             options={options}
             disabled={busy || !connected || !catalog.models}
-            onChange={({ value }) => save({ next: { ...agent, [field]: value } })}
+            onChange={({ value }) => save({
+              next: {
+                ...agent,
+                [field]: value,
+              },
+            })}
           />
         )
       })}
       <PickerField
         label="Fast"
         value={agent.fast === undefined ? 'default' : agent.fast ? 'on' : 'off'}
-        options={[{ value: 'default', label: 'Fast default' }, { value: 'off', label: 'Fast off' }, { value: 'on', label: 'Fast on' }]}
+        options={[
+          {
+            value: 'default',
+            label: 'Fast default',
+          },
+          {
+            value: 'off',
+            label: 'Fast off',
+          },
+          {
+            value: 'on',
+            label: 'Fast on',
+          },
+        ]}
         disabled={busy || !connected}
-        onChange={({ value }) => save({ next: { ...agent, fast: value === 'default' ? undefined : value === 'on' } })}
+        onChange={({ value }) => save({
+          next: {
+            ...agent,
+            fast: value === 'default' ? undefined : value === 'on',
+          },
+        })}
       />
     </div>
   )

@@ -5,10 +5,20 @@ import { withoutInjected } from '../oracle/text.ts'
 
 export function taskUpdates({ card }: { card: Card }): ThreadEntry[] {
   return (card.statusLog ?? []).filter(s => s.note.trim() && s.actor !== 'web')
-    .map(s => ({ id: `update:${s.id}`, kind: 'message', role: 'assistant', text: s.note, at: s.at, task: card.id }))
+    .map(s => ({
+      id: `update:${s.id}`,
+      kind: 'message',
+      role: 'assistant',
+      text: s.note,
+      at: s.at,
+      task: card.id,
+    }))
 }
 
-export function taskReceipt({ card, reply }: {
+export function taskReceipt({
+  card,
+  reply,
+}: {
   card: Card
   reply: string
 }): Pick<ThreadEntry, 'receipt' | 'delivery'> | undefined {
@@ -20,19 +30,41 @@ export function taskReceipt({ card, reply }: {
 
   const hydra = card.replies?.find(r => r.id === `hydra:${reply}`)
   const delivery: ThreadEntry['delivery'] = receipt.route ? {
-    ...(receipt.route !== 'hydra' ? { agent: { state: receipt.state, detail: receipt.detail } } : {}),
-    hydra: { state: hydra?.state ?? 'failed', detail: hydra?.detail ?? (!hydra ? 'Hydra queue was not confirmed' : undefined) },
+    ...(receipt.route !== 'hydra' ? {
+      agent: {
+        state: receipt.state,
+        detail: receipt.detail,
+      },
+    } : {}),
+    hydra: {
+      state: hydra?.state ?? 'failed',
+      detail: hydra?.detail ?? (!hydra ? 'Hydra queue was not confirmed' : undefined),
+    },
   } : undefined
 
-  return { receipt: receipt.state, ...(delivery ? { delivery } : {}) }
+  return {
+    receipt: receipt.state,
+    ...(delivery ? { delivery } : {}),
+  }
 }
 
-export function taskConversation({ card, entries }: {
+export function taskConversation({
+  card,
+  entries,
+}: {
   card: Card
   entries: ThreadEntry[]
 }): ThreadEntry[] {
   const prompt = card.initialPrompt ?? card.brief
-  const initial: ThreadEntry[] = prompt?.trim() ? [{ id: `brief:${card.id}`, kind: 'message', role: 'user', text: prompt, task: card.id }] : []
+  const initial: ThreadEntry[] = prompt?.trim() ? [
+    {
+      id: `brief:${card.id}`,
+      kind: 'message',
+      role: 'user',
+      text: prompt,
+      task: card.id,
+    },
+  ] : []
   const updates = taskUpdates({ card })
   const ids = new Set(entries.map(e => e.id))
   const launch = `You are the Pnyx worker for task ${card.id} `
@@ -41,7 +73,10 @@ export function taskConversation({ card, entries }: {
   const launched = ({ text }: { text: string }) => {
     const shown = withoutInjected({ text })
 
-    return shown.startsWith(launch) || [prompt, card.brief].some(given =>
+    return shown.startsWith(launch) || [
+      prompt,
+      card.brief,
+    ].some(given =>
       given?.trim() && shown.startsWith(`${given}\n\n${launch}`))
   }
 
@@ -58,15 +93,24 @@ export function taskConversation({ card, entries }: {
       continue
     }
 
-    const text = receipt.text.trim().replace(/\s+/g, ' ')
+    const text = receipt.text.trim().replace(
+      /\s+/g,
+      ' ',
+    )
     const mentioned = taskMentions({ text: receipt.text }).length > 0
     const copy = conversation.find(entry => !matched.has(entry.id) && !entry.replyId
       && entry.session === receipt.session
       && entry.kind === 'message' && /^(user|You)( · continued)?$/.test(entry.role)
       && entry.at && entry.at >= at
       && (entry.part ?? 0) === (receipt.part ?? 0)
-      && (entry.text.trim().replace(/\s+/g, ' ') === text || (mentioned
-        && entry.text.trim().replace(/\s+/g, ' ')
+      && (entry.text.trim().replace(
+        /\s+/g,
+        ' ',
+      ) === text || (mentioned
+        && entry.text.trim().replace(
+          /\s+/g,
+          ' ',
+        )
           .startsWith(`${text} Referenced tasks (context only): `))))
 
     if (copy) {
@@ -78,13 +122,28 @@ export function taskConversation({ card, entries }: {
     ...updates.filter(e => !ids.has(e.id)),
     ...conversation.filter(e => !matched.has(e.id)),
   ]
-    .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))
+    .sort((
+      a,
+      b,
+    ) => (a.at ?? '').localeCompare(b.at ?? ''))
 
-  return [...initial, ...stream.map(entry => entry.replyId
-    ? { ...entry, ...taskReceipt({ card, reply: entry.replyId }) } : entry)]
+  return [
+    ...initial,
+    ...stream.map(entry => entry.replyId
+      ? {
+        ...entry,
+        ...taskReceipt({
+          card,
+          reply: entry.replyId,
+        }),
+      } : entry),
+  ]
 }
 
-export function withTaskReceipts({ native, saved }: {
+export function withTaskReceipts({
+  native,
+  saved,
+}: {
   native: ThreadPage
   saved: ThreadPage
 }): ThreadPage {
@@ -106,7 +165,13 @@ export function withTaskReceipts({ native, saved }: {
 
   return {
     ...native,
-    entries: [...entries, ...receipts.filter(r => !matched.has(r.id))]
-      .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? '')),
+    entries: [
+      ...entries,
+      ...receipts.filter(r => !matched.has(r.id)),
+    ]
+      .sort((
+        a,
+        b,
+      ) => (a.at ?? '').localeCompare(b.at ?? '')),
   }
 }

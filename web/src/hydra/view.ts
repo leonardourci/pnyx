@@ -3,7 +3,10 @@ import { cardDoneDeadline, HOUR_MS } from '../../../src/core/retention.ts'
 import { liveTask, rankOf } from '../../../src/core/tasks.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 
-const HARNESSES: Record<string, string> = { 'claude-code': 'Claude Code', codex: 'Codex' }
+const HARNESSES: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  codex: 'Codex',
+}
 
 export const harnessName = ({ provider }: { provider: string }) => HARNESSES[provider] ?? provider
 
@@ -11,7 +14,12 @@ export const columnsFor = ({ state }: { state: HydraState }) => {
   return hydraConfig({ state }).columns
 }
 
-export function pageTitle({ page, cards, selected = null, needsYou = 'needs_you' }: {
+export function pageTitle({
+  page,
+  cards,
+  selected = null,
+  needsYou = 'needs_you',
+}: {
   page: string
   cards: HydraState['cards']
   selected?: string | null
@@ -25,21 +33,46 @@ export function pageTitle({ page, cards, selected = null, needsYou = 'needs_you'
   return `${count > 0 ? `(${count}) ` : ''}${label} · Pnyx`
 }
 
-export function filterCards({ state, workspace, tag, query = '' }: { state: HydraState; workspace: string; tag: string; query?: string }): Card[] {
+export function filterCards({
+  state,
+  workspace,
+  tag,
+  query = '',
+}: {
+  state: HydraState
+  workspace: string
+  tag: string
+  query?: string
+}): Card[] {
   const words = query.toLowerCase().trim()
     .split(/\s+/)
     .filter(Boolean)
 
-  return Object.values(state.cards).filter(c => liveTask({ card: c }) && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag)) && words.every(w => [c.title, c.project ?? '', c.key, ...c.tags, ...c.links.map(l => `${l.number ?? ''} ${l.title ?? ''}`)].join(' ').toLowerCase()
+  return Object.values(state.cards).filter(c => liveTask({ card: c }) && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag)) && words.every(w => [
+    c.title,
+    c.project ?? '',
+    c.key,
+    ...c.tags,
+    ...c.links.map(l => `${l.number ?? ''} ${l.title ?? ''}`),
+  ].join(' ').toLowerCase()
     .includes(w)))
-    .sort((a,b) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
+    .sort((
+      a,
+      b,
+    ) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
 }
 
 // The "Find a card" box: every card the filter above matches, in its order, then
 // the other cards the Hydra's search found, best first, within the same workspace
 // and tag filters.
 export function findBoxCards(
-  { state, workspace, tag, query, meaning: found }: {
+  {
+    state,
+    workspace,
+    tag,
+    query,
+    meaning: found,
+  }: {
     state: HydraState
     workspace: string
     tag: string
@@ -47,15 +80,26 @@ export function findBoxCards(
     meaning: string[]
   },
 ): Card[] {
-  const local = filterCards({ state, workspace, tag, query })
+  const local = filterCards({
+    state,
+    workspace,
+    tag,
+    query,
+  })
   const seen = new Set(local.map(c => c.id))
 
-  return [...local, ...found.map(id => state.cards[id]).filter((c): c is Card =>
-    !!c && liveTask({ card: c }) && !seen.has(c.id)
-    && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag)))]
+  return [
+    ...local,
+    ...found.map(id => state.cards[id]).filter((c): c is Card =>
+      !!c && liveTask({ card: c }) && !seen.has(c.id)
+    && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag))),
+  ]
 }
 
-export function visibleParent({ card, visible }: {
+export function visibleParent({
+  card,
+  visible,
+}: {
   card: Card
   visible: Card[]
 }): Card | undefined {
@@ -66,7 +110,10 @@ export function safeLink({ link }: { link: Link }): string | undefined {
   try {
     const url = new URL(link.url)
 
-    return ['https:', 'http:'].includes(url.protocol) ? url.href : undefined
+    return [
+      'https:',
+      'http:',
+    ].includes(url.protocol) ? url.href : undefined
   } catch {
     return undefined
   }
@@ -88,7 +135,11 @@ export function agentActivity({ card }: { card: Card }): 'working' | 'finished' 
 
 // The card a dragged task goes above when dropped on `over`: `over` itself, or the
 // next card when dropped on its lower half. Undefined means the end of the column.
-export function dropBefore({ cards, over, below }: {
+export function dropBefore({
+  cards,
+  over,
+  below,
+}: {
   cards: Card[]
   over?: string
   below: boolean
@@ -98,16 +149,54 @@ export function dropBefore({ cards, over, below }: {
   return index < 0 ? undefined : cards[below ? index + 1 : index]?.id
 }
 
-export const receiptLabel = ({ state }: { state: string }) => ({ queued: 'Queued', delivered: 'Delivered', delivery_unknown: 'Delivery unknown', failed: 'Delivery failed' }[state] ?? state)
-export const slashPrefix = ({ text, cursor }: { text: string; cursor: number }) => /^\/[a-z0-9_.:-]*$/i.test(text.slice(0, cursor)) ? text.slice(0, cursor) : null
-export const slashMatches = ({ command, prefix }: { command: string; prefix: string }) => command.replace(/^[$/]/, '').toLowerCase()
-  .startsWith(prefix.replace(/^\//, '').toLowerCase())
-export const shouldReload = ({ loaded, server }: { loaded: string | undefined; server: string }) =>
+export const receiptLabel = ({ state }: { state: string }) => ({
+  queued: 'Queued',
+  delivered: 'Delivered',
+  delivery_unknown: 'Delivery unknown',
+  failed: 'Delivery failed',
+}[state] ?? state)
+export const slashPrefix = ({
+  text,
+  cursor,
+}: {
+  text: string
+  cursor: number
+}) => /^\/[a-z0-9_.:-]*$/i.test(text.slice(
+  0,
+  cursor,
+)) ? text.slice(
+    0,
+    cursor,
+  ) : null
+export const slashMatches = ({
+  command,
+  prefix,
+}: {
+  command: string
+  prefix: string
+}) => command.replace(
+  /^[$/]/,
+  '',
+).toLowerCase()
+  .startsWith(prefix.replace(
+    /^\//,
+    '',
+  ).toLowerCase())
+export const shouldReload = ({
+  loaded,
+  server,
+}: {
+  loaded: string | undefined
+  server: string
+}) =>
   Boolean(loaded && server && loaded !== server)
 
 export function taskLabel({ card }: { card: Card }): string {
   if (card.status) {
-    return `${card.status.state.replaceAll('_', ' ')}${card.status.note ? `: ${card.status.note}` : ''}`
+    return `${card.status.state.replaceAll(
+      '_',
+      ' ',
+    )}${card.status.note ? `: ${card.status.note}` : ''}`
   }
 
   return shownActivity({ card })
@@ -121,34 +210,63 @@ export function projectTitle({ project }: { project: string }): string {
     .at(-1) ?? project : project
 }
 
-export function elapsedTime({ at, now }: { at: string; now: number }): string {
-  const elapsed = Math.max(0, now - Date.parse(at))
+export function elapsedTime({
+  at,
+  now,
+}: {
+  at: string
+  now: number
+}): string {
+  const elapsed = Math.max(
+    0,
+    now - Date.parse(at),
+  )
 
   return elapsed < 60_000 ? 'just now' : elapsed < HOUR_MS ? `${Math.floor(elapsed / 60_000)}m ago`
     : elapsed < 24 * HOUR_MS ? `${Math.floor(elapsed / HOUR_MS)}h ago` : `${Math.floor(elapsed / (24 * HOUR_MS))}d ago`
 }
 
-export function cardState({ card, hours, now }: {
+export function cardState({
+  card,
+  hours,
+  now,
+}: {
   card: Card
   hours?: number
   now: number
-}): { kind: string; text: string; at?: string } {
+}): {
+  kind: string
+  text: string
+  at?: string
+} {
   if (card.doneAt) {
-    const deadline = cardDoneDeadline({ card, hours })
+    const deadline = cardDoneDeadline({
+      card,
+      hours,
+    })
     const remaining = deadline === undefined ? undefined : deadline - now
 
     return {
       kind: 'done',
       text: remaining !== undefined && remaining <= 6 * HOUR_MS
-        ? `hidden in ${remaining > HOUR_MS ? `${Math.ceil(remaining / HOUR_MS)}h` : `${Math.max(1, Math.ceil(remaining / 60_000))}m`}`
-        : `done · ${elapsedTime({ at: card.doneAt, now })}`,
+        ? `hidden in ${remaining > HOUR_MS ? `${Math.ceil(remaining / HOUR_MS)}h` : `${Math.max(
+          1,
+          Math.ceil(remaining / 60_000),
+        )}m`}`
+        : `done · ${elapsedTime({
+          at: card.doneAt,
+          now,
+        })}`,
       at: card.doneAt,
     }
   }
 
   if (card.attention.some(a => a.blocking && !a.answered) || card.permissions?.some(p => p.status === 'pending')
     || card.status?.state === 'needs_you' || card.status?.state === 'blocked') {
-    return { kind: 'asks', text: 'asks' }
+    return {
+      kind: 'asks',
+      text: 'asks',
+    }
   }
 
   const activity = agentActivity({ card })
@@ -156,8 +274,18 @@ export function cardState({ card, hours, now }: {
   if (activity === 'stopped') {
     const at = card.stoppedAt ?? card.updatedAt
 
-    return { kind: 'stopped', text: `stopped · ${elapsedTime({ at, now })}`, at }
+    return {
+      kind: 'stopped',
+      text: `stopped · ${elapsedTime({
+        at,
+        now,
+      })}`,
+      at,
+    }
   }
 
-  return { kind: activity ?? 'not-started', text: activity === 'working' ? 'working' : activity === 'finished' ? 'finished its turn' : card.agent ? 'activity unknown' : 'not started' }
+  return {
+    kind: activity ?? 'not-started',
+    text: activity === 'working' ? 'working' : activity === 'finished' ? 'finished its turn' : card.agent ? 'activity unknown' : 'not started',
+  }
 }

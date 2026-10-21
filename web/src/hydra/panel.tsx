@@ -4,7 +4,16 @@ import { waitingReminders } from '../../../src/reminders/state.ts'
 import { useState, type ReactNode } from 'react'
 import { Button } from '../components/ui/controls.tsx'
 
-export function Panel({ shown, connected, page, navigate, state, openTask, oracle, children }: {
+export function Panel({
+  shown,
+  connected,
+  page,
+  navigate,
+  state,
+  openTask,
+  oracle,
+  children,
+}: {
   shown: boolean
   connected: boolean
   page: string
@@ -14,7 +23,10 @@ export function Panel({ shown, connected, page, navigate, state, openTask, oracl
   oracle: ReactNode
   children: ReactNode
 }) {
-  const [reminders, setReminders] = useState(false)
+  const [
+    reminders,
+    setReminders,
+  ] = useState(false)
   const waiting = waitingReminders({ state })
 
   return (
@@ -31,7 +43,14 @@ export function Panel({ shown, connected, page, navigate, state, openTask, oracl
                   <li key={reminder.task}>
                     <Button onClick={() => openTask({ id: reminder.task })}>
                       <span>{reminder.title}</span>
-                      <time dateTime={reminder.at}>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(reminder.at))}</time>
+                      <time dateTime={reminder.at}>{new Intl.DateTimeFormat(
+                        undefined,
+                        {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        },
+                      ).format(new Date(reminder.at))}
+                      </time>
                     </Button>
                   </li>
                 ))}
@@ -39,7 +58,19 @@ export function Panel({ shown, connected, page, navigate, state, openTask, oracl
             ) : <p className="panel-empty">No waiting reminders.</p>}
           </div>
         )}
-        {[['history', 'History'], ['settings', 'Settings']].map(([id, label]) => <Button key={id} aria-pressed={page === id} onClick={() => navigate({ page: id })}><Icon name={id ?? 'agent'} />{label}</Button>)}
+        {[
+          [
+            'history',
+            'History',
+          ],
+          [
+            'settings',
+            'Settings',
+          ],
+        ].map(([
+          id,
+          label,
+        ]) => <Button key={id} aria-pressed={page === id} onClick={() => navigate({ page: id })}><Icon name={id ?? 'agent'} />{label}</Button>)}
       </nav>
       {children}
     </aside>

@@ -1,48 +1,83 @@
 import { useEffect, useState, type ComponentProps } from 'react'
 import { Markdown } from './markdown.tsx'
 
-export function MessageText({ streaming, text, ...props }: ComponentProps<typeof Markdown> & {
+export function MessageText({
+  streaming,
+  text,
+  ...props
+}: ComponentProps<typeof Markdown> & {
   streaming?: boolean
 }) {
-  const [shown, setShown] = useState(text)
-  const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const [
+    shown,
+    setShown,
+  ] = useState(text)
+  const [
+    reduced,
+    setReduced,
+  ] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
 
-  useEffect(() => {
-    const media = matchMedia('(prefers-reduced-motion: reduce)')
-    const change = () => setReduced(media.matches)
-    media.addEventListener('change', change)
+  useEffect(
+    () => {
+      const media = matchMedia('(prefers-reduced-motion: reduce)')
+      const change = () => setReduced(media.matches)
+      media.addEventListener(
+        'change',
+        change,
+      )
 
-    return () => media.removeEventListener('change', change)
-  }, [])
+      return () => media.removeEventListener(
+        'change',
+        change,
+      )
+    },
+    [],
+  )
 
-  useEffect(() => {
-    if (!streaming || reduced) {
-      setShown(text)
+  useEffect(
+    () => {
+      if (!streaming || reduced) {
+        setShown(text)
 
-      return
-    }
-
-    let frame = 0, visible = text.startsWith(shown) ? shown.length : 0
-
-    const reveal = () => {
-      let end = Math.min(text.length, visible + Math.max(1, Math.ceil((text.length - visible) / 3)))
-
-      if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1] ?? '')) {
-        end++
+        return
       }
 
-      visible = end
-      setShown(text.slice(0, end))
+      let frame = 0, visible = text.startsWith(shown) ? shown.length : 0
 
-      if (end < text.length) {
-        frame = requestAnimationFrame(reveal)
+      const reveal = () => {
+        let end = Math.min(
+          text.length,
+          visible + Math.max(
+            1,
+            Math.ceil((text.length - visible) / 3),
+          ),
+        )
+
+        if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1] ?? '')) {
+          end++
+        }
+
+        visible = end
+        setShown(text.slice(
+          0,
+          end,
+        ))
+
+        if (end < text.length) {
+          frame = requestAnimationFrame(reveal)
+        }
       }
-    }
 
-    frame = requestAnimationFrame(reveal)
+      frame = requestAnimationFrame(reveal)
 
-    return () => cancelAnimationFrame(frame)
-  }, [text, streaming, reduced])
+      return () => cancelAnimationFrame(frame)
+    },
+    [
+      text,
+      streaming,
+      reduced,
+    ],
+  )
 
   return <Markdown {...props} text={!streaming || reduced ? text : shown} />
 }

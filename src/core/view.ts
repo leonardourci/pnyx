@@ -1,7 +1,10 @@
 import { HydraError, COLUMNS, type HydraState, type ViewPreferences } from './model.ts'
 import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from './keyboard.ts'
 
-export const DEFAULT_WIDTHS = { column: 290, hydra: 360 } as const
+export const DEFAULT_WIDTHS = {
+  column: 290,
+  hydra: 360,
+} as const
 export const DEFAULT_COLUMN_WIDTH = DEFAULT_WIDTHS.column
 
 export const DEFAULT_VIEW: ViewPreferences = {
@@ -10,7 +13,10 @@ export const DEFAULT_VIEW: ViewPreferences = {
   lastMessageOnCards: true,
   hydraWidth: DEFAULT_WIDTHS.hydra,
   defaultHydraWidth: DEFAULT_WIDTHS.hydra,
-  defaultColumnWidths: Object.fromEntries(COLUMNS.map(id => [id, DEFAULT_COLUMN_WIDTH])),
+  defaultColumnWidths: Object.fromEntries(COLUMNS.map(id => [
+    id,
+    DEFAULT_COLUMN_WIDTH,
+  ])),
   keyboard: DEFAULT_KEYBOARD,
   fontSize: 14,
   chatFontSize: 16,
@@ -33,54 +39,117 @@ export const VIEW_SIZE_LIMITS = {
   panelWidth: { min: 320 },
   hydraWidth: { min: 240 },
   panelHeight: { min: 280 },
-  composerHeight: { min: 80, max: 420 },
-  fontSize: { min: 12, max: 20 },
-  chatFontSize: { min: 12, max: 22 },
-  codeFontSize: { min: 10, max: 20 },
-  cardHeight: { min: 200, max: 600 },
+  composerHeight: {
+    min: 80,
+    max: 420,
+  },
+  fontSize: {
+    min: 12,
+    max: 20,
+  },
+  chatFontSize: {
+    min: 12,
+    max: 22,
+  },
+  codeFontSize: {
+    min: 10,
+    max: 20,
+  },
+  cardHeight: {
+    min: 200,
+    max: 600,
+  },
   columnWidth: { min: 240 },
   cardWidth: { min: 200 },
   columnHeight: { min: 200 },
 } as const
 
-export const clampViewSize = ({ value, min, max }: { value: number; min: number; max?: number }) =>
-  Math.round(Math.max(min, Math.min(max ?? Infinity, value)))
+export const clampViewSize = ({
+  value,
+  min,
+  max,
+}: {
+  value: number
+  min: number
+  max?: number
+}) =>
+  Math.round(Math.max(
+    min,
+    Math.min(
+      max ?? Infinity,
+      value,
+    ),
+  ))
 
-const persistedSize = ({ value, fallback, min, max }: {
+const persistedSize = ({
+  value,
+  fallback,
+  min,
+  max,
+}: {
   value: unknown
   fallback: number
   min: number
   max?: number
 }) =>
-  typeof value === 'number' && Number.isFinite(value) ? clampViewSize({ value, min, max }) : fallback
+  typeof value === 'number' && Number.isFinite(value) ? clampViewSize({
+    value,
+    min,
+    max,
+  }) : fallback
 
-const persistedMap = ({ values, min, max }: {
+const persistedMap = ({
+  values,
+  min,
+  max,
+}: {
   values: Record<string, number> | undefined
   min: number
   max?: number
 }) =>
   Object.fromEntries(
-    Object.entries(values ?? {}).map(([key, value]) =>
-      [key, persistedSize({
-        value,
-        fallback: min,
-        min,
-        max,
-      })]),
+    Object.entries(values ?? {}).map(([
+      key,
+      value,
+    ]) =>
+      [
+        key,
+        persistedSize({
+          value,
+          fallback: min,
+          min,
+          max,
+        }),
+      ]),
   )
 
-export function traces({ view, card }: { view: ViewPreferences; card: string }) {
+export function traces({
+  view,
+  card,
+}: {
+  view: ViewPreferences
+  card: string
+}) {
   const overrides = view.cardTraceOverrides[card]
   const tools = !view.focusMode
   const thinking = !view.focusMode
 
-  return { tools, thinking, focus: view.focusMode, overrides }
+  return {
+    tools,
+    thinking,
+    focus: view.focusMode,
+    overrides,
+  }
 }
 
 export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> }): ViewPreferences => {
-  const view = { ...structuredClone(DEFAULT_VIEW), ...state.view }
+  const view = {
+    ...structuredClone(DEFAULT_VIEW),
+    ...state.view,
+  }
   const columnIds = new Set<string>([
-    ...COLUMNS, ...(state.config?.columns ?? view.customColumns).map(column => column.id),
+    ...COLUMNS,
+    ...(state.config?.columns ?? view.customColumns).map(column => column.id),
   ])
 
   return {
@@ -97,9 +166,13 @@ export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> 
     }),
     defaultColumnWidths: {
       ...Object.fromEntries((state.config?.columns ?? view.customColumns)
-        .map(c => [c.id, DEFAULT_COLUMN_WIDTH])),
+        .map(c => [
+          c.id,
+          DEFAULT_COLUMN_WIDTH,
+        ])),
       ...Object.fromEntries(Object.entries(persistedMap({
-        values: view.defaultColumnWidths, ...VIEW_SIZE_LIMITS.columnWidth,
+        values: view.defaultColumnWidths,
+        ...VIEW_SIZE_LIMITS.columnWidth,
       })).filter(([id]) => columnIds.has(id))),
     },
     fontSize: persistedSize(
@@ -178,23 +251,40 @@ export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> 
 export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
   hydraWidth: view.defaultHydraWidth,
   columnWidths: {
-    ...Object.fromEntries(Object.keys(view.columnWidths).map(id => [id, null])),
+    ...Object.fromEntries(Object.keys(view.columnWidths).map(id => [
+      id,
+      null,
+    ])),
     ...Object.fromEntries(Object.entries(view.defaultColumnWidths)
-      .filter(([, width]) => width !== DEFAULT_WIDTHS.column)),
+      .filter(([
+        , width,
+      ]) => width !== DEFAULT_WIDTHS.column)),
   },
 })
 
 const invalid = ({ detail }: { detail: string }): never => {
-  throw new HydraError({ message: `invalid view preference: ${detail}`, code: 'VALIDATION_ERROR' })
+  throw new HydraError({
+    message: `invalid view preference: ${detail}`,
+    code: 'VALIDATION_ERROR',
+  })
 }
 
 const record = ({ value }: { value: unknown }): Record<string, unknown> | undefined =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : undefined
-const safeKey = ({ key }: { key: string }) => !['__proto__', 'prototype', 'constructor'].includes(key)
+const safeKey = ({ key }: { key: string }) => ![
+  '__proto__',
+  'prototype',
+  'constructor',
+].includes(key)
 
-const size = ({ value, min, max, key }: {
+const size = ({
+  value,
+  min,
+  max,
+  key,
+}: {
   value: unknown
   min: number
   max?: number
@@ -209,7 +299,10 @@ const size = ({ value, min, max, key }: {
 }
 
 // A patch merges maps; null removes an individual override. All callers use this validator.
-export function patchView({ state, input: rawInput }: {
+export function patchView({
+  state,
+  input: rawInput,
+}: {
   state: HydraState
   input: unknown
 }): ViewPreferences {
@@ -222,12 +315,21 @@ export function patchView({ state, input: rawInput }: {
   const next = structuredClone(viewFor({ state }))
   const hydraColumnIds = state.config?.columns.map(c => c.id) ?? []
 
-  for (const [key, value] of Object.entries(input).sort(([a], [b]) => a === 'customColumns' ? -1 : b === 'customColumns' ? 1 : a.localeCompare(b))) {
+  for (const [
+    key,
+    value,
+  ] of Object.entries(input).sort((
+      [a],
+      [b],
+    ) => a === 'customColumns' ? -1 : b === 'customColumns' ? 1 : a.localeCompare(b))) {
     switch (key) {
       case 'keyboard': {
         const keyboard = record({ value })
 
-        if (!keyboard || Object.keys(keyboard).some(k => !['characterShortcuts', 'bindings'].includes(k))) {
+        if (!keyboard || Object.keys(keyboard).some(k => ![
+          'characterShortcuts',
+          'bindings',
+        ].includes(k))) {
           return invalid({ detail: key })
         }
 
@@ -248,7 +350,10 @@ export function patchView({ state, input: rawInput }: {
             return invalid({ detail: key })
           }
 
-          for (const [id, keys] of Object.entries(bindings)) {
+          for (const [
+            id,
+            keys,
+          ] of Object.entries(bindings)) {
             if (!safeKey({ key: id }) || !KEY_ACTIONS.some(action => action.id === id)) {
               return invalid({ detail: key })
             }
@@ -284,12 +389,38 @@ export function patchView({ state, input: rawInput }: {
           max: VIEW_SIZE_LIMITS[key].max,
           key,
         }); break
-      case 'defaultHydraWidth': next.defaultHydraWidth = size({ value, ...VIEW_SIZE_LIMITS.hydraWidth, key }); break
-      case 'hydraWidth': next.hydraWidth = size({ value, ...VIEW_SIZE_LIMITS.hydraWidth, key }); break
-      case 'panelWidth': next.panelWidth = size({ value, ...VIEW_SIZE_LIMITS.panelWidth, key }); break
-      case 'composerHeight': next.composerHeight = size({ value, min: VIEW_SIZE_LIMITS.composerHeight.min, max: VIEW_SIZE_LIMITS.composerHeight.max, key }); break
-      case 'taskComposerHeight': next.taskComposerHeight = size({ value, ...VIEW_SIZE_LIMITS.composerHeight, key }); break
-      case 'cardHeight': next.cardHeight = size({ value, min: VIEW_SIZE_LIMITS.cardHeight.min, max: VIEW_SIZE_LIMITS.cardHeight.max, key }); break
+      case 'defaultHydraWidth': next.defaultHydraWidth = size({
+        value,
+        ...VIEW_SIZE_LIMITS.hydraWidth,
+        key,
+      }); break
+      case 'hydraWidth': next.hydraWidth = size({
+        value,
+        ...VIEW_SIZE_LIMITS.hydraWidth,
+        key,
+      }); break
+      case 'panelWidth': next.panelWidth = size({
+        value,
+        ...VIEW_SIZE_LIMITS.panelWidth,
+        key,
+      }); break
+      case 'composerHeight': next.composerHeight = size({
+        value,
+        min: VIEW_SIZE_LIMITS.composerHeight.min,
+        max: VIEW_SIZE_LIMITS.composerHeight.max,
+        key,
+      }); break
+      case 'taskComposerHeight': next.taskComposerHeight = size({
+        value,
+        ...VIEW_SIZE_LIMITS.composerHeight,
+        key,
+      }); break
+      case 'cardHeight': next.cardHeight = size({
+        value,
+        min: VIEW_SIZE_LIMITS.cardHeight.min,
+        max: VIEW_SIZE_LIMITS.cardHeight.max,
+        key,
+      }); break
       case 'panelPlacement':
         if (value !== 'right' && value !== 'inline') {
           return invalid({ detail: key })
@@ -309,7 +440,10 @@ export function patchView({ state, input: rawInput }: {
           return invalid({ detail: key })
         }
 
-        for (const [id, n] of Object.entries(map)) {
+        for (const [
+          id,
+          n,
+        ] of Object.entries(map)) {
           if (!safeKey({ key: id })) {
             return invalid({ detail: key })
           }
@@ -318,7 +452,11 @@ export function patchView({ state, input: rawInput }: {
             return invalid({ detail: id })
           }
 
-          if (key === 'columnWidths' && n !== null && ![...COLUMNS, ...hydraColumnIds, ...next.customColumns.map(c => c.id)].includes(id as never)) {
+          if (key === 'columnWidths' && n !== null && ![
+            ...COLUMNS,
+            ...hydraColumnIds,
+            ...next.customColumns.map(c => c.id),
+          ].includes(id as never)) {
             return invalid({ detail: id })
           }
 
@@ -326,7 +464,11 @@ export function patchView({ state, input: rawInput }: {
             delete next[key][id]
           } else {
             const limits = key === 'cardHeights' ? VIEW_SIZE_LIMITS.cardHeight : VIEW_SIZE_LIMITS.columnWidth
-            next[key][id] = size({ value: n, ...limits, key })
+            next[key][id] = size({
+              value: n,
+              ...limits,
+              key,
+            })
           }
         }
 
@@ -339,7 +481,10 @@ export function patchView({ state, input: rawInput }: {
           return invalid({ detail: key })
         }
 
-        for (const [id, rawOverride] of Object.entries(map)) {
+        for (const [
+          id,
+          rawOverride,
+        ] of Object.entries(map)) {
           if (!safeKey({ key: id }) || !state.cards[id]) {
             return invalid({ detail: id })
           }
@@ -350,11 +495,20 @@ export function patchView({ state, input: rawInput }: {
 
           const override = record({ value: rawOverride })
 
-          if (!override || Object.entries(override).some(([k, v]) => !['tools', 'thinking'].includes(k) || typeof v !== 'boolean')) {
+          if (!override || Object.entries(override).some(([
+            k,
+            v,
+          ]) => ![
+            'tools',
+            'thinking',
+          ].includes(k) || typeof v !== 'boolean')) {
             return invalid({ detail: key })
           }
 
-          next.cardTraceOverrides[id] = { ...next.cardTraceOverrides[id], ...override }
+          next.cardTraceOverrides[id] = {
+            ...next.cardTraceOverrides[id],
+            ...override,
+          }
         }
 
         break
@@ -375,7 +529,10 @@ export function patchView({ state, input: rawInput }: {
 
           ids.add(c.id)
 
-          return { id: c.id as `custom:${string}`, title: c.title.trim() }
+          return {
+            id: c.id as `custom:${string}`,
+            title: c.title.trim(),
+          }
         })
 
         // Legacy view edits leave hydra-owned column widths intact.

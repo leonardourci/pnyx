@@ -18,8 +18,23 @@ import { columnsFor } from './view.ts'
 import { commandQuery, matchesCommand, resetWidths, oracleSettings, queryWords } from './oracle-catalog.ts'
 
 export function Oracle({
-  state, view, command, query, setQuery, hits, save, openTask, openHydra, history,
-  showPanel, createTask, createColumn, action, notify, connected, page,
+  state,
+  view,
+  command,
+  query,
+  setQuery,
+  hits,
+  save,
+  openTask,
+  openHydra,
+  history,
+  showPanel,
+  createTask,
+  createColumn,
+  action,
+  notify,
+  connected,
+  page,
 }: {
   page: string
   selected: string | null
@@ -36,22 +51,42 @@ export function Oracle({
   showPanel(): void
   createTask({ column }: { column: string }): void
   createColumn(): void
-  action({ id, context }: { id: string; context: ActionContext }): boolean
+  action({
+    id,
+    context,
+  }: {
+    id: string
+    context: ActionContext
+  }): boolean
   notify({ text }: { text: string }): void
   connected: boolean
 }) {
-  const [semantic, setSemantic] = useState<{
+  const [
+    semantic,
+    setSemantic,
+  ] = useState<{
     query: string
     catalog: string
     matches: string[]
   } | null>(null)
-  const [expanded, setExpanded] = useState(false)
-  const { settings: preferences, set: persistSetting } = useOraclePreferences({
-    command, notify, enabled: expanded && connected,
+  const [
+    expanded,
+    setExpanded,
+  ] = useState(false)
+  const {
+    settings: preferences,
+    set: persistSetting,
+  } = useOraclePreferences({
+    command,
+    notify,
+    enabled: expanded && connected,
   })
   const settings = preferences ?? {}
   const input = useRef<HTMLInputElement>(null), root = useRef<HTMLDivElement>(null)
-  const context = useRef<ActionContext>({ scope: 'navigation', target: document.body })
+  const context = useRef<ActionContext>({
+    scope: 'navigation',
+    target: document.body,
+  })
   const { handlers } = useKeyboard()
 
   const focus = () => {
@@ -66,12 +101,36 @@ export function Oracle({
     return true
   }
 
-  useKeyAction({ id: 'palette', handler: focus })
-  useKeyAction({ id: 'find', handler: () => page === 'settings' ? false : page === 'history' ? focusElement({ selector: '[aria-label="Search history"]' }) : focus() })
-  const persist = ({ key, value }: { key: string; value: string }) =>
-    persistSetting({ key, value }).catch((e: Error) => notify({ text: e.message }))
+  useKeyAction({
+    id: 'palette',
+    handler: focus,
+  })
+  useKeyAction({
+    id: 'find',
+    handler: () => page === 'settings' ? false : page === 'history' ? focusElement({ selector: '[aria-label="Search history"]' }) : focus(),
+  })
+  const persist = ({
+    key,
+    value,
+  }: {
+    key: string
+    value: string
+  }) =>
+    persistSetting({
+      key,
+      value,
+    }).catch((e: Error) => notify({ text: e.message }))
 
-  const editColumn = ({ args }: { args: string[] }) => command({ name: 'column', args: [...args, '--if-revision', String(state.configRevision ?? 0), '--event-id', crypto.randomUUID()] })
+  const editColumn = ({ args }: { args: string[] }) => command({
+    name: 'column',
+    args: [
+      ...args,
+      '--if-revision',
+      String(state.configRevision ?? 0),
+      '--event-id',
+      crypto.randomUUID(),
+    ],
+  })
 
   const run = ({ work }: { work: () => unknown }) => {
     setExpanded(false); setQuery({ query: '' })
@@ -80,16 +139,29 @@ export function Oracle({
 
   const rows: (ResultRow & { text: string })[] = []
 
-  const add = ({ id, label, words = '', content }: {
+  const add = ({
+    id,
+    label,
+    words = '',
+    content,
+  }: {
     id: string
     label: string
     words?: string
     content: ReactNode
   }) => {
-    rows.push({ id, label, text: `${label} ${words}`, content })
+    rows.push({
+      id,
+      label,
+      text: `${label} ${words}`,
+      content,
+    })
   }
 
-  for (const setting of oracleSettings({ state, view })) {
+  for (const setting of oracleSettings({
+    state,
+    view,
+  })) {
     const control = setting.type === 'toggle'
       ? (
         <Switch
@@ -118,14 +190,46 @@ export function Oracle({
           />
           </>
         )
-    add({ id: setting.id, label: setting.label, words: setting.words, content: control })
+    add({
+      id: setting.id,
+      label: setting.label,
+      words: setting.words,
+      content: control,
+    })
   }
 
-  for (const [key, label, options] of [
-    ['oracle.semantic', 'Semantic search', ['on', 'off']],
-    ['oracle.rerank', 'Rerank top results', ['auto', 'on', 'off']],
-    ['oracle.model', 'Oracle model', ['auto', 'granite-97m', 'granite-311m']],
-  ] as const) {
+  for (const [
+    key,
+    label,
+    options,
+  ] of [
+      [
+        'oracle.semantic',
+        'Semantic search',
+        [
+          'on',
+          'off',
+        ],
+      ],
+      [
+        'oracle.rerank',
+        'Rerank top results',
+        [
+          'auto',
+          'on',
+          'off',
+        ],
+      ],
+      [
+        'oracle.model',
+        'Oracle model',
+        [
+          'auto',
+          'granite-97m',
+          'granite-311m',
+        ],
+      ],
+    ] as const) {
     add({
       id: key,
       label,
@@ -136,19 +240,40 @@ export function Oracle({
           <Select
             label={label}
             value={settings[key] ?? options[0]}
-            options={options.map(value => ({ value, label: value }))}
-            onChange={({ value }) => void persist({ key, value })}
+            options={options.map(value => ({
+              value,
+              label: value,
+            }))}
+            onChange={({ value }) => void persist({
+              key,
+              value,
+            })}
           />
         </>
       ),
     })
   }
 
-  add({ id: 'reset-widths', label: 'Reset widths to defaults', words: 'layout resize panel column restore', content: <Button onClick={() => void save({ patch: resetWidths({ view }) })}>Reset widths to defaults</Button> })
-  add({ id: 'new-column', label: 'New column', words: 'create add layout', content: <Button disabled={!connected} onClick={() => run({ work: createColumn })}>New column</Button> })
+  add({
+    id: 'reset-widths',
+    label: 'Reset widths to defaults',
+    words: 'layout resize panel column restore',
+    content: <Button onClick={() => void save({ patch: resetWidths({ view }) })}>Reset widths to defaults</Button>,
+  })
+  add({
+    id: 'new-column',
+    label: 'New column',
+    words: 'create add layout',
+    content: <Button disabled={!connected} onClick={() => run({ work: createColumn })}>New column</Button>,
+  })
 
   for (const column of columnsFor({ state })) {
-    add({ id: `task:${column.id}`, label: `New task in ${column.title}`, words: 'create add card', content: <Button disabled={!connected} onClick={() => run({ work: () => createTask({ column: column.id }) })}>New task in {column.title}</Button> })
+    add({
+      id: `task:${column.id}`,
+      label: `New task in ${column.title}`,
+      words: 'create add card',
+      content: <Button disabled={!connected} onClick={() => run({ work: () => createTask({ column: column.id }) })}>New task in {column.title}</Button>,
+    })
     add({
       id: `describe:${column.id}`,
       label: `${column.title} description`,
@@ -162,7 +287,14 @@ export function Oracle({
             defaultValue={column.description ?? ''}
             onBlur={e => {
               if (e.target.value !== (column.description ?? '')) {
-                void editColumn({ args: ['describe', column.id, '--description', e.target.value] }).catch((error: Error) => notify({ text: error.message }))
+                void editColumn({
+                  args: [
+                    'describe',
+                    column.id,
+                    '--description',
+                    e.target.value,
+                  ],
+                }).catch((error: Error) => notify({ text: error.message }))
               }
             }}
           />
@@ -170,28 +302,60 @@ export function Oracle({
       ),
     })
 
-    add({ id: `rename:${column.id}`, label: `Rename ${column.title} column`, words: 'layout title name', content: <><span>Rename column</span><InlineTitle value={column.title} label={`Rename ${column.title} column from Oracle`} save={({ title }) => editColumn({ args: ['rename', column.id, `--title=${title}`] })} /></> })
+    add({
+      id: `rename:${column.id}`,
+      label: `Rename ${column.title} column`,
+      words: 'layout title name',
+      content: <><span>Rename column</span><InlineTitle
+        value={column.title}
+        label={`Rename ${column.title} column from Oracle`}
+        save={({ title }) => editColumn({
+          args: [
+            'rename',
+            column.id,
+            `--title=${title}`,
+          ],
+        })}
+      />
+      </>,
+    })
     add({
       id: `delete:${column.id}`,
       label: `Delete ${column.title} column`,
       words: 'layout remove',
-      content: lockedColumn({ state, id: column.id }) ? <p role="status">{LOCKED_DELETE}</p> : (
-        <InlineConfirm
-          label={`Delete ${column.title} column from Oracle`}
-          action="Delete column"
-          message={`Delete “${column.title}”? Its tasks move to a remaining column.`}
-          disabled={!connected || columnsFor({ state }).length === 1}
-          confirm={() => editColumn({ args: ['delete', column.id] }).then(() => true, (e: Error) => {
-            notify({ text: e.message })
+      content: lockedColumn({
+        state,
+        id: column.id,
+      }) ? <p role="status">{LOCKED_DELETE}</p> : (
+          <InlineConfirm
+            label={`Delete ${column.title} column from Oracle`}
+            action="Delete column"
+            message={`Delete “${column.title}”? Its tasks move to a remaining column.`}
+            disabled={!connected || columnsFor({ state }).length === 1}
+            confirm={() => editColumn({
+              args: [
+                'delete',
+                column.id,
+              ],
+            }).then(
+              () => true,
+              (e: Error) => {
+                notify({ text: e.message })
 
-            return false
-          })}
-        />
-      ),
+                return false
+              },
+            )}
+          />
+        ),
     })
   }
 
-  for (const entry of KEY_ACTIONS.filter(entry => !['palette', 'cancel', 'send', 'find'].includes(entry.id))) {
+  for (const entry of KEY_ACTIONS.filter(entry => ![
+    'palette',
+    'cancel',
+    'send',
+    'find',
+  ].includes(entry.id))) {
     const enabled = entry.scopes.includes(context.current.scope)
 
     add({
@@ -206,7 +370,10 @@ export function Oracle({
               const registered = [...(handlers.get(entry.id) ?? [])].reverse()
 
               if (!registered.some(run => run({ context: context.current }))) {
-                action({ id: entry.id, context: context.current })
+                action({
+                  id: entry.id,
+                  context: context.current,
+                })
               }
             },
           })}
@@ -226,14 +393,23 @@ export function Oracle({
         <>
           <span>{entry.label} shortcut</span>
           <Input
-            key={bindingsFor({ prefs: view.keyboard, id: entry.id }).join(';')}
+            key={bindingsFor({
+              prefs: view.keyboard,
+              id: entry.id,
+            }).join(';')}
             aria-label={`${entry.label} shortcut`}
-            defaultValue={bindingsFor({ prefs: view.keyboard, id: entry.id }).join('; ')}
+            defaultValue={bindingsFor({
+              prefs: view.keyboard,
+              id: entry.id,
+            }).join('; ')}
             onBlur={e => {
               const bindings = e.target.value.split(';').map(value => value.trim())
                 .filter(Boolean)
 
-              const current = bindingsFor({ prefs: view.keyboard, id: entry.id })
+              const current = bindingsFor({
+                prefs: view.keyboard,
+                id: entry.id,
+              })
 
               if (JSON.stringify(bindings) !== JSON.stringify(current)) {
                 void save({ patch: { keyboard: { bindings: { [entry.id]: bindings } } } })
@@ -260,7 +436,18 @@ export function Oracle({
           defaultValue={hydra.id}
           onBlur={e => {
             if (e.target.value.trim() && e.target.value.trim() !== hydra.id) {
-              void command({ name: 'hydra', args: ['set', '--identity', e.target.value.trim(), '--if-revision', String(state.configRevision ?? 0), '--event-id', crypto.randomUUID()] }).catch((e: Error) => notify({ text: e.message }))
+              void command({
+                name: 'hydra',
+                args: [
+                  'set',
+                  '--identity',
+                  e.target.value.trim(),
+                  '--if-revision',
+                  String(state.configRevision ?? 0),
+                  '--event-id',
+                  crypto.randomUUID(),
+                ],
+              }).catch((e: Error) => notify({ text: e.message }))
             }
           }}
           onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()}
@@ -268,7 +455,10 @@ export function Oracle({
       </>
     ),
   })
-  const { effective, saveHydra } = useHeadsDispatch({ command })
+  const {
+    effective,
+    saveHydra,
+  } = useHeadsDispatch({ command })
   const agent = effective?.dispatch.rules.hydra?.candidates[0] ?? { harness: 'claude' }
 
   const saveAgent = ({ patch }: { patch: Partial<AgentConfig> }) =>
@@ -285,14 +475,27 @@ export function Oracle({
           label="Hydra harness"
           disabled={!effective}
           value={agent.harness}
-          options={[{ value: 'claude', label: 'Claude Code' }, { value: 'codex', label: 'Codex' }]}
+          options={[
+            {
+              value: 'claude',
+              label: 'Claude Code',
+            },
+            {
+              value: 'codex',
+              label: 'Codex',
+            },
+          ]}
           onChange={({ value }) => void saveAgent({ patch: { harness: value as AgentConfig['harness'] } })}
         />
       </>
     ),
   })
 
-  for (const field of ['model', 'effort', 'mode'] as const) {
+  for (const field of [
+    'model',
+    'effort',
+    'mode',
+  ] as const) {
     const label = `Hydra default ${field}`
     add({
       id: `hydra-${field}`,
@@ -319,30 +522,72 @@ export function Oracle({
     })
   }
 
-  add({ id: 'agents', label: 'Hydra identity and default model; heads dispatch rules', words: `harness effort mode quota launch worker ${Object.keys(state.config?.agents ?? {}).join(' ')}`, content: <AgentKinds state={state} command={command} notify={notify} /> })
-  const catalog = JSON.stringify(rows.map(row => ({ id: row.id, text: row.text.slice(0, 500) })))
+  add({
+    id: 'agents',
+    label: 'Hydra identity and default model; heads dispatch rules',
+    words: `harness effort mode quota launch worker ${Object.keys(state.config?.agents ?? {}).join(' ')}`,
+    content: <AgentKinds state={state} command={command} notify={notify} />,
+  })
+  const catalog = JSON.stringify(rows.map(row => ({
+    id: row.id,
+    text: row.text.slice(
+      0,
+      500,
+    ),
+  })))
   const words = queryWords({ query })
-  useEffect(() => {
-    if (!expanded || !words || !connected) {
-      return
-    }
+  useEffect(
+    () => {
+      if (!expanded || !words || !connected) {
+        return
+      }
 
-    let live = true
-    const timer = setTimeout(() => {
-      void command({ name: 'oracle-commands', args: [words, catalog] }).then(receipt => {
-        if (live) {
-          setSemantic({ query: words, catalog, matches: receipt.matches as string[] })
-        }
-      }, () => {})
-    }, 180)
+      let live = true
+      const timer = setTimeout(
+        () => {
+          void command({
+            name: 'oracle-commands',
+            args: [
+              words,
+              catalog,
+            ],
+          }).then(
+            receipt => {
+              if (live) {
+                setSemantic({
+                  query: words,
+                  catalog,
+                  matches: receipt.matches as string[],
+                })
+              }
+            },
+            () => {},
+          )
+        },
+        180,
+      )
 
-    return () => {
-      live = false; clearTimeout(timer)
-    }
-  }, [command, words, catalog, connected, expanded])
+      return () => {
+        live = false; clearTimeout(timer)
+      }
+    },
+    [
+      command,
+      words,
+      catalog,
+      connected,
+      expanded,
+    ],
+  )
   const meaning = semantic?.query === words && semantic.catalog === catalog ? semantic.matches : []
   const matchingRows = rows.filter(row =>
-    matchesCommand({ query, text: row.text.slice(0, 500) }) || meaning.includes(row.id))
+    matchesCommand({
+      query,
+      text: row.text.slice(
+        0,
+        500,
+      ),
+    }) || meaning.includes(row.id))
 
   const visibleHits = commandQuery({ query }) ? [] : hits.filter(hit => hit.kind === 'hydra' || (state.cards[hit.card] && !state.cards[hit.card].hidden))
   const searchRows: ResultRow[] = visibleHits.map(hit => ({
@@ -357,13 +602,20 @@ export function Oracle({
           {hit.kind === 'hydra' ? 'Hydra conversation' : 'Task'}
           {hit.match === 'semantic' ? ' · similar meaning' : ''}
         </small>
-        {hit.snippets.map((snippet, index) => <Markdown key={index} text={snippet.snippet} />)}
+        {hit.snippets.map((
+          snippet,
+          index,
+        ) => <Markdown key={index} text={snippet.snippet} />)}
       </div>
     ),
   }))
 
   if (!commandQuery({ query }) && query.trim()) {
-    searchRows.push({ id: 'history', label: 'Search history', content: <><Button onClick={() => run({ work: history })}>Search history</Button><small className="muted">Hidden tasks and recorded history</small></> })
+    searchRows.push({
+      id: 'history',
+      label: 'Search history',
+      content: <><Button onClick={() => run({ work: history })}>Search history</Button><small className="muted">Hidden tasks and recorded history</small></>,
+    })
   }
 
   return (
@@ -387,7 +639,10 @@ export function Oracle({
       onFocus={e => {
         if (!root.current?.contains(e.relatedTarget)) {
           const target = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : document.body
-          context.current = { target, scope: (target.closest<HTMLElement>('[data-key-scope]')?.dataset.keyScope as ActionContext['scope']) ?? 'navigation' }
+          context.current = {
+            target,
+            scope: (target.closest<HTMLElement>('[data-key-scope]')?.dataset.keyScope as ActionContext['scope']) ?? 'navigation',
+          }
         }
 
         setExpanded(true)
@@ -424,7 +679,11 @@ export function Oracle({
             } else {
               focusElement({ selector: '[data-card]' })
             }
-          } else if (['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) {
+          } else if ([
+            'ArrowDown',
+            'ArrowUp',
+            'Enter',
+          ].includes(e.key)) {
             e.preventDefault(); e.stopPropagation()
             const results = root.current?.querySelectorAll<HTMLElement>('[data-result-id]')
             results?.[e.key === 'ArrowUp' ? results.length - 1 : 0]?.focus()
@@ -437,8 +696,18 @@ export function Oracle({
           label="Oracle results"
           search={() => input.current?.focus()}
           groups={[
-            ...(!commandQuery({ query }) && query.trim() ? [{ label: 'Tasks & messages', rows: searchRows, message: !visibleHits.length ? 'No matching tasks or messages.' : undefined }] : []),
-            { label: 'Settings & actions', rows: matchingRows, message: !matchingRows.length ? 'No matching settings or actions.' : undefined },
+            ...(!commandQuery({ query }) && query.trim() ? [
+              {
+                label: 'Tasks & messages',
+                rows: searchRows,
+                message: !visibleHits.length ? 'No matching tasks or messages.' : undefined,
+              },
+            ] : []),
+            {
+              label: 'Settings & actions',
+              rows: matchingRows,
+              message: !matchingRows.length ? 'No matching settings or actions.' : undefined,
+            },
           ]}
         />
       )}

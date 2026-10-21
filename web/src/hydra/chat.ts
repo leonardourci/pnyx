@@ -6,7 +6,11 @@ import type { ThreadEntry } from '../../../src/thread/read.ts'
 const quiet = ({ entry }: { entry: ThreadEntry }) => entry.kind === 'message' && entry.role.startsWith('assistant')
   && Boolean(entry.text.trim()) && QUIET_REPLY.startsWith(entry.text.trim())
 
-export function hydraMessages({ messages, transcript, provider }: {
+export function hydraMessages({
+  messages,
+  transcript,
+  provider,
+}: {
   messages: HydraMessage[]
   transcript: ThreadEntry[]
   provider?: string
@@ -15,7 +19,10 @@ export function hydraMessages({ messages, transcript, provider }: {
     && /^(user|You)( · continued)?$/.test(entry.role)
     && /^# AGENTS\.md instructions(?: for [^\n]*)?\s*<INSTRUCTIONS>[\s\S]*<\/INSTRUCTIONS>\s*$/.test(entry.text.trim())))
   const remaining = [...transcript]
-  const normalized = ({ text }: { text: string }) => text.trim().replace(/\s+/g, ' ')
+  const normalized = ({ text }: { text: string }) => text.trim().replace(
+    /\s+/g,
+    ' ',
+  )
   const recorded: ThreadEntry[] = []
 
   for (const message of messages) {
@@ -25,13 +32,25 @@ export function hydraMessages({ messages, transcript, provider }: {
       && /^(user|You)( · continued)?$/.test(entry.role) && normalized(entry) === normalized({ text })) : -1
 
     if (match >= 0) {
-      remaining.splice(match, 1)
+      remaining.splice(
+        match,
+        1,
+      )
     } else {
-      recorded.push({ id: message.id, kind: 'message', role, text, at: message.at })
+      recorded.push({
+        id: message.id,
+        kind: 'message',
+        role,
+        text,
+        at: message.at,
+      })
     }
   }
 
-  return [...recorded, ...transcript]
+  return [
+    ...recorded,
+    ...transcript,
+  ]
 }
 
 export interface ChatComment {
@@ -69,7 +88,13 @@ const markdownQuote = ({ text }: { text: string }) => text.split('\n')
   .map(line => `> ${line}`)
   .join('\n')
 
-const numberedComment = ({ comment, number }: { comment: ChatComment; number: number }) => {
+const numberedComment = ({
+  comment,
+  number,
+}: {
+  comment: ChatComment
+  number: number
+}) => {
   const parts = [`${number}. ${markdownQuote({ text: comment.quote })}`]
   const shortQuote = comment.quote.trim().split(/\s+/).length <= 3
 
@@ -82,7 +107,11 @@ const numberedComment = ({ comment, number }: { comment: ChatComment; number: nu
   return parts.join('\n\n')
 }
 
-export function commentReply({ draft, comments, firstComment = false }: {
+export function commentReply({
+  draft,
+  comments,
+  firstComment = false,
+}: {
   draft: string
   comments: ChatComment[]
   firstComment?: boolean
@@ -96,7 +125,10 @@ export function commentReply({ draft, comments, firstComment = false }: {
 
     const reply = comment.at ?? comment.messageId
     const group = replies.get(reply) ?? []
-    group.push(comment); replies.set(reply, group)
+    group.push(comment); replies.set(
+      reply,
+      group,
+    )
   }
 
   if (!replies.size) {
@@ -105,8 +137,17 @@ export function commentReply({ draft, comments, firstComment = false }: {
 
   const sections = firstComment ? [COMMENT_NOTE] : []
 
-  for (const [time, items] of replies) {
-    const numbered = items.map((comment, index) => numberedComment({ comment, number: index + 1 }))
+  for (const [
+    time,
+    items,
+  ] of replies) {
+    const numbered = items.map((
+      comment,
+      index,
+    ) => numberedComment({
+      comment,
+      number: index + 1,
+    }))
     sections.push(`## Comments on your reply from ${time}\n\n${numbered.join('\n\n')}`)
   }
 
@@ -115,7 +156,16 @@ export function commentReply({ draft, comments, firstComment = false }: {
   return sections.join('\n\n')
 }
 
-export function quoteInto({ draft, text }: { draft: string; text: string }): string {
-  return [draft.trimEnd(), markdownQuote({ text: text.trim() })]
+export function quoteInto({
+  draft,
+  text,
+}: {
+  draft: string
+  text: string
+}): string {
+  return [
+    draft.trimEnd(),
+    markdownQuote({ text: text.trim() }),
+  ]
     .filter(Boolean).join('\n\n') + '\n\n'
 }

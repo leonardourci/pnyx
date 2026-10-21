@@ -2,7 +2,15 @@ import { useRef, useState } from 'react'
 import { Button, Input, Textarea } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
 
-export function TaskCreate({ column, parent, command, connected, saved, cancel, notify }: {
+export function TaskCreate({
+  column,
+  parent,
+  command,
+  connected,
+  saved,
+  cancel,
+  notify,
+}: {
   column: string
   parent?: string
   command: Command
@@ -11,7 +19,16 @@ export function TaskCreate({ column, parent, command, connected, saved, cancel, 
   cancel(): void
   notify({ text }: { text: string }): void
 }) {
-  const [title, setTitle] = useState(''), [prompt, setPrompt] = useState(''), [busy, setBusy] = useState(false)
+  const [
+      title,
+      setTitle,
+    ] = useState(''), [
+      prompt,
+      setPrompt,
+    ] = useState(''), [
+      busy,
+      setBusy,
+    ] = useState(false)
   const attempt = useRef(crypto.randomUUID())
 
   return (
@@ -26,7 +43,24 @@ export function TaskCreate({ column, parent, command, connected, saved, cancel, 
         }
 
         setBusy(true)
-        void command({ name: 'task', args: ['create', '--title', title.trim(), '--brief', prompt, '--column', column, ...(parent ? ['--parent', parent] : []), '--event-id', attempt.current] })
+        void command({
+          name: 'task',
+          args: [
+            'create',
+            '--title',
+            title.trim(),
+            '--brief',
+            prompt,
+            '--column',
+            column,
+            ...(parent ? [
+              '--parent',
+              parent,
+            ] : []),
+            '--event-id',
+            attempt.current,
+          ],
+        })
           .then(receipt => saved({ id: (receipt.card as { id: string }).id }))
           .catch(error => notify({ text: error.message }))
           .finally(() => setBusy(false))

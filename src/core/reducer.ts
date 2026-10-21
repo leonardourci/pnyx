@@ -20,13 +20,26 @@ import { requestId } from './answer.ts'
 import { applyLabelColors } from './labels.ts'
 
 export function emptyHydra(): HydraState {
-  return { v: EVENT_VERSION, seq: 0, cards: {}, keys: {}, eventIds: {}, undone: {} }
+  return {
+    v: EVENT_VERSION,
+    seq: 0,
+    cards: {},
+    keys: {},
+    eventIds: {},
+    undone: {},
+  }
 }
 
 // Keeps the best auto title seen: a better source replaces a worse one, a later
 // session title or folder replaces an earlier one, and the first prompt stays. It
 // becomes the title only while no push has set one.
-function offerTitle({ card, next }: { card: Card; next: AutoTitle }): void {
+function offerTitle({
+  card,
+  next,
+}: {
+  card: Card
+  next: AutoTitle
+}): void {
   const current = card.autoTitle
 
   if (current) {
@@ -44,15 +57,27 @@ function offerTitle({ card, next }: { card: Card; next: AutoTitle }): void {
   }
 }
 
-function sameSource({ a, b }: { a: SourceRef; b: SourceRef }): boolean {
+function sameSource({
+  a,
+  b,
+}: {
+  a: SourceRef
+  b: SourceRef
+}): boolean {
   return a.adapter === b.adapter && a.instanceId === b.instanceId && a.objectId === b.objectId
 }
 
-export function isStaleSource({ card, source }: {
+export function isStaleSource({
+  card,
+  source,
+}: {
   card: Card | undefined
   source: SourceRef
 }): boolean {
-  const known = card?.sourceRefs.find(r => sameSource({ a: r, b: source }))
+  const known = card?.sourceRefs.find(r => sameSource({
+    a: r,
+    b: source,
+  }))
 
   if (!known) {
     return false
@@ -71,13 +96,23 @@ export function isStaleSource({ card, source }: {
     && source.observedAt < known.observedAt
 }
 
-export function isStaleLink({ current, next }: { current: Link | undefined; next: Link }): boolean {
+export function isStaleLink({
+  current,
+  next,
+}: {
+  current: Link | undefined
+  next: Link
+}): boolean {
   return current?.checkedAt !== undefined
     && next.checkedAt !== undefined
     && next.checkedAt < current.checkedAt
 }
 
-export function wouldCycle({ cards, cardId, parentId }: {
+export function wouldCycle({
+  cards,
+  cardId,
+  parentId,
+}: {
   cards: Record<string, Card>
   cardId: string
   parentId: string
@@ -98,21 +133,42 @@ export function wouldCycle({ cards, cardId, parentId }: {
 function newCardColumn({ state }: { state: HydraState }): Column {
   const columns = hydraConfig({ state }).columns
 
-  return columns.some(c => c.id === LEGACY_IN_PROGRESS) ? LEGACY_IN_PROGRESS : roleColumn({ columns, role: 'in_progress' }) ?? fallbackColumn({ columns })
+  return columns.some(c => c.id === LEGACY_IN_PROGRESS) ? LEGACY_IN_PROGRESS : roleColumn({
+    columns,
+    role: 'in_progress',
+  }) ?? fallbackColumn({ columns })
 }
 
-function apply({ state, event }: { state: HydraState; event: HydraEvent }): boolean {
+function apply({
+  state,
+  event,
+}: {
+  state: HydraState
+  event: HydraEvent
+}): boolean {
   if (event.seq <= state.seq || event.id in state.eventIds) {
     return false
   }
 
   state.seq = event.seq
   state.eventIds[event.id] = event.seq
-  applyLabelColors({ state, colors: event.labelColors })
+  applyLabelColors({
+    state,
+    colors: event.labelColors,
+  })
 
-  if (applyReminder({ state, event })
-    || applyPermission({ state, event })
-    || applyHydra({ state, event })) {
+  if (applyReminder({
+    state,
+    event,
+  })
+    || applyPermission({
+      state,
+      event,
+    })
+    || applyHydra({
+      state,
+      event,
+    })) {
     if (event.undoes) {
       state.undone[event.undoes] = event.id
     }
@@ -156,13 +212,23 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
   let card = state.cards[event.cardId]
 
   if (event.type === 'task.session') {
-    applyAttachment({ state, event })
+    applyAttachment({
+      state,
+      event,
+    })
 
     if (event.undoes) {
       state.undone[event.undoes] = event.id
     }
 
-    refreshTasks({ state, ids: [event.cardId, event.data.before, event.data.after] })
+    refreshTasks({
+      state,
+      ids: [
+        event.cardId,
+        event.data.before,
+        event.data.after,
+      ],
+    })
 
     if (card && event.data.before !== card.id) {
       card.revision++
@@ -174,7 +240,11 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
   }
 
   if (event.type === 'card.pushed') {
-    const { key, source, ...fields } = event.data
+    const {
+      key,
+      source,
+      ...fields
+    } = event.data
     delete fields.before
 
     if (!card) {
@@ -191,7 +261,11 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
         attention: [],
         links: [],
         sourceRefs: [],
-        ...(fields.agent && (!source || ['hooks', 'paseo', 'pnyx'].includes(source.adapter)) ? { automaticTask: true } : {}),
+        ...(fields.agent && (!source || [
+          'hooks',
+          'paseo',
+          'pnyx',
+        ].includes(source.adapter)) ? { automaticTask: true } : {}),
         column: newCardColumn({ state }),
         revision: 0,
         createdSeq: event.seq,
@@ -203,15 +277,35 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
     }
 
     if (source) {
-      if (isStaleSource({ card, source })) {
+      if (isStaleSource({
+        card,
+        source,
+      })) {
         return false
       }
 
-      card.sourceRefs = [...card.sourceRefs.filter(r => !sameSource({ a: r, b: source })), source]
+      card.sourceRefs = [
+        ...card.sourceRefs.filter(r => !sameSource({
+          a: r,
+          b: source,
+        })),
+        source,
+      ]
     }
 
-    const { parentId, activity, settings, folder, autoTitle, project, ...rest } = fields
-    Object.assign(card, rest)
+    const {
+      parentId,
+      activity,
+      settings,
+      folder,
+      autoTitle,
+      project,
+      ...rest
+    } = fields
+    Object.assign(
+      card,
+      rest,
+    )
 
     if (project === null) {
       delete card.project
@@ -233,7 +327,10 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
     }
 
     if (autoTitle) {
-      offerTitle({ card, next: autoTitle })
+      offerTitle({
+        card,
+        next: autoTitle,
+      })
     }
 
     if (folder === null) {
@@ -282,16 +379,25 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
         card.rank = event.data.rank
       }
     } else if (event.type === 'card.linked') {
-      const { url, after } = event.data
+      const {
+        url,
+        after,
+      } = event.data
       const current = card.links.find(l => l.url === url)
 
-      if (after && !event.undoes && isStaleLink({ current, next: after })) {
+      if (after && !event.undoes && isStaleLink({
+        current,
+        next: after,
+      })) {
         return false
       }
 
       const others = card.links.filter(l => l.url !== url)
       card.links = after
-        ? (current ? card.links.map(l => (l.url === url ? after : l)) : [...others, after])
+        ? (current ? card.links.map(l => (l.url === url ? after : l)) : [
+          ...others,
+          after,
+        ])
         : others
     } else if (event.type === 'card.replied') {
       const answers = event.data.answers
@@ -303,11 +409,17 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
         ...(taskMessage ? { route: event.data.route } : {}),
         ...(taskMessage && event.data.detail ? { detail: event.data.detail } : {}),
       }
-      const kept = answers ? { ...reply, answers } : reply
+      const kept = answers ? {
+        ...reply,
+        answers,
+      } : reply
       const replies = card.replies ?? []
       card.replies = replies.some(r => r.id === reply.id)
         ? replies.map(r => (r.id === reply.id ? kept : r))
-        : [...replies, kept]
+        : [
+          ...replies,
+          kept,
+        ]
 
       // A task shows its session's requests, which hooks read back from the
       // session's own card, so the answer is marked on all of them.
@@ -317,19 +429,46 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
         const origin = session && state.cards[session.originCardId]
         const task = session?.taskId ? state.cards[session.taskId] : undefined
 
-        for (const holder of new Set([card, session, origin, task])) {
+        for (const holder of new Set([
+          card,
+          session,
+          origin,
+          task,
+        ])) {
           if (holder) {
             holder.attention = holder.attention
-              .map(a => (requestId({ request: a }) === answers ? { ...a, answered: reply.id } : a))
+              .map(a => (requestId({ request: a }) === answers ? {
+                ...a,
+                answered: reply.id,
+              } : a))
           }
         }
       }
     } else if (event.type === 'card.noted') {
-      const { kind, source, at, text } = event.data
-      card.notes = [...(card.notes ?? []), { id: event.id, kind, source, ...(at ? { at } : {}) }]
+      const {
+        kind,
+        source,
+        at,
+        text,
+      } = event.data
+      card.notes = [
+        ...(card.notes ?? []),
+        {
+          id: event.id,
+          kind,
+          source,
+          ...(at ? { at } : {}),
+        },
+      ]
 
       if (kind === 'context' && text.startsWith(SESSION_TITLE)) {
-        offerTitle({ card, next: { from: 'session', text: text.slice(SESSION_TITLE.length) } })
+        offerTitle({
+          card,
+          next: {
+            from: 'session',
+            text: text.slice(SESSION_TITLE.length),
+          },
+        })
       }
     } else if (event.type === 'card.outcome') {
       if (event.data.after) {
@@ -371,7 +510,10 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
           note: event.data.after?.note ?? 'Task outcome updated',
         }
         card.status = declaration
-        card.statusLog = [...(card.statusLog ?? []), declaration]
+        card.statusLog = [
+          ...(card.statusLog ?? []),
+          declaration,
+        ]
       }
     }
   }
@@ -380,9 +522,19 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
     state.undone[event.undoes] = event.id
   }
 
-  observeSession({ state, card, event })
+  observeSession({
+    state,
+    card,
+    event,
+  })
   const task = card.agent && state.sessions?.[sessionId({ agent: card.agent })]?.taskId
-  refreshTasks({ state, ids: [card.id, task] })
+  refreshTasks({
+    state,
+    ids: [
+      card.id,
+      task,
+    ],
+  })
 
   card.revision += 1
 
@@ -396,21 +548,39 @@ function apply({ state, event }: { state: HydraState; event: HydraEvent }): bool
   return true
 }
 
-export function replay({ state, events }: {
+export function replay({
+  state,
+  events,
+}: {
   state: HydraState
   events: Iterable<HydraEvent>
 }): HydraState {
   const next = structuredClone(state)
 
   for (const event of events) {
-    if (apply({ state: next, event })) {
-      refreshDone({ state: next, at: event.at })
+    if (apply({
+      state: next,
+      event,
+    })) {
+      refreshDone({
+        state: next,
+        at: event.at,
+      })
     }
   }
 
   return next
 }
 
-export function reduce({ state, event }: { state: HydraState; event: HydraEvent }): HydraState {
-  return replay({ state, events: [event] })
+export function reduce({
+  state,
+  event,
+}: {
+  state: HydraState
+  event: HydraEvent
+}): HydraState {
+  return replay({
+    state,
+    events: [event],
+  })
 }

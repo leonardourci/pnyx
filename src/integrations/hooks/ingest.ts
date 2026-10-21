@@ -11,12 +11,26 @@ import { harvestTranscripts } from './harvest.ts'
 import { observedSettings, type FoundSettings } from './settings.ts'
 import { HARNESSES, TERMINAL_EVENTS, attend, isHookEnvelope, observe, type HookEnvelope } from './observe.ts'
 
-const HARVEST_AFTER = ['Stop', 'SubagentStop', 'PostCompact', 'SessionEnd']
+const HARVEST_AFTER = [
+  'Stop',
+  'SubagentStop',
+  'PostCompact',
+  'SessionEnd',
+]
 const HOOKS = 'hooks'
 
-function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unknown> }): string[] {
+function ingest({
+  writer,
+  entry,
+}: {
+  writer: Writer
+  entry: Record<string, unknown>
+}): string[] {
   if (typeof entry?.id !== 'string' || typeof entry.at !== 'string') {
-    throw new HydraError({ message: 'spool entry needs id and at', code: 'VALIDATION_ERROR' })
+    throw new HydraError({
+      message: 'spool entry needs id and at',
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   const apply = ({ decision }: { decision: Decision }) => {
@@ -27,12 +41,19 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
 
   if (!isHookEnvelope({ value: entry })) {
     if (typeof entry.key !== 'string') {
-      throw new HydraError({ message: 'spool entry needs id, key and at', code: 'VALIDATION_ERROR' })
+      throw new HydraError({
+        message: 'spool entry needs id, key and at',
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     const actor = typeof entry.actor === 'string' ? entry.actor : 'hook'
     const card = (entry.card ?? {}) as Record<string, unknown>
-    const source = card.source ?? { adapter: actor, objectId: entry.key, observedAt: entry.at }
+    const source = card.source ?? {
+      adapter: actor,
+      objectId: entry.key,
+      observedAt: entry.at,
+    }
     apply({
       decision: decidePush(
         {
@@ -55,7 +76,10 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
   }
 
   if (!(HARNESSES as readonly string[]).includes(entry.harness as string) || typeof entry.event !== 'string') {
-    throw new HydraError({ message: 'hook entry needs a known harness and an event', code: 'VALIDATION_ERROR' })
+    throw new HydraError({
+      message: 'hook entry needs a known harness and an event',
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   const harvest: string[] = []
@@ -65,7 +89,14 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
   // A session (never a subagent, whose key has a /) started in a folder a source
   // assigned, such as a Firstmate task's worktree, reports to that card.
   const task = typeof entry.task === 'string' ? entry.task : undefined
-  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({ state: writer.state, key, folder, terminal, probed, task }))
+  const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({
+    state: writer.state,
+    key,
+    folder,
+    terminal,
+    probed,
+    task,
+  }))
 
   for (const o of observe({ envelope: entry as unknown as HookEnvelope })) {
     // A hosted session's process closes whenever the server stops; the session itself
@@ -81,7 +112,10 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
       continue
     }
 
-    let card = typeof o.card.parent === 'string' ? { ...o.card, parent: resolve({ key: o.card.parent }) } : o.card
+    let card = typeof o.card.parent === 'string' ? {
+      ...o.card,
+      parent: resolve({ key: o.card.parent }),
+    } : o.card
     const session = o.card.agent
       ? writer.state.sessions?.[sessionId({ agent: o.card.agent as AgentRef })] : undefined
 
@@ -96,11 +130,21 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
       }
     }
 
-    const m: Meta = { id: o.id ? `${entry.id}:${o.id}` : entry.id, at: entry.at, actor: `hook:${entry.harness}` }
+    const m: Meta = {
+      id: o.id ? `${entry.id}:${o.id}` : entry.id,
+      at: entry.at,
+      actor: `hook:${entry.harness}`,
+    }
     const current = writer.state.cards[writer.state.keys[key] ?? '']?.attention ?? []
-    const attention = o.attend && attend({ current, change: o.attend })
+    const attention = o.attend && attend({
+      current,
+      change: o.attend,
+    })
 
-    if (o.ifChanged && key in writer.state.keys && isDeepStrictEqual(attention, current)) {
+    if (o.ifChanged && key in writer.state.keys && isDeepStrictEqual(
+      attention,
+      current,
+    )) {
       continue
     }
 
@@ -127,14 +171,30 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
 
       if (moving || replacing) {
         const ref = moving ? existing!.id : replaced!
-        harvestTranscripts({ writer, cardIds: [(moving ? previous : target)!.id], at: m.at })
+        harvestTranscripts({
+          writer,
+          cardIds: [(moving ? previous : target)!.id],
+          at: m.at,
+        })
         apply({
           decision: decideSession({
-            state: writer.state, ref, task: null, meta: { ...m, id: `${m.id}:detach:${ref}` },
+            state: writer.state,
+            ref,
+            task: null,
+            meta: {
+              ...m,
+              id: `${m.id}:detach:${ref}`,
+            },
           }),
         })
         pushed = decidePush({
-          state: writer.state, key, input: attention ? { ...card, attention } : card, meta: m,
+          state: writer.state,
+          key,
+          input: attention ? {
+            ...card,
+            attention,
+          } : card,
+          meta: m,
         })
       }
     }
@@ -149,11 +209,33 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
 
     if (o.outcome !== undefined && target && !stale && owned) {
       const outcome = o.outcome && { state: o.outcome }
-      apply({ decision: decideOutcome({ state: writer.state, ref: key, outcome, meta: { ...m, id: `${m.id}:outcome` }, source: HOOKS }) })
+      apply({
+        decision: decideOutcome({
+          state: writer.state,
+          ref: key,
+          outcome,
+          meta: {
+            ...m,
+            id: `${m.id}:outcome`,
+          },
+          source: HOOKS,
+        }),
+      })
     }
 
     if (o.link) {
-      apply({ decision: decideLink({ state: writer.state, ref: key, url: o.link, link: parseLink({ input: { url: o.link } }), meta: { ...m, id: `${m.id}:link` } }) })
+      apply({
+        decision: decideLink({
+          state: writer.state,
+          ref: key,
+          url: o.link,
+          link: parseLink({ input: { url: o.link } }),
+          meta: {
+            ...m,
+            id: `${m.id}:link`,
+          },
+        }),
+      })
     }
 
     if (!o.ifMissing && !o.ifChanged && HARVEST_AFTER.includes(entry.event)
@@ -169,7 +251,26 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
       const recorded = writer.state.sessions?.[session]
 
       if (recorded && (!recorded.taskId || writer.state.cards[recorded.taskId]?.automaticTask)) {
-        apply({ decision: hydraEvent({ state: writer.state, meta: { ...m, id: `${m.id}:hydra` }, cardId: '$board', change: { type: 'board.configured', data: { ...config, hydra: { ...config.hydra, session } } } }) })
+        apply({
+          decision: hydraEvent({
+            state: writer.state,
+            meta: {
+              ...m,
+              id: `${m.id}:hydra`,
+            },
+            cardId: '$board',
+            change: {
+              type: 'board.configured',
+              data: {
+                ...config,
+                hydra: {
+                  ...config.hydra,
+                  session,
+                },
+              },
+            },
+          }),
+        })
       }
     }
   }
@@ -179,14 +280,24 @@ function ingest({ writer, entry }: { writer: Writer; entry: Record<string, unkno
 
 export function drainSpool({ writer }: {
   writer: Writer
-}): { ingested: number; rejected: number; notes?: number } {
+}): {
+  ingested: number
+  rejected: number
+  notes?: number
+} {
   let ingested = 0
   let rejected = 0
   const harvest = new Set<string>()
 
   for (const file of spoolFiles({ dir: writer.dir })) {
     try {
-      for (const id of ingest({ writer, entry: JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown> })) {
+      for (const id of ingest({
+        writer,
+        entry: JSON.parse(readFileSync(
+          file,
+          'utf8',
+        )) as Record<string, unknown>,
+      })) {
         harvest.add(id)
       }
     } catch (error) {
@@ -194,7 +305,10 @@ export function drainSpool({ writer }: {
         throw error
       }
 
-      renameSync(file, `${file}.rejected`)
+      renameSync(
+        file,
+        `${file}.rejected`,
+      )
       rejected += 1
       continue
     }
@@ -217,11 +331,22 @@ export function drainSpool({ writer }: {
     at: new Date().toISOString(),
   }) : 0
 
-  return { ingested, rejected, ...(notes ? { notes } : {}) }
+  return {
+    ingested,
+    rejected,
+    ...(notes ? { notes } : {}),
+  }
 }
 
 export function ingestSpool({ hydraId }: {
   hydraId: string
-}): { ingested: number; rejected: number; notes?: number } {
-  return withWriter({ hydraId, fn: ({ writer }) => drainSpool({ writer }) })
+}): {
+  ingested: number
+  rejected: number
+  notes?: number
+} {
+  return withWriter({
+    hydraId,
+    fn: ({ writer }) => drainSpool({ writer }),
+  })
 }

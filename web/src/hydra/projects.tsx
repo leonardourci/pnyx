@@ -4,25 +4,52 @@ import { AddProject, ProjectSharing } from './add-project.tsx'
 import { Button, Input, Switch, Textarea } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
 
-type ProjectRow = { name: string; path: string; state: string; startCommand?: HydraProject['startCommand'] }
+type ProjectRow = {
+  name: string
+  path: string
+  state: string
+  startCommand?: HydraProject['startCommand']
+}
 type Confirmation = {
   token: string
   path: string
   name: string
-  hydras: { id: string; name: string; url: string }[]
+  hydras: {
+    id: string
+    name: string
+    url: string
+  }[]
 }
 
-function ProjectCommand({ project, disabled, command, refresh, notify }: {
+function ProjectCommand({
+  project,
+  disabled,
+  command,
+  refresh,
+  notify,
+}: {
   project: ProjectRow
   disabled: boolean
   command: Command
   refresh(): Promise<void>
   notify({ text }: { text: string }): void
 }) {
-  const [name, setName] = useState(project.startCommand?.name ?? '')
-  const [shell, setShell] = useState(project.startCommand?.command ?? '')
-  const [ownFolder, setOwnFolder] = useState(project.startCommand?.bringsOwnFolder ?? false)
-  const [busy, setBusy] = useState(false)
+  const [
+    name,
+    setName,
+  ] = useState(project.startCommand?.name ?? '')
+  const [
+    shell,
+    setShell,
+  ] = useState(project.startCommand?.command ?? '')
+  const [
+    ownFolder,
+    setOwnFolder,
+  ] = useState(project.startCommand?.bringsOwnFolder ?? false)
+  const [
+    busy,
+    setBusy,
+  ] = useState(false)
 
   return (
     <form
@@ -30,7 +57,21 @@ function ProjectCommand({ project, disabled, command, refresh, notify }: {
       aria-label={`Start settings for ${project.name}`}
       onSubmit={e => {
         e.preventDefault(); setBusy(true)
-        void command({ name: 'project', args: ['set', project.path, '--command-name', name, '--command', shell, '--brings-own-folder', String(ownFolder), '--event-id', crypto.randomUUID()] })
+        void command({
+          name: 'project',
+          args: [
+            'set',
+            project.path,
+            '--command-name',
+            name,
+            '--command',
+            shell,
+            '--brings-own-folder',
+            String(ownFolder),
+            '--event-id',
+            crypto.randomUUID(),
+          ],
+        })
           .then(async () => {
             await refresh(); notify({ text: shell.trim() ? 'Project start command saved.' : 'Project start command cleared.' })
           })
@@ -64,44 +105,82 @@ function ProjectCommand({ project, disabled, command, refresh, notify }: {
   )
 }
 
-export function Projects({ state, connected, command, notify }: {
+export function Projects({
+  state,
+  connected,
+  command,
+  notify,
+}: {
   state: HydraState
   connected: boolean
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const [projects, setProjects] = useState<ProjectRow[]>([])
-  const [readonly, setReadonly] = useState(false)
-  const [busy, setBusy] = useState(false), [loading, setLoading] = useState(true)
-  const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
-  const refresh = useCallback(() => command({ name: 'project', args: ['list'] }).then(r => {
-    setProjects(Array.isArray(r.projects) ? r.projects as ProjectRow[] : [])
-    setReadonly(r.readonly === true); setLoading(false)
-  }), [command])
-  useEffect(() => {
-    if (!connected) {
-      setLoading(true)
+  const [
+    projects,
+    setProjects,
+  ] = useState<ProjectRow[]>([])
+  const [
+    readonly,
+    setReadonly,
+  ] = useState(false)
+  const [
+      busy,
+      setBusy,
+    ] = useState(false), [
+      loading,
+      setLoading,
+    ] = useState(true)
+  const [
+    confirmation,
+    setConfirmation,
+  ] = useState<Confirmation | null>(null)
+  const refresh = useCallback(
+    () => command({
+      name: 'project',
+      args: ['list'],
+    }).then(r => {
+      setProjects(Array.isArray(r.projects) ? r.projects as ProjectRow[] : [])
+      setReadonly(r.readonly === true); setLoading(false)
+    }),
+    [command],
+  )
+  useEffect(
+    () => {
+      if (!connected) {
+        setLoading(true)
 
-      return
-    }
+        return
+      }
 
-    void refresh().catch((e: Error) => {
-      setLoading(false); notify({ text: e.message })
-    })
-  }, [
-    connected,
-    state.projectsRevision,
-    state.config?.hydra.home,
-    state.config?.hydra.kind,
-    refresh,
-    notify,
-  ])
+      void refresh().catch((e: Error) => {
+        setLoading(false); notify({ text: e.message })
+      })
+    },
+    [
+      connected,
+      state.projectsRevision,
+      state.config?.hydra.home,
+      state.config?.hydra.kind,
+      refresh,
+      notify,
+    ],
+  )
 
   const run = ({ args }: { args: string[] }) => {
     setBusy(true)
-    void command({ name: 'project', args }).then(async r => {
+    void command({
+      name: 'project',
+      args,
+    }).then(async r => {
       if (r.confirmation === 'needed') {
-        const preview = r.preview as { project: { path: string; name: string }; hydras: Confirmation['hydras'] }
+        const preview = r.preview as {
+          project: {
+            path: string
+            name: string
+          }
+          hydras: Confirmation['hydras']
+        }
         setConfirmation({
           token: r.token as string,
           path: preview.project.path,
@@ -134,7 +213,19 @@ export function Projects({ state, connected, command, notify }: {
           />
         )}
       </div>
-      {!readonly && <Button disabled={busy || !connected} aria-label={`${p.state === 'detached' ? 'Re-attach' : 'Detach'} ${p.name}`} onClick={() => run({ args: [p.state === 'detached' ? 'add' : 'remove', p.path] })}>{p.state === 'detached' ? 'Re-attach' : 'Detach'}</Button>}
+      {!readonly && (
+        <Button
+          disabled={busy || !connected}
+          aria-label={`${p.state === 'detached' ? 'Re-attach' : 'Detach'} ${p.name}`}
+          onClick={() => run({
+            args: [
+              p.state === 'detached' ? 'add' : 'remove',
+              p.path,
+            ],
+          })}
+        >{p.state === 'detached' ? 'Re-attach' : 'Detach'}
+        </Button>
+      )}
     </li>
   )
 
@@ -175,7 +266,14 @@ export function Projects({ state, connected, command, notify }: {
           confirmation={confirmation}
           disabled={busy || !connected}
           cancel={() => setConfirmation(null)}
-          confirm={() => run({ args: ['add', confirmation.path, '--confirm', confirmation.token] })}
+          confirm={() => run({
+            args: [
+              'add',
+              confirmation.path,
+              '--confirm',
+              confirmation.token,
+            ],
+          })}
         />
       )}
     </section>

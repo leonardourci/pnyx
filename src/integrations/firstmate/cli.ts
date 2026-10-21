@@ -3,24 +3,54 @@ import { COMMON, guard, parse, type Options, type Output } from '../../cli/comma
 import { resolveHome } from './home.ts'
 import { syncHome, watchHome, type SyncResult } from './sync.ts'
 
-const HOMES: Options = { ...COMMON, home: { type: 'string', multiple: true } }
+const HOMES: Options = {
+  ...COMMON,
+  home: {
+    type: 'string',
+    multiple: true,
+  },
+}
 
 function homes({ values }: { values: Record<string, unknown> }): string[] {
   const list = (values.home as string[] | undefined) ?? []
 
   if (list.length === 0) {
-    throw new AxiError('missing --home', 'VALIDATION_ERROR', ['Pass each Firstmate home with --home <path>'])
+    throw new AxiError(
+      'missing --home',
+      'VALIDATION_ERROR',
+      ['Pass each Firstmate home with --home <path>'],
+    )
   }
 
   return list.map(path => resolveHome({ path }))
 }
 
-function sync({ hydraId, list }: { hydraId: string; list: string[] }): Output {
-  const results = list.map(home => ({ home, ...syncHome({ hydraId, home }) }))
+function sync({
+  hydraId,
+  list,
+}: {
+  hydraId: string
+  list: string[]
+}): Output {
+  const results = list.map(home => ({
+    home,
+    ...syncHome({
+      hydraId,
+      home,
+    }),
+  }))
   const ignored = results.filter(r => r.ignored).map(r => r.home)
 
   return {
-    synced: results.map(({ home, tasks, appended }) => ({ home, tasks, appended })),
+    synced: results.map(({
+      home,
+      tasks,
+      appended,
+    }) => ({
+      home,
+      tasks,
+      appended,
+    })),
     ...(ignored.length ? { ignored: results.filter(r => r.ignored).map(r => `${r.home}: ${r.ignored}`) } : {}),
     help: [
       ...ignored.map(home => `Ignored ${home}: run \`pnyx-axi hydra set --firstmate ${home} --hydra ${hydraId}\` to make it this Hydra, or sync it into another Hydra`),
@@ -29,11 +59,18 @@ function sync({ hydraId, list }: { hydraId: string; list: string[] }): Output {
   }
 }
 
-export function watchHomes({ hydraId, list }: {
+export function watchHomes({
+  hydraId,
+  list,
+}: {
   hydraId: string
   list: string[]
 }): { close(): Output } {
-  const totals = { syncs: 0, appended: 0, errors: 0 }
+  const totals = {
+    syncs: 0,
+    appended: 0,
+    errors: 0,
+  }
   const ignored = new Set<string>()
   let lastError: string | undefined
 
@@ -76,11 +113,26 @@ export function watchHomes({ hydraId, list }: {
   }
 }
 
-async function watch({ hydraId, list }: { hydraId: string; list: string[] }): Promise<Output> {
-  const watches = watchHomes({ hydraId, list })
+async function watch({
+  hydraId,
+  list,
+}: {
+  hydraId: string
+  list: string[]
+}): Promise<Output> {
+  const watches = watchHomes({
+    hydraId,
+    list,
+  })
   await new Promise<void>(resolve => {
-    process.once('SIGINT', resolve)
-    process.once('SIGTERM', resolve)
+    process.once(
+      'SIGINT',
+      resolve,
+    )
+    process.once(
+      'SIGTERM',
+      resolve,
+    )
   })
 
   return watches.close()
@@ -88,18 +140,36 @@ async function watch({ hydraId, list }: { hydraId: string; list: string[] }): Pr
 
 const firstmate = guard<Output | Promise<Output>>({
   handler: ({ args }) => {
-    const [sub, ...rest] = args
+    const [
+      sub,
+      ...rest
+    ] = args
 
     if (sub !== 'sync' && sub !== 'watch') {
-      throw new AxiError(`unknown firstmate command: ${sub ?? '(none)'}`, 'VALIDATION_ERROR', [
-        'Run `pnyx-axi firstmate sync --home <path>` or `pnyx-axi firstmate watch --home <path>`',
-      ])
+      throw new AxiError(
+        `unknown firstmate command: ${sub ?? '(none)'}`,
+        'VALIDATION_ERROR',
+        ['Run `pnyx-axi firstmate sync --home <path>` or `pnyx-axi firstmate watch --home <path>`'],
+      )
     }
 
-    const { values, hydraId } = parse({ args: rest, options: HOMES, positionals: 0 })
+    const {
+      values,
+      hydraId,
+    } = parse({
+      args: rest,
+      options: HOMES,
+      positionals: 0,
+    })
     const list = homes({ values })
 
-    return sub === 'sync' ? sync({ hydraId, list }) : watch({ hydraId, list })
+    return sub === 'sync' ? sync({
+      hydraId,
+      list,
+    }) : watch({
+      hydraId,
+      list,
+    })
   },
 })
 

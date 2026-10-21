@@ -175,7 +175,11 @@ export const RERANKER: ModelFile & { golden: number[] } = {
   sha256: '22c9979ce4fbcdc5acdc310c6641c32797eff1aa980b8f7a2db8a8ea23429a48',
   bytes: 639153184,
   // Its scores for RERANK_PROBE over PROBES, on Metal (CPU is within 0.03).
-  golden: [0.4794, 0.1785, 0],
+  golden: [
+    0.4794,
+    0.1785,
+    0,
+  ],
 }
 
 // Fixed texts every model run is checked against before it is trusted.
@@ -188,8 +192,14 @@ export const RERANK_PROBE = 'rollback after database schema change blocked write
 
 const STALL_MS = 60_000
 
-export const modelsDir = () => join(pnyxHome(), 'models')
-export const modelPath = ({ model }: { model: ModelFile }) => join(modelsDir(), model.file)
+export const modelsDir = () => join(
+  pnyxHome(),
+  'models',
+)
+export const modelPath = ({ model }: { model: ModelFile }) => join(
+  modelsDir(),
+  model.file,
+)
 
 // Present at its pinned size; download() checked its SHA-256 before naming it.
 export function isInstalled({ model }: { model: ModelFile }): boolean {
@@ -202,17 +212,29 @@ export function isInstalled({ model }: { model: ModelFile }): boolean {
 
 function removeAbandoned({ model }: { model: ModelFile }): void {
   for (const name of readdirSync(modelsDir())) {
-    const pid = Number(name.slice(model.file.length + 1, -'.part'.length))
+    const pid = Number(name.slice(
+      model.file.length + 1,
+      -'.part'.length,
+    ))
 
     if (!name.startsWith(`${model.file}.`) || !name.endsWith('.part') || !Number.isInteger(pid)) {
       continue
     }
 
     try {
-      process.kill(pid, 0)
+      process.kill(
+        pid,
+        0,
+      )
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
-        rmSync(join(modelsDir(), name), { force: true })
+        rmSync(
+          join(
+            modelsDir(),
+            name,
+          ),
+          { force: true },
+        )
       }
     }
   }
@@ -222,18 +244,37 @@ function removeAbandoned({ model }: { model: ModelFile }): void {
 // only when size and SHA-256 match. Reports progress in bytes. A minute without
 // data aborts it.
 // ponytail: a failed download starts over; resume with a Range request if large files fail often.
-export async function download({ model, progress = () => {} }: { model: ModelFile; progress?: ({ bytes }: { bytes: number }) => void }): Promise<'present' | 'downloaded'> {
+export async function download({
+  model,
+  progress = () => {},
+}: {
+  model: ModelFile
+  progress?: ({ bytes }: { bytes: number }) => void
+}): Promise<'present' | 'downloaded'> {
   if (isInstalled({ model })) {
     return 'present'
   }
 
-  mkdirSync(modelsDir(), { recursive: true })
+  mkdirSync(
+    modelsDir(),
+    { recursive: true },
+  )
   removeAbandoned({ model })
   const part = `${modelPath({ model })}.${process.pid}.part`
-  const failed = ({ why }: { why: string }) => new HydraError({ message: `download of ${model.file} failed: ${why}`, code: 'DOWNLOAD_FAILED', help: ['Check the network and run `pnyx-axi oracle setup --semantic` again'] })
+  const failed = ({ why }: { why: string }) => new HydraError({
+    message: `download of ${model.file} failed: ${why}`,
+    code: 'DOWNLOAD_FAILED',
+    help: ['Check the network and run `pnyx-axi oracle setup --semantic` again'],
+  })
   const stall = new AbortController()
-  let timer = setTimeout(() => stall.abort(new Error('no data for a minute')), STALL_MS)
-  const res = await fetch(model.url, { signal: stall.signal }).catch((error: Error) => {
+  let timer = setTimeout(
+    () => stall.abort(new Error('no data for a minute')),
+    STALL_MS,
+  )
+  const res = await fetch(
+    model.url,
+    { signal: stall.signal },
+  ).catch((error: Error) => {
     clearTimeout(timer)
     throw failed({ why: error.message })
   })
@@ -245,27 +286,47 @@ export async function download({ model, progress = () => {} }: { model: ModelFil
   const hash = createHash('sha256')
   let bytes = 0
   const count = new Transform({
-    transform(chunk: Buffer, _encoding, done) {
+    transform(
+      chunk: Buffer,
+      _encoding,
+      done,
+    ) {
       clearTimeout(timer)
-      timer = setTimeout(() => stall.abort(new Error('no data for a minute')), STALL_MS)
+      timer = setTimeout(
+        () => stall.abort(new Error('no data for a minute')),
+        STALL_MS,
+      )
       hash.update(chunk)
       bytes += chunk.length
       progress({ bytes })
-      done(null, chunk)
+      done(
+        null,
+        chunk,
+      )
     },
   })
 
   try {
-    await pipeline(Readable.fromWeb(res.body as import('node:stream/web').ReadableStream), count, createWriteStream(part))
+    await pipeline(
+      Readable.fromWeb(res.body as import('node:stream/web').ReadableStream),
+      count,
+      createWriteStream(part),
+    )
     const sha256 = hash.digest('hex')
 
     if (bytes !== model.bytes || sha256 !== model.sha256) {
       throw failed({ why: `it does not match its pin (${bytes} bytes, sha256 ${sha256})` })
     }
 
-    renameSync(part, modelPath({ model }))
+    renameSync(
+      part,
+      modelPath({ model }),
+    )
   } catch (error) {
-    rmSync(part, { force: true })
+    rmSync(
+      part,
+      { force: true },
+    )
     throw error instanceof HydraError ? error : failed({ why: (error as Error).message })
   } finally {
     clearTimeout(timer)
@@ -278,16 +339,45 @@ export async function download({ model, progress = () => {} }: { model: ModelFil
 // would fail the same way (or fetch a gigabyte again) until it expires. The
 // reranker's failures are kept apart: searches still run on the embedder meanwhile.
 type Failing = 'semantic' | 'reranker'
-const failurePath = ({ what }: { what: Failing }) => join(pnyxHome(), `${what}-failure.json`)
+const failurePath = ({ what }: { what: Failing }) => join(
+  pnyxHome(),
+  `${what}-failure.json`,
+)
 
-export function recordFailure({ message, forMs, what = 'semantic' }: { message: string; forMs: number; what?: Failing }): void {
-  mkdirSync(pnyxHome(), { recursive: true })
-  writeFileSync(failurePath({ what }), `${JSON.stringify({ message, until: Date.now() + forMs })}\n`)
+export function recordFailure({
+  message,
+  forMs,
+  what = 'semantic',
+}: {
+  message: string
+  forMs: number
+  what?: Failing
+}): void {
+  mkdirSync(
+    pnyxHome(),
+    { recursive: true },
+  )
+  writeFileSync(
+    failurePath({ what }),
+    `${JSON.stringify({
+      message,
+      until: Date.now() + forMs,
+    })}\n`,
+  )
 }
 
 export function activeFailure({ what = 'semantic' }: { what?: Failing } = {}): string | undefined {
   try {
-    const { message, until } = JSON.parse(readFileSync(failurePath({ what }), 'utf8')) as { message: string; until: number }
+    const {
+      message,
+      until,
+    } = JSON.parse(readFileSync(
+      failurePath({ what }),
+      'utf8',
+    )) as {
+      message: string
+      until: number
+    }
 
     return until > Date.now() ? message : undefined
   } catch {
@@ -296,6 +386,12 @@ export function activeFailure({ what = 'semantic' }: { what?: Failing } = {}): s
 }
 
 export function clearFailure(): void {
-  rmSync(failurePath({ what: 'semantic' }), { force: true })
-  rmSync(failurePath({ what: 'reranker' }), { force: true })
+  rmSync(
+    failurePath({ what: 'semantic' }),
+    { force: true },
+  )
+  rmSync(
+    failurePath({ what: 'reranker' }),
+    { force: true },
+  )
 }

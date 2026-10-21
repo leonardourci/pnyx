@@ -3,7 +3,14 @@ import type { ModelOption } from '../../../src/server/provider.ts'
 import type { Command } from './connection.ts'
 import { Button, Select, type Option } from '../components/ui/controls.tsx'
 
-export function PickerField({ label, value, options, disabled, reason, onChange }: {
+export function PickerField({
+  label,
+  value,
+  options,
+  disabled,
+  reason,
+  onChange,
+}: {
   label: string
   value: string
   options: Option[]
@@ -27,39 +34,69 @@ export function PickerField({ label, value, options, disabled, reason, onChange 
   )
 }
 
-export function useModels({ harness, command, connected }: {
+export function useModels({
+  harness,
+  command,
+  connected,
+}: {
   harness: 'claude' | 'codex'
   command: Command
   connected: boolean
 }) {
   // Kept with its harness, so a switch never shows the previous harness's models.
-  const [catalog, setCatalog] = useState<{ harness: string; models: ModelOption[] }>()
-  const [error, setError] = useState('')
-  const [retry, setRetry] = useState(0)
+  const [
+    catalog,
+    setCatalog,
+  ] = useState<{
+    harness: string
+    models: ModelOption[]
+  }>()
+  const [
+    error,
+    setError,
+  ] = useState('')
+  const [
+    retry,
+    setRetry,
+  ] = useState(0)
 
-  useEffect(() => {
-    if (!connected) {
-      return
-    }
+  useEffect(
+    () => {
+      if (!connected) {
+        return
+      }
 
-    let active = true
-    setError('')
-    void command({ name: 'models', args: [harness] })
-      .then(receipt => {
-        if (active) {
-          setCatalog({ harness, models: receipt.models as ModelOption[] })
-        }
+      let active = true
+      setError('')
+      void command({
+        name: 'models',
+        args: [harness],
       })
-      .catch((error: Error) => {
-        if (active) {
-          setError(error.message)
-        }
-      })
+        .then(receipt => {
+          if (active) {
+            setCatalog({
+              harness,
+              models: receipt.models as ModelOption[],
+            })
+          }
+        })
+        .catch((error: Error) => {
+          if (active) {
+            setError(error.message)
+          }
+        })
 
-    return () => {
-      active = false
-    }
-  }, [harness, command, connected, retry])
+      return () => {
+        active = false
+      }
+    },
+    [
+      harness,
+      command,
+      connected,
+      retry,
+    ],
+  )
 
   return {
     models: catalog?.harness === harness ? catalog.models : undefined,
@@ -69,7 +106,14 @@ export function useModels({ harness, command, connected }: {
 }
 
 export function ModelPicker({
-  models, error, retry, value, options, disabled, connected, onChange,
+  models,
+  error,
+  retry,
+  value,
+  options,
+  disabled,
+  connected,
+  onChange,
 }: {
   models?: ModelOption[]
   error: string

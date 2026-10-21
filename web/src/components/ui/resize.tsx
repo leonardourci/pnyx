@@ -1,13 +1,41 @@
 import { useEffect, useRef, useState } from 'react'
 import { clampViewSize } from '../../../../src/core/view.ts'
 
-export function Resize({ label, value, min, max, axis = 'x', reverse = false, onPreview, onCommit }: { label: string; value: number; min: number; max?: number; axis?: 'x' | 'y'; reverse?: boolean; onPreview({ value }: { value: number | null }): void; onCommit({ value }: { value: number }): unknown }) {
-  const [preview, setPreview] = useState<number | null>(null)
+export function Resize({
+  label,
+  value,
+  min,
+  max,
+  axis = 'x',
+  reverse = false,
+  onPreview,
+  onCommit,
+}: {
+  label: string
+  value: number
+  min: number
+  max?: number
+  axis?: 'x' | 'y'
+  reverse?: boolean
+  onPreview({ value }: { value: number | null }): void
+  onCommit({ value }: { value: number }): unknown
+}) {
+  const [
+    preview,
+    setPreview,
+  ] = useState<number | null>(null)
   const current = useRef<number | null>(null)
-  const drag = useRef<{ start: number; value: number } | null>(null)
+  const drag = useRef<{
+    start: number
+    value: number
+  } | null>(null)
 
   const previewAt = ({ size: n }: { size: number }) => {
-    const next = clampViewSize({ value: n, min, max })
+    const next = clampViewSize({
+      value: n,
+      min,
+      max,
+    })
     current.current = next
     setPreview(next)
     onPreview({ value: next })
@@ -21,13 +49,22 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
     onPreview({ value: null })
 
     if (!cancel && n !== null && n !== value) {
-      void onCommit({ value: clampViewSize({ value: n, min, max }) })
+      void onCommit({
+        value: clampViewSize({
+          value: n,
+          min,
+          max,
+        }),
+      })
     }
   }
 
-  useEffect(() => () => {
-    current.current = null
-  }, [])
+  useEffect(
+    () => () => {
+      current.current = null
+    },
+    [],
+  )
 
   return (
     <div
@@ -45,7 +82,10 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
           return
         }
 
-        e.preventDefault(); e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId); drag.current = { start: axis === 'x' ? e.clientX : e.clientY, value }
+        e.preventDefault(); e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId); drag.current = {
+          start: axis === 'x' ? e.clientX : e.clientY,
+          value,
+        }
       }}
       onPointerMove={e => {
         if (drag.current) {
@@ -67,9 +107,19 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
           return
         }
 
-        const keys = axis === 'x' ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown']
+        const keys = axis === 'x' ? [
+          'ArrowLeft',
+          'ArrowRight',
+        ] : [
+          'ArrowUp',
+          'ArrowDown',
+        ]
 
-        if (![...keys, 'Home', ...(max === undefined ? [] : ['End'])].includes(e.key)) {
+        if (![
+          ...keys,
+          'Home',
+          ...(max === undefined ? [] : ['End']),
+        ].includes(e.key)) {
           return
         }
 
@@ -78,7 +128,14 @@ export function Resize({ label, value, min, max, axis = 'x', reverse = false, on
         previewAt({ size: e.key === 'Home' ? min : e.key === 'End' && max !== undefined ? max : (current.current ?? value) + (e.key === keys[1] ? 1 : -1) * (reverse ? -1 : 1) * (e.shiftKey ? 32 : 8) })
       }}
       onKeyUp={e => {
-        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
+        if ([
+          'ArrowLeft',
+          'ArrowRight',
+          'ArrowUp',
+          'ArrowDown',
+          'Home',
+          'End',
+        ].includes(e.key)) {
           finish({ })
         }
       }}

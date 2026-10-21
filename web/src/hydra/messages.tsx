@@ -13,11 +13,24 @@ import { MessageComment } from './message-comment.tsx'
 import { blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage } from './message-selection.ts'
 import { receiptLabel } from './view.ts'
 
-const roleLabel = ({ role, assistantLabel = 'Agent' }: { role: string; assistantLabel?: string }) => role === 'assistant' ? assistantLabel : role === 'user' ? 'You' : role
+const roleLabel = ({
+  role,
+  assistantLabel = 'Agent',
+}: {
+  role: string
+  assistantLabel?: string
+}) => role === 'assistant' ? assistantLabel : role === 'user' ? 'You' : role
 
 export function Messages({
-  entries, comments, setComments, quote,
-  toolDetails = true, thinkingDetails = true, taskTitles, openTask, assistantLabel,
+  entries,
+  comments,
+  setComments,
+  quote,
+  toolDetails = true,
+  thinkingDetails = true,
+  taskTitles,
+  openTask,
+  assistantLabel,
 }: {
   openTask?({ id }: { id: string }): void
   taskTitles?: Record<string, string>
@@ -30,9 +43,18 @@ export function Messages({
   quote({ text }: { text: string }): void
 }) {
   const root = useRef<HTMLDivElement>(null)
-  const [active, setActive] = useState<string | null>(null)
-  const [selection, setSelection] = useState<CommentPassage | null>(null)
-  const [editing, setEditing] = useState<string | null>(null)
+  const [
+    active,
+    setActive,
+  ] = useState<string | null>(null)
+  const [
+    selection,
+    setSelection,
+  ] = useState<CommentPassage | null>(null)
+  const [
+    editing,
+    setEditing,
+  ] = useState<string | null>(null)
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
   const blockFor = ({ key }: { key: string | null }) =>
@@ -40,13 +62,32 @@ export function Messages({
 
   const focusBlock = ({ element }: { element?: HTMLElement }) => {
     if (element && root.current) {
-      setActive(element.dataset.messageBlock!); placeMessageCaret({ host: root.current, target: element, edge: 'start' })
+      setActive(element.dataset.messageBlock!); placeMessageCaret({
+        host: root.current,
+        target: element,
+        edge: 'start',
+      })
     }
   }
 
-  const addComment = ({ quote, text = '' }: { quote: CommentPassage; text?: string }) => {
-    const comment = { ...quote, id: crypto.randomUUID(), text }
-    setComments({ items: [...comments, comment] }); setEditing(comment.id); setSelection(null)
+  const addComment = ({
+    quote,
+    text = '',
+  }: {
+    quote: CommentPassage
+    text?: string
+  }) => {
+    const comment = {
+      ...quote,
+      id: crypto.randomUUID(),
+      text,
+    }
+    setComments({
+      items: [
+        ...comments,
+        comment,
+      ],
+    }); setEditing(comment.id); setSelection(null)
     window.getSelection()?.removeAllRanges()
   }
 
@@ -67,7 +108,11 @@ export function Messages({
 
       moved = true
 
-      return { ...comment, ...blockPassage({ block }), quote: comment.quote }
+      return {
+        ...comment,
+        ...blockPassage({ block }),
+        quote: comment.quote,
+      }
     })
 
     if (moved) {
@@ -93,97 +138,166 @@ export function Messages({
       }
 
       event.preventDefault(); event.stopPropagation()
-      addComment({ quote: selection, text: event.key })
+      addComment({
+        quote: selection,
+        text: event.key,
+      })
     }
 
-    window.addEventListener('keydown', typeComment, true)
+    window.addEventListener(
+      'keydown',
+      typeComment,
+      true,
+    )
 
-    return () => window.removeEventListener('keydown', typeComment, true)
+    return () => window.removeEventListener(
+      'keydown',
+      typeComment,
+      true,
+    )
   })
 
   // Mouse selections count on mouseup so the comment offer never moves text under the pointer.
-  useEffect(() => {
-    const track = ({ buttons }: { buttons: number }) => {
-      if (buttons) {
-        return
+  useEffect(
+    () => {
+      const track = ({ buttons }: { buttons: number }) => {
+        if (buttons) {
+          return
+        }
+
+        const focusNode = window.getSelection()?.focusNode ?? null
+        const block = root.current?.contains(focusNode) ? messageBlock({ node: focusNode }) : null
+        const next = selectedPassage({ messages: root.current })
+
+        if (block && !document.activeElement?.closest('.inline-comment')) {
+          setActive(block.dataset.messageBlock!)
+        }
+
+        setSelection(prior => samePassage({
+          before: prior,
+          after: next,
+        }) ? prior : next)
       }
 
-      const focusNode = window.getSelection()?.focusNode ?? null
-      const block = root.current?.contains(focusNode) ? messageBlock({ node: focusNode }) : null
-      const next = selectedPassage({ messages: root.current })
+      let buttons = 0
 
-      if (block && !document.activeElement?.closest('.inline-comment')) {
-        setActive(block.dataset.messageBlock!)
+      const press = (event: MouseEvent) => {
+        buttons = event.buttons
       }
 
-      setSelection(prior => samePassage({ before: prior, after: next }) ? prior : next)
-    }
-
-    let buttons = 0
-
-    const press = (event: MouseEvent) => {
-      buttons = event.buttons
-    }
-
-    const release = (event: MouseEvent) => {
-      buttons = event.buttons; track({ buttons })
-    }
-
-    // A drag that ends outside the window never sends its mouseup here.
-    const reset = () => {
-      buttons = 0
-    }
-
-    const change = () => track({ buttons })
-    document.addEventListener('selectionchange', change)
-    document.addEventListener('mousedown', press); document.addEventListener('mouseup', release)
-    window.addEventListener('blur', reset)
-
-    return () => {
-      document.removeEventListener('selectionchange', change)
-      document.removeEventListener('mousedown', press); document.removeEventListener('mouseup', release)
-      window.removeEventListener('blur', reset)
-    }
-  }, [])
-
-  useEffect(() => {
-    const host = root.current
-
-    const keep = (event: InputEvent) => {
-      if (event.target === host) {
-        event.preventDefault()
+      const release = (event: MouseEvent) => {
+        buttons = event.buttons; track({ buttons })
       }
-    }
 
-    host?.addEventListener('beforeinput', keep)
+      // A drag that ends outside the window never sends its mouseup here.
+      const reset = () => {
+        buttons = 0
+      }
 
-    return () => host?.removeEventListener('beforeinput', keep)
-  }, [])
+      const change = () => track({ buttons })
+      document.addEventListener(
+        'selectionchange',
+        change,
+      )
+      document.addEventListener(
+        'mousedown',
+        press,
+      ); document.addEventListener(
+        'mouseup',
+        release,
+      )
+      window.addEventListener(
+        'blur',
+        reset,
+      )
 
-  useEffect(() => {
-    const jump = (event: KeyboardEvent) => {
-      const host = root.current, focused = document.activeElement
-      const mod = platform === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+      return () => {
+        document.removeEventListener(
+          'selectionchange',
+          change,
+        )
+        document.removeEventListener(
+          'mousedown',
+          press,
+        ); document.removeEventListener(
+          'mouseup',
+          release,
+        )
+        window.removeEventListener(
+          'blur',
+          reset,
+        )
+      }
+    },
+    [],
+  )
 
-      if (!host || !mod || event.shiftKey || event.altKey || event.repeat || event.isComposing ||
+  useEffect(
+    () => {
+      const host = root.current
+
+      const keep = (event: InputEvent) => {
+        if (event.target === host) {
+          event.preventDefault()
+        }
+      }
+
+      host?.addEventListener(
+        'beforeinput',
+        keep,
+      )
+
+      return () => host?.removeEventListener(
+        'beforeinput',
+        keep,
+      )
+    },
+    [],
+  )
+
+  useEffect(
+    () => {
+      const jump = (event: KeyboardEvent) => {
+        const host = root.current, focused = document.activeElement
+        const mod = platform === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+
+        if (!host || !mod || event.shiftKey || event.altKey || event.repeat || event.isComposing ||
         event.defaultPrevented || event.key.toLowerCase() !== 'l') {
-        return
+          return
+        }
+
+        if (focused === host) {
+          event.preventDefault(); focusComposer({ host })
+        } else if (focused?.matches('.composer textarea') && focused.closest('.detail, .hydra-chat')?.contains(host)) {
+          event.preventDefault(); placeMessageCaret({
+            host,
+            target: latestAgentMessage({ host }),
+            edge: 'start',
+          })
+        }
       }
 
-      if (focused === host) {
-        event.preventDefault(); focusComposer({ host })
-      } else if (focused?.matches('.composer textarea') && focused.closest('.detail, .hydra-chat')?.contains(host)) {
-        event.preventDefault(); placeMessageCaret({ host, target: latestAgentMessage({ host }), edge: 'start' })
-      }
-    }
+      window.addEventListener(
+        'keydown',
+        jump,
+      )
 
-    window.addEventListener('keydown', jump)
-
-    return () => window.removeEventListener('keydown', jump)
-  }, [platform])
+      return () => window.removeEventListener(
+        'keydown',
+        jump,
+      )
+    },
+    [platform],
+  )
 
   const caretKey = ({ event }: { event: KeyEvent<HTMLDivElement> }) => {
-    const host = event.currentTarget, { key, shiftKey, altKey, ctrlKey, metaKey } = event
+    const host = event.currentTarget, {
+      key,
+      shiftKey,
+      altKey,
+      ctrlKey,
+      metaKey,
+    } = event
 
     if (event.target !== host || event.nativeEvent.isComposing) {
       return
@@ -245,12 +359,26 @@ export function Messages({
     const n = elements.findIndex(e => e.dataset.messageBlock === active)
     const next = to === 'first' ? 0 : to === 'last' ? elements.length - 1
       : n < 0 ? to === 'up' ? elements.length - 1 : 0 : n + (to === 'up' ? -1 : 1)
-    focusBlock({ element: elements[Math.max(0, Math.min(elements.length - 1, next))] })
+    focusBlock({
+      element: elements[Math.max(
+        0,
+        Math.min(
+          elements.length - 1,
+          next,
+        ),
+      )],
+    })
 
     return true
   }
 
-  const pageStep = ({ target, direction }: { target: HTMLElement; direction: number }) => {
+  const pageStep = ({
+    target,
+    direction,
+  }: {
+    target: HTMLElement
+    direction: number
+  }) => {
     if (!root.current?.closest('.thread')?.contains(target)) {
       return false
     }
@@ -261,12 +389,36 @@ export function Messages({
     return !!scroller
   }
 
-  useKeyAction({ id: 'thread.pageUp', handler: ({ context }) => pageStep({ target: context.target, direction: -1 }) })
-  useKeyAction({ id: 'thread.pageDown', handler: ({ context }) => pageStep({ target: context.target, direction: 1 }) })
-  useKeyAction({ id: 'thread.up', handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'up' }) })
-  useKeyAction({ id: 'thread.down', handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'down' }) })
-  useKeyAction({ id: 'thread.first', handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'first' }) })
-  useKeyAction({ id: 'thread.last', handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'last' }) })
+  useKeyAction({
+    id: 'thread.pageUp',
+    handler: ({ context }) => pageStep({
+      target: context.target,
+      direction: -1,
+    }),
+  })
+  useKeyAction({
+    id: 'thread.pageDown',
+    handler: ({ context }) => pageStep({
+      target: context.target,
+      direction: 1,
+    }),
+  })
+  useKeyAction({
+    id: 'thread.up',
+    handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'up' }),
+  })
+  useKeyAction({
+    id: 'thread.down',
+    handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'down' }),
+  })
+  useKeyAction({
+    id: 'thread.first',
+    handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'first' }),
+  })
+  useKeyAction({
+    id: 'thread.last',
+    handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'last' }),
+  })
   useKeyAction({
     id: 'thread.comment',
     handler: ({ context }) => {
@@ -316,7 +468,10 @@ export function Messages({
         onKeyDown={event => caretKey({ event })}
         onCut={event => {
           if (!(event.target instanceof Element && isEditing({ target: event.target }))) {
-            event.preventDefault(); event.clipboardData.setData('text/plain', window.getSelection()?.toString() ?? '')
+            event.preventDefault(); event.clipboardData.setData(
+              'text/plain',
+              window.getSelection()?.toString() ?? '',
+            )
           }
         }}
         onCompositionStart={event => {
@@ -329,7 +484,10 @@ export function Messages({
           <article
             key={entry.id}
             className={`message ${entry.kind}${/^(user|You)( · continued)?$/.test(entry.role) ? ' mine' : ''}`}
-            aria-label={roleLabel({ role: entry.role, assistantLabel })}
+            aria-label={roleLabel({
+              role: entry.role,
+              assistantLabel,
+            })}
             data-streaming={entry.streaming || undefined}
             title={entry.at ? new Date(entry.at).toLocaleString() : undefined}
           >
@@ -339,10 +497,18 @@ export function Messages({
                 text={entry.text}
                 streaming={entry.streaming}
                 openTask={openTask}
-                block={({ index, offset: local, quote, children }) => {
+                block={({
+                  index,
+                  offset: local,
+                  quote,
+                  children,
+                }) => {
                   const messageId = entry.messageId ?? entry.id
                   const offset = (entry.part ?? 0) + local
-                  const key = messageBlockKey({ messageId, offset })
+                  const key = messageBlockKey({
+                    messageId,
+                    offset,
+                  })
                   const selected = selection?.messageId === messageId && selection.offset === offset
                   const own = comments.filter(c => c.messageId === messageId && c.offset === offset)
 
@@ -381,7 +547,10 @@ export function Messages({
                           editing={editing === comment.id}
                           edit={() => setEditing(comment.id)}
                           change={({ text }) => setComments({
-                            items: comments.map(c => c.id === comment.id ? { ...c, text } : c),
+                            items: comments.map(c => c.id === comment.id ? {
+                              ...c,
+                              text,
+                            } : c),
                           })}
                           finish={() => finish({ comment })}
                           remove={() => {
@@ -399,7 +568,10 @@ export function Messages({
             )}
             {entry.delivery ? (
               <span className="receipt" role="status">
-                {Object.entries(entry.delivery).map(([route, delivery]) => (
+                {Object.entries(entry.delivery).map(([
+                  route,
+                  delivery,
+                ]) => (
                   <span key={route} className={`receipt-${delivery.state}`} title={delivery.detail}>{route === 'hydra' ? 'Hydra' : 'Agent'}: {receiptLabel({ state: delivery.state })}{delivery.detail ? ` · ${delivery.detail}` : ''} </span>
                 ))}
               </span>
@@ -411,8 +583,24 @@ export function Messages({
   )
 }
 
-function Trace({ entry, details }: { entry: ThreadEntry; details: boolean }) {
-  const summary = <><Icon name={entry.kind} size={14} /><strong>{entry.kind === 'thinking' ? 'Thinking' : roleLabel(entry)}</strong><span>{entry.text.split('\n', 1)[0]?.slice(0, 200)}</span></>
+function Trace({
+  entry,
+  details,
+}: {
+  entry: ThreadEntry
+  details: boolean
+}) {
+  const summary = (
+    <><Icon name={entry.kind} size={14} /><strong>{entry.kind === 'thinking' ? 'Thinking' : roleLabel(entry)}</strong><span>{entry.text.split(
+      '\n',
+      1,
+    )[0]?.slice(
+      0,
+      200,
+    )}
+                                                                                                                      </span>
+    </>
+  )
 
   return details ? <details className="trace" data-expandable="true"><summary>{summary}</summary><pre className="trace-text">{entry.text}</pre></details>
     : <div className="trace" data-expandable="false"><div className="trace-summary">{summary}</div></div>

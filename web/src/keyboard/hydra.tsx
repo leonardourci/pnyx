@@ -18,7 +18,10 @@ const readAnchor = ({ target }: { target: HTMLElement }): HydraAnchor | undefine
 
   const card = target.closest<HTMLElement>('[data-card]')?.dataset.card
 
-  return { column, ...(card ? { card } : {}) }
+  return {
+    column,
+    ...(card ? { card } : {}),
+  }
 }
 
 export function useHydraKeyboard({
@@ -52,36 +55,61 @@ export function useHydraKeyboard({
   togglePanel(): void
   showPanel(): void
 }) {
-  const [remembered, setRemembered] = useState<Record<string, string>>({})
+  const [
+    remembered,
+    setRemembered,
+  ] = useState<Record<string, string>>({})
   const focus = useRef<HydraAnchor | undefined>(undefined)
-  useEffect(() => {
-    const track = (event: FocusEvent) => {
-      const anchor = readAnchor({ target: event.target as HTMLElement })
+  useEffect(
+    () => {
+      const track = (event: FocusEvent) => {
+        const anchor = readAnchor({ target: event.target as HTMLElement })
 
-      if (anchor) {
-        focus.current = anchor
+        if (anchor) {
+          focus.current = anchor
 
-        if (anchor.card) {
-          setRemembered(r => r[anchor.column] === anchor.card
-            ? r : { ...r, [anchor.column]: anchor.card! })
+          if (anchor.card) {
+            setRemembered(r => r[anchor.column] === anchor.card
+              ? r : {
+                ...r,
+                [anchor.column]: anchor.card!,
+              })
+          }
         }
       }
-    }
 
-    document.addEventListener('focusin', track)
+      document.addEventListener(
+        'focusin',
+        track,
+      )
 
-    return () => document.removeEventListener('focusin', track)
-  }, [])
+      return () => document.removeEventListener(
+        'focusin',
+        track,
+      )
+    },
+    [],
+  )
   const focusUpdates = () => requestAnimationFrame(() => focusElement({ selector: '.task-updates' }))
 
   const leaveField = () => {
     if (page === 'hydra' && focus.current) {
-      const anchor = restoreAnchor({ columns: groups, previous: groups, anchor: focus.current })
+      const anchor = restoreAnchor({
+        columns: groups,
+        previous: groups,
+        anchor: focus.current,
+      })
       focusElement({ selector: anchorElement({ anchor }) })
     }
   }
 
-  const move = ({ direction, anchor }: { direction: string; anchor: HydraAnchor }) => {
+  const move = ({
+    direction,
+    anchor,
+  }: {
+    direction: string
+    anchor: HydraAnchor
+  }) => {
     if (!connected) {
       return
     }
@@ -111,29 +139,72 @@ export function useHydraKeyboard({
       }
 
       const before = horizontal ? undefined : column.cards[at + (direction === 'up' ? -1 : 2)]
-      name = 'move'; args = [card.id, to.id, ...(before ? ['--before', before] : []), '--if-revision', String(card.revision)]
-      next = { column: to.id, card: card.id }
+      name = 'move'; args = [
+        card.id,
+        to.id,
+        ...(before ? [
+          '--before',
+          before,
+        ] : []),
+        '--if-revision',
+        String(card.revision),
+      ]
+      next = {
+        column: to.id,
+        card: card.id,
+      }
     } else {
-      if (!['left', 'right'].includes(direction) || (direction === 'left' ? index === 0 : index === groups.length - 1)) {
+      if (![
+        'left',
+        'right',
+      ].includes(direction) || (direction === 'left' ? index === 0 : index === groups.length - 1)) {
         return
       }
 
       const before = groups[index + (direction === 'left' ? -1 : 2)]?.id
-      name = 'column'; args = ['reorder', column.id, ...(before ? ['--before', before] : []), '--if-revision', String(state.configRevision ?? 0)]
+      name = 'column'; args = [
+        'reorder',
+        column.id,
+        ...(before ? [
+          '--before',
+          before,
+        ] : []),
+        '--if-revision',
+        String(state.configRevision ?? 0),
+      ]
     }
 
-    void command({ name, args: [...args, '--event-id', crypto.randomUUID()] })
+    void command({
+      name,
+      args: [
+        ...args,
+        '--event-id',
+        crypto.randomUUID(),
+      ],
+    })
       .catch(e => notify({ text: e.message }))
     focus.current = next
     requestAnimationFrame(() => focusElement({ selector: anchorElement({ anchor: next }) }))
   }
 
-  const onAction = ({ id, context }: { id: string; context: ActionContext }): boolean => {
+  const onAction = ({
+    id,
+    context,
+  }: {
+    id: string
+    context: ActionContext
+  }): boolean => {
     const anchor = readAnchor({ target: context.target }) ?? focus.current
-      ?? (groups[0] ? { column: groups[0].id, card: groups[0].cards[0] } : undefined)
+      ?? (groups[0] ? {
+        column: groups[0].id,
+        card: groups[0].cards[0],
+      } : undefined)
 
     if (id.startsWith('move.') && anchor) {
-      move({ direction: id.slice(5), anchor })
+      move({
+        direction: id.slice(5),
+        anchor,
+      })
 
       return true
     }
@@ -145,7 +216,11 @@ export function useHydraKeyboard({
         const host = conversationMessages({ from: context.target })
 
         if (host) {
-          placeMessageCaret({ host, target: latestAgentMessage({ host }), edge: 'start' })
+          placeMessageCaret({
+            host,
+            target: latestAgentMessage({ host }),
+            edge: 'start',
+          })
         }
       } else if (selected && page === 'hydra') {
         close()
@@ -159,13 +234,21 @@ export function useHydraKeyboard({
     }
 
     if (id.startsWith('board.') && id !== 'board.open' && anchor) {
-      const next = navigate({ columns: groups, current: anchor, action: id, remembered })
+      const next = navigate({
+        columns: groups,
+        current: anchor,
+        action: id,
+        remembered,
+      })
       focusElement({ selector: anchorElement({ anchor: next }) })
 
       return true
     }
 
-    if (['thread.reply', 'reply'].includes(id) && context.scope !== 'hydra') {
+    if ([
+      'thread.reply',
+      'reply',
+    ].includes(id) && context.scope !== 'hydra') {
       const input = context.target.closest('.detail, .hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea'); input?.focus()
 
       return !!input
@@ -189,7 +272,10 @@ export function useHydraKeyboard({
       return true
     }
 
-    if (['settings', 'help'].includes(id)) {
+    if ([
+      'settings',
+      'help',
+    ].includes(id)) {
       setPage({ page: 'settings' }); requestAnimationFrame(() => focusElement({ selector: '[data-settings-heading]' }))
 
       return true
@@ -204,5 +290,11 @@ export function useHydraKeyboard({
     return false
   }
 
-  return { remembered, onAction, leaveField, hints: [], hintKey: () => false }
+  return {
+    remembered,
+    onAction,
+    leaveField,
+    hints: [],
+    hintKey: () => false,
+  }
 }

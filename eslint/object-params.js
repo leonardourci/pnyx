@@ -51,7 +51,10 @@ const callbackCalls = new Set([
 const callName = ({ node }) => node.type === 'Identifier' ? node.name
   : node.type === 'MemberExpression' && !node.computed ? node.property.name : undefined
 
-const owner = ({ node, types }) => {
+const owner = ({
+  node,
+  types,
+}) => {
   for (let parent = node.parent; parent; parent = parent.parent) {
     if (types.includes(parent.type)) {
       return parent
@@ -59,7 +62,11 @@ const owner = ({ node, types }) => {
   }
 }
 
-const variableFor = ({ node, name, sourceCode }) => {
+const variableFor = ({
+  node,
+  name,
+  sourceCode,
+}) => {
   for (let scope = sourceCode.getScope(node); scope; scope = scope.upper) {
     const variable = scope.set.get(name)
 
@@ -69,20 +76,33 @@ const variableFor = ({ node, name, sourceCode }) => {
   }
 }
 
-const stateSetter = ({ node, sourceCode }) => {
+const stateSetter = ({
+  node,
+  sourceCode,
+}) => {
   if (node.type !== 'Identifier') {
     return false
   }
 
-  const definition = variableFor({ node, name: node.name, sourceCode })?.defs[0]?.node
+  const definition = variableFor({
+    node,
+    name: node.name,
+    sourceCode,
+  })?.defs[0]?.node
 
   return definition?.type === 'VariableDeclarator' && definition.id.type === 'ArrayPattern'
     && definition.id.elements[1]?.name === node.name
     && definition.init?.type === 'CallExpression'
-    && ['useState', 'useReducer'].includes(callName({ node: definition.init.callee }))
+    && [
+      'useState',
+      'useReducer',
+    ].includes(callName({ node: definition.init.callee }))
 }
 
-const registeredCallback = ({ node, sourceCode }) => {
+const registeredCallback = ({
+  node,
+  sourceCode,
+}) => {
   const declaration = node.parent.type === 'VariableDeclarator' ? node.parent : node
   const variables = sourceCode.getDeclaredVariables(declaration)
   const reads = variables.flatMap(variable =>
@@ -93,43 +113,80 @@ const registeredCallback = ({ node, sourceCode }) => {
     const call = identifier.parent
 
     return call.type === 'CallExpression' && call.callee.type === 'MemberExpression'
-      && ['addEventListener', 'removeEventListener', 'on', 'once'].includes(callName({ node: call.callee }))
+      && [
+        'addEventListener',
+        'removeEventListener',
+        'on',
+        'once',
+      ].includes(callName({ node: call.callee }))
       && call.arguments[1] === identifier
   })
 }
 
-const boundary = ({ node, filename, sourceCode }) => {
+const boundary = ({
+  node,
+  filename,
+  sourceCode,
+}) => {
   const parent = node.parent
 
-  if (registeredCallback({ node, sourceCode })) {
+  if (registeredCallback({
+    node,
+    sourceCode,
+  })) {
     return true // A named listener keeps its identity for removal.
   }
 
   if (filename.endsWith('/src/server/server.ts') && node.type === 'FunctionDeclaration'
-    && ['serve', 'stop'].includes(node.id?.name)) {
+    && [
+      'serve',
+      'stop',
+    ].includes(node.id?.name)) {
     return true // AXI command handlers receive argv.
   }
 
   if (filename.endsWith('/src/cli/commands.ts') && parent.type === 'ReturnStatement'
-    && owner({ node, types: ['FunctionDeclaration'] })?.id?.name === 'guard') {
+    && owner({
+      node,
+      types: ['FunctionDeclaration'],
+    })?.id?.name === 'guard') {
     return true // The returned handler is the AXI argv adapter.
   }
 
   if (filename.endsWith('/src/oracle/backend.ts')) {
-    const facade = owner({ node, types: ['TSInterfaceDeclaration', 'TSTypeAliasDeclaration'] })
+    const facade = owner({
+      node,
+      types: [
+        'TSInterfaceDeclaration',
+        'TSTypeAliasDeclaration',
+      ],
+    })
 
-    if (['Embedding', 'Ranking', 'LlamaCpp'].includes(facade?.id.name)) {
+    if ([
+      'Embedding',
+      'Ranking',
+      'LlamaCpp',
+    ].includes(facade?.id.name)) {
       return true // Signatures of the optional node-llama-cpp API.
     }
   }
 
-  if (['/test/paseo.test.ts', '/test/start.test.ts'].some(test => filename.endsWith(test))
-    && owner({ node, types: ['VariableDeclarator'] })?.id.name === 'client') {
+  if ([
+    '/test/paseo.test.ts',
+    '/test/start.test.ts',
+  ].some(test => filename.endsWith(test))
+    && owner({
+      node,
+      types: ['VariableDeclarator'],
+    })?.id.name === 'client') {
     return true // The fake implements the Paseo SDK client's signatures.
   }
 
   if (filename.endsWith('/test/host.test.ts')
-    && owner({ node, types: ['VariableDeclarator'] })?.id.name === 'query') {
+    && owner({
+      node,
+      types: ['VariableDeclarator'],
+    })?.id.name === 'query') {
     return true // The fake implements the Agent SDK's query signatures.
   }
 
@@ -148,11 +205,18 @@ const boundary = ({ node, filename, sourceCode }) => {
 
     return callbackCalls.has(name) || (parent.callee.type === 'MemberExpression'
       && (arrayCallbacks.has(name) || externalCallbacks.has(name) || name === 'handleUpgrade'))
-      || stateSetter({ node: parent.callee, sourceCode })
+      || stateSetter({
+        node: parent.callee,
+        sourceCode,
+      })
   }
 
   if (parent.type === 'NewExpression' && parent.arguments.includes(node)) {
-    return ['Promise', 'MutationObserver', 'ResizeObserver'].includes(callName({ node: parent.callee }))
+    return [
+      'Promise',
+      'MutationObserver',
+      'ResizeObserver',
+    ].includes(callName({ node: parent.callee }))
   }
 
   if (parent.type === 'AssignmentExpression' && parent.left.type === 'MemberExpression'
@@ -165,7 +229,11 @@ const boundary = ({ node, filename, sourceCode }) => {
     const element = attribute.parent.name
 
     return element.type === 'JSXIdentifier' && (/^[a-z]/.test(element.name)
-      || ['Button', 'Input', 'Textarea'].includes(element.name))
+      || [
+        'Button',
+        'Input',
+        'Textarea',
+      ].includes(element.name))
       && /^on[A-Z]/.test(attribute.name.name)
   }
 
@@ -200,7 +268,9 @@ export default {
   create(context) {
     const check = ({ node }) => {
       if (!node.params.length || boundary({
-        node, filename: context.filename, sourceCode: context.sourceCode,
+        node,
+        filename: context.filename,
+        sourceCode: context.sourceCode,
       })) {
         return
       }
@@ -209,7 +279,10 @@ export default {
         ? node.params[0].left : node.params[0]
 
       if (node.params.length !== 1 || parameter.type !== 'ObjectPattern') {
-        context.report({ node, messageId: 'object' })
+        context.report({
+          node,
+          messageId: 'object',
+        })
       }
     }
 

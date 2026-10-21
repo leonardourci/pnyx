@@ -37,9 +37,16 @@ export interface ReplyRequest {
   // An inline answer to the open request with this key, pressed as keys into the
   // session's own prompt instead of typed text. seen is the requestId the answer was
   // written for; a different request under the same key refuses it.
-  answer?: { request: string; value: unknown; seen?: string }
+  answer?: {
+    request: string
+    value: unknown
+    seen?: string
+  }
   // A setting a Pnyx-hosted agent takes directly, in place of typed text.
-  setting?: { name: string; value: string }
+  setting?: {
+    name: string
+    value: string
+  }
   taskMessage?: boolean
 }
 
@@ -54,18 +61,42 @@ export interface ReplyReceipt {
   recordError?: string
 }
 
-function invalid({ message, help = [] }: { message: string; help?: string[] }): HydraError {
-  return new HydraError({ message, code: 'VALIDATION_ERROR', help })
+function invalid({
+  message,
+  help = [],
+}: {
+  message: string
+  help?: string[]
+}): HydraError {
+  return new HydraError({
+    message,
+    code: 'VALIDATION_ERROR',
+    help,
+  })
 }
 
-function routeName({ route, control }: { route: ReplyRoute; control?: boolean }): string {
+function routeName({
+  route,
+  control,
+}: {
+  route: ReplyRoute
+  control?: boolean
+}): string {
   return route.kind === 'firstmate' ? (control ? 'firstmate:inbox' : 'firstmate')
     : route.kind === 'paseo-agent' || route.kind === 'pnyx' ? route.kind : `terminal:${route.kind}`
 }
 
 // The request id of a setting change's note: per Hydra, card and change, so a retry
 // of the same change replays its note.
-const noteId = ({ hydraId, card, reply }: { hydraId: string; card: string; reply: string }) => `pnyx:${hydraId}:${card}:${reply}`
+const noteId = ({
+  hydraId,
+  card,
+  reply,
+}: {
+  hydraId: string
+  card: string
+  reply: string
+}) => `pnyx:${hydraId}:${card}:${reply}`
 
 // Time for Claude Code to show its confirmation after a model or effort command.
 const CONFIRM_SETTLE_MS = 1500
@@ -76,7 +107,14 @@ function waiting({ card }: { card: Card | undefined }): boolean {
   return card?.attention.some(a => a.blocking && a.key.startsWith(HOOK)) ?? false
 }
 
-function deliver({ hydraId, card, reply, route, request, keys }: {
+function deliver({
+  hydraId,
+  card,
+  reply,
+  route,
+  request,
+  keys,
+}: {
   hydraId: string
   card: string
   reply: string
@@ -84,27 +122,63 @@ function deliver({ hydraId, card, reply, route, request, keys }: {
   request: ReplyRequest
   keys?: KeyStep[]
 }): Delivery | Promise<Delivery> {
-  const { text, key, confirm, resolveKey } = request
+  const {
+    text,
+    key,
+    confirm,
+    resolveKey,
+  } = request
 
   if (keys && route.kind === 'tmux') {
-    return pressKeys({ route, steps: keys })
+    return pressKeys({
+      route,
+      steps: keys,
+    })
   }
 
   if (route.kind === 'firstmate') {
     return request.control
-      ? fmNote({ home: route.home, requestId: noteId({ hydraId, card, reply }), text })
-      : fmSend({ route, text, resolveKey })
+      ? fmNote({
+        home: route.home,
+        requestId: noteId({
+          hydraId,
+          card,
+          reply,
+        }),
+        text,
+      })
+      : fmSend({
+        route,
+        text,
+        resolveKey,
+      })
   }
 
   if (route.kind === 'paseo-agent') {
-    return paseoReply({ route, text, id: reply })
+    return paseoReply({
+      route,
+      text,
+      id: reply,
+    })
   }
 
   if (route.kind === 'pnyx') {
-    return hostReply({ hydraId, card, text, setting: request.setting, actor: request.actor })
+    return hostReply({
+      hydraId,
+      card,
+      text,
+      setting: request.setting,
+      actor: request.actor,
+    })
   }
 
-  const sent = key ? pressKey({ route, key }) : typeInto({ route, text })
+  const sent = key ? pressKey({
+    route,
+    key,
+  }) : typeInto({
+    route,
+    text,
+  })
 
   if (!confirm || sent.state !== 'delivered') {
     return sent
@@ -113,7 +187,12 @@ function deliver({ hydraId, card, reply, route, request, keys }: {
   // Claude Code asks to confirm a model or effort change while its prompt cache is
   // warm, with Yes selected, and an Enter at an empty prompt does nothing. A request
   // the session opened meanwhile would take that Enter instead, so then none is pressed.
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, CONFIRM_SETTLE_MS)
+  Atomics.wait(
+    new Int32Array(new SharedArrayBuffer(4)),
+    0,
+    0,
+    CONFIRM_SETTLE_MS,
+  )
 
   if (withWriter({
     hydraId,
@@ -123,17 +202,32 @@ function deliver({ hydraId, card, reply, route, request, keys }: {
       return waiting({ card: writer.state.cards[card] })
     },
   })) {
-    return { state: 'delivery_unknown', detail: 'the command was sent, then the session opened a request, so Pnyx pressed nothing more; answer it and any confirmation in the session' }
+    return {
+      state: 'delivery_unknown',
+      detail: 'the command was sent, then the session opened a request, so Pnyx pressed nothing more; answer it and any confirmation in the session',
+    }
   }
 
-  const answered = pressKey({ route, key: 'enter' })
+  const answered = pressKey({
+    route,
+    key: 'enter',
+  })
 
   return answered.state === 'delivered'
     ? sent
-    : { state: 'delivery_unknown', detail: `the command was sent, but the Enter that answers its confirmation was not${answered.detail ? ` (${answered.detail})` : ''}; check the session` }
+    : {
+      state: 'delivery_unknown',
+      detail: `the command was sent, but the Enter that answers its confirmation was not${answered.detail ? ` (${answered.detail})` : ''}; check the session`,
+    }
 }
 
-async function hostReply({ hydraId, card, text, setting, actor }: {
+async function hostReply({
+  hydraId,
+  card,
+  text,
+  setting,
+  actor,
+}: {
   hydraId: string
   card: string
   text: string
@@ -144,8 +238,19 @@ async function hostReply({ hydraId, card, text, setting, actor }: {
     await askHost({
       hydraId,
       body: setting
-        ? { action: 'set', card, setting: setting.name, value: setting.value, ...(actor ? { actor } : {}) }
-        : { action: 'send', card, text, ...(actor ? { actor } : {}) },
+        ? {
+          action: 'set',
+          card,
+          setting: setting.name,
+          value: setting.value,
+          ...(actor ? { actor } : {}),
+        }
+        : {
+          action: 'send',
+          card,
+          text,
+          ...(actor ? { actor } : {}),
+        },
     })
 
     return { state: 'delivered' }
@@ -153,16 +258,28 @@ async function hostReply({ hydraId, card, text, setting, actor }: {
     const known = error instanceof HydraError
 
     return known
-      ? { state: 'failed', detail: `${error.message}; nothing was sent` }
-      : { state: 'delivery_unknown', detail: 'the Pnyx server did not confirm the message; check the conversation before retrying' }
+      ? {
+        state: 'failed',
+        detail: `${error.message}; nothing was sent`,
+      }
+      : {
+        state: 'delivery_unknown',
+        detail: 'the Pnyx server did not confirm the message; check the conversation before retrying',
+      }
   }
 }
 
-export async function sendReply({ hydraId, request }: {
+export async function sendReply({
+  hydraId,
+  request,
+}: {
   hydraId: string
   request: ReplyRequest
 }): Promise<ReplyReceipt> {
-  const { resolveKey, answer } = request
+  const {
+    resolveKey,
+    answer,
+  } = request
 
   if (!answer && request.text.trim() === '') {
     throw invalid({ message: 'reply text is empty' })
@@ -172,20 +289,32 @@ export async function sendReply({ hydraId, request }: {
     throw invalid({ message: '--answer cannot be combined with a key, setting or --resolve-key' })
   }
 
-  const meta = (): Meta => ({ at: new Date().toISOString(), actor: request.actor ?? 'cli' })
+  const meta = (): Meta => ({
+    at: new Date().toISOString(),
+    actor: request.actor ?? 'cli',
+  })
   const homes = request.homes.map(path => resolveHome({ path }))
 
   const queued = withWriter({
     hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
-      const card = findCard({ state: writer.state, ref: request.card })
+      const card = findCard({
+        state: writer.state,
+        ref: request.card,
+      })
 
       if (request.expectedSession && card.sessionIds?.[0] !== request.expectedSession) {
-        throw new HydraError({ message: 'the attached agent changed before the brief could be sent', code: 'SESSION_CONFLICT' })
+        throw new HydraError({
+          message: 'the attached agent changed before the brief could be sent',
+          code: 'SESSION_CONFLICT',
+        })
       }
 
-      const found = replyRoute({ card, homes })
+      const found = replyRoute({
+        card,
+        homes,
+      })
 
       if ('reason' in found) {
         const home = card.sourceRefs.find(r => r.adapter === 'firstmate')?.instanceId
@@ -193,31 +322,45 @@ export async function sendReply({ hydraId, request }: {
         if (home && found.reason.includes('not configured')) {
           throw invalid({
             message: `card ${card.id} belongs to Firstmate home ${home}, which is not configured`,
-            help: [
-              `Pass --home ${home} to allow replies to it`,
-            ],
+            help: [`Pass --home ${home} to allow replies to it`],
           })
         }
 
-        throw new HydraError({ message: `card ${card.id} has no reply route: ${found.reason}`, code: 'NO_ROUTE' })
+        throw new HydraError({
+          message: `card ${card.id} has no reply route: ${found.reason}`,
+          code: 'NO_ROUTE',
+        })
       }
 
       const route = found.route
 
       const key = request.key
-      const unpressable = key && inputReason({ kind: route.kind, input: { key } })
+      const unpressable = key && inputReason({
+        kind: route.kind,
+        input: { key },
+      })
 
       if (unpressable) {
-        throw new HydraError({ message: `card ${card.id} cannot take ${KEY_LABEL[key!]}: ${unpressable}`, code: 'NO_ROUTE' })
+        throw new HydraError({
+          message: `card ${card.id} cannot take ${KEY_LABEL[key!]}: ${unpressable}`,
+          code: 'NO_ROUTE',
+        })
       }
 
       if (request.control && route.kind !== 'firstmate' && waiting({ card })) {
-        throw new HydraError({ message: `card ${card.id} is waiting on a request; answer it in the session before changing settings`, code: 'SESSION_WAITING' })
+        throw new HydraError({
+          message: `card ${card.id} is waiting on a request; answer it in the session before changing settings`,
+          code: 'SESSION_WAITING',
+        })
       }
 
       if (route.kind === 'firstmate') {
         if (!TASK_ID.test(route.task)) {
-          throw new HydraError({ message: `card ${card.id} has no reply route`, code: 'NO_ROUTE', help: ['Reply to a Firstmate task card'] })
+          throw new HydraError({
+            message: `card ${card.id} has no reply route`,
+            code: 'NO_ROUTE',
+            help: ['Reply to a Firstmate task card'],
+          })
         }
 
         // fm-send has no `--` separator, so a leading flag would be read as an option.
@@ -232,7 +375,13 @@ export async function sendReply({ hydraId, request }: {
       const known = card.replies?.find(r => r.id === reply)
 
       if (known && known.state !== 'failed') {
-        return { card: card.id, reply, state: known.state, route, resend: false }
+        return {
+          card: card.id,
+          reply,
+          state: known.state,
+          route,
+          resend: false,
+        }
       }
 
       let text = request.text
@@ -241,7 +390,10 @@ export async function sendReply({ hydraId, request }: {
 
       if (answer) {
         const open = card.attention.find(a => a.key === answer.request)
-        const prompt = open && answerPrompt({ card, request: open })
+        const prompt = open && answerPrompt({
+          card,
+          request: open,
+        })
 
         if (!open || !prompt) {
           throw invalid({
@@ -270,14 +422,26 @@ export async function sendReply({ hydraId, request }: {
           })
         }
 
-        const checked = checkAnswer({ prompt, request: open, value: answer.value })
+        const checked = checkAnswer({
+          prompt,
+          request: open,
+          value: answer.value,
+        })
 
         if ('error' in checked) {
           throw invalid({ message: checked.error })
         }
 
-        text = answerText({ prompt, request: open, answer: checked.answer })
-        keys = answerKeys({ provider: card.agent?.provider ?? '', request: open, answer: checked.answer })
+        text = answerText({
+          prompt,
+          request: open,
+          answer: checked.answer,
+        })
+        keys = answerKeys({
+          provider: card.agent?.provider ?? '',
+          request: open,
+          answer: checked.answer,
+        })
       }
 
       if (
@@ -288,17 +452,26 @@ export async function sendReply({ hydraId, request }: {
         || !card.attention.some(a => a.key === resolveKey)
       )
       ) {
-        throw invalid({ message: `card ${card.id} has no open decision with key ${resolveKey}`, help: [`Run \`pnyx-axi card ${card.id}\` to see its attention keys`] })
+        throw invalid({
+          message: `card ${card.id} has no open decision with key ${resolveKey}`,
+          help: [`Run \`pnyx-axi card ${card.id}\` to see its attention keys`],
+        })
       }
 
       const context = !request.control && !request.key && !answer
-        ? mentionContext({ state: writer.state, text: request.text }) : ''
+        ? mentionContext({
+          state: writer.state,
+          text: request.text,
+        }) : ''
 
       // A retry after a failed send queues again, so every attempt has its own receipts.
       const data = {
         reply,
         state: 'queued' as const,
-        route: routeName({ route, control: request.control }),
+        route: routeName({
+          route,
+          control: request.control,
+        }),
         text,
         ...(context ? { context } : {}),
         ...(request.taskMessage ? { taskMessage: true } : {}),
@@ -306,26 +479,67 @@ export async function sendReply({ hydraId, request }: {
         ...(resolveKey ? { resolveKey } : {}),
         ...(answers ? { answers } : {}),
       }
-      const decision = decideReply({ state: writer.state, ref: card.id, data, meta: meta() })
+      const decision = decideReply({
+        state: writer.state,
+        ref: card.id,
+        data,
+        meta: meta(),
+      })
 
       if ('event' in decision) {
         writer.append({ event: decision.event })
       }
 
-      return { card: card.id, reply, state: 'queued' as ReplyState, route, resend: true, keys, answers, text: [request.text, context].filter(Boolean).join('\n\n') }
+      return {
+        card: card.id,
+        reply,
+        state: 'queued' as ReplyState,
+        route,
+        resend: true,
+        keys,
+        answers,
+        text: [
+          request.text,
+          context,
+        ].filter(Boolean).join('\n\n'),
+      }
     },
   })
 
   if (!queued.resend) {
-    return { card: queued.card, reply: queued.reply, state: queued.state, sent: false }
+    return {
+      card: queued.card,
+      reply: queued.reply,
+      state: queued.state,
+      sent: false,
+    }
   }
 
   // Sent outside the writer lock: a send can take a while and must not block other writers.
-  const { card, reply, route, keys, answers } = queued
+  const {
+    card,
+    reply,
+    route,
+    keys,
+    answers,
+  } = queued
   const outcome = await deliver({
-    hydraId, card, reply, route, request: { ...request, text: queued.text ?? request.text }, keys,
+    hydraId,
+    card,
+    reply,
+    route,
+    request: {
+      ...request,
+      text: queued.text ?? request.text,
+    },
+    keys,
   })
-  const receipt = { card, reply, sent: true, ...outcome }
+  const receipt = {
+    card,
+    reply,
+    sent: true,
+    ...outcome,
+  }
 
   try {
     withWriter({
@@ -334,11 +548,19 @@ export async function sendReply({ hydraId, request }: {
         drainSpool({ writer })
         const data = {
           reply,
-          route: routeName({ route, control: request.control }),
+          route: routeName({
+            route,
+            control: request.control,
+          }),
           ...outcome,
           ...(answers ? { answers } : {}),
         }
-        const decision = decideReply({ state: writer.state, ref: card, data, meta: meta() })
+        const decision = decideReply({
+          state: writer.state,
+          ref: card,
+          data,
+          meta: meta(),
+        })
 
         if ('event' in decision) {
           writer.append({ event: decision.event })
@@ -346,7 +568,10 @@ export async function sendReply({ hydraId, request }: {
       },
     })
   } catch (error) {
-    return { ...receipt, recordError: (error as Error).message }
+    return {
+      ...receipt,
+      recordError: (error as Error).message,
+    }
   }
 
   return receipt
@@ -356,7 +581,10 @@ export const reply = guard({
   handler: async ({ args }) => {
     const options: Options = {
       ...COMMON,
-      home: { type: 'string', multiple: true },
+      home: {
+        type: 'string',
+        multiple: true,
+      },
       actor: { type: 'string' },
       text: { type: 'string' },
       file: { type: 'string' },
@@ -367,8 +595,19 @@ export const reply = guard({
       seen: { type: 'string' },
       'task-message': { type: 'boolean' },
     }
-    const { values, positionals, hydraId } = parse({ args, options, positionals: 1 })
-    const ref = required({ value: positionals[0], what: 'card id' })
+    const {
+      values,
+      positionals,
+      hydraId,
+    } = parse({
+      args,
+      options,
+      positionals: 1,
+    })
+    const ref = required({
+      value: positionals[0],
+      what: 'card id',
+    })
 
     if (values['task-message'] && (values.answer !== undefined || values['resolve-key'] !== undefined)) {
       throw invalid({ message: '--task-message takes context text; answer requests with reply --answer or --resolve-key' })
@@ -380,29 +619,55 @@ export const reply = guard({
 
     if (request !== undefined) {
       if (values.text !== undefined || file !== undefined || values.json === undefined) {
-        throw new AxiError('--answer takes --json with the answer, not --text or --file', 'VALIDATION_ERROR', ['Run `pnyx-axi reply --help`'])
+        throw new AxiError(
+          '--answer takes --json with the answer, not --text or --file',
+          'VALIDATION_ERROR',
+          ['Run `pnyx-axi reply --help`'],
+        )
       }
 
       try {
         const seen = values.seen as string | undefined
         const value: unknown = JSON.parse(values.json as string)
-        answer = { request, value, ...(seen !== undefined ? { seen } : {}) }
+        answer = {
+          request,
+          value,
+          ...(seen !== undefined ? { seen } : {}),
+        }
       } catch {
-        throw new AxiError('--json is not valid JSON', 'VALIDATION_ERROR', ['Example: --json \'{"choice":"allow"}\''])
+        throw new AxiError(
+          '--json is not valid JSON',
+          'VALIDATION_ERROR',
+          ['Example: --json \'{"choice":"allow"}\''],
+        )
       }
     } else if (values.json !== undefined || values.seen !== undefined) {
-      throw new AxiError('--json and --seen go with --answer', 'VALIDATION_ERROR', ['Run `pnyx-axi reply --help`'])
+      throw new AxiError(
+        '--json and --seen go with --answer',
+        'VALIDATION_ERROR',
+        ['Run `pnyx-axi reply --help`'],
+      )
     } else if ((values.text === undefined) === (file === undefined)) {
-      throw new AxiError('give either --text or --file', 'VALIDATION_ERROR', ['Run `pnyx-axi reply --help`'])
+      throw new AxiError(
+        'give either --text or --file',
+        'VALIDATION_ERROR',
+        ['Run `pnyx-axi reply --help`'],
+      )
     }
 
     let text = (values.text as string | undefined) ?? (answer ? '' : undefined)
 
     if (file !== undefined) {
       try {
-        text = readFileSync(file === '-' ? 0 : file, 'utf8')
+        text = readFileSync(
+          file === '-' ? 0 : file,
+          'utf8',
+        )
       } catch (error) {
-        throw new AxiError(`cannot read reply text from ${file}: ${(error as Error).message}`, 'VALIDATION_ERROR')
+        throw new AxiError(
+          `cannot read reply text from ${file}: ${(error as Error).message}`,
+          'VALIDATION_ERROR',
+        )
       }
     }
 
@@ -424,9 +689,7 @@ export const reply = guard({
     if ('recordError' in receipt && receipt.recordError && receipt.state === 'failed') {
       out.help = ['The send failed and nothing was delivered; once the cause is fixed, send again without --idempotency-key']
     } else if ('recordError' in receipt && receipt.recordError) {
-      out.help = [
-        `The send ended ${receipt.state} but was not recorded, so the Hydra still shows it queued; check the task's inbox or the session before sending again`,
-      ]
+      out.help = [`The send ended ${receipt.state} but was not recorded, so the Hydra still shows it queued; check the task's inbox or the session before sending again`]
     } else if (receipt.state === 'failed') {
       out.help = [`Fix the cause, then retry with --idempotency-key ${receipt.reply}`]
     } else if (receipt.state === 'delivery_unknown') {
@@ -445,20 +708,37 @@ export const reply = guard({
 // the transcript is read back.
 const READBACK_MS = 1000
 
-function agentSummary({ hydraId, ref, homes }: {
+function agentSummary({
+  hydraId,
+  ref,
+  homes,
+}: {
   hydraId: string
   ref: string
   homes: string[]
 }): Output {
-  const card = findCard({ state: loadHydra({ hydraId }).state, ref })
+  const card = findCard({
+    state: loadHydra({ hydraId }).state,
+    ref,
+  })
   const provider = card.agent?.provider
-  const found = replyRoute({ card, homes: homes.map(path => resolveHome({ path })) })
+  const found = replyRoute({
+    card,
+    homes: homes.map(path => resolveHome({ path })),
+  })
   const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
-  const harness = harnessControls({ provider, firstmate: !!firstmate, hosted: 'route' in found && found.route.kind === 'pnyx' })
+  const harness = harnessControls({
+    provider,
+    firstmate: !!firstmate,
+    hosted: 'route' in found && found.route.kind === 'pnyx',
+  })
   const controls = (harness?.controls ?? []).map(c => {
     const unavailable = 'reason' in found
       ? found.reason
-      : c.options.map(o => inputReason({ kind: found.route.kind, input: o.input })).find(Boolean)
+      : c.options.map(o => inputReason({
+        kind: found.route.kind,
+        input: o.input,
+      })).find(Boolean)
 
     return {
       setting: c.setting,
@@ -470,7 +750,10 @@ function agentSummary({ hydraId, ref, homes }: {
   const agent = {
     card: card.id,
     harness: provider ?? 'none',
-    route: 'route' in found ? routeName({ route: found.route, control: true }) : `none: ${found.reason}`,
+    route: 'route' in found ? routeName({
+      route: found.route,
+      control: true,
+    }) : `none: ${found.reason}`,
     ...(harness?.note ? { note: harness.note } : {}),
   }
 
@@ -495,34 +778,78 @@ export const agent = guard({
   handler: async ({ args }) => {
     const options: Options = {
       ...COMMON,
-      home: { type: 'string', multiple: true },
+      home: {
+        type: 'string',
+        multiple: true,
+      },
       actor: { type: 'string' },
       'idempotency-key': { type: 'string' },
     }
-    const { values, positionals, hydraId } = parse({ args, options, positionals: 3 })
-    const ref = required({ value: positionals[0], what: 'card id' })
+    const {
+      values,
+      positionals,
+      hydraId,
+    } = parse({
+      args,
+      options,
+      positionals: 3,
+    })
+    const ref = required({
+      value: positionals[0],
+      what: 'card id',
+    })
     const homes = (values.home as string[] | undefined) ?? []
 
     if (positionals.length < 3) {
       if (positionals.length === 2) {
-        throw new AxiError('give a setting and a value', 'VALIDATION_ERROR', [`Run \`pnyx-axi agent ${ref}\` to list them`])
+        throw new AxiError(
+          'give a setting and a value',
+          'VALIDATION_ERROR',
+          [`Run \`pnyx-axi agent ${ref}\` to list them`],
+        )
       }
 
-      return agentSummary({ hydraId, ref, homes })
+      return agentSummary({
+        hydraId,
+        ref,
+        homes,
+      })
     }
 
-    const [, setting, value] = positionals as [string, string, string]
-    const card = findCard({ state: loadHydra({ hydraId }).state, ref })
+    const [
+      , setting,
+      value,
+    ] = positionals as [string, string, string]
+    const card = findCard({
+      state: loadHydra({ hydraId }).state,
+      ref,
+    })
     const provider = card.agent?.provider
-    const found = replyRoute({ card, homes: homes.map(path => resolveHome({ path })) })
+    const found = replyRoute({
+      card,
+      homes: homes.map(path => resolveHome({ path })),
+    })
     const firstmate = 'route' in found && found.route.kind === 'firstmate' ? found.route : undefined
-    const picked = findOption({ provider, setting, value, firstmate: !!firstmate, hosted: 'route' in found && found.route.kind === 'pnyx' })
+    const picked = findOption({
+      provider,
+      setting,
+      value,
+      firstmate: !!firstmate,
+      hosted: 'route' in found && found.route.kind === 'pnyx',
+    })
 
     if (!picked) {
-      throw new AxiError(`card ${card.id} offers no ${setting} ${value}`, 'VALIDATION_ERROR', [`Run \`pnyx-axi agent ${card.id}\` to list its settings and values`])
+      throw new AxiError(
+        `card ${card.id} offers no ${setting} ${value}`,
+        'VALIDATION_ERROR',
+        [`Run \`pnyx-axi agent ${card.id}\` to list its settings and values`],
+      )
     }
 
-    const { control, option } = picked
+    const {
+      control,
+      option,
+    } = picked
 
     // What the session reported before, with everything it has recorded folded in,
     // so the readback compares like with like.
@@ -530,7 +857,11 @@ export const agent = guard({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
-        harvestTranscripts({ writer, cardIds: [card.id], at: new Date().toISOString() })
+        harvestTranscripts({
+          writer,
+          cardIds: [card.id],
+          at: new Date().toISOString(),
+        })
 
         return writer.state.cards[card.id]?.settings?.[setting]
       },
@@ -540,17 +871,38 @@ export const agent = guard({
     const harness = harnessControls({ provider })!.name
     // A Firstmate task's worker is never typed into: its orchestrator gets a request note.
     const typed = firstmate
-      ? { text: settingRequest({ option, task: firstmate.task, harness }) }
+      ? {
+        text: settingRequest({
+          option,
+          task: firstmate.task,
+          harness,
+        }),
+      }
       : 'request' in input
         ? undefined
         : 'set' in input
-          ? { text: `${setting} ${input.set}`, setting: { name: setting, value: input.set } }
+          ? {
+            text: `${setting} ${input.set}`,
+            setting: {
+              name: setting,
+              value: input.set,
+            },
+          }
           : 'key' in input
-            ? { text: `[${KEY_LABEL[input.key]}]`, key: input.key }
-            : { text: input.text, confirm: input.confirm }
+            ? {
+              text: `[${KEY_LABEL[input.key]}]`,
+              key: input.key,
+            }
+            : {
+              text: input.text,
+              confirm: input.confirm,
+            }
 
     if (!typed) {
-      throw new AxiError('this setting requires a Firstmate request route', 'NO_ROUTE')
+      throw new AxiError(
+        'this setting requires a Firstmate request route',
+        'NO_ROUTE',
+      )
     }
 
     const receipt = await sendReply({
@@ -569,13 +921,31 @@ export const agent = guard({
     if (receipt.state === 'delivered' && !firstmate) {
       // A harness that records the change at once, as Codex does, confirms it here;
       // otherwise the session's next hook or turn does.
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, READBACK_MS)
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        READBACK_MS,
+      )
       now = settled()
     }
 
-    const confirmed = confirms({ control, option, before, after: now })
+    const confirmed = confirms({
+      control,
+      option,
+      before,
+      after: now,
+    })
     const out: Output = {
-      agent: { card: card.id, setting, value, sent: receipt.state, before: before ?? 'unknown', now: now ?? 'unknown', confirmed },
+      agent: {
+        card: card.id,
+        setting,
+        value,
+        sent: receipt.state,
+        before: before ?? 'unknown',
+        now: now ?? 'unknown',
+        confirmed,
+      },
     }
 
     if (receipt.recordError) {

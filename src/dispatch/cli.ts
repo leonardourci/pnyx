@@ -4,38 +4,129 @@ import { WRITE, guard, parse, required, type Output } from '../cli/commands.ts'
 import { loadHydra, requireHydra, withRegistryLock } from '../store/hydra-store.ts'
 import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, readConfig, writeConfig, type Candidate, type HeadsDispatch, type Harness } from './config.ts'
 
-const OPTIONS = { ...WRITE, shared: { type: 'boolean' }, when: { type: 'string' }, candidates: { type: 'string' }, harness: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, mode: { type: 'string' }, fast: { type: 'string' }, main: { type: 'string' }, provider: { type: 'string' }, order: { type: 'string' }, project: { type: 'string' }, folder: { type: 'string' } } as const
+const OPTIONS = {
+  ...WRITE,
+  shared: { type: 'boolean' },
+  when: { type: 'string' },
+  candidates: { type: 'string' },
+  harness: { type: 'string' },
+  model: { type: 'string' },
+  effort: { type: 'string' },
+  mode: { type: 'string' },
+  fast: { type: 'string' },
+  main: { type: 'string' },
+  provider: { type: 'string' },
+  order: { type: 'string' },
+  project: { type: 'string' },
+  folder: { type: 'string' },
+} as const
 
 export const STARTER_DISPATCH: HeadsDispatch = {
   main: 'claude:personal',
-  workers: { claude: ['claude:work', 'claude:personal'], codex: ['codex:work', 'codex:personal'] },
+  workers: {
+    claude: [
+      'claude:work',
+      'claude:personal',
+    ],
+    codex: [
+      'codex:work',
+      'codex:personal',
+    ],
+  },
   projects: {},
   rules: {
-    build: { when: 'Implementation and difficult debugging', candidates: [{ harness: 'claude', model: 'claude-opus-5-5', effort: 'high' }, { harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' }] },
-    review: { when: 'Independent code review', candidates: [{ harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' }, { harness: 'claude', model: 'claude-opus-5-5', effort: 'high' }] },
+    build: {
+      when: 'Implementation and difficult debugging',
+      candidates: [
+        {
+          harness: 'claude',
+          model: 'claude-opus-5-5',
+          effort: 'high',
+        },
+        {
+          harness: 'codex',
+          model: 'gpt-6.1-sol',
+          effort: 'high',
+        },
+      ],
+    },
+    review: {
+      when: 'Independent code review',
+      candidates: [
+        {
+          harness: 'codex',
+          model: 'gpt-6.1-sol',
+          effort: 'high',
+        },
+        {
+          harness: 'claude',
+          model: 'claude-opus-5-5',
+          effort: 'high',
+        },
+      ],
+    },
   },
-  default: [{ harness: 'claude', model: 'claude-sonnet-5-5' }, { harness: 'codex', model: 'gpt-6-luna' }],
+  default: [
+    {
+      harness: 'claude',
+      model: 'claude-sonnet-5-5',
+    },
+    {
+      harness: 'codex',
+      model: 'gpt-6-luna',
+    },
+  ],
 }
 export const STARTER_ACCOUNTS = {
   accounts: {
-    'claude:personal': { provider: 'claude', folder: '~/.claude' },
-    'claude:work': { provider: 'claude', folder: '~/.claude-work' },
-    'codex:personal': { provider: 'codex', folder: '~/.codex' },
-    'codex:work': { provider: 'codex', folder: '~/.codex-work' },
+    'claude:personal': {
+      provider: 'claude',
+      folder: '~/.claude',
+    },
+    'claude:work': {
+      provider: 'claude',
+      folder: '~/.claude-work',
+    },
+    'codex:personal': {
+      provider: 'codex',
+      folder: '~/.codex',
+    },
+    'codex:work': {
+      provider: 'codex',
+      folder: '~/.codex-work',
+    },
   },
 }
 
 function ruleCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, hydraId } = parse({ args, options: OPTIONS, positionals: 2 })
+  const {
+    values,
+    positionals,
+    hydraId,
+  } = parse({
+    args,
+    options: OPTIONS,
+    positionals: 2,
+  })
   const action = positionals[0] ?? 'list'
   const state = loadHydra({ hydraId }).state
 
   if (action === 'list') {
-    return { hydraId, ...effectiveDispatch({ hydraId, state }), help: ['Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading'] }
+    return {
+      hydraId,
+      ...effectiveDispatch({
+        hydraId,
+        state,
+      }),
+      help: ['Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading'],
+    }
   }
 
   const shared = Boolean(values.shared)
-  const path = configPath({ hydraId, shared })
+  const path = configPath({
+    hydraId,
+    shared,
+  })
 
   if (!shared) {
     requireHydra({ hydraId })
@@ -45,23 +136,50 @@ function ruleCommand({ args }: { args: string[] }): Output {
     fn: () => {
       const before = parseDispatch({ value: readConfig({ path }) })
       const next = structuredClone(!shared && !existsSync(path)
-        ? { ...legacyDispatch({ state }), ...before } : before)
+        ? {
+          ...legacyDispatch({ state }),
+          ...before,
+        } : before)
       const inherited = shared
-        ? { rules: {}, default: [{ harness: 'claude' as const }], workers: {}, projects: {}, ...before }
-        : effectiveDispatch({ hydraId, state }).dispatch
+        ? {
+          rules: {},
+          default: [{ harness: 'claude' as const }],
+          workers: {},
+          projects: {},
+          ...before,
+        }
+        : effectiveDispatch({
+          hydraId,
+          state,
+        }).dispatch
 
       if (action === 'init') {
-        const accountPath = configPath({ hydraId, accounts: true, shared })
+        const accountPath = configPath({
+          hydraId,
+          accounts: true,
+          shared,
+        })
 
         if (!existsSync(path)) {
-          writeConfig({ path, value: STARTER_DISPATCH })
+          writeConfig({
+            path,
+            value: STARTER_DISPATCH,
+          })
         }
 
         if (!existsSync(accountPath)) {
-          writeConfig({ path: accountPath, value: STARTER_ACCOUNTS, accounts: true })
+          writeConfig({
+            path: accountPath,
+            value: STARTER_ACCOUNTS,
+            accounts: true,
+          })
         }
 
-        return { dispatch: path, accounts: accountPath, help: ['Edit login folders and remove accounts you do not use before starting workers; Pnyx stores no credentials'] }
+        return {
+          dispatch: path,
+          accounts: accountPath,
+          help: ['Edit login folders and remove accounts you do not use before starting workers; Pnyx stores no credentials'],
+        }
       }
 
       if (action === 'migrate') {
@@ -73,7 +191,10 @@ function ruleCommand({ args }: { args: string[] }): Output {
           return { event: 'none: heads dispatch file already exists' }
         }
 
-        writeConfig({ path, value: legacyDispatch({ state }) })
+        writeConfig({
+          path,
+          value: legacyDispatch({ state }),
+        })
 
         return { migrated: path }
       }
@@ -84,13 +205,19 @@ function ruleCommand({ args }: { args: string[] }): Output {
         }
 
         if (values.provider !== undefined || values.order !== undefined) {
-          const provider = required({ value: values.provider as string | undefined, what: '--provider' })
+          const provider = required({
+            value: values.provider as string | undefined,
+            what: '--provider',
+          })
 
           if (provider !== 'claude' && provider !== 'codex') {
             invalid({ message: '--provider must be claude or codex' })
           }
 
-          const list = required({ value: values.order as string | undefined, what: '--order (comma-separated account names)' }).split(',')
+          const list = required({
+            value: values.order as string | undefined,
+            what: '--order (comma-separated account names)',
+          }).split(',')
             .map(value => name({ value: value.trim() }))
 
           if (values.project) {
@@ -98,7 +225,10 @@ function ruleCommand({ args }: { args: string[] }): Output {
             next.projects = Object.keys(next.projects ?? {}).length
               ? next.projects ?? {} : structuredClone(projects)
             const project = String(values.project)
-            next.projects[project] = { ...next.projects[project], [provider]: list }
+            next.projects[project] = {
+              ...next.projects[project],
+              [provider]: list,
+            }
           } else {
             next.workers = Object.keys(next.workers ?? {}).length
               ? next.workers ?? {} : structuredClone(inherited.workers)
@@ -106,7 +236,12 @@ function ruleCommand({ args }: { args: string[] }): Output {
           }
         }
       } else if (action === 'set' || action === 'remove') {
-        const key = name({ value: required({ value: positionals[1], what: 'rule name' }) })
+        const key = name({
+          value: required({
+            value: positionals[1],
+            what: 'rule name',
+          }),
+        })
         const effective = inherited
         const rules = Object.keys(next.rules ?? {}).length
           ? next.rules ?? {} : structuredClone(effective.rules)
@@ -129,9 +264,16 @@ function ruleCommand({ args }: { args: string[] }): Output {
               return invalid({ message: '--candidates must be a JSON array of harness/model/effort candidates' })
             }
           } else {
-            const agent: Candidate = { ...existing?.[0], harness: (values.harness ?? existing?.[0]?.harness ?? 'claude') as Harness }
+            const agent: Candidate = {
+              ...existing?.[0],
+              harness: (values.harness ?? existing?.[0]?.harness ?? 'claude') as Harness,
+            }
 
-            for (const field of ['model', 'effort', 'mode'] as const) {
+            for (const field of [
+              'model',
+              'effort',
+              'mode',
+            ] as const) {
               if (values[field] === '') {
                 delete agent[field]
               } else if (values[field] !== undefined) {
@@ -159,7 +301,10 @@ function ruleCommand({ args }: { args: string[] }): Output {
           if (key === 'default') {
             next.default = list
           } else {
-            rules[key] = { when: String(values.when ?? rules[key]?.when ?? `Use for ${key} work`), candidates: list }
+            rules[key] = {
+              when: String(values.when ?? rules[key]?.when ?? `Use for ${key} work`),
+              candidates: list,
+            }
             next.rules = rules
           }
         }
@@ -167,27 +312,57 @@ function ruleCommand({ args }: { args: string[] }): Output {
         return invalid({ message: 'Use rule list, init, migrate, set, remove or accounts' })
       }
 
-      if (isDeepStrictEqual(before, next)) {
+      if (isDeepStrictEqual(
+        before,
+        next,
+      )) {
         return { event: 'none: unchanged' }
       }
 
-      writeConfig({ path, value: next })
+      writeConfig({
+        path,
+        value: next,
+      })
 
-      return { saved: path, ...effectiveDispatch({ hydraId, state }) }
+      return {
+        saved: path,
+        ...effectiveDispatch({
+          hydraId,
+          state,
+        }),
+      }
     },
   })
 }
 
 function accountCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, hydraId } = parse({ args, options: OPTIONS, positionals: 2 })
+  const {
+    values,
+    positionals,
+    hydraId,
+  } = parse({
+    args,
+    options: OPTIONS,
+    positionals: 2,
+  })
   const action = positionals[0] ?? 'list'
   const state = loadHydra({ hydraId }).state
 
   if (action === 'list') {
-    return { hydraId, accounts: effectiveDispatch({ hydraId, state }).accounts }
+    return {
+      hydraId,
+      accounts: effectiveDispatch({
+        hydraId,
+        state,
+      }).accounts,
+    }
   }
 
-  const path = configPath({ hydraId, accounts: true, shared: Boolean(values.shared) })
+  const path = configPath({
+    hydraId,
+    accounts: true,
+    shared: Boolean(values.shared),
+  })
 
   if (!values.shared) {
     requireHydra({ hydraId })
@@ -198,23 +373,51 @@ function accountCommand({ args }: { args: string[] }): Output {
       const file = parseAccounts({ value: readConfig({ path }) })
 
       if (!Object.keys(file.accounts).length && !values.shared) {
-        const shared = configPath({ hydraId, accounts: true, shared: true })
+        const shared = configPath({
+          hydraId,
+          accounts: true,
+          shared: true,
+        })
         file.accounts = parseAccounts({ value: readConfig({ path: shared }) }).accounts
       }
 
-      const key = name({ value: required({ value: positionals[1], what: 'account name' }) })
+      const key = name({
+        value: required({
+          value: positionals[1],
+          what: 'account name',
+        }),
+      })
 
       if (action === 'remove') {
         delete file.accounts[key]
       } else if (action === 'set') {
-        file.accounts[key] = { provider: required({ value: values.provider as string | undefined, what: '--provider' }) as Harness, folder: required({ value: values.folder as string | undefined, what: '--folder' }) }
+        file.accounts[key] = {
+          provider: required({
+            value: values.provider as string | undefined,
+            what: '--provider',
+          }) as Harness,
+          folder: required({
+            value: values.folder as string | undefined,
+            what: '--folder',
+          }),
+        }
       } else {
         return invalid({ message: 'Use account list, set or remove' })
       }
 
-      writeConfig({ path, value: file, accounts: true })
+      writeConfig({
+        path,
+        value: file,
+        accounts: true,
+      })
 
-      return { saved: path, accounts: effectiveDispatch({ hydraId, state }).accounts }
+      return {
+        saved: path,
+        accounts: effectiveDispatch({
+          hydraId,
+          state,
+        }).accounts,
+      }
     },
   })
 }

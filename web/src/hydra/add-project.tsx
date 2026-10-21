@@ -9,50 +9,96 @@ type Confirmation = {
   token: string
   path: string
   name: string
-  hydras: { id: string; name: string; url: string }[]
+  hydras: {
+    id: string
+    name: string
+    url: string
+  }[]
 }
 
-function useFolders({ path, repository, connected }: {
+function useFolders({
+  path,
+  repository,
+  connected,
+}: {
   path: string
   repository: string
   connected: boolean
 }) {
-  const [result, setResult] = useState<{ query: string; listing?: FolderListing; error?: string }>()
-  const query = new URLSearchParams({ path, repository }).toString()
-  useEffect(() => {
-    if (!connected) {
-      return
-    }
+  const [
+    result,
+    setResult,
+  ] = useState<{
+    query: string
+    listing?: FolderListing
+    error?: string
+  }>()
+  const query = new URLSearchParams({
+    path,
+    repository,
+  }).toString()
+  useEffect(
+    () => {
+      if (!connected) {
+        return
+      }
 
-    const abort = new AbortController()
-    const timer = setTimeout(() => {
-      void fetch(new URL(`folders?${query}`, document.baseURI), { signal: abort.signal }).then(async response => {
-        const body = await response.json()
+      const abort = new AbortController()
+      const timer = setTimeout(
+        () => {
+          void fetch(
+            new URL(
+              `folders?${query}`,
+              document.baseURI,
+            ),
+            { signal: abort.signal },
+          ).then(async response => {
+            const body = await response.json()
 
-        if (!response.ok) {
-          throw new Error(body.error ?? 'Folders could not be listed.')
-        }
+            if (!response.ok) {
+              throw new Error(body.error ?? 'Folders could not be listed.')
+            }
 
-        if (!abort.signal.aborted) {
-          setResult({ query, listing: body as FolderListing })
-        }
-      })
-        .catch((error: Error) => {
-          if (!abort.signal.aborted) {
-            setResult({ query, error: error.message })
-          }
-        })
-    }, 150)
+            if (!abort.signal.aborted) {
+              setResult({
+                query,
+                listing: body as FolderListing,
+              })
+            }
+          })
+            .catch((error: Error) => {
+              if (!abort.signal.aborted) {
+                setResult({
+                  query,
+                  error: error.message,
+                })
+              }
+            })
+        },
+        150,
+      )
 
-    return () => {
-      clearTimeout(timer); abort.abort()
-    }
-  }, [query, connected])
+      return () => {
+        clearTimeout(timer); abort.abort()
+      }
+    },
+    [
+      query,
+      connected,
+    ],
+  )
 
   return result?.query === query ? result : undefined
 }
 
-export function AddProject({ command, connected, notify, attached, cancel, autoFocus = true }: {
+export function AddProject({
+  command,
+  connected,
+  notify,
+  attached,
+  cancel,
+  autoFocus = true,
+}: {
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
@@ -61,19 +107,41 @@ export function AddProject({ command, connected, notify, attached, cancel, autoF
   autoFocus?: boolean
 }) {
   const heading = useRef<HTMLHeadingElement>(null)
-  useEffect(() => {
-    if (!autoFocus) {
-      return
-    }
+  useEffect(
+    () => {
+      if (!autoFocus) {
+        return
+      }
 
-    heading.current?.scrollIntoView({ block: 'start' })
-    heading.current?.focus({ preventScroll: true })
-  }, [autoFocus])
-  const [mode, setMode] = useState<'folder' | 'clone' | null>(null)
-  const [path, setPath] = useState(''), [repository, setRepository] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
-  const result = useFolders({ path, repository: mode === 'clone' ? repository : '', connected })
+      heading.current?.scrollIntoView({ block: 'start' })
+      heading.current?.focus({ preventScroll: true })
+    },
+    [autoFocus],
+  )
+  const [
+    mode,
+    setMode,
+  ] = useState<'folder' | 'clone' | null>(null)
+  const [
+      path,
+      setPath,
+    ] = useState(''), [
+      repository,
+      setRepository,
+    ] = useState('')
+  const [
+    busy,
+    setBusy,
+  ] = useState(false)
+  const [
+    confirmation,
+    setConfirmation,
+  ] = useState<Confirmation | null>(null)
+  const result = useFolders({
+    path,
+    repository: mode === 'clone' ? repository : '',
+    connected,
+  })
   const listing = result?.listing
   const disabled = !connected || busy
 
@@ -81,11 +149,17 @@ export function AddProject({ command, connected, notify, attached, cancel, autoF
     setBusy(true)
 
     try {
-      const receipt = await command({ name: 'project', args })
+      const receipt = await command({
+        name: 'project',
+        args,
+      })
 
       if (receipt.confirmation === 'needed') {
         const preview = receipt.preview as {
-          project: { path: string; name: string }
+          project: {
+            path: string
+            name: string
+          }
           hydras: Confirmation['hydras']
         }
         setConfirmation({
@@ -136,9 +210,22 @@ export function AddProject({ command, connected, notify, attached, cancel, autoF
             e.preventDefault()
 
             if (mode === 'clone' && listing?.cloneInto) {
-              void run({ args: ['add', '--clone', repository.trim(), '--into', listing.cloneInto] })
+              void run({
+                args: [
+                  'add',
+                  '--clone',
+                  repository.trim(),
+                  '--into',
+                  listing.cloneInto,
+                ],
+              })
             } else if (mode === 'folder' && listing?.selected && path.trim()) {
-              void run({ args: ['add', listing.selected.path] })
+              void run({
+                args: [
+                  'add',
+                  listing.selected.path,
+                ],
+              })
             }
           }}
         >
@@ -170,7 +257,12 @@ export function AddProject({ command, connected, notify, attached, cancel, autoF
                 key={folder.path}
                 disabled={disabled}
                 title={folder.path}
-                onClick={() => void run({ args: ['add', folder.path] })}
+                onClick={() => void run({
+                  args: [
+                    'add',
+                    folder.path,
+                  ],
+                })}
               ><strong>{folder.name}</strong><small>{folder.path}</small>
               </Button>
             ))}
@@ -183,7 +275,14 @@ export function AddProject({ command, connected, notify, attached, cancel, autoF
           confirmation={confirmation}
           disabled={disabled}
           cancel={() => setConfirmation(null)}
-          confirm={() => void run({ args: ['add', confirmation.path, '--confirm', confirmation.token] })}
+          confirm={() => void run({
+            args: [
+              'add',
+              confirmation.path,
+              '--confirm',
+              confirmation.token,
+            ],
+          })}
         />
       )}
       {!confirmation && <p className="small muted project-sharing-note">Each worker normally gets its own copy. Only one Hydra at a time may have a worker editing the folder itself.</p>}
@@ -191,7 +290,12 @@ export function AddProject({ command, connected, notify, attached, cancel, autoF
   )
 }
 
-export function ProjectSharing({ confirmation, disabled, cancel, confirm }: {
+export function ProjectSharing({
+  confirmation,
+  disabled,
+  cancel,
+  confirm,
+}: {
   confirmation: Confirmation
   disabled: boolean
   cancel(): void
@@ -199,7 +303,11 @@ export function ProjectSharing({ confirmation, disabled, cancel, confirm }: {
 }) {
   return (
     <div className="project-sharing" role="status">
-      <span><strong>{confirmation.name}</strong> · also in {confirmation.hydras.map((hydra, n) => <span key={hydra.id}>{n > 0 ? ', ' : ''}<a href={hydra.url} target="_blank" rel="noreferrer">{hydra.name} <Icon name="external" size={12} /></a></span>)}</span>
+      <span><strong>{confirmation.name}</strong> · also in {confirmation.hydras.map((
+        hydra,
+        n,
+      ) => <span key={hydra.id}>{n > 0 ? ', ' : ''}<a href={hydra.url} target="_blank" rel="noreferrer">{hydra.name} <Icon name="external" size={12} /></a></span>)}
+      </span>
       <p className="small muted">Each worker normally gets its own copy. Only one Hydra at a time may have a worker editing the folder itself.</p>
       <div className="project-actions"><Button disabled={disabled} variant="surface" onClick={confirm}>Add anyway</Button><Button disabled={disabled} onClick={cancel}>Cancel</Button></div>
     </div>

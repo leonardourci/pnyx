@@ -7,21 +7,73 @@ import { test } from 'node:test'
 import { promisify } from 'node:util'
 import type { HydraState } from '../src/core/model.ts'
 
-const bin = join(import.meta.dirname, '../dist/cli/pnyx-axi.js')
+const bin = join(
+  import.meta.dirname,
+  '../dist/cli/pnyx-axi.js',
+)
 const execFileAsync = promisify(execFile)
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'pnyx-workers-'))
-  mkdirSync(join(root, 'work'))
-  const folder = realpathSync(join(root, 'work'))
-  const env: NodeJS.ProcessEnv = { ...process.env, PNYX_HOME: root, PNYX_SEMANTIC: 'off', PASEO_TERMINAL_ID: '', PASEO_WORKSPACE_ID: '', TMUX_PANE: '', HERDR_PANE_ID: '', PNYX_ACTOR: '' }
-  const run = ({ args, extra = {} }: { args: string[]; extra?: NodeJS.ProcessEnv }) =>
-    execFileSync(process.execPath, [bin, ...args], { env: { ...env, ...extra }, encoding: 'utf8' })
-      .replace(/\\(["\\])/g, '$1')
+  const root = mkdtempSync(join(
+    tmpdir(),
+    'pnyx-workers-',
+  ))
+  mkdirSync(join(
+    root,
+    'work',
+  ))
+  const folder = realpathSync(join(
+    root,
+    'work',
+  ))
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PNYX_HOME: root,
+    PNYX_SEMANTIC: 'off',
+    PASEO_TERMINAL_ID: '',
+    PASEO_WORKSPACE_ID: '',
+    TMUX_PANE: '',
+    HERDR_PANE_ID: '',
+    PNYX_ACTOR: '',
+  }
+  const run = ({
+    args,
+    extra = {},
+  }: {
+    args: string[]
+    extra?: NodeJS.ProcessEnv
+  }) =>
+    execFileSync(
+      process.execPath,
+      [
+        bin,
+        ...args,
+      ],
+      {
+        env: {
+          ...env,
+          ...extra,
+        },
+        encoding: 'utf8',
+      },
+    )
+      .replace(
+        /\\(["\\])/g,
+        '$1',
+      )
 
-  const fail = ({ args, extra = {} }: { args: string[]; extra?: NodeJS.ProcessEnv }): string => {
+  const fail = ({
+    args,
+    extra = {},
+  }: {
+    args: string[]
+    extra?: NodeJS.ProcessEnv
+  }): string => {
     try {
-      run({ args, extra })
+      run({
+        args,
+        extra,
+      })
     } catch (error) {
       return String((error as { stdout?: string }).stdout)
     }
@@ -29,73 +81,320 @@ function fixture() {
     return assert.fail(`${args.join(' ')} succeeded`)
   }
 
-  const state = (): HydraState => JSON.parse(readFileSync(join(root, 'hydras/default/snapshot.json'), 'utf8')).state
+  const state = (): HydraState => JSON.parse(readFileSync(
+    join(
+      root,
+      'hydras/default/snapshot.json',
+    ),
+    'utf8',
+  )).state
   let n = 0
 
-  const hook = ({ session, cwd, terminal }: { session: string; cwd: string; terminal: string }) => {
-    const spool = join(root, 'hydras/default/spool')
-    mkdirSync(spool, { recursive: true })
+  const hook = ({
+    session,
+    cwd,
+    terminal,
+  }: {
+    session: string
+    cwd: string
+    terminal: string
+  }) => {
+    const spool = join(
+      root,
+      'hydras/default/spool',
+    )
+    mkdirSync(
+      spool,
+      { recursive: true },
+    )
     n++
-    writeFileSync(join(spool, `${String(n).padStart(4, '0')}.json`), JSON.stringify({
-      id: `worker-hook-${n}`,
-      at: `2026-10-14T12:00:${String(n).padStart(2, '0')}Z`,
-      harness: 'claude',
-      event: 'SessionStart',
-      terminal: { tty: '/dev/ttys009', pid: '9', paseoTerminal: terminal },
-      payload: { session_id: session, cwd },
-    }))
-    run({ args: ['task', 'create', '--title', `probe ${n}`] })
+    writeFileSync(
+      join(
+        spool,
+        `${String(n).padStart(
+          4,
+          '0',
+        )}.json`,
+      ),
+      JSON.stringify({
+        id: `worker-hook-${n}`,
+        at: `2026-10-14T12:00:${String(n).padStart(
+          2,
+          '0',
+        )}Z`,
+        harness: 'claude',
+        event: 'SessionStart',
+        terminal: {
+          tty: '/dev/ttys009',
+          pid: '9',
+          paseoTerminal: terminal,
+        },
+        payload: {
+          session_id: session,
+          cwd,
+        },
+      }),
+    )
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        `probe ${n}`,
+      ],
+    })
   }
 
-  return { root, folder, run, fail, state, hook }
+  return {
+    root,
+    folder,
+    run,
+    fail,
+    state,
+    hook,
+  }
 }
 
-test('Hydra set --session self binds the session running in the caller\'s Paseo terminal', () => {
-  const f = fixture()
-  f.hook({ session: 'hydra', cwd: f.folder, terminal: 'term-h' })
-  assert.match(f.fail({ args: ['hydra', 'set', '--session', 'self'] }), /cannot tell this terminal/)
-  assert.match(f.fail({ args: ['hydra', 'set', '--session', 'self'], extra: { PASEO_TERMINAL_ID: 'term-x' } }), /no recorded session/)
-  f.run({ args: ['hydra', 'set', '--session', 'self'], extra: { PASEO_TERMINAL_ID: 'term-h' } })
-  assert.equal(f.state().config!.hydra.session, 'claude-code:hydra')
-})
+test(
+  'Hydra set --session self binds the session running in the caller\'s Paseo terminal',
+  () => {
+    const f = fixture()
+    f.hook({
+      session: 'hydra',
+      cwd: f.folder,
+      terminal: 'term-h',
+    })
+    assert.match(
+      f.fail({
+        args: [
+          'hydra',
+          'set',
+          '--session',
+          'self',
+        ],
+      }),
+      /cannot tell this terminal/,
+    )
+    assert.match(
+      f.fail({
+        args: [
+          'hydra',
+          'set',
+          '--session',
+          'self',
+        ],
+        extra: { PASEO_TERMINAL_ID: 'term-x' },
+      }),
+      /no recorded session/,
+    )
+    f.run({
+      args: [
+        'hydra',
+        'set',
+        '--session',
+        'self',
+      ],
+      extra: { PASEO_TERMINAL_ID: 'term-h' },
+    })
+    assert.equal(
+      f.state().config!.hydra.session,
+      'claude-code:hydra',
+    )
+  },
+)
 
-test('hydra check lists only tracked changes by others and waits for the next one', async () => {
-  const f = fixture()
-  f.run({ args: ['task', 'create', '--key', 'a', '--title', 'First'] })
-  const start = f.state().seq
-  assert.match(f.run({ args: ['hydra', 'check'] }), new RegExp(`none: nothing Hydra tracks changed after seq ${start}`))
-  f.run({ args: ['task', 'create', '--key', 'b', '--title', 'By Hydra', '--reason', 'split out the docs'], extra: { PNYX_ACTOR: 'hydra' } })
-  f.run({ args: ['task', 'rename', 'a', '--title', 'First, renamed'] })
-  f.run({ args: ['task', 'status', 'a', 'needs_you', '--note', 'which db?'], extra: { PNYX_ACTOR: 'worker:c1' } })
-  const out = f.run({ args: ['hydra', 'check', '--after', String(start)] })
-  assert.match(out, /evt_\d+,task\.declared,task-[0-9a-f-]{36},none,"worker:c1","needs_you: which db\?"/)
-  assert.doesNotMatch(out, /task\.created,task-[0-9a-f-]{36},none,hydra|card\.pushed/)
-  assert.match(out, /hydra\.message,task-[0-9a-f-]{36},send,hydra,"Hydra: Created By Hydra: split out the docs"/)
-  const through = Number(/through: (\d+)/.exec(out)![1])
-  assert.equal(through, f.state().seq)
+test(
+  'hydra check lists only tracked changes by others and waits for the next one',
+  async () => {
+    const f = fixture()
+    f.run({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'a',
+        '--title',
+        'First',
+      ],
+    })
+    const start = f.state().seq
+    assert.match(
+      f.run({
+        args: [
+          'hydra',
+          'check',
+        ],
+      }),
+      new RegExp(`none: nothing Hydra tracks changed after seq ${start}`),
+    )
+    f.run({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'b',
+        '--title',
+        'By Hydra',
+        '--reason',
+        'split out the docs',
+      ],
+      extra: { PNYX_ACTOR: 'hydra' },
+    })
+    f.run({
+      args: [
+        'task',
+        'rename',
+        'a',
+        '--title',
+        'First, renamed',
+      ],
+    })
+    f.run({
+      args: [
+        'task',
+        'status',
+        'a',
+        'needs_you',
+        '--note',
+        'which db?',
+      ],
+      extra: { PNYX_ACTOR: 'worker:c1' },
+    })
+    const out = f.run({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(start),
+      ],
+    })
+    assert.match(
+      out,
+      /evt_\d+,task\.declared,task-[0-9a-f-]{36},none,"worker:c1","needs_you: which db\?"/,
+    )
+    assert.doesNotMatch(
+      out,
+      /task\.created,task-[0-9a-f-]{36},none,hydra|card\.pushed/,
+    )
+    assert.match(
+      out,
+      /hydra\.message,task-[0-9a-f-]{36},send,hydra,"Hydra: Created By Hydra: split out the docs"/,
+    )
+    const through = Number(/through: (\d+)/.exec(out)![1])
+    assert.equal(
+      through,
+      f.state().seq,
+    )
 
-  const waiting = execFileAsync(process.execPath, [bin, 'hydra', 'check', '--after', String(through), '--wait', '20'], { env: { ...process.env, PNYX_HOME: f.root, PNYX_SEMANTIC: 'off' }, encoding: 'utf8' })
-  await new Promise(resolve => setTimeout(resolve, 500))
-  f.run({ args: ['hydra', 'send', '--text', 'plan the week'] })
-  const { stdout } = await waiting
-  assert.match(stdout, /hydra\.message,none,send,owner \(cli\),"Send to Hydra: plan the week"/)
+    const waiting = execFileAsync(
+      process.execPath,
+      [
+        bin,
+        'hydra',
+        'check',
+        '--after',
+        String(through),
+        '--wait',
+        '20',
+      ],
+      {
+        env: {
+          ...process.env,
+          PNYX_HOME: f.root,
+          PNYX_SEMANTIC: 'off',
+        },
+        encoding: 'utf8',
+      },
+    )
+    await new Promise(resolve => setTimeout(
+      resolve,
+      500,
+    ))
+    f.run({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'plan the week',
+      ],
+    })
+    const { stdout } = await waiting
+    assert.match(
+      stdout,
+      /hydra\.message,none,send,owner \(cli\),"Send to Hydra: plan the week"/,
+    )
 
-  const before = f.state().seq
+    const before = f.state().seq
 
-  for (let i = 0; i < 22; i++) {
-    f.run({ args: ['hydra', 'send', '--text', `note ${i}`] })
-  }
+    for (let i = 0; i < 22; i++) {
+      f.run({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          `note ${i}`,
+        ],
+      })
+    }
 
-  const first = f.run({ args: ['hydra', 'check', '--after', String(before)] })
-  assert.equal((first.match(/note \d+/g) ?? []).length, 20)
-  const next = Number(/through: (\d+)/.exec(first)![1])
-  assert.equal(next, before + 20)
-  assert.match(f.run({ args: ['hydra', 'check', '--after', String(next)] }), /note 20.*\n.*note 21/)
+    const first = f.run({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(before),
+      ],
+    })
+    assert.equal(
+      (first.match(/note \d+/g) ?? []).length,
+      20,
+    )
+    const next = Number(/through: (\d+)/.exec(first)![1])
+    assert.equal(
+      next,
+      before + 20,
+    )
+    assert.match(
+      f.run({
+        args: [
+          'hydra',
+          'check',
+          '--after',
+          String(next),
+        ],
+      }),
+      /note 20.*\n.*note 21/,
+    )
 
-  const quiet = f.state().seq
-  f.run({ args: ['task', 'hide', 'b', '--reason', 'the owner closed it'], extra: { PNYX_ACTOR: 'hydra' } })
-  const started = Date.now()
-  const own = f.run({ args: ['hydra', 'check', '--after', String(quiet), '--wait', '1'] })
-  assert.ok(Date.now() - started >= 900, 'Hydra\'s own line must not end the wait')
-  assert.match(own, /"Hydra: Hid By Hydra: the owner closed it"/)
-})
+    const quiet = f.state().seq
+    f.run({
+      args: [
+        'task',
+        'hide',
+        'b',
+        '--reason',
+        'the owner closed it',
+      ],
+      extra: { PNYX_ACTOR: 'hydra' },
+    })
+    const started = Date.now()
+    const own = f.run({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(quiet),
+        '--wait',
+        '1',
+      ],
+    })
+    assert.ok(
+      Date.now() - started >= 900,
+      'Hydra\'s own line must not end the wait',
+    )
+    assert.match(
+      own,
+      /"Hydra: Hid By Hydra: the owner closed it"/,
+    )
+  },
+)

@@ -15,16 +15,27 @@ export interface PaseoConversation {
 }
 
 export async function paseoConversation({
-  card, changed, connect = ({ url }) => openPaseo({ url, reconnect: true }),
+  card,
+  changed,
+  connect = ({ url }) => openPaseo({
+    url,
+    reconnect: true,
+  }),
 }: {
   card: Card
   changed(): void
   connect?: Connect
 }): Promise<PaseoConversation> {
-  const { paseoUrl: url, paseoAgentId: id } = card.agent ?? {}
+  const {
+    paseoUrl: url,
+    paseoAgentId: id,
+  } = card.agent ?? {}
 
   if (!url || !id) {
-    throw new HydraError({ message: 'this task has no Paseo agent', code: 'NOT_FOUND' })
+    throw new HydraError({
+      message: 'this task has no Paseo agent',
+      code: 'NOT_FOUND',
+    })
   }
 
   const client = await connect({ url: localPaseoUrl({ url }) })
@@ -38,14 +49,36 @@ export async function paseoConversation({
     throw error
   }
 
-  const found = replyRoute({ card, homes: [] })
+  const found = replyRoute({
+    card,
+    homes: [],
+  })
 
   return {
     async read({ before }) {
-      const cursor = before ? JSON.parse(Buffer.from(before.slice(1), 'base64url').toString()) as { epoch: string; seq: number } : undefined
-      const page = await agent.timeline.refetch({ direction: cursor ? 'before' : 'tail', ...(cursor ? { cursor } : {}), limit: PAGE, projection: 'projected' })
-      const entries = page.entries.flatMap(({ item, seqStart, timestamp }) => {
-        const entry = timelineEntry({ item: item as Item, id: `paseo:${page.epoch}:${seqStart}`, at: timestamp })
+      const cursor = before ? JSON.parse(Buffer.from(
+        before.slice(1),
+        'base64url',
+      ).toString()) as {
+        epoch: string
+        seq: number
+      } : undefined
+      const page = await agent.timeline.refetch({
+        direction: cursor ? 'before' : 'tail',
+        ...(cursor ? { cursor } : {}),
+        limit: PAGE,
+        projection: 'projected',
+      })
+      const entries = page.entries.flatMap(({
+        item,
+        seqStart,
+        timestamp,
+      }) => {
+        const entry = timelineEntry({
+          item: item as Item,
+          id: `paseo:${page.epoch}:${seqStart}`,
+          at: timestamp,
+        })
 
         return entry ? splitEntry({ entry }) : []
       })
@@ -76,7 +109,11 @@ type Item = {
   clientMessageId?: unknown
 }
 
-function timelineEntry({ item, id, at }: {
+function timelineEntry({
+  item,
+  id,
+  at,
+}: {
   item: Item
   id: string
   at: string
@@ -86,11 +123,42 @@ function timelineEntry({ item, id, at }: {
   const replyId = typeof item.clientMessageId === 'string' ? item.clientMessageId : undefined
 
   switch (item.type) {
-    case 'user_message': return { id: replyId ? replyEntryId({ reply: replyId }) : id, at, kind: 'message', role: 'user', text: text({ value: item.text }), ...(typeof item.clientMessageId === 'string' ? { replyId: item.clientMessageId } : {}) }
-    case 'assistant_message': return { id, at, kind: 'message', role: 'assistant', text: text({ value: item.text }) }
-    case 'reasoning': return { id, at, kind: 'thinking', role: 'assistant', text: text({ value: item.text }) }
-    case 'tool_call': return { id, at, kind: 'tool', role: text({ value: item.name }) || 'tool', text: item.detail === undefined ? 'Recorded details unavailable' : JSON.stringify(item.detail) }
-    case 'error': return { id, at, kind: 'message', role: 'error', text: text({ value: item.message }) }
+    case 'user_message': return {
+      id: replyId ? replyEntryId({ reply: replyId }) : id,
+      at,
+      kind: 'message',
+      role: 'user',
+      text: text({ value: item.text }),
+      ...(typeof item.clientMessageId === 'string' ? { replyId: item.clientMessageId } : {}),
+    }
+    case 'assistant_message': return {
+      id,
+      at,
+      kind: 'message',
+      role: 'assistant',
+      text: text({ value: item.text }),
+    }
+    case 'reasoning': return {
+      id,
+      at,
+      kind: 'thinking',
+      role: 'assistant',
+      text: text({ value: item.text }),
+    }
+    case 'tool_call': return {
+      id,
+      at,
+      kind: 'tool',
+      role: text({ value: item.name }) || 'tool',
+      text: item.detail === undefined ? 'Recorded details unavailable' : JSON.stringify(item.detail),
+    }
+    case 'error': return {
+      id,
+      at,
+      kind: 'message',
+      role: 'error',
+      text: text({ value: item.message }),
+    }
     default: return undefined
   }
 }

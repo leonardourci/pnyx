@@ -19,182 +19,525 @@ import { hydraSdk } from './hydra-host-fixture.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { HYDRA_CARD } from '../src/core/hydra.ts'
 
-test('Claude forwards text before the result and excludes nested agent output', async () => {
-  const query = (({ options }) => {
-    assert.equal(options?.includePartialMessages, true)
+test(
+  'Claude forwards text before the result and excludes nested agent output',
+  async () => {
+    const query = (({ options }) => {
+      assert.equal(
+        options?.includePartialMessages,
+        true,
+      )
 
-    return (async function* () {
-      yield { type: 'stream_event', parent_tool_use_id: 'child', event: { type: 'message_start', message: { id: 'nested' } } }
-      yield { type: 'stream_event', parent_tool_use_id: 'child', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hidden' } } }
-      yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'message_start', message: { id: 'reply' } } }
-      yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello' } } }
-      yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: ' world' } } }
-      yield { type: 'result', is_error: false }
-    })()
-  }) as QueryFn
-  const session = await claudeProvider({ query }).open({ cwd: '/tmp', settings: {}, env: {}, signal: new AbortController().signal })
-  const events = session.run({
-    input: (async function* () {
-      yield 'Hi'
-    })(),
-    permission: async () => ({ behavior: 'deny', message: 'unused' }),
-  })[Symbol.asyncIterator]()
-  assert.equal((await events.next()).value, 'working')
-  assert.deepEqual((await events.next()).value, { type: 'text', id: 'reply:0', text: 'Hello', append: true })
-  assert.deepEqual((await events.next()).value, { type: 'text', id: 'reply:0', text: ' world', append: true })
-  assert.equal((await events.next()).value, 'finished')
-})
-
-test('Claude keeps one id for a text block after thinking, streamed and finished', async () => {
-  // The SDK repeats each finished block as its own assistant message, always at index 0.
-  const query = (() => (async function* () {
-    yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'message_start', message: { id: 'reply' } } }
-    yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } } }
-    yield { type: 'assistant', parent_tool_use_id: null, message: { id: 'reply', content: [{ type: 'thinking', thinking: 'Plan' }] } }
-    yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } } }
-    yield { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Seven' } } }
-    yield { type: 'assistant', parent_tool_use_id: null, message: { id: 'reply', content: [{ type: 'text', text: 'Seven' }] } }
-    yield { type: 'result', is_error: false }
-  })()) as unknown as QueryFn
-  const session = await claudeProvider({ query }).open({ cwd: '/tmp', settings: {}, env: {}, signal: new AbortController().signal })
-  const stream = liveReplies()
-  stream.start({ offset: 0 })
-
-  for await (const event of session.run({
-    input: (async function* () {
-      yield 'Hi'
-    })(),
-    permission: async () => ({ behavior: 'deny', message: 'unused' }),
-  })) {
-    if (typeof event !== 'string') {
-      assert.equal(event.id, 'reply:1'); stream.update(event)
-    }
-  }
-
-  assert.deepEqual(stream.page({ page: { card: 'hydra', entries: [], route: true, watching: 'unknown' } }).entries.map(e => e.text), ['Seven'])
-})
-
-test('Codex exposes native deltas before a held turn completes and ignores other threads', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pnyx-stream-'))
-  const fixture = fakeCodex({ root })
-  const session = await codexProvider({ spawnCodex: fixture.spawnCodex }).open({
-    cwd: root, env: {}, settings: {}, signal: new AbortController().signal,
-  })
-  const events = session.run({
-    input: (async function* () {
-      yield 'STREAM'
-    })(),
-    permission: async () => ({ behavior: 'deny', message: 'unused' }),
-  })[Symbol.asyncIterator]()
-
-  try {
-    assert.equal((await events.next()).value, 'working')
-    assert.deepEqual((await events.next()).value, { type: 'text', id: 'answer', text: 'Hello', append: true })
-    assert.deepEqual((await events.next()).value, { type: 'text', id: 'answer', text: ' world', append: true })
-    assert.equal(fixture.children[0]?.exitCode, null)
-    fixture.children[0]!.kill('SIGUSR1')
-    assert.equal((await events.next()).value, 'finished')
-  } finally {
-    session.close()
-  }
-})
-
-test('live replies reconcile with saved chunks without duplicating earlier identical replies', () => {
-  const stream = liveReplies()
-  stream.start({ offset: 100 })
-  stream.update({ id: 'reply', text: 'Hello', append: true })
-  const page: ThreadPage = { card: 'task', entries: [{ id: '0:m0', role: 'assistant', kind: 'message', text: 'Hello world' }], route: true, watching: 'unknown' }
-  assert.equal(stream.page({ page }).entries.at(-1)?.text, 'Hello')
-  stream.update({ id: 'reply', text: ' world', append: true })
-  const saved: ThreadPage = { ...page, entries: [...page.entries, { id: '101:m0', messageId: '101:m0', part: 0, role: 'assistant', kind: 'message', text: 'Hello ' }, { id: '101:m0.6', messageId: '101:m0', part: 6, role: 'assistant · continued', kind: 'message', text: 'world' }] }
-  const reconciled = stream.page({ page: saved })
-  assert.equal(reconciled.entries.filter(e => e.streaming).length, 0)
-  assert.equal(reconciled.entries.length, 3)
-  stream.finish()
-  assert.equal(stream.page({ page: saved }).entries.length, 3)
-  stream.start({ offset: 200 })
-  assert.equal(stream.page({ page }).entries.length, 1)
-})
-
-test('Hydra and task subscriptions show live replies, reconnect during a turn and settle to saved history', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pnyx-stream-socket-'))
-  process.env.PNYX_HOME = join(root, 'pnyx')
-  process.env.CLAUDE_CONFIG_DIR = join(root, 'claude')
-  process.env.PNYX_SEMANTIC = 'off'
-  fakeDispatch({ root })
-  await commands.hydra(['create', 'stream', '--hydra', 'stream'])
-  await commands.task(['create', '--key', 'test', '--title', 'Stream test', '--folder', root, '--hydra', 'stream'])
-  await commands.task(['brief', 'test', '--brief', 'Reply to me', '--hydra', 'stream'])
-  const sdk = hydraSdk()
-  sdk.control.stream = true
-  const server = await startServer({ hydraId: 'stream', query: sdk.query })
-  const tabs: WebSocket[] = []
-  const state = () => loadHydra({ hydraId: 'stream' }).state
-
-  const waitFor = async ({ check }: { check(): boolean }) => {
-    for (let i = 0; i < 300; i++) {
-      if (check()) {
-        return
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 10))
-    }
-
-    assert.fail('stream subscription timed out')
-  }
-
-  const subscribe = async ({ card }: { card: string }) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/hydra/stream/ws?token=${localToken()}`)
-    tabs.push(ws)
-    const pages: ThreadPage[] = []
-    ws.on('message', data => {
-      const message = JSON.parse(String(data)) as ServerMessage
-
-      if (message.type === 'thread' && message.thread.card === card) {
-        pages.push(message.thread)
-      }
-
-      if (message.type === 'receipt' && message.thread) {
-        pages.push(message.thread as ThreadPage)
-      }
+      return (async function* () {
+        yield {
+          type: 'stream_event',
+          parent_tool_use_id: 'child',
+          event: {
+            type: 'message_start',
+            message: { id: 'nested' },
+          },
+        }
+        yield {
+          type: 'stream_event',
+          parent_tool_use_id: 'child',
+          event: {
+            type: 'content_block_delta',
+            index: 0,
+            delta: {
+              type: 'text_delta',
+              text: 'Hidden',
+            },
+          },
+        }
+        yield {
+          type: 'stream_event',
+          parent_tool_use_id: null,
+          event: {
+            type: 'message_start',
+            message: { id: 'reply' },
+          },
+        }
+        yield {
+          type: 'stream_event',
+          parent_tool_use_id: null,
+          event: {
+            type: 'content_block_delta',
+            index: 0,
+            delta: {
+              type: 'text_delta',
+              text: 'Hello',
+            },
+          },
+        }
+        yield {
+          type: 'stream_event',
+          parent_tool_use_id: null,
+          event: {
+            type: 'content_block_delta',
+            index: 0,
+            delta: {
+              type: 'text_delta',
+              text: ' world',
+            },
+          },
+        }
+        yield {
+          type: 'result',
+          is_error: false,
+        }
+      })()
+    }) as QueryFn
+    const session = await claudeProvider({ query }).open({
+      cwd: '/tmp',
+      settings: {},
+      env: {},
+      signal: new AbortController().signal,
     })
-    await once(ws, 'open')
-    ws.send(JSON.stringify({ type: 'command', id: 'subscribe', name: 'thread', args: [card] }))
-    await waitFor({ check: () => pages.length > 0 })
+    const events = session.run({
+      input: (async function* () {
+        yield 'Hi'
+      })(),
+      permission: async () => ({
+        behavior: 'deny',
+        message: 'unused',
+      }),
+    })[Symbol.asyncIterator]()
+    assert.equal(
+      (await events.next()).value,
+      'working',
+    )
+    assert.deepEqual(
+      (await events.next()).value,
+      {
+        type: 'text',
+        id: 'reply:0',
+        text: 'Hello',
+        append: true,
+      },
+    )
+    assert.deepEqual(
+      (await events.next()).value,
+      {
+        type: 'text',
+        id: 'reply:0',
+        text: ' world',
+        append: true,
+      },
+    )
+    assert.equal(
+      (await events.next()).value,
+      'finished',
+    )
+  },
+)
 
-    return pages
-  }
+test(
+  'Claude keeps one id for a text block after thinking, streamed and finished',
+  async () => {
+  // The SDK repeats each finished block as its own assistant message, always at index 0.
+    const query = (() => (async function* () {
+      yield {
+        type: 'stream_event',
+        parent_tool_use_id: null,
+        event: {
+          type: 'message_start',
+          message: { id: 'reply' },
+        },
+      }
+      yield {
+        type: 'stream_event',
+        parent_tool_use_id: null,
+        event: {
+          type: 'content_block_start',
+          index: 0,
+          content_block: {
+            type: 'thinking',
+            thinking: '',
+          },
+        },
+      }
+      yield {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          id: 'reply',
+          content: [
+            {
+              type: 'thinking',
+              thinking: 'Plan',
+            },
+          ],
+        },
+      }
+      yield {
+        type: 'stream_event',
+        parent_tool_use_id: null,
+        event: {
+          type: 'content_block_start',
+          index: 1,
+          content_block: {
+            type: 'text',
+            text: '',
+          },
+        },
+      }
+      yield {
+        type: 'stream_event',
+        parent_tool_use_id: null,
+        event: {
+          type: 'content_block_delta',
+          index: 1,
+          delta: {
+            type: 'text_delta',
+            text: 'Seven',
+          },
+        },
+      }
+      yield {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          id: 'reply',
+          content: [
+            {
+              type: 'text',
+              text: 'Seven',
+            },
+          ],
+        },
+      }
+      yield {
+        type: 'result',
+        is_error: false,
+      }
+    })()) as unknown as QueryFn
+    const session = await claudeProvider({ query }).open({
+      cwd: '/tmp',
+      settings: {},
+      env: {},
+      signal: new AbortController().signal,
+    })
+    const stream = liveReplies()
+    stream.start({ offset: 0 })
 
-  try {
-    for (const target of ['hydra', 'task']) {
-      sdk.control.hold = true
-      const card = target === 'hydra' ? HYDRA_CARD : state().keys.test!
+    for await (const event of session.run({
+      input: (async function* () {
+        yield 'Hi'
+      })(),
+      permission: async () => ({
+        behavior: 'deny',
+        message: 'unused',
+      }),
+    })) {
+      if (typeof event !== 'string') {
+        assert.equal(
+          event.id,
+          'reply:1',
+        ); stream.update(event)
+      }
+    }
 
-      if (target === 'hydra') {
-        await commands.hydra(['send', '--text', 'Hello streaming', '--hydra', 'stream'])
-      } else {
-        await startTask({
-          hydraId: 'stream',
-          task: card,
-          meta: { actor: 'test', at: new Date().toISOString(), id: 'stream-start' },
-        })
+    assert.deepEqual(
+      stream.page({
+        page: {
+          card: 'hydra',
+          entries: [],
+          route: true,
+          watching: 'unknown',
+        },
+      }).entries.map(e => e.text),
+      ['Seven'],
+    )
+  },
+)
+
+test(
+  'Codex exposes native deltas before a held turn completes and ignores other threads',
+  async () => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-stream-',
+    ))
+    const fixture = fakeCodex({ root })
+    const session = await codexProvider({ spawnCodex: fixture.spawnCodex }).open({
+      cwd: root,
+      env: {},
+      settings: {},
+      signal: new AbortController().signal,
+    })
+    const events = session.run({
+      input: (async function* () {
+        yield 'STREAM'
+      })(),
+      permission: async () => ({
+        behavior: 'deny',
+        message: 'unused',
+      }),
+    })[Symbol.asyncIterator]()
+
+    try {
+      assert.equal(
+        (await events.next()).value,
+        'working',
+      )
+      assert.deepEqual(
+        (await events.next()).value,
+        {
+          type: 'text',
+          id: 'answer',
+          text: 'Hello',
+          append: true,
+        },
+      )
+      assert.deepEqual(
+        (await events.next()).value,
+        {
+          type: 'text',
+          id: 'answer',
+          text: ' world',
+          append: true,
+        },
+      )
+      assert.equal(
+        fixture.children[0]?.exitCode,
+        null,
+      )
+      fixture.children[0]!.kill('SIGUSR1')
+      assert.equal(
+        (await events.next()).value,
+        'finished',
+      )
+    } finally {
+      session.close()
+    }
+  },
+)
+
+test(
+  'live replies reconcile with saved chunks without duplicating earlier identical replies',
+  () => {
+    const stream = liveReplies()
+    stream.start({ offset: 100 })
+    stream.update({
+      id: 'reply',
+      text: 'Hello',
+      append: true,
+    })
+    const page: ThreadPage = {
+      card: 'task',
+      entries: [
+        {
+          id: '0:m0',
+          role: 'assistant',
+          kind: 'message',
+          text: 'Hello world',
+        },
+      ],
+      route: true,
+      watching: 'unknown',
+    }
+    assert.equal(
+      stream.page({ page }).entries.at(-1)?.text,
+      'Hello',
+    )
+    stream.update({
+      id: 'reply',
+      text: ' world',
+      append: true,
+    })
+    const saved: ThreadPage = {
+      ...page,
+      entries: [
+        ...page.entries,
+        {
+          id: '101:m0',
+          messageId: '101:m0',
+          part: 0,
+          role: 'assistant',
+          kind: 'message',
+          text: 'Hello ',
+        },
+        {
+          id: '101:m0.6',
+          messageId: '101:m0',
+          part: 6,
+          role: 'assistant · continued',
+          kind: 'message',
+          text: 'world',
+        },
+      ],
+    }
+    const reconciled = stream.page({ page: saved })
+    assert.equal(
+      reconciled.entries.filter(e => e.streaming).length,
+      0,
+    )
+    assert.equal(
+      reconciled.entries.length,
+      3,
+    )
+    stream.finish()
+    assert.equal(
+      stream.page({ page: saved }).entries.length,
+      3,
+    )
+    stream.start({ offset: 200 })
+    assert.equal(
+      stream.page({ page }).entries.length,
+      1,
+    )
+  },
+)
+
+test(
+  'Hydra and task subscriptions show live replies, reconnect during a turn and settle to saved history',
+  async () => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-stream-socket-',
+    ))
+    process.env.PNYX_HOME = join(
+      root,
+      'pnyx',
+    )
+    process.env.CLAUDE_CONFIG_DIR = join(
+      root,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    fakeDispatch({ root })
+    await commands.hydra([
+      'create',
+      'stream',
+      '--hydra',
+      'stream',
+    ])
+    await commands.task([
+      'create',
+      '--key',
+      'test',
+      '--title',
+      'Stream test',
+      '--folder',
+      root,
+      '--hydra',
+      'stream',
+    ])
+    await commands.task([
+      'brief',
+      'test',
+      '--brief',
+      'Reply to me',
+      '--hydra',
+      'stream',
+    ])
+    const sdk = hydraSdk()
+    sdk.control.stream = true
+    const server = await startServer({
+      hydraId: 'stream',
+      query: sdk.query,
+    })
+    const tabs: WebSocket[] = []
+    const state = () => loadHydra({ hydraId: 'stream' }).state
+
+    const waitFor = async ({ check }: { check(): boolean }) => {
+      for (let i = 0; i < 300; i++) {
+        if (check()) {
+          return
+        }
+
+        await new Promise(resolve => setTimeout(
+          resolve,
+          10,
+        ))
       }
 
-      await waitFor({
-        check: () => sdk.calls.some(c => c.messages.length > 0) && !!state().cards[card]?.agent,
-      })
-      const pages = await subscribe({ card })
-      await waitFor({ check: () => pages.some(p => p.entries.some(e => e.streaming && e.text.startsWith('Hydra: ') && e.text.length === 8)) })
-      assert.equal(state().cards[card]?.sessionActivity, 'working')
-      const reconnected = await subscribe({ card })
-      assert.ok(reconnected.at(-1)?.entries.some(e => e.streaming))
-      sdk.release()
-      await waitFor({ check: () => pages.at(-1)?.entries.some(e => e.role === 'assistant' && !e.streaming && e.text.startsWith('Hydra: ')) ?? false })
-      assert.equal(pages.at(-1)?.entries.filter(e => e.role === 'assistant' && e.text.startsWith('Hydra: ')).length, 1)
+      assert.fail('stream subscription timed out')
     }
-  } finally {
-    sdk.release()
-    tabs.forEach(ws => ws.terminate())
-    await server.close()
-  }
-})
+
+    const subscribe = async ({ card }: { card: string }) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}/hydra/stream/ws?token=${localToken()}`)
+      tabs.push(ws)
+      const pages: ThreadPage[] = []
+      ws.on(
+        'message',
+        data => {
+          const message = JSON.parse(String(data)) as ServerMessage
+
+          if (message.type === 'thread' && message.thread.card === card) {
+            pages.push(message.thread)
+          }
+
+          if (message.type === 'receipt' && message.thread) {
+            pages.push(message.thread as ThreadPage)
+          }
+        },
+      )
+      await once(
+        ws,
+        'open',
+      )
+      ws.send(JSON.stringify({
+        type: 'command',
+        id: 'subscribe',
+        name: 'thread',
+        args: [card],
+      }))
+      await waitFor({ check: () => pages.length > 0 })
+
+      return pages
+    }
+
+    try {
+      for (const target of [
+        'hydra',
+        'task',
+      ]) {
+        sdk.control.hold = true
+        const card = target === 'hydra' ? HYDRA_CARD : state().keys.test!
+
+        if (target === 'hydra') {
+          await commands.hydra([
+            'send',
+            '--text',
+            'Hello streaming',
+            '--hydra',
+            'stream',
+          ])
+        } else {
+          await startTask({
+            hydraId: 'stream',
+            task: card,
+            meta: {
+              actor: 'test',
+              at: new Date().toISOString(),
+              id: 'stream-start',
+            },
+          })
+        }
+
+        await waitFor({
+          check: () => sdk.calls.some(c => c.messages.length > 0) && !!state().cards[card]?.agent,
+        })
+        const pages = await subscribe({ card })
+        await waitFor({ check: () => pages.some(p => p.entries.some(e => e.streaming && e.text.startsWith('Hydra: ') && e.text.length === 8)) })
+        assert.equal(
+          state().cards[card]?.sessionActivity,
+          'working',
+        )
+        const reconnected = await subscribe({ card })
+        assert.ok(reconnected.at(-1)?.entries.some(e => e.streaming))
+        sdk.release()
+        await waitFor({ check: () => pages.at(-1)?.entries.some(e => e.role === 'assistant' && !e.streaming && e.text.startsWith('Hydra: ')) ?? false })
+        assert.equal(
+          pages.at(-1)?.entries.filter(e => e.role === 'assistant' && e.text.startsWith('Hydra: ')).length,
+          1,
+        )
+      }
+    } finally {
+      sdk.release()
+      tabs.forEach(ws => ws.terminate())
+      await server.close()
+    }
+  },
+)

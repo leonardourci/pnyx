@@ -23,7 +23,10 @@ export function terminalFacts({ value }: { value: unknown }): TerminalFacts | un
     return undefined
   }
 
-  const facts = Object.fromEntries(Object.entries(value).filter(([k, v]) =>
+  const facts = Object.fromEntries(Object.entries(value).filter(([
+    k,
+    v,
+  ]) =>
     k in TERMINAL_FIELDS
     && typeof v === 'string'
     && TERMINAL_FIELDS[k as keyof TerminalFacts].test(v)))
@@ -32,16 +35,39 @@ export function terminalFacts({ value }: { value: unknown }): TerminalFacts | un
 }
 
 export type TerminalHost =
-  | { kind: 'tmux'; socket: string; pane: string }
-  | { kind: 'herdr'; session: string; pane: string }
-  | { kind: 'paseo'; terminal: string; home?: string }
+  | {
+    kind: 'tmux'
+    socket: string
+    pane: string
+  }
+  | {
+    kind: 'herdr'
+    session: string
+    pane: string
+  }
+  | {
+    kind: 'paseo'
+    terminal: string
+    home?: string
+  }
   | { kind: 'iterm2' }
   | { kind: 'terminal-app' }
 
 // tty and pid name the harness process that owned the terminal, checked again
 // before anything is typed.
-export type TerminalRoute = TerminalHost & { tty: string; pid: number }
-export type ReplyRoute = { kind: 'firstmate'; home: string; task: string } | { kind: 'paseo-agent'; agent: string; url: string } | { kind: 'pnyx' } | TerminalRoute
+export type TerminalRoute = TerminalHost & {
+  tty: string
+  pid: number
+}
+export type ReplyRoute = {
+  kind: 'firstmate'
+  home: string
+  task: string
+} | {
+  kind: 'paseo-agent'
+  agent: string
+  url: string
+} | { kind: 'pnyx' } | TerminalRoute
 
 export const HOST_LABEL: Record<ReplyRoute['kind'], string> = {
   'firstmate': 'Firstmate',
@@ -59,15 +85,27 @@ export const HOST_LABEL: Record<ReplyRoute['kind'], string> = {
 // TERM_PROGRAM is set by the terminal emulator itself, and tmux replaces it.
 function host({ facts }: { facts: TerminalFacts }): TerminalHost | undefined {
   if (facts.tmux && facts.tmuxPane) {
-    return { kind: 'tmux', socket: facts.tmux, pane: facts.tmuxPane }
+    return {
+      kind: 'tmux',
+      socket: facts.tmux,
+      pane: facts.tmuxPane,
+    }
   }
 
   if (facts.herdrSession && facts.herdrPane) {
-    return { kind: 'herdr', session: facts.herdrSession, pane: facts.herdrPane }
+    return {
+      kind: 'herdr',
+      session: facts.herdrSession,
+      pane: facts.herdrPane,
+    }
   }
 
   if (facts.paseoTerminal) {
-    return { kind: 'paseo', terminal: facts.paseoTerminal, ...(facts.paseoHome ? { home: facts.paseoHome } : {}) }
+    return {
+      kind: 'paseo',
+      terminal: facts.paseoTerminal,
+      ...(facts.paseoHome ? { home: facts.paseoHome } : {}),
+    }
   }
 
   if (facts.program === 'iTerm.app') {
@@ -82,7 +120,13 @@ function host({ facts }: { facts: TerminalFacts }): TerminalHost | undefined {
 }
 
 export function replyRoute(
-  { card, homes }: { card: Card; homes: string[] },
+  {
+    card,
+    homes,
+  }: {
+    card: Card
+    homes: string[]
+  },
 ): { route: ReplyRoute } | { reason: string } {
   if (card.agent?.host === 'pnyx' && !card.agent.agentId) {
     return { route: { kind: 'pnyx' } }
@@ -100,7 +144,13 @@ export function replyRoute(
       return { reason: `Firstmate home ${firstmate.instanceId} is not configured for replies; start the server with --home ${firstmate.instanceId}.` }
     }
 
-    return { route: { kind: 'firstmate', home: firstmate.instanceId, task: firstmate.objectId } }
+    return {
+      route: {
+        kind: 'firstmate',
+        home: firstmate.instanceId,
+        task: firstmate.objectId,
+      },
+    }
   }
 
   if (!card.agent) {
@@ -113,7 +163,13 @@ export function replyRoute(
 
   if (card.agent.paseoAgentId && card.agent.paseoUrl) {
     try {
-      return { route: { kind: 'paseo-agent', agent: card.agent.paseoAgentId, url: localPaseoUrl({ url: card.agent.paseoUrl }) } }
+      return {
+        route: {
+          kind: 'paseo-agent',
+          agent: card.agent.paseoAgentId,
+          url: localPaseoUrl({ url: card.agent.paseoUrl }),
+        },
+      }
     } catch {
       return { reason: 'The recorded Paseo daemon address is not a local one.' }
     }
@@ -139,5 +195,11 @@ export function replyRoute(
     return { reason: "The session's TTY was not found, so typing into its terminal cannot be checked." }
   }
 
-  return { route: { ...found, tty: t.tty, pid: Number(t.pid) } }
+  return {
+    route: {
+      ...found,
+      tty: t.tty,
+      pid: Number(t.pid),
+    },
+  }
 }

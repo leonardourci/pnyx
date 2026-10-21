@@ -5,20 +5,47 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { parseDocument } from 'yaml'
 import type { Card } from '../core/model.ts'
 
-export interface Suggestion { command: string; description: string; source: string }
-export interface Catalog { suggestions: Suggestion[]; unavailable?: string; note?: string }
-export interface CatalogLocations { home: string; claude: string; codex: string }
+export interface Suggestion {
+  command: string
+  description: string
+  source: string
+}
+export interface Catalog {
+  suggestions: Suggestion[]
+  unavailable?: string
+  note?: string
+}
+export interface CatalogLocations {
+  home: string
+  claude: string
+  codex: string
+}
 const object = ({ value: v }: { value: unknown }): Record<string, unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}
 const validName = ({ value }: { value: unknown }): string | undefined =>
   typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$/.test(value) ? value : undefined
 
-const within = ({ root, path }: { root: string; path: string }) => {
-  const part = relative(root, path)
+const within = ({
+  root,
+  path,
+}: {
+  root: string
+  path: string
+}) => {
+  const part = relative(
+    root,
+    path,
+  )
 
   return part !== '..' && !part.startsWith('../') && !isAbsolute(part)
 }
 
-const sort = ({ a, b }: { a: string; b: string }) => a < b ? -1 : a > b ? 1 : 0
+const sort = ({
+  a,
+  b,
+}: {
+  a: string
+  b: string
+}) => a < b ? -1 : a > b ? 1 : 0
 
 // Only metadata is returned. File contents are never expanded or executed.
 // Budgets also bound symlink cycles and unusually large installations.
@@ -35,7 +62,10 @@ class Reader {
     let file
 
     try {
-      file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK)
+      file = await open(
+        path,
+        constants.O_RDONLY | constants.O_NONBLOCK,
+      )
       const info = await file.stat()
 
       if (!info.isFile() || info.size > 65_536) {
@@ -44,10 +74,21 @@ class Reader {
         return
       }
 
-      const bytes = Buffer.alloc(Math.min(info.size, 65_536))
-      const read = await file.read(bytes, 0, bytes.length, 0)
+      const bytes = Buffer.alloc(Math.min(
+        info.size,
+        65_536,
+      ))
+      const read = await file.read(
+        bytes,
+        0,
+        bytes.length,
+        0,
+      )
 
-      return bytes.subarray(0, read.bytesRead).toString('utf8')
+      return bytes.subarray(
+        0,
+        read.bytesRead,
+      ).toString('utf8')
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
         this.partial = true
@@ -81,13 +122,22 @@ class Reader {
     }
 
     try {
-      const names = (await readdir(path)).sort((a, b) => sort({ a, b }))
+      const names = (await readdir(path)).sort((
+        a,
+        b,
+      ) => sort({
+        a,
+        b,
+      }))
 
       if (names.length > 500) {
         this.partial = true
       }
 
-      return names.slice(0, 500)
+      return names.slice(
+        0,
+        500,
+      )
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
         this.partial = true
@@ -117,7 +167,13 @@ class Reader {
     }
 
     try {
-      const doc = parseDocument(match[1], { logLevel: 'silent', uniqueKeys: true })
+      const doc = parseDocument(
+        match[1],
+        {
+          logLevel: 'silent',
+          uniqueKeys: true,
+        },
+      )
 
       if (doc.errors.length) {
         throw new Error('invalid metadata')
@@ -135,7 +191,10 @@ async function projectFolders({ cwd }: { cwd: string }): Promise<string[]> {
 
   for (let here = cwd, depth = 0; depth < 40; depth++) {
     try {
-      await stat(join(here, '.git'))
+      await stat(join(
+        here,
+        '.git',
+      ))
 
       return folders
     } catch { /* Worktrees use a .git file. */ }
@@ -154,18 +213,40 @@ async function projectFolders({ cwd }: { cwd: string }): Promise<string[]> {
 }
 
 export async function readCatalog({
-  card, locations = {
-    home: homedir(), claude: process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), codex: process.env.CODEX_HOME || join(homedir(), '.codex'),
+  card,
+  locations = {
+    home: homedir(),
+    claude: process.env.CLAUDE_CONFIG_DIR || join(
+      homedir(),
+      '.claude',
+    ),
+    codex: process.env.CODEX_HOME || join(
+      homedir(),
+      '.codex',
+    ),
   },
-}: { card: Card; locations?: CatalogLocations }): Promise<Catalog> {
+}: {
+  card: Card
+  locations?: CatalogLocations
+}): Promise<Catalog> {
   if (!card.agent?.cwd || !isAbsolute(card.agent.cwd)) {
-    return { suggestions: [], unavailable: 'No working folder is recorded for this session. Commands stay literal.' }
+    return {
+      suggestions: [],
+      unavailable: 'No working folder is recorded for this session. Commands stay literal.',
+    }
   }
 
   const provider = card.agent.provider
 
-  if (!['claude', 'claude-code', 'codex'].includes(provider)) {
-    return { suggestions: [], unavailable: 'This harness has no supported local catalog. Commands stay literal.' }
+  if (![
+    'claude',
+    'claude-code',
+    'codex',
+  ].includes(provider)) {
+    return {
+      suggestions: [],
+      unavailable: 'This harness has no supported local catalog. Commands stay literal.',
+    }
   }
 
   let cwd: string
@@ -177,14 +258,21 @@ export async function readCatalog({
       throw new Error('not a folder')
     }
   } catch {
-    return { suggestions: [], unavailable: 'The session working folder is unavailable. Commands stay literal.' }
+    return {
+      suggestions: [],
+      unavailable: 'The session working folder is unavailable. Commands stay literal.',
+    }
   }
 
   const reader = new Reader()
   const folders = await projectFolders({ cwd })
   const suggestions = new Map<string, Suggestion>()
 
-  const add = ({ command, meta, source }: {
+  const add = ({
+    command,
+    meta,
+    source,
+  }: {
     command: string
     meta: Record<string, unknown>
     source: string
@@ -199,11 +287,26 @@ export async function readCatalog({
       return
     }
 
-    suggestions.set(command, { command, source, description: typeof meta.description === 'string' ? meta.description.slice(0, 240) : 'Local harness command' })
+    suggestions.set(
+      command,
+      {
+        command,
+        source,
+        description: typeof meta.description === 'string' ? meta.description.slice(
+          0,
+          240,
+        ) : 'Local harness command',
+      },
+    )
   }
 
   const skills = async (
-    { root, source, prefix, disabled = {} }: {
+    {
+      root,
+      source,
+      prefix,
+      disabled = {},
+    }: {
       root: string
       source: string
       prefix: string
@@ -215,7 +318,13 @@ export async function readCatalog({
         continue
       }
 
-      const meta = await reader.metadata({ path: join(root, entry, 'SKILL.md') })
+      const meta = await reader.metadata({
+        path: join(
+          root,
+          entry,
+          'SKILL.md',
+        ),
+      })
 
       if (!meta) {
         continue
@@ -224,13 +333,24 @@ export async function readCatalog({
       const name = validName({ value: meta.name ?? entry })
 
       if (name && disabled[name] !== 'off') {
-        add({ command: prefix + name, meta, source })
+        add({
+          command: prefix + name,
+          meta,
+          source,
+        })
       }
     }
   }
 
   const commands = async (
-    { root, source, prefix, recursive, depth = 0, seen = new Set<string>() }: {
+    {
+      root,
+      source,
+      prefix,
+      recursive,
+      depth = 0,
+      seen = new Set<string>(),
+    }: {
       root: string
       source: string
       prefix: string
@@ -264,18 +384,37 @@ export async function readCatalog({
         continue
       }
 
-      const path = join(root, entry)
+      const path = join(
+        root,
+        entry,
+      )
 
       if (entry.endsWith('.md')) {
-        const name = validName({ value: basename(entry, '.md') }), meta = await reader.metadata({ path })
+        const name = validName({
+            value: basename(
+              entry,
+              '.md',
+            ),
+          }), meta = await reader.metadata({ path })
 
         if (name && meta) {
-          add({ command: prefix + name, meta, source })
+          add({
+            command: prefix + name,
+            meta,
+            source,
+          })
         }
       } else if (recursive) {
         try {
           if ((await stat(path)).isDirectory()) {
-            await commands({ root: path, source, prefix, recursive: true, depth: depth + 1, seen })
+            await commands({
+              root: path,
+              source,
+              prefix,
+              recursive: true,
+              depth: depth + 1,
+              seen,
+            })
           }
         } catch { /* Gone during discovery. */ }
       }
@@ -284,17 +423,55 @@ export async function readCatalog({
 
   if (provider === 'codex') {
     for (const folder of folders) {
-      await skills({ root: join(folder, '.agents/skills'), source: 'Project skill', prefix: '$' })
+      await skills({
+        root: join(
+          folder,
+          '.agents/skills',
+        ),
+        source: 'Project skill',
+        prefix: '$',
+      })
     }
 
-    await skills({ root: join(locations.home, '.agents/skills'), source: 'Personal skill', prefix: '$' })
-    await commands({ root: join(locations.codex, 'prompts'), source: 'Personal prompt', prefix: '/prompts:', recursive: false })
+    await skills({
+      root: join(
+        locations.home,
+        '.agents/skills',
+      ),
+      source: 'Personal skill',
+      prefix: '$',
+    })
+    await commands({
+      root: join(
+        locations.codex,
+        'prompts',
+      ),
+      source: 'Personal prompt',
+      prefix: '/prompts:',
+      recursive: false,
+    })
   } else {
-    const settings = [await reader.json({ path: join(locations.claude, 'settings.json') })]
+    const settings = [
+      await reader.json({
+        path: join(
+          locations.claude,
+          'settings.json',
+        ),
+      }),
+    ]
 
     for (const folder of [...folders].reverse()) {
-      for (const file of ['settings.json', 'settings.local.json']) {
-        settings.push(await reader.json({ path: join(folder, '.claude', file) }))
+      for (const file of [
+        'settings.json',
+        'settings.local.json',
+      ]) {
+        settings.push(await reader.json({
+          path: join(
+            folder,
+            '.claude',
+            file,
+          ),
+        }))
       }
     }
 
@@ -306,68 +483,155 @@ export async function readCatalog({
       {},
       ...settings.map(s => object({ value: s.skillOverrides })),
     ) as Record<string, unknown>
-    await skills({ root: join(locations.claude, 'skills'), source: 'Personal skill', prefix: '/', disabled: overrides })
+    await skills({
+      root: join(
+        locations.claude,
+        'skills',
+      ),
+      source: 'Personal skill',
+      prefix: '/',
+      disabled: overrides,
+    })
 
     for (const folder of folders) {
-      await skills({ root: join(folder, '.claude/skills'), source: 'Project skill', prefix: '/', disabled: overrides })
+      await skills({
+        root: join(
+          folder,
+          '.claude/skills',
+        ),
+        source: 'Project skill',
+        prefix: '/',
+        disabled: overrides,
+      })
     }
 
     for (const folder of folders) {
-      await commands({ root: join(folder, '.claude/commands'), source: 'Project command', prefix: '/', recursive: true })
+      await commands({
+        root: join(
+          folder,
+          '.claude/commands',
+        ),
+        source: 'Project command',
+        prefix: '/',
+        recursive: true,
+      })
     }
 
-    await commands({ root: join(locations.claude, 'commands'), source: 'Personal command', prefix: '/', recursive: true })
-    const installed = await reader.json({ path: join(locations.claude, 'plugins/installed_plugins.json') })
+    await commands({
+      root: join(
+        locations.claude,
+        'commands',
+      ),
+      source: 'Personal command',
+      prefix: '/',
+      recursive: true,
+    })
+    const installed = await reader.json({
+      path: join(
+        locations.claude,
+        'plugins/installed_plugins.json',
+      ),
+    })
 
     const plugins = Object.entries(object({
       value: installed.plugins,
-    })).sort(([a], [b]) =>
+    })).sort((
+      [a],
+      [b],
+    ) =>
       sort({
         a,
         b,
       }))
 
-    for (const [id, raw] of plugins) {
+    for (const [
+      id,
+      raw,
+    ] of plugins) {
       if (enabled[id] !== true || !Array.isArray(raw)) {
         continue
       }
 
       // Most specific applicable installation wins; never enumerate plugin caches.
       const entries = raw.map(value => object({ value })).filter(e => typeof e.installPath === 'string' && isAbsolute(e.installPath) && (e.scope === 'user' || ((e.scope === 'project' || e.scope === 'local') && typeof e.projectPath === 'string' && folders.includes(resolve(e.projectPath)))))
-        .sort((a, b) => String(b.scope).localeCompare(String(a.scope)))
+        .sort((
+          a,
+          b,
+        ) => String(b.scope).localeCompare(String(a.scope)))
       const installation = entries.find(e => e.scope === 'local') ?? entries.find(e => e.scope === 'project') ?? entries[0]
 
       if (!installation) {
         continue
       }
 
-      const root = installation.installPath as string, manifest = await reader.json({ path: join(root, '.claude-plugin/plugin.json') })
+      const root = installation.installPath as string, manifest = await reader.json({
+        path: join(
+          root,
+          '.claude-plugin/plugin.json',
+        ),
+      })
       const namespace = validName({ value: manifest.name ?? id.split('@')[0] })
 
       if (!namespace) {
         continue
       }
 
-      const paths = ({ field }: { field: string }) => [field, ...(typeof manifest[field] === 'string' ? [manifest[field]] : Array.isArray(manifest[field]) ? manifest[field] : [])].filter((p): p is string => typeof p === 'string').map(p => resolve(root, p))
-        .filter(p => within({ root, path: p }))
+      const paths = ({ field }: { field: string }) => [
+        field,
+        ...(typeof manifest[field] === 'string' ? [manifest[field]] : Array.isArray(manifest[field]) ? manifest[field] : []),
+      ].filter((p): p is string => typeof p === 'string').map(p => resolve(
+        root,
+        p,
+      ))
+        .filter(p => within({
+          root,
+          path: p,
+        }))
 
       for (const path of [...new Set(paths({ field: 'skills' }))]) {
-        await skills({ root: path, source: `Plugin ${namespace}`, prefix: `/${namespace}:` })
+        await skills({
+          root: path,
+          source: `Plugin ${namespace}`,
+          prefix: `/${namespace}:`,
+        })
       }
 
       for (const path of [...new Set(paths({ field: 'commands' }))]) {
         if (path.endsWith('.md')) {
-          const meta = await reader.metadata({ path }), name = validName({ value: basename(path, '.md') })
+          const meta = await reader.metadata({ path }), name = validName({
+            value: basename(
+              path,
+              '.md',
+            ),
+          })
 
           if (meta && name) {
-            add({ command: `/${namespace}:${name}`, meta, source: `Plugin ${namespace}` })
+            add({
+              command: `/${namespace}:${name}`,
+              meta,
+              source: `Plugin ${namespace}`,
+            })
           }
         } else {
-          await commands({ root: path, source: `Plugin ${namespace}`, prefix: `/${namespace}:`, recursive: true })
+          await commands({
+            root: path,
+            source: `Plugin ${namespace}`,
+            prefix: `/${namespace}:`,
+            recursive: true,
+          })
         }
       }
     }
   }
 
-  return { suggestions: [...suggestions.values()].sort((a, b) => sort({ a: a.command, b: b.command })), note: reader.partial ? 'Some local catalog files could not be read or exceeded the discovery limit.' : 'Local files; the harness may require a reload or have additional availability rules. Inserted text stays literal.' }
+  return {
+    suggestions: [...suggestions.values()].sort((
+      a,
+      b,
+    ) => sort({
+      a: a.command,
+      b: b.command,
+    })),
+    note: reader.partial ? 'Some local catalog files could not be read or exceeded the discovery limit.' : 'Local files; the harness may require a reload or have additional availability rules. Inserted text stays literal.',
+  }
 }

@@ -2,7 +2,13 @@ import type { ChatComment } from './chat.ts'
 
 export type CommentPassage = Omit<ChatComment, 'id' | 'text'>
 
-export const messageBlockKey = ({ messageId, offset }: { messageId: string; offset: number }) =>
+export const messageBlockKey = ({
+  messageId,
+  offset,
+}: {
+  messageId: string
+  offset: number
+}) =>
   `${messageId}/block-${offset}`
 
 export const messageBlock = ({ node }: { node?: Node | null }) =>
@@ -30,10 +36,16 @@ export function selectedPassage({ messages }: {
     return null
   }
 
-  return { ...blockPassage({ block }), quote }
+  return {
+    ...blockPassage({ block }),
+    quote,
+  }
 }
 
-export const samePassage = ({ before, after }: {
+export const samePassage = ({
+  before,
+  after,
+}: {
   before: CommentPassage | null
   after: CommentPassage | null
 }) => before?.messageId === after?.messageId && before?.offset === after?.offset
