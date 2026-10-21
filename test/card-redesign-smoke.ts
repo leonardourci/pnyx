@@ -163,6 +163,70 @@ try {
     condition: 'document.querySelectorAll(".card-link").length === 2 && document.querySelector(".card-links button").textContent === "+2"',
     label: 'closed cards limit link chips',
   })
+
+  const checkHoverPill = async ({ state }: { state: string }) => {
+    await b.evaluate({ code: 'const card = document.querySelector(".card"); card.closest(".column-cards").scrollTop = 0; card.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })); return true;' })
+    await b.check({
+      condition: '(() => { const card = document.querySelector(".card"), pill = card.querySelector(".card-menu"), column = card.closest(".column-cards"); const rect = pill.getBoundingClientRect(); return pill.matches(":popover-open") && rect.top < column.getBoundingClientRect().top && pill.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + 2)); })()',
+      label: `${state} top card hover pill is visible and clickable above the column`,
+    })
+    const snapshot = await b.browser({
+      args: [
+        'snapshot',
+        '--full',
+      ],
+    })
+    const title = snapshot.match(/uid=(\S+) button "Open task Choose the conversation layout"/)
+
+    if (!title) {
+      throw new Error(snapshot)
+    }
+
+    await b.browser({
+      args: [
+        'hover',
+        `@${title[1]}`,
+      ],
+    })
+    const actions = await b.browser({
+      args: [
+        'snapshot',
+        '--full',
+      ],
+    })
+    const more = actions.match(/uid=(\S+) button "Card menu for Choose the conversation layout"/)
+
+    if (!more) {
+      throw new Error(actions)
+    }
+
+    await b.browser({
+      args: [
+        'hover',
+        `@${more[1]}`,
+      ],
+    })
+    await b.browser({
+      args: [
+        'click',
+        `@${more[1]}`,
+      ],
+    })
+    await b.check({
+      condition: '!!document.querySelector(".card-menu .menu-items:popover-open")',
+      label: `${state} floating pill survives pointer transit and opens its menu`,
+    })
+    await b.press({ key: 'Escape' })
+    await b.focus({ selector: '.card-menu > button' })
+    await b.press({ key: 'Tab' })
+    await b.check({
+      condition: 'document.activeElement?.textContent === "Copy ID"',
+      label: `${state} floating pill supports keyboard navigation`,
+    })
+    await b.screenshot({ name: `card-redesign-${state}-hover.png` })
+  }
+
+  await checkHoverPill({ state: 'closed' })
   await b.screenshot({ name: 'card-redesign-closed.png' })
   await b.evaluate({ code: 'window.cardHeight = document.querySelector(".card").getBoundingClientRect().height; document.querySelector(".card-since").dispatchEvent(new PointerEvent("pointerover", { bubbles: true })); return true;' })
   await b.eventually({
@@ -215,6 +279,7 @@ try {
     condition: '!!document.querySelector(".decision")',
     label: 'answered question appears as a paired decision',
   })
+  await checkHoverPill({ state: 'open' })
   await b.check({
     condition: '(() => { const fold = document.querySelector(".decision"); return !fold.open && fold.textContent.includes("Updates above chat") && fold.textContent.includes("by Hydra") && ![...document.querySelectorAll(".detail button")].some(button => ["Reassign", "Add subtask"].includes(button.textContent.trim())); })()',
     label: 'decision starts folded and open card omits removed actions',
