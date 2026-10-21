@@ -71,7 +71,7 @@ h2 { font-size: var(--text-pane); }
 
 h1, h2 { font-weight: 700; }
 
-.settings > h1, .settings-box > h2, .keyboard-settings h2, .history-page > h1, .hydra-head { font-family: var(--font-brand); font-weight: 700; }
+.settings > h1, .settings-box > h2, .keyboard-settings h2, .hydra-head { font-family: var(--font-brand); font-weight: 700; }
 
 .hydra-head strong { font-weight: inherit; }
 
@@ -307,9 +307,9 @@ h3 { font-weight: 600; }
 
 .column-cards > .detail { width: 100%!important; flex: 0 0 min(680px, 100%)!important; height: min(680px, 100%); min-height: 440px; }
 
-.settings, .history-page { display: flex; flex-direction: column; gap: 18px; flex: 1; min-height: 0; overflow: auto; }
+.settings { display: flex; flex-direction: column; gap: 18px; flex: 1; min-height: 0; overflow: auto; }
 
-.settings > .row p, .history-page > div > p { font-size: var(--text-ui); margin-top: 5px; }
+.settings > .row p { font-size: var(--text-ui); margin-top: 5px; }
 
 .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; max-width: none; }
 
@@ -337,17 +337,11 @@ h3 { font-weight: 600; }
 
 .settings-box dd { margin: 4px 0; color: var(--color-ink); }
 
-.history-page .input { width: min(390px, 100%); }
 
-.history-results { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); padding: 0 18px; }
 
-.history-entry { display: flex; flex-direction: column; align-items: flex-start; padding: 16px 0; gap: 6px; border-bottom: 1px solid var(--color-line); }
 
-.history-entry > .markdown { width: 100%; color: var(--color-muted); }
 
-.history-entry .button { padding: 0; text-align: left; }
 
-.history-entry .result-title { font-size: var(--text-ui); font-weight: 600; }
 
 .error-banner { padding: 9px 12px; color: var(--color-red); border: 1px solid var(--color-line); border-radius: 6px; font-size: var(--text-ui); }
 @media (max-width: 760px) {
@@ -791,7 +785,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-chat > .composer { margin: 0; }
 
-.settings, .history-page { width: 100%; margin: 0 auto; padding: 24px 12px 48px; flex: 1; }
+.settings { width: 100%; margin: 0 auto; padding: 24px 12px 48px; flex: 1; }
 
 .settings > h1 { margin-bottom: 8px; }
 
@@ -945,8 +939,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .left-panel nav { display: flex; flex-direction: column; gap: 2px; }
 .left-panel nav > .button { width: 100%; justify-content: flex-start; padding: 8px 10px; font-size: var(--text-ui); }
 .left-panel nav > .button[aria-pressed=true], .hydra-name[aria-current=page], .panel-project[aria-pressed=true] { background: var(--color-raised); }
-.panel-count { margin-left: auto; font-size: var(--text-ui); color: var(--color-muted); }
-.panel-empty { color: var(--color-muted); font-size: var(--text-ui); padding: 0 10px; }
 .hydras-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .hydras-heading { display: flex; align-items: center; justify-content: space-between; padding-left: 10px; margin-bottom: 8px; }
 .hydras-heading h2 { font-family: var(--font-sans); color: var(--color-muted); font-size: var(--text-ui); font-weight: 600; }
@@ -990,10 +982,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .menu-items[popover] { position: fixed; inset: auto; margin: 0; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; color: var(--color-ink); }
 
 
-.panel-reminders { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
-.panel-reminders .button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; padding: 8px 10px; text-align: left; }
-.panel-reminders .button > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui); }
-.panel-reminders time { color: var(--color-muted); font-size: var(--text-meta); }
 
 .composer-input { min-height: 36px; }
 

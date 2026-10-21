@@ -54,7 +54,6 @@ const {
   check,
   click,
   text,
-  fill,
   focus,
   screenshot,
   close,
@@ -133,16 +132,7 @@ try {
     condition: 'document.body.textContent.includes("Keep the next task")',
     label: 'non-Done task stays visible',
   })
-  await text({ label: 'History' })
-  await fill({
-    label: 'Search history',
-    value: 'Ship cursor pagination',
-  })
-  await eventually({
-    condition: '!!document.querySelector(".history-entry .result-title")',
-    label: 'hidden task remains searchable',
-  })
-  process.stdout.write('Done expiry, Settings, labels and History browser smoke passed.\n')
+  process.stdout.write('Done expiry, Settings and labels browser smoke passed.\n')
 } finally {
   await server.close(); await close(); rmSync(
     home,

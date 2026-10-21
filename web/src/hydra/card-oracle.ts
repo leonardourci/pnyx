@@ -3,7 +3,7 @@ import type { HybridHit } from '../../../src/oracle/semantic.ts'
 import type { Command } from './connection.ts'
 
 // Every search box ranks cards through the Hydra server's search, the same
-// full-text plus meaning ranking as `pnyx-axi oracle` and History. Weak results
+// full-text plus meaning ranking as `pnyx-axi oracle` and recorded history. Weak results
 // (the reranker found them unrelated, or a card found by meaning alone is not
 // a strong match) are left out.
 export const findCards = ({

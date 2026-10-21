@@ -149,7 +149,7 @@ try {
         window.writes.push(m);
         if (window.failNextSave) { m.args.push('--invalid-snappy-flag'); window.failNextSave = false; }
         setTimeout(() => window.nativeSocketSend.call(this, JSON.stringify(m)), window.saveDelay);
-      } else if (m.type === 'command' && window.readDelay && ['settings', 'rule', 'history'].includes(m.name)) { setTimeout(() => window.nativeSocketSend.call(this, data), window.readDelay); } else { window.nativeSocketSend.call(this, data); }
+      } else if (m.type === 'command' && window.readDelay && ['settings', 'rule'].includes(m.name)) { setTimeout(() => window.nativeSocketSend.call(this, data), window.readDelay); } else { window.nativeSocketSend.call(this, data); }
     };
     return true;`,
   })
@@ -338,12 +338,6 @@ try {
     return true;`,
   })
   await b.evaluate({ code: 'await new Promise(r => setTimeout(r, 700)); return true;' })
-  await b.text({ label: 'History' })
-  await b.screenshot({ name: 'history-loading.png' })
-  await b.eventually({
-    condition: '!!document.querySelector(".history-entry")',
-    label: 'History finishes loading',
-  })
   await b.browser({
     args: [
       'open',
@@ -351,8 +345,8 @@ try {
     ],
   })
   await b.eventually({
-    condition: '!!document.querySelector(".history-page") && document.querySelector(".app")?.dataset.connected === "true"',
-    label: 'page selection survives reload after switching',
+    condition: 'document.querySelector(".app")?.dataset.connected === "true"',
+    label: 'page reload reconnects after switching Hydras',
   })
   await b.evaluate({ code: '[...document.querySelectorAll(\'.hydra-name\')].find(el => el.textContent.trim() === \'second\').click(); return true;' })
   await b.eventually({

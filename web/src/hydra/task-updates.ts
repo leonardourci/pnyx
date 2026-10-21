@@ -103,7 +103,7 @@ const renamed = ({ data }: { data: Record<string, unknown> }) => {
   } : undefined
 }
 
-// Ordinary delivery receipts stay in History; a delivered answer records its decision.
+// Ordinary delivery receipts stay in recorded history; a delivered answer records its decision.
 export function relevantUpdate({
   cardId,
   event,

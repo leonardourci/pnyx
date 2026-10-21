@@ -233,10 +233,6 @@ test(
           'Hydra',
         ],
         [
-          'history',
-          'History',
-        ],
-        [
           'settings',
           'Settings',
         ],
@@ -326,14 +322,6 @@ test(
         selected: 'missing',
       }),
       '(2) Hydra · Pnyx',
-    )
-    assert.equal(
-      pageTitle({
-        page: 'history',
-        cards: state.cards,
-        selected: 'c1',
-      }),
-      '(2) History · Pnyx',
     )
     assert.equal(
       pageTitle({

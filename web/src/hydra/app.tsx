@@ -17,7 +17,6 @@ import { sendableComment, type ChatComment } from './chat.ts'
 import { Settings } from './settings.tsx'
 import { Hydras } from './hydras.tsx'
 import { Panel } from './panel.tsx'
-import { History } from './history.tsx'
 import { columnsFor, findBoxCards, pageTitle } from './view.ts'
 import { Oracle } from './oracle.tsx'
 import { commandQuery } from './oracle-catalog.ts'
@@ -125,7 +124,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const [
       page,
       setPage,
-    ] = useState(new URLSearchParams(location.search).has('projects') || new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page ?? 'hydra'), [
+    ] = useState(new URLSearchParams(location.search).has('projects') || new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page === 'settings' ? 'settings' : 'hydra'), [
       workspace,
       setWorkspace,
     ] = useState(''), [
@@ -318,10 +317,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     column: string
     parent?: string
   } | null>(null)
-  const [
-    historyQuery,
-    setHistoryQuery,
-  ] = useState('')
   const [
     addingProject,
     setAddingProject,
@@ -951,8 +946,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         } as CSSProperties}
       >
         <Panel
-          state={state}
-          openTask={open}
           shown={panel}
           connected={connected}
           page={page}
@@ -970,9 +963,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               save={save}
               openTask={open}
               openHydra={openHydra}
-              history={() => {
-                setHistoryQuery(query); setPage('history')
-              }}
               showPanel={() => setPanel(true)}
               createTask={createTask}
               createColumn={createColumn}
@@ -1014,15 +1004,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               save={save}
               close={() => setPage('hydra')}
               command={command}
-              notify={notify}
-            />
-          ) : page === 'history' ? (
-            <History
-              command={command}
-              workspace={workspace}
-              query={historyQuery}
-              setQuery={({ query }) => setHistoryQuery(query)}
-              open={open}
               notify={notify}
             />
           ) : (

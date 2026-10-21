@@ -265,7 +265,7 @@ export function useHydraKeyboard({
       return true
     }
 
-    if (id === 'palette' || id === 'find') {
+    if (id === 'palette' || id === 'find' || id === 'search') {
       showPanel(); requestAnimationFrame(() => focusElement({ selector: '[data-oracle-slot] input' }))
 
       return true
@@ -276,12 +276,6 @@ export function useHydraKeyboard({
       'help',
     ].includes(id)) {
       setPage({ page: 'settings' }); requestAnimationFrame(() => focusElement({ selector: '[data-settings-heading]' }))
-
-      return true
-    }
-
-    if (id === 'search') {
-      setPage({ page: 'history' })
 
       return true
     }

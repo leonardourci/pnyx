@@ -27,7 +27,6 @@ export function Oracle({
   save,
   openTask,
   openHydra,
-  history,
   showPanel,
   createTask,
   createColumn,
@@ -47,7 +46,6 @@ export function Oracle({
   save({ patch }: { patch: unknown }): Promise<boolean>
   openTask({ id }: { id: string }): void
   openHydra(): void
-  history(): void
   showPanel(): void
   createTask({ column }: { column: string }): void
   createColumn(): void
@@ -107,7 +105,7 @@ export function Oracle({
   })
   useKeyAction({
     id: 'find',
-    handler: () => page === 'settings' ? false : page === 'history' ? focusElement({ selector: '[aria-label="Search history"]' }) : focus(),
+    handler: () => page === 'settings' ? false : focus(),
   })
   const persist = ({
     key,
@@ -628,14 +626,6 @@ export function Oracle({
       </div>
     ),
   }))
-
-  if (!commandQuery({ query }) && query.trim()) {
-    searchRows.push({
-      id: 'history',
-      label: 'Search history',
-      content: <><Button onClick={() => run({ work: history })}>Search history</Button><small className="muted">Hidden tasks and recorded history</small></>,
-    })
-  }
 
   return (
     <div

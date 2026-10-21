@@ -157,40 +157,6 @@ try {
   })
   await screenshot({ name: 'oracle-setting.png' })
   await click({ selector: '.oracle-results [aria-label="Theme"]' }); await click({ selector: '[role=listbox][aria-label=Theme] > [role=option]:first-child' })
-  await fill({
-    label: 'Oracle',
-    value: 'readable',
-  }); await text({ label: 'Search history' })
-  await eventually({
-    condition: 'document.querySelector(".history-page input")?.value === "readable" && document.querySelectorAll(".result-title").length === 1',
-    label: 'search passes its query into History',
-  })
-  await fill({
-    label: 'Search history',
-    value: 'no matching fixture phrase',
-  })
-  await fill({
-    label: 'Oracle',
-    value: 'readable',
-  }); await text({ label: 'Search history' })
-  await eventually({
-    condition: 'document.querySelector(".history-page input")?.value === "readable" && document.querySelectorAll(".result-title").length === 1',
-    label: 'a repeated History handoff replaces its query',
-  })
-  await fill({
-    label: 'Search history',
-    value: 'Document the reply receipts',
-  })
-  await eventually({
-    condition: '!!document.querySelector(".history-page .result-title")',
-    label: 'History result loaded outside the Hydra filter',
-  })
-  await click({ selector: '.history-page .result-title' })
-  await check({
-    condition: 'document.querySelector(".card.selected").textContent.includes("Document the reply receipts") && !!document.querySelector(".card.selected .detail")',
-    label: 'opening a History result reveals it despite a conflicting Hydra query',
-  })
-  await click({ selector: '[aria-label="Close detail"]' })
   await focus({ selector: '[aria-label="Oracle"]' }); await press({ key: 'Escape' })
   await eventually({
     condition: 'document.querySelectorAll("[data-card]").length === 6',
@@ -256,15 +222,6 @@ try {
     condition: '!!document.querySelector(".detail .task-updates") && !document.querySelector(".detail .composer")',
     label: 'an attached task shows Updates without a conversation',
   })
-  await text({ label: 'History' }); await fill({
-    label: 'Oracle',
-    value: '> New task in Parked',
-  }); await text({ label: 'New task in Parked' })
-  await eventually({
-    condition: '!!document.querySelector(".hydra-page") && document.activeElement.getAttribute("aria-label") === "Task title"',
-    label: 'search opens inline task creation from History and focuses its title',
-  })
-  await press({ key: 'Escape' })
   await text({ label: 'Settings' }); await fill({
     label: 'Oracle',
     value: '> New column',
