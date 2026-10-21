@@ -379,9 +379,14 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
       const rpc = connection({ child: spawnCodex({ cwd, env }) })
 
       try {
-        await rpc.request({ method: 'initialize', params: { clientInfo: { name: 'pnyx', version: '0.0.0' }, capabilities: null } })
-        rpc.notify({ method: 'initialized' })
-        const config = object({ value: (await rpc.request({ method: 'config/read', params: { cwd } }).catch((): ObjectValue => ({}))).config })
+        const read = rpc.request({ method: 'initialize', params: { clientInfo: { name: 'pnyx', version: '0.0.0' }, capabilities: null } })
+          .then(() => {
+            rpc.notify({ method: 'initialized' })
+
+            return rpc.request({ method: 'config/read', params: { cwd } })
+          })
+        // A Codex that cannot start or read its config still offers the stored list, with its own defaults.
+        const config = object({ value: (await read.catch((): ObjectValue => ({}))).config })
         const approval = config.approval_policy
         // Every Pnyx mode brings its own sandbox, so a never without full access is named on-request, never wider.
         const defaultMode = approval === 'never' && config.sandbox_mode === 'danger-full-access'
