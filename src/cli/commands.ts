@@ -1,3 +1,4 @@
+import { setupCheckOutput } from '../setup/check.ts'
 import { projectWorkerContext } from '../projects/context.ts'
 import { decideQueue } from '../queue/decide.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
@@ -3524,6 +3525,10 @@ const setup = guard({
       positionals: 1,
     })
 
+    if (positionals[0] === 'check') {
+      return setupCheckOutput({ hydraId })
+    }
+
     if (positionals[0] === 'skills') {
       return setupSkills({
         remove: !!values.remove,
@@ -3565,7 +3570,7 @@ const setup = guard({
       throw new AxiError(
         `unknown setup target: ${positionals[0] ?? '(none)'}`,
         'VALIDATION_ERROR',
-        ['Run `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
+        ['Run `pnyx-axi setup check`, `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
       )
     }
 
@@ -3789,7 +3794,7 @@ commands:
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the running server
-  setup skills|hooks|service                Install global skills, reporting hooks or the macOS login service (--remove, --preview)
+  setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the macOS login service
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the pnyx-hydra skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
@@ -3961,10 +3966,13 @@ Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
 Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
 Source observations, card creation and merges cannot be undone.
 `,
-  setup: `usage: pnyx-axi setup service [--port <n>] [--remove] [--preview]
+  setup: `usage: pnyx-axi setup check [--hydra <id>]
+pnyx-axi setup service [--port <n>] [--remove] [--preview]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
 pnyx-axi setup skills [--remove] [--preview]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
+setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
+project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
 setup skills links pnyx-hydra and pnyx-worker from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.
 Existing files and unrelated links are never replaced; --remove takes out only this install's links.
