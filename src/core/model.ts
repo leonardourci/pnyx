@@ -254,6 +254,8 @@ export interface Card {
   launch?: AgentLaunch
   // Task membership is a list for future compatibility; v1 permits at most one.
   sessionIds?: string[]
+  queue?: TaskQueue
+  queueNote?: string
   // Session-only records remain addressable in History, outside the live Hydra.
   hidden?: boolean
   automaticTask?: boolean
@@ -395,6 +397,11 @@ export interface HydraProject {
 
 // A task's own copy of its project: a git worktree Pnyx made, or the folder the
 // project's copy command printed. It is removed only once its work has landed.
+export interface TaskQueue {
+  session: string
+  rank: number
+}
+
 export interface TaskCopy {
   path: string
   project: string
@@ -429,6 +436,16 @@ export interface HydraMessage {
   hydra: string
 }
 export type HydraChange = EventBase & (
+  | {
+    type: 'task.queue'
+    data: {
+      before: TaskQueue | null
+      after: TaskQueue | null
+      order?: string[]
+      column: Column
+      note?: string
+    }
+  }
   | {
     type: 'board.configured'
     data: HydraConfig
@@ -687,6 +704,7 @@ export interface AgentSession {
   launch?: AgentLaunch
   lastSeen?: string
   originCardId: string
+  queueCompleted?: number
   taskId: string | null
   terminal?: TerminalFacts
   settings?: AgentSettings
@@ -705,6 +723,11 @@ export type SessionEvent = EventBase & {
     before: string | null
     after: string | null
     brief?: string
+    handoff?: {
+      folder: string
+      copy?: TaskCopy
+      column: Column
+    }
   }
 }
 
@@ -759,6 +782,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.reminder',
   'task.reminder-due',
   'task.copy',
+  'task.queue',
 ]
 
 export interface HydraState {

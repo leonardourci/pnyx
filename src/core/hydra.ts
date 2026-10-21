@@ -407,6 +407,7 @@ export function wakesHydra({
   }
 
   switch (event.type) {
+    case 'task.queue':
     case 'task.declared':
     case 'task.reminder-due':
       return true
