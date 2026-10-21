@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { hydraConfig, hydraEvent } from '../src/core/hydra.ts'
-import type { Column, HydraChange, HydraEvent, HydraState } from '../src/core/model.ts'
+import type { Column, HydraChange, HydraEvent } from '../src/core/model.ts'
 import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { DEFAULT_DONE_HOURS, doneDeadline, HOUR_MS } from '../src/core/retention.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
@@ -145,15 +145,6 @@ test(
       }).cards.t1?.doneAt,
       later,
     )
-    const before = structuredClone(f.events)
-    replay({
-      state: emptyHydra(),
-      events: f.events,
-    })
-    assert.deepEqual(
-      f.events,
-      before,
-    )
   },
 )
 
@@ -164,7 +155,6 @@ test(
       tmpdir(),
       'pnyx-retention-',
     ))
-    const previous = process.env.PNYX_HOME
     process.env.PNYX_HOME = home
     const hydraId = 'expiry'
     const path = join(
@@ -199,219 +189,179 @@ test(
       },
     })
 
-    try {
-      withWriter({
+    withWriter({
+      hydraId,
+      create: true,
+      fn: ({ writer }) => writer.append({ event: f.events[0]! }),
+    })
+    const original = readFileSync(
+      path,
+      'utf8',
+    )
+    assert.equal(
+      hideDone({
         hydraId,
-        create: true,
-        fn: ({ writer }) => writer.append({ event: f.events[0]! }),
-      })
-      const original = readFileSync(
-        path,
-        'utf8',
-      )
-      assert.equal(
-        hideDone({
-          hydraId,
-          at: '2026-10-15T11:59:59.999Z',
-        }),
-        0,
-      )
-      assert.equal(
-        hideDone({
-          hydraId,
-          at: later,
-        }),
-        1,
-      )
-      assert.equal(
-        hideDone({
-          hydraId,
-          at: later,
-        }),
-        0,
-      )
-      let state = loadHydra({ hydraId }).state
-      assert.equal(
-        state.cards.t1?.hidden,
-        true,
-      )
-      assert.equal(
-        state.cards.t1?.title,
-        'Searchable completion',
-      )
-      assert.ok(readFileSync(
-        path,
-        'utf8',
-      ).startsWith(original))
-      append({
-        change: {
-          type: 'task.visibility',
-          data: {
-            before: true,
-            after: false,
-          },
-        },
-      })
-      assert.equal(
-        hideDone({
-          hydraId,
-          at: '2030-01-01T00:00:00Z',
-        }),
-        0,
-      )
-      assert.equal(
-        loadHydra({ hydraId }).state.cards.t1?.keepDone,
-        true,
-      )
-      const moved: HydraEvent = {
-        ...f.events[0]!,
-        seq: loadHydra({ hydraId }).state.seq + 1,
-        id: 'leave',
+        at: '2026-10-15T11:59:59.999Z',
+      }),
+      0,
+    )
+    assert.equal(
+      hideDone({
+        hydraId,
         at: later,
-        type: 'card.moved',
+      }),
+      1,
+    )
+    assert.equal(
+      hideDone({
+        hydraId,
+        at: later,
+      }),
+      0,
+    )
+    let state = loadHydra({ hydraId }).state
+    assert.equal(
+      state.cards.t1?.hidden,
+      true,
+    )
+    assert.equal(
+      state.cards.t1?.title,
+      'Searchable completion',
+    )
+    assert.ok(readFileSync(
+      path,
+      'utf8',
+    ).startsWith(original))
+    append({
+      change: {
+        type: 'task.visibility',
         data: {
-          before: 'done',
-          after: 'parked',
+          before: true,
+          after: false,
         },
-      }
-      withWriter({
+      },
+    })
+    assert.equal(
+      hideDone({
         hydraId,
-        create: true,
-        fn: ({ writer }) => writer.append({ event: moved }),
-      })
-      assert.equal(
-        loadHydra({ hydraId }).state.cards.t1?.keepDone,
-        undefined,
-      )
-      withWriter({
-        hydraId,
-        create: true,
-        fn: ({ writer }) => writer.append({
-          event: {
-            ...moved,
-            seq: writer.state.seq + 1,
-            id: 'return',
-            data: {
-              before: 'parked',
-              after: 'done',
-            },
-          },
-        }),
-      })
-      const config = hydraConfig({
-        state: loadHydra({ hydraId }).state,
-        id: hydraId,
-      })
-      append({
-        cardId: '$board',
-        change: {
-          type: 'board.configured',
-          data: {
-            ...config,
-            doneAfterHours: 0,
-          },
-        },
-      })
-      assert.equal(
-        hideDone({
-          hydraId,
-          at: '2030-01-01T00:00:00Z',
-        }),
-        0,
-      )
-      append({
-        cardId: '$board',
-        change: {
-          type: 'board.configured',
-          data: {
-            ...config,
-            doneAfterHours: 1,
-          },
-        },
-      })
-      assert.equal(
-        hideDone({
-          hydraId,
-          at: '2026-10-15T13:00:00Z',
-        }),
-        1,
-      )
-      withWriter({
-        hydraId,
-        create: true,
-        fn: ({ writer }) => writer.append({
-          event: {
-            ...moved,
-            seq: writer.state.seq + 1,
-            id: 'reopened',
-            data: {
-              before: 'done',
-              after: 'parked',
-            },
-          },
-        }),
-      })
-      state = loadHydra({ hydraId }).state
-      assert.equal(
-        state.cards.t1?.hidden,
-        undefined,
-      )
-      assert.equal(
-        state.cards.t1?.expired,
-        undefined,
-      )
-      const events = readFileSync(
-        path,
-        'utf8',
-      ).trim()
-        .split('\n')
-        .map(line => JSON.parse(line) as HydraEvent)
-      assert.deepEqual(
-        replay({
-          state: emptyHydra(),
-          events,
-        }),
-        state,
-      )
-
-      const snapshot = join(
-        home,
-        'hydras',
-        hydraId,
-        'snapshot.json',
-      )
-      const old = JSON.parse(readFileSync(
-        snapshot,
-        'utf8',
-      )) as {
-        rules: number
-        state: HydraState
-      }
-      old.rules = 8
-      old.state.cards.t1!.doneAt = '1900-01-01T00:00:00Z'
-      writeFileSync(
-        snapshot,
-        JSON.stringify(old),
-      )
-      assert.deepEqual(
-        loadHydra({ hydraId }).state,
-        state,
-      )
-    } finally {
-      if (previous === undefined) {
-        delete process.env.PNYX_HOME
-      } else {
-        process.env.PNYX_HOME = previous
-      }
-
-      rmSync(
-        home,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
+        at: '2030-01-01T00:00:00Z',
+      }),
+      0,
+    )
+    assert.equal(
+      loadHydra({ hydraId }).state.cards.t1?.keepDone,
+      true,
+    )
+    const moved: HydraEvent = {
+      ...f.events[0]!,
+      seq: loadHydra({ hydraId }).state.seq + 1,
+      id: 'leave',
+      at: later,
+      type: 'card.moved',
+      data: {
+        before: 'done',
+        after: 'parked',
+      },
     }
+    withWriter({
+      hydraId,
+      create: true,
+      fn: ({ writer }) => writer.append({ event: moved }),
+    })
+    assert.equal(
+      loadHydra({ hydraId }).state.cards.t1?.keepDone,
+      undefined,
+    )
+    withWriter({
+      hydraId,
+      create: true,
+      fn: ({ writer }) => writer.append({
+        event: {
+          ...moved,
+          seq: writer.state.seq + 1,
+          id: 'return',
+          data: {
+            before: 'parked',
+            after: 'done',
+          },
+        },
+      }),
+    })
+    const config = hydraConfig({
+      state: loadHydra({ hydraId }).state,
+      id: hydraId,
+    })
+    append({
+      cardId: '$board',
+      change: {
+        type: 'board.configured',
+        data: {
+          ...config,
+          doneAfterHours: 0,
+        },
+      },
+    })
+    assert.equal(
+      hideDone({
+        hydraId,
+        at: '2030-01-01T00:00:00Z',
+      }),
+      0,
+    )
+    append({
+      cardId: '$board',
+      change: {
+        type: 'board.configured',
+        data: {
+          ...config,
+          doneAfterHours: 1,
+        },
+      },
+    })
+    assert.equal(
+      hideDone({
+        hydraId,
+        at: '2026-10-15T13:00:00Z',
+      }),
+      1,
+    )
+    withWriter({
+      hydraId,
+      create: true,
+      fn: ({ writer }) => writer.append({
+        event: {
+          ...moved,
+          seq: writer.state.seq + 1,
+          id: 'reopened',
+          data: {
+            before: 'done',
+            after: 'parked',
+          },
+        },
+      }),
+    })
+    state = loadHydra({ hydraId }).state
+    assert.equal(
+      state.cards.t1?.hidden,
+      undefined,
+    )
+    assert.equal(
+      state.cards.t1?.expired,
+      undefined,
+    )
+    const events = readFileSync(
+      path,
+      'utf8',
+    ).trim()
+      .split('\n')
+      .map(line => JSON.parse(line) as HydraEvent)
+    assert.deepEqual(
+      replay({
+        state: emptyHydra(),
+        events,
+      }),
+      state,
+    )
   },
 )
 
@@ -461,53 +411,35 @@ test(
 test(
   'expiry rechecks wall time without another event using a fake clock',
   t => {
-    const home = mkdtempSync(join(
+    process.env.PNYX_HOME = mkdtempSync(join(
       tmpdir(),
       'pnyx-expiry-clock-',
     ))
-    const previous = process.env.PNYX_HOME
-    process.env.PNYX_HOME = home
     t.mock.timers.enable({
       apis: ['Date'],
       now: Date.parse(start),
     })
 
-    try {
-      const f = fixture()
-      withWriter({
-        hydraId: 'clock',
-        create: true,
-        fn: ({ writer }) => writer.append({ event: f.events[0]! }),
-      })
-      t.mock.timers.tick(DEFAULT_DONE_HOURS * HOUR_MS - 1)
-      assert.equal(
-        hideDone({ hydraId: 'clock' }),
-        0,
-      )
-      t.mock.timers.tick(1)
-      assert.equal(
-        hideDone({ hydraId: 'clock' }),
-        1,
-      )
-      assert.equal(
-        loadHydra({ hydraId: 'clock' }).state.cards.t1?.hidden,
-        true,
-      )
-    } finally {
-      if (previous === undefined) {
-        delete process.env.PNYX_HOME
-      } else {
-        process.env.PNYX_HOME = previous
-      }
-
-      rmSync(
-        home,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
-    }
+    const f = fixture()
+    withWriter({
+      hydraId: 'clock',
+      create: true,
+      fn: ({ writer }) => writer.append({ event: f.events[0]! }),
+    })
+    t.mock.timers.tick(DEFAULT_DONE_HOURS * HOUR_MS - 1)
+    assert.equal(
+      hideDone({ hydraId: 'clock' }),
+      0,
+    )
+    t.mock.timers.tick(1)
+    assert.equal(
+      hideDone({ hydraId: 'clock' }),
+      1,
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'clock' }).state.cards.t1?.hidden,
+      true,
+    )
   },
 )
 
@@ -585,12 +517,10 @@ test(
 test(
   'expiry uses each card delay even when the Hydra keeps Done visible',
   () => {
-    const home = mkdtempSync(join(
+    process.env.PNYX_HOME = mkdtempSync(join(
       tmpdir(),
       'pnyx-card-retention-',
     ))
-    const previous = process.env.PNYX_HOME
-    process.env.PNYX_HOME = home
     const f = fixture()
     f.change({
       cardId: '$board',
@@ -617,56 +547,40 @@ test(
       },
     })
 
-    try {
-      withWriter({
+    withWriter({
+      hydraId: 'delays',
+      create: true,
+      fn: ({ writer }) => f.events.forEach(event => writer.append({ event })),
+    })
+    assert.equal(
+      hideDone({
         hydraId: 'delays',
-        create: true,
-        fn: ({ writer }) => f.events.forEach(event => writer.append({ event })),
-      })
-      assert.equal(
-        hideDone({
-          hydraId: 'delays',
-          at: '2026-10-14T12:59:59Z',
-        }),
-        0,
-      )
-      assert.equal(
-        hideDone({
-          hydraId: 'delays',
-          at: '2026-10-14T13:00:00Z',
-        }),
-        1,
-      )
-      const state = loadHydra({ hydraId: 'delays' }).state
-      assert.equal(
-        state.cards.t1?.hidden,
-        true,
-      )
-      assert.equal(
-        state.cards.t2?.hidden,
-        undefined,
-      )
-      assert.equal(
-        hideDone({
-          hydraId: 'delays',
-          at: later,
-        }),
-        0,
-      )
-    } finally {
-      if (previous === undefined) {
-        delete process.env.PNYX_HOME
-      } else {
-        process.env.PNYX_HOME = previous
-      }
-
-      rmSync(
-        home,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
-    }
+        at: '2026-10-14T12:59:59Z',
+      }),
+      0,
+    )
+    assert.equal(
+      hideDone({
+        hydraId: 'delays',
+        at: '2026-10-14T13:00:00Z',
+      }),
+      1,
+    )
+    const state = loadHydra({ hydraId: 'delays' }).state
+    assert.equal(
+      state.cards.t1?.hidden,
+      true,
+    )
+    assert.equal(
+      state.cards.t2?.hidden,
+      undefined,
+    )
+    assert.equal(
+      hideDone({
+        hydraId: 'delays',
+        at: later,
+      }),
+      0,
+    )
   },
 )

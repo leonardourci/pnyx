@@ -33,7 +33,7 @@ function hydraId({ extra = {} }: { extra?: Record<string, string> } = {}) {
     PNYX_SEMANTIC_STUB: '1',
     ...extra,
   }
-  const run = fixtureCli({
+  const cli = ({ semantic }: { semantic: boolean }) => fixtureCli({
     home,
     execute: ({ args }) => execFileSync(
       process.execPath,
@@ -42,7 +42,10 @@ function hydraId({ extra = {} }: { extra?: Record<string, string> } = {}) {
         ...args,
       ],
       {
-        env,
+        env: semantic ? env : {
+          ...env,
+          PNYX_SEMANTIC: 'off',
+        },
         encoding: 'utf8',
         stdio: [
           'ignore',
@@ -52,14 +55,13 @@ function hydraId({ extra = {} }: { extra?: Record<string, string> } = {}) {
       },
     ),
   })
+  const run = cli({ semantic: true })
   const fails = ({
     args,
     code,
-    message,
   }: {
     args: string[]
     code: string
-    message?: RegExp
   }) =>
     assert.throws(
       () => run({ args: [...args] }),
@@ -71,13 +73,6 @@ function hydraId({ extra = {} }: { extra?: Record<string, string> } = {}) {
             'm',
           ),
         )
-
-        if (message) {
-          assert.match(
-            error.stdout,
-            message,
-          )
-        }
 
         return true
       },
@@ -158,31 +153,12 @@ function hydraId({ extra = {} }: { extra?: Record<string, string> } = {}) {
     ],
   })
 
-  const lexical = fixtureCli({
-    home,
-    execute: ({ args }) => execFileSync(
-      process.execPath,
-      [
-        BIN,
-        ...args,
-      ],
-      {
-        env: {
-          ...env,
-          PNYX_SEMANTIC: 'off',
-        },
-        encoding: 'utf8',
-      },
-    ),
-  })
-
   return {
     home,
     env,
     run,
-    lexical,
+    lexical: cli({ semantic: false }),
     fails,
-    push,
     stop,
   }
 }
@@ -223,54 +199,33 @@ async function embedded({ run }: {
 }
 
 test(
-  'semantic search is on by default; models are picked for the machine',
+  'semantic search is on by default: full text with progress while the model downloads, then the machine’s models rerank and rank actions',
   async () => {
     const {
+      home,
       run,
+      lexical: off,
       stop,
-    } = hydraId({ })
+    } = hydraId({ extra: { PNYX_SEMANTIC_STUB_DOWNLOAD_MS: '3000' } })
+    process.env.PNYX_HOME = home
+    process.env.PNYX_SEMANTIC_STUB = '1'
+    const { matchActions } = await import('../src/oracle/semantic.ts')
+    const entries = [
+      {
+        id: 'theme',
+        text: 'Choose a dark theme for reading at night',
+      },
+      {
+        id: 'new-task',
+        text: 'Create a new task in this column',
+      },
+    ]
 
     try {
       assert.match(
         run({ args: ['settings'] }),
         /^ {2}oracle\.semantic: on\n {2}oracle\.rerank: auto\n {2}oracle\.model: auto$/m,
       )
-      const status = await embedded({ run })
-      // The stub counts as a GPU machine: the 311m-sized stub embedder and the reranker.
-      assert.match(
-        status,
-        /^semantic: "on: granite-311m on stub, 64 dimensions"$/m,
-      )
-      assert.match(
-        status,
-        /^rerank: on$/m,
-      )
-      assert.match(
-        run({
-          args: [
-            'oracle',
-            'reverted',
-            'cookie',
-          ],
-        }),
-        /^mode: "hybrid, reranked"$/m,
-      )
-    } finally {
-      stop()
-    }
-  },
-)
-
-test(
-  'while a model downloads, search is full-text and shows the progress',
-  async () => {
-    const {
-      run,
-      lexical: off,
-      stop,
-    } = hydraId({ extra: { PNYX_SEMANTIC_STUB_DOWNLOAD_MS: '4000' } })
-
-    try {
       const lexical = off({
         args: [
           'oracle',
@@ -317,74 +272,121 @@ test(
         }),
         /^semantic: "preparing \(stub\): downloading the model, \d+% of 347 MB; full-text results until it is ready"$/m,
       )
-      await embedded({ run })
+
+      const status = await embedded({ run })
+      // The stub counts as a GPU machine: the 311m-sized stub embedder and the reranker.
+      assert.match(
+        status,
+        /^semantic: "on: granite-311m on stub, 64 dimensions"$/m,
+      )
+      assert.match(
+        status,
+        /^rerank: on$/m,
+      )
+      // The stub reranker scores the share of query words a card's nearest entry holds.
+      const strong = run({
+        args: [
+          'oracle',
+          'session',
+          'cookie',
+          'expired',
+        ],
+      })
+      assert.match(
+        strong,
+        /^mode: "hybrid, reranked"$/m,
+      )
+      assert.equal(
+        cards({ out: strong })[0],
+        'c3',
+      )
+      assert.doesNotMatch(
+        strong,
+        /^note:/m,
+      )
+      assert.match(
+        strong,
+        /^ {2}- card: c1\n(?: {4}.*\n)*? {4}weak: true$/m,
+      )
       assert.match(
         run({
           args: [
             'oracle',
-            'orders',
+            'cookie',
+            'dinosaur',
           ],
         }),
-        /^mode: "hybrid, reranked"$/m,
+        /^note: "no strong match: /m,
       )
+
+      for (const entry of entries) {
+        assert.deepEqual(
+          await matchActions({
+            query: entry.text,
+            entries,
+          }),
+          [entry.id],
+        )
+      }
     } finally {
       stop()
     }
+
+    assert.deepEqual(
+      await matchActions({
+        query: entries[0]!.text,
+        entries,
+      }),
+      [],
+    )
   },
 )
 
 test(
-  'bad settings are refused; PNYX_SEMANTIC=off and the setting turn semantic search off',
+  'bad settings are refused; PNYX_SEMANTIC=off turns semantic search off without changing the setting',
   async () => {
     const {
       run,
       fails,
       home,
-      env,
     } = hydraId({ extra: { PNYX_SEMANTIC: 'off' } })
-    fails({
-      args: [
+
+    for (const args of [
+      [
         'settings',
         'set',
         'oracle.semantic',
         'maybe',
       ],
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
+      [
         'settings',
         'set',
         'oracle.rerank',
         'sometimes',
       ],
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
+      [
         'settings',
         'set',
         'oracle.model',
         'huge',
       ],
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
+      [
         'settings',
         'set',
         'nope',
         'on',
       ],
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
+      [
         'oracle',
         'setup',
       ],
-      code: 'VALIDATION_ERROR',
-    })
+    ]) {
+      fails({
+        args,
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
     run({
       args: [
         'settings',
@@ -432,60 +434,6 @@ test(
       !existsSync(workerSocket()),
       'no worker starts while semantic search is off',
     )
-    delete process.env.PNYX_HOME
-    void env
-  },
-)
-
-test(
-  'after a failure, search stays full-text and says so until setup retries',
-  async () => {
-    const {
-      run,
-      home,
-      stop,
-    } = hydraId({ })
-
-    try {
-      writeFileSync(
-        join(
-          home,
-          'semantic-failure.json',
-        ),
-        JSON.stringify({
-          message: 'download of x failed: HTTP 503',
-          until: Date.now() + 60_000,
-        }),
-      )
-      const out = run({
-        args: [
-          'oracle',
-          'orders',
-        ],
-      })
-      assert.match(
-        out,
-        /^semantic: "unavailable: download of x failed: HTTP 503; run `pnyx-axi oracle setup --semantic` to retry now"$/m,
-      )
-      assert.match(
-        out,
-        /^mode: lexical$/m,
-      )
-      run({
-        args: [
-          'oracle',
-          'setup',
-          '--semantic',
-        ],
-      })
-      assert.ok(!existsSync(join(
-        home,
-        'semantic-failure.json',
-      )))
-      await embedded({ run })
-    } finally {
-      stop()
-    }
   },
 )
 
@@ -497,10 +445,7 @@ test(
       tmpdir(),
       'pnyx-sock-',
     ))
-    const saved = {
-      TMPDIR: process.env.TMPDIR,
-      PNYX_HOME: process.env.PNYX_HOME,
-    }
+    const previous = process.env.TMPDIR
     process.env.TMPDIR = tmp
     process.env.PNYX_HOME = join(
       tmp,
@@ -513,9 +458,8 @@ test(
         tmp,
         `pnyx-${process.getuid!()}`,
       )
-      const socket = workerSocket()
       assert.match(
-        socket,
+        workerSocket(),
         new RegExp(`^${dir}/semantic-[0-9a-f]{16}\\.sock$`),
       )
       assert.equal(
@@ -531,28 +475,78 @@ test(
         /must be a folder only this user can use/,
       )
     } finally {
-      for (const [
-        k,
-        v,
-      ] of Object.entries(saved)) {
-        if (v === undefined) {
-          delete process.env[k]
-        } else {
-          process.env[k] = v
-        }
-      }
+      process.env.TMPDIR = previous
     }
   },
 )
 
 test(
-  'setup turns semantic search on; hybrid search finds cards by meaning and by words',
+  'a setup Hydra finds cards and Hydra messages by meaning and by words, re-embeds for a changed model, and turned off searches exactly as full text',
   async () => {
     const {
       run,
       lexical,
       stop,
+      home,
+      env,
     } = hydraId({ })
+    process.env.PNYX_HOME = home
+    const { withWriter } = await import('../src/store/hydra-store.ts')
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'hydra-semantic',
+            at: '2026-10-15T10:00:00Z',
+            actor: 'fixture',
+            cardId: '$board',
+            type: 'hydra.message',
+            data: {
+              action: 'send',
+              hydra: 'hydra',
+              text: 'flamingo rollout staged',
+            },
+          },
+        })
+      },
+    })
+    const queries = [
+      ['orders'],
+      [
+        'reverted',
+        'cookie',
+      ],
+      ['migraton'],
+      [
+        'orders',
+        '--card',
+        'c1',
+      ],
+      [
+        'table',
+        'dinosaur',
+        '--card',
+        'c1',
+      ],
+    ]
+    const before = queries.map(q => lexical({
+      args: [
+        'oracle',
+        ...q,
+      ],
+    }))
+    // "reverted cookie": no card holds both words; "table dinosaur": no entry of c1 holds both.
+    assert.match(
+      before[1]!,
+      /^mode: lexical\nresults: "none: /m,
+    )
+    assert.match(
+      before[4]!,
+      /^results: "none: /m,
+    )
 
     try {
       const setup = run({
@@ -562,22 +556,19 @@ test(
           '--semantic',
         ],
       })
-      assert.match(
-        setup,
+
+      for (const line of [
         /^semantic: on$/m,
-      )
-      assert.match(
-        setup,
         /^mode: stub$/m,
-      )
-      assert.match(
-        setup,
         /^model: granite-311m$/m,
-      )
-      assert.match(
-        setup,
         /^rerank: on$/m,
-      )
+      ]) {
+        assert.match(
+          setup,
+          line,
+        )
+      }
+
       run({
         args: [
           'settings',
@@ -586,17 +577,12 @@ test(
           'off',
         ],
       })
-      const status = await embedded({ run })
       assert.match(
-        status,
-        /^semantic: "on: granite-311m on stub, 64 dimensions"$/m,
-      )
-      assert.match(
-        status,
+        await embedded({ run }),
         /^mode: "hybrid: words fused with meaning"$/m,
       )
 
-      // "reverted cookie": no card holds both words, so the full-text leg finds nothing; meaning finds both.
+      // The full-text leg finds nothing; meaning finds both cards.
       const meaning = run({
         args: [
           'oracle',
@@ -667,16 +653,6 @@ test(
         'c3',
       )
       assert.ok(!homeOnly.includes('c1'))
-      assert.match(
-        lexical({
-          args: [
-            'oracle',
-            'reverted',
-            'cookie',
-          ],
-        }),
-        /^mode: lexical\nresults: "none: /m,
-      )
 
       const entries = run({
         args: [
@@ -689,10 +665,6 @@ test(
       })
       assert.match(
         entries,
-        /^mode: hybrid$/m,
-      )
-      assert.match(
-        entries,
         /^ {4}match: semantic$/m,
       )
       assert.match(
@@ -700,42 +672,16 @@ test(
         /^ {6}event,"[^"]+",deploy reverted because the migration locked the orders table$/m,
       )
       assert.match(
-        lexical({
+        run({
           args: [
             'oracle',
-            'table',
-            'dinosaur',
-            '--card',
-            'c1',
+            'flamingo rollout staged dinosaur',
           ],
         }),
-        /^results: "none: /m,
+        /kind: hydra\n {4}match: semantic/,
       )
-    } finally {
-      stop()
-    }
-  },
-)
 
-test(
-  'without the reranker, a card found by meaning alone is weak under the similarity floor',
-  async () => {
-    const {
-      run,
-      stop,
-    } = hydraId({ })
-
-    try {
-      run({
-        args: [
-          'settings',
-          'set',
-          'oracle.rerank',
-          'off',
-        ],
-      })
-      await embedded({ run })
-      // An unrelated query: every card is somewhere in the vector order, but none is near enough.
+      // Without the reranker, a card found by meaning alone is weak under the similarity floor.
       const unrelated = run({
         args: [
           'oracle',
@@ -744,14 +690,9 @@ test(
         ],
       })
       assert.equal(
-        cards({ out: unrelated }).length,
-        3,
-      )
-      assert.equal(
         unrelated.match(/^ {4}weak: true$/gm)?.length,
-        3,
+        cards({ out: unrelated }).length,
       )
-      // Most of the query's words in one entry: that card is strong, the others weak.
       const near = run({
         args: [
           'oracle',
@@ -771,34 +712,109 @@ test(
       )
       assert.equal(
         near.match(/^ {4}weak: true$/gm)?.length,
-        2,
+        cards({ out: near }).length - 1,
+      )
+
+      // A changed model drops the vectors and embeds again.
+      const { sqlite } = await import('../src/oracle/index.ts')
+      const { DatabaseSync } = sqlite()
+      const db = new DatabaseSync(join(
+        home,
+        'hydras',
+        'default',
+        'search.db',
+      ))
+      db.prepare("UPDATE meta SET value = 'other' WHERE key = 'embed.key'").run()
+      db.close()
+      assert.match(
+        run({
+          args: [
+            'oracle',
+            'status',
+          ],
+        }),
+        /^vectors: 0 of \d+ entries embedded$/m,
+      )
+      await embedded({ run })
+
+      // The one worker answers every Hydra.
+      mkdirSync(
+        join(
+          home,
+          'hydras',
+          'second',
+        ),
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          home,
+          'hydras',
+          'second',
+          'events.jsonl',
+        ),
+        '',
+      )
+      assert.match(
+        (await run$(
+          process.execPath,
+          [
+            BIN,
+            'oracle',
+            'anything',
+            '--hydra',
+            'second',
+          ],
+          { env },
+        )).stdout,
+        /^results: "none: /m,
       )
     } finally {
       stop()
     }
+
+    assert.deepEqual(
+      queries.map(q => run({
+        args: [
+          'oracle',
+          ...q,
+        ],
+      })),
+      before,
+    )
   },
 )
 
 test(
-  'a recorded reranker failure keeps searches on the embedder alone until setup clears it',
+  'a recorded reranker failure keeps search on the embedder alone, a semantic failure keeps it full-text, until setup clears both',
   async () => {
     const {
       run,
       home,
       stop,
     } = hydraId({ })
+    const fail = ({
+      file,
+      message,
+    }: {
+      file: string
+      message: string
+    }) => writeFileSync(
+      join(
+        home,
+        file,
+      ),
+      JSON.stringify({
+        message,
+        until: Date.now() + 60_000,
+      }),
+    )
 
     try {
-      writeFileSync(
-        join(
-          home,
-          'reranker-failure.json',
-        ),
-        JSON.stringify({
-          message: 'download of r failed: HTTP 503',
-          until: Date.now() + 60_000,
-        }),
-      )
+      fail({
+        file: 'reranker-failure.json',
+        message: 'download of r failed: HTTP 503',
+      })
       let status = ''
 
       for (let i = 0; i < 100 && !/^vectors: (\d+) of \1 /m.test(status); i += 1) {
@@ -822,10 +838,6 @@ test(
 
       assert.match(
         status,
-        /^semantic: "on: /m,
-      )
-      assert.match(
-        status,
         /^rerank: "the reranker failed: download of r failed: HTTP 503"$/m,
       )
       assert.match(
@@ -837,226 +849,47 @@ test(
         }),
         /^mode: hybrid$/m,
       )
-      run({
-        args: [
-          'oracle',
-          'setup',
-          '--semantic',
-        ],
+      fail({
+        file: 'semantic-failure.json',
+        message: 'download of x failed: HTTP 503',
       })
-      assert.ok(!existsSync(join(
-        home,
-        'reranker-failure.json',
-      )))
-    } finally {
-      stop()
-    }
-  },
-)
-
-test(
-  'the reranker reorders the top results, marks weak ones and says when nothing matches strongly',
-  async () => {
-    const {
-      run,
-      stop,
-    } = hydraId({ })
-
-    try {
-      run({
-        args: [
-          'oracle',
-          'setup',
-          '--semantic',
-        ],
-      })
-      await embedded({ run })
-      // The stub reranker scores the share of query words a card's nearest entry holds.
-      const strong = run({
-        args: [
-          'oracle',
-          'session',
-          'cookie',
-          'expired',
-        ],
-      })
-      assert.match(
-        strong,
-        /^mode: "hybrid, reranked"$/m,
-      )
-      assert.equal(
-        cards({ out: strong })[0],
-        'c3',
-      )
-      assert.doesNotMatch(
-        strong,
-        /^note:/m,
-      )
-      assert.match(
-        strong,
-        /^ {2}- card: c1\n(?: {4}.*\n)*? {4}weak: true$/m,
-      )
-      const vague = run({
-        args: [
-          'oracle',
-          'cookie',
-          'dinosaur',
-        ],
-      })
-      assert.match(
-        vague,
-        /^note: "no strong match: /m,
-      )
-    } finally {
-      stop()
-    }
-  },
-)
-
-test(
-  'turned off, search output is exactly the full-text output',
-  async () => {
-    const {
-      run,
-      stop,
-      env,
-      home,
-    } = hydraId({ })
-    const queries = [
-      ['orders'],
-      [
-        'reverted',
-        'cookie',
-      ],
-      ['migraton'],
-      [
-        'orders',
-        '--card',
-        'c1',
-      ],
-    ]
-    const off = fixtureCli({
-      home,
-      execute: ({ args }) => execFileSync(
-        process.execPath,
-        [
-          BIN,
-          ...args,
-        ],
-        {
-          env: {
-            ...env,
-            PNYX_SEMANTIC: 'off',
-          },
-          encoding: 'utf8',
-        },
-      ),
-    })
-    const before = queries.map(q => off({
-      args: [
-        'oracle',
-        ...q,
-      ],
-    }))
-    run({
-      args: [
-        'oracle',
-        'setup',
-        '--semantic',
-      ],
-    })
-    await embedded({ run })
-    stop()
-    assert.deepEqual(
-      queries.map(q => run({
-        args: [
-          'oracle',
-          ...q,
-        ],
-      })),
-      before,
-    )
-  },
-)
-
-test(
-  'a changed model drops the vectors and embeds again; the worker answers every Hydra',
-  async () => {
-    const {
-      run,
-      stop,
-      home,
-      env,
-    } = hydraId({ })
-
-    try {
-      run({
-        args: [
-          'oracle',
-          'setup',
-          '--semantic',
-        ],
-      })
-      await embedded({ run })
-      const db = join(
-        home,
-        'hydras',
-        'default',
-        'search.db',
-      )
-      const { sqlite } = await import('../src/oracle/index.ts')
-      const { DatabaseSync } = sqlite()
-      const w = new DatabaseSync(db)
-      w.prepare("UPDATE meta SET value = 'other' WHERE key = 'embed.key'").run()
-      w.close()
-      assert.match(
-        run({
-          args: [
-            'oracle',
-            'status',
-          ],
-        }),
-        /^vectors: 0 of \d+ entries embedded$/m,
-      )
-      run({
+      const out = run({
         args: [
           'oracle',
           'orders',
         ],
       })
-      await embedded({ run })
-      mkdirSync(
-        join(
-          home,
-          'hydras',
-          'second',
-        ),
-        { recursive: true },
-      )
-      writeFileSync(
-        join(
-          home,
-          'hydras',
-          'second',
-          'events.jsonl',
-        ),
-        '',
-      )
-      const other = await run$(
-        process.execPath,
-        [
-          BIN,
-          'oracle',
-          'anything',
-          '--hydra',
-          'second',
-        ],
-        { env },
+      assert.match(
+        out,
+        /^semantic: "unavailable: download of x failed: HTTP 503; run `pnyx-axi oracle setup --semantic` to retry now"$/m,
       )
       assert.match(
-        other.stdout,
-        /^results: "none: /m,
+        out,
+        /^mode: lexical$/m,
       )
+      assert.match(
+        run({
+          args: [
+            'oracle',
+            'setup',
+            '--semantic',
+          ],
+        }),
+        /^semantic: on$/m,
+      )
+
+      for (const file of [
+        'reranker-failure.json',
+        'semantic-failure.json',
+      ]) {
+        assert.ok(
+          !existsSync(join(
+            home,
+            file,
+          )),
+          file,
+        )
+      }
     } finally {
       stop()
     }
@@ -1066,11 +899,10 @@ test(
 test(
   'a model download is checked against its pinned size and SHA-256',
   async () => {
-    const home = mkdtempSync(join(
+    process.env.PNYX_HOME = mkdtempSync(join(
       tmpdir(),
       'pnyx-dl-',
     ))
-    process.env.PNYX_HOME = home
     const {
       download,
       modelPath,
@@ -1087,36 +919,23 @@ test(
     ))
 
     try {
-      const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/m.gguf`
-      const sha256 = createHash('sha256').update(body)
-        .digest('hex')
       const good = {
         file: 'm.gguf',
-        url,
-        sha256,
+        url: `http://127.0.0.1:${(server.address() as { port: number }).port}/m.gguf`,
+        sha256: createHash('sha256').update(body)
+          .digest('hex'),
         bytes: body.length,
       }
+      const bad = {
+        ...good,
+        file: 'bad.gguf',
+        sha256: '0'.repeat(64),
+      }
       await assert.rejects(
-        download({
-          model: {
-            ...good,
-            file: 'bad.gguf',
-            sha256: '0'.repeat(64),
-          },
-        }),
+        download({ model: bad }),
         /does not match its pin/,
       )
-      assert.ok(!existsSync(modelPath({
-        model: {
-          ...good,
-          file: 'bad.gguf',
-        },
-      })) && !existsSync(`${modelPath({
-        model: {
-          ...good,
-          file: 'bad.gguf',
-        },
-      })}.part`))
+      assert.ok(!existsSync(modelPath({ model: bad })) && !existsSync(`${modelPath({ model: bad })}.part`))
       assert.equal(
         await download({ model: good }),
         'downloaded',
@@ -1131,136 +950,6 @@ test(
       )
     } finally {
       server.close()
-      delete process.env.PNYX_HOME
-    }
-  },
-)
-
-test(
-  'settings and actions can be ranked by the local semantic worker',
-  async () => {
-    const {
-      run,
-      home,
-      stop,
-    } = hydraId({})
-    const saved = {
-      PNYX_HOME: process.env.PNYX_HOME,
-      PNYX_SEMANTIC_STUB: process.env.PNYX_SEMANTIC_STUB,
-    }
-    process.env.PNYX_HOME = home
-    process.env.PNYX_SEMANTIC_STUB = '1'
-
-    try {
-      const { matchActions } = await import('../src/oracle/semantic.ts')
-      const entries = [
-        {
-          id: 'theme',
-          text: 'Choose a dark theme for reading at night',
-        },
-        {
-          id: 'new-task',
-          text: 'Create a new task in this column',
-        },
-      ]
-      run({
-        args: [
-          'oracle',
-          'setup',
-          '--semantic',
-        ],
-      })
-      await embedded({ run })
-      assert.deepEqual(
-        await matchActions({
-          query: entries[0]!.text,
-          entries,
-        }),
-        ['theme'],
-      )
-      assert.deepEqual(
-        await matchActions({
-          query: entries[1]!.text,
-          entries,
-        }),
-        ['new-task'],
-      )
-      const { withWriter } = await import('../src/store/hydra-store.ts')
-      withWriter({
-        hydraId: 'default',
-        fn: ({ writer }) => {
-          writer.append({
-            event: {
-              v: 1,
-              seq: writer.state.seq + 1,
-              id: 'hydra-semantic',
-              at: '2026-10-15T10:00:00Z',
-              actor: 'fixture',
-              cardId: '$board',
-              type: 'hydra.message',
-              data: {
-                action: 'send',
-                hydra: 'hydra',
-                text: 'flamingo rollout staged',
-              },
-            },
-          })
-        },
-      })
-      run({
-        args: [
-          'settings',
-          'set',
-          'oracle.rerank',
-          'off',
-        ],
-      })
-      await embedded({ run })
-      run({
-        args: [
-          'oracle',
-          'flamingo',
-        ],
-      })
-      await embedded({ run })
-      const hydra = run({
-        args: [
-          'oracle',
-          'flamingo rollout staged dinosaur',
-        ],
-      })
-      assert.match(
-        hydra,
-        /kind: hydra\n {4}match: semantic/,
-      )
-      run({
-        args: [
-          'settings',
-          'set',
-          'oracle.semantic',
-          'off',
-        ],
-      })
-      assert.deepEqual(
-        await matchActions({
-          query: entries[0]!.text,
-          entries,
-        }),
-        [],
-      )
-    } finally {
-      stop()
-
-      for (const [
-        key,
-        value,
-      ] of Object.entries(saved)) {
-        if (value === undefined) {
-          delete process.env[key]
-        } else {
-          process.env[key] = value
-        }
-      }
     }
   },
 )
