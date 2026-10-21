@@ -1,6 +1,6 @@
 ---
 name: pnyx-hydra-workers
-description: Use when you are Hydra and are about to start, continue, replace or detach a task's worker, remove a task copy, or answer a worker's permission request.
+description: Use when you are Hydra and are about to start, continue, replace, move or detach a task's worker, remove a task copy, or answer a worker's permission request.
 ---
 
 # Hydra workers
@@ -31,6 +31,16 @@ A task holds one worker; `task detach <task>` frees it without stopping the agen
 ## Continue or replace
 
 After an outside Claude Code or Codex session ends, `pnyx-axi task continue <task> --reason "<why>" --hydra <hydra>` adopts its native session in Pnyx; the next reply resumes it in its recorded folder. Use `--check` to read eligibility first. Never continue while its terminal still runs it; a running or unverified process refuses the handoff. If the folder is missing, use `task start <task> --via pnyx --replace-session <session> --folder <path>` to start fresh from the brief; the old attachment stays until the new start passes validation.
+
+## Move a worker to another task
+
+A worker whose task is done can take the next related task instead of a new agent starting cold. Write the next task's brief, declare the current one `done`, then
+
+```sh
+pnyx-axi task attach <next> --session <session> --hydra <hydra>
+```
+
+moves the session to `<next>` (the old task is left without a worker, so no detach first) and sends `<next>`'s brief as its next message. `<next>` must have no worker of its own, and only a session Pnyx or Paseo runs, or one in a terminal, can be attached. The worker keeps working in its current folder; see Task copies.
 
 ## Task copies
 
