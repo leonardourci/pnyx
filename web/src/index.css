@@ -241,8 +241,6 @@ h3 { font-weight: 600; }
 .working-dots i:nth-child(2) { animation-delay: 120ms; }
 .working-dots i:nth-child(3) { animation-delay: 240ms; }
 .message[data-streaming] > .markdown::after { content: ''; display: inline-block; width: 5px; height: 12px; margin-left: 3px; background: var(--color-muted); border-radius: 2px; }
-.task-conversation { min-width: 0; margin-top: 16px; }
-.task-messages { max-height: 360px; overflow: auto; overflow-anchor: none; padding: 0 2px 8px; }
 @keyframes reply-appear { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes reply-dot { 0%, 80%, 100% { opacity: .35; } 40% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
@@ -690,9 +688,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .thread { padding: 0; min-height: 0; flex: none; overflow: visible; }
 
-.detail .messages { padding: 6px 0; }
 
-.detail .thread { flex: 1; min-height: 0; overflow: auto; }
 
 
 

@@ -95,7 +95,6 @@ export function useHydra() {
   const cache = useRef(new Map<string, {
     identity: string
     state: HydraState
-    thread: ThreadPage | null
     hydraThread: ThreadPage | null
     latest: Record<string, LatestMessage>
   }>())
@@ -117,10 +116,6 @@ export function useHydra() {
     hydraId: location.pathname.split('/')[2] ?? 'default',
     hydras: [],
   })
-  const [
-    thread,
-    setThread,
-  ] = useState<ThreadPage | null>(null)
   const [
     hydraThread,
     setHydraThread,
@@ -277,12 +272,8 @@ export function useHydra() {
       const cacheThread = ({ page }: { page: ThreadPage }) => {
         const entry = cache.current.get(pathname)
 
-        if (entry) {
-          if (page.card === HYDRA_CARD) {
-            entry.hydraThread = page
-          } else {
-            entry.thread = page
-          }
+        if (entry && page.card === HYDRA_CARD) {
+          entry.hydraThread = page
         }
       }
 
@@ -380,7 +371,6 @@ export function useHydra() {
                 {
                   identity: identity.current,
                   state: m.state,
-                  thread: previous?.thread ?? null,
                   hydraThread: previous?.hydraThread ?? null,
                   latest: previous?.latest ?? {},
                 },
@@ -434,8 +424,6 @@ export function useHydra() {
 
               if (m.thread.card === HYDRA_CARD) {
                 setHydraThread(m.thread)
-              } else {
-                setThread(m.thread)
               }
             } else if (m.type === 'latest') {
               if (!ready.current) {
@@ -706,7 +694,7 @@ export function useHydra() {
         const previousView = cache.current.get(previous)
 
         if (previousView) {
-          setThread(previousView.thread); setHydraThread(previousView.hydraThread)
+          setHydraThread(previousView.hydraThread)
           setLatest(previousView.latest)
         }
 
@@ -733,7 +721,7 @@ export function useHydra() {
             'content',
             saved.identity,
           )
-        setState(saved.state); setThread(saved.thread)
+        setState(saved.state)
         setHydraThread(saved.hydraThread); setLatest(saved.latest)
         setNavigation(old => ({
           ...old,
@@ -768,7 +756,7 @@ export function useHydra() {
       )
 
       if (!saved) {
-        setThread(null); setHydraThread(null); setLatest({})
+        setHydraThread(null); setLatest({})
       }
 
       setConnected(false)
@@ -807,8 +795,6 @@ export function useHydra() {
     state,
     connected: connected && !loading,
     command,
-    thread,
-    setThread,
     hydraThread,
     latest,
     navigation: {
