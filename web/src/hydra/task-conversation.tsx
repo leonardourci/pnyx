@@ -137,6 +137,7 @@ export function TaskConversation({
         )}
         <Messages
           entries={entries}
+          working={working}
           comments={composer.comments}
           setComments={composer.setComments}
           quote={({ text }) => composer.setDraft({

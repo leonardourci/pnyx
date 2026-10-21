@@ -315,3 +315,86 @@ export function quoteInto({
 
 export const ownMessage = ({ entry }: { entry: ThreadEntry }) =>
   entry.kind === 'message' && /^(user|You)( · continued)?$/.test(entry.role)
+
+export interface TurnTiming {
+  start: string
+  end: string
+  reply: string
+  latest: boolean
+}
+
+// A turn runs from the owner's message to its last entry; task updates belong to no turn.
+export function turnTimings({
+  entries,
+  working,
+}: {
+  entries: ThreadEntry[]
+  working: boolean
+}): Map<string, TurnTiming> {
+  const turns: {
+    start?: string
+    last?: ThreadEntry
+    reply: string[]
+  }[] = []
+
+  for (const entry of entries) {
+    if (ownMessage({ entry })) {
+      if (!entry.role.endsWith('continued')) {
+        turns.push({
+          start: entry.at,
+          reply: [],
+        })
+      }
+    } else if (!entry.task && turns.length) {
+      const turn = turns.at(-1)!
+      turn.last = entry
+
+      if (entry.kind === 'message' && entry.role.startsWith('assistant')) {
+        turn.reply.push(entry.text)
+      }
+    }
+  }
+
+  const finished = (working ? turns.slice(
+    0,
+    -1,
+  ) : turns).filter(turn => turn.start && turn.last?.at)
+
+  return new Map(finished.map((
+    turn,
+    index,
+  ) => [
+    turn.last!.id,
+    {
+      start: turn.start!,
+      end: turn.last!.at!,
+      reply: turn.reply.join('\n\n'),
+      latest: index === finished.length - 1,
+    },
+  ]))
+}
+
+export function duration({ ms }: { ms: number }) {
+  const seconds = Math.max(
+    0,
+    Math.round(ms / 1000),
+  )
+
+  return seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+    : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m`
+}
+
+export const clock = ({
+  at,
+  seconds = false,
+}: {
+  at: string
+  seconds?: boolean
+}) => new Date(at).toLocaleTimeString(
+  [],
+  {
+    hour: 'numeric',
+    minute: '2-digit',
+    ...(seconds ? { second: '2-digit' } : {}),
+  },
+)

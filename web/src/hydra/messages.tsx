@@ -1,10 +1,11 @@
 import {
-  useEffect, useLayoutEffect, useRef, useState,
+  Fragment, useEffect, useLayoutEffect, useRef, useState,
   type ClipboardEvent as PasteEvent, type KeyboardEvent as KeyEvent,
 } from 'react'
 import { flushSync } from 'react-dom'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
+import { CopyButton } from '../components/ui/copy-button.tsx'
 import { MessageText } from '../components/ui/streaming.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
@@ -13,7 +14,7 @@ import {
   caretBounds, placeMessageCaret, focusComposer, latestAgentMessage, revealCaret,
   enterNote, leaveNote, noteBetween, selectionFocus,
 } from './caret.ts'
-import { orderedComments, sendableComment, type ChatComment } from './chat.ts'
+import { clock, duration, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageComment } from './message-comment.tsx'
@@ -26,6 +27,9 @@ import { receiptLabel } from './view.ts'
 const PILL_GAP = 6
 let highlights = 0
 
+// A message the owner just sent shows at once, faded until the server records it.
+export type ChatEntry = ThreadEntry & { sending?: boolean }
+
 const roleLabel = ({
   role,
   assistantLabel = 'Agent',
@@ -36,6 +40,7 @@ const roleLabel = ({
 
 export function Messages({
   entries,
+  working = false,
   comments,
   setComments,
   quote,
@@ -52,7 +57,9 @@ export function Messages({
   toolDetails?: boolean
   thinkingDetails?: boolean
   assistantLabel?: string
-  entries: ThreadEntry[]
+  entries: ChatEntry[]
+  // Whether the latest turn is still running, so it has no footer yet.
+  working?: boolean
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
   quote({ text }: { text: string }): void
@@ -78,6 +85,10 @@ export function Messages({
     index + 1,
   ]))
   const uploading = useRef(new Map<string, number>())
+  const turns = turnTimings({
+    entries,
+    working,
+  })
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
   const blockFor = ({ key }: { key: string | null }) =>
@@ -719,103 +730,123 @@ export function Messages({
         }}
       >
         {entries.map(entry => (
-          <article
-            key={entry.id}
-            className={`message ${entry.kind}${/^(user|You)( · continued)?$/.test(entry.role) ? ' mine' : ''}`}
-            aria-label={roleLabel({
-              role: entry.role,
-              assistantLabel,
-            })}
-            data-streaming={entry.streaming || undefined}
-            title={entry.at ? new Date(entry.at).toLocaleString() : undefined}
-          >
-            {entry.task && taskTitles && <span className="message-task" data-task-ref={entry.task}>{taskTitles[entry.task] ?? 'Task update'}</span>}
-            {entry.kind === 'message' ? (
-              <MessageText
-                text={entry.text}
-                streaming={entry.streaming}
-                openTask={openTask}
-                block={({
-                  index,
-                  offset: local,
-                  quote,
-                  children,
-                }) => {
-                  const messageId = entry.messageId ?? entry.id
-                  const offset = (entry.part ?? 0) + local
-                  const key = messageBlockKey({
-                    messageId,
-                    offset,
-                  })
-                  const own = ordered.filter(c => c.messageId === messageId && c.offset === offset)
+          <Fragment key={entry.id}>
+            <article
+              className={`message ${entry.kind}${ownMessage({ entry }) ? ' mine' : ''}`}
+              aria-label={roleLabel({
+                role: entry.role,
+                assistantLabel,
+              })}
+              data-streaming={entry.streaming || undefined}
+              data-sending={entry.sending || undefined}
+              title={entry.at && !ownMessage({ entry })
+                ? new Date(entry.at).toLocaleString() : undefined}
+            >
+              {entry.task && taskTitles && <span className="message-task" data-task-ref={entry.task}>{taskTitles[entry.task] ?? 'Task update'}</span>}
+              {entry.kind === 'message' ? (
+                <MessageText
+                  text={entry.text}
+                  streaming={entry.streaming}
+                  openTask={openTask}
+                  block={({
+                    index,
+                    offset: local,
+                    quote,
+                    children,
+                  }) => {
+                    const messageId = entry.messageId ?? entry.id
+                    const offset = (entry.part ?? 0) + local
+                    const key = messageBlockKey({
+                      messageId,
+                      offset,
+                    })
+                    const own = ordered.filter(c =>
+                      c.messageId === messageId && c.offset === offset)
 
-                  return (
-                    <div
-                      className="message-block"
-                      data-message-block={key}
-                      data-message-id={messageId}
-                      data-message-at={entry.at}
-                      data-block-index={index}
-                      data-block-offset={offset}
-                      data-quote={quote}
-                      data-active={active === key}
-                      role="group"
-                      aria-label={`Message block ${index + 1}`}
-                    >
-                      {children}
-                      {own.map(comment => (
-                        <MessageComment
-                          key={comment.id}
-                          comment={comment}
-                          number={numbers.get(comment.id)!}
-                          inline
-                          change={({ text }) => update({
-                            items: latest.current.map(c => c.id === comment.id ? {
-                              ...c,
-                              text,
-                            } : c),
-                          })}
-                          remove={() => {
-                            remove({ id: comment.id })
-                            focusBlock({ element: blockFor({ key }) })
-                          }}
-                          leave={({
-                            note,
-                            direction,
-                          }) => root.current && leaveNote({
-                            passage: commentRange({
+                    return (
+                      <div
+                        className="message-block"
+                        data-message-block={key}
+                        data-message-id={messageId}
+                        data-message-at={entry.at}
+                        data-block-index={index}
+                        data-block-offset={offset}
+                        data-quote={quote}
+                        data-active={active === key}
+                        role="group"
+                        aria-label={`Message block ${index + 1}`}
+                      >
+                        {children}
+                        {own.map(comment => (
+                          <MessageComment
+                            key={comment.id}
+                            comment={comment}
+                            number={numbers.get(comment.id)!}
+                            inline
+                            change={({ text }) => update({
+                              items: latest.current.map(c => c.id === comment.id ? {
+                                ...c,
+                                text,
+                              } : c),
+                            })}
+                            remove={() => {
+                              remove({ id: comment.id })
+                              focusBlock({ element: blockFor({ key }) })
+                            }}
+                            leave={({
+                              note,
+                              direction,
+                            }) => root.current && leaveNote({
+                              passage: commentRange({
+                                host: root.current,
+                                comment,
+                              })?.getClientRects()[0],
                               host: root.current,
-                              comment,
-                            })?.getClientRects()[0],
-                            host: root.current,
-                            note,
-                            direction,
-                          })}
-                          release={() => release({ id: comment.id })}
-                          attach={({ files }) => void attach({
-                            id: comment.id,
-                            files,
-                          })}
-                        />
-                      ))}
-                    </div>
-                  )
-                }}
-              />
-            ) : (
-              <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
+                              note,
+                              direction,
+                            })}
+                            release={() => release({ id: comment.id })}
+                            attach={({ files }) => void attach({
+                              id: comment.id,
+                              files,
+                            })}
+                          />
+                        ))}
+                      </div>
+                    )
+                  }}
+                />
+              ) : (
+                <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
+              )}
+              {entry.delivery ? (
+                <span className="receipt" role="status">
+                  {Object.entries(entry.delivery).map(([
+                    route,
+                    delivery,
+                  ]) => (
+                    <span key={route} className={`receipt-${delivery.state}`} title={delivery.detail}>{route === 'hydra' ? 'Hydra' : 'Agent'}: {receiptLabel({ state: delivery.state })}{delivery.detail ? ` · ${delivery.detail}` : ''} </span>
+                  ))}
+                </span>
+              ) : entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
+            </article>
+            {ownMessage({ entry }) && !entry.role.endsWith('continued') && (
+              <div className="message-meta" contentEditable={false}>
+                {entry.at && (
+                  <time
+                    dateTime={entry.at}
+                    title={`Sent ${new Date(entry.at).toLocaleDateString()}, ${clock({
+                      at: entry.at,
+                      seconds: true,
+                    })}`}
+                  >{clock({ at: entry.at })}
+                  </time>
+                )}
+                <CopyButton label="Copy message" text={() => entry.text} />
+              </div>
             )}
-            {entry.delivery ? (
-              <span className="receipt" role="status">
-                {Object.entries(entry.delivery).map(([
-                  route,
-                  delivery,
-                ]) => (
-                  <span key={route} className={`receipt-${delivery.state}`} title={delivery.detail}>{route === 'hydra' ? 'Hydra' : 'Agent'}: {receiptLabel({ state: delivery.state })}{delivery.detail ? ` · ${delivery.detail}` : ''} </span>
-                ))}
-              </span>
-            ) : entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
-          </article>
+            {turns.has(entry.id) && <TurnFooter turn={turns.get(entry.id)!} />}
+          </Fragment>
         ))}
         <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
         {selection && (
@@ -851,6 +882,43 @@ export function Messages({
   )
 }
 
+// A shell call copies as its command line; any other tool row copies as shown.
+const toolCommand = ({ text }: { text: string }) => {
+  try {
+    const input = JSON.parse(text) as { command?: unknown }
+
+    return typeof input.command === 'string' ? input.command : text
+  } catch {
+    return text
+  }
+}
+
+// Older turns say how long they ran; the latest says when it stopped.
+function TurnFooter({ turn }: { turn: TurnTiming }) {
+  const took = duration({ ms: Date.parse(turn.end) - Date.parse(turn.start) })
+  const started = clock({
+    at: turn.start,
+    seconds: true,
+  })
+
+  return (
+    <div className="turn-foot" contentEditable={false}>
+      {turn.reply && <CopyButton label="Copy reply" text={() => turn.reply} />}
+      {turn.latest
+        ? <time dateTime={turn.end} title={`Worked for ${took} · started ${started}`}>{clock({ at: turn.end })}</time>
+        : (
+          <span
+            title={`Started ${started} · stopped ${clock({
+              at: turn.end,
+              seconds: true,
+            })}`}
+          >Worked for {took}
+          </span>
+        )}
+    </div>
+  )
+}
+
 function Trace({
   entry,
   details,
@@ -874,6 +942,8 @@ function Trace({
     </>
   )
 
-  return details ? <details className="trace" data-expandable="true"><summary>{summary}</summary><pre className="trace-text">{entry.text}</pre></details>
-    : <div className="trace" data-expandable="false"><div className="trace-summary">{summary}</div></div>
+  const copy = entry.kind === 'tool' && <CopyButton className="trace-copy" label="Copy" text={() => toolCommand({ text: entry.text })} />
+
+  return details ? <details className="trace" data-expandable="true"><summary>{summary}{copy}</summary><pre className="trace-text">{entry.text}</pre></details>
+    : <div className="trace" data-expandable="false"><div className="trace-summary">{summary}{copy}</div></div>
 }
