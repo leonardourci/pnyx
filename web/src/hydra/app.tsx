@@ -788,8 +788,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                 <HydraCard
                                   key={item.id}
                                   card={item}
-                                  state={state}
-                                  firstmate={state.config?.hydra.kind === 'firstmate'}
                                   labelColors={state.labelColors}
                                   doneAfterHours={state.config?.doneAfterHours}
                                   notify={notify}

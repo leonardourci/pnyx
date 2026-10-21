@@ -20,7 +20,28 @@ export function HoverActions({
         return
       }
 
-      const hide = () => element.hidePopover()
+      let hiding = false
+
+      const keyboardFocus = () => {
+        const focused = document.activeElement
+
+        return focused instanceof HTMLElement && focused.matches(':focus-visible')
+          && (element.contains(focused) || (card.contains(focused) && focused.matches('.card-open')))
+      }
+
+      const hovered = () => card.matches(':hover') || element.matches(':hover')
+
+      const hide = () => {
+        if (!element.isConnected) {
+          return
+        }
+
+        hiding = true
+        element.hidePopover()
+        queueMicrotask(() => {
+          hiding = false
+        })
+      }
 
       const position = () => {
         const rect = card.getBoundingClientRect()
@@ -38,6 +59,10 @@ export function HoverActions({
       }
 
       const show = (event: Event) => {
+        if (hiding || (event.type === 'focusin' && !keyboardFocus())) {
+          return
+        }
+
         if (event.target instanceof Element && event.target.closest('.tooltip-anchor')) {
           return
         }
@@ -55,14 +80,25 @@ export function HoverActions({
         position()
       }
 
-      const leave = () => {
-        if (!card.contains(document.activeElement) && !element.querySelector('[aria-expanded=true]')) {
+      const leave = (event: PointerEvent) => {
+        if (event.relatedTarget instanceof Node && card.contains(event.relatedTarget)) {
+          return
+        }
+
+        if (!keyboardFocus()) {
           hide()
         }
       }
 
       const blur = (event: FocusEvent) => {
-        if (!card.contains(event.relatedTarget as Node) && !card.matches(':hover')) {
+        const next = event.relatedTarget
+
+        if (next instanceof HTMLElement && (element.contains(next)
+          || (card.contains(next) && next.matches('.card-open')))) {
+          return
+        }
+
+        if (!hovered()) {
           hide()
         }
       }
@@ -79,6 +115,10 @@ export function HoverActions({
         show,
       )
       card.addEventListener(
+        'pointerleave',
+        leave,
+      )
+      element.addEventListener(
         'pointerleave',
         leave,
       )
@@ -113,6 +153,10 @@ export function HoverActions({
           show,
         )
         card.removeEventListener(
+          'pointerleave',
+          leave,
+        )
+        element.removeEventListener(
           'pointerleave',
           leave,
         )

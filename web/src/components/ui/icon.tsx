@@ -2,7 +2,7 @@ import {
   IconBrandGithub, IconPaperclip,
   IconAdjustments, IconAlertTriangle, IconArrowDown, IconArrowUpRight, IconArrowFork,
   IconBolt, IconBulb, IconCheck, IconChevronDown, IconChevronRight, IconCircleCheck,
-  IconCalendar, IconClipboardList, IconClock, IconCode, IconCopy, IconCpu,
+  IconCalendar, IconClipboardList, IconClock, IconCode, IconCpu,
   IconCube, IconDeviceDesktop,
   IconDots, IconEye, IconGauge, IconGitPullRequest, IconGitFork, IconHistory, IconKeyboard,
   IconLink, IconList, IconMaximize, IconMinus, IconPencil,
@@ -54,7 +54,6 @@ const icons: Record<string, typeof IconRobot> = {
   reminder: IconClock,
   custom: IconAdjustments,
   clone: IconGitFork,
-  copy: IconCopy,
   rename: IconPencil,
 }
 

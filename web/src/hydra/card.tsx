@@ -1,8 +1,7 @@
 import { answerPrompt } from '../../../src/core/answer.ts'
-import { QueueEditor, QueueLabel, WorkerQueue } from './queue.tsx'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ReminderEditor, ReminderLabel } from './reminder.tsx'
-import type { Card as CardData, HydraState, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
+import type { Card as CardData, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
 import { Label } from '../components/ui/label.tsx'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Markdown } from '../components/ui/markdown.tsx'
@@ -11,10 +10,6 @@ import { useCardHeight } from './card-height.ts'
 import { Button, Input } from '../components/ui/controls.tsx'
 import { taskUpdates } from '../../../src/thread/task.ts'
 import type { Command } from './connection.ts'
-import { Menu } from '../components/ui/menu.tsx'
-import { CopyId } from '../components/ui/copy-id.tsx'
-import { HideAfter } from './hide-after.tsx'
-import { useStartRequest } from './start-request.ts'
 import { cardState, projectTitle, harnessName } from './view.ts'
 import { Resize } from '../components/ui/resize.tsx'
 
@@ -37,8 +32,6 @@ function LastMessage({ message }: { message: LatestMessage }) {
 
 export function HydraCard({
   card,
-  state,
-  firstmate,
   labelColors,
   latest,
   selected,
@@ -54,8 +47,6 @@ export function HydraCard({
   notify,
 }: {
   card: CardData
-  state: HydraState
-  firstmate: boolean
   labelColors?: SavedLabelColor[]
   doneAfterHours?: number
   notify({ text }: { text: string }): void
@@ -70,10 +61,6 @@ export function HydraCard({
   children?: ReactNode
   answer({ card }: { card: CardData }): void
 }) {
-  const [
-    queueing,
-    setQueueing,
-  ] = useState(false)
   const element = useRef<HTMLElement>(null)
   const [
     preview,
@@ -115,16 +102,6 @@ export function HydraCard({
     },
     [],
   )
-  const {
-    start,
-    resume,
-    busy,
-  } = useStartRequest({
-    card,
-    firstmate,
-    command,
-    notify,
-  })
   const status = cardState({
     card,
     hours: doneAfterHours,
@@ -155,10 +132,31 @@ export function HydraCard({
   const question = request?.questions?.map(question => question.question).join(' ')
     || attention?.text || (card.status?.state === 'needs_you' ? card.status.note : '')
 
+  const labels = (card.project || card.tags.length > 0) && (
+    <div className="card-labels">
+      {card.project && (
+        <Label
+          project
+          label={card.project}
+          text={projectTitle({ project: card.project })}
+          colors={labelColors}
+        />
+      )}
+      {card.tags.filter(tag => tag !== card.project).map(tag => (
+        <Label key={tag} label={tag} colors={labelColors} />
+      ))}
+    </div>
+  )
+
+  const metadataSummary = [
+    card.project || card.tags.length ? 'Labels' : '',
+    card.links.length ? `${card.links.length} links` : '',
+  ].filter(Boolean).join(' · ')
+
   return (
     <article
       ref={element}
-      className={`card ${selected ? 'selected' : ''} ${queueing ? 'queueing' : ''}`}
+      className={`card ${selected ? 'selected' : ''}`}
       style={{
         height: Math.max(
           bounds.minimum,
@@ -178,7 +176,7 @@ export function HydraCard({
           open({ id: card.id })
         }
       }}
-      draggable={connected && !selected && !reminding && !queueing}
+      draggable={connected && !selected && !reminding}
       onDragStart={e => {
         if (e.target instanceof Element && e.target.closest('.resize')) {
           e.preventDefault()
@@ -193,61 +191,46 @@ export function HydraCard({
       }}
     >
       <HoverActions anchor={element}>
-        {!card.automaticTask && (
-          <Tooltip content="Remind"><Button aria-label="Remind" disabled={!connected} onClick={() => setReminding(true)}><Icon name="reminder" size={15} /></Button></Tooltip>
-        )}
-        <Tooltip content="Copy ID"><CopyId id={card.id} notify={notify} icon /></Tooltip>
-        <Tooltip content="More options">
-          <Menu label={`Card menu for ${card.title}`}>
-            {!card.automaticTask && (
-              <Button disabled={!connected} onClick={() => setReminding(true)}><Icon name="reminder" size={15} />Remind me…</Button>
-            )}
-            {!firstmate && !card.automaticTask && !card.sessionIds?.length && !card.doneAt && (
-              <Button disabled={!connected} onClick={() => setQueueing(true)}>{card.queue ? 'Edit worker queue…' : 'Queue behind a worker…'}</Button>
-            )}
-            <Button
-              onClick={() => {
-                setRenaming(true)
+        <Tooltip content="Remind"><Button aria-label="Remind" disabled={!connected} onClick={() => setReminding(true)}><Icon name="reminder" size={15} /></Button></Tooltip>
+        <Tooltip content="Edit">
+          <Button
+            aria-label="Edit"
+            disabled={!connected}
+            onClick={() => {
+              setRenaming(true)
 
-                if (!selected) {
+              if (!selected) {
+                open({ id: card.id })
+              }
+            }}
+          ><Icon name="rename" size={15} />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Hide">
+          <Button
+            aria-label="Hide"
+            disabled={!connected}
+            onClick={async () => {
+              try {
+                await command({
+                  name: 'task',
+                  args: [
+                    'hide',
+                    card.id,
+                    '--event-id',
+                    crypto.randomUUID(),
+                  ],
+                })
+
+                if (selected) {
                   open({ id: card.id })
                 }
-              }}
-            ><Icon name="rename" size={15} />Rename task
-            </Button>
-            {!card.automaticTask && (
-              <Button
-                disabled={!connected}
-                onClick={async () => {
-                  try {
-                    await command({
-                      name: 'task',
-                      args: [
-                        card.hidden ? 'unhide' : 'hide',
-                        card.id,
-                        '--event-id',
-                        crypto.randomUUID(),
-                      ],
-                    })
-
-                    if (selected) {
-                      open({ id: card.id })
-                    }
-                  } catch (error) {
-                    notify({ text: (error as Error).message })
-                  }
-                }}
-              ><Icon name="review" size={15} />{card.hidden ? 'Bring back to Hydra' : 'Hide from Hydra'}
-              </Button>
-            )}
-            <Button disabled={!connected || busy} onClick={card.agent ? resume : start}><Icon name="in_progress" size={15} />{card.agent ? 'Resume' : 'Start'}</Button>
-            <HideAfter
-              card={card}
-              command={command}
-              connected={connected}
-              notify={notify}
-            />
-          </Menu>
+              } catch (error) {
+                notify({ text: (error as Error).message })
+              }
+            }}
+          ><Icon name="review" size={15} />
+          </Button>
         </Tooltip>
       </HoverActions>
       <div className="card-content">
@@ -333,25 +316,28 @@ export function HydraCard({
             />
           </>
         )}
-        {(card.project || card.tags.length > 0) && (
-          <div className="card-labels">
-            {card.project && (
-              <Label
-                project
-                label={card.project}
-                text={projectTitle({ project: card.project })}
-                colors={labelColors}
-              />
+        {!selected && labels}
+        {selected && (card.project || card.tags.length > 0 || card.links.length > 0 || card.reminder || card.launch?.dispatch || card.copy?.state === 'flagged') && (
+          <Disclosure
+            className="card-metadata"
+            title={(
+              <>
+                <span>Details</span>
+                <span className="muted small">{metadataSummary}</span>
+              </>
             )}
-            {card.tags.filter(tag => tag !== card.project).map(tag => (
-              <Label key={tag} label={tag} colors={labelColors} />
-            ))}
-          </div>
+          >
+            {labels}
+            <CardLinks links={card.links} expanded />
+            <ReminderLabel card={card} />
+            {card.copy?.state === 'flagged' && <p className="copy-warning">{card.copy.reason}</p>}
+            {card.launch?.dispatch && <p className="muted small" aria-label="Heads dispatch choice">{card.launch.dispatch}</p>}
+          </Disclosure>
         )}
-        {card.copy?.state === 'flagged' && (
+        {!selected && card.copy?.state === 'flagged' && (
           <Tooltip content={card.copy.reason}><span className="copy-warning" tabIndex={0}>copy not cleaned</span></Tooltip>
         )}
-        {question && (
+        {!selected && question && (
           <div className="card-question" aria-label="Task question">
             <strong className="eyebrow">Question</strong>
             <p>{question}</p>
@@ -374,19 +360,8 @@ export function HydraCard({
             </Button>
           </div>
         )}
-        <QueueLabel card={card} state={state} open={open} />
-        <WorkerQueue card={card} state={state} open={open} />
-        {(!selected || reminding || queueing) && (
+        {(!selected || reminding) && (
           <div className="card-rest">
-            {queueing && (
-              <QueueEditor
-                card={card}
-                state={state}
-                command={command}
-                connected={connected}
-                close={() => setQueueing(false)}
-              />
-            )}
             {view.lastMessageOnCards && !selected && (
               factual ? <LastMessage message={factual} /> : <p className="last-message">No agent update yet.</p>
             )}
@@ -400,8 +375,12 @@ export function HydraCard({
             )}
           </div>
         )}
-        <CardLinks links={card.links} expanded={selected} />
-        <ReminderLabel card={card} />
+        {!selected && (
+          <>
+            <CardLinks links={card.links} expanded={false} />
+            <ReminderLabel card={card} />
+          </>
+        )}
       </div>
       {children}
       <Resize
