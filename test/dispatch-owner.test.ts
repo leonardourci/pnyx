@@ -9,8 +9,8 @@ import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { ownerOnly } from '../src/cli/hydra-session.ts'
 import { emptyHydra } from '../src/core/reducer.ts'
-import { dispatchCommands, STARTER_DISPATCH } from '../src/dispatch/cli.ts'
-import { configPath, effectiveDispatch, writeConfig } from '../src/dispatch/config.ts'
+import { dispatchCommands } from '../src/dispatch/cli.ts'
+import { configPath, effectiveDispatch, templateRules, writeConfig } from '../src/dispatch/config.ts'
 import { chooseCandidate, chosenSettings, validateChoice } from '../src/dispatch/select.ts'
 import { loadHydra, hydraDir, withWriter } from '../src/store/hydra-store.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
@@ -60,11 +60,11 @@ test(
     })
     assert.deepEqual(
       config.dispatch.default,
-      STARTER_DISPATCH.default,
+      templateRules().default,
     )
     assert.deepEqual(
       config.dispatch.rules,
-      STARTER_DISPATCH.rules,
+      templateRules().rules,
     )
 
     for (const rule of [

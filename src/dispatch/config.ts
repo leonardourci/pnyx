@@ -1,4 +1,3 @@
-import { DEFAULT_DISPATCH } from './defaults.ts'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
@@ -50,6 +49,31 @@ export function configPath({
       hydraDir({ hydraId }),
       accounts ? 'accounts.json' : 'heads-dispatch.json',
     )
+}
+
+// The shipped templates: `rule init` copies them into the Pnyx home, and their rules stand in until the owner has a dispatch file.
+const TEMPLATES = join(
+  import.meta.dirname,
+  '..',
+  '..',
+  'setup',
+  'config',
+)
+
+export function templatePath({ accounts = false }: { accounts?: boolean }): string {
+  return join(
+    TEMPLATES,
+    accounts ? 'hydra-accounts.example.json' : 'hydra-heads-dispatch.example.json',
+  )
+}
+
+export function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
+  const template = parseDispatch({ value: readConfig({ path: templatePath({}) }) })
+
+  return {
+    rules: template.rules ?? {},
+    default: template.default ?? [],
+  }
 }
 
 export function invalid({ message }: { message: string }): never {
@@ -411,7 +435,7 @@ export function effectiveDispatch({
   const local = existsSync(path)
     ? parseDispatch({ value: readConfig({ path }) }) : legacyDispatch({ state })
   const dispatch: HeadsDispatch = {
-    ...structuredClone(DEFAULT_DISPATCH),
+    ...templateRules(),
     workers: {},
     projects: {},
   }

@@ -1,10 +1,9 @@
 import { saveOrPropose, resolveProposal } from './proposals.ts'
-import { DEFAULT_DISPATCH } from './defaults.ts'
 import { existsSync } from 'node:fs'
 import { isDeepStrictEqual } from 'node:util'
 import { WRITE, guard, parse, required, meta, type Output } from '../cli/commands.ts'
 import { loadHydra, requireHydra, withRegistryLock } from '../store/hydra-store.ts'
-import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, readConfig, writeConfig, type Candidate, type HeadsDispatch, type Harness } from './config.ts'
+import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, readConfig, templatePath, templateRules, writeConfig, type Candidate, type Harness } from './config.ts'
 
 const OPTIONS = {
   ...WRITE,
@@ -22,42 +21,6 @@ const OPTIONS = {
   project: { type: 'string' },
   folder: { type: 'string' },
 } as const
-
-export const STARTER_DISPATCH: HeadsDispatch = {
-  main: 'claude:personal',
-  workers: {
-    claude: [
-      'claude:work',
-      'claude:personal',
-    ],
-    codex: [
-      'codex:work',
-      'codex:personal',
-    ],
-  },
-  projects: {},
-  ...DEFAULT_DISPATCH,
-}
-export const STARTER_ACCOUNTS = {
-  accounts: {
-    'claude:personal': {
-      provider: 'claude',
-      folder: '~/.claude',
-    },
-    'claude:work': {
-      provider: 'claude',
-      folder: '~/.claude-work',
-    },
-    'codex:personal': {
-      provider: 'codex',
-      folder: '~/.codex',
-    },
-    'codex:work': {
-      provider: 'codex',
-      folder: '~/.codex-work',
-    },
-  },
-}
 
 function ruleCommand({ args }: { args: string[] }): Output {
   const propose = args[0] === 'propose'
@@ -127,7 +90,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
         } : before)
       const inherited = shared
         ? {
-          ...DEFAULT_DISPATCH,
+          ...templateRules(),
           workers: {},
           projects: {},
           ...before,
@@ -153,14 +116,14 @@ function ruleCommand({ args }: { args: string[] }): Output {
         if (!existsSync(path)) {
           writeConfig({
             path,
-            value: STARTER_DISPATCH,
+            value: readConfig({ path: templatePath({}) }),
           })
         }
 
         if (!existsSync(accountPath)) {
           writeConfig({
             path: accountPath,
-            value: STARTER_ACCOUNTS,
+            value: readConfig({ path: templatePath({ accounts: true }) }),
             accounts: true,
           })
         }

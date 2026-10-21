@@ -6,11 +6,16 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { emptyHydra } from '../src/core/reducer.ts'
-import { configPath, effectiveDispatch, parseAccounts, parseDispatch, writeConfig, type EffectiveDispatch } from '../src/dispatch/config.ts'
+import { configPath, effectiveDispatch, parseAccounts, parseDispatch, readConfig, templatePath, writeConfig, type EffectiveDispatch } from '../src/dispatch/config.ts'
 import { accountEnvironment, chooseCandidate, chosenSettings, hostedOverride, overrideOf, readQuota, validateChoice, type QuotaReading } from '../src/dispatch/select.ts'
-import { dispatchCommands, STARTER_ACCOUNTS, STARTER_DISPATCH } from '../src/dispatch/cli.ts'
+import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { commands } from '../src/cli/commands.ts'
+
+const STARTER_DISPATCH = parseDispatch({ value: readConfig({ path: templatePath({}) }) })
+const STARTER_ACCOUNTS = parseAccounts({
+  value: readConfig({ path: templatePath({ accounts: true }) }),
+})
 
 // Keeps the default-login fallback away from the real harness logins.
 const noLogin = join(
@@ -1264,32 +1269,6 @@ test(
         homedir(),
         '.claude',
       ),
-    )
-  },
-)
-
-test(
-  'shipped starter templates match the initializer',
-  () => {
-    assert.deepEqual(
-      JSON.parse(readFileSync(
-        new URL(
-          '../setup/config/hydra-heads-dispatch.json',
-          import.meta.url,
-        ),
-        'utf8',
-      )),
-      STARTER_DISPATCH,
-    )
-    assert.deepEqual(
-      JSON.parse(readFileSync(
-        new URL(
-          '../setup/config/hydra-accounts.json',
-          import.meta.url,
-        ),
-        'utf8',
-      )),
-      STARTER_ACCOUNTS,
     )
   },
 )

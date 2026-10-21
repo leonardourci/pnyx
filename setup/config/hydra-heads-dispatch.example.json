@@ -2,11 +2,9 @@
   "main": "claude:personal",
   "workers": {
     "claude": [
-      "claude:work",
       "claude:personal"
     ],
     "codex": [
-      "codex:work",
       "codex:personal"
     ]
   },
