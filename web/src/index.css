@@ -922,9 +922,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .reminder-label { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; color: var(--color-gold); font-size: var(--text-meta); }
 .reminder-editor { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
 .reminder-editor [role=alert] { color: var(--color-red); }
-.card-menu { position: absolute; top: -14px; right: 10px; z-index: 2; display: flex; align-items: center; gap: 2px; border: 1px solid var(--color-line); border-radius: 999px; padding: 2px; background: var(--color-surface); box-shadow: 0 3px 10px var(--color-shadow); opacity: 0; pointer-events: none; }
+.card-menu { position: fixed; inset: auto; margin: 0; display: none; align-items: center; gap: 2px; border: 1px solid var(--color-line); border-radius: 999px; padding: 2px; background: var(--color-surface); box-shadow: 0 3px 10px var(--color-shadow); opacity: 0; pointer-events: none; }
 .card-menu > .button, .card-menu > .menu > .button { padding: 2px 6px; border-radius: 999px; font-size: var(--text-meta); }
-.card:hover .card-menu, .card:focus-within .card-menu, .card-menu:has([aria-expanded=true]) { opacity: 1; pointer-events: auto; }
+.card-menu:popover-open { display: flex; opacity: 1; pointer-events: auto; }
 body:has([data-tooltip-active]) .card-menu { opacity: 0; pointer-events: none; }
 .card-open { padding-right: 0; }
 .card-state { display: flex; align-items: center; gap: 8px; min-height: 20px; }
@@ -1072,7 +1072,7 @@ body:has([data-tooltip-active]) .card-menu { opacity: 0; pointer-events: none; }
 .decision::details-content { height: 0; overflow: clip; transition: height .22s ease, content-visibility .22s allow-discrete; }
 .decision[open]::details-content { height: auto; }
 @supports (interpolate-size: allow-keywords) { .decision { interpolate-size: allow-keywords; } }
-@media (hover: none) { .card-menu { opacity: 1; pointer-events: auto; } }
+
 @media (prefers-reduced-motion: reduce) { .tooltip, .decision::details-content { transition: none; } }
 
 .task-requests { flex-shrink: 1; min-height: 0; overflow: auto; max-height: 50%; }
@@ -1083,7 +1083,7 @@ body:has([data-tooltip-active]) .card-menu { opacity: 0; pointer-events: none; }
 .card-content { display: flex; flex-direction: column; gap: 7px; min-height: 0; overflow: auto; flex: 1; }
 .card-content > :is(.card-labels, .card-state, .copy-warning, .reminder-label) { flex-shrink: 0; }
 .card.selected > .card-content { flex: 0 1 auto; max-height: 55%; }
-body:has(.card:hover) .card:not(:hover) .card-menu { opacity: 0; pointer-events: none; }
+
 
 .message-task.button { min-height: 0; padding: 0 6px; text-align: left; }
 

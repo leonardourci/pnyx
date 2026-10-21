@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
-const CLAIM = 'pnyx-tooltip'
+export const HOVER_CLAIM = 'pnyx-tooltip'
 export const LINK_TOOLTIP_DELAY = 1500
 const GAP = 8
 
@@ -29,7 +29,7 @@ export function Tooltip({
 
   const show = () => {
     document.dispatchEvent(new CustomEvent(
-      CLAIM,
+      HOVER_CLAIM,
       { detail: id },
     ))
     clearTimeout(timer.current)
@@ -48,7 +48,7 @@ export function Tooltip({
       }
 
       document.addEventListener(
-        CLAIM,
+        HOVER_CLAIM,
         claimed,
       )
       document.addEventListener(
@@ -64,7 +64,7 @@ export function Tooltip({
       return () => {
         clearTimeout(timer.current)
         document.removeEventListener(
-          CLAIM,
+          HOVER_CLAIM,
           claimed,
         )
         document.removeEventListener(

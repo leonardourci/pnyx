@@ -21,6 +21,7 @@ import { Tooltip } from '../components/ui/tooltip.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
+import { HoverActions } from '../components/ui/hover-actions.tsx'
 
 const MIN_UPDATES_HEIGHT = 80
 const CLOSED_HEIGHT = 176
@@ -232,7 +233,7 @@ export function HydraCard({
         )
       }}
     >
-      <div className="card-menu">
+      <HoverActions anchor={element}>
         {!card.automaticTask && (
           <Button disabled={!connected} onClick={() => setReminding(true)}>Remind</Button>
         )}
@@ -251,7 +252,7 @@ export function HydraCard({
             notify={notify}
           />
         </Menu>
-      </div>
+      </HoverActions>
       <div className="card-content">
         <div className="card-state">
           <span className={`agent-activity activity-${status.kind}`}><i aria-hidden="true" />{statusText}</span>
