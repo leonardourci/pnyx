@@ -670,9 +670,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             ...c,
             [card.id]: items,
           }))}
-          height={view.composerHeight}
+          projects={state.projects ?? []}
           command={command}
-          save={save}
           connected={connected}
           notify={notify}
         />

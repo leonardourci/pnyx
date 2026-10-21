@@ -80,20 +80,9 @@ try {
     label: 'Hydra composer appears',
   })
   await check({
-    condition: '(() => { const grip = document.querySelector(".hydra-chat .composer > .resize-y"); const style = getComputedStyle(grip); return Number(getComputedStyle(grip, "::after").opacity) >= .5 && grip.clientHeight >= 24 && style.touchAction === "none"; })()',
-    label: 'composer grip is visible with a touch-sized hit area',
+    condition: '!document.querySelector(".composer .resize-y")',
+    label: 'the composer has no drag handle; it grows with its draft',
   })
-  await evaluate({ code: 'window.hydraDragHeight = document.querySelector(".hydra-chat .composer").clientHeight + 100; return true;' })
-  await drag({
-    selector: '.hydra-chat [aria-label="Resize composer"]',
-    dy: -100,
-  })
-  await eventually({
-    condition: 'document.querySelector(".hydra-chat .composer").clientHeight === window.hydraDragHeight',
-    label: 'mouse drag grows the Hydra composer',
-  })
-  const hydraHeight = state().view?.composerHeight
-  assert.ok(hydraHeight && hydraHeight >= 180)
   await click({ selector: card })
   await eventually({
     condition: '!!document.querySelector(".task-updates")',
@@ -136,8 +125,8 @@ try {
     ],
   })
   await eventually({
-    condition: `document.querySelector(".hydra-chat .composer")?.clientHeight === ${hydraHeight}`,
-    label: 'Hydra composer height survives reload',
+    condition: '!!document.querySelector(".hydra-chat .composer")',
+    label: 'Hydra composer appears after reload',
   })
   await click({ selector: card })
   await eventually({

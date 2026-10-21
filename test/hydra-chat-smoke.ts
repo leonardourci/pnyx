@@ -121,9 +121,13 @@ try {
     value: 'Hello Hydra',
   })
   await b.click({ selector: '.hydra-chat .composer-send' })
+  await b.check({
+    condition: 'document.querySelector(".hydra-chat textarea").value === "" && [...document.querySelectorAll(".hydra-chat .message.mine")].some(m => m.textContent.includes("Hello Hydra")) && !!document.querySelector(".hydra-chat .chat-running")',
+    label: 'a send clears the composer, shows the message and starts the dots at once',
+  })
   await b.eventually({
-    condition: 'document.querySelector(".hydra-messages").textContent.includes("Hydra is working")',
-    label: 'hosted turn has a working indicator',
+    condition: 'document.querySelector(".hydra-chat .chat-running")?.getAttribute("aria-label") === "Hydra is working" && !document.querySelector(".hydra-messages .chat-running") && !!document.querySelector(".hydra-chat [aria-label=\\"Stop Hydra\\"]") && !document.querySelector(".app > [role=status]")',
+    label: 'hosted turn shows wordless dots above the composer, a Stop button and no queued pop-up',
   })
   assert.equal(
     sdk.calls[0]?.options.model,
@@ -150,8 +154,12 @@ try {
   )
   sdk.release()
   await b.eventually({
-    condition: 'document.querySelector(".hydra-messages").textContent.includes("Hydra: Hello Hydra") && !document.querySelector(".hydra-messages").textContent.includes("Hydra is working")',
+    condition: 'document.querySelector(".hydra-messages").textContent.includes("Hydra: Hello Hydra") && !document.querySelector(".hydra-chat .chat-running") && !document.querySelector(".hydra-chat [aria-label=\\"Stop Hydra\\"]")',
     label: 'answer streams into Hydra chat and clears the indicator',
+  })
+  await b.check({
+    condition: '!!document.querySelector(".hydra-chat .turn-foot time") && !!document.querySelector(".hydra-chat .turn-foot [aria-label=\\"Copy reply\\"]") && !!document.querySelector(".hydra-chat .message-meta time") && !!document.querySelector(".hydra-chat .message-meta [aria-label=\\"Copy message\\"]")',
+    label: 'the turn ends with its stop time and reply copy, and the owner message shows its time and copy',
   })
   await b.fill({
     label: 'Reply to Hydra',
@@ -177,8 +185,8 @@ try {
   })
   await b.click({ selector: '.hydra-chat .composer-send' })
   await b.eventually({
-    condition: '!!document.querySelector(".hydra-chat [data-streaming] .message-block")',
-    label: 'reply streams before its turn finishes',
+    condition: '!!document.querySelector(".hydra-chat [data-streaming] .message-block") && !!document.querySelector(".hydra-chat .chat-running")',
+    label: 'reply streams before its turn finishes, with the dots still on',
   })
   await b.evaluate({ code: 'document.querySelector(".hydra-chat .hydra-messages").focus(); return true;' })
   await b.press({ key: 'c' })
@@ -205,6 +213,26 @@ try {
     sdk.calls[1]?.messages.at(-1) ?? '',
     /## Comments on your reply from [\s\S]*Keep this streamed passage\.[\s\S]*## Message\n\nApply the comment/,
   )
+  sdk.control.hold = true
+  await b.fill({
+    label: 'Reply to Hydra',
+    value: 'Take your time',
+  })
+  await b.click({ selector: '.hydra-chat .composer-send' })
+  await b.eventually({
+    condition: '!!document.querySelector(".hydra-chat [aria-label=\\"Stop Hydra\\"]")',
+    label: 'Stop shows while Hydra works',
+  })
+  await b.click({ selector: '.hydra-chat [aria-label="Stop Hydra"]' })
+  await b.eventually({
+    condition: '!document.querySelector(".hydra-chat .chat-running") && !document.querySelector(".hydra-messages [role=alert]")',
+    label: 'Stop ends Hydra’s turn without an error',
+  })
+  assert.equal(
+    sdk.interrupts.length,
+    1,
+  )
+  sdk.control.hold = false
   const session = state().config?.hydra.session
   const port = server.port
   await server.close(); server = await startServer({

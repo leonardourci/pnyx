@@ -121,7 +121,7 @@ try {
     value: '@no-such-task',
   })
   await check({
-    condition: 'document.querySelector(".mention-menu").textContent.includes("No matching tasks in this Hydra.")',
+    condition: 'document.querySelector(".mention-menu").textContent.includes("Nothing in this Hydra matches.")',
     label: 'empty search is explicit',
   })
   await press({ key: 'Enter' })
@@ -147,10 +147,25 @@ try {
     label: 'Reply to Hydra',
     value: 'Compare @Migration',
   })
+  await press({ key: 'Tab' })
+  await check({
+    condition: 'document.querySelector(".hydra-chat textarea").value === "Compare @Migration plan " && document.querySelector(".hydra-chat .draft-chip[data-kind=task]")?.textContent === "@Migration plan" && !document.querySelector(".mention-menu") && document.activeElement.matches(".hydra-chat textarea")',
+    label: 'Tab picks the task and shows it as one chip',
+  })
+  await press({ key: 'Backspace' })
+  await press({ key: 'Backspace' })
+  await check({
+    condition: 'document.querySelector(".hydra-chat textarea").value === "Compare " && !document.querySelector(".hydra-chat .draft-chip")',
+    label: 'Backspace removes a chip whole',
+  })
+  await fill({
+    label: 'Reply to Hydra',
+    value: 'Compare @Migration',
+  })
   await press({ key: 'Enter' })
   await check({
-    condition: 'document.querySelector(".hydra-chat textarea").value.startsWith("Compare [@Migration plan](pnyx-task:") && !!document.querySelector(".hydra-chat .draft-mentions .task-mention") && !document.querySelector(".mention-menu")',
-    label: 'Enter inserts a stable readable reference and a draft chip',
+    condition: 'document.querySelector(".hydra-chat textarea").value === "Compare @Migration plan " && !!document.querySelector(".hydra-chat .draft-chip[data-kind=task]") && !document.querySelector(".mention-menu")',
+    label: 'Enter picks the task too',
   })
   await click({ selector: '.hydra-chat .composer-send' })
   await eventually({
