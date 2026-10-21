@@ -1,9 +1,9 @@
+import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
 import { queuePosition } from '../queue/state.ts'
 import { projectRows } from '../projects/read.ts'
 import { hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
-import { onTemplate } from '../dispatch/config.ts'
 import { checkAttachments } from '../integrations/presence/check.ts'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
@@ -362,9 +362,11 @@ const hydraDigestHandler = guard({
       owner,
       state,
       projects: projectDigest({ state }),
-      dispatchTemplate: onTemplate({
-        hydraId,
-        state,
+      setup: setupDigest({
+        items: setupCheck({
+          hydraId,
+          state,
+        }),
       }),
     })
   },

@@ -1,6 +1,7 @@
+import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
 import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, overrideOf, hostedOverride, readQuota, type DispatchChoice } from '../dispatch/select.ts'
-import { effectiveDispatch, onTemplate, type Harness } from '../dispatch/config.ts'
+import { effectiveDispatch, type Harness } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
@@ -603,9 +604,11 @@ export function createHost({
       state,
       owner,
       projects,
-      dispatchTemplate: onTemplate({
-        hydraId,
-        state,
+      setup: setupDigest({
+        items: setupCheck({
+          hydraId,
+          state,
+        }),
       }),
     })
   }
