@@ -2,7 +2,7 @@ import { setupCheckOutput } from '../setup/check.ts'
 import { projectWorkerContext } from '../projects/context.ts'
 import { decideQueue } from '../queue/decide.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
-import { mentionContext } from '../mentions/mentions.ts'
+import { mentionContext, taskMentions } from '../mentions/mentions.ts'
 import { reminderTime } from '../reminders/time.ts'
 import { waitingReminders } from '../reminders/state.ts'
 import { findProject, projectRows, taskProject } from '../projects/read.ts'
@@ -1850,6 +1850,18 @@ function sessionRef({
     : ref
 }
 
+// A Hydra chat message belongs to its task and to every task it names with a chip.
+function tagsTask({
+  event,
+  ids,
+}: {
+  event: HydraEvent
+  ids: Set<string>
+}): boolean {
+  return event.type === 'hydra.message'
+    && (ids.has(event.data.task ?? '') || taskMentions({ text: event.data.text }).some(mention => ids.has(mention.id)))
+}
+
 function taskHistory({
   hydraId,
   ref,
@@ -1885,7 +1897,10 @@ function taskHistory({
     hydraId,
     ids,
   })
-  const matches = events.filter(e => (before === undefined || e.seq < before) && (ids.has(e.cardId) || (e.type === 'task.session' && (ids.has(e.data.before ?? '') || ids.has(e.data.after ?? ''))) || (e.type === 'hydra.message' && ids.has(e.data.task ?? ''))))
+  const matches = events.filter(e => (before === undefined || e.seq < before) && (ids.has(e.cardId) || (e.type === 'task.session' && (ids.has(e.data.before ?? '') || ids.has(e.data.after ?? ''))) || tagsTask({
+    event: e,
+    ids,
+  })))
     .reverse()
   const page = matches.slice(
     0,
@@ -3425,7 +3440,11 @@ const history = guard({
       (e.type === 'card.outcome' ? e.data.card.workspace : state.cards[e.cardId]?.workspace) === workspace
 
     const matches = readEvents({ hydraId })
-      .filter(e => (before === undefined || e.seq < before) && (!cardId || e.cardId === cardId))
+      .filter(e => (before === undefined || e.seq < before)
+        && (!cardId || e.cardId === cardId || tagsTask({
+          event: e,
+          ids: new Set([cardId]),
+        })))
       .filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e })))
       .reverse()
     const page = matches.slice(

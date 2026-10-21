@@ -1067,3 +1067,72 @@ test(
     )
   },
 )
+
+test(
+  'a chat message that tags a task shows in that task’s history',
+  async () => {
+    const previous = process.env.PNYX_HOME
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-updates-',
+    ))
+    process.env.PNYX_HOME = home
+
+    try {
+      for (const key of [
+        'tagged',
+        'other',
+      ]) {
+        commands.task([
+          'create',
+          '--key',
+          key,
+          '--title',
+          `Task ${key}`,
+        ])
+      }
+
+      const state = loadHydra({ hydraId: 'default' }).state
+      const tagged = state.keys.tagged!
+      await commands.hydra([
+        'send',
+        '--text',
+        `Is [@Task tagged](pnyx-task:${tagged}) its own page?`,
+      ])
+      const history = ({ card }: { card: string }) => commands.history([
+        '--card',
+        card,
+        '--full',
+      ]) as { events: TaskEvent[] | string }
+
+      const messages = ({ card }: { card: string }) => {
+        const events = history({ card }).events
+
+        return Array.isArray(events) ? events.filter(item => item.type === 'hydra.message') : []
+      }
+
+      assert.equal(
+        messages({ card: tagged }).length,
+        1,
+      )
+      assert.equal(
+        messages({ card: state.keys.other! }).length,
+        0,
+      )
+    } finally {
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
+    }
+  },
+)
