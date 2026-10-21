@@ -62,6 +62,39 @@ export interface ChatComment {
   text: string
   paragraph?: string
   at?: string
+  images?: string[]
+}
+
+export const sendableComment = ({ comment }: { comment: ChatComment }) =>
+  !!comment.text.trim() || !!comment.images?.length
+
+// A quote of three words or fewer travels with its paragraph, so the agent can place it.
+export const commentContext = ({ comment }: { comment: Pick<ChatComment, 'quote' | 'paragraph'> }) =>
+  comment.quote.trim().split(/\s+/).length <= 3 && comment.paragraph && comment.paragraph !== comment.quote
+    ? comment.paragraph : undefined
+
+// What a comment card shows: its context split around the quote, or the quote alone.
+export function quoteSnippet({
+  quote,
+  context = '',
+}: {
+  quote: string
+  context?: string
+}) {
+  const at = context.indexOf(quote)
+
+  return at < 0 ? {
+    before: '',
+    match: quote,
+    after: '',
+  } : {
+    before: context.slice(
+      0,
+      at,
+    ),
+    match: quote,
+    after: context.slice(at + quote.length),
+  }
 }
 
 // Transport parts must rejoin before Markdown parsing, even across loaded pages.
@@ -96,15 +129,17 @@ const numberedComment = ({
   number: number
 }) => {
   const parts = [`${number}. ${markdownQuote({ text: comment.quote })}`]
-  const shortQuote = comment.quote.trim().split(/\s+/).length <= 3
+  const paragraph = commentContext({ comment })
 
-  if (shortQuote && comment.paragraph && comment.paragraph !== comment.quote) {
-    parts.push(`Paragraph:\n\n${markdownQuote({ text: comment.paragraph })}`)
+  if (paragraph) {
+    parts.push(`Paragraph:\n\n${markdownQuote({ text: paragraph })}`)
   }
 
-  parts.push(comment.text.trim())
-
-  return parts.join('\n\n')
+  return [
+    ...parts,
+    comment.text.trim(),
+    ...comment.images ?? [],
+  ].filter(Boolean).join('\n\n')
 }
 
 export function commentReply({
@@ -119,7 +154,7 @@ export function commentReply({
   const replies = new Map<string, ChatComment[]>()
 
   for (const comment of comments) {
-    if (!comment.text.trim()) {
+    if (!sendableComment({ comment })) {
       continue
     }
 
