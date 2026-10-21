@@ -1,14 +1,26 @@
 import { fixtureCli } from './cli-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, statSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { withWriter } from '../src/store/hydra-store.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { ftsQuery, search, updateIndex } from '../src/oracle/index.ts'
 import { chunk, eventText, redact, transcriptMessages } from '../src/oracle/text.ts'
+
+const scratch = mkdtempSync(join(
+  tmpdir(),
+  'pnyx-test-',
+))
+after(() => rmSync(
+  scratch,
+  {
+    recursive: true,
+    force: true,
+  },
+))
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -295,7 +307,7 @@ const cards = ({ out }: { out: string }) => [...out.matchAll(/^ {2}- card: (\S+)
 
 function hydraId() {
   const home = mkdtempSync(join(
-    tmpdir(),
+    scratch,
     'pnyx-oracle-',
   ))
   process.env.PNYX_HOME = home
@@ -1317,7 +1329,7 @@ test(
   'unhighlighted snippets preserve Markdown URLs, brackets and line breaks',
   () => {
     process.env.PNYX_HOME = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-oracle-markdown-',
     ))
     const text = '[PR](https://github.com/example/project/pull/42)\n\n- **Ready** [literal].'

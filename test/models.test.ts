@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { claudeProvider, type QueryFn } from '../src/server/claude.ts'
 import { codexProvider } from '../src/server/codex.ts'
 import type { HostedSession } from '../src/server/provider.ts'
@@ -13,6 +13,18 @@ import { createHost } from '../src/server/host.ts'
 import { hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
+
+const scratch = mkdtempSync(join(
+  tmpdir(),
+  'pnyx-test-',
+))
+after(() => rmSync(
+  scratch,
+  {
+    recursive: true,
+    force: true,
+  },
+))
 
 async function turn({ session }: { session: HostedSession }) {
   const states: string[] = []
@@ -44,7 +56,7 @@ test(
   'Claude discovers and runs models through the installed CLI',
   async () => {
     const root = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-installed-claude-',
     ))
     const sdk = hydraSdk()
@@ -236,7 +248,7 @@ test(
   'Codex lists every page and starts the selected wire model',
   async () => {
     const root = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-models-',
     ))
     const fixture = fakeCodex({ root })
@@ -310,7 +322,7 @@ test(
   'Hydra dispatch accepts a catalog model beyond its legacy shortlist from saved configuration',
   async () => {
     const root = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-catalog-dispatch-',
     ))
     process.env.PNYX_HOME = root
@@ -387,7 +399,7 @@ test(
   'The model list is stored for every Hydra, answers before the harness and is rewritten only when it changes',
   async () => {
     const root = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-stored-models-',
     ))
     process.env.PNYX_HOME = root

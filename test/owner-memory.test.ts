@@ -2,16 +2,28 @@ import assert from 'node:assert/strict'
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { workerCommands } from '../src/cli/workers.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
 import { hydraDir, loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { mergeLines, ownerMemory } from '../src/store/owner-memory.ts'
 
+const scratch = mkdtempSync(join(
+  tmpdir(),
+  'pnyx-test-',
+))
+after(() => rmSync(
+  scratch,
+  {
+    recursive: true,
+    force: true,
+  },
+))
+
 function home() {
   const dir = realpathSync(mkdtempSync(join(
-    tmpdir(),
+    scratch,
     'pnyx-owner-',
   )))
   process.env.PNYX_HOME = dir

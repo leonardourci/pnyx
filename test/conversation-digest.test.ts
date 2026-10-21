@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import type { PaseoClient } from '@getpaseo/client'
 import { commands } from '../src/cli/commands.ts'
 import { sendReply } from '../src/cli/reply.ts'
@@ -11,9 +11,21 @@ import { hydraCheck } from '../src/cli/workers.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
+const scratch = mkdtempSync(join(
+  tmpdir(),
+  'pnyx-test-',
+))
+after(() => rmSync(
+  scratch,
+  {
+    recursive: true,
+    force: true,
+  },
+))
+
 function fixture() {
   const home = realpathSync(mkdtempSync(join(
-    tmpdir(),
+    scratch,
     'pnyx-digest-',
   )))
   process.env.PNYX_HOME = home

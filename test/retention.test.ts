@@ -1,14 +1,26 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { hydraConfig, hydraEvent } from '../src/core/hydra.ts'
 import type { Column, HydraChange, HydraEvent } from '../src/core/model.ts'
 import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { DEFAULT_DONE_HOURS, doneDeadline, HOUR_MS } from '../src/core/retention.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { hideDone } from '../src/store/retention.ts'
+
+const scratch = mkdtempSync(join(
+  tmpdir(),
+  'pnyx-test-',
+))
+after(() => rmSync(
+  scratch,
+  {
+    recursive: true,
+    force: true,
+  },
+))
 
 const start = '2026-10-14T12:00:00.000Z'
 const later = '2026-10-15T12:00:00.000Z'
@@ -152,7 +164,7 @@ test(
   'expiry appends hiding once, keeps history, restores on reopen, and honors settings and explicit restoration',
   () => {
     const home = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-retention-',
     ))
     process.env.PNYX_HOME = home
@@ -412,7 +424,7 @@ test(
   'expiry rechecks wall time without another event using a fake clock',
   t => {
     process.env.PNYX_HOME = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-expiry-clock-',
     ))
     t.mock.timers.enable({
@@ -518,7 +530,7 @@ test(
   'expiry uses each card delay even when the Hydra keeps Done visible',
   () => {
     process.env.PNYX_HOME = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-card-retention-',
     ))
     const f = fixture()

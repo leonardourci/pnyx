@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
@@ -50,6 +50,13 @@ beforeEach(() => {
 afterEach(async () => {
   await server?.close()
   server = undefined
+  rmSync(
+    home,
+    {
+      recursive: true,
+      force: true,
+    },
+  )
 })
 
 async function until({ check }: { check(): boolean }) {
