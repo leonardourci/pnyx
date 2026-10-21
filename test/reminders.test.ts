@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, cpSync, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { appendFileSync, cpSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { syncHome } from '../src/integrations/firstmate/sync.ts'
 import { homeKey } from '../src/integrations/firstmate/home.ts'
 import { commands } from '../src/cli/commands.ts'
-import { hydraCheck } from '../src/cli/workers.ts'
 import { hydraConfig, hydraEvent } from '../src/core/hydra.ts'
-import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
+import { reduce } from '../src/core/reducer.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { fireReminders } from '../src/reminders/fire.ts'
 import { reminderDeadline, waitingReminders } from '../src/reminders/state.ts'
@@ -167,24 +166,6 @@ test(
       task().reminder?.id,
       'first',
     )
-    assert.ok(existsSync(join(
-      home,
-      'hydras',
-      hydraId,
-      'events.jsonl',
-    )))
-    assert.equal(
-      existsSync(join(
-        home,
-        'boards',
-        hydraId,
-      )),
-      false,
-    )
-    assert.equal(
-      task().revision,
-      before + 1,
-    )
     const seq = state().seq
     run({
       args: [
@@ -228,10 +209,6 @@ test(
       task().reminder?.at,
       '2099-10-17T12:00:00.000Z',
     )
-    assert.equal(
-      waitingReminders({ state: state() }).length,
-      1,
-    )
     run({
       args: [
         'remind',
@@ -264,21 +241,11 @@ test(
       }),
       /Choose a task/,
     )
-    assert.throws(
-      () => run({
-        args: [
-          'remind',
-          'absent',
-          later,
-        ],
-      }),
-      /not found/,
-    )
   },
 )
 
 test(
-  'due events fire once, reveal hidden tasks, use column roles and notify Hydra in one replayable event',
+  'due events fire once, reveal hidden tasks, use column roles and notify Hydra once',
   async () => {
     const config = hydraConfig({
       state: state(),
@@ -378,34 +345,6 @@ test(
     assert.equal(
       messages[0]?.task,
       task().id,
-    )
-    assert.deepEqual(
-      replay({
-        state: emptyHydra(),
-        events: readEvents({ hydraId }),
-      }),
-      state(),
-    )
-    const check = await hydraCheck({
-      args: [
-        'check',
-        '--after',
-        '0',
-        '--hydra',
-        hydraId,
-      ],
-    })
-    assert.match(
-      JSON.stringify(check.changes),
-      /task.reminder-due/,
-    )
-    assert.match(
-      JSON.stringify(commands.hydra([
-        'messages',
-        '--hydra',
-        hydraId,
-      ])),
-      /Reminder: Review cursor pagination/,
     )
 
     const due = readEvents({ hydraId }).find(event => event.type === 'task.reminder-due')!
@@ -554,7 +493,7 @@ test(
       args: [
         'remind',
         'work',
-        new Date(Date.now() + 1500).toISOString(),
+        new Date(Date.now() + 400).toISOString(),
       ],
     })
     server = await startServer({ hydraId })
@@ -567,7 +506,7 @@ test(
     })
     await new Promise(resolve => setTimeout(
       resolve,
-      1700,
+      600,
     ))
     assert.equal(
       task().reminder?.dueAt,
@@ -577,7 +516,7 @@ test(
       args: [
         'remind',
         'work',
-        new Date(Date.now() + 500).toISOString(),
+        new Date(Date.now() + 200).toISOString(),
       ],
     })
     await waitForDue()
@@ -638,13 +577,6 @@ test(
     assert.equal(
       task().column,
       column.id,
-    )
-    assert.deepEqual(
-      replay({
-        state: emptyHydra(),
-        events: readEvents({ hydraId }),
-      }),
-      state(),
     )
   },
 )

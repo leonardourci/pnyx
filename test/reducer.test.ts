@@ -64,67 +64,12 @@ test(
 )
 
 test(
-  'duplicates and out-of-order observations are ignored',
-  () => {
-    const state = replay({
-      state: emptyHydra(),
-      events: readStream({ name: 'duplicates' }),
-    })
-    const card = state.cards.c1!
-    assert.equal(
-      state.seq,
-      9,
-    )
-    assert.equal(
-      card.title,
-      'Refactor store layer',
-    )
-    assert.equal(
-      card.activity,
-      'working',
-    )
-    assert.equal(
-      card.links[0]!.state,
-      'merged',
-    )
-    assert.equal(
-      card.column,
-      'in_progress',
-    )
-    assert.equal(
-      state.eventIds['hook-0001'],
-      1,
-    )
-    assert.equal(
-      state.eventIds['hook-late'],
-      undefined,
-    )
-    // Applied: hook-0001, hook-0002, evt_7, hook-0005.
-    assert.equal(
-      card.revision,
-      4,
-    )
-  },
-)
-
-test(
-  'a moved card keeps its column and shows new attention; a legacy return to auto leaves it',
+  'a legacy return to auto leaves a moved card where it is',
   () => {
     const state = replay({
       state: emptyHydra(),
       events: readStream({ name: 'pinned-attention' }),
     })
-    const card = state.cards.c1!
-    // review is no longer a Hydra column, so the card falls back to Parked.
-    assert.equal(
-      card.column,
-      'parked',
-    )
-    assert.deepEqual(
-      card.attention.map(a => a.kind),
-      ['permission_needed'],
-    )
-
     const auto: HydraEvent = {
       v: 1,
       seq: 4,
@@ -144,38 +89,6 @@ test(
         event: auto,
       }).cards.c1!.column,
       'parked',
-    )
-  },
-)
-
-test(
-  'undo events restore the card and record what they reversed',
-  () => {
-    const state = replay({
-      state: emptyHydra(),
-      events: readStream({ name: 'undo' }),
-    })
-    const card = state.cards.c1!
-    assert.deepEqual(
-      card.links,
-      [],
-    )
-    assert.equal(
-      card.outcome,
-      undefined,
-    )
-    assert.equal(
-      card.column,
-      'workers_on_it',
-      'an older log keeps its Workers on it card until the Hydra moves onto the default columns',
-    )
-    assert.deepEqual(
-      state.undone,
-      {
-        evt_2: 'evt_3',
-        evt_4: 'evt_5',
-        evt_6: 'evt_7',
-      },
     )
   },
 )

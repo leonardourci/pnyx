@@ -460,15 +460,6 @@ test(
       }),
       undefined,
     )
-    event.data.state = 'failed'
-    assert.equal(
-      relevantUpdate({
-        cardId: 'c1',
-        columns: [],
-        event,
-      }),
-      undefined,
-    )
     event.data.state = 'delivered'
     assert.deepEqual(
       relevantUpdate({

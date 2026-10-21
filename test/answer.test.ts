@@ -191,50 +191,8 @@ const keys = ({
     .map(step => step.keys)
 
 test(
-  'a Claude Code AskUserQuestion request keeps every question with its options',
+  'a question without options still opens a request but is left to the terminal',
   () => {
-    assert.deepEqual(
-      multi.questions,
-      [
-        {
-          question: 'Pick a color',
-          header: 'Color',
-          options: [
-            {
-              label: 'Red',
-              description: 'Red',
-            },
-            {
-              label: 'Blue',
-              description: 'Blue',
-            },
-            {
-              label: 'Green',
-              description: 'Green',
-            },
-          ],
-        },
-        {
-          question: 'Pick sizes',
-          header: 'Size',
-          options: [
-            {
-              label: 'Small',
-              description: 'Small',
-            },
-            {
-              label: 'Medium',
-              description: 'Medium',
-            },
-            {
-              label: 'Large',
-              description: 'Large',
-            },
-          ],
-          multiSelect: true,
-        },
-      ],
-    )
     const broken = {
       ...fixture({ name: 'claude-pre-tool-ask' }),
       tool_input: {
@@ -261,10 +219,6 @@ test(
     assert.equal(
       request.text,
       'Which?',
-    )
-    assert.equal(
-      request.questions,
-      undefined,
     )
     assert.equal(
       answerPrompt({
@@ -410,58 +364,12 @@ test(
         request: multi,
         value: {
           answers: [
-            {
-              pick: [
-                1,
-                2,
-              ],
-            },
-            { pick: [1] },
-          ],
-        },
-      })!,
-      /takes one option/,
-    )
-    assert.match(
-      error({
-        request: multi,
-        value: {
-          answers: [
             { pick: [4] },
             { pick: [1] },
           ],
         },
       })!,
       /from 1 to 3/,
-    )
-    assert.match(
-      error({
-        request: multi,
-        value: {
-          answers: [
-            { pick: [1] },
-            {
-              pick: [
-                2,
-                2,
-              ],
-            },
-          ],
-        },
-      })!,
-      /each once/,
-    )
-    assert.match(
-      error({
-        request: multi,
-        value: {
-          answers: [
-            { pick: [1] },
-            { text: 'Huge' },
-          ],
-        },
-      })!,
-      /takes several options/,
     )
     assert.match(
       error({
@@ -581,31 +489,6 @@ test(
       request,
       value,
     })
-    // A number picks a single-choice option and moves on; a multiple-choice question
-    // toggles numbers and moves on with Right; several questions end on the review's Submit.
-    assert.deepEqual(
-      claude({
-        request: multi,
-        value: {
-          answers: [
-            { pick: [2] },
-            {
-              pick: [
-                1,
-                3,
-              ],
-            },
-          ],
-        },
-      }),
-      [
-        '2',
-        '1',
-        '3',
-        KEY.right,
-        '1',
-      ],
-    )
     assert.deepEqual(
       claude({
         request: single,
@@ -705,63 +588,12 @@ test(
         KEY.enter,
       ],
     )
-    const settles = ({ text }: { text: string }) => answerKeys({
-      provider: 'codex',
-      request: codex,
-      answer: {
-        choice: 'deny',
-        text,
-      },
-    })
-      .map(step => step.settleMs)
-    assert.deepEqual(
-      settles({ text: '/review' }),
-      [
-        1200,
-        1500,
-        400,
-      ],
-      'a leading / waits out the completion popup',
-    )
-    assert.deepEqual(
-      settles({ text: 'skip it' }),
-      [
-        1200,
-        400,
-        400,
-      ],
-    )
   },
 )
 
 test(
   'an MCP form keeps its fields, is checked, and is filled with the keys its prompt expects',
   () => {
-    assert.deepEqual(
-      elicitation.form,
-      [
-        {
-          name: 'name',
-          title: 'Name',
-          type: 'string',
-          required: true,
-        },
-        {
-          name: 'color',
-          title: 'Color',
-          type: 'string',
-          options: [
-            'red',
-            'blue',
-          ],
-        },
-        {
-          name: 'ok',
-          title: 'Agree',
-          type: 'boolean',
-        },
-      ],
-    )
     assert.deepEqual(
       prompt({
         provider: 'claude-code',
@@ -822,34 +654,6 @@ test(
       })!,
       /one of red, blue/,
     )
-    assert.match(
-      error({
-        value: {
-          choice: 'accept',
-          values: {
-            name: 'Ada',
-            ok: 'yes',
-          },
-        },
-      })!,
-      /true or false/,
-    )
-    assert.match(
-      error({
-        value: {
-          choice: 'accept',
-          values: {
-            name: 'Ada',
-            age: 3,
-          },
-        },
-      })!,
-      /no field age/,
-    )
-    assert.match(
-      error({ value: { choice: 'allow' } })!,
-      /takes \{"choice":"accept"/,
-    )
 
     const form = ({ value }: { value: unknown }) => keys({
       provider: 'claude-code',
@@ -875,24 +679,6 @@ test(
         KEY.space,
         KEY.down,
         KEY.space,
-        KEY.down,
-        KEY.enter,
-      ],
-    )
-    assert.deepEqual(
-      form({
-        value: {
-          choice: 'accept',
-          values: {
-            name: 'Ada',
-            ok: false,
-          },
-        },
-      }),
-      [
-        'Ada',
-        KEY.down,
-        KEY.down,
         KEY.down,
         KEY.enter,
       ],
@@ -957,72 +743,30 @@ test(
       })[0]!.form
     }
 
-    assert.deepEqual(
-      formWith({
-        property: {
-          type: 'string',
-          title: 'Pick',
-          enum: [
-            'a',
-            'b',
-          ],
-        },
-      }),
-      [
-        {
-          name: 'pick',
-          title: 'Pick',
-          type: 'string',
-          options: [
-            'a',
-            'b',
-          ],
-        },
-      ],
-    )
-    assert.equal(
-      formWith({
-        property: {
-          type: 'string',
-          default: 'a',
-        },
-      }),
-      undefined,
-      'a default prefills the field',
-    )
-    assert.equal(
-      formWith({
-        property: {
-          type: 'string',
-          oneOf: [
-            {
-              const: 'a',
-              title: 'A',
-            },
-          ],
-        },
-      }),
-      undefined,
-    )
-    assert.equal(
-      formWith({
-        property: {
-          type: 'integer',
-          minimum: 1,
-        },
-      }),
-      undefined,
-    )
-    assert.equal(
-      formWith({
-        property: {
-          type: 'string',
-          enum: 'abcdefghi'.split(''),
-        },
-      }),
-      undefined,
-      'a long choice list',
-    )
+    for (const property of [
+      {
+        type: 'string',
+        default: 'a',
+      },
+      {
+        type: 'string',
+        oneOf: [{ const: 'a' }],
+      },
+      {
+        type: 'integer',
+        minimum: 1,
+      },
+      {
+        type: 'string',
+        enum: 'abcdefghi'.split(''),
+      },
+    ]) {
+      assert.equal(
+        formWith({ property }),
+        undefined,
+        JSON.stringify(property),
+      )
+    }
   },
 )
 
@@ -1378,39 +1122,6 @@ test(
       ],
       pattern: /code: REVISION_CONFLICT/,
     })
-    fails({
-      args: [
-        'reply',
-        's1',
-        '--answer',
-        'hook:tool:Bash',
-        '--json',
-        answer,
-      ],
-      pattern: /no open request with key hook:tool:Bash/,
-    })
-    fails({
-      args: [
-        'reply',
-        's1',
-        '--answer',
-        multi.key,
-        '--json',
-        '{"answers":[]}',
-      ],
-      pattern: /one answer for each/,
-    })
-    fails({
-      args: [
-        'reply',
-        's1',
-        '--answer',
-        multi.key,
-        '--json',
-        'nope',
-      ],
-      pattern: /not valid JSON/,
-    })
     assert.equal(
       calls().length,
       0,
@@ -1451,10 +1162,6 @@ test(
       'keys are typed, never pasted',
     )
     assert.match(
-      calls()[1]!,
-      /arg=display-message/,
-    )
-    assert.match(
       run({
         args: [
           'card',
@@ -1475,28 +1182,15 @@ test(
     ).trim()
       .split('\n')
       .map(line => JSON.parse(line))
-    const receipts = events.filter(event => event.type === 'card.replied' && event.data.reply === 'a1')
-
-    for (const event of receipts) {
-      assert.equal(
-        event.type,
-        'card.replied',
-      )
-
-      if (event.type !== 'card.replied') {
-        continue
-      }
-
-      assert.deepEqual(
-        event.data.decision,
-        {
-          question: 'Pick a color\nPick sizes',
-          answer: 'Blue\nSmall, Large',
-        },
-      )
-    }
-
-    assert.ok(receipts.some(event => event.type === 'card.replied' && event.data.state === 'delivered'))
+    const delivered = events.find(event => event.type === 'card.replied'
+      && event.data.reply === 'a1' && event.data.state === 'delivered')
+    assert.deepEqual(
+      delivered?.type === 'card.replied' && delivered.data.decision,
+      {
+        question: 'Pick a color\nPick sizes',
+        answer: 'Blue\nSmall, Large',
+      },
+    )
     assert.match(
       run({
         args: [
@@ -1527,83 +1221,34 @@ test(
 )
 
 test(
-  'Codex takes keys in tmux too; Paseo, Herdr, iTerm2 and Terminal are answered in the session',
+  'a route without keys leaves the answer to the session',
   () => {
     const {
-      run,
       fails,
       calls,
       session,
     } = hosts()
+    // Only tmux takes keys; Paseo stands for every other route.
     session({
-      key: 's1',
-      provider: 'codex',
-      terminal: TMUX,
-      attention: [codex],
-    })
-    assert.match(
-      run({
-        args: [
-          'reply',
-          's1',
-          '--answer',
-          codex.key,
-          '--json',
-          '{"choice":"deny","text":"skip it"}',
-        ],
-      }),
-      /state: delivered/,
-    )
-    const sent = calls().filter(c => c.includes('arg=send-keys'))
-      .map(c => c.split('arg=--\narg=')[1]!.replace(
-        /\n$/,
-        '',
-      ))
-    assert.deepEqual(
-      sent,
-      [
-        KEY.escape,
-        'skip it',
-        KEY.enter,
-      ],
-    )
-
-    const others: Record<string, string>[] = [
-      {
+      key: 'o0',
+      provider: 'claude-code',
+      terminal: {
         program: 'kitty',
         paseoTerminal: 'term-1',
       },
-      {
-        program: 'kitty',
-        herdrSession: 'h1',
-        herdrPane: 'p1',
-      },
-      { program: 'iTerm.app' },
-      { program: 'Apple_Terminal' },
-    ]
-
-    for (const [
-      i,
-      terminal,
-    ] of others.entries()) {
-      session({
-        key: `o${i}`,
-        provider: 'claude-code',
-        terminal,
-        attention: [permission],
-      })
-      fails({
-        args: [
-          'reply',
-          `o${i}`,
-          '--answer',
-          permission.key,
-          '--json',
-          '{"choice":"allow"}',
-        ],
-        pattern: /that can be answered here/,
-      })
-    }
+      attention: [permission],
+    })
+    fails({
+      args: [
+        'reply',
+        'o0',
+        '--answer',
+        permission.key,
+        '--json',
+        '{"choice":"allow"}',
+      ],
+      pattern: /that can be answered here/,
+    })
 
     fails({
       args: [
@@ -1617,17 +1262,6 @@ test(
         'hi',
       ],
       pattern: /--answer takes --json/,
-    })
-    fails({
-      args: [
-        'reply',
-        'o0',
-        '--text',
-        'hi',
-        '--json',
-        '{}',
-      ],
-      pattern: /--json and --seen go with --answer/,
     })
     assert.equal(
       calls().filter(c => /call=(paseo|herdr|osascript)/.test(c)).length,

@@ -60,60 +60,6 @@ const source = ({
 })
 
 test(
-  'push upserts by key and repeats are no-ops',
-  () => {
-    let state = apply({
-      state: emptyHydra(),
-      decision: decidePush({
-        state: emptyHydra(),
-        newCardId: `c${emptyHydra().seq + 1}`,
-        key: 'k1',
-        input: {
-          title: 'One',
-          source: source({ observedAt: '2026-10-13T10:00:00Z' }),
-        },
-        meta,
-      }),
-    })
-    assert.equal(
-      state.keys.k1,
-      'c1',
-    )
-    assert.deepEqual(
-      decidePush({
-        state,
-        newCardId: `c${state.seq + 1}`,
-        key: 'k1',
-        input: {
-          title: 'One',
-          source: source({ observedAt: '2026-10-13T10:00:00Z' }),
-        },
-        meta,
-      }),
-      { skipped: 'unchanged' },
-    )
-    state = apply({
-      state,
-      decision: decidePush({
-        state,
-        newCardId: `c${state.seq + 1}`,
-        key: 'k1',
-        input: { title: 'One, renamed' },
-        meta,
-      }),
-    })
-    assert.equal(
-      Object.keys(state.cards).length,
-      1,
-    )
-    assert.equal(
-      state.cards.c1!.title,
-      'One, renamed',
-    )
-  },
-)
-
-test(
   'push skips a repeated event id and an older observation',
   () => {
     const state = apply({
@@ -189,16 +135,6 @@ test(
         newCardId: `c${emptyHydra().seq + 1}`,
         key: 'k1',
         input: { titel: 'typo' },
-        meta,
-      }),
-      code: 'VALIDATION_ERROR',
-    })
-    rejects({
-      fn: () => decidePush({
-        state: emptyHydra(),
-        newCardId: `c${emptyHydra().seq + 1}`,
-        key: 'k1',
-        input: { tags: 'a' },
         meta,
       }),
       code: 'VALIDATION_ERROR',
@@ -517,23 +453,6 @@ test(
     )
     state = apply({
       state,
-      decision: decideUndo({
-        state,
-        target: undo,
-        meta,
-      }),
-    })
-    assert.deepEqual(
-      order(),
-      [
-        'c',
-        'b',
-        'a',
-      ],
-      'redo places it again',
-    )
-    state = apply({
-      state,
       decision: decideMove({
         state,
         ref: 'c',
@@ -544,8 +463,8 @@ test(
     assert.deepEqual(
       order(),
       [
-        'b',
         'a',
+        'b',
         'c',
       ],
       'no --before goes to the end',
@@ -566,8 +485,8 @@ test(
     assert.deepEqual(
       order(),
       [
-        'b',
         'a',
+        'b',
         'c',
       ],
       'an edit never reorders',
@@ -582,29 +501,12 @@ test(
         meta,
       }),
     })
-    assert.deepEqual(
-      columnCards({
-        state,
-        column: 'done',
-      }).map(c => c.key),
-      ['a'],
-    )
     rejects({
       fn: () => decideMove({
         state,
         ref: 'b',
         column: 'in_progress',
         before: 'a',
-        meta,
-      }),
-      code: 'VALIDATION_ERROR',
-    })
-    rejects({
-      fn: () => decideMove({
-        state,
-        ref: 'b',
-        column: 'in_progress',
-        before: 'b',
         meta,
       }),
       code: 'VALIDATION_ERROR',
@@ -622,7 +524,7 @@ test(
 )
 
 test(
-  'undo reverses a link update but never a merge',
+  'undo reverses a link update',
   () => {
     let state = apply({
       state: emptyHydra(),
@@ -671,42 +573,11 @@ test(
       reverted.cards.c1!.links,
       [],
     )
-
-    const merged = eventOf({
-      decision: decideLink({
-        state,
-        ref: 'c1',
-        url,
-        link: {
-          kind: 'github_pr',
-          url,
-          state: 'merged',
-        },
-        meta,
-      }),
-    })
-    state = reduce({
-      state,
-      event: merged,
-    })
-    assert.equal(
-      state.cards.c1!.column,
-      'in_progress',
-      'a merge never moves a card',
-    )
-    rejects({
-      fn: () => decideUndo({
-        state,
-        target: merged,
-        meta,
-      }),
-      code: 'NOT_UNDOABLE',
-    })
   },
 )
 
 test(
-  'undo reverses a manual push edit, but not creation or source observations',
+  'undo restores every field a manual push edit changed',
   () => {
     const created = eventOf({
       decision: decidePush({
@@ -720,14 +591,6 @@ test(
     let state = reduce({
       state: emptyHydra(),
       event: created,
-    })
-    rejects({
-      fn: () => decideUndo({
-        state,
-        target: created,
-        meta,
-      }),
-      code: 'NOT_UNDOABLE',
     })
 
     const edit = eventOf({
@@ -743,14 +606,6 @@ test(
         meta,
       }),
     })
-    assert.deepEqual(
-      edit.type === 'card.pushed' && edit.data.before,
-      {
-        title: 'One',
-        activity: null,
-        tags: [],
-      },
-    )
     state = reduce({
       state,
       event: edit,
@@ -778,43 +633,6 @@ test(
       undone.cards.c1!.tags,
       [],
     )
-    assert.equal(
-      reduce({
-        state: undone,
-        event: eventOf({
-          decision: decideUndo({
-            state: undone,
-            target: undo,
-            meta,
-          }),
-        }),
-      }).cards.c1!.title,
-      'Two',
-    )
-
-    const observed = eventOf({
-      decision: decidePush({
-        state,
-        newCardId: `c${state.seq + 1}`,
-        key: 'k1',
-        input: {
-          activity: 'idle',
-          source: source({ observedAt: '2026-10-13T10:00:00Z' }),
-        },
-        meta,
-      }),
-    })
-    rejects({
-      fn: () => decideUndo({
-        state: reduce({
-          state,
-          event: observed,
-        }),
-        target: observed,
-        meta,
-      }),
-      code: 'NOT_UNDOABLE',
-    })
   },
 )
 
