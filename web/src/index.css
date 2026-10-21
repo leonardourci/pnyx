@@ -554,7 +554,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .messages[data-caret-host] { outline: none; caret-color: var(--color-gold); }
 
-.comment-card { position: relative; display: flex; flex-direction: column; gap: 3px; margin: 6px 0 10px; padding: 6px 6px 6px 10px; border: 1px solid var(--color-line); border-left: 2px solid var(--color-gold); border-radius: 8px; background: var(--color-raised); font-size: var(--text-ui); user-select: none; }
+.comment-card { transition: background-color 160ms ease-out, border-color 160ms ease-out, box-shadow 160ms ease-out; position: relative; display: flex; flex-direction: column; gap: 3px; margin: 6px 0 10px; padding: 6px 6px 6px 10px; border: 1px solid var(--color-line); border-left: 2px solid var(--color-gold); border-radius: 8px; background: var(--color-raised); font-size: var(--text-ui); user-select: none; }
 
 .comment-card[data-emphasis] { background: color-mix(in srgb, var(--color-gold) 20%, var(--color-raised)); border-color: var(--color-gold); box-shadow: 0 0 0 1px var(--color-gold-line); }
 .comment-card:focus-within { border-color: var(--color-gold-line); border-left-color: var(--color-gold); }
@@ -575,7 +575,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .comment-card[data-jump]::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: color-mix(in srgb, var(--color-gold) 48%, transparent); box-shadow: 0 0 0 1px var(--color-gold); animation: comment-jump var(--comment-jump-duration) ease-out both; }
 .comment-jump { position: absolute; z-index: 1; border-radius: 3px; background: color-mix(in srgb, var(--color-gold) 48%, transparent); animation-name: comment-jump; animation-timing-function: ease-out; animation-fill-mode: both; }
 @keyframes comment-jump { 0% { opacity: .2; } 15% { opacity: 1; } 32% { opacity: .5; } 65% { opacity: .5; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .comment-jump, .comment-card[data-jump]::after { animation: none; opacity: .5; } .comment-marker.button, .comment-marker .comment-number { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .comment-jump, .comment-card[data-jump]::after { animation: none; opacity: .5; } .comment-card, .comment-marker.button, .comment-marker .comment-number { transition: none; } }
 
 .comment-row { display: flex; align-items: flex-start; gap: 6px; }
 

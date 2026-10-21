@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { Button } from '../components/ui/controls.tsx'
 import type { ChatComment } from './chat.ts'
-import { HIGHLIGHT_SUPPORTED, commentRange } from './comment-highlight.ts'
+import { HIGHLIGHT_SUPPORTED, commentRange, fadeHighlight } from './comment-highlight.ts'
 import { CommentNumber } from './comment-number.tsx'
 import { COMMENT_BADGE_SIZE, commentPileLayout, commentPiles } from './comment-piles.ts'
 import { COMMENT_FOCUS } from './comment-motion.ts'
@@ -134,6 +134,13 @@ export function CommentAnnotations({
     setFocused,
   ] = useState<string | null>(null)
   const emphasis = `${highlight}-emphasis`
+  const emphasized = useRef<{
+    id: string | null
+    cards: HTMLElement[]
+  }>({
+    id: null,
+    cards: [],
+  })
   const [
     jump,
     setJump,
@@ -147,18 +154,34 @@ export function CommentAnnotations({
       const root = host.current
       const comment = comments.find(item => item.id === (hovered ?? focused ?? jump?.id))
 
-      if (!root || !comment || !HIGHLIGHT_SUPPORTED) {
+      if (!root || !HIGHLIGHT_SUPPORTED) {
         return
       }
 
-      const cards = [...document.querySelectorAll<HTMLElement>('[data-comment-ref]')]
-        .filter(card => card.dataset.commentRef === comment.id)
+      if (emphasized.current.id !== (comment?.id ?? null)) {
+        fadeHighlight({
+          name: emphasis,
+          strength: 45,
+          underline: true,
+        })
+      }
+
+      for (const card of emphasized.current.cards) {
+        delete card.dataset.emphasis
+      }
+
+      const cards = comment ? [...document.querySelectorAll<HTMLElement>('[data-comment-ref]')]
+        .filter(card => card.dataset.commentRef === comment.id) : []
 
       for (const card of cards) {
         card.dataset.emphasis = ''
       }
 
-      const range = commentRange({
+      emphasized.current = {
+        id: comment?.id ?? null,
+        cards,
+      }
+      const range = comment && commentRange({
         host: root,
         comment,
       })
@@ -170,14 +193,8 @@ export function CommentAnnotations({
           emphasis,
           painting,
         )
-      }
-
-      return () => {
+      } else {
         CSS.highlights.delete(emphasis)
-
-        for (const card of cards) {
-          delete card.dataset.emphasis
-        }
       }
     },
     [
@@ -188,6 +205,15 @@ export function CommentAnnotations({
       jump,
       emphasis,
     ],
+  )
+
+  useEffect(
+    () => () => {
+      for (const card of emphasized.current.cards) {
+        delete card.dataset.emphasis
+      }
+    },
+    [],
   )
 
   useLayoutEffect(

@@ -17,7 +17,7 @@ import { orderedComments, sendableComment, type ChatComment } from './chat.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageComment } from './message-comment.tsx'
-import { HIGHLIGHT_SUPPORTED, commentRange, paintComments } from './comment-highlight.ts'
+import { HIGHLIGHT_SUPPORTED, clearHighlights, commentRange, paintComments } from './comment-highlight.ts'
 import {
   blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage,
 } from './message-selection.ts'
@@ -446,14 +446,17 @@ export function Messages({
   const pill = useRef<HTMLDivElement>(null)
   // Each conversation on screen paints its own highlight, so one doesn't clear the other's.
   const [highlight] = useState(() => `pnyx-comments-${++highlights}`)
+  const painted = useRef<ChatComment[]>([])
   useLayoutEffect(
     () => {
       if (HIGHLIGHT_SUPPORTED && root.current) {
-        return paintComments({
+        paintComments({
           host: root.current,
           name: highlight,
           comments,
+          previous: painted.current,
         })
+        painted.current = comments
       }
     },
     [
@@ -464,9 +467,7 @@ export function Messages({
   )
   useEffect(
     () => () => {
-      if (HIGHLIGHT_SUPPORTED) {
-        CSS.highlights.delete(highlight)
-      }
+      clearHighlights({ name: highlight })
     },
     [highlight],
   )

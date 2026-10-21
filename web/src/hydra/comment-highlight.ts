@@ -108,16 +108,116 @@ export function commentRange({
   }) : null
 }
 
+const FADE_DURATION = 160
+let fades = 0
+const fading = new Map<string, () => void>()
+
+export function fadeHighlight({
+  name,
+  strength,
+  underline = false,
+}: {
+  name: string
+  strength: number
+  underline?: boolean
+}) {
+  const before = CSS.highlights.get(name)
+  CSS.highlights.delete(name)
+
+  if (!before || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    return
+  }
+
+  const copy = new Highlight(...before)
+  copy.priority = before.priority
+  const fade = `${name}-fade-${++fades}`
+  const style = document.createElement('style')
+  style.id = fade
+  CSS.highlights.set(
+    fade,
+    copy,
+  )
+  document.head.append(style)
+  let frame = 0
+  const started = performance.now()
+
+  const clear = () => {
+    cancelAnimationFrame(frame)
+    CSS.highlights.delete(fade)
+    style.remove()
+    fading.delete(fade)
+  }
+
+  const paint = () => {
+    const progress = Math.min(
+      1,
+      (performance.now() - started) / FADE_DURATION,
+    )
+
+    if (progress === 1 || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      clear()
+
+      return
+    }
+
+    const opacity = (1 - progress) ** 2
+    style.textContent = `::highlight(${fade}) { background-color: color-mix(in srgb, var(--color-gold) ${strength * opacity}%, transparent); ${underline ? `text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color-gold) ${100 * opacity}%, transparent);` : ''} }`
+    frame = requestAnimationFrame(paint)
+  }
+
+  fading.set(
+    fade,
+    clear,
+  )
+  paint()
+}
+
+export function clearHighlights({ name }: { name: string }) {
+  if (!HIGHLIGHT_SUPPORTED) {
+    return
+  }
+
+  for (const [
+    key,
+    clear,
+  ] of fading) {
+    if (key.startsWith(`${name}-`)) {
+      clear()
+    }
+  }
+
+  for (const key of CSS.highlights.keys()) {
+    if (key === name || key.startsWith(`${name}-`)) {
+      CSS.highlights.delete(key)
+    }
+  }
+}
+
 export function paintComments({
   host,
   name,
   comments,
+  previous,
 }: {
   host: HTMLElement
   name: string
   comments: ChatComment[]
+  previous: ChatComment[]
 }) {
-  const names: string[] = []
+  const present = new Set(comments.map(comment => comment.id))
+
+  for (const [
+    index,
+    comment,
+  ] of previous.entries()) {
+    if (!present.has(comment.id)) {
+      fadeHighlight({
+        name: `${name}-${index}`,
+        strength: 24,
+      })
+    }
+  }
+
   const ranges = comments.flatMap((
     comment,
     index,
@@ -126,13 +226,14 @@ export function paintComments({
       host,
       comment,
     })
+    const quote = `${name}-${index}`
 
     if (!range) {
+      CSS.highlights.delete(quote)
+
       return []
     }
 
-    const quote = `${name}-${index}`
-    names.push(quote)
     CSS.highlights.set(
       quote,
       new Highlight(range),
@@ -141,16 +242,12 @@ export function paintComments({
     return [range]
   })
 
+  for (let index = comments.length; index < previous.length; index++) {
+    CSS.highlights.delete(`${name}-${index}`)
+  }
+
   CSS.highlights.set(
     name,
     new Highlight(...ranges),
   )
-
-  return () => {
-    for (const quote of names) {
-      CSS.highlights.delete(quote)
-    }
-
-    CSS.highlights.delete(name)
-  }
 }
