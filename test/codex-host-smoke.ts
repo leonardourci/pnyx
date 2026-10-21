@@ -81,7 +81,10 @@ await commands.task([
   '--folder',
   root,
 ])
-const fixture = fakeCodex({ root })
+const fixture = fakeCodex({
+  root,
+  models: ['gpt-6.1-sol'],
+})
 withWriter({
   hydraId: 'default',
   fn: ({ writer }) => {
@@ -145,6 +148,11 @@ const task = () => {
   return state.cards[state.keys.smoke!]!
 }
 
+const threads = () => fixture.messages().filter(message => [
+  'thread/start',
+  'thread/resume',
+].includes(message.method ?? '')).length
+
 try {
   await browser({
     args: [
@@ -173,7 +181,7 @@ try {
     label: 'Codex task Start requests Hydra’s choice',
   })
   assert.equal(
-    fixture.children.length,
+    threads(),
     0,
   )
   assert.equal(
@@ -217,7 +225,7 @@ try {
     label: 'an ended outside Codex session asks Hydra to resume',
   })
   assert.equal(
-    fixture.children.length,
+    threads(),
     1,
   )
   await commands.task([
@@ -233,7 +241,7 @@ try {
     label: 'Codex continuation changes the host',
   })
   assert.equal(
-    fixture.children.length,
+    threads(),
     1,
   )
   await commands.task([

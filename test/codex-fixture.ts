@@ -29,6 +29,10 @@ export function fakeCodex({
   )
   const children: ChildProcessWithoutNullStreams[] = []
   const environments: NodeJS.ProcessEnv[] = []
+  let initialized = () => {}
+  const initializing = new Promise<void>(resolve => {
+    initialized = resolve
+  })
 
   const spawnCodex: SpawnCodex = ({
     cwd,
@@ -55,6 +59,10 @@ export function fakeCodex({
         stdio: 'pipe',
       },
     )
+    child.stdout.once(
+      'data',
+      initialized,
+    )
     children.push(child)
 
     return child
@@ -79,5 +87,6 @@ export function fakeCodex({
     environments,
     messages,
     transcript,
+    initializing,
   }
 }

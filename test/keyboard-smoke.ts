@@ -111,8 +111,8 @@ try {
   })
   await focus({ selector: card }); await press({ key: 'r' })
   await check({
-    condition: '!!document.querySelector(".task-updates") && !document.querySelector(".detail .composer")',
-    label: 'reply shortcut keeps the card on Updates',
+    condition: 'document.activeElement.matches(".task-updates") && document.querySelectorAll(".detail .task-conversation .composer").length === 1',
+    label: 'reply shortcut focuses Updates and keeps the task conversation',
   })
   const sent = state().hydraMessages?.length ?? 0
   await focus({ selector: '.hydra-chat .composer textarea' }); await fill({
