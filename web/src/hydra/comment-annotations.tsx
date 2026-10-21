@@ -4,6 +4,7 @@ import type { ChatComment } from './chat.ts'
 import { HIGHLIGHT_SUPPORTED, commentRange } from './comment-highlight.ts'
 import { CommentNumber } from './comment-number.tsx'
 import { COMMENT_BADGE_SIZE, commentPileLayout, commentPiles } from './comment-piles.ts'
+import { COMMENT_FOCUS } from './comment-motion.ts'
 import { COMMENT_REVEAL, revealComment } from './comment-reveal.ts'
 
 const JUMP_DURATION = 1800
@@ -128,6 +129,10 @@ export function CommentAnnotations({
     hovered,
     setHovered,
   ] = useState<string | null>(null)
+  const [
+    focused,
+    setFocused,
+  ] = useState<string | null>(null)
   const emphasis = `${highlight}-emphasis`
   const [
     jump,
@@ -140,10 +145,17 @@ export function CommentAnnotations({
   useLayoutEffect(
     () => {
       const root = host.current
-      const comment = comments.find(item => item.id === (hovered ?? jump?.id))
+      const comment = comments.find(item => item.id === (hovered ?? focused ?? jump?.id))
 
       if (!root || !comment || !HIGHLIGHT_SUPPORTED) {
         return
+      }
+
+      const cards = [...document.querySelectorAll<HTMLElement>('[data-comment-ref]')]
+        .filter(card => card.dataset.commentRef === comment.id)
+
+      for (const card of cards) {
+        card.dataset.emphasis = ''
       }
 
       const range = commentRange({
@@ -162,12 +174,17 @@ export function CommentAnnotations({
 
       return () => {
         CSS.highlights.delete(emphasis)
+
+        for (const card of cards) {
+          delete card.dataset.emphasis
+        }
       }
     },
     [
       host,
       comments,
       hovered,
+      focused,
       jump,
       emphasis,
     ],
@@ -290,12 +307,24 @@ export function CommentAnnotations({
         }
       }
 
-      const focus = (event: FocusEvent) => {
-        const card = event.target instanceof Element
-          ? event.target.closest<HTMLElement>('[data-comment-id]') : null
+      const choose = ({ id }: { id: string | null }) => {
+        const own = id && comments.some(comment => comment.id === id) ? id : null
+        setFocused(own)
 
-        if (card?.dataset.commentId) {
-          setActive(card.dataset.commentId)
+        if (own) {
+          setActive(own)
+        }
+      }
+
+      const focus = (event: Event) => {
+        const card = event.target instanceof Element
+          ? event.target.closest<HTMLElement>('[data-comment-ref]') : null
+        choose({ id: card?.dataset.commentRef ?? null })
+      }
+
+      const clicked = (event: Event) => {
+        if (event instanceof CustomEvent && typeof event.detail === 'string') {
+          choose({ id: event.detail })
         }
       }
 
@@ -324,8 +353,16 @@ export function CommentAnnotations({
         COMMENT_REVEAL,
         reveal,
       )
-      root.addEventListener(
+      document.addEventListener(
         'focusin',
+        focus,
+      )
+      document.addEventListener(
+        COMMENT_FOCUS,
+        clicked,
+      )
+      document.addEventListener(
+        'pointerdown',
         focus,
       )
 
@@ -341,8 +378,16 @@ export function CommentAnnotations({
           COMMENT_REVEAL,
           reveal,
         )
-        root.removeEventListener(
+        document.removeEventListener(
           'focusin',
+          focus,
+        )
+        document.removeEventListener(
+          COMMENT_FOCUS,
+          clicked,
+        )
+        document.removeEventListener(
+          'pointerdown',
           focus,
         )
       }

@@ -372,6 +372,11 @@ try {
     condition: 'document.querySelectorAll(".comments-dialog[open] .comment-card").length === 5 && [...document.querySelectorAll(".comments-dialog .comment-quote")].some(q => q.textContent.startsWith("A readable paragraph with") && !q.textContent.includes("**") && q.querySelector("mark").textContent === "readable")',
     label: 'the comments list shows each comment with the context the agent receives',
   })
+  await evaluate({ code: 'document.querySelector(".comments-dialog textarea").focus(); return true;' })
+  await check({
+    condition: '(() => { const card = document.activeElement.closest(\'.comment-card\'); const id = card.dataset.commentRef; const host = document.querySelector(\'.hydra-chat .messages\'); return document.querySelectorAll(\'[data-comment-ref="\' + id + \'"][data-emphasis]\').length === 2 && CSS.highlights.get(host.dataset.highlight + \'-emphasis\').size === 1; })()',
+    label: 'focusing a listed comment emphasizes both cards and its passage',
+  })
   await screenshot({ name: 'comments-dialog.png' })
   await evaluate({ code: 'const el = document.querySelector(".comments-dialog textarea"); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(el, "Explain this phrase, please."); el.dispatchEvent(new Event("input", { bubbles: true })); return true;' })
   await check({
@@ -383,7 +388,7 @@ try {
     condition: '!document.querySelector(".comments-dialog") && document.activeElement.matches(".hydra-chat .messages .comment-card textarea") && document.activeElement.value === "What does readable mean?"',
     label: 'Show in chat closes the list onto the comment under its passage',
   })
-  await check({
+  await eventually({
     condition: '!!document.querySelector(\'.comment-jump\') && document.activeElement.closest(\'.comment-card\').hasAttribute(\'data-jump\') && getComputedStyle(document.querySelector(\'.comment-jump\')).animationIterationCount === \'1\' && getComputedStyle(document.activeElement.closest(\'.comment-card\'), \'::after\').animationIterationCount === \'1\'',
     label: 'showing a comment pulses its passage and card once',
   })

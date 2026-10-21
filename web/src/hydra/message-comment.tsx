@@ -6,6 +6,7 @@ import { markdown } from '../components/ui/markdown.tsx'
 import { onNoteEdgeLine, type CaretDirection } from './caret.ts'
 import { commentContext, quoteSnippet, type ChatComment } from './chat.ts'
 import { pastedImages } from './image-upload.ts'
+import { COMMENT_FOCUS } from './comment-motion.ts'
 import { CommentNumber } from './comment-number.tsx'
 
 const CLIP = 40
@@ -81,6 +82,11 @@ export function MessageComment({
       className="comment-card"
       data-comment-id={inline ? comment.id : undefined}
       data-comment-number={number}
+      data-comment-ref={comment.id}
+      onClick={() => document.dispatchEvent(new CustomEvent(
+        COMMENT_FOCUS,
+        { detail: comment.id },
+      ))}
       contentEditable={false}
       role="group"
       aria-label={`Comment ${number}`}

@@ -1,8 +1,9 @@
 import { enterNote } from './caret.ts'
 import { commentRange } from './comment-highlight.ts'
 import type { ChatComment } from './chat.ts'
+import { COMMENT_REVEAL, scrollMessage } from './comment-motion.ts'
 
-export const COMMENT_REVEAL = 'pnyx-comment-reveal'
+export { COMMENT_REVEAL } from './comment-motion.ts'
 
 export function revealComment({
   host,
@@ -20,15 +21,19 @@ export function revealComment({
   })
 
   if (note) {
-    const passage = range?.startContainer.parentElement
-    ;(passage ?? note).scrollIntoView({ block: 'center' })
     enterNote({
       note,
       direction: 'backward',
+      preventScroll: true,
     })
-    host.dispatchEvent(new CustomEvent(
-      COMMENT_REVEAL,
-      { detail: comment.id },
-    ))
+    scrollMessage({
+      host,
+      bounds: range?.getClientRects()[0] ?? note.getBoundingClientRect(),
+      center: true,
+      finished: () => host.dispatchEvent(new CustomEvent(
+        COMMENT_REVEAL,
+        { detail: comment.id },
+      )),
+    })
   }
 }

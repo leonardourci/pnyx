@@ -1,3 +1,5 @@
+import { COMMENT_REVEAL, scrollMessage } from './comment-motion.ts'
+
 // Read-only editing support keeps native caret navigation from changing recorded messages.
 export const CARET_SUPPORTED = CSS.supports(
   '-webkit-user-modify',
@@ -94,11 +96,29 @@ export function caretBounds(): DOMRect | null {
   return bounds?.height ? bounds : null
 }
 
-export function revealCaret({ host }: { host: HTMLElement }) {
+export function revealCaret({
+  host,
+  smooth = false,
+  finished,
+}: {
+  host: HTMLElement
+  smooth?: boolean
+  finished?(): void
+}) {
   const scroller = host.closest('.thread')
   const caret = caretBounds()
 
   if (!scroller || !caret) {
+    return
+  }
+
+  if (smooth) {
+    scrollMessage({
+      host,
+      bounds: caret,
+      finished,
+    })
+
     return
   }
 
@@ -307,12 +327,14 @@ const textBesideNote = ({
 export function enterNote({
   note,
   direction,
+  preventScroll = false,
 }: {
   note: HTMLTextAreaElement
   direction: CaretDirection
+  preventScroll?: boolean
 }) {
   const at = direction === 'forward' ? 0 : note.value.length
-  note.focus()
+  note.focus({ preventScroll })
   note.setSelectionRange(
     at,
     at,
@@ -322,16 +344,24 @@ export function enterNote({
 const placeCaret = ({
   host,
   position,
+  smooth = false,
+  finished,
 }: {
   host: HTMLElement
   position: Position
+  smooth?: boolean
+  finished?(): void
 }) => {
   host.focus({ preventScroll: true })
   window.getSelection()?.collapse(
     position.node,
     position.offset,
   )
-  revealCaret({ host })
+  revealCaret({
+    host,
+    smooth,
+    finished,
+  })
 }
 
 // Escape, or a line key past the note's edge, leaves it. Worked out before the blur, which deletes an empty card.
@@ -345,7 +375,13 @@ export function leaveNote({
   direction: CaretDirection | 'escape'
 }) {
   if (direction === 'escape') {
+    const id = cardOf({ note }).getAttribute('data-comment-id')
     placeCaret({
+      smooth: true,
+      finished: () => id && host.dispatchEvent(new CustomEvent(
+        COMMENT_REVEAL,
+        { detail: id },
+      )),
       host,
       position: textBesideNote({
         host,
