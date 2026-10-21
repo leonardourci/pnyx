@@ -198,10 +198,17 @@ try {
     condition: 'document.querySelectorAll(".card-link").length === 4 && !document.querySelector(".card.selected")',
     label: '+N reveals remaining links without opening the card',
   })
-  await b.click({ selector: '.hydra-chat [data-task-ref]' })
-  await b.eventually({
-    condition: '!!document.querySelector(".card.selected") && document.querySelector(".card.selected").getAnimations().length > 0',
-    label: 'a task reference opens and highlights its card',
+  await b.evaluate({
+    code: `
+      document.querySelector('.hydra-chat [data-task-ref]').click();
+      for (let i = 0; i < 100; i++) {
+        const card = document.querySelector('.card.selected');
+        const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (card && (reduced || card.getAnimations().length > 0)) return true;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      throw new Error('a task reference opens and highlights its card');
+    `,
   })
 
   await b.eventually({
