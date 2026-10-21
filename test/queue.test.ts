@@ -549,6 +549,18 @@ test(
   'open PRs and working agents hold the queue; a merged PR advances once on a fetched fresh branch',
   async t => {
     const f = await lab({ t })
+    await project([
+      'memory',
+      'set',
+      '--project',
+      'app',
+      '--key',
+      'preferences',
+      '--text',
+      'Keep pagination changes small',
+      '--hydra',
+      'lab',
+    ])
     f.commit()
     f.queue({ key: 'two' })
     f.queue({
@@ -657,6 +669,14 @@ test(
     assert.match(
       f.sdk.calls[0]!.messages[0]!,
       /Implement two.*fresh branch/s,
+    )
+    assert.match(
+      f.sdk.calls[0]!.messages[0]!,
+      /Keep pagination changes small/,
+    )
+    assert.equal(
+      f.sdk.calls[0]!.messages[0]!.split('Implement two').length - 1,
+      1,
     )
     assert.equal(
       f.card({ key: 'two' }).column,
