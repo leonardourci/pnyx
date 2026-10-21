@@ -54,7 +54,7 @@ export function HydraCard({
   selected: boolean
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
-  open({ id }: { id: string }): void
+  open({ id }: { id: string }): Promise<boolean>
   tabIndex: number
   command: Command
   connected: boolean
@@ -309,13 +309,11 @@ export function HydraCard({
             <p>{question}</p>
             <Button
               variant="primary"
-              onClick={() => {
+              onClick={async () => {
                 if (request || canAnswer) {
-                  if (!selected) {
-                    open({ id: card.id })
+                  if (await open({ id: card.id })) {
+                    element.current?.querySelector<HTMLElement>('.ask button')?.focus()
                   }
-
-                  requestAnimationFrame(() => element.current?.querySelector<HTMLElement>('.ask button')?.focus())
 
                   return
                 }

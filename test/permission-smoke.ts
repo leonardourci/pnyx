@@ -38,9 +38,20 @@ const query = (({
     for await (const message of prompt) {
       assert.ok(message)
       await gate
+      const asking = results.length === 2
       const result = await options.canUseTool!(
-        'Bash',
-        { command: 'touch allowed.txt' },
+        asking ? 'AskUserQuestion' : 'Bash',
+        asking ? {
+          questions: [
+            {
+              question: 'Which layout should ship?',
+              options: [
+                {label: 'Updates above chat'},
+                {label: 'Tabs'},
+              ],
+            },
+          ],
+        } : { command: 'touch allowed.txt' },
         {
           signal: new AbortController().signal,
           toolUseID: 'smoke-tool',
@@ -69,6 +80,17 @@ await commands.hydra([
   '--hydra',
   'default',
 ])
+
+for (let n=0;n<8;n++) {
+  await commands.task([
+    'create',
+    '--title',
+    `Earlier task ${n}`,
+    '--column',
+    'in_progress',
+  ])
+}
+
 await commands.task([
   'create',
   '--title',
@@ -132,7 +154,7 @@ try {
       'Permission example',
     ],
   })
-  await click({ selector: '.card-open' })
+  await click({ selector: `[data-task="${task().id}"] .card-open` })
   await screenshot({ name: 'permission-before.png' })
   release?.()
   await eventually({
@@ -146,9 +168,13 @@ try {
   await screenshot({ name: 'permission-pending.png' })
   await text({ label: 'Allow' })
   await eventually({
-    condition: 'document.querySelector(".ask .receipt")?.textContent === "Allowed"',
+    condition: '!document.querySelector(".ask button")',
     label: 'Allow resolves the request',
   })
+  assert.equal(
+    task().permissions?.[0]?.status,
+    'allow',
+  )
   assert.deepEqual(
     results,
     [{ behavior: 'allow' }],
@@ -172,12 +198,63 @@ try {
   })
   await text({ label: 'Deny' })
   await eventually({
-    condition: '[...document.querySelectorAll(".ask .receipt")].some(e => e.textContent === "Denied")',
+    condition: '!document.querySelector(".ask button")',
     label: 'Deny resolves the request',
   })
   assert.equal(
+    task().permissions?.[1]?.status,
+    'deny',
+  )
+  assert.equal(
     results[1]?.behavior,
     'deny',
+  )
+  await sendReply({
+    hydraId: 'default',
+    request: {
+      card: task().id,
+      text: 'Ask which layout should ship',
+      homes: [],
+      actor: 'fixture',
+    },
+  })
+  await eventually({
+    condition: '!!document.querySelector(".ask-question")',
+    label: 'hosted structured question offers answer choices',
+  })
+  await click({selector:`[data-task="${task().id}"] .card-open`})
+  await eventually({
+    condition:`!document.querySelector('[data-task="${task().id}"].selected')`,
+    label:'structured question closes before its Answer shortcut',
+  })
+  await browser({
+    args:[
+      'eval',
+      `()=>{ document.querySelector('[data-task="${task().id}"]').closest('.column-cards').scrollTop=0; return true; }`,
+    ],
+  })
+  await click({selector:`[data-task="${task().id}"] .card-question button`})
+  await eventually({
+    condition:`document.activeElement?.matches('[data-task="${task().id}"] .ask button')`,
+    label:'Answer opens the scrolled task and focuses its mounted first choice',
+  })
+  await text({ label: 'Updates above chat' })
+  await click({ selector: '.ask form button[type=submit]' })
+  await eventually({
+    condition: '!document.querySelector(".ask-question") && [...document.querySelectorAll(".decision")].some(row => !row.open && row.textContent.includes("Which layout should ship?") && row.textContent.includes("Updates above chat"))',
+    label: 'submitting the hosted answer replaces its pending question with a folded decision',
+  })
+  assert.equal(
+    task().permissions?.[2]?.status,
+    'allow',
+  )
+  assert.deepEqual(
+    task().permissions?.[2]?.answers,
+    [['Updates above chat']],
+  )
+  assert.equal(
+    results[2]?.behavior,
+    'allow',
   )
   await sendReply({
     hydraId: 'default',
@@ -190,7 +267,7 @@ try {
   })
   await eventually({
     condition: '!!document.querySelector(".ask button")',
-    label: 'third request appears',
+    label: 'request before restart appears',
   })
   await server.close()
   server = await startServer({
@@ -209,15 +286,32 @@ try {
       'Permission example',
     ],
   })
-  await click({ selector: '.card-open' })
+  await click({ selector: `[data-task="${task().id}"] .card-open` })
   await eventually({
-    condition: 'document.querySelectorAll(".ask .receipt").length === 3',
-    label: 'restart retains request history',
+    condition: '!!document.querySelector(".task-updates") && !document.querySelector(".ask button")',
+    label: 'restart retains the task and removes expired answer controls',
   })
   await check({
-    condition: '!document.querySelector(".ask button") && [...document.querySelectorAll(".ask .receipt")].some(e => e.textContent.includes("Expired"))',
+    condition: '!document.querySelector(".ask button") && !!document.querySelector(".decision")',
     label: 'expired request has no answer controls',
   })
+  assert.deepEqual(
+    task().permissions?.map(request => request.status),
+    [
+      'allow',
+      'deny',
+      'allow',
+      'expired',
+    ],
+  )
+  assert.deepEqual(
+    task().permissions?.[2]?.answers,
+    [['Updates above chat']],
+  )
+  assert.equal(
+    results[3]?.behavior,
+    'deny',
+  )
   await screenshot({ name: 'permission-expired.png' })
 } finally {
   await close()

@@ -1112,9 +1112,11 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                   open={({ id }) => {
                                     if (expandedIds.includes(id)) {
                                       close({ id })
-                                    } else {
-                                      open({ id })
+
+                                      return Promise.resolve(false)
                                     }
+
+                                    return open({ id })
                                   }}
                                   command={command}
                                   connected={connected}
