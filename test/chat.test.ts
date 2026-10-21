@@ -3,7 +3,7 @@ import type { ThreadEntry } from '../src/thread/read.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { recordEntries } from '../src/thread/read.ts'
-import { hydraMessages, commentReply, joinMessageParts, quoteInto } from '../web/src/hydra/chat.ts'
+import { hydraMessages, commentReply, joinMessageParts, quoteInto, quoteSnippet } from '../web/src/hydra/chat.ts'
 import { DEFAULT_KEYBOARD, keyboardError, resolveKey } from '../src/core/keyboard.ts'
 
 test(
@@ -145,6 +145,50 @@ test(
         comments: [],
       }),
       'literal draft\n',
+    )
+  },
+)
+
+test(
+  'an image alone makes a comment, and cards show the context the agent receives',
+  () => {
+    const comment = {
+      id: 'a',
+      messageId: '42:m0',
+      block: 1,
+      offset: 24,
+      at: '2026-10-15T10:00:00Z',
+      quote: 'safely',
+      paragraph: 'Reconnect safely after the socket closes.',
+      text: '',
+      images: ['[image: /hydras/default/attachments/shot.png]'],
+    }
+    assert.match(
+      commentReply({
+        draft: 'See the screenshot',
+        comments: [comment],
+      }),
+      /1\. > safely\n\nParagraph:\n\n> Reconnect safely after the socket closes\.\n\n\[image: \/hydras\/default\/attachments\/shot\.png\]\n\n## Message/,
+    )
+    assert.deepEqual(
+      quoteSnippet({
+        quote: comment.quote,
+        context: comment.paragraph,
+      }),
+      {
+        before: 'Reconnect ',
+        match: 'safely',
+        after: ' after the socket closes.',
+      },
+    )
+    assert.deepEqual(
+      quoteSnippet({ quote: 'Reconnect safely after the socket' }),
+      {
+        before: '',
+        match: 'Reconnect safely after the socket',
+        after: '',
+      },
+      'with no context, the quote stands alone',
     )
   },
 )

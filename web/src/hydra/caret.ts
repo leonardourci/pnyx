@@ -1,3 +1,5 @@
+import { COMMENT_REVEAL, scrollMessage } from './comment-motion.ts'
+
 // Read-only editing support keeps native caret navigation from changing recorded messages.
 export const CARET_SUPPORTED = CSS.supports(
   '-webkit-user-modify',
@@ -5,7 +7,7 @@ export const CARET_SUPPORTED = CSS.supports(
 )
 export const CARET_HOST = 'data-caret-host'
 export const CARET_KEY = /^(Arrow(Up|Down|Left|Right)|Home|End|Page(Up|Down))$/
-const MESSAGE_CONTROLS = '.block-comment-action, .inline-comment, .receipt, .code-language, .trace summary'
+const MESSAGE_CONTROLS = '.comment-pill, .comment-card, .comment-annotations, .receipt, .code-language, .trace summary'
 const NON_MESSAGE_TEXT = `${MESSAGE_CONTROLS}, .trace, a[href], .task-mention`
 export const CARET_CSS = `[${CARET_HOST}] :is(${NON_MESSAGE_TEXT}) { -webkit-user-modify: read-only; } [${CARET_HOST}] :is(${MESSAGE_CONTROLS}) { user-select: none; }`
 
@@ -163,3 +165,328 @@ export function focusComposer({ host }: { host: HTMLElement }) {
 
   return !!input
 }
+
+type Position = {
+  node: Node
+  offset: number
+}
+export type CaretDirection = 'backward' | 'forward'
+const NOTE_SELECTOR = '.comment-card textarea'
+
+// Positive when a comes after b in the document.
+const comparePositions = ({
+  a,
+  b,
+}: {
+  a: Position
+  b: Position
+}) => {
+  const range = document.createRange()
+  range.setStart(
+    a.node,
+    a.offset,
+  )
+
+  return -range.comparePoint(
+    b.node,
+    b.offset,
+  )
+}
+
+const beside = ({
+  element,
+  direction,
+}: {
+  element: Element
+  direction: CaretDirection
+}): Position => {
+  const range = document.createRange()
+
+  if (direction === 'backward') {
+    range.setStartBefore(element)
+  } else {
+    range.setStartAfter(element)
+  }
+
+  return {
+    node: range.startContainer,
+    offset: range.startOffset,
+  }
+}
+
+const cardOf = ({ note }: { note: HTMLTextAreaElement }) => note.closest('.comment-card') ?? note
+
+export const selectionFocus = (): Position | null => {
+  const selection = window.getSelection()
+
+  return selection?.focusNode ? {
+    node: selection.focusNode,
+    offset: selection.focusOffset,
+  } : null
+}
+
+// The first comment note past from, short of to, in the move's direction; to null searches to the edge.
+export function noteBetween({
+  host,
+  from,
+  to,
+  direction,
+}: {
+  host: HTMLElement
+  from: Position
+  to: Position | null
+  direction: CaretDirection
+}): HTMLTextAreaElement | null {
+  const forward = direction === 'forward'
+  const notes = [...host.querySelectorAll<HTMLTextAreaElement>(NOTE_SELECTOR)]
+
+  const between = ({ note }: { note: HTMLTextAreaElement }) => {
+    const at = beside({
+      element: note,
+      direction: 'backward',
+    })
+    const past = comparePositions({
+      a: at,
+      b: from,
+    })
+    const short = !to || comparePositions({
+      a: at,
+      b: to,
+    }) * (forward ? -1 : 1) > 0
+
+    return (forward ? past > 0 : past < 0) && short
+  }
+
+  const matches = notes.filter(note => between({ note }))
+
+  return (forward ? matches[0] : matches.at(-1)) ?? null
+}
+
+const textBesideNote = ({
+  host,
+  note,
+  direction,
+}: {
+  host: HTMLElement
+  note: HTMLTextAreaElement
+  direction: CaretDirection
+}): Position | null => {
+  const at = beside({
+    element: note,
+    direction: 'backward',
+  })
+  const texts = [...messageText({ root: host })]
+
+  if (direction === 'backward') {
+    const text = texts.findLast(node => comparePositions({
+      a: {
+        node,
+        offset: node.length,
+      },
+      b: at,
+    }) < 0)
+
+    return text ? {
+      node: text,
+      offset: text.length,
+    } : null
+  }
+
+  const text = texts.find(node => comparePositions({
+    a: {
+      node,
+      offset: 0,
+    },
+    b: at,
+  }) > 0)
+
+  return text ? {
+    node: text,
+    offset: 0,
+  } : null
+}
+
+export function enterNote({
+  note,
+  direction,
+  preventScroll = false,
+}: {
+  note: HTMLTextAreaElement
+  direction: CaretDirection
+  preventScroll?: boolean
+}) {
+  const at = direction === 'forward' ? 0 : note.value.length
+  note.focus({ preventScroll })
+  note.setSelectionRange(
+    at,
+    at,
+  )
+}
+
+const placeCaret = ({
+  host,
+  position,
+  smooth = false,
+  passage,
+  finished,
+}: {
+  host: HTMLElement
+  position: Position
+  smooth?: boolean
+  passage?: DOMRect
+  finished?(): void
+}) => {
+  host.focus({ preventScroll: true })
+  window.getSelection()?.collapse(
+    position.node,
+    position.offset,
+  )
+  const bounds = passage ?? caretBounds()
+
+  if (smooth && bounds) {
+    scrollMessage({
+      host,
+      bounds,
+      finished,
+    })
+  } else {
+    revealCaret({ host })
+    finished?.()
+  }
+}
+
+// Escape, or a line key past the note's edge, leaves it. Worked out before the blur, which deletes an empty card.
+export function leaveNote({
+  host,
+  note,
+  direction,
+  passage,
+}: {
+  host: HTMLElement
+  note: HTMLTextAreaElement
+  direction: CaretDirection | 'escape'
+  passage?: DOMRect
+}) {
+  if (direction === 'escape') {
+    const id = cardOf({ note }).getAttribute('data-comment-id')
+    placeCaret({
+      smooth: true,
+      passage,
+      finished: () => id && host.dispatchEvent(new CustomEvent(
+        COMMENT_REVEAL,
+        { detail: id },
+      )),
+      host,
+      position: textBesideNote({
+        host,
+        note,
+        direction: 'backward',
+      }) ?? beside({
+        element: cardOf({ note }),
+        direction: 'backward',
+      }),
+    })
+
+    return
+  }
+
+  const text = textBesideNote({
+    host,
+    note,
+    direction,
+  })
+  const next = noteBetween({
+    host,
+    from: beside({
+      element: cardOf({ note }),
+      direction,
+    }),
+    to: text,
+    direction,
+  })
+
+  if (next) {
+    enterNote({
+      note: next,
+      direction,
+    })
+  } else if (text) {
+    placeCaret({
+      host,
+      position: text,
+    })
+  } else if (direction === 'forward') {
+    focusComposer({ host })
+  }
+}
+
+const NOTE_TEXT_STYLES = [
+  'boxSizing',
+  'fontFamily',
+  'fontSize',
+  'fontStyle',
+  'fontWeight',
+  'letterSpacing',
+  'lineHeight',
+  'overflowWrap',
+  'paddingLeft',
+  'paddingRight',
+  'borderLeftWidth',
+  'borderRightWidth',
+  'tabSize',
+  'whiteSpace',
+  'wordBreak',
+] as const
+
+// The top of the line the caret stands on at offset, measured on a hidden copy of the note's text box.
+const noteLineTop = ({
+  note,
+  offset,
+}: {
+  note: HTMLTextAreaElement
+  offset: number
+}) => {
+  const style = getComputedStyle(note)
+  const copy = document.createElement('div')
+
+  for (const name of NOTE_TEXT_STYLES) {
+    copy.style[name] = style[name]
+  }
+
+  copy.style.position = 'absolute'
+  copy.style.visibility = 'hidden'
+  copy.style.width = `${note.offsetWidth}px`
+  const marker = document.createElement('span')
+  // The caret stands on the line of the character after it; past a trailing break, on a line of its own.
+  marker.textContent = note.value.slice(
+    offset,
+    offset + 1,
+  ) || '\u200b'
+  copy.append(
+    note.value.slice(
+      0,
+      offset,
+    ),
+    marker,
+    note.value.slice(offset + 1),
+  )
+  document.body.append(copy)
+  const top = marker.offsetTop
+  copy.remove()
+
+  return top
+}
+
+export const onNoteEdgeLine = ({
+  note,
+  direction,
+}: {
+  note: HTMLTextAreaElement
+  direction: CaretDirection
+}) => noteLineTop({
+  note,
+  offset: note.selectionStart,
+}) === noteLineTop({
+  note,
+  offset: direction === 'backward' ? 0 : note.value.length,
+})

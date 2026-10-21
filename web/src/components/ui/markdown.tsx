@@ -5,7 +5,7 @@ import { Marked, type Token, type Tokens } from 'marked'
 import { imageLine, imagePaths } from '../../../../src/attachments/images.ts'
 import { AttachedImage } from './attached-image.tsx'
 
-const markdown = new Marked({ gfm: true })
+export const markdown = new Marked({ gfm: true })
 const decodeEntities = ({ text }: { text: string }) => text.replace(
   /&(?:#x[\da-f]+|#\d+|[a-z][a-z\d]+);/gi,
   entity => {
@@ -16,6 +16,36 @@ const decodeEntities = ({ text }: { text: string }) => text.replace(
     return decoder.value
   },
 )
+
+const inlineText = ({ tokens }: { tokens: Token[] }): string => tokens.map(token => {
+  if (token.type === 'codespan') {
+    return token.text
+  }
+
+  if (token.type === 'br') {
+    return ''
+  }
+
+  if ('tokens' in token && token.tokens) {
+    return inlineText({ tokens: token.tokens })
+  }
+
+  return 'text' in token ? decodeEntities({ text: String(token.text) }) : token.raw
+}).join('')
+
+export const markdownText = ({ text }: { text: string }) => markdown.lexer(text).filter(token => token.type !== 'space')
+  .map(token => {
+    if (token.type === 'code') {
+      return token.text
+    }
+
+    if ('tokens' in token && token.tokens) {
+      return inlineText({ tokens: token.tokens })
+    }
+
+    return token.raw.trim()
+  })
+  .join('\n\n')
 
 // Tokens become React elements, never HTML. Raw HTML remains visible text;
 // images remain links so transcripts cannot trigger remote tracking requests.

@@ -214,6 +214,7 @@ export function HydraChat({
         <Messages
           entries={entries}
           assistantLabel="Hydra"
+          notify={notify}
           openTask={openTask}
           taskReferences={Object.fromEntries(Object.values(state.cards)
             .filter(c => c.id !== HYDRA_CARD && !c.automaticTask)

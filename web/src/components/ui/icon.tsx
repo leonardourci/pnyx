@@ -4,8 +4,8 @@ import {
   IconBolt, IconBulb, IconCheck, IconChevronDown, IconChevronRight, IconCircleCheck,
   IconCalendar, IconClipboardList, IconClock, IconCode, IconCpu,
   IconCube, IconDeviceDesktop,
-  IconDots, IconEye, IconGauge, IconGitPullRequest, IconGitFork, IconHistory, IconKeyboard,
-  IconLink, IconList, IconMaximize, IconMinus, IconPencil,
+  IconDots, IconEye, IconGauge, IconGitPullRequest, IconGitFork, IconHistory,
+  IconLink, IconList, IconMaximize, IconMessage, IconMessagePlus, IconMinus, IconPencil, IconQuote,
   IconPlayerPause, IconPlayerPlay,
   IconPlus, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag, IconX,
 } from '@tabler/icons-react'
@@ -22,7 +22,6 @@ const icons: Record<string, typeof IconRobot> = {
   done: IconCircleCheck,
   parked: IconPlayerPause,
   agent: IconRobot,
-  typing: IconKeyboard,
   tool: IconCode,
   thinking: IconBulb,
   send: IconSend,
@@ -55,6 +54,10 @@ const icons: Record<string, typeof IconRobot> = {
   custom: IconAdjustments,
   clone: IconGitFork,
   rename: IconPencil,
+  comment: IconMessagePlus,
+  comments: IconMessage,
+  quote: IconQuote,
+
 }
 
 // Brand marks from Simple Icons 16.35.0 (https://simpleicons.org,
