@@ -3,7 +3,7 @@ import { mentionId } from '../../../../src/mentions/mentions.ts'
 import { Fragment, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
 import { imageLine, imagePaths } from '../../../../src/attachments/images.ts'
-import { AttachedImage } from './attached-image.tsx'
+import { ImageChip } from './attached-image.tsx'
 
 export const markdown = new Marked({ gfm: true })
 const decodeEntities = ({ text }: { text: string }) => text.replace(
@@ -87,6 +87,24 @@ const inline = ({
       case 'br': return <br key={i} />
       case 'link': case 'image': {
         const task = token.type === 'link' ? mentionId({ href: token.href }) : undefined
+        const pointer = token.type === 'link' ? /^pnyx-(project|image|file):([\w%~.-]+)$/.exec(token.href) : null
+
+        if (pointer?.[1] === 'image') {
+          return (
+            <ImageChip
+              key={i}
+              path={decodeURIComponent(pointer[2]!)}
+              label={inlineText({ tokens: token.tokens ?? [] }).replace(
+                /^@/,
+                '',
+              )}
+            />
+          )
+        }
+
+        if (pointer) {
+          return <span key={i} className="chip reference-chip" contentEditable={false}>{children}</span>
+        }
 
         if (task && openTask) {
           return (
@@ -215,6 +233,7 @@ export function Markdown({
     () => markdown.lexer(text),
     [text],
   )
+  const images = imagePaths({ text })
   let index = 0
 
   const wrap = ({
@@ -282,7 +301,7 @@ export function Markdown({
         case 'paragraph': case 'text': {
           const image = imagePaths({ text: token.text.trim() })[0]
           const content = image !== undefined && imageLine({ path: image }) === token.text.trim()
-            ? <AttachedImage path={image} />
+            ? <ImageChip path={image} label={`Image ${images.indexOf(image) + 1}`} />
             : token.tokens ? inline({
               tokens: token.tokens,
               openTask,

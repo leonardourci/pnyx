@@ -253,6 +253,10 @@ h3 { font-weight: 600; }
 
 .message:is(.tool, .thinking) + .message:is(.tool, .thinking) { margin-top: -10px; }
 
+.copy-button.icon-button { width: 26px; height: 26px; min-height: 26px; padding: 0; color: var(--color-muted); }
+
+.copy-button[data-copied] { color: var(--color-green); }
+
 .trace { color: var(--color-muted); font-size: var(--text-ui); }
 
 .trace summary, .trace-summary { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 2px 0; cursor: pointer; list-style: none; }
@@ -1059,6 +1063,14 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .attached-image { display: inline-block; max-width: 100%; }
 .attached-image img { display: block; max-width: 100%; max-height: 240px; border: 1px solid var(--color-line); border-radius: 6px; }
 .draft-images .attached-image img { height: 48px; width: auto; }
+
+.button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
+
+.chip.reference-chip { display: inline-flex; padding: 1px 6px; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); }
+
+.image-viewer { width: min(960px, calc(100vw - 32px)); max-width: none; }
+
+.image-viewer img { display: block; max-width: 100%; max-height: calc(100dvh - 140px); margin: 0 auto 16px; padding: 0 16px; object-fit: contain; }
 
 .loading-status { position: absolute; top: 8px; left: 50%; z-index: 70; padding: 8px 16px; border-radius: 8px; background: var(--color-surface); color: var(--color-muted); box-shadow: 0 2px 8px var(--color-shadow); }
 

@@ -1,10 +1,11 @@
 import {
-  IconAdjustments, IconAlertTriangle, IconArrowDown, IconArrowUpRight, IconArrowFork,
-  IconBolt, IconBulb, IconCheck, IconChevronDown, IconChevronRight, IconCircleCheck,
-  IconClipboardList, IconClock, IconCode, IconCpu, IconCube, IconDeviceDesktop,
-  IconDots, IconEye, IconGauge, IconGitPullRequest, IconGitFork, IconHistory,
-  IconLink, IconList, IconMaximize, IconMessage, IconMessagePlus, IconMinus, IconQuote,
-  IconPlayerPause, IconPlayerPlay,
+  IconAdjustments, IconAlertCircle, IconAlertTriangle, IconArrowDown, IconArrowUpRight,
+  IconArrowFork, IconBolt, IconBulb, IconCheck, IconChevronDown, IconChevronRight, IconCircleCheck,
+  IconClipboardList, IconClock, IconCode, IconCopy, IconCpu, IconCube, IconDeviceDesktop,
+  IconDots, IconEye, IconFileText, IconFolder, IconGauge, IconGitPullRequest, IconGitFork,
+  IconHistory,
+  IconLink, IconList, IconMaximize, IconMessage, IconMessagePlus, IconMinus, IconPhoto, IconQuote,
+  IconPlayerPause, IconPlayerPlay, IconPlayerStopFilled,
   IconPlus, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag, IconX,
 } from '@tabler/icons-react'
 
@@ -52,6 +53,13 @@ const icons: Record<string, typeof IconRobot> = {
   comment: IconMessagePlus,
   comments: IconMessage,
   quote: IconQuote,
+  copy: IconCopy,
+  stop: IconPlayerStopFilled,
+  image: IconPhoto,
+  file: IconFileText,
+  project: IconFolder,
+  task: IconClipboardList,
+  error: IconAlertCircle,
 }
 
 // Harnesses, as their makers' marks from Simple Icons 16.35.0 (https://simpleicons.org,
