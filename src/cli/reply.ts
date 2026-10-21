@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
 import { answerPrompt, answerText, checkAnswer, requestId } from '../core/answer.ts'
 import { decideReply, findCard, type Meta } from '../core/decide.ts'
-import { HydraError, type Card, type ReplyState } from '../core/model.ts'
+import { HydraError, type Card, type ReplyState, type RepliedEvent } from '../core/model.ts'
 import { KEY_LABEL, confirms, findOption, harnessControls, inputReason, settingRequest, type Key } from '../core/control.ts'
 import { replyRoute, type ReplyRoute } from '../core/route.ts'
 import { STATUS_KEY, TASK_ID, resolveHome } from '../integrations/firstmate/home.ts'
@@ -387,6 +387,7 @@ export async function sendReply({
       let text = request.text
       let keys: KeyStep[] | undefined
       let answers: string | undefined
+      let answerDecision: RepliedEvent['data']['decision']
 
       if (answer) {
         const open = card.attention.find(a => a.key === answer.request)
@@ -437,6 +438,15 @@ export async function sendReply({
           request: open,
           answer: checked.answer,
         })
+        answerDecision = {
+          question: open.questions?.map(question => question.question).join('\n') || open.text || open.kind,
+          answer: open.questions?.some(question => question.secret) ? '(hidden)' : answerText({
+            prompt,
+            request: open,
+            answer: checked.answer,
+            includeQuestion: false,
+          }),
+        }
         keys = answerKeys({
           provider: card.agent?.provider ?? '',
           request: open,
@@ -458,6 +468,23 @@ export async function sendReply({
         })
       }
 
+      if (resolveKey) {
+        const question = card.attention.find(request => request.key === resolveKey)
+        answerDecision = {
+          question: question?.text || question?.kind || resolveKey,
+          answer: text,
+        }
+      }
+
+      if (!answerDecision && !request.control && !request.key && !request.setting
+        && card.status?.state === 'needs_you' && card.status.note) {
+        answerDecision = {
+          questionId: card.status.id,
+          question: card.status.note,
+          answer: text,
+        }
+      }
+
       const context = !request.control && !request.key && !answer
         ? mentionContext({
           state: writer.state,
@@ -477,6 +504,7 @@ export async function sendReply({
         ...(request.taskMessage ? { taskMessage: true } : {}),
         ...(request.control || request.key ? { control: true } : {}),
         ...(resolveKey ? { resolveKey } : {}),
+        ...(answerDecision ? { decision: answerDecision } : {}),
         ...(answers ? { answers } : {}),
       }
       const decision = decideReply({
@@ -498,6 +526,7 @@ export async function sendReply({
         resend: true,
         keys,
         answers,
+        decision: answerDecision,
         text: [
           request.text,
           context,
@@ -553,6 +582,7 @@ export async function sendReply({
             control: request.control,
           }),
           ...outcome,
+          ...(queued.decision ? { decision: queued.decision } : {}),
           ...(answers ? { answers } : {}),
         }
         const decision = decideReply({

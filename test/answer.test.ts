@@ -1463,7 +1463,7 @@ test(
       }),
       /answered: a1/,
     )
-    assert.ok(readFileSync(
+    const events: HydraEvent[] = readFileSync(
       join(
         root,
         'pnyx',
@@ -1472,8 +1472,31 @@ test(
         'events.jsonl',
       ),
       'utf8',
-    )
-      .includes(`"text":"Pick a color → Blue\\nPick sizes → Small, Large","answers":"${seen}"`))
+    ).trim()
+      .split('\n')
+      .map(line => JSON.parse(line))
+    const receipts = events.filter(event => event.type === 'card.replied' && event.data.reply === 'a1')
+
+    for (const event of receipts) {
+      assert.equal(
+        event.type,
+        'card.replied',
+      )
+
+      if (event.type !== 'card.replied') {
+        continue
+      }
+
+      assert.deepEqual(
+        event.data.decision,
+        {
+          question: 'Pick a color\nPick sizes',
+          answer: 'Blue\nSmall, Large',
+        },
+      )
+    }
+
+    assert.ok(receipts.some(event => event.type === 'card.replied' && event.data.state === 'delivered'))
     assert.match(
       run({
         args: [
