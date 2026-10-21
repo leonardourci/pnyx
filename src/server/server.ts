@@ -204,9 +204,8 @@ type HydraUpgrade = {
 const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
 const RETRY_MS = 60_000
 
-// Exact Host and Origin matches, so another site or a rebound DNS name is refused, plus
-// any *.localhost name: browsers resolve those to loopback themselves (RFC 6761), so they
-// cannot be rebound, and portless serves Pnyx at names like https://pnyx.localhost.
+// Exact matches refuse other sites and rebound DNS names; *.localhost names (portless's
+// https://pnyx.localhost) pass because browsers resolve them to loopback (RFC 6761).
 const localName = String.raw`[a-z0-9.-]+\.localhost(:\d+)?`
 const localHost = new RegExp(
   `^${localName}$`,
