@@ -218,7 +218,7 @@ try {
   )
   await click({ selector: '[data-hydra-current]' })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
-  await check({
+  await eventually({
     condition: '!!document.querySelector(".detail .task-updates") && !document.querySelector(".detail .composer")',
     label: 'an attached task shows Updates without a conversation',
   })

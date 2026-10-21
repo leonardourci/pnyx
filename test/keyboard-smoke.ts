@@ -110,7 +110,7 @@ try {
     label: 'opening a card focuses Updates',
   })
   await focus({ selector: card }); await press({ key: 'r' })
-  await check({
+  await eventually({
     condition: 'document.activeElement.matches(".task-updates") && !document.querySelector(".detail .composer")',
     label: 'reply shortcut focuses Updates without a task conversation',
   })
