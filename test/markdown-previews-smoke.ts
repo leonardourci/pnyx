@@ -98,7 +98,6 @@ const {
   check,
   eventually,
   click,
-  text,
   fill,
   screenshot,
   close,
@@ -176,55 +175,6 @@ try {
     await check({
       condition: '[...document.querySelectorAll(".oracle-hit .markdown a")].some(a => a.getAttribute("href") === "https://github.com/example/project/pull/42")',
       label: `Oracle keeps the original PR URL when matching ${query}`,
-    })
-  }
-
-  await text({ label: 'History' })
-  await eventually({
-    condition: '!!document.querySelector(".history-entry .markdown h1") && !!document.querySelector(".history-entry .markdown table") && !!document.querySelector(".history-entry .markdown .code-block")',
-    label: 'History events render full Hydra messages as Markdown',
-  })
-  await check({
-    condition: '[...document.querySelectorAll(".history-entry .markdown")].every(el => el.scrollWidth <= el.clientWidth + 1)',
-    label: 'History keeps long messages inside its results pane',
-  })
-  await fill({
-    label: 'Search history',
-    value: 'Needle',
-  })
-  await eventually({
-    condition: '!!document.querySelector(".history-entry")',
-    label: 'History finds the message',
-  })
-  await screenshot({ name: 'history-markdown.png' })
-  await check({
-    condition: '!!document.querySelector(".history-entry .markdown strong") && [...document.querySelectorAll(".history-entry a")].some(a => a.href === "https://github.com/example/project/pull/42")',
-    label: 'History previews render emphasis and clickable PR links',
-  })
-
-  for (const query of [
-    'project',
-    'github',
-  ]) {
-    await fill({
-      label: 'Search history',
-      value: 'quuxxyzmissing abcdefmissing',
-    })
-    await eventually({
-      condition: 'document.querySelector(".history-results .empty")?.textContent === "No matching history."',
-      label: 'History clears previous results before the next URL match',
-    })
-    await fill({
-      label: 'Search history',
-      value: query,
-    })
-    await eventually({
-      condition: 'document.querySelector(".history-results").getAttribute("aria-busy") === "false" && !!document.querySelector(".history-entry .markdown a")',
-      label: `History finds URL match ${query}`,
-    })
-    await check({
-      condition: '[...document.querySelectorAll(".history-entry .markdown a")].some(a => a.getAttribute("href") === "https://github.com/example/project/pull/42")',
-      label: `History keeps the original PR URL when matching ${query}`,
     })
   }
 

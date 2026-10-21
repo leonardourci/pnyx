@@ -256,12 +256,12 @@ try {
   await press({ key: 'End' }); await press({ key: 'Home' })
   await check({
     condition: 'document.activeElement.dataset.resultId.startsWith("hit:")',
-    label: 'Home and End navigate across tasks, history and settings',
+    label: 'Home and End navigate across tasks and settings',
   })
   await press({ key: 'ArrowDown' })
   await check({
-    condition: 'document.activeElement.dataset.resultId === "history"',
-    label: 'history is also a navigable result',
+    condition: 'document.activeElement.dataset.resultId.startsWith("hit:") && !document.querySelector("[data-result-id=history]")',
+    label: 'ArrowDown stays within task results without a removed History action',
   })
   await press({ key: 'Escape' }); await fill({
     label: 'Oracle',

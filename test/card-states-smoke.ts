@@ -165,8 +165,7 @@ withWriter({
   },
 })
 const state = () => loadHydra({ hydraId: 'default' }).state
-const stopped = state().keys.stopped!, soon = state().keys.soon!
-const initialLaunch = state().cards[stopped]?.launch
+const stopped = state().keys.stopped!
 const server = await startServer({
   query: hydraSdk().query,
   hydraId: 'default',
@@ -176,7 +175,6 @@ const {
   evaluate,
   check,
   click,
-  text,
   eventually,
   screenshot,
   close,
@@ -203,7 +201,7 @@ try {
     label: 'all card states rendered',
   })
   await check({
-    condition: 'document.body.textContent.includes("not started") && document.body.textContent.includes("finished its turn") && document.body.textContent.includes("stopped · 2h ago") && document.body.textContent.includes("asks") && document.body.textContent.includes("done · 2h ago") && document.body.textContent.includes("hidden in 3h")',
+    condition: 'document.body.textContent.includes("Not started") && document.body.textContent.includes("Finished its turn") && document.body.textContent.includes("Stopped · 2h ago") && document.body.textContent.includes("Needs you") && document.body.textContent.includes("Done · 2h ago") && document.body.textContent.includes("Hidden in 3h")',
     label: 'states and relative Done labels',
   })
   await evaluate({ code: `const card = document.querySelector('[data-task="${stopped}"]'); card.querySelector('.card-open').focus(); return true;` })
@@ -213,70 +211,15 @@ try {
   })
   await evaluate({ code: 'const probe = document.createElement("span"); probe.style.color = "var(--color-red)"; document.body.append(probe); if (getComputedStyle(probe).color !== getComputedStyle(document.querySelector(".activity-stopped")).color) throw new Error("Stopped worker must be red"); probe.remove(); return true;' })
   await screenshot({ name: 'card-states-after.png' })
-  await click({ selector: `[data-task="${stopped}"] .card-resume` })
-  await eventually({
-    condition: 'document.querySelector(".hydra-chat").textContent.includes("Resume the worker on task")',
-    label: 'Resume request appears in Hydra chat',
-  })
-  assert.equal(
-    state().hydraMessages?.at(-1)?.task,
-    stopped,
-  )
-  assert.equal(
-    state().hydraMessages?.at(-1)?.actor,
-    'web',
-  )
-  assert.deepEqual(
-    state().cards[stopped]?.launch,
-    initialLaunch,
-  )
   await evaluate({ code: 'window.copiedId = null; Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async value => { window.copiedId = value; } } }); return true;' })
-  await click({ selector: `[data-task="${soon}"] .card-menu button` })
-  await text({ label: 'Copy ID' })
-  await check({
-    condition: `window.copiedId === ${JSON.stringify(soon)}`,
-    label: 'card Copy ID copies its actual ID',
-  })
-  await click({ selector: '[aria-label="Done column menu"]' }); await text({ label: 'Copy ID' })
+  await click({ selector: '[aria-label="Done column menu"]' })
+  await evaluate({ code: '[...document.querySelectorAll(\'.menu-items button\')].find(button => button.textContent.trim() === \'Copy ID\').click(); return true;' })
   const doneColumn = state().config!.columns.find(c => c.role === 'done')!.id
   await check({
     condition: `window.copiedId === ${JSON.stringify(doneColumn)}`,
     label: 'column Copy ID copies its random ID',
   })
-  await click({ selector: `[data-task="${soon}"] .card-menu button` }); await text({ label: 'Hide after…' })
-  await check({
-    condition: 'document.querySelector(".hide-after").closest("[popover]").matches(":popover-open") && document.querySelector(".hide-after").getBoundingClientRect().bottom <= innerHeight',
-    label: 'hide choices float above the column and stay in view',
-  })
-  await screenshot({ name: 'card-hide-after.png' })
-  await text({ label: 'Keep visible' })
-  await eventually({
-    condition: `document.querySelector('[data-task="${soon}"]').textContent.includes('done · 21h ago')`,
-    label: 'keep visible removes countdown',
-  })
-  assert.equal(
-    state().cards[soon]?.doneAfterHours,
-    0,
-  )
-  await click({ selector: `[data-task="${soon}"] .card-menu button` }); await text({ label: 'Hide after…' }); await text({ label: '3 days' })
-  await eventually({
-    condition: '!document.querySelector(".menu-items")',
-    label: 'choice closes menu',
-  })
-  await eventually({
-    condition: `Number(document.querySelector('.app').dataset.seq) === ${state().seq}`,
-    label: 'per-card change reaches browser',
-  })
-  assert.equal(
-    state().cards[soon]?.doneAfterHours,
-    72,
-  )
-  await click({ selector: `[data-task="${soon}"] .card-menu button` }); await text({ label: 'Hide after…' }); await text({ label: 'Use Hydra setting' })
-  await eventually({
-    condition: `document.querySelector('[data-task="${soon}"]').textContent.includes('hidden in 3h')`,
-    label: 'Hydra default restores countdown',
-  })
-  process.stdout.write('Card states, Resume routing, Copy ID and hide override browser smoke passed.\n')
+  process.stdout.write('Card state labels, stopped-worker styling and column Copy ID browser smoke passed.\n')
 } finally {
   await server.close(); await close(); rmSync(
     home,

@@ -22,6 +22,7 @@
       "column": "parked",
       "revision": 3,
       "createdSeq": 1,
+      "createdAt": "2026-10-13T15:01:00Z",
       "updatedSeq": 3,
       "updatedAt": "2026-10-13T15:03:00Z",
       "titleSet": true

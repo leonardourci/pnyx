@@ -1,3 +1,4 @@
+import { taskTimeline } from '../web/src/hydra/task-updates.ts'
 import { configPath, writeConfig, effectiveDispatch } from '../src/dispatch/config.ts'
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -1634,6 +1635,77 @@ test(
 )
 
 test(
+  'Hydra explains a question and its answer in task-linked chat',
+  async () => {
+    const { task } = await lab()
+    const sdk = fakeSdk()
+    sdk.control.permission = true
+    sdk.control.tool = [
+      'AskUserQuestion',
+      {
+        questions: [
+          {
+            question: 'Which layout?',
+            options: [
+              { label: 'A' },
+              { label: 'B' },
+            ],
+          },
+        ],
+      },
+    ]
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    await startTask({
+      hydraId: 'lab',
+      task: 'ship',
+      meta: {
+        ...meta,
+        id: 'explain-question',
+      },
+    })
+    await until({
+      check: () => task().permissions?.[0]?.status === 'pending',
+      what: 'question',
+    })
+    const request = task().permissions![0]!
+    await commands.task([
+      'permission',
+      'ship',
+      request.id,
+      'allow',
+      '--answer',
+      '{"answers":[{"pick":[1]}]}',
+      '--actor',
+      'hydra',
+      '--reason',
+      'The owner already chose A',
+      '--hydra',
+      'lab',
+    ])
+    const message = loadHydra({ hydraId: 'lab' }).state.hydraMessages!.at(-1)!
+    assert.equal(
+      message.task,
+      task().id,
+    )
+    assert.match(
+      message.text,
+      /The owner already chose A/,
+    )
+    assert.match(
+      message.details!,
+      /Asked: Which layout\?/,
+    )
+    assert.match(
+      message.details!,
+      /Answered: A/,
+    )
+  },
+)
+
+test(
   'denial tells the provider why and neither denied nor unknown requests can be answered again',
   async () => {
     const { task } = await lab()
@@ -2859,6 +2931,75 @@ test(
     assert.equal(
       resumed.calls[0]?.options.env?.CLAUDE_CONFIG_DIR,
       chosenFolder,
+    )
+  },
+)
+
+test(
+  'a reply to a declared question records one folded decision after delivery',
+  async () => {
+    const { task } = await lab()
+    const sdk = fakeSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    await startTask({
+      hydraId: 'lab',
+      task: 'ship',
+      meta: {
+        ...meta,
+        id: 'declared-question',
+      },
+    })
+    await commands.task([
+      'status',
+      'ship',
+      'needs_you',
+      '--note',
+      'Which layout?',
+      '--hydra',
+      'lab',
+    ])
+    const question = task().status!
+    const receipt = await sendReply({
+      hydraId: 'lab',
+      request: {
+        card: task().id,
+        text: 'Use layout A',
+        actor: 'hydra',
+        homes: [],
+        id: 'layout-answer',
+      },
+    })
+    assert.equal(
+      receipt.state,
+      'delivered',
+    )
+    const events = readEvents({ hydraId: 'lab' }).map(event => ({
+      ...event,
+      data: { ...event.data },
+      summary: '',
+    }))
+    const timeline = taskTimeline({
+      card: task(),
+      events,
+      columns: [],
+    })
+    const decisions = timeline.filter(update => update.id === question.id)
+    assert.equal(
+      decisions.length,
+      1,
+    )
+    assert.deepEqual(
+      decisions[0]!.decision,
+      {
+        questionId: question.id,
+        question: 'Which layout?',
+        answer: 'Use layout A',
+        actor: 'Hydra',
+        reason: undefined,
+      },
     )
   },
 )

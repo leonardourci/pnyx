@@ -27,6 +27,9 @@ export function focusElement({ selector }: { selector: string }) {
   element?.focus({ preventScroll: true }); element?.scrollIntoView({
     block: 'nearest',
     inline: 'nearest',
+    ...(element.closest('.kanban')
+      ? { behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' } as const
+      : {}),
   })
 
   return !!element && document.activeElement === element

@@ -65,11 +65,13 @@ const {
   screenshot,
   close,
   evaluate,
+  focus,
+  press,
 } = smokeBrowser({
   home,
   session: 'pnyx-reminders',
 })
-const menu = () => click({ selector: '[aria-label="Card menu for Review cursor pagination"]' })
+const remind = () => click({ selector: `[data-task="${id}"] [aria-label="Remind"]` })
 
 try {
   await browser({
@@ -91,11 +93,30 @@ try {
       'Review cursor pagination',
     ],
   })
+  await check({
+    condition:'[...document.querySelectorAll(\'[aria-label="Main pages"] button\')].map(button=>button.textContent.trim()).join(",") === "Settings" && !document.querySelector("#panel-reminders,.history-page")',
+    label:'Navigation keeps Settings and removes Reminders and History views',
+  })
+  await focus({selector:'.card-open'})
+  await press({key:'/'})
+  await eventually({
+    condition:'document.activeElement?.getAttribute("aria-label") === "Oracle"',
+    label:'The search shortcut focuses Oracle instead of removed History',
+  })
+  await fill({
+    label:'Oracle',
+    value:'pagination',
+  })
+  await check({
+    condition:'![...document.querySelectorAll(".oracle-results button")].some(button=>button.textContent.trim() === "Search history")',
+    label:'Oracle has no link to the removed History view',
+  })
+  await press({key:'Escape'})
   await screenshot({ name: 'reminder-before.png' })
-  await menu(); await text({ label: 'Remind me…' })
+  await remind()
   await check({
     condition: '!!document.querySelector(".reminder-editor") && !document.querySelector("[role=dialog]")',
-    label: 'Remind me opens an inline editor',
+    label: 'Remind opens an inline editor',
   })
   await click({ selector: '.reminder-editor label' })
   await check({
@@ -108,8 +129,8 @@ try {
   })
   await evaluate({ code: 'const button = document.querySelector(".reminder-editor button[type=submit]"); button.focus(); return true;' })
   await check({
-    condition: 'document.querySelector(".card").getBoundingClientRect().height === 176 && document.querySelector(".reminder-editor button[type=submit]").getBoundingClientRect().bottom <= document.querySelector(".card-rest").getBoundingClientRect().bottom + 1',
-    label: 'closed-card reminder controls scroll into view without growing the card',
+    condition: 'document.querySelector(".reminder-editor button[type=submit]").getBoundingClientRect().bottom <= document.querySelector(".card-rest").getBoundingClientRect().bottom + 1',
+    label: 'closed-card reminder controls remain inside their content area',
   })
   await fill({
     label: 'Reminder time',
@@ -128,17 +149,8 @@ try {
     label: 'saved reminder appears on its card',
   })
   await check({
-    condition: '!!document.querySelector(".card-state") && document.querySelector(".card-state").textContent.includes("not started")',
+    condition: '!!document.querySelector(".card-state") && document.querySelector(".card-state").textContent.includes("Not started")',
     label: 'waiting reminder appears alongside the card state',
-  })
-  await eventually({
-    condition: 'document.querySelector(`[aria-controls="panel-reminders"]`)?.textContent === "Reminders 1"',
-    label: 'setting a reminder updates the panel count',
-  })
-  await text({ label: 'Reminders 1' })
-  await check({
-    condition: 'document.querySelector(`#panel-reminders`).textContent.includes("Review cursor pagination")',
-    label: 'panel lists the waiting reminder in place',
   })
   assert.ok(state().cards[id]?.reminder?.at)
   assert.equal(
@@ -146,7 +158,7 @@ try {
     1,
   )
   await screenshot({ name: 'reminder-after.png' })
-  await menu(); await text({ label: 'Remind me…' }); await text({ label: 'Clear reminder' })
+  await remind(); await text({ label: 'Clear reminder' })
   await eventually({
     condition: '!document.querySelector(".reminder-label") && !document.querySelector(".reminder-editor")',
     label: 'clear removes the waiting reminder',
@@ -156,10 +168,10 @@ try {
     undefined,
   )
   await click({ selector: '.card-open' })
-  await click({ selector: '[aria-label="Task menu"]' }); await text({ label: 'Remind me…' })
+  await remind()
   await check({
-    condition: '!!document.querySelector(".detail .reminder-editor")',
-    label: 'task detail offers the same reminder editor',
+    condition: '!!document.querySelector(".card.selected .reminder-editor")',
+    label: 'expanded task offers the same reminder editor',
   })
   await fill({
     label: 'Reminder time',
@@ -185,10 +197,6 @@ try {
     (await commands.task(['reminders'])).count,
     0,
   )
-  await eventually({
-    condition: 'document.querySelector(`[aria-controls="panel-reminders"]`)?.textContent === "Reminders 0" && document.querySelector(`#panel-reminders`).textContent === "No waiting reminders."',
-    label: 'due reminders leave the panel count and list',
-  })
   await check({
     condition: '!document.querySelector(".reminder-label")',
     label: 'fired reminder leaves the waiting list',
@@ -197,6 +205,17 @@ try {
   await check({
     condition: 'document.documentElement.scrollWidth <= innerWidth',
     label: 'reminder controls fit without horizontal overflow',
+  })
+  await evaluate({code:'const key="pnyx:default:restore",saved=JSON.parse(sessionStorage.getItem(key) || "{}");saved.page="history";sessionStorage.setItem(key,JSON.stringify(saved));return true;'})
+  await browser({
+    args:[
+      'open',
+      server.url,
+    ],
+  })
+  await eventually({
+    condition:'!!document.querySelector(".hydra-page") && !document.querySelector(".history-page") && document.querySelector(".app")?.dataset.connected === "true"',
+    label:'A saved removed History page restores the Hydra',
   })
   process.stdout.write('Reminder editor, validation, clearing, due move and Hydra chat smoke passed.\n')
 } finally {

@@ -45,8 +45,8 @@ export function useHydraKeyboard({
   page: string
   setPage({ page }: { page: string }): void
   selected: string | null
-  open({ id }: { id: string }): void
-  close(): void
+  open({ id }: { id: string }): void | Promise<boolean>
+  close({ id }?: { id?: string }): void
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
@@ -90,7 +90,6 @@ export function useHydraKeyboard({
     },
     [],
   )
-  const focusUpdates = () => requestAnimationFrame(() => focusElement({ selector: '.task-updates' }))
 
   const leaveField = () => {
     if (page === 'hydra' && focus.current) {
@@ -223,7 +222,7 @@ export function useHydraKeyboard({
           })
         }
       } else if (selected && page === 'hydra') {
-        close()
+        close({ id: context.target.closest<HTMLElement>('.card.selected')?.dataset.task ?? selected })
       } else if (page !== 'hydra') {
         setPage({ page: 'hydra' })
       } else {
@@ -249,13 +248,13 @@ export function useHydraKeyboard({
       'thread.reply',
       'reply',
     ].includes(id) && context.scope !== 'hydra') {
-      const input = context.target.closest('.detail, .hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea'); input?.focus()
+      const input = context.target.closest('.hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea'); input?.focus()
 
       return !!input
     }
 
     if ((id === 'board.open' || id === 'reply') && anchor?.card) {
-      open({ id: anchor.card }); focusUpdates()
+      void open({ id: anchor.card })
 
       return true
     }
@@ -266,7 +265,7 @@ export function useHydraKeyboard({
       return true
     }
 
-    if (id === 'palette' || id === 'find') {
+    if (id === 'palette' || id === 'find' || id === 'search') {
       showPanel(); requestAnimationFrame(() => focusElement({ selector: '[data-oracle-slot] input' }))
 
       return true
@@ -277,12 +276,6 @@ export function useHydraKeyboard({
       'help',
     ].includes(id)) {
       setPage({ page: 'settings' }); requestAnimationFrame(() => focusElement({ selector: '[data-settings-heading]' }))
-
-      return true
-    }
-
-    if (id === 'search') {
-      setPage({ page: 'history' })
 
       return true
     }

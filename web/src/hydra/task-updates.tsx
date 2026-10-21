@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { Card } from '../../../src/core/model.ts'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Card, HydraColumn } from '../../../src/core/model.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { Markdown } from '../components/ui/markdown.tsx'
-import { InlinePermissions } from './permissions.tsx'
-import { InlineQuestions } from './questions.tsx'
 import type { Command } from './connection.ts'
-import { taskTimeline, type TaskEvent } from './task-updates.ts'
+import { loadRelevant, taskTimeline, type TaskEvent } from './task-updates.ts'
+
+import { Disclosure } from '../components/ui/disclosure.tsx'
+import { Tooltip } from '../components/ui/tooltip.tsx'
+import { hasTaskQuestion, TaskQuestion } from './task-question.tsx'
 
 const PAGE_SIZE = 50
 
@@ -27,12 +29,18 @@ const shortTime = ({ at }: { at: string }) => new Date(at).toLocaleString(
 
 export function TaskUpdates({
   card,
+  columns,
   command,
   connected,
+  notify,
+  answer,
 }: {
   card: Card
+  columns: HydraColumn[]
   command: Command
   connected: boolean
+  notify({ text }: { text: string }): void
+  answer({ card }: { card: Card }): void
 }) {
   const [
     events,
@@ -54,6 +62,10 @@ export function TaskUpdates({
     retry,
     setRetry,
   ] = useState(0)
+  const [
+    oldestFirst,
+    setOldestFirst,
+  ] = useState(false)
   const load = useCallback(
     async ({ before }: { before?: number }) => {
       const result = await command({
@@ -78,54 +90,134 @@ export function TaskUpdates({
       card.id,
     ],
   )
+  const filled = useRef(false)
+  const generation = useRef(0)
 
   useEffect(
     () => {
+      const current = ++generation.current
+
       if (!connected) {
+        setLoading(false)
+
         return
       }
 
-      let active = true
-      setLoading(true)
-      void load({}).then(
-        page => {
-          if (active) {
-            setEvents(kept => page.some(event => kept.some(prior => prior.id === event.id))
-              ? [
-                ...page,
-                ...kept.filter(event => !page.some(next => next.id === event.id)),
-              ] : page)
-            setMore(page.length === PAGE_SIZE); setError('')
+      const refresh = async () => {
+        setLoading(true)
+
+        try {
+          const result = filled.current
+            ? {
+              found: await load({}),
+              more: undefined,
+            }
+            : await loadRelevant({
+              cardId: card.id,
+              pageSize: PAGE_SIZE,
+              load,
+            })
+
+          if (generation.current === current) {
+            const gap = filled.current && result.found.length === PAGE_SIZE
+              && !result.found.some(next => events.some(prior => prior.id === next.id))
+            filled.current = true
+            setEvents(kept => gap ? result.found : [
+              ...result.found,
+              ...kept.filter(event => !result.found.some(next => next.id === event.id)),
+            ])
+
+            if (gap || result.more !== undefined) {
+              setMore(gap || !!result.more)
+            }
+
+            setError('')
           }
-        },
-        (error: Error) => {
-          if (active) {
-            setError(error.message)
+        } catch (error) {
+          if (generation.current === current) {
+            setError(error instanceof Error ? error.message : String(error))
           }
-        },
-      )
-        .finally(() => {
-          if (active) {
+        } finally {
+          if (generation.current === current) {
             setLoading(false)
           }
-        })
+        }
+      }
+
+      void refresh()
 
       return () => {
-        active = false
+        if (generation.current === current) {
+          generation.current++
+        }
       }
     },
     [
       connected,
       load,
+      card.id,
       card.updatedSeq,
       retry,
     ],
   )
 
-  const updates = taskTimeline({
+  const older = async () => {
+    const current = generation.current
+    setLoading(true)
+
+    try {
+      const result = await loadRelevant({
+        cardId: card.id,
+        before: Math.min(...events.map(event => event.seq)),
+        pageSize: PAGE_SIZE,
+        load,
+      })
+
+      if (generation.current !== current) {
+        return
+      }
+
+      setEvents(kept => [
+        ...kept,
+        ...result.found.filter(event => !kept.some(prior => prior.id === event.id)),
+      ])
+      setMore(result.more); setError('')
+    } catch (error) {
+      if (generation.current === current) {
+        setError(error instanceof Error ? error.message : String(error))
+      }
+    } finally {
+      if (generation.current === current) {
+        setLoading(false)
+      }
+    }
+  }
+
+  const timeline = taskTimeline({
     card,
     events,
+    columns,
   })
+  const questionPending = hasTaskQuestion({
+    card,
+    answered: timeline.some(update => update.id === card.status?.id && !!update.decision),
+  })
+  const history = timeline.filter(update => !questionPending || update.id !== card.status?.id
+    || update.state !== 'needs_you' || !!update.decision)
+  const updates = oldestFirst ? history.toReversed() : history
+  const pending = questionPending ? (
+    <li key="pending-question" className="pending-question">
+      <div className="pending-question-panel">
+        <div className="update-heading"><strong>Decision needed</strong></div>
+        <TaskQuestion
+          card={card}
+          command={command}
+          notify={notify}
+          answer={answer}
+        />
+      </div>
+    </li>
+  ) : null
 
   return (
     <div
@@ -134,46 +226,51 @@ export function TaskUpdates({
       aria-label="Task updates"
       tabIndex={0}
     >
-      <h3 className="eyebrow">Updates</h3>
-      <InlinePermissions card={card} command={command} notify={({ text }) => setError(text)} />
-      <InlineQuestions card={card} command={command} notify={({ text }) => setError(text)} />
-      {updates.length > 0 && (
+      <div className="task-updates-head">
+        <h3 className="eyebrow">Updates</h3>
+        <Button
+          className="quiet updates-order"
+          aria-label={oldestFirst ? 'Show newest updates first' : 'Show oldest updates first'}
+          onClick={() => setOldestFirst(order => !order)}
+        >{oldestFirst ? 'Oldest first ↑' : 'Newest first ↓'}
+        </Button>
+      </div>
+      {(updates.length > 0 || pending) && (
         <ol>
+          {!oldestFirst && pending}
           {updates.map(update => (
-            <li key={update.id}>
+            <li key={update.id} className={update.decision ? 'decision-update' : undefined}>
               <div className="update-heading">
                 <strong>{stateLabel({ state: update.state })}</strong>
-                <time dateTime={update.at} title={new Date(update.at).toLocaleString()}>
-                  {shortTime({ at: update.at })}
-                </time>
+                <Tooltip content={new Date(update.at).toLocaleString()}>
+                  <time dateTime={update.at} tabIndex={0}>{shortTime({ at: update.at })}</time>
+                </Tooltip>
               </div>
-              {update.note && <Markdown text={update.note} />}
+              {update.decision ? (
+                <Disclosure
+                  className="decision"
+                  title={(
+                    <>
+                      <span className="decision-line"><b>Asked</b> · {update.decision.question}</span>
+                      <span className="decision-line"><b>Answered</b> · {update.decision.answer} · by {update.decision.actor}</span>
+                    </>
+                  )}
+                >
+                  <p><b>Question.</b> {update.decision.question}</p>
+                  <p><b>Answer.</b> {update.decision.answer} · by {update.decision.actor}</p>
+                  {update.decision.reason && <p><b>Why.</b> {update.decision.reason}</p>}
+                </Disclosure>
+              ) : update.note && <Markdown text={update.note} />}
             </li>
           ))}
+          {oldestFirst && pending}
         </ol>
       )}
       {loading && <p className="muted" role="status">Loading updates…</p>}
-      {!updates.length && !loading && !error && <p className="empty">No updates yet.</p>}
+      {!updates.length && !pending && !loading && !error && <p className="empty">No updates yet.</p>}
       {error && <p role="alert">{error} <Button disabled={!connected} onClick={() => setRetry(n => n + 1)}>Try again</Button></p>}
       {more && (
-        <Button
-          disabled={!connected || loading}
-          onClick={() => {
-            setLoading(true)
-            void load({ before: Math.min(...events.map(event => event.seq)) }).then(
-              page => {
-                setEvents(kept => [
-                  ...kept,
-                  ...page.filter(event => !kept.some(prior => prior.id === event.id)),
-                ])
-                setMore(page.length === PAGE_SIZE); setError('')
-              },
-              (error: Error) => setError(error.message),
-            )
-              .finally(() => setLoading(false))
-          }}
-        >Older updates
-        </Button>
+        <Button disabled={!connected || loading} onClick={() => void older()}>Older updates</Button>
       )}
     </div>
   )

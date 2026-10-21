@@ -233,10 +233,6 @@ test(
           'Hydra',
         ],
         [
-          'history',
-          'History',
-        ],
-        [
           'settings',
           'Settings',
         ],
@@ -326,14 +322,6 @@ test(
         selected: 'missing',
       }),
       '(2) Hydra · Pnyx',
-    )
-    assert.equal(
-      pageTitle({
-        page: 'history',
-        cards: state.cards,
-        selected: 'c1',
-      }),
-      '(2) History · Pnyx',
     )
     assert.equal(
       pageTitle({
@@ -519,6 +507,60 @@ test(
       () => patchView({
         state,
         input: JSON.parse('{"columnWidths":{"__proto__":300}}'),
+      }),
+      HydraError,
+    )
+  },
+)
+
+test(
+  'card heights have no maximum and keep closed and open sizes apart',
+  () => {
+    const state = push({
+      state: emptyHydra(),
+      key: 'a',
+      fields: { title: 'A' },
+    })
+    const view = patchView({
+      state,
+      input: {
+        cardHeights: { c1: 2400 },
+        closedCardHeights: { c1: 1200 },
+      },
+    })
+    assert.deepEqual(
+      [
+        view.cardHeights.c1,
+        view.closedCardHeights.c1,
+      ],
+      [
+        2400,
+        1200,
+      ],
+    )
+    assert.equal(
+      viewFor({
+        state: {
+          ...state,
+          view: {
+            ...view,
+            closedCardHeights: { c1: 1 },
+          },
+        },
+      }).closedCardHeights.c1,
+      VIEW_SIZE_LIMITS.cardHeight.min,
+    )
+    assert.throws(
+      () => patchView({
+        state,
+        input: { closedCardHeights: { missing: 300 } },
+      }),
+      HydraError,
+    )
+    assert.throws(
+      () => patchView({
+        state,
+        input: { closedCardHeights: { c1: VIEW_SIZE_LIMITS.cardHeight.min - 1 } },
       }),
       HydraError,
     )

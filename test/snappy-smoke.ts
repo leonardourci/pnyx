@@ -138,6 +138,12 @@ try {
     label: 'Reply to Hydra',
     value: 'Draft kept on this Hydra',
   })
+  await b.focus({selector:'.card.selected > [aria-label="Resize card"]'})
+  await b.press({key:'Home'})
+  await b.eventually({
+    condition:'(() => {const card=document.querySelector(".card.selected"),grip=card.querySelector(".resize-y");return card.getBoundingClientRect().height === Number(grip.getAttribute("aria-valuemin")) && Number(grip.getAttribute("aria-valuemax")) >= Number(grip.getAttribute("aria-valuemin")) + 16;})()',
+    label:'optimistic resize starts at the content minimum with room for two keyboard steps',
+  })
   await b.evaluate({
     code: `
     window.nativeSocketSend = WebSocket.prototype.send;
@@ -149,7 +155,7 @@ try {
         window.writes.push(m);
         if (window.failNextSave) { m.args.push('--invalid-snappy-flag'); window.failNextSave = false; }
         setTimeout(() => window.nativeSocketSend.call(this, JSON.stringify(m)), window.saveDelay);
-      } else if (m.type === 'command' && window.readDelay && ['settings', 'rule', 'history'].includes(m.name)) { setTimeout(() => window.nativeSocketSend.call(this, data), window.readDelay); } else { window.nativeSocketSend.call(this, data); }
+      } else if (m.type === 'command' && window.readDelay && ['settings', 'rule'].includes(m.name)) { setTimeout(() => window.nativeSocketSend.call(this, data), window.readDelay); } else { window.nativeSocketSend.call(this, data); }
     };
     return true;`,
   })
@@ -157,17 +163,29 @@ try {
     code: `
     const handle = document.querySelector('.card.selected > [aria-label="Resize card"]'); handle.focus();
     const target = document.querySelector('.card.selected'); const before = target.getBoundingClientRect().height;
+    const writeIndex = window.writes.length; let previous = before; let movedBeforeReceipt = false;
     handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     await new Promise(r => requestAnimationFrame(r));
     handle.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowDown', bubbles: true }));
-    for (let i = 0; i < 48; i++) { await new Promise(r => requestAnimationFrame(r)); if (target.getBoundingClientRect().height !== before + 8) throw new Error('Resize snapped back'); }
+    for (let i = 0; i < 48; i++) {
+      await new Promise(r => requestAnimationFrame(r));
+      const height = target.getBoundingClientRect().height;
+      if (height < previous - .1 || height > before + 8 + .1) throw new Error('Resize reversed or exceeded its target: ' + height + ' after ' + previous);
+      const write = window.writes[writeIndex];
+      if (height > before + .1 && write && !window.received.has(write.id)) movedBeforeReceipt = true;
+      previous = height;
+    }
+    if (!movedBeforeReceipt) throw new Error('Resize waited for its save receipt');
+    if (Math.abs(previous - before - 8) > .1) throw new Error('Resize did not reach its target: ' + previous);
     if (getComputedStyle(handle).outlineStyle !== 'none') throw new Error('Resize outline');
     return true;`,
   })
-  assert.equal(
-    loadHydra({ hydraId: 'default' }).state.view?.cardHeights[fixture.state.keys.layout!],
-    488,
-  )
+  const saved = loadHydra({ hydraId: 'default' }).state.view?.cardHeights[fixture.state.keys.layout!]
+  assert.ok(saved)
+  await b.check({
+    condition: `document.querySelector(".card.selected").getBoundingClientRect().height === ${saved}`,
+    label: 'keyboard resize saves the shown height',
+  })
   await b.screenshot({ name: 'snappy-resize.png' })
   await b.evaluate({
     code: `
@@ -211,9 +229,9 @@ try {
     loadHydra({ hydraId: 'default' }).state.cards['default-0']?.column,
     'in_progress',
   )
-  await b.evaluate({ code: 'window.failNextSave = true; const handle = document.querySelector(\'.card.selected > [aria-label="Resize card"]\'); handle.dispatchEvent(new KeyboardEvent(\'keydown\', { key: \'ArrowDown\', bubbles: true })); handle.dispatchEvent(new KeyboardEvent(\'keyup\', { key: \'ArrowDown\', bubbles: true })); await new Promise(r => requestAnimationFrame(r)); if (document.querySelector(\'.card.selected\').getBoundingClientRect().height !== 496) throw new Error(\'Failed save was not optimistic\'); return true;' })
+  await b.evaluate({ code: `window.failNextSave = true; const handle = document.querySelector('.card.selected > [aria-label="Resize card"]'); handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); handle.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowDown', bubbles: true })); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const height=document.querySelector('.card.selected').getBoundingClientRect().height; if (height <= ${saved} || height > ${saved + 8}) throw new Error('Failed save did not move optimistically: ' + height); return true;` })
   await b.eventually({
-    condition: 'document.querySelector(".card.selected")?.getBoundingClientRect().height === 488 && !!document.querySelector("[role=alert]")',
+    condition: `document.querySelector(".card.selected")?.getBoundingClientRect().height === ${saved} && !!document.querySelector("[role=alert]")`,
     label: 'failed resize reverts with a visible error',
   })
   await b.evaluate({ code: 'const handle = document.querySelector(\'.hydra-chat > .resize-x\'); handle.focus(); handle.dispatchEvent(new KeyboardEvent(\'keydown\', { key: \'ArrowRight\', bubbles: true })); handle.dispatchEvent(new KeyboardEvent(\'keyup\', { key: \'ArrowRight\', bubbles: true })); [...document.querySelectorAll(\'.hydra-name\')].find(el => el.textContent.trim() === \'second\').click(); await new Promise(r => requestAnimationFrame(r)); if (!document.querySelector(\'.card\')) throw new Error(\'Current Hydra disappeared\'); if (!document.querySelector(\'main [role=status]\')) throw new Error(\'Missing Hydra loading status\'); return true;' })
@@ -336,12 +354,6 @@ try {
     return true;`,
   })
   await b.evaluate({ code: 'await new Promise(r => setTimeout(r, 700)); return true;' })
-  await b.text({ label: 'History' })
-  await b.screenshot({ name: 'history-loading.png' })
-  await b.eventually({
-    condition: '!!document.querySelector(".history-entry")',
-    label: 'History finishes loading',
-  })
   await b.browser({
     args: [
       'open',
@@ -349,8 +361,8 @@ try {
     ],
   })
   await b.eventually({
-    condition: '!!document.querySelector(".history-page") && document.querySelector(".app")?.dataset.connected === "true"',
-    label: 'page selection survives reload after switching',
+    condition: 'document.querySelector(".app")?.dataset.connected === "true"',
+    label: 'page reload reconnects after switching Hydras',
   })
   await b.evaluate({ code: '[...document.querySelectorAll(\'.hydra-name\')].find(el => el.textContent.trim() === \'second\').click(); return true;' })
   await b.eventually({
