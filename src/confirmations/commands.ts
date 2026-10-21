@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
+import { parseArgs, promisify } from 'node:util'
 import { join } from 'node:path'
 import { WRITE, guard, meta, parse, required, type Output } from '../cli/commands.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
@@ -277,8 +277,19 @@ export const approval = guard({
           ENTRY,
           target.name,
           ...target.args,
-          '--hydra',
-          hydraId,
+          // setup service runs every Hydra and refuses --hydra.
+          ...(target.name === 'setup' && parseArgs({
+            args: target.args,
+            options: {
+              ...WRITE,
+              port: { type: 'string' },
+            },
+            strict: false,
+            allowPositionals: true,
+          }).positionals[0] === 'service' ? [] : [
+              '--hydra',
+              hydraId,
+            ]),
         ],
         {
           cwd: target.cwd,
