@@ -17,6 +17,7 @@ import { Tooltip } from '../components/ui/tooltip.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
+import { Disclosure } from '../components/ui/disclosure.tsx'
 import { HoverActions } from '../components/ui/hover-actions.tsx'
 
 const OPEN_SHARE = 0.5

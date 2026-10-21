@@ -7,6 +7,7 @@ import { loadRelevant, taskTimeline, type TaskEvent } from './task-updates.ts'
 
 import { Disclosure } from '../components/ui/disclosure.tsx'
 import { Tooltip } from '../components/ui/tooltip.tsx'
+import { hasTaskQuestion, TaskQuestion } from './task-question.tsx'
 
 const PAGE_SIZE = 50
 
@@ -31,11 +32,15 @@ export function TaskUpdates({
   columns,
   command,
   connected,
+  notify,
+  answer,
 }: {
   card: Card
   columns: HydraColumn[]
   command: Command
   connected: boolean
+  notify({ text }: { text: string }): void
+  answer({ card }: { card: Card }): void
 }) {
   const [
     events,
@@ -179,6 +184,16 @@ export function TaskUpdates({
     columns,
   })
   const updates = oldestFirst ? timeline.toReversed() : timeline
+  const pending = hasTaskQuestion({ card }) ? (
+    <li key="pending-question" className="pending-question">
+      <TaskQuestion
+        card={card}
+        command={command}
+        notify={notify}
+        answer={answer}
+      />
+    </li>
+  ) : null
 
   return (
     <div
@@ -196,8 +211,9 @@ export function TaskUpdates({
         >{oldestFirst ? 'Oldest first ↑' : 'Newest first ↓'}
         </Button>
       </div>
-      {updates.length > 0 && (
+      {(updates.length > 0 || pending) && (
         <ol>
+          {!oldestFirst && pending}
           {updates.map(update => (
             <li key={update.id}>
               <div className="update-heading">
@@ -223,10 +239,11 @@ export function TaskUpdates({
               ) : update.note && <Markdown text={update.note} />}
             </li>
           ))}
+          {oldestFirst && pending}
         </ol>
       )}
       {loading && <p className="muted" role="status">Loading updates…</p>}
-      {!updates.length && !loading && !error && <p className="empty">No updates yet.</p>}
+      {!updates.length && !pending && !loading && !error && <p className="empty">No updates yet.</p>}
       {error && <p role="alert">{error} <Button disabled={!connected} onClick={() => setRetry(n => n + 1)}>Try again</Button></p>}
       {more && (
         <Button disabled={!connected || loading} onClick={() => void older()}>Older updates</Button>

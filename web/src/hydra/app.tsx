@@ -23,11 +23,12 @@ import { commandQuery } from './oracle-catalog.ts'
 import { useFoundCards } from './card-oracle.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { useHydraKeyboard } from '../keyboard/hydra.tsx'
+import { afterTaskLayout, scrollTask } from './scroll-task.ts'
 
-// What a reload (by hand, or after the server serves a new build) would otherwise lose:
-// the open card, the page, unsent drafts and how far the Hydra was scrolled. Kept per tab.
+// Keep each tab's view across reloads and newly served builds.
 type Restore = {
   selected?: string | null
+  expanded?: string[]
   page?: string
   panel?: boolean
   drafts?: Record<string, string>
@@ -50,6 +51,28 @@ const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [da
   ] as const)
 
 const hydraViews = new Map<string, Restore>()
+
+function expandedByColumn({
+  ids,
+  cards,
+  pending,
+}: {
+  ids: string[]
+  cards: Record<string, Card>
+  pending: Record<string, string>
+}) {
+  const columns = new Set<string>(), kept: string[] = []
+
+  for (const id of [...ids].reverse()) {
+    const column = cards[id]?.column ?? pending[id] ?? id
+
+    if (!columns.has(column)) {
+      columns.add(column); kept.push(id)
+    }
+  }
+
+  return kept.reverse()
+}
 
 export function App() {
   const hydra = useHydra()
@@ -88,8 +111,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     ] = useState('')
   const [
       selected,
-      setSelected,
-    ] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [
+      setActive,
+    ] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? restored.expanded?.at(-1) ?? null), [
       drafts,
       setDrafts,
     ] = useState<Record<string,string>>(restored.drafts ?? {}), [
@@ -99,6 +122,87 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       newColumn,
       setNewColumn,
     ] = useState<string | null>(null)
+  const [
+    expanded,
+    setExpanded,
+  ] = useState<string[]>(new URLSearchParams(location.search).has('open-project')
+    ? [] : restored.expanded ?? (restored.selected ? [restored.selected] : []))
+  const currentCards = useRef(state.cards)
+  currentCards.current = state.cards
+  const pendingColumns = useRef<Record<string, string>>({})
+  const pendingFocus = useRef<string | null>(null)
+  const pendingOpen = useRef<AbortController | null>(null)
+  const highlight = useRef<Animation | null>(null)
+  const [
+    revealing,
+    setRevealing,
+  ] = useState<string | null>(null)
+
+  const cancelOpen = () => {
+    pendingOpen.current?.abort(); pendingOpen.current = null
+    highlight.current?.cancel(); highlight.current = null
+    setRevealing(null)
+  }
+
+  useEffect(
+    () => () => {
+      pendingOpen.current?.abort(); pendingOpen.current = null
+      highlight.current?.cancel(); highlight.current = null
+    },
+    [],
+  )
+  useEffect(
+    () => {
+      if (page !== 'hydra') {
+        cancelOpen()
+      }
+    },
+    [page],
+  )
+
+  const clearSelection = () => {
+    cancelOpen(); setActive(null); setExpanded([]); pendingFocus.current = null
+  }
+
+  const expandedIds = expandedByColumn({
+    ids: expanded,
+    cards: state.cards,
+    pending: pendingColumns.current,
+  })
+  useEffect(
+    () => {
+      setExpanded(ids => {
+        const next = expandedByColumn({
+          ids,
+          cards: state.cards,
+          pending: pendingColumns.current,
+        })
+
+        return ids.length === next.length && ids.every((
+          id,
+          index,
+        ) => id === next[index]) ? ids : next
+      })
+    },
+    [state.cards],
+  )
+  useLayoutEffect(() => {
+    const id = pendingFocus.current
+
+    if (page !== 'hydra' || !id) {
+      return
+    }
+
+    const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"].selected`)
+    const updates = element?.querySelector<HTMLElement>('.task-updates')
+
+    if (updates) {
+      pendingFocus.current = null
+      requestAnimationFrame(() => {
+        updates.focus({ preventScroll: true })
+      })
+    }
+  })
   const [
     comments,
     setComments,
@@ -274,6 +378,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     () => () => {
       const value: Restore = {
         selected,
+        expanded,
         page,
         panel,
         drafts,
@@ -305,6 +410,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     [
       navigation.hydraId,
       selected,
+      expanded,
       page,
       panel,
       drafts,
@@ -348,12 +454,17 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     query: commandQuery({ query }) ? '' : query,
     meaning: found.map(h => h.card),
   }).filter(c => !project || c.project === project || projectReferences.includes(c.project ?? ''))
-  const card = selected ? state.cards[selected] : undefined
-  const cards = card && !filteredCards.some(item => item.id === card.id)
-    ? [
-      ...filteredCards,
-      card,
-    ] : filteredCards
+  const cards = [
+    ...filteredCards,
+    ...[
+      ...new Set([
+        ...expandedIds,
+        ...(revealing ? [revealing] : []),
+      ]),
+    ]
+      .map(id => state.cards[id]).filter((item): item is Card =>
+        !!item && !filteredCards.some(card => card.id === item.id)),
+  ]
   const title = pageTitle({
     page,
     cards: state.cards,
@@ -414,6 +525,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             restoreKey,
             JSON.stringify({
               selected,
+              expanded,
               page,
               panel,
               drafts,
@@ -436,6 +548,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     },
     [
       selected,
+      expanded,
       page,
       panel,
       drafts,
@@ -454,75 +567,153 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             key,
             el,
           ] of scrollers()) {
-            el.scrollTo(...(scroll[key] ?? [
+            const [
+              left,
+              top,
+            ] = scroll[key] ?? [
               0,
               0,
-            ]))
+            ]
+            el.scrollTo({
+              left,
+              top,
+              behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+            })
           }
         })
       }
     },
     [state.seq],
   )
-  useEffect(
-    () => {
-      if (page === 'hydra' && selected) {
-        requestAnimationFrame(() => document.querySelector('.card.selected')?.scrollIntoView({
-          block: 'nearest',
-          inline: 'nearest',
-        }))
-      }
-    },
-    [
-      page,
-      selected,
-    ],
-  )
 
   const openHydra = () => {
-    setPage('hydra')
+    cancelOpen(); setPage('hydra')
     requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
   }
 
-  const open = ({ id }: { id: string }) => {
+  const expand = ({
+    id,
+    column,
+    focus = true,
+  }: {
+    id: string
+    column?: string
+    focus?: boolean
+  }) => {
+    if (column) {
+      pendingColumns.current[id] = column
+    }
+
+    pendingFocus.current = focus ? id : null
+    setExpanded(ids => expandedByColumn({
+      ids: [
+        ...ids.filter(item => item !== id),
+        id,
+      ],
+      cards: currentCards.current,
+      pending: pendingColumns.current,
+    }))
+    setActive(id); setPage('hydra')
+  }
+
+  const open = async ({ id }: { id: string }): Promise<boolean> => {
+    cancelOpen(); pendingFocus.current = null
+
     if (id === '$board') {
       openHydra()
 
+      return true
+    }
+
+    if (!state.cards[id]) {
+      return false
+    }
+
+    const controller = new AbortController()
+    const { signal } = controller
+    pendingOpen.current = controller
+    setPage('hydra'); setRevealing(id)
+
+    try {
+      if (!await afterTaskLayout({ signal })) {
+        return false
+      }
+
+      const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"]`)
+
+      if (!element || !await scrollTask({
+        element,
+        signal,
+      })) {
+        return false
+      }
+
+      if (!currentCards.current[id] || signal.aborted) {
+        return false
+      }
+
+      expand({
+        id,
+        focus: false,
+      })
+
+      if (!await afterTaskLayout({ signal })) {
+        return false
+      }
+
+      const updates = element.querySelector<HTMLElement>('.task-updates')
+      updates?.focus({ preventScroll: true })
+
+      return !!updates && element.isConnected && !signal.aborted
+    } finally {
+      if (pendingOpen.current === controller) {
+        pendingOpen.current = null; setRevealing(null)
+      }
+    }
+  }
+
+  const revealTask = async ({ id }: { id: string }) => {
+    if (!await open({ id })) {
       return
     }
 
-    if (state.cards[id]) {
-      setSelected(id); setPage('hydra')
-      requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.task-updates' })))
+    const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"].selected`)
+
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && element) {
+      highlight.current = element.animate(
+        [
+          { boxShadow: '0 0 0 3px var(--color-gold-line)' },
+          { boxShadow: '0 0 0 0 transparent' },
+        ],
+        {
+          duration: 1200,
+          easing: 'ease-out',
+        },
+      )
     }
   }
 
-  const revealTask = ({ id }: { id: string }) => {
-    open({ id })
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const element = document.querySelector<HTMLElement>(`[data-task="${CSS.escape(id)}"]`)
-      element?.scrollIntoView({
-        block: 'nearest',
-        inline: 'nearest',
-      })
+  const close = ({ id = selected }: { id?: string | null } = {}) => {
+    if (!id) {
+      return
+    }
 
-      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        element?.animate(
-          [
-            { boxShadow: '0 0 0 3px var(--color-gold-line)' },
-            { boxShadow: '0 0 0 0 transparent' },
-          ],
-          {
-            duration: 1200,
-            easing: 'ease-out',
-          },
-        )
-      }
-    }))
-  }
+    cancelOpen()
+    const closing = state.cards[id]
+    const remaining = expandedIds.filter(item => item !== id)
+    const target = filteredCards.find(c => c.id === id)
+      ?? filteredCards.find(c => c.column === closing?.column) ?? filteredCards[0]
+    setExpanded(remaining)
 
-  const close = () => {
-    const target = filteredCards.find(c => c.id === selected) ?? filteredCards.find(c => c.column === card?.column) ?? filteredCards[0]; setSelected(null); requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-column-heading="${CSS.escape(card?.column ?? 'needs_you')}"]` }))
+    if (selected === id) {
+      setActive(remaining.at(-1) ?? null)
+    }
+
+    if (pendingFocus.current === id) {
+      pendingFocus.current = null
+    }
+
+    requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-column-heading="${CSS.escape(closing?.column ?? 'needs_you')}"]` }))
   }
 
   const createTask = ({
@@ -532,7 +723,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     column: string
     parent?: string
   }) => {
-    setPage('hydra'); setWorkspace(''); setTag(''); setQuery(''); filterProject({ path: '' }); setSelected(null)
+    setPage('hydra'); setWorkspace(''); setTag(''); setQuery(''); filterProject({ path: '' }); clearSelection()
     setCreatingTask({
       column,
       ...(parent ? { parent } : {}),
@@ -590,17 +781,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     }))
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
   }
-
-  const detail = card && (
-    <Detail
-      key={card.id}
-      card={card}
-      state={state}
-      command={command}
-      connected={connected}
-      notify={notify}
-    />
-  )
 
   return (
     <KeyboardProvider
@@ -663,7 +843,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             project={project}
             resolveProject={resolveProject}
             selectProject={({ path }) => {
-              filterProject({ path: project === path ? '' : path }); setSelected(null); setPage('hydra')
+              filterProject({ path: project === path ? '' : path }); clearSelection(); setPage('hydra')
             }}
             showHydra={() => {
               setPage('hydra'); filterProject({ path: '' })
@@ -764,8 +944,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                   notify={notify}
                                   cancel={() => setCreatingTask(null)}
                                   saved={({ id }) => {
-                                    setCreatingTask(null); setSelected(id)
-                                    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.task-updates' })))
+                                    setCreatingTask(null); expand({
+                                      id,
+                                      column: c.id,
+                                    })
                                     const first = items[0]
 
                                     if (first) {
@@ -793,10 +975,16 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                   notify={notify}
                                   latest={latest[item.id]}
                                   answer={answerTask}
-                                  selected={selected === item.id}
+                                  selected={expandedIds.includes(item.id)}
                                   view={view}
                                   save={save}
-                                  open={({ id }) => selected === id ? close() : open({ id })}
+                                  open={({ id }) => {
+                                    if (expandedIds.includes(id)) {
+                                      close({ id })
+                                    } else {
+                                      open({ id })
+                                    }
+                                  }}
                                   command={command}
                                   connected={connected}
                                   tabIndex={
@@ -805,7 +993,16 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                       : items[0]?.id) === item.id ? 0 : -1
                                   }
                                 >
-                                  {selected === item.id && detail}
+                                  {expandedIds.includes(item.id) && (
+                                    <Detail
+                                      card={item}
+                                      state={state}
+                                      command={command}
+                                      connected={connected}
+                                      notify={notify}
+                                      answer={answerTask}
+                                    />
+                                  )}
                                 </HydraCard>
                               ))}
                             </Column>
