@@ -326,7 +326,7 @@ try {
   )
   await evaluate({ code: `document.querySelector('[data-task="${state().keys.long}"] .card-open').dispatchEvent(new MouseEvent('dblclick',{bubbles:true,detail:2}));return true;` })
   await eventually({
-    condition:'!!document.querySelector(".card-open[role=textbox]")',
+    condition:'document.activeElement?.matches(".card-open[role=textbox]")',
     label:'Double-click starts title editing',
   })
   await evaluate({ code: 'const title=document.querySelector(\'[aria-label="Task title"]\');title.textContent=\'Review the longer migration plan\';title.blur();return true;' })
