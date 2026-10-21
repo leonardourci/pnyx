@@ -9,7 +9,7 @@ import { startTask } from '../src/cli/start.ts'
 import { hydraCheck, workerCommands } from '../src/cli/workers.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { DEFAULT_WIDTHS, viewFor } from '../src/core/view.ts'
-import { MEMORY_BUDGET } from '../src/core/digest.ts'
+import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '../src/core/digest.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
@@ -918,7 +918,7 @@ test(
 )
 
 test(
-  'the digest prints columns, open tasks, what waits and memory, within one memory budget',
+  'the digest prints columns, open tasks, what waits, owner memory and Hydra memory, each within its budget',
   async () => {
     const f = fixture()
 
@@ -971,7 +971,7 @@ test(
         },
       })
       await f.run({
-        name: 'hydra',
+        name: 'owner',
         args: [
           'memory',
           'set',
@@ -979,6 +979,17 @@ test(
           'preferences',
           '--text',
           'Short PRs.',
+        ],
+      })
+      await f.run({
+        name: 'hydra',
+        args: [
+          'memory',
+          'set',
+          '--key',
+          'scope',
+          '--text',
+          'API work.',
         ],
       })
       const digest = await workerCommands.hydra([
@@ -1008,19 +1019,33 @@ test(
       )
       assert.match(
         digest,
-        /Owner preferences \(memory key preferences\):\nShort PRs\.\n/,
+        /Owner preferences \(owner memory key preferences\):\nShort PRs\.\n/,
       )
       assert.match(
         digest,
-        /Learnings \(memory key learnings\):\nnone yet/,
+        /Learnings \(owner memory key learnings\):\nnone yet/,
       )
       assert.match(
         digest,
-        /Memory uses 10 of 6000 characters\.\n<\/pnyx-digest>$/,
+        new RegExp(`Owner memory uses 10 of ${OWNER_MEMORY_BUDGET} characters\\.\n\nHydra memory \\(this Hydra only\\):\n- scope: API work\\.\nHydra memory uses 9 of ${HYDRA_MEMORY_BUDGET} characters\\.\n</pnyx-digest>$`),
+      )
+      assert.throws(
+        () => f.run({
+          name: 'hydra',
+          args: [
+            'memory',
+            'set',
+            '--key',
+            'preferences',
+            '--text',
+            'Long PRs.',
+          ],
+        }),
+        /Pnyx-wide owner memory/,
       )
 
       await f.run({
-        name: 'hydra',
+        name: 'owner',
         args: [
           'memory',
           'set',
@@ -1036,10 +1061,10 @@ test(
           '--hydra',
           'default',
         ]) as unknown as string,
-        /Other memory:\n- constructor: Kept\./,
+        /Other owner memory:\n- constructor: Kept\./,
       )
       await f.run({
-        name: 'hydra',
+        name: 'owner',
         args: [
           'memory',
           'forget',
@@ -1063,49 +1088,70 @@ test(
             ),
             'utf8',
           ),
-          new RegExp(`${MEMORY_BUDGET} characters`),
+          new RegExp(`${OWNER_MEMORY_BUDGET}[\\s\\S]*${HYDRA_MEMORY_BUDGET}|${HYDRA_MEMORY_BUDGET}[\\s\\S]*${OWNER_MEMORY_BUDGET}`),
         )
       }
 
-      assert.throws(
-        () => f.run({
-          name: 'hydra',
+      for (const [
+        name,
+        key,
+        budget,
+        used,
+      ] of [
+          [
+            'owner',
+            'learnings',
+            OWNER_MEMORY_BUDGET,
+            10,
+          ],
+          [
+            'hydra',
+            'notes',
+            HYDRA_MEMORY_BUDGET,
+            9,
+          ],
+        ] as const) {
+        assert.throws(
+          () => f.run({
+            name,
+            args: [
+              'memory',
+              'set',
+              '--key',
+              key,
+              '--text',
+              'x'.repeat(budget - used + 1),
+            ],
+          }),
+          new RegExp(`would use ${budget + 1} of ${budget}`),
+        )
+        await f.run({
+          name,
           args: [
             'memory',
             'set',
             '--key',
-            'learnings',
+            key,
             '--text',
-            'x'.repeat(5991),
+            'x'.repeat(budget - used),
           ],
-        }),
-        /would use 6001 of 6000/,
-      )
-      await f.run({
-        name: 'hydra',
-        args: [
-          'memory',
-          'set',
-          '--key',
-          'learnings',
-          '--text',
-          'x'.repeat(5990),
-        ],
-      })
-      assert.match(
-        JSON.stringify(await f.run({
-          name: 'hydra',
-          args: ['memory'],
-        })),
-        /6000 of 6000 characters/,
-      )
+        })
+        assert.match(
+          JSON.stringify(await f.run({
+            name,
+            args: ['memory'],
+          })),
+          new RegExp(`${budget} of ${budget} characters`),
+        )
+      }
+
       assert.match(
         await workerCommands.hydra([
           'digest',
           '--hydra',
           'default',
         ]) as unknown as string,
-        /Load the inscribe skill/,
+        /Owner memory uses 8000 of 8000 characters\. Load the inscribe skill[\s\S]*Hydra memory uses 1500 of 1500 characters\. Load the inscribe skill/,
       )
     } finally {
       rmSync(
