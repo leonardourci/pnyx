@@ -366,7 +366,7 @@ function readSnapshot({ dir }: { dir: string }): Snapshot | null {
   }
 }
 
-function writeDurably({
+export function writeDurably({
   path,
   data,
   flag,

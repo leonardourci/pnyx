@@ -407,6 +407,7 @@ export function wakesHydra({
   }
 
   switch (event.type) {
+    case 'task.queue':
     case 'task.declared':
     case 'task.reminder-due':
       return true
@@ -443,6 +444,33 @@ export function applyHydra({
   state: HydraState
   event: HydraEvent
 }): boolean {
+  if (event.type === 'hydra.dispatch-proposed') {
+    state.dispatchProposals = [
+      ...(state.dispatchProposals ?? []).filter(p => p.token !== event.data.token),
+      structuredClone(event.data),
+    ]
+
+    return true
+  }
+
+  if (event.type === 'hydra.dispatch-progress') {
+    const proposal = state.dispatchProposals?.find(p => p.token === event.data.token)
+
+    if (proposal) {
+      proposal.status = event.data.status
+      proposal.error = event.data.error
+    }
+
+    return true
+  }
+
+  if (event.type === 'hydra.dispatch-resolved') {
+    state.dispatchProposals = (state.dispatchProposals ?? [])
+      .filter(p => p.token !== event.data.token)
+
+    return true
+  }
+
   if (event.type === 'hydra.project') {
     state.projects = [
       ...(state.projects ?? []).filter(p => p.path !== event.data.after.path),

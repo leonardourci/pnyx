@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { approval } from '../confirmations/commands.ts'
 import { dispatchCommands, DISPATCH_HELP } from '../dispatch/cli.ts'
 import { project, PROJECT_HELP } from '../projects/cli.ts'
 import { createRequire } from 'node:module'
@@ -14,6 +15,7 @@ import { ownerOnly } from './hydra-session.ts'
 
 const { version } = createRequire(import.meta.url)('../../package.json') as { version: string }
 const HELP: Record<string, string> = {
+  approval: 'usage: pnyx-axi approval confirm|dismiss <token> [--confirm <token>]\nOwner-only questions appear in Hydra’s chat.',
   oracle: ORACLE_HELP,
   settings: SETTINGS_HELP,
   project: PROJECT_HELP,
@@ -33,6 +35,7 @@ await runAxiCli({
   commands: ownerOnly({
     commands: {
       ...commands,
+      approval,
       project,
       ...workerCommands,
       ...dispatchCommands,

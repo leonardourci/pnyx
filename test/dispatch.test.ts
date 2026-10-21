@@ -1,16 +1,21 @@
 import { hydraEvent } from '../src/core/hydra.ts'
-import { withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { emptyHydra } from '../src/core/reducer.ts'
-import { configPath, effectiveDispatch, parseAccounts, parseDispatch, writeConfig, type EffectiveDispatch } from '../src/dispatch/config.ts'
+import { configPath, effectiveDispatch, onTemplate, parseAccounts, parseDispatch, readTemplate, writeConfig, type EffectiveDispatch } from '../src/dispatch/config.ts'
 import { accountEnvironment, chooseCandidate, chosenSettings, hostedOverride, overrideOf, readQuota, validateChoice, type QuotaReading } from '../src/dispatch/select.ts'
-import { dispatchCommands, STARTER_ACCOUNTS, STARTER_DISPATCH } from '../src/dispatch/cli.ts'
+import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { commands } from '../src/cli/commands.ts'
+import { hydraDigest, TEMPLATE_NUDGE } from '../src/core/digest.ts'
+import { setupCheck, setupDigest } from '../src/setup/check.ts'
+
+const TEMPLATE_DISPATCH = parseDispatch({ value: readTemplate() })
+const TEMPLATE_ACCOUNTS = parseAccounts({ value: readTemplate({ accounts: true }) })
 
 // Keeps the default-login fallback away from the real harness logins.
 const noLogin = join(
@@ -155,7 +160,7 @@ test(
         hydraId: 'lab',
         shared: true,
       }),
-      value: STARTER_DISPATCH,
+      value: TEMPLATE_DISPATCH,
     })
     writeConfig({
       path: configPath({ hydraId: 'lab' }),
@@ -173,7 +178,7 @@ test(
     })
     assert.deepEqual(
       effective.dispatch,
-      STARTER_DISPATCH,
+      TEMPLATE_DISPATCH,
     )
     writeConfig({
       path: configPath({ hydraId: 'lab' }),
@@ -197,7 +202,7 @@ test(
     )
     assert.deepEqual(
       effective.dispatch.default,
-      STARTER_DISPATCH.default,
+      TEMPLATE_DISPATCH.default,
     )
     assert.deepEqual(
       effective.dispatch.workers,
@@ -479,10 +484,15 @@ test(
       })
     }
 
+    current.dispatch.rules.build!.candidates = [
+      {
+        harness: 'claude',
+        model: 'opus',
+      },
+    ]
     const chosen = chooseCandidate({
       config: current,
       rule: 'build',
-      harness: 'claude',
       quota,
     })
     assert.equal(
@@ -502,7 +512,6 @@ test(
       chooseCandidate({
         config: current,
         rule: 'build',
-        harness: 'claude',
         project: '/project',
         quota,
       }).account,
@@ -607,7 +616,7 @@ test(
       )
       assert.match(
         chosen.reason,
-        /only usable candidate/,
+        /owner override/,
       )
       assert.doesNotMatch(
         chosen.reason,
@@ -921,7 +930,7 @@ test(
           ],
         },
       }),
-      /claude\/gpt-6-luna: not offered/,
+      /gpt-6-luna: not offered/,
     )
     assert.equal(
       chooseCandidate({
@@ -997,7 +1006,7 @@ test(
 )
 
 test(
-  'CLI initializes starter files, edits rules and accounts, and rejects secret fields',
+  'CLI copies the templates, edits rules and accounts, and rejects secret fields',
   () => {
     const { root } = lab()
     dispatchCommands.rule([
@@ -1015,7 +1024,7 @@ test(
         global,
         'utf8',
       )),
-      STARTER_DISPATCH,
+      TEMPLATE_DISPATCH,
     )
     assert.deepEqual(
       JSON.parse(readFileSync(
@@ -1026,7 +1035,7 @@ test(
         }),
         'utf8',
       )),
-      STARTER_ACCOUNTS,
+      TEMPLATE_ACCOUNTS,
     )
     dispatchCommands.rule([
       'set',
@@ -1265,27 +1274,121 @@ test(
 )
 
 test(
-  'shipped starter templates match the initializer',
+  'with no dispatch file the template rules apply and rule list and the digest nudge rule init',
   () => {
+    lab()
+    const { state } = loadHydra({ hydraId: 'lab' })
+    const nudged = () => hydraDigest({
+      hydraId: 'lab',
+      state,
+      owner: {},
+      setup: setupDigest({
+        items: setupCheck({
+          hydraId: 'lab',
+          state,
+        }),
+      }),
+    }).includes(`- config: ${TEMPLATE_NUDGE}`)
+    const listed = () => (dispatchCommands.rule([
+      'list',
+      '--hydra',
+      'lab',
+    ]) as { help: string[] }).help.includes(TEMPLATE_NUDGE)
+
+    const { rules } = effectiveDispatch({
+      hydraId: 'lab',
+      state,
+    }).dispatch
     assert.deepEqual(
-      JSON.parse(readFileSync(
-        new URL(
-          '../setup/config/hydra-heads-dispatch.json',
-          import.meta.url,
-        ),
-        'utf8',
-      )),
-      STARTER_DISPATCH,
+      rules,
+      TEMPLATE_DISPATCH.rules,
     )
-    assert.deepEqual(
-      JSON.parse(readFileSync(
-        new URL(
-          '../setup/config/hydra-accounts.json',
-          import.meta.url,
-        ),
+    assert.ok(rules.build)
+    assert.ok(nudged())
+    assert.ok(listed())
+    dispatchCommands.rule([
+      'init',
+      '--shared',
+      '--hydra',
+      'lab',
+    ])
+    assert.equal(
+      nudged(),
+      false,
+    )
+    assert.equal(
+      listed(),
+      false,
+    )
+  },
+)
+
+test(
+  'a Hydra dispatch file alone ends the template nudge',
+  () => {
+    lab()
+    const { state } = loadHydra({ hydraId: 'lab' })
+    writeConfig({
+      path: configPath({ hydraId: 'lab' }),
+      value: { default: [{ harness: 'codex' }] },
+    })
+    assert.equal(
+      onTemplate({
+        hydraId: 'lab',
+        state,
+      }),
+      false,
+    )
+  },
+)
+
+test(
+  'rule init leaves existing shared files byte-identical',
+  () => {
+    lab()
+    const dispatch = configPath({
+      hydraId: 'lab',
+      shared: true,
+    })
+    const accounts = configPath({
+      hydraId: 'lab',
+      shared: true,
+      accounts: true,
+    })
+    mkdirSync(
+      join(
+        dispatch,
+        '..',
+      ),
+      { recursive: true },
+    )
+    writeFileSync(
+      dispatch,
+      '{"main":"claude:mine"}',
+    )
+    writeFileSync(
+      accounts,
+      '{"accounts":{"claude:mine":{"provider":"claude","folder":"~/.claude-mine"}}}',
+    )
+    dispatchCommands.rule([
+      'init',
+      '--shared',
+      '--hydra',
+      'lab',
+    ])
+    assert.equal(
+      readFileSync(
+        dispatch,
         'utf8',
-      )),
-      STARTER_ACCOUNTS,
+      ),
+      '{"main":"claude:mine"}',
+    )
+    assert.equal(
+      readFileSync(
+        accounts,
+        'utf8',
+      ),
+      '{"accounts":{"claude:mine":{"provider":"claude","folder":"~/.claude-mine"}}}',
     )
   },
 )
@@ -1398,10 +1501,15 @@ test(
   'hosted choice validation rejects unlisted accounts, changed rules and provider mismatches',
   () => {
     const current = config()
+    current.dispatch.rules.build!.candidates = [
+      {
+        harness: 'claude',
+        model: 'opus',
+      },
+    ]
     const chosen = chooseCandidate({
       config: current,
       rule: 'build',
-      harness: 'claude',
       quota: () => reading({ remaining: 50 }),
     })
     assert.deepEqual(

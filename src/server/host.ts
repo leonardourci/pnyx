@@ -1,4 +1,6 @@
-import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
+import { setupCheck, setupDigest } from '../setup/check.ts'
+import { projectDigest } from '../projects/context.ts'
+import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, overrideOf, hostedOverride, readQuota, type DispatchChoice } from '../dispatch/select.ts'
 import { effectiveDispatch, type Harness } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -16,6 +18,7 @@ import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
 import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraEvent, wakesHydra } from '../core/hydra.ts'
 import { freeTask } from '../cli/start.ts'
 import { hydraDigest } from '../core/digest.ts'
+import { ownerMemory } from '../store/owner-memory.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
 import { HydraError, HYDRA_ACTOR, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
@@ -582,10 +585,48 @@ export function createHost({
 
   const hydraInstructions = () =>
     `You are Hydra for Pnyx Hydra "${hydraId}". Your contract is AGENTS.md in your current folder; follow it. Use pnyx-axi with --hydra ${hydraId}; PNYX_ACTOR=hydra is already set. Projects attach later; your current folder belongs to Hydra.`
-  const digest = () => hydraDigest({
-    hydraId,
-    state: loadHydra({ hydraId }).state,
-  })
+
+  let memoryStamp: string | undefined
+
+  const digest = () => {
+    const owner = ownerMemory()
+    const state = loadHydra({ hydraId }).state
+
+    const projects = projectDigest({ state })
+    memoryStamp = JSON.stringify({
+      owner,
+      hydra: state.hydraMemory,
+      projects,
+    })
+
+    return hydraDigest({
+      hydraId,
+      state,
+      owner,
+      projects,
+      setup: setupDigest({
+        items: setupCheck({
+          hydraId,
+          state,
+        }),
+      }),
+    })
+  }
+
+  const memoryChangeNote = () => {
+    const owner = ownerMemory()
+    const state = loadHydra({ hydraId }).state
+    const stamp = JSON.stringify({
+      owner,
+      hydra: state.hydraMemory,
+      projects: projectDigest({ state }),
+    })
+    const changed = memoryStamp !== undefined && memoryStamp !== stamp
+    memoryStamp = stamp
+
+    return changed ? '\n\nMemory changed; load owner memory with owner memory list, Hydra memory with hydra memory list or project memory with project show <name|path> when needed.' : ''
+  }
+
   // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.
   const hydraSession = () => ({
     instructions: hydraInstructions(),
@@ -1420,7 +1461,7 @@ export function createHost({
           prepared = undefined
           const waking = /^(wake|stall):/.test(id) && !opened && Boolean(entry.session)
           entry.activity = 'working'
-          entry.input.push({ text: waking ? `${text}\n\n${digest()}` : text })
+          entry.input.push({ text: waking ? `${text}${memoryChangeNote()}` : text })
 
           return { state: 'queued' }
         } catch (error) {
@@ -2399,6 +2440,12 @@ export async function hostRequest({
         name: 'rule',
         optional: true,
       })
+      const harness = field({
+        body,
+        name: 'harness',
+        optional: true,
+      })
+      const override = overrideOf({ value: body.override })
       const named = (ruleCandidates({
         dispatch: config.dispatch,
         rule,
@@ -2413,11 +2460,52 @@ export async function hostRequest({
           config,
           project,
           rule,
+          harness,
+          override,
           offers: await catalogOffers({
             host,
-            harnesses: named.map(c => c.harness),
+            harnesses: harness === 'claude' || harness === 'codex' ? [harness] : override?.model ? [
+              'claude',
+              'codex',
+            ] : named.map(c => c.harness),
           }),
         })
+
+      hostedOverride({
+        harness: dispatch.provider,
+        override: dispatch.override,
+      })
+
+      if (dispatch.ownerOverride) {
+        const settings = chosenSettings({ choice: dispatch })
+
+        if (settings.model) {
+          const models = modelIds({ models: await host.models({ harness: dispatch.provider }) })
+          const model = dispatch.provider === 'claude' ? settings.model.replace(
+            /\[1m\]$/,
+            '',
+          ) : settings.model
+
+          if (!models.includes(model)) {
+            throw new HydraError({
+              message: `${dispatch.provider}/${settings.model}: not offered`,
+              code: 'VALIDATION_ERROR',
+            })
+          }
+        }
+
+        if (readQuota({
+          account: {
+            provider: dispatch.provider,
+            folder: dispatch.folder,
+          },
+        }).auth === 'signed-out') {
+          throw new HydraError({
+            message: `account ${dispatch.account} is signed out`,
+            code: 'ACCOUNT_SIGNED_OUT',
+          })
+        }
+      }
 
       // A setting changed after the start would reach only the next turn.
       const settings: Record<string, string> = {

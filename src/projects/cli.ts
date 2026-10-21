@@ -1,3 +1,5 @@
+import { PROJECT_MEMORY_BUDGET } from './memory.ts'
+import { projectMemoryCommand } from './memory-cli.ts'
 import { CLONE_TIMEOUT_MS } from './limits.ts'
 import { execFile } from 'node:child_process'
 import { isAbsolute, resolve } from 'node:path'
@@ -11,6 +13,10 @@ import { findProject, projectFolder, projectName, projectRows, sharingHydras } f
 const clone = promisify(execFile)
 
 async function projectCommand({ args }: { args: string[] }): Promise<Output> {
+  if (args[0] === 'memory') {
+    return projectMemoryCommand({ args: args.slice(1) })
+  }
+
   const {
     values,
     positionals,
@@ -45,6 +51,21 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     })
   }
 
+  if (action === 'show') {
+    return projectMemoryCommand({
+      args: [
+        'list',
+        '--project',
+        required({
+          value: ref,
+          what: 'project name or path',
+        }),
+        '--hydra',
+        hydraId,
+      ],
+    })
+  }
+
   if (action === 'list' && !ref && !values.clone && !values.into) {
     const projects = projectRows({ state: current })
 
@@ -58,7 +79,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
   if (action !== 'add' && action !== 'remove' && action !== 'set') {
     throw new HydraError({
-      message: 'Use project add <path>, project add --clone <url> --into <folder>, project list, project set <name|path> or project remove <name|path>',
+      message: 'Use project add <path>, project add --clone <url> --into <folder>, project list, project show <name|path>, project set <name|path> or project remove <name|path>',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -300,9 +321,16 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 }
 
 export const project = guard({ handler: projectCommand })
-export const PROJECT_HELP = `pnyx-axi project add <path> [--hydra <id>]
+export const PROJECT_HELP = `pnyx-axi project memory list|set|forget --project <name|path> [--key profile|preferences|learnings] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
+
+Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
+List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
+Preferences and learnings persist independently of profile refreshes. Writes accept --reason, --event-id and --if-revision.
+
+pnyx-axi project add <path> [--hydra <id>]
 pnyx-axi project add --clone <url> --into <folder> [--hydra <id>]
 pnyx-axi project list [--hydra <id>]
+pnyx-axi project show <name|path> [--hydra <id>]
 pnyx-axi project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false] [--hydra <id>]
 pnyx-axi project remove <name|path> [--hydra <id>]
 pnyx-axi project set <name|path> --copy <shell command> [--hydra <id>]

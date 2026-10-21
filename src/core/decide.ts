@@ -788,11 +788,13 @@ export function decideSession({
   ref,
   task,
   meta,
+  fromQueue,
 }: {
   state: HydraState
   ref: string
   task: string | null
   meta: Meta
+  fromQueue?: string
 }): Decision {
   if (meta.id && meta.id in state.eventIds) {
     return { skipped: 'duplicate' }
@@ -812,6 +814,13 @@ export function decideSession({
     card,
     ifRevision: meta.ifRevision,
   })
+
+  if (target?.queue && target.queue.session !== fromQueue) {
+    throw new HydraError({
+      message: 'unqueue this task before attaching a worker manually',
+      code: 'CONFLICT',
+    })
+  }
 
   if (target?.sessionIds?.some(id => id !== session.id)) {
     throw new HydraError({
@@ -1598,6 +1607,10 @@ export function decideUndo({
   }
 
   if (target.type === 'task.session') {
+    if (target.data.handoff) {
+      throw notUndoable({ message: 'a queue handoff changed the branch and copy; it cannot be undone' })
+    }
+
     const session = findSession({
       state,
       ref: target.data.session,

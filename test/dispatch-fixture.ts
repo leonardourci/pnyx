@@ -87,6 +87,7 @@ else console.log(JSON.stringify({providers: [{provider, state: {status: 'fresh',
     }),
     value: {
       main: 'claude:test',
+      default: [{ harness: 'claude' }],
       workers: {
         claude: ['claude:test'],
         codex: ['codex:test'],

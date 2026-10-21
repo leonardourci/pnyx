@@ -254,6 +254,8 @@ export interface Card {
   launch?: AgentLaunch
   // Task membership is a list for future compatibility; v1 permits at most one.
   sessionIds?: string[]
+  queue?: TaskQueue
+  queueNote?: string
   // Session-only records remain addressable in History, outside the live Hydra.
   hidden?: boolean
   automaticTask?: boolean
@@ -395,6 +397,11 @@ export interface HydraProject {
 
 // A task's own copy of its project: a git worktree Pnyx made, or the folder the
 // project's copy command printed. It is removed only once its work has landed.
+export interface TaskQueue {
+  session: string
+  rank: number
+}
+
 export interface TaskCopy {
   path: string
   project: string
@@ -429,6 +436,16 @@ export interface HydraMessage {
   hydra: string
 }
 export type HydraChange = EventBase & (
+  | {
+    type: 'task.queue'
+    data: {
+      before: TaskQueue | null
+      after: TaskQueue | null
+      order?: string[]
+      column: Column
+      note?: string
+    }
+  }
   | {
     type: 'board.configured'
     data: HydraConfig
@@ -543,6 +560,25 @@ export type HydraChange = EventBase & (
   | {
     type: 'hydra.message'
     data: Omit<HydraMessage, 'id' | 'at' | 'actor'>
+  }
+  | {
+    type: 'hydra.dispatch-proposed'
+    data: DispatchProposal
+  }
+  | {
+    type: 'hydra.dispatch-progress'
+    data: {
+      token: string
+      status: 'applying' | 'failed'
+      error?: string
+    }
+  }
+  | {
+    type: 'hydra.dispatch-resolved'
+    data: {
+      token: string
+      action: 'confirmed' | 'dismissed'
+    }
   }
   | {
     type: 'board.agents'
@@ -687,6 +723,7 @@ export interface AgentSession {
   launch?: AgentLaunch
   lastSeen?: string
   originCardId: string
+  queueCompleted?: number
   taskId: string | null
   terminal?: TerminalFacts
   settings?: AgentSettings
@@ -705,6 +742,11 @@ export type SessionEvent = EventBase & {
     before: string | null
     after: string | null
     brief?: string
+    handoff?: {
+      folder: string
+      copy?: TaskCopy
+      column: Column
+    }
   }
 }
 
@@ -750,6 +792,9 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.declared',
   'task.mirrored',
   'hydra.message',
+  'hydra.dispatch-proposed',
+  'hydra.dispatch-resolved',
+  'hydra.dispatch-progress',
   'chat.message',
   'board.agents',
   'task.launched',
@@ -759,9 +804,22 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.reminder',
   'task.reminder-due',
   'task.copy',
+  'task.queue',
 ]
 
+export interface DispatchProposal {
+  token: string
+  kind: 'rule' | 'account' | 'command'
+  shared: boolean
+  before: string
+  value: string
+  summary: string
+  status?: 'applying' | 'failed'
+  error?: string
+}
+
 export interface HydraState {
+  dispatchProposals?: DispatchProposal[]
   labelColors?: SavedLabelColor[]
   projects?: HydraProject[]
   projectsRevision?: number

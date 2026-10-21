@@ -1,28 +1,80 @@
+import { queuePosition, workerQueue } from '../queue/state.ts'
 import { HYDRA_CARD, hydraConfig } from './hydra.ts'
 import { liveTask, rankOf } from './tasks.ts'
-import type { Card, HydraState } from './model.ts'
+import { HydraError, type Card, type HydraState } from './model.ts'
 
-// Everything Hydra keeps in memory is printed into every digest, so it shares one budget.
-export const MEMORY_BUDGET = 6000
+// Owner memory is Pnyx-wide: the owner's preferences and general learnings, printed in every Hydra's digest.
+export const OWNER_MEMORY_BUDGET = 8000
+// Hydra memory holds only what this Hydra needs: its scope, where it left off, its check cursor.
+export const HYDRA_MEMORY_BUDGET = 1500
 // The skill Hydra loads to curate and save its memory before a reset.
 export const MEMORY_SKILL = 'inscribe'
-export const MEMORY_DOCUMENTS = {
+export const OWNER_DOCUMENTS = {
   preferences: 'Owner preferences',
   learnings: 'Learnings',
 } as const
-// The share of the budget past which the digest asks Hydra to curate its memory.
+// The share of a budget past which the digest asks Hydra to curate that memory.
 const NEARLY_FULL = 0.8
+export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules until `pnyx-axi rule init --shared` copies them into the Pnyx home to edit'
 // ponytail: a Hydra with more live tasks lists the first ones by column and rank; page the rest with task list.
 const TASK_LIMIT = 40
 
-export const memorySize = ({ state }: { state: HydraState }) =>
-  Object.values(state.hydraMemory ?? {}).reduce(
+export type Memory = Record<string, {
+  text: string
+  at: string
+}>
+
+export const memorySize = ({ memory }: { memory: Memory }) =>
+  Object.values(memory).reduce(
     (
       size,
       entry,
     ) => size + entry.text.length,
     0,
   )
+
+// A save over budget is refused unless it shrinks the memory, so curating an overfull memory still works.
+export function checkBudget({
+  memory,
+  key,
+  after,
+  budget,
+  layer,
+}: {
+  memory: Memory
+  key: string
+  after: string | null
+  budget: number
+  layer: string
+}): void {
+  const used = memorySize({ memory })
+  const size = used - (Object.hasOwn(
+    memory,
+    key,
+  ) ? memory[key]!.text.length : 0) + (after?.length ?? 0)
+
+  if (after !== null && size > budget && size > used) {
+    throw new HydraError({
+      message: `${layer} memory would use ${size} of ${budget} characters`,
+      code: 'MEMORY_FULL',
+      help: [`Load the ${MEMORY_SKILL} skill: merge, shorten or forget entries, then save again`],
+    })
+  }
+}
+
+const usage = ({
+  layer,
+  memory,
+  budget,
+}: {
+  layer: string
+  memory: Memory
+  budget: number
+}) => {
+  const used = memorySize({ memory })
+
+  return `${layer} memory uses ${used} of ${budget} characters.${used > budget * NEARLY_FULL ? ` Load the ${MEMORY_SKILL} skill and curate it before it fills.` : ''}`
+}
 
 const clip = ({
   text,
@@ -73,17 +125,36 @@ function taskLine({
       text: card.title,
       size: 80,
     })} · ${column} · ${status} · ${worker}${card.parentId ? ` · under ${card.parentId}` : ''}`,
+    ...(card.queue ? [
+      `  queue: next for ${card.queue.session}, position ${queuePosition({
+        state,
+        card,
+      })?.position}`,
+    ] : []),
+    ...(card.sessionIds?.[0] ? [
+      `  next tasks: ${workerQueue({
+        state,
+        session: card.sessionIds[0],
+      }).map(c => c.id)
+        .join(', ') || 'none'}`,
+    ] : []),
+    ...(card.queueNote ? [`  handoff: ${card.queueNote}`] : []),
     ...(waiting.length ? [`  waiting: ${waiting.join('; ')}`] : []),
   ].join('\n')
 }
 
-// What Hydra knows at the start of a session, after compaction and with each wake.
 export function hydraDigest({
   hydraId,
   state,
+  owner,
+  projects = [],
+  setup = [],
 }: {
   hydraId: string
   state: HydraState
+  owner: Memory
+  projects?: string[]
+  setup?: string[]
 }): string {
   const config = hydraConfig({
     state,
@@ -111,8 +182,8 @@ export function hydraDigest({
     ) => place({ card: a }) - place({ card: b })
       || rankOf({ card: a }) - rankOf({ card: b }))
   const memory = state.hydraMemory ?? {}
-  const others = Object.entries(memory).filter(([key]) => !Object.hasOwn(
-    MEMORY_DOCUMENTS,
+  const others = Object.entries(owner).filter(([key]) => !Object.hasOwn(
+    OWNER_DOCUMENTS,
     key,
   ))
   const hydra = state.cards[HYDRA_CARD]
@@ -123,6 +194,10 @@ export function hydraDigest({
     ...(hydra?.attention.some(a => a.blocking && !a.answered) ? [
       `Your own chat waits on: ${hydra.attention.filter(a => a.blocking && !a.answered).map(a => clip({ text: a.text ?? a.kind }))
         .join('; ')}`,
+    ] : []),
+    ...(setup.length ? [
+      '',
+      ...setup,
     ] : []),
     '',
     'Columns (id · title · tasks · when):',
@@ -140,23 +215,42 @@ export function hydraDigest({
     ...(open.length > TASK_LIMIT ? [`${open.length - TASK_LIMIT} more open tasks: run \`pnyx-axi task list --hydra ${hydraId}\``] : []),
     ...(tasks.length > open.length ? [`${tasks.length - open.length} done tasks not listed`] : []),
     '',
-    ...Object.entries(MEMORY_DOCUMENTS).flatMap(([
+    ...Object.entries(OWNER_DOCUMENTS).flatMap(([
       key,
       title,
     ]) => [
-      `${title} (memory key ${key}):`,
-      memory[key]?.text ?? 'none yet',
+      `${title} (owner memory key ${key}):`,
+      owner[key]?.text ?? 'none yet',
       '',
     ]),
     ...(others.length ? [
-      'Other memory:',
+      'Other owner memory:',
       ...others.map(([
         key,
         entry,
       ]) => `- ${key}: ${entry.text}`),
       '',
     ] : []),
-    `Memory uses ${memorySize({ state })} of ${MEMORY_BUDGET} characters.${memorySize({ state }) > MEMORY_BUDGET * NEARLY_FULL ? ` Load the ${MEMORY_SKILL} skill and curate it before it fills.` : ''}`,
+    usage({
+      layer: 'Owner',
+      memory: owner,
+      budget: OWNER_MEMORY_BUDGET,
+    }),
+    '',
+    'Hydra memory (this Hydra only):',
+    ...(Object.keys(memory).length ? Object.entries(memory).map(([
+      key,
+      entry,
+    ]) => `- ${key}: ${entry.text}`) : ['none yet']),
+    usage({
+      layer: 'Hydra',
+      memory,
+      budget: HYDRA_MEMORY_BUDGET,
+    }),
+    ...(projects.length ? [
+      '',
+      ...projects,
+    ] : []),
     '</pnyx-digest>',
   ].join('\n')
 }

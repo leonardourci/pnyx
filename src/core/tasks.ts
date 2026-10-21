@@ -207,6 +207,28 @@ export function applyAttachment({
     }
   }
 
+  const handoff = event.data.handoff
+
+  if (target && handoff) {
+    delete target.queue
+    delete target.queueNote
+    target.folder = handoff.folder
+    target.column = handoff.column
+    session.queueCompleted = (session.queueCompleted ?? 0) + 1
+
+    if (handoff.copy) {
+      target.copy = structuredClone(handoff.copy)
+
+      if (old && old.copy) {
+        old.copy = {
+          ...old.copy,
+          state: 'removed',
+          reason: `handed to ${target.id}`,
+        }
+      }
+    }
+  }
+
   session.taskId = event.data.after
   projectSession({
     state,

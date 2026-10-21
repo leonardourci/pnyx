@@ -1,3 +1,7 @@
+import { setupCheckOutput } from '../setup/check.ts'
+import { projectWorkerContext } from '../projects/context.ts'
+import { decideQueue } from '../queue/decide.ts'
+import { queuePosition, workerQueue } from '../queue/state.ts'
 import { mentionContext } from '../mentions/mentions.ts'
 import { reminderTime } from '../reminders/time.ts'
 import { waitingReminders } from '../reminders/state.ts'
@@ -7,7 +11,8 @@ import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
 import { setupSkills } from '../integrations/skills/install.ts'
 import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths, viewFor } from '../core/view.ts'
-import { MEMORY_BUDGET, MEMORY_SKILL, memorySize } from '../core/digest.ts'
+import { checkBudget, HYDRA_MEMORY_BUDGET, memorySize, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
+import { ownerMemory, ownerRevision, saveOwnerMemory } from '../store/owner-memory.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { sendReply } from './reply.ts'
 import { findSession, interactive, liveTask, rankOf, selfSession } from '../core/tasks.ts'
@@ -913,6 +918,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       note: { type: 'string' },
       limit: { type: 'string' },
       before: { type: 'string' },
+      behind: { type: 'string' },
       full: { type: 'boolean' },
       harness: { type: 'string' },
       prompt: { type: 'string' },
@@ -1255,6 +1261,44 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     })
   }
 
+  if (action === 'queue' || action === 'unqueue' || action === 'reorder') {
+    const task = required({
+      value: positionals[1],
+      what: 'task id',
+    })
+    const behind = action === 'unqueue' ? undefined : required({
+      value: values.behind as string | undefined,
+      what: '--behind <task|session>',
+    })
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: 'task.queue',
+        card: task,
+      },
+      decide: ({ state }) => {
+        if (action === 'reorder' && !findCard({
+          state,
+          ref: task,
+        }).queue) {
+          throw new HydraError({
+            message: 'only a queued task can be reordered',
+            code: 'CONFLICT',
+          })
+        }
+
+        return decideQueue({
+          state,
+          task,
+          behind,
+          meta: m,
+        })
+      },
+    })
+  }
+
   if (action === 'list') {
     hideDone({ hydraId })
     const state = loadHydra({ hydraId }).state
@@ -1265,6 +1309,12 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         parent: c.parentId ?? '',
         status: c.status?.state ?? 'paused',
         worker: c.sessionIds?.[0] ?? '',
+        ...(c.queue ? {
+          queue: queuePosition({
+            state,
+            card: c,
+          }),
+        } : {}),
       }))
 
     return tasks.length
@@ -1325,6 +1375,24 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         parent: task.parentId ?? 'none',
         status: task.status ? `${task.status.state}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
         worker: task.sessionIds?.[0] ?? 'none',
+        ...(task.queue ? {
+          queue: queuePosition({
+            state,
+            card: task,
+          }),
+        } : {}),
+        ...(task.queueNote ? { handoff: task.queueNote } : {}),
+        next: task.sessionIds?.[0] ? workerQueue({
+          state,
+          session: task.sessionIds[0],
+        }).map(c => ({
+          id: c.id,
+          title: c.title,
+          ...queuePosition({
+            state,
+            card: c,
+          }),
+        })) : [],
         declarations: task.statusLog?.length ?? 0,
         firstmate: task.mirror ? 'mirrored' : 'none',
       },
@@ -1685,6 +1753,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         attachment,
         meta: m,
       })
+
     }
   }
 
@@ -1721,14 +1790,23 @@ async function afterAttach({
     return out
   }
 
-  const home = loadHydra({ hydraId }).state.config?.hydra.home
+  const state = loadHydra({ hydraId }).state
+  const home = state.config?.hydra.home
+  const context = projectWorkerContext({
+    hydraId,
+    state,
+    project: state.cards[attachment.cardId]?.project,
+  })
 
   try {
     const brief = await sendReply({
       hydraId,
       request: {
         card: attachment.cardId,
-        text: attachment.data.brief,
+        text: [
+          context,
+          attachment.data.brief,
+        ].filter(Boolean).join('\n\n'),
         expectedSession: attachment.data.session,
         homes: home ? [home] : [],
         actor: meta.actor,
@@ -2522,45 +2600,31 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
     if (action === 'list') {
       const state = loadHydra({ hydraId }).state
-      const entries = Object.entries(state.hydraMemory ?? {})
-        .map(([
-          key,
-          entry,
-        ]) => ({
-          key,
-          ...entry,
-        }))
 
-      return {
-        memory: entries.length ? entries : 'none: no Hydra memory yet',
-        used: `${memorySize({ state })} of ${MEMORY_BUDGET} characters`,
-      }
-    }
-
-    const key = required({
-      value: values.key as string | undefined,
-      what: '--key',
-    })
-
-    if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(key) || ![
-      'set',
-      'forget',
-    ].includes(action)) {
-      throw new HydraError({
-        message: 'use hydra memory list|set|forget; keys use lowercase letters, digits and dashes',
-        code: 'VALIDATION_ERROR',
+      return memoryList({
+        memory: state.hydraMemory ?? {},
+        budget: HYDRA_MEMORY_BUDGET,
+        empty: 'none: no Hydra memory yet',
       })
     }
 
-    const after = action === 'forget' ? null : required({
-      value: values.text as string | undefined,
-      what: '--text',
-    }).trim()
+    const {
+      key,
+      after,
+    } = memoryChange({
+      action,
+      values,
+      usage: 'use hydra memory list|set|forget',
+    })
 
-    if (after !== null && !after) {
+    if (after !== null && Object.hasOwn(
+      OWNER_DOCUMENTS,
+      key,
+    )) {
       throw new HydraError({
-        message: 'memory text must not be empty',
+        message: `${OWNER_DOCUMENTS[key as keyof typeof OWNER_DOCUMENTS]} are Pnyx-wide owner memory`,
         code: 'VALIDATION_ERROR',
+        help: [`Run \`pnyx-axi owner memory set --key ${key} --text "<document>"\`, or save a note only this Hydra needs under another key`],
       })
     }
 
@@ -2575,15 +2639,13 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       },
       decide: ({ state }) => {
         const before = state.hydraMemory?.[key]?.text ?? null
-        const size = memorySize({ state }) - (before?.length ?? 0) + (after?.length ?? 0)
-
-        if (after !== null && size > MEMORY_BUDGET && size > memorySize({ state })) {
-          throw new HydraError({
-            message: `Hydra memory would use ${size} of ${MEMORY_BUDGET} characters`,
-            code: 'MEMORY_FULL',
-            help: [`Load the ${MEMORY_SKILL} skill: merge, shorten or forget entries, then save again`],
-          })
-        }
+        checkBudget({
+          memory: state.hydraMemory ?? {},
+          key,
+          after,
+          budget: HYDRA_MEMORY_BUDGET,
+          layer: 'Hydra',
+        })
 
         return before === after ? { skipped: 'unchanged' } : hydraEvent({
           state,
@@ -2792,7 +2854,141 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   })) : result)
 }
 
+function memoryList({
+  memory,
+  budget,
+  empty,
+}: {
+  memory: Memory
+  budget: number
+  empty: string
+}): Output {
+  const entries = Object.entries(memory).map(([
+    key,
+    entry,
+  ]) => ({
+    key,
+    ...entry,
+  }))
+
+  return {
+    memory: entries.length ? entries : empty,
+    used: `${memorySize({ memory })} of ${budget} characters`,
+  }
+}
+
+function memoryChange({
+  action,
+  values,
+  usage,
+}: {
+  action: string
+  values: Record<string, string | boolean | undefined>
+  usage: string
+}): {
+  key: string
+  after: string | null
+} {
+  const key = required({
+    value: values.key as string | undefined,
+    what: '--key',
+  })
+
+  if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(key) || ![
+    'set',
+    'forget',
+  ].includes(action)) {
+    throw new HydraError({
+      message: `${usage}; keys use lowercase letters, digits and dashes`,
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  const after = action === 'forget' ? null : required({
+    value: values.text as string | undefined,
+    what: '--text',
+  }).trim()
+
+  if (after !== null && !after) {
+    throw new HydraError({
+      message: 'memory text must not be empty',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  return {
+    key,
+    after,
+  }
+}
+
 const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
+
+const owner = guard({
+  handler: ({ args }) => {
+    const {
+      values,
+      positionals,
+    } = parse({
+      args,
+      // Owner memory has no events or cards, so it takes only the write flags it honours.
+      options: {
+        ...COMMON,
+        actor: WRITE.actor!,
+        reason: WRITE.reason!,
+        'if-revision': WRITE['if-revision']!,
+        key: { type: 'string' },
+        text: { type: 'string' },
+      },
+      positionals: 2,
+    })
+    const usage = 'use owner memory list|set|forget'
+
+    if (positionals[0] !== 'memory') {
+      throw new HydraError({
+        message: usage,
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    const action = positionals[1] ?? 'list'
+
+    if (action === 'list') {
+      return {
+        ...memoryList({
+          memory: ownerMemory(),
+          budget: OWNER_MEMORY_BUDGET,
+          empty: 'none: no owner memory yet',
+        }),
+        revision: ownerRevision(),
+      }
+    }
+
+    const {
+      key,
+      after,
+    } = memoryChange({
+      action,
+      values,
+      usage,
+    })
+    const entry = saveOwnerMemory({
+      key,
+      after,
+      meta: meta({ values }),
+    })
+
+    return entry ? {
+      memory: key,
+      state: after === null ? 'forgotten' : 'saved',
+      revision: entry.seq,
+      used: `${memorySize({ memory: ownerMemory() })} of ${OWNER_MEMORY_BUDGET} characters`,
+    } : {
+      memory: key,
+      skipped: 'unchanged',
+    }
+  },
+})
 
 const NOTES_SHOWN = 3
 const NOTE_CUT = 280
@@ -3199,8 +3395,12 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.declared': return `${event.data.state}: ${event.data.note}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
     case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
+    case 'hydra.dispatch-proposed': return `Proposed dispatch change: ${event.data.summary}`
+    case 'hydra.dispatch-progress': return `Owner question ${event.data.status}${event.data.error ? `: ${event.data.error}` : ''}`
+    case 'hydra.dispatch-resolved': return `Dispatch proposal ${event.data.action}`
     case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
+    case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
     case 'card.pushed':
@@ -3408,6 +3608,10 @@ const setup = guard({
       positionals: 1,
     })
 
+    if (positionals[0] === 'check') {
+      return setupCheckOutput({ hydraId })
+    }
+
     if (positionals[0] === 'skills') {
       return setupSkills({
         remove: !!values.remove,
@@ -3449,7 +3653,7 @@ const setup = guard({
       throw new AxiError(
         `unknown setup target: ${positionals[0] ?? '(none)'}`,
         'VALIDATION_ERROR',
-        ['Run `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
+        ['Run `pnyx-axi setup check`, `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
       )
     }
 
@@ -3631,6 +3835,7 @@ export const commands = {
   layout,
   column: columnCommandHandler,
   hydra: hydraCommandHandler,
+  owner,
   task,
   view,
   push,
@@ -3649,14 +3854,14 @@ export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Pnyx shows every agent and its work in Hydras
 commands:
   pnyx-axi                                   Show the Hydra summary
-  hydra create|list|homes|show|set            Create, list or configure Hydras
+  hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
   project add|list|set|remove                   Attach, list or detach projects
   column create|rename|describe|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
   rule; account list|set|remove              Heads dispatch rules and worker login folders
-  task sessions                              List recorded sessions, including background runs
+  task sessions|queue|unqueue|reorder        Sessions and ordered worker queues
   task attach|detach <task> [--session <id>]  Attach an interactive session or detach it
   push --key <key> --file <card.json|->      Create or update the card with this key
   card <id|key> [--full]                     Show one card with its summary, decisions and context
@@ -3672,7 +3877,7 @@ commands:
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the running server
-  setup skills|hooks|service                Install global skills, reporting hooks or the macOS login service (--remove, --preview)
+  setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the macOS login service
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the pnyx-hydra skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
@@ -3702,9 +3907,9 @@ pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--det
 pnyx-axi hydra send --text <message> [--details <text>]
 pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
-All memory shares one budget of ${MEMORY_BUDGET} characters; keep owner preferences under the key preferences and learnings under learnings.
+Hydra memory holds only what this Hydra needs (its scope, where it left off, its check cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
 pnyx-axi hydra digest
-Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, and its memory.
+Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
 pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
@@ -3718,6 +3923,12 @@ check is Hydra's light check: it lists only what Hydra tracks (messages, task cr
 except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It also records native task conversations
 and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
 for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
+`,
+  owner: `usage: pnyx-axi owner memory list|set|forget [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
+Owner memory is Pnyx-wide: every Hydra's digest prints it. Keep the owner's preferences under the key preferences and general learnings under learnings,
+one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET} characters; a save over budget is refused.
+Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
+Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/.pnyx).
 `,
   column: `usage: pnyx-axi column list
 pnyx-axi column create --title <title> [--id custom:<id>]
@@ -3755,9 +3966,13 @@ pnyx-axi task copy <task> [remove [--safe | --discard]]
 Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start and permission, as to move. Pnyx keeps it on the event,
 posts "<what Hydra did>: <reason>" in Hydra’s chat with --details under it, and returns that line as posted.
 pnyx-axi task paseo [--paseo-url <url>]
+pnyx-axi task queue <task> --behind <task|session>
+pnyx-axi task unqueue <task>
+pnyx-axi task reorder <task> --behind <task|session>
 pnyx-axi task sessions
 pnyx-axi task attach <task> --session <session-id|card-id|key|self>
 pnyx-axi task detach <task>
+Queueing behind a session appends; behind a queued task inserts immediately after it. Repeating task queue or using task reorder changes that position. Unqueue releases a task for a separate worker. Only unstarted tasks in the same project can queue. The server advances after a merged PR or a declared done task whose commit landed, never an open PR.
 Tasks accept one attached session. A second session cannot replace the recipient.
 attach moves an interactive session to the task; an occupied destination is rejected.
 detach removes the attachment without stopping the session; it stays in task sessions and History.
@@ -3778,8 +3993,8 @@ never) with its sandbox: never, or bypassPermissions, runs with full access, the
 Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
 and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.
 Repeating the same --event-id never starts a second agent.
---rule chooses the heads dispatch candidate list (default: default); --harness filters that list and
---prompt its opening message, which otherwise names the task and the pnyx-worker skill. Known quota ranks
+--rule chooses the heads dispatch candidate list (default: default); an explicit owner --harness or
+--model wins outside that list, checked against its own catalog and login. --prompt sets its opening message, which otherwise names the task and the pnyx-worker skill. Known quota ranks
 by spendPriority above unknown quota; a tie, or several candidates with unknown quota, stops the start.
 --model, --effort, --mode and --fast on|off replace the chosen candidate's settings from the first turn; the model
 must be in the harness's catalog and the task records the override.
@@ -3841,10 +4056,13 @@ Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
 Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
 Source observations, card creation and merges cannot be undone.
 `,
-  setup: `usage: pnyx-axi setup service [--port <n>] [--remove] [--preview]
+  setup: `usage: pnyx-axi setup check [--hydra <id>]
+pnyx-axi setup service [--port <n>] [--remove] [--preview]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
 pnyx-axi setup skills [--remove] [--preview]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
+setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
+project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
 setup skills links pnyx-hydra and pnyx-worker from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.
 Existing files and unrelated links are never replaced; --remove takes out only this install's links.

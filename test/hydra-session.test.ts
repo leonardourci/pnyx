@@ -4,11 +4,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { ownerOnly } from '../src/cli/hydra-session.ts'
+import { loadHydra } from '../src/store/hydra-store.ts'
 import { runCommand } from '../src/integrations/command/run.ts'
 
 test(
-  'the hosted Hydra session cannot run the owner’s commands through pnyx-axi',
+  'the hosted Hydra proposes owner-only commands without applying them',
   () => {
+    process.env.PNYX_HOME = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-owner-only-',
+    ))
     const ran: string[][] = []
 
     // eslint-disable-next-line pnyx/object-params -- runAxiCli owns the command signature.
@@ -96,13 +101,22 @@ test(
           ['hooks'],
         ],
       ] as const) {
-      assert.throws(
-        () => hydra[name]([...args]),
-        /cannot run/,
+      const result = hydra[name]([...args]) as { confirmation: string }
+      assert.equal(
+        result.confirmation,
+        'needed',
         name,
       )
     }
 
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.dispatchProposals?.length,
+      7,
+    )
+    assert.equal(
+      ran.length,
+      0,
+    )
     hydra.task([
       'permission',
       'ship',

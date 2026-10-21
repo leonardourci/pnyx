@@ -423,7 +423,8 @@ export function keyboardError({ prefs }: { prefs: KeyboardPreferences }): string
           && String(strokes[0]![2]).toLowerCase() === 'f'
 
         if (!localFind && strokes.some(([
-          mods, , key,
+          mods, ,
+          key,
         ]) => (mods.some(m => m === 'Control' || m === 'Meta') && /^(l|t|w|r|f|p|q|n|\+|-|=|0)$/i.test(String(key))) || (mods.includes('Alt') && [
           'ArrowLeft',
           'ArrowRight',
@@ -436,7 +437,8 @@ export function keyboardError({ prefs }: { prefs: KeyboardPreferences }): string
         }
 
         if (a.id === 'cancel' && strokes.some(([
-          mods, , key,
+          mods, ,
+          key,
         ]) => !mods.some(m => [
           'Control',
           'Meta',
@@ -446,7 +448,8 @@ export function keyboardError({ prefs }: { prefs: KeyboardPreferences }): string
         }
 
         if (a.id === 'send' && strokes.some(([
-          mods, , key,
+          mods, ,
+          key,
         ]) => key === 'Enter' && mods.join() === 'Shift')) {
           return 'Send reply cannot use Shift+Enter; Shift+Enter always adds a newline'
         }

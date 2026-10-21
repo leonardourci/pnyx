@@ -1,6 +1,7 @@
+import { QueueEditor, QueueLabel, WorkerQueue } from './queue.tsx'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ReminderEditor, ReminderLabel } from './reminder.tsx'
-import type { Card as CardData, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
+import type { Card as CardData, HydraState, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
 import { Label } from '../components/ui/label.tsx'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Markdown } from '../components/ui/markdown.tsx'
@@ -28,6 +29,7 @@ function LastMessage({ message }: { message: LatestMessage }) {
 
 export function HydraCard({
   card,
+  state,
   firstmate,
   labelColors,
   latest,
@@ -43,6 +45,7 @@ export function HydraCard({
   notify,
 }: {
   card: CardData
+  state: HydraState
   firstmate: boolean
   labelColors?: SavedLabelColor[]
   doneAfterHours?: number
@@ -57,6 +60,10 @@ export function HydraCard({
   connected: boolean
   children?: ReactNode
 }) {
+  const [
+    queueing,
+    setQueueing,
+  ] = useState(false)
   const element = useRef<HTMLElement>(null)
   const [
     preview,
@@ -178,7 +185,7 @@ export function HydraCard({
   return (
     <article
       ref={element}
-      className={`card ${selected ? 'selected' : ''}`}
+      className={`card ${selected ? 'selected' : ''} ${queueing ? 'queueing' : ''}`}
       style={selected ? { height: `min(${preview ?? height}px, 100cqh)` } : undefined}
       data-task={card.id}
       data-label-color={tint?.color}
@@ -187,7 +194,7 @@ export function HydraCard({
           open({ id: card.id })
         }
       }}
-      draggable={connected && !selected && !reminding}
+      draggable={connected && !selected && !reminding && !queueing}
       onDragStart={e => {
         e.stopPropagation(); e.dataTransfer.setData(
           'application/pnyx-task',
@@ -199,6 +206,9 @@ export function HydraCard({
         <Menu label={`Card menu for ${card.title}`}>
           {!card.automaticTask && (
             <Button disabled={!connected} onClick={() => setReminding(true)}>Remind me…</Button>
+          )}
+          {!firstmate && !card.automaticTask && !card.sessionIds?.length && !card.doneAt && (
+            <Button disabled={!connected} onClick={() => setQueueing(true)}>{card.queue ? 'Edit worker queue…' : 'Queue behind a worker…'}</Button>
           )}
           <CopyId id={card.id} notify={notify} />
           <HideAfter
@@ -246,8 +256,19 @@ export function HydraCard({
         )}
       </div>
       {card.copy?.state === 'flagged' && <span className="copy-warning" title={card.copy.reason}>copy not cleaned</span>}
-      {(!selected || reminding) && (
+      <QueueLabel card={card} state={state} open={open} />
+      <WorkerQueue card={card} state={state} open={open} />
+      {(!selected || reminding || queueing) && (
         <div className="card-rest">
+          {queueing && (
+            <QueueEditor
+              card={card}
+              state={state}
+              command={command}
+              connected={connected}
+              close={() => setQueueing(false)}
+            />
+          )}
           {view.lastMessageOnCards && !selected && (
             factual ? <LastMessage message={factual} /> : <p className="last-message">No agent update yet.</p>
           )}

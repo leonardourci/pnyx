@@ -1,5 +1,6 @@
+import { project } from '../src/projects/cli.ts'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -69,6 +70,66 @@ test(
       'existing',
       '--hydra',
       'existing',
+    ])
+    const projectPath = join(
+      home,
+      'project',
+    )
+    mkdirSync(projectPath)
+    writeFileSync(
+      join(
+        projectPath,
+        'AGENTS.md',
+      ),
+      'Use project conventions.',
+    )
+    await project([
+      'add',
+      projectPath,
+      '--hydra',
+      'existing',
+    ])
+    const memory = await project([
+      'memory',
+      'list',
+      '--project',
+      projectPath,
+      '--hydra',
+      'existing',
+    ])
+    await project([
+      'memory',
+      'set',
+      '--project',
+      projectPath,
+      '--hydra',
+      'existing',
+      '--key',
+      'profile',
+      '--text',
+      'Project validation: pnpm test.',
+      '--sources',
+      String(memory.fingerprint),
+    ])
+    await project([
+      'memory',
+      'set',
+      '--project',
+      projectPath,
+      '--hydra',
+      'existing',
+      '--key',
+      'preferences',
+      '--text',
+      'Prefer small project PRs.',
+    ])
+    commands.owner([
+      'memory',
+      'set',
+      '--key',
+      'preferences',
+      '--text',
+      'Hydra owner preference.',
     ])
     const sdk = hydraSdk()
     let server = await startServer({
@@ -155,6 +216,62 @@ test(
       assert.match(
         started.hookSpecificOutput.additionalContext,
         /^<pnyx-digest hydra="existing" through="\d+">[\s\S]*Owner preferences/,
+      )
+      assert.match(
+        started.hookSpecificOutput.additionalContext,
+        /profile: current/,
+      )
+      assert.match(
+        sdk.calls[0]!.raw[0]!,
+        /Projects \(load memory on demand[\s\S]*profile: current/,
+      )
+      assert.match(
+        sdk.calls[0]!.raw[0]!,
+        /Hydra owner preference/,
+      )
+      writeFileSync(
+        join(
+          projectPath,
+          'AGENTS.md',
+        ),
+        'Changed project conventions.',
+      )
+      await project([
+        'memory',
+        'set',
+        '--project',
+        projectPath,
+        '--hydra',
+        'existing',
+        '--key',
+        'preferences',
+        '--text',
+        'Prefer separate project commits.',
+      ])
+      assert.doesNotMatch(
+        sdk.calls[0]!.raw[0]!,
+        /Project validation: pnpm test|Prefer small project PRs/,
+      )
+      const compacted = await hook()
+      assert.match(
+        compacted.hookSpecificOutput.additionalContext,
+        /profile: out of date/,
+      )
+      assert.doesNotMatch(
+        compacted.hookSpecificOutput.additionalContext,
+        /Prefer separate project commits/,
+      )
+      assert.deepEqual(
+        (await project([
+          'show',
+          projectPath,
+          '--hydra',
+          'existing',
+        ])).memory,
+        {
+          profile: 'Project validation: pnpm test.',
+          preferences: 'Prefer separate project commits.',
+        },
       )
       assert.equal(
         sdk.calls[0]!.options.hooks!.SessionStart![0]!.matcher,
@@ -870,6 +987,31 @@ test(
       '--hydra',
       'lab',
     ])
+    writeFileSync(
+      join(
+        folder,
+        'AGENTS.md',
+      ),
+      'Project wake conventions.',
+    )
+    await project([
+      'add',
+      folder,
+      '--hydra',
+      'lab',
+    ])
+    await project([
+      'memory',
+      'set',
+      '--project',
+      folder,
+      '--hydra',
+      'lab',
+      '--key',
+      'preferences',
+      '--text',
+      'Initial project preference.',
+    ])
     const sdk = hydraSdk()
     let server = await startServer({
       hydraId: 'lab',
@@ -927,16 +1069,41 @@ test(
         },
       })
       await until({ check: () => state().cards[state().keys.fix!]?.sessionActivity === 'finished' })
+      await project([
+        'memory',
+        'set',
+        '--project',
+        folder,
+        '--hydra',
+        'lab',
+        '--key',
+        'preferences',
+        '--text',
+        'Updated project preference.',
+      ])
       declare({ status: 'working' })
       declare({ status: 'done' })
       await until({ check: () => wakes().length === 1 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
       // It starts just before the first change it covers.
       const first = Number(/hydra check --after (\d+) --hydra lab/.exec(wakes()[0]!)![1])
       assert.ok(first >= before)
-      // A wake into the running session carries the Hydra's live state after its prompt.
       assert.match(
         wakes()[0]!,
-        /<\/pnyx-wake>\n\n<pnyx-digest hydra="lab" through="\d+">[\s\S]*Fix add · [^\n]* · claude-code/,
+        /<\/pnyx-wake>\n\nMemory changed; load owner memory/,
+      )
+      assert.doesNotMatch(
+        sdk.calls[0]!.raw[0]!,
+        /Initial project preference/,
+      )
+      assert.doesNotMatch(
+        wakes()[0]!,
+        /Updated project preference|<pnyx-digest|Owner preferences/,
+      )
+      declare({ status: 'paused' })
+      await until({ check: () => wakes().length === 2 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      assert.doesNotMatch(
+        wakes()[1]!,
+        /Memory changed|<pnyx-digest|Owner preferences/,
       )
       const through = state().seq
 
@@ -951,7 +1118,7 @@ test(
       ))
       assert.equal(
         wakes().length,
-        1,
+        2,
       )
 
       // The wake prompt is not an owner message in Hydra's chat.
@@ -971,11 +1138,32 @@ test(
         query: sdk.query,
         wakeDelay: 300,
       })
-      await until({ check: () => wakes().length === 2 })
-      const after = Number(/--after (\d+)/.exec(wakes()[1]!)![1])
+      await until({ check: () => wakes().length === 3 })
+      const after = Number(/--after (\d+)/.exec(wakes()[2]!)![1])
       assert.ok(
         after > first && after < through,
         `${after} resumes after the first wake`,
+      )
+
+      // A change to owner memory alone is noted on the next wake.
+      await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      await commands.owner([
+        'memory',
+        'set',
+        '--key',
+        'learnings',
+        '--text',
+        'Releases ship on Fridays.',
+      ])
+      declare({ status: 'paused' })
+      await until({ check: () => wakes().length === 4 })
+      assert.match(
+        wakes()[3]!,
+        /<\/pnyx-wake>\n\nMemory changed; load owner memory/,
+      )
+      assert.doesNotMatch(
+        wakes()[3]!,
+        /Releases ship on Fridays/,
       )
     } finally {
       await server.close(); rmSync(

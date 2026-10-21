@@ -71,9 +71,11 @@ function unit({ vector }: { vector: ArrayLike<number> }): Float32Array {
 
 type Embedding = { getEmbeddingFor(tokens: number[]): Promise<{ vector: readonly number[] }> }
 type Ranking = {
-  rankAll(query: string,
+  rankAll(
+    query: string,
     docs: string[],
-    options: { onOverflow: 'maxChunk' }): Promise<number[]>
+    options: { onOverflow: 'maxChunk' }
+  ): Promise<number[]>
 }
 
 // The part of node-llama-cpp this file uses; it is an optional dependency, so it is typed here rather than imported.

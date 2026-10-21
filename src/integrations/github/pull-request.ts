@@ -1,5 +1,6 @@
-import { spawnSync } from 'node:child_process'
-import type { SourceNote } from '../../core/model.ts'
+import { promisify } from 'node:util'
+import { execFile, spawnSync } from 'node:child_process'
+import type { LinkState, SourceNote } from '../../core/model.ts'
 
 const VIEW_TIMEOUT_MS = 30_000
 const BODY_MAX = 8000
@@ -115,4 +116,76 @@ export function pullRequestNote({ url }: { url: string }): SourceNote | null {
     text,
     ref: `pr:${url}:${text}`,
   }
+}
+
+export async function pullRequestState({ url }: { url: string }): Promise<LinkState | undefined> {
+  const pr = PR_URL.exec(url)
+
+  if (!pr) {
+    return undefined
+  }
+
+  const { stdout } = await promisify(execFile)(
+    process.env.PNYX_GH_AXI || 'gh-axi',
+    [
+      'pr',
+      'view',
+      pr[3]!,
+      '--repo',
+      `${pr[1]}/${pr[2]}`,
+    ],
+    {
+      encoding: 'utf8',
+      timeout: VIEW_TIMEOUT_MS,
+    },
+  )
+  const state = field({
+    out: stdout,
+    key: 'state',
+  })
+
+  return state === 'open' || state === 'merged' || state === 'closed' ? state : undefined
+}
+
+export interface PullRequestLanding {
+  head: string
+  merge: string
+}
+
+export async function pullRequestLanding(
+  { url }: { url: string },
+): Promise<PullRequestLanding | undefined> {
+  const pr = PR_URL.exec(url)
+
+  if (!pr) {
+    return undefined
+  }
+
+  const { stdout } = await promisify(execFile)(
+    process.env.PNYX_GH_AXI || 'gh-axi',
+    [
+      'api',
+      `/repos/${pr[1]}/${pr[2]}/pulls/${pr[3]}`,
+      '--jq',
+      '.head.sha + " " + (.merge_commit_sha // "") + " " + (.merged|tostring)',
+    ],
+    {
+      encoding: 'utf8',
+      timeout: VIEW_TIMEOUT_MS,
+    },
+  )
+  const [
+    head,
+    merge,
+    merged,
+  ] = (field({
+    out: stdout,
+    key: 'body',
+  }) ?? '').split(' ')
+
+  return merged === 'true' && head && merge && /^[a-f0-9]{40,64}$/.test(head) && /^[a-f0-9]{40,64}$/.test(merge)
+    ? {
+      head,
+      merge,
+    } : undefined
 }
