@@ -206,10 +206,22 @@ try {
         `@${more[1]}`,
       ],
     })
+    const hovered = await b.browser({
+      args: [
+        'snapshot',
+        '--full',
+      ],
+    })
+    const target = hovered.match(/uid=(\S+) button "Card menu for Choose the conversation layout"/)
+
+    if (!target) {
+      throw new Error(hovered)
+    }
+
     await b.browser({
       args: [
         'click',
-        `@${more[1]}`,
+        `@${target[1]}`,
       ],
     })
     await b.check({
@@ -224,6 +236,25 @@ try {
       label: `${state} floating pill supports keyboard navigation`,
     })
     await b.screenshot({ name: `card-redesign-${state}-hover.png` })
+    await b.focus({ selector: '.card-open' })
+    const resting = await b.browser({
+      args: [
+        'snapshot',
+        '--full',
+      ],
+    })
+    const restingTitle = resting.match(/uid=(\S+) button "Open task Choose the conversation layout"/)
+
+    if (!restingTitle) {
+      throw new Error(resting)
+    }
+
+    await b.browser({
+      args: [
+        'hover',
+        `@${restingTitle[1]}`,
+      ],
+    })
   }
 
   await checkHoverPill({ state: 'closed' })
