@@ -31,8 +31,16 @@ type Restore = {
   page?: string
   panel?: boolean
   drafts?: Record<string, string>
-  comments?: Record<string, ChatComment[]>
   scroll?: Record<string, [number, number]>
+}
+
+// Comment drafts outlive the tab: a reload or a new tab finds them where they were left.
+function readComments({ key }: { key: string }): Record<string, ChatComment[]> {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, ChatComment[]>
+  } catch {
+    return {}
+  }
 }
 
 function restoreView({ key }: { key: string }): Restore {
@@ -72,6 +80,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     error,
   } = hydra
   const restoreKey = useRef(storageKey({ key: 'restore' })).current
+  const commentsKey = storageKey({
+    key: 'comments',
+    hydraId: navigation.hydraId,
+  })
   const [restored] = useState(() => hydraViews.get(navigation.hydraId)
     ?? restoreView({ key: restoreKey }))
   const [
@@ -103,7 +115,21 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const [
     comments,
     setComments,
-  ] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
+  ] = useState(() => readComments({ key: commentsKey }))
+  useEffect(
+    () => {
+      try {
+        localStorage.setItem(
+          commentsKey,
+          JSON.stringify(comments),
+        )
+      } catch { /* Storage full or blocked: comments last until the tab closes. */ }
+    },
+    [
+      comments,
+      commentsKey,
+    ],
+  )
   const [
     creatingTask,
     setCreatingTask,
@@ -278,7 +304,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         page,
         panel,
         drafts,
-        comments,
         scroll: Object.fromEntries(scrollers()
           .map(([
             key,
@@ -309,7 +334,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       page,
       panel,
       drafts,
-      comments,
       restoreKey,
     ],
   )
@@ -418,7 +442,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               page,
               panel,
               drafts,
-              comments,
               scroll,
             }),
           )
@@ -440,7 +463,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       page,
       panel,
       drafts,
-      comments,
       restoreKey,
     ],
   )
