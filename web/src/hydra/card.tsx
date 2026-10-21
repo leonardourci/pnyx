@@ -1,5 +1,5 @@
 import { answerPrompt } from '../../../src/core/answer.ts'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { ReminderEditor, ReminderLabel } from './reminder.tsx'
 import type { Card as CardData, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
 import { Label } from '../components/ui/label.tsx'
@@ -17,7 +17,6 @@ import { Tooltip } from '../components/ui/tooltip.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
-import { Disclosure } from '../components/ui/disclosure.tsx'
 import { HoverActions } from '../components/ui/hover-actions.tsx'
 
 const OPEN_SHARE = 0.5
@@ -67,6 +66,19 @@ export function HydraCard({
     preview,
     setPreview,
   ] = useState<number | null>(null)
+  const metadataId = useId()
+  const [
+    metadataOpen,
+    setMetadataOpen,
+  ] = useState(false)
+  useEffect(
+    () => {
+      if (!selected) {
+        setMetadataOpen(false)
+      }
+    },
+    [selected],
+  )
   const bounds = useCardHeight({
     element,
     selected,
@@ -149,10 +161,9 @@ export function HydraCard({
     </div>
   )
 
-  const metadataSummary = [
-    card.project || card.tags.length ? 'Labels' : '',
-    card.links.length ? `${card.links.length} links` : '',
-  ].filter(Boolean).join(' · ')
+  const hasMetadata = !!(card.project || card.tags.length || card.links.length
+    || card.reminder || card.launch?.dispatch || card.copy?.state === 'flagged')
+  const metadataLabel = `${metadataOpen ? 'Hide' : 'Show'} labels and links`
 
   return (
     <article
@@ -259,16 +270,30 @@ export function HydraCard({
           )}
 
         </div>
-        <Button
-          className="card-open"
-          aria-label={`Open task ${card.title}`}
-          aria-expanded={selected}
-          onClick={() => open({ id: card.id })}
-          data-card={card.id}
-          data-key-scope="hydra"
-          tabIndex={tabIndex}
-        >{card.title}
-        </Button>
+        <div className="card-title-row">
+          <Button
+            className="card-open"
+            aria-label={`Open task ${card.title}`}
+            aria-expanded={selected}
+            onClick={() => open({ id: card.id })}
+            data-card={card.id}
+            data-key-scope="hydra"
+            tabIndex={tabIndex}
+          >{card.title}
+          </Button>
+          {selected && hasMetadata && (
+            <Tooltip content={metadataLabel}>
+              <Button
+                className="card-metadata-toggle"
+                aria-label={metadataLabel}
+                aria-expanded={metadataOpen}
+                aria-controls={metadataId}
+                onClick={() => setMetadataOpen(value => !value)}
+              ><Icon name="chevron_right" size={15} />
+              </Button>
+            </Tooltip>
+          )}
+        </div>
         {renaming && selected && (
           <>
             <InlineTitle
@@ -318,22 +343,14 @@ export function HydraCard({
           </>
         )}
         {!selected && labels}
-        {selected && (card.project || card.tags.length > 0 || card.links.length > 0 || card.reminder || card.launch?.dispatch || card.copy?.state === 'flagged') && (
-          <Disclosure
-            className="card-metadata"
-            title={(
-              <>
-                <span>Details</span>
-                <span className="muted small">{metadataSummary}</span>
-              </>
-            )}
-          >
+        {selected && hasMetadata && (
+          <div id={metadataId} className="card-metadata" hidden={!metadataOpen}>
             {labels}
             <CardLinks links={card.links} expanded />
             <ReminderLabel card={card} />
             {card.copy?.state === 'flagged' && <p className="copy-warning">{card.copy.reason}</p>}
             {card.launch?.dispatch && <p className="muted small" aria-label="Heads dispatch choice">{card.launch.dispatch}</p>}
-          </Disclosure>
+          </div>
         )}
         {!selected && card.copy?.state === 'flagged' && (
           <Tooltip content={card.copy.reason}><span className="copy-warning" tabIndex={0}>copy not cleaned</span></Tooltip>

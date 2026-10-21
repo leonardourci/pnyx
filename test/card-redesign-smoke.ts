@@ -391,7 +391,7 @@ try {
   })
   await checkHoverPill({ state: 'open' })
   await b.check({
-    condition:'!document.querySelector(".card-content > .card-question") && !!document.querySelector(".task-updates .pending-question") && !document.querySelector(".card-metadata").open',
+    condition:'!document.querySelector(".card-content > .card-question") && !!document.querySelector(".task-updates .pending-question") && document.querySelector(".card-metadata").hidden',
     label:'open card folds secondary details and moves its question into Updates',
   })
   await b.check({
@@ -408,12 +408,27 @@ try {
     label:'oldest first pins the pending question after updates',
   })
   await b.click({selector:'.updates-order'})
-  await b.click({selector:'.card-metadata summary'})
+  await b.click({selector:'.card-metadata-toggle'})
   await b.check({
-    condition:'document.querySelector(".card-metadata").open && !!document.querySelector(".card-metadata .card-links")',
-    label:'Details reveals the labels and links on demand',
+    condition:'!document.querySelector(".card-metadata").hidden && !!document.querySelector(".card-metadata .card-links") && !!document.querySelector(".card.selected .card-title-row .card-metadata-toggle[aria-expanded=true]")',
+    label:'Title chevron reveals labels and links without closing the card',
   })
-  await b.click({selector:'.card-metadata summary'})
+  await b.click({selector:'.card-metadata-toggle'})
+  await b.check({
+    condition:'document.querySelector(".card-metadata").hidden && !!document.querySelector(".card.selected") && !document.querySelector(".card-metadata summary") && document.querySelector(".card-metadata-toggle").getAttribute("aria-controls") === document.querySelector(".card-metadata").id',
+    label:'Chevron hides metadata independently and replaces the separate Details row',
+  })
+  await b.focus({selector:'.card-metadata-toggle'})
+  await b.press({key:'Enter'})
+  await b.check({
+    condition:'!document.querySelector(".card-metadata").hidden && !!document.querySelector(".card.selected")',
+    label:'Title chevron opens metadata with the keyboard',
+  })
+  await b.press({key:'Enter'})
+  await b.check({
+    condition:'document.querySelector(".card-metadata").hidden',
+    label:'Title chevron closes metadata with the keyboard',
+  })
 
   await b.check({
     condition: '(() => { const fold = document.querySelector(".decision"); return !fold.open && fold.textContent.includes("Updates above chat") && fold.textContent.includes("by Hydra") && ![...document.querySelectorAll(".detail button")].some(button => ["Reassign", "Add subtask"].includes(button.textContent.trim())); })()',
@@ -484,7 +499,7 @@ try {
     label:'inline reference opens the task',
   })
 
-  await b.click({ selector: '.card-metadata summary' })
+  await b.click({ selector: '.card-metadata-toggle' })
 
   for (const width of [
     390,
