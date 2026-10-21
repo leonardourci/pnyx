@@ -18,7 +18,6 @@ import { Resize } from '../components/ui/resize.tsx'
 
 const MIN_UPDATES_HEIGHT = 80
 const CLOSED_HEIGHT = 176
-// An open card without a chosen height takes this share of its column.
 const OPEN_SHARE = 0.5
 
 function LastMessage({ message }: { message: LatestMessage }) {
@@ -193,6 +192,12 @@ export function HydraCard({
       }}
       draggable={connected && !selected && !reminding && !queueing}
       onDragStart={e => {
+        if (e.target instanceof Element && e.target.closest('.resize')) {
+          e.preventDefault()
+
+          return
+        }
+
         e.stopPropagation(); e.dataTransfer.setData(
           'application/pnyx-task',
           card.id,
