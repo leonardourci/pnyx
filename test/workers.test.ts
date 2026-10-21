@@ -324,6 +324,59 @@ test(
       /hydra\.message,none,send,owner \(cli\),"Send to Hydra: plan the week"/,
     )
 
+    const before = f.state().seq
+    await Promise.all(Array.from(
+      { length: 22 },
+      (
+        _,
+        i,
+      ) => execFileAsync(
+        process.execPath,
+        [
+          bin,
+          'hydra',
+          'send',
+          '--text',
+          `note ${i}`,
+        ],
+        {
+          env: {
+            ...process.env,
+            PNYX_HOME: f.root,
+            PNYX_SEMANTIC: 'off',
+          },
+        },
+      ),
+    ))
+    const first = f.run({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(before),
+      ],
+    })
+    assert.equal(
+      (first.match(/note \d+/g) ?? []).length,
+      20,
+    )
+    const next = Number(/through: (\d+)/.exec(first)![1])
+    assert.equal(
+      next,
+      before + 20,
+    )
+    assert.equal(
+      (f.run({
+        args: [
+          'hydra',
+          'check',
+          '--after',
+          String(next),
+        ],
+      }).match(/note \d+/g) ?? []).length,
+      2,
+    )
+
     const quiet = f.state().seq
     f.run({
       args: [
