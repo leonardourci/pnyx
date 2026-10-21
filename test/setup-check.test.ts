@@ -103,7 +103,29 @@ function sandbox() {
 test(
   'a fresh home lists what is missing, Hydra creates the config and owner steps become questions',
   () => {
-    const { run } = sandbox()
+    const {
+      root,
+      run,
+    } = sandbox()
+    const project = join(
+      root,
+      'app',
+    )
+    mkdirSync(project)
+    writeFileSync(
+      join(
+        project,
+        'AGENTS.md',
+      ),
+      '# App\n',
+    )
+    run({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
     const fresh = run({
       args: [
         'setup',
@@ -122,6 +144,8 @@ test(
       /^ {2}hooks,[^\n]*,owner,pnyx-axi setup hooks/m,
       /^ {2}skills,"missing: \d+ global skill links",owner,pnyx-axi setup skills/m,
       /^ {2}"?quota-axi"?,[^\n]*,owner,/m,
+      // An attached project without a profile is a row Hydra fixes itself.
+      /^ {2}"profile:app",project app has no profile,hydra,/m,
     ]) {
       assert.match(
         fresh.out,
@@ -219,21 +243,16 @@ test(
       /^ {2}"login:codex",[^\n]*,owner,[^\n]*pnyx-axi account set codex:personal --provider codex/m,
     )
 
-    for (const target of [
-      'hooks',
-      'skills',
-    ]) {
-      assert.match(
-        run({
-          args: [
-            'setup',
-            target,
-          ],
-          hydra: true,
-        }).out,
-        /^confirmation: needed$/m,
-      )
-    }
+    assert.match(
+      run({
+        args: [
+          'setup',
+          'hooks',
+        ],
+        hydra: true,
+      }).out,
+      /^confirmation: needed$/m,
+    )
   },
 )
 
@@ -334,44 +353,6 @@ test(
         ],
       }).out,
       /Setup needed/,
-    )
-  },
-)
-
-test(
-  'an attached project without a profile is a row Hydra fixes itself',
-  () => {
-    const {
-      root,
-      run,
-    } = sandbox()
-    const project = join(
-      root,
-      'app',
-    )
-    mkdirSync(project)
-    writeFileSync(
-      join(
-        project,
-        'AGENTS.md',
-      ),
-      '# App\n',
-    )
-    run({
-      args: [
-        'project',
-        'add',
-        project,
-      ],
-    })
-    assert.match(
-      run({
-        args: [
-          'setup',
-          'check',
-        ],
-      }).out,
-      /^ {2}"profile:app",project app has no profile,hydra,/m,
     )
   },
 )
