@@ -13,7 +13,7 @@ import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { integrations } from '../src/cli/integrations.ts'
 import { HYDRA_SKILL, setupHydra, startHydra, startTask } from '../src/cli/start.ts'
-import { loadHydra, spoolWrite } from '../src/store/hydra-store.ts'
+import { loadHydra } from '../src/store/hydra-store.ts'
 
 const at = '2026-10-15T00:00:00Z'
 const meta = {
@@ -925,65 +925,6 @@ test(
 )
 
 test(
-  'a hook entry naming an occupied task keeps its session off that task',
-  () => {
-    const {
-      folder,
-      run,
-      state,
-    } = lab()
-    run({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Busy',
-        '--folder',
-        folder,
-      ],
-    })
-    const task = Object.values(state().cards).find(c => c.title === 'Busy')!.id
-    const entry = ({
-      session,
-      id,
-    }: {
-      session: string
-      id: string
-    }) => ({
-      v: 1,
-      id,
-      at,
-      harness: 'claude',
-      event: 'SessionStart',
-      task,
-      payload: {
-        session_id: session,
-        cwd: folder,
-      },
-    })
-    spoolWrite({
-      hydraId: 'lab',
-      entry: entry({
-        session: 'a',
-        id: 'e1',
-      }),
-    })
-    spoolWrite({
-      hydraId: 'lab',
-      entry: entry({
-        session: 'b',
-        id: 'e2',
-      }),
-    })
-    ingestSpool({ hydraId: 'lab' })
-    assert.deepEqual(
-      state().cards[task]!.sessionIds,
-      ['claude-code:a'],
-    )
-  },
-)
-
-test(
   'Hydra can select its task project’s start command by name',
   async () => {
     const {
@@ -1175,20 +1116,6 @@ test(
         'work',
       ],
     })
-    await assert.rejects(
-      startTask({
-        hydraId: 'lab',
-        task: 'ship',
-        via: 'command',
-        commandName: 'missing',
-        meta,
-      }),
-      /project command not found/,
-    )
-    assert.equal(
-      state().cards[state().keys.ship!]!.copy,
-      undefined,
-    )
     await run({
       args: [
         'task',

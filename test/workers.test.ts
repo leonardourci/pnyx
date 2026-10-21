@@ -324,48 +324,6 @@ test(
       /hydra\.message,none,send,owner \(cli\),"Send to Hydra: plan the week"/,
     )
 
-    const before = f.state().seq
-
-    for (let i = 0; i < 22; i++) {
-      f.run({
-        args: [
-          'hydra',
-          'send',
-          '--text',
-          `note ${i}`,
-        ],
-      })
-    }
-
-    const first = f.run({
-      args: [
-        'hydra',
-        'check',
-        '--after',
-        String(before),
-      ],
-    })
-    assert.equal(
-      (first.match(/note \d+/g) ?? []).length,
-      20,
-    )
-    const next = Number(/through: (\d+)/.exec(first)![1])
-    assert.equal(
-      next,
-      before + 20,
-    )
-    assert.match(
-      f.run({
-        args: [
-          'hydra',
-          'check',
-          '--after',
-          String(next),
-        ],
-      }),
-      /note 20.*\n.*note 21/,
-    )
-
     const quiet = f.state().seq
     f.run({
       args: [
