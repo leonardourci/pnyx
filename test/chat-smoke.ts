@@ -102,6 +102,8 @@ const {
   home,
   session: 'pnyx-chat',
 })
+// Every comment card's note shares one label; the one just opened has focus.
+const note = ({ value }: { value: string }) => evaluate({ code: `const el = document.activeElement; if (!el.matches('.comment-card textarea')) throw new Error('No note has focus'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true;` })
 const select = ({
   start,
   end,
@@ -155,16 +157,20 @@ try {
   await evaluate({ code: 'document.querySelector(".hydra-chat .message-block").scrollIntoView({ block: "start" }); return true;' })
   await screenshot({ name: 'message-section.png' })
   await check({
-    condition: '!document.querySelector(".hydra-chat .block-comment-action:not(.has-selection)")',
+    condition: '!document.querySelector(".hydra-chat .comment-pill")',
     label: 'clicking a message section shows no comment shortcut hint',
   })
   await evaluate({ code: 'document.querySelector(".hydra-chat .hydra-messages").focus(); return true;' })
   await press({ key: 'c' })
   await check({
-    condition: 'document.activeElement.matches(".hydra-chat .inline-comment textarea")',
+    condition: 'document.activeElement.matches(".hydra-chat .comment-card textarea")',
     label: 'C still opens a comment on the active block',
   })
   await press({ key: 'Escape' })
+  await check({
+    condition: '!document.querySelector(".hydra-chat .comment-card")',
+    label: 'Escape removes the empty comment it leaves',
+  })
   await check({
     condition: 'document.querySelectorAll(".hydra-chat .markdown h1").length === 1 && !!document.querySelector(".hydra-chat .markdown ul li") && !!document.querySelector(".hydra-chat .markdown ol li") && !!document.querySelector(".hydra-chat .markdown table") && document.querySelectorAll(".hydra-chat .code-block").length === 1',
     label: 'agent reply renders as one complete Markdown document',
@@ -190,32 +196,148 @@ try {
     label: 'user bubbles align to the right',
   })
   await evaluate({ code: 'window.input = document.querySelector(".hydra-chat .composer textarea"); return true;' })
+  const pill = '.hydra-chat .comment-pill [aria-label="Comment on selection"]'
+  const below = '[...document.querySelectorAll(".hydra-chat .message-block")].find(b => b.textContent.startsWith("A readable paragraph")).nextElementSibling.getBoundingClientRect().top'
+  await evaluate({ code: `window.below = ${below}; return true;` })
   await select({
     start: 2,
     end: 20,
-  }); await click({ selector: '.hydra-chat .block-comment-action.has-selection' })
-  await fill({
-    label: 'Comment on selected text',
-    value: 'Explain this phrase.',
-  }); await press({ key: 'Escape' })
+  })
+  await check({
+    condition: `!!document.querySelector(${JSON.stringify(pill)}) && ${below} === window.below`,
+    label: 'the selection pill floats without moving the text',
+  })
+  await evaluate({ code: 'document.querySelector(".hydra-chat .comment-pill").scrollIntoView({ block: "center" }); return true;' })
+  await screenshot({ name: 'comment-pill.png' })
+  await click({ selector: pill })
+  await note({ value: 'Explain this phrase.' }); await press({ key: 'Escape' })
   await select({
     start: 2,
     end: 10,
-  }); await click({ selector: '.hydra-chat .block-comment-action.has-selection' })
-  await fill({
-    label: 'Comment on selected text',
-    value: 'What does readable mean?',
-  }); await press({ key: 'Escape' })
+  }); await click({ selector: pill })
+  await note({ value: 'What does readable mean?' }); await press({ key: 'Escape' })
   await check({
-    condition: 'document.querySelectorAll(".hydra-chat .inline-comment").length === 2 && document.querySelectorAll(".hydra-chat .pending-comments li").length === 2 && document.querySelector(".hydra-chat .composer textarea") === window.input',
+    condition: 'document.querySelectorAll(".hydra-chat .comment-card").length === 2 && document.querySelector(".hydra-chat .composer-comments").textContent.includes("Comments · 2") && document.querySelector(".hydra-chat .composer textarea") === window.input',
     label: 'nested selections keep independent comments and the mounted composer',
   })
+  const cards = 'document.querySelectorAll(".hydra-chat .comment-card").length'
+  const host = 'document.querySelector(".hydra-chat [data-caret-host]")'
+  const paragraph = '[...document.querySelectorAll(".hydra-chat .message-block p")].find(p => p.textContent.startsWith("A readable paragraph"))'
+  await select({
+    start: 2,
+    end: 20,
+  }); await click({ selector: pill })
+  await check({
+    condition: `${cards} === 2 && document.activeElement.value === "Explain this phrase."`,
+    label: 'the same passage selected again reopens its comment',
+  })
+  await select({
+    start: 11,
+    end: 19,
+  }); await click({ selector: pill })
+  await evaluate({ code: 'window.input.focus(); return true;' })
+  await check({
+    condition: `${cards} === 2`,
+    label: 'an empty comment goes when left',
+  })
+  await select({
+    start: 11,
+    end: 19,
+  }); await click({ selector: pill })
+  await evaluate({ code: 'Object.defineProperty(document, "hasFocus", { value: () => false, configurable: true }); document.activeElement.blur(); delete document.hasFocus; return true;' })
+  await check({
+    condition: `${cards} === 3`,
+    label: 'an empty comment stays when the window loses focus',
+  })
+  await evaluate({ code: 'document.querySelectorAll(".hydra-chat .comment-card textarea")[2].focus(); return true;' })
+  await press({ key: 'Escape' })
+  await check({
+    condition: `${cards} === 2 && document.activeElement === ${host} && getSelection().focusNode === ${paragraph}.lastChild && getSelection().focusOffset === getSelection().focusNode.length`,
+    label: 'Escape puts the caret just before the comment cards',
+  })
+  await press({ key: 'ArrowDown' })
+  await check({
+    condition: 'document.activeElement.value === "Explain this phrase." && document.activeElement.selectionStart === 0',
+    label: 'ArrowDown steps from the text into the next comment',
+  })
+  await press({ key: 'ArrowDown' })
+  await check({
+    condition: 'document.activeElement.value === "What does readable mean?"',
+    label: 'ArrowDown on a note\'s last line steps into the next comment',
+  })
+  await press({ key: 'ArrowUp' }); await press({ key: 'ArrowUp' })
+  await check({
+    condition: `document.activeElement === ${host} && ${paragraph}.contains(getSelection().focusNode)`,
+    label: 'ArrowUp on a note\'s first line steps back into the text',
+  })
+  await evaluate({ code: `window.original = ${paragraph}.textContent; return true;` })
+  await select({
+    start: 21,
+    end: 25,
+  })
+  await evaluate({ code: `const data = new DataTransfer(); data.setData("text/plain", "Pasted note"); window.pasted = new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }); ${paragraph}.dispatchEvent(window.pasted); return true;` })
+  await check({
+    condition: `${cards} === 3 && document.activeElement.value === "Pasted note" && window.pasted.defaultPrevented`,
+    label: 'paste over a selection becomes a comment',
+  })
+  await evaluate({ code: `${host}.focus(); const data = new DataTransfer(); data.setData("text/plain", "Lost"); window.pasted = new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }); ${paragraph}.dispatchEvent(window.pasted); return true;` })
+  await check({
+    condition: `${cards} === 3 && window.pasted.defaultPrevented && ${paragraph}.textContent === window.original`,
+    label: 'paste never edits the output',
+  })
+  await select({
+    start: 0,
+    end: 1,
+  })
+  await evaluate({ code: `const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="), c => c.charCodeAt(0)); const data = new DataTransfer(); data.items.add(new File([png], "shot.png", { type: "image/png" })); ${paragraph}.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true })); return true;` })
+  await eventually({
+    condition: `${cards} === 4 && !!document.querySelector(".hydra-chat .comment-card .comment-images img")`,
+    label: 'a pasted image becomes a comment with the image attached',
+  })
+  await evaluate({ code: `${host}.focus(); return true;` })
+  await select({
+    start: 13,
+    end: 18,
+  })
+  await evaluate({ code: `${host}.dispatchEvent(new InputEvent("beforeinput", { inputType: "insertText", data: "Dictated note", bubbles: true, cancelable: true })); return true;` })
+  await check({
+    condition: `${cards} === 5 && document.activeElement.value === "Dictated note"`,
+    label: 'dictation over a selection becomes a comment',
+  })
+  await browser({
+    args: [
+      'open',
+      server.url,
+    ],
+  })
+  await eventually({
+    condition: `${cards} === 5`,
+    label: 'comment drafts survive a reload',
+  })
+  await click({ selector: '.hydra-chat .composer-comments [aria-label="Show comments"]' })
+  await check({
+    condition: 'document.querySelectorAll(".comments-dialog[open] .comment-card").length === 5 && [...document.querySelectorAll(".comments-dialog .comment-quote")].some(q => q.textContent.startsWith("A readable paragraph with") && q.querySelector("mark").textContent === "readable")',
+    label: 'the comments list shows each comment with the context the agent receives',
+  })
+  await screenshot({ name: 'comments-dialog.png' })
+  await evaluate({ code: 'const el = document.querySelector(".comments-dialog textarea"); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(el, "Explain this phrase, please."); el.dispatchEvent(new Event("input", { bubbles: true })); return true;' })
+  await check({
+    condition: 'document.querySelector(".hydra-chat .messages .comment-card textarea").value === "Explain this phrase, please."',
+    label: 'a comment edited in the list changes under its passage',
+  })
+  await click({ selector: '.comments-dialog .comment-card:nth-of-type(2) [aria-label="Show in chat"]' })
+  await eventually({
+    condition: '!document.querySelector(".comments-dialog") && document.activeElement.matches(".hydra-chat .messages .comment-card textarea") && document.activeElement.value === "What does readable mean?"',
+    label: 'Show in chat closes the list onto the comment under its passage',
+  })
+  await screenshot({ name: 'comment-cards.png' })
+  await evaluate({ code: 'window.input = document.querySelector(".hydra-chat .composer textarea"); return true;' })
   await fill({
     label: 'Reply to Hydra',
     value: 'Apply these comments.',
   }); await click({ selector: '.hydra-chat .composer-send' })
   await eventually({
-    condition: '!document.querySelector(".hydra-chat .inline-comment") && document.querySelector(".hydra-chat .composer textarea").value === ""',
+    condition: '!document.querySelector(".hydra-chat .comment-card") && document.querySelector(".hydra-chat .composer textarea").value === ""',
     label: 'delivery clears the submitted comments and draft',
   })
   const sent = loadHydra({ hydraId: 'default' }).state.hydraMessages?.at(-1)?.text ?? ''
@@ -236,6 +358,16 @@ try {
   )
   assert.match(
     sent,
+    /Pasted note/,
+  ); assert.match(
+    sent,
+    /\[image: [^\]]+\/attachments\/[^\]]+\.png\]/,
+  ); assert.match(
+    sent,
+    /Dictated note/,
+  )
+  assert.match(
+    sent,
     /Paragraph:/,
   ); assert.match(
     sent,
@@ -247,14 +379,43 @@ try {
   await select({
     start: 2,
     end: 10,
-  }); await click({ selector: '.hydra-chat .block-comment-action.has-selection' })
-  await fill({
-    label: 'Comment on selected text',
-    value: 'A second round.',
-  }); await press({ key: 'Escape' }); await click({ selector: '.hydra-chat .composer-send' })
+  }); await click({ selector: pill })
+  await note({ value: 'A second round.' }); await press({ key: 'Escape' }); await click({ selector: '.hydra-chat .composer-send' })
   await eventually({
-    condition: '!document.querySelector(".hydra-chat .inline-comment")',
+    condition: '!document.querySelector(".hydra-chat .comment-card")',
     label: 'second comment delivered',
+  })
+
+  for (const [
+    start,
+    end,
+  ] of [
+      [
+        2,
+        10,
+      ],
+      [
+        11,
+        19,
+      ],
+    ]) {
+    await select({
+      start,
+      end,
+    }); await click({ selector: pill })
+    await note({ value: 'To discard' })
+  }
+
+  const removeAll = '.hydra-chat .composer-comments > .button:last-child'
+  await click({ selector: removeAll })
+  await check({
+    condition: 'document.querySelectorAll(".hydra-chat .comment-card").length === 2 && document.querySelector(".hydra-chat .composer-comments").textContent.includes("Remove 2?")',
+    label: 'removing every comment asks first',
+  })
+  await click({ selector: removeAll })
+  await check({
+    condition: '!document.querySelector(".hydra-chat .comment-card") && !document.querySelector(".hydra-chat .composer-comments")',
+    label: 'the composer pill removes every comment',
   })
   assert.equal(
     (loadHydra({ hydraId: 'default' }).state.hydraMessages?.filter(message => message.actor === 'web').map(message => message.text)
