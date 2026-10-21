@@ -146,6 +146,24 @@ export function smokeBrowser({
     selector: string
     dy: number
   }) => {
+    await evaluate({
+      code: `
+        await document.fonts.ready;
+        await new Promise(resolve => {
+          let frame;
+          const settle = () => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => {
+              frame = requestAnimationFrame(() => { observer.disconnect(); resolve(); });
+            });
+          };
+          const observer = new MutationObserver(settle);
+          observer.observe(document.documentElement, { attributes: true, childList: true, characterData: true, subtree: true });
+          settle();
+        });
+        return true;
+      `,
+    })
     await evaluate({ code: `const handle = document.querySelector(${JSON.stringify(selector)}); handle.scrollIntoView({ block: 'nearest' }); handle.dataset.smokeLabel = handle.getAttribute('aria-label'); handle.setAttribute('aria-label', 'Smoke drag handle'); const rect = handle.getBoundingClientRect(); const target = document.createElement('button'); target.id = 'smoke-drag-target'; target.textContent = 'Smoke drag target'; Object.assign(target.style, { position: 'fixed', left: (rect.left + rect.width / 2 - 2) + 'px', top: (rect.top + rect.height / 2 + ${dy} - 2) + 'px', width: '4px', height: '4px', padding: '0', overflow: 'hidden', zIndex: '9999' }); document.body.append(target); return true;` })
 
     try {

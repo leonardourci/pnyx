@@ -1,3 +1,4 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,6 +17,10 @@ const home = mkdtempSync(join(
   'pnyx-visual-smoke-',
 ))
 process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
+process.env.CLAUDE_CONFIG_DIR = join(
+  home,
+  'claude',
+)
 const fixture = seedWebFixture({ home })
 appendFileSync(
   fixture.transcript,
@@ -105,6 +110,7 @@ commands.task([
   '## Release notes\n\nInline `ready`.\n\n```typescript\nconst ready = true\n```',
 ])
 const server = await startServer({
+  query: hydraSdk().query,
   hydraId: 'default',
   homes: [fixture.nativeHome],
 })
@@ -253,7 +259,7 @@ try {
   })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
   await eventually({
-    condition: '!!document.querySelector(\'.task-updates .markdown\')',
+    condition: '!!document.querySelector(\'.task-updates .code-block\') && !!document.querySelector(\'.task-conversation .code-block\')',
     label: 'synthetic conversation appears',
   })
   await check({
@@ -265,7 +271,7 @@ try {
     label: 'message headings keep the conversation font and natural spacing',
   })
   await check({
-    condition: '!!document.querySelector(\'.detail .code-block code\') && [...document.querySelectorAll(\'.detail .markdown code\')].length === 2 && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontFamily.includes(\'JetBrains Mono\') && getComputedStyle(el).fontSize === \'13px\')',
+    condition: '!!document.querySelector(\'.detail .code-block code\') && [\'.task-updates\', \'.task-conversation\'].every(selector => document.querySelector(selector + \' .code-block code\') && document.querySelector(selector + \' .markdown p code\')) && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontFamily.includes(\'JetBrains Mono\') && getComputedStyle(el).fontSize === \'13px\')',
     label: 'inline and fenced Markdown keep JetBrains Mono and the accepted code size',
   })
   await click({ selector: '[aria-label="Close detail"]' })
@@ -325,7 +331,7 @@ try {
     label: 'saved chat font size applies independently',
   })
   await check({
-    condition: '[...document.querySelectorAll(\'.detail .markdown code\')].length === 2 && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontSize === \'15px\') && getComputedStyle(document.querySelector(\'.detail .code-block pre\')).fontSize === \'15px\'',
+    condition: '[\'.task-updates\', \'.task-conversation\'].every(selector => document.querySelector(selector + \' .code-block code\') && document.querySelector(selector + \' .markdown p code\')) && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontSize === \'15px\') && getComputedStyle(document.querySelector(\'.detail .code-block pre\')).fontSize === \'15px\'',
     label: 'inline and fenced code follow the independent saved code font size',
   })
   const colors = loadHydra({ hydraId: 'default' }).state.labelColors
