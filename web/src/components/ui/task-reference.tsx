@@ -1,6 +1,16 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { Button } from './controls.tsx'
 import { Icon } from './icon.tsx'
+import { Tooltip } from './tooltip.tsx'
+
+const stateIcons: Record<string, string> = {
+  working: 'in_progress',
+  asks: 'needs_you',
+  done: 'done',
+  finished: 'check',
+  stopped: 'parked',
+  'not-started': 'queued',
+}
 
 export interface TaskReferenceData {
   title: string
@@ -52,25 +62,32 @@ export function TaskReference({
   ) ? context.references[id] : undefined
   const open = context ? reference ? context.openTask : undefined : openTask
   const label = reference?.title ?? children ?? 'Unavailable task'
+  const state = reference?.state ?? 'Unavailable'
 
   if (!context && !open) {
     return children
   }
 
   return (
-    <Button
-      className={`task-mention task-reference ${className}`}
-      contentEditable={false}
-      data-task-ref={id}
-      data-state={reference?.kind}
-      disabled={!open}
-      title={context && !reference ? 'Task unavailable in this Hydra' : 'Open referenced task'}
-      onClick={() => open?.({ id })}
-    >
-      <Icon name="task-card" size={14} />
-      <span className="task-reference-title">{label}</span>
-      {context && <span className="task-reference-state">{reference?.state ?? 'Unavailable'}</span>}
-      <Icon name="external" size={13} />
-    </Button>
+    <Tooltip content={context && !reference ? 'Task unavailable in this Hydra' : reference ? `${reference.title} · ${state}` : 'Open referenced task'}>
+      <Button
+        className={`task-mention task-reference ${className}`}
+        contentEditable={false}
+        data-task-ref={id}
+        data-state={reference?.kind}
+        disabled={!open}
+        aria-label={reference ? `Open task ${reference.title}; ${state}` : undefined}
+        onClick={() => open?.({ id })}
+      >
+        <Icon name="task-card" size={14} />
+        {context && (
+          <span className="task-reference-state" role="img" aria-label={state}>
+            <Icon name={stateIcons[reference?.kind ?? ''] ?? 'queued'} size={14} />
+          </span>
+        )}
+        <span className="task-reference-title">{label}</span>
+        <Icon name="external" size={13} />
+      </Button>
+    </Tooltip>
   )
 }

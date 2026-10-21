@@ -1109,3 +1109,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .task-reference-state { flex-shrink: 0; color: var(--color-muted); font-size: var(--text-meta); font-weight: 500; white-space: nowrap; }
 .task-reference[data-state=working] .task-reference-state, .task-reference[data-state=done] .task-reference-state { color: var(--color-green); }
 .task-reference[data-state=asks] .task-reference-state { color: var(--color-gold); }
+
+.task-reference-state { display: inline-flex; align-items: center; }
+.message-task > .tooltip-anchor { min-width: 0; }
+.markdown .tooltip-anchor:has(> .task-reference) { display: inline; }
