@@ -133,6 +133,8 @@ createInterface({ input: process.stdin }).on(
 
     if (method === 'initialize') {
       if (process.env.FAKE_CODEX_REFUSE === 'initialize') {
+        send({ method: 'fixture/initializing' })
+
         return
       }
 
