@@ -31,7 +31,6 @@ function content({ text }: { text: string }): string | Content {
 
 const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'] satisfies EffortLevel[]
 const MODES: readonly string[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk', 'auto'] satisfies PermissionMode[]
-// ponytail: with no saved effort, Pnyx names the API's own default, high.
 const DEFAULT_EFFORT: EffortLevel = 'high'
 const DEFAULT_MODE: PermissionMode = 'default'
 const CATALOG_TIMEOUT_MS = 20_000
