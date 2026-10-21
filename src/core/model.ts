@@ -282,6 +282,7 @@ export interface Card {
   rank?: number
   revision: number
   createdSeq: number
+  createdAt?: string
   updatedSeq: number
   updatedAt: string
 }
@@ -626,6 +627,11 @@ export type RepliedEvent = EventBase & {
     text?: string
     context?: string
     resolveKey?: string
+    decision?: {
+      questionId?: string
+      question: string
+      answer: string
+    }
     answers?: string
     detail?: string
     control?: boolean

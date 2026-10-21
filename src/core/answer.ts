@@ -415,10 +415,12 @@ export function answerText(
     prompt,
     request,
     answer,
+    includeQuestion = true,
   }: {
     prompt: Prompt
     request: Attention
     answer: Answer
+    includeQuestion?: boolean
   },
 ): string {
   if (prompt.kind === 'form') {
@@ -446,7 +448,7 @@ export function answerText(
       const a = answer.answers?.[i]
       const said = !a ? '' : 'text' in a ? a.text : a.pick.map(n => question.options[n - 1]?.label).join(', ')
 
-      return `${question.question} → ${said}`
+      return includeQuestion ? `${question.question} → ${said}` : said
     })
       .join('\n')
   }
