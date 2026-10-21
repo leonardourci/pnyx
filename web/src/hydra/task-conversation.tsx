@@ -146,6 +146,7 @@ export function TaskConversation({
             }),
           })}
           openTask={composer.openTask}
+          notify={composer.notify}
         />
         {working && !entries.some(e => e.streaming) && <Working />}
         {page?.unavailable && <p className="muted">{page.unavailable}</p>}

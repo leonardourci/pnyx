@@ -32,7 +32,7 @@ export function selectedPassage({ messages }: {
   const block = messageBlock({ node: range?.startContainer })
 
   if (!messages || !range || !quote || !block || !messages.contains(range.endContainer)
-    || document.activeElement?.closest('.inline-comment')) {
+    || document.activeElement?.closest('.comment-card')) {
     return null
   }
 

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent as KeyEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent as PasteEvent, type KeyboardEvent as KeyEvent } from 'react'
+import { flushSync } from 'react-dom'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { MessageText } from '../components/ui/streaming.tsx'
@@ -7,8 +8,10 @@ import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import {
   CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED,
   caretBounds, placeMessageCaret, focusComposer, latestAgentMessage, revealCaret,
+  enterNote, leaveNote, noteBetween, selectionFocus,
 } from './caret.ts'
-import type { ChatComment } from './chat.ts'
+import { sendableComment, type ChatComment } from './chat.ts'
+import { uploadImages } from './image-upload.ts'
 import { MessageComment } from './message-comment.tsx'
 import { blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage } from './message-selection.ts'
 import { receiptLabel } from './view.ts'
@@ -31,7 +34,9 @@ export function Messages({
   taskTitles,
   openTask,
   assistantLabel,
+  notify,
 }: {
+  notify({ text }: { text: string }): void
   openTask?({ id }: { id: string }): void
   taskTitles?: Record<string, string>
   toolDetails?: boolean
@@ -51,10 +56,10 @@ export function Messages({
     selection,
     setSelection,
   ] = useState<CommentPassage | null>(null)
-  const [
-    editing,
-    setEditing,
-  ] = useState<string | null>(null)
+  // Writes between renders build on each other, as do uploads that finish after them.
+  const latest = useRef(comments)
+  latest.current = comments
+  const uploading = useRef(new Set<string>())
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
   const blockFor = ({ key }: { key: string | null }) =>
@@ -70,6 +75,24 @@ export function Messages({
     }
   }
 
+  const update = ({ items }: { items: ChatComment[] }) => {
+    latest.current = items; setComments({ items })
+  }
+
+  const remove = ({ id }: { id: string }) =>
+    update({ items: latest.current.filter(c => c.id !== id) })
+
+  // An empty comment goes once left, unless an image for it is still on its way.
+  const release = ({ id }: { id: string }) => {
+    const comment = latest.current.find(c => c.id === id)
+
+    if (comment && !sendableComment({ comment }) && !uploading.current.has(id)) {
+      remove({ id })
+    }
+  }
+
+  // The same passage selected again reopens its comment. The card renders at once, so keys typed
+  // or a composition begun over the selection land in its note.
   const addComment = ({
     quote,
     text = '',
@@ -77,18 +100,104 @@ export function Messages({
     quote: CommentPassage
     text?: string
   }) => {
-    const comment = {
+    const same = latest.current.find(c => samePassage({
+      before: c,
+      after: quote,
+    }))
+    const comment = same ? {
+      ...same,
+      text: same.text + text,
+    } : {
       ...quote,
       id: crypto.randomUUID(),
       text,
     }
-    setComments({
-      items: [
-        ...comments,
-        comment,
-      ],
-    }); setEditing(comment.id); setSelection(null)
+    flushSync(() => {
+      update({
+        items: same ? latest.current.map(c => c.id === same.id ? comment : c) : [
+          ...latest.current,
+          comment,
+        ],
+      }); setSelection(null)
+    })
     window.getSelection()?.removeAllRanges()
+    const note = root.current?.querySelector<HTMLTextAreaElement>(`[data-comment-id="${comment.id}"] textarea`)
+
+    if (note) {
+      enterNote({
+        note,
+        direction: 'backward',
+      })
+    }
+
+    return comment.id
+  }
+
+  const attach = async ({
+    id,
+    files,
+  }: {
+    id: string
+    files: File[]
+  }) => {
+    uploading.current.add(id)
+    const {
+      lines,
+      failures,
+    } = await uploadImages({ files })
+    uploading.current.delete(id)
+
+    if (failures.length) {
+      notify({ text: failures.join(' ') })
+    }
+
+    const comment = latest.current.find(c => c.id === id)
+
+    if (comment && lines.length) {
+      update({
+        items: latest.current.map(c => c.id === id ? {
+          ...c,
+          images: [
+            ...c.images ?? [],
+            ...lines,
+          ],
+        } : c),
+      })
+    } else if (comment && !root.current?.querySelector(`[data-comment-id="${id}"]`)?.contains(document.activeElement)) {
+      release({ id })
+    }
+  }
+
+  // Paste never edits the output: over a selection it comments, text as the note and images attached.
+  const paste = ({ event }: { event: PasteEvent<HTMLDivElement> }) => {
+    if (event.target instanceof Element && event.target.closest('.comment-card')) {
+      return
+    }
+
+    event.preventDefault()
+    const passage = selectedPassage({ messages: root.current })
+    const text = event.clipboardData.getData('text/plain').replace(
+      /\r\n/g,
+      '\n',
+    )
+    // Office apps put a picture of copied text next to the text itself.
+    const files = text ? [] : [...event.clipboardData.files]
+
+    if (!passage || !text && !files.length) {
+      return
+    }
+
+    const id = addComment({
+      quote: passage,
+      text,
+    })
+
+    if (files.length) {
+      void attach({
+        id,
+        files,
+      })
+    }
   }
 
   // A streamed reply settles into the transcript under a new id; its comments follow the passage there.
@@ -169,7 +278,7 @@ export function Messages({
         const block = root.current?.contains(focusNode) ? messageBlock({ node: focusNode }) : null
         const next = selectedPassage({ messages: root.current })
 
-        if (block && !document.activeElement?.closest('.inline-comment')) {
+        if (block && !document.activeElement?.closest('.comment-card')) {
           setActive(block.dataset.messageBlock!)
         }
 
@@ -236,9 +345,21 @@ export function Messages({
     () => {
       const host = root.current
 
+      // Dictation and speech-to-text insert over the selection: their text becomes its comment.
       const keep = (event: InputEvent) => {
-        if (event.target === host) {
-          event.preventDefault()
+        if (event.target !== host) {
+          return
+        }
+
+        event.preventDefault()
+        const passage = selectedPassage({ messages: host })
+        const text = event.data ?? event.dataTransfer?.getData('text/plain')
+
+        if (passage && text && /^insert(Text|ReplacementText)$/.test(event.inputType)) {
+          addComment({
+            quote: passage,
+            text,
+          })
         }
       }
 
@@ -290,6 +411,34 @@ export function Messages({
     [platform],
   )
 
+  const quoteSelection = ({ passage }: { passage: CommentPassage }) => {
+    quote({ text: passage.quote }); setSelection(null)
+    window.getSelection()?.removeAllRanges()
+    requestAnimationFrame(() => root.current && focusComposer({ host: root.current }))
+  }
+
+  // The pill floats under the selection, inside the messages so it scrolls with them and moves no text.
+  const pill = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const element = pill.current, host = root.current, selected = window.getSelection()
+
+    if (!element || !host || !selected?.rangeCount) {
+      return
+    }
+
+    const range = selected.getRangeAt(0).getBoundingClientRect(), box = host.getBoundingClientRect()
+    const half = element.offsetWidth / 2
+    const center = range.left + range.width / 2 - box.left
+    element.style.top = `${range.bottom - box.top + 6}px`
+    element.style.left = `${Math.max(
+      half,
+      Math.min(
+        center,
+        box.width - half,
+      ),
+    ) - half}px`
+  })
+
   const caretKey = ({ event }: { event: KeyEvent<HTMLDivElement> }) => {
     const host = event.currentTarget, {
       key,
@@ -315,9 +464,7 @@ export function Messages({
       event.preventDefault()
 
       if (shiftKey) {
-        quote({ text: selected.quote }); setSelection(null)
-        window.getSelection()?.removeAllRanges()
-        requestAnimationFrame(() => focusComposer({ host }))
+        quoteSelection({ passage: selected })
       } else {
         addComment({ quote: selected })
       }
@@ -336,12 +483,27 @@ export function Messages({
     }
 
     const before = caretBounds(), top = (before?.top ?? 0) + scroller.scrollTop
+    const from = selectionFocus()
+    const line = (key === 'ArrowUp' || key === 'ArrowDown') && !shiftKey && !altKey && !ctrlKey && !metaKey
     setTimeout(() => {
       const after = caretBounds()
       const moved = after ? Math.abs(after.top + scroller.scrollTop - top) : 0
       const stuck = !after || moved < (before?.height ?? 0) / 2
+      const direction = key === 'ArrowUp' ? 'backward' : 'forward'
+      // A line move that steps over a comment card stops in its note.
+      const note = line && from ? noteBetween({
+        host,
+        from,
+        to: stuck ? null : selectionFocus(),
+        direction,
+      }) : null
 
-      if (key === 'ArrowDown' && before && stuck && !shiftKey && !altKey && !ctrlKey && !metaKey) {
+      if (note) {
+        enterNote({
+          note,
+          direction,
+        })
+      } else if (key === 'ArrowDown' && before && stuck && line) {
         focusComposer({ host })
       } else {
         revealCaret({ host })
@@ -439,16 +601,6 @@ export function Messages({
     },
   })
 
-  const finish = ({ comment }: { comment: ChatComment }) => {
-    setEditing(null)
-
-    if (!comment.text.trim()) {
-      setComments({ items: comments.filter(c => c.id !== comment.id) })
-    }
-
-    focusBlock({ element: blockFor({ key: messageBlockKey(comment) }) })
-  }
-
   return (
     <>
       <style>{CARET_CSS}</style>
@@ -474,8 +626,18 @@ export function Messages({
             )
           }
         }}
+        onPaste={event => paste({ event })}
+        // A composition can't be cancelled; over a selection it goes into the new comment's note.
         onCompositionStart={event => {
-          if (event.target === event.currentTarget) {
+          const passage = selectedPassage({ messages: event.currentTarget })
+
+          if (event.target !== event.currentTarget) {
+            return
+          }
+
+          if (passage) {
+            addComment({ quote: passage })
+          } else {
             focusComposer({ host: event.currentTarget })
           }
         }}
@@ -509,7 +671,6 @@ export function Messages({
                     messageId,
                     offset,
                   })
-                  const selected = selection?.messageId === messageId && selection.offset === offset
                   const own = comments.filter(c => c.messageId === messageId && c.offset === offset)
 
                   return (
@@ -526,37 +687,34 @@ export function Messages({
                       aria-label={`Message block ${index + 1}`}
                     >
                       {children}
-                      {selected && (
-                        <Button
-                          className="block-comment-action has-selection"
-                          aria-label="Comment on this block"
-                          title="Enter or type to comment on your selection; Shift+Enter quotes it"
-                          onMouseDown={e => e.preventDefault()}
-                          onClick={() => addComment({ quote: selection })}
-                        >
-                          <Icon name="typing" size={14} />
-                          Comment
-                          <kbd>Enter</kbd>
-                          <span className="small">or type · Shift+Enter quotes</span>
-                        </Button>
-                      )}
                       {own.map(comment => (
                         <MessageComment
                           key={comment.id}
                           comment={comment}
-                          editing={editing === comment.id}
-                          edit={() => setEditing(comment.id)}
-                          change={({ text }) => setComments({
-                            items: comments.map(c => c.id === comment.id ? {
+                          inline
+                          change={({ text }) => update({
+                            items: latest.current.map(c => c.id === comment.id ? {
                               ...c,
                               text,
                             } : c),
                           })}
-                          finish={() => finish({ comment })}
                           remove={() => {
-                            setComments({ items: comments.filter(c => c.id !== comment.id) })
+                            remove({ id: comment.id })
                             focusBlock({ element: blockFor({ key }) })
                           }}
+                          leave={({
+                            note,
+                            direction,
+                          }) => root.current && leaveNote({
+                            host: root.current,
+                            note,
+                            direction,
+                          })}
+                          release={() => release({ id: comment.id })}
+                          attach={({ files }) => void attach({
+                            id: comment.id,
+                            files,
+                          })}
                         />
                       ))}
                     </div>
@@ -578,6 +736,30 @@ export function Messages({
             ) : entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
           </article>
         ))}
+        {selection && (
+          <div
+            className="comment-pill"
+            ref={pill}
+            contentEditable={false}
+            onMouseDown={e => e.preventDefault()}
+          >
+            <Button
+              aria-label="Comment on selection"
+              title="Enter, or start typing"
+              onClick={() => addComment({ quote: selection })}
+            >
+              <Icon name="comment" size={14} />
+              Comment
+              <kbd>↵</kbd>
+            </Button>
+            <span className="comment-pill-divider" />
+            <Button aria-label="Quote selection" title="Shift+Enter" onClick={() => quoteSelection({ passage: selection })}>
+              <Icon name="quote" size={14} />
+              Quote
+              <kbd>⇧↵</kbd>
+            </Button>
+          </div>
+        )}
       </div>
     </>
   )
