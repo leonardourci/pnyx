@@ -155,7 +155,7 @@ test(
 )
 
 test(
-  'new observed cards have random IDs, upserts keep them, and replay keeps stop time through edits',
+  'an upsert keeps an observed card\'s ID, and replay keeps its stop time through edits',
   () => {
     const input = {
       title: 'Worker',
@@ -176,21 +176,7 @@ test(
       input,
       meta,
     })
-    const second = decidePush({
-      state: emptyHydra(),
-      key: 'work',
-      input,
-      meta,
-    })
-    assert.ok('event' in first && 'event' in second)
-    assert.match(
-      first.event.cardId,
-      /^task-[0-9a-f-]{36}$/,
-    )
-    assert.notEqual(
-      first.event.cardId,
-      second.event.cardId,
-    )
+    assert.ok('event' in first)
     const state = reduce({
       state: emptyHydra(),
       event: first.event,

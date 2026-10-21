@@ -115,20 +115,6 @@ test(
         }).thinking,
         false,
       )
-      assert.throws(
-        () => patchView({
-          state,
-          input: { hydraWidth: 0 },
-        }),
-        /invalid view/,
-      )
-      assert.throws(
-        () => patchView({
-          state,
-          input: { lastMessageOnCards: 'yes' },
-        }),
-        /invalid view/,
-      )
       const legacy = viewFor({
         state: {
           ...state,

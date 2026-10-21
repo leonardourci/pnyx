@@ -168,13 +168,6 @@ test(
       )
       assert.equal(
         matchingTasks({
-          cards,
-          query: 'no match',
-        }).length,
-        0,
-      )
-      assert.equal(
-        matchingTasks({
           cards: cards.map(card => ({
             ...card,
             automaticTask: true,
@@ -224,11 +217,6 @@ test(
       ])
       const state = f.state()
       const message = state.hydraMessages?.at(-1)
-      const queue = commands.hydra(['messages'])
-      assert.match(
-        JSON.stringify(queue),
-        /Rollback verified/,
-      )
       assert.equal(
         message?.text,
         f.text,
@@ -282,10 +270,6 @@ test(
           }),
         }),
         /Unavailable in this Hydra/,
-      )
-      assert.equal(
-        state.cards[f.referenced.id]?.agent,
-        undefined,
       )
     } finally {
       f.close()

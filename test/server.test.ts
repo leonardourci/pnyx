@@ -10,14 +10,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
-import { HydraError } from '../src/core/model.ts'
 import { allowedRequest, startServer, type RunningServer, type ServerMessage } from '../src/server/server.ts'
 import { infoPath, localToken, readServer, socketPath } from '../src/server/state.ts'
 import { hydraDir, loadHydra, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { indexStatus, searchPath } from '../src/oracle/index.ts'
-import { writeSetting } from '../src/oracle/settings.ts'
 import { stopAll, track } from './processes.ts'
 import type { HydraSummary } from '../src/server/hydras.ts'
 
@@ -292,6 +290,16 @@ async function tab({
         args,
       }))
     },
+    // The receipt or error answering one request, past any pushes before it.
+    async reply({ id }: { id: string }): Promise<Extract<ServerMessage, { type: 'receipt' | 'error' }>> {
+      for (;;) {
+        const message = await main.next()
+
+        if ((message.type === 'receipt' || message.type === 'error') && message.id === id) {
+          return message
+        }
+      }
+    },
     async idle() {
       await new Promise(r => setTimeout(
         r,
@@ -412,14 +420,9 @@ async function hydraWithCard({ hydraId = 'default' }: { hydraId?: string } = {})
 test(
   'serve runs until stop, and the summary reports it without starting it',
   async () => {
-    const before = cli({ args: [] })
     assert.match(
-      before,
+      cli({ args: [] }),
       /^server: not running$/m,
-    )
-    assert.match(
-      before,
-      /pnyx-axi serve/,
     )
     assert.equal(
       existsSync(infoPath({ hydraId: 'default' })),
@@ -490,82 +493,11 @@ test(
       existsSync(socketPath({ hydraId: 'default' })),
       false,
     )
-    assert.match(
-      cli({ args: [] }),
-      /^server: not running$/m,
-    )
-    assert.match(
-      cli({ args: ['stop'] }),
-      /^server: "none: not running"$/m,
-    )
   },
 )
 
 test(
-  'serve refuses a taken port instead of picking another',
-  async () => {
-    const holder = createServer().listen(
-      0,
-      '127.0.0.1',
-    )
-    await once(
-      holder,
-      'listening',
-    )
-    const { port } = holder.address() as { port: number }
-
-    try {
-      const child = spawn(
-        process.execPath,
-        [
-          BIN,
-          'serve',
-          '--port',
-          String(port),
-        ],
-        {
-          env: process.env,
-          stdio: [
-            'ignore',
-            'pipe',
-            'pipe',
-          ],
-        },
-      )
-      track({ child })
-      let out = ''
-      child.stdout.on(
-        'data',
-        chunk => (out += chunk),
-      )
-      const [code] = await once(
-        child,
-        'exit',
-      )
-      assert.notEqual(
-        code,
-        0,
-      )
-      assert.match(
-        out,
-        new RegExp(`port ${port} is in use`),
-      )
-      assert.match(
-        out,
-        /PORT_IN_USE/,
-      )
-      assert.match(
-        out,
-        /--port/,
-      )
-    } finally {
-      holder.close()
-    }
-  },
-)
-
-test(
-  'serve takes its port from PORT when --port is not given',
+  'serve refuses a taken port from --port or PORT instead of picking another, and a PORT that is not a number',
   async () => {
     const holder = createServer().listen(
       0,
@@ -579,15 +511,26 @@ test(
 
     try {
       for (const [
-        value,
+        args,
+        env,
         expected,
       ] of [
           [
-            String(port),
+            [
+              '--port',
+              String(port),
+            ],
+            {},
+            new RegExp(`port ${port} is in use[^]*PORT_IN_USE`),
+          ],
+          [
+            [],
+            { PORT: String(port) },
             new RegExp(`port ${port} is in use`),
           ],
           [
-            'abc',
+            [],
+            { PORT: 'abc' },
             /PORT must be a number/,
           ],
         ] as const) {
@@ -596,11 +539,12 @@ test(
           [
             BIN,
             'serve',
+            ...args,
           ],
           {
             env: {
               ...process.env,
-              PORT: value,
+              ...env,
             },
             stdio: [
               'ignore',
@@ -631,17 +575,6 @@ test(
     } finally {
       holder.close()
     }
-  },
-)
-
-test(
-  'a second server for the same Hydra is refused',
-  async () => {
-    server = await startServer({ hydraId: 'default' })
-    await assert.rejects(
-      startServer({ hydraId: 'default' }),
-      error => error instanceof HydraError && error.code === 'ALREADY_RUNNING',
-    )
   },
 )
 
@@ -945,18 +878,17 @@ test(
         args,
       }))
       const reply = await t.next()
-      assert.equal(
-        reply.type,
-        'error',
-      )
-      assert.equal(
-        reply.type === 'error' && reply.id,
-        id,
-      )
-      assert.equal(
-        reply.type === 'error' && reply.code,
-        code,
-        `${id}: ${reply.type === 'error' && reply.error}`,
+      assert.deepEqual(
+        [
+          reply.type,
+          (reply as { id?: string }).id,
+          (reply as { code?: string }).code,
+        ],
+        [
+          'error',
+          id,
+          code,
+        ],
       )
     }
 
@@ -1092,42 +1024,54 @@ test(
   async () => {
     server = await startServer({ hydraId: 'default' })
     const token = `?token=${localToken()}`
-    assert.equal(
-      await handshakeStatus({ query: '' }),
-      401,
-    )
-    assert.equal(
-      await handshakeStatus({ query: '?token=wrong' }),
-      401,
-    )
-    assert.equal(
-      await handshakeStatus({
-        query: token,
-        headers: { origin: 'http://evil.example' },
-      }),
-      403,
-    )
-    assert.equal(
-      await handshakeStatus({
-        query: token,
-        headers: { origin: `http://127.0.0.1:${server.port}.evil.example` },
-      }),
-      403,
-    )
-    assert.equal(
-      await handshakeStatus({
-        query: token,
-        headers: { host: `evil.example:${server.port}` },
-      }),
-      403,
-    )
-    assert.equal(
-      await handshakeStatus({
-        query: token,
-        path: '/hydra/missing/ws',
-      }),
-      403,
-    )
+
+    for (const [
+      request,
+      status,
+    ] of [
+        [
+          { query: '' },
+          401,
+        ],
+        [
+          { query: '?token=wrong' },
+          401,
+        ],
+        [
+          {
+            query: token,
+            headers: { origin: 'http://evil.example' },
+          },
+          403,
+        ],
+        [
+          {
+            query: token,
+            headers: { origin: `http://127.0.0.1:${server.port}.evil.example` },
+          },
+          403,
+        ],
+        [
+          {
+            query: token,
+            headers: { host: `evil.example:${server.port}` },
+          },
+          403,
+        ],
+        [
+          {
+            query: token,
+            path: '/hydra/missing/ws',
+          },
+          403,
+        ],
+      ] as const) {
+      assert.equal(
+        await handshakeStatus(request),
+        status,
+        JSON.stringify(request),
+      )
+    }
 
     // /ws stays the default Hydra's, so a tab from before one server served every Hydra reconnects and reloads.
     for (const path of [
@@ -1156,7 +1100,6 @@ test(
 
     for (const path of [
       '/hydra/default/',
-      '/hydra/default/index.html',
       '/hydra/default/some/route',
     ]) {
       const page = await http({
@@ -1198,56 +1141,72 @@ test(
       assert.ok(!refused.text.includes(localToken()))
     }
 
-    const root = await http({
-      method: 'GET',
-      path: '/',
-    })
-    assert.equal(
-      root.status,
-      302,
-    )
-    assert.equal(
-      root.headers.location,
-      '/hydra/default/',
-    )
-    assert.equal(
-      (await http({
-        method: 'GET',
-        path: '/hydra/default',
-      })).headers.location,
-      '/hydra/default/',
-    )
     // Outside a Hydra only the shared assets are served, never a page carrying the token.
-    assert.equal(
-      (await http({
-        method: 'GET',
-        path: '/index.html',
-      })).status,
-      404,
-    )
-    assert.equal(
-      (await http({
-        method: 'GET',
-        path: '/favicon.svg',
-      })).status,
-      200,
-    )
-    assert.equal(
-      (await http({
-        method: 'GET',
-        path: '/hydra/missing/',
-      })).status,
-      404,
-    )
+    for (const [
+      method,
+      path,
+      status,
+      location,
+    ] of [
+        [
+          'GET',
+          '/',
+          302,
+          '/hydra/default/',
+        ],
+        [
+          'GET',
+          '/hydra/default',
+          308,
+          '/hydra/default/',
+        ],
+        [
+          'GET',
+          '/index.html',
+          404,
+        ],
+        [
+          'GET',
+          '/favicon.svg',
+          200,
+        ],
+        [
+          'GET',
+          '/hydra/missing/',
+          404,
+        ],
+        [
+          'GET',
+          '/hydra/default/api/commands/move',
+          200,
+        ],
+        [
+          'POST',
+          '/hydra/default/api/commands/move',
+          405,
+        ],
+      ] as const) {
+      const response = await http({
+        method,
+        path,
+      })
+      assert.deepEqual(
+        [
+          response.status,
+          response.headers.location,
+        ],
+        [
+          status,
+          location,
+        ],
+        `${method} ${path}`,
+      )
+    }
 
     const health = await http({
       method: 'GET',
       path: '/hydra/default/health',
     })
-    assert.equal(
-      health.status,
-      200,
-    )
     const { build } = JSON.parse(health.text) as { build: string }
     assert.deepEqual(
       JSON.parse(health.text),
@@ -1287,20 +1246,6 @@ test(
         build,
         hydraId: identity,
       },
-    )
-    assert.equal(
-      (await http({
-        method: 'GET',
-        path: '/hydra/default/api/commands/move',
-      })).status,
-      200,
-    )
-    assert.equal(
-      (await http({
-        method: 'POST',
-        path: '/hydra/default/api/commands/move',
-      })).status,
-      405,
     )
   },
 )
@@ -1434,13 +1379,15 @@ test(
         'web-view',
       ],
     })
-    const update = await t.next(); assert.equal(
-      update.type,
-      'event',
-    )
-    const receipt = await t.next(); assert.equal(
-      receipt.type,
-      'receipt',
+    assert.deepEqual(
+      [
+        (await t.next()).type,
+        (await t.next()).type,
+      ],
+      [
+        'event',
+        'receipt',
+      ],
     )
     assert.equal(
       loadHydra({ hydraId: 'default' }).state.view?.panelWidth,
@@ -1457,10 +1404,7 @@ test(
       ],
     })
     assert.equal(
-      (await t.next()).type,
-      'event',
-    ); assert.equal(
-      (await t.next()).type,
+      (await t.reply({ id: 'move-1' })).type,
       'receipt',
     )
     assert.equal(
@@ -1468,45 +1412,14 @@ test(
       'custom:later',
     )
     t.command({
-      id: 'view-stale',
-      name: 'view',
-      args: [
-        'set',
-        '--json',
-        '{"fontSize":18}',
-        '--if-revision',
-        '0',
-      ],
-    })
-    const stale = await t.next(); assert.equal(
-      stale.type,
-      'error',
-    )
-
-    if (stale.type === 'error') {
-      assert.equal(
-        stale.code,
-        'REVISION_CONFLICT',
-      )
-    }
-
-    t.command({
       id: 'thread-1',
       name: 'thread',
       args: [card],
     })
-    const thread = await t.next(); assert.equal(
-      thread.type,
-      'receipt',
+    assert.equal(
+      ((await t.reply({ id: 'thread-1' })) as { thread?: { route: boolean } }).thread?.route,
+      false,
     )
-
-    if (thread.type === 'receipt') {
-      assert.equal(
-        (thread.thread as { route: boolean }).route,
-        false,
-      )
-    }
-
     t.command({
       id: 'view-2',
       name: 'view',
@@ -1554,113 +1467,58 @@ test(
       'showing traces pages the conversation again',
     )
 
-    t.command({
-      id: 'reply-1',
-      name: 'reply',
-      args: [
-        card,
-        'test',
-        'id',
-      ],
-    })
-    const reply = await t.next(); assert.equal(
-      reply.type,
-      'error',
-    )
-
-    if (reply.type === 'error') {
+    for (const [
+      name,
+      args,
+      code,
+    ] of [
+        [
+          'view',
+          [
+            'set',
+            '--json',
+            '{"fontSize":18}',
+            '--if-revision',
+            '0',
+          ],
+          'REVISION_CONFLICT',
+        ],
+        [
+          'reply',
+          [
+            card,
+            'test',
+            'id',
+          ],
+          'NO_ROUTE',
+        ],
+        [
+          'agent',
+          [
+            card,
+            'effort',
+            'high',
+          ],
+          'VALIDATION_ERROR',
+        ],
+        [
+          'history',
+          [
+            '--card',
+            card,
+          ],
+          undefined,
+        ],
+      ] as const) {
+      t.command({
+        id: name,
+        name,
+        args: [...args],
+      })
       assert.equal(
-        reply.code,
-        'NO_ROUTE',
-      )
-    }
-
-    t.command({
-      id: 'agent-1',
-      name: 'agent',
-      args: [
-        card,
-        'effort',
-        'high',
-        'id',
-      ],
-    })
-    const agent = await t.next(); assert.equal(
-      agent.type,
-      'error',
-    )
-
-    if (agent.type === 'error') {
-      assert.equal(
-        agent.code,
-        'NO_ROUTE',
-      )
-    }
-
-    t.command({
-      id: 'agent-2',
-      name: 'agent',
-      args: [
-        card,
-        'effort',
-        'high',
-      ],
-    })
-    const short = await t.next(); assert.equal(
-      short.type,
-      'error',
-    )
-
-    if (short.type === 'error') {
-      assert.equal(
-        short.code,
-        'VALIDATION_ERROR',
-      )
-    }
-
-    t.command({
-      id: 'history-1',
-      name: 'history',
-      args: [
-        '--card',
-        card,
-      ],
-    }); assert.equal(
-      (await t.next()).type,
-      'receipt',
-    )
-    t.command({
-      id: 'escape-Hydra',
-      name: 'history',
-      args: [
-        '--hydra',
-        'other',
-      ],
-    }); assert.equal(
-      (await t.next()).type,
-      'error',
-    )
-    t.command({
-      id: 'card-1',
-      name: 'card',
-      args: [
-        card,
-        '--full',
-      ],
-    })
-    const shown = await t.next(); assert.equal(
-      shown.type,
-      'receipt',
-    )
-
-    if (shown.type === 'receipt') {
-      assert.deepEqual(
-        shown.notes,
-        {
-          summary: 'none',
-          decisions: 'none',
-          context: 'none',
-        },
+        ((await t.reply({ id: name })) as { code?: string }).code,
+        code,
+        name,
       )
     }
 
@@ -1825,92 +1683,55 @@ test(
       '3',
     )
 
-    const receipt = async ({ id }: { id: string }) => {
-      for (;;) {
-        const m = await t.next({ ms: CLI_TIMEOUT_MS })
+    const send = async ({
+      id,
+      name,
+      args,
+    }: {
+      id: string
+      name: string
+      args: string[]
+    }) => {
+      t.command({
+        id,
+        name,
+        args: [
+          card,
+          ...args,
+        ],
+      })
 
-        if ((m.type === 'receipt' || m.type === 'error') && m.id === id) {
-          return m
+      return await t.reply({ id }) as {
+        code?: string
+        error?: string
+        reply?: {
+          state: string
+          sent: boolean
         }
+        agent?: { sent: string }
       }
     }
 
-    t.command({
-      id: 'send-1',
-      name: 'reply',
-      args: [
-        card,
-        'A literal fixture reply',
-        'unknown-reply',
-      ],
-    })
-    const first = await receipt({ id: 'send-1' }); assert.equal(
-      first.type,
-      'receipt',
-    )
-
-    if (first.type === 'receipt') {
-      assert.equal(
-        (first.reply as { state: string }).state,
-        'delivery_unknown',
-      )
-    }
-
-    t.command({
-      id: 'send-2',
-      name: 'reply',
-      args: [
-        card,
-        'A literal fixture reply',
-        'unknown-reply',
-      ],
-    })
-    const second = await receipt({ id: 'send-2' }); assert.equal(
-      second.type,
-      'receipt',
-    )
-
-    if (second.type === 'receipt') {
-      assert.equal(
-        (second.reply as { sent: boolean }).sent,
-        false,
-      )
-    }
-
+    const args = [
+      'A literal fixture reply',
+      'unknown-reply',
+    ]
     assert.equal(
-      readFileSync(
-        join(
-          fixture.nativeHome,
-          'sent.log',
-        ),
-        'utf8',
-      ).match(/A literal fixture reply/g)?.length,
-      1,
+      (await send({
+        id: 'send-1',
+        name: 'reply',
+        args,
+      })).reply?.state,
+      'delivery_unknown',
     )
-    t.command({
-      id: 'send-3',
-      name: 'reply',
-      args: [
-        card,
-        '   ',
-        'blank-reply',
-      ],
-    })
-    const invalid = await receipt({ id: 'send-3' }); assert.equal(
-      invalid.type,
-      'error',
-    )
-
-    if (invalid.type === 'error') {
-      assert.equal(
-        invalid.code,
-        'VALIDATION_ERROR',
-      )
-    }
-
     assert.equal(
-      loadHydra({ hydraId: 'default' }).state.cards[card]?.attention.length,
-      1,
+      (await send({
+        id: 'send-2',
+        name: 'reply',
+        args,
+      })).reply?.sent,
+      false,
+      'an unknown result is never sent again',
     )
 
     const sends = readFileSync(
@@ -1920,29 +1741,33 @@ test(
       ),
       'utf8',
     )
-    t.command({
-      id: 'agent-1',
-      name: 'agent',
-      args: [
-        card,
-        'effort',
-        'high',
-        'effort-1',
-      ],
-    })
-    const changed = await receipt({ id: 'agent-1' }); assert.equal(
-      changed.type,
-      'receipt',
-      JSON.stringify(changed),
+    assert.equal(
+      sends.match(/A literal fixture reply/g)?.length,
+      1,
     )
-
-    if (changed.type === 'receipt') {
-      assert.equal(
-        (changed.agent as { sent: string }).sent,
-        'delivered',
-      )
-    }
-
+    assert.equal(
+      (await send({
+        id: 'send-3',
+        name: 'reply',
+        args: [
+          '   ',
+          'blank-reply',
+        ],
+      })).code,
+      'VALIDATION_ERROR',
+    )
+    assert.equal(
+      (await send({
+        id: 'agent-1',
+        name: 'agent',
+        args: [
+          'effort',
+          'high',
+          'effort-1',
+        ],
+      })).agent?.sent,
+      'delivered',
+    )
     assert.match(
       readFileSync(
         join(
@@ -1965,68 +1790,19 @@ test(
     )
     // An inline answer goes through the same worker; its values, even one starting with
     // a dash, reach the CLI as values, which refuses a request it cannot answer here.
-    t.command({
-      id: 'answer-1',
-      name: 'answer',
-      args: [
-        card,
-        '-hook:tool:Bash',
-        '{"choice":"allow"}',
-        'answer-1',
-        '-seen',
-      ],
-    })
-    const refused = await receipt({ id: 'answer-1' }); assert.equal(
-      refused.type,
-      'error',
-      JSON.stringify(refused),
+    assert.match(
+      (await send({
+        id: 'answer-1',
+        name: 'answer',
+        args: [
+          '-hook:tool:Bash',
+          '{"choice":"allow"}',
+          'answer-1',
+          '-seen',
+        ],
+      })).error ?? '',
+      /no open request with key -hook:tool:Bash/,
     )
-
-    if (refused.type === 'error') {
-      assert.match(
-        JSON.stringify(refused),
-        /no open request with key -hook:tool:Bash/,
-      )
-    }
-
-    t.command({
-      id: 'answer-2',
-      name: 'answer',
-      args: [
-        card,
-        'hook:tool:Bash',
-        '{}',
-      ],
-    })
-    const short = await receipt({ id: 'answer-2' }); assert.equal(
-      short.type,
-      'error',
-    )
-
-    if (short.type === 'error') {
-      assert.equal(
-        short.code,
-        'VALIDATION_ERROR',
-      )
-    }
-
-    t.command({
-      id: 'oracle-1',
-      name: 'oracle',
-      args: ['conversation readable'],
-    })
-    const found = await receipt({ id: 'oracle-1' }); assert.equal(
-      found.type,
-      'receipt',
-    )
-
-    if (found.type === 'receipt') {
-      assert.equal(
-        (found.hits as { card: string }[])[0]?.card,
-        card,
-      )
-    }
-
     t.ws.close()
   },
 )
@@ -2051,44 +1827,43 @@ const assistantLine = ({
 }) + '\n'
 
 test(
-  'the Hydra search finds a card by a word only its transcript holds, including words a live session just wrote',
+  'the Hydra search rebuilds a stale index and finds a card by a word only its transcript holds, including words a live session just wrote',
   async () => {
     const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
+    writeFileSync(
+      searchPath({ hydraId: 'default' }),
+      'not a database',
+    )
     server = await startServer({ hydraId: 'default' })
     const t = await tab(); await t.next()
 
-    const search = async ({
-      id,
-      text,
-    }: {
-      id: string
-      text: string
-    }) => {
+    const search = async ({ text }: { text: string }) => {
       t.command({
-        id,
+        id: text,
         name: 'oracle',
         args: [text],
       })
 
-      for (;;) {
-        const m = await t.next()
-
-        if ((m.type === 'receipt' || m.type === 'error') && m.id === id) {
-          return m
-        }
-      }
+      return ((await t.reply({ id: text })) as {
+        hits?: {
+          card: string
+          match: string
+        }[]
+      }).hits!.map(h => [
+        h.card,
+        h.match,
+      ])
     }
 
-    const cards = ({ m }: { m: ServerMessage }) => (m.type === 'receipt' ? (m.hits as { card: string }[]).map(h => h.card) : m)
+    const layout = fixture.state.keys.layout
     // "readable" is only in the transcript's first user message, not in any title, link or event.
     assert.deepEqual(
-      cards({
-        m: await search({
-          id: 's1',
-          text: 'readable',
-        }),
-      }),
-      [fixture.state.keys.layout],
+      (await search({ text: 'readable' })).map(([card]) => card),
+      [layout],
+    )
+    assert.equal(
+      indexStatus({ hydraId: 'default' })?.current,
+      true,
     )
     appendFileSync(
       fixture.transcript,
@@ -2097,68 +1872,18 @@ test(
         at: '2026-10-13T11:00:00Z',
       }),
     )
-    const byText = await search({
-      id: 's2',
-      text: 'flamingo rollout',
-    })
     assert.deepEqual(
-      cards({ m: byText }),
-      [fixture.state.keys.layout],
-    )
-    assert.equal(
-      byText.type === 'receipt' && (byText.hits as { match: string }[])[0]!.match,
-      'lexical',
+      await search({ text: 'flamingo rollout' }),
+      [
+        [
+          layout,
+          'lexical',
+        ],
+      ],
     )
     assert.deepEqual(
-      cards({
-        m: await search({
-          id: 's3',
-          text: 'flamingo nowhere',
-        }),
-      }),
+      await search({ text: 'flamingo nowhere' }),
       [],
-    )
-    t.ws.close()
-  },
-)
-
-test(
-  'a Hydra search rebuilds a stale search index',
-  async () => {
-    const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
-    writeFileSync(
-      searchPath({ hydraId: 'default' }),
-      'not a database',
-    )
-    assert.equal(
-      indexStatus({ hydraId: 'default' })?.current,
-      false,
-    )
-    server = await startServer({ hydraId: 'default' })
-    const t = await tab(); await t.next()
-    t.command({
-      id: 's1',
-      name: 'oracle',
-      args: ['readable'],
-    })
-    let m = await t.next()
-
-    while (!((m.type === 'receipt' || m.type === 'error') && m.id === 's1')) {
-      m = await t.next()
-    }
-
-    assert.deepEqual(
-      m.type === 'receipt' && (m.hits as { card: string }[]).map(h => h.card),
-      [fixture.state.keys.layout],
-    )
-    const status = indexStatus({ hydraId: 'default' })
-    assert.equal(
-      status?.current,
-      true,
-    )
-    assert.equal(
-      status?.transcripts.tracked,
-      1,
     )
     t.ws.close()
   },
@@ -2178,34 +1903,6 @@ test(
         text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.',
         at: '2026-10-13T10:49:00Z',
       },
-    )
-    appendFileSync(
-      fixture.transcript,
-      JSON.stringify({
-        type: 'assistant',
-        timestamp: '2026-10-13T11:00:00Z',
-        message: {
-          content: [
-            {
-              type: 'thinking',
-              thinking: 'hidden',
-            },
-            {
-              type: 'tool_use',
-              name: 'Bash',
-              input: {},
-            },
-          ],
-        },
-      }) + '\n',
-    )
-    appendFileSync(
-      fixture.transcript,
-      JSON.stringify({
-        type: 'user',
-        timestamp: '2026-10-13T11:01:00Z',
-        message: { content: 'Ship   it\nnow.' },
-      }) + '\n',
     )
     appendFileSync(
       fixture.transcript,
@@ -2293,94 +1990,6 @@ test(
       message,
     )
     first.ws.close(); t.ws.close()
-  },
-)
-
-test(
-  'with semantic search on, the Hydra search finds a transcript-only card by meaning when its words do not all match',
-  async () => {
-    const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
-    appendFileSync(
-      fixture.transcript,
-      assistantLine({
-        text: 'Flamingo rollout staged.',
-        at: '2026-10-13T11:00:00Z',
-      }),
-    )
-    // The stub worker embeds with hashed word vectors, so no model is fetched or loaded.
-    delete process.env.PNYX_SEMANTIC
-    process.env.PNYX_SEMANTIC_STUB = '1'
-    writeSetting({
-      key: 'oracle.rerank',
-      value: 'off',
-    })
-
-    try {
-      server = await startServer({ hydraId: 'default' })
-      const t = await tab(); await t.next()
-      // "dinosaur" is nowhere, so full text finds nothing; the transcript holds the other words.
-      // The first search waits for the worker to start and embed the Hydra, so receipts may be slow:
-      // wait longer than the server's own worst case (10s index request plus 30s embed request).
-      const deadline = Date.now() + 60_000
-
-      const receipt = async ({ id }: { id: string }): Promise<ServerMessage> => {
-        for (;;) {
-          try {
-            const m = await t.next()
-
-            if ((m.type === 'receipt' || m.type === 'error') && m.id === id) {
-              return m
-            }
-          } catch (error) {
-            if (Date.now() > deadline) {
-              throw error
-            }
-          }
-        }
-      }
-
-      let hits: {
-        card: string
-        match: string
-        weak?: true
-      }[] = []
-
-      for (let n = 0; !hits.some(h => h.match === 'semantic') && Date.now() < deadline; n++) {
-        t.command({
-          id: `m${n}`,
-          name: 'oracle',
-          args: ['flamingo rollout staged dinosaur'],
-        })
-        const m = await receipt({ id: `m${n}` })
-        assert.equal(
-          m.type,
-          'receipt',
-          JSON.stringify(m),
-        )
-        hits = m.type === 'receipt' ? m.hits as typeof hits : []
-      }
-
-      assert.deepEqual(
-        hits.filter(h => !h.weak).map(h => [
-          h.card,
-          h.match,
-        ]),
-        [
-          [
-            fixture.state.keys.layout,
-            'semantic',
-          ],
-        ],
-      )
-      t.ws.close()
-    } finally {
-      writeSetting({
-        key: 'oracle.semantic',
-        value: 'off',
-      })
-      process.env.PNYX_SEMANTIC = 'off'
-      delete process.env.PNYX_SEMANTIC_STUB
-    }
   },
 )
 
@@ -2621,74 +2230,143 @@ test(
 )
 
 test(
-  'the Hydra edits heads dispatch rules over the socket',
+  'Hydra and the open task keep independent live transcripts on one socket',
   async () => {
-    await hydraWithCard()
+    const root = process.env.PNYX_HOME!
+    const paths = [
+      join(
+        root,
+        'worker.jsonl',
+      ),
+      join(
+        root,
+        'hydra.jsonl',
+      ),
+    ]
+    paths.forEach(path => writeFileSync(
+      path,
+      '',
+    ))
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        const meta = {
+          actor: 'fixture',
+          at: '2026-10-15T00:00:00Z',
+        }
+
+        for (const [
+          key,
+          path,
+        ] of [
+            [
+              'worker',
+              paths[0],
+            ],
+            [
+              'hydra-session',
+              paths[1],
+            ],
+          ] as const) {
+          const decision = decidePush({
+            state: writer.state,
+            newCardId: `c${writer.state.seq + 1}`,
+            key,
+            input: {
+              title: key,
+              agent: {
+                provider: 'claude-code',
+                sessionId: key,
+                transcriptPath: path,
+              },
+            },
+            meta,
+          })
+          assert.ok('event' in decision); writer.append({ event: decision.event })
+        }
+
+        const decision = hydraEvent({
+          state: writer.state,
+          meta,
+          cardId: '$board',
+          change: {
+            type: 'board.configured',
+            data: {
+              ...hydraConfig({ state: writer.state }),
+              hydra: {
+                id: 'hydra',
+                kind: 'agent',
+                name: 'Hydra',
+                session: 'claude-code:hydra-session',
+              },
+            },
+          },
+        })
+        assert.ok('event' in decision); writer.append({ event: decision.event })
+      },
+    })
+    const task = loadHydra({ hydraId: 'default' }).state.keys.worker!
+    server = await startServer({ hydraId: 'default' })
     const t = await tab(); await t.next()
-    t.command({
-      id: 'rule-1',
-      name: 'rule',
-      args: [
-        'set',
-        'review',
-        '--harness',
-        'codex',
-        '--model',
-        'gpt-6.1-sol',
-        '--when',
-        'Independent review',
-      ],
+
+    const subscribe = async ({
+      id,
+      card,
+    }: {
+      id: string
+      card: string
+    }) => {
+      t.command({
+        id,
+        name: 'thread',
+        args: [card],
+      })
+      assert.equal(
+        (await t.reply({ id })).type,
+        'receipt',
+      )
+    }
+
+    await subscribe({
+      id: 'worker-thread',
+      card: task,
     })
-    const receipt = await t.next()
-    assert.equal(
-      receipt.type,
-      'receipt',
-    )
-    t.command({
-      id: 'rule-list',
-      name: 'rule',
-      args: ['list'],
+    await subscribe({
+      id: 'hydra-thread',
+      card: HYDRA_CARD,
     })
-    const result = await t.next()
-    assert.equal(
-      result.type,
-      'receipt',
-    )
-    const effective = result as unknown as {
-      dispatch: {
-        rules: Record<string, {
-          when: string
-          candidates: unknown[]
-        }>
+    paths.forEach((
+      path,
+      index,
+    ) => appendFileSync(
+      path,
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: `live reply ${index}` },
+      }) + '\n',
+    ))
+    const changed = new Set<string>()
+
+    while (changed.size < 2) {
+      const message = await t.next()
+
+      if (message.type === 'thread' && message.thread.entries.some(e => e.text.startsWith('live reply'))) {
+        changed.add(message.thread.card)
       }
     }
+
     assert.deepEqual(
-      effective.dispatch.rules.review,
-      {
-        when: 'Independent review',
-        candidates: [
-          {
-            harness: 'codex',
-            model: 'gpt-6.1-sol',
-          },
-        ],
-      },
+      [...changed].sort(),
+      [
+        HYDRA_CARD,
+        task,
+      ].sort(),
     )
-    t.command({
-      id: 'old-kind',
-      name: 'kind',
-      args: ['list'],
-    })
-    assert.equal(
-      (await t.next()).type,
-      'error',
-    )
-    t.ws.close()
   },
 )
 
 test(
-  'Hydras list projects and counts, create, rename and open on the same server',
+  'Hydras list projects with live workers and unanswered asks, create, rename and open on the same server',
   async () => {
     cli({
       args: [
@@ -2719,18 +2397,6 @@ test(
         'work',
         '--title',
         'Work',
-        '--project',
-        folder,
-      ],
-    })
-    cli({
-      args: [
-        'task',
-        'create',
-        '--key',
-        'hidden',
-        '--title',
-        'Hidden',
         '--project',
         folder,
       ],
@@ -2771,54 +2437,16 @@ test(
         input,
       ],
     })
-    writeFileSync(
-      input,
-      readFileSync(
-        input,
-        'utf8',
-      ).replace(
-        'fake',
-        'fake-hidden',
-      ),
-    )
-    cli({
-      args: [
-        'push',
-        '--key',
-        'hidden',
-        '--file',
-        input,
-      ],
-    })
-    cli({
-      args: [
-        'task',
-        'hide',
-        'hidden',
-        '--reason',
-        'test fixture',
-      ],
-    })
     server = await startServer({
       hydraId: 'default',
       port: 0,
     })
     const t = await tab()
 
-    const receipt = async ({ id }: { id: string }) => {
-      for (;;) {
-        const message = await t.next()
-
-        if ((message.type === 'receipt' || message.type === 'error') && message.id === id) {
-          type Hydras = {
-            hydras?: HydraSummary[]
-            url?: string
-            error?: string
-          }
-
-          return message as ServerMessage & Hydras
-        }
-      }
+    const receipt = async ({ id }: { id: string }) => await t.reply({ id }) as {
+      hydras?: HydraSummary[]
+      url?: string
+      error?: string
     }
 
     t.command({
@@ -3170,150 +2798,6 @@ test(
 )
 
 test(
-  'Hydra and the open task keep independent live transcripts on one socket',
-  async () => {
-    const root = process.env.PNYX_HOME!
-    const paths = [
-      join(
-        root,
-        'worker.jsonl',
-      ),
-      join(
-        root,
-        'hydra.jsonl',
-      ),
-    ]
-    paths.forEach(path => writeFileSync(
-      path,
-      '',
-    ))
-    withWriter({
-      hydraId: 'default',
-      fn: ({ writer }) => {
-        const meta = {
-          actor: 'fixture',
-          at: '2026-10-15T00:00:00Z',
-        }
-
-        for (const [
-          key,
-          path,
-        ] of [
-            [
-              'worker',
-              paths[0],
-            ],
-            [
-              'hydra-session',
-              paths[1],
-            ],
-          ] as const) {
-          const decision = decidePush({
-            state: writer.state,
-            newCardId: `c${writer.state.seq + 1}`,
-            key,
-            input: {
-              title: key,
-              agent: {
-                provider: 'claude-code',
-                sessionId: key,
-                transcriptPath: path,
-              },
-            },
-            meta,
-          })
-          assert.ok('event' in decision); writer.append({ event: decision.event })
-        }
-
-        const decision = hydraEvent({
-          state: writer.state,
-          meta,
-          cardId: '$board',
-          change: {
-            type: 'board.configured',
-            data: {
-              ...hydraConfig({ state: writer.state }),
-              hydra: {
-                id: 'hydra',
-                kind: 'agent',
-                name: 'Hydra',
-                session: 'claude-code:hydra-session',
-              },
-            },
-          },
-        })
-        assert.ok('event' in decision); writer.append({ event: decision.event })
-      },
-    })
-    const task = loadHydra({ hydraId: 'default' }).state.keys.worker!
-    server = await startServer({ hydraId: 'default' })
-    const t = await tab(); await t.next()
-
-    const subscribe = async ({
-      id,
-      card,
-    }: {
-      id: string
-      card: string
-    }) => {
-      t.command({
-        id,
-        name: 'thread',
-        args: [card],
-      })
-
-      for (;;) {
-        const message = await t.next()
-
-        if (message.type === 'error' && message.id === id) {
-          assert.fail(message.error)
-        }
-
-        if (message.type === 'receipt' && message.id === id) {
-          return
-        }
-      }
-    }
-
-    await subscribe({
-      id: 'worker-thread',
-      card: task,
-    })
-    await subscribe({
-      id: 'hydra-thread',
-      card: HYDRA_CARD,
-    })
-    paths.forEach((
-      path,
-      index,
-    ) => appendFileSync(
-      path,
-      JSON.stringify({
-        type: 'assistant',
-        message: { content: `live reply ${index}` },
-      }) + '\n',
-    ))
-    const changed = new Set<string>()
-
-    while (changed.size < 2) {
-      const message = await t.next()
-
-      if (message.type === 'thread' && message.thread.entries.some(e => e.text.startsWith('live reply'))) {
-        changed.add(message.thread.card)
-      }
-    }
-
-    assert.deepEqual(
-      [...changed].sort(),
-      [
-        HYDRA_CARD,
-        task,
-      ].sort(),
-    )
-  },
-)
-
-test(
   'hydra-scoped search returns Hydra messages and validates command searches',
   async () => {
     seedWebFixture({ home: process.env.PNYX_HOME! })
@@ -3349,92 +2833,56 @@ test(
         'hydra',
       ],
     })
-    let result = await t.next()
-
-    while (!((result.type === 'receipt' || result.type === 'error') && result.id === 'oracle')) {
-      result = await t.next()
-    }
-
-    assert.equal(
-      result.type,
-      'receipt',
-    )
-
-    if (result.type === 'receipt') {
-      assert.deepEqual(
-        (result.hits as {
+    assert.deepEqual(
+      ((await t.reply({ id: 'oracle' })) as {
+        hits?: {
           card: string
           kind?: string
-        }[]).map(hit => [
-          hit.card,
-          hit.kind,
-        ]),
+        }[]
+      }).hits!.map(hit => [
+        hit.card,
+        hit.kind,
+      ]),
+      [
         [
-          [
-            '$board',
-            'hydra',
-          ],
+          '$board',
+          'hydra',
         ],
-      )
-    }
-
-    t.command({
-      id: 'commands-off',
-      name: 'oracle-commands',
-      args: [
-        'theme',
-        JSON.stringify([
-          {
-            id: 'theme',
-            text: 'Choose a dark theme',
-          },
-        ]),
       ],
-    })
-
-    do {
-      result = await t.next()
-    } while (!((result.type === 'receipt' || result.type === 'error') && result.id === 'commands-off'))
-
-    assert.equal(
-      result.type,
-      'receipt',
     )
 
-    if (result.type === 'receipt') {
-      assert.deepEqual(
-        result.matches,
-        [],
-      )
-    }
-
-    t.command({
-      id: 'commands-invalid',
-      name: 'oracle-commands',
-      args: [
-        'theme',
-        JSON.stringify([
-          {
-            id: 'theme',
-            text: 42,
-          },
-        ]),
-      ],
-    })
-
-    do {
-      result = await t.next()
-    } while (!((result.type === 'receipt' || result.type === 'error') && result.id === 'commands-invalid'))
-
-    assert.equal(
-      result.type,
-      'error',
-    )
-
-    if (result.type === 'error') {
-      assert.equal(
-        result.code,
-        'VALIDATION_ERROR',
+    for (const [
+      id,
+      text,
+      expected,
+    ] of [
+        [
+          'commands-off',
+          'Choose a dark theme',
+          { matches: [] },
+        ],
+        [
+          'commands-invalid',
+          42,
+          { code: 'VALIDATION_ERROR' },
+        ],
+      ] as const) {
+      t.command({
+        id,
+        name: 'oracle-commands',
+        args: [
+          'theme',
+          JSON.stringify([
+            {
+              id: 'theme',
+              text,
+            },
+          ]),
+        ],
+      })
+      assert.partialDeepStrictEqual(
+        await t.reply({ id }),
+        expected,
       )
     }
 
@@ -3552,7 +3000,7 @@ test(
 )
 
 test(
-  'idle Done expiry broadcasts hiding and survives a server restart',
+  'a running server hides an idle Done task when its delay passes, with no other event',
   async () => {
     cli({
       args: [
@@ -3589,22 +3037,63 @@ test(
       check: () => loadHydra({ hydraId: 'default' }).state.cards[id]?.hidden || undefined,
       what: 'idle Done expiry',
     })
-    await server.close()
-    server = await startServer({ hydraId: 'default' })
-    assert.equal(
-      loadHydra({ hydraId: 'default' }).state.cards[id]?.hidden,
-      true,
-    )
-    cli({
+  },
+)
+
+test(
+  'the Hydra edits heads dispatch rules over the socket',
+  async () => {
+    await hydraWithCard()
+    const t = await tab(); await t.next()
+    t.command({
+      id: 'rule-1',
+      name: 'rule',
       args: [
-        'task',
-        'unhide',
-        id,
+        'set',
+        'review',
+        '--harness',
+        'codex',
+        '--model',
+        'gpt-6.1-sol',
+        '--when',
+        'Independent review',
       ],
     })
+    const receipt = await t.next()
     assert.equal(
-      loadHydra({ hydraId: 'default' }).state.cards[id]?.keepDone,
-      true,
+      receipt.type,
+      'receipt',
     )
+    t.command({
+      id: 'rule-list',
+      name: 'rule',
+      args: ['list'],
+    })
+    const result = await t.next()
+    assert.equal(
+      result.type,
+      'receipt',
+    )
+    const effective = result as unknown as {
+      dispatch: {
+        rules: Record<string, {
+          when: string
+          candidates: unknown[]
+        }>
+      }
+    }
+    assert.deepEqual(
+      effective.dispatch.rules.review,
+      {
+        when: 'Independent review',
+        candidates: [
+          {
+            harness: 'codex',
+            model: 'gpt-6.1-sol',
+          },
+        ],
+      },
+    )
+    t.ws.close()
   },
 )

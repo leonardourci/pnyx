@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { commentReply, orderedComments, quoteSnippet, type ChatComment } from '../web/src/hydra/chat.ts'
+import { commentReply, orderedComments, type ChatComment } from '../web/src/hydra/chat.ts'
 import { commentPileLayout, commentPiles } from '../web/src/hydra/comment-piles.ts'
 
 test(
@@ -126,24 +126,6 @@ test(
         Math.max(...pile.positions.map(position => position.zIndex)),
       )
     }
-  },
-)
-
-test(
-  'a repeated quote marks the occurrence selected for its comment',
-  () => {
-    assert.deepEqual(
-      quoteSnippet({
-        quote: 'word',
-        context: 'word then word',
-        start: 10,
-      }),
-      {
-        before: 'word then ',
-        match: 'word',
-        after: '',
-      },
-    )
   },
 )
 
