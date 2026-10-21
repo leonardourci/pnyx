@@ -32,7 +32,7 @@ test(
     })
     assert.equal(
       preview.skills.length,
-      12,
+      14,
     )
     assert.ok(preview.skills.every(link => link.change === 'installed' && !existsSync(link.path)))
     assert.match(
@@ -212,7 +212,7 @@ test(
     }
     assert.equal(
       setupSkills(options).skills.length,
-      6,
+      7,
     )
     assert.equal(
       skillStatus(options),

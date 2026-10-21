@@ -575,13 +575,14 @@ test(
       startTask({
         hydraId: 'lab',
         task: 'ship',
+        harness: 'claude',
         override: { model: 'gpt-6-luna' },
         meta: {
           ...meta,
           id: 'unoffered',
         },
       }),
-      /claude\/gpt-6-luna: not offered/,
+      /gpt-6-luna: not offered/,
     )
     await assert.rejects(
       startTask({

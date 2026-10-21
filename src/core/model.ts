@@ -563,6 +563,25 @@ export type HydraChange = EventBase & (
     data: Omit<HydraMessage, 'id' | 'at' | 'actor'>
   }
   | {
+    type: 'hydra.dispatch-proposed'
+    data: DispatchProposal
+  }
+  | {
+    type: 'hydra.dispatch-progress'
+    data: {
+      token: string
+      status: 'applying' | 'failed'
+      error?: string
+    }
+  }
+  | {
+    type: 'hydra.dispatch-resolved'
+    data: {
+      token: string
+      action: 'confirmed' | 'dismissed'
+    }
+  }
+  | {
     type: 'board.agents'
     data: {
       agents: Record<string, AgentConfig>
@@ -780,6 +799,9 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.declared',
   'task.mirrored',
   'hydra.message',
+  'hydra.dispatch-proposed',
+  'hydra.dispatch-resolved',
+  'hydra.dispatch-progress',
   'chat.message',
   'board.agents',
   'task.launched',
@@ -792,7 +814,19 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.queue',
 ]
 
+export interface DispatchProposal {
+  token: string
+  kind: 'rule' | 'account' | 'command'
+  shared: boolean
+  before: string
+  value: string
+  summary: string
+  status?: 'applying' | 'failed'
+  error?: string
+}
+
 export interface HydraState {
+  dispatchProposals?: DispatchProposal[]
   labelColors?: SavedLabelColor[]
   projects?: HydraProject[]
   projectsRevision?: number

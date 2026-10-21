@@ -1,5 +1,5 @@
 import { projectWorkerContext } from '../projects/context.ts'
-import { chooseCandidate, accountEnvironment, dispatchTask, hostedOverride, ruleCandidates, type DispatchChoice, type Override } from '../dispatch/select.ts'
+import { chooseCandidate, accountEnvironment, dispatchTask, hostedOverride, ruleCandidates, startCandidates, type DispatchChoice, type Override } from '../dispatch/select.ts'
 import { modelIds, type ModelOption } from '../server/provider.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
 import { openPaseo } from '../integrations/paseo/client.ts'
@@ -340,10 +340,23 @@ export async function startTask({
       hydraId,
       state,
     })
-    const list = ruleCandidates({
+    const list = harness ? startCandidates({
       dispatch: effective,
       rule,
+      harness,
+      override,
     }) ?? []
+      : override?.model ? ([
+        'claude',
+        'codex',
+      ] as const).map(harness => ({
+        harness,
+        model: override.model,
+      }))
+        : ruleCandidates({
+          dispatch: effective,
+          rule,
+        }) ?? []
 
     if (how === 'pnyx') {
       // Only a candidate that names a model needs its harness's catalog.

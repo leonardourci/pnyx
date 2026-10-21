@@ -13,6 +13,7 @@ export const HYDRA_SKILLS = [
   'pnyx-hydra-columns',
   'pnyx-hydra-firstmate',
   'inscribe',
+  'pnyx-setup',
 ] as const
 const SKILLS = [
   ...HYDRA_SKILLS,

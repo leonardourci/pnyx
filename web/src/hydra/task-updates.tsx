@@ -111,14 +111,16 @@ export function TaskUpdates({
             })
 
           if (active) {
+            const gap = filled.current && result.found.length === PAGE_SIZE
+              && !result.found.some(next => events.some(prior => prior.id === next.id))
             filled.current = true
-            setEvents(kept => [
+            setEvents(kept => gap ? result.found : [
               ...result.found,
               ...kept.filter(event => !result.found.some(next => next.id === event.id)),
             ])
 
-            if (result.more !== undefined) {
-              setMore(result.more)
+            if (gap || result.more !== undefined) {
+              setMore(gap || !!result.more)
             }
 
             setError('')

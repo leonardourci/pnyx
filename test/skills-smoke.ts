@@ -1,7 +1,8 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { setupSkills } from '../src/integrations/skills/install.ts'
+import { setupSkills, skillLinks } from '../src/integrations/skills/install.ts'
 import { startServer } from '../src/server/server.ts'
 import { smokeBrowser } from './browser.ts'
 
@@ -24,7 +25,10 @@ process.env.PNYX_HOME = join(
 )
 process.env.PNYX_SEMANTIC = 'off'
 process.env.PNYX_PASEO_URL = 'ws://127.0.0.1:1/ws'
-const server = await startServer({ hydraId: 'default' })
+const server = await startServer({
+  query: hydraSdk().query,
+  hydraId: 'default',
+})
 const {
   browser,
   text,
@@ -60,8 +64,9 @@ try {
   })
   await text({ label: 'Settings' })
   const row = '[...document.querySelectorAll(".integrations dl > div")].find(el => el.querySelector("dt").textContent === "skills")'
+  const missing = `missing: ${skillLinks().length} global skill links`
   await eventually({
-    condition: `/missing: \\d+ global skill links/.test(${row}?.textContent || '')`,
+    condition: `${row}?.textContent.includes(${JSON.stringify(missing)})`,
     label: 'missing global skills shown in Settings',
   })
   await evaluate({ code: 'document.querySelector(".integrations").scrollIntoView({ block: "center" }); return true;' })
@@ -80,7 +85,7 @@ try {
   setupSkills({ remove: true })
   await text({ label: 'Check again' })
   await eventually({
-    condition: `/missing: \\d+ global skill links/.test(${row}?.textContent || '')`,
+    condition: `${row}?.textContent.includes(${JSON.stringify(missing)})`,
     label: 'removing global skills updates Settings readiness',
   })
   process.stdout.write('Passed: global skill readiness in Settings before setup, after setup and after removal\n')

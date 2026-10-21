@@ -179,6 +179,7 @@ try {
   const events = readEvents({ hydraId: 'default' })
   withWriter({
     hydraId: 'other',
+    create: true,
     fn: ({ writer }) => {
       for (const event of events) {
         const copy = structuredClone(event)

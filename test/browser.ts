@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const exec = promisify(execFile)
-const DRAG_ATTEMPTS = 5
 
 export async function smokeEnvironment(
   { session }: { session: string },
@@ -140,6 +139,8 @@ export function smokeBrowser({
   })
   const focus = ({ selector }: { selector: string }) => evaluate({ code: `document.querySelector(${JSON.stringify(selector)}).focus(); return true;` })
 
+  const settle = () => evaluate({ code: 'await document.fonts.ready; await new Promise((resolve, reject) => { let quiet; const observer = new MutationObserver(settle); const deadline = setTimeout(() => { observer.disconnect(); clearTimeout(quiet); reject(new Error(\'Page did not settle before drag\')); }, 5000); function settle() { clearTimeout(quiet); quiet = setTimeout(() => { observer.disconnect(); clearTimeout(deadline); resolve(true); }, 100); } observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true }); settle(); }); return true;' })
+
   const drag = async ({
     selector,
     dy,
@@ -147,39 +148,29 @@ export function smokeBrowser({
     selector: string
     dy: number
   }) => {
+    await settle()
     await evaluate({ code: `const handle = document.querySelector(${JSON.stringify(selector)}); handle.scrollIntoView({ block: 'nearest' }); handle.dataset.smokeLabel = handle.getAttribute('aria-label'); handle.setAttribute('aria-label', 'Smoke drag handle'); const rect = handle.getBoundingClientRect(); const target = document.createElement('button'); target.id = 'smoke-drag-target'; target.textContent = 'Smoke drag target'; Object.assign(target.style, { position: 'fixed', left: (rect.left + rect.width / 2 - 2) + 'px', top: (rect.top + rect.height / 2 + ${dy} - 2) + 'px', width: '4px', height: '4px', padding: '0', overflow: 'hidden', zIndex: '9999' }); document.body.append(target); return true;` })
 
     try {
-      for (let attempt = 0; attempt < DRAG_ATTEMPTS; attempt++) {
-        const snapshot = await browser({
-          args: [
-            'snapshot',
-            '--full',
-          ],
-        })
-        const from = snapshot.match(/uid=(\S+) separator "Smoke drag handle"/)
-        const to = snapshot.match(/uid=(\S+) button "Smoke drag target"/)
-        assert.ok(
-          from && to,
-          snapshot,
-        )
-
-        try {
-          await browser({
-            args: [
-              'drag',
-              `@${from[1]}`,
-              `@${to[1]}`,
-            ],
-          })
-
-          return
-        } catch (error) {
-          if (!(error instanceof Error) || !('stdout' in error) || !String(error.stdout).includes('STALE_REF') || attempt === DRAG_ATTEMPTS - 1) {
-            throw error
-          }
-        }
-      }
+      const snapshot = await browser({
+        args: [
+          'snapshot',
+          '--full',
+        ],
+      })
+      const from = snapshot.match(/uid=(\S+) separator "Smoke drag handle"/)
+      const to = snapshot.match(/uid=(\S+) button "Smoke drag target"/)
+      assert.ok(
+        from && to,
+        snapshot,
+      )
+      await browser({
+        args: [
+          'drag',
+          `@${from[1]}`,
+          `@${to[1]}`,
+        ],
+      })
     } finally {
       await evaluate({ code: 'document.querySelector(\'#smoke-drag-target\')?.remove(); const handle = document.querySelector(\'[data-smoke-label]\'); if (handle) { handle.setAttribute(\'aria-label\', handle.dataset.smokeLabel); delete handle.dataset.smokeLabel; } return true;' })
     }
@@ -224,6 +215,7 @@ export function smokeBrowser({
     fill,
     press,
     focus,
+    settle,
     drag,
     screenshot,
     close,

@@ -35,7 +35,7 @@ One folder per feature. Code for a feature lives in its folder. There are no per
 | `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery |
 | `web/` | the React + Vite + Tailwind Hydra; its own UI primitives in `web/src/components/ui/` |
 | `setup/` | hook templates per harness |
-| `skills/` | the agent skills shipped with the CLI: `pnyx`, `pnyx-worker`, and Hydra's `pnyx-hydra` contract with its detail skills (`pnyx-hydra-workers`, `pnyx-hydra-columns`, `pnyx-hydra-firstmate`, `inscribe`) |
+| `skills/` | the agent skills shipped with the CLI: `pnyx`, `pnyx-worker`, and Hydra's `pnyx-hydra` contract with its detail skills (`pnyx-hydra-workers`, `pnyx-hydra-columns`, `pnyx-hydra-firstmate`, `inscribe`, `pnyx-setup`) |
 | `test/` | tests; synthetic inputs in `test/fixtures/` |
 | `docs/media/` | the README's demo GIF |
 

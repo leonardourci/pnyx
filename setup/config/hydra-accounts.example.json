@@ -4,17 +4,9 @@
       "provider": "claude",
       "folder": "~/.claude"
     },
-    "claude:work": {
-      "provider": "claude",
-      "folder": "~/.claude-work"
-    },
     "codex:personal": {
       "provider": "codex",
       "folder": "~/.codex"
-    },
-    "codex:work": {
-      "provider": "codex",
-      "folder": "~/.codex-work"
     }
   }
 }

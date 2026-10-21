@@ -1,3 +1,4 @@
+import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
 import { queuePosition } from '../queue/state.ts'
 import { projectRows } from '../projects/read.ts'
@@ -361,6 +362,12 @@ const hydraDigestHandler = guard({
       owner,
       state,
       projects: projectDigest({ state }),
+      setup: setupDigest({
+        items: setupCheck({
+          hydraId,
+          state,
+        }),
+      }),
     })
   },
 })

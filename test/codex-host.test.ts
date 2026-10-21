@@ -14,6 +14,7 @@ import { startServer, type RunningServer } from '../src/server/server.ts'
 import { askHost } from '../src/server/state.ts'
 import { loadHydra, readEvents, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { fakeCodex } from './codex-fixture.ts'
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { MAX_IMAGE_BYTES } from '../src/attachments/images.ts'
 
 const meta = {
@@ -107,6 +108,7 @@ async function lab({ refuse }: { refuse?: string } = {}) {
   server = await startServer({
     hydraId: 'lab',
     spawnCodex: fixture.spawnCodex,
+    query: hydraSdk().query,
   })
 
   // A start checks the model against the catalog, read once per server; the thread processes come after it.
@@ -704,6 +706,8 @@ test(
       'default',
       '--harness',
       'codex',
+      '--model',
+      '',
       '--hydra',
       'lab',
     ])
@@ -713,7 +717,11 @@ test(
       meta,
     })
     void starting.catch(() => {})
-    await until({ check: () => fixture.messages().some(m => m.method === 'initialize') })
+    await Promise.race([
+      fixture.initializing,
+      starting,
+    ])
+    assert.ok(fixture.messages().some(m => m.method === 'initialize'))
     await assert.rejects(
       startTask({
         hydraId: 'lab',
@@ -818,38 +826,31 @@ test(
 )
 
 test(
-  'a harness filter never invents an unlisted candidate',
+  'an owner harness choice starts outside the configured rule',
   async () => {
-    const {
-      fixture,
-      task,
-    } = await lab()
+    const { task } = await lab()
     await dispatchCommands.rule([
       'set',
       'default',
-      '--harness',
-      'claude',
-      '--model',
-      'opus',
+      '--candidates',
+      '[{"harness":"claude","model":"opus"}]',
       '--hydra',
       'lab',
     ])
-    await assert.rejects(
-      startTask({
-        hydraId: 'lab',
-        task: 'ship',
-        harness: 'codex',
-        meta,
-      }),
-      /no usable candidates/,
-    )
+    await startTask({
+      hydraId: 'lab',
+      task: 'ship',
+      harness: 'codex',
+      meta,
+    })
+    await until({ check: () => task().sessionActivity === 'finished' })
     assert.equal(
-      fixture.children.length,
-      0,
+      task().agent?.provider,
+      'codex',
     )
-    assert.equal(
-      task().agent,
-      undefined,
+    assert.match(
+      task().launch?.dispatch ?? '',
+      /owner override/,
     )
   },
 )
@@ -1417,5 +1418,95 @@ test(
       'lab',
     ])
     await until({ check: () => task().sessionActivity === 'finished' })
+  },
+)
+
+test(
+  'owner Codex choice starts through a Claude-only rule with every setting on its first turn',
+  async () => {
+    const {
+      fixture,
+      task,
+    } = await lab()
+    await dispatchCommands.rule([
+      'set',
+      'default',
+      '--candidates',
+      '[{"harness":"claude","model":"sonnet"}]',
+      '--hydra',
+      'lab',
+    ])
+    await startTask({
+      hydraId: 'lab',
+      task: 'ship',
+      harness: 'codex',
+      override: {
+        model: 'gpt-6.1-sol',
+        effort: 'xhigh',
+        mode: 'never',
+        fast: true,
+      },
+      meta,
+    })
+    await until({ check: () => task().sessionActivity === 'finished' })
+    assert.equal(
+      task().agent?.provider,
+      'codex',
+    )
+    assert.match(
+      task().launch?.dispatch ?? '',
+      /owner override/,
+    )
+    const turn = fixture.messages().find(m => m.method === 'turn/start')
+    assert.ok(turn?.params)
+    assert.equal(
+      turn.params.model,
+      'gpt-6.1-sol',
+    )
+    assert.equal(
+      turn.params.effort,
+      'xhigh',
+    )
+    assert.equal(
+      turn.params.serviceTier,
+      'fast',
+    )
+  },
+)
+
+test(
+  'an owner model-only choice finds Codex outside a Claude-only rule',
+  async () => {
+    const {
+      fixture,
+      task,
+    } = await lab()
+    await dispatchCommands.rule([
+      'set',
+      'default',
+      '--candidates',
+      '[{"harness":"claude","model":"sonnet"}]',
+      '--hydra',
+      'lab',
+    ])
+    await startTask({
+      hydraId: 'lab',
+      task: 'ship',
+      override: { model: 'gpt-6.1-sol' },
+      meta,
+    })
+    await until({ check: () => task().sessionActivity === 'finished' })
+    assert.equal(
+      task().agent?.provider,
+      'codex',
+    )
+    assert.match(
+      task().launch?.dispatch ?? '',
+      /owner override/,
+    )
+    assert.equal(
+      fixture.messages().find(m => m.method === 'turn/start')?.params?.model,
+      'gpt-6.1-sol',
+    )
   },
 )

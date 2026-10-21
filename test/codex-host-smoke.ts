@@ -148,6 +148,11 @@ const task = () => {
   return state.cards[state.keys.smoke!]!
 }
 
+const threads = () => fixture.messages().filter(message => [
+  'thread/start',
+  'thread/resume',
+].includes(message.method ?? '')).length
+
 try {
   await browser({
     args: [
@@ -176,7 +181,7 @@ try {
     label: 'Codex task Start requests Hydra’s choice',
   })
   assert.equal(
-    fixture.messages().filter(message => message.method === 'thread/start').length,
+    threads(),
     0,
   )
   assert.equal(
@@ -197,7 +202,7 @@ try {
     'Use the project’s default agent',
   ])
   await eventually({
-    condition: 'document.querySelector(".card-agent")?.getAttribute("aria-label") === "Codex"',
+    condition: 'document.querySelector(".agent-chip")?.textContent === "Codex · Pnyx"',
     label: 'Codex attaches as a hosted agent',
   })
   await commands.task([
@@ -220,7 +225,7 @@ try {
     label: 'an ended outside Codex session asks Hydra to resume',
   })
   assert.equal(
-    fixture.messages().filter(message => message.method === 'thread/start').length,
+    threads(),
     1,
   )
   await commands.task([
@@ -232,11 +237,11 @@ try {
     'Resume the recorded session',
   ])
   await eventually({
-    condition: 'document.querySelector(".card.selected .card-agent")?.getAttribute("aria-label") === "Codex"',
+    condition: 'document.querySelector(".detail .agent-chip")?.textContent === "Codex · Pnyx"',
     label: 'Codex continuation changes the host',
   })
   assert.equal(
-    fixture.messages().filter(message => message.method === 'thread/start').length,
+    threads(),
     1,
   )
   await commands.task([

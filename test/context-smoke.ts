@@ -1,3 +1,4 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -16,6 +17,10 @@ const home = mkdtempSync(join(
   'pnyx-context-smoke-',
 ))
 process.env.PNYX_HOME = home
+process.env.CLAUDE_CONFIG_DIR = join(
+  home,
+  'claude',
+)
 process.env.PNYX_SEMANTIC = 'off'
 const env = await smokeEnvironment({ session: 'pnyx-context' })
 const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(
@@ -36,7 +41,10 @@ commands.task([
   '--brief',
   'Check the canary.',
 ])
-const server = await startServer({ hydraId: 'default' })
+const server = await startServer({
+  query: hydraSdk().query,
+  hydraId: 'default',
+})
 
 const browser = async ({ args }: { args: string[] }) => {
   const { stdout } = await exec(
