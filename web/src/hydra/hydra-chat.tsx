@@ -213,6 +213,7 @@ export function HydraChat({
         <Messages
           entries={entries}
           assistantLabel="Hydra"
+          notify={notify}
           openTask={openTask}
           taskTitles={Object.fromEntries(Object.values(state.cards).map(c => [
             c.id,

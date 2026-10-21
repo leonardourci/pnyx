@@ -9,7 +9,13 @@ import { promisify } from 'node:util'
 const exec = promisify(execFile)
 
 export async function smokeEnvironment(
-  { session }: { session: string },
+  {
+    session,
+    reducedMotion = false,
+  }: {
+    session: string
+    reducedMotion?: boolean
+  },
 ): Promise<NodeJS.ProcessEnv> {
   const probe = createServer()
   await new Promise<void>((
@@ -54,17 +60,26 @@ export async function smokeEnvironment(
     delete env[`CHROME_DEVTOOLS_AXI_${key}`]
   }
 
+  if (reducedMotion) {
+    env.CHROME_DEVTOOLS_AXI_CHROME_ARGS = '--force-prefers-reduced-motion=reduce'
+  }
+
   return env
 }
 
 export function smokeBrowser({
   home,
   session,
+  reducedMotion = false,
 }: {
   home: string
   session: string
+  reducedMotion?: boolean
 }) {
-  const environment = smokeEnvironment({ session })
+  const environment = smokeEnvironment({
+    session,
+    reducedMotion,
+  })
   const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(
     home,
     'evidence',
@@ -139,7 +154,24 @@ export function smokeBrowser({
   })
   const focus = ({ selector }: { selector: string }) => evaluate({ code: `document.querySelector(${JSON.stringify(selector)}).focus(); return true;` })
 
-  const settle = () => evaluate({ code: 'await document.fonts.ready; await new Promise((resolve, reject) => { let quiet; const observer = new MutationObserver(settle); const deadline = setTimeout(() => { observer.disconnect(); clearTimeout(quiet); reject(new Error(\'Page did not settle before drag\')); }, 5000); function settle() { clearTimeout(quiet); quiet = setTimeout(() => { observer.disconnect(); clearTimeout(deadline); resolve(true); }, 100); } observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true }); settle(); }); return true;' })
+  const settle = () => evaluate({
+    code: `
+        await document.fonts.ready;
+        await new Promise(resolve => {
+          let frame;
+          const settle = () => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => {
+              frame = requestAnimationFrame(() => { observer.disconnect(); resolve(); });
+            });
+          };
+          const observer = new MutationObserver(settle);
+          observer.observe(document.documentElement, { attributes: true, childList: true, characterData: true, subtree: true });
+          settle();
+        });
+        return true;
+      `,
+  })
 
   const drag = async ({
     selector,
@@ -215,8 +247,8 @@ export function smokeBrowser({
     fill,
     press,
     focus,
-    settle,
     drag,
+    settle,
     screenshot,
     close,
   }
