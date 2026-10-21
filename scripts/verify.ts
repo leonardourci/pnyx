@@ -81,7 +81,7 @@ function read({ args }: { args: string[] }): string {
         'pipe',
       ],
     },
-  ).trim()
+  ).trimEnd()
 }
 
 function changedPaths(): string[] {
