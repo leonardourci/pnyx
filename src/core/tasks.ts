@@ -147,6 +147,7 @@ export function projectSession({
       terminal: session.terminal && { ...session.terminal },
       activity: session.activity,
       sessionActivity: session.sessionActivity,
+      workingSince: session.workingSince,
       stoppedAt: session.stoppedAt,
     },
   })
@@ -186,6 +187,7 @@ export function applyAttachment({
     delete old.terminal
     delete old.activity
     delete old.sessionActivity
+    delete old.workingSince
     delete old.stoppedAt
     old.attention = old.attention.filter(a => !a.key.startsWith('hook:') && a.key !== INTERRUPTED)
 
@@ -293,6 +295,7 @@ export function observeSession({
         settings: card.settings && { ...card.settings },
         activity: card.activity,
         sessionActivity: card.sessionActivity,
+        workingSince: card.workingSince,
         stoppedAt: card.stoppedAt,
       },
     })

@@ -249,6 +249,8 @@ export interface Card {
   activity?: string
   // The hook session's own latest activity, which a task source's status line does not replace.
   sessionActivity?: string
+  // When the session's current turn began, while it is working.
+  workingSince?: string
   stoppedAt?: string
   agent?: AgentRef
   launch?: AgentLaunch
@@ -729,6 +731,7 @@ export interface AgentSession {
   settings?: AgentSettings
   activity?: string
   sessionActivity?: string
+  workingSince?: string
   stoppedAt?: string
   attention: Attention[]
   outcome?: Outcome

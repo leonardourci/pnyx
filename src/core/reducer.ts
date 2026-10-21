@@ -357,6 +357,12 @@ function apply({
 
     // A hosted agent's activity comes from the host as its session's own.
     if ((source?.adapter === 'hooks' || source?.adapter === 'pnyx') && typeof activity === 'string') {
+      if (activity !== 'working') {
+        delete card.workingSince
+      } else if (card.sessionActivity !== 'working' || !card.workingSince) {
+        card.workingSince = event.at
+      }
+
       card.sessionActivity = activity
     }
 
