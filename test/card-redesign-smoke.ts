@@ -366,7 +366,12 @@ try {
     condition: '(() => { const fold = document.querySelector(".decision"); return !fold.open && fold.textContent.includes("Updates above chat") && fold.textContent.includes("by Hydra") && ![...document.querySelectorAll(".detail button")].some(button => ["Reassign", "Add subtask"].includes(button.textContent.trim())); })()',
     label: 'decision starts folded and open card omits removed actions',
   })
+  await b.evaluate({ code: 'window.foldedMaximum = Number(document.querySelector(".card.selected > .resize-y").getAttribute("aria-valuemax")); return true;' })
   await b.click({ selector: '.decision summary' })
+  await b.eventually({
+    condition: 'Number(document.querySelector(".card.selected > .resize-y").getAttribute("aria-valuemax")) > window.foldedMaximum',
+    label: 'maximum height follows unfolding decision content',
+  })
   await b.check({
     condition: 'document.querySelector(".decision").open && document.querySelector(".decision .disclosure-body").textContent.includes("The owner chose this in the design review")',
     label: 'decision unfolds with full question, answer and reason',
