@@ -20,8 +20,22 @@ import { fakeDispatch } from './dispatch-fixture.ts'
 import { HYDRA_CARD } from '../src/core/hydra.ts'
 
 test(
-  'Claude forwards text before the result and excludes nested agent output',
+  'Claude forwards text before the result under one id per block, excluding thinking and nested agent output',
   async () => {
+    const stream = ({ ...event }: Record<string, unknown>) => ({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event,
+    })
+    const delta = ({ text }: { text: string }) => stream({
+      type: 'content_block_delta',
+      index: 1,
+      delta: {
+        type: 'text_delta',
+        text,
+      },
+    })
+    // The SDK repeats each finished block as its own assistant message, always at index 0.
     const query = (({ options }) => {
       assert.equal(
         options?.includePartialMessages,
@@ -30,55 +44,62 @@ test(
 
       return (async function* () {
         yield {
-          type: 'stream_event',
-          parent_tool_use_id: 'child',
-          event: {
-            type: 'message_start',
-            message: { id: 'nested' },
-          },
-        }
-        yield {
-          type: 'stream_event',
-          parent_tool_use_id: 'child',
-          event: {
+          ...stream({
             type: 'content_block_delta',
             index: 0,
             delta: {
               type: 'text_delta',
               text: 'Hidden',
             },
+          }),
+          parent_tool_use_id: 'child',
+        }
+        yield stream({
+          type: 'message_start',
+          message: { id: 'reply' },
+        })
+        yield stream({
+          type: 'content_block_start',
+          index: 0,
+          content_block: {
+            type: 'thinking',
+            thinking: '',
+          },
+        })
+        yield {
+          type: 'assistant',
+          parent_tool_use_id: null,
+          message: {
+            id: 'reply',
+            content: [
+              {
+                type: 'thinking',
+                thinking: 'Plan',
+              },
+            ],
           },
         }
-        yield {
-          type: 'stream_event',
-          parent_tool_use_id: null,
-          event: {
-            type: 'message_start',
-            message: { id: 'reply' },
+        yield stream({
+          type: 'content_block_start',
+          index: 1,
+          content_block: {
+            type: 'text',
+            text: '',
           },
-        }
+        })
+        yield delta({ text: 'Hello' })
+        yield delta({ text: ' world' })
         yield {
-          type: 'stream_event',
+          type: 'assistant',
           parent_tool_use_id: null,
-          event: {
-            type: 'content_block_delta',
-            index: 0,
-            delta: {
-              type: 'text_delta',
-              text: 'Hello',
-            },
-          },
-        }
-        yield {
-          type: 'stream_event',
-          parent_tool_use_id: null,
-          event: {
-            type: 'content_block_delta',
-            index: 0,
-            delta: {
-              type: 'text_delta',
-              text: ' world',
-            },
+          message: {
+            id: 'reply',
+            content: [
+              {
+                type: 'text',
+                text: 'Hello world',
+              },
+            ],
           },
         }
         yield {
@@ -93,132 +114,9 @@ test(
       env: {},
       signal: new AbortController().signal,
     })
-    const events = session.run({
-      input: (async function* () {
-        yield 'Hi'
-      })(),
-      permission: async () => ({
-        behavior: 'deny',
-        message: 'unused',
-      }),
-    })[Symbol.asyncIterator]()
-    assert.equal(
-      (await events.next()).value,
-      'working',
-    )
-    assert.deepEqual(
-      (await events.next()).value,
-      {
-        type: 'text',
-        id: 'reply:0',
-        text: 'Hello',
-        append: true,
-      },
-    )
-    assert.deepEqual(
-      (await events.next()).value,
-      {
-        type: 'text',
-        id: 'reply:0',
-        text: ' world',
-        append: true,
-      },
-    )
-    assert.equal(
-      (await events.next()).value,
-      'finished',
-    )
-  },
-)
-
-test(
-  'Claude keeps one id for a text block after thinking, streamed and finished',
-  async () => {
-  // The SDK repeats each finished block as its own assistant message, always at index 0.
-    const query = (() => (async function* () {
-      yield {
-        type: 'stream_event',
-        parent_tool_use_id: null,
-        event: {
-          type: 'message_start',
-          message: { id: 'reply' },
-        },
-      }
-      yield {
-        type: 'stream_event',
-        parent_tool_use_id: null,
-        event: {
-          type: 'content_block_start',
-          index: 0,
-          content_block: {
-            type: 'thinking',
-            thinking: '',
-          },
-        },
-      }
-      yield {
-        type: 'assistant',
-        parent_tool_use_id: null,
-        message: {
-          id: 'reply',
-          content: [
-            {
-              type: 'thinking',
-              thinking: 'Plan',
-            },
-          ],
-        },
-      }
-      yield {
-        type: 'stream_event',
-        parent_tool_use_id: null,
-        event: {
-          type: 'content_block_start',
-          index: 1,
-          content_block: {
-            type: 'text',
-            text: '',
-          },
-        },
-      }
-      yield {
-        type: 'stream_event',
-        parent_tool_use_id: null,
-        event: {
-          type: 'content_block_delta',
-          index: 1,
-          delta: {
-            type: 'text_delta',
-            text: 'Seven',
-          },
-        },
-      }
-      yield {
-        type: 'assistant',
-        parent_tool_use_id: null,
-        message: {
-          id: 'reply',
-          content: [
-            {
-              type: 'text',
-              text: 'Seven',
-            },
-          ],
-        },
-      }
-      yield {
-        type: 'result',
-        is_error: false,
-      }
-    })()) as unknown as QueryFn
-    const session = await claudeProvider({ query }).open({
-      cwd: '/tmp',
-      settings: {},
-      env: {},
-      signal: new AbortController().signal,
-    })
-    const stream = liveReplies()
-    stream.start({ offset: 0 })
+    const live = liveReplies()
+    live.start({ offset: 0 })
+    const events: unknown[] = []
 
     for await (const event of session.run({
       input: (async function* () {
@@ -229,16 +127,41 @@ test(
         message: 'unused',
       }),
     })) {
+      events.push(event)
+
       if (typeof event !== 'string') {
-        assert.equal(
-          event.id,
-          'reply:1',
-        ); stream.update(event)
+        live.update(event)
       }
     }
 
     assert.deepEqual(
-      stream.page({
+      events.slice(
+        0,
+        3,
+      ),
+      [
+        'working',
+        {
+          type: 'text',
+          id: 'reply:1',
+          text: 'Hello',
+          append: true,
+        },
+        {
+          type: 'text',
+          id: 'reply:1',
+          text: ' world',
+          append: true,
+        },
+      ],
+    )
+    assert.equal(
+      events.at(-1),
+      'finished',
+    )
+    assert.ok(events.every(e => typeof e === 'string' || (e as { id: string }).id === 'reply:1'))
+    assert.deepEqual(
+      live.page({
         page: {
           card: 'hydra',
           entries: [],
@@ -246,7 +169,7 @@ test(
           watching: 'unknown',
         },
       }).entries.map(e => e.text),
-      ['Seven'],
+      ['Hello world'],
     )
   },
 )

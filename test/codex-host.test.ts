@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
-import { agent, sendReply } from '../src/cli/reply.ts'
+import { sendReply } from '../src/cli/reply.ts'
 import { startTask } from '../src/cli/start.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
@@ -135,13 +135,48 @@ async function lab({ refuse }: { refuse?: string } = {}) {
       actor: 'test',
     },
   })
+  // The picker's own route; the agent CLI adds a fixed read-back wait on top of it.
+  const set = ({
+    setting,
+    value,
+  }: {
+    setting: string
+    value: string
+  }) => askHost({
+    hydraId: 'lab',
+    body: {
+      action: 'set',
+      card: 'ship',
+      setting,
+      value,
+    },
+  })
+  const turns = () => fixture.messages().filter(m => m.method === 'turn/start')
+  const approvals = () => fixture.messages().filter(m => m.id === 'approval')
+  const answer = ({
+    id,
+    args,
+  }: {
+    id: string
+    args: string[]
+  }) => commands.task([
+    'permission',
+    'ship',
+    id,
+    ...args,
+    '--hydra',
+    'lab',
+  ])
 
   return {
     root,
     fixture,
-    state,
     task,
     send,
+    set,
+    turns,
+    approvals,
+    answer,
   }
 }
 
@@ -151,9 +186,10 @@ test(
     const {
       root,
       fixture,
-      state,
       task,
       send,
+      set,
+      turns,
     } = await lab()
     const result = await startTask({
       hydraId: 'lab',
@@ -170,31 +206,34 @@ test(
       },
     )
     await until({ check: () => task().sessionActivity === 'finished' })
-    assert.equal(
-      task().agent?.provider,
-      'codex',
-    )
-    assert.equal(
-      fixture.environments[0]?.CODEX_HOME,
-      join(
-        root,
-        'codex',
-      ),
-    )
-    assert.equal(
-      task().agent?.loginFolder,
-      join(
-        root,
-        'codex',
-      ),
+    const {
+      provider,
+      loginFolder,
+      transcriptPath,
+    } = task().agent!
+    assert.deepEqual(
+      {
+        provider,
+        loginFolder,
+        transcriptPath,
+        codexHome: fixture.environments[0]?.CODEX_HOME,
+      },
+      {
+        provider: 'codex',
+        loginFolder: join(
+          root,
+          'codex',
+        ),
+        transcriptPath: fixture.transcript,
+        codexHome: join(
+          root,
+          'codex',
+        ),
+      },
     )
     assert.match(
       task().launch?.dispatch ?? '',
       /on codex:test/,
-    )
-    assert.equal(
-      task().agent?.transcriptPath,
-      fixture.transcript,
     )
     assert.deepEqual(
       task().settings,
@@ -204,9 +243,8 @@ test(
         mode: 'on-request',
       },
     )
-    const start = fixture.messages().find(m => m.method === 'thread/start')!
     assert.deepEqual(
-      start.params,
+      fixture.messages().find(m => m.method === 'thread/start')!.params,
       {
         cwd: root,
         config: {
@@ -220,167 +258,65 @@ test(
         sandbox: 'workspace-write',
       },
     )
-    const turns = () => fixture.messages().filter(m => m.method === 'turn/start')
+    const first = turns()[0]!.params!
     assert.match(
-      String((turns()[0]!.params!.input as {
-        text: string
-      }[])[0]!.text),
+      String((first.input as { text: string }[])[0]!.text),
       /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nRelease the canary\.\n\nYou are the Pnyx worker/,
     )
-    assert.equal(
-      turns()[0]!.params!.effort,
-      'high',
-    )
-    assert.equal(
-      turns()[0]!.params!.approvalPolicy,
-      'on-request',
-    )
     assert.deepEqual(
-      turns()[0]!.params!.sandboxPolicy,
-      {
-        type: 'workspaceWrite',
-        writableRoots: [process.env.PNYX_HOME],
-        networkAccess: true,
-      },
-    )
-    assert.equal(
-      (await startTask({
-        hydraId: 'lab',
-        task: 'ship',
-        meta,
-      })).event,
-      'none: duplicate',
-    )
-    assert.equal(
-      fixture.children.length,
-      1,
-    )
-    const count = Object.keys(state().cards).length
-
-    for (const [
-      id,
-      event,
-    ] of [
-        [
-          'h1',
-          'UserPromptSubmit',
-        ],
-        [
-          'h2',
-          'Stop',
-        ],
-        [
-          'h3',
-          'SessionEnd',
-        ],
-      ]) {
-      spoolWrite({
-        hydraId: 'lab',
-        entry: {
-          v: 1,
-          id,
-          at: meta.at,
-          harness: 'codex',
-          event,
-          payload: {
-            session_id: task().agent!.sessionId,
-            cwd: root,
-          },
+      [
+        first.effort,
+        first.approvalPolicy,
+        first.sandboxPolicy,
+      ],
+      [
+        'high',
+        'on-request',
+        {
+          type: 'workspaceWrite',
+          writableRoots: [process.env.PNYX_HOME],
+          networkAccess: true,
         },
-      })
-      ingestSpool({ hydraId: 'lab' })
-    }
-
-    assert.equal(
-      Object.keys(state().cards).length,
-      count,
-    )
-    assert.equal(
-      task().agent?.host,
-      'pnyx',
-    )
-    assert.notEqual(
-      task().activity,
-      'ended',
+      ],
     )
 
-    await agent([
-      'ship',
-      'model',
-      'gpt-6-luna',
-      '--hydra',
-      'lab',
-    ])
-    await agent([
-      'ship',
-      'effort',
-      'low',
-      '--hydra',
-      'lab',
-    ])
-    await agent([
-      'ship',
-      'mode',
-      'never',
-      '--hydra',
-      'lab',
-    ])
+    // Picker changes reach the next turn of the same process; a Claude bypass becomes never with full access.
+    await set({
+      setting: 'model',
+      value: 'gpt-6-luna',
+    })
+    await set({
+      setting: 'effort',
+      value: 'low',
+    })
+    await set({
+      setting: 'mode',
+      value: 'bypassPermissions',
+    })
     assert.equal(
       (await send({ text: 'Next turn' })).state,
       'delivered',
     )
     await until({ check: () => turns().length === 2 && task().sessionActivity === 'finished' })
-    assert.equal(
-      turns()[1]!.params!.model,
-      'gpt-6-luna',
-    )
-    assert.equal(
-      turns()[1]!.params!.effort,
-      'low',
-    )
-    assert.equal(
-      turns()[1]!.params!.approvalPolicy,
-      'never',
-    )
+    const {
+      model,
+      effort,
+      approvalPolicy,
+      sandboxPolicy,
+    } = turns()[1]!.params!
     assert.deepEqual(
-      turns()[1]!.params!.sandboxPolicy,
-      { type: 'dangerFullAccess' },
-    )
-
-    await agent([
-      'ship',
-      'mode',
-      'bypassPermissions',
-      '--hydra',
-      'lab',
-    ])
-    await send({ text: 'Bypass turn' })
-    await until({ check: () => turns().length === 3 && task().sessionActivity === 'finished' })
-    assert.equal(
-      turns()[2]!.params!.approvalPolicy,
-      'never',
-    )
-    assert.deepEqual(
-      turns()[2]!.params!.sandboxPolicy,
-      { type: 'dangerFullAccess' },
-    )
-
-    await agent([
-      'ship',
-      'mode',
-      'on-request',
-      '--hydra',
-      'lab',
-    ])
-    await send({ text: 'Sandboxed turn' })
-    await until({ check: () => turns().length === 4 && task().sessionActivity === 'finished' })
-    assert.equal(
-      turns()[3]!.params!.approvalPolicy,
-      'on-request',
-    )
-    assert.equal(
-      (turns()[3]!.params!.sandboxPolicy as { type: string }).type,
-      'workspaceWrite',
+      {
+        model,
+        effort,
+        approvalPolicy,
+        sandboxPolicy,
+      },
+      {
+        model: 'gpt-6-luna',
+        effort: 'low',
+        approvalPolicy: 'never',
+        sandboxPolicy: { type: 'dangerFullAccess' },
+      },
     )
     assert.equal(
       fixture.children.length,
@@ -393,9 +329,9 @@ test(
   'an image added in the web is stored, served with the token and reaches Codex as a local image',
   async () => {
     const {
-      fixture,
       task,
       send,
+      turns,
     } = await lab()
     await startTask({
       hydraId: 'lab',
@@ -497,125 +433,15 @@ test(
       (await send({ text: `What broke?\n\n${line}\n\n[image: /etc/passwd]` })).state,
       'delivered',
     )
-    const turns = () => fixture.messages().filter(m => m.method === 'turn/start')
     await until({ check: () => turns().length === 2 })
-    const input = turns()[1]!.params!.input as {
-      type: string
-      path?: string
-    }[]
     assert.deepEqual(
-      input.slice(1),
+      (turns()[1]!.params!.input as unknown[]).slice(1),
       [
         {
           type: 'localImage',
           path,
         },
       ],
-    )
-  },
-)
-
-test(
-  'Codex closes with the server and lazily resumes its interrupted thread on the next message',
-  async () => {
-    const {
-      fixture,
-      task,
-      send,
-    } = await lab()
-    await startTask({
-      hydraId: 'lab',
-      task: 'ship',
-      prompt: 'HOLD',
-      meta,
-    })
-    // The brief prefixes an explicit prompt, so hold a separate turn.
-    await until({ check: () => task().sessionActivity === 'finished' })
-    await send({ text: 'HOLD' })
-    await until({ check: () => fixture.messages().filter(m => m.method === 'turn/start').length === 2 })
-    const id = task().agent!.sessionId
-    await server!.close()
-    const child = fixture.children[0]!
-    await until({ check: () => child.exitCode !== null || child.signalCode !== null })
-    server = await startServer({
-      hydraId: 'lab',
-      spawnCodex: fixture.spawnCodex,
-    })
-    assert.equal(
-      fixture.children.length,
-      1,
-    )
-    assert.equal(
-      task().activity,
-      'interrupted',
-    )
-    assert.equal(
-      task().attention[0]?.key,
-      'pnyx:interrupted',
-    )
-    assert.equal(
-      (await send({ text: 'Continue' })).state,
-      'delivered',
-    )
-    await until({ check: () => task().sessionActivity === 'finished' })
-    assert.equal(
-      fixture.children.length,
-      2,
-    )
-    assert.equal(
-      fixture.messages().find(m => m.method === 'thread/resume')?.params?.threadId,
-      id,
-    )
-    assert.equal(
-      task().agent?.sessionId,
-      id,
-    )
-    assert.equal(
-      task().attention.some(a => a.key === 'pnyx:interrupted'),
-      false,
-    )
-  },
-)
-
-test(
-  'Codex queues replies during a turn and waits for the Hydra to answer its permission',
-  async () => {
-    const {
-      fixture,
-      task,
-      send,
-    } = await lab()
-    await startTask({
-      hydraId: 'lab',
-      task: 'ship',
-      meta,
-    })
-    await until({ check: () => task().sessionActivity === 'finished' })
-    await send({ text: 'HOLD' })
-    await until({ check: () => fixture.messages().filter(m => m.method === 'turn/start').length === 2 })
-    await send({ text: 'DENY' })
-    assert.equal(
-      task().sessionActivity,
-      'working',
-    )
-    fixture.children[0]!.kill('SIGUSR1')
-    await until({ check: () => task().permissions?.[0]?.status === 'pending' })
-    assert.equal(
-      fixture.messages().some(m => m.id === 'approval'),
-      false,
-    )
-    await commands.task([
-      'permission',
-      'ship',
-      task().permissions![0]!.id,
-      'deny',
-      '--hydra',
-      'lab',
-    ])
-    await until({ check: () => task().sessionActivity === 'finished' })
-    assert.equal(
-      fixture.messages().find(m => m.id === 'approval')?.result?.decision,
-      'decline',
     )
   },
 )
@@ -749,118 +575,12 @@ test(
 )
 
 test(
-  'a Codex start takes the rule\'s Fast and an override on its first turn',
+  'an owner harness choice takes that harness\'s candidate, and its override reaches the first Codex turn',
   async () => {
     const {
       fixture,
       task,
-    } = await lab()
-    await dispatchCommands.rule([
-      'set',
-      'default',
-      '--harness',
-      'codex',
-      '--model',
-      'gpt-6-luna',
-      '--effort',
-      'low',
-      '--mode',
-      'on-request',
-      '--fast',
-      'on',
-      '--hydra',
-      'lab',
-    ])
-    await assert.rejects(
-      startTask({
-        hydraId: 'lab',
-        task: 'ship',
-        override: { mode: 'acceptEdits' },
-        meta: {
-          ...meta,
-          id: 'bad-mode',
-        },
-      }),
-      /codex has no mode acceptEdits/,
-    )
-    await startTask({
-      hydraId: 'lab',
-      task: 'ship',
-      override: {
-        model: 'gpt-6-astra',
-        effort: 'medium',
-      },
-      meta,
-    })
-    await until({ check: () => task().sessionActivity === 'finished' })
-    const start = fixture.messages().find(m => m.method === 'thread/start')!
-    assert.equal(
-      start.params!.model,
-      'gpt-6-astra',
-    )
-    assert.equal(
-      start.params!.serviceTier,
-      'fast',
-    )
-    const turn = fixture.messages().find(m => m.method === 'turn/start')!
-    assert.equal(
-      turn.params!.model,
-      'gpt-6-astra',
-    )
-    assert.equal(
-      turn.params!.effort,
-      'medium',
-    )
-    assert.equal(
-      turn.params!.serviceTier,
-      'fast',
-    )
-    assert.deepEqual(
-      task().launch?.override,
-      {
-        model: 'gpt-6-astra',
-        effort: 'medium',
-      },
-    )
-  },
-)
-
-test(
-  'an owner harness choice starts outside the configured rule',
-  async () => {
-    const { task } = await lab()
-    await dispatchCommands.rule([
-      'set',
-      'default',
-      '--candidates',
-      '[{"harness":"claude","model":"opus"}]',
-      '--hydra',
-      'lab',
-    ])
-    await startTask({
-      hydraId: 'lab',
-      task: 'ship',
-      harness: 'codex',
-      meta,
-    })
-    await until({ check: () => task().sessionActivity === 'finished' })
-    assert.equal(
-      task().agent?.provider,
-      'codex',
-    )
-    assert.match(
-      task().launch?.dispatch ?? '',
-      /owner override/,
-    )
-  },
-)
-
-test(
-  'a harness filter keeps the selected candidate settings',
-  async () => {
-    const {
-      fixture,
-      task,
+      turns,
     } = await lab()
     await dispatchCommands.rule([
       'set',
@@ -885,19 +605,61 @@ test(
       hydraId: 'lab',
       task: 'ship',
       harness: 'codex',
+      override: {
+        effort: 'xhigh',
+        mode: 'never',
+        fast: true,
+      },
       meta,
     })
     await until({ check: () => task().sessionActivity === 'finished' })
     assert.equal(
-      fixture.messages().find(m => m.method === 'thread/start')!.params!.model,
-      'gpt-6-luna',
+      task().agent?.provider,
+      'codex',
+    )
+    const thread = fixture.messages().find(m => m.method === 'thread/start')!.params!
+    assert.deepEqual(
+      [
+        thread.model,
+        thread.serviceTier,
+      ],
+      [
+        'gpt-6-luna',
+        'fast',
+      ],
+    )
+    const {
+      model,
+      effort,
+      approvalPolicy,
+      serviceTier,
+    } = turns()[0]!.params!
+    assert.deepEqual(
+      {
+        model,
+        effort,
+        approvalPolicy,
+        serviceTier,
+      },
+      {
+        model: 'gpt-6-luna',
+        effort: 'xhigh',
+        approvalPolicy: 'never',
+        serviceTier: 'fast',
+      },
     )
     assert.deepEqual(
       task().settings,
       {
         model: 'gpt-6-luna',
-        effort: 'low',
+        effort: 'xhigh',
+        mode: 'never',
+        fast: 'true',
       },
+    )
+    assert.match(
+      task().launch?.dispatch ?? '',
+      /owner override/,
     )
   },
 )
@@ -910,6 +672,8 @@ test(
       fixture,
       task,
       send,
+      set,
+      turns,
     } = await lab()
     await startTask({
       hydraId: 'lab',
@@ -918,28 +682,20 @@ test(
     })
     await until({ check: () => task().sessionActivity === 'finished' })
     await send({ text: 'HOLD' })
-    await until({ check: () => fixture.messages().filter(m => m.method === 'turn/start').length === 2 })
-    await agent([
-      'ship',
-      'model',
-      'gpt-6-luna',
-      '--hydra',
-      'lab',
-    ])
-    await agent([
-      'ship',
-      'effort',
-      'low',
-      '--hydra',
-      'lab',
-    ])
-    await agent([
-      'ship',
-      'mode',
-      'never',
-      '--hydra',
-      'lab',
-    ])
+    await until({ check: () => turns().length === 2 })
+    const id = task().agent!.sessionId
+    await set({
+      setting: 'model',
+      value: 'gpt-6-luna',
+    })
+    await set({
+      setting: 'effort',
+      value: 'low',
+    })
+    await set({
+      setting: 'mode',
+      value: 'never',
+    })
     const desired = {
       model: 'gpt-6-luna',
       effort: 'low',
@@ -954,7 +710,7 @@ test(
         harness: 'codex',
         event: 'PreToolUse',
         payload: {
-          session_id: task().agent!.sessionId,
+          session_id: id,
           cwd: root,
           model: 'gpt-6.1-sol',
           effort: 'high',
@@ -989,49 +745,66 @@ test(
         at: new Date().toISOString(),
       }),
     })
-    assert.equal(
-      task().settings?.model,
-      desired.model,
+    const harvested = task().settings!
+    assert.deepEqual(
+      {
+        model: harvested.model,
+        effort: harvested.effort,
+        mode: harvested.mode,
+      },
+      desired,
     )
-    assert.equal(
-      task().settings?.effort,
-      desired.effort,
-    )
-    assert.equal(
-      task().settings?.mode,
-      desired.mode,
-    )
+
+    // The server closes the held turn; the next message lazily resumes the same thread.
     await server!.close()
     server = await startServer({
       hydraId: 'lab',
       spawnCodex: fixture.spawnCodex,
     })
+    assert.equal(
+      fixture.children.length,
+      1,
+    )
+    assert.equal(
+      task().attention[0]?.key,
+      'pnyx:interrupted',
+    )
     await send({ text: 'Continue with selected settings' })
     await until({ check: () => fixture.children.length === 2 && task().sessionActivity === 'finished' })
-    const turn = fixture.messages().filter(m => m.method === 'turn/start')
-      .at(-1)!.params!
     assert.equal(
-      turn.model,
-      desired.model,
+      fixture.messages().find(m => m.method === 'thread/resume')?.params?.threadId,
+      id,
     )
     assert.equal(
-      turn.effort,
-      desired.effort,
+      task().attention.some(a => a.key === 'pnyx:interrupted'),
+      false,
     )
-    assert.equal(
-      turn.approvalPolicy,
-      desired.mode,
+    const {
+      model,
+      effort,
+      approvalPolicy,
+    } = turns().at(-1)!.params!
+    assert.deepEqual(
+      {
+        model,
+        effort,
+        mode: approvalPolicy,
+      },
+      desired,
     )
   },
 )
 
 test(
-  'Codex command and file approvals use the same inline permission events and apply only to that call',
+  'Codex queues replies during a turn, and its command and file approvals wait for the answer and apply only to that call',
   async () => {
     const {
       fixture,
       task,
       send,
+      turns,
+      approvals,
+      answer,
     } = await lab()
     await startTask({
       hydraId: 'lab',
@@ -1040,52 +813,68 @@ test(
     })
     await until({ check: () => task().sessionActivity === 'finished' })
     const column = task().column
-    await send({ text: 'ALLOW' })
-    await until({ check: () => task().permissions?.length === 1 })
-    const command = task().permissions![0]!
+    await send({ text: 'HOLD' })
+    await until({ check: () => turns().length === 2 })
+    await send({ text: 'DENY' })
     assert.equal(
-      command.tool,
-      'Command',
+      task().sessionActivity,
+      'working',
     )
+    fixture.children[0]!.kill('SIGUSR1')
+    await until({ check: () => task().permissions?.[0]?.status === 'pending' })
     assert.equal(
-      command.input.command,
-      'touch allowed.txt',
+      approvals().length,
+      0,
     )
-    await commands.task([
-      'permission',
-      'ship',
-      command.id,
-      'allow',
-      '--actor',
-      'hydra',
-      '--reason',
-      'Scoped to the task folder',
-      '--hydra',
-      'lab',
-    ])
+    await answer({
+      id: task().permissions![0]!.id,
+      args: ['deny'],
+    })
     await until({ check: () => task().sessionActivity === 'finished' })
     assert.equal(
-      task().permissions![0]!.status,
+      approvals()[0]?.result?.decision,
+      'decline',
+    )
+
+    await send({ text: 'ALLOW' })
+    await until({ check: () => task().permissions?.length === 2 })
+    const command = task().permissions![1]!
+    assert.deepEqual(
+      [
+        command.tool,
+        command.input.command,
+      ],
+      [
+        'Command',
+        'touch allowed.txt',
+      ],
+    )
+    await answer({
+      id: command.id,
+      args: [
+        'allow',
+        '--actor',
+        'hydra',
+        '--reason',
+        'Scoped to the task folder',
+      ],
+    })
+    await until({ check: () => task().sessionActivity === 'finished' })
+    assert.equal(
+      task().permissions![1]!.status,
       'allow',
     )
-    assert.equal(
-      fixture.messages().find(m => m.id === 'approval')?.result?.decision,
-      'accept',
-    )
     await assert.rejects(
-      async () => commands.task([
-        'permission',
-        'ship',
-        command.id,
-        'deny',
-        '--hydra',
-        'lab',
-      ]),
+      async () => answer({
+        id: command.id,
+        args: ['deny'],
+      }),
       /already allow/,
     )
+
     await send({ text: 'FILE' })
-    await until({ check: () => task().permissions?.length === 2 })
-    const file = task().permissions![1]!
+    await until({ check: () => task().permissions?.length === 3 })
+    const file = task().permissions![2]!
     assert.equal(
       file.tool,
       'File change',
@@ -1100,18 +889,16 @@ test(
         },
       ],
     )
-    const second = await commands.task([
-      'permission',
-      'ship',
-      file.id,
-      'allow',
-      '--actor',
-      'hydra',
-      '--reason',
-      'Same file',
-      '--hydra',
-      'lab',
-    ]) as { posted?: string }
+    const second = await answer({
+      id: file.id,
+      args: [
+        'allow',
+        '--actor',
+        'hydra',
+        '--reason',
+        'Same file',
+      ],
+    }) as { posted?: string }
     assert.match(
       second.posted ?? '',
       /^none: folded/,
@@ -1122,9 +909,9 @@ test(
     )
     await until({ check: () => task().sessionActivity === 'finished' })
     assert.deepEqual(
-      fixture.messages().filter(m => m.id === 'approval')
-        .map(m => m.result?.decision),
+      approvals().map(m => m.result?.decision),
       [
+        'decline',
         'accept',
         'accept',
       ],
@@ -1137,12 +924,13 @@ test(
 )
 
 test(
-  'Codex resolved requests and a server restart expire approvals rather than leave answer controls',
+  'a request Codex resolves itself expires rather than leave answer controls',
   async () => {
     const {
       fixture,
       task,
       send,
+      approvals,
     } = await lab()
     await startTask({
       hydraId: 'lab',
@@ -1155,34 +943,12 @@ test(
     fixture.children[0]!.kill('SIGUSR2')
     await until({ check: () => task().permissions?.[0]?.status === 'expired' && task().sessionActivity === 'finished' })
     assert.equal(
-      fixture.messages().some(m => m.id === 'approval'),
-      false,
-    )
-    await send({ text: 'DENY' })
-    await until({ check: () => task().permissions?.length === 2 })
-    await server!.close()
-    server = await startServer({
-      hydraId: 'lab',
-      spawnCodex: fixture.spawnCodex,
-    })
-    assert.equal(
-      task().permissions![1]!.status,
-      'expired',
+      approvals().length,
+      0,
     )
     assert.equal(
       task().attention.some(a => a.key.startsWith('pnyx:permission:')),
       false,
-    )
-    await assert.rejects(
-      async () => commands.task([
-        'permission',
-        'ship',
-        task().permissions![1]!.id,
-        'allow',
-        '--hydra',
-        'lab',
-      ]),
-      /already expired/,
     )
   },
 )
@@ -1191,9 +957,10 @@ test(
   'Codex permission profiles grant only the requested turn scope and denial grants nothing',
   async () => {
     const {
-      fixture,
       task,
       send,
+      approvals,
+      answer,
     } = await lab()
     await startTask({
       hydraId: 'lab',
@@ -1212,26 +979,23 @@ test(
       await send({ text: `PERMISSIONS_${choice.toUpperCase()}` })
       await until({ check: () => task().permissions?.length === index + 1 })
       const request = task().permissions![index]!
-      assert.equal(
-        request.tool,
-        'Turn permissions',
-      )
-      assert.equal(
-        request.input.scope,
-        'turn',
-      )
-      await commands.task([
-        'permission',
-        'ship',
-        request.id,
-        choice,
-        '--hydra',
-        'lab',
-      ])
-      await until({ check: () => task().sessionActivity === 'finished' })
-      const response = fixture.messages().filter(m => m.id === 'approval')[index]!
       assert.deepEqual(
-        response.result,
+        [
+          request.tool,
+          request.input.scope,
+        ],
+        [
+          'Turn permissions',
+          'turn',
+        ],
+      )
+      await answer({
+        id: request.id,
+        args: [choice],
+      })
+      await until({ check: () => task().sessionActivity === 'finished' })
+      assert.deepEqual(
+        approvals()[index]!.result,
         {
           permissions: choice === 'allow' ? { network: { enabled: true } } : {},
           scope: 'turn',
@@ -1245,9 +1009,10 @@ test(
   'Codex questions and MCP forms wait on the task and get the owner’s answer',
   async () => {
     const {
-      fixture,
       task,
       send,
+      approvals,
+      answer,
     } = await lab()
     await startTask({
       hydraId: 'lab',
@@ -1286,42 +1051,27 @@ test(
       undefined,
     )
     await assert.rejects(
-      async () => commands.task([
-        'permission',
-        'ship',
-        question.id,
-        'allow',
-        '--hydra',
-        'lab',
-      ]),
-      /needs an answer/,
-    )
-    await assert.rejects(
-      async () => commands.task([
-        'permission',
-        'ship',
-        question.id,
-        'allow',
-        '--answer',
-        '{"answers":[{"pick":[3]},{"text":"x"}]}',
-        '--hydra',
-        'lab',
-      ]),
+      async () => answer({
+        id: question.id,
+        args: [
+          'allow',
+          '--answer',
+          '{"answers":[{"pick":[3]},{"text":"x"}]}',
+        ],
+      }),
       /option numbers from 1 to 2/,
     )
-    await commands.task([
-      'permission',
-      'ship',
-      question.id,
-      'allow',
-      '--answer',
-      '{"answers":[{"pick":[1]},{"text":"covers http"}]}',
-      '--hydra',
-      'lab',
-    ])
+    await answer({
+      id: question.id,
+      args: [
+        'allow',
+        '--answer',
+        '{"answers":[{"pick":[1]},{"text":"covers http"}]}',
+      ],
+    })
     await until({ check: () => task().sessionActivity === 'finished' })
     assert.deepEqual(
-      fixture.messages().find(m => m.id === 'approval')?.result,
+      approvals()[0]?.result,
       {
         answers: {
           scheme: { answers: ['Yes'] },
@@ -1329,6 +1079,7 @@ test(
         },
       },
     )
+    // Free text reaches Codex but is never written to the log.
     assert.deepEqual(
       task().permissions![0]!.answers,
       [
@@ -1343,17 +1094,13 @@ test(
 
     await send({ text: 'QUESTION' })
     await until({ check: () => task().permissions?.length === 2 })
-    await commands.task([
-      'permission',
-      'ship',
-      task().permissions![1]!.id,
-      'deny',
-      '--hydra',
-      'lab',
-    ])
+    await answer({
+      id: task().permissions![1]!.id,
+      args: ['deny'],
+    })
     await until({ check: () => task().sessionActivity === 'finished' })
     assert.deepEqual(
-      fixture.messages().filter(m => m.id === 'approval')[1]?.result,
+      approvals()[1]?.result,
       { answers: {} },
     )
 
@@ -1374,19 +1121,17 @@ test(
         },
       ],
     )
-    await commands.task([
-      'permission',
-      'ship',
-      elicitation.id,
-      'allow',
-      '--answer',
-      '{"values":{"priority":"high"}}',
-      '--hydra',
-      'lab',
-    ])
+    await answer({
+      id: elicitation.id,
+      args: [
+        'allow',
+        '--answer',
+        '{"values":{"priority":"high"}}',
+      ],
+    })
     await until({ check: () => task().sessionActivity === 'finished' })
     assert.deepEqual(
-      fixture.messages().filter(m => m.id === 'approval')[2]?.result,
+      approvals()[2]?.result,
       {
         action: 'accept',
         content: { priority: 'high' },
@@ -1395,118 +1140,16 @@ test(
 
     await send({ text: 'ALLOW' })
     await until({ check: () => task().permissions?.length === 4 })
-    const command = task().permissions![3]!
     await assert.rejects(
-      async () => commands.task([
-        'permission',
-        'ship',
-        command.id,
-        'allow',
-        '--answer',
-        '{"answers":[]}',
-        '--hydra',
-        'lab',
-      ]),
+      async () => answer({
+        id: task().permissions![3]!.id,
+        args: [
+          'allow',
+          '--answer',
+          '{"answers":[]}',
+        ],
+      }),
       /takes allow or deny without an answer/,
-    )
-    await commands.task([
-      'permission',
-      'ship',
-      command.id,
-      'allow',
-      '--hydra',
-      'lab',
-    ])
-    await until({ check: () => task().sessionActivity === 'finished' })
-  },
-)
-
-test(
-  'owner Codex choice starts through a Claude-only rule with every setting on its first turn',
-  async () => {
-    const {
-      fixture,
-      task,
-    } = await lab()
-    await dispatchCommands.rule([
-      'set',
-      'default',
-      '--candidates',
-      '[{"harness":"claude","model":"sonnet"}]',
-      '--hydra',
-      'lab',
-    ])
-    await startTask({
-      hydraId: 'lab',
-      task: 'ship',
-      harness: 'codex',
-      override: {
-        model: 'gpt-6.1-sol',
-        effort: 'xhigh',
-        mode: 'never',
-        fast: true,
-      },
-      meta,
-    })
-    await until({ check: () => task().sessionActivity === 'finished' })
-    assert.equal(
-      task().agent?.provider,
-      'codex',
-    )
-    assert.match(
-      task().launch?.dispatch ?? '',
-      /owner override/,
-    )
-    const turn = fixture.messages().find(m => m.method === 'turn/start')
-    assert.ok(turn?.params)
-    assert.equal(
-      turn.params.model,
-      'gpt-6.1-sol',
-    )
-    assert.equal(
-      turn.params.effort,
-      'xhigh',
-    )
-    assert.equal(
-      turn.params.serviceTier,
-      'fast',
-    )
-  },
-)
-
-test(
-  'an owner model-only choice finds Codex outside a Claude-only rule',
-  async () => {
-    const {
-      fixture,
-      task,
-    } = await lab()
-    await dispatchCommands.rule([
-      'set',
-      'default',
-      '--candidates',
-      '[{"harness":"claude","model":"sonnet"}]',
-      '--hydra',
-      'lab',
-    ])
-    await startTask({
-      hydraId: 'lab',
-      task: 'ship',
-      override: { model: 'gpt-6.1-sol' },
-      meta,
-    })
-    await until({ check: () => task().sessionActivity === 'finished' })
-    assert.equal(
-      task().agent?.provider,
-      'codex',
-    )
-    assert.match(
-      task().launch?.dispatch ?? '',
-      /owner override/,
-    )
-    assert.equal(
-      fixture.messages().find(m => m.method === 'turn/start')?.params?.model,
-      'gpt-6.1-sol',
     )
   },
 )

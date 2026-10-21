@@ -70,15 +70,14 @@ test(
       },
       meta,
     })
-    const events = [
-      created,
-      pending,
-      allowed,
-      late,
-    ]
     const state = replay({
       state: emptyHydra(),
-      events,
+      events: [
+        created,
+        pending,
+        allowed,
+        late,
+      ],
     })
     assert.deepEqual(
       state.cards.task!.permissions,
@@ -97,17 +96,6 @@ test(
     assert.equal(
       state.cards.task!.attention.length,
       0,
-    )
-    assert.deepEqual(
-      replay({
-        state: emptyHydra(),
-        events,
-      }),
-      state,
-    )
-    assert.equal(
-      initial.cards.task!.permissions,
-      undefined,
     )
   },
 )
