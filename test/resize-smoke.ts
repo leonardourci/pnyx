@@ -114,18 +114,19 @@ try {
       '(() => { const card = document.querySelector(".card.selected")',
       'const pane = card.closest(".column-cards"), style = getComputedStyle(pane)',
       'const inner = pane.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)',
-      'return card.getBoundingClientRect().height === Math.round(Math.floor(inner) / 2) })()',
+      'const grip=card.querySelector(".resize-y")',
+      'return card.getBoundingClientRect().height === Math.max(Number(grip.getAttribute("aria-valuemin")), Math.min(Number(grip.getAttribute("aria-valuemax")), Math.round(Math.floor(inner) / 2))) })()',
     ].join('; '),
-    label: 'an open card without a saved height takes half its column',
+    label: 'an open card starts at half its column within its content bounds',
   })
-  await evaluate({ code: 'window.openHeight = document.querySelector(".card.selected").getBoundingClientRect().height; return true;' })
+  await evaluate({ code: 'window.openHeight = document.querySelector(".card.selected").getBoundingClientRect().height; window.openTarget = Math.min(window.openHeight + 100, Number(document.querySelector(".card.selected > .resize-y").getAttribute("aria-valuemax"))); return true;' })
   await drag({
     selector: '.card.selected > [aria-label="Resize card"]',
     dy: 100,
   })
   await eventually({
-    condition: 'document.querySelector(".card.selected").getBoundingClientRect().height === window.openHeight + 100',
-    label: 'mouse drag grows the open card by 100 px',
+    condition: 'document.querySelector(".card.selected").getBoundingClientRect().height === window.openTarget',
+    label: 'mouse drag grows the open card within its content maximum',
   })
   const opened = state().view?.cardHeights[fixture.state.keys.layout!]
   assert.ok(opened)
@@ -138,41 +139,37 @@ try {
     label: 'resized card contains Updates',
   })
   await screenshot({ name: 'resized-composers-card.png' })
-  await click({ selector: '[aria-label="Close detail"]' })
-  await check({
-    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 290`,
-    label: 'a closed question card keeps its own default height',
+  await click({ selector: '.card.selected .card-open' })
+  await eventually({
+    condition: '!document.querySelector(".card.selected")',
+    label: 'title closes the card before closed resizing',
   })
+  await evaluate({ code: `const card=document.querySelector(${JSON.stringify(card)}).closest('.card'); const grip=card.querySelector('.resize-y'); window.closedTarget=Math.min(card.getBoundingClientRect().height+60,Number(grip.getAttribute('aria-valuemax'))); return true;` })
   await drag({
     selector: `[data-task="${fixture.state.keys.layout}"] > [aria-label="Resize card"]`,
     dy: 60,
   })
   await eventually({
-    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 350`,
-    label: 'mouse drag grows a closed card',
+    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === window.closedTarget`,
+    label: 'mouse drag grows the closed card within its content maximum',
   })
   await check({
     condition: '!document.querySelector(".card.selected")',
     label: 'resizing a closed card does not open it',
   })
-  assert.equal(
-    state().view?.closedCardHeights[fixture.state.keys.layout!],
-    350,
-  )
   await focus({ selector: `[data-task="${fixture.state.keys.layout}"] > [aria-label="Resize card"]` })
-
-  for (let step = 0; step < 25; step++) {
-    await press({ key: 'Shift+ArrowDown' })
-  }
-
+  await press({ key: 'Home' })
   await eventually({
-    condition: `(() => {const card=document.querySelector(${JSON.stringify(card)}).closest('.card'),pane=card.closest('.column-cards');return !card.classList.contains('selected') && card.getBoundingClientRect().height===1036 && card.clientHeight>pane.clientHeight && pane.scrollHeight>pane.clientHeight;})()`,
-    label: 'closed resizing exceeds the former cap and column while staying closed',
+    condition: `(() => {const card=document.querySelector(${JSON.stringify(card)}).closest('.card'); return card.getBoundingClientRect().height === Number(card.querySelector('.resize-y').getAttribute('aria-valuemin'));})()`,
+    label: 'closed resizing retains its complete content minimum',
   })
-  assert.equal(
-    state().view?.closedCardHeights[fixture.state.keys.layout!],
-    1036,
-  )
+  await press({ key: 'End' })
+  await eventually({
+    condition: `(() => {const card=document.querySelector(${JSON.stringify(card)}).closest('.card'); return card.getBoundingClientRect().height === Number(card.querySelector('.resize-y').getAttribute('aria-valuemax'));})()`,
+    label: 'closed resizing stops at the complete content maximum',
+  })
+  const closed = state().view?.closedCardHeights[fixture.state.keys.layout!]
+  assert.ok(closed)
   await browser({
     args: [
       'open',
@@ -184,8 +181,8 @@ try {
     label: 'Hydra composer height survives reload',
   })
   await check({
-    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 350`,
-    label: 'closed card height survives reload',
+    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === ${closed}`,
+    label: 'closed card content height survives reload',
   })
   await click({ selector: card })
   await eventually({
@@ -216,18 +213,18 @@ try {
     condition: 'document.querySelector(".task-updates").clientHeight >= 80',
     label: 'minimum card height retains readable Updates',
   })
-  await evaluate({ code: 'window.unboundedHeight = document.querySelector(".card.selected").getBoundingClientRect().height; return true;' })
-
-  for (let step = 0; step < 25; step++) {
-    await press({ key: 'Shift+ArrowDown' })
-  }
-
+  await press({ key: 'End' })
   await eventually({
-    condition: '(() => { const card = document.querySelector(".card.selected"); const pane = card.closest(".column-cards"); return card.getBoundingClientRect().height === window.unboundedHeight + 800 && card.clientHeight > 600 && card.clientHeight > pane.clientHeight && pane.scrollHeight > pane.clientHeight; })()',
-    label: 'keyboard resizing exceeds the old cap and the column height',
+    condition: '(() => {const card=document.querySelector(".card.selected"); return card.getBoundingClientRect().height === Number(card.querySelector(".resize-y").getAttribute("aria-valuemax"));})()',
+    label: 'open resizing stops at the complete Updates content maximum',
   })
-  const unbounded = state().view?.cardHeights[fixture.state.keys.layout!]
-  assert.ok(unbounded && unbounded > 600)
+  const fullHeight = state().view?.cardHeights[fixture.state.keys.layout!]
+  assert.ok(fullHeight)
+  await press({ key: 'Shift+ArrowDown' })
+  await check({
+    condition: `document.querySelector(".card.selected").getBoundingClientRect().height === ${fullHeight}`,
+    label: 'resizing cannot add empty space after the full content',
+  })
   await browser({
     args: [
       'open',
@@ -240,8 +237,8 @@ try {
   })
   await evaluate({ code: `const button = document.querySelector(${JSON.stringify(card)}); if (!button.closest('.card').classList.contains('selected')) button.click(); return true;` })
   await eventually({
-    condition: `document.querySelector(".card.selected")?.getBoundingClientRect().height === ${unbounded}`,
-    label: 'unbounded card height survives reload',
+    condition: `document.querySelector(".card.selected")?.getBoundingClientRect().height === ${fullHeight}`,
+    label: 'full content height survives reload',
   })
   process.stdout.write('Composer and card drag resize browser smoke passed.\n')
 } catch (error) {

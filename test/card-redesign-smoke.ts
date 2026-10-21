@@ -10,6 +10,7 @@ import { startServer } from '../src/server/server.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 import { smokeBrowser } from './browser.ts'
+import { fakeDispatch } from './dispatch-fixture.ts'
 
 const home = mkdtempSync(join(
   tmpdir(),
@@ -155,9 +156,14 @@ withWriter({
     }
   },
 })
+const sdk = hydraSdk()
+fakeDispatch({
+  root: home,
+  hydraId: 'default',
+})
 const server = await startServer({
   hydraId: 'default',
-  query: hydraSdk().query,
+  query: sdk.query,
 })
 const b = smokeBrowser({
   home,
@@ -449,6 +455,15 @@ try {
     condition: 'document.querySelectorAll(".card-link").length === 4 && !document.querySelector(".card.selected")',
     label: '+N reveals remaining links without opening the card',
   })
+  await b.check({
+    condition:'document.querySelector(".card-links button").getAttribute("aria-expanded") === "true"',
+    label:'expanded links expose their state',
+  })
+  await b.text({label:'Show fewer'})
+  await b.check({
+    condition:'document.querySelectorAll(".card-link").length === 2 && document.querySelector(".card-links button").getAttribute("aria-expanded") === "false"',
+    label:'Show fewer restores the closed two-link limit',
+  })
   await b.evaluate({
     code: `
       document.querySelector('.hydra-chat [data-task-ref]').click();
@@ -505,6 +520,21 @@ try {
     condition:'!document.querySelector(".card-metadata").hidden && !!document.querySelector(".card.selected")',
     label:'Title chevron opens metadata with the keyboard',
   })
+  await b.check({
+    condition:'document.querySelectorAll(".card-metadata .card-link").length === 3 && document.querySelector(".card-metadata .card-links button").getAttribute("aria-expanded") === "false"',
+    label:'open metadata limits secondary links to three',
+  })
+  await b.click({selector:'.card-metadata .card-links button'})
+  await b.check({
+    condition:'document.querySelectorAll(".card-metadata .card-link").length === 4 && document.querySelector(".card-metadata .card-links button").getAttribute("aria-expanded") === "true"',
+    label:'open metadata expands all secondary links',
+  })
+  await b.click({selector:'.card-metadata .card-links button'})
+  await b.check({
+    condition:'document.querySelectorAll(".card-metadata .card-link").length === 3 && document.querySelector(".card-metadata .card-links button").getAttribute("aria-expanded") === "false"',
+    label:'Show fewer restores the open three-link limit',
+  })
+  await b.focus({selector:'.card-metadata-toggle'})
   await b.press({key:'Enter'})
   await b.check({
     condition:'document.querySelector(".card-metadata").hidden',
@@ -536,6 +566,17 @@ try {
     condition: 'document.activeElement?.getAttribute("aria-label") === "Reply to Hydra" && document.activeElement.value.includes("Choose the conversation layout")',
     label: 'declaration question prepares an answer in Hydra chat',
   })
+
+  await b.fill({
+    label:'Reply to Hydra',
+    value:`For @${task().id} (${task().title}): Keep Updates above chat`,
+  })
+  await b.click({selector:'.hydra-chat .composer-send'})
+  await b.eventually({
+    condition:'document.querySelector(".hydra-messages").textContent.includes("Hydra: For @")',
+    label:'submitted declaration answer reaches the fake Hydra',
+  })
+  assert.ok(sdk.calls.some(call=>call.messages.some(message=>message.includes(task().id) && message.includes('Keep Updates above chat'))))
 
   withWriter({
     hydraId: 'default',

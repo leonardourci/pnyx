@@ -279,7 +279,7 @@ try {
     label: 'card titles, pane headings and metadata use the accepted size scale',
   })
   await check({
-    condition: 'getComputedStyle(document.querySelector(\'.hydra-head .hydra-icon\')).maskImage.includes(\'hydra-lorc.svg\') && document.querySelector(\'.brand img\').getAttribute(\'src\') === \'/favicon.svg\' && document.querySelectorAll(\'.left-panel nav > button svg\').length === 3',
+    condition: 'getComputedStyle(document.querySelector(\'.hydra-head .hydra-icon\')).maskImage.includes(\'hydra-lorc.svg\') && document.querySelector(\'.brand img\').getAttribute(\'src\') === \'/favicon.svg\' && document.querySelectorAll(\'.left-panel nav > button svg\').length === 1',
     label: 'Hydra mask, existing Pnyx favicon and navigation icons identify the interface',
   })
   await focus({ selector: '.column-header .inline-title' }); await press({ key: 'Enter' })
@@ -313,7 +313,7 @@ try {
     condition: '!!document.querySelector(\'.detail .code-block code\') && [\'.task-updates\'].every(selector => document.querySelector(selector + \' .code-block code\') && document.querySelector(selector + \' .markdown p code\')) && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontFamily.includes(\'JetBrains Mono\') && getComputedStyle(el).fontSize === \'13px\')',
     label: 'inline and fenced Markdown keep JetBrains Mono and the accepted code size',
   })
-  await click({ selector: '[aria-label="Close detail"]' })
+  await click({ selector: '.card.selected .card-open' })
   await text({ label: 'Settings' })
   await check({
     condition: '[\'.settings h1\', \'.settings-box h2\'].every(selector => { const style = getComputedStyle(document.querySelector(selector)); return style.fontFamily.includes(\'GFS Neohellenic\') && style.fontWeight === \'700\' && style.letterSpacing === \'normal\'; }) && getComputedStyle(document.querySelector(\'.number-field\')).fontFamily.includes(\'-apple-system\')',

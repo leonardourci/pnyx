@@ -55,6 +55,7 @@ const {
   click,
   text,
   focus,
+  fill,
   screenshot,
   close,
 } = smokeBrowser({

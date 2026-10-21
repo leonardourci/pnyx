@@ -165,7 +165,7 @@ try {
     condition: '!!document.querySelector(".detail")',
     label: 'returning from Settings keeps the conversation',
   })
-  await click({ selector: '[aria-label="Close detail"]' })
+  await click({ selector: '.card.selected .card-open' })
   await click({ selector: '.panel-project' })
   await check({
     condition: 'document.querySelectorAll("[data-card]").length === 6',

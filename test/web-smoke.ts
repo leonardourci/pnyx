@@ -177,7 +177,7 @@ try {
     label: 'open card has one agent icon and Updates',
   })
   await screenshot({ name: 'card-open.png' })
-  await click({ selector: '[aria-label="Close detail"]' })
+  await click({ selector: '.card.selected .card-open' })
   await focus({ selector: '[aria-label="Resize Hydra panel"]' }); await press({ key: 'ArrowRight' })
   await eventually({
     condition: 'document.querySelector("[aria-label=\\"Resize Hydra panel\\"]").getAttribute("aria-valuenow") === "368"',
