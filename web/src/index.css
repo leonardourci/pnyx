@@ -232,7 +232,7 @@ h3 { font-weight: 600; }
 
 .thread { flex: 1; min-width: 0; min-height: 45px; overflow: hidden auto; padding: 4px 16px 12px; }
 
-.messages { position: relative; display: flex; flex-direction: column; gap: 12px; padding-top: 8px; }
+.messages { position: relative; display: flex; flex-direction: column; gap: 18px; padding-top: 8px; }
 
 .message { min-width: 0; animation: reply-appear 140ms ease-out; }
 
@@ -252,7 +252,7 @@ h3 { font-weight: 600; }
 
 .message.mine { align-self: flex-end; max-width: 85%; padding: 10px 14px; border-radius: 16px 2px 16px 16px; background: var(--color-hover); }
 
-.message:is(.tool, .thinking) + .message:is(.tool, .thinking) { margin-top: -10px; }
+.message:is(.tool, .thinking) + .message:is(.tool, .thinking) { margin-top: -14px; }
 
 .message[data-sending] { opacity: .5; }
 
@@ -554,23 +554,29 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .disclosure-body { padding-top: 8px; }
 
-.markdown { min-width: 0; max-width: 100%; font: var(--text-chat)/1.6 var(--font-chat); overflow-wrap: anywhere; }
+.markdown { min-width: 0; max-width: 100%; font: var(--text-chat)/1.65 var(--font-chat); overflow-wrap: anywhere; }
 
-.markdown p { margin: .45em 0; }
+.markdown p { margin: .7em 0; }
 
-.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { font-family: var(--font-chat); font-size: var(--text-pane); font-weight: 700; line-height: 1.35; margin: .8em 0 .4em; }
+.markdown > :first-child, .markdown > .message-block:first-child > :first-child { margin-top: 0; }
+
+.markdown > :last-child, .markdown > .message-block:last-child > :last-child { margin-bottom: 0; }
+
+.hydra-chat .message:not(.mine) .markdown { max-width: 72ch; }
+
+.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { font-family: var(--font-chat); font-size: var(--text-pane); font-weight: 700; line-height: 1.35; margin: 1.2em 0 .5em; }
 
 .markdown h1 { font-size: var(--text-pane); }
 
 .markdown h2 { font-size: var(--text-pane); }
 
-.markdown ul, .markdown ol { padding-left: 1.6em; margin: .45em 0; }
+.markdown ul, .markdown ol { padding-left: 1.6em; margin: .7em 0; }
 
 .markdown ul { list-style: disc; }
 
 .markdown ol { list-style: decimal; }
 
-.markdown li { margin: .25em 0; }
+.markdown li { margin: .35em 0; }
 
 .markdown li p { display: inline; }
 
