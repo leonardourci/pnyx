@@ -176,7 +176,11 @@ try {
     label:'A stale Older response cannot hide pagination or append across a refresh gap',
   })
   await b.text({ label: 'Older updates' })
-
+  await b.eventually({
+    condition:'document.querySelector(".task-updates")?.textContent.includes("Overlapping migration rename") && !document.querySelector(".task-updates [role=status]")',
+    label:'Fresh pagination reaches the intermediate rename after the discarded response',
+  })
+  await b.text({ label: 'Older updates' })
   await b.eventually({
     condition: 'document.querySelector(".task-updates")?.textContent.includes("Older migration rename") && document.querySelector(".task-updates")?.textContent.includes("Created")',
     label: 'paging through noise reaches the older rename and creation',
