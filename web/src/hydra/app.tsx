@@ -1,3 +1,4 @@
+import type { Card } from '../../../src/core/model.ts'
 import { Icon } from '../components/ui/icon.tsx'
 import { storageKey } from './outbox.ts'
 import { HYDRA_CARD, lockedColumn } from '../../../src/core/hydra.ts'
@@ -496,6 +497,30 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     }
   }
 
+  const revealTask = ({ id }: { id: string }) => {
+    open({ id })
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const element = document.querySelector<HTMLElement>(`[data-task="${CSS.escape(id)}"]`)
+      element?.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+      })
+
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        element?.animate(
+          [
+            { boxShadow: '0 0 0 3px var(--color-gold-line)' },
+            { boxShadow: '0 0 0 0 transparent' },
+          ],
+          {
+            duration: 1200,
+            easing: 'ease-out',
+          },
+        )
+      }
+    }))
+  }
+
   const close = () => {
     const target = filteredCards.find(c => c.id === selected) ?? filteredCards.find(c => c.column === card?.column) ?? filteredCards[0]; setSelected(null); requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-column-heading="${CSS.escape(card?.column ?? 'needs_you')}"]` }))
   }
@@ -556,6 +581,16 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     togglePanel: () => setPanel(shown => !shown),
     showPanel: () => setPanel(true),
   })
+
+  const answerTask = ({ card }: { card: Card }) => {
+    setPanel(true)
+    setDrafts(drafts => ({
+      ...drafts,
+      [HYDRA_CARD]: `${drafts[HYDRA_CARD] || ''}\nFor @${card.id} (${card.title}): `.trimStart(),
+    }))
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
+  }
+
   const detail = card && (
     <Detail
       key={card.id}
@@ -564,7 +599,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       command={command}
       connected={connected}
       close={close}
-      createTask={createTask}
       notify={notify}
     />
   )
@@ -680,7 +714,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                   liveThread={hydraThread}
                   command={command}
                   connected={connected}
-                  openTask={open}
+                  openTask={revealTask}
                   notify={notify}
                   view={view}
                   save={save}
@@ -761,6 +795,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                   doneAfterHours={state.config?.doneAfterHours}
                                   notify={notify}
                                   latest={latest[item.id]}
+                                  answer={answerTask}
                                   selected={selected === item.id}
                                   view={view}
                                   save={save}

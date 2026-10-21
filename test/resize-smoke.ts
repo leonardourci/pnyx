@@ -132,15 +132,15 @@ try {
   await screenshot({ name: 'resized-composers-card.png' })
   await click({ selector: '[aria-label="Close detail"]' })
   await check({
-    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 176`,
-    label: 'a closed card keeps its own default height',
+    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 290`,
+    label: 'a closed question card keeps its own default height',
   })
   await drag({
     selector: `[data-task="${fixture.state.keys.layout}"] > [aria-label="Resize card"]`,
     dy: 60,
   })
   await eventually({
-    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 236`,
+    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 350`,
     label: 'mouse drag grows a closed card',
   })
   await check({
@@ -149,7 +149,7 @@ try {
   })
   assert.equal(
     state().view?.closedCardHeights[fixture.state.keys.layout!],
-    236,
+    350,
   )
   await browser({
     args: [
@@ -162,7 +162,7 @@ try {
     label: 'Hydra composer height survives reload',
   })
   await check({
-    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 236`,
+    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 350`,
     label: 'closed card height survives reload',
   })
   await click({ selector: card })

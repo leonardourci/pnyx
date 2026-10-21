@@ -222,8 +222,8 @@ try {
     },
   })
   await eventually({
-    condition: '!!document.querySelector(".detail .agent-chip")',
-    label: 'the attached agent appears above Updates',
+    condition: '!!document.querySelector(".card.selected .card-agent")',
+    label: 'the attached agent appears in the card header',
   })
   await check({
     condition: `document.querySelector(".card.selected").getBoundingClientRect().height === ${halfColumn} && !document.querySelector(".detail .thread, .detail .composer")`,
@@ -235,10 +235,10 @@ try {
     label: 'Resume is a task-scoped Hydra request',
   })
   const attached = task().agent
-  await menu(); await text({ label: 'Reassign' })
-  await eventually({
-    condition: 'document.querySelector(".hydra-chat").textContent.includes("Reassign task")',
-    label: 'Reassign asks Hydra to choose its next agent',
+  await menu()
+  await check({
+    condition: '!document.querySelector(".detail").textContent.match(/Reassign|Add subtask/)',
+    label: 'the task menu omits Reassign and Add subtask',
   })
   assert.deepEqual(
     task().agent,
@@ -268,7 +268,7 @@ try {
       '900',
     ],
   })
-  await menu(); await text({ label: 'Add subtask' })
+  await click({ selector: '[aria-label="New task in In progress"]' })
   await check({
     condition: '!!document.querySelector(".task-create") && document.activeElement.getAttribute("aria-label") === "Task title"',
     label: 'plus creates a task inline and focuses its title',
@@ -297,7 +297,7 @@ try {
   )
   assert.equal(
     created.parentId,
-    task().id,
+    undefined,
   )
   assert.equal(
     created.agent,

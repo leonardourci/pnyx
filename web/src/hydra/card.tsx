@@ -1,3 +1,4 @@
+import { answerPrompt } from '../../../src/core/answer.ts'
 import { QueueEditor, QueueLabel, WorkerQueue } from './queue.tsx'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ReminderEditor, ReminderLabel } from './reminder.tsx'
@@ -12,17 +13,23 @@ import { Menu } from '../components/ui/menu.tsx'
 import { CopyId } from '../components/ui/copy-id.tsx'
 import { HideAfter } from './hide-after.tsx'
 import { useStartRequest } from './start-request.ts'
-import { cardState, projectTitle } from './view.ts'
+import { cardState, projectTitle, harnessName } from './view.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { Resize } from '../components/ui/resize.tsx'
 
+import { Tooltip } from '../components/ui/tooltip.tsx'
+import { Icon } from '../components/ui/icon.tsx'
+import { relativeTime } from './brief.ts'
+import { CardLinks } from './card-links.tsx'
+
 const MIN_UPDATES_HEIGHT = 80
 const CLOSED_HEIGHT = 176
+const QUESTION_HEIGHT = 290
 const OPEN_SHARE = 0.5
 
 function LastMessage({ message }: { message: LatestMessage }) {
   return (
-    <div className="last-message" title={message.text}>
+    <div className="last-message">
       <strong>Agent update</strong>
       <Markdown text={message.text} />
     </div>
@@ -43,6 +50,7 @@ export function HydraCard({
   command,
   connected,
   children,
+  answer,
   doneAfterHours,
   notify,
 }: {
@@ -61,6 +69,7 @@ export function HydraCard({
   command: Command
   connected: boolean
   children?: ReactNode
+  answer({ card }: { card: CardData }): void
 }) {
   const [
     queueing,
@@ -81,11 +90,16 @@ export function HydraCard({
     minimum: VIEW_SIZE_LIMITS.cardHeight.min,
     available: 0,
   })
+  const waiting = card.permissions?.some(request => request.status === 'pending')
+    || card.attention.some(request => request.blocking && !request.answered)
+    || card.status?.state === 'needs_you'
   const saved = selected ? view.cardHeights[card.id] : view.closedCardHeights[card.id]
   const minimum = selected ? pane.minimum : VIEW_SIZE_LIMITS.cardHeight.min
+  const closedHeight = waiting ? QUESTION_HEIGHT : CLOSED_HEIGHT
+  const defaultHeight = selected ? Math.round(pane.available * OPEN_SHARE) : closedHeight
   const height = Math.max(
     minimum,
-    saved ?? (selected ? Math.round(pane.available * OPEN_SHARE) : CLOSED_HEIGHT),
+    saved ?? defaultHeight,
   )
   useLayoutEffect(
     () => {
@@ -101,10 +115,8 @@ export function HydraCard({
         const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
         const available = Math.floor(column.clientHeight - padding)
         const updates = card.querySelector<HTMLElement>('.task-updates')
-        const cardStyle = getComputedStyle(card)
         const frame = updates
-          ? updates.getBoundingClientRect().top - card.getBoundingClientRect().top
-            + parseFloat(cardStyle.paddingBottom) + parseFloat(cardStyle.borderBottomWidth)
+          ? card.getBoundingClientRect().height - updates.getBoundingClientRect().height
           : 0
         const readable = Math.max(
           VIEW_SIZE_LIMITS.cardHeight.min,
@@ -166,6 +178,10 @@ export function HydraCard({
     hours: doneAfterHours,
     now,
   })
+  const statusText = status.kind === 'asks' ? 'Needs you' : status.text.replace(
+    /^./,
+    c => c.toUpperCase(),
+  )
   const tint = labelColors?.find(entry => entry.label === card.project)
     ?? labelColors?.find(entry => card.tags.includes(entry.label))
   const update = taskUpdates({ card }).at(-1)
@@ -174,6 +190,18 @@ export function HydraCard({
     text: update.text,
     at: update.at,
   } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
+
+  const agentHost = card.agent?.host === 'pnyx' ? 'Pnyx' : ''
+  const agentRoute = card.terminal?.tty ? 'terminal' : agentHost
+  const created = card.createdAt || card.statusLog?.[0]?.at
+  const request = card.permissions?.find(request => request.status === 'pending')
+  const attention = card.attention.find(request => request.blocking && !request.answered)
+  const canAnswer = attention && answerPrompt({
+    card,
+    request: attention,
+  })
+  const question = request?.questions?.map(question => question.question).join(' ')
+    || attention?.text || (card.status?.state === 'needs_you' ? card.status.note : '')
 
   return (
     <article
@@ -184,7 +212,7 @@ export function HydraCard({
       data-label-color={tint?.color}
       onClick={e => {
         const control = e.target instanceof Element
-          && e.target.closest('a, button, input, textarea, form, .menu, .resize')
+          && e.target.closest('a, button, input, textarea, form, summary, .menu, .resize')
 
         if (!selected && !control && !window.getSelection()?.toString()) {
           open({ id: card.id })
@@ -205,14 +233,17 @@ export function HydraCard({
       }}
     >
       <div className="card-menu">
-        <Menu label={`Card menu for ${card.title}`}>
+        {!card.automaticTask && (
+          <Button disabled={!connected} onClick={() => setReminding(true)}>Remind</Button>
+        )}
+        <CopyId id={card.id} notify={notify} />
+        <Menu trigger="More…" label={`Card menu for ${card.title}`}>
           {!card.automaticTask && (
             <Button disabled={!connected} onClick={() => setReminding(true)}>Remind me…</Button>
           )}
           {!firstmate && !card.automaticTask && !card.sessionIds?.length && !card.doneAt && (
             <Button disabled={!connected} onClick={() => setQueueing(true)}>{card.queue ? 'Edit worker queue…' : 'Queue behind a worker…'}</Button>
           )}
-          <CopyId id={card.id} notify={notify} />
           <HideAfter
             card={card}
             command={command}
@@ -221,70 +252,123 @@ export function HydraCard({
           />
         </Menu>
       </div>
-      {(card.project || card.tags.length > 0) && (
-        <div className="card-labels">
-          {card.project && (
-            <Label
-              project
-              label={card.project}
-              text={projectTitle({ project: card.project })}
-              colors={labelColors}
-            />
+      <div className="card-content">
+        <div className="card-state">
+          <span className={`agent-activity activity-${status.kind}`}><i aria-hidden="true" />{statusText}</span>
+          <Tooltip content={created ? `Created ${new Date(created).toLocaleString()}` : 'Creation time not recorded'}>
+            <time className="card-since" dateTime={status.at || card.updatedAt} tabIndex={0}>
+              {relativeTime({
+                at: status.at || card.updatedAt,
+                now,
+              })}
+            </time>
+          </Tooltip>
+          {card.agent && (
+            <Tooltip
+              content={[
+                harnessName({ provider: card.agent.provider }),
+                agentRoute,
+              ].filter(Boolean).join(' · ')}
+            >
+              <span className="card-agent" tabIndex={0} aria-label={harnessName({ provider: card.agent.provider })}>
+                <Icon name={card.agent.provider} />
+              </span>
+            </Tooltip>
           )}
-          {card.tags.filter(tag => tag !== card.project).map(tag => (
-            <Label key={tag} label={tag} colors={labelColors} />
-          ))}
+          {status.kind === 'stopped' && (
+            <Button
+              className="card-resume"
+              disabled={!connected || busy}
+              onClick={resume}
+            >Resume
+            </Button>
+          )}
         </div>
-      )}
-      <Button
-        className="card-open"
-        aria-label={`Open task ${card.title}`}
-        aria-expanded={selected}
-        onClick={() => open({ id: card.id })}
-        data-card={card.id}
-        data-key-scope="hydra"
-        tabIndex={tabIndex}
-      >{card.title}
-      </Button>
-      <div className="card-state">
-        <span className={`agent-activity activity-${status.kind}`} title={status.at ? new Date(status.at).toLocaleString() : undefined}><i aria-hidden="true" />{status.text}</span>
-        {status.kind === 'stopped' && (
-          <Button
-            className="card-resume"
-            disabled={!connected || busy}
-            onClick={resume}
-          >Resume
+        <Button
+          className="card-open"
+          aria-label={`Open task ${card.title}`}
+          aria-expanded={selected}
+          onClick={() => open({ id: card.id })}
+          data-card={card.id}
+          data-key-scope="hydra"
+          tabIndex={tabIndex}
+        >{card.title}
+        </Button>
+        {(card.project || card.tags.length > 0) && (
+          <div className="card-labels">
+            {card.project && (
+              <Label
+                project
+                label={card.project}
+                text={projectTitle({ project: card.project })}
+                colors={labelColors}
+              />
+            )}
+            {card.tags.filter(tag => tag !== card.project).map(tag => (
+              <Label key={tag} label={tag} colors={labelColors} />
+            ))}
+          </div>
+        )}
+        {selected && card.parentId && state.cards[card.parentId] && (
+          <Button className="card-parent quiet" onClick={() => open({ id: card.parentId! })}>
+            Subtask of {state.cards[card.parentId]?.title}
           </Button>
         )}
+        {card.copy?.state === 'flagged' && (
+          <Tooltip content={card.copy.reason}><span className="copy-warning" tabIndex={0}>copy not cleaned</span></Tooltip>
+        )}
+        {question && (
+          <div className="card-question" aria-label="Task question">
+            <strong className="eyebrow">Question</strong>
+            <p>{question}</p>
+            <Button
+              variant="primary"
+              onClick={() => {
+                if (request || canAnswer) {
+                  if (!selected) {
+                    open({ id: card.id })
+                  }
+
+                  requestAnimationFrame(() => element.current?.querySelector<HTMLElement>('.ask button')?.focus())
+
+                  return
+                }
+
+                answer({ card })
+              }}
+            >Answer
+            </Button>
+          </div>
+        )}
+        <QueueLabel card={card} state={state} open={open} />
+        <WorkerQueue card={card} state={state} open={open} />
+        {(!selected || reminding || queueing) && (
+          <div className="card-rest">
+            {queueing && (
+              <QueueEditor
+                card={card}
+                state={state}
+                command={command}
+                connected={connected}
+                close={() => setQueueing(false)}
+              />
+            )}
+            {view.lastMessageOnCards && !selected && !question && (
+              factual ? <LastMessage message={factual} /> : <p className="last-message">No agent update yet.</p>
+            )}
+            {reminding && (
+              <ReminderEditor
+                card={card}
+                command={command}
+                connected={connected}
+                close={() => setReminding(false)}
+              />
+            )}
+          </div>
+        )}
+        <CardLinks links={card.links} expanded={selected} />
+        <ReminderLabel card={card} />
       </div>
-      {card.copy?.state === 'flagged' && <span className="copy-warning" title={card.copy.reason}>copy not cleaned</span>}
-      <QueueLabel card={card} state={state} open={open} />
-      <WorkerQueue card={card} state={state} open={open} />
-      {(!selected || reminding || queueing) && (
-        <div className="card-rest">
-          {queueing && (
-            <QueueEditor
-              card={card}
-              state={state}
-              command={command}
-              connected={connected}
-              close={() => setQueueing(false)}
-            />
-          )}
-          {view.lastMessageOnCards && !selected && (
-            factual ? <LastMessage message={factual} /> : <p className="last-message">No agent update yet.</p>
-          )}
-          {reminding && (
-            <ReminderEditor
-              card={card}
-              command={command}
-              connected={connected}
-              close={() => setReminding(false)}
-            />
-          )}
-        </div>
-      )}
-      <ReminderLabel card={card} />
       {children}
       <Resize
         label="Resize card"

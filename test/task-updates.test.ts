@@ -401,3 +401,86 @@ test(
     )
   },
 )
+
+test(
+  'Updates pairs delivered answers with their question and keeps Hydra’s reason',
+  () => {
+    const event: TaskEvent = {
+      id: 'decision',
+      seq: 1,
+      at: '2026-10-21T12:00:00Z',
+      type: 'task.permission',
+      actor: 'hydra',
+      reason: 'The owner chose this earlier',
+      summary: '',
+      data: {
+        id: 'q1',
+        session: 's1',
+        tool: 'AskUserQuestion',
+        input: {},
+        status: 'allow',
+        questions: [
+          {
+            question: 'Which layout?',
+            options: [{ label: 'A' }],
+          },
+        ],
+        answers: [['A']],
+      },
+    }
+    const shown = relevantUpdate({
+      cardId: 'c1',
+      columns: [],
+      event,
+    })
+    assert.deepEqual(
+      shown?.decision,
+      {
+        question: 'Which layout?',
+        answer: 'A',
+        actor: 'Hydra',
+        reason: 'The owner chose this earlier',
+      },
+    )
+    const reply = {
+      question: 'Which canary?',
+      answer: 'Staging',
+    }
+    event.type = 'card.replied'
+    event.data = {
+      reply: 'r1',
+      state: 'queued',
+      decision: reply,
+    }
+    assert.equal(
+      relevantUpdate({
+        cardId: 'c1',
+        columns: [],
+        event,
+      }),
+      undefined,
+    )
+    event.data.state = 'failed'
+    assert.equal(
+      relevantUpdate({
+        cardId: 'c1',
+        columns: [],
+        event,
+      }),
+      undefined,
+    )
+    event.data.state = 'delivered'
+    assert.deepEqual(
+      relevantUpdate({
+        cardId: 'c1',
+        columns: [],
+        event,
+      })?.decision,
+      {
+        ...reply,
+        actor: 'Hydra',
+        reason: 'The owner chose this earlier',
+      },
+    )
+  },
+)

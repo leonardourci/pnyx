@@ -81,7 +81,10 @@ await commands.task([
   '--folder',
   root,
 ])
-const fixture = fakeCodex({ root })
+const fixture = fakeCodex({
+  root,
+  models: ['gpt-6.1-sol'],
+})
 withWriter({
   hydraId: 'default',
   fn: ({ writer }) => {
@@ -194,7 +197,7 @@ try {
     'Use the project’s default agent',
   ])
   await eventually({
-    condition: 'document.querySelector(".agent-chip")?.textContent === "Codex · Pnyx"',
+    condition: 'document.querySelector(".card-agent")?.getAttribute("aria-label") === "Codex"',
     label: 'Codex attaches as a hosted agent',
   })
   await commands.task([
@@ -229,7 +232,7 @@ try {
     'Resume the recorded session',
   ])
   await eventually({
-    condition: 'document.querySelector(".detail .agent-chip")?.textContent === "Codex · Pnyx"',
+    condition: 'document.querySelector(".card.selected .card-agent")?.getAttribute("aria-label") === "Codex"',
     label: 'Codex continuation changes the host',
   })
   assert.equal(

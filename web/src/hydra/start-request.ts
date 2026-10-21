@@ -17,16 +17,15 @@ export function useStartRequest({
   const attempts = useRef({
     Start: crypto.randomUUID(),
     Resume: crypto.randomUUID(),
-    Reassign: crypto.randomUUID(),
   })
   const [
     busy,
     run,
   ] = useBusy()
-  const request = ({ intent }: { intent: 'Start' | 'Resume' | 'Reassign' }) => run({
+  const request = ({ intent }: { intent: 'Start' | 'Resume' }) => run({
     save: async () => {
       try {
-        const fresh = intent === 'Resume' ? `Resume the worker on task ${card.id}: ${card.title}. Read its history and confirm the session can continue before resuming.` : intent === 'Reassign' ? `Reassign task ${card.id}: ${card.title}. Read its history and preserved context before choosing and attaching its next agent.` : card.agent ? `Start fresh from the brief for task ${card.id}: ${card.title}. Inspect its current attachment and task history before deciding how to replace it.` : undefined
+        const fresh = intent === 'Resume' ? `Resume the worker on task ${card.id}: ${card.title}. Read its history and confirm the session can continue before resuming.` : card.agent ? `Start fresh from the brief for task ${card.id}: ${card.title}. Inspect its current attachment and task history before deciding how to replace it.` : undefined
         const result = await command(firstmate
           ? {
             name: 'task',
@@ -77,7 +76,6 @@ export function useStartRequest({
   return {
     start: () => request({ intent: 'Start' }),
     resume: () => request({ intent: 'Resume' }),
-    reassign: () => request({ intent: 'Reassign' }),
     busy,
   }
 }

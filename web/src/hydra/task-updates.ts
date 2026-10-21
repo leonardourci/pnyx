@@ -1,4 +1,4 @@
-import type { Card, HydraColumn, Link } from '../../../src/core/model.ts'
+import type { Card, HydraColumn, Link, PermissionRequest, RepliedEvent } from '../../../src/core/model.ts'
 
 export interface TaskEvent {
   id: string
@@ -7,6 +7,8 @@ export interface TaskEvent {
   type: string
   summary: string
   data?: Record<string, unknown>
+  actor?: string
+  reason?: string
 }
 
 export interface TaskUpdate {
@@ -15,6 +17,13 @@ export interface TaskUpdate {
   state: string
   note: string
   seq?: number
+  decision?: {
+    questionId?: string
+    question: string
+    answer: string
+    actor: string
+    reason?: string
+  }
 }
 
 type Columns = Pick<HydraColumn, 'id' | 'title'>[]
@@ -77,6 +86,14 @@ const outcome = ({ data }: { data: Record<string, unknown> }) => {
   }
 }
 
+const decisionActor = ({ actor }: { actor?: string }) => {
+  if (actor === 'hydra') {
+    return 'Hydra'
+  }
+
+  return !actor || actor === 'web' || actor === 'cli' ? 'You' : actor
+}
+
 const renamed = ({ data }: { data: Record<string, unknown> }) => {
   const before = data.before as Record<string, unknown> | undefined
 
@@ -86,7 +103,7 @@ const renamed = ({ data }: { data: Record<string, unknown> }) => {
   } : undefined
 }
 
-// Hook refreshes, copies, notes and delivery receipts stay in History.
+// Ordinary delivery receipts stay in History; a delivered answer records its decision.
 export function relevantUpdate({
   cardId,
   event,
@@ -95,10 +112,41 @@ export function relevantUpdate({
   cardId: string
   event: TaskEvent
   columns: Columns
-}): Pick<TaskUpdate, 'state' | 'note'> | undefined {
+}): Pick<TaskUpdate, 'state' | 'note' | 'decision'> | undefined {
   const data = event.data ?? {}
 
   switch (event.type) {
+    case 'card.replied': {
+      const reply = data as RepliedEvent['data']
+
+      return reply.state === 'delivered' && reply.decision ? {
+        state: 'Decision',
+        note: '',
+        decision: {
+          ...reply.decision,
+          actor: decisionActor({ actor: event.actor }),
+          reason: event.reason,
+        },
+      } : undefined
+    }
+    case 'task.permission': {
+      const request = data as unknown as PermissionRequest
+
+      if (!request.questions?.length || request.status === 'pending' || request.status === 'expired') {
+        return undefined
+      }
+
+      return {
+        state: 'Decision',
+        note: '',
+        decision: {
+          question: request.questions.map(question => question.question).join('\n'),
+          answer: request.status === 'deny' ? 'Skipped' : request.answers?.map(answer => answer.join(', ')).join('\n') || 'Answered',
+          actor: decisionActor({ actor: event.actor }),
+          reason: event.reason,
+        },
+      }
+    }
     case 'task.declared': return typeof data.state === 'string' ? {
       state: data.state,
       note: String(data.note ?? ''),
@@ -218,21 +266,35 @@ export function taskTimeline({
       columns,
     })
 
-    if (update) {
-      updates.set(
-        event.id,
-        {
-          id: event.id,
-          at: event.at,
-          seq: event.seq,
-          ...update,
-        },
-      )
+    if (!update) {
+      continue
     }
+
+    const id = update.decision?.questionId || event.id
+    const prior = updates.get(id)
+
+    if (prior?.decision && (!update.decision || (prior.seq ?? 0) > event.seq)) {
+      continue
+    }
+
+    updates.set(
+      id,
+      {
+        id,
+        at: event.at,
+        seq: event.seq,
+        ...update,
+      },
+    )
   }
 
   for (const declaration of card.statusLog ?? []) {
     const recorded = updates.get(declaration.id)
+
+    if (recorded?.decision) {
+      continue
+    }
+
     updates.set(
       declaration.id,
       {

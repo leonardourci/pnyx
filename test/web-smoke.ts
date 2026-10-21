@@ -201,8 +201,8 @@ try {
     label: 'card opens downward without changing the column width',
   })
   await check({
-    condition: 'document.activeElement.matches(".task-updates") && document.querySelectorAll(".detail .agent-chip").length === 1 && !document.querySelector(".detail .message.tool")',
-    label: 'open card has one agent chip and Updates',
+    condition: 'document.activeElement.matches(".task-updates") && document.querySelectorAll(".card.selected .card-agent").length === 1 && !document.querySelector(".detail .message.tool")',
+    label: 'open card has one agent icon and Updates',
   })
   await screenshot({ name: 'card-open.png' })
   await click({ selector: '[aria-label="Close detail"]' })

@@ -140,7 +140,7 @@ try {
     label: 'permission buttons appear',
   })
   await check({
-    condition: `document.querySelector('[data-column="${column}"] .activity-asks')?.textContent === 'asks' && document.querySelector('.permission-input').textContent.includes('touch allowed.txt')`,
+    condition: `document.querySelector('[data-column="${column}"] .activity-asks')?.textContent === 'Needs you' && document.querySelector('.permission-input').textContent.includes('touch allowed.txt')`,
     label: 'request shows tool input and asks in the original column',
   })
   await screenshot({ name: 'permission-pending.png' })

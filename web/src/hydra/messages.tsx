@@ -491,7 +491,16 @@ export function Messages({
             data-streaming={entry.streaming || undefined}
             title={entry.at ? new Date(entry.at).toLocaleString() : undefined}
           >
-            {entry.task && taskTitles && <span className="message-task" data-task-ref={entry.task}>{taskTitles[entry.task] ?? 'Task update'}</span>}
+            {entry.task && taskTitles && (
+              <Button
+                className="message-task task-mention"
+                contentEditable={false}
+                data-task-ref={entry.task}
+                disabled={!openTask}
+                onClick={() => entry.task && openTask?.({ id: entry.task })}
+              >{taskTitles[entry.task] ?? 'Task update'}
+              </Button>
+            )}
             {entry.kind === 'message' ? (
               <MessageText
                 text={entry.text}

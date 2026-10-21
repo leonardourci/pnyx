@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Card, HydraColumn } from '../../../src/core/model.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { Markdown } from '../components/ui/markdown.tsx'
-import { InlinePermissions } from './permissions.tsx'
-import { InlineQuestions } from './questions.tsx'
 import type { Command } from './connection.ts'
 import { loadRelevant, taskTimeline, type TaskEvent } from './task-updates.ts'
+
+import { Disclosure } from '../components/ui/disclosure.tsx'
+import { Tooltip } from '../components/ui/tooltip.tsx'
 
 const PAGE_SIZE = 50
 
@@ -193,19 +194,31 @@ export function TaskUpdates({
         >{oldestFirst ? 'Oldest first ↑' : 'Newest first ↓'}
         </Button>
       </div>
-      <InlinePermissions card={card} command={command} notify={({ text }) => setError(text)} />
-      <InlineQuestions card={card} command={command} notify={({ text }) => setError(text)} />
       {updates.length > 0 && (
         <ol>
           {updates.map(update => (
             <li key={update.id}>
               <div className="update-heading">
                 <strong>{stateLabel({ state: update.state })}</strong>
-                <time dateTime={update.at} title={new Date(update.at).toLocaleString()}>
-                  {shortTime({ at: update.at })}
-                </time>
+                <Tooltip content={new Date(update.at).toLocaleString()}>
+                  <time dateTime={update.at} tabIndex={0}>{shortTime({ at: update.at })}</time>
+                </Tooltip>
               </div>
-              {update.note && <Markdown text={update.note} />}
+              {update.decision ? (
+                <Disclosure
+                  className="decision"
+                  title={(
+                    <>
+                      <span className="decision-line"><b>Asked</b> · {update.decision.question}</span>
+                      <span className="decision-line"><b>Answered</b> · {update.decision.answer} · by {update.decision.actor}</span>
+                    </>
+                  )}
+                >
+                  <p><b>Question.</b> {update.decision.question}</p>
+                  <p><b>Answer.</b> {update.decision.answer} · by {update.decision.actor}</p>
+                  {update.decision.reason && <p><b>Why.</b> {update.decision.reason}</p>}
+                </Disclosure>
+              ) : update.note && <Markdown text={update.note} />}
             </li>
           ))}
         </ol>

@@ -120,7 +120,7 @@ try {
     label: 'saved reminder appears on its card',
   })
   await check({
-    condition: '!!document.querySelector(".card-state") && document.querySelector(".card-state").textContent.includes("not started")',
+    condition: '!!document.querySelector(".card-state") && document.querySelector(".card-state").textContent.includes("Not started")',
     label: 'waiting reminder appears alongside the card state',
   })
   await eventually({

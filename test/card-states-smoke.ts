@@ -203,7 +203,7 @@ try {
     label: 'all card states rendered',
   })
   await check({
-    condition: 'document.body.textContent.includes("not started") && document.body.textContent.includes("finished its turn") && document.body.textContent.includes("stopped · 2h ago") && document.body.textContent.includes("asks") && document.body.textContent.includes("done · 2h ago") && document.body.textContent.includes("hidden in 3h")',
+    condition: 'document.body.textContent.includes("Not started") && document.body.textContent.includes("Finished its turn") && document.body.textContent.includes("Stopped · 2h ago") && document.body.textContent.includes("Needs you") && document.body.textContent.includes("Done · 2h ago") && document.body.textContent.includes("Hidden in 3h")',
     label: 'states and relative Done labels',
   })
   await evaluate({ code: `const card = document.querySelector('[data-task="${stopped}"]'); card.querySelector('.card-open').focus(); return true;` })
@@ -231,7 +231,7 @@ try {
     initialLaunch,
   )
   await evaluate({ code: 'window.copiedId = null; Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async value => { window.copiedId = value; } } }); return true;' })
-  await click({ selector: `[data-task="${soon}"] .card-menu button` })
+  await click({ selector: `[data-task="${soon}"] .card-menu .menu > button` })
   await text({ label: 'Copy ID' })
   await check({
     condition: `window.copiedId === ${JSON.stringify(soon)}`,
@@ -243,7 +243,7 @@ try {
     condition: `window.copiedId === ${JSON.stringify(doneColumn)}`,
     label: 'column Copy ID copies its random ID',
   })
-  await click({ selector: `[data-task="${soon}"] .card-menu button` }); await text({ label: 'Hide after…' })
+  await click({ selector: `[data-task="${soon}"] .card-menu .menu > button` }); await text({ label: 'Hide after…' })
   await check({
     condition: 'document.querySelector(".hide-after").closest("[popover]").matches(":popover-open") && document.querySelector(".hide-after").getBoundingClientRect().bottom <= innerHeight',
     label: 'hide choices float above the column and stay in view',
@@ -251,14 +251,14 @@ try {
   await screenshot({ name: 'card-hide-after.png' })
   await text({ label: 'Keep visible' })
   await eventually({
-    condition: `document.querySelector('[data-task="${soon}"]').textContent.includes('done · 21h ago')`,
+    condition: `document.querySelector('[data-task="${soon}"]').textContent.includes('Done · 21h ago')`,
     label: 'keep visible removes countdown',
   })
   assert.equal(
     state().cards[soon]?.doneAfterHours,
     0,
   )
-  await click({ selector: `[data-task="${soon}"] .card-menu button` }); await text({ label: 'Hide after…' }); await text({ label: '3 days' })
+  await click({ selector: `[data-task="${soon}"] .card-menu .menu > button` }); await text({ label: 'Hide after…' }); await text({ label: '3 days' })
   await eventually({
     condition: '!document.querySelector(".menu-items")',
     label: 'choice closes menu',
@@ -271,9 +271,9 @@ try {
     state().cards[soon]?.doneAfterHours,
     72,
   )
-  await click({ selector: `[data-task="${soon}"] .card-menu button` }); await text({ label: 'Hide after…' }); await text({ label: 'Use Hydra setting' })
+  await click({ selector: `[data-task="${soon}"] .card-menu .menu > button` }); await text({ label: 'Hide after…' }); await text({ label: 'Use Hydra setting' })
   await eventually({
-    condition: `document.querySelector('[data-task="${soon}"]').textContent.includes('hidden in 3h')`,
+    condition: `document.querySelector('[data-task="${soon}"]').textContent.includes('Hidden in 3h')`,
     label: 'Hydra default restores countdown',
   })
   process.stdout.write('Card states, Resume routing, Copy ID and hide override browser smoke passed.\n')

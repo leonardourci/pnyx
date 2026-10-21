@@ -1,3 +1,5 @@
+import { InlinePermissions } from './permissions.tsx'
+import { InlineQuestions } from './questions.tsx'
 import { TaskUpdates } from './task-updates.tsx'
 import { ReminderEditor } from './reminder.tsx'
 import { useState } from 'react'
@@ -7,8 +9,7 @@ import { InlineTitle } from '../components/ui/inline-title.tsx'
 import { CopyId } from '../components/ui/copy-id.tsx'
 import { HideAfter } from './hide-after.tsx'
 import { Menu } from '../components/ui/menu.tsx'
-import { Icon } from '../components/ui/icon.tsx'
-import { columnsFor, harnessName } from './view.ts'
+import { columnsFor } from './view.ts'
 import { useStartRequest } from './start-request.ts'
 import type { Command } from './connection.ts'
 
@@ -18,7 +19,6 @@ export function Detail({
   command,
   connected,
   close,
-  createTask,
   notify,
 }: {
   card: Card
@@ -26,13 +26,6 @@ export function Detail({
   command: Command
   connected: boolean
   close(): void
-  createTask({
-    column,
-    parent,
-  }: {
-    column: string
-    parent?: string
-  }): void
   notify({ text }: { text: string }): void
 }) {
   const [
@@ -46,7 +39,6 @@ export function Detail({
   const {
     start,
     resume,
-    reassign,
     busy: starting,
   } = useStartRequest({
     card,
@@ -58,7 +50,6 @@ export function Detail({
   return (
     <section aria-label={`Details for ${card.title}`} className="detail inline">
       <header className="detail-header">
-        {card.agent && <span className="agent-chip">{`${harnessName({ provider: card.agent.provider })}${card.agent.host === 'pnyx' ? ' · Pnyx' : card.terminal?.tty ? ' · terminal' : ''}`}</span>}
         <div className="row">
           <Menu label="Task menu">
             <CopyId id={card.id} notify={notify} />
@@ -75,18 +66,21 @@ export function Detail({
             {!card.automaticTask && (
               <Button
                 disabled={!connected}
-                onClick={() => {
-                  void command({
-                    name: 'task',
-                    args: [
-                      card.hidden ? 'unhide' : 'hide',
-                      card.id,
-                      '--event-id',
-                      crypto.randomUUID(),
-                    ],
-                  })
-                    .catch(e => notify({ text: e.message }))
-                  close()
+                onClick={async () => {
+                  try {
+                    await command({
+                      name: 'task',
+                      args: [
+                        card.hidden ? 'unhide' : 'hide',
+                        card.id,
+                        '--event-id',
+                        crypto.randomUUID(),
+                      ],
+                    })
+                    close()
+                  } catch (error) {
+                    notify({ text: (error as Error).message })
+                  }
                 }}
               >{card.hidden ? 'Bring back to Hydra' : 'Hide from Hydra'}
               </Button>
@@ -97,21 +91,8 @@ export function Detail({
             {card.agent && (
               <Button disabled={!connected || starting} onClick={resume}>Resume</Button>
             )}
-            {card.agent && (
-              <Button disabled={!connected || starting} onClick={reassign}>Reassign</Button>
-            )}
-            {!card.parentId && (
-              <Button
-                disabled={!connected}
-                onClick={() => createTask({
-                  column: card.column,
-                  parent: card.id,
-                })}
-              >Add subtask
-              </Button>
-            )}
           </Menu>
-          <Button aria-label="Close detail" onClick={close}><Icon name="close" size={14} /></Button>
+
         </div>
       </header>
       {card.launch?.dispatch && <p className="muted small" aria-label="Heads dispatch choice">{card.launch.dispatch}</p>}
@@ -121,17 +102,20 @@ export function Detail({
           label="Task title"
           finished={() => setRenaming(false)}
           startEditing
-          save={({ title }) => command({
-            name: 'task',
-            args: [
-              'rename',
-              card.id,
-              '--title',
-              title,
-              '--event-id',
-              crypto.randomUUID(),
-            ],
-          }).then(() => setRenaming(false))}
+          save={async ({ title }) => {
+            await command({
+              name: 'task',
+              args: [
+                'rename',
+                card.id,
+                '--title',
+                title,
+                '--event-id',
+                crypto.randomUUID(),
+              ],
+            })
+            setRenaming(false)
+          }}
         />
       )}
       {renaming && (
@@ -140,19 +124,23 @@ export function Detail({
           aria-label="Task project label"
           defaultValue={card.project ?? ''}
           placeholder="Project label"
-          onBlur={e => {
+          onBlur={async e => {
             if (e.target.value !== (card.project ?? '')) {
-              void command({
-                name: 'task',
-                args: [
-                  'rename',
-                  card.id,
-                  '--project',
-                  e.target.value,
-                  '--event-id',
-                  crypto.randomUUID(),
-                ],
-              }).catch(e => notify({ text: e.message }))
+              try {
+                await command({
+                  name: 'task',
+                  args: [
+                    'rename',
+                    card.id,
+                    '--project',
+                    e.target.value,
+                    '--event-id',
+                    crypto.randomUUID(),
+                  ],
+                })
+              } catch (error) {
+                notify({ text: (error as Error).message })
+              }
             }
           }}
         />
@@ -165,6 +153,24 @@ export function Detail({
           close={() => setReminding(false)}
         />
       )}
+      <div className="task-requests">
+        <InlinePermissions
+          card={card}
+          command={command}
+          notify={notify}
+          pendingOnly
+        />
+        <InlineQuestions
+          card={card}
+          command={command}
+          notify={notify}
+          pendingOnly
+        />
+      </div>
+      <div className="detail-footer">
+        <Button disabled={!connected || starting} onClick={resume}>Ask Hydra to resume</Button>
+        <Button aria-label="Close detail" onClick={close}>Collapse ⌃</Button>
+      </div>
       <TaskUpdates
         card={card}
         columns={columnsFor({ state })}
