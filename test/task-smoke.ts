@@ -220,8 +220,8 @@ try {
     label: 'the attached agent appears above Updates',
   })
   await check({
-    condition: 'document.querySelector(".card.selected").getBoundingClientRect().height === 480 && !document.querySelector(".detail .thread, .detail .composer")',
-    label: 'card stays fixed with Updates only',
+    condition: 'document.querySelector(".card.selected").getBoundingClientRect().height === 480 && !!document.querySelector(".detail .task-updates") && document.querySelectorAll(".detail .task-conversation .composer").length === 1',
+    label: 'attached card stays fixed with Updates and its conversation',
   })
   await menu(); await text({ label: 'Resume' })
   await eventually({

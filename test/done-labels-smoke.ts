@@ -1,3 +1,4 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,6 +13,10 @@ const home = mkdtempSync(join(
   'pnyx-done-labels-smoke-',
 ))
 process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
+process.env.CLAUDE_CONFIG_DIR = join(
+  home,
+  'claude',
+)
 commands.hydra([
   'create',
   'default',
@@ -38,7 +43,10 @@ commands.task([
 ])
 const state = () => loadHydra({ hydraId: 'default' }).state
 const id = state().keys.completed!
-const server = await startServer({ hydraId: 'default' })
+const server = await startServer({
+  query: hydraSdk().query,
+  hydraId: 'default',
+})
 const {
   browser,
   evaluate,

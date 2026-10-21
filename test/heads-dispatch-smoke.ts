@@ -1,3 +1,4 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -107,7 +108,10 @@ withWriter({
     writer.append({ event: event.event })
   },
 })
-const server = await startServer({ hydraId: 'default' })
+const server = await startServer({
+  query: hydraSdk().query,
+  hydraId: 'default',
+})
 const {
   browser,
   text,

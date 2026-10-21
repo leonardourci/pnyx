@@ -2,7 +2,7 @@
 
 Pnyx is the app, a **Hydra** holds its tasks, search is the **Oracle**, and **inscribe** is how Hydra curates and saves its memory. Everything else uses its plain name.
 
-Pnyx tracks explicit tasks in Hydras, each an orchestrator and its tasks. Create tasks and columns inline, attach an interactive agent session, and continue its conversation from the card. Ad-hoc agent sessions stay in History without creating tasks.
+Pnyx tracks explicit tasks in Hydras, each an orchestrator and its tasks. Create tasks and columns inline, attach an interactive agent session, and continue its conversation from the card. Open cards keep Updates readable; when the conversation fills the card, scroll inside the details to reach its composer. Ad-hoc agent sessions stay in History without creating tasks.
 
 A deterministic view of every agent and its work, with an [AXI](https://axi.md/) CLI named `pnyx-axi`.
 
@@ -252,7 +252,7 @@ Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type l
 arrays, parameter lists and call arguments with more than one item use one item per line.
 A single item may stay inline. `pnpm run lint` checks the same rules without fixing them.
 
-See [AGENTS.md](AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. `pnpm test:web` runs a real browser smoke test through `chrome-devtools-axi` with a temporary `PNYX_HOME`, a random port, synthetic transcripts and a fake Firstmate send script; set `PNYX_EVIDENCE_DIR` to a folder outside the repository to keep its screenshots. `pnpm test:keyboard` exercises navigation, card and column moves, the left panel, comments and independent task/Hydra sends with real browser keys. `pnpm test:chat` covers Markdown rendering, nested comments, their delivery format and the reply input. `pnpm test:connection` covers offline sends, event resync, subscription recovery, reloads and heartbeat recovery. `pnpm test:semantic` checks semantic search on the real models; set `PNYX_GOLDEN_MODELS` to a folder already holding them to skip the download. `pnpm run web:dev` serves the Hydra through Vite.
+See [AGENTS.md](AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. `pnpm test:web` runs a real browser smoke test through `chrome-devtools-axi` with a temporary `PNYX_HOME`, a random port, fake harness catalogs, synthetic transcripts and a fake Firstmate send script; set `PNYX_EVIDENCE_DIR` to a folder outside the repository to keep its screenshots. `pnpm test:keyboard` exercises navigation, card and column moves, the left panel, comments and independent task/Hydra sends with real browser keys. `pnpm test:chat` covers Markdown rendering, nested comments, their delivery format and the reply input. `pnpm test:connection` covers offline sends, event resync, subscription recovery, reloads and heartbeat recovery. `pnpm test:semantic` checks semantic search on the real models; set `PNYX_GOLDEN_MODELS` to a folder already holding them to skip the download. `pnpm run web:dev` serves the Hydra through Vite.
 
 ```sh
 pnpm dev
