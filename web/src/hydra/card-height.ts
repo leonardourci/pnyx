@@ -122,9 +122,20 @@ export function useCardHeight({
 
       measure()
       const resize = new ResizeObserver(schedule)
-      resize.observe(column)
-      resize.observe(content)
-      const mutations = new MutationObserver(schedule)
+
+      const watch = () => {
+        resize.disconnect()
+        resize.observe(column)
+        resize.observe(content)
+        card.querySelectorAll('.last-message, .task-updates > *, .task-requests')
+          .forEach(child => resize.observe(child))
+      }
+
+      watch()
+      const mutations = new MutationObserver(() => {
+        watch()
+        schedule()
+      })
       mutations.observe(
         card,
         {
