@@ -41,7 +41,9 @@ try {
   await focus({ selector: card }); await press({ key: 'r' })
   await check({ condition: '!!document.querySelector(".task-updates") && !document.querySelector(".detail .composer")', label: 'reply shortcut keeps the card on Updates' })
   const sent = state().hydraMessages?.length ?? 0
-  await focus({ selector: '.hydra-chat .composer textarea' }); await fill({ label: 'Reply to Hydra', value: 'Hydra keyboard reply' }); await press({ key: `${mod}+Enter` })
+  await focus({ selector: '.hydra-chat .composer textarea' }); await fill({ label: 'Reply to Hydra', value: 'Hydra keyboard reply' }); await press({ key: 'Shift+Enter' })
+  await check({ condition: 'document.querySelector(".hydra-chat .composer textarea").value === "Hydra keyboard reply\\n"', label: 'Shift+Enter adds a line' })
+  await press({ key: 'Enter' })
   await eventually({ condition: 'document.querySelector(".hydra-chat .composer textarea").value === ""', label: 'Hydra keyboard send uses its own composer' })
   assert.equal(state().hydraMessages?.length, sent + 1)
   await evaluate({ code: 'document.querySelector(".hydra-chat .composer textarea").focus(); return true;' })

@@ -85,7 +85,8 @@ export function KeyboardProvider({
         return
       }
 
-      const result = resolveKey({ event: { key: event.key, code: event.code, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat, defaultPrevented: event.defaultPrevented, isComposing: event.isComposing, altGraph: event.getModifierState('AltGraph') }, context: { scope, editing: isEditing({ target }), platform, characterShortcuts: prefs.characterShortcuts, now: performance.now() }, prefs, progress })
+      // Safari sends the Enter that commits an IME candidate after compositionend, marked only by keyCode 229.
+      const result = resolveKey({ event: { key: event.key, code: event.code, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat, defaultPrevented: event.defaultPrevented, isComposing: event.isComposing || event.keyCode === 229, altGraph: event.getModifierState('AltGraph') }, context: { scope, editing: isEditing({ target }), platform, characterShortcuts: prefs.characterShortcuts, now: performance.now() }, prefs, progress })
       progress = result.progress
 
       if (result.action) {

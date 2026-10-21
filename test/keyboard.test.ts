@@ -42,10 +42,14 @@ test('scopes, exact modifiers and logical punctuation resolve through tinykeys',
 })
 test('typing, IME, dead keys, AltGraph and repeats cannot activate Hydra commands or send', () => {
   for (const scope of ['composer', 'navigation'] as const) {
-    for (const key of ['j', 'k', '/', '?', 'm', 'r', 'f', 'Enter']) {
+    for (const key of ['j', 'k', '/', '?', 'm', 'r', 'f']) {
       assert.equal(resolve({ event: { key }, change: { scope, editing: true } }).action, undefined)
     }
   }
+
+  assert.equal(resolve({ event: { key: 'Enter' }, change: { scope: 'navigation', editing: true } }).action, undefined)
+  assert.equal(resolve({ event: { key: 'Enter' }, change: { scope: 'composer', editing: true } }).action, 'send')
+  assert.equal(resolve({ event: { key: 'Enter', shiftKey: true }, change: { scope: 'composer', editing: true } }).action, undefined)
 
   assert.equal(resolve({ event: { key: 'k', metaKey: true }, change: { scope: 'composer', editing: true } }).action, 'palette')
   assert.equal(resolve({ event: { key: 'Enter', metaKey: true }, change: { scope: 'composer', editing: true } }).action, 'send')
@@ -57,7 +61,7 @@ test('typing, IME, dead keys, AltGraph and repeats cannot activate Hydra command
   assert.equal(resolve({ event: { key: 'Escape' }, change: { scope: 'navigation', editing: true } }).consume, false)
   assert.equal(resolve({ event: { key: 'Escape' }, change: { scope: 'navigation' } }).action, 'cancel')
 
-  for (const event of [{ key: 'Enter', isComposing: true, metaKey: true }, { key: 'Process' }, { key: 'Dead' }, { key: 'Enter', metaKey: true, altGraph: true }, { key: 'Enter', metaKey: true, repeat: true }, { key: 'Enter', metaKey: true, defaultPrevented: true }]) {
+  for (const event of [{ key: 'Enter', isComposing: true }, { key: 'Enter', isComposing: true, metaKey: true }, { key: 'Process' }, { key: 'Dead' }, { key: 'Enter', metaKey: true, altGraph: true }, { key: 'Enter', metaKey: true, repeat: true }, { key: 'Enter', metaKey: true, defaultPrevented: true }]) {
     assert.equal(resolve({ event, change: { scope: 'composer', editing: true } }).action, undefined)
   }
 
@@ -140,7 +144,7 @@ test('rebinding validates overlapping scopes and sequence prefixes on both platf
   assert.match(check({ bindings: { reply: ['Mod+k'] } })!, /conflicts/)
   assert.match(check({ bindings: { reply: ['Control+k'] } })!, /conflicts/)
   assert.match(check({ bindings: { reply: ['g'], 'move.left': ['g m'] } })!, /conflicts/)
-  assert.match(check({ bindings: { send: ['Enter'] } })!, /Enter always adds a newline/)
+  assert.match(check({ bindings: { send: ['Shift+Enter'] } })!, /Shift\+Enter always adds a newline/)
   assert.match(check({ bindings: { cancel: ['q'] } })!, /Typing must remain literal/)
   assert.match(check({ bindings: { cancel: ['Backspace'] } })!, /keep editing keys available/)
   assert.match(check({ bindings: { cancel: ['ArrowDown'] } })!, /conflicts|keep editing keys available/)
