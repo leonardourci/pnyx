@@ -79,7 +79,7 @@ try {
   })
   await b.click({ selector: '.card-open' })
   await b.eventually({
-    condition: 'document.querySelector(".task-updates")?.textContent.includes("Created task")',
+    condition: 'document.querySelector(".task-updates")?.textContent.includes("Created")',
     label: 'Updates loads existing factual history',
   })
   await b.check({

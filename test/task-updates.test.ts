@@ -5,10 +5,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadHydra } from '../src/store/hydra-store.ts'
-import { taskTimeline } from '../web/src/hydra/task-updates.ts'
+import { relevantUpdate, taskTimeline } from '../web/src/hydra/task-updates.ts'
 
 test(
-  'task updates retain every declaration, deduplicate history and include factual events newest first',
+  'task updates retain every declaration, deduplicate history and list relevant events newest first',
   () => {
     const previous = process.env.PNYX_HOME
     const home = mkdtempSync(join(
@@ -50,6 +50,7 @@ test(
       const initial = card.statusLog![0]!
       const updates = taskTimeline({
         card,
+        columns: [],
         events: [
           {
             id: latest.id,
@@ -85,14 +86,14 @@ test(
         'done',
       )
       assert.equal(
-        updates.at(-1)!.note,
-        'Created task',
+        updates.at(-1)!.id,
+        initial.id,
       )
       assert.equal(
         updates.filter(update => update.id === latest.id).length,
         1,
       )
-      assert.ok(updates.every(update => update.at && update.note))
+      assert.ok(updates.every(update => update.at && update.state))
     } finally {
       rmSync(
         home,
@@ -107,6 +108,162 @@ test(
       } else {
         process.env.PNYX_HOME = previous
       }
+    }
+  },
+)
+
+test(
+  'task updates keep only relevant events and word them plainly',
+  () => {
+    const columns = [
+      {
+        id: 'custom:a' as const,
+        title: 'In progress',
+      },
+      {
+        id: 'custom:b' as const,
+        title: 'Needs you',
+      },
+    ]
+    const shown = ({
+      type,
+      data,
+      summary = '',
+    }: {
+      type: string
+      data: Record<string, unknown>
+      summary?: string
+    }) => relevantUpdate({
+      cardId: 'c1',
+      columns,
+      event: {
+        id: type,
+        seq: 1,
+        at: '2026-10-21T10:00:00Z',
+        type,
+        summary,
+        data,
+      },
+    })
+
+    assert.equal(
+      shown({
+        type: 'card.pushed',
+        data: {
+          key: 'k',
+          activity: 'working',
+          settings: { effort: 'high' },
+          before: { activity: 'idle' },
+        },
+      }),
+      undefined,
+    )
+    assert.deepEqual(
+      shown({
+        type: 'card.pushed',
+        data: {
+          key: 'k',
+          title: 'New name',
+          before: { title: 'Old name' },
+        },
+      }),
+      {
+        state: 'Renamed',
+        note: 'New name',
+      },
+    )
+    assert.deepEqual(
+      shown({
+        type: 'card.moved',
+        data: {
+          before: 'custom:a',
+          after: 'custom:b',
+        },
+      }),
+      {
+        state: 'Moved',
+        note: 'In progress → Needs you',
+      },
+    )
+    assert.equal(
+      shown({
+        type: 'card.linked',
+        data: {
+          url: 'u',
+          before: null,
+          after: {
+            kind: 'github_pr',
+            url: 'u',
+            number: 108,
+            state: 'merged',
+          },
+        },
+      })?.state,
+      'PR #108 merged',
+    )
+    assert.equal(
+      shown({
+        type: 'task.session',
+        data: {
+          session: 's',
+          before: 'c0',
+          after: 'c1',
+        },
+      })?.state,
+      'Worker attached',
+    )
+    assert.equal(
+      shown({
+        type: 'task.session',
+        data: {
+          session: 's',
+          before: 'c1',
+          after: null,
+        },
+      })?.state,
+      'Worker detached',
+    )
+
+    for (const [
+      type,
+      data,
+    ] of [
+        [
+          'card.outcome',
+          { after: { state: 'ended' } },
+        ],
+        [
+          'card.replied',
+          {
+            reply: 'r1',
+            state: 'delivered',
+          },
+        ],
+        [
+          'card.noted',
+          {
+            kind: 'summary',
+            source: 'claude',
+          },
+        ],
+        [
+          'task.copy',
+          {
+            after: {
+              state: 'active',
+              path: '/tmp/copy',
+            },
+          },
+        ],
+      ] as const) {
+      assert.equal(
+        shown({
+          type,
+          data,
+        }),
+        undefined,
+        type,
+      )
     }
   },
 )
