@@ -916,7 +916,7 @@ test(
 )
 
 test(
-  'the web receipt deadline outlasts git clone',
+  'the web receipt deadline outlasts git clone and retains ordinary command deadlines',
   () => {
     assert.ok(commandTimeout({
       name: 'project',
@@ -928,6 +928,20 @@ test(
         '/folder',
       ],
     }) > CLONE_TIMEOUT_MS)
+    assert.equal(
+      commandTimeout({
+        name: 'project',
+        args: ['list'],
+      }),
+      60000,
+    )
+    assert.equal(
+      commandTimeout({
+        name: 'reply',
+        args: [],
+      }),
+      140000,
+    )
   },
 )
 
