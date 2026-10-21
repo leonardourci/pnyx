@@ -1077,6 +1077,7 @@ test(
             },
             {
               type: 'tool_use',
+              id: 'toolu_1',
               input: 'sk-abcdefghijklmnop123456789',
             },
           ],
@@ -1094,6 +1095,28 @@ test(
     ); assert.equal(
       entries[2]?.text,
       '[redacted]',
+    )
+    assert.equal(
+      entries[2]?.call,
+      'toolu_1',
+    )
+    assert.equal(
+      recordEntries({
+        record: {
+          type: 'user',
+          message: {
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'toolu_1',
+                content: 'done',
+              },
+            ],
+          },
+        },
+        offset: 1,
+      })[0]?.call,
+      'toolu_1',
     )
     assert.deepEqual(
       recordEntries({
