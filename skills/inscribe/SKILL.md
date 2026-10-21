@@ -23,7 +23,7 @@ Save each document whole with `pnyx-axi project memory set --project <name|path>
 
 Without a project, sweep for every layer: route project facts and project preferences as above, and curate owner and Hydra memory with the steps below.
 
-1. Read the current memory: `pnyx-axi owner memory list` and `pnyx-axi hydra memory list --hydra <hydra>` (each shows the characters used).
+1. Read the current memory: `pnyx-axi owner memory list` and `pnyx-axi hydra memory list --hydra <hydra>` (each shows the characters used; owner memory also prints its revision).
 2. Sweep this session for what exists only in the conversation:
    - Owner preferences: how the owner wants work done, standing decisions, people and tools they named. These hold until the owner changes them.
    - Learnings: facts you had to discover the hard way about tools, workers and routes, which would cost the next session time to rediscover. Each must still be true; check one you doubt before keeping it.
@@ -33,11 +33,11 @@ Without a project, sweep for every layer: route project facts and project prefer
 4. Save each changed document whole, with a reason:
 
    ```sh
-   pnyx-axi owner memory set --key preferences --text "<document>" --reason "<what changed>"
-   pnyx-axi owner memory set --key learnings --text "<document>" --reason "<what changed>"
+   pnyx-axi owner memory set --key preferences --text "<document>" --reason "<what changed>" --if-revision <revision>
+   pnyx-axi owner memory set --key learnings --text "<document>" --reason "<what changed>" --if-revision <revision>
    pnyx-axi hydra memory set --key scope --text "<text>" --reason "<what changed>" --hydra <hydra>
    ```
 
-   Forget keys that became stale with `owner memory forget --key <key>` or `hydra memory forget --key <key> --hydra <hydra>`, each with `--reason "<why>"`. A save over budget is refused: shorten and save again.
+   Forget keys that became stale with `owner memory forget --key <key>` or `hydra memory forget --key <key> --hydra <hydra>`, each with `--reason "<why>"`. A save over budget is refused: shorten and save again. Other Hydras share owner memory, so a save refused for its revision means another Hydra saved first: list it again, merge and save.
 5. If you are supervising with `hydra check`, save the last `through` you fully handled as `hydra memory set --key check-cursor --text "<through>"`.
 6. Finish with one line: what you saved, what you dropped, and the characters now used in each layer. Forgotten and replaced entries stay in their logs.
