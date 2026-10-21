@@ -158,6 +158,11 @@ const ROW_FACTS = new Set([
   'hold-until',
 ])
 
+// A lane continuing an existing PR has no pr in its meta, only the URL ending its title.
+function titlePull({ title }: { title?: string }): string | undefined {
+  return /(https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+)\s*$/.exec(title ?? '')?.[1]
+}
+
 // Backlog rows: `- [ ] <id> - <title> (repo: x) (kind: y) (since d)`, grouped
 // under `## In flight`, `## Queued` and `## Done`; a done row ends `(merged d)`
 // when its pull request merged.
@@ -370,7 +375,7 @@ export function readHome({
     // The mirrored row keeps its shape: an extra field would read as a changed Firstmate record.
     const mirroredRow = row && { ...row }
     delete mirroredRow?.hold
-    const pr = meta.pr
+    const pr = meta.pr ?? titlePull({ title: row?.title })
     const activity = latestActivity({ log })
     const last = latestLine({ log })
     const worktree = canonical({ path: meta.worktree })
