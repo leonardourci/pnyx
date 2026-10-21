@@ -170,12 +170,12 @@ try {
     'const inner = pane.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)',
     'return Math.round(Math.floor(inner) / 2) })()',
   ].join('; ')
-  await evaluate({ code: `const text = document.querySelector('[data-task="${task().id}"] .last-message'); const range = document.createRange(); range.selectNodeContents(text); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range); text.click(); return true;` })
+  await evaluate({ code: `const text = document.querySelector('[data-task="${task().id}"] .last-message'); text.style.userSelect = 'text'; const range = document.createRange(); range.selectNodeContents(text); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range); if (!selection.toString()) throw new Error('Expected selected preview text'); text.click(); return true;` })
   await check({
     condition: '!document.querySelector(".card.selected")',
     label: 'selecting preview text leaves the card closed',
   })
-  await evaluate({ code: 'window.getSelection().removeAllRanges(); return true;' })
+  await evaluate({ code: 'window.getSelection().removeAllRanges(); document.querySelector(\'.last-message\').style.userSelect = \'\'; return true;' })
   await click({ selector: `[data-task="${task().id}"] .card-state` })
   await check({
     condition: `document.activeElement.matches(".task-updates") && document.querySelector(".card.selected").getBoundingClientRect().height === ${halfColumn}`,
