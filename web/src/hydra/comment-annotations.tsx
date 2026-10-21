@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { Button } from '../components/ui/controls.tsx'
 import type { ChatComment } from './chat.ts'
-import { HIGHLIGHT_SUPPORTED, commentRange, fadeHighlight } from './comment-highlight.ts'
+import { HIGHLIGHT_SUPPORTED, commentRanges, fadeHighlight } from './comment-highlight.ts'
 import { CommentNumber } from './comment-number.tsx'
 import { COMMENT_BADGE_SIZE, commentPileLayout, commentPiles } from './comment-piles.ts'
-import { COMMENT_FOCUS } from './comment-motion.ts'
-import { COMMENT_REVEAL, revealComment } from './comment-reveal.ts'
+import { COMMENT_FOCUS, COMMENT_REVEAL } from './comment-motion.ts'
+import { revealComment } from './comment-reveal.ts'
 
 const JUMP_DURATION = 1800
 type Rect = {
@@ -161,8 +161,8 @@ export function CommentAnnotations({
       if (emphasized.current.id !== (comment?.id ?? null)) {
         fadeHighlight({
           name: emphasis,
-          strength: 45,
-          underline: true,
+          scope: highlight,
+          emphasis: true,
         })
       }
 
@@ -181,13 +181,13 @@ export function CommentAnnotations({
         id: comment?.id ?? null,
         cards,
       }
-      const range = comment && commentRange({
+      const ranges = comment ? commentRanges({
         host: root,
         comment,
-      })
+      }) : []
 
-      if (range) {
-        const painting = new Highlight(range)
+      if (ranges.length) {
+        const painting = new Highlight(...ranges)
         painting.priority = 1
         CSS.highlights.set(
           emphasis,
@@ -279,12 +279,12 @@ export function CommentAnnotations({
           index,
           comment,
         ] of comments.entries()) {
-          const range = commentRange({
+          const ranges = commentRanges({
             host: root,
             comment,
           })
-          const fragments = range
-            ? [...range.getClientRects()].filter(rect => rect.width && rect.height) : []
+          const fragments = ranges.flatMap(range => [...range.getClientRects()])
+            .filter(rect => rect.width && rect.height)
           const last = fragments.at(-1)
 
           if (!last) {
@@ -427,7 +427,7 @@ export function CommentAnnotations({
 
   return (
     <div className="comment-annotations" ref={layer} contentEditable={false}>
-      <style>{`::highlight(${emphasis}) { background-color: color-mix(in srgb, var(--color-gold) 45%, transparent); text-decoration: underline; text-decoration-color: var(--color-gold); }`}</style>
+      <style>{`::highlight(${emphasis}) { background-color: var(--comment-emphasis); text-decoration: underline; text-decoration-color: var(--color-gold); }`}</style>
       {jump && layout.rects.map((
         rect,
         index,

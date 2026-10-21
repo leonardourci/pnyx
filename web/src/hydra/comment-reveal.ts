@@ -3,8 +3,6 @@ import { commentRange } from './comment-highlight.ts'
 import type { ChatComment } from './chat.ts'
 import { COMMENT_REVEAL, scrollMessage } from './comment-motion.ts'
 
-export { COMMENT_REVEAL } from './comment-motion.ts'
-
 export function revealComment({
   host,
   comment,

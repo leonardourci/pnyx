@@ -36,7 +36,7 @@
   --text-code: 13px;
 }
 
-:root { --comment-highlight: color-mix(in srgb, var(--color-gold) 24%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+:root { --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
 
 :root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; }
 @media (prefers-color-scheme: dark) {
@@ -554,7 +554,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .messages[data-caret-host] { outline: none; caret-color: var(--color-gold); }
 
-.comment-card { transition: background-color 160ms ease-out, border-color 160ms ease-out, box-shadow 160ms ease-out; position: relative; display: flex; flex-direction: column; gap: 3px; margin: 6px 0 10px; padding: 6px 6px 6px 10px; border: 1px solid var(--color-line); border-left: 2px solid var(--color-gold); border-radius: 8px; background: var(--color-raised); font-size: var(--text-ui); user-select: none; }
+.comment-card { transition: background-color var(--comment-fade-duration) ease-out, border-color var(--comment-fade-duration) ease-out, box-shadow var(--comment-fade-duration) ease-out; position: relative; display: flex; flex-direction: column; gap: 3px; margin: 6px 0 10px; padding: 6px 6px 6px 10px; border: 1px solid var(--color-line); border-left: 2px solid var(--color-gold); border-radius: 8px; background: var(--color-raised); font-size: var(--text-ui); user-select: none; }
 
 .comment-card[data-emphasis] { background: color-mix(in srgb, var(--color-gold) 20%, var(--color-raised)); border-color: var(--color-gold); box-shadow: 0 0 0 1px var(--color-gold-line); }
 .comment-card:focus-within { border-color: var(--color-gold-line); border-left-color: var(--color-gold); }
@@ -569,11 +569,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .comment-annotations { position: absolute; inset: 0; pointer-events: none; user-select: none; }
 .comment-pile { position: absolute; z-index: 2; pointer-events: auto; }
 .comment-pile[data-spread] { z-index: 4; }
-.comment-marker.button { position: absolute; top: 0; display: block; padding: 0; border: 0; border-radius: 999px; background: transparent; transition: left 140ms ease; }
-.comment-marker .comment-number { transition: transform 140ms ease; }
+.comment-marker.button { position: absolute; top: 0; display: block; padding: 0; border: 0; border-radius: 999px; background: transparent; transition: left var(--comment-marker-duration) ease; }
+.comment-marker .comment-number { transition: transform var(--comment-marker-duration) ease; }
 .comment-marker:hover .comment-number, .comment-marker:focus-visible .comment-number, .comment-marker[data-active] .comment-number { transform: translateY(-2px); border-color: var(--color-ink); box-shadow: 0 0 0 1px var(--color-surface); }
-.comment-card[data-jump]::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: color-mix(in srgb, var(--color-gold) 48%, transparent); box-shadow: 0 0 0 1px var(--color-gold); animation: comment-jump var(--comment-jump-duration) ease-out both; }
-.comment-jump { position: absolute; z-index: 1; border-radius: 3px; background: color-mix(in srgb, var(--color-gold) 48%, transparent); animation-name: comment-jump; animation-timing-function: ease-out; animation-fill-mode: both; }
+.comment-card[data-jump]::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: var(--comment-jump-highlight); box-shadow: 0 0 0 1px var(--color-gold); animation: comment-jump var(--comment-jump-duration) ease-out both; }
+.comment-jump { position: absolute; z-index: 1; border-radius: 3px; background: var(--comment-jump-highlight); animation-name: comment-jump; animation-timing-function: ease-out; animation-fill-mode: both; }
 @keyframes comment-jump { 0% { opacity: .2; } 15% { opacity: 1; } 32% { opacity: .5; } 65% { opacity: .5; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .comment-jump, .comment-card[data-jump]::after { animation: none; opacity: .5; } .comment-card, .comment-marker.button, .comment-marker .comment-number { transition: none; } }
 

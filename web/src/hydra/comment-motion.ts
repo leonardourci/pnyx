@@ -29,12 +29,19 @@ export function scrollMessage({
   )
   const above = bounds.top - viewport.top - padding
   const below = bounds.bottom - viewport.bottom + padding
-  const delta = center
-    ? bounds.top - viewport.top - (viewport.height - bounds.height) / 2
-    : above < 0 ? above : Math.max(
-      0,
-      below,
-    )
+  let delta = Math.max(
+    0,
+    below,
+  )
+
+  if (above < 0) {
+    delta = above
+  }
+
+  if (center) {
+    delta = bounds.top - viewport.top - (viewport.height - bounds.height) / 2
+  }
+
   const top = Math.max(
     0,
     Math.min(
@@ -75,13 +82,17 @@ export function scrollMessage({
   }
 
   const arrived = () => {
-    if (Math.abs(scroller.scrollTop - top) < 1) {
-      cancel()
-
-      if (host.isConnected) {
-        finished?.()
-      }
+    if (Math.abs(scroller.scrollTop - top) >= 1) {
+      return
     }
+
+    cancel()
+
+    if (!host.isConnected) {
+      return
+    }
+
+    finished?.()
   }
 
   pending.set(

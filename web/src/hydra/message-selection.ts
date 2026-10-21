@@ -25,32 +25,73 @@ export const blockPassage = ({ block }: { block: HTMLElement }): CommentPassage 
   at: block.dataset.messageAt,
 })
 
+const textBefore = ({
+  block,
+  node,
+  offset,
+}: {
+  block: HTMLElement
+  node: Node
+  offset: number
+}) => {
+  const before = document.createRange()
+  before.selectNodeContents(block)
+  before.setEnd(
+    node,
+    offset,
+  )
+  const fragment = before.cloneContents()
+  fragment.querySelectorAll(MESSAGE_DECORATIONS).forEach(element => element.remove())
+
+  return fragment.textContent?.length ?? 0
+}
+
 export function selectedPassage({ messages }: {
   messages: HTMLElement | null
 }): CommentPassage | null {
   const selection = window.getSelection()
   const range = selection?.rangeCount ? selection.getRangeAt(0) : null
-  const quote = selection?.toString().trim()
   const block = messageBlock({ node: range?.startContainer })
+  const endBlock = messageBlock({ node: range?.endContainer })
 
-  if (!messages || !range || !quote || !block || !messages.contains(range.endContainer)
+  if (!messages || !range || !block || !endBlock || !messages.contains(block)
+    || !messages.contains(endBlock) || block.dataset.messageId !== endBlock.dataset.messageId
     || document.activeElement?.closest('.comment-card')) {
     return null
   }
 
-  const before = range.cloneRange()
-  before.selectNodeContents(block)
-  before.setEnd(
-    range.startContainer,
-    range.startOffset,
-  )
-  const fragment = before.cloneContents()
+  const fragment = range.cloneContents()
   fragment.querySelectorAll(MESSAGE_DECORATIONS).forEach(element => element.remove())
+  fragment.querySelectorAll('[data-message-block]').forEach(element => element.prepend('\n\n'))
+  fragment.querySelectorAll('br').forEach(element => element.replaceWith('\n'))
+  const quote = fragment.textContent?.trim()
+
+  if (!quote) {
+    return null
+  }
 
   return {
     ...blockPassage({ block }),
     quote,
-    start: fragment.textContent?.length ?? 0,
+    paragraph: block === endBlock ? block.dataset.quote
+      : [...messages.querySelectorAll<HTMLElement>('[data-message-block]')]
+        .filter(candidate => candidate.dataset.messageId === block.dataset.messageId
+        && range.intersectsNode(candidate))
+        .map(candidate => candidate.dataset.quote)
+        .join('\n\n'),
+    start: textBefore({
+      block,
+      node: range.startContainer,
+      offset: range.startOffset,
+    }),
+    end: {
+      offset: Number(endBlock.dataset.blockOffset),
+      position: textBefore({
+        block: endBlock,
+        node: range.endContainer,
+        offset: range.endOffset,
+      }),
+    },
   }
 }
 

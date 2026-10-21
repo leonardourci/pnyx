@@ -2,7 +2,7 @@ import { imagePaths } from '../../../src/attachments/images.ts'
 import { AttachedImage } from '../components/ui/attached-image.tsx'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
-import { markdown } from '../components/ui/markdown.tsx'
+import { markdownText } from '../components/ui/markdown.tsx'
 import { onNoteEdgeLine, type CaretDirection } from './caret.ts'
 import { commentContext, quoteSnippet, type ChatComment } from './chat.ts'
 import { pastedImages } from './image-upload.ts'
@@ -14,13 +14,6 @@ const LINE_KEYS: Record<string, CaretDirection> = {
   ArrowUp: 'backward',
   ArrowDown: 'forward',
 }
-
-// The paragraph as it reads in the chat, its Markdown syntax rendered away; the agent gets the source.
-const readable = ({ text }: { text: string }) => new DOMParser()
-  .parseFromString(
-    markdown.parseInline(text) as string,
-    'text/html',
-  ).body.textContent ?? text
 
 function CommentQuote({
   comment,
@@ -36,7 +29,7 @@ function CommentQuote({
   } = quoteSnippet({
     quote: comment.quote,
     start: comment.start,
-    context: readable({ text: commentContext({ comment }) ?? '' }),
+    context: markdownText({ text: commentContext({ comment }) ?? '' }),
   })
 
   return (

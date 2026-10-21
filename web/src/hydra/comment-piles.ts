@@ -68,7 +68,15 @@ export function commentPileLayout({
         _,
         index,
       ) => {
-        const depth = index === front ? 0 : index < front ? index + 1 : index
+        let depth = index
+
+        if (index < front) {
+          depth = index + 1
+        }
+
+        if (index === front) {
+          depth = 0
+        }
 
         return {
           left: spread ? index * step : depth * step,

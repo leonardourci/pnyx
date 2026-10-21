@@ -59,6 +59,10 @@ export interface ChatComment {
   block: number
   offset: number
   start?: number
+  end?: {
+    offset: number
+    position: number
+  }
   quote: string
   text: string
   paragraph?: string
@@ -81,6 +85,38 @@ export const commentContext = ({
   quote.trim().split(/\s+/).length <= SHORT_QUOTE_WORDS && paragraph && paragraph !== quote
     ? paragraph : undefined
 
+export function quoteStart({
+  text,
+  quote,
+  start,
+  positions,
+}: {
+  text: string
+  quote: string
+  start?: number
+  positions?: number[]
+}) {
+  let at = quote ? text.indexOf(quote) : -1
+
+  if (at < 0 || start === undefined) {
+    return at
+  }
+
+  for (let next = text.indexOf(
+    quote,
+    at + 1,
+  ); next >= 0; next = text.indexOf(
+      quote,
+      next + 1,
+    )) {
+    if (Math.abs((positions?.[next] ?? next) - start) < Math.abs((positions?.[at] ?? at) - start)) {
+      at = next
+    }
+  }
+
+  return at
+}
+
 export function quoteSnippet({
   quote,
   context = '',
@@ -90,21 +126,11 @@ export function quoteSnippet({
   context?: string
   start?: number
 }) {
-  let at = context.indexOf(quote)
-
-  if (quote && at >= 0 && start !== undefined) {
-    for (let next = context.indexOf(
-      quote,
-      at + 1,
-    ); next >= 0; next = context.indexOf(
-        quote,
-        next + 1,
-      )) {
-      if (Math.abs(next - start) < Math.abs(at - start)) {
-        at = next
-      }
-    }
-  }
+  const at = quoteStart({
+    text: context,
+    quote,
+    start,
+  })
 
   return at < 0 ? {
     before: '',
@@ -138,7 +164,7 @@ export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): Threa
   return result
 }
 
-export const COMMENT_NOTE = '> Internal note — no reply needed: numbered comments refer to passages in your earlier reply. Short quotes include their paragraph for context. Address the comments together with the message below.'
+export const COMMENT_NOTE = '> Internal note: no reply needed: numbered comments refer to passages in your earlier reply. Short quotes include their paragraph for context. Address the comments together with the message below.'
 
 const markdownQuote = ({ text }: { text: string }) => text.split('\n')
   .map(line => `> ${line}`)
@@ -166,15 +192,23 @@ const numberedComment = ({
 }
 
 export function orderedComments({ comments }: { comments: ChatComment[] }) {
-  const replies = new Map(comments.map(comment => [
-    comment.messageId,
-    comment.at ?? '',
-  ]))
-  const positions = new Map([...replies.keys()].map((
+  const replies = [...new Set(comments.map(comment => comment.messageId))].map(id => ({
     id,
+    at: comments.find(comment => comment.messageId === id && comment.at)?.at || '',
+  }))
+
+  if (replies.every(reply => reply.at)) {
+    replies.sort((
+      a,
+      b,
+    ) => a.at.localeCompare(b.at))
+  }
+
+  const positions = new Map(replies.map((
+    reply,
     index,
   ) => [
-    id,
+    reply.id,
     index,
   ]))
   const start = ({ comment }: { comment: ChatComment }) => comment.start
@@ -188,8 +222,7 @@ export function orderedComments({ comments }: { comments: ChatComment[] }) {
     b,
   ) => {
     if (a.messageId !== b.messageId) {
-      return (a.at ?? '').localeCompare(b.at ?? '')
-        || positions.get(a.messageId)! - positions.get(b.messageId)!
+      return positions.get(a.messageId)! - positions.get(b.messageId)!
     }
 
     return a.offset - b.offset || start({ comment: a }) - start({ comment: b })

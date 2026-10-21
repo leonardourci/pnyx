@@ -138,28 +138,30 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         key,
         newValue,
       }: StorageEvent) => {
-        if (key === commentsKey && newValue !== JSON.stringify(savedComments({ comments }))) {
-          setComments(current => {
-            const incoming = readComments({ value: newValue })
+        if (key !== commentsKey || newValue === JSON.stringify(savedComments({ comments }))) {
+          return
+        }
 
-            for (const [
-              card,
-              items,
-            ] of Object.entries(current)) {
-              const pending = items.filter(comment => !sendableComment({ comment })
+        setComments(current => {
+          const incoming = readComments({ value: newValue })
+
+          for (const [
+            card,
+            items,
+          ] of Object.entries(current)) {
+            const pending = items.filter(comment => !sendableComment({ comment })
                 && !incoming[card]?.some(item => item.id === comment.id))
 
-              if (pending.length) {
-                incoming[card] = [
-                  ...incoming[card] ?? [],
-                  ...pending,
-                ]
-              }
+            if (pending.length) {
+              incoming[card] = [
+                ...incoming[card] ?? [],
+                ...pending,
+              ]
             }
+          }
 
-            return incoming
-          })
-        }
+          return incoming
+        })
       }
 
       addEventListener(

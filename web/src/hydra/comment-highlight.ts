@@ -1,5 +1,5 @@
 import { MESSAGE_DECORATIONS, messageBlockKey } from './message-selection.ts'
-import type { ChatComment } from './chat.ts'
+import { quoteStart, type ChatComment } from './chat.ts'
 
 // The block's own text: links included, its comment cards and the pill left out.
 function* blockText({ block }: { block: Element }) {
@@ -51,22 +51,12 @@ function quoteRange({
     /\s+/g,
     ' ',
   ).trim()
-  let found = wanted ? text.indexOf(wanted) : -1
-
-  if (found >= 0 && comment.start !== undefined) {
-    for (let next = text.indexOf(
-      wanted,
-      found + 1,
-    ); next >= 0; next = text.indexOf(
-        wanted,
-        next + 1,
-      )) {
-      if (Math.abs(points[next]!.position - comment.start)
-        < Math.abs(points[found]!.position - comment.start)) {
-        found = next
-      }
-    }
-  }
+  const found = quoteStart({
+    text,
+    quote: wanted,
+    start: comment.start,
+    positions: points.map(point => point.position),
+  })
 
   // A whole-block comment quotes the block's Markdown source, so it marks all of the block.
   const whole = found < 0 && comment.quote === comment.paragraph && points.length > 0
@@ -93,6 +83,35 @@ function quoteRange({
 
 export const HIGHLIGHT_SUPPORTED = typeof CSS !== 'undefined' && 'highlights' in CSS
 
+const pointAt = ({
+  block,
+  position,
+}: {
+  block: Element
+  position: number
+}) => {
+  let remaining = position
+  const texts = [...blockText({ block })]
+
+  for (const node of texts) {
+    if (remaining <= node.length) {
+      return {
+        node,
+        offset: remaining,
+      }
+    }
+
+    remaining -= node.length
+  }
+
+  const node = texts.at(-1)
+
+  return node ? {
+    node,
+    offset: node.length,
+  } : null
+}
+
 export function commentRange({
   host,
   comment,
@@ -102,24 +121,114 @@ export function commentRange({
 }) {
   const block = host.querySelector(`[data-message-block="${CSS.escape(messageBlockKey(comment))}"]`)
 
-  return block ? quoteRange({
+  if (!block) {
+    return null
+  }
+
+  if (!comment.end) {
+    return quoteRange({
+      block,
+      comment,
+    })
+  }
+
+  const endBlock = host.querySelector(`[data-message-block="${CSS.escape(messageBlockKey({
+    messageId: comment.messageId,
+    offset: comment.end.offset,
+  }))}"]`)
+
+  if (!endBlock) {
+    return null
+  }
+
+  const start = pointAt({
     block,
-    comment,
-  }) : null
+    position: comment.start ?? 0,
+  })
+  const end = pointAt({
+    block: endBlock,
+    position: comment.end.position,
+  })
+
+  if (!start || !end) {
+    return null
+  }
+
+  const range = document.createRange()
+  range.setStart(
+    start.node,
+    start.offset,
+  )
+  range.setEnd(
+    end.node,
+    end.offset,
+  )
+
+  return range
 }
 
-const FADE_DURATION = 160
+export function commentRanges({
+  host,
+  comment,
+}: {
+  host: HTMLElement
+  comment: ChatComment
+}) {
+  const selection = commentRange({
+    host,
+    comment,
+  })
+  const message = selection?.startContainer.parentElement?.closest('.message')
+
+  if (!selection || !message) {
+    return []
+  }
+
+  return [...blockText({ block: message })].flatMap(node => {
+    if (!selection.intersectsNode(node)) {
+      return []
+    }
+
+    const start = selection.startContainer === node ? selection.startOffset : 0
+    const end = selection.endContainer === node ? selection.endOffset : node.length
+
+    if (start >= end) {
+      return []
+    }
+
+    const range = document.createRange()
+    range.setStart(
+      node,
+      start,
+    )
+    range.setEnd(
+      node,
+      end,
+    )
+
+    return [range]
+  })
+}
+
 let fades = 0
 const fading = new Map<string, () => void>()
 
-export function fadeHighlight({
+export const commentHighlightName = ({
   name,
-  strength,
-  underline = false,
+  id,
 }: {
   name: string
-  strength: number
-  underline?: boolean
+  id: string
+}) => `${name}-quote-${id}`
+
+export function fadeHighlight({
+  name,
+  scope,
+  emphasis = false,
+}: {
+  name: string
+  scope: string
+  emphasis?: boolean
 }) {
   const before = CSS.highlights.get(name)
   CSS.highlights.delete(name)
@@ -128,9 +237,18 @@ export function fadeHighlight({
     return
   }
 
+  const first = [...before][0]
+
+  if (!first) {
+    return
+  }
+
+  const theme = getComputedStyle(first.startContainer.parentElement ?? document.documentElement)
+  const duration = parseFloat(theme.getPropertyValue('--comment-fade-duration'))
+  const strength = parseFloat(theme.getPropertyValue(emphasis ? '--comment-emphasis-strength' : '--comment-highlight-strength'))
   const copy = new Highlight(...before)
   copy.priority = before.priority
-  const fade = `${name}-fade-${++fades}`
+  const fade = `${scope}-fade-${emphasis ? 'emphasis' : 'quote'}-${++fades}`
   const style = document.createElement('style')
   style.id = fade
   CSS.highlights.set(
@@ -151,7 +269,7 @@ export function fadeHighlight({
   const paint = () => {
     const progress = Math.min(
       1,
-      (performance.now() - started) / FADE_DURATION,
+      (performance.now() - started) / duration,
     )
 
     if (progress === 1 || matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -161,7 +279,7 @@ export function fadeHighlight({
     }
 
     const opacity = (1 - progress) ** 2
-    style.textContent = `::highlight(${fade}) { background-color: color-mix(in srgb, var(--color-gold) ${strength * opacity}%, transparent); ${underline ? `text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color-gold) ${100 * opacity}%, transparent);` : ''} }`
+    style.textContent = `::highlight(${fade}) { background-color: color-mix(in srgb, var(--color-gold) ${strength * opacity}%, transparent); ${emphasis ? `text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color-gold) ${100 * opacity}%, transparent);` : ''} }`
     frame = requestAnimationFrame(paint)
   }
 
@@ -206,48 +324,37 @@ export function paintComments({
 }) {
   const present = new Set(comments.map(comment => comment.id))
 
-  for (const [
-    index,
-    comment,
-  ] of previous.entries()) {
+  for (const comment of previous) {
     if (!present.has(comment.id)) {
       fadeHighlight({
-        name: `${name}-${index}`,
-        strength: 24,
+        name: commentHighlightName({
+          name,
+          id: comment.id,
+        }),
+        scope: name,
       })
     }
   }
 
-  const ranges = comments.flatMap((
-    comment,
-    index,
-  ) => {
-    const range = commentRange({
+  comments.forEach(comment => {
+    const ranges = commentRanges({
       host,
       comment,
     })
-    const quote = `${name}-${index}`
+    const quote = commentHighlightName({
+      name,
+      id: comment.id,
+    })
 
-    if (!range) {
+    if (!ranges.length) {
       CSS.highlights.delete(quote)
 
-      return []
+      return
     }
 
     CSS.highlights.set(
       quote,
-      new Highlight(range),
+      new Highlight(...ranges),
     )
-
-    return [range]
   })
-
-  for (let index = comments.length; index < previous.length; index++) {
-    CSS.highlights.delete(`${name}-${index}`)
-  }
-
-  CSS.highlights.set(
-    name,
-    new Highlight(...ranges),
-  )
 }

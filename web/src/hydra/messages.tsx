@@ -17,7 +17,7 @@ import { orderedComments, sendableComment, type ChatComment } from './chat.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageComment } from './message-comment.tsx'
-import { HIGHLIGHT_SUPPORTED, clearHighlights, commentRange, paintComments } from './comment-highlight.ts'
+import { HIGHLIGHT_SUPPORTED, clearHighlights, commentHighlightName, commentRange, paintComments } from './comment-highlight.ts'
 import {
   blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage,
 } from './message-selection.ts'
@@ -673,11 +673,11 @@ export function Messages({
 
   return (
     <>
-      <style>{CARET_CSS + comments.map((
-        _,
-        index,
-      ) =>
-        `::highlight(${highlight}-${index}) { background-color: var(--comment-highlight); }`).join('')}
+      <style>{CARET_CSS + comments.map(comment =>
+        `::highlight(${CSS.escape(commentHighlightName({
+          name: highlight,
+          id: comment.id,
+        }))}) { background-color: var(--comment-highlight); }`).join('')}
       </style>
       <div
         className="messages"
