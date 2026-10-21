@@ -11,6 +11,7 @@ import { test } from 'node:test'
 import { answerPrompt, answerText, checkAnswer, requestId, type Answer, type Prompt } from '../src/core/answer.ts'
 import type { Attention, HydraEvent, Card } from '../src/core/model.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
+import { withWriter } from '../src/store/hydra-store.ts'
 import { KEY, answerKeys } from '../src/integrations/hooks/answer.ts'
 import { attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
 
@@ -1363,8 +1364,42 @@ test(
       key:'secret',
       provider:'claude-code',
       terminal:TMUX,
-      attention:[request],
+      attention:[],
     })
+    const previousHome = process.env.PNYX_HOME
+    process.env.PNYX_HOME = join(
+      root,
+      'pnyx',
+    )
+
+    try {
+      // Recorded provider flags remain replayable even when push excludes them.
+      withWriter({
+        hydraId:'default',
+        fn:({writer})=>writer.append({
+          event:{
+            v:1,
+            seq:writer.state.seq+1,
+            id:'recorded-secret-question',
+            at:new Date().toISOString(),
+            actor:'fixture',
+            cardId:writer.state.keys.secret!,
+            type:'card.pushed',
+            data:{
+              key:'secret',
+              attention:[request],
+            },
+          },
+        }),
+      })
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previousHome
+      }
+    }
+
     assert.match(
       run({
         args:[
