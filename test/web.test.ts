@@ -526,6 +526,60 @@ test(
 )
 
 test(
+  'card heights have no maximum and keep closed and open sizes apart',
+  () => {
+    const state = push({
+      state: emptyHydra(),
+      key: 'a',
+      fields: { title: 'A' },
+    })
+    const view = patchView({
+      state,
+      input: {
+        cardHeights: { c1: 2400 },
+        closedCardHeights: { c1: 300 },
+      },
+    })
+    assert.deepEqual(
+      [
+        view.cardHeights.c1,
+        view.closedCardHeights.c1,
+      ],
+      [
+        2400,
+        300,
+      ],
+    )
+    assert.equal(
+      viewFor({
+        state: {
+          ...state,
+          view: {
+            ...view,
+            closedCardHeights: { c1: 1 },
+          },
+        },
+      }).closedCardHeights.c1,
+      VIEW_SIZE_LIMITS.cardHeight.min,
+    )
+    assert.throws(
+      () => patchView({
+        state,
+        input: { closedCardHeights: { missing: 300 } },
+      }),
+      HydraError,
+    )
+    assert.throws(
+      () => patchView({
+        state,
+        input: { closedCardHeights: { c1: VIEW_SIZE_LIMITS.cardHeight.min - 1 } },
+      }),
+      HydraError,
+    )
+  },
+)
+
+test(
   'saved resize preferences load within readable size limits',
   () => {
     const initial = push({

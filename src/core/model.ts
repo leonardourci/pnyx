@@ -654,6 +654,7 @@ export interface ViewPreferences {
   thinkingDetails: boolean
   columnWidths: Record<string, number>
   cardHeights: Record<string, number>
+  closedCardHeights: Record<string, number>
   cardTraceOverrides: Record<string, {
     tools?: boolean
     thinking?: boolean
