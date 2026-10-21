@@ -100,6 +100,22 @@ pnyx-axi setup service --remove            # stop and uninstall the service
 
 There is one login service for every Hydra. Setting it up replaces the one-per-Hydra services older versions installed for the same data folder.
 
+### Named links with portless
+
+[portless](https://github.com/vercel-labs/portless) gives local servers stable HTTPS names such as https://pnyx.localhost instead of port numbers. The server accepts any `*.localhost` host and origin: browsers resolve those names to this machine themselves, so another site cannot rebind them. Set it up once (it asks for your password once):
+
+```sh
+npm install -g portless
+portless trust && portless service install   # trust its certificate, run its proxy on port 443 at login
+portless alias pnyx 4747                      # https://pnyx.localhost for the login service
+```
+
+Start a preview server under a name of its own, so its link is https://<name>.pnyx.localhost. `serve` takes the port portless hands it in `PORT` when `--port` is not given:
+
+```sh
+portless <name>.pnyx pnyx-axi serve
+```
+
 ## Add your agents
 
 ```sh
