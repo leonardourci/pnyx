@@ -226,6 +226,10 @@ try {
     condition: `${marked}.sort().join("|") === "readable|readable paragraph" && [...document.querySelectorAll(".hydra-chat .comment-card .comment-quote mark")].map(m => m.textContent).join("|") === "readable paragraph|readable"`,
     label: 'each comment\'s passage stays highlighted in the reply and its card',
   })
+  await check({
+    condition: '(() => { const name = document.querySelector(\'.hydra-chat .messages\').dataset.highlight; return CSS.highlights.get(name + \'-0\').size === 1 && CSS.highlights.get(name + \'-1\').size === 1 && document.querySelectorAll(\'.hydra-chat .comment-marker\').length === 2 && [...document.querySelectorAll(\'.hydra-chat .comment-card\')].map(card => card.dataset.commentNumber).join() === \'1,2\'; })()',
+    label: 'nested comments paint separate tint layers and share card and passage numbers',
+  })
   const cards = 'document.querySelectorAll(".hydra-chat .comment-card").length'
   const host = 'document.querySelector(".hydra-chat [data-caret-host]")'
   const paragraph = '[...document.querySelectorAll(".hydra-chat .message-block p")].find(p => p.textContent.startsWith("A readable paragraph"))'
@@ -379,6 +383,10 @@ try {
     condition: '!document.querySelector(".comments-dialog") && document.activeElement.matches(".hydra-chat .messages .comment-card textarea") && document.activeElement.value === "What does readable mean?"',
     label: 'Show in chat closes the list onto the comment under its passage',
   })
+  await check({
+    condition: '!!document.querySelector(\'.comment-jump\') && document.activeElement.closest(\'.comment-card\').hasAttribute(\'data-jump\') && getComputedStyle(document.querySelector(\'.comment-jump\')).animationIterationCount === \'1\' && getComputedStyle(document.activeElement.closest(\'.comment-card\'), \'::after\').animationIterationCount === \'1\'',
+    label: 'showing a comment pulses its passage and card once',
+  })
   await screenshot({ name: 'comment-cards.png' })
   await evaluate({ code: 'window.input = document.querySelector(".hydra-chat .composer textarea"); return true;' })
   await fill({
@@ -400,10 +408,10 @@ try {
   )
   assert.match(
     sent,
-    /1\. > readable paragraph/,
+    /2\. > readable paragraph/,
   ); assert.match(
     sent,
-    /2\. > readable/,
+    /3\. > readable/,
   )
   assert.match(
     sent,

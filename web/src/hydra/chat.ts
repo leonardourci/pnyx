@@ -58,6 +58,7 @@ export interface ChatComment {
   messageId: string
   block: number
   offset: number
+  start?: number
   quote: string
   text: string
   paragraph?: string
@@ -83,11 +84,27 @@ export const commentContext = ({
 export function quoteSnippet({
   quote,
   context = '',
+  start,
 }: {
   quote: string
   context?: string
+  start?: number
 }) {
-  const at = context.indexOf(quote)
+  let at = context.indexOf(quote)
+
+  if (quote && at >= 0 && start !== undefined) {
+    for (let next = context.indexOf(
+      quote,
+      at + 1,
+    ); next >= 0; next = context.indexOf(
+        quote,
+        next + 1,
+      )) {
+      if (Math.abs(next - start) < Math.abs(at - start)) {
+        at = next
+      }
+    }
+  }
 
   return at < 0 ? {
     before: '',
@@ -148,10 +165,41 @@ const numberedComment = ({
   ].filter(Boolean).join('\n\n')
 }
 
+export function orderedComments({ comments }: { comments: ChatComment[] }) {
+  const replies = new Map(comments.map(comment => [
+    comment.messageId,
+    comment.at ?? '',
+  ]))
+  const positions = new Map([...replies.keys()].map((
+    id,
+    index,
+  ) => [
+    id,
+    index,
+  ]))
+  const start = ({ comment }: { comment: ChatComment }) => comment.start
+    ?? Math.max(
+      0,
+      comment.paragraph?.indexOf(comment.quote) ?? 0,
+    )
+
+  return [...comments].sort((
+    a,
+    b,
+  ) => {
+    if (a.messageId !== b.messageId) {
+      return (a.at ?? '').localeCompare(b.at ?? '')
+        || positions.get(a.messageId)! - positions.get(b.messageId)!
+    }
+
+    return a.offset - b.offset || start({ comment: a }) - start({ comment: b })
+  })
+}
+
 export function groupComments({ comments }: { comments: ChatComment[] }) {
   const replies = new Map<string, ChatComment[]>()
 
-  for (const comment of comments) {
+  for (const comment of orderedComments({ comments })) {
     const reply = comment.at ?? comment.messageId
     const group = replies.get(reply) ?? []
     group.push(comment); replies.set(
@@ -172,8 +220,16 @@ export function commentReply({
   comments: ChatComment[]
   firstComment?: boolean
 }): string {
+  const ordered = orderedComments({ comments })
+  const numbers = new Map(ordered.map((
+    comment,
+    index,
+  ) => [
+    comment.id,
+    index + 1,
+  ]))
   const replies = groupComments({
-    comments: comments.filter(comment => sendableComment({ comment })),
+    comments: ordered.filter(comment => sendableComment({ comment })),
   })
 
   if (!replies.size) {
@@ -186,12 +242,9 @@ export function commentReply({
     time,
     items,
   ] of replies) {
-    const numbered = items.map((
+    const numbered = items.map(comment => numberedComment({
       comment,
-      index,
-    ) => numberedComment({
-      comment,
-      number: index + 1,
+      number: numbers.get(comment.id)!,
     }))
     sections.push(`## Comments on your reply from ${time}\n\n${numbered.join('\n\n')}`)
   }

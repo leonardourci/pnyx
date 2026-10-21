@@ -6,6 +6,7 @@ import { markdown } from '../components/ui/markdown.tsx'
 import { onNoteEdgeLine, type CaretDirection } from './caret.ts'
 import { commentContext, quoteSnippet, type ChatComment } from './chat.ts'
 import { pastedImages } from './image-upload.ts'
+import { CommentNumber } from './comment-number.tsx'
 
 const CLIP = 40
 const LINE_KEYS: Record<string, CaretDirection> = {
@@ -33,6 +34,7 @@ function CommentQuote({
     after,
   } = quoteSnippet({
     quote: comment.quote,
+    start: comment.start,
     context: readable({ text: commentContext({ comment }) ?? '' }),
   })
 
@@ -47,6 +49,7 @@ function CommentQuote({
 
 export function MessageComment({
   comment,
+  number,
   change,
   remove,
   attach,
@@ -56,6 +59,7 @@ export function MessageComment({
   show,
 }: {
   comment: ChatComment
+  number: number
   change({ text }: { text: string }): void
   remove(): void
   attach?({ files }: { files: File[] }): void
@@ -76,11 +80,15 @@ export function MessageComment({
     <div
       className="comment-card"
       data-comment-id={inline ? comment.id : undefined}
+      data-comment-number={number}
       contentEditable={false}
       role="group"
-      aria-label="Comment"
+      aria-label={`Comment ${number}`}
     >
-      <CommentQuote comment={comment} clip={inline} />
+      <div className="comment-heading">
+        <CommentNumber number={number} />
+        <CommentQuote comment={comment} clip={inline} />
+      </div>
       <div className="comment-row">
         <Textarea
           className="comment-note"

@@ -4,6 +4,7 @@ import { MentionPicker } from './mention-picker.tsx'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
 import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
+import { revealComment } from './comment-reveal.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import type { Catalog } from '../../../src/thread/catalog.ts'
@@ -16,7 +17,7 @@ import { slashMatches, slashPrefix } from './view.ts'
 import { commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
-import { placeMessageCaret, conversationMessages, enterNote, latestAgentMessage } from './caret.ts'
+import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
 import { imagePaths } from '../../../src/attachments/images.ts'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
@@ -263,13 +264,12 @@ export function Composer({
     setListing(null)
     requestAnimationFrame(() => {
       const host = form.current && conversationMessages({ from: form.current })
-      const note = host?.querySelector<HTMLTextAreaElement>(`[data-comment-id="${id}"] textarea`)
+      const comment = comments.find(item => item.id === id)
 
-      if (note) {
-        note.scrollIntoView({ block: 'center' })
-        enterNote({
-          note,
-          direction: 'backward',
+      if (host && comment) {
+        revealComment({
+          host,
+          comment,
         })
       }
     })

@@ -13,7 +13,8 @@ import {
   caretBounds, placeMessageCaret, focusComposer, latestAgentMessage, revealCaret,
   enterNote, leaveNote, noteBetween, selectionFocus,
 } from './caret.ts'
-import { sendableComment, type ChatComment } from './chat.ts'
+import { orderedComments, sendableComment, type ChatComment } from './chat.ts'
+import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageComment } from './message-comment.tsx'
 import { HIGHLIGHT_SUPPORTED, paintComments } from './comment-highlight.ts'
@@ -68,6 +69,14 @@ export function Messages({
   // Writes between renders build on each other, as do uploads that finish after them.
   const latest = useRef(comments)
   latest.current = comments
+  const ordered = orderedComments({ comments })
+  const numbers = new Map(ordered.map((
+    comment,
+    index,
+  ) => [
+    comment.id,
+    index + 1,
+  ]))
   const uploading = useRef(new Map<string, number>())
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
@@ -238,6 +247,7 @@ export function Messages({
         ...comment,
         ...blockPassage({ block }),
         quote: comment.quote,
+        start: comment.start,
       }
     })
 
@@ -439,7 +449,7 @@ export function Messages({
   useLayoutEffect(
     () => {
       if (HIGHLIGHT_SUPPORTED && root.current) {
-        paintComments({
+        return paintComments({
           host: root.current,
           name: highlight,
           comments,
@@ -662,7 +672,12 @@ export function Messages({
 
   return (
     <>
-      <style>{`${CARET_CSS} ::highlight(${highlight}) { background-color: var(--comment-highlight); }`}</style>
+      <style>{CARET_CSS + comments.map((
+        _,
+        index,
+      ) =>
+        `::highlight(${highlight}-${index}) { background-color: var(--comment-highlight); }`).join('')}
+      </style>
       <div
         className="messages"
         data-highlight={highlight}
@@ -731,7 +746,7 @@ export function Messages({
                     messageId,
                     offset,
                   })
-                  const own = comments.filter(c => c.messageId === messageId && c.offset === offset)
+                  const own = ordered.filter(c => c.messageId === messageId && c.offset === offset)
 
                   return (
                     <div
@@ -751,6 +766,7 @@ export function Messages({
                         <MessageComment
                           key={comment.id}
                           comment={comment}
+                          number={numbers.get(comment.id)!}
                           inline
                           change={({ text }) => update({
                             items: latest.current.map(c => c.id === comment.id ? {
@@ -796,6 +812,7 @@ export function Messages({
             ) : entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
           </article>
         ))}
+        <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
         {selection && (
           <div
             className="comment-pill"

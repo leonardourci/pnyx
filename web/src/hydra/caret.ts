@@ -5,7 +5,7 @@ export const CARET_SUPPORTED = CSS.supports(
 )
 export const CARET_HOST = 'data-caret-host'
 export const CARET_KEY = /^(Arrow(Up|Down|Left|Right)|Home|End|Page(Up|Down))$/
-const MESSAGE_CONTROLS = '.comment-pill, .comment-card, .receipt, .code-language, .trace summary'
+const MESSAGE_CONTROLS = '.comment-pill, .comment-card, .comment-annotations, .receipt, .code-language, .trace summary'
 const NON_MESSAGE_TEXT = `${MESSAGE_CONTROLS}, .trace, a[href], .task-mention`
 export const CARET_CSS = `[${CARET_HOST}] :is(${NON_MESSAGE_TEXT}) { -webkit-user-modify: read-only; } [${CARET_HOST}] :is(${MESSAGE_CONTROLS}) { user-select: none; }`
 

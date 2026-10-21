@@ -1,4 +1,4 @@
-import { messageBlockKey } from './message-selection.ts'
+import { MESSAGE_DECORATIONS, messageBlockKey } from './message-selection.ts'
 import type { ChatComment } from './chat.ts'
 
 // The block's own text: links included, its comment cards and the pill left out.
@@ -9,7 +9,7 @@ function* blockText({ block }: { block: Element }) {
   )
 
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (node instanceof Text && !node.parentElement?.closest('.comment-card, .comment-pill')) {
+    if (node instanceof Text && !node.parentElement?.closest(MESSAGE_DECORATIONS)) {
       yield node
     }
   }
@@ -18,9 +18,9 @@ function* blockText({ block }: { block: Element }) {
 type Point = {
   node: Text
   offset: number
+  position: number
 }
 
-// ponytail: matched with whitespace collapsed, first occurrence wins; store the offset if repeats matter.
 function quoteRange({
   block,
   comment,
@@ -30,9 +30,10 @@ function quoteRange({
 }) {
   let text = ''
   const points: Point[] = []
+  let position = 0
 
   for (const node of blockText({ block })) {
-    for (let offset = 0; offset < node.length; offset++) {
+    for (let offset = 0; offset < node.length; offset++, position++) {
       const space = /\s/.test(node.data[offset]!)
 
       if (!space || text && !text.endsWith(' ')) {
@@ -40,6 +41,7 @@ function quoteRange({
         points.push({
           node,
           offset,
+          position,
         })
       }
     }
@@ -49,7 +51,23 @@ function quoteRange({
     /\s+/g,
     ' ',
   ).trim()
-  const found = wanted ? text.indexOf(wanted) : -1
+  let found = wanted ? text.indexOf(wanted) : -1
+
+  if (found >= 0 && comment.start !== undefined) {
+    for (let next = text.indexOf(
+      wanted,
+      found + 1,
+    ); next >= 0; next = text.indexOf(
+        wanted,
+        next + 1,
+      )) {
+      if (Math.abs(points[next]!.position - comment.start)
+        < Math.abs(points[found]!.position - comment.start)) {
+        found = next
+      }
+    }
+  }
+
   // A whole-block comment quotes the block's Markdown source, so it marks all of the block.
   const whole = found < 0 && comment.quote === comment.paragraph && points.length > 0
   const at = whole ? 0 : found
@@ -75,6 +93,21 @@ function quoteRange({
 
 export const HIGHLIGHT_SUPPORTED = typeof CSS !== 'undefined' && 'highlights' in CSS
 
+export function commentRange({
+  host,
+  comment,
+}: {
+  host: HTMLElement
+  comment: ChatComment
+}) {
+  const block = host.querySelector(`[data-message-block="${CSS.escape(messageBlockKey(comment))}"]`)
+
+  return block ? quoteRange({
+    block,
+    comment,
+  }) : null
+}
+
 export function paintComments({
   host,
   name,
@@ -84,18 +117,40 @@ export function paintComments({
   name: string
   comments: ChatComment[]
 }) {
-  const ranges = comments.flatMap(comment => {
-    const block = host.querySelector(`[data-message-block="${CSS.escape(messageBlockKey(comment))}"]`)
-    const range = block && quoteRange({
-      block,
+  const names: string[] = []
+  const ranges = comments.flatMap((
+    comment,
+    index,
+  ) => {
+    const range = commentRange({
+      host,
       comment,
     })
 
-    return range ? [range] : []
+    if (!range) {
+      return []
+    }
+
+    const quote = `${name}-${index}`
+    names.push(quote)
+    CSS.highlights.set(
+      quote,
+      new Highlight(range),
+    )
+
+    return [range]
   })
 
   CSS.highlights.set(
     name,
     new Highlight(...ranges),
   )
+
+  return () => {
+    for (const quote of names) {
+      CSS.highlights.delete(quote)
+    }
+
+    CSS.highlights.delete(name)
+  }
 }

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button } from '../components/ui/controls.tsx'
 import { Dialog } from '../components/ui/dialog.tsx'
 import { Icon } from '../components/ui/icon.tsx'
-import { groupComments, sendableComment, type ChatComment } from './chat.ts'
+import { groupComments, orderedComments, sendableComment, type ChatComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
 
 export function CommentsPill({
@@ -62,6 +62,13 @@ export function CommentsDialog({
 }) {
   const listed = comments.filter(comment => shown.includes(comment.id))
   const replies = groupComments({ comments: listed })
+  const numbers = new Map(orderedComments({ comments }).map((
+    comment,
+    index,
+  ) => [
+    comment.id,
+    index + 1,
+  ]))
 
   const finish = () => {
     setComments({
@@ -81,6 +88,7 @@ export function CommentsDialog({
               <MessageComment
                 key={comment.id}
                 comment={comment}
+                number={numbers.get(comment.id)!}
                 change={({ text }) => setComments({
                   items: comments.map(c => c.id === comment.id ? {
                     ...c,
@@ -100,7 +108,7 @@ export function CommentsDialog({
         ))}
       </div>
       <footer className="dialog-foot">
-        <span className="small muted">Numbered in this order under each reply.</span>
+        <span className="small muted">Numbered in reading order through the replies.</span>
         <Button variant="primary" onClick={finish}>Done</Button>
       </footer>
     </Dialog>
