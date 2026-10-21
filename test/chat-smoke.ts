@@ -11,6 +11,15 @@ import { startServer } from '../src/server/server.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import { smokeBrowser } from './browser.ts'
 
+const REVIEW_SPACERS = 18
+const reviewSpace = Array.from(
+  { length: REVIEW_SPACERS },
+  (
+    _,
+    index,
+  ) => `Review spacer ${index}: keep the source passage far from the end so returning to its comment requires scrolling. The remaining checklist continues below.`,
+).join('\n\n')
+
 process.env.PNYX_SEMANTIC = 'off'
 const home = mkdtempSync(join(
   tmpdir(),
@@ -18,12 +27,15 @@ const home = mkdtempSync(join(
 ))
 process.env.PNYX_HOME = home
 const fixture = seedWebFixture({ home })
-const markdown = readFileSync(
+const markdown = (readFileSync(
   join(
     import.meta.dirname,
     'fixtures/web/chat.md',
   ),
   'utf8',
+) + '\n\nRepeat target before **target** after target.\n\nImage caption with ![linked alt](https://example.com/image.png) and literal <em>markup</em> nearby.\n\nCross block beginning with selected words.\n\nCross block ending with another passage.').replace(
+  '\n\nCross block beginning',
+  `\n\n${reviewSpace}\n\nCross block beginning`,
 )
 appendFileSync(
   fixture.transcript,
@@ -98,6 +110,7 @@ const {
   fill,
   press,
   screenshot,
+  settle,
   close,
 } = smokeBrowser({
   home,
@@ -112,6 +125,138 @@ const select = ({
   start: number
   end: number
 }) => evaluate({ code: `const p = [...document.querySelectorAll('.hydra-chat .message-block p')].find(p => p.textContent.startsWith('A readable paragraph')); const range = document.createRange(); range.setStart(p.firstChild, ${start}); range.setEnd(p.firstChild, ${end}); const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range); p.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })); return true;` })
+
+const advancedSetup = String.raw`
+  const h = () => document.querySelector('.hydra-chat .messages')
+  const cards = () => [...h().querySelectorAll('.comment-card')]
+  const ids = window.commentIds || (window.commentIds = {})
+
+  const card = ({text}) => {
+    const found=cards().find(c => c.dataset.commentId===ids[text] || c.querySelector('textarea').value===text)
+
+    if(found){
+      ids[text]=found.dataset.commentId
+    }
+
+    return found
+  }
+
+  const source = ({prefix}) => [...h().querySelectorAll('.message-block p')].find(p => p.textContent.startsWith(prefix))
+  const tick = () => new Promise(requestAnimationFrame)
+
+  const point = ({
+    paragraph:p,
+    offset,
+  }) => {
+    const walk = document.createTreeWalker(
+      p,
+      NodeFilter.SHOW_TEXT,
+    )
+
+    for(let node=walk.nextNode();node;node=walk.nextNode()) {
+      if(offset<=node.length) {
+        return {
+          node,
+          offset,
+        }
+      }
+
+      offset-=node.length
+    }
+
+    throw new Error('Selection outside source')
+  }
+
+  const ranges = ({text}) => [...CSS.highlights.get(h().dataset.highlight+'-quote-'+card({text}).dataset.commentId)]
+  const emphasis = () => [...(CSS.highlights.get(h().dataset.highlight+'-emphasis') || [])]
+
+  const make = async ({
+    prefix,
+    from,
+    to,
+    endPrefix,
+    text,
+  }) => {
+    h().focus({preventScroll:true})
+    const first=source({prefix}),last=source({prefix:endPrefix || prefix})
+    const a=point({
+        paragraph:first,
+        offset:from,
+      }),b=point({
+        paragraph:last,
+        offset:to,
+      }),r=document.createRange()
+    r.setStart(
+      a.node,
+      a.offset,
+    );r.setEnd(
+      b.node,
+      b.offset,
+    )
+    getSelection().removeAllRanges();getSelection().addRange(r)
+    first.dispatchEvent(new MouseEvent(
+      'mouseup',
+      {bubbles:true},
+    ));await tick()
+    const pill=h().querySelector('.comment-pill [aria-label="Comment on selection"]')
+
+    if(!pill){
+      throw new Error('Missing comment pill')
+    }
+
+    pill.click()
+    const note=document.activeElement
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      'value',
+    ).set.call(
+      note,
+      text,
+    )
+    note.dispatchEvent(new Event(
+      'input',
+      {bubbles:true},
+    ));await tick()
+    h().focus({preventScroll:true});await tick()
+
+    return card({text}).dataset.commentId
+  }
+
+  window.commentTest={
+    h,
+    cards,
+    card,
+    source,
+    tick,
+    point,
+    ranges,
+    emphasis,
+    make,
+  }
+
+  return true
+`
+
+const hover = async ({ label }: { label: string }) => {
+  await settle()
+  const snapshot = await browser({
+    args: [
+      'snapshot',
+      '--full',
+    ],
+  })
+  const ref = snapshot.match(new RegExp('uid=(\\S+) (?:button|textbox) "' + label + '"'))
+  assert.ok(
+    ref,
+    snapshot,
+  )
+  await browser({
+    args: [
+      'hover',
+      `@${ref[1]}`,
+    ],
+  })
+}
 
 try {
   await commands.hydra([
@@ -221,13 +366,13 @@ try {
     condition: 'document.querySelectorAll(".hydra-chat .comment-card").length === 2 && document.querySelector(".hydra-chat .composer-comments").textContent.includes("Comments · 2") && document.querySelector(".hydra-chat .composer textarea") === window.input',
     label: 'nested selections keep independent comments and the mounted composer',
   })
-  const marked = '[...CSS.highlights.get(document.querySelector(".hydra-chat .messages").dataset.highlight)].map(range => range.toString())'
+  const marked = '[...CSS.highlights.entries()].filter(([name]) => name.startsWith(document.querySelector(".hydra-chat .messages").dataset.highlight + "-quote-")).flatMap(([, ranges]) => [...ranges].map(range => range.toString()))'
   await check({
     condition: `${marked}.sort().join("|") === "readable|readable paragraph" && [...document.querySelectorAll(".hydra-chat .comment-card .comment-quote mark")].map(m => m.textContent).join("|") === "readable paragraph|readable"`,
     label: 'each comment\'s passage stays highlighted in the reply and its card',
   })
   await check({
-    condition: '(() => { const name = document.querySelector(\'.hydra-chat .messages\').dataset.highlight; return CSS.highlights.get(name + \'-0\').size === 1 && CSS.highlights.get(name + \'-1\').size === 1 && document.querySelectorAll(\'.hydra-chat .comment-marker\').length === 2 && [...document.querySelectorAll(\'.hydra-chat .comment-card\')].map(card => card.dataset.commentNumber).join() === \'1,2\'; })()',
+    condition: '(() => { const prefix = document.querySelector(\'.hydra-chat .messages\').dataset.highlight + \'-quote-\'; const entries = [...CSS.highlights.entries()].filter(([name]) => name.startsWith(prefix)); return entries.length === 2 && entries.every(([, ranges]) => ranges.size === 1) && document.querySelectorAll(\'.hydra-chat .comment-marker\').length === 2 && [...document.querySelectorAll(\'.hydra-chat .comment-card\')].map(card => card.dataset.commentNumber).join() === \'1,2\'; })()',
     label: 'nested comments paint separate tint layers and share card and passage numbers',
   })
   const cards = 'document.querySelectorAll(".hydra-chat .comment-card").length'
@@ -585,6 +730,663 @@ try {
       .match(/Internal note/g) ?? []).length,
     1,
   )
+
+  await evaluate({ code: advancedSetup })
+  await evaluate({
+    code: String.raw`
+  const t=window.commentTest,p=t.source({prefix:'Repeat'}),text=p.textContent
+  await t.make({
+    prefix:'Cross block ending',
+    from:12,
+    to:18,
+    text:'late-note',
+  })
+  const first=text.indexOf('target'),second=text.indexOf(
+    'target',
+    first+1,
+  )
+  await t.make({
+    prefix:'Repeat',
+    from:second,
+    to:second+6,
+    text:'second-target',
+  })
+  await t.make({
+    prefix:'Repeat',
+    from:first,
+    to:first+6,
+    text:'first-target',
+  })
+  await t.make({
+    prefix:'Repeat',
+    from:first,
+    to:second+6,
+    text:'broad',
+  })
+  const a=t.ranges({text:'first-target'})[0],b=t.ranges({text:'second-target'})[0]
+
+  if(a.startContainer!==p.firstChild || a.startOffset!==first || b.startContainer!==p.querySelector('strong').firstChild || b.startOffset!==0){
+    throw new Error('Repeated occurrence anchors confused')
+  }
+
+  const saved=JSON.parse(localStorage.getItem('pnyx:default:comments'))['$hydra']
+
+  if(new Set(saved.filter(c=>c.quote==='target').map(c=>c.start)).size!==2){
+    throw new Error('Repeated occurrence storage confused')
+  }
+
+  const order=t.cards().map(c=>c.querySelector('textarea').value)
+    .join()
+
+  if(order!=='first-target,broad,second-target,late-note'){
+    throw new Error('Creation order replaced reading order')
+  }
+
+  for(const c of t.cards()){
+    if(t.h().querySelector('[data-comment-marker="'+c.dataset.commentId+'"]').textContent!==c.dataset.commentNumber){
+      throw new Error('Marker number mismatch')
+    }
+  }
+
+  return true
+`,
+  })
+  await click({ selector: '.hydra-chat .composer-comments [aria-label="Show comments"]' })
+  await check({
+    condition: '(() => { const d=document.querySelector(\'.comments-dialog\');return document.getElementById(d.getAttribute(\'aria-labelledby\')).textContent===\'Comments · 4\' && [...d.querySelectorAll(\'.comment-card\')].every(c=>window.commentTest.card({text:c.querySelector(\'textarea\').value}).dataset.commentNumber===c.dataset.commentNumber); })()',
+    label: 'reverse-created comments share reading-order numbers across markers, cards and named dialog',
+  })
+  await evaluate({
+    code: String.raw`
+  const t=window.commentTest,listed=[...document.querySelectorAll('.comments-dialog .comment-card')]
+  listed.find(c=>c.querySelector('textarea').value==='second-target').querySelector('textarea')
+    .focus();await t.tick()
+  const chosen=t.card({text:'second-target'}),range=t.emphasis()[0]
+
+  if(range.startContainer!==t.source({prefix:'Repeat'}).querySelector('strong').firstChild || document.querySelectorAll('[data-emphasis]').length!==2 || !chosen.hasAttribute('data-emphasis')){
+    throw new Error('List focus emphasized wrong passage')
+  }
+
+  listed.find(c=>c.querySelector('textarea').value==='first-target').click();await t.tick()
+
+  if(t.emphasis()[0].startContainer!==t.source({prefix:'Repeat'}).firstChild || !t.card({text:'first-target'}).hasAttribute('data-emphasis') || chosen.hasAttribute('data-emphasis')){
+    throw new Error('Card body click emphasized wrong passage')
+  }
+
+  return true
+`,
+  })
+  await click({ selector: '.comments-dialog [aria-label="Close"]' })
+  await evaluate({ code: 'window.commentTest.source({prefix:\'Repeat\'}).scrollIntoView({block:\'center\'});return true;' })
+  await hover({ label: 'Go to comment 3' })
+  await eventually({
+    condition: '(() => { const p=[...document.querySelectorAll(\'.comment-pile\')].find(p=>p.querySelectorAll(\'button\').length===2);const b=[...p.querySelectorAll(\'button\')].map(b=>b.getBoundingClientRect());return p.hasAttribute(\'data-spread\') && b[0].right<=b[1].left; })()',
+    label: 'hover spreads neighboring passage markers into separate hit targets',
+  })
+  await hover({ label: 'Go to comment 3' })
+  await check({
+    condition: 'window.commentTest.emphasis()[0].startContainer===window.commentTest.source({prefix:\'Repeat\'}).querySelector(\'strong\').firstChild && window.commentTest.card({text:\'second-target\'}).hasAttribute(\'data-emphasis\')',
+    label: 'hover identifies the exact repeated passage and linked card',
+  })
+  await hover({ label: 'Reply to Hydra' })
+  await evaluate({ code: 'const t=window.commentTest;t.card({text:\'first-target\'}).querySelector(\'textarea\').focus();t.h().querySelector(\'[aria-label="Go to comment 3"]\').dispatchEvent(new PointerEvent(\'pointerover\',{bubbles:true}));await t.tick();if(t.emphasis()[0].startContainer!==t.source({prefix:\'Repeat\'}).querySelector(\'strong\').firstChild)throw new Error(\'Hover did not override focus\');t.h().querySelector(\'[aria-label="Go to comment 3"]\').dispatchEvent(new PointerEvent(\'pointerout\',{bubbles:true,relatedTarget:document.body}));await t.tick();if(t.emphasis()[0].startContainer!==t.source({prefix:\'Repeat\'}).firstChild)throw new Error(\'Focus did not return after hover\');return true;' })
+  await evaluate({ code: 'document.querySelector(\'[aria-label="Go to comment 2"]\').focus();return true;' })
+  await check({
+    condition: 'document.activeElement.closest(\'.comment-pile\').hasAttribute(\'data-spread\')',
+    label: 'keyboard focus opens the pile',
+  })
+  await evaluate({ code: 'document.querySelector(\'[aria-label="Go to comment 3"]\').focus();return true;' })
+  await check({
+    condition: 'document.activeElement.closest(\'.comment-pile\').hasAttribute(\'data-spread\')',
+    label: 'moving focus within a pile keeps its markers available',
+  })
+  await press({ key: 'Enter' })
+  await eventually({
+    condition: 'document.activeElement===window.commentTest.card({text:\'second-target\'}).querySelector(\'textarea\')',
+    label: 'keyboard activation focuses the matching comment',
+  })
+  await evaluate({ code: 'document.querySelector(\'[aria-label="Go to comment 2"]\').click();return true;' })
+  await eventually({
+    condition: 'document.activeElement===window.commentTest.card({text:\'broad\'}).querySelector(\'textarea\')',
+    label: 'pointer activation focuses a different stacked comment',
+  })
+  await evaluate({ code: 'document.querySelector(\'.hydra-chat .composer textarea\').focus();return true;' })
+  await eventually({
+    condition: '![...document.querySelectorAll(\'.comment-pile\')].some(p=>p.hasAttribute(\'data-spread\')) && !document.querySelector(\'.comment-card[data-emphasis]\') && window.commentTest.emphasis().length===0',
+    label: 'leaving markers and cards closes piles and clears live emphasis',
+  })
+  await evaluate({ code: 'window.commentTest.card({text:\'first-target\'}).querySelector(\'[aria-label="Remove comment"]\').click();return true;' })
+  await check({
+    condition: 'window.commentTest.cards().map(c=>c.dataset.commentNumber+\':\'+c.querySelector(\'textarea\').value).join()===\'1:broad,2:second-target,3:late-note\' && window.commentTest.cards().every(c=>window.commentTest.h().querySelector(\'[data-comment-marker="\'+c.dataset.commentId+\'"]\').textContent===c.dataset.commentNumber)',
+    label: 'removal renumbers surviving cards and markers consistently',
+  })
+  await evaluate({
+    code: String.raw`
+  const t=window.commentTest
+  await t.make({
+    prefix:'Image caption',
+    from:6,
+    to:13,
+    text:'caption-note',
+  })
+  const context=t.card({text:'caption-note'}).querySelector('.comment-quote')
+
+  if(context.title!==t.source({prefix:'Image caption'}).textContent || !context.textContent.includes('linked alt') || !context.textContent.includes('<em>markup</em>')){
+    throw new Error('Card context differs from rendered Markdown')
+  }
+
+  const beginning=t.source({prefix:'Cross block beginning'}),ending=t.source({prefix:'Cross block ending'})
+  await t.make({
+    prefix:'Cross block beginning',
+    from:beginning.textContent.indexOf('words.'),
+    endPrefix:'Cross block ending',
+    to:5,
+    text:'short-cross',
+  })
+
+  if(t.card({text:'short-cross'}).querySelector('.comment-quote').title!==beginning.textContent+'\n\n'+ending.textContent){
+    throw new Error('Short cross-block context lost a paragraph')
+  }
+
+  t.card({text:'short-cross'}).querySelector('[aria-label="Remove comment"]')
+    .click()
+  await t.tick()
+  await t.make({
+    prefix:'Cross block beginning',
+    from:6,
+    endPrefix:'Cross block ending',
+    to:18,
+    text:'cross-block',
+  })
+  const ranges=t.ranges({text:'cross-block'}),text=ranges.map(r=>r.toString()).join('')
+
+  if(!ranges.some(r=>r.startContainer.parentElement.closest('p')===t.source({prefix:'Cross block beginning'})) || !ranges.some(r=>r.startContainer.parentElement.closest('p')===t.source({prefix:'Cross block ending'})) || text!=='block beginning with selected words.Cross block ending'){
+    throw new Error('Cross-block range lost source text or included cards')
+  }
+
+  return true
+`,
+  })
+  await browser({
+    args: [
+      'open',
+      server.url,
+    ],
+  })
+  await eventually({
+    condition: 'document.querySelectorAll(\'.hydra-chat .comment-card\').length===5',
+    label: 'cross-block and repeated-occurrence anchors survive reload',
+  })
+  await evaluate({ code: advancedSetup })
+  await check({
+    condition: 'window.commentTest.ranges({text:\'cross-block\'}).map(r=>r.toString()).join(\'\')===\'block beginning with selected words.Cross block ending\' && window.commentTest.ranges({text:\'second-target\'})[0].startContainer===window.commentTest.source({prefix:\'Repeat\'}).querySelector(\'strong\').firstChild',
+    label: 'reload paints complete cross-block selection and the selected repeated occurrence',
+  })
+  await evaluate({
+    code: String.raw`
+  const t=window.commentTest,n=t.card({text:'broad'}).querySelector('textarea')
+  window.beforeNavigation=t.source({prefix:'Repeat'}).textContent
+  window.originalNote=n.value
+  Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    'value',
+  ).set.call(
+    n,
+    'First line\n'+'wrapping words '.repeat(20)+'\nLast line end.',
+  )
+  n.dispatchEvent(new Event(
+    'input',
+    {bubbles:true},
+  ));await t.tick()
+  n.style.flex='none';n.style.width='180px';n.focus();const middle=Math.floor(n.value.length/2);n.setSelectionRange(
+    middle,
+    middle,
+  );window.noteBefore=n.selectionStart
+
+  return true
+`,
+  })
+  await press({ key: 'ArrowUp' })
+  await check({
+    condition: 'document.activeElement===window.commentTest.card({text:\'broad\'}).querySelector(\'textarea\') && document.activeElement.selectionStart!==window.noteBefore',
+    label: 'Up on an interior soft-wrapped line stays in the note and moves normally',
+  })
+  await press({ key: 'ArrowDown' })
+  await check({
+    condition: 'document.activeElement===window.commentTest.card({text:\'broad\'}).querySelector(\'textarea\')',
+    label: 'Down on an interior wrapped line stays in the note',
+  })
+  await evaluate({ code: 'const n=window.commentTest.card({text:\'broad\'}).querySelector(\'textarea\');n.setSelectionRange(1,3);return true;' })
+  await press({ key: 'ArrowUp' })
+  await check({
+    condition: 'document.activeElement===window.commentTest.card({text:\'broad\'}).querySelector(\'textarea\')',
+    label: 'a noncollapsed note selection does not leave on Up',
+  })
+  await evaluate({ code: 'document.activeElement.setSelectionRange(3,3);return true;' })
+  await press({ key: 'Shift+ArrowUp' })
+  await check({
+    condition: 'document.activeElement===window.commentTest.card({text:\'broad\'}).querySelector(\'textarea\')',
+    label: 'Shift+Up extends a note selection without leaving',
+  })
+  await evaluate({ code: 'document.activeElement.setSelectionRange(3,3);return true;' })
+  await press({ key: 'ArrowUp' })
+  await check({
+    condition: 'document.activeElement===window.commentTest.h()',
+    label: 'Up from a nonzero offset on the first visual line returns to source',
+  })
+  await evaluate({ code: 'const n=window.commentTest.card({text:\'broad\'}).querySelector(\'textarea\');n.focus();n.setSelectionRange(n.value.length-4,n.value.length-4);return true;' })
+  await press({ key: 'ArrowDown' })
+  await check({
+    condition: 'document.activeElement===window.commentTest.card({text:\'second-target\'}).querySelector(\'textarea\') && window.commentTest.source({prefix:\'Repeat\'}).textContent===window.beforeNavigation',
+    label: 'Down from the last visual line enters the next note without changing source',
+  })
+  await evaluate({ code: 'const t=window.commentTest,n=t.card({text:\'broad\'}).querySelector(\'textarea\');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,\'value\').set.call(n,window.originalNote);n.dispatchEvent(new Event(\'input\',{bubbles:true}));n.style.removeProperty(\'width\');n.style.removeProperty(\'flex\');return true;' })
+  await eventually({
+    condition: '!document.querySelector(\'.comment-jump\')',
+    label: 'previous navigation pulse finishes',
+  })
+  await evaluate({
+    code: String.raw`
+  const t=window.commentTest,h=t.h(),s=h.closest('.thread')
+  window.motion={
+    arrived:false,
+    pulses:[],
+    requests:[],
+  }
+  const scroll=s.scrollTo.bind(s)
+
+  s.scrollTo=options=>{
+    window.motion.requests.push(options.behavior);scroll(options)
+  }
+
+  s.addEventListener(
+    'scrollend',
+    ()=>window.motion.arrived=true,
+  )
+  const seen=new WeakSet()
+  new MutationObserver(()=>{
+    const jump=h.querySelector('.comment-jump'),c=h.querySelector('.comment-card[data-jump]')
+
+    if(!jump||!c||seen.has(jump)){
+      return
+    }
+
+    seen.add(jump);const r=t.ranges({text:c.querySelector('textarea').value})[0].getBoundingClientRect(),v=s.getBoundingClientRect();window.motion.pulses.push({
+      id:c.dataset.commentId,
+      arrived:window.motion.arrived,
+      visible:r.top>=v.top&&r.bottom<=v.bottom,
+      running:jump.getAnimations().some(a=>a.playState==='running'),
+    })
+  }).observe(
+    h,
+    {
+      childList:true,
+      attributes:true,
+      subtree:true,
+    },
+  )
+  s.scrollTo({
+    top:0,
+    behavior:'instant',
+  });await t.tick();await t.tick();window.motion={
+    arrived:false,
+    pulses:[],
+    requests:[],
+  }
+  document.querySelector('.composer-comments [aria-label="Show comments"]').click()
+
+  return true
+`,
+  })
+  await evaluate({ code: 'const t=window.commentTest;[...document.querySelectorAll(\'.comments-dialog .comment-card\')].find(c=>c.querySelector(\'textarea\').value===\'broad\').querySelector(\'[aria-label="Show in chat"]\').click();return true;' })
+  await eventually({
+    condition: 'window.motion.pulses.length===1',
+    label: 'offscreen list jump produces one arrival pulse',
+  })
+  await check({
+    condition: 'window.motion.requests.includes(\'smooth\') && window.motion.pulses[0].arrived && window.motion.pulses[0].visible && window.motion.pulses[0].running && window.motion.pulses[0].id===window.commentTest.card({text:\'broad\'}).dataset.commentId',
+    label: 'list jump reaches its exact quote before a running passage/card pulse',
+  })
+  await eventually({
+    condition: '!document.querySelector(\'.comment-jump\') && !document.querySelector(\'.comment-card[data-jump]\')',
+    label: 'arrival pulse settles and clears both targets',
+  })
+  await evaluate({ code: 'const t=window.commentTest,s=t.h().closest(\'.thread\');t.card({text:\'broad\'}).querySelector(\'textarea\').focus({preventScroll:true});s.scrollTo({top:s.scrollHeight,behavior:\'instant\'});await t.tick();await t.tick();window.motion={arrived:false,pulses:[],requests:[]};return true;' })
+  await press({ key: 'Escape' })
+  await eventually({
+    condition: 'window.motion.pulses.length===1',
+    label: 'Escape from a saved note pulses after returning to its quote',
+  })
+  await check({
+    condition: 'window.motion.requests.includes(\'smooth\') && window.motion.pulses[0].arrived && window.motion.pulses[0].visible && document.activeElement===window.commentTest.h()',
+    label: 'Escape scrolls above to the source before pulsing and preserves its caret',
+  })
+  await eventually({
+    condition: '!document.querySelector(\'.comment-jump\')',
+    label: 'Escape pulse clears',
+  })
+  await evaluate({ code: 'window.motion={arrived:true,pulses:[],requests:[]};window.commentTest.h().querySelector(\'[aria-label="Go to comment 1"]\').click();return true;' })
+  await eventually({
+    condition: 'window.motion.pulses.length===1',
+    label: 'a repeated jump creates one fresh pulse',
+  })
+  await eventually({
+    condition: '!document.querySelector(\'.comment-jump\')',
+    label: 'repeated jump clears',
+  })
+  await evaluate({
+    code: String.raw`
+  const t=window.commentTest,s=t.h().closest('.thread');s.scrollTo({
+    top:0,
+    behavior:'instant',
+  });await t.tick();await t.tick();window.motion={
+    arrived:false,
+    pulses:[],
+    requests:[],
+  }
+  const arrived=new Promise(resolve=>s.addEventListener(
+    'scrollend',
+    resolve,
+    {once:true},
+  ))
+  t.h().querySelector('[aria-label="Go to comment 1"]')
+    .click();s.dispatchEvent(new WheelEvent(
+    'wheel',
+    {bubbles:true},
+  ));await arrived;await t.tick()
+
+  if(window.motion.pulses.length){
+    throw new Error('Interrupted jump pulsed')
+  }
+
+  s.scrollTo({
+    top:0,
+    behavior:'instant',
+  });await t.tick();await t.tick();window.motion={
+    arrived:false,
+    pulses:[],
+    requests:[],
+  }
+  t.h().querySelector('[aria-label="Go to comment 1"]')
+    .click();t.h().querySelector('[data-comment-marker="'+t.card({text:'late-note'}).dataset.commentId+'"]')
+    .click()
+
+  return true
+`,
+  })
+  await eventually({
+    condition: 'window.motion.pulses.length===1',
+    label: 'a superseding jump has one arrival pulse',
+  })
+  await check({
+    condition: 'window.motion.pulses[0].id===window.commentTest.card({text:\'late-note\'}).dataset.commentId',
+    label: 'a superseded jump never pulses the old comment',
+  })
+  await eventually({
+    condition: '!document.querySelector(\'.comment-jump\')',
+    label: 'superseding pulse clears',
+  })
+
+  await evaluate({ code: 'document.querySelector(\'.hydra-chat .composer textarea\').focus();return true;' })
+  await eventually({
+    condition: '![...CSS.highlights.keys()].some(k=>k.includes(\'-fade-\'))',
+    label: 'older paint exits finish before fade lifecycle check',
+  })
+  await evaluate({
+    code: String.raw`
+  const t=window.commentTest,prefix=t.h().dataset.highlight,duration=parseFloat(getComputedStyle(t.h()).getPropertyValue('--comment-fade-duration'))
+  const raf=requestAnimationFrame.bind(window),cancel=cancelAnimationFrame.bind(window),descriptor=Object.getOwnPropertyDescriptor(
+    performance,
+    'now',
+  )
+  const callbacks=new Map();let next=1000000,now=performance.now()
+  const original=()=>new Promise(raf)
+
+  window.requestAnimationFrame=callback=>{
+    callbacks.set(
+      ++next,
+      callback,
+    )
+
+    return next
+  }
+
+  window.cancelAnimationFrame=id=>{
+    callbacks.delete(id)
+  }
+
+  Object.defineProperty(
+    performance,
+    'now',
+    {
+      configurable:true,
+      value:()=>now,
+    },
+  )
+
+  const step=async ({delta})=>{
+    now+=delta;const batch=[...callbacks.values()];callbacks.clear();batch.forEach(callback=>callback(now));await original()
+  }
+
+  const fading=()=>[...CSS.highlights.entries()].filter(([name])=>name.startsWith(prefix+'-fade-'))
+
+  try {
+    const before=t.ranges({text:'broad'});t.card({text:'broad'}).querySelector('[aria-label="Remove comment"]')
+      .click();await original()
+    const removed=fading().find(([name])=>!name.includes('emphasis'))
+
+    if(!removed || [...removed[1]].map(r=>r.toString()).join('')!==before.map(r=>r.toString()).join('')){
+      throw new Error('Removed tint was not retained for fading')
+    }
+
+    const style=document.getElementById(removed[0]),initial=style.sheet.cssRules[0].style.backgroundColor
+
+    if(Number(initial.match(/ ([0-9.]+)%/)[1])!==parseFloat(getComputedStyle(t.h()).getPropertyValue('--comment-highlight-strength'))){
+      throw new Error('Fade starts with a different tint')
+    }
+
+    await step({delta:duration/2})
+
+    if(!document.getElementById(removed[0]) || style.sheet.cssRules[0].style.backgroundColor===initial){
+      throw new Error('Removed tint did not weaken')
+    }
+
+    if(t.ranges({text:'second-target'})[0].startContainer!==t.source({prefix:'Repeat'}).querySelector('strong').firstChild){
+      throw new Error('Index shift faded the survivor')
+    }
+
+    await step({delta:duration/2+1})
+
+    if(fading().length){
+      throw new Error('Removed tint leaked')
+    }
+
+    const marker=t.h().querySelector('[data-comment-marker="'+t.card({text:'second-target'}).dataset.commentId+'"]'),card=t.card({text:'second-target'})
+    marker.dispatchEvent(new PointerEvent(
+      'pointerover',
+      {bubbles:true},
+    ));await original();getComputedStyle(card).backgroundColor
+    marker.dispatchEvent(new PointerEvent(
+      'pointerout',
+      {
+        bubbles:true,
+        relatedTarget:document.body,
+      },
+    ));await original()
+    const emphasis=fading().find(([name])=>name.includes('emphasis'))
+
+    if(!emphasis || [...emphasis[1]][0].startContainer!==t.source({prefix:'Repeat'}).querySelector('strong').firstChild){
+      throw new Error('Cleared emphasis did not retain its own passage')
+    }
+
+    if(parseFloat(getComputedStyle(card).transitionDuration)<=0){
+      throw new Error('Card emphasis does not fade')
+    }
+
+    const emphasisStyle=document.getElementById(emphasis[0]),strong=emphasisStyle.sheet.cssRules[0].style.backgroundColor
+
+    if(Number(strong.match(/ ([0-9.]+)%/)[1])!==parseFloat(getComputedStyle(t.h()).getPropertyValue('--comment-emphasis-strength'))){
+      throw new Error('Fade starts with different emphasis')
+    }
+
+    await step({delta:duration/2})
+
+    if(emphasisStyle.sheet.cssRules[0].style.backgroundColor===strong){
+      throw new Error('Emphasis tint did not weaken')
+    }
+
+    await step({delta:duration/2+1})
+
+    if(fading().length){
+      throw new Error('Emphasis leaked')
+    }
+
+    marker.dispatchEvent(new PointerEvent(
+      'pointerover',
+      {bubbles:true},
+    ));await original()
+    marker.dispatchEvent(new PointerEvent(
+      'pointerout',
+      {
+        bubbles:true,
+        relatedTarget:document.body,
+      },
+    ));await original();
+    [...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Settings').click();await original()
+
+    if([...CSS.highlights.keys()].some(name=>name.startsWith(prefix+'-')) || [...document.querySelectorAll('style[id]')].some(style=>style.id.startsWith(prefix+'-'))){
+      throw new Error('Unmount leaked transient paint')
+    }
+  } finally {
+    window.requestAnimationFrame=raf;window.cancelAnimationFrame=cancel
+
+    if(descriptor){
+      Object.defineProperty(
+        performance,
+        'now',
+        descriptor,
+      )
+    }else {
+      delete performance.now
+    }
+
+    callbacks.clear()
+  }
+
+  return true
+`,
+  })
+  await browser({
+    args: [
+      'open',
+      server.url,
+    ],
+  })
+  await eventually({
+    condition: '!!document.querySelector(\'.settings\') && document.querySelector(\'.app\')?.dataset.connected===\'true\'',
+    label: 'reload restores the saved Settings page',
+  })
+  await click({ selector: '.hydra-name[data-hydra-current]' })
+  await eventually({
+    condition: 'document.querySelectorAll(\'.hydra-chat .comment-card\').length===4',
+    label: 'surviving drafts reopen after fade and unmount',
+  })
+  await evaluate({ code: advancedSetup })
+  await click({ selector: '.hydra-chat .composer-comments [aria-label="Show comments"]' })
+  await check({
+    condition: '[...document.querySelectorAll(\'.comments-dialog .comment-card\')].every(c=>window.commentTest.card({text:c.querySelector(\'textarea\').value}).dataset.commentNumber===c.dataset.commentNumber)',
+    label: 'listed numbers follow deletions and cross-block additions',
+  })
+  await click({ selector: '.comments-dialog [aria-label="Close"]' })
+  await fill({
+    label: 'Reply to Hydra',
+    value: 'Apply interaction review.',
+  })
+  await click({ selector: '.hydra-chat .composer-send' })
+  await eventually({
+    condition: '!document.querySelector(\'.hydra-chat .comment-card\')',
+    label: 'interaction comments are delivered together',
+  })
+  const interactionReply = loadHydra({ hydraId: 'default' }).state.hydraMessages?.filter(message => message.actor === 'web').at(-1)?.text ?? ''
+  assert.ok(interactionReply.includes('1. > target\n\nParagraph:\n\n> Repeat target before **target** after target.\n\nsecond-target'))
+  assert.ok(interactionReply.includes('2. > caption') && interactionReply.includes('3. > block beginning with selected words.\n> \n> Cross block ending\n\ncross-block') && interactionReply.includes('4. > ending'))
+  const reduced = smokeBrowser({
+    home,
+    session: 'pnyx-chat-reduced',
+    reducedMotion: true,
+  })
+
+  try {
+    await reduced.browser({
+      args: [
+        'open',
+        server.url,
+      ],
+    })
+    await reduced.eventually({
+      condition: '!![...document.querySelectorAll(\'.hydra-chat .message-block p\')].find(p=>p.textContent.startsWith(\'Repeat\'))',
+      label: 'reduced-motion conversation ready',
+    })
+    await reduced.evaluate({ code: advancedSetup })
+    await reduced.evaluate({
+      code: String.raw`
+  const t=window.commentTest
+
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+    throw new Error('Reduced motion flag inactive')
+  }
+
+  await t.make({
+    prefix:'Repeat',
+    from:7,
+    to:13,
+    text:'reduced-note',
+  })
+  const h=t.h(),s=h.closest('.thread'),c=t.card({text:'reduced-note'}),marker=h.querySelector('.comment-marker')
+  s.scrollTo({
+    top:0,
+    behavior:'instant',
+  });await t.tick();await t.tick();marker.click();await t.tick()
+  const r=t.ranges({text:'reduced-note'})[0].getBoundingClientRect(),v=s.getBoundingClientRect(),top=s.scrollTop
+
+  if(r.top<v.top || r.bottom>v.bottom || !h.querySelector('.comment-jump') || h.querySelector('.comment-jump').getAnimations().length || c.getAnimations().some(a=>a.playState==='running')){
+    throw new Error('Reduced jump moved or animated')
+  }
+
+  await t.tick()
+
+  if(top!==s.scrollTop){
+    throw new Error('Reduced scroll did not settle instantly')
+  }
+
+  h.focus({preventScroll:true});await t.tick()
+  marker.dispatchEvent(new PointerEvent(
+    'pointerover',
+    {bubbles:true},
+  ));await t.tick();marker.dispatchEvent(new PointerEvent(
+    'pointerout',
+    {
+      bubbles:true,
+      relatedTarget:document.body,
+    },
+  ));await t.tick()
+  c.querySelector('[aria-label="Remove comment"]').click();await t.tick()
+
+  if([...CSS.highlights.keys()].some(name=>name.includes('-fade-')) || !getComputedStyle(h.querySelector('.comment-annotations')).display){
+    throw new Error('Reduced removal faded')
+  }
+
+  if(document.querySelector('style[id*="-fade-"]')){
+    throw new Error('Reduced removal kept transient styles')
+  }
+
+  return true
+`,
+    })
+  } finally {
+    await reduced.close()
+  }
+
   await screenshot({ name: 'chat.png' })
   const consoleOutput = await browser({ args: ['console'] }); assert.doesNotMatch(
     consoleOutput,

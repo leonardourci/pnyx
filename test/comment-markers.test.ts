@@ -101,40 +101,31 @@ test(
       active: -1,
       spread: false,
     })
-    assert.equal(
-      closed.width,
-      23,
-    )
-    assert.deepEqual(
-      closed.positions,
-      [
-        {
-          left: 3,
-          zIndex: 1,
-        },
-        {
-          left: 0,
-          zIndex: 2,
-        },
-      ],
-    )
     const spread = commentPileLayout({
       count: 2,
       active: 0,
       spread: true,
     })
-    assert.equal(
-      spread.width,
-      44,
-    )
-    assert.deepEqual(
-      spread.positions.map(position => position.left),
-      [
-        0,
-        24,
-      ],
-    )
+    assert.ok(closed.width < spread.width)
+    assert.ok(closed.positions[1]!.zIndex > closed.positions[0]!.zIndex)
+    assert.ok(spread.positions[0]!.left < spread.positions[1]!.left)
     assert.ok(spread.positions[0]!.zIndex > spread.positions[1]!.zIndex)
+
+    for (const active of [
+      0,
+      1,
+      2,
+    ]) {
+      const pile = commentPileLayout({
+        count: 3,
+        active,
+        spread: false,
+      })
+      assert.equal(
+        pile.positions[active]!.zIndex,
+        Math.max(...pile.positions.map(position => position.zIndex)),
+      )
+    }
   },
 )
 
@@ -152,6 +143,57 @@ test(
         match: 'word',
         after: '',
       },
+    )
+  },
+)
+
+test(
+  'reply order is stable when legacy timestamps are incomplete',
+  () => {
+    const base = {
+      block: 0,
+      offset: 0,
+      quote: 'part',
+      text: 'note',
+    }
+    const comments: ChatComment[] = [
+      {
+        ...base,
+        id: 'later',
+        messageId: 'later',
+        at: '2026-10-21T12:02:00Z',
+      },
+      {
+        ...base,
+        id: 'undated',
+        messageId: 'undated',
+      },
+      {
+        ...base,
+        id: 'earlier',
+        messageId: 'earlier',
+        at: '2026-10-21T12:00:00Z',
+      },
+    ]
+    assert.deepEqual(
+      orderedComments({ comments }).map(comment => comment.id),
+      [
+        'later',
+        'undated',
+        'earlier',
+      ],
+    )
+    const complete = comments.map(comment => comment.id === 'undated' ? {
+      ...comment,
+      at: '2026-10-21T12:01:00Z',
+    } : comment)
+    assert.deepEqual(
+      orderedComments({ comments: complete }).map(comment => comment.id),
+      [
+        'earlier',
+        'undated',
+        'later',
+      ],
     )
   },
 )

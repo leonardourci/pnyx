@@ -9,7 +9,13 @@ import { promisify } from 'node:util'
 const exec = promisify(execFile)
 
 export async function smokeEnvironment(
-  { session }: { session: string },
+  {
+    session,
+    reducedMotion = false,
+  }: {
+    session: string
+    reducedMotion?: boolean
+  },
 ): Promise<NodeJS.ProcessEnv> {
   const probe = createServer()
   await new Promise<void>((
@@ -54,17 +60,26 @@ export async function smokeEnvironment(
     delete env[`CHROME_DEVTOOLS_AXI_${key}`]
   }
 
+  if (reducedMotion) {
+    env.CHROME_DEVTOOLS_AXI_CHROME_ARGS = '--force-prefers-reduced-motion=reduce'
+  }
+
   return env
 }
 
 export function smokeBrowser({
   home,
   session,
+  reducedMotion = false,
 }: {
   home: string
   session: string
+  reducedMotion?: boolean
 }) {
-  const environment = smokeEnvironment({ session })
+  const environment = smokeEnvironment({
+    session,
+    reducedMotion,
+  })
   const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(
     home,
     'evidence',
@@ -139,15 +154,8 @@ export function smokeBrowser({
   })
   const focus = ({ selector }: { selector: string }) => evaluate({ code: `document.querySelector(${JSON.stringify(selector)}).focus(); return true;` })
 
-  const drag = async ({
-    selector,
-    dy,
-  }: {
-    selector: string
-    dy: number
-  }) => {
-    await evaluate({
-      code: `
+  const settle = () => evaluate({
+    code: `
         await document.fonts.ready;
         await new Promise(resolve => {
           let frame;
@@ -163,7 +171,16 @@ export function smokeBrowser({
         });
         return true;
       `,
-    })
+  })
+
+  const drag = async ({
+    selector,
+    dy,
+  }: {
+    selector: string
+    dy: number
+  }) => {
+    await settle()
     await evaluate({ code: `const handle = document.querySelector(${JSON.stringify(selector)}); handle.scrollIntoView({ block: 'nearest' }); handle.dataset.smokeLabel = handle.getAttribute('aria-label'); handle.setAttribute('aria-label', 'Smoke drag handle'); const rect = handle.getBoundingClientRect(); const target = document.createElement('button'); target.id = 'smoke-drag-target'; target.textContent = 'Smoke drag target'; Object.assign(target.style, { position: 'fixed', left: (rect.left + rect.width / 2 - 2) + 'px', top: (rect.top + rect.height / 2 + ${dy} - 2) + 'px', width: '4px', height: '4px', padding: '0', overflow: 'hidden', zIndex: '9999' }); document.body.append(target); return true;` })
 
     try {
@@ -231,6 +248,7 @@ export function smokeBrowser({
     press,
     focus,
     drag,
+    settle,
     screenshot,
     close,
   }
