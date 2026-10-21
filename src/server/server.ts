@@ -2374,7 +2374,7 @@ async function mountOwnedHydra({
   }
 
   try {
-    agents.recover()
+    await agents.recover()
   } catch (error) {
     console.error(`pnyx-axi serve: ${(error as Error).message}`)
   }
