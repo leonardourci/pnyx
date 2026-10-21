@@ -149,25 +149,36 @@ export function smokeBrowser({
     await evaluate({ code: `const handle = document.querySelector(${JSON.stringify(selector)}); handle.scrollIntoView({ block: 'nearest' }); handle.dataset.smokeLabel = handle.getAttribute('aria-label'); handle.setAttribute('aria-label', 'Smoke drag handle'); const rect = handle.getBoundingClientRect(); const target = document.createElement('button'); target.id = 'smoke-drag-target'; target.textContent = 'Smoke drag target'; Object.assign(target.style, { position: 'fixed', left: (rect.left + rect.width / 2 - 2) + 'px', top: (rect.top + rect.height / 2 + ${dy} - 2) + 'px', width: '4px', height: '4px', padding: '0', overflow: 'hidden', zIndex: '9999' }); document.body.append(target); return true;` })
 
     try {
-      const snapshot = await browser({
-        args: [
-          'snapshot',
-          '--full',
-        ],
-      })
-      const from = snapshot.match(/uid=(\S+) separator "Smoke drag handle"/)
-      const to = snapshot.match(/uid=(\S+) button "Smoke drag target"/)
-      assert.ok(
-        from && to,
-        snapshot,
-      )
-      await browser({
-        args: [
-          'drag',
-          `@${from[1]}`,
-          `@${to[1]}`,
-        ],
-      })
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const snapshot = await browser({
+          args: [
+            'snapshot',
+            '--full',
+          ],
+        })
+        const from = snapshot.match(/uid=(\S+) separator "Smoke drag handle"/)
+        const to = snapshot.match(/uid=(\S+) button "Smoke drag target"/)
+        assert.ok(
+          from && to,
+          snapshot,
+        )
+
+        try {
+          await browser({
+            args: [
+              'drag',
+              `@${from[1]}`,
+              `@${to[1]}`,
+            ],
+          })
+
+          return
+        } catch (error) {
+          if (!(error instanceof Error) || !('stdout' in error) || !String(error.stdout).includes('STALE_REF') || attempt === 4) {
+            throw error
+          }
+        }
+      }
     } finally {
       await evaluate({ code: 'document.querySelector(\'#smoke-drag-target\')?.remove(); const handle = document.querySelector(\'[data-smoke-label]\'); if (handle) { handle.setAttribute(\'aria-label\', handle.dataset.smokeLabel); delete handle.dataset.smokeLabel; } return true;' })
     }
