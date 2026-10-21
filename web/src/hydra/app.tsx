@@ -598,7 +598,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       state={state}
       command={command}
       connected={connected}
-      close={close}
       notify={notify}
     />
   )

@@ -30,7 +30,12 @@ export function Tooltip({
   const show = () => {
     document.dispatchEvent(new CustomEvent(
       HOVER_CLAIM,
-      { detail: id },
+      {
+        detail: {
+          id,
+          anchor: anchor.current,
+        },
+      },
     ))
     clearTimeout(timer.current)
     timer.current = setTimeout(
@@ -42,7 +47,7 @@ export function Tooltip({
   useEffect(
     () => {
       const claimed = (event: Event) => {
-        if (event instanceof CustomEvent && event.detail !== id) {
+        if (event instanceof CustomEvent && event.detail.id !== id) {
           hide()
         }
       }

@@ -2,9 +2,10 @@ import {
   IconBrandGithub, IconPaperclip,
   IconAdjustments, IconAlertTriangle, IconArrowDown, IconArrowUpRight, IconArrowFork,
   IconBolt, IconBulb, IconCheck, IconChevronDown, IconChevronRight, IconCircleCheck,
-  IconClipboardList, IconClock, IconCode, IconCpu, IconCube, IconDeviceDesktop,
+  IconCards, IconClipboardList, IconClock, IconCode, IconCopy, IconCpu, IconCube, IconDeviceDesktop,
   IconDots, IconEye, IconGauge, IconGitPullRequest, IconGitFork, IconHistory, IconKeyboard,
-  IconLink, IconList, IconMaximize, IconMinus, IconPlayerPause, IconPlayerPlay,
+  IconLayoutCards, IconLink, IconList, IconMaximize, IconMinus, IconPencil,
+  IconPlayerPause, IconPlayerPlay,
   IconPlus, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag, IconX,
 } from '@tabler/icons-react'
 
@@ -25,6 +26,9 @@ const icons: Record<string, typeof IconRobot> = {
   thinking: IconBulb,
   send: IconSend,
   parent: IconArrowFork,
+  'task-card': IconLayoutCards,
+  'task-list': IconClipboardList,
+  'task-stack': IconCards,
   link: IconLink,
   paperclip: IconPaperclip,
   github: IconBrandGithub,
@@ -51,6 +55,8 @@ const icons: Record<string, typeof IconRobot> = {
   reminder: IconClock,
   custom: IconAdjustments,
   clone: IconGitFork,
+  copy: IconCopy,
+  rename: IconPencil,
 }
 
 // Brand marks from Simple Icons 16.35.0 (https://simpleicons.org,

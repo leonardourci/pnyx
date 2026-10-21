@@ -44,7 +44,12 @@ export function HoverActions({
 
         document.dispatchEvent(new CustomEvent(
           HOVER_CLAIM,
-          { detail: id },
+          {
+            detail: {
+              id,
+              anchor: card,
+            },
+          },
         ))
         element.showPopover()
         position()
@@ -63,7 +68,8 @@ export function HoverActions({
       }
 
       const claimed = (event: Event) => {
-        if (event instanceof CustomEvent && event.detail !== id) {
+        if (event instanceof CustomEvent && event.detail.id !== id
+          && !element.contains(event.detail.anchor)) {
           hide()
         }
       }

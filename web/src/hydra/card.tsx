@@ -1,12 +1,14 @@
 import { answerPrompt } from '../../../src/core/answer.ts'
 import { QueueEditor, QueueLabel, WorkerQueue } from './queue.tsx'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ReminderEditor, ReminderLabel } from './reminder.tsx'
 import type { Card as CardData, HydraState, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
 import { Label } from '../components/ui/label.tsx'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Markdown } from '../components/ui/markdown.tsx'
-import { Button } from '../components/ui/controls.tsx'
+import { InlineTitle } from '../components/ui/inline-title.tsx'
+import { useCardHeight } from './card-height.ts'
+import { Button, Input } from '../components/ui/controls.tsx'
 import { taskUpdates } from '../../../src/thread/task.ts'
 import type { Command } from './connection.ts'
 import { Menu } from '../components/ui/menu.tsx'
@@ -14,7 +16,6 @@ import { CopyId } from '../components/ui/copy-id.tsx'
 import { HideAfter } from './hide-after.tsx'
 import { useStartRequest } from './start-request.ts'
 import { cardState, projectTitle, harnessName } from './view.ts'
-import { VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import { Resize } from '../components/ui/resize.tsx'
 
 import { Tooltip } from '../components/ui/tooltip.tsx'
@@ -23,9 +24,6 @@ import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { HoverActions } from '../components/ui/hover-actions.tsx'
 
-const MIN_UPDATES_HEIGHT = 80
-const CLOSED_HEIGHT = 176
-const QUESTION_HEIGHT = 290
 const OPEN_SHARE = 0.5
 
 function LastMessage({ message }: { message: LatestMessage }) {
@@ -81,71 +79,23 @@ export function HydraCard({
     preview,
     setPreview,
   ] = useState<number | null>(null)
-  const [
-    pane,
-    setPane,
-  ] = useState<{
-    minimum: number
-    available: number
-  }>({
-    minimum: VIEW_SIZE_LIMITS.cardHeight.min,
-    available: 0,
+  const bounds = useCardHeight({
+    element,
+    selected,
   })
-  const waiting = card.permissions?.some(request => request.status === 'pending')
-    || card.attention.some(request => request.blocking && !request.answered)
-    || card.status?.state === 'needs_you'
   const saved = selected ? view.cardHeights[card.id] : view.closedCardHeights[card.id]
-  const minimum = selected ? pane.minimum : VIEW_SIZE_LIMITS.cardHeight.min
-  const closedHeight = waiting ? QUESTION_HEIGHT : CLOSED_HEIGHT
-  const defaultHeight = selected ? Math.round(pane.available * OPEN_SHARE) : closedHeight
+  const defaultHeight = selected ? Math.round(bounds.available * OPEN_SHARE) : bounds.minimum + 44
   const height = Math.max(
-    minimum,
-    saved ?? defaultHeight,
+    bounds.minimum,
+    Math.min(
+      bounds.maximum,
+      saved ?? defaultHeight,
+    ),
   )
-  useLayoutEffect(
-    () => {
-      const card = element.current
-      const column = card?.closest('.column-cards')
-
-      if (!selected || !card || !column) {
-        return
-      }
-
-      const measure = () => {
-        const style = getComputedStyle(column)
-        const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
-        const available = Math.floor(column.clientHeight - padding)
-        const updates = card.querySelector<HTMLElement>('.task-updates')
-        const frame = updates
-          ? card.getBoundingClientRect().height - updates.getBoundingClientRect().height
-          : 0
-        const readable = Math.max(
-          VIEW_SIZE_LIMITS.cardHeight.min,
-          Math.ceil(frame + MIN_UPDATES_HEIGHT),
-        )
-        setPane({
-          minimum: Math.min(
-            readable,
-            available,
-          ),
-          available,
-        })
-      }
-
-      measure()
-      const observer = new ResizeObserver(measure)
-      observer.observe(column)
-      observer.observe(card)
-      const detail = card.querySelector('.detail')
-
-      if (detail) {
-        observer.observe(detail)
-      }
-
-      return () => observer.disconnect()
-    },
-    [selected],
-  )
+  const [
+    renaming,
+    setRenaming,
+  ] = useState(false)
   const [
     reminding,
     setReminding,
@@ -166,6 +116,7 @@ export function HydraCard({
     [],
   )
   const {
+    start,
     resume,
     busy,
   } = useStartRequest({
@@ -208,14 +159,22 @@ export function HydraCard({
     <article
       ref={element}
       className={`card ${selected ? 'selected' : ''} ${queueing ? 'queueing' : ''}`}
-      style={{ height: preview ?? height }}
+      style={{
+        height: Math.max(
+          bounds.minimum,
+          Math.min(
+            bounds.maximum,
+            preview ?? height,
+          ),
+        ),
+      }}
       data-task={card.id}
       data-label-color={tint?.color}
       onClick={e => {
         const control = e.target instanceof Element
           && e.target.closest('a, button, input, textarea, form, summary, .menu, .resize')
 
-        if (!selected && !control && !window.getSelection()?.toString()) {
+        if (!control && !window.getSelection()?.toString()) {
           open({ id: card.id })
         }
       }}
@@ -235,23 +194,61 @@ export function HydraCard({
     >
       <HoverActions anchor={element}>
         {!card.automaticTask && (
-          <Button disabled={!connected} onClick={() => setReminding(true)}>Remind</Button>
+          <Tooltip content="Remind"><Button aria-label="Remind" disabled={!connected} onClick={() => setReminding(true)}><Icon name="reminder" size={15} /></Button></Tooltip>
         )}
-        <CopyId id={card.id} notify={notify} />
-        <Menu trigger="More…" label={`Card menu for ${card.title}`}>
-          {!card.automaticTask && (
-            <Button disabled={!connected} onClick={() => setReminding(true)}>Remind me…</Button>
-          )}
-          {!firstmate && !card.automaticTask && !card.sessionIds?.length && !card.doneAt && (
-            <Button disabled={!connected} onClick={() => setQueueing(true)}>{card.queue ? 'Edit worker queue…' : 'Queue behind a worker…'}</Button>
-          )}
-          <HideAfter
-            card={card}
-            command={command}
-            connected={connected}
-            notify={notify}
-          />
-        </Menu>
+        <Tooltip content="Copy ID"><CopyId id={card.id} notify={notify} icon /></Tooltip>
+        <Tooltip content="More options">
+          <Menu label={`Card menu for ${card.title}`}>
+            {!card.automaticTask && (
+              <Button disabled={!connected} onClick={() => setReminding(true)}><Icon name="reminder" size={15} />Remind me…</Button>
+            )}
+            {!firstmate && !card.automaticTask && !card.sessionIds?.length && !card.doneAt && (
+              <Button disabled={!connected} onClick={() => setQueueing(true)}>{card.queue ? 'Edit worker queue…' : 'Queue behind a worker…'}</Button>
+            )}
+            <Button
+              onClick={() => {
+                setRenaming(true)
+
+                if (!selected) {
+                  open({ id: card.id })
+                }
+              }}
+            ><Icon name="rename" size={15} />Rename task
+            </Button>
+            {!card.automaticTask && (
+              <Button
+                disabled={!connected}
+                onClick={async () => {
+                  try {
+                    await command({
+                      name: 'task',
+                      args: [
+                        card.hidden ? 'unhide' : 'hide',
+                        card.id,
+                        '--event-id',
+                        crypto.randomUUID(),
+                      ],
+                    })
+
+                    if (selected) {
+                      open({ id: card.id })
+                    }
+                  } catch (error) {
+                    notify({ text: (error as Error).message })
+                  }
+                }}
+              ><Icon name="review" size={15} />{card.hidden ? 'Bring back to Hydra' : 'Hide from Hydra'}
+              </Button>
+            )}
+            <Button disabled={!connected || busy} onClick={card.agent ? resume : start}><Icon name="in_progress" size={15} />{card.agent ? 'Resume' : 'Start'}</Button>
+            <HideAfter
+              card={card}
+              command={command}
+              connected={connected}
+              notify={notify}
+            />
+          </Menu>
+        </Tooltip>
       </HoverActions>
       <div className="card-content">
         <div className="card-state">
@@ -276,14 +273,7 @@ export function HydraCard({
               </span>
             </Tooltip>
           )}
-          {status.kind === 'stopped' && (
-            <Button
-              className="card-resume"
-              disabled={!connected || busy}
-              onClick={resume}
-            >Resume
-            </Button>
-          )}
+
         </div>
         <Button
           className="card-open"
@@ -295,6 +285,54 @@ export function HydraCard({
           tabIndex={tabIndex}
         >{card.title}
         </Button>
+        {renaming && selected && (
+          <>
+            <InlineTitle
+              value={card.title}
+              label="Task title"
+              startEditing
+              finished={() => setRenaming(false)}
+              save={async ({ title }) => {
+                await command({
+                  name: 'task',
+                  args: [
+                    'rename',
+                    card.id,
+                    '--title',
+                    title,
+                    '--event-id',
+                    crypto.randomUUID(),
+                  ],
+                })
+                setRenaming(false)
+              }}
+            />
+            <Input
+              aria-label="Task project label"
+              defaultValue={card.project ?? ''}
+              placeholder="Project label"
+              onBlur={async event => {
+                if (event.target.value !== (card.project ?? '')) {
+                  try {
+                    await command({
+                      name: 'task',
+                      args: [
+                        'rename',
+                        card.id,
+                        '--project',
+                        event.target.value,
+                        '--event-id',
+                        crypto.randomUUID(),
+                      ],
+                    })
+                  } catch (error) {
+                    notify({ text: (error as Error).message })
+                  }
+                }
+              }}
+            />
+          </>
+        )}
         {(card.project || card.tags.length > 0) && (
           <div className="card-labels">
             {card.project && (
@@ -309,11 +347,6 @@ export function HydraCard({
               <Label key={tag} label={tag} colors={labelColors} />
             ))}
           </div>
-        )}
-        {selected && card.parentId && state.cards[card.parentId] && (
-          <Button className="card-parent quiet" onClick={() => open({ id: card.parentId! })}>
-            Subtask of {state.cards[card.parentId]?.title}
-          </Button>
         )}
         {card.copy?.state === 'flagged' && (
           <Tooltip content={card.copy.reason}><span className="copy-warning" tabIndex={0}>copy not cleaned</span></Tooltip>
@@ -354,7 +387,7 @@ export function HydraCard({
                 close={() => setQueueing(false)}
               />
             )}
-            {view.lastMessageOnCards && !selected && !question && (
+            {view.lastMessageOnCards && !selected && (
               factual ? <LastMessage message={factual} /> : <p className="last-message">No agent update yet.</p>
             )}
             {reminding && (
@@ -375,7 +408,8 @@ export function HydraCard({
         label="Resize card"
         axis="y"
         value={height}
-        min={minimum}
+        min={bounds.minimum}
+        max={bounds.maximum}
         tabIndex={selected ? 0 : tabIndex}
         onPreview={({ value }) => setPreview(value)}
         onCommit={({ value }) => save({
