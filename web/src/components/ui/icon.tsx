@@ -49,9 +49,7 @@ const icons: Record<string, typeof IconRobot> = {
   arrow_down: IconArrowDown,
   external: IconArrowUpRight,
   reminder: IconClock,
-  custom: IconBrandGithub,
-  IconPaperclip,
-  IconAdjustments,
+  custom: IconAdjustments,
   clone: IconGitFork,
 }
 
