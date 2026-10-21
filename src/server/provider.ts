@@ -36,7 +36,14 @@ export const modelIds = ({ models }: { models: ModelOption[] }) =>
   models.flatMap(model => [model.value, ...(model.resolvedModel ? [model.resolvedModel] : [])])
 
 export interface Provider {
+  // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
   models({ cwd, env }: { cwd: string; env: NodeJS.ProcessEnv }): Promise<ModelOption[]>
+  // The list with the effort and permission mode the folder's settings start a session with.
+  defaults({ cwd, env, models }: {
+    cwd: string
+    env: NodeJS.ProcessEnv
+    models: ModelOption[]
+  }): Promise<ModelOption[]>
   open({ cwd, agent, settings, env, signal, instructions, allow, context }: {
     cwd: string
     instructions?: string

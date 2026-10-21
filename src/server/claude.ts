@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import type { EffortLevel, Options, PermissionMode, SDKMessage, Settings, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from '../core/model.ts'
 import { questions } from '../integrations/hooks/observe.ts'
-import type { Provider } from './provider.ts'
+import type { ModelOption, Provider } from './provider.ts'
 import { attachedImages, imageType } from '../attachments/images.ts'
 import { pnyxHome } from '../store/paths.ts'
 
@@ -84,23 +84,29 @@ export function claudeProvider({ query, readSettings = userSettings }: {
       })
 
       try {
-        const [models, own] = await Promise.all([
-          catalog.supportedModels(),
-          readSettings({ cwd }).catch((): Settings => ({})),
-        ])
-
-        return models.map(model => ({
+        return (await catalog.supportedModels()).map(model => ({
           value: model.value,
           label: model.displayName,
           ...(model.resolvedModel ? { resolvedModel: model.resolvedModel } : {}),
           // ponytail: with no saved effort, Pnyx names the API's own default, high.
-          ...(model.supportsEffort ? { defaultEffort: own.modelSettings?.[model.resolvedModel ?? model.value]?.effortLevel ?? own.effortLevel ?? 'high' } : {}),
-          defaultMode: own.permissions?.defaultMode ?? 'default',
+          ...(model.supportsEffort ? { defaultEffort: 'high' } : {}),
         }))
       } finally {
         clearTimeout(timer)
         catalog.close()
       }
+    },
+    async defaults({ cwd, models }) {
+      const own = await readSettings({ cwd }).catch((): Settings => ({}))
+      const effort = ({ model }: { model: ModelOption }) =>
+        own.modelSettings?.[model.resolvedModel ?? model.value]?.effortLevel
+        ?? own.effortLevel ?? model.defaultEffort
+
+      return models.map(model => ({
+        ...model,
+        ...(model.defaultEffort ? { defaultEffort: effort({ model }) } : {}),
+        defaultMode: own.permissions?.defaultMode ?? 'default',
+      }))
     },
     async open({ cwd, agent, settings, env, instructions, allow, context }) {
       const id = agent?.sessionId ?? randomUUID()

@@ -80,13 +80,19 @@ test('Claude lists SDK display names and closes its catalog without running a tu
     }
   }) as unknown as QueryFn
   const readSettings = async () => ({ effortLevel: 'medium' as const, modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' as const } }, permissions: { defaultMode: 'acceptEdits' as const } })
-  const models = await claudeProvider({ query, readSettings }).models({ cwd: tmpdir(), env: {} })
+  const provider = claudeProvider({ query, readSettings })
+  const listed = await provider.models({ cwd: tmpdir(), env: {} })
+  const models = await provider.defaults({ cwd: tmpdir(), env: {}, models: listed })
 
+  assert.deepEqual(listed, [
+    { value: 'opus', label: 'Opus 5.5', resolvedModel: 'claude-opus-5-5', defaultEffort: 'high' },
+    { value: 'future-model', label: 'Future Model' },
+  ])
   assert.deepEqual(models, [
     { value: 'opus', label: 'Opus 5.5', resolvedModel: 'claude-opus-5-5', defaultEffort: 'xhigh', defaultMode: 'acceptEdits' },
     { value: 'future-model', label: 'Future Model', defaultMode: 'acceptEdits' },
   ])
-  assert.equal((await claudeProvider({ query, readSettings: async () => ({}) }).models({ cwd: tmpdir(), env: {} }))[0]!.defaultEffort, 'high')
+  assert.equal((await claudeProvider({ query, readSettings: async () => ({}) }).defaults({ cwd: tmpdir(), env: {}, models: listed }))[0]!.defaultEffort, 'high')
   assert.equal(closed, true)
 })
 
@@ -111,7 +117,8 @@ test('Codex lists every page and starts the selected wire model', async () => {
   const provider = codexProvider({ spawnCodex: fixture.spawnCodex })
 
   try {
-    const models = await provider.models({ cwd: root, env: process.env })
+    const listed = await provider.models({ cwd: root, env: process.env })
+    const models = await provider.defaults({ cwd: root, env: process.env, models: listed })
     assert.deepEqual(models, [
       { value: 'gpt-catalog-one', label: 'Catalog One', isDefault: true, defaultEffort: 'low', defaultMode: 'bypassPermissions' },
       { value: 'gpt-catalog-two', label: 'Catalog Two', defaultEffort: 'medium', defaultMode: 'bypassPermissions' },

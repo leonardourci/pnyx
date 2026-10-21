@@ -348,12 +348,6 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
       try {
         await rpc.request({ method: 'initialize', params: { clientInfo: { name: 'pnyx', version: '0.0.0' }, capabilities: null } })
         rpc.notify({ method: 'initialized' })
-        const config = object({ value: (await rpc.request({ method: 'config/read', params: { cwd } }).catch((): ObjectValue => ({}))).config })
-        const approval = config.approval_policy
-        // Every Pnyx mode brings its own sandbox, so a never without full access is named on-request, never wider.
-        const defaultMode = approval === 'never' && config.sandbox_mode === 'danger-full-access'
-          ? 'bypassPermissions'
-          : typeof approval === 'string' && approval !== 'never' ? approval : 'on-request'
         const models: ModelOption[] = []
         let cursor: string | undefined
 
@@ -364,13 +358,11 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
             const model = object({ value: raw })
 
             if (typeof model.model === 'string' && typeof model.displayName === 'string') {
-              const effort = config.model_reasoning_effort ?? model.defaultReasoningEffort
               models.push({
                 value: model.model,
                 label: model.displayName,
                 ...(model.isDefault === true ? { isDefault: true } : {}),
-                ...(typeof effort === 'string' ? { defaultEffort: effort } : {}),
-                defaultMode,
+                ...(typeof model.defaultReasoningEffort === 'string' ? { defaultEffort: model.defaultReasoningEffort } : {}),
               })
             }
           }
@@ -379,6 +371,28 @@ export function codexProvider({ spawnCodex = ({ cwd, env }) => spawn('codex', ['
         } while (cursor)
 
         return models
+      } finally {
+        rpc.close()
+      }
+    },
+    async defaults({ cwd, env, models }) {
+      const rpc = connection({ child: spawnCodex({ cwd, env }) })
+
+      try {
+        await rpc.request({ method: 'initialize', params: { clientInfo: { name: 'pnyx', version: '0.0.0' }, capabilities: null } })
+        rpc.notify({ method: 'initialized' })
+        const config = object({ value: (await rpc.request({ method: 'config/read', params: { cwd } }).catch((): ObjectValue => ({}))).config })
+        const approval = config.approval_policy
+        // Every Pnyx mode brings its own sandbox, so a never without full access is named on-request, never wider.
+        const defaultMode = approval === 'never' && config.sandbox_mode === 'danger-full-access'
+          ? 'bypassPermissions'
+          : typeof approval === 'string' && approval !== 'never' ? approval : 'on-request'
+
+        return models.map(model => {
+          const effort = config.model_reasoning_effort ?? model.defaultEffort
+
+          return { ...model, ...(typeof effort === 'string' ? { defaultEffort: effort } : {}), defaultMode }
+        })
       } finally {
         rpc.close()
       }
