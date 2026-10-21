@@ -110,10 +110,10 @@ portless trust && portless service install   # trust its certificate, run its pr
 portless alias pnyx 4747                      # https://pnyx.localhost for the login service
 ```
 
-Start a preview server under a name of its own, so its link is https://<name>.pnyx.localhost. `serve` takes the port portless hands it in `PORT` when `--port` is not given:
+Start a preview server under a name of its own, so its link is https://<name>.pnyx.localhost. `serve` takes the port portless hands it in `PORT` when `--port` is not given, and a data folder of its own keeps it apart from the login service's Hydras:
 
 ```sh
-portless <name>.pnyx pnyx-axi serve
+PNYX_HOME=<dir> portless <name>.pnyx pnyx-axi serve
 ```
 
 ## Add your agents
