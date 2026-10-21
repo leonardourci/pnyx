@@ -158,7 +158,6 @@ export default tseslint.config(
         },
       ],
 
-      // More than one property, element, parameter or argument goes one per line; a single one may stay inline.
       '@stylistic/object-curly-newline': [
         'error',
         {
