@@ -1,3 +1,4 @@
+import { Tooltip } from './tooltip.tsx'
 import type { SavedLabelColor } from '../../../../src/core/model.ts'
 
 export function Label({
@@ -11,5 +12,5 @@ export function Label({
   colors?: SavedLabelColor[]
   project?: boolean
 }) {
-  return <span className={`task-label${project ? ' project-label' : ''}`} data-label-color={colors?.find(entry => entry.label === label)?.color} title={label}>{text}</span>
+  return <Tooltip content={label}><span className={`task-label${project ? ' project-label' : ''}`} data-label-color={colors?.find(entry => entry.label === label)?.color}>{text}</span></Tooltip>
 }

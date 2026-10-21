@@ -33,7 +33,7 @@ export function pageTitle({
 }): string {
   const count = Object.values(cards)
     .filter(c => liveTask({ card: c }) && c.column === needsYou).length
-  const label = page === 'history' ? 'History' : page === 'settings' ? 'Settings'
+  const label = page === 'settings' ? 'Settings'
     : (selected && cards[selected]?.title) || 'Hydra'
 
   return `${count > 0 ? `(${count}) ` : ''}${label} · Pnyx`

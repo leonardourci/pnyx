@@ -221,6 +221,46 @@ try {
       condition: '[...document.querySelectorAll(\'.task-label\')].every(el => el.dataset.labelColor && getComputedStyle(el).borderTopStyle === \'solid\' && getComputedStyle(el).backgroundColor !== \'rgba(0, 0, 0, 0)\')',
       label: `${theme} project labels and tags have a saved color, fill and outline`,
     })
+    const resting = await browser({
+      args: [
+        'snapshot',
+        '--full',
+      ],
+    })
+    const settings = resting.match(/uid=(\S+) button "Settings"/)
+    assert.ok(
+      settings,
+      resting,
+    )
+    await browser({
+      args: [
+        'hover',
+        `@${settings[1]}`,
+      ],
+    })
+    await evaluate({ code: 'const title=document.querySelector(".card-open");window.restingTitleColor=getComputedStyle(title).color;window.hoverTitleLabel=title.getAttribute("aria-label");title.setAttribute("aria-label","Title hover probe");return true;' })
+    const snapshot = await browser({
+      args: [
+        'snapshot',
+        '--full',
+      ],
+    })
+    const title = snapshot.match(/uid=(\S+) button "Title hover probe"/)
+    assert.ok(
+      title,
+      snapshot,
+    )
+    await browser({
+      args: [
+        'hover',
+        `@${title[1]}`,
+      ],
+    })
+    await check({
+      condition:'document.querySelector(".card-open").matches(":hover") && getComputedStyle(document.querySelector(".card-open")).color === window.restingTitleColor',
+      label:`${theme} title keeps its foreground color on a real pointer hover`,
+    })
+    await evaluate({code:'document.querySelector(".card-open").setAttribute("aria-label",window.hoverTitleLabel);return true;'})
   }
 
   await check({
@@ -240,7 +280,7 @@ try {
     label: 'card titles, pane headings and metadata use the accepted size scale',
   })
   await check({
-    condition: 'getComputedStyle(document.querySelector(\'.hydra-head .hydra-icon\')).maskImage.includes(\'hydra-lorc.svg\') && document.querySelector(\'.brand img\').getAttribute(\'src\') === \'/favicon.svg\' && document.querySelectorAll(\'.left-panel nav > button svg\').length === 3',
+    condition: 'getComputedStyle(document.querySelector(\'.hydra-head .hydra-icon\')).maskImage.includes(\'hydra-lorc.svg\') && document.querySelector(\'.brand img\').getAttribute(\'src\') === \'/favicon.svg\' && document.querySelectorAll(\'.left-panel nav > button svg\').length === 1',
     label: 'Hydra mask, existing Pnyx favicon and navigation icons identify the interface',
   })
   await focus({ selector: '.column-header .inline-title' }); await press({ key: 'Enter' })
@@ -259,8 +299,8 @@ try {
   })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
   await eventually({
-    condition: '!!document.querySelector(\'.task-updates .code-block\') && !!document.querySelector(\'.task-conversation .code-block\')',
-    label: 'synthetic conversation appears',
+    condition: '!!document.querySelector(\'.task-updates .code-block\')',
+    label: 'synthetic worker update appears',
   })
   await check({
     condition: 'getComputedStyle(document.querySelector(\'.task-updates .markdown\')).fontSize === \'16px\' && getComputedStyle(document.querySelector(\'.task-updates .markdown\')).fontFamily.includes(\'-apple-system\')',
@@ -271,10 +311,10 @@ try {
     label: 'message headings keep the conversation font and natural spacing',
   })
   await check({
-    condition: '!!document.querySelector(\'.detail .code-block code\') && [\'.task-updates\', \'.task-conversation\'].every(selector => document.querySelector(selector + \' .code-block code\') && document.querySelector(selector + \' .markdown p code\')) && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontFamily.includes(\'JetBrains Mono\') && getComputedStyle(el).fontSize === \'13px\')',
+    condition: '!!document.querySelector(\'.detail .code-block code\') && [\'.task-updates\'].every(selector => document.querySelector(selector + \' .code-block code\') && document.querySelector(selector + \' .markdown p code\')) && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontFamily.includes(\'JetBrains Mono\') && getComputedStyle(el).fontSize === \'13px\')',
     label: 'inline and fenced Markdown keep JetBrains Mono and the accepted code size',
   })
-  await click({ selector: '[aria-label="Close detail"]' })
+  await click({ selector: '.card.selected .card-open' })
   await text({ label: 'Settings' })
   await check({
     condition: '[\'.settings h1\', \'.settings-box h2\'].every(selector => { const style = getComputedStyle(document.querySelector(selector)); return style.fontFamily.includes(\'GFS Neohellenic\') && style.fontWeight === \'700\' && style.letterSpacing === \'normal\'; }) && getComputedStyle(document.querySelector(\'.number-field\')).fontFamily.includes(\'-apple-system\')',
@@ -331,7 +371,7 @@ try {
     label: 'saved chat font size applies independently',
   })
   await check({
-    condition: '[\'.task-updates\', \'.task-conversation\'].every(selector => document.querySelector(selector + \' .code-block code\') && document.querySelector(selector + \' .markdown p code\')) && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontSize === \'15px\') && getComputedStyle(document.querySelector(\'.detail .code-block pre\')).fontSize === \'15px\'',
+    condition: '[\'.task-updates\'].every(selector => document.querySelector(selector + \' .code-block code\') && document.querySelector(selector + \' .markdown p code\')) && [...document.querySelectorAll(\'.detail .markdown code\')].every(el => getComputedStyle(el).fontSize === \'15px\') && getComputedStyle(document.querySelector(\'.detail .code-block pre\')).fontSize === \'15px\'',
     label: 'inline and fenced code follow the independent saved code font size',
   })
   const colors = loadHydra({ hydraId: 'default' }).state.labelColors

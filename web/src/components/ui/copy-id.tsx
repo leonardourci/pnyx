@@ -9,8 +9,14 @@ export function CopyId({
 }) {
   return (
     <Button
-      onClick={() => void navigator.clipboard.writeText(id).then(() => notify({ text: 'ID copied' }))
-        .catch(() => notify({ text: 'Could not copy ID' }))}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(id)
+          notify({ text: 'ID copied' })
+        } catch {
+          notify({ text: 'Could not copy ID' })
+        }
+      }}
     >Copy ID
     </Button>
   )

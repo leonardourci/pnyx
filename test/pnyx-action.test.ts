@@ -162,6 +162,7 @@ test(
         id: 'posted',
         kind: 'message',
         role: 'assistant',
+        task: 'task-1',
         text: 'Moved Fix login loop to Needs you: its agent asked',
         at: '2026-10-21T10:00:01Z',
       },

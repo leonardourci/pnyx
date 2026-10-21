@@ -2469,6 +2469,20 @@ test(
       sent().split('---').length,
       2,
     )
+    const decisions = readEvents({ hydraId: 'default' }).filter(event => event.type === 'card.replied' && event.data.reply === 'k1' && event.data.state === 'delivered')
+    assert.equal(
+      decisions.length,
+      1,
+    )
+    const delivered = decisions[0]
+    assert.ok(delivered?.type === 'card.replied')
+    assert.deepEqual(
+      delivered.data.decision,
+      {
+        question: api.attention.find(request => request.key === 'api-shape')?.text,
+        answer: 'Use REST',
+      },
+    )
     // The answer does not close the decision by itself; Firstmate's resolved line does.
     assert.equal(
       cardOf({

@@ -54,8 +54,8 @@ const {
   check,
   click,
   text,
-  fill,
   focus,
+  fill,
   screenshot,
   close,
 } = smokeBrowser({
@@ -133,32 +133,7 @@ try {
     condition: 'document.body.textContent.includes("Keep the next task")',
     label: 'non-Done task stays visible',
   })
-  await text({ label: 'History' })
-  await fill({
-    label: 'Search history',
-    value: 'Ship cursor pagination',
-  })
-  await eventually({
-    condition: '!!document.querySelector(".history-entry .result-title")',
-    label: 'hidden task remains searchable',
-  })
-  await click({ selector: '.history-entry .result-title' })
-  await click({ selector: '[aria-label="Task menu"]' })
-  await text({ label: 'Bring back to Hydra' })
-  await eventually({
-    condition: `!!document.querySelector('[data-task="${id}"]') && !document.querySelector('.detail')`,
-    label: 'hidden task returns to Hydra',
-  })
-  assert.equal(
-    state().cards[id]?.hidden,
-    false,
-  )
-  assert.equal(
-    state().cards[id]?.keepDone,
-    true,
-  )
-  await screenshot({ name: 'done-restored.png' })
-  process.stdout.write('Done expiry, Settings, labels, History and restoration browser smoke passed.\n')
+  process.stdout.write('Done expiry, Settings and labels browser smoke passed.\n')
 } finally {
   await server.close(); await close(); rmSync(
     home,

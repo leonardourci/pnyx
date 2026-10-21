@@ -15,6 +15,7 @@ import { Messages, type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
 import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
+import { cardState } from './view.ts'
 import { clock, duration, hydraMessages, joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 
 // Sends the server has not recorded yet; a confirmed one waits for its message to arrive.
@@ -86,7 +87,7 @@ export function HydraChat({
   ] = useState(false)
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
   const follow = useRef(true), lastTop = useRef(0)
-  const hydra = hydraConfig({ state }).hydra, card = state.cards[HYDRA_CARD]
+  const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const {
     tools,
     thinking,
@@ -268,6 +269,29 @@ export function HydraChat({
     route: true,
     watching: 'unknown',
   }
+  const references = Object.fromEntries(Object.values(state.cards)
+    .filter(c => c.id !== HYDRA_CARD && !c.automaticTask)
+    .map(c => {
+      const column = config.columns.find(column => column.id === c.column)
+      const status = cardState({
+        card: c,
+        hours: state.config?.doneAfterHours,
+        now: Date.now(),
+      })
+
+      return [
+        c.id,
+        {
+          title: c.title,
+          state: status.kind === 'asks' ? 'Needs you' : status.text.replace(
+            /^./,
+            letter => letter.toUpperCase(),
+          ),
+          kind: status.kind,
+          column: column?.role ?? column?.id ?? 'custom',
+        },
+      ]
+    }))
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
 
   return (
@@ -311,10 +335,7 @@ export function HydraChat({
               assistantLabel="Hydra"
               notify={notify}
               openTask={openTask}
-              taskTitles={Object.fromEntries(Object.values(state.cards).map(c => [
-                c.id,
-                c.title,
-              ]))}
+              taskReferences={references}
               comments={comments}
               setComments={setComments}
               quote={({ text }) => setDraft({
@@ -378,7 +399,8 @@ export function HydraChat({
         card={HYDRA_CARD}
         cards={Object.values(state.cards)}
         projects={state.projects ?? []}
-        columns={hydraConfig({ state }).columns}
+        columns={config.columns}
+        taskReferences={references}
         openTask={openTask}
         title="Hydra"
         draft={draft}

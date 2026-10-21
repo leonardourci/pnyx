@@ -8,6 +8,8 @@ const task = taskMention({
   title: 'Fix [login]',
 })
 const image = '[image: /home/hydras/default/attachments/a.png]'
+// A task chip shows as its card and state icons, then its title.
+const label = `${ICON_SPACE}${ICON_SPACE}Fix [login]`
 
 test(
   'the draft shows references and attachments as chips over the Markdown',
@@ -23,7 +25,7 @@ test(
     const view = draftView({ text })
     assert.equal(
       view.display,
-      'Look at @Fix [login] and\n\nImage 1\n\nnotes.txt\n\nin @app',
+      `Look at ${label} and\n\nImage 1\n\nnotes.txt\n\nin @app`,
     )
     assert.deepEqual(
       view.chips.map(chip => [
@@ -87,20 +89,23 @@ test(
     const text = `Hi ${task} there`
     const typed = editDraft({
       text,
-      next: 'Hi @Fix [login]! there',
-      caret: 16,
+      next: `Hi ${label}! there`,
+      caret: 17,
     })
     assert.deepEqual(
       typed,
       {
         text: `Hi ${task}! there`,
-        caret: 16,
+        caret: 17,
       },
     )
     const erased = editDraft({
       text,
-      next: 'Hi @Fix [login there',
-      caret: 14,
+      next: `Hi ${label.slice(
+        0,
+        -1,
+      )} there`,
+      caret: 15,
     })
     assert.deepEqual(
       erased,
@@ -136,7 +141,7 @@ test(
       pasted,
       {
         text: `See ${task}`,
-        caret: 'See @Fix [login]'.length,
+        caret: `See ${label}`.length,
       },
     )
     const view = draftView({ text: pasted.text })
@@ -146,7 +151,7 @@ test(
         offset: 6,
         backward: false,
       }),
-      16,
+      17,
     )
     assert.equal(
       snapCaret({

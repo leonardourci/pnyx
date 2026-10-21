@@ -1,7 +1,7 @@
 // The draft stays the Markdown Hydra receives; the textarea shows each chip as its label.
 export type ChipKind = 'task' | 'project' | 'column' | 'image' | 'file'
 
-// An em space holds an icon's room in the textarea; the chip draws the icon over it.
+// An em space holds an icon's room in the textarea (a task chip has two); the chip draws icons over them.
 export const ICON_SPACE = '\u2003'
 
 export interface DraftChip {
@@ -93,7 +93,10 @@ export function draftChips({ text }: { text: string }): DraftChip[] {
         kind: match[2] as ChipKind,
         attached: false,
         value: decode({ value: match[3]! }),
-        label: `${match[2] === 'column' ? ICON_SPACE : '@'}${match[1]!.replace(
+        label: `${{
+          column: ICON_SPACE,
+          task: ICON_SPACE + ICON_SPACE,
+        }[match[2]!] ?? '@'}${match[1]!.replace(
           /\\(.)/g,
           '$1',
         )}`,

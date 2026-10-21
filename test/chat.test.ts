@@ -604,3 +604,30 @@ test(
     )
   },
 )
+
+test(
+  'Hydra decisions keep their task reference with the question and answer',
+  () => {
+    const [entry] = hydraMessages({
+      messages: [
+        {
+          ...message({
+            id: 'decision',
+            actor: 'hydra',
+          }),
+          task: 'task-example',
+          details: 'Asked: Which layout?\nAnswered: A',
+        },
+      ],
+      transcript: [],
+    })
+    assert.equal(
+      entry?.task,
+      'task-example',
+    )
+    assert.match(
+      entry!.text,
+      /Asked: Which layout\?\nAnswered: A/,
+    )
+  },
+)

@@ -33,8 +33,10 @@ export function InlinePermissions({
   card,
   command,
   notify,
+  pendingOnly = false,
 }: {
   card: Card
+  pendingOnly?: boolean
   command: Command
   notify({ text }: { text: string }): void
 }) {
@@ -78,7 +80,7 @@ export function InlinePermissions({
 
   return (
     <>
-      {(card.permissions ?? []).map(request => {
+      {(card.permissions ?? []).filter(request => !pendingOnly || !request.questions || request.status === 'pending').map(request => {
         const details = permissionDetails({ request })
         const pending = request.status === 'pending'
         const asked: Attention = {

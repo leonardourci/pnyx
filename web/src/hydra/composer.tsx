@@ -2,7 +2,6 @@ import type { Card, HydraColumn, HydraProject } from '../../../src/core/model.ts
 import { matchingTasks, mentionQuery, reference, taskMention } from '../../../src/mentions/mentions.ts'
 import { MentionPicker, type MentionItem } from './mention-picker.tsx'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
-import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -11,6 +10,7 @@ import type { ThreadPage } from '../../../src/thread/read.ts'
 import type { Catalog } from '../../../src/thread/catalog.ts'
 import { Button, Input, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import { taskStateIcon, type TaskReferenceData } from '../components/ui/task-reference.tsx'
 import { Popover } from '../components/ui/popover.tsx'
 import { ImageViewer } from '../components/ui/attached-image.tsx'
 import { columnLook, projectTitle, slashMatches, slashPrefix } from './view.ts'
@@ -27,6 +27,7 @@ export function Composer({
   cards,
   projects = [],
   columns = [],
+  taskReferences = {},
   openTask,
   title,
   draft,
@@ -44,6 +45,7 @@ export function Composer({
   cards: Card[]
   projects?: HydraProject[]
   columns?: HydraColumn[]
+  taskReferences?: Record<string, TaskReferenceData>
   openTask({ id }: { id: string }): void
   title: string
   draft: string
@@ -128,7 +130,8 @@ export function Composer({
       kind: 'column' as const,
       title: column.title,
       detail: 'Column',
-      ...columnLook({ column }),
+      icons: [columnLook({ column }).icon],
+      tone: columnLook({ column }).tone,
       insert: reference({
         kind: 'column',
         value: column.id,
@@ -147,6 +150,7 @@ export function Composer({
       title: card.title,
       detail: card.project ? projectTitle({ project: card.project }) : 'No project',
       excerpt,
+      ...taskLook({ id: card.id }),
       insert: taskMention({
         id: card.id,
         title: card.title,
@@ -228,11 +232,33 @@ export function Composer({
     setMention(null); element.focus()
   }
 
-  const chipColumn = ({ chip }: { chip: PlacedChip }) => columnLook({
-    column: columns.find(column => column.id === chip.value) ?? {
-      id: chip.value as HydraColumn['id'],
-    },
-  })
+  // A task looks like its card reference (card, then state, in its column's color); a column shows its icon.
+  function taskLook({ id }: { id: string }) {
+    const known = taskReferences[id]
+
+    return {
+      icons: [
+        'task-card',
+        taskStateIcon({ kind: known?.kind }),
+      ],
+      tone: `column-${known?.column ?? 'custom'}`,
+    }
+  }
+
+  const chipLook = ({ chip }: { chip: PlacedChip }) => {
+    if (chip.kind === 'task') {
+      return taskLook({ id: chip.value })
+    }
+
+    const look = columnLook({
+      column: columns.find(column => column.id === chip.value) ?? { id: chip.value as HydraColumn['id'] },
+    })
+
+    return {
+      icons: [look.icon],
+      tone: look.tone,
+    }
+  }
 
   const openChip = ({ chip }: { chip: PlacedChip }) => {
     if (chip.kind === 'task') {
@@ -835,7 +861,7 @@ export function Composer({
                     chip.from,
                   )}
                   <span
-                    className={`draft-chip ${chip.attached ? 'attached' : 'reference'} ${chip.kind === 'column' ? chipColumn({ chip }).tone : ''}`}
+                    className={`draft-chip ${chip.attached ? 'attached' : 'reference'} ${chip.label.startsWith(ICON_SPACE) ? chipLook({ chip }).tone : ''}`}
                     data-kind={chip.kind}
                     title={chip.kind === 'task' ? 'Open task' : chip.kind === 'image' ? 'Show image' : chip.kind === 'project' ? chip.value : undefined}
                     onMouseDown={event => event.preventDefault()}
@@ -843,8 +869,11 @@ export function Composer({
                   >
                     {chip.label.startsWith(ICON_SPACE) ? (
                       <>
-                        <span className="chip-icon"><Icon name={chipColumn({ chip }).icon} size={14} /></span>
-                        {chip.label.slice(ICON_SPACE.length)}
+                        {chipLook({ chip }).icons.map(icon => <span key={icon} className="chip-icon"><Icon name={icon} size={14} /></span>)}
+                        {chip.label.replace(
+                          /^\u2003+/,
+                          '',
+                        )}
                       </>
                     ) : chip.label}
                   </span>
@@ -943,18 +972,13 @@ export function Composer({
                     firstComment: !taught,
                   })
                   const id = crypto.randomUUID()
-                  const name = card === HYDRA_CARD ? 'hydra' : 'reply'
-                  const args = card === HYDRA_CARD
-                    ? [
-                      'send',
-                      `--text=${text}`,
-                      '--event-id',
-                      id,
-                    ] : [
-                      card,
-                      text,
-                      id,
-                    ]
+                  const name = 'hydra'
+                  const args = [
+                    'send',
+                    `--text=${text}`,
+                    '--event-id',
+                    id,
+                  ]
 
                   if (commandBytes({
                     name,

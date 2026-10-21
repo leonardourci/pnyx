@@ -10,6 +10,7 @@ import { CopyButton } from '../components/ui/copy-button.tsx'
 import { ColumnChip } from '../components/ui/column-chip.tsx'
 import { MessageText } from '../components/ui/streaming.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import { TaskReference, TaskReferencesProvider, type TaskReferenceData } from '../components/ui/task-reference.tsx'
 import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import {
   CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED,
@@ -50,14 +51,14 @@ export function Messages({
   quote,
   toolDetails = true,
   thinkingDetails = true,
-  taskTitles,
+  taskReferences,
   openTask,
   assistantLabel,
   notify,
 }: {
   notify({ text }: { text: string }): void
   openTask?({ id }: { id: string }): void
-  taskTitles?: Record<string, string>
+  taskReferences?: Record<string, TaskReferenceData>
   toolDetails?: boolean
   thinkingDetails?: boolean
   assistantLabel?: string
@@ -698,7 +699,7 @@ export function Messages({
   })
 
   return (
-    <>
+    <TaskReferencesProvider references={taskReferences} openTask={openTask}>
       <style>{CARET_CSS + comments.map(comment =>
         `::highlight(${CSS.escape(commentHighlightName({
           name: highlight,
@@ -757,7 +758,12 @@ export function Messages({
               title={entry.at && !ownMessage({ entry })
                 ? new Date(entry.at).toLocaleString() : undefined}
             >
-              {entry.task && taskTitles && <span className="message-task" data-task-ref={entry.task}>{taskTitles[entry.task] ?? 'Task update'}</span>}
+              {entry.task && taskReferences && (
+                <div className="message-task">
+                  <span className="message-task-label">About</span>
+                  <TaskReference id={entry.task} />
+                </div>
+              )}
               {entry.kind === 'message' ? (
                 <MessageText
                   text={entry.text}
@@ -834,7 +840,7 @@ export function Messages({
                 />
               ) : (
                 calls.has(entry.id)
-                  ? <PnyxCallRow call={calls.get(entry.id)!} openTask={openTask} />
+                  ? <PnyxCallRow call={calls.get(entry.id)!} />
                   : <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
               )}
               {entry.delivery ? (
@@ -896,7 +902,7 @@ export function Messages({
           </div>
         )}
       </div>
-    </>
+    </TaskReferencesProvider>
   )
 }
 
@@ -937,13 +943,7 @@ function TurnFooter({ turn }: { turn: TurnTiming }) {
 }
 
 // Pnyx's own commands read as what they did; the command itself is one click away.
-function PnyxCallRow({
-  call,
-  openTask,
-}: {
-  call: PnyxCall
-  openTask?({ id }: { id: string }): void
-}) {
+function PnyxCallRow({ call }: { call: PnyxCall }) {
   return (
     <details className="trace pnyx-call" data-expandable="true" data-failed={!!call.failed || undefined}>
       <summary>
@@ -955,16 +955,10 @@ function PnyxCallRow({
           ) => typeof part === 'string' ? <Fragment key={index}>{part}</Fragment> : 'column' in part ? (
             <ColumnChip key={index} {...columnLook({ column: part.column })} label={part.label} />
           ) : (
-            <Button
-              key={index}
-              className="task-mention"
-              contentEditable={false}
-              title="Open task"
-              onClick={event => {
-                event.preventDefault(); openTask?.({ id: part.task })
-              }}
-            >{part.label}
-            </Button>
+            // A click on the chip opens the task without folding the row.
+            <span key={index} onClick={event => event.preventDefault()}>
+              <TaskReference id={part.task}>{part.label}</TaskReference>
+            </span>
           ))}
           {call.failed && <span className="pnyx-failed"> · failed: {call.failed}</span>}
         </span>

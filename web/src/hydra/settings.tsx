@@ -172,7 +172,7 @@ function ConnectedSettings({
               }
             }}
           />
-          <p className="muted small">0 keeps Done cards visible. Hidden cards stay in History and Oracle and can be brought back.</p>
+          <p className="muted small">0 keeps Done cards visible. Hidden cards stay in recorded history and can be brought back with the CLI.</p>
           <label className="setting-label">Identity</label>
           <Input
             key={config.hydra.id}

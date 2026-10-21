@@ -1913,7 +1913,10 @@ function taskHistory({
       card: e.cardId,
       actor: e.actor,
       summary: summarize({ event: e }),
-      ...(full ? { data: e.data } : {}),
+      ...(full ? {
+        data: e.data,
+        reason: e.reason,
+      } : {}),
     })) : 'none: no matching events',
     ...(matches.length > limit ? { next: page.at(-1)!.seq } : {}),
     ...(help.length ? { help } : {}),
@@ -3453,7 +3456,10 @@ const history = guard({
         card: e.cardId,
         actor: e.actor,
         summary: summarize({ event: e }),
-        ...(values.full ? { data: e.data } : {}),
+        ...(values.full ? {
+          data: e.data,
+          reason: e.reason,
+        } : {}),
       })),
     }
 

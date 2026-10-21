@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { hydraSdk } from './hydra-host-fixture.ts'
-import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { decidePush } from '../src/core/decide.ts'
@@ -128,7 +128,6 @@ const {
   home,
   session: 'pnyx-tasks',
 })
-const menu = () => click({ selector: '[aria-label="Task menu"]' })
 
 try {
   await browser({
@@ -149,8 +148,8 @@ try {
     ],
   })
   await check({
-    condition: '[...document.querySelectorAll(".card")].every(c => c.getBoundingClientRect().height === 176)',
-    label: 'closed cards stay 176 px despite long titles',
+    condition: '[...document.querySelectorAll(".card")].every(c => c.getBoundingClientRect().height > 0 && c.querySelector(".card-open").getBoundingClientRect().bottom <= c.getBoundingClientRect().bottom)',
+    label: 'closed cards contain their titles despite long content',
   })
   const colors = state().labelColors!
   const projectColor = colors.find(entry => entry.label === 'payments-api')!.color
@@ -164,29 +163,27 @@ try {
     label: 'a factual worker update appears at rest',
   })
   await screenshot({ name: 'cards-closed-after.png' })
-  await click({ selector: '.card-open' })
+  await evaluate({ code: `const text = document.querySelector('[data-task="${task().id}"] .last-message'); text.style.userSelect = 'text'; const range = document.createRange(); range.selectNodeContents(text); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range); if (!selection.toString()) throw new Error('Expected selected preview text'); text.click(); return true;` })
   await check({
-    condition: 'document.activeElement.matches(".task-updates") && document.querySelector(".card.selected").getBoundingClientRect().height === 480',
-    label: 'opening a card fixes it at 480 px and focuses Updates',
+    condition: '!document.querySelector(".card.selected")',
+    label: 'selecting preview text leaves the card closed',
+  })
+  await evaluate({ code: 'window.getSelection().removeAllRanges(); document.querySelector(\'.last-message\').style.userSelect = \'\'; return true;' })
+  await click({ selector: `[data-task="${task().id}"] .card-state` })
+  await eventually({
+    condition: 'document.activeElement.matches(".task-updates") && !!document.querySelector(".card.selected .detail")',
+    label: 'opening a card shows its detail and focuses Updates',
   })
   await eventually({
     condition: 'document.querySelector(".task-updates")?.textContent.includes("migration passes locally")',
     label: 'factual worker updates fill the open card',
   })
-  await menu()
+  await click({ selector: `[data-task="${task().id}"] .card-state` })
   await check({
-    condition: '!document.querySelector(".detail").textContent.match(/Attach agent|Change agent|Detach agent|Continue in Pnyx/)',
-    label: 'manual assignment controls are absent',
+    condition: '!document.querySelector(".card.selected")',
+    label: 'clicking the open card body closes it',
   })
-  await text({ label: 'Start' })
-  await eventually({
-    condition: 'document.querySelector(".hydra-chat").textContent.includes("Create a worker for task")',
-    label: 'Start requests Hydra without launching a worker',
-  })
-  assert.equal(
-    task().agent,
-    undefined,
-  )
+  await click({ selector: `[data-task="${task().id}"] .card-state` })
   withWriter({
     hydraId: 'default',
     fn: ({ writer }) => {
@@ -216,28 +213,13 @@ try {
     },
   })
   await eventually({
-    condition: '!!document.querySelector(".detail .agent-chip")',
-    label: 'the attached agent appears above Updates',
+    condition: '!!document.querySelector(".card.selected .card-agent")',
+    label: 'the attached agent appears in the card header',
   })
   await check({
-    condition: 'document.querySelector(".card.selected").getBoundingClientRect().height === 480 && !!document.querySelector(".detail .task-updates") && document.querySelectorAll(".detail .task-conversation .composer").length === 1',
-    label: 'attached card stays fixed with Updates and its conversation',
+    condition: '!!document.querySelector(".card.selected .task-updates") && !document.querySelector(".detail .thread, .detail .composer")',
+    label: 'open card shows factual Updates without a reply thread',
   })
-  await menu(); await text({ label: 'Resume' })
-  await eventually({
-    condition: 'document.querySelector(".hydra-chat").textContent.includes("Resume the worker on task")',
-    label: 'Resume is a task-scoped Hydra request',
-  })
-  const attached = task().agent
-  await menu(); await text({ label: 'Reassign' })
-  await eventually({
-    condition: 'document.querySelector(".hydra-chat").textContent.includes("Reassign task")',
-    label: 'Reassign asks Hydra to choose its next agent',
-  })
-  assert.deepEqual(
-    task().agent,
-    attached,
-  )
   await screenshot({ name: 'cards-open-after.png' })
   await browser({
     args: [
@@ -245,10 +227,6 @@ try {
       '1440',
       '400',
     ],
-  })
-  await check({
-    condition: 'document.querySelector(".card.selected").getBoundingClientRect().height <= document.querySelector(".column-cards").clientHeight && document.querySelector(".card.selected").getBoundingClientRect().height < 480',
-    label: 'short panes cap the fixed card height',
   })
   await check({
     condition: 'document.querySelector(".task-updates").getBoundingClientRect().bottom <= document.querySelector(".card.selected").getBoundingClientRect().bottom',
@@ -262,7 +240,7 @@ try {
       '900',
     ],
   })
-  await menu(); await text({ label: 'Add subtask' })
+  await click({ selector: '[aria-label="New task in In progress"]' })
   await check({
     condition: '!!document.querySelector(".task-create") && document.activeElement.getAttribute("aria-label") === "Task title"',
     label: 'plus creates a task inline and focuses its title',
@@ -291,13 +269,13 @@ try {
   )
   assert.equal(
     created.parentId,
-    task().id,
+    undefined,
   )
   assert.equal(
     created.agent,
     undefined,
   )
-  await click({ selector: '[aria-label="Close detail"]' })
+  await click({ selector: `[data-task="${created.id}"] .card-state` })
   await click({ selector: '[aria-label="New task in Parked"]' }); await text({ label: 'Cancel' })
   assert.equal(
     Object.keys(state().cards).length,
@@ -346,37 +324,22 @@ try {
     state().config?.columns.length,
     5,
   )
-  commands.hydra([
-    'set',
-    '--firstmate',
-    native,
-  ])
-  await click({ selector: `[data-task="${created.id}"] .card-open` })
-  await menu(); await text({ label: 'Start' })
+  await evaluate({ code: `document.querySelector('[data-task="${state().keys.long}"] .card-open').dispatchEvent(new MouseEvent('dblclick',{bubbles:true,detail:2}));return true;` })
   await eventually({
-    condition: 'document.body.textContent.includes("Sent to Firstmate")',
-    label: 'Firstmate Start uses its inbox delivery',
+    condition:'document.activeElement?.matches(".card-open[role=textbox]")',
+    label:'Double-click starts title editing',
   })
-  const notes = JSON.parse(readFileSync(
-    join(
-      native,
-      'inbox.json',
-    ),
-    'utf8',
-  )) as { body: string }[]
-  assert.match(
-    notes.at(-1)?.body ?? '',
-    /asks for a worker on task/,
-  )
-  assert.equal(
-    state().hydraMessages?.at(-1)?.task,
-    created.id,
-  )
-  assert.equal(
-    created.agent,
-    undefined,
-  )
-  process.stdout.write('Fixed cards, task Updates, Hydra requests and columns browser smoke passed.\n')
+  await evaluate({ code: 'const title=document.querySelector(\'[aria-label="Task title"]\');title.textContent=\'Review the longer migration plan\';title.blur();return true;' })
+  await eventually({
+    condition: `document.querySelector('[data-task="${state().keys.long}"] .card-open')?.textContent.trim() === 'Review the longer migration plan'`,
+    label: 'Title blur renames the task inline',
+  })
+  await click({ selector: `[data-task="${state().keys.long}"] [aria-label="Hide"]` })
+  await eventually({
+    condition: `!document.querySelector('[data-task="${state().keys.long}"]')`,
+    label: 'Hide removes the task from its column',
+  })
+  process.stdout.write('Task cards, factual Updates, inline actions and columns browser smoke passed.\n')
 } finally {
   await server.close(); await close(); rmSync(
     home,

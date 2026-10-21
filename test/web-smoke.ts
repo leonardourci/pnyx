@@ -92,9 +92,14 @@ try {
     condition: 'document.querySelector(".hydra-chat").getBoundingClientRect().height === document.querySelector(".column").getBoundingClientRect().height && document.querySelector(".hydra-head").textContent === "Hydra"',
     label: 'Hydra and columns fill the Hydra height',
   })
+  await eventually({
+    condition: '(() => { const card=document.querySelector(".card"),grip=card.querySelector(":scope > .resize-y"),title=card.querySelector(".card-open"),rect=card.getBoundingClientRect();return rect.height >= Number(grip.getAttribute("aria-valuemin")) && rect.height <= Number(grip.getAttribute("aria-valuemax")) && title.getBoundingClientRect().bottom <= rect.bottom && !!card.querySelector(".card-state") && !card.querySelector(".setting-chip,.tags,.links");})()',
+    label: 'closed cards contain their title and state within content bounds',
+  })
+  await focus({selector:'.card > .resize-y'})
   await check({
-    condition: 'document.querySelector(".card").getBoundingClientRect().height === 176 && !document.querySelector(".card .setting-chip,.card .tags,.card .links,.card .resize")',
-    label: 'closed cards keep their fixed height with title and activity',
+    condition:'getComputedStyle(document.querySelector(".card > .resize-y")).opacity === "1"',
+    label:'keyboard focus reveals the closed card resize grip',
   })
   await check({
     condition: '!!document.querySelector(".last-message")',
@@ -157,40 +162,6 @@ try {
   })
   await screenshot({ name: 'oracle-setting.png' })
   await click({ selector: '.oracle-results [aria-label="Theme"]' }); await click({ selector: '[role=listbox][aria-label=Theme] > [role=option]:first-child' })
-  await fill({
-    label: 'Oracle',
-    value: 'readable',
-  }); await text({ label: 'Search history' })
-  await eventually({
-    condition: 'document.querySelector(".history-page input")?.value === "readable" && document.querySelectorAll(".result-title").length === 1',
-    label: 'search passes its query into History',
-  })
-  await fill({
-    label: 'Search history',
-    value: 'no matching fixture phrase',
-  })
-  await fill({
-    label: 'Oracle',
-    value: 'readable',
-  }); await text({ label: 'Search history' })
-  await eventually({
-    condition: 'document.querySelector(".history-page input")?.value === "readable" && document.querySelectorAll(".result-title").length === 1',
-    label: 'a repeated History handoff replaces its query',
-  })
-  await fill({
-    label: 'Search history',
-    value: 'Document the reply receipts',
-  })
-  await eventually({
-    condition: '!!document.querySelector(".history-page .result-title")',
-    label: 'History result loaded outside the Hydra filter',
-  })
-  await click({ selector: '.history-page .result-title' })
-  await check({
-    condition: 'document.querySelector(".card.selected").textContent.includes("Document the reply receipts") && !!document.querySelector(".card.selected .detail")',
-    label: 'opening a History result reveals it despite a conflicting Hydra query',
-  })
-  await click({ selector: '[aria-label="Close detail"]' })
   await focus({ selector: '[aria-label="Oracle"]' }); await press({ key: 'Escape' })
   await eventually({
     condition: 'document.querySelectorAll("[data-card]").length === 6',
@@ -207,11 +178,11 @@ try {
     label: 'card opens downward without changing the column width',
   })
   await check({
-    condition: 'document.activeElement.matches(".task-updates") && document.querySelectorAll(".detail .agent-chip").length === 1 && !document.querySelector(".detail .message.tool")',
-    label: 'open card has one agent chip and Updates',
+    condition: 'document.activeElement.matches(".task-updates") && document.querySelectorAll(".card.selected .card-agent").length === 1 && !document.querySelector(".detail .message.tool")',
+    label: 'open card has one agent icon and Updates',
   })
   await screenshot({ name: 'card-open.png' })
-  await click({ selector: '[aria-label="Close detail"]' })
+  await click({ selector: '.card.selected .card-open' })
   await focus({ selector: '[aria-label="Resize Hydra panel"]' }); await press({ key: 'ArrowRight' })
   await eventually({
     condition: 'document.querySelector("[aria-label=\\"Resize Hydra panel\\"]").getAttribute("aria-valuenow") === "368"',
@@ -252,19 +223,10 @@ try {
   )
   await click({ selector: '[data-hydra-current]' })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
-  await check({
-    condition: '!!document.querySelector(".detail .task-updates") && document.querySelectorAll(".detail .task-conversation .composer").length === 1',
-    label: 'an attached task shows Updates and its conversation',
-  })
-  await text({ label: 'History' }); await fill({
-    label: 'Oracle',
-    value: '> New task in Parked',
-  }); await text({ label: 'New task in Parked' })
   await eventually({
-    condition: '!!document.querySelector(".hydra-page") && document.activeElement.getAttribute("aria-label") === "Task title"',
-    label: 'search opens inline task creation from History and focuses its title',
+    condition: '!!document.querySelector(".detail .task-updates") && !document.querySelector(".detail .composer")',
+    label: 'an attached task shows Updates without a conversation',
   })
-  await press({ key: 'Escape' })
   await text({ label: 'Settings' }); await fill({
     label: 'Oracle',
     value: '> New column',

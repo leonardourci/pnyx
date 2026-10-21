@@ -204,7 +204,7 @@ export const KEY_ACTIONS = [
   }),
   action({
     id: 'search',
-    label: 'Search history',
+    label: 'Search tasks',
     keys: ['/'],
     scopes: navigation,
   }),

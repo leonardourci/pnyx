@@ -325,8 +325,10 @@ export function InlineQuestions({
   card,
   command,
   notify,
+  pendingOnly = false,
 }: {
   card: Card
+  pendingOnly?: boolean
   command: Command
   notify({ text }: { text: string }): void
 }) {
@@ -335,10 +337,10 @@ export function InlineQuestions({
     setBusy,
   ] = useState<string | null>(null)
   const shown = card.attention
-    .filter(request => request.answered || answerPrompt({
+    .filter(request => (!pendingOnly || !request.answered) && (request.answered || answerPrompt({
       card,
       request,
-    }))
+    })))
 
   if (!shown.length) {
     return null

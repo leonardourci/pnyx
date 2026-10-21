@@ -29,6 +29,7 @@ export const DEFAULT_VIEW: ViewPreferences = {
   thinkingDetails: false,
   columnWidths: {},
   cardHeights: {},
+  closedCardHeights: {},
   cardTraceOverrides: {},
   customColumns: [],
 }
@@ -49,10 +50,7 @@ export const VIEW_SIZE_LIMITS = {
     min: 10,
     max: 20,
   },
-  cardHeight: {
-    min: 200,
-    max: 600,
-  },
+  cardHeight: { min: 120 },
   columnWidth: { min: 240 },
   cardWidth: { min: 200 },
   columnHeight: { min: 200 },
@@ -205,27 +203,25 @@ export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> 
         min: VIEW_SIZE_LIMITS.panelWidth.min,
       },
     ),
-    cardHeight: persistedSize(
-      {
-        value: view.cardHeight,
-        fallback: DEFAULT_VIEW.cardHeight,
-        min: VIEW_SIZE_LIMITS.cardHeight.min,
-        max: VIEW_SIZE_LIMITS.cardHeight.max,
-      },
-    ),
+    cardHeight: persistedSize({
+      value: view.cardHeight,
+      fallback: DEFAULT_VIEW.cardHeight,
+      ...VIEW_SIZE_LIMITS.cardHeight,
+    }),
     columnWidths: persistedMap(
       {
         values: view.columnWidths,
         min: VIEW_SIZE_LIMITS.columnWidth.min,
       },
     ),
-    cardHeights: persistedMap(
-      {
-        values: view.cardHeights,
-        min: VIEW_SIZE_LIMITS.cardHeight.min,
-        max: VIEW_SIZE_LIMITS.cardHeight.max,
-      },
-    ),
+    cardHeights: persistedMap({
+      values: view.cardHeights,
+      ...VIEW_SIZE_LIMITS.cardHeight,
+    }),
+    closedCardHeights: persistedMap({
+      values: view.closedCardHeights,
+      ...VIEW_SIZE_LIMITS.cardHeight,
+    }),
   }
 }
 
@@ -387,8 +383,7 @@ export function patchView({
       }); break
       case 'cardHeight': next.cardHeight = size({
         value,
-        min: VIEW_SIZE_LIMITS.cardHeight.min,
-        max: VIEW_SIZE_LIMITS.cardHeight.max,
+        ...VIEW_SIZE_LIMITS.cardHeight,
         key,
       }); break
       case 'panelPlacement':
@@ -403,7 +398,7 @@ export function patchView({
         }
 
         next[key] = value; break
-      case 'columnWidths': case 'cardHeights': case 'defaultColumnWidths': {
+      case 'columnWidths': case 'cardHeights': case 'closedCardHeights': case 'defaultColumnWidths': {
         const map = record({ value })
 
         if (!map) {
@@ -418,7 +413,9 @@ export function patchView({
             return invalid({ detail: key })
           }
 
-          if (key === 'cardHeights' && !state.cards[id]) {
+          const cardMap = key === 'cardHeights' || key === 'closedCardHeights'
+
+          if (cardMap && !state.cards[id]) {
             return invalid({ detail: id })
           }
 
@@ -433,7 +430,7 @@ export function patchView({
           if (n === null) {
             delete next[key][id]
           } else {
-            const limits = key === 'cardHeights' ? VIEW_SIZE_LIMITS.cardHeight : VIEW_SIZE_LIMITS.columnWidth
+            const limits = cardMap ? VIEW_SIZE_LIMITS.cardHeight : VIEW_SIZE_LIMITS.columnWidth
             next[key][id] = size({
               value: n,
               ...limits,

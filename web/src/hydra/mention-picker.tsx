@@ -11,8 +11,8 @@ export interface MentionItem {
   detail: string
   excerpt?: string
   insert: string
-  // A column shows its own icon in its own color.
-  icon?: string
+  // A column or task shows its own icons in its column's color.
+  icons?: string[]
   tone?: string
 }
 
@@ -132,7 +132,9 @@ export function MentionPicker({
             onClick={() => choose({ item })}
           >
             <span className="mention-heading">
-              <span className={`mention-icon ${item.tone ?? ''}`}><Icon name={item.icon ?? item.kind} size={14} /></span>
+              <span className={`mention-icon ${item.tone ?? ''}`}>
+                {(item.icons ?? [item.kind]).map(icon => <Icon key={icon} name={icon} size={14} />)}
+              </span>
               <strong>{item.title}</strong>
               <small>{item.detail}</small>
             </span>

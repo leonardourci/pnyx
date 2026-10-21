@@ -273,6 +273,7 @@ function apply({
         column: newCardColumn({ state }),
         revision: 0,
         createdSeq: event.seq,
+        createdAt: event.at,
         updatedSeq: event.seq,
         updatedAt: event.at,
       }

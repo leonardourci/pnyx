@@ -498,7 +498,7 @@ export function pnyxCalls<Entry extends ThreadEntry>({
     && /^confirmation: needed$/m.test(outputs.get(call.entry.id) ?? '') && confirmed.has(unconfirmed(call)))
     .map(call => call.entry))
   const kept = entries.filter(entry => !result({ entry }) && !superseded.has(entry)
-    && !(entry.kind === 'message' && entry.role.startsWith('assistant') && !entry.task && posted.has(entry.text.trim())))
+    && !(entry.kind === 'message' && entry.role.startsWith('assistant') && posted.has(entry.text.trim())))
 
   return {
     entries: kept,

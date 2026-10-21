@@ -149,7 +149,7 @@ try {
   })
   await press({ key: 'Tab' })
   await check({
-    condition: 'document.querySelector(".hydra-chat textarea").value === "Compare @Migration plan " && document.querySelector(".hydra-chat .draft-chip[data-kind=task]")?.textContent === "@Migration plan" && !document.querySelector(".mention-menu") && document.activeElement.matches(".hydra-chat textarea")',
+    condition: 'document.querySelector(".hydra-chat textarea").value === "Compare \\u2003\\u2003Migration plan " && document.querySelector(".hydra-chat .draft-chip[data-kind=task]")?.textContent === "Migration plan" && document.querySelectorAll(".hydra-chat .draft-chip[data-kind=task] .chip-icon").length === 2 && !document.querySelector(".mention-menu") && document.activeElement.matches(".hydra-chat textarea")',
     label: 'Tab picks the task and shows it as one chip',
   })
   await press({ key: 'Backspace' })
@@ -164,7 +164,7 @@ try {
   })
   await press({ key: 'Enter' })
   await check({
-    condition: 'document.querySelector(".hydra-chat textarea").value === "Compare @Migration plan " && !!document.querySelector(".hydra-chat .draft-chip[data-kind=task]") && !document.querySelector(".mention-menu")',
+    condition: 'document.querySelector(".hydra-chat textarea").value === "Compare \\u2003\\u2003Migration plan " && !!document.querySelector(".hydra-chat .draft-chip[data-kind=task]") && !document.querySelector(".mention-menu")',
     label: 'Enter picks the task too',
   })
   await click({ selector: '.hydra-chat .composer-send' })
@@ -197,7 +197,7 @@ try {
     condition: '!!document.querySelector(\'.detail[aria-label="Details for Renamed migration"]\')',
     label: 'chip opens the same task after rename',
   })
-  await click({ selector: '[aria-label="Close detail"]' })
+  await click({ selector: '.card.selected .card-open' })
   await click({ selector: `[data-card="${receiver}"]` })
   await check({
     condition: '!!document.querySelector(".task-updates") && !document.querySelector(".detail textarea")',

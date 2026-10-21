@@ -110,9 +110,9 @@ try {
     label: 'opening a card focuses Updates',
   })
   await focus({ selector: card }); await press({ key: 'r' })
-  await check({
-    condition: 'document.activeElement.matches(".task-updates") && document.querySelectorAll(".detail .task-conversation .composer").length === 1',
-    label: 'reply shortcut focuses Updates and keeps the task conversation',
+  await eventually({
+    condition: 'document.activeElement.matches(".task-updates") && !document.querySelector(".detail .composer")',
+    label: 'reply shortcut focuses Updates without a task conversation',
   })
   const sent = state().hydraMessages?.length ?? 0
   await focus({ selector: '.hydra-chat .composer textarea' }); await fill({

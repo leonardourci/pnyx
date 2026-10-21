@@ -55,6 +55,7 @@ export function hydraMessages({
         role,
         text,
         at: message.at,
+        ...(message.task ? { task: message.task } : {}),
       })
     }
   }

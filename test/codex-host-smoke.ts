@@ -131,9 +131,8 @@ const server = await startServer({
 })
 const {
   browser,
-  text,
   click,
-  check,
+  evaluate,
   eventually,
   screenshot,
   close,
@@ -174,25 +173,6 @@ try {
     ],
   })
   await click({ selector: `[data-task="${task().id}"] .card-open` })
-  await click({ selector: '[aria-label="Task menu"]' })
-  await text({ label: 'Start' })
-  await eventually({
-    condition: 'document.querySelector(".hydra-chat").textContent.includes("Create a worker for task")',
-    label: 'Codex task Start requests Hydra’s choice',
-  })
-  assert.equal(
-    threads(),
-    0,
-  )
-  assert.equal(
-    task().agent,
-    undefined,
-  )
-  await check({
-    condition: '!document.querySelector(".start-agent")',
-    label: 'Start does not choose a provider or launch a worker',
-  })
-  await screenshot({ name: 'codex-start.png' })
   await commands.task([
     'start',
     'smoke',
@@ -202,7 +182,7 @@ try {
     'Use the project’s default agent',
   ])
   await eventually({
-    condition: 'document.querySelector(".agent-chip")?.textContent === "Codex · Pnyx"',
+    condition: '!!document.querySelector(".card.selected .card-agent[aria-label=Codex]")',
     label: 'Codex attaches as a hosted agent',
   })
   await commands.task([
@@ -216,18 +196,18 @@ try {
     condition: 'document.querySelector(".task-updates")?.textContent.includes("Provider boundary explained")',
     label: 'hosted Codex task shows factual Updates',
   })
-  await screenshot({ name: 'codex-hosted.png' })
-  await click({ selector: '[aria-label="Close detail"]' })
-  await click({ selector: '[aria-label="Open task Outside Codex smoke"]' })
-  await click({ selector: '[aria-label="Task menu"]' }); await text({ label: 'Resume' })
-  await eventually({
-    condition: 'document.querySelector(".hydra-chat").textContent.includes("Resume the worker on task")',
-    label: 'an ended outside Codex session asks Hydra to resume',
-  })
   assert.equal(
-    threads(),
-    1,
+    task().agent?.host,
+    'pnyx',
   )
+  await evaluate({ code: 'document.querySelector(".card.selected .card-agent").focus(); return true;' })
+  await eventually({
+    condition: 'document.querySelector("[role=tooltip]")?.textContent === "Codex · Pnyx"',
+    label: 'hosted Codex tooltip shows its provider and host',
+  })
+  await screenshot({ name: 'codex-hosted.png' })
+  await click({ selector: `[data-task="${task().id}"] .card-state` })
+  await click({ selector: '[aria-label="Open task Outside Codex smoke"]' })
   await commands.task([
     'continue',
     'outside',
@@ -237,9 +217,14 @@ try {
     'Resume the recorded session',
   ])
   await eventually({
-    condition: 'document.querySelector(".detail .agent-chip")?.textContent === "Codex · Pnyx"',
-    label: 'Codex continuation changes the host',
+    condition: '!!document.querySelector(".card.selected .card-agent[aria-label=Codex]")',
+    label: 'continued Codex task retains its provider badge',
   })
+  const continued = loadHydra({ hydraId: 'default' }).state
+  assert.equal(
+    continued.cards[continued.keys.outside!]?.agent?.host,
+    'pnyx',
+  )
   assert.equal(
     threads(),
     1,
