@@ -517,7 +517,6 @@ export function createHost({
     return card
   }
 
-  // Interrupted turns wait for a new message from the owner or Hydra; id marks one that is resumed.
   const interrupt = ({
     writer,
     agent,
@@ -1458,7 +1457,7 @@ export function createHost({
               return writer.state.cards[HYDRA_CARD] as Card & { agent: AgentRef }
             },
           })
-          // A session that opens puts the digest before its first message; a wake into a running one carries it.
+          // Reopened sessions receive full context; a running wake only notes memory changes.
           const opened = Boolean(prepared)
           const entry = open({
             card: claimed,
@@ -2302,7 +2301,6 @@ export function createHost({
   return host
 }
 
-// Once per cut turn (its interruption records the resume id), and never a cut resume turn.
 function resumeTurn({
   hydraId,
   state,
@@ -2316,7 +2314,9 @@ function resumeTurn({
   text: string
 } | undefined {
   const events = readEvents({ hydraId })
-  const cut = events.findLast(event => event.id.endsWith(':hosted'))
+  const cut = events.findLast(event => event.type === 'board.configured'
+    && event.cardId === HYDRA_CARD && event.data.hydra?.session === sessionId({ agent })
+    && event.id.endsWith(':hosted'))
   const id = `resume:${cut?.seq}`
 
   if (!cut || cut.id.startsWith('resume:') || id in state.eventIds) {
@@ -2324,13 +2324,16 @@ function resumeTurn({
   }
 
   const after = events.findLast(event => event.seq < cut.seq && event.type === 'card.pushed' && event.actor === 'pnyx'
-    && event.data.activity === 'finished' && event.data.agent?.sessionId === agent.sessionId)?.seq ?? 0
+    && event.data.activity === 'finished' && event.data.agent?.sessionId === agent.sessionId
+    && event.data.agent.provider === agent.provider)?.seq ?? 0
   const messages = events.filter(event => event.seq > after && event.type === 'hydra.message' && event.actor !== HYDRA_ACTOR)
     .map(event => event.seq)
-  const wake = /^(wake|stall):/.exec(cut.id)
+  const wake = WAKE_TURN.exec(cut.id)?.[1]
+  const messageEnd = messages.length > 1 ? ` to ${messages.at(-1)}` : ''
   const handled = [
-    ...(messages.length ? [`messages seq ${messages[0]}${messages.length > 1 ? ` to ${messages.at(-1)}` : ''}`] : []),
-    ...(wake ? [`a ${wake[1]} check`] : []),
+    ...(messages.length ? [`messages seq ${messages[0]}${messageEnd}`] : []),
+    ...(wake ? [`a wake check through seq ${wake}`] : []),
+    ...(cut.id.startsWith('stall:') ? ['a stall check'] : []),
   ].join(' and ') || 'a turn'
 
   return {
