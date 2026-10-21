@@ -1144,6 +1144,27 @@ test(
         after > first && after < through,
         `${after} resumes after the first wake`,
       )
+
+      // A change to owner memory alone is noted on the next wake.
+      await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      await commands.owner([
+        'memory',
+        'set',
+        '--key',
+        'learnings',
+        '--text',
+        'Releases ship on Fridays.',
+      ])
+      declare({ status: 'paused' })
+      await until({ check: () => wakes().length === 4 })
+      assert.match(
+        wakes()[3]!,
+        /<\/pnyx-wake>\n\nMemory changed; load owner memory/,
+      )
+      assert.doesNotMatch(
+        wakes()[3]!,
+        /Releases ship on Fridays/,
+      )
     } finally {
       await server.close(); rmSync(
         home,

@@ -588,7 +588,6 @@ export function createHost({
   let memoryStamp: string | undefined
 
   const digest = () => {
-    // Read first: moving owner preferences out of the Hydra changes its state.
     const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
 
