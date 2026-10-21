@@ -144,7 +144,7 @@ withWriter({
           hydra:'hydra',
           action:'worker',
           task:card.id,
-          text:`The work on [@old layout title](pnyx-task:${card.id}) is ready for your decision.`,
+          text:`The work on [@old layout title](pnyx-task:${card.id}) is ready for your decision.  \n[@old layout title](pnyx-task:${card.id}) needs an answer before work continues.  \nFollow [@old layout title](pnyx-task:${card.id}) for the next update.`,
         },
       },
     })
@@ -501,6 +501,17 @@ try {
       condition: '(() => { const card = document.querySelector(".card"); return [...card.querySelectorAll(".card-link")].every(link => link.getBoundingClientRect().right <= card.getBoundingClientRect().right); })()',
       label: `link titles stay inside the card at ${width}px`,
     })
+
+    for (const theme of [
+      'light',
+      'dark',
+    ]) {
+      await b.evaluate({ code: `document.documentElement.dataset.theme = '${theme}'; return true;` })
+      await b.check({
+        condition: '(() => { const refs = [...document.querySelectorAll(".hydra-chat .markdown .task-reference")]; return refs.length === 3 && refs.every((ref, index) => index === 0 || ref.getBoundingClientRect().top - refs[index - 1].getBoundingClientRect().bottom >= 3); })()',
+        label: `consecutive inline reference borders stay apart at ${width}px in ${theme} theme`,
+      })
+    }
   }
 
   commands.task([

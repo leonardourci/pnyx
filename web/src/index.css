@@ -1096,6 +1096,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .task-reference-state { display: inline-flex; align-items: center; color: inherit; }
 .message-task > .tooltip-anchor { min-width: 0; }
 .markdown .tooltip-anchor:has(> .task-reference) { display: inline; }
+.markdown .button.task-reference { padding: 0 5px; font-size: .875em; line-height: 1.2; }
+.markdown .task-reference svg { width: .95em; height: .95em; }
+.markdown :is(p, li):has(.task-reference) { line-height: 1.8; }
 
 .button.task-reference { color: var(--column-color, var(--color-slate)); border-color: color-mix(in srgb, var(--column-color, var(--color-slate)) 45%, var(--color-line)); background: color-mix(in srgb, var(--column-color, var(--color-slate)) 12%, var(--color-surface)); }
 .disclosure-chevron { transition: transform 140ms ease; }
