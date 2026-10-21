@@ -1,4 +1,5 @@
 import { projectDigest } from '../projects/context.ts'
+import { queuePosition } from '../queue/state.ts'
 import { projectRows } from '../projects/read.ts'
 import { hydraDigest } from '../core/digest.ts'
 import { checkAttachments } from '../integrations/presence/check.ts'
@@ -16,6 +17,7 @@ import { commandText } from '../integrations/hooks/observe.ts'
 import { COMMON, commands, guard, integer, parse, summarize, type Output } from './commands.ts'
 
 const TRACKED: readonly EventType[] = [
+  'task.queue',
   'task.reminder',
   'task.reminder-due',
   'hydra.project',
@@ -291,6 +293,14 @@ export async function hydraCheck({
     projects: projectRows({ state }),
     changes: page.length ? page.map(e => row({ e })) : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
+    queues: Object.values(state.cards).filter(card => card.queue)
+      .map(card => ({
+        task: card.id,
+        ...queuePosition({
+          state,
+          card,
+        }),
+      })),
     requests: requests.length ? requests : 'none: no open permission requests',
     agents: await checkAttachments({
       state,

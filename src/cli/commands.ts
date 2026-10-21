@@ -1,4 +1,6 @@
 import { projectWorkerContext } from '../projects/context.ts'
+import { decideQueue } from '../queue/decide.ts'
+import { queuePosition, workerQueue } from '../queue/state.ts'
 import { mentionContext } from '../mentions/mentions.ts'
 import { reminderTime } from '../reminders/time.ts'
 import { waitingReminders } from '../reminders/state.ts'
@@ -910,6 +912,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       note: { type: 'string' },
       limit: { type: 'string' },
       before: { type: 'string' },
+      behind: { type: 'string' },
       full: { type: 'boolean' },
       harness: { type: 'string' },
       prompt: { type: 'string' },
@@ -1252,6 +1255,44 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     })
   }
 
+  if (action === 'queue' || action === 'unqueue' || action === 'reorder') {
+    const task = required({
+      value: positionals[1],
+      what: 'task id',
+    })
+    const behind = action === 'unqueue' ? undefined : required({
+      value: values.behind as string | undefined,
+      what: '--behind <task|session>',
+    })
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: 'task.queue',
+        card: task,
+      },
+      decide: ({ state }) => {
+        if (action === 'reorder' && !findCard({
+          state,
+          ref: task,
+        }).queue) {
+          throw new HydraError({
+            message: 'only a queued task can be reordered',
+            code: 'CONFLICT',
+          })
+        }
+
+        return decideQueue({
+          state,
+          task,
+          behind,
+          meta: m,
+        })
+      },
+    })
+  }
+
   if (action === 'list') {
     hideDone({ hydraId })
     const state = loadHydra({ hydraId }).state
@@ -1262,6 +1303,12 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         parent: c.parentId ?? '',
         status: c.status?.state ?? 'paused',
         worker: c.sessionIds?.[0] ?? '',
+        ...(c.queue ? {
+          queue: queuePosition({
+            state,
+            card: c,
+          }),
+        } : {}),
       }))
 
     return tasks.length
@@ -1322,6 +1369,24 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         parent: task.parentId ?? 'none',
         status: task.status ? `${task.status.state}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
         worker: task.sessionIds?.[0] ?? 'none',
+        ...(task.queue ? {
+          queue: queuePosition({
+            state,
+            card: task,
+          }),
+        } : {}),
+        ...(task.queueNote ? { handoff: task.queueNote } : {}),
+        next: task.sessionIds?.[0] ? workerQueue({
+          state,
+          session: task.sessionIds[0],
+        }).map(c => ({
+          id: c.id,
+          title: c.title,
+          ...queuePosition({
+            state,
+            card: c,
+          }),
+        })) : [],
         declarations: task.statusLog?.length ?? 0,
         firstmate: task.mirror ? 'mirrored' : 'none',
       },
@@ -3129,6 +3194,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
     case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
+    case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
     case 'card.pushed':
@@ -3584,7 +3650,7 @@ commands:
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
   rule; account list|set|remove              Heads dispatch rules and worker login folders
-  task sessions                              List recorded sessions, including background runs
+  task sessions|queue|unqueue|reorder        Sessions and ordered worker queues
   task attach|detach <task> [--session <id>]  Attach an interactive session or detach it
   push --key <key> --file <card.json|->      Create or update the card with this key
   card <id|key> [--full]                     Show one card with its summary, decisions and context
@@ -3683,9 +3749,13 @@ pnyx-axi task copy <task> [remove [--safe | --discard]]
 Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start and permission, as to move. Pnyx keeps it on the event,
 posts "<what Hydra did>: <reason>" in Hydra’s chat with --details under it, and returns that line as posted.
 pnyx-axi task paseo [--paseo-url <url>]
+pnyx-axi task queue <task> --behind <task|session>
+pnyx-axi task unqueue <task>
+pnyx-axi task reorder <task> --behind <task|session>
 pnyx-axi task sessions
 pnyx-axi task attach <task> --session <session-id|card-id|key|self>
 pnyx-axi task detach <task>
+Queueing behind a session appends; behind a queued task inserts immediately after it. Repeating task queue or using task reorder changes that position. Unqueue releases a task for a separate worker. Only unstarted tasks in the same project can queue. The server advances after a merged PR or a declared done task whose commit landed, never an open PR.
 Tasks accept one attached session. A second session cannot replace the recipient.
 attach moves an interactive session to the task; an occupied destination is rejected.
 detach removes the attachment without stopping the session; it stays in task sessions and History.
