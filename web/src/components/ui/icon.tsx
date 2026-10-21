@@ -5,7 +5,7 @@ import {
   IconCalendar, IconClipboardList, IconClock, IconCode, IconCpu,
   IconCube, IconDeviceDesktop,
   IconDots, IconEye, IconGauge, IconGitPullRequest, IconGitFork, IconHistory,
-  IconLink, IconList, IconMaximize, IconMessage, IconMessagePlus, IconMinus, IconPencil, IconQuote,
+  IconLink, IconList, IconMaximize, IconMessage, IconMessagePlus, IconMinus, IconQuote,
   IconPlayerPause, IconPlayerPlay,
   IconPlus, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag, IconX,
 } from '@tabler/icons-react'
@@ -53,7 +53,6 @@ const icons: Record<string, typeof IconRobot> = {
   reminder: IconClock,
   custom: IconAdjustments,
   clone: IconGitFork,
-  rename: IconPencil,
   comment: IconMessagePlus,
   comments: IconMessage,
   quote: IconQuote,

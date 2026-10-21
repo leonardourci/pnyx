@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,7 +7,7 @@ import { hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { decidePush, decideReply } from '../src/core/decide.ts'
 import { permissionEvent } from '../src/core/permissions.ts'
 import { startServer } from '../src/server/server.ts'
-import { withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 import { smokeBrowser } from './browser.ts'
 
@@ -186,6 +187,82 @@ try {
     label: 'closed cards limit link chips',
   })
 
+  const task = () => {
+    const state = loadHydra({ hydraId: 'default' }).state
+
+    return state.cards[state.keys.layout!]!
+  }
+
+  const doubleClickTitle = async () => {
+    await b.evaluate({ code: 'const title=document.querySelector(\'.card-open\'); window.titleBefore={rect:title.getBoundingClientRect().toJSON(),font:getComputedStyle(title).font,selected:!!title.closest(\'.card.selected\')}; for(const [type,detail] of [[\'click\',1],[\'click\',2],[\'dblclick\',2]]) title.dispatchEvent(new MouseEvent(type,{bubbles:true,detail})); return true;' })
+    await b.eventually({
+      condition:'document.activeElement?.getAttribute("aria-label") === "Task title" && document.activeElement.isContentEditable',
+      label:'Double-click starts editing directly in the title',
+    })
+    await b.check({
+      condition:'(() => {const title=document.activeElement,rect=title.getBoundingClientRect(),before=window.titleBefore;return getComputedStyle(title).font===before.font && ["x","y","width","height"].every(key=>Math.abs(rect[key]-before.rect[key])<.5) && !!title.closest(".card.selected")===before.selected && !title.closest("form") && ![...title.closest(".card").querySelectorAll("button")].some(button=>["Save title","Cancel"].includes(button.textContent.trim()));})()',
+      label:'Editing preserves font, wrapping, geometry and open state without confirmation buttons',
+    })
+  }
+
+  const replaceTitle = ({ title }: { title: string }) => b.evaluate({ code: `document.querySelector('[aria-label="Task title"]').textContent=${JSON.stringify(title)};return true;` })
+  const revision = task().revision
+  await doubleClickTitle()
+  await b.press({key:'Enter'})
+  await b.check({
+    condition:'!document.querySelector(".card.selected") && !document.querySelector(".card-open[role=textbox]")',
+    label:'Double-click and unchanged Enter leave the closed card closed',
+  })
+  assert.equal(
+    task().revision,
+    revision,
+  )
+  await doubleClickTitle()
+  await replaceTitle({title:''})
+  await b.press({key:'Tab'})
+  await b.check({
+    condition:'document.querySelector(".card-open").textContent === "Choose the conversation layout"',
+    label:'Empty blur restores the last saved title',
+  })
+  assert.equal(
+    task().revision,
+    revision,
+  )
+  await doubleClickTitle()
+  await replaceTitle({title:'Discard this draft'})
+  await b.press({key:'Escape'})
+  await b.check({
+    condition:'document.querySelector(".card-open").textContent === "Choose the conversation layout" && !document.querySelector(".card.selected")',
+    label:'Escape restores the saved title without toggling the card',
+  })
+  assert.equal(
+    task().revision,
+    revision,
+  )
+  await doubleClickTitle()
+  await replaceTitle({title:'Title saved on blur'})
+  await b.press({key:'Tab'})
+  await b.eventually({
+    condition:'document.querySelector(".card-open").textContent === "Title saved on blur"',
+    label:'Blur saves a changed title in place',
+  })
+  assert.equal(
+    task().title,
+    'Title saved on blur',
+  )
+  await b.focus({selector:'.card-open'})
+  await b.press({key:'F2'})
+  await replaceTitle({title:'Choose the conversation layout'})
+  await b.press({key:'Enter'})
+  await b.eventually({
+    condition:'document.querySelector(".card-open").textContent === "Choose the conversation layout"',
+    label:'F2 starts editing and Enter saves without opening the card',
+  })
+  assert.equal(
+    task().title,
+    'Choose the conversation layout',
+  )
+
   const checkHoverPill = async ({ state }: { state: string }) => {
     await b.evaluate({ code: 'const card = document.querySelector(".card"); card.closest(".column-cards").scrollTop = 0; card.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })); return true;' })
     await b.check({
@@ -211,8 +288,8 @@ try {
       ],
     })
     await b.check({
-      condition:'[...document.querySelector(".card-menu").querySelectorAll("button")].map(button=>button.getAttribute("aria-label")).join(",") === "Remind,Edit,Hide"',
-      label:`${state} pill has exactly the three supported icon actions`,
+      condition:'[...document.querySelector(".card-menu").querySelectorAll("button")].map(button=>button.getAttribute("aria-label")).join(",") === "Remind,Hide"',
+      label:`${state} pill has exactly the two supported icon actions`,
     })
     const actions=await b.browser({
       args:[
@@ -282,7 +359,7 @@ try {
     await b.focus({selector:'.card-menu [aria-label=Remind]'})
     await b.press({key:'Tab'})
     await b.check({
-      condition:'document.activeElement?.getAttribute("aria-label") === "Edit"',
+      condition:'document.activeElement?.getAttribute("aria-label") === "Hide"',
       label:`${state} action pill supports keyboard navigation`,
     })
     await b.screenshot({ name: `card-redesign-${state}-hover.png` })

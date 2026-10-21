@@ -1180,3 +1180,5 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .decision > summary > .disclosure-chevron { top: 8px; }
 .decision-update .decision > summary > .disclosure-chevron { top: 2px; }
 @media (prefers-reduced-motion: reduce) { .card-metadata-toggle svg { transition: none; } }
+
+.card-open[contenteditable="plaintext-only"] { cursor: text; user-select: text; outline: none; box-shadow: inset 0 -1px var(--color-line); border-radius: 0; }

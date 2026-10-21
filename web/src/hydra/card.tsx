@@ -5,9 +5,9 @@ import type { Card as CardData, SavedLabelColor, ViewPreferences } from '../../.
 import { Label } from '../components/ui/label.tsx'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Markdown } from '../components/ui/markdown.tsx'
-import { InlineTitle } from '../components/ui/inline-title.tsx'
+import { EditableTitle } from '../components/ui/editable-title.tsx'
 import { useCardHeight } from './card-height.ts'
-import { Button, Input } from '../components/ui/controls.tsx'
+import { Button } from '../components/ui/controls.tsx'
 import { taskUpdates } from '../../../src/thread/task.ts'
 import type { Command } from './connection.ts'
 import { cardState, projectTitle, harnessName } from './view.ts'
@@ -92,10 +92,6 @@ export function HydraCard({
       saved ?? defaultHeight,
     ),
   )
-  const [
-    renaming,
-    setRenaming,
-  ] = useState(false)
   const [
     reminding,
     setReminding,
@@ -190,7 +186,7 @@ export function HydraCard({
       }}
       draggable={connected && !selected && !reminding}
       onDragStart={e => {
-        if (e.target instanceof Element && e.target.closest('.resize')) {
+        if (e.target instanceof Element && e.target.closest('.resize, [contenteditable="plaintext-only"]')) {
           e.preventDefault()
 
           return
@@ -204,20 +200,6 @@ export function HydraCard({
     >
       <HoverActions anchor={element}>
         <Tooltip content="Remind"><Button aria-label="Remind" disabled={!connected} onClick={() => setReminding(true)}><Icon name="reminder" size={15} /></Button></Tooltip>
-        <Tooltip content="Edit">
-          <Button
-            aria-label="Edit"
-            disabled={!connected}
-            onClick={() => {
-              setRenaming(true)
-
-              if (!selected) {
-                open({ id: card.id })
-              }
-            }}
-          ><Icon name="rename" size={15} />
-          </Button>
-        </Tooltip>
         <Tooltip content="Hide">
           <Button
             aria-label="Hide"
@@ -271,16 +253,30 @@ export function HydraCard({
 
         </div>
         <div className="card-title-row">
-          <Button
+          <EditableTitle
             className="card-open"
-            aria-label={`Open task ${card.title}`}
+            value={card.title}
+            label={`Open task ${card.title}`}
+            editingLabel="Task title"
             aria-expanded={selected}
-            onClick={() => open({ id: card.id })}
+            disabled={!connected}
+            activate={() => open({ id: card.id })}
+            notify={notify}
+            save={({ title }) => command({
+              name: 'task',
+              args: [
+                'rename',
+                card.id,
+                '--title',
+                title,
+                '--event-id',
+                crypto.randomUUID(),
+              ],
+            })}
             data-card={card.id}
             data-key-scope="hydra"
             tabIndex={tabIndex}
-          >{card.title}
-          </Button>
+          />
           {selected && hasMetadata && (
             <Tooltip content={metadataLabel}>
               <Button
@@ -294,54 +290,6 @@ export function HydraCard({
             </Tooltip>
           )}
         </div>
-        {renaming && selected && (
-          <>
-            <InlineTitle
-              value={card.title}
-              label="Task title"
-              startEditing
-              finished={() => setRenaming(false)}
-              save={async ({ title }) => {
-                await command({
-                  name: 'task',
-                  args: [
-                    'rename',
-                    card.id,
-                    '--title',
-                    title,
-                    '--event-id',
-                    crypto.randomUUID(),
-                  ],
-                })
-                setRenaming(false)
-              }}
-            />
-            <Input
-              aria-label="Task project label"
-              defaultValue={card.project ?? ''}
-              placeholder="Project label"
-              onBlur={async event => {
-                if (event.target.value !== (card.project ?? '')) {
-                  try {
-                    await command({
-                      name: 'task',
-                      args: [
-                        'rename',
-                        card.id,
-                        '--project',
-                        event.target.value,
-                        '--event-id',
-                        crypto.randomUUID(),
-                      ],
-                    })
-                  } catch (error) {
-                    notify({ text: (error as Error).message })
-                  }
-                }
-              }}
-            />
-          </>
-        )}
         {!selected && labels}
         {selected && hasMetadata && (
           <div id={metadataId} className="card-metadata" hidden={!metadataOpen}>

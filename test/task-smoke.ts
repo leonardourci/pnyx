@@ -324,15 +324,15 @@ try {
     state().config?.columns.length,
     5,
   )
-  await click({ selector: `[data-task="${state().keys.long}"] [aria-label="Edit"]` })
-  await fill({
-    label: 'Task title',
-    value: 'Review the longer migration plan',
+  await evaluate({ code: `document.querySelector('[data-task="${state().keys.long}"] .card-open').dispatchEvent(new MouseEvent('dblclick',{bubbles:true,detail:2}));return true;` })
+  await eventually({
+    condition:'!!document.querySelector(".card-open[role=textbox]")',
+    label:'Double-click starts title editing',
   })
-  await text({ label: 'Save title' })
+  await evaluate({ code: 'const title=document.querySelector(\'[aria-label="Task title"]\');title.textContent=\'Review the longer migration plan\';title.blur();return true;' })
   await eventually({
     condition: `document.querySelector('[data-task="${state().keys.long}"] .card-open')?.textContent.trim() === 'Review the longer migration plan'`,
-    label: 'Edit renames the task inline',
+    label: 'Title blur renames the task inline',
   })
   await click({ selector: `[data-task="${state().keys.long}"] [aria-label="Hide"]` })
   await eventually({
