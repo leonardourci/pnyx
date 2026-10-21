@@ -51,6 +51,52 @@ export function configPath({
     )
 }
 
+// Resolves the same from src/ and dist/, which sit at the same depth.
+const TEMPLATES = join(
+  import.meta.dirname,
+  '..',
+  '..',
+  'setup',
+  'config',
+)
+
+function templatePath({ accounts = false }: { accounts?: boolean } = {}): string {
+  return join(
+    TEMPLATES,
+    accounts ? 'hydra-accounts.example.json' : 'hydra-heads-dispatch.example.json',
+  )
+}
+
+// Unlike owner config, a missing shipped template is a broken install, so this throws instead of reading as empty.
+export function readTemplate({ accounts = false }: { accounts?: boolean } = {}): unknown {
+  return JSON.parse(readFileSync(
+    templatePath({ accounts }),
+    'utf8',
+  ))
+}
+
+export function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
+  const template = parseDispatch({ value: readTemplate() })
+
+  return {
+    rules: template.rules ?? {},
+    default: template.default ?? [],
+  }
+}
+
+export function onTemplate({
+  hydraId,
+  state,
+}: {
+  hydraId: string
+  state: HydraState
+}): boolean {
+  return !existsSync(configPath({
+    hydraId,
+    shared: true,
+  })) && !existsSync(configPath({ hydraId })) && !Object.keys(state.config?.agents ?? {}).length
+}
+
 export function invalid({ message }: { message: string }): never {
   throw new HydraError({
     message,
@@ -410,8 +456,7 @@ export function effectiveDispatch({
   const local = existsSync(path)
     ? parseDispatch({ value: readConfig({ path }) }) : legacyDispatch({ state })
   const dispatch: HeadsDispatch = {
-    rules: {},
-    default: [{ harness: 'claude' }],
+    ...templateRules(),
     workers: {},
     projects: {},
   }

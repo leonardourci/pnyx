@@ -49,6 +49,7 @@ export interface DispatchChoice {
   rule: string
   candidate: Candidate
   override?: Override
+  ownerOverride?: true
   account: string
   provider: Harness
   folder: string
@@ -157,6 +158,103 @@ export const ruleCandidates = ({
       rule,
     ) ? dispatch.rules[rule]!.candidates : undefined
 
+export function startCandidates({
+  dispatch,
+  rule,
+  harness,
+  override,
+  offers,
+}: {
+  dispatch: HeadsDispatch
+  rule?: string
+  harness?: string
+  override?: Override
+  offers?: Partial<Record<Harness, string[]>>
+}): Candidate[] | undefined {
+  const list = ruleCandidates({
+    dispatch,
+    rule,
+  })
+
+  if (!harness && !override?.model) {
+    return list
+  }
+
+  const harnesses: Harness[] = [
+    'claude',
+    'codex',
+  ]
+
+  if (harness && !harnesses.includes(harness as Harness)) {
+    throw new HydraError({
+      message: `unknown harness: ${harness}`,
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  return harnesses.filter(provider => {
+    if (harness) {
+      return provider === harness
+    }
+
+    return Boolean(override?.model && offers?.[provider] && offered({
+      harness: provider,
+      model: override.model,
+      available: offers[provider]!,
+    }))
+  }).map(provider => ({
+    ...(list?.find(c => c.harness === provider)
+      ?? dispatch.default.find(c => c.harness === provider)),
+    harness: provider,
+  }))
+}
+
+export function overrideAccounts({
+  config,
+  harness,
+  project,
+}: {
+  config: EffectiveDispatch
+  harness: Harness
+  project?: string
+}): {
+  accounts: Record<string, Account>
+  order: string[]
+} {
+  const configured = project ? config.dispatch.projects[project]?.[harness] : undefined
+  const order = configured?.length ? configured : config.dispatch.workers[harness]
+
+  if (order?.length) {
+    return {
+      accounts: config.accounts,
+      order,
+    }
+  }
+
+  const registered = Object.keys(config.accounts)
+    .filter(key => config.accounts[key]?.provider === harness)
+  const key = `${harness}:default`
+  const folder = defaultLogin({ provider: harness })
+
+  if (registered.length || !existsSync(folder)) {
+    return {
+      accounts: config.accounts,
+      order: registered,
+    }
+  }
+
+  return {
+    accounts: {
+      ...config.accounts,
+      [key]: {
+        provider: harness,
+        folder,
+      },
+    },
+    order: [key],
+  }
+}
+
 function nativeModel({
   candidate,
   rows,
@@ -233,9 +331,13 @@ export function chooseCandidate({
     dispatch,
     accounts,
   } = config
-  const candidates = ruleCandidates({
+  const ownerOverride = Boolean(harness || (override && Object.keys(override).length))
+  const candidates = startCandidates({
     dispatch,
     rule,
+    harness,
+    override,
+    offers,
   })
 
   if (!candidates) {
@@ -253,14 +355,21 @@ export function chooseCandidate({
     })
   }
 
-  if (!dispatch.main || !Object.hasOwn(
+  if (!ownerOverride && (!dispatch.main || !Object.hasOwn(
     accounts,
     dispatch.main,
-  )) {
+  ))) {
     throw new HydraError({
       message: 'heads dispatch needs a registered main account',
       code: 'NO_ACCOUNTS',
       help: ['Run `pnyx-axi rule init --shared`, then edit the shared accounts and account order'],
+    })
+  }
+
+  if (!candidates.length && override?.model) {
+    throw new HydraError({
+      message: `model ${override.model}: not offered by the harness catalogs`,
+      code: 'VALIDATION_ERROR',
     })
   }
 
@@ -294,7 +403,14 @@ export function chooseCandidate({
     }
 
     const projectOrder = projectOrders?.[candidate.harness]
-    const order = projectOrder?.length ? projectOrder : dispatch.workers[candidate.harness] ?? []
+    const explicit = ownerOverride ? overrideAccounts({
+      config,
+      harness: candidate.harness,
+      project,
+    }) : undefined
+    const listedOrder = projectOrder?.length ? projectOrder : dispatch.workers[candidate.harness]
+    const order = explicit?.order ?? listedOrder ?? []
+    const logins = explicit?.accounts ?? accounts
 
     if (!order.length) {
       evidence.add(`${candidate.harness}: no worker accounts listed`)
@@ -302,9 +418,9 @@ export function chooseCandidate({
 
     for (const key of order) {
       const account = Object.hasOwn(
-        accounts,
+        logins,
         key,
-      ) ? accounts[key] : undefined
+      ) ? logins[key] : undefined
 
       if (!account || account.provider !== candidate.harness) {
         throw new HydraError({
@@ -318,6 +434,11 @@ export function chooseCandidate({
         key,
         reading,
       )
+
+      if (reading.auth === 'signed-out' && ownerOverride) {
+        evidence.add(`${key}: signed out`)
+        continue
+      }
 
       if (reading.auth === 'signed-out') {
         throw new HydraError({
@@ -346,13 +467,14 @@ export function chooseCandidate({
         ? Math.min(...scores) : undefined
       evidence.add(`${key}${model ? `/${model}` : ''}: ${percents.length ? `${Math.min(...percents)}%` : 'unknown'}${priority === undefined ? '' : `, spendPriority ${priority}`}`)
 
-      if (rows.some(scope => exhausted({ effective: scope }))) {
+      if (!ownerOverride && rows.some(scope => exhausted({ effective: scope }))) {
         continue
       }
 
       const choice = {
         rule,
         candidate,
+        ...(ownerOverride ? { ownerOverride: true as const } : {}),
         ...(override && Object.keys(override).length ? { override } : {}),
         account: key,
         provider: account.provider,
@@ -360,7 +482,7 @@ export function chooseCandidate({
       }
       choices.push({
         choice,
-        priority,
+        priority: ownerOverride && candidates.length === 1 ? undefined : priority,
       })
       break
     }
@@ -402,7 +524,7 @@ export function chooseCandidate({
   }
 
   const chosen = (best ?? tied[0]!).choice
-  const how = best ? 'selected by highest known spendPriority; unknown quota ranks below known' : 'only usable candidate; quota unknown'
+  const how = ownerOverride ? 'owner override; quota does not veto an explicit choice' : best ? 'selected by highest known spendPriority; unknown quota ranks below known' : 'only usable candidate; quota unknown'
   const changed = described({ override: chosen.override })
 
   return {
@@ -513,11 +635,18 @@ export function validateChoice({
   project?: string
 }): DispatchChoice {
   const sent = value as DispatchChoice | null
+  const logins = sent?.ownerOverride === true && sent.candidate?.harness
+    ? overrideAccounts({
+      config,
+      harness: sent.candidate.harness,
+      project,
+    }) : undefined
+  const accounts = logins?.accounts ?? config.accounts
   const account = sent && Object.hasOwn(
-    config.accounts,
+    accounts,
     sent.account,
   )
-    ? config.accounts[sent.account] : undefined
+    ? accounts[sent.account] : undefined
   // A default login's folder is the server's own, whatever the caller's environment named.
   const choice = sent && account && config.fallback
     ? {
@@ -535,11 +664,11 @@ export function validateChoice({
 
   if (!choice || !account || account.provider !== choice.provider
     || account.provider !== choice.candidate?.harness || loginFolder({ account }) !== choice.folder
-    || typeof choice.reason !== 'string' || !order?.includes(choice.account)
-    || !rule?.some(candidate => isDeepStrictEqual(
+    || typeof choice.reason !== 'string' || !(logins?.order ?? order)?.includes(choice.account)
+    || (choice.ownerOverride !== true && !rule?.some(candidate => isDeepStrictEqual(
       candidate,
       choice.candidate,
-    ))) {
+    )))) {
     throw new HydraError({
       message: 'heads dispatch changed or the choice is invalid; retry task start',
       code: 'VALIDATION_ERROR',
