@@ -1,4 +1,5 @@
 import type { Card, HydraColumn, Link, PermissionRequest, RepliedEvent } from '../../../src/core/model.ts'
+import { mentionId } from '../../../src/mentions/mentions.ts'
 
 export interface TaskEvent {
   id: string
@@ -187,7 +188,7 @@ const noted = ({ data }: { data: Record<string, unknown> }): Row | undefined => 
   if (data.source === 'hydra') {
     return {
       kind: 'hydra',
-      state: 'Hydra',
+      state: 'Hydra replied',
       note: text,
       ...at,
     }
@@ -393,6 +394,19 @@ export async function loadRelevant({
   }
 }
 
+// The card already names its task, so its own chip would only repeat the title.
+const withoutOwnChip = ({
+  text,
+  cardId,
+}: {
+  text: string
+  cardId: string
+}) => {
+  const lead = /^\[@(?:\\.|[^\]\\\r\n])*\]\((pnyx-task:[\w%~.-]+)\)\s*/.exec(text)
+
+  return lead && mentionId({ href: lead[1]! }) === cardId ? text.slice(lead[0].length) : text
+}
+
 const mergeDecisions = ({
   prior,
   next,
@@ -439,6 +453,13 @@ export function taskTimeline({
       at: event.at,
       seq: event.seq,
       ...row,
+    }
+
+    if (row.kind === 'ask') {
+      update.note = withoutOwnChip({
+        text: update.note,
+        cardId: card.id,
+      })
     }
 
     if (event.type === 'card.noted' && row.kind === 'ask' && event.data?.source === 'firstmate') {

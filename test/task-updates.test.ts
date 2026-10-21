@@ -656,7 +656,7 @@ test(
       }),
       {
         kind: 'hydra',
-        state: 'Hydra',
+        state: 'Hydra replied',
         note: 'Quick Add gets its own feature folder.',
       },
     )
@@ -823,6 +823,15 @@ test(
             text: "Captain's intent:\nInclude the whole restructure.\nAdded: fold in the PR 72 comments.",
           },
         }),
+        event({
+          seq: 11,
+          type: 'hydra.message',
+          actor: 'web',
+          data: {
+            action: 'send',
+            text: '[@Restructure](pnyx-task:c1) Is quick add its own page?',
+          },
+        }),
         ...[
           {
             type: 'task.declared',
@@ -887,6 +896,11 @@ test(
           'ask',
           'You asked',
           'Added: fold in the PR 72 comments.',
+        ],
+        [
+          'ask',
+          'You asked',
+          'Is quick add its own page?',
         ],
         [
           'done',

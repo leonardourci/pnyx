@@ -59,13 +59,6 @@ const KINDS: Record<UpdateKind, {
   },
 }
 
-// Words that need no heading: the icon says who wrote them.
-const SPOKEN = new Set<UpdateKind>([
-  'ask',
-  'hydra',
-  'told',
-])
-
 const LINK_ICONS: Record<string, string> = {
   github_pr: 'github_pr',
   linear: 'linear',
@@ -154,28 +147,16 @@ function UpdateTitle({ update }: { update: TaskUpdate }) {
 }
 
 function UpdateText({ update }: { update: TaskUpdate }) {
-  if (!update.note) {
-    return null
-  }
-
-  return update.kind === 'ask'
-    ? <blockquote className="update-quote"><CollapsibleText text={update.note} /></blockquote>
-    : <CollapsibleText text={update.note} />
+  return update.note ? <CollapsibleText text={update.note} /> : null
 }
 
-function UpdateEntry({
-  update,
-  timed = true,
-}: {
-  update: TaskUpdate
-  timed?: boolean
-}) {
+function UpdateEntry({ update }: { update: TaskUpdate }) {
   return (
     <UpdateLine
       kind={update.kind}
       icon={update.kind === 'link' ? linkIcon({ update }) : undefined}
-      at={timed ? update.at : undefined}
-      title={SPOKEN.has(update.kind) ? undefined : <UpdateTitle update={update} />}
+      at={update.at}
+      title={<UpdateTitle update={update} />}
     ><UpdateText update={update} />
     </UpdateLine>
   )
@@ -236,14 +217,20 @@ function Folded({ group }: { group: UpdateGroup }) {
 }
 
 function Moment({ updates }: { updates: TaskUpdate[] }) {
-  const first = updates[0]!
+  const [
+    first,
+    ...rest
+  ] = updates
 
   return (
-    <UpdateLine
-      kind={first.kind}
-      at={first.at}
-      title={<span className="update-parts">{updates.map(update => <span key={update.id}><UpdateTitle update={update} /></span>)}</span>}
-    >{updates.map(update => <UpdateText key={update.id} update={update} />)}
+    <UpdateLine kind={first!.kind} at={first!.at} title={<UpdateTitle update={first!} />}>
+      <UpdateText update={first!} />
+      {rest.map(update => (
+        <div key={update.id} className="update-part">
+          <UpdateTitle update={update} />
+          {update.note && <span className="muted"> · {update.note}</span>}
+        </div>
+      ))}
     </UpdateLine>
   )
 }
@@ -257,9 +244,7 @@ export function UpdateGroupRow({ group }: { group: UpdateGroup }) {
       {group.type === 'workers' || group.type === 'changes' ? <Folded group={group} />
         : decisions ? <Decisions updates={group.updates} />
           : group.type === 'moment' ? <Moment updates={group.updates} />
-            : group.updates.map(update => (
-              <UpdateEntry key={update.id} update={update} timed={update === first} />
-            ))}
+            : group.updates.map(update => <UpdateEntry key={update.id} update={update} />)}
     </li>
   )
 }
