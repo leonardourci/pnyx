@@ -55,7 +55,10 @@ export function TaskQuestion({
       {!permissions.length && !structured && text && (
         <div className="pending-decision">
           <p>{text}</p>
-          <Button variant="primary" onClick={() => answer({ card })}>Answer</Button>
+          <div className="pending-decision-actions">
+            <span className="muted small">Awaiting your answer</span>
+            <Button variant="surface" onClick={() => answer({ card })}>Answer</Button>
+          </div>
         </div>
       )}
     </div>

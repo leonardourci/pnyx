@@ -1114,7 +1114,17 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card-metadata { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; }
 .card-metadata[hidden] { display: none; }
 .pending-decision { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.pending-question .task-requests { margin-top: 6px; }
+.pending-decision-actions > .button { padding: 5px 9px; font-size: var(--text-meta); }
+.pending-decision-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.pending-question-panel { padding: 12px; border: 1px solid var(--color-gold-line); border-radius: 8px; background: var(--color-gold-wash); }
+.pending-question-panel > .update-heading { color: var(--color-gold); margin-bottom: 8px; }
+.pending-question .task-requests { margin-top: 0; }
+.task-updates > ol > li.pending-question { padding-left: 0; }
+.task-updates > ol > li.pending-question::before, .task-updates > ol > li.decision-update::before { display: none; }
+.task-updates > ol > li.decision-update { padding-left: 12px; margin: 7px 0; border-left: 2px solid var(--color-gold-line); }
+.decision-update .update-heading > strong { color: var(--color-gold); }
+.decision-update .decision { border: 0; padding-left: 0; }
+.decision-update .decision > summary { padding: 0 24px 0 0; }
 .pending-question .ask { margin: 0; padding: 0; border: 0; background: transparent; }
 .pending-question .ask-title { display: none; }
 @media (prefers-reduced-motion: reduce) { .disclosure-chevron { transition: none; } }

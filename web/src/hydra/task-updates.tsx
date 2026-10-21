@@ -192,13 +192,15 @@ export function TaskUpdates({
   const updates = oldestFirst ? history.toReversed() : history
   const pending = questionPending ? (
     <li key="pending-question" className="pending-question">
-      <div className="update-heading"><strong>Decision needed</strong></div>
-      <TaskQuestion
-        card={card}
-        command={command}
-        notify={notify}
-        answer={answer}
-      />
+      <div className="pending-question-panel">
+        <div className="update-heading"><strong>Decision needed</strong></div>
+        <TaskQuestion
+          card={card}
+          command={command}
+          notify={notify}
+          answer={answer}
+        />
+      </div>
     </li>
   ) : null
 
@@ -222,7 +224,7 @@ export function TaskUpdates({
         <ol>
           {!oldestFirst && pending}
           {updates.map(update => (
-            <li key={update.id}>
+            <li key={update.id} className={update.decision ? 'decision-update' : undefined}>
               <div className="update-heading">
                 <strong>{stateLabel({ state: update.state })}</strong>
                 <Tooltip content={new Date(update.at).toLocaleString()}>

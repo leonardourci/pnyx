@@ -408,6 +408,10 @@ try {
     label:'oldest first pins the pending question after updates',
   })
   await b.click({selector:'.updates-order'})
+  await b.check({
+    condition:'(() => { const panel=document.querySelector(".pending-question-panel"),decision=document.querySelector(".decision-update"),css=getComputedStyle(panel); return css.borderTopWidth === "1px" && css.backgroundColor !== "rgba(0, 0, 0, 0)" && panel.textContent.includes("Awaiting your answer") && panel.querySelector("button.surface") && getComputedStyle(decision).borderLeftWidth === "2px" && getComputedStyle(decision).backgroundColor === "rgba(0, 0, 0, 0)"; })()',
+    label:'Pending questions use the quiet inset and answered decisions keep a plain left rail',
+  })
   await b.click({selector:'.card-metadata-toggle'})
   await b.check({
     condition:'!document.querySelector(".card-metadata").hidden && !!document.querySelector(".card-metadata .card-links") && !!document.querySelector(".card.selected .card-title-row .card-metadata-toggle[aria-expanded=true]")',
