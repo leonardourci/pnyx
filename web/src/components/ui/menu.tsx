@@ -4,11 +4,9 @@ import { Button } from './controls.tsx'
 
 export function Menu({
   label,
-  trigger: triggerContent,
   children,
 }: {
   label: string
-  trigger?: ReactNode
   children: ReactNode
 }) {
   const [
@@ -117,7 +115,7 @@ export function Menu({
         aria-label={label}
         aria-expanded={open}
         onClick={() => setOpen(value => !value)}
-      >{triggerContent ?? <Icon name="more" />}
+      ><Icon name="more" />
       </Button>
       {open && (
         <div

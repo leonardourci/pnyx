@@ -146,9 +146,21 @@ export function useCardHeight({
           attributeFilter: ['open'],
         },
       )
-      void document.fonts.ready.then(schedule)
+
+      let disposed = false
+
+      const afterFonts = async () => {
+        await document.fonts.ready
+
+        if (!disposed) {
+          schedule()
+        }
+      }
+
+      void afterFonts()
 
       return () => {
+        disposed = true
         cancelAnimationFrame(frame); resize.disconnect(); mutations.disconnect()
       }
     },
