@@ -93,8 +93,13 @@ try {
     label: 'Hydra and columns fill the Hydra height',
   })
   await eventually({
-    condition: '(() => { const card=document.querySelector(".card"),grip=card.querySelector(":scope > .resize-y"),title=card.querySelector(".card-open"),rect=card.getBoundingClientRect();return rect.height >= Number(grip.getAttribute("aria-valuemin")) && rect.height <= Number(grip.getAttribute("aria-valuemax")) && title.getBoundingClientRect().bottom <= rect.bottom && !!card.querySelector(".card-state") && getComputedStyle(grip).opacity === "1" && !card.querySelector(".setting-chip,.tags,.links");})()',
-    label: 'closed cards contain their title and state within content bounds with a visible resize grip',
+    condition: '(() => { const card=document.querySelector(".card"),grip=card.querySelector(":scope > .resize-y"),title=card.querySelector(".card-open"),rect=card.getBoundingClientRect();return rect.height >= Number(grip.getAttribute("aria-valuemin")) && rect.height <= Number(grip.getAttribute("aria-valuemax")) && title.getBoundingClientRect().bottom <= rect.bottom && !!card.querySelector(".card-state") && !card.querySelector(".setting-chip,.tags,.links");})()',
+    label: 'closed cards contain their title and state within content bounds',
+  })
+  await focus({selector:'.card > .resize-y'})
+  await check({
+    condition:'getComputedStyle(document.querySelector(".card > .resize-y")).opacity === "1"',
+    label:'keyboard focus reveals the closed card resize grip',
   })
   await check({
     condition: '!!document.querySelector(".last-message")',
