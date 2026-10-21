@@ -421,6 +421,63 @@ test(
 )
 
 test(
+  'the mirror keeps its last status and metadata once Firstmate removes them, and stops after an identity switch',
+  () => {
+    const {
+      home,
+      env,
+    } = copyFixture()
+    const sync = () => syncHome({
+      hydraId: 'default',
+      home,
+    })
+    const status = join(
+      home,
+      'state/api-v2.status',
+    )
+    sync()
+    appendFileSync(
+      status,
+      'paused [at=1792000000]: Waiting for release\n',
+    )
+    sync()
+    rmSync(status)
+    rmSync(join(
+      home,
+      'state/api-v2.meta',
+    ))
+    sync()
+    const mirror = () => cardOf({
+      home,
+      task: 'api-v2',
+    }).mirror!
+    assert.match(
+      mirror().status,
+      /Waiting for release/,
+    )
+    assert.ok(mirror().meta.worktree)
+
+    cli({ env }).run({
+      args: [
+        'hydra',
+        'set',
+        '--identity',
+        'next-agent',
+      ],
+    })
+    appendFileSync(
+      status,
+      'working: changed after switch\n',
+    )
+    sync()
+    assert.match(
+      mirror().status,
+      /Waiting for release/,
+    )
+  },
+)
+
+test(
   'a session Hydra keeps its Firstmate home, and another home is named when ignored',
   () => {
     const {

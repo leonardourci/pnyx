@@ -1050,6 +1050,10 @@ test(
         activity,
         requests,
       ] = row.split(' ') as ['claude' | 'codex', string, string, string, string]
+      assert.ok(
+        activity === 'none' || requests === 'keeps' || requests === 'clears' || requests in REQUESTS,
+        `unknown requests token in: ${row}`,
+      )
       const observations = observe({
         envelope: envelope({
           harness,
