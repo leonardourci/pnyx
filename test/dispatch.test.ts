@@ -6,17 +6,15 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { emptyHydra } from '../src/core/reducer.ts'
-import { configPath, effectiveDispatch, onTemplate, parseAccounts, parseDispatch, readConfig, templatePath, writeConfig, type EffectiveDispatch } from '../src/dispatch/config.ts'
+import { configPath, effectiveDispatch, onTemplate, parseAccounts, parseDispatch, readTemplate, writeConfig, type EffectiveDispatch } from '../src/dispatch/config.ts'
 import { accountEnvironment, chooseCandidate, chosenSettings, hostedOverride, overrideOf, readQuota, validateChoice, type QuotaReading } from '../src/dispatch/select.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { commands } from '../src/cli/commands.ts'
 import { hydraDigest, TEMPLATE_NUDGE } from '../src/core/digest.ts'
 
-const STARTER_DISPATCH = parseDispatch({ value: readConfig({ path: templatePath({}) }) })
-const STARTER_ACCOUNTS = parseAccounts({
-  value: readConfig({ path: templatePath({ accounts: true }) }),
-})
+const TEMPLATE_DISPATCH = parseDispatch({ value: readTemplate() })
+const TEMPLATE_ACCOUNTS = parseAccounts({ value: readTemplate({ accounts: true }) })
 
 // Keeps the default-login fallback away from the real harness logins.
 const noLogin = join(
@@ -161,7 +159,7 @@ test(
         hydraId: 'lab',
         shared: true,
       }),
-      value: STARTER_DISPATCH,
+      value: TEMPLATE_DISPATCH,
     })
     writeConfig({
       path: configPath({ hydraId: 'lab' }),
@@ -179,7 +177,7 @@ test(
     })
     assert.deepEqual(
       effective.dispatch,
-      STARTER_DISPATCH,
+      TEMPLATE_DISPATCH,
     )
     writeConfig({
       path: configPath({ hydraId: 'lab' }),
@@ -203,7 +201,7 @@ test(
     )
     assert.deepEqual(
       effective.dispatch.default,
-      STARTER_DISPATCH.default,
+      TEMPLATE_DISPATCH.default,
     )
     assert.deepEqual(
       effective.dispatch.workers,
@@ -1007,7 +1005,7 @@ test(
 )
 
 test(
-  'CLI initializes starter files, edits rules and accounts, and rejects secret fields',
+  'CLI copies the templates, edits rules and accounts, and rejects secret fields',
   () => {
     const { root } = lab()
     dispatchCommands.rule([
@@ -1025,7 +1023,7 @@ test(
         global,
         'utf8',
       )),
-      STARTER_DISPATCH,
+      TEMPLATE_DISPATCH,
     )
     assert.deepEqual(
       JSON.parse(readFileSync(
@@ -1036,7 +1034,7 @@ test(
         }),
         'utf8',
       )),
-      STARTER_ACCOUNTS,
+      TEMPLATE_ACCOUNTS,
     )
     dispatchCommands.rule([
       'set',
@@ -1275,7 +1273,7 @@ test(
 )
 
 test(
-  'with no dispatch file the template rules apply and the digest nudges rule init',
+  'with no dispatch file the template rules apply and rule list and the digest nudge rule init',
   () => {
     lab()
     const { state } = loadHydra({ hydraId: 'lab' })
@@ -1283,17 +1281,28 @@ test(
       hydraId: 'lab',
       state,
       owner: {},
-      dispatchTemplate: onTemplate({ hydraId: 'lab' }),
-    }).includes(TEMPLATE_NUDGE)
-
-    assert.deepEqual(
-      effectiveDispatch({
+      dispatchTemplate: onTemplate({
         hydraId: 'lab',
         state,
-      }).dispatch.rules,
-      STARTER_DISPATCH.rules,
+      }),
+    }).includes(TEMPLATE_NUDGE)
+    const listed = () => (dispatchCommands.rule([
+      'list',
+      '--hydra',
+      'lab',
+    ]) as { help: string[] }).help.includes(TEMPLATE_NUDGE)
+
+    const { rules } = effectiveDispatch({
+      hydraId: 'lab',
+      state,
+    }).dispatch
+    assert.deepEqual(
+      rules,
+      TEMPLATE_DISPATCH.rules,
     )
+    assert.ok(rules.build)
     assert.ok(nudged())
+    assert.ok(listed())
     dispatchCommands.rule([
       'init',
       '--shared',
@@ -1303,6 +1312,80 @@ test(
     assert.equal(
       nudged(),
       false,
+    )
+    assert.equal(
+      listed(),
+      false,
+    )
+  },
+)
+
+test(
+  'a Hydra dispatch file alone ends the template nudge',
+  () => {
+    lab()
+    const { state } = loadHydra({ hydraId: 'lab' })
+    writeConfig({
+      path: configPath({ hydraId: 'lab' }),
+      value: { default: [{ harness: 'codex' }] },
+    })
+    assert.equal(
+      onTemplate({
+        hydraId: 'lab',
+        state,
+      }),
+      false,
+    )
+  },
+)
+
+test(
+  'rule init leaves existing shared files byte-identical',
+  () => {
+    lab()
+    const dispatch = configPath({
+      hydraId: 'lab',
+      shared: true,
+    })
+    const accounts = configPath({
+      hydraId: 'lab',
+      shared: true,
+      accounts: true,
+    })
+    mkdirSync(
+      join(
+        dispatch,
+        '..',
+      ),
+      { recursive: true },
+    )
+    writeFileSync(
+      dispatch,
+      '{"main":"claude:mine"}',
+    )
+    writeFileSync(
+      accounts,
+      '{"accounts":{"claude:mine":{"provider":"claude","folder":"~/.claude-mine"}}}',
+    )
+    dispatchCommands.rule([
+      'init',
+      '--shared',
+      '--hydra',
+      'lab',
+    ])
+    assert.equal(
+      readFileSync(
+        dispatch,
+        'utf8',
+      ),
+      '{"main":"claude:mine"}',
+    )
+    assert.equal(
+      readFileSync(
+        accounts,
+        'utf8',
+      ),
+      '{"accounts":{"claude:mine":{"provider":"claude","folder":"~/.claude-mine"}}}',
     )
   },
 )

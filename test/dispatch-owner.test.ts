@@ -38,7 +38,7 @@ function lab() {
 }
 
 test(
-  'fallback and starter rules rank both providers through quota-axi',
+  'fallback and template rules rank both providers through quota-axi',
   () => {
     const { fixture } = lab()
     writeConfig({

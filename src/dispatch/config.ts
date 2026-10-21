@@ -51,7 +51,7 @@ export function configPath({
     )
 }
 
-// The shipped templates: `rule init` copies them into the Pnyx home, and their rules stand in until the owner has a dispatch file.
+// Resolves the same from src/ and dist/, which sit at the same depth.
 const TEMPLATES = join(
   import.meta.dirname,
   '..',
@@ -60,15 +60,23 @@ const TEMPLATES = join(
   'config',
 )
 
-export function templatePath({ accounts = false }: { accounts?: boolean }): string {
+function templatePath({ accounts = false }: { accounts?: boolean } = {}): string {
   return join(
     TEMPLATES,
     accounts ? 'hydra-accounts.example.json' : 'hydra-heads-dispatch.example.json',
   )
 }
 
+// Unlike owner config, a missing shipped template is a broken install, so this throws instead of reading as empty.
+export function readTemplate({ accounts = false }: { accounts?: boolean } = {}): unknown {
+  return JSON.parse(readFileSync(
+    templatePath({ accounts }),
+    'utf8',
+  ))
+}
+
 export function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
-  const template = parseDispatch({ value: readConfig({ path: templatePath({}) }) })
+  const template = parseDispatch({ value: readTemplate() })
 
   return {
     rules: template.rules ?? {},
@@ -76,12 +84,17 @@ export function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
   }
 }
 
-// True when neither the shared nor this Hydra's dispatch file exists, so the rules come from the shipped template.
-export function onTemplate({ hydraId }: { hydraId: string }): boolean {
+export function onTemplate({
+  hydraId,
+  state,
+}: {
+  hydraId: string
+  state: HydraState
+}): boolean {
   return !existsSync(configPath({
     hydraId,
     shared: true,
-  })) && !existsSync(configPath({ hydraId }))
+  })) && !existsSync(configPath({ hydraId })) && !Object.keys(state.config?.agents ?? {}).length
 }
 
 export function invalid({ message }: { message: string }): never {

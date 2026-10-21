@@ -362,7 +362,10 @@ const hydraDigestHandler = guard({
       owner,
       state,
       projects: projectDigest({ state }),
-      dispatchTemplate: onTemplate({ hydraId }),
+      dispatchTemplate: onTemplate({
+        hydraId,
+        state,
+      }),
     })
   },
 })

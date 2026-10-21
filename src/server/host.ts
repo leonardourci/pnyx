@@ -603,7 +603,10 @@ export function createHost({
       state,
       owner,
       projects,
-      dispatchTemplate: onTemplate({ hydraId }),
+      dispatchTemplate: onTemplate({
+        hydraId,
+        state,
+      }),
     })
   }
 

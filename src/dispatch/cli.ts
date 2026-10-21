@@ -4,7 +4,7 @@ import { TEMPLATE_NUDGE } from '../core/digest.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { WRITE, guard, parse, required, meta, type Output } from '../cli/commands.ts'
 import { loadHydra, requireHydra, withRegistryLock } from '../store/hydra-store.ts'
-import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, templatePath, templateRules, writeConfig, type Candidate, type Harness } from './config.ts'
+import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateRules, writeConfig, type Candidate, type Harness } from './config.ts'
 
 const OPTIONS = {
   ...WRITE,
@@ -69,7 +69,10 @@ function ruleCommand({ args }: { args: string[] }): Output {
       }),
       help: [
         'Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
-        ...(onTemplate({ hydraId }) ? [TEMPLATE_NUDGE] : []),
+        ...(onTemplate({
+          hydraId,
+          state,
+        }) ? [TEMPLATE_NUDGE] : []),
       ],
     }
   }
@@ -120,14 +123,14 @@ function ruleCommand({ args }: { args: string[] }): Output {
         if (!existsSync(path)) {
           writeConfig({
             path,
-            value: readConfig({ path: templatePath({}) }),
+            value: readTemplate(),
           })
         }
 
         if (!existsSync(accountPath)) {
           writeConfig({
             path: accountPath,
-            value: readConfig({ path: templatePath({ accounts: true }) }),
+            value: readTemplate({ accounts: true }),
             accounts: true,
           })
         }
