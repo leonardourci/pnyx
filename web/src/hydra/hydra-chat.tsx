@@ -69,7 +69,7 @@ export function HydraChat({
     setWidth,
   ] = useState<number | null>(null)
   const stream = useRef<HTMLDivElement>(null), follow = useRef(true)
-  const hydra = hydraConfig({ state }).hydra, card = state.cards[HYDRA_CARD]
+  const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const {
     tools,
     thinking,
@@ -218,6 +218,7 @@ export function HydraChat({
           taskReferences={Object.fromEntries(Object.values(state.cards)
             .filter(c => c.id !== HYDRA_CARD && !c.automaticTask)
             .map(c => {
+              const column = config.columns.find(column => column.id === c.column)
               const status = cardState({
                 card: c,
                 hours: state.config?.doneAfterHours,
@@ -233,6 +234,7 @@ export function HydraChat({
                     letter => letter.toUpperCase(),
                   ),
                   kind: status.kind,
+                  column: column?.role ?? column?.id ?? 'custom',
                 },
               ]
             }))}

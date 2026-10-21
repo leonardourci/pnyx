@@ -16,6 +16,7 @@ export interface TaskReferenceData {
   title: string
   state: string
   kind: string
+  column?: string
 }
 
 type OpenTask = ({ id }: { id: string }) => void
@@ -71,7 +72,7 @@ export function TaskReference({
   return (
     <Tooltip content={context && !reference ? 'Task unavailable in this Hydra' : reference ? `${reference.title} · ${state}` : 'Open referenced task'}>
       <Button
-        className={`task-mention task-reference ${className}`}
+        className={`task-mention task-reference column-${reference?.column ?? 'custom'} ${className}`}
         contentEditable={false}
         data-task-ref={id}
         data-state={reference?.kind}
