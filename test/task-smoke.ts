@@ -164,10 +164,16 @@ try {
     label: 'a factual worker update appears at rest',
   })
   await screenshot({ name: 'cards-closed-after.png' })
+  const halfColumn = [
+    '(() => { const pane = document.querySelector(".card.selected").closest(".column-cards")',
+    'const style = getComputedStyle(pane)',
+    'const inner = pane.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)',
+    'return Math.round(Math.floor(inner) / 2) })()',
+  ].join('; ')
   await click({ selector: '.card-open' })
   await check({
-    condition: 'document.activeElement.matches(".task-updates") && document.querySelector(".card.selected").getBoundingClientRect().height === 480',
-    label: 'opening a card fixes it at 480 px and focuses Updates',
+    condition: `document.activeElement.matches(".task-updates") && document.querySelector(".card.selected").getBoundingClientRect().height === ${halfColumn}`,
+    label: 'opening a card makes it half its column tall and focuses Updates',
   })
   await eventually({
     condition: 'document.querySelector(".task-updates")?.textContent.includes("migration passes locally")',
@@ -220,7 +226,7 @@ try {
     label: 'the attached agent appears above Updates',
   })
   await check({
-    condition: 'document.querySelector(".card.selected").getBoundingClientRect().height === 480 && !document.querySelector(".detail .thread, .detail .composer")',
+    condition: `document.querySelector(".card.selected").getBoundingClientRect().height === ${halfColumn} && !document.querySelector(".detail .thread, .detail .composer")`,
     label: 'card stays fixed with Updates only',
   })
   await menu(); await text({ label: 'Resume' })
@@ -247,8 +253,8 @@ try {
     ],
   })
   await check({
-    condition: 'document.querySelector(".card.selected").getBoundingClientRect().height <= document.querySelector(".column-cards").clientHeight && document.querySelector(".card.selected").getBoundingClientRect().height < 480',
-    label: 'short panes cap the fixed card height',
+    condition: 'document.querySelector(".card.selected").getBoundingClientRect().height <= document.querySelector(".column-cards").clientHeight',
+    label: 'short panes keep the default open card inside the column',
   })
   await check({
     condition: 'document.querySelector(".task-updates").getBoundingClientRect().bottom <= document.querySelector(".card.selected").getBoundingClientRect().bottom',

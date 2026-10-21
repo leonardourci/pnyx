@@ -162,10 +162,12 @@ try {
     if (getComputedStyle(handle).outlineStyle !== 'none') throw new Error('Resize outline');
     return true;`,
   })
-  assert.equal(
-    loadHydra({ hydraId: 'default' }).state.view?.cardHeights[fixture.state.keys.layout!],
-    488,
-  )
+  const saved = loadHydra({ hydraId: 'default' }).state.view?.cardHeights[fixture.state.keys.layout!]
+  assert.ok(saved)
+  await b.check({
+    condition: `document.querySelector(".card.selected").getBoundingClientRect().height === ${saved}`,
+    label: 'keyboard resize saves the shown height',
+  })
   await b.screenshot({ name: 'snappy-resize.png' })
   await b.evaluate({
     code: `
@@ -209,9 +211,9 @@ try {
     loadHydra({ hydraId: 'default' }).state.cards['default-0']?.column,
     'in_progress',
   )
-  await b.evaluate({ code: 'window.failNextSave = true; const handle = document.querySelector(\'.card.selected > [aria-label="Resize card"]\'); handle.dispatchEvent(new KeyboardEvent(\'keydown\', { key: \'ArrowDown\', bubbles: true })); handle.dispatchEvent(new KeyboardEvent(\'keyup\', { key: \'ArrowDown\', bubbles: true })); await new Promise(r => requestAnimationFrame(r)); if (document.querySelector(\'.card.selected\').getBoundingClientRect().height !== 496) throw new Error(\'Failed save was not optimistic\'); return true;' })
+  await b.evaluate({ code: `window.failNextSave = true; const handle = document.querySelector('.card.selected > [aria-label="Resize card"]'); handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); handle.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowDown', bubbles: true })); await new Promise(r => requestAnimationFrame(r)); if (document.querySelector('.card.selected').getBoundingClientRect().height !== ${saved + 8}) throw new Error('Failed save was not optimistic'); return true;` })
   await b.eventually({
-    condition: 'document.querySelector(".card.selected")?.getBoundingClientRect().height === 488 && !!document.querySelector("[role=alert]")',
+    condition: `document.querySelector(".card.selected")?.getBoundingClientRect().height === ${saved} && !!document.querySelector("[role=alert]")`,
     label: 'failed resize reverts with a visible error',
   })
   await b.evaluate({ code: 'const handle = document.querySelector(\'.hydra-chat > .resize-x\'); handle.focus(); handle.dispatchEvent(new KeyboardEvent(\'keydown\', { key: \'ArrowRight\', bubbles: true })); handle.dispatchEvent(new KeyboardEvent(\'keyup\', { key: \'ArrowRight\', bubbles: true })); [...document.querySelectorAll(\'.hydra-name\')].find(el => el.textContent.trim() === \'second\').click(); await new Promise(r => requestAnimationFrame(r)); if (!document.querySelector(\'.card\')) throw new Error(\'Current Hydra disappeared\'); if (!document.querySelector(\'main [role=status]\')) throw new Error(\'Missing Hydra loading status\'); return true;' })

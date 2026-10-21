@@ -101,18 +101,30 @@ try {
     condition: 'Number(getComputedStyle(document.querySelector(".card.selected > .resize-y"), "::after").opacity) >= .5',
     label: 'open card exposes a visible resize grip',
   })
+  await check({
+    condition: [
+      '(() => { const card = document.querySelector(".card.selected")',
+      'const pane = card.closest(".column-cards"), style = getComputedStyle(pane)',
+      'const inner = pane.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)',
+      'return card.getBoundingClientRect().height === Math.round(Math.floor(inner) / 2) })()',
+    ].join('; '),
+    label: 'an open card without a saved height takes half its column',
+  })
+  await evaluate({ code: 'window.openHeight = document.querySelector(".card.selected").getBoundingClientRect().height; return true;' })
   await drag({
     selector: '.card.selected > [aria-label="Resize card"]',
     dy: 100,
   })
   await eventually({
-    condition: 'document.querySelector(".card.selected").clientHeight === 578',
-    label: 'mouse drag grows the open card to 580 px',
+    condition: 'document.querySelector(".card.selected").getBoundingClientRect().height === window.openHeight + 100',
+    label: 'mouse drag grows the open card by 100 px',
   })
-  assert.equal(
-    state().view?.cardHeights[fixture.state.keys.layout!],
-    580,
-  )
+  const opened = state().view?.cardHeights[fixture.state.keys.layout!]
+  assert.ok(opened)
+  await check({
+    condition: `document.querySelector(".card.selected").getBoundingClientRect().height === ${opened}`,
+    label: 'the open height is saved',
+  })
   await check({
     condition: 'document.querySelector(".task-updates").getBoundingClientRect().bottom < document.querySelector(".card.selected").getBoundingClientRect().bottom',
     label: 'resized card contains Updates',
@@ -120,9 +132,25 @@ try {
   await screenshot({ name: 'resized-composers-card.png' })
   await click({ selector: '[aria-label="Close detail"]' })
   await check({
-    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 176 && !document.querySelector('.card > [aria-label="Resize card"]')`,
-    label: 'closed cards keep their fixed size',
+    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 176`,
+    label: 'a closed card keeps its own default height',
   })
+  await drag({
+    selector: `[data-task="${fixture.state.keys.layout}"] > [aria-label="Resize card"]`,
+    dy: 60,
+  })
+  await eventually({
+    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 236`,
+    label: 'mouse drag grows a closed card',
+  })
+  await check({
+    condition: '!document.querySelector(".card.selected")',
+    label: 'resizing a closed card does not open it',
+  })
+  assert.equal(
+    state().view?.closedCardHeights[fixture.state.keys.layout!],
+    236,
+  )
   await browser({
     args: [
       'open',
@@ -133,18 +161,15 @@ try {
     condition: `document.querySelector(".hydra-chat .composer")?.clientHeight === ${hydraHeight}`,
     label: 'Hydra composer height survives reload',
   })
+  await check({
+    condition: `document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === 236`,
+    label: 'closed card height survives reload',
+  })
   await click({ selector: card })
   await eventually({
-    condition: 'document.querySelector(".card.selected")?.getBoundingClientRect().height === 580',
-    label: 'card height survives reload',
+    condition: `document.querySelector(".card.selected")?.getBoundingClientRect().height === ${opened}`,
+    label: 'open card height survives reload',
   })
-  await focus({ selector: '.card.selected > [aria-label="Resize card"]' })
-  await press({ key: 'Home' })
-  await check({
-    condition: 'document.querySelector(".task-updates").clientHeight >= 80',
-    label: 'minimum card height retains readable Updates',
-  })
-  await press({ key: 'End' })
   await browser({
     args: [
       'resize',
@@ -153,8 +178,21 @@ try {
     ],
   })
   await check({
-    condition: 'document.querySelector(".card.selected").getBoundingClientRect().height <= document.querySelector(".column-cards").clientHeight && document.querySelector(".task-updates").getBoundingClientRect().bottom <= document.querySelector(".card.selected").getBoundingClientRect().bottom',
-    label: 'short panes cap the resized card and contain Updates',
+    condition: `document.querySelector(".card.selected").getBoundingClientRect().height === ${opened} && document.querySelector(".column-cards").scrollHeight > document.querySelector(".column-cards").clientHeight`,
+    label: 'a card taller than a short pane keeps its height and the column scrolls',
+  })
+  await browser({
+    args: [
+      'resize',
+      '1800',
+      '1000',
+    ],
+  })
+  await focus({ selector: '.card.selected > [aria-label="Resize card"]' })
+  await press({ key: 'Home' })
+  await check({
+    condition: 'document.querySelector(".task-updates").clientHeight >= 80',
+    label: 'minimum card height retains readable Updates',
   })
   process.stdout.write('Composer and card drag resize browser smoke passed.\n')
 } finally {

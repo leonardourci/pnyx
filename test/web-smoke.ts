@@ -87,7 +87,7 @@ try {
     label: 'Hydra and columns fill the Hydra height',
   })
   await check({
-    condition: 'document.querySelector(".card").getBoundingClientRect().height === 176 && !document.querySelector(".card .setting-chip,.card .tags,.card .links,.card .resize")',
+    condition: 'document.querySelector(".card").getBoundingClientRect().height === 176 && !document.querySelector(".card .setting-chip,.card .tags,.card .links") && getComputedStyle(document.querySelector(".card > .resize-y")).opacity === "0"',
     label: 'closed cards keep their fixed height with title and activity',
   })
   await check({
