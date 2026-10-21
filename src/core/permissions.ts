@@ -9,7 +9,10 @@ const text = ({ value }: { value: unknown }) => typeof value === 'string' && val
 // What a person reads to judge a request: what runs, on which files, where and why.
 export function permissionDetails({ request }: {
   request: PermissionRequest
-}): { label: string; text: string }[] {
+}): {
+  label: string
+  text: string
+}[] {
   const input = request.input
   // Codex wraps a command in its shell (`zsh -lc '...'`) and also reports the command it parsed.
   const actions = Array.isArray(input.commandActions) ? input.commandActions : []
@@ -22,17 +25,41 @@ export function permissionDetails({ request }: {
   const changes = (Array.isArray(input.changes) ? input.changes : [])
     .flatMap(c => text({ value: (c as { path?: unknown })?.path }) ?? [])
   const file = text({ value: input.file_path ?? input.notebook_path ?? input.path })
-  const files = [file ?? [], changes].flat()
+  const files = [
+    file ?? [],
+    changes,
+  ].flat()
   const rows = [
-    { label: 'Command', text: command },
-    { label: files.length > 1 ? 'Files' : 'File', text: files.join(', ') || undefined },
-    { label: 'URL', text: text({ value: input.url }) },
-    { label: 'Folder', text: text({ value: input.cwd }) },
-    { label: 'Message', text: text({ value: input.message }) },
-    { label: 'Reason', text: request.description ?? text({ value: input.reason ?? input.description }) },
+    {
+      label: 'Command',
+      text: command,
+    },
+    {
+      label: files.length > 1 ? 'Files' : 'File',
+      text: files.join(', ') || undefined,
+    },
+    {
+      label: 'URL',
+      text: text({ value: input.url }),
+    },
+    {
+      label: 'Folder',
+      text: text({ value: input.cwd }),
+    },
+    {
+      label: 'Message',
+      text: text({ value: input.message }),
+    },
+    {
+      label: 'Reason',
+      text: request.description ?? text({ value: input.reason ?? input.description }),
+    },
   ]
 
-  return rows.filter((row): row is { label: string; text: string } => !!row.text)
+  return rows.filter((row): row is {
+    label: string
+    text: string
+  } => !!row.text)
 }
 
 function permissionText({ request }: { request: PermissionRequest }): string {
@@ -42,7 +69,10 @@ function permissionText({ request }: { request: PermissionRequest }): string {
   return `${request.tool}: ${asked || (details.length ? details.map(d => d.text).join(' · ') : JSON.stringify(request.input))}`
 }
 
-export function permissionAnswer({ request, value }: {
+export function permissionAnswer({
+  request,
+  value,
+}: {
   request: PermissionRequest
   value: unknown
 }): Pick<PermissionRequest, 'answers' | 'values'> {
@@ -50,7 +80,10 @@ export function permissionAnswer({ request, value }: {
   const prompt: Prompt | undefined = questions.length ? { kind: 'questions' } : request.form ? { kind: 'form' } : undefined
 
   if (!prompt) {
-    throw new HydraError({ message: `${request.tool} takes allow or deny without an answer`, code: 'VALIDATION_ERROR' })
+    throw new HydraError({
+      message: `${request.tool} takes allow or deny without an answer`,
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   if (value === undefined) {
@@ -61,11 +94,27 @@ export function permissionAnswer({ request, value }: {
     })
   }
 
-  const given = typeof value === 'object' && value !== null ? { ...value, choice: 'accept' } : value
-  const checked = checkAnswer({ prompt, request: { kind: 'question', key: request.id, blocking: true, questions, ...(request.form ? { form: request.form } : {}) }, value: given })
+  const given = typeof value === 'object' && value !== null ? {
+    ...value,
+    choice: 'accept',
+  } : value
+  const checked = checkAnswer({
+    prompt,
+    request: {
+      kind: 'question',
+      key: request.id,
+      blocking: true,
+      questions,
+      ...(request.form ? { form: request.form } : {}),
+    },
+    value: given,
+  })
 
   if ('error' in checked) {
-    throw new HydraError({ message: checked.error, code: 'VALIDATION_ERROR' })
+    throw new HydraError({
+      message: checked.error,
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   if (prompt.kind === 'form') {
@@ -73,7 +122,10 @@ export function permissionAnswer({ request, value }: {
   }
 
   return {
-    answers: (checked.answer.answers ?? []).map((answer, i) => 'text' in answer
+    answers: (checked.answer.answers ?? []).map((
+      answer,
+      i,
+    ) => 'text' in answer
       ? [answer.text]
       : answer.pick.map(n => questions[i]!.options[n - 1]!.label)),
   }
@@ -91,7 +143,12 @@ export function permissionAttention({ card }: { card: Card }): void {
   ]
 }
 
-export function permissionEvent({ state, card, request, meta }: {
+export function permissionEvent({
+  state,
+  card,
+  request,
+  meta,
+}: {
   state: HydraState
   card: Card
   request: PermissionRequest
@@ -110,7 +167,10 @@ export function permissionEvent({ state, card, request, meta }: {
   }
 }
 
-export function applyPermission({ state, event }: {
+export function applyPermission({
+  state,
+  event,
+}: {
   state: HydraState
   event: HydraEvent
 }): boolean {
@@ -134,7 +194,13 @@ export function applyPermission({ state, event }: {
             ...(event.data.values ? { values: event.data.values } : {}),
           }
           : p)
-        : [...requests, { ...structuredClone(event.data), at: event.at }]
+        : [
+          ...requests,
+          {
+            ...structuredClone(event.data),
+            at: event.at,
+          },
+        ]
       permissionAttention({ card })
       card.revision++
       card.updatedSeq = event.seq

@@ -56,19 +56,52 @@ export function Composer({
   notify({ text }: { text: string }): void
   settings?: ReactNode
 }) {
-  const [preview, setPreview] = useState<number | null>(null)
-  const [failure, setFailure] = useState('')
-  const [sending, setSending] = useState(false)
-  const [prefix, setPrefix] = useState<string | null>(null)
-  const [active, setActive] = useState(-1)
-  const [mention, setMention] = useState<ReturnType<typeof mentionQuery>>(null)
-  const [mentionActive, setMentionActive] = useState(0)
-  const matches = matchingTasks({ cards, query: mention?.query ?? '' })
+  const [
+    preview,
+    setPreview,
+  ] = useState<number | null>(null)
+  const [
+    failure,
+    setFailure,
+  ] = useState('')
+  const [
+    sending,
+    setSending,
+  ] = useState(false)
+  const [
+    prefix,
+    setPrefix,
+  ] = useState<string | null>(null)
+  const [
+    active,
+    setActive,
+  ] = useState(-1)
+  const [
+    mention,
+    setMention,
+  ] = useState<ReturnType<typeof mentionQuery>>(null)
+  const [
+    mentionActive,
+    setMentionActive,
+  ] = useState(0)
+  const matches = matchingTasks({
+    cards,
+    query: mention?.query ?? '',
+  })
   const mentions = taskMentions({ text: draft })
   const mentionList = `mentions-${card}`
 
-  const trackMention = ({ text, cursor }: { text: string; cursor: number }) => {
-    setMention(mentionQuery({ text, cursor })); setMentionActive(0)
+  const trackMention = ({
+    text,
+    cursor,
+  }: {
+    text: string
+    cursor: number
+  }) => {
+    setMention(mentionQuery({
+      text,
+      cursor,
+    })); setMentionActive(0)
   }
 
   const chooseMention = ({ card }: { card: Card }) => {
@@ -78,118 +111,218 @@ export function Composer({
       return
     }
 
-    const reference = taskMention({ id: card.id, title: card.title }) + ' '
+    const reference = taskMention({
+      id: card.id,
+      title: card.title,
+    }) + ' '
     const cursor = mention.start + reference.length
-    const text = draft.slice(0, mention.start) + reference + draft.slice(element.selectionStart)
+    const text = draft.slice(
+      0,
+      mention.start,
+    ) + reference + draft.slice(element.selectionStart)
     setDraft({ text })
     setMention(null); element.focus()
-    requestAnimationFrame(() => element.setSelectionRange(cursor, cursor))
+    requestAnimationFrame(() => element.setSelectionRange(
+      cursor,
+      cursor,
+    ))
   }
 
   const input = useRef<HTMLTextAreaElement>(null), form = useRef<HTMLFormElement>(null)
   const files = useRef<HTMLInputElement>(null)
-  const [contentHeight, setContentHeight] = useState<number>(COMPOSER_MIN)
-  const [limit, setLimit] = useState<number>(VIEW_SIZE_LIMITS.composerHeight.max)
-  const savedSize = Math.min(limit, Math.max(height, contentHeight))
-  const size = Math.min(limit, Math.max(preview ?? savedSize, contentHeight))
-  useLayoutEffect(() => {
-    const pane = form.current?.closest('.hydra-chat, .card') ?? form.current?.parentElement
-    const element = input.current
+  const [
+    contentHeight,
+    setContentHeight,
+  ] = useState<number>(COMPOSER_MIN)
+  const [
+    limit,
+    setLimit,
+  ] = useState<number>(VIEW_SIZE_LIMITS.composerHeight.max)
+  const savedSize = Math.min(
+    limit,
+    Math.max(
+      height,
+      contentHeight,
+    ),
+  )
+  const size = Math.min(
+    limit,
+    Math.max(
+      preview ?? savedSize,
+      contentHeight,
+    ),
+  )
+  useLayoutEffect(
+    () => {
+      const pane = form.current?.closest('.hydra-chat, .card') ?? form.current?.parentElement
+      const element = input.current
 
-    if (!pane || !element) {
-      return
-    }
+      if (!pane || !element) {
+        return
+      }
 
-    const measure = () => {
-      setLimit(Math.min(
-        VIEW_SIZE_LIMITS.composerHeight.max,
-        Math.max(COMPOSER_MIN, Math.floor(pane.clientHeight * .35)),
-      ))
-      element.style.height = `${DRAFT_MIN}px`
-      const draftHeight = draft ? element.scrollHeight : DRAFT_MIN
-      const controls = form.current?.querySelector<HTMLElement>('.composer-bar')
-      const controlsHeight = Math.max(COMPOSER_CONTROLS, (controls?.offsetHeight ?? 0) + 12)
-      const context = form.current?.querySelector<HTMLElement>('.pending-comments')
-      const error = form.current?.querySelector<HTMLElement>('.reply-failure')
-      const references = form.current?.querySelector<HTMLElement>('.draft-mentions')
-      const images = form.current?.querySelector<HTMLElement>('.draft-images')
-      const contextHeight = context ? Math.min(64, context.scrollHeight) + 4 : 0
-      const errorHeight = (error ? error.scrollHeight + 4 : 0)
+      const measure = () => {
+        setLimit(Math.min(
+          VIEW_SIZE_LIMITS.composerHeight.max,
+          Math.max(
+            COMPOSER_MIN,
+            Math.floor(pane.clientHeight * .35),
+          ),
+        ))
+        element.style.height = `${DRAFT_MIN}px`
+        const draftHeight = draft ? element.scrollHeight : DRAFT_MIN
+        const controls = form.current?.querySelector<HTMLElement>('.composer-bar')
+        const controlsHeight = Math.max(
+          COMPOSER_CONTROLS,
+          (controls?.offsetHeight ?? 0) + 12,
+        )
+        const context = form.current?.querySelector<HTMLElement>('.pending-comments')
+        const error = form.current?.querySelector<HTMLElement>('.reply-failure')
+        const references = form.current?.querySelector<HTMLElement>('.draft-mentions')
+        const images = form.current?.querySelector<HTMLElement>('.draft-images')
+        const contextHeight = context ? Math.min(
+          64,
+          context.scrollHeight,
+        ) + 4 : 0
+        const errorHeight = (error ? error.scrollHeight + 4 : 0)
         + (references ? references.offsetHeight + 4 : 0)
         + (images ? images.offsetHeight + 4 : 0)
-      setContentHeight(
-        Math.min(DRAFT_MAX, Math.max(DRAFT_MIN, draftHeight))
+        setContentHeight(
+          Math.min(
+            DRAFT_MAX,
+            Math.max(
+              DRAFT_MIN,
+              draftHeight,
+            ),
+          )
         + controlsHeight + contextHeight + errorHeight,
-      )
-      element.style.height = ''
-    }
+        )
+        element.style.height = ''
+      }
 
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(pane)
-    observer.observe(element)
-    const controls = form.current?.querySelector<HTMLElement>('.composer-bar')
+      measure()
+      const observer = new ResizeObserver(measure)
+      observer.observe(pane)
+      observer.observe(element)
+      const controls = form.current?.querySelector<HTMLElement>('.composer-bar')
 
-    if (controls) {
-      observer.observe(controls)
-    }
+      if (controls) {
+        observer.observe(controls)
+      }
 
-    return () => observer.disconnect()
-  }, [draft, comments, failure])
+      return () => observer.disconnect()
+    },
+    [
+      draft,
+      comments,
+      failure,
+    ],
+  )
   const hydraId = useRef(document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content).current
-  const attempt = useRef(readAttempt({ key: card, hydraId }))
+  const attempt = useRef(readAttempt({
+    key: card,
+    hydraId,
+  }))
   // Comments travel with the draft as one reply, and stay until it is delivered.
   const commentKey = `pnyx-comments:${card}:${thread?.session ?? ''}`
-  const [taught, setTaught] = useState(() => {
+  const [
+    taught,
+    setTaught,
+  ] = useState(() => {
     try {
       return localStorage.getItem(commentKey) === 'sent'
     } catch {
       return false
     }
   })
-  useEffect(() => {
-    try {
-      setTaught(localStorage.getItem(commentKey) === 'sent')
-    } catch {
-      setTaught(false)
-    }
-  }, [commentKey])
-  const outgoing = commentReply({ draft, comments, firstComment: !taught })
+  useEffect(
+    () => {
+      try {
+        setTaught(localStorage.getItem(commentKey) === 'sent')
+      } catch {
+        setTaught(false)
+      }
+    },
+    [commentKey],
+  )
+  const outgoing = commentReply({
+    draft,
+    comments,
+    firstComment: !taught,
+  })
   const commented = comments.filter(c => c.text.trim()).length
-  const current = useRef({ draft, comments })
-  current.current = { draft, comments }
-  const { label } = useKeyboard(), [catalog, setCatalog] = useState<Catalog | null>(null)
-  const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches({ command: s.command, prefix: prefix ?? '' }))
+  const current = useRef({
+    draft,
+    comments,
+  })
+  current.current = {
+    draft,
+    comments,
+  }
+  const { label } = useKeyboard(), [
+    catalog,
+    setCatalog,
+  ] = useState<Catalog | null>(null)
+  const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches({
+    command: s.command,
+    prefix: prefix ?? '',
+  }))
   const catalogOpen = prefix !== null
-  useEffect(() => {
-    if (!catalogOpen || !connected) {
-      return
-    }
+  useEffect(
+    () => {
+      if (!catalogOpen || !connected) {
+        return
+      }
 
-    let cancelled = false; setCatalog(null)
-    const timer = setTimeout(() => {
-      void command({ name: 'catalog', args: [card] }).then(r => {
-        if (!cancelled) {
-          setCatalog(r.catalog as Catalog)
-        }
-      })
-        .catch(() => {
-          if (!cancelled) {
-            setCatalog({ suggestions: [], unavailable: 'Catalog unavailable. Your command stays literal.' })
-          }
-        })
-    }, 120)
+      let cancelled = false; setCatalog(null)
+      const timer = setTimeout(
+        () => {
+          void command({
+            name: 'catalog',
+            args: [card],
+          }).then(r => {
+            if (!cancelled) {
+              setCatalog(r.catalog as Catalog)
+            }
+          })
+            .catch(() => {
+              if (!cancelled) {
+                setCatalog({
+                  suggestions: [],
+                  unavailable: 'Catalog unavailable. Your command stays literal.',
+                })
+              }
+            })
+        },
+        120,
+      )
 
-    return () => {
-      cancelled = true; clearTimeout(timer)
-    }
-  }, [card, catalogOpen, command, connected])
-  useEffect(() => {
-    document.getElementById(`suggestion-${card}-${active}`)?.scrollIntoView({ block: 'nearest' })
-  }, [card, active])
+      return () => {
+        cancelled = true; clearTimeout(timer)
+      }
+    },
+    [
+      card,
+      catalogOpen,
+      command,
+      connected,
+    ],
+  )
+  useEffect(
+    () => {
+      document.getElementById(`suggestion-${card}-${active}`)?.scrollIntoView({ block: 'nearest' })
+    },
+    [
+      card,
+      active,
+    ],
+  )
 
   const choose = ({ command }: { command: string }) => {
-    const cursor = input.current?.selectionStart ?? draft.length; setDraft({ text: command + ' ' + draft.slice(cursor) }); setPrefix(null); setActive(-1); input.current?.focus(); requestAnimationFrame(() => input.current?.setSelectionRange(command.length + 1, command.length + 1))
+    const cursor = input.current?.selectionStart ?? draft.length; setDraft({ text: command + ' ' + draft.slice(cursor) }); setPrefix(null); setActive(-1); input.current?.focus(); requestAnimationFrame(() => input.current?.setSelectionRange(
+      command.length + 1,
+      command.length + 1,
+    ))
   }
 
   // Each image is stored by the server and becomes its own paragraph in the draft.
@@ -202,8 +335,21 @@ export function Composer({
         throw new Error(`${file.name || 'An image'} is over ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`)
       }
 
-      const response = await fetch('attachments', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': file.type }, body: file })
-      const body = await response.json().catch(() => ({})) as { line?: string; error?: string }
+      const response = await fetch(
+        'attachments',
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': file.type,
+          },
+          body: file,
+        },
+      )
+      const body = await response.json().catch(() => ({})) as {
+        line?: string
+        error?: string
+      }
 
       if (!response.ok || !body.line) {
         throw new Error(body.error ?? `Could not add ${file.name || 'an image'}.`)
@@ -220,11 +366,23 @@ export function Composer({
 
     if (lines.length) {
       const text = current.current.draft, cursor = input.current?.selectionEnd ?? text.length
-      const before = text.slice(0, cursor).trimEnd(), added = lines.join('\n\n')
+      const before = text.slice(
+          0,
+          cursor,
+        ).trimEnd(), added = lines.join('\n\n')
       const caret = (before ? before.length + 2 : 0) + added.length + 2
-      setDraft({ text: [before, added, text.slice(cursor).trimStart()].filter(Boolean).join('\n\n') + (text.slice(cursor).trim() ? '' : '\n\n') })
+      setDraft({
+        text: [
+          before,
+          added,
+          text.slice(cursor).trimStart(),
+        ].filter(Boolean).join('\n\n') + (text.slice(cursor).trim() ? '' : '\n\n'),
+      })
       input.current?.focus()
-      requestAnimationFrame(() => input.current?.setSelectionRange(caret, caret))
+      requestAnimationFrame(() => input.current?.setSelectionRange(
+        caret,
+        caret,
+      ))
     }
   }
 
@@ -236,15 +394,33 @@ export function Composer({
     }
 
     if (attempt.current?.text !== text) {
-      attempt.current = { text, id: crypto.randomUUID(), pending: true }
+      attempt.current = {
+        text,
+        id: crypto.randomUUID(),
+        pending: true,
+      }
     }
 
     attempt.current.pending = true
-    saveAttempt({ key: card, hydraId, attempt: attempt.current })
+    saveAttempt({
+      key: card,
+      hydraId,
+      attempt: attempt.current,
+    })
     setFailure(''); setSending(true)
 
     try {
-      const r = await command({ name: 'reply', args: [card, text, attempt.current.id] }); const receipt = r.reply as { state: string; detail?: string } | undefined
+      const r = await command({
+        name: 'reply',
+        args: [
+          card,
+          text,
+          attempt.current.id,
+        ],
+      }); const receipt = r.reply as {
+        state: string
+        detail?: string
+      } | undefined
       const why = receipt?.detail ? ` (${receipt.detail})` : ''
 
       if (receipt?.state !== 'delivered' && receipt?.state !== 'queued') {
@@ -260,7 +436,10 @@ export function Composer({
           setTaught(true)
 
           try {
-            localStorage.setItem(commentKey, 'sent')
+            localStorage.setItem(
+              commentKey,
+              'sent',
+            )
           } catch { /* Storage can be disabled. */ }
         }
 
@@ -283,20 +462,32 @@ export function Composer({
         attempt.current.pending = false
       }
 
-      saveAttempt({ key: card, hydraId, attempt: attempt.current })
+      saveAttempt({
+        key: card,
+        hydraId,
+        attempt: attempt.current,
+      })
       setSending(false)
     }
   }
 
-  useEffect(() => {
-    if (attempt.current?.pending) {
-      void send({ restore: true })
-    }
-  }, [])
+  useEffect(
+    () => {
+      if (attempt.current?.pending) {
+        void send({ restore: true })
+      }
+    },
+    [],
+  )
 
   useKeyAction({
     id: 'send',
-    handler: ({ context: { scope, target } }) => {
+    handler: ({
+      context: {
+        scope,
+        target,
+      },
+    }) => {
       if (scope !== 'composer' || !input.current?.form?.contains(target)) {
         return false
       }
@@ -308,7 +499,12 @@ export function Composer({
   })
   useKeyAction({
     id: 'cancel',
-    handler: ({ context: { scope, target } }) => {
+    handler: ({
+      context: {
+        scope,
+        target,
+      },
+    }) => {
       if (scope !== 'composer' || !input.current?.form?.contains(target) || prefix === null && mention === null) {
         return false
       }
@@ -345,7 +541,10 @@ export function Composer({
         reverse
         value={savedSize}
         min={VIEW_SIZE_LIMITS.composerHeight.min}
-        max={Math.min(limit, VIEW_SIZE_LIMITS.composerHeight.max)}
+        max={Math.min(
+          limit,
+          VIEW_SIZE_LIMITS.composerHeight.max,
+        )}
         onPreview={({ value }) => setPreview(value)}
         onCommit={({ value: n }) => save({
           patch: card === HYDRA_CARD ? { composerHeight: n } : { taskComposerHeight: n },
@@ -370,7 +569,10 @@ export function Composer({
       )}
       {mentions.length > 0 && (
         <div className="draft-mentions" aria-label="Referenced tasks">
-          {mentions.map((mention, index) => <Button key={index} className="task-mention" onClick={() => openTask({ id: mention.id })}>@{mention.title}</Button>)}
+          {mentions.map((
+            mention,
+            index,
+          ) => <Button key={index} className="task-mention" onClick={() => openTask({ id: mention.id })}>@{mention.title}</Button>)}
         </div>
       )}
       {imagePaths({ text: draft }).length > 0 && (
@@ -384,7 +586,10 @@ export function Composer({
             anchor={input}
             id={mentionList}
             matches={matches}
-            active={Math.min(mentionActive, matches.length - 1)}
+            active={Math.min(
+              mentionActive,
+              matches.length - 1,
+            )}
             choose={chooseMention}
           />
         )}
@@ -392,7 +597,10 @@ export function Composer({
           <div className="slash-menu">
             <span className="eyebrow">Session commands</span>
             <div id={`suggestions-${card}`} role="listbox" aria-label="Session commands">
-              {suggestions.map((s,n) => (
+              {suggestions.map((
+                s,
+                n,
+              ) => (
                 <Button
                   role="option"
                   aria-selected={n === active}
@@ -422,9 +630,15 @@ export function Composer({
           placeholder={title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…'}
           aria-label={`Reply to ${title}`}
           aria-controls={mention ? mentionList : catalogOpen ? `suggestions-${card}` : undefined}
-          aria-activedescendant={mention && matches.length ? `${mentionList}-${Math.min(mentionActive, matches.length - 1)}` : active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
+          aria-activedescendant={mention && matches.length ? `${mentionList}-${Math.min(
+            mentionActive,
+            matches.length - 1,
+          )}` : active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
           onClick={event => {
-            trackMention({ text: draft, cursor: event.currentTarget.selectionStart })
+            trackMention({
+              text: draft,
+              cursor: event.currentTarget.selectionStart,
+            })
           }}
           onBlur={() => setMention(null)}
           onPaste={event => {
@@ -435,37 +649,65 @@ export function Composer({
           }}
           onChange={e => {
             setDraft({ text: e.target.value })
-            setPrefix(slashPrefix({ text: e.target.value, cursor: e.target.selectionStart }))
+            setPrefix(slashPrefix({
+              text: e.target.value,
+              cursor: e.target.selectionStart,
+            }))
             setActive(-1)
-            trackMention({ text: e.target.value, cursor: e.target.selectionStart })
+            trackMention({
+              text: e.target.value,
+              cursor: e.target.selectionStart,
+            })
           }}
           onKeyDown={e => {
             if (e.nativeEvent.isComposing || e.key === 'Process') {
               return
             }
 
-            if (mention && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            if (mention && [
+              'ArrowDown',
+              'ArrowUp',
+              'Enter',
+              'Escape',
+            ].includes(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
               e.preventDefault(); e.stopPropagation()
 
               if (e.key === 'Escape') {
                 setMention(null)
               } else if (e.key === 'Enter') {
-                const selected = matches[Math.min(mentionActive, matches.length - 1)]
+                const selected = matches[Math.min(
+                  mentionActive,
+                  matches.length - 1,
+                )]
 
                 if (selected) {
                   chooseMention({ card: selected.card })
                 }
               } else {
-                setMentionActive(index => Math.max(0, Math.min(matches.length - 1, index + (e.key === 'ArrowDown' ? 1 : -1))))
+                setMentionActive(index => Math.max(
+                  0,
+                  Math.min(
+                    matches.length - 1,
+                    index + (e.key === 'ArrowDown' ? 1 : -1),
+                  ),
+                ))
               }
 
               return
             }
 
-            if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+            if ([
+              'ArrowLeft',
+              'ArrowRight',
+              'Home',
+              'End',
+            ].includes(e.key)) {
               requestAnimationFrame(() => {
                 if (input.current) {
-                  trackMention({ text: input.current.value, cursor: input.current.selectionStart })
+                  trackMention({
+                    text: input.current.value,
+                    cursor: input.current.selectionStart,
+                  })
                 }
               })
             }
@@ -475,8 +717,17 @@ export function Composer({
               setPrefix(null); setActive(-1)
             }
 
-            if (prefix !== null && suggestions.length && ['ArrowDown', 'ArrowUp'].includes(e.key)) {
-              e.preventDefault(); setActive(n => Math.max(0, Math.min(suggestions.length - 1, n + (e.key === 'ArrowDown' ? 1 : -1))))
+            if (prefix !== null && suggestions.length && [
+              'ArrowDown',
+              'ArrowUp',
+            ].includes(e.key)) {
+              e.preventDefault(); setActive(n => Math.max(
+                0,
+                Math.min(
+                  suggestions.length - 1,
+                  n + (e.key === 'ArrowDown' ? 1 : -1),
+                ),
+              ))
 
               return
             }
@@ -490,7 +741,11 @@ export function Composer({
             const host = conversationMessages({ from: e.currentTarget })
 
             if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && prefix === null && mention === null &&
-              e.currentTarget.selectionEnd === 0 && host && placeMessageCaret({ host, target: latestAgentMessage({ host }), edge: 'end' })) {
+              e.currentTarget.selectionEnd === 0 && host && placeMessageCaret({
+              host,
+              target: latestAgentMessage({ host }),
+              edge: 'end',
+            })) {
               e.preventDefault()
             }
           }}
@@ -516,10 +771,19 @@ export function Composer({
 
                     const cursor = element.selectionStart
                     const boundary = cursor > 0 && !/\s/.test(draft[cursor - 1]!) ? ' ' : ''
-                    const text = draft.slice(0, cursor) + boundary + '@' + draft.slice(element.selectionEnd)
+                    const text = draft.slice(
+                      0,
+                      cursor,
+                    ) + boundary + '@' + draft.slice(element.selectionEnd)
                     const start = cursor + boundary.length
-                    setDraft({ text }); setMention({ start, query: '' }); setMentionActive(0); setPrefix(null)
-                    requestAnimationFrame(() => element.setSelectionRange(start + 1, start + 1))
+                    setDraft({ text }); setMention({
+                      start,
+                      query: '',
+                    }); setMentionActive(0); setPrefix(null)
+                    requestAnimationFrame(() => element.setSelectionRange(
+                      start + 1,
+                      start + 1,
+                    ))
                   }
                 }}
               >Mention a task
@@ -555,7 +819,10 @@ export function Composer({
                   }
 
                   const bytes = await file.arrayBuffer()
-                  const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+                  const text = new TextDecoder(
+                    'utf-8',
+                    { fatal: true },
+                  ).decode(bytes)
 
                   if (text.includes('\0')) {
                     throw new Error(`${file.name} is not a UTF-8 text file.`)
@@ -563,16 +830,33 @@ export function Composer({
 
                   return `File: ${file.name}\n\n${text}`
                 }))
-                const next = [current.current.draft, ...contents].filter(Boolean).join('\n\n')
+                const next = [
+                  current.current.draft,
+                  ...contents,
+                ].filter(Boolean).join('\n\n')
                 const text = commentReply({
-                  draft: next, comments: current.current.comments, firstComment: !taught,
+                  draft: next,
+                  comments: current.current.comments,
+                  firstComment: !taught,
                 })
                 const id = crypto.randomUUID()
                 const name = card === HYDRA_CARD ? 'hydra' : 'reply'
                 const args = card === HYDRA_CARD
-                  ? ['send', `--text=${text}`, '--event-id', id] : [card, text, id]
+                  ? [
+                    'send',
+                    `--text=${text}`,
+                    '--event-id',
+                    id,
+                  ] : [
+                    card,
+                    text,
+                    id,
+                  ]
 
-                if (commandBytes({ name, args }) > MAX_MESSAGE_BYTES) {
+                if (commandBytes({
+                  name,
+                  args,
+                }) > MAX_MESSAGE_BYTES) {
                   throw new Error('Files and draft exceed the 64 KiB message limit. Draft kept.')
                 }
 

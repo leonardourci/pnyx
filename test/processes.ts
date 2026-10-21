@@ -5,9 +5,18 @@ const STOP_TIMEOUT_MS = 10000
 
 const running = new Set<number>()
 
-function signal({ pid, name }: { pid: number; name: NodeJS.Signals | 0 }): boolean {
+function signal({
+  pid,
+  name,
+}: {
+  pid: number
+  name: NodeJS.Signals | 0
+}): boolean {
   try {
-    process.kill(pid, name)
+    process.kill(
+      pid,
+      name,
+    )
 
     return true
   } catch {
@@ -23,17 +32,35 @@ export function track({ child }: { child: ChildProcess }): void {
   }
 
   running.add(pid)
-  child.once('exit', () => running.delete(pid))
+  child.once(
+    'exit',
+    () => running.delete(pid),
+  )
 }
 
 export async function stopProcess({ pid }: { pid: number }): Promise<void> {
-  for (const name of ['SIGTERM', 'SIGKILL'] as const) {
-    if (!signal({ pid, name: 0 }) || !signal({ pid, name })) {
+  for (const name of [
+    'SIGTERM',
+    'SIGKILL',
+  ] as const) {
+    if (!signal({
+      pid,
+      name: 0,
+    }) || !signal({
+      pid,
+      name,
+    })) {
       break
     }
 
-    for (const end = Date.now() + STOP_TIMEOUT_MS; signal({ pid, name: 0 }) && Date.now() < end;) {
-      await new Promise(r => setTimeout(r, 20))
+    for (const end = Date.now() + STOP_TIMEOUT_MS; signal({
+      pid,
+      name: 0,
+    }) && Date.now() < end;) {
+      await new Promise(r => setTimeout(
+        r,
+        20,
+      ))
     }
   }
 

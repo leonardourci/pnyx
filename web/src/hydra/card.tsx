@@ -58,62 +58,122 @@ export function HydraCard({
   children?: ReactNode
 }) {
   const element = useRef<HTMLElement>(null)
-  const [preview, setPreview] = useState<number | null>(null)
-  const [minimum, setMinimum] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.min)
-  const [limit, setLimit] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.max)
-  const height = Math.max(minimum, Math.min(limit, view.cardHeights[card.id] ?? 480))
-  useLayoutEffect(() => {
-    const card = element.current
-    const pane = card?.closest('.column-cards')
+  const [
+    preview,
+    setPreview,
+  ] = useState<number | null>(null)
+  const [
+    minimum,
+    setMinimum,
+  ] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.min)
+  const [
+    limit,
+    setLimit,
+  ] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.max)
+  const height = Math.max(
+    minimum,
+    Math.min(
+      limit,
+      view.cardHeights[card.id] ?? 480,
+    ),
+  )
+  useLayoutEffect(
+    () => {
+      const card = element.current
+      const pane = card?.closest('.column-cards')
 
-    if (!selected || !card || !pane) {
-      return
-    }
+      if (!selected || !card || !pane) {
+        return
+      }
 
-    const measure = () => {
-      const style = getComputedStyle(pane)
-      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
-      const available = Math.floor(pane.clientHeight - padding)
-      const updates = card.querySelector<HTMLElement>('.task-updates')
-      const cardStyle = getComputedStyle(card)
-      const frame = updates ? updates.getBoundingClientRect().top - card.getBoundingClientRect().top
-        + parseFloat(cardStyle.paddingBottom) + parseFloat(cardStyle.borderBottomWidth) : 0
-      const readable = Math.min(VIEW_SIZE_LIMITS.cardHeight.max, Math.max(
-        VIEW_SIZE_LIMITS.cardHeight.min,
-        Math.ceil(frame + MIN_UPDATES_HEIGHT),
-      ))
-      setMinimum(Math.min(readable, available))
-      setLimit(Math.max(
-        Math.min(readable, available),
-        Math.min(VIEW_SIZE_LIMITS.cardHeight.max, available),
-      ))
-    }
+      const measure = () => {
+        const style = getComputedStyle(pane)
+        const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+        const available = Math.floor(pane.clientHeight - padding)
+        const updates = card.querySelector<HTMLElement>('.task-updates')
+        const cardStyle = getComputedStyle(card)
+        const frame = updates
+          ? updates.getBoundingClientRect().top - card.getBoundingClientRect().top
+            + parseFloat(cardStyle.paddingBottom) + parseFloat(cardStyle.borderBottomWidth)
+          : 0
+        const readable = Math.min(
+          VIEW_SIZE_LIMITS.cardHeight.max,
+          Math.max(
+            VIEW_SIZE_LIMITS.cardHeight.min,
+            Math.ceil(frame + MIN_UPDATES_HEIGHT),
+          ),
+        )
+        setMinimum(Math.min(
+          readable,
+          available,
+        ))
+        setLimit(Math.max(
+          Math.min(
+            readable,
+            available,
+          ),
+          Math.min(
+            VIEW_SIZE_LIMITS.cardHeight.max,
+            available,
+          ),
+        ))
+      }
 
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(pane)
-    observer.observe(card)
-    const detail = card.querySelector('.detail')
+      measure()
+      const observer = new ResizeObserver(measure)
+      observer.observe(pane)
+      observer.observe(card)
+      const detail = card.querySelector('.detail')
 
-    if (detail) {
-      observer.observe(detail)
-    }
+      if (detail) {
+        observer.observe(detail)
+      }
 
-    return () => observer.disconnect()
-  }, [selected])
-  const [reminding, setReminding] = useState(false)
-  const [now, setNow] = useState(Date.now)
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000)
+      return () => observer.disconnect()
+    },
+    [selected],
+  )
+  const [
+    reminding,
+    setReminding,
+  ] = useState(false)
+  const [
+    now,
+    setNow,
+  ] = useState(Date.now)
+  useEffect(
+    () => {
+      const timer = setInterval(
+        () => setNow(Date.now()),
+        30_000,
+      )
 
-    return () => clearInterval(timer)
-  }, [])
-  const { resume, busy } = useStartRequest({ card, firstmate, command, notify })
-  const status = cardState({ card, hours: doneAfterHours, now })
+      return () => clearInterval(timer)
+    },
+    [],
+  )
+  const {
+    resume,
+    busy,
+  } = useStartRequest({
+    card,
+    firstmate,
+    command,
+    notify,
+  })
+  const status = cardState({
+    card,
+    hours: doneAfterHours,
+    now,
+  })
   const tint = labelColors?.find(entry => entry.label === card.project)
     ?? labelColors?.find(entry => card.tags.includes(entry.label))
   const update = taskUpdates({ card }).at(-1)
-  const factual = update ? { role: 'assistant' as const, text: update.text, at: update.at } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
+  const factual = update ? {
+    role: 'assistant' as const,
+    text: update.text,
+    at: update.at,
+  } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
 
   return (
     <article
@@ -129,7 +189,10 @@ export function HydraCard({
       }}
       draggable={connected && !selected && !reminding}
       onDragStart={e => {
-        e.stopPropagation(); e.dataTransfer.setData('application/pnyx-task', card.id)
+        e.stopPropagation(); e.dataTransfer.setData(
+          'application/pnyx-task',
+          card.id,
+        )
       }}
     >
       <div className="card-menu">

@@ -7,7 +7,10 @@ export function AgentKinds({ command }: {
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const { effective, error } = useHeadsDispatch({ command })
+  const {
+    effective,
+    error,
+  } = useHeadsDispatch({ command })
 
   return (
     <section className="settings-box" aria-label="Agents">
@@ -18,23 +21,51 @@ export function AgentKinds({ command }: {
       {effective && (
         <>
           <h3>Rules</h3>
-          {Object.entries({ default: { when: 'Tasks without a named rule', candidates: effective.dispatch.default }, ...effective.dispatch.rules }).map(([key, rule]) => (
+          {Object.entries({
+            default: {
+              when: 'Tasks without a named rule',
+              candidates: effective.dispatch.default,
+            },
+            ...effective.dispatch.rules,
+          }).map(([
+            key,
+            rule,
+          ]) => (
             <div key={key} role="group" aria-label={`Rule ${key}`}>
               <strong>{key}</strong><p>{rule.when}</p>
-              <ol>{rule.candidates.map((candidate, index) => <li key={index}>{candidate.harness} · {candidate.model ?? 'default model'}{candidate.effort ? ` · ${candidate.effort}` : ''}</li>)}</ol>
+              <ol>{rule.candidates.map((
+                candidate,
+                index,
+              ) => <li key={index}>{candidate.harness} · {candidate.model ?? 'default model'}{candidate.effort ? ` · ${candidate.effort}` : ''}</li>)}
+              </ol>
             </div>
           ))}
           <h3>Accounts</h3>
           <p>Main account: {effective.dispatch.main ?? 'not configured'}</p>
-          {Object.entries(effective.accounts).map(([key, account]) => (
+          {Object.entries(effective.accounts).map(([
+            key,
+            account,
+          ]) => (
             <p key={key}>
               <strong>{key}</strong> · {account.provider} · <code>{account.folder}</code>
             </p>
           ))}
           {!Object.keys(effective.accounts).length && <p className="muted">No accounts configured. Run <code>pnyx-axi rule init --shared</code> to create the starter files.</p>}
           <h3>Worker account order</h3>
-          {Object.entries(effective.dispatch.workers).map(([provider, order]) => <p key={provider}>{provider}: {order.join(' → ') || 'not configured'}</p>)}
-          {Object.entries(effective.dispatch.projects).map(([project, orders]) => <div key={project}><strong>{project}</strong>{Object.entries(orders).map(([provider, order]) => <p key={provider}>{provider}: {order.join(' → ')}</p>)}</div>)}
+          {Object.entries(effective.dispatch.workers).map(([
+            provider,
+            order,
+          ]) => <p key={provider}>{provider}: {order.join(' → ') || 'not configured'}</p>)}
+          {Object.entries(effective.dispatch.projects).map(([
+            project,
+            orders,
+          ]) => (
+            <div key={project}><strong>{project}</strong>{Object.entries(orders).map(([
+              provider,
+              order,
+            ]) => <p key={provider}>{provider}: {order.join(' → ')}</p>)}
+            </div>
+          ))}
         </>
       )}
     </section>

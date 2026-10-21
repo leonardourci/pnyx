@@ -11,134 +11,440 @@ import { seedWebFixture } from './web-fixture.ts'
 import { smokeBrowser } from './browser.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
-const home = realpathSync(mkdtempSync(join(tmpdir(), 'pnyx-panel-smoke-')))
-process.env.PNYX_HOME = join(home, 'pnyx')
-commands.hydra(['create', 'default', '--name', 'Work'])
+const home = realpathSync(mkdtempSync(join(
+  tmpdir(),
+  'pnyx-panel-smoke-',
+)))
+process.env.PNYX_HOME = join(
+  home,
+  'pnyx',
+)
+commands.hydra([
+  'create',
+  'default',
+  '--name',
+  'Work',
+])
 const fixture = seedWebFixture({ home })
-const folder = join(home, 'pnyx-web'), other = join(home, 'service')
+const folder = join(
+    home,
+    'pnyx-web',
+  ), other = join(
+    home,
+    'service',
+  )
 mkdirSync(folder); mkdirSync(other)
-await project(['add', folder])
-commands.task(['project', 'layout', '--project', folder])
-commands.task(['project', 'reader', '--project', folder])
-commands.hydra(['create', 'personal', '--name', 'Personal'])
-await project(['add', other, '--hydra', 'personal'])
-commands.task(['create', '--title', 'Personal work', '--key', 'personal-work', '--project', other, '--hydra', 'personal'])
-let server = await startServer({ hydraId: 'default', port: 0, homes: [fixture.nativeHome] })
-const { browser, evaluate, eventually, check, click, text, fill, press, focus, screenshot, close } = smokeBrowser({ home, session: 'pnyx-panel' })
+await project([
+  'add',
+  folder,
+])
+commands.task([
+  'project',
+  'layout',
+  '--project',
+  folder,
+])
+commands.task([
+  'project',
+  'reader',
+  '--project',
+  folder,
+])
+commands.hydra([
+  'create',
+  'personal',
+  '--name',
+  'Personal',
+])
+await project([
+  'add',
+  other,
+  '--hydra',
+  'personal',
+])
+commands.task([
+  'create',
+  '--title',
+  'Personal work',
+  '--key',
+  'personal-work',
+  '--project',
+  other,
+  '--hydra',
+  'personal',
+])
+let server = await startServer({
+  hydraId: 'default',
+  port: 0,
+  homes: [fixture.nativeHome],
+})
+const {
+  browser,
+  evaluate,
+  eventually,
+  check,
+  click,
+  text,
+  fill,
+  press,
+  focus,
+  screenshot,
+  close,
+} = smokeBrowser({
+  home,
+  session: 'pnyx-panel',
+})
 const state = () => loadHydra({ hydraId: 'default' }).state
 
 try {
-  await browser({ args: ['open', server.url] })
-  await browser({ args: ['resize', '1440', '900'] })
-  await eventually({ condition: 'document.querySelector(`.panel-project`)?.textContent.includes("pnyx-web")', label: 'project tree loaded' })
-  await check({ condition: '!document.querySelector(`.topbar`) && document.querySelector(`.hydra-chat`).getBoundingClientRect().left > document.querySelector(`.left-panel`).getBoundingClientRect().right', label: 'left panel, docked chat and columns replace the top bar' })
-  await check({ condition: 'document.querySelector(`.panel-project small`).getAttribute("aria-label") === "1 live, 1 asks"', label: 'project counts reflect working agents and waiting asks' })
+  await browser({
+    args: [
+      'open',
+      server.url,
+    ],
+  })
+  await browser({
+    args: [
+      'resize',
+      '1440',
+      '900',
+    ],
+  })
+  await eventually({
+    condition: 'document.querySelector(`.panel-project`)?.textContent.includes("pnyx-web")',
+    label: 'project tree loaded',
+  })
+  await check({
+    condition: '!document.querySelector(`.topbar`) && document.querySelector(`.hydra-chat`).getBoundingClientRect().left > document.querySelector(`.left-panel`).getBoundingClientRect().right',
+    label: 'left panel, docked chat and columns replace the top bar',
+  })
+  await check({
+    condition: 'document.querySelector(`.panel-project small`).getAttribute("aria-label") === "1 live, 1 asks"',
+    label: 'project counts reflect working agents and waiting asks',
+  })
   await screenshot({ name: 'panel.png' })
   await click({ selector: '.panel-project' })
-  await check({ condition: 'document.querySelectorAll("[data-card]").length === 2 && document.querySelector(`.panel-project`).getAttribute("aria-pressed") === "true"', label: 'project click filters cards' })
+  await check({
+    condition: 'document.querySelectorAll("[data-card]").length === 2 && document.querySelector(`.panel-project`).getAttribute("aria-pressed") === "true"',
+    label: 'project click filters cards',
+  })
   await click({ selector: `[data-card="${fixture.state.keys.layout}"]` })
-  await eventually({ condition: '!!document.querySelector(".detail")', label: 'filtered card conversation opened' })
+  await eventually({
+    condition: '!!document.querySelector(".detail")',
+    label: 'filtered card conversation opened',
+  })
   await evaluate({ code: 'location.reload(); return true;' })
-  await eventually({ condition: '!!document.querySelector(".detail") && document.querySelectorAll("[data-card]").length === 2', label: 'filtered reload restores the open conversation' })
+  await eventually({
+    condition: '!!document.querySelector(".detail") && document.querySelectorAll("[data-card]").length === 2',
+    label: 'filtered reload restores the open conversation',
+  })
   await text({ label: 'Settings' })
   await evaluate({ code: 'location.reload(); return true;' })
-  await eventually({ condition: '!!document.querySelector(".settings") && document.querySelector(".panel-project")?.getAttribute("aria-pressed") === "true"', label: 'filtered reload restores Settings' })
+  await eventually({
+    condition: '!!document.querySelector(".settings") && document.querySelector(".panel-project")?.getAttribute("aria-pressed") === "true"',
+    label: 'filtered reload restores Settings',
+  })
   await focus({ selector: '[data-settings-heading]' }); await press({ key: 'Escape' })
-  await eventually({ condition: '!!document.querySelector(".detail")', label: 'returning from Settings keeps the conversation' })
+  await eventually({
+    condition: '!!document.querySelector(".detail")',
+    label: 'returning from Settings keeps the conversation',
+  })
   await click({ selector: '[aria-label="Close detail"]' })
   await click({ selector: '.panel-project' })
-  await check({ condition: 'document.querySelectorAll("[data-card]").length === 6', label: 'second project click shows every card' })
+  await check({
+    condition: 'document.querySelectorAll("[data-card]").length === 6',
+    label: 'second project click shows every card',
+  })
   await evaluate({ code: 'location.reload(); return true;' })
-  await eventually({ condition: 'document.querySelectorAll("[data-card]").length === 6 && !new URLSearchParams(location.search).has("project")', label: 'clearing a project filter survives reload' })
+  await eventually({
+    condition: 'document.querySelectorAll("[data-card]").length === 6 && !new URLSearchParams(location.search).has("project")',
+    label: 'clearing a project filter survives reload',
+  })
   await text({ label: 'Reminders 0' })
-  await check({ condition: 'document.querySelector(`#panel-reminders`).textContent === "No waiting reminders."', label: 'empty reminders open in place' })
-  commands.task(['remind', 'layout', 'in 2 hours'])
-  commands.task(['remind', 'reader', 'in 1 hour'])
-  await eventually({ condition: 'document.querySelector(`[aria-controls="panel-reminders"]`).textContent === "Reminders 2" && document.querySelectorAll(`.panel-reminders li`).length === 2', label: 'waiting reminders push their count and list into the panel' })
-  await check({ condition: `document.querySelector('.panel-reminders li').textContent.includes(${JSON.stringify(fixture.state.cards[fixture.state.keys.reader!].title)}) && !!document.querySelector('.panel-reminders time[datetime]')`, label: 'waiting reminders are listed soonest first with their times' })
+  await check({
+    condition: 'document.querySelector(`#panel-reminders`).textContent === "No waiting reminders."',
+    label: 'empty reminders open in place',
+  })
+  commands.task([
+    'remind',
+    'layout',
+    'in 2 hours',
+  ])
+  commands.task([
+    'remind',
+    'reader',
+    'in 1 hour',
+  ])
+  await eventually({
+    condition: 'document.querySelector(`[aria-controls="panel-reminders"]`).textContent === "Reminders 2" && document.querySelectorAll(`.panel-reminders li`).length === 2',
+    label: 'waiting reminders push their count and list into the panel',
+  })
+  await check({
+    condition: `document.querySelector('.panel-reminders li').textContent.includes(${JSON.stringify(fixture.state.cards[fixture.state.keys.reader!].title)}) && !!document.querySelector('.panel-reminders time[datetime]')`,
+    label: 'waiting reminders are listed soonest first with their times',
+  })
   await screenshot({ name: 'panel-reminders.png' })
   await click({ selector: '.panel-reminders li button' })
-  await eventually({ condition: `document.querySelector('.detail')?.getAttribute('aria-label') === ${JSON.stringify(`Details for ${fixture.state.cards[fixture.state.keys.reader!].title}`)}`, label: 'a panel reminder opens its card' })
+  await eventually({
+    condition: `document.querySelector('.detail')?.getAttribute('aria-label') === ${JSON.stringify(`Details for ${fixture.state.cards[fixture.state.keys.reader!].title}`)}`,
+    label: 'a panel reminder opens its card',
+  })
   await click({ selector: '[aria-label="Close detail"]' })
-  commands.task(['remind', 'layout', 'clear'])
-  commands.task(['remind', 'reader', 'clear'])
-  await eventually({ condition: 'document.querySelector(`[aria-controls="panel-reminders"]`).textContent === "Reminders 0" && document.querySelector(`#panel-reminders`).textContent === "No waiting reminders."', label: 'clearing reminders removes them from the count and list' })
+  commands.task([
+    'remind',
+    'layout',
+    'clear',
+  ])
+  commands.task([
+    'remind',
+    'reader',
+    'clear',
+  ])
+  await eventually({
+    condition: 'document.querySelector(`[aria-controls="panel-reminders"]`).textContent === "Reminders 0" && document.querySelector(`#panel-reminders`).textContent === "No waiting reminders."',
+    label: 'clearing reminders removes them from the count and list',
+  })
 
   await evaluate({ code: 'window.hydrasTop = document.querySelector(`.hydras-heading`).getBoundingClientRect().top; window.chatLeft = document.querySelector(`.hydra-chat`).getBoundingClientRect().left; return true;' })
   await focus({ selector: '[aria-label=Oracle]' })
-  await fill({ label: 'Oracle', value: 'readable' })
-  await eventually({ condition: 'document.querySelectorAll("[data-card]").length === 1', label: 'Oracle filters columns while typing' })
-  await check({ condition: 'document.querySelector(`.hydras-heading`).getBoundingClientRect().top === window.hydrasTop && document.querySelector(`.oracle-results`).getBoundingClientRect().width > document.querySelector(`.left-panel`).getBoundingClientRect().width && document.querySelector(`.oracle-results`).getBoundingClientRect().top > document.querySelector(`[aria-label=Oracle]`).getBoundingClientRect().bottom && !document.querySelector(`dialog,.backdrop`)', label: 'Oracle results float beneath the field, wider than the panel without moving or dimming content' })
+  await fill({
+    label: 'Oracle',
+    value: 'readable',
+  })
+  await eventually({
+    condition: 'document.querySelectorAll("[data-card]").length === 1',
+    label: 'Oracle filters columns while typing',
+  })
+  await check({
+    condition: 'document.querySelector(`.hydras-heading`).getBoundingClientRect().top === window.hydrasTop && document.querySelector(`.oracle-results`).getBoundingClientRect().width > document.querySelector(`.left-panel`).getBoundingClientRect().width && document.querySelector(`.oracle-results`).getBoundingClientRect().top > document.querySelector(`[aria-label=Oracle]`).getBoundingClientRect().bottom && !document.querySelector(`dialog,.backdrop`)',
+    label: 'Oracle results float beneath the field, wider than the panel without moving or dimming content',
+  })
   await screenshot({ name: 'panel-oracle.png' })
   await press({ key: 'Escape' })
-  await check({ condition: '!document.querySelector(`.oracle-results`) && document.querySelectorAll("[data-card]").length === 6', label: 'one Escape closes Oracle and clears the filter' })
-  const platform = await browser({ args: ['eval', '() => /Mac|iPhone|iPad/.test(navigator.platform)'] })
+  await check({
+    condition: '!document.querySelector(`.oracle-results`) && document.querySelectorAll("[data-card]").length === 6',
+    label: 'one Escape closes Oracle and clears the filter',
+  })
+  const platform = await browser({
+    args: [
+      'eval',
+      '() => /Mac|iPhone|iPad/.test(navigator.platform)',
+    ],
+  })
   const mod = platform.includes('true') ? 'Meta' : 'Control'
   await focus({ selector: '.hydra-chat textarea' })
   await press({ key: `${mod}+b` })
-  await check({ condition: 'document.querySelector(`.left-panel`).hidden && document.querySelector(`.left-panel`).getBoundingClientRect().width === 0 && document.querySelector(`.hydra-chat`).getBoundingClientRect().left < window.chatLeft', label: 'Mod+B removes the panel and releases its space' })
+  await check({
+    condition: 'document.querySelector(`.left-panel`).hidden && document.querySelector(`.left-panel`).getBoundingClientRect().width === 0 && document.querySelector(`.hydra-chat`).getBoundingClientRect().left < window.chatLeft',
+    label: 'Mod+B removes the panel and releases its space',
+  })
   await screenshot({ name: 'panel-hidden.png' })
   await press({ key: `${mod}+b` })
-  await check({ condition: '!document.querySelector(`.left-panel`).hidden', label: 'Mod+B restores the panel' })
+  await check({
+    condition: '!document.querySelector(`.left-panel`).hidden',
+    label: 'Mod+B restores the panel',
+  })
   await press({ key: `${mod}+b` }); await press({ key: `${mod}+k` })
-  await check({ condition: '!document.querySelector(`.left-panel`).hidden && document.activeElement.matches("[aria-label=Oracle]")', label: 'Mod+K restores the panel and focuses Oracle' })
+  await check({
+    condition: '!document.querySelector(`.left-panel`).hidden && document.activeElement.matches("[aria-label=Oracle]")',
+    label: 'Mod+K restores the panel and focuses Oracle',
+  })
   await press({ key: 'Escape' })
   await click({ selector: '.hydra-chat [aria-label="Harness"]' })
   await click({ selector: '[role=listbox][aria-label="Harness"] [role=option]:nth-child(2)' })
-  await eventually({ condition: 'document.querySelector(`.hydra-chat [aria-label="Harness"]`).textContent.includes("Codex") && !document.querySelector(`.hydra-chat [aria-label="Model"]`).disabled', label: 'Hydra harness saves in the composer' })
+  await eventually({
+    condition: 'document.querySelector(`.hydra-chat [aria-label="Harness"]`).textContent.includes("Codex") && !document.querySelector(`.hydra-chat [aria-label="Model"]`).disabled',
+    label: 'Hydra harness saves in the composer',
+  })
   await click({ selector: '.hydra-chat [aria-label="Model"]' })
   await click({ selector: '[role=listbox][aria-label="Model"] [role=option]:nth-child(2)' })
-  await eventually({ condition: '!document.querySelector(`.hydra-chat [aria-label="Effort"]`).disabled', label: 'model saved' })
+  await eventually({
+    condition: '!document.querySelector(`.hydra-chat [aria-label="Effort"]`).disabled',
+    label: 'model saved',
+  })
   await click({ selector: '.hydra-chat [aria-label="Effort"]' })
   await click({ selector: '[role=listbox][aria-label="Effort"] [role=option]:nth-child(3)' })
-  await eventually({ condition: 'document.querySelector(`.hydra-chat [aria-label="Effort"]`).textContent.includes("high") && !document.querySelector(`.hydra-chat [aria-label="Effort"]`).disabled', label: 'effort saved' })
-  assert.equal(effectiveDispatch({ hydraId: 'default', state: state() }).dispatch.rules.hydra, undefined)
-  await check({ condition: '!!document.querySelector(`.hydra-chat [aria-label="Fast"]`)', label: 'Fast is available in the composer' })
-  const { mode, ...saved } = state().config?.hydra.agent ?? { harness: 'claude' }
-  assert.deepEqual(saved, { harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' })
-  assert.ok(mode, 'the composer saves a named permission mode')
-  assert.equal(state().config?.hydra.session, undefined)
+  await eventually({
+    condition: 'document.querySelector(`.hydra-chat [aria-label="Effort"]`).textContent.includes("high") && !document.querySelector(`.hydra-chat [aria-label="Effort"]`).disabled',
+    label: 'effort saved',
+  })
+  assert.equal(
+    effectiveDispatch({
+      hydraId: 'default',
+      state: state(),
+    }).dispatch.rules.hydra,
+    undefined,
+  )
+  await check({
+    condition: '!!document.querySelector(`.hydra-chat [aria-label="Fast"]`)',
+    label: 'Fast is available in the composer',
+  })
+  const {
+    mode,
+    ...saved
+  } = state().config?.hydra.agent ?? { harness: 'claude' }
+  assert.deepEqual(
+    saved,
+    {
+      harness: 'codex',
+      model: 'gpt-6.1-sol',
+      effort: 'high',
+    },
+  )
+  assert.ok(
+    mode,
+    'the composer saves a named permission mode',
+  )
+  assert.equal(
+    state().config?.hydra.session,
+    undefined,
+  )
   await evaluate({ code: 'location.reload(); return true;' })
-  await eventually({ condition: 'document.querySelector(`.hydra-chat [aria-label="Model"]`)?.textContent.includes("gpt-6.1-sol")', label: 'next-message settings persist across reload' })
+  await eventually({
+    condition: 'document.querySelector(`.hydra-chat [aria-label="Model"]`)?.textContent.includes("gpt-6.1-sol")',
+    label: 'next-message settings persist across reload',
+  })
   await screenshot({ name: 'panel-agent.png' })
   await click({ selector: '.add-project' })
-  await eventually({ condition: '!!document.querySelector(`.hydra-project-setup`)', label: 'Add project opens inline beside the columns' })
+  await eventually({
+    condition: '!!document.querySelector(`.hydra-project-setup`)',
+    label: 'Add project opens inline beside the columns',
+  })
   await click({ selector: '[aria-label="Close add project"]' })
   await text({ label: 'Personal' })
-  await eventually({ condition: 'document.querySelector("[data-hydra-current]")?.textContent === "Personal"', label: 'Personal Hydra opened' })
+  await eventually({
+    condition: 'document.querySelector("[data-hydra-current]")?.textContent === "Personal"',
+    label: 'Personal Hydra opened',
+  })
   await text({ label: 'Settings' })
   await text({ label: 'Work' })
-  await eventually({ condition: 'document.querySelector("[data-hydra-current]")?.textContent === "Work"', label: 'Work Hydra reopened' })
+  await eventually({
+    condition: 'document.querySelector("[data-hydra-current]")?.textContent === "Work"',
+    label: 'Work Hydra reopened',
+  })
   await click({ selector: '[aria-label="Expand Personal"]' })
-  await check({ condition: 'document.querySelectorAll(".panel-project").length === 2', label: 'other Hydras expand in place' })
-  const attention = join(home, 'personal-attention.json')
-  writeFileSync(attention, JSON.stringify({ attention: [{ key: 'personal-ask', kind: 'question', blocking: true }] }))
-  commands.push(['--key', 'personal-work', '--file', attention, '--hydra', 'personal'])
-  await eventually({ condition: 'document.querySelector("#projects-personal small")?.getAttribute("aria-label") === "0 live, 1 asks"', label: 'another Hydra’s asks update through the existing socket' })
+  await check({
+    condition: 'document.querySelectorAll(".panel-project").length === 2',
+    label: 'other Hydras expand in place',
+  })
+  const attention = join(
+    home,
+    'personal-attention.json',
+  )
+  writeFileSync(
+    attention,
+    JSON.stringify({
+      attention: [
+        {
+          key: 'personal-ask',
+          kind: 'question',
+          blocking: true,
+        },
+      ],
+    }),
+  )
+  commands.push([
+    '--key',
+    'personal-work',
+    '--file',
+    attention,
+    '--hydra',
+    'personal',
+  ])
+  await eventually({
+    condition: 'document.querySelector("#projects-personal small")?.getAttribute("aria-label") === "0 live, 1 asks"',
+    label: 'another Hydra’s asks update through the existing socket',
+  })
   await click({ selector: '#projects-personal .panel-project' })
-  await eventually({ condition: 'location.pathname.includes("/hydra/personal/") && document.querySelector(`[data-hydra-current]`)?.textContent === "Personal" && document.querySelectorAll("[data-card]").length === 1', label: 'another Hydra project opens its own path and filters its cards' })
+  await eventually({
+    condition: 'location.pathname.includes("/hydra/personal/") && document.querySelector(`[data-hydra-current]`)?.textContent === "Personal" && document.querySelectorAll("[data-card]").length === 1',
+    label: 'another Hydra project opens its own path and filters its cards',
+  })
   await click({ selector: '[aria-label="Create Hydra"]' })
-  await eventually({ condition: 'document.querySelector(`[data-hydra-current]`)?.textContent === "New Hydra" && document.querySelectorAll("[data-card]").length === 0', label: 'one click creates an empty Hydra on the same server' })
-  assert.equal(loadHydra({ hydraId: 'hydra-3' }).state.config?.name, 'New Hydra')
+  await eventually({
+    condition: 'document.querySelector(`[data-hydra-current]`)?.textContent === "New Hydra" && document.querySelectorAll("[data-card]").length === 0',
+    label: 'one click creates an empty Hydra on the same server',
+  })
+  assert.equal(
+    loadHydra({ hydraId: 'hydra-3' }).state.config?.name,
+    'New Hydra',
+  )
   await screenshot({ name: 'panel-empty-hydra.png' })
-  mkdirSync(join(fixture.nativeHome, 'projects'))
-  symlinkSync(folder, join(fixture.nativeHome, 'projects', 'front-end'))
-  commands.hydra(['set', '--firstmate', fixture.nativeHome])
-  commands.task(['create', '--title', 'Work via project alias', '--key', 'alias-work'])
-  const input = join(home, 'aliased-task.json')
-  writeFileSync(input, JSON.stringify({ project: 'front-end' }))
-  commands.push(['--key', 'alias-work', '--file', input])
-  await browser({ args: ['open', server.url] })
-  await eventually({ condition: 'document.querySelector(".panel-project")?.textContent.includes("pnyx-web")', label: 'Firstmate project aliases loaded' })
+  mkdirSync(join(
+    fixture.nativeHome,
+    'projects',
+  ))
+  symlinkSync(
+    folder,
+    join(
+      fixture.nativeHome,
+      'projects',
+      'front-end',
+    ),
+  )
+  commands.hydra([
+    'set',
+    '--firstmate',
+    fixture.nativeHome,
+  ])
+  commands.task([
+    'create',
+    '--title',
+    'Work via project alias',
+    '--key',
+    'alias-work',
+  ])
+  const input = join(
+    home,
+    'aliased-task.json',
+  )
+  writeFileSync(
+    input,
+    JSON.stringify({ project: 'front-end' }),
+  )
+  commands.push([
+    '--key',
+    'alias-work',
+    '--file',
+    input,
+  ])
+  await browser({
+    args: [
+      'open',
+      server.url,
+    ],
+  })
+  await eventually({
+    condition: 'document.querySelector(".panel-project")?.textContent.includes("pnyx-web")',
+    label: 'Firstmate project aliases loaded',
+  })
   await click({ selector: '.panel-project' })
-  await check({ condition: '[...document.querySelectorAll("[data-card]")].some(c => c.textContent.includes("Work via project alias")) && ![...document.querySelectorAll("[data-card]")].some(c => c.textContent.includes("Document the reply receipts"))', label: 'Firstmate alias cards match the canonical project filter' })
+  await check({
+    condition: '[...document.querySelectorAll("[data-card]")].some(c => c.textContent.includes("Work via project alias")) && ![...document.querySelectorAll("[data-card]")].some(c => c.textContent.includes("Document the reply receipts"))',
+    label: 'Firstmate alias cards match the canonical project filter',
+  })
   const port = server.port
   await server.close()
-  await eventually({ condition: 'document.querySelector(`.offline`)?.textContent === "offline"', label: 'pnyx shows offline when its server is unreachable' })
+  await eventually({
+    condition: 'document.querySelector(`.offline`)?.textContent === "offline"',
+    label: 'pnyx shows offline when its server is unreachable',
+  })
   await screenshot({ name: 'panel-offline.png' })
-  server = await startServer({ hydraId: 'default', port })
-  await eventually({ condition: '!document.querySelector(`.offline`) && document.querySelector(`.app`).dataset.connected === "true"', label: 'offline mark clears after reconnect' })
-  await browser({ args: ['resize', '700', '800'] })
+  server = await startServer({
+    hydraId: 'default',
+    port,
+  })
+  await eventually({
+    condition: '!document.querySelector(`.offline`) && document.querySelector(`.app`).dataset.connected === "true"',
+    label: 'offline mark clears after reconnect',
+  })
+  await browser({
+    args: [
+      'resize',
+      '700',
+      '800',
+    ],
+  })
   await screenshot({ name: 'panel-narrow.png' })
   process.stdout.write('Panel browser smoke passed.\n')
 } catch (error) {
@@ -146,5 +452,11 @@ try {
   process.stdout.write(await evaluate({ code: 'return { url: location.href, text: document.body.innerText };' }))
   throw error
 } finally {
-  await server.close(); await close(); rmSync(home, { recursive: true, force: true })
+  await server.close(); await close(); rmSync(
+    home,
+    {
+      recursive: true,
+      force: true,
+    },
+  )
 }

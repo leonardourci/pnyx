@@ -4,7 +4,13 @@ export const DEFAULT_DONE_HOURS = 24
 export const MAX_DONE_HOURS = 876000
 export const HOUR_MS = 60 * 60 * 1000
 
-export function refreshDone({ state, at }: { state: HydraState; at: string }): void {
+export function refreshDone({
+  state,
+  at,
+}: {
+  state: HydraState
+  at: string
+}): void {
   for (const card of Object.values(state.cards)) {
     const done = state.config?.columns.find(c => c.id === card.column)?.role === 'done'
       || (!state.config && card.column === 'done')
@@ -23,7 +29,10 @@ export function refreshDone({ state, at }: { state: HydraState; at: string }): v
   }
 }
 
-export function cardDoneDeadline({ card, hours = DEFAULT_DONE_HOURS }: {
+export function cardDoneDeadline({
+  card,
+  hours = DEFAULT_DONE_HOURS,
+}: {
   card: Card
   hours?: number
 }): number | undefined {
@@ -42,10 +51,16 @@ export function doneDeadline({ state }: { state: HydraState }): number | undefin
   let next: number | undefined
 
   for (const card of Object.values(state.cards)) {
-    const deadline = cardDoneDeadline({ card, hours: state.config?.doneAfterHours })
+    const deadline = cardDoneDeadline({
+      card,
+      hours: state.config?.doneAfterHours,
+    })
 
     if (deadline !== undefined) {
-      next = Math.min(next ?? deadline, deadline)
+      next = Math.min(
+        next ?? deadline,
+        deadline,
+      )
     }
   }
 

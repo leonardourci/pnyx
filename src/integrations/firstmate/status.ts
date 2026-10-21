@@ -34,16 +34,28 @@ function verbOf({ head }: { head: string }): string {
     return words
   }
 
-  const [first, ...others] = words.split(/\s+/)
+  const [
+    first,
+    ...others
+  ] = words.split(/\s+/)
 
-  return [first, ...others.filter(w => !CORR.test(w))].join(' ')
+  return [
+    first,
+    ...others.filter(w => !CORR.test(w)),
+  ].join(' ')
 }
 
 export function parseStatusLine({ line }: { line: string }): StatusLine {
   // A complete header timestamp may contain colons; timestamps in the note stay literal.
   const separator = [...line.matchAll(/\[at=[^\]]*\]|:/g)].find(token => token[0] === ':')?.index ?? -1
   const colon = separator >= 0
-  const head = (colon ? line.slice(0, separator) : line).replace(/\s*\[at=[^\]]*\]/g, '')
+  const head = (colon ? line.slice(
+    0,
+    separator,
+  ) : line).replace(
+    /\s*\[at=[^\]]*\]/g,
+    '',
+  )
   let note = colon ? line.slice(separator + 1).trimStart() : head
   const before = /\[key=([^\]]*)\]/.exec(head)?.[1]
   let key: string | null = before ?? 'default'
@@ -64,17 +76,35 @@ export function parseStatusLine({ line }: { line: string }): StatusLine {
     key = null
   }
 
-  return { verb: verbOf({ head }), note, key, declares: colon || /\[key=.*\]/.test(head), colon }
+  return {
+    verb: verbOf({ head }),
+    note,
+    key,
+    declares: colon || /\[key=.*\]/.test(head),
+    colon,
+  }
 }
 
-function transitionAllowed({ key, note }: { key: string; note: string }): boolean {
+function transitionAllowed({
+  key,
+  note,
+}: {
+  key: string
+  note: string
+}): boolean {
   const prefix = RESERVED_PREFIXES.find(p => key.startsWith(p))
 
   return prefix === undefined || (note.startsWith(prefix) && note.includes(':'))
 }
 
 // Only ship and scout terminal lines close every decision.
-export function openDecisions({ log, kind }: { log: string; kind: string }): OpenDecision[] {
+export function openDecisions({
+  log,
+  kind,
+}: {
+  log: string
+  kind: string
+}): OpenDecision[] {
   const open = new Map<string, OpenDecision>()
 
   for (const raw of log.split('\n')) {
@@ -102,7 +132,14 @@ export function openDecisions({ log, kind }: { log: string; kind: string }): Ope
     open.delete(line.key)
 
     if (opens) {
-      open.set(line.key, { verb: line.verb, key: line.key, note: line.note })
+      open.set(
+        line.key,
+        {
+          verb: line.verb,
+          key: line.key,
+          note: line.note,
+        },
+      )
     }
   }
 
@@ -129,7 +166,11 @@ export function latestActivity({ log }: { log: string }): string | undefined {
   return line && (line.note ? `${line.verb}: ${line.note}` : line.verb)
 }
 
-const NOTE_VERBS: Record<string, StatusNote['kind']> = { 'needs-decision': 'decision', resolved: 'decision', done: 'summary' }
+const NOTE_VERBS: Record<string, StatusNote['kind']> = {
+  'needs-decision': 'decision',
+  resolved: 'decision',
+  done: 'summary',
+}
 
 // Only numeric epoch stamps supply a note timestamp.
 export function statusNotes({ log }: { log: string }): StatusNote[] {
@@ -146,7 +187,12 @@ export function statusNotes({ log }: { log: string }): StatusNote[] {
 
     const key = line.key && line.key !== 'default' ? ` [${line.key}]` : ''
     const epoch = /\[at=(\d+)\]/.exec(raw)?.[1]
-    notes.push({ kind, text: `${line.verb}${key}: ${line.note.trim()}`, line: raw, ...(epoch ? { at: new Date(Number(epoch) * 1000).toISOString() } : {}) })
+    notes.push({
+      kind,
+      text: `${line.verb}${key}: ${line.note.trim()}`,
+      line: raw,
+      ...(epoch ? { at: new Date(Number(epoch) * 1000).toISOString() } : {}),
+    })
   }
 
   return notes

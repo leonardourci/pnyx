@@ -2,14 +2,26 @@ import { useId, useRef, useState } from 'react'
 import { Button, useBusy } from './controls.tsx'
 
 // A destructive action that asks in place before it runs. confirm resolves false to stay open.
-export function InlineConfirm({ label, action, message, disabled, confirm }: {
+export function InlineConfirm({
+  label,
+  action,
+  message,
+  disabled,
+  confirm,
+}: {
   label: string
   action: string
   message: string
   disabled: boolean
   confirm(): Promise<boolean>
 }) {
-  const [open, setOpen] = useState(false), [busy, run] = useBusy(), id = useId()
+  const [
+      open,
+      setOpen,
+    ] = useState(false), [
+      busy,
+      run,
+    ] = useBusy(), id = useId()
   const trigger = useRef<HTMLButtonElement>(null)
 
   const cancel = () => {

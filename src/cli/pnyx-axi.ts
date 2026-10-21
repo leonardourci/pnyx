@@ -45,9 +45,11 @@ await runAxiCli({
       ...oracleCommands,
       // Shadows the SDK's npm self-update: pnyx-axi is not published while pre-v1.
       update: () => {
-        throw new AxiError('pnyx-axi is not published yet', 'VALIDATION_ERROR', [
-          'Pull the repository and run `pnpm install && pnpm run build`',
-        ])
+        throw new AxiError(
+          'pnyx-axi is not published yet',
+          'VALIDATION_ERROR',
+          ['Pull the repository and run `pnpm install && pnpm run build`'],
+        )
       },
     },
   }),

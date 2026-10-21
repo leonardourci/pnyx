@@ -10,7 +10,22 @@ export function KeyboardSettings({
   prefs: KeyboardPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
 }) {
-  const { platform } = useKeyboard(), [filter, setFilter] = useState(''), [editing, setEditing] = useState<string | null>(null), [draft, setDraft] = useState(''), [error, setError] = useState(''), [busy, run] = useBusy()
+  const { platform } = useKeyboard(), [
+      filter,
+      setFilter,
+    ] = useState(''), [
+      editing,
+      setEditing,
+    ] = useState<string | null>(null), [
+      draft,
+      setDraft,
+    ] = useState(''), [
+      error,
+      setError,
+    ] = useState(''), [
+      busy,
+      run,
+    ] = useBusy()
   useKeyAction({
     id: 'cancel',
     handler: ({ context: { scope } }) => {
@@ -25,10 +40,16 @@ export function KeyboardSettings({
   })
 
   const persist = ({ bindings }: { bindings: Record<string, string[] | null> | null }) => {
-    const next = { ...prefs, bindings: bindings === null ? {} : { ...prefs.bindings } }
+    const next = {
+      ...prefs,
+      bindings: bindings === null ? {} : { ...prefs.bindings },
+    }
 
     if (bindings) {
-      for (const [id, keys] of Object.entries(bindings)) {
+      for (const [
+        id,
+        keys,
+      ] of Object.entries(bindings)) {
         if (keys === null) {
           delete next.bindings[id]
         } else {
@@ -85,10 +106,20 @@ export function KeyboardSettings({
                 disabled={busy}
                 aria-label={`Rebind ${a.label}`}
                 onClick={() => {
-                  setEditing(a.id); setDraft(bindingsFor({ prefs, id: a.id }).join('\n')); setError('')
+                  setEditing(a.id); setDraft(bindingsFor({
+                    prefs,
+                    id: a.id,
+                  }).join('\n')); setError('')
                 }}
               >
-                <kbd>{keyLabel({ keys: bindingsFor({ prefs, id: a.id }), platform })}</kbd>
+                <kbd>{keyLabel({
+                  keys: bindingsFor({
+                    prefs,
+                    id: a.id,
+                  }),
+                  platform,
+                })}
+                </kbd>
                 <span className="muted">Edit</span>
               </Button>
             </div>

@@ -4,9 +4,15 @@ import { FORM_FIELD_TYPES, type Attention, type FormField, type Question } from 
 import { terminalFacts } from '../../core/route.ts'
 import { hookSettings } from './settings.ts'
 
-export const HARNESSES = ['claude', 'codex'] as const
+export const HARNESSES = [
+  'claude',
+  'codex',
+] as const
 // The events whose hook looks for the session's terminal; any other carries at most its Paseo terminal.
-export const TERMINAL_EVENTS = ['SessionStart', 'UserPromptSubmit']
+export const TERMINAL_EVENTS = [
+  'SessionStart',
+  'UserPromptSubmit',
+]
 export type Harness = (typeof HARNESSES)[number]
 
 export interface HookEnvelope {
@@ -46,8 +52,14 @@ export interface Observation {
   outcome?: 'ended' | null
 }
 
-const PROVIDER: Record<Harness, string> = { claude: 'claude-code', codex: 'codex' }
-export const PR_COMMANDS = ['gh pr create', 'gh-axi pr create']
+const PROVIDER: Record<Harness, string> = {
+  claude: 'claude-code',
+  codex: 'codex',
+}
+export const PR_COMMANDS = [
+  'gh pr create',
+  'gh-axi pr create',
+]
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
 // Keys of the requests hooks open, so clearing them never touches another source's.
@@ -66,9 +78,15 @@ function str({ value }: { value: unknown }): string | undefined {
 }
 
 function short({ value }: { value: string | undefined }): string | undefined {
-  const line = value?.replace(/\s+/g, ' ').trim()
+  const line = value?.replace(
+    /\s+/g,
+    ' ',
+  ).trim()
 
-  return line && (line.length > 200 ? `${line.slice(0, 199)}…` : line)
+  return line && (line.length > 200 ? `${line.slice(
+    0,
+    199,
+  )}…` : line)
 }
 
 export function commandText({ input }: { input: unknown }): string | undefined {
@@ -87,7 +105,10 @@ export function commandText({ input }: { input: unknown }): string | undefined {
 
 function createsPr({ payload }: { payload: Record<string, unknown> }): boolean {
   return (commandText({ input: payload.tool_input }) ?? '').split(/&&|\|\||[;|\n]/).some(part => {
-    const words = part.trim().replace(/\s+/g, ' ')
+    const words = part.trim().replace(
+      /\s+/g,
+      ' ',
+    )
 
     return PR_COMMANDS.some(command => words === command || words.startsWith(`${command} `))
   })
@@ -104,13 +125,25 @@ export function questions({ value }: { value: unknown }): Question[] | undefined
       const label = str({ value: option.label })
       const description = str({ value: option.description })
 
-      return label ? [{ label, ...(description ? { description } : {}) }] : []
+      return label ? [
+        {
+          label,
+          ...(description ? { description } : {}),
+        },
+      ] : []
     })
     const header = str({ value: q.header })
     const multiSelect = q.multiSelect === true ? { multiSelect: true } : {}
 
     return question && options.length
-      ? [{ question, ...(header ? { header } : {}), options, ...multiSelect }]
+      ? [
+        {
+          question,
+          ...(header ? { header } : {}),
+          options,
+          ...multiSelect,
+        },
+      ]
       : []
   })
 
@@ -119,16 +152,27 @@ export function questions({ value }: { value: unknown }): Question[] | undefined
 
 // What the Hydra can fill as the terminal would: anything else (a default, a format,
 // titled choices, limits) changes what the prompt shows, so it is left to the terminal.
-const FIELD_KEYS = ['type', 'title', 'description', 'enum']
+const FIELD_KEYS = [
+  'type',
+  'title',
+  'description',
+  'enum',
+]
 
 // An MCP form's fields in the order its prompt lists them; undefined for a URL
 // elicitation or a field the Hydra cannot fill, so the form is filled in the terminal.
 export function form({ payload }: { payload: Record<string, unknown> }): FormField[] | undefined {
-  const schema = (payload.requested_schema ?? {}) as { properties?: unknown; required?: unknown }
+  const schema = (payload.requested_schema ?? {}) as {
+    properties?: unknown
+    required?: unknown
+  }
   type Property = Record<string, unknown> | null
   const properties = Object.entries((schema.properties ?? {}) as Record<string, Property>)
   const required = Array.isArray(schema.required) ? schema.required : []
-  const fields = properties.flatMap(([name, p]): FormField[] => {
+  const fields = properties.flatMap(([
+    name,
+    p,
+  ]): FormField[] => {
     const type = FORM_FIELD_TYPES.find(t => t === p?.type)
     const options = Array.isArray(p?.enum) && p.enum.every(o => typeof o === 'string') ? p.enum as string[] : undefined
     const title = str({ value: p?.title })
@@ -139,20 +183,26 @@ export function form({ payload }: { payload: Record<string, unknown> }): FormFie
       return []
     }
 
-    return [{
-      name,
-      ...(title ? { title } : {}),
-      type,
-      ...(options ? { options } : {}),
-      ...(required.includes(name) ? { required: true } : {}),
-    }]
+    return [
+      {
+        name,
+        ...(title ? { title } : {}),
+        type,
+        ...(options ? { options } : {}),
+        ...(required.includes(name) ? { required: true } : {}),
+      },
+    ]
   })
 
   return str({ value: payload.mode }) !== 'url' && fields.length && fields.length === properties.length ? fields : undefined
 }
 
 function request(
-  { tool, payload, permission }: {
+  {
+    tool,
+    payload,
+    permission,
+  }: {
     tool: string
     payload: Record<string, unknown>
     permission: boolean
@@ -175,7 +225,12 @@ function request(
   }
 
   if (tool === 'ExitPlanMode') {
-    return { kind: 'plan', key, blocking: true, text: 'Approve the plan' }
+    return {
+      kind: 'plan',
+      key,
+      blocking: true,
+      text: 'Approve the plan',
+    }
   }
 
   if (!permission) {
@@ -187,7 +242,12 @@ function request(
     ?? str({ value: input.url })
     ?? str({ value: input.description })
 
-  return { kind: 'permission', key, blocking: true, text: short({ value: detail ? `Allow ${tool}: ${detail}` : `Allow ${tool}` }) }
+  return {
+    kind: 'permission',
+    key,
+    blocking: true,
+    text: short({ value: detail ? `Allow ${tool}: ${detail}` : `Allow ${tool}` }),
+  }
 }
 
 interface Signal {
@@ -196,7 +256,12 @@ interface Signal {
 }
 
 function toolDone({ tool }: { tool: string }): Attend {
-  return { clear: [`${HOOK}tool:${tool}`, NOTIFICATION] }
+  return {
+    clear: [
+      `${HOOK}tool:${tool}`,
+      NOTIFICATION,
+    ],
+  }
 }
 
 function notification({ payload }: { payload: Record<string, unknown> }): Signal | undefined {
@@ -206,12 +271,41 @@ function notification({ payload }: { payload: Record<string, unknown> }): Signal
     case 'permission_prompt':
       // PermissionRequest names the tool and command; this repeats it, or covers a
       // prompt that reached the main session from a subagent.
-      return { attend: { add: { kind: 'permission', key: NOTIFICATION, blocking: true, text: message ?? 'Permission needed' }, ifNone: true } }
+      return {
+        attend: {
+          add: {
+            kind: 'permission',
+            key: NOTIFICATION,
+            blocking: true,
+            text: message ?? 'Permission needed',
+          },
+          ifNone: true,
+        },
+      }
     case 'agent_needs_input':
-      return { attend: { add: { kind: 'input', key: NOTIFICATION, blocking: true, text: message ?? 'Input needed' } } }
+      return {
+        attend: {
+          add: {
+            kind: 'input',
+            key: NOTIFICATION,
+            blocking: true,
+            text: message ?? 'Input needed',
+          },
+        },
+      }
     case 'elicitation_dialog':
     case 'elicitation_url_dialog':
-      return { attend: { add: { kind: 'input', key: ELICITATION, blocking: true, text: message ?? 'Input needed' }, ifNone: true } }
+      return {
+        attend: {
+          add: {
+            kind: 'input',
+            key: ELICITATION,
+            blocking: true,
+            text: message ?? 'Input needed',
+          },
+          ifNone: true,
+        },
+      }
     case 'elicitation_complete':
     case 'elicitation_response':
       return { attend: { clear: [ELICITATION] } }
@@ -223,7 +317,10 @@ function notification({ payload }: { payload: Record<string, unknown> }): Signal
   }
 }
 
-function signal({ event, payload }: {
+function signal({
+  event,
+  payload,
+}: {
   event: string
   payload: Record<string, unknown>
 }): Signal | undefined {
@@ -233,27 +330,73 @@ function signal({ event, payload }: {
   switch (event) {
     case 'SessionStart':
       // A compaction can start a session in the middle of a turn.
-      return str({ value: payload.source }) === 'compact' ? { attend: all } : { activity: 'finished', attend: all }
+      return str({ value: payload.source }) === 'compact' ? { attend: all } : {
+        activity: 'finished',
+        attend: all,
+      }
     case 'UserPromptSubmit':
-      return { activity: 'working', attend: all }
+      return {
+        activity: 'working',
+        attend: all,
+      }
     case 'PreToolUse':
-      return { activity: 'working', attend: { add: request({ tool, payload, permission: false }) } }
+      return {
+        activity: 'working',
+        attend: {
+          add: request({
+            tool,
+            payload,
+            permission: false,
+          }),
+        },
+      }
     case 'PermissionRequest':
-      return { attend: { add: request({ tool, payload, permission: true }) } }
+      return {
+        attend: {
+          add: request({
+            tool,
+            payload,
+            permission: true,
+          }),
+        },
+      }
     case 'PermissionDenied':
       return { attend: toolDone({ tool }) }
     case 'PostToolUse':
-      return { activity: 'working', attend: toolDone({ tool }) }
+      return {
+        activity: 'working',
+        attend: toolDone({ tool }),
+      }
     case 'PostToolUseFailure':
-      return { activity: payload.is_interrupt === true ? 'finished' : 'working', attend: toolDone({ tool }) }
+      return {
+        activity: payload.is_interrupt === true ? 'finished' : 'working',
+        attend: toolDone({ tool }),
+      }
     case 'Notification':
       return notification({ payload })
     case 'Elicitation': {
-      const text = short({ value: [str({ value: payload.mcp_server_name }), str({ value: payload.message })].filter(Boolean).join(': ') })
+      const text = short({
+        value: [
+          str({ value: payload.mcp_server_name }),
+          str({ value: payload.message }),
+        ].filter(Boolean).join(': '),
+      })
       const fields = form({ payload })
-      const add: Attention = { kind: 'input', key: ELICITATION, blocking: true, text: text || 'Input needed' }
+      const add: Attention = {
+        kind: 'input',
+        key: ELICITATION,
+        blocking: true,
+        text: text || 'Input needed',
+      }
 
-      return { attend: { add: fields ? { ...add, form: fields } : add } }
+      return {
+        attend: {
+          add: fields ? {
+            ...add,
+            form: fields,
+          } : add,
+        },
+      }
     }
     case 'ElicitationResult':
       return { attend: { clear: [ELICITATION] } }
@@ -261,11 +404,17 @@ function signal({ event, payload }: {
     case 'StopFailure':
     case 'Interrupt':
     case 'SubagentStop':
-      return { activity: 'finished', attend: all }
+      return {
+        activity: 'finished',
+        attend: all,
+      }
     case 'SubagentStart':
       return { activity: 'working' }
     case 'SessionEnd':
-      return { activity: 'ended', attend: all }
+      return {
+        activity: 'ended',
+        attend: all,
+      }
     case 'PostModelSwitch':
     case 'PostCompact':
       // No turn change: the new model is read by hookSettings, and a compaction queues a harvest.
@@ -275,7 +424,13 @@ function signal({ event, payload }: {
   }
 }
 
-const REOPENS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'SubagentStart']
+const REOPENS = [
+  'SessionStart',
+  'UserPromptSubmit',
+  'PreToolUse',
+  'PostToolUse',
+  'SubagentStart',
+]
 const TITLE_MAX = 100
 
 function promptTitle({ prompt }: { prompt: unknown }): string | undefined {
@@ -283,10 +438,19 @@ function promptTitle({ prompt }: { prompt: unknown }): string | undefined {
     .map(l => l.trim())
     .find(l => l !== '')
 
-  return line && line.length > TITLE_MAX ? `${line.slice(0, TITLE_MAX - 1)}…` : line
+  return line && line.length > TITLE_MAX ? `${line.slice(
+    0,
+    TITLE_MAX - 1,
+  )}…` : line
 }
 
-export function attend({ current, change }: { current: Attention[]; change: Attend }): Attention[] {
+export function attend({
+  current,
+  change,
+}: {
+  current: Attention[]
+  change: Attend
+}): Attention[] {
   const kept = current.filter(a => !change.clear?.some(prefix => a.key.startsWith(prefix)))
   const add = change.add
 
@@ -297,7 +461,13 @@ export function attend({ current, change }: { current: Attention[]; change: Atte
   const others = kept.filter(a => a.key !== add.key)
 
   // A blocking request goes first: the card shows its first request.
-  return add.blocking ? [add, ...others] : [...others, add]
+  return add.blocking ? [
+    add,
+    ...others,
+  ] : [
+    ...others,
+    add,
+  ]
 }
 
 // Returns no observations for a payload without a session id or an event Pnyx does
@@ -315,7 +485,10 @@ export function observe({ envelope }: { envelope: HookEnvelope }): Observation[]
   const p = payload as Record<string, unknown>
   const sessionId = str({ value: p.session_id })
   const agentId = str({ value: p.agent_id })
-  const found = signal({ event: envelope.event, payload: p })
+  const found = signal({
+    event: envelope.event,
+    payload: p,
+  })
 
   // Claude Code runs helper agents with an empty agent type (session titles, prompt
   // suggestions, compaction) that its own interface never shows.
@@ -334,15 +507,28 @@ export function observe({ envelope }: { envelope: HookEnvelope }): Observation[]
   const cwd = str({ value: p.cwd })
   const agent = ({ extra }: { extra: Record<string, unknown> }) =>
     Object.fromEntries(
-      Object.entries({ provider, sessionId, ...extra, cwd })
-        .filter(([, v]) => v !== undefined),
+      Object.entries({
+        provider,
+        sessionId,
+        ...extra,
+        cwd,
+      })
+        .filter(([
+          , v,
+        ]) => v !== undefined),
     )
 
   const prompt = envelope.event === 'UserPromptSubmit' ? promptTitle({ prompt: p.prompt }) : undefined
   const folder = cwd && basename(cwd)
   const autoTitle = prompt
-    ? { from: 'prompt', text: prompt }
-    : folder ? { from: 'folder', text: folder } : undefined
+    ? {
+      from: 'prompt',
+      text: prompt,
+    }
+    : folder ? {
+      from: 'folder',
+      text: folder,
+    } : undefined
   const session = {
     source: source({ objectId: sessionId }),
     agent: agent({ extra: { transcriptPath: str({ value: p.transcript_path }) } }),
@@ -354,14 +540,27 @@ export function observe({ envelope }: { envelope: HookEnvelope }): Observation[]
   const recordedTerminal = TERMINAL_EVENTS.includes(envelope.event)
   const terminal = recordedTerminal ? terminalFacts({ value: envelope.terminal }) : undefined
   let card: Record<string, unknown> = {
-    ...session, ...activity, ...(terminal || recordedTerminal ? { terminal: terminal ?? {} } : {}),
+    ...session,
+    ...activity,
+    ...(terminal || recordedTerminal ? { terminal: terminal ?? {} } : {}),
   }
 
   if (agentId) {
     const clears = found.attend?.clear?.some(prefix => NOTIFICATION.startsWith(prefix))
     out.push(clears
-      ? { id: 'parent', key: parentKey, card: session, attend: { clear: [NOTIFICATION] }, ifChanged: true }
-      : { id: 'parent', key: parentKey, card: session, ifMissing: true })
+      ? {
+        id: 'parent',
+        key: parentKey,
+        card: session,
+        attend: { clear: [NOTIFICATION] },
+        ifChanged: true,
+      }
+      : {
+        id: 'parent',
+        key: parentKey,
+        card: session,
+        ifMissing: true,
+      })
     key = `${parentKey}/${agentId}`
     const agentType = str({ value: p.agent_type })
     card = {
@@ -373,7 +572,10 @@ export function observe({ envelope }: { envelope: HookEnvelope }): Observation[]
           transcriptPath: str({ value: p.agent_transcript_path }),
         },
       }),
-      autoTitle: { from: 'agent', text: `${agentType ?? 'Subagent'} ${agentId.slice(-4)}` },
+      autoTitle: {
+        from: 'agent',
+        text: `${agentType ?? 'Subagent'} ${agentId.slice(-4)}`,
+      },
       parent: parentKey,
       ...activity,
     }
@@ -385,7 +587,11 @@ export function observe({ envelope }: { envelope: HookEnvelope }): Observation[]
     card.settings = settings
   }
 
-  const observation: Observation = { id: '', key, card }
+  const observation: Observation = {
+    id: '',
+    key,
+    card,
+  }
 
   if (envelope.event === 'SessionEnd' || (envelope.event === 'SubagentStop' && agentId)) {
     observation.outcome = 'ended'

@@ -3,7 +3,10 @@ import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { hydraIds, loadHydra } from '../store/hydra-store.ts'
 
-export interface Folder { name: string; path: string }
+export interface Folder {
+  name: string
+  path: string
+}
 export interface FolderListing {
   folders: Folder[]
   recent: Folder[]
@@ -11,7 +14,10 @@ export interface FolderListing {
   cloneInto?: string
 }
 
-const folder = ({ path }: { path: string }): Folder => ({ name: basename(path) || path, path })
+const folder = ({ path }: { path: string }): Folder => ({
+  name: basename(path) || path,
+  path,
+})
 
 async function emptyFolder({ path }: { path: string }): Promise<boolean> {
   const entries = await opendir(path)
@@ -23,12 +29,19 @@ async function emptyFolder({ path }: { path: string }): Promise<boolean> {
   }
 }
 
-export async function listFolders({ path, repository = '', home = homedir() }: {
+export async function listFolders({
+  path,
+  repository = '',
+  home = homedir(),
+}: {
   path: string
   repository?: string
   home?: string
 }): Promise<FolderListing> {
-  const expanded = path === '~' ? home : path.startsWith('~/') ? join(home, path.slice(2)) : path
+  const expanded = path === '~' ? home : path.startsWith('~/') ? join(
+    home,
+    path.slice(2),
+  ) : path
 
   if (expanded && !isAbsolute(expanded)) {
     throw new Error('Enter an absolute laptop folder path, or start with ~/')
@@ -56,10 +69,16 @@ export async function listFolders({ path, repository = '', home = homedir() }: {
       continue
     }
 
-    const child = join(root, entry.name)
+    const child = join(
+      root,
+      entry.name,
+    )
 
     const directory = entry.isDirectory()
-      || (entry.isSymbolicLink() && await stat(child).then(s => s.isDirectory(), () => false))
+      || (entry.isSymbolicLink() && await stat(child).then(
+        s => s.isDirectory(),
+        () => false,
+      ))
 
     if (directory) {
       folders.push(folder({ path: child }))
@@ -77,7 +96,10 @@ export async function listFolders({ path, repository = '', home = homedir() }: {
     try {
       const { state } = loadHydra({ hydraId })
 
-      for (const card of Object.values(state.cards).sort((a, b) => b.updatedSeq - a.updatedSeq)) {
+      for (const card of Object.values(state.cards).sort((
+        a,
+        b,
+      ) => b.updatedSeq - a.updatedSeq)) {
         const cwd = card.agent?.cwd
 
         const matches = !expanded || cwd?.toLowerCase().startsWith(expanded.toLowerCase())
@@ -103,15 +125,27 @@ export async function listFolders({ path, repository = '', home = homedir() }: {
     }
   }
 
-  const name = repository.trim().replace(/[\\/]+$/, '')
+  const name = repository.trim().replace(
+    /[\\/]+$/,
+    '',
+  )
     .split(/[/:]/)
     .at(-1)
-    ?.replace(/\.git$/, '')
+    ?.replace(
+      /\.git$/,
+      '',
+    )
   const cloneInto = repository.trim() && expanded && name && name !== '.' && name !== '..' && !/[?#]/.test(name)
-    ? selected ? selected.empty ? selected.path : join(selected.path, name) : typed : undefined
+    ? selected ? selected.empty ? selected.path : join(
+      selected.path,
+      name,
+    ) : typed : undefined
 
   return {
-    folders: folders.sort((a, b) => a.name.localeCompare(b.name)),
+    folders: folders.sort((
+      a,
+      b,
+    ) => a.name.localeCompare(b.name)),
     recent,
     ...(selected ? { selected } : {}),
     ...(cloneInto ? { cloneInto } : {}),

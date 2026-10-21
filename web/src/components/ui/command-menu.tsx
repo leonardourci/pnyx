@@ -25,38 +25,87 @@ export function CommandMenu({
   // More results for a typed query, fetched after a pause and listed after the matching items.
   search?({ query }: { query: string }): Promise<MenuItem[]>
 }) {
-  const [query, setQuery] = useState(''), [active, setActive] = useState(0), root = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null), id = useId()
-  const [found, setFound] = useState<{ query: string; items: MenuItem[] }>({ query: '', items: [] })
+  const [
+    query,
+    setQuery,
+  ] = useState('')
+  const [
+    active,
+    setActive,
+  ] = useState(0)
+  const root = useRef<HTMLDivElement>(null)
+  const input = useRef<HTMLInputElement>(null)
+  const id = useId()
+  const [
+    found,
+    setFound,
+  ] = useState<{
+    query: string
+    items: MenuItem[]
+  }>({
+    query: '',
+    items: [],
+  })
   const q = query.trim()
-  useEffect(() => {
-    if (!search || !q) {
-      return
-    }
+  useEffect(
+    () => {
+      if (!search || !q) {
+        return
+      }
 
-    let live = true
-    const timer = setTimeout(() => {
-      void search({ query: q }).then(results => {
-        if (live) {
-          setFound({ query: q, items: results })
-        }
-      }, () => {})
-    }, 180)
+      let live = true
+      const timer = setTimeout(
+        () => {
+          void search({ query: q }).then(
+            results => {
+              if (live) {
+                setFound({
+                  query: q,
+                  items: results,
+                })
+              }
+            },
+            () => {},
+          )
+        },
+        180,
+      )
 
-    return () => {
-      live = false; clearTimeout(timer)
-    }
-  }, [search, q])
+      return () => {
+        live = false; clearTimeout(timer)
+      }
+    },
+    [
+      search,
+      q,
+    ],
+  )
   const visible = [
     ...items.filter(i => `${i.label} ${i.detail ?? ''}`.toLowerCase().includes(query.toLowerCase())),
     ...(q && found.query === q ? found.items : []),
   ]
-  const index = Math.min(active, Math.max(0, visible.length - 1))
-  useEffect(() => {
-    input.current?.focus()
-  }, [])
-  useEffect(() => {
-    document.getElementById(`${id}-${index}`)?.scrollIntoView({ block: 'nearest' })
-  }, [index, id])
+  const index = Math.min(
+    active,
+    Math.max(
+      0,
+      visible.length - 1,
+    ),
+  )
+  useEffect(
+    () => {
+      input.current?.focus()
+    },
+    [],
+  )
+  useEffect(
+    () => {
+      document.getElementById(`${id}-${index}`)?.scrollIntoView({ block: 'nearest' })
+    },
+    [
+      index,
+      id,
+    ],
+  )
 
   const choose = ({ position: n }: { position: number }) => {
     const item = visible[n]
@@ -120,8 +169,17 @@ export function CommandMenu({
               return
             }
 
-            if (['ArrowDown', 'ArrowUp'].includes(e.key)) {
-              e.preventDefault(); setActive(Math.max(0, Math.min(visible.length - 1, index + (e.key === 'ArrowDown' ? 1 : -1))))
+            if ([
+              'ArrowDown',
+              'ArrowUp',
+            ].includes(e.key)) {
+              e.preventDefault(); setActive(Math.max(
+                0,
+                Math.min(
+                  visible.length - 1,
+                  index + (e.key === 'ArrowDown' ? 1 : -1),
+                ),
+              ))
             } else if (e.key === 'Enter') {
               e.preventDefault()
 
@@ -137,7 +195,10 @@ export function CommandMenu({
           id={`${id}-list`}
           className="command-results"
         >
-          {visible.map((item, n) => (
+          {visible.map((
+            item,
+            n,
+          ) => (
             <div
               role="option"
               aria-selected={index === n}

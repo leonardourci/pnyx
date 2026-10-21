@@ -14,7 +14,10 @@ const title = ({ request }: { request: PermissionRequest }) => request.questions
 function Receipt({ request }: { request: PermissionRequest }) {
   const answered = request.answers
     ? request.answers.map(a => a.join(', ')).join(' · ')
-    : request.values && Object.entries(request.values).map(([k, v]) => `${k}: ${String(v)}`)
+    : request.values && Object.entries(request.values).map(([
+      k,
+      v,
+    ]) => `${k}: ${String(v)}`)
       .join(' · ')
 
   return (
@@ -26,18 +29,45 @@ function Receipt({ request }: { request: PermissionRequest }) {
   )
 }
 
-export function InlinePermissions({ card, command, notify }: {
+export function InlinePermissions({
+  card,
+  command,
+  notify,
+}: {
   card: Card
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const [busy, setBusy] = useState<string | null>(null)
+  const [
+    busy,
+    setBusy,
+  ] = useState<string | null>(null)
 
-  const answer = async ({ request, choice, value }: { request: string; choice: 'allow' | 'deny'; value?: unknown }) => {
+  const answer = async ({
+    request,
+    choice,
+    value,
+  }: {
+    request: string
+    choice: 'allow' | 'deny'
+    value?: unknown
+  }) => {
     setBusy(request)
 
     try {
-      await command({ name: 'task', args: ['permission', card.id, request, choice, ...(value === undefined ? [] : ['--answer', JSON.stringify(value)])] })
+      await command({
+        name: 'task',
+        args: [
+          'permission',
+          card.id,
+          request,
+          choice,
+          ...(value === undefined ? [] : [
+            '--answer',
+            JSON.stringify(value),
+          ]),
+        ],
+      })
       notify({ text: value !== undefined ? 'Answer sent.' : choice === 'allow' ? 'Permission allowed.' : 'Permission denied.' })
     } catch (error) {
       notify({ text: (error as Error).message })
@@ -51,7 +81,13 @@ export function InlinePermissions({ card, command, notify }: {
       {(card.permissions ?? []).map(request => {
         const details = permissionDetails({ request })
         const pending = request.status === 'pending'
-        const asked: Attention = { kind: 'question', key: request.id, blocking: true, ...(request.questions ? { questions: request.questions } : {}), ...(request.form ? { form: request.form } : {}) }
+        const asked: Attention = {
+          kind: 'question',
+          key: request.id,
+          blocking: true,
+          ...(request.questions ? { questions: request.questions } : {}),
+          ...(request.form ? { form: request.form } : {}),
+        }
 
         return (
           <article key={request.id} className={`ask${pending ? '' : ' answered'}`} aria-label={request.questions ? 'Agent question' : 'Tool permission'}>
@@ -68,7 +104,12 @@ export function InlinePermissions({ card, command, notify }: {
             )}
             {!request.questions && !request.form && (
               <Disclosure title={<span className="small muted">Full request</span>}>
-                <pre className="permission-input">{JSON.stringify(request.input, null, 2)}</pre>
+                <pre className="permission-input">{JSON.stringify(
+                  request.input,
+                  null,
+                  2,
+                )}
+                </pre>
               </Disclosure>
             )}
             {!pending
@@ -76,8 +117,24 @@ export function InlinePermissions({ card, command, notify }: {
               : request.questions
                 ? (
                   <>
-                    <Questions request={asked} busy={busy === request.id} send={({ value }) => answer({ request: request.id, choice: 'allow', value })} />
-                    <Button variant="surface" disabled={busy !== null} onClick={() => void answer({ request: request.id, choice: 'deny' })}>Skip</Button>
+                    <Questions
+                      request={asked}
+                      busy={busy === request.id}
+                      send={({ value }) => answer({
+                        request: request.id,
+                        choice: 'allow',
+                        value,
+                      })}
+                    />
+                    <Button
+                      variant="surface"
+                      disabled={busy !== null}
+                      onClick={() => void answer({
+                        request: request.id,
+                        choice: 'deny',
+                      })}
+                    >Skip
+                    </Button>
                   </>
                 )
                 : request.form
@@ -86,14 +143,37 @@ export function InlinePermissions({ card, command, notify }: {
                       request={asked}
                       busy={busy === request.id}
                       send={({ value }) => (value as { choice: string }).choice === 'decline'
-                        ? answer({ request: request.id, choice: 'deny' })
-                        : answer({ request: request.id, choice: 'allow', value })}
+                        ? answer({
+                          request: request.id,
+                          choice: 'deny',
+                        })
+                        : answer({
+                          request: request.id,
+                          choice: 'allow',
+                          value,
+                        })}
                     />
                   )
                   : (
                     <div className="row wrap">
-                      <Button variant="primary" disabled={busy !== null} onClick={() => void answer({ request: request.id, choice: 'allow' })}>Allow</Button>
-                      <Button variant="surface" disabled={busy !== null} onClick={() => void answer({ request: request.id, choice: 'deny' })}>Deny</Button>
+                      <Button
+                        variant="primary"
+                        disabled={busy !== null}
+                        onClick={() => void answer({
+                          request: request.id,
+                          choice: 'allow',
+                        })}
+                      >Allow
+                      </Button>
+                      <Button
+                        variant="surface"
+                        disabled={busy !== null}
+                        onClick={() => void answer({
+                          request: request.id,
+                          choice: 'deny',
+                        })}
+                      >Deny
+                      </Button>
                     </div>
                   )}
           </article>

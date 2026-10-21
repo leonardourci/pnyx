@@ -27,13 +27,35 @@ export function Detail({
   command: Command
   connected: boolean
   close(): void
-  createTask({ column, parent }: { column: string; parent?: string }): void
+  createTask({
+    column,
+    parent,
+  }: {
+    column: string
+    parent?: string
+  }): void
   notify({ text }: { text: string }): void
   conversation?: ReactNode
 }) {
-  const [reminding, setReminding] = useState(false)
-  const [renaming, setRenaming] = useState(false)
-  const { start, resume, reassign, busy: starting } = useStartRequest({ card, firstmate: state.config?.hydra.kind === 'firstmate', command, notify })
+  const [
+    reminding,
+    setReminding,
+  ] = useState(false)
+  const [
+    renaming,
+    setRenaming,
+  ] = useState(false)
+  const {
+    start,
+    resume,
+    reassign,
+    busy: starting,
+  } = useStartRequest({
+    card,
+    firstmate: state.config?.hydra.kind === 'firstmate',
+    command,
+    notify,
+  })
 
   return (
     <section aria-label={`Details for ${card.title}`} className="detail inline">
@@ -56,7 +78,15 @@ export function Detail({
               <Button
                 disabled={!connected}
                 onClick={() => {
-                  void command({ name: 'task', args: [card.hidden ? 'unhide' : 'hide', card.id, '--event-id', crypto.randomUUID()] })
+                  void command({
+                    name: 'task',
+                    args: [
+                      card.hidden ? 'unhide' : 'hide',
+                      card.id,
+                      '--event-id',
+                      crypto.randomUUID(),
+                    ],
+                  })
                     .catch(e => notify({ text: e.message }))
                   close()
                 }}
@@ -75,7 +105,10 @@ export function Detail({
             {!card.parentId && (
               <Button
                 disabled={!connected}
-                onClick={() => createTask({ column: card.column, parent: card.id })}
+                onClick={() => createTask({
+                  column: card.column,
+                  parent: card.id,
+                })}
               >Add subtask
               </Button>
             )}
@@ -90,7 +123,17 @@ export function Detail({
           label="Task title"
           finished={() => setRenaming(false)}
           startEditing
-          save={({ title }) => command({ name: 'task', args: ['rename', card.id, '--title', title, '--event-id', crypto.randomUUID()] }).then(() => setRenaming(false))}
+          save={({ title }) => command({
+            name: 'task',
+            args: [
+              'rename',
+              card.id,
+              '--title',
+              title,
+              '--event-id',
+              crypto.randomUUID(),
+            ],
+          }).then(() => setRenaming(false))}
         />
       )}
       {renaming && (
@@ -101,7 +144,17 @@ export function Detail({
           placeholder="Project label"
           onBlur={e => {
             if (e.target.value !== (card.project ?? '')) {
-              void command({ name: 'task', args: ['rename', card.id, '--project', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+              void command({
+                name: 'task',
+                args: [
+                  'rename',
+                  card.id,
+                  '--project',
+                  e.target.value,
+                  '--event-id',
+                  crypto.randomUUID(),
+                ],
+              }).catch(e => notify({ text: e.message }))
             }
           }}
         />

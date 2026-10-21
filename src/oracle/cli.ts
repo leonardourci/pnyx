@@ -21,14 +21,21 @@ const SEARCH: Options = {
   limit: { type: 'string' },
 }
 
-const SETUP: Options = { ...COMMON, semantic: { type: 'boolean' } }
+const SETUP: Options = {
+  ...COMMON,
+  semantic: { type: 'boolean' },
+}
 
 async function axi<T>({ work }: { work: Promise<T> }): Promise<T> {
   try {
     return await work
   } catch (error) {
     if (error instanceof HydraError) {
-      throw new AxiError(error.message, error.code, error.help)
+      throw new AxiError(
+        error.message,
+        error.code,
+        error.help,
+      )
     }
 
     throw error
@@ -47,7 +54,10 @@ async function status({ hydraId }: { hydraId: string }): Promise<Output> {
   }
 
   if (!s.current) {
-    return { index: 'stale: built by another version; the next search rebuilds it', bytes: s.bytes }
+    return {
+      index: 'stale: built by another version; the next search rebuilds it',
+      bytes: s.bytes,
+    }
   }
 
   return {
@@ -62,14 +72,28 @@ async function status({ hydraId }: { hydraId: string }): Promise<Output> {
 }
 
 function built({ result }: { result: IndexResult }): Output {
-  return { rebuilt: result, help: ['Run `pnyx-axi oracle "<words>"`'] }
+  return {
+    rebuilt: result,
+    help: ['Run `pnyx-axi oracle "<words>"`'],
+  }
 }
 
 async function setup({ args }: { args: string[] }): Promise<Output> {
-  const { values, hydraId } = parse({ args, options: SETUP, positionals: 0 })
+  const {
+    values,
+    hydraId,
+  } = parse({
+    args,
+    options: SETUP,
+    positionals: 0,
+  })
 
   if (!values.semantic) {
-    throw new AxiError('oracle setup needs --semantic', 'VALIDATION_ERROR', ['Run `pnyx-axi oracle setup --semantic`'])
+    throw new AxiError(
+      'oracle setup needs --semantic',
+      'VALIDATION_ERROR',
+      ['Run `pnyx-axi oracle setup --semantic`'],
+    )
   }
 
   const progress = ({ line }: { line: string }) => {
@@ -78,7 +102,10 @@ async function setup({ args }: { args: string[] }): Promise<Output> {
     }
   }
 
-  const r = await setupSemantic({ hydraId, progress })
+  const r = await setupSemantic({
+    hydraId,
+    progress,
+  })
 
   return {
     semantic: 'on',
@@ -86,14 +113,21 @@ async function setup({ args }: { args: string[] }): Promise<Output> {
     model: r.choice.model,
     rerank: r.choice.rerank ? 'on' : 'off',
     files: r.files,
-    help: ['Run `pnyx-axi oracle "<words>"`; entries are embedded in the background', 'Run `pnyx-axi settings set oracle.semantic off` to turn it off'],
+    help: [
+      'Run `pnyx-axi oracle "<words>"`; entries are embedded in the background',
+      'Run `pnyx-axi settings set oracle.semantic off` to turn it off',
+    ],
   }
 }
 
 const oracleCommand = guard<Output | Promise<Output>>({
   handler: ({ args }) => {
     if (args[0] === 'status' || args[0] === 'rebuild') {
-      const { hydraId } = parse({ args: args.slice(1), options: COMMON, positionals: 0 })
+      const { hydraId } = parse({
+        args: args.slice(1),
+        options: COMMON,
+        positionals: 0,
+      })
 
       return args[0] === 'status' ? axi({ work: status({ hydraId }) }) : built({ result: rebuildIndex({ hydraId }) })
     }
@@ -102,54 +136,99 @@ const oracleCommand = guard<Output | Promise<Output>>({
       return axi({ work: setup({ args: args.slice(1) }) })
     }
 
-    const { values, positionals, hydraId } = parse({ args, options: SEARCH, positionals: Infinity })
+    const {
+      values,
+      positionals,
+      hydraId,
+    } = parse({
+      args,
+      options: SEARCH,
+      positionals: Infinity,
+    })
     const text = positionals.join(' ')
 
     if (!text) {
-      throw new AxiError('missing query', 'VALIDATION_ERROR', ['Run `pnyx-axi oracle "<words>"`'])
+      throw new AxiError(
+        'missing query',
+        'VALIDATION_ERROR',
+        ['Run `pnyx-axi oracle "<words>"`'],
+      )
     }
 
     const kind = values.kind as string | undefined
 
     if (kind !== undefined && !(KINDS as readonly string[]).includes(kind)) {
-      throw new AxiError(`unknown kind: ${kind}`, 'VALIDATION_ERROR', [`Use one of ${KINDS.join(', ')}`])
+      throw new AxiError(
+        `unknown kind: ${kind}`,
+        'VALIDATION_ERROR',
+        [`Use one of ${KINDS.join(', ')}`],
+      )
     }
 
     const rawLimit = values.limit as string | undefined
 
     if (rawLimit !== undefined && !/^[1-9]\d*$/.test(rawLimit)) {
-      throw new AxiError('--limit must be a positive integer', 'VALIDATION_ERROR')
+      throw new AxiError(
+        '--limit must be a positive integer',
+        'VALIDATION_ERROR',
+      )
     }
 
     const card = values.card === undefined
       ? undefined
-      : findCard({ state: loadHydra({ hydraId }).state, ref: values.card as string }).id
+      : findCard({
+        state: loadHydra({ hydraId }).state,
+        ref: values.card as string,
+      }).id
 
     return axi({
       work: queryOracle({
         hydraId,
         query: {
           text,
-          limit: Math.min(rawLimit ? Number(rawLimit) : LIMIT, MAX),
+          limit: Math.min(
+            rawLimit ? Number(rawLimit) : LIMIT,
+            MAX,
+          ),
           ...(kind ? { kind: kind as Kind } : {}),
           ...(card ? { card } : {}),
           ...(values.workspace ? { workspace: values.workspace as string } : {}),
         },
       })
-        .then(result => present({ input: result, text, card, kind })),
+        .then(result => present({
+          input: result,
+          text,
+          card,
+          kind,
+        })),
     })
   },
 })
 
 function present(
-  { input: { hits, total, mode, semantic, note }, text, card, kind }: {
+  {
+    input: {
+      hits,
+      total,
+      mode,
+      semantic,
+      note,
+    },
+    text,
+    card,
+    kind,
+  }: {
     input: OracleResult
     text: string
     card: string | undefined
     kind: string | undefined
   },
 ): Output {
-  const head: Output = { mode, ...(semantic ? { semantic } : {}), ...(note ? { note } : {}) }
+  const head: Output = {
+    mode,
+    ...(semantic ? { semantic } : {}),
+    ...(note ? { note } : {}),
+  }
 
   if (hits.length === 0) {
     return {
@@ -166,16 +245,28 @@ function present(
     help.push(`${total - shown} more ${card ? 'matches' : 'matching cards'}; raise --limit (max ${MAX}) or narrow with --kind, --card or --workspace`)
   }
 
-  return { ...head, results: hits, help }
+  return {
+    ...head,
+    results: hits,
+    help,
+  }
 }
 
 const settingsCommand = guard({
   handler: ({ args }) => {
     if (args[0] === 'set') {
-      const { positionals } = parse({ args: args.slice(1), options: {}, positionals: 2 })
+      const { positionals } = parse({
+        args: args.slice(1),
+        options: {},
+        positionals: 2,
+      })
 
       if (positionals.length !== 2) {
-        throw new AxiError('settings set needs a key and a value', 'VALIDATION_ERROR', [`Keys: ${SETTING_KEYS.join(', ')}`])
+        throw new AxiError(
+          'settings set needs a key and a value',
+          'VALIDATION_ERROR',
+          [`Keys: ${SETTING_KEYS.join(', ')}`],
+        )
       }
 
       return {
@@ -188,13 +279,23 @@ const settingsCommand = guard({
       }
     }
 
-    parse({ args, options: {}, positionals: 0 })
+    parse({
+      args,
+      options: {},
+      positionals: 0,
+    })
 
-    return { settings: settingEntries({ settings: readSettings({ }) }), help: ['Run `pnyx-axi settings set oracle.semantic on|off`'] }
+    return {
+      settings: settingEntries({ settings: readSettings({ }) }),
+      help: ['Run `pnyx-axi settings set oracle.semantic on|off`'],
+    }
   },
 })
 
-export const oracleCommands = { oracle: oracleCommand, settings: settingsCommand }
+export const oracleCommands = {
+  oracle: oracleCommand,
+  settings: settingsCommand,
+}
 
 export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--limit <n>]
        pnyx-axi oracle status | rebuild [--hydra <name>]

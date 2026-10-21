@@ -3,12 +3,28 @@
 export const SYNONYMS_VERSION = 1
 
 export const SYNONYMS: readonly (readonly string[])[] = [
-  ['pr', 'pull request'],
-  ['deploy', 'release', 'ship'],
-  ['rollback', 'revert'],
-  ['issue', 'ticket'],
+  [
+    'pr',
+    'pull request',
+  ],
+  [
+    'deploy',
+    'release',
+    'ship',
+  ],
+  [
+    'rollback',
+    'revert',
+  ],
+  [
+    'issue',
+    'ticket',
+  ],
 ]
 
 export const synonymGroup = new Map(
-  SYNONYMS.flatMap(group => group.map(term => [term, group] as const)),
+  SYNONYMS.flatMap(group => group.map(term => [
+    term,
+    group,
+  ] as const)),
 )

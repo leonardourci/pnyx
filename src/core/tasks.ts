@@ -20,24 +20,43 @@ export function rankOf({ card }: { card: Card }): number {
   return card.rank ?? card.createdSeq
 }
 
-export function columnCards({ state, column }: { state: HydraState; column: string }): Card[] {
+export function columnCards({
+  state,
+  column,
+}: {
+  state: HydraState
+  column: string
+}): Card[] {
   return Object.values(state.cards)
     .filter(c => liveTask({ card: c }) && c.column === column)
-    .sort((a, b) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
+    .sort((
+      a,
+      b,
+    ) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
 }
 
 export function cardSessionId({ card }: { card: Card }): string | undefined {
   return card.sessionIds?.[0] ?? (card.agent ? sessionId({ agent: card.agent }) : undefined)
 }
 
-export function findSession({ state, ref }: { state: HydraState; ref: string }): AgentSession {
+export function findSession({
+  state,
+  ref,
+}: {
+  state: HydraState
+  ref: string
+}): AgentSession {
   const direct = state.sessions?.[ref]
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
   const found = direct ?? Object.values(state.sessions ?? {}).find(s =>
     card?.sessionIds?.includes(s.id) || s.sourceRefs.some(r => `${r.instanceId}:${r.objectId}` === ref))
 
   if (!found) {
-    throw new HydraError({ message: `session not found: ${ref}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi task sessions`'] })
+    throw new HydraError({
+      message: `session not found: ${ref}`,
+      code: 'NOT_FOUND',
+      help: ['Run `pnyx-axi task sessions`'],
+    })
   }
 
   return found
@@ -45,19 +64,33 @@ export function findSession({ state, ref }: { state: HydraState; ref: string }):
 
 // The session running in the caller's own terminal, for `--session self`: the newest
 // live session whose Paseo terminal, tmux pane or Herdr pane matches.
-export function selfSession({ state, here }: {
+export function selfSession({
+  state,
+  here,
+}: {
   state: HydraState
   here: Pick<TerminalFacts, 'paseoTerminal' | 'tmuxPane' | 'herdrPane'>
 }): AgentSession {
-  const keys = (['paseoTerminal', 'tmuxPane', 'herdrPane'] as const).filter(k => here[k])
+  const keys = ([
+    'paseoTerminal',
+    'tmuxPane',
+    'herdrPane',
+  ] as const).filter(k => here[k])
   const rank = ({ s }: { s: AgentSession }) => (s.activity === 'ended' ? 0 : 1e12)
     + (state.cards[s.taskId ?? s.originCardId]?.updatedSeq ?? 0)
   const found = Object.values(state.sessions ?? {})
     .filter(s => keys.some(k => s.terminal?.[k] === here[k]))
-    .sort((a, b) => rank({ s: b }) - rank({ s: a }))[0]
+    .sort((
+      a,
+      b,
+    ) => rank({ s: b }) - rank({ s: a }))[0]
 
   if (!found) {
-    throw new HydraError({ message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no Paseo, tmux or Herdr pane in the environment', code: 'NOT_FOUND', help: ['Run `pnyx-axi task sessions` and pass --session <id>'] })
+    throw new HydraError({
+      message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no Paseo, tmux or Herdr pane in the environment',
+      code: 'NOT_FOUND',
+      help: ['Run `pnyx-axi task sessions` and pass --session <id>'],
+    })
   }
 
   return found
@@ -66,11 +99,17 @@ export function selfSession({ state, here }: {
 const firstmate = ({ card }: { card: Card }) => card.sourceRefs.some(r => r.adapter === 'firstmate')
 
 // An absent value deletes its key, so the state keeps its shape through a snapshot's JSON.
-export function assignDefined<T extends object>({ target, values }: {
+export function assignDefined<T extends object>({
+  target,
+  values,
+}: {
   target: T
   values: Partial<T>
 }): void {
-  for (const [key, value] of Object.entries(values)) {
+  for (const [
+    key,
+    value,
+  ] of Object.entries(values)) {
     if (value === undefined) {
       delete (target as Record<string, unknown>)[key]
     } else {
@@ -80,7 +119,10 @@ export function assignDefined<T extends object>({ target, values }: {
 }
 
 // Membership projection preserves task-owned fields when the session changes.
-export function projectSession({ state, session }: {
+export function projectSession({
+  state,
+  session,
+}: {
   state: HydraState
   session: AgentSession
 }): void {
@@ -108,7 +150,10 @@ export function projectSession({ state, session }: {
       stoppedAt: session.stoppedAt,
     },
   })
-  task.attention = [...task.attention.filter(a => !a.key.startsWith('hook:')), ...session.attention]
+  task.attention = [
+    ...task.attention.filter(a => !a.key.startsWith('hook:')),
+    ...session.attention,
+  ]
 
   if (!task.outcome || task.outcome.source === 'hooks') {
     if (session.outcome && !firstmate({ card: task })) {
@@ -119,7 +164,10 @@ export function projectSession({ state, session }: {
   }
 }
 
-export function applyAttachment({ state, event }: {
+export function applyAttachment({
+  state,
+  event,
+}: {
   state: HydraState
   event: Extract<HydraEvent, { type: 'task.session'}>
 }): void {
@@ -153,15 +201,25 @@ export function applyAttachment({ state, event }: {
   const target = event.data.after && state.cards[event.data.after]
 
   if (target && target.launch?.via === 'command' && session.launch?.via === 'hooks') {
-    session.launch = { ...target.launch, harness: session.agent.provider }
+    session.launch = {
+      ...target.launch,
+      harness: session.agent.provider,
+    }
   }
 
   session.taskId = event.data.after
-  projectSession({ state, session })
+  projectSession({
+    state,
+    session,
+  })
 }
 
 // Replay migrates legacy observations without changing event bytes or ids.
-export function observeSession({ state, card, event }: {
+export function observeSession({
+  state,
+  card,
+  event,
+}: {
   state: HydraState
   card: Card
   event: HydraEvent
@@ -183,16 +241,29 @@ export function observeSession({ state, card, event }: {
 
   if (event.type === 'card.pushed') {
     if (event.data.agent?.host === 'pnyx' && session.launch?.via !== 'pnyx') {
-      session.launch = { via: 'pnyx', at: event.at, folder: card.agent.cwd, harness: card.agent.provider }
+      session.launch = {
+        via: 'pnyx',
+        at: event.at,
+        folder: card.agent.cwd,
+        harness: card.agent.provider,
+      }
     }
 
-    session.launch ??= card.launch ?? { via: card.agent.paseoAgentId ? 'paseo' : card.agent.host ? 'pnyx' : 'hooks', at: event.at, folder: card.agent.cwd, harness: card.agent.provider }
+    session.launch ??= card.launch ?? {
+      via: card.agent.paseoAgentId ? 'paseo' : card.agent.host ? 'pnyx' : 'hooks',
+      at: event.at,
+      folder: card.agent.cwd,
+      harness: card.agent.provider,
+    }
 
     if (!session.lastSeen || event.data.source?.adapter === 'hooks' || event.data.source?.adapter === 'paseo' || event.data.source?.adapter === 'transcript') {
       session.lastSeen = event.at
     }
 
-    session.agent = { ...session.agent, ...card.agent }
+    session.agent = {
+      ...session.agent,
+      ...card.agent,
+    }
     assignDefined({
       target: session,
       values: {
@@ -211,21 +282,37 @@ export function observeSession({ state, card, event }: {
   }
 
   if (event.type === 'card.outcome' && (event.data.after?.source === 'hooks' || event.data.before?.source === 'hooks')) {
-    assignDefined({ target: session, values: { outcome: event.data.after?.source === 'hooks' ? event.data.after : undefined, stoppedAt: card.stoppedAt } })
+    assignDefined({
+      target: session,
+      values: {
+        outcome: event.data.after?.source === 'hooks' ? event.data.after : undefined,
+        stoppedAt: card.stoppedAt,
+      },
+    })
   }
 
-  projectSession({ state, session })
+  projectSession({
+    state,
+    session,
+  })
 
   if (session.taskId !== card.id && card.sessionIds?.length) {
     const attached = state.sessions[card.sessionIds[0]!]
 
     if (attached) {
-      projectSession({ state, session: attached })
+      projectSession({
+        state,
+        session: attached,
+      })
     }
   }
 }
 
-export function taskForMessage({ memberships, at, fallback }: {
+export function taskForMessage({
+  memberships,
+  at,
+  fallback,
+}: {
   memberships: SessionEvent[]
   at?: string
   fallback: string

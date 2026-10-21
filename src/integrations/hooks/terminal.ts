@@ -10,8 +10,17 @@ const DETAIL_MAX = 300
 // pressed before it settles can pick an entry instead of submitting.
 export const SETTLE_MS = 400
 const POPUP_SETTLE_MS = 1500
-const SEQUENCE: Record<Key, string> = { 'shift-tab': '\u001b[Z', 'shift-up': '\u001b[1;2A', 'shift-down': '\u001b[1;2B' }
-const TMUX_KEY: Record<Key | 'enter', string> = { 'enter': 'Enter', 'shift-tab': 'BTab', 'shift-up': 'S-Up', 'shift-down': 'S-Down' }
+const SEQUENCE: Record<Key, string> = {
+  'shift-tab': '\u001b[Z',
+  'shift-up': '\u001b[1;2A',
+  'shift-down': '\u001b[1;2B',
+}
+const TMUX_KEY: Record<Key | 'enter', string> = {
+  'enter': 'Enter',
+  'shift-tab': 'BTab',
+  'shift-up': 'S-Up',
+  'shift-down': 'S-Down',
+}
 // AppleScript error number for "no such session", raised before anything is typed.
 const NOT_FOUND = 4404
 
@@ -21,38 +30,75 @@ export interface Delivery {
 }
 
 function sleep({ ms }: { ms: number }): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+  Atomics.wait(
+    new Int32Array(new SharedArrayBuffer(4)),
+    0,
+    0,
+    ms,
+  )
 }
 
-type RunOptions = { input?: string; env?: NodeJS.ProcessEnv }
+type RunOptions = {
+  input?: string
+  env?: NodeJS.ProcessEnv
+}
 
-function run({ command, args, options = {} }: {
+function run({
+  command,
+  args,
+  options = {},
+}: {
   command: string
   args: string[]
   options?: RunOptions
 }) {
-  return spawnSync(command, args, { encoding: 'utf8', timeout: STEP_TIMEOUT_MS, ...options })
+  return spawnSync(
+    command,
+    args,
+    {
+      encoding: 'utf8',
+      timeout: STEP_TIMEOUT_MS,
+      ...options,
+    },
+  )
 }
 
 function lastLine({ result }: { result: SpawnSyncReturns<string> }): string | undefined {
   return `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim().split('\n')
     .at(-1)
-    ?.slice(0, DETAIL_MAX) || undefined
+    ?.slice(
+      0,
+      DETAIL_MAX,
+    ) || undefined
 }
 
 // What a failed step means: before the text went in nothing was delivered; once it
 // was typed, a failure leaves it unconfirmed, never something to resend.
 function outcome(
-  { result, command, typed }: { result: SpawnSyncReturns<string>; command: string; typed: boolean },
+  {
+    result,
+    command,
+    typed,
+  }: {
+    result: SpawnSyncReturns<string>
+    command: string
+    typed: boolean
+  },
 ): Delivery | undefined {
   const code = (result.error as NodeJS.ErrnoException | undefined)?.code
 
   if (code === 'ENOENT') {
-    return { state: 'failed', detail: `${command} is not installed or not on PATH` }
+    return {
+      state: 'failed',
+      detail: `${command} is not installed or not on PATH`,
+    }
   }
 
   if (result.error && code !== 'ETIMEDOUT') {
-    return { state: 'failed', detail: `cannot run ${command}: ${result.error.message}` }
+    return {
+      state: 'failed',
+      detail: `cannot run ${command}: ${result.error.message}`,
+    }
   }
 
   if (result.status === 0) {
@@ -62,12 +108,30 @@ function outcome(
   const line = lastLine({ result })
   const detail = line ? { detail: line } : {}
 
-  return result.status === null || typed ? { state: 'delivery_unknown', ...detail } : { state: 'failed', ...detail }
+  return result.status === null || typed ? {
+    state: 'delivery_unknown',
+    ...detail,
+  } : {
+    state: 'failed',
+    ...detail,
+  }
 }
 
 function checkProcess({ route }: { route: TerminalRoute }): Delivery | undefined {
-  const result = run({ command: 'ps', args: ['-o', 'tty=', '-p', String(route.pid)] })
-  const failed = outcome({ result, command: 'ps', typed: false })
+  const result = run({
+    command: 'ps',
+    args: [
+      '-o',
+      'tty=',
+      '-p',
+      String(route.pid),
+    ],
+  })
+  const failed = outcome({
+    result,
+    command: 'ps',
+    typed: false,
+  })
 
   if (failed && result.status !== 1) {
     return failed
@@ -76,11 +140,17 @@ function checkProcess({ route }: { route: TerminalRoute }): Delivery | undefined
   const tty = (result.stdout ?? '').trim()
 
   if (!tty) {
-    return { state: 'failed', detail: `the session's process ${route.pid} has exited; nothing was typed` }
+    return {
+      state: 'failed',
+      detail: `the session's process ${route.pid} has exited; nothing was typed`,
+    }
   }
 
   if (`/dev/${tty}` !== route.tty) {
-    return { state: 'failed', detail: `process ${route.pid} no longer runs on ${route.tty}; nothing was typed` }
+    return {
+      state: 'failed',
+      detail: `process ${route.pid} no longer runs on ${route.tty}; nothing was typed`,
+    }
   }
 
   return undefined
@@ -97,7 +167,13 @@ export function settle({ text }: { text: string }): number {
 }
 
 function typeThenEnter(
-  { command, type, enter, options, text }: {
+  {
+    command,
+    type,
+    enter,
+    options,
+    text,
+  }: {
     command: string
     type: string[]
     enter: string[]
@@ -105,7 +181,15 @@ function typeThenEnter(
     text: string
   },
 ): Delivery {
-  const typed = outcome({ result: run({ command, args: type, options }), command, typed: false })
+  const typed = outcome({
+    result: run({
+      command,
+      args: type,
+      options,
+    }),
+    command,
+    typed: false,
+  })
 
   if (typed) {
     return typed
@@ -126,27 +210,57 @@ function typeThenEnter(
   })
 
   return submitted
-    ? { ...submitted, detail: `the text was typed but Enter was not confirmed${submitted.detail ? `: ${submitted.detail}` : ''}; check the session before sending again` }
+    ? {
+      ...submitted,
+      detail: `the text was typed but Enter was not confirmed${submitted.detail ? `: ${submitted.detail}` : ''}; check the session before sending again`,
+    }
     : { state: 'delivered' }
 }
 
 function checkPane({ route }: { route: Extract<TerminalRoute, { kind: 'tmux' }> }): Delivery | undefined {
-  const shown = run({ command: 'tmux', args: ['-S', route.socket, 'display-message', '-p', '-t', route.pane, '#{pane_tty}'] })
-  const missing = outcome({ result: shown, command: 'tmux', typed: false })
+  const shown = run({
+    command: 'tmux',
+    args: [
+      '-S',
+      route.socket,
+      'display-message',
+      '-p',
+      '-t',
+      route.pane,
+      '#{pane_tty}',
+    ],
+  })
+  const missing = outcome({
+    result: shown,
+    command: 'tmux',
+    typed: false,
+  })
 
   if (missing) {
     return missing
   }
 
   if ((shown.stdout ?? '').trim() !== route.tty) {
-    return { state: 'failed', detail: `tmux pane ${route.pane} no longer shows ${route.tty}; nothing was typed` }
+    return {
+      state: 'failed',
+      detail: `tmux pane ${route.pane} no longer shows ${route.tty}; nothing was typed`,
+    }
   }
 
   return undefined
 }
 
-function tmux({ route, text }: { route: Extract<TerminalRoute, { kind: 'tmux' }>; text: string }): Delivery {
-  const sock = ['-S', route.socket]
+function tmux({
+  route,
+  text,
+}: {
+  route: Extract<TerminalRoute, { kind: 'tmux' }>
+  text: string
+}): Delivery {
+  const sock = [
+    '-S',
+    route.socket,
+  ]
   const moved = checkPane({ route })
 
   if (moved) {
@@ -155,36 +269,132 @@ function tmux({ route, text }: { route: Extract<TerminalRoute, { kind: 'tmux' }>
 
   // paste-buffer -p brackets the paste only when the program asked for it.
   const buffer = `pnyx-${process.pid}`
-  const loaded = outcome({ result: run({ command: 'tmux', args: [...sock, 'load-buffer', '-b', buffer, '-'], options: { input: text } }), command: 'tmux', typed: false })
+  const loaded = outcome({
+    result: run({
+      command: 'tmux',
+      args: [
+        ...sock,
+        'load-buffer',
+        '-b',
+        buffer,
+        '-',
+      ],
+      options: { input: text },
+    }),
+    command: 'tmux',
+    typed: false,
+  })
 
   if (loaded) {
     return loaded
   }
 
-  return typeThenEnter({ command: 'tmux', type: [...sock, 'paste-buffer', '-p', '-d', '-b', buffer, '-t', route.pane], enter: [...sock, 'send-keys', '-t', route.pane, 'Enter'], options: {}, text })
+  return typeThenEnter({
+    command: 'tmux',
+    type: [
+      ...sock,
+      'paste-buffer',
+      '-p',
+      '-d',
+      '-b',
+      buffer,
+      '-t',
+      route.pane,
+    ],
+    enter: [
+      ...sock,
+      'send-keys',
+      '-t',
+      route.pane,
+      'Enter',
+    ],
+    options: {},
+    text,
+  })
 }
 
-function paseo({ route, text }: { route: Extract<TerminalRoute, { kind: 'paseo' }>; text: string }): Delivery {
-  const home = route.home ? ['--home', route.home] : []
+function paseo({
+  route,
+  text,
+}: {
+  route: Extract<TerminalRoute, { kind: 'paseo' }>
+  text: string
+}): Delivery {
+  const home = route.home ? [
+    '--home',
+    route.home,
+  ] : []
 
   return typeThenEnter(
-    { command: 'paseo', type: ['terminal', 'send-keys', ...home, route.terminal, '-l', '--', pasted({ text })], enter: ['terminal', 'send-keys', ...home, route.terminal, 'Enter'], options: {}, text },
+    {
+      command: 'paseo',
+      type: [
+        'terminal',
+        'send-keys',
+        ...home,
+        route.terminal,
+        '-l',
+        '--',
+        pasted({ text }),
+      ],
+      enter: [
+        'terminal',
+        'send-keys',
+        ...home,
+        route.terminal,
+        'Enter',
+      ],
+      options: {},
+      text,
+    },
   )
 }
 
-function herdr({ route, text }: { route: Extract<TerminalRoute, { kind: 'herdr' }>; text: string }): Delivery {
+function herdr({
+  route,
+  text,
+}: {
+  route: Extract<TerminalRoute, { kind: 'herdr' }>
+  text: string
+}): Delivery {
   const body = pasted({ text })
 
   // ponytail: herdr's send-text takes the text as a bare argument, so a leading -
   // would read as an option; pass it as a paste if herdr ever needs one.
   if (body.startsWith('-')) {
-    return { state: 'failed', detail: 'Herdr cannot take a reply starting with -; nothing was typed' }
+    return {
+      state: 'failed',
+      detail: 'Herdr cannot take a reply starting with -; nothing was typed',
+    }
   }
 
-  const env = { ...process.env, HERDR_SESSION: route.session }
+  const env = {
+    ...process.env,
+    HERDR_SESSION: route.session,
+  }
 
   return typeThenEnter(
-    { command: 'herdr', type: ['pane', 'send-text', route.pane, body, '--session', route.session], enter: ['pane', 'send-keys', route.pane, 'enter', '--session', route.session], options: { env }, text },
+    {
+      command: 'herdr',
+      type: [
+        'pane',
+        'send-text',
+        route.pane,
+        body,
+        '--session',
+        route.session,
+      ],
+      enter: [
+        'pane',
+        'send-keys',
+        route.pane,
+        'enter',
+        '--session',
+        route.session,
+      ],
+      options: { env },
+      text,
+    },
   )
 }
 
@@ -242,15 +452,40 @@ end run`,
 end run`,
 }
 
-function appleScript({ route, text, key }: {
+function appleScript({
+  route,
+  text,
+  key,
+}: {
   route: Extract<TerminalRoute, { kind: 'iterm2' | 'terminal-app' }>
   text: string
   key?: Key
 }): Delivery {
   const result = key
-    ? run({ command: 'osascript', args: ['-e', SCRIPTS['iterm2-key'], route.tty, SEQUENCE[key]] })
-    : run({ command: 'osascript', args: ['-e', SCRIPTS[route.kind], route.tty, pasted({ text }), String(settle({ text }) / 1000)] })
-  const failed = outcome({ result, command: 'osascript', typed: true })
+    ? run({
+      command: 'osascript',
+      args: [
+        '-e',
+        SCRIPTS['iterm2-key'],
+        route.tty,
+        SEQUENCE[key],
+      ],
+    })
+    : run({
+      command: 'osascript',
+      args: [
+        '-e',
+        SCRIPTS[route.kind],
+        route.tty,
+        pasted({ text }),
+        String(settle({ text }) / 1000),
+      ],
+    })
+  const failed = outcome({
+    result,
+    command: 'osascript',
+    typed: true,
+  })
 
   if (!failed) {
     return { state: 'delivered' }
@@ -260,35 +495,71 @@ function appleScript({ route, text, key }: {
 
   // -600: the app is not running.
   if (err.includes(`(${NOT_FOUND})`) || err.includes('(-600)')) {
-    return { state: 'failed', detail: `${lastLine({ result }) ?? 'session not found'}; nothing was typed` }
+    return {
+      state: 'failed',
+      detail: `${lastLine({ result }) ?? 'session not found'}; nothing was typed`,
+    }
   }
 
   // -1743: macOS has not allowed this program to control the app.
   if (err.includes('(-1743)')) {
-    return { state: 'failed', detail: 'macOS has not allowed Pnyx to control this terminal; allow it under System Settings > Privacy & Security > Automation, then send again' }
+    return {
+      state: 'failed',
+      detail: 'macOS has not allowed Pnyx to control this terminal; allow it under System Settings > Privacy & Security > Automation, then send again',
+    }
   }
 
   return failed
 }
 
-export function typeInto({ route, text }: { route: TerminalRoute; text: string }): Delivery {
+export function typeInto({
+  route,
+  text,
+}: {
+  route: TerminalRoute
+  text: string
+}): Delivery {
   const gone = checkProcess({ route })
 
   if (gone) {
     return gone
   }
 
-  const body = text.replace(/\r\n?/g, '\n').replace(/\n+$/, '')
+  const body = text.replace(
+    /\r\n?/g,
+    '\n',
+  ).replace(
+    /\n+$/,
+    '',
+  )
 
   switch (route.kind) {
-    case 'tmux': return tmux({ route, text: body })
-    case 'paseo': return paseo({ route, text: body })
-    case 'herdr': return herdr({ route, text: body })
-    default: return appleScript({ route, text: body })
+    case 'tmux': return tmux({
+      route,
+      text: body,
+    })
+    case 'paseo': return paseo({
+      route,
+      text: body,
+    })
+    case 'herdr': return herdr({
+      route,
+      text: body,
+    })
+    default: return appleScript({
+      route,
+      text: body,
+    })
   }
 }
 
-export function pressKey({ route, key }: { route: TerminalRoute; key: Key | 'enter' }): Delivery {
+export function pressKey({
+  route,
+  key,
+}: {
+  route: TerminalRoute
+  key: Key | 'enter'
+}): Delivery {
   const gone = checkProcess({ route })
 
   if (gone) {
@@ -299,25 +570,95 @@ export function pressKey({ route, key }: { route: TerminalRoute; key: Key | 'ent
     case 'tmux': {
       const moved = checkPane({ route })
 
-      return moved ?? outcome({ result: run({ command: 'tmux', args: ['-S', route.socket, 'send-keys', '-t', route.pane, TMUX_KEY[key]] }), command: 'tmux', typed: false }) ?? { state: 'delivered' }
+      return moved ?? outcome({
+        result: run({
+          command: 'tmux',
+          args: [
+            '-S',
+            route.socket,
+            'send-keys',
+            '-t',
+            route.pane,
+            TMUX_KEY[key],
+          ],
+        }),
+        command: 'tmux',
+        typed: false,
+      }) ?? { state: 'delivered' }
     }
     case 'paseo': {
-      const home = route.home ? ['--home', route.home] : []
-      const keys = key === 'enter' ? ['Enter'] : ['-l', '--', SEQUENCE[key]]
+      const home = route.home ? [
+        '--home',
+        route.home,
+      ] : []
+      const keys = key === 'enter' ? ['Enter'] : [
+        '-l',
+        '--',
+        SEQUENCE[key],
+      ]
 
-      return outcome({ result: run({ command: 'paseo', args: ['terminal', 'send-keys', ...home, route.terminal, ...keys] }), command: 'paseo', typed: false }) ?? { state: 'delivered' }
+      return outcome({
+        result: run({
+          command: 'paseo',
+          args: [
+            'terminal',
+            'send-keys',
+            ...home,
+            route.terminal,
+            ...keys,
+          ],
+        }),
+        command: 'paseo',
+        typed: false,
+      }) ?? { state: 'delivered' }
     }
     case 'herdr':
       if (key !== 'enter') {
-        return { state: 'failed', detail: 'Pnyx does not press keys other than Enter in Herdr; nothing was sent' }
+        return {
+          state: 'failed',
+          detail: 'Pnyx does not press keys other than Enter in Herdr; nothing was sent',
+        }
       }
 
-      return outcome({ result: run({ command: 'herdr', args: ['pane', 'send-keys', route.pane, 'enter', '--session', route.session], options: { env: { ...process.env, HERDR_SESSION: route.session } } }), command: 'herdr', typed: false }) ?? { state: 'delivered' }
+      return outcome({
+        result: run({
+          command: 'herdr',
+          args: [
+            'pane',
+            'send-keys',
+            route.pane,
+            'enter',
+            '--session',
+            route.session,
+          ],
+          options: {
+            env: {
+              ...process.env,
+              HERDR_SESSION: route.session,
+            },
+          },
+        }),
+        command: 'herdr',
+        typed: false,
+      }) ?? { state: 'delivered' }
     case 'iterm2':
-      return key === 'enter' ? appleScript({ route, text: '' }) : appleScript({ route, text: '', key })
+      return key === 'enter' ? appleScript({
+        route,
+        text: '',
+      }) : appleScript({
+        route,
+        text: '',
+        key,
+      })
     case 'terminal-app':
       // do script with no text types only its Return.
-      return key === 'enter' ? appleScript({ route, text: '' }) : { state: 'failed', detail: 'Terminal types whole lines, so Pnyx cannot press keys there; nothing was sent' }
+      return key === 'enter' ? appleScript({
+        route,
+        text: '',
+      }) : {
+        state: 'failed',
+        detail: 'Terminal types whole lines, so Pnyx cannot press keys there; nothing was sent',
+      }
   }
 }
 
@@ -326,9 +667,18 @@ export function pressKey({ route, key }: { route: TerminalRoute; key: Key | 'ent
 // pasted digit would not pick an option. Once a chunk went in, a failure leaves the
 // prompt half answered, so it is delivery_unknown and never retyped. Only tmux was
 // checked by hand against each harness's prompt.
-export function pressKeys({ route, steps }: { route: TerminalRoute; steps: KeyStep[] }): Delivery {
+export function pressKeys({
+  route,
+  steps,
+}: {
+  route: TerminalRoute
+  steps: KeyStep[]
+}): Delivery {
   if (route.kind !== 'tmux') {
-    return { state: 'failed', detail: 'Pnyx answers prompts only in tmux, so answer in the session itself' }
+    return {
+      state: 'failed',
+      detail: 'Pnyx answers prompts only in tmux, so answer in the session itself',
+    }
   }
 
   const gone = checkProcess({ route }) ?? checkPane({ route })
@@ -337,13 +687,35 @@ export function pressKeys({ route, steps }: { route: TerminalRoute; steps: KeySt
     return gone
   }
 
-  for (const [i, step] of steps.entries()) {
-    const result = run({ command: 'tmux', args: ['-S', route.socket, 'send-keys', '-t', route.pane, '-l', '--', step.keys] })
-    const failed = outcome({ result, command: 'tmux', typed: i > 0 })
+  for (const [
+    i,
+    step,
+  ] of steps.entries()) {
+    const result = run({
+      command: 'tmux',
+      args: [
+        '-S',
+        route.socket,
+        'send-keys',
+        '-t',
+        route.pane,
+        '-l',
+        '--',
+        step.keys,
+      ],
+    })
+    const failed = outcome({
+      result,
+      command: 'tmux',
+      typed: i > 0,
+    })
 
     if (failed) {
       return i > 0
-        ? { state: 'delivery_unknown', detail: `the answer was typed only in part${failed.detail ? `: ${failed.detail}` : ''}; check the session before answering again` }
+        ? {
+          state: 'delivery_unknown',
+          detail: `the answer was typed only in part${failed.detail ? `: ${failed.detail}` : ''}; check the session before answering again`,
+        }
         : failed
     }
 

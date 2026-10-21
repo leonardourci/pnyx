@@ -11,28 +11,67 @@ import { startServer } from '../src/server/server.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { smokeEnvironment } from './browser.ts'
 
-const home = mkdtempSync(join(tmpdir(), 'pnyx-context-smoke-'))
+const home = mkdtempSync(join(
+  tmpdir(),
+  'pnyx-context-smoke-',
+))
 process.env.PNYX_HOME = home
 process.env.PNYX_SEMANTIC = 'off'
 const env = await smokeEnvironment({ session: 'pnyx-context' })
-const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(home, 'evidence')
-mkdirSync(evidence, { recursive: true })
+const evidence = process.env.PNYX_EVIDENCE_DIR ?? join(
+  home,
+  'evidence',
+)
+mkdirSync(
+  evidence,
+  { recursive: true },
+)
 const exec = promisify(execFile)
-commands.task(['create', '--key', 'work', '--title', 'Context smoke task', '--brief', 'Check the canary.'])
+commands.task([
+  'create',
+  '--key',
+  'work',
+  '--title',
+  'Context smoke task',
+  '--brief',
+  'Check the canary.',
+])
 const server = await startServer({ hydraId: 'default' })
 
 const browser = async ({ args }: { args: string[] }) => {
-  const { stdout } = await exec('chrome-devtools-axi', args, { env, timeout: 45000 })
-  assert.doesNotMatch(stdout, /^error:/m)
+  const { stdout } = await exec(
+    'chrome-devtools-axi',
+    args,
+    {
+      env,
+      timeout: 45000,
+    },
+  )
+  assert.doesNotMatch(
+    stdout,
+    /^error:/m,
+  )
 
   return stdout
 }
 
 try {
-  await browser({ args: ['open', server.url] })
-  await browser({ args: ['wait', 'Context smoke task'] })
   await browser({
-    args: ['eval', `async () => {
+    args: [
+      'open',
+      server.url,
+    ],
+  })
+  await browser({
+    args: [
+      'wait',
+      'Context smoke task',
+    ],
+  })
+  await browser({
+    args: [
+      'eval',
+      `async () => {
     const token = document.querySelector('meta[name="pnyx-token"]').content;
     const socket = new WebSocket(new URL('ws?token=' + token, document.baseURI).href.replace('http', 'ws'));
     await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
@@ -64,39 +103,144 @@ try {
       if (layout.widths.hydra !== layout.defaults.hydra || Object.keys(layout.widths.columns).length) throw new Error('Widths not reset');
       return 'context API smoke passed';
     } finally { socket.close(); }
-  }`],
+  }`,
+    ],
   })
-  await browser({ args: ['wait', 'Context smoke task'] })
+  await browser({
+    args: [
+      'wait',
+      'Context smoke task',
+    ],
+  })
   const state = loadHydra({ hydraId: 'default' }).state
-  assert.equal(state.cards[state.keys.work!]!.hidden, false)
-  assert.equal(state.config?.columns.find(c => c.id === 'needs_you')?.description, 'Questions requiring an owner answer.')
-  assert.equal(state.hydraMemory?.['review-policy']?.text, 'Check the canary.')
-  commands.task(['create', '--key', 'digest', '--title', 'Digest smoke task'])
-  const transcript = join(home, 'worker.jsonl')
-  writeFileSync(transcript, '')
+  assert.equal(
+    state.cards[state.keys.work!]!.hidden,
+    false,
+  )
+  assert.equal(
+    state.config?.columns.find(c => c.id === 'needs_you')?.description,
+    'Questions requiring an owner answer.',
+  )
+  assert.equal(
+    state.hydraMemory?.['review-policy']?.text,
+    'Check the canary.',
+  )
+  commands.task([
+    'create',
+    '--key',
+    'digest',
+    '--title',
+    'Digest smoke task',
+  ])
+  const transcript = join(
+    home,
+    'worker.jsonl',
+  )
+  writeFileSync(
+    transcript,
+    '',
+  )
   withWriter({
     hydraId: 'default',
     fn: ({ writer }) => {
-      const d = decidePush({ state: writer.state, newCardId: `c${writer.state.seq + 1}`, key: 'worker', input: { agent: { provider: 'claude-code', sessionId: 'worker', transcriptPath: transcript }, terminal: { tty: '/dev/ttys123' } }, meta: { at: new Date().toISOString(), actor: 'fixture' } })
+      const d = decidePush({
+        state: writer.state,
+        newCardId: `c${writer.state.seq + 1}`,
+        key: 'worker',
+        input: {
+          agent: {
+            provider: 'claude-code',
+            sessionId: 'worker',
+            transcriptPath: transcript,
+          },
+          terminal: { tty: '/dev/ttys123' },
+        },
+        meta: {
+          at: new Date().toISOString(),
+          actor: 'fixture',
+        },
+      })
       assert.ok('event' in d)
       writer.append({ event: d.event })
     },
   })
-  await commands.task(['attach', 'digest', '--session', 'claude-code:worker'])
+  await commands.task([
+    'attach',
+    'digest',
+    '--session',
+    'claude-code:worker',
+  ])
   const after = loadHydra({ hydraId: 'default' }).state.seq
-  writeFileSync(transcript, ['user', 'assistant'].map((role, i) => JSON.stringify({ type: role, timestamp: new Date().toISOString(), message: { content: i ? 'The rollout can wait.' : 'Move this to next week.' } })).join('\n') + '\n')
-  const digest = await hydraCheck({ args: ['check', '--after', String(after)] })
-  assert.match(JSON.stringify(digest.conversations), /Move this to next week/)
-  assert.match(JSON.stringify(digest.conversations), /The rollout can wait/)
-  await browser({ args: ['wait', 'Digest smoke task'] })
-  await browser({ args: ['eval', '() => { [...document.querySelectorAll(\'.card\')].find(card => card.textContent.includes("Digest smoke task")).querySelector(\'.card-open\').click(); return true; }'] })
-  await browser({ args: ['wait', 'Updates'] })
-  const screenshot = join(evidence, 'context-smoke.png')
-  rmSync(screenshot, { force: true })
-  await browser({ args: ['screenshot', screenshot] })
+  writeFileSync(
+    transcript,
+    [
+      'user',
+      'assistant',
+    ].map((
+      role,
+      i,
+    ) => JSON.stringify({
+      type: role,
+      timestamp: new Date().toISOString(),
+      message: { content: i ? 'The rollout can wait.' : 'Move this to next week.' },
+    })).join('\n') + '\n',
+  )
+  const digest = await hydraCheck({
+    args: [
+      'check',
+      '--after',
+      String(after),
+    ],
+  })
+  assert.match(
+    JSON.stringify(digest.conversations),
+    /Move this to next week/,
+  )
+  assert.match(
+    JSON.stringify(digest.conversations),
+    /The rollout can wait/,
+  )
+  await browser({
+    args: [
+      'wait',
+      'Digest smoke task',
+    ],
+  })
+  await browser({
+    args: [
+      'eval',
+      '() => { [...document.querySelectorAll(\'.card\')].find(card => card.textContent.includes("Digest smoke task")).querySelector(\'.card-open\').click(); return true; }',
+    ],
+  })
+  await browser({
+    args: [
+      'wait',
+      'Updates',
+    ],
+  })
+  const screenshot = join(
+    evidence,
+    'context-smoke.png',
+  )
+  rmSync(
+    screenshot,
+    { force: true },
+  )
+  await browser({
+    args: [
+      'screenshot',
+      screenshot,
+    ],
+  })
   console.log(`context smoke passed; evidence: ${evidence}`)
 } finally {
   await browser({ args: ['stop'] }).catch(() => undefined)
   await server.close()
-  rmSync(home, { recursive: true, force: true })
+  rmSync(
+    home,
+    {
+      recursive: true,
+      force: true,
+    },
+  )
 }

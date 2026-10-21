@@ -29,39 +29,95 @@ export function History({
   open({ id }: { id: string }): void
   notify({ text }: { text: string }): void
 }) {
-  const [kind, setKind] = useState(''), [hits, setHits] = useState<Hit[]>([]), [events, setEvents] = useState<EventRow[]>([]), [loading, setLoading] = useState(true), [before, setBefore] = useState<number | null>(null), [note, setNote] = useState('')
+  const [
+      kind,
+      setKind,
+    ] = useState(''), [
+      hits,
+      setHits,
+    ] = useState<Hit[]>([]), [
+      events,
+      setEvents,
+    ] = useState<EventRow[]>([]), [
+      loading,
+      setLoading,
+    ] = useState(true), [
+      before,
+      setBefore,
+    ] = useState<number | null>(null), [
+      note,
+      setNote,
+    ] = useState('')
   const generation = useRef(0)
-  useEffect(() => {
-    const gen = ++generation.current
-    setLoading(true)
-    const timer = setTimeout(() => {
+  useEffect(
+    () => {
+      const gen = ++generation.current
       setLoading(true)
-      const args = ['--full', ...(workspace ? ['--workspace', workspace] : []), ...(kind ? ['--kind', kind] : []), ...(before ? ['--before', String(before)] : []), '--limit', '50']
-      void command({ name: query.trim() ? 'oracle' : 'history', args: query.trim() ? [query, workspace] : args }).then(r => {
-        if (gen !== generation.current) {
-          return
-        }
+      const timer = setTimeout(
+        () => {
+          setLoading(true)
+          const args = [
+            '--full',
+            ...(workspace ? [
+              '--workspace',
+              workspace,
+            ] : []),
+            ...(kind ? [
+              '--kind',
+              kind,
+            ] : []),
+            ...(before ? [
+              '--before',
+              String(before),
+            ] : []),
+            '--limit',
+            '50',
+          ]
+          void command({
+            name: query.trim() ? 'oracle' : 'history',
+            args: query.trim() ? [
+              query,
+              workspace,
+            ] : args,
+          }).then(r => {
+            if (gen !== generation.current) {
+              return
+            }
 
-        setHits(Array.isArray(r.hits) ? r.hits : [])
-        setNote([r.semantic, r.note].filter(s => typeof s === 'string' && !s.startsWith('ready')).join(' · '))
-        setEvents(Array.isArray(r.events) ? r.events : [])
-      })
-        .catch(e => {
-          if (gen === generation.current) {
-            notify({ text: e.message })
-          }
-        })
-        .finally(() => {
-          if (gen === generation.current) {
-            setLoading(false)
-          }
-        })
-    }, 180)
+            setHits(Array.isArray(r.hits) ? r.hits : [])
+            setNote([
+              r.semantic,
+              r.note,
+            ].filter(s => typeof s === 'string' && !s.startsWith('ready')).join(' · '))
+            setEvents(Array.isArray(r.events) ? r.events : [])
+          })
+            .catch(e => {
+              if (gen === generation.current) {
+                notify({ text: e.message })
+              }
+            })
+            .finally(() => {
+              if (gen === generation.current) {
+                setLoading(false)
+              }
+            })
+        },
+        180,
+      )
 
-    return () => {
-      clearTimeout(timer); ++generation.current
-    }
-  }, [command, query, workspace, kind, before, notify])
+      return () => {
+        clearTimeout(timer); ++generation.current
+      }
+    },
+    [
+      command,
+      query,
+      workspace,
+      kind,
+      before,
+      notify,
+    ],
+  )
 
   return (
     <section className="history-page">
@@ -84,7 +140,23 @@ export function History({
           label="Event type"
           disabled={Boolean(query.trim())}
           value={kind}
-          options={[{ value: '', label: 'All events' }, ...['pushed', 'moved', 'linked', 'outcome', 'replied', 'noted'].map(k => ({ value: k, label: k }))]}
+          options={[
+            {
+              value: '',
+              label: 'All events',
+            },
+            ...[
+              'pushed',
+              'moved',
+              'linked',
+              'outcome',
+              'replied',
+              'noted',
+            ].map(k => ({
+              value: k,
+              label: k,
+            })),
+          ]}
           onChange={({ value: k }) => {
             setKind(k); setBefore(null)
           }}
@@ -92,7 +164,19 @@ export function History({
         <Button
           variant="surface"
           onClick={() => {
-            const blob = new Blob([JSON.stringify(query.trim() ? hits : events, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'pnyx-history.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
+            const blob = new Blob(
+              [
+                JSON.stringify(
+                  query.trim() ? hits : events,
+                  null,
+                  2,
+                ),
+              ],
+              { type: 'application/json' },
+            ); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'pnyx-history.json'; a.click(); setTimeout(
+              () => URL.revokeObjectURL(url),
+              1000,
+            )
           }}
         >
           Export displayed results
@@ -105,12 +189,21 @@ export function History({
           <article className="history-entry" key={hit.card}>
             <Button className="result-title" onClick={() => open({ id: hit.card })}>{hit.title}</Button>
             {hit.match === 'semantic' && <span className="small muted">similar meaning</span>}
-            {hit.snippets.map((s,i) => <Markdown key={i} text={s.snippet} />)}
+            {hit.snippets.map((
+              s,
+              i,
+            ) => <Markdown key={i} text={s.snippet} />)}
           </article>
         )) : events.map(e => {
-          const message = ['chat.message', 'hydra.message'].includes(e.type)
+          const message = [
+            'chat.message',
+            'hydra.message',
+          ].includes(e.type)
             && typeof e.data?.text === 'string'
-            ? [e.data.text, e.data.details].filter(v => typeof v === 'string').join('\n\n') : null
+            ? [
+              e.data.text,
+              e.data.details,
+            ].filter(v => typeof v === 'string').join('\n\n') : null
 
           return (
             <article className="history-entry" key={e.id}>
