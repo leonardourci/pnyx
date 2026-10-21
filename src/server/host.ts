@@ -114,8 +114,8 @@ export interface Host {
   reconcile({ state }: { state: HydraState }): void
   // Queues a check turn for a hosted Hydra once a change it tracks lands at seq.
   wake({ seq }: { seq: number }): void
-  // Marks a hosted turn that was running when the server last stopped as interrupted.
-  recover(): void
+  // Recovers hosted sessions and resumes a cut Hydra turn once.
+  recover(): Promise<void>
   thread({
     card,
     page,
@@ -381,11 +381,13 @@ export function createHost({
     agent,
     input,
     actor,
+    eventId,
   }: {
     writer: Writer
     agent: AgentRef
     input: Record<string, unknown>
     actor: string
+    eventId?: string
   }) => {
     // Sessions may move between tasks while their process keeps running.
     const session = writer.state.sessions?.[sessionId({ agent })]
@@ -408,6 +410,7 @@ export function createHost({
         meta: {
           at: at(),
           actor,
+          id: eventId,
         },
       }),
     })
@@ -514,26 +517,32 @@ export function createHost({
     return card
   }
 
-  // Interrupted turns wait for a new message from the owner or Hydra.
   const interrupt = ({
     writer,
     agent,
     note,
+    resumeAttemptId,
   }: {
     writer: Writer
     agent: AgentRef
     note: string
+    resumeAttemptId?: string
   }) => {
     record({
       writer,
       agent,
       input: { activity: 'interrupted' },
       actor: 'pnyx',
+      eventId: resumeAttemptId,
     })
     const session = writer.state.sessions?.[sessionId({ agent })]
-    const task = session?.id === writer.state.config?.hydra.session
-      ? writer.state.cards[HYDRA_CARD]
-      : session?.taskId ? writer.state.cards[session.taskId] : undefined
+    let task: Card | undefined
+
+    if (session?.id === writer.state.config?.hydra.session) {
+      task = writer.state.cards[HYDRA_CARD]
+    } else if (session?.taskId) {
+      task = writer.state.cards[session.taskId]
+    }
 
     if (task) {
       const attention: Attention[] = [
@@ -1452,7 +1461,7 @@ export function createHost({
               return writer.state.cards[HYDRA_CARD] as Card & { agent: AgentRef }
             },
           })
-          // A session that opens puts the digest before its first message; a wake into a running one carries it.
+          // Reopened sessions receive full context; a running wake only notes memory changes.
           const opened = Boolean(prepared)
           const entry = open({
             card: claimed,
@@ -2189,7 +2198,12 @@ export function createHost({
       }
     },
 
-    recover: () => {
+    recover: async () => {
+      let cutHydraTurn: {
+        resumeAttemptId: string
+        resumeMessage: string
+      } | undefined
+
       write({
         fn: ({ writer }) => {
           for (const card of Object.values(writer.state.cards)) {
@@ -2214,16 +2228,44 @@ export function createHost({
           }
 
           for (const session of Object.values(writer.state.sessions ?? {})) {
-            if (session.agent.host === 'pnyx' && !live.has(session.id) && (session.sessionActivity ?? session.activity) === 'working') {
-              interrupt({
-                writer,
-                agent: session.agent,
-                note: 'Pnyx stopped during this turn. Send a message to continue it.',
-              })
+            const wasWorking = (session.sessionActivity ?? session.activity) === 'working'
+
+            if (session.agent.host !== 'pnyx' || live.has(session.id) || !wasWorking) {
+              continue
             }
+
+            let resumeAttemptId: string | undefined
+
+            if (session.id === writer.state.config?.hydra.session
+              && hostedHydra({ state: writer.state })) {
+              cutHydraTurn = findHydraTurnToResume({
+                hydraId,
+                state: writer.state,
+                agent: session.agent,
+              })
+
+              if (cutHydraTurn) {
+                resumeAttemptId = cutHydraTurn.resumeAttemptId
+              }
+            }
+
+            interrupt({
+              writer,
+              agent: session.agent,
+              note: 'Pnyx stopped during this turn. Send a message to continue it.',
+              resumeAttemptId,
+            })
           }
         },
       })
+
+      if (cutHydraTurn) {
+        await host.hydra({
+          id: cutHydraTurn.resumeAttemptId,
+          text: cutHydraTurn.resumeMessage,
+          actor: 'pnyx',
+        })
+      }
 
       // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state
@@ -2272,6 +2314,102 @@ export function createHost({
   }
 
   return host
+}
+
+function findHydraTurnToResume({
+  hydraId,
+  state,
+  agent,
+}: {
+  hydraId: string
+  state: HydraState
+  agent: AgentRef
+}): {
+  resumeAttemptId: string
+  resumeMessage: string
+} | undefined {
+  const events = readEvents({ hydraId })
+  const cutHydraTurn = events.findLast(event => {
+    if (event.type !== 'board.configured' || event.cardId !== HYDRA_CARD) {
+      return false
+    }
+
+    const matchesSession = event.data.hydra?.session === sessionId({ agent })
+    const isHostedTurn = event.id.endsWith(':hosted')
+
+    return matchesSession && isHostedTurn
+  })
+
+  if (!cutHydraTurn || cutHydraTurn.id.startsWith('resume:')) {
+    return undefined
+  }
+
+  const resumeAttemptId = `resume:${cutHydraTurn.seq}`
+
+  if (resumeAttemptId in state.eventIds) {
+    return undefined
+  }
+
+  const lastFinishedTurn = events.findLast(event => {
+    if (event.type !== 'card.pushed') {
+      return false
+    }
+
+    const finishedBeforeCut = event.seq < cutHydraTurn.seq && event.data.activity === 'finished'
+    const recordedByServer = event.actor === 'pnyx'
+    const matchesSession = event.data.agent?.sessionId === agent.sessionId
+      && event.data.agent.provider === agent.provider
+
+    return finishedBeforeCut && recordedByServer && matchesSession
+  })
+  const lastFinishedTurnSeq = lastFinishedTurn?.seq ?? 0
+  const unansweredMessageSeqs = events.filter(event => {
+    const isNewMessage = event.seq > lastFinishedTurnSeq && event.type === 'hydra.message'
+    const sentToHydra = event.actor !== HYDRA_ACTOR
+
+    return isNewMessage && sentToHydra
+  }).map(event => event.seq)
+  const wakeThroughSeq = WAKE_TURN.exec(cutHydraTurn.id)?.[1]
+  const isStallCheck = cutHydraTurn.id.startsWith('stall:')
+  const unfinishedWork: string[] = []
+
+  if (unansweredMessageSeqs.length) {
+    const firstMessageSeq = unansweredMessageSeqs[0]
+    const lastMessageSeq = unansweredMessageSeqs.at(-1)
+    let unansweredMessagesPhrase = `messages seq ${firstMessageSeq}`
+
+    if (unansweredMessageSeqs.length > 1) {
+      unansweredMessagesPhrase = `messages seq ${firstMessageSeq} to ${lastMessageSeq}`
+    }
+
+    unfinishedWork.push(unansweredMessagesPhrase)
+  }
+
+  if (wakeThroughSeq) {
+    const wakeCheckPhrase = `a wake check through seq ${wakeThroughSeq}`
+    unfinishedWork.push(wakeCheckPhrase)
+  }
+
+  if (isStallCheck) {
+    const stallCheckPhrase = 'a stall check'
+    unfinishedWork.push(stallCheckPhrase)
+  }
+
+  const cutTurnHasNoRecordedWork = unansweredMessageSeqs.length === 0
+    && wakeThroughSeq === undefined && !isStallCheck
+  const unrecordedCutTurnPhrase = 'a turn'
+  let interruptedWork: string
+
+  if (cutTurnHasNoRecordedWork) {
+    interruptedWork = unrecordedCutTurnPhrase
+  } else {
+    interruptedWork = unfinishedWork.join(' and ')
+  }
+
+  return {
+    resumeAttemptId,
+    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra messages --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\`, then answer what is still open; tell the owner in one line that the restart cut your reply.</pnyx-wake>`,
+  }
 }
 
 const providerName = ({ harness }: { harness: Harness }) => harness === 'codex' ? 'codex' : 'claude-code'

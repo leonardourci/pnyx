@@ -20,6 +20,7 @@ import { paseoStatus } from '../integrations/paseo/launch.ts'
 import { setupHydra, startHydra, startTask } from './start.ts'
 import { OVERRIDE_FIELDS, overrideOf, type Override } from '../dispatch/select.ts'
 import { copyCommand } from '../copies/cli.ts'
+import { POOL_IDLE } from '../copies/copies.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -1742,46 +1743,75 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const eventId = result.event.id
     const attachment = readEvents({ hydraId }).find(e => e.id === eventId)
 
-    if (attachment?.type === 'task.session' && attachment.data.brief) {
-      const state = loadHydra({ hydraId }).state
-      const home = state.config?.hydra.home
-      const context = projectWorkerContext({
+    if (attachment?.type === 'task.session') {
+      return afterAttach({
         hydraId,
-        state,
-        project: state.cards[attachment.cardId]?.project,
+        result,
+        attachment,
+        meta: m,
       })
-
-      return sendReply({
-        hydraId,
-        request: {
-          card: attachment.cardId,
-          text: [
-            context,
-            attachment.data.brief,
-          ].filter(Boolean).join('\n\n'),
-          expectedSession: attachment.data.session,
-          homes: home ? [home] : [],
-          actor: m.actor,
-          id: `brief:${attachment.id}`,
-        },
-      }).then(
-        brief => ({
-          ...result,
-          brief,
-        }),
-        (error: unknown) => ({
-          ...result,
-          brief: {
-            state: 'failed',
-            detail: (error as Error).message,
-          },
-          help: ['The attachment was recorded; inspect the task before retrying its brief with the same --event-id'],
-        }),
-      )
     }
   }
 
   return result
+}
+
+type Attachment = Extract<HydraEvent, { type: 'task.session' }>
+
+// Attachment is durable even when delivery fails.
+async function afterAttach({
+  hydraId,
+  result,
+  attachment,
+  meta,
+}: {
+  hydraId: string
+  result: Output
+  attachment: Attachment
+  meta: Meta
+}): Promise<Output> {
+  if (!attachment.data.brief) {
+    return result
+  }
+
+  const state = loadHydra({ hydraId }).state
+  const home = state.config?.hydra.home
+  const context = projectWorkerContext({
+    hydraId,
+    state,
+    project: state.cards[attachment.cardId]?.project,
+  })
+
+  try {
+    const brief = await sendReply({
+      hydraId,
+      request: {
+        card: attachment.cardId,
+        text: [
+          context,
+          attachment.data.brief,
+        ].filter(Boolean).join('\n\n'),
+        expectedSession: attachment.data.session,
+        homes: home ? [home] : [],
+        actor: meta.actor,
+        id: `brief:${attachment.id}`,
+      },
+    })
+
+    return {
+      ...result,
+      brief,
+    }
+  } catch (error) {
+    return {
+      ...result,
+      brief: {
+        state: 'failed',
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      help: ['The attachment was recorded; inspect the task before retrying its brief with the same --event-id'],
+    }
+  }
 }
 
 function taskBrief({ value }: { value: unknown }): string | undefined {
@@ -3919,11 +3949,19 @@ must be in the harness's catalog and the task records the override.
 --via command --command <name> selects the assigned project’s named command (project list); without --command it runs the configured Hydra command. It runs in the task's folder with PNYX_TASK and the rest of its context in the
 environment; the session it starts attaches to the task when its hooks first report.
 The default route is firstmate for a Hydra run by a Firstmate home, otherwise pnyx.
-A task with an attached project starts in its own copy: a git worktree on branch pnyx/<hydra>-<task> (or the project's
-copy command, see project set), made once and reused by later starts. --in-place works in the project folder itself and is
-refused while a worker of another Hydra runs there; --folder names the folder outright. Firstmate Hydras make their own copies.
-When the task reaches Done and its agent stops working, Pnyx removes its copy if it has no uncommitted changes and its commit
-is on the default branch or its linked pull request merged; the branch stays. Copies from a project's copy command are only released. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
+A task with an attached project starts in its own copy: a git worktree slot copies/<project>-<n> on branch
+pnyx/<hydra>-<task> (or the project's copy command, see project set), taken once and reused by later starts. A start
+takes a clean idle slot from the project's pool when there is one, keeping its ignored files such as installed
+dependencies, and starts the branch from the fetched origin default branch. A failed refresh stops allocation;
+projects without origin use local HEAD. --in-place works in the project folder
+itself and is refused while a worker of another Hydra runs there; --folder names the folder outright. Firstmate Hydras
+make their own copies.
+When the task reaches Done and its agent stops working, Pnyx releases its copy if it has no uncommitted changes and its
+commit is on the default branch or its linked pull request merged; the branch stays. Copies from a project's copy
+command are only released. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
+A released slot goes back to the pool when fewer than ${POOL_IDLE} clean idle slots of the project are already there, or
+when an attached worker still runs in it; otherwise it is deleted. A slot a worker runs in is never handed to another task.
+Queued handoff prepares the next branch and transfers the folder; manual task attach only moves the session.
 task copy shows the copy and that check. task copy remove settles it again; --safe (Hydra) confirms a clean copy whose work
 already landed or is empty; --discard removes work that never landed and needs the owner's --confirm <token>, never Hydra's.
 `,
