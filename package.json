@@ -24,7 +24,8 @@
     "test:connection": "pnpm run build && node test/connection-smoke.ts",
     "test:chat": "pnpm run build && node test/chat-smoke.ts && node test/markdown-previews-smoke.ts",
     "lint:fix": "eslint --fix .",
-    "test:semantic": "pnpm run build && node test/semantic-golden.ts"
+    "test:semantic": "pnpm run build && node test/semantic-golden.ts",
+    "verify": "node scripts/verify.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.285",
