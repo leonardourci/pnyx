@@ -1,7 +1,7 @@
 import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, type DispatchChoice } from '../dispatch/select.ts'
 import { effectiveDispatch, type Harness } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
-import { statSync } from 'node:fs'
+import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
@@ -692,9 +692,40 @@ export function createHost({
       let catalog = modelCatalogs.get(key)
 
       if (!catalog) {
-        catalog = providerOf({ provider: harness === 'claude' ? 'claude-code' : 'codex' }).models({ cwd: hydraDir({ hydraId }), env })
-        modelCatalogs.set(key, catalog)
-        void catalog.catch(() => modelCatalogs.delete(key))
+        const provider = providerOf({ provider: providerName({ harness }) })
+        const cwd = hydraDir({ hydraId })
+        const stored = storedModels({ key })
+
+        // The folder's own settings apply on top of the shared list; a failed read is dropped so the picker can retry.
+        const settle = ({ models }: { models: ModelOption[] | Promise<ModelOption[]> }) => {
+          const settled = Promise.resolve(models)
+            .then(models => provider.defaults({ cwd, env, models }))
+          modelCatalogs.set(key, settled)
+          void settled.catch(() => {
+            if (modelCatalogs.get(key) === settled) {
+              modelCatalogs.delete(key)
+            }
+          })
+
+          return settled
+        }
+
+        // The harness is read once per server; a stored list answers meanwhile and a failed read keeps it.
+        const read = provider.models({ cwd, env }).then(models => {
+          const changed = JSON.stringify(models) !== JSON.stringify(stored)
+
+          if (changed) {
+            storeModels({ key, models })
+          }
+
+          if (changed && stored) {
+            void settle({ models })
+          }
+
+          return models
+        })
+        void read.catch(() => {})
+        catalog = settle({ models: stored ?? read })
       }
 
       return catalog
@@ -752,7 +783,8 @@ export function createHost({
             : Object.keys(effective.accounts).find(name =>
               effective.accounts[name]?.provider === candidate.harness)
           const account = main ? effective.accounts[main] : undefined
-          const dispatch = previous?.agent?.provider !== (candidate.harness === 'codex' ? 'codex' : 'claude-code')
+          const provider = providerName({ harness: candidate.harness })
+          const dispatch = previous?.agent?.provider !== provider
             && account && main ? chooseCandidate({
               config: {
                 ...effective,
@@ -768,7 +800,6 @@ export function createHost({
             }) : undefined
           const settings: AgentSettings = Object.fromEntries(Object.entries(candidate).filter(([key, value]) => key !== 'harness' && value !== undefined)
             .map(([key, value]) => [key, String(value)]))
-          const provider = candidate.harness === 'codex' ? 'codex' : 'claude-code'
           const cwd = join(hydraDir({ hydraId }), 'agent')
           prepareHydraFolder({ folder: cwd })
           let card = previous
@@ -1250,6 +1281,42 @@ export function createHost({
   return host
 }
 
+const providerName = ({ harness }: { harness: Harness }) => harness === 'codex' ? 'codex' : 'claude-code'
+
+const modelsPath = () => join(pnyxHome(), 'harness-models.json')
+
+// "<harness>:<login folder>" -> the harness's model list, shared by every Hydra.
+function readModels(): Record<string, unknown> {
+  try {
+    const value = JSON.parse(readFileSync(modelsPath(), 'utf8')) as unknown
+
+    return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  } catch {
+    return {}
+  }
+}
+
+function storedModels({ key }: { key: string }): ModelOption[] | undefined {
+  const value = readModels()[key]
+  const models = (Array.isArray(value) ? value as Partial<ModelOption>[] : [])
+    .filter((model): model is ModelOption => typeof model?.value === 'string' && typeof model.label === 'string')
+
+  return models.length > 0 ? models : undefined
+}
+
+// ponytail: read-modify-write without a lock, so two servers storing at once can drop one key; it is read again on the next start.
+function storeModels({ key, models }: { key: string; models: ModelOption[] }): void {
+  const tmp = `${modelsPath()}.tmp-${process.pid}`
+
+  // The stored list only saves the next read; failing to write it never fails this one.
+  try {
+    writeFileSync(tmp, JSON.stringify({ ...readModels(), [key]: models }))
+    renameSync(tmp, modelsPath())
+  } catch {
+    rmSync(tmp, { force: true })
+  }
+}
+
 // A harness whose catalog cannot be read is left out, so its models are not checked.
 async function catalogOffers({ host, harnesses }: { host: Host; harnesses: Harness[] }) {
   const offers: Partial<Record<Harness, string[]>> = {}
@@ -1314,7 +1381,10 @@ export async function hostRequest({ host, body: raw }: {
         })
 
       // A setting changed after the start would reach only the next turn.
-      const settings: Record<string, string> = { ...chosenSettings({ choice: dispatch }), provider: dispatch.provider === 'codex' ? 'codex' : 'claude-code' }
+      const settings: Record<string, string> = {
+        ...chosenSettings({ choice: dispatch }),
+        provider: providerName({ harness: dispatch.provider }),
+      }
       const running = current.cards[HYDRA_CARD]?.settings?.mode
       const chosen = hydraConfig({ state: current, id: host.hydraId }).hydra.agent
       // Only a mode the composer and the running Hydra agree on passes on, never one mid-switch.
