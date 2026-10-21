@@ -85,14 +85,17 @@ export function TaskUpdates({
     ],
   )
   const filled = useRef(false)
+  const generation = useRef(0)
 
   useEffect(
     () => {
+      const current = ++generation.current
+
       if (!connected) {
+        setLoading(false)
+
         return
       }
-
-      let active = true
 
       const refresh = async () => {
         setLoading(true)
@@ -109,7 +112,7 @@ export function TaskUpdates({
               load,
             })
 
-          if (active) {
+          if (generation.current === current) {
             const gap = filled.current && result.found.length === PAGE_SIZE
               && !result.found.some(next => events.some(prior => prior.id === next.id))
             filled.current = true
@@ -125,11 +128,11 @@ export function TaskUpdates({
             setError('')
           }
         } catch (error) {
-          if (active) {
+          if (generation.current === current) {
             setError(error instanceof Error ? error.message : String(error))
           }
         } finally {
-          if (active) {
+          if (generation.current === current) {
             setLoading(false)
           }
         }
@@ -138,7 +141,9 @@ export function TaskUpdates({
       void refresh()
 
       return () => {
-        active = false
+        if (generation.current === current) {
+          generation.current++
+        }
       }
     },
     [
@@ -151,6 +156,7 @@ export function TaskUpdates({
   )
 
   const older = async () => {
+    const current = generation.current
     setLoading(true)
 
     try {
@@ -160,15 +166,24 @@ export function TaskUpdates({
         pageSize: PAGE_SIZE,
         load,
       })
+
+      if (generation.current !== current) {
+        return
+      }
+
       setEvents(kept => [
         ...kept,
         ...result.found.filter(event => !kept.some(prior => prior.id === event.id)),
       ])
       setMore(result.more); setError('')
     } catch (error) {
-      setError(error instanceof Error ? error.message : String(error))
+      if (generation.current === current) {
+        setError(error instanceof Error ? error.message : String(error))
+      }
     } finally {
-      setLoading(false)
+      if (generation.current === current) {
+        setLoading(false)
+      }
     }
   }
 
