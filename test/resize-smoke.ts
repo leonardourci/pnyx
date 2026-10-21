@@ -1,3 +1,4 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,6 +13,10 @@ const home = mkdtempSync(join(
   'pnyx-resize-',
 ))
 process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
+process.env.CLAUDE_CONFIG_DIR = join(
+  home,
+  'claude',
+)
 const fixture = seedWebFixture({ home })
 appendFileSync(
   fixture.transcript,
@@ -35,6 +40,7 @@ appendFileSync(
   ).join('\n') + '\n',
 )
 const server = await startServer({
+  query: hydraSdk().query,
   hydraId: 'default',
   homes: [fixture.nativeHome],
 })
@@ -94,8 +100,8 @@ try {
     label: 'task opens Updates',
   })
   await check({
-    condition: '!document.querySelector(".detail .composer, .detail .thread")',
-    label: 'task card has no conversation or composer',
+    condition: 'document.querySelectorAll(".detail .task-conversation .composer").length === 1',
+    label: 'attached task has its own conversation and composer',
   })
   await check({
     condition: 'Number(getComputedStyle(document.querySelector(".card.selected > .resize-y"), "::after").opacity) >= .5',
@@ -144,6 +150,20 @@ try {
     condition: 'document.querySelector(".task-updates").clientHeight >= 80',
     label: 'minimum card height retains readable Updates',
   })
+  await focus({ selector: '[aria-label="Close detail"]' })
+  await press({ key: 'PageDown' })
+  await eventually({
+    condition: 'document.querySelector(".detail").scrollTop > 0',
+    label: 'minimum card height lets the owner scroll through the task conversation',
+  })
+  await press({ key: 'End' })
+  await eventually({
+    condition: '(() => { const composer = document.querySelector(".detail .composer").getBoundingClientRect(); const detail = document.querySelector(".detail").getBoundingClientRect(); return composer.top >= detail.top && composer.bottom <= detail.bottom; })()',
+    label: 'native scrolling reaches the task composer at minimum card height',
+  })
+  await screenshot({ name: 'minimum-card-composer.png' })
+  await evaluate({ code: 'document.querySelector(".task-updates").scrollIntoView({ block: "start" }); return true;' })
+  await focus({ selector: '.card.selected > [aria-label="Resize card"]' })
   await press({ key: 'End' })
   await browser({
     args: [
