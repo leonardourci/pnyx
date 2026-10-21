@@ -30,6 +30,12 @@ export function Dialog({
     <dialog
       ref={dialog}
       className={`dialog ${className}`}
+      data-key-scope="overlay"
+      onKeyDown={e => {
+        if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
+          e.preventDefault(); e.stopPropagation(); close()
+        }
+      }}
       onCancel={e => {
         e.preventDefault(); close()
       }}
