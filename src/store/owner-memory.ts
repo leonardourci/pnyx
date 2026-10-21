@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { checkBudget, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
+import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
 import { hydraEvent } from '../core/hydra.ts'
+import { HydraError } from '../core/model.ts'
 import type { Meta } from '../core/decide.ts'
 import { hydraIds, loadHydra, pnyxHome, privateDir, withRegistryLock, withWriter, writeDurably } from './hydra-store.ts'
 
@@ -17,6 +18,13 @@ interface OwnerEntry {
   after: string | null
 }
 
+interface OwnerLog {
+  memory: Memory
+  revision: number
+  // A line that does not parse; reads skip it, writes refuse until someone inspects the log.
+  corrupt: boolean
+}
+
 const ownerDir = () => join(
   pnyxHome(),
   'owner',
@@ -30,11 +38,7 @@ const migratedPath = () => join(
   'migrated',
 )
 
-// ponytail: a torn or unreadable line is skipped rather than repaired; appends start on a fresh line.
-function readLog(): {
-  entries: OwnerEntry[]
-  text: string
-} {
+function readLog(): OwnerLog {
   let text = ''
 
   try {
@@ -48,24 +52,27 @@ function readLog(): {
     }
   }
 
-  return {
-    text,
-    entries: text.split('\n').flatMap(line => {
-      try {
-        const entry = JSON.parse(line) as OwnerEntry
+  // Keys come from disk, so a key such as __proto__ must stay an ordinary key.
+  const memory: Memory = Object.create(null) as Memory
+  let revision = 0
+  let corrupt = Boolean(text) && !text.endsWith('\n')
 
-        return typeof entry?.key === 'string' ? [entry] : []
-      } catch {
-        return []
-      }
-    }),
-  }
-}
+  for (const line of text.split('\n').filter(Boolean)) {
+    let entry: OwnerEntry | undefined
 
-const fold = ({ entries }: { entries: OwnerEntry[] }): Memory => {
-  const memory: Memory = {}
+    try {
+      entry = JSON.parse(line) as OwnerEntry
+    } catch {
+      entry = undefined
+    }
 
-  for (const entry of entries) {
+    if (typeof entry?.key !== 'string' || (entry.after !== null && typeof entry.after !== 'string')) {
+      corrupt = true
+      continue
+    }
+
+    revision = entry.seq
+
     if (entry.after === null) {
       delete memory[entry.key]
     } else {
@@ -76,30 +83,45 @@ const fold = ({ entries }: { entries: OwnerEntry[] }): Memory => {
     }
   }
 
-  return memory
+  return {
+    memory,
+    revision,
+    corrupt,
+  }
 }
 
-// Call only under the registry lock.
+// Call only under the registry lock. `change` gets the current text and returns the new one.
 function append({
   key,
-  after,
+  change,
   meta,
   budget,
 }: {
   key: string
-  after: string | null
+  change: ({ before }: { before: string | null }) => string | null
   meta: Meta
   budget?: number
 }): OwnerEntry | undefined {
-  const {
-    entries,
-    text,
-  } = readLog()
-  const memory = fold({ entries })
-  const before = Object.hasOwn(
-    memory,
-    key,
-  ) ? memory[key]!.text : null
+  const log = readLog()
+
+  if (log.corrupt) {
+    throw new HydraError({
+      message: 'Owner memory has an unreadable line; inspect its log before writing',
+      code: 'LOG_CORRUPT',
+      help: [`Inspect ${logPath()}`],
+    })
+  }
+
+  if (meta.ifRevision !== undefined && meta.ifRevision !== log.revision) {
+    throw new HydraError({
+      message: `Owner memory revision is ${log.revision}`,
+      code: 'REVISION_CONFLICT',
+      help: ['Run `pnyx-axi owner memory list`, merge your change into the current text and save again'],
+    })
+  }
+
+  const before = log.memory[key]?.text ?? null
+  const after = change({ before })
 
   if (before === after) {
     return undefined
@@ -107,7 +129,7 @@ function append({
 
   if (budget !== undefined) {
     checkBudget({
-      memory,
+      memory: log.memory,
       key,
       after,
       budget,
@@ -117,7 +139,7 @@ function append({
 
   const entry: OwnerEntry = {
     v: 1,
-    seq: (entries.at(-1)?.seq ?? 0) + 1,
+    seq: log.revision + 1,
     at: meta.at,
     actor: meta.actor,
     ...(meta.reason ? { reason: meta.reason } : {}),
@@ -128,7 +150,7 @@ function append({
   privateDir({ dir: ownerDir() })
   writeDurably({
     path: logPath(),
-    data: `${text && !text.endsWith('\n') ? '\n' : ''}${JSON.stringify(entry)}\n`,
+    data: `${JSON.stringify(entry)}\n`,
     flag: 'a',
   })
 
@@ -159,9 +181,10 @@ export function mergeLines({ texts }: { texts: string[] }): string {
     .join('\n')
 }
 
-// Owner preferences used to live in each Hydra. The first run after the move merges them into owner
-// memory and forgets them in each Hydra, whose event log keeps the old text. The marker is written
-// last, so a run cut short, or one a Hydra failed in, repeats and the merge drops the lines it already moved.
+// Owner preferences and learnings used to live in each Hydra. The first run after the move merges them
+// into owner memory and forgets them in each Hydra, whose event log keeps the old text. The marker is
+// written last, so a run cut short, or one a Hydra failed in, repeats and the merge drops lines it already moved.
+// ponytail: a Hydra that keeps failing (a held lock, a torn log) makes every owner read retry and wait on its lock.
 export function migrateOwnerMemory(): void {
   if (existsSync(migratedPath())) {
     return
@@ -177,30 +200,40 @@ export function migrateOwnerMemory(): void {
         at: new Date().toISOString(),
         actor: 'pnyx',
       }
-
-      let failed = false
+      const failed: string[] = []
 
       for (const hydraId of hydraIds()) {
         try {
-          if (loadHydra({ hydraId }).state.hydraMemory?.preferences !== undefined) {
+          const memory = loadHydra({ hydraId }).state.hydraMemory ?? {}
+
+          if (Object.keys(OWNER_DOCUMENTS).some(key => Object.hasOwn(
+            memory,
+            key,
+          ))) {
             move({
               hydraId,
               meta,
             })
           }
-        } catch {
-          failed = true
+        } catch (error) {
+          failed.push(`${hydraId}: ${(error as Error).message}`)
         }
       }
 
-      if (!failed) {
-        privateDir({ dir: ownerDir() })
-        writeDurably({
-          path: migratedPath(),
-          data: `${meta.at}\n`,
-          flag: 'w',
+      if (failed.length) {
+        throw new HydraError({
+          message: `Owner memory could not move from ${failed.join('; ')}`,
+          code: 'MIGRATION_INCOMPLETE',
+          help: ['Fix or `pnyx-axi repair` those Hydras; the next read retries the move'],
         })
       }
+
+      privateDir({ dir: ownerDir() })
+      writeDurably({
+        path: migratedPath(),
+        data: `${meta.at}\n`,
+        flag: 'w',
+      })
     },
   })
 }
@@ -215,57 +248,69 @@ function move({
   withWriter({
     hydraId,
     fn: ({ writer }) => {
-      const held = writer.state.hydraMemory?.preferences?.text
+      for (const key of Object.keys(OWNER_DOCUMENTS)) {
+        const held = writer.state.hydraMemory?.[key]?.text
 
-      if (held === undefined) {
-        return
-      }
+        if (held === undefined) {
+          continue
+        }
 
-      append({
-        key: 'preferences',
-        after: mergeLines({
-          texts: [
-            fold({ entries: readLog().entries }).preferences?.text ?? '',
-            held,
-          ],
-        }),
-        meta: {
-          ...meta,
-          reason: `Moved owner preferences from Hydra ${hydraId}`,
-        },
-      })
-      const forget = hydraEvent({
-        state: writer.state,
-        meta: {
-          ...meta,
-          reason: 'Moved to the Pnyx-wide owner memory',
-        },
-        cardId: '$board',
-        change: {
-          type: 'hydra.memory',
-          data: {
-            key: 'preferences',
-            before: held,
-            after: null,
+        append({
+          key,
+          change: ({ before }) => mergeLines({
+            texts: [
+              before ?? '',
+              held,
+            ],
+          }),
+          meta: {
+            ...meta,
+            reason: `Moved ${key} from Hydra ${hydraId}`,
           },
-        },
-      })
+        })
+        const forget = hydraEvent({
+          state: writer.state,
+          meta: {
+            ...meta,
+            reason: 'Moved to the Pnyx-wide owner memory',
+          },
+          cardId: '$board',
+          change: {
+            type: 'hydra.memory',
+            data: {
+              key,
+              before: held,
+              after: null,
+            },
+          },
+        })
 
-      if ('event' in forget) {
-        writer.append({ event: forget.event })
+        if ('event' in forget) {
+          writer.append({ event: forget.event })
+        }
       }
     },
   })
 }
 
-export function ownerMemory(): Memory {
+// The documents stay in their Hydra's digest until the move succeeds, so a failed move only reports.
+function tryMigrate(): void {
   try {
     migrateOwnerMemory()
-  } catch {
-    // A failed move leaves the preferences in their Hydra's digest, and the next read retries it.
+  } catch (error) {
+    console.error(`pnyx-axi: ${(error as Error).message}`)
   }
+}
 
-  return fold({ entries: readLog().entries })
+// Reading first moves any owner documents still held by a Hydra, so read a Hydra's state after this.
+export function ownerMemory(): Memory {
+  tryMigrate()
+
+  return readLog().memory
+}
+
+export function ownerRevision(): number {
+  return readLog().revision
 }
 
 export function saveOwnerMemory({
@@ -277,12 +322,12 @@ export function saveOwnerMemory({
   after: string | null
   meta: Meta
 }): OwnerEntry | undefined {
-  migrateOwnerMemory()
+  tryMigrate()
 
   return withRegistryLock({
     fn: () => append({
       key,
-      after,
+      change: () => after,
       meta,
       budget: OWNER_MEMORY_BUDGET,
     }),

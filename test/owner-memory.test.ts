@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -7,7 +7,7 @@ import { commands } from '../src/cli/commands.ts'
 import { workerCommands } from '../src/cli/workers.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
-import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
+import { hydraDir, loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { mergeLines, ownerMemory } from '../src/store/owner-memory.ts'
 
 function home() {
@@ -81,7 +81,7 @@ test(
 )
 
 test(
-  'the first run moves each Hydra’s preferences into owner memory and forgets them there',
+  'the first run moves each Hydra’s preferences and learnings into owner memory and forgets them there',
   async () => {
     const dir = home()
 
@@ -127,11 +127,8 @@ test(
           state.hydraMemory?.preferences,
           undefined,
         )
-        const forget = readEvents({ hydraId }).at(-1)
-        assert.equal(
-          forget?.type === 'hydra.memory' && forget.data.after === null ? forget.data.key : undefined,
-          'preferences',
-        )
+        assert.ok(readEvents({ hydraId }).some(e => e.type === 'hydra.memory' && e.actor === 'pnyx'
+          && e.data.key === 'preferences' && e.data.after === null && e.data.before !== null))
         assert.match(
           JSON.stringify(readEvents({ hydraId }).filter(e => e.type === 'hydra.memory')),
           /Ask before deploys\./,
@@ -145,8 +142,12 @@ test(
         )
       }
 
+      assert.deepEqual(
+        Object.keys(loadHydra({ hydraId: 'alpha' }).state.hydraMemory ?? {}),
+        [],
+      )
       assert.equal(
-        loadHydra({ hydraId: 'alpha' }).state.hydraMemory?.learnings?.text,
+        ownerMemory().learnings?.text,
         'CI takes ten minutes.',
       )
       assert.equal(
@@ -170,8 +171,9 @@ test(
       assert.deepEqual(
         log.map(entry => entry.reason),
         [
-          'Moved owner preferences from Hydra alpha',
-          'Moved owner preferences from Hydra beta',
+          'Moved preferences from Hydra alpha',
+          'Moved learnings from Hydra alpha',
+          'Moved preferences from Hydra beta',
         ],
       )
 
@@ -300,6 +302,139 @@ test(
         ).trim()
           .split('\n').length,
         2,
+      )
+    } finally {
+      rmSync(
+        dir,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'a Hydra that cannot be moved keeps its preferences, leaves no marker and moves on the next read',
+  () => {
+    const dir = home()
+    const lock = () => join(
+      hydraDir({ hydraId: 'beta' }),
+      'writer.lock',
+    )
+
+    try {
+      oldMemory({
+        hydraId: 'alpha',
+        key: 'preferences',
+        text: 'Short PRs.',
+      })
+      oldMemory({
+        hydraId: 'beta',
+        key: 'preferences',
+        text: 'Short PRs.\nAnswer in English.',
+      })
+      // A live writer holds beta's lock for the whole first read.
+      writeFileSync(
+        lock(),
+        String(process.pid),
+      )
+      assert.equal(
+        ownerMemory().preferences?.text,
+        'Short PRs.',
+      )
+      assert.equal(
+        loadHydra({ hydraId: 'beta' }).state.hydraMemory?.preferences?.text,
+        'Short PRs.\nAnswer in English.',
+      )
+      assert.ok(!existsSync(join(
+        dir,
+        'owner',
+        'migrated',
+      )))
+      rmSync(lock())
+      assert.equal(
+        ownerMemory().preferences?.text,
+        'Short PRs.\nAnswer in English.',
+      )
+      assert.equal(
+        loadHydra({ hydraId: 'beta' }).state.hydraMemory?.preferences,
+        undefined,
+      )
+      assert.ok(existsSync(join(
+        dir,
+        'owner',
+        'migrated',
+      )))
+    } finally {
+      rmSync(
+        dir,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'a save from an older revision or onto an unreadable log is refused',
+  async () => {
+    const dir = home()
+
+    try {
+      const save = ({
+        text,
+        revision,
+      }: {
+        text: string
+        revision: string
+      }) => commands.owner([
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        text,
+        '--if-revision',
+        revision,
+      ])
+
+      assert.match(
+        JSON.stringify(await commands.owner(['memory'])),
+        /"revision":0/,
+      )
+      await save({
+        text: 'Short PRs.',
+        revision: '0',
+      })
+      assert.throws(
+        () => save({
+          text: 'Long PRs.',
+          revision: '0',
+        }),
+        /revision is 1/,
+      )
+      appendFileSync(
+        join(
+          dir,
+          'owner',
+          'memory.jsonl',
+        ),
+        '{"torn',
+      )
+      assert.throws(
+        () => save({
+          text: 'Long PRs.',
+          revision: '1',
+        }),
+        /unreadable line/,
+      )
+      assert.equal(
+        ownerMemory().preferences?.text,
+        'Short PRs.',
       )
     } finally {
       rmSync(
