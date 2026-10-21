@@ -6,6 +6,8 @@ import { commands } from '../src/cli/commands.ts'
 import { startServer } from '../src/server/server.ts'
 import { smokeBrowser } from './browser.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
+import { decidePush } from '../src/core/decide.ts'
+import { withWriter } from '../src/store/hydra-store.ts'
 
 const home = mkdtempSync(join(
   tmpdir(),
@@ -50,6 +52,39 @@ commands.task([
   '--actor',
   'worker',
 ])
+const appendHistory = ({
+  title,
+  noise,
+}: {
+  title: string
+  noise: number
+}) => withWriter({
+  hydraId: 'default',
+  fn: ({ writer }) => {
+    for (let index = 0; index <= noise; index++) {
+      const decision = decidePush({
+        state: writer.state,
+        key: 'migration',
+        input: index === 0 ? { title } : {
+          folder: join(
+            home,
+            `noise-${title}-${index}`,
+          ),
+        },
+        meta: {
+          actor: 'fixture',
+          at: new Date().toISOString(),
+        },
+      })
+      assert.ok('event' in decision)
+      writer.append({ event: decision.event })
+    }
+  },
+})
+appendHistory({
+  title: 'Older migration rename',
+  noise: 550,
+})
 const server = await startServer({
   hydraId: 'default',
   query: hydraSdk().query,
@@ -79,7 +114,7 @@ try {
   })
   await b.click({ selector: '.card-open' })
   await b.eventually({
-    condition: 'document.querySelector(".task-updates")?.textContent.includes("Created")',
+    condition: '!!document.querySelector(".task-updates button:not(.updates-order)") && !document.querySelector(".task-updates [role=status]")',
     label: 'Updates loads existing factual history',
   })
   await b.check({
@@ -87,8 +122,45 @@ try {
     label: 'open card contains Updates without tabs, conversation or composer',
   })
   await b.check({
-    condition: 'document.querySelector(".task-updates li").textContent.includes("Which canary") && document.querySelectorAll(".task-updates time").length >= 3',
+    condition: 'document.querySelector(".task-updates li").textContent.includes("Which canary")',
     label: 'newest declaration shows state, note and time',
+  })
+  await b.text({ label: 'Older updates' })
+  await b.eventually({
+    condition: 'document.querySelector(".task-updates")?.textContent.includes("Older migration rename") && document.querySelector(".task-updates")?.textContent.includes("Created")',
+    label: 'paging through noise reaches the older rename and creation',
+  })
+  await b.check({
+    condition: '![...document.querySelectorAll(".task-updates button")].some(b => b.textContent === "Older updates") && !document.querySelector(".task-updates").textContent.includes("noise-")',
+    label: 'exhausted history hides pagination and irrelevant events',
+  })
+  await b.evaluate({ code: 'window.newestRows = [...document.querySelectorAll(".task-updates > ol > li")].map(e => e.textContent); return true;' })
+  await b.click({ selector: '.updates-order' })
+  await b.check({
+    condition: 'JSON.stringify([...document.querySelectorAll(".task-updates > ol > li")].map(e => e.textContent)) === JSON.stringify(window.newestRows.toReversed())',
+    label: 'oldest-first reverses the full timeline',
+  })
+  await b.click({ selector: '.updates-order' })
+  await b.check({
+    condition: 'JSON.stringify([...document.querySelectorAll(".task-updates > ol > li")].map(e => e.textContent)) === JSON.stringify(window.newestRows)',
+    label: 'newest-first restores the full timeline',
+  })
+  appendHistory({
+    title: 'Burst migration rename',
+    noise: 60,
+  })
+  await b.eventually({
+    condition: '[...document.querySelectorAll(".task-updates button")].some(b => b.textContent === "Older updates")',
+    label: 'a burst beyond one page restores access to intermediate history',
+  })
+  await b.text({ label: 'Older updates' })
+  await b.eventually({
+    condition: 'document.querySelector(".task-updates")?.textContent.includes("Burst migration rename")',
+    label: 'the relevant event inside a refresh gap remains reachable',
+  })
+  await b.check({
+    condition: '(() => { const rows = [...document.querySelectorAll(".task-updates > ol > li")].map(e => e.textContent); return new Set(rows).size === rows.length; })()',
+    label: 'paging and refresh do not duplicate timeline rows',
   })
   commands.task([
     'status',
