@@ -123,15 +123,13 @@ test(
       '--text',
       'Prefer small project PRs.',
     ])
-    commands.hydra([
+    commands.owner([
       'memory',
       'set',
       '--key',
       'preferences',
       '--text',
       'Hydra owner preference.',
-      '--hydra',
-      'existing',
     ])
     const sdk = hydraSdk()
     let server = await startServer({
@@ -1091,7 +1089,7 @@ test(
       assert.ok(first >= before)
       assert.match(
         wakes()[0]!,
-        /<\/pnyx-wake>\n\nMemory changed; load Hydra memory/,
+        /<\/pnyx-wake>\n\nMemory changed; load owner memory/,
       )
       assert.doesNotMatch(
         sdk.calls[0]!.raw[0]!,
