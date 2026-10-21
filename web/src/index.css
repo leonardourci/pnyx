@@ -688,11 +688,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .thread { padding: 0; min-height: 0; flex: none; overflow: visible; }
 
-
-
-
-
-
 .card > :is(.card-labels, .card-state, .copy-warning, .reminder-label), .detail-header { flex-shrink: 0; }
 
 .card-rest { min-height: 0; overflow: auto; flex: 1; }

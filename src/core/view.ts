@@ -443,9 +443,9 @@ export function patchView({
             return invalid({ detail: key })
           }
 
-          const card = key === 'cardHeights' || key === 'closedCardHeights'
+          const cardMap = key === 'cardHeights' || key === 'closedCardHeights'
 
-          if (card && !state.cards[id]) {
+          if (cardMap && !state.cards[id]) {
             return invalid({ detail: id })
           }
 
@@ -460,7 +460,7 @@ export function patchView({
           if (n === null) {
             delete next[key][id]
           } else {
-            const limits = card ? VIEW_SIZE_LIMITS.cardHeight : VIEW_SIZE_LIMITS.columnWidth
+            const limits = cardMap ? VIEW_SIZE_LIMITS.cardHeight : VIEW_SIZE_LIMITS.columnWidth
             next[key][id] = size({
               value: n,
               ...limits,
