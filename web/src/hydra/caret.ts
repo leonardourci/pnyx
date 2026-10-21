@@ -169,7 +169,7 @@ type Position = {
   offset: number
 }
 export type CaretDirection = 'backward' | 'forward'
-export const COMMENT_NOTE = '.comment-card textarea'
+const NOTE_SELECTOR = '.comment-card textarea'
 
 // Positive when a comes after b in the document.
 const comparePositions = ({
@@ -236,7 +236,7 @@ export function noteBetween({
   direction: CaretDirection
 }): HTMLTextAreaElement | null {
   const forward = direction === 'forward'
-  const notes = [...host.querySelectorAll<HTMLTextAreaElement>(COMMENT_NOTE)]
+  const notes = [...host.querySelectorAll<HTMLTextAreaElement>(NOTE_SELECTOR)]
 
   const between = ({ note }: { note: HTMLTextAreaElement }) => {
     const at = beside({

@@ -548,7 +548,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .comment-pill .button:first-child { color: var(--color-gold); }
 
-.comment-pill kbd { padding: 0 4px; font-size: 11px; }
+.comment-pill kbd { padding: 0 4px; }
 
 .comment-pill-divider { width: 1px; align-self: stretch; margin: 4px 1px; background: var(--color-line); }
 

@@ -53,20 +53,12 @@ export function CommentsDialog({
   comments,
   shown,
   setComments,
-  attach,
   show,
   close,
 }: {
   comments: ChatComment[]
   shown: string[]
   setComments({ items }: { items: ChatComment[] }): void
-  attach({
-    id,
-    files,
-  }: {
-    id: string
-    files: File[]
-  }): void
   show({ id }: { id: string }): void
   close(): void
 }) {
@@ -102,10 +94,6 @@ export function CommentsDialog({
                   } : c),
                 })}
                 remove={() => setComments({ items: comments.filter(c => c.id !== comment.id) })}
-                attach={({ files }) => attach({
-                  id: comment.id,
-                  files,
-                })}
                 show={() => show({ id: comment.id })}
               />
             ))}

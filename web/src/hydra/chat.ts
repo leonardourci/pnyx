@@ -65,13 +65,20 @@ export interface ChatComment {
   images?: string[]
 }
 
+const SHORT_QUOTE_WORDS = 3
+
 export const sendableComment = ({ comment }: { comment: ChatComment }) =>
   !!comment.text.trim() || !!comment.images?.length
 
 // A quote of three words or fewer travels with its paragraph, so the agent can place it.
-export const commentContext = ({ comment }: { comment: Pick<ChatComment, 'quote' | 'paragraph'> }) =>
-  comment.quote.trim().split(/\s+/).length <= 3 && comment.paragraph && comment.paragraph !== comment.quote
-    ? comment.paragraph : undefined
+export const commentContext = ({
+  comment: {
+    quote,
+    paragraph,
+  },
+}: { comment: Pick<ChatComment, 'quote' | 'paragraph'> }) =>
+  quote.trim().split(/\s+/).length <= SHORT_QUOTE_WORDS && paragraph && paragraph !== quote
+    ? paragraph : undefined
 
 // What a comment card shows: its context split around the quote, or the quote alone.
 export function quoteSnippet({

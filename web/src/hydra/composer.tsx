@@ -16,9 +16,9 @@ import { slashMatches, slashPrefix } from './view.ts'
 import { commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
-import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
+import { placeMessageCaret, conversationMessages, enterNote, latestAgentMessage } from './caret.ts'
 import { imagePaths } from '../../../src/attachments/images.ts'
-import { uploadImages } from './image-upload.ts'
+import { pastedImages, uploadImages } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { AttachedImage } from '../components/ui/attached-image.tsx'
 
@@ -259,44 +259,20 @@ export function Composer({
     setListing,
   ] = useState<string[] | null>(null)
 
-  const attachToComment = async ({
-    id,
-    files,
-  }: {
-    id: string
-    files: File[]
-  }) => {
-    const {
-      lines,
-      failures,
-    } = await uploadImages({ files })
-
-    if (failures.length) {
-      notify({ text: failures.join(' ') })
-    }
-
-    setComments({
-      items: current.current.comments.map(c => c.id === id ? {
-        ...c,
-        images: [
-          ...c.images ?? [],
-          ...lines,
-        ],
-      } : c),
-    })
-  }
-
   // The list closes onto the comment under its passage, ready to edit.
   const showComment = ({ id }: { id: string }) => {
     setListing(null)
     requestAnimationFrame(() => {
       const host = form.current && conversationMessages({ from: form.current })
       const note = host?.querySelector<HTMLTextAreaElement>(`[data-comment-id="${id}"] textarea`)
-      note?.scrollIntoView({ block: 'center' })
-      note?.focus(); note?.setSelectionRange(
-        note.value.length,
-        note.value.length,
-      )
+
+      if (note) {
+        note.scrollIntoView({ block: 'center' })
+        enterNote({
+          note,
+          direction: 'backward',
+        })
+      }
     })
   }
 
@@ -589,13 +565,6 @@ export function Composer({
           comments={comments}
           shown={listing}
           setComments={setComments}
-          attach={({
-            id,
-            files,
-          }) => void attachToComment({
-            id,
-            files,
-          })}
           show={showComment}
           close={() => setListing(null)}
         />
@@ -675,9 +644,10 @@ export function Composer({
           }}
           onBlur={() => setMention(null)}
           onPaste={event => {
-            // Office apps put a picture of copied text next to the text itself.
-            if (event.clipboardData.files.length && !event.clipboardData.types.includes('text/plain')) {
-              event.preventDefault(); void attach({ files: [...event.clipboardData.files] })
+            const files = pastedImages({ clipboardData: event.clipboardData })
+
+            if (files.length) {
+              event.preventDefault(); void attach({ files })
             }
           }}
           onChange={e => {

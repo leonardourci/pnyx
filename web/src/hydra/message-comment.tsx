@@ -2,12 +2,16 @@ import { imagePaths } from '../../../src/attachments/images.ts'
 import { AttachedImage } from '../components/ui/attached-image.tsx'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import { markdown } from '../components/ui/markdown.tsx'
 import { onNoteEdgeLine, type CaretDirection } from './caret.ts'
-import { Marked } from 'marked'
 import { commentContext, quoteSnippet, type ChatComment } from './chat.ts'
+import { pastedImages } from './image-upload.ts'
 
 const CLIP = 40
-const markdown = new Marked({ gfm: true })
+const LINE_KEYS: Record<string, CaretDirection> = {
+  ArrowUp: 'backward',
+  ArrowDown: 'forward',
+}
 
 // The paragraph as it reads in the chat, its Markdown syntax rendered away; the agent gets the source.
 const readable = ({ text }: { text: string }) => new DOMParser()
@@ -56,7 +60,7 @@ export function MessageComment({
   comment: ChatComment
   change({ text }: { text: string }): void
   remove(): void
-  attach({ files }: { files: File[] }): void
+  attach?({ files }: { files: File[] }): void
   inline?: boolean
   leave?({
     note,
@@ -94,10 +98,9 @@ export function MessageComment({
             }
           }}
           onPaste={event => {
-            const files = [...event.clipboardData.files]
+            const files = pastedImages({ clipboardData: event.clipboardData })
 
-            // Office apps put a picture of copied text next to the text itself.
-            if (files.length && !event.clipboardData.types.includes('text/plain')) {
+            if (attach && files.length) {
               event.preventDefault(); attach({ files })
             }
           }}
@@ -116,8 +119,7 @@ export function MessageComment({
               return
             }
 
-            const direction = key === 'ArrowUp' ? 'backward' : key === 'ArrowDown' ? 'forward' : null
-
+            const direction = LINE_KEYS[key]
             const edge = direction && note.selectionStart === note.selectionEnd && onNoteEdgeLine({
               note,
               direction,

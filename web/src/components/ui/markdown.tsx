@@ -5,7 +5,7 @@ import { Marked, type Token, type Tokens } from 'marked'
 import { imageLine, imagePaths } from '../../../../src/attachments/images.ts'
 import { AttachedImage } from './attached-image.tsx'
 
-const markdown = new Marked({ gfm: true })
+export const markdown = new Marked({ gfm: true })
 const decodeEntities = ({ text }: { text: string }) => text.replace(
   /&(?:#x[\da-f]+|#\d+|[a-z][a-z\d]+);/gi,
   entity => {
