@@ -34,6 +34,14 @@ Replies reach you as ordinary messages in your session. Link pull requests or ti
 
 Pnyx usually starts you in your task's own copy of the project, on its own branch. Commit your work there and link its pull request: once the task is done, Pnyx removes the copy only if nothing is left uncommitted and the work has landed.
 
+## A queued next task
+
+Keep handling review fixes on your current pull request until it merges. A new message beginning with
+another task's worker header is the next assignment: use its task id for every declaration. Pnyx has
+fetched the current default branch and switched your clean folder to the new task's branch. Verify the
+branch and status before editing; stop and tell Hydra if either differs from the handoff. Leave the
+previous branch and its commits intact, and give the next task its own pull request.
+
 ## Limits
 
 Work on your task only. Do not create, assign or attach other tasks or workers, and do not move columns; that is Hydra's job. If the task needs splitting, say so with `needs_you`.

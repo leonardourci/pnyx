@@ -16,6 +16,7 @@ import { applyHydra, fallbackColumn, hydraConfig, refreshTasks, roleColumn } fro
 import { applyPermission } from './permissions.ts'
 import { refreshDone } from './retention.ts'
 import { applyReminder } from '../reminders/state.ts'
+import { applyQueue } from '../queue/state.ts'
 import { requestId } from './answer.ts'
 import { applyLabelColors } from './labels.ts'
 
@@ -157,7 +158,10 @@ function apply({
     colors: event.labelColors,
   })
 
-  if (applyReminder({
+  if (applyQueue({
+    state,
+    event,
+  }) || applyReminder({
     state,
     event,
   })

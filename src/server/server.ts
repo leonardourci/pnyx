@@ -1,3 +1,5 @@
+import { advanceQueues } from '../queue/advance.ts'
+import { QUEUE_POLL_MS } from '../queue/state.ts'
 import { candidates } from '../dispatch/config.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
@@ -1113,6 +1115,9 @@ async function mountOwnedHydra({
   }
 
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
+  let queueRun: Promise<void> | undefined
+  let queueCheckedAt = 0
+  let queueNeedsRetry = false
   let scheduled = false
 
   const kick = () => {
@@ -1134,6 +1139,24 @@ async function mountOwnedHydra({
         }
 
         pump()
+
+        if (!queueRun && Date.now() - queueCheckedAt >= QUEUE_POLL_MS) {
+          queueCheckedAt = Date.now()
+          queueRun = (async () => {
+            try {
+              queueNeedsRetry = await advanceQueues({
+                hydraId,
+                active: () => !closed,
+              })
+            } catch (error) {
+              queueNeedsRetry = true
+              console.error(`pnyx-axi queue: ${(error as Error).message}`)
+            } finally {
+              queueRun = undefined
+              kick()
+            }
+          })()
+        }
 
         fireReminders({ hydraId })
         pump()
@@ -1157,6 +1180,8 @@ async function mountOwnedHydra({
         const deadlines = [
           doneDeadline({ state }),
           reminderDeadline({ state }),
+          ...(!queueRun && (queueNeedsRetry || Object.values(state.cards).some(c => c.queue))
+            ? [queueCheckedAt + QUEUE_POLL_MS] : []),
         ]
           .filter((at): at is number => at !== undefined)
         const deadline = deadlines.length ? Math.min(...deadlines) : undefined
@@ -2266,6 +2291,7 @@ async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+    await queueRun
     firstmate?.close()
     agents.close()
 

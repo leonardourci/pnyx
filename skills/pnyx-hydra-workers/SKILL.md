@@ -1,6 +1,6 @@
 ---
 name: pnyx-hydra-workers
-description: Use when you are Hydra and are about to start, continue, replace, move or detach a task's worker, remove a task copy, or answer a worker's permission request.
+description: Use when you are Hydra and are about to start, queue, continue, replace, move or detach a task's worker, remove a task copy, or answer a worker's permission request.
 ---
 
 # Hydra workers
@@ -34,9 +34,43 @@ A task holds one worker; `task detach <task>` frees it without stopping the agen
 
 After an outside Claude Code or Codex session ends, `pnyx-axi task continue <task> --reason "<why>" --hydra <hydra>` adopts its native session in Pnyx; the next reply resumes it in its recorded folder. Use `--check` to read eligibility first. Never continue while its terminal still runs it; a running or unverified process refuses the handoff. If the folder is missing, use `task start <task> --via pnyx --replace-session <session> --folder <path>` to start fresh from the brief; the old attachment stays until the new start passes validation.
 
+## Queue related tasks
+
+Compare a new task's expected files and area with live workers' briefs and changes. Queue only real
+file overlap or a task that builds on that worker's result; a shared project alone is not a reason.
+Start an independent worker for independent work.
+
+```sh
+pnyx-axi task queue <next> --behind <task|session> --reason "<overlap or dependency>" --hydra <hydra>
+pnyx-axi task reorder <next> --behind <task|session> --reason "<why>" --hydra <hydra>
+pnyx-axi task unqueue <next> --reason "<why>" --hydra <hydra>
+```
+
+Behind a session or its current task appends to the queue; behind a queued task inserts immediately
+following it. The tasks must use the same project and have no worker or active copy. Give each a complete
+brief. Cards remain in Queued with their worker and position; the worker's card lists its ordered queue.
+The owner can also queue, reorder or unqueue from the card's menu.
+
+The server checks every 30 seconds. An open pull request holds the queue while its worker handles
+reviews. After all linked pull requests merge, or a task without a pull request is declared done and
+its commit lands, an idle worker takes the first queued task. Pnyx fetches origin, discovers its current
+default branch, verifies a clean isolated folder and landed commits, creates a fresh branch, transfers
+the copy to the next task, attaches the session and sends the next brief. Old branches stay intact.
+Automatic handoff restores the next card to In progress; manual attachment still leaves placement alone.
+
+Done cleanup keeps a folder while its worker has queued tasks. Project copy commands have their own
+folder contracts, so those queues return to Queued for a fresh worker rather than reusing their folder.
+Failed branch preparation also releases the queue with its reason; no work is discarded.
+
+A dead or detached worker releases the queue. A working, blocked, paused or waiting worker with no sign
+of life for 30 minutes does too. After three tasks in one queue run, or a transcript of 2 MiB, remaining
+tasks return to normal Queued with a short note naming the earlier task. Read that history, carry over
+only useful context, and dispatch a fresh worker. Unknown presence keeps the queue waiting.
+Firstmate owns assignments on its linked Hydras; ask Firstmate to queue there.
+
 ## Move a worker to another task
 
-A worker whose task is done can take the next related task instead of a new agent starting cold. First
+For manual reuse outside an automatic queue, a worker whose task is done can take a related task. First
 confirm the worker is idle, its work has landed, and the next task uses the same project. Declare the
 current task `done`, then inspect its copy and folder: Done cleanup can remove a managed copy. Reuse only
 after copy settlement is complete and the folder will remain. If the folder is gone or still due for

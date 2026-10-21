@@ -1,3 +1,4 @@
+import { queuePosition, workerQueue } from '../queue/state.ts'
 import { HYDRA_CARD, hydraConfig } from './hydra.ts'
 import { liveTask, rankOf } from './tasks.ts'
 import type { Card, HydraState } from './model.ts'
@@ -73,6 +74,20 @@ function taskLine({
       text: card.title,
       size: 80,
     })} · ${column} · ${status} · ${worker}${card.parentId ? ` · under ${card.parentId}` : ''}`,
+    ...(card.queue ? [
+      `  queue: next for ${card.queue.session}, position ${queuePosition({
+        state,
+        card,
+      })?.position}`,
+    ] : []),
+    ...(card.sessionIds?.[0] ? [
+      `  next tasks: ${workerQueue({
+        state,
+        session: card.sessionIds[0],
+      }).map(c => c.id)
+        .join(', ') || 'none'}`,
+    ] : []),
+    ...(card.queueNote ? [`  handoff: ${card.queueNote}`] : []),
     ...(waiting.length ? [`  waiting: ${waiting.join('; ')}`] : []),
   ].join('\n')
 }

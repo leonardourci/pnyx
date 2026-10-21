@@ -99,6 +99,13 @@ export function freeTask({
     })
   }
 
+  if (card.queue) {
+    throw new HydraError({
+      message: 'unqueue this task before starting a separate worker',
+      code: 'CONFLICT',
+    })
+  }
+
   if (card.sessionIds?.length) {
     throw new HydraError({
       message: `task ${card.id} already has an attached agent; detach it first`,
@@ -274,6 +281,14 @@ export async function startTask({
     state,
     ref: task,
   })
+
+  if (card.queue) {
+    throw new HydraError({
+      message: 'unqueue this task before starting a separate worker',
+      code: 'CONFLICT',
+    })
+  }
+
   const how = chooseVia({
     state,
     via,
