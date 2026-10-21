@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startServer } from '../src/server/server.ts'
@@ -36,27 +36,6 @@ await commands.task([
   '--title',
   originalTitle,
 ])
-appendFileSync(
-  fixture.transcript,
-  Array.from(
-    { length: 12 },
-    (
-      _,
-      i,
-    ) => JSON.stringify({
-      type: 'assistant',
-      timestamp: new Date().toISOString(),
-      message: {
-        content: [
-          {
-            type: 'text',
-            text: `Update ${i}: ` + 'The worker is checking the migration and its rollback path. '.repeat(8),
-          },
-        ],
-      },
-    }),
-  ).join('\n') + '\n',
-)
 const server = await startServer({
   hydraId: 'default',
   homes: [fixture.nativeHome],
@@ -114,6 +93,43 @@ try {
   })
   const hydraHeight = state().view?.composerHeight
   assert.ok(hydraHeight && hydraHeight >= 180)
+  await settle()
+  await eventually({
+    condition:`(() => {const card=document.querySelector(${JSON.stringify(card)}).closest('.card'),grip=card.querySelector('.resize-y');return card.getBoundingClientRect().height>0 && Number(grip.getAttribute('aria-valuemin')) === Number(grip.getAttribute('aria-valuemax'));})()`,
+    label:'the initial closed card fits all its content at one height',
+  })
+  await evaluate({code:`window.fitHeight=document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height;return true;`})
+  await drag({
+    selector:`[data-task="${fixture.state.keys.layout}"] > [aria-label="Resize card"]`,
+    dy:60,
+  })
+  await check({
+    condition:`document.querySelector(${JSON.stringify(card)}).closest('.card').getBoundingClientRect().height === window.fitHeight && !document.querySelector('.card.selected')`,
+    label:'dragging a content-fit closed card changes nothing',
+  })
+  assert.equal(
+    state().view?.closedCardHeights[fixture.state.keys.layout!],
+    undefined,
+  )
+  await commands.task([
+    'status',
+    fixture.state.keys.layout!,
+    'working',
+    '--note',
+    [
+      'The worker is checking the migration and rollback path.',
+      'The migration preserves existing data and reports every rejected write. '.repeat(4),
+      'The canary checks both forward migration and rollback before rollout. '.repeat(4),
+    ].join('\n\n'),
+    '--actor',
+    'worker',
+    '--hydra',
+    'default',
+  ])
+  await eventually({
+    condition:`(() => {const card=document.querySelector(${JSON.stringify(card)}).closest('.card'),grip=card.querySelector('.resize-y');return card.querySelector('.last-message')?.textContent.includes('The worker is checking the migration') && Number(grip.getAttribute('aria-valuemax')) > Number(grip.getAttribute('aria-valuemin'))+60;})()`,
+    label:'a real multiline worker declaration gives closed resizing room to grow',
+  })
   await click({ selector: card })
   await eventually({
     condition: '!!document.querySelector(".task-updates")',
