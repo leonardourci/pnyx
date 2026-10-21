@@ -106,6 +106,22 @@ try {
     condition: '!document.querySelector(".hydra-agent-pickers [role=listbox]")',
     label: 'pickers closed',
   })
+  await b.check({
+    condition: '!!document.querySelector(".hydra-agent-pickers [aria-label=Harness] svg") && !!document.querySelector(".hydra-agent-pickers [aria-label=Effort] svg") && !!document.querySelector(".hydra-agent-pickers [aria-label=Permissions] svg") && document.querySelector(".hydra-agent-pickers [aria-label=Fast]").textContent.trim() === ""',
+    label: 'each picker shows its icon, and Fast is an icon alone',
+  })
+  await b.click({ selector: '.hydra-agent-pickers [aria-label=Permissions]' })
+  await b.evaluate({ code: 'const plan = [...document.querySelectorAll(".hydra-agent-pickers [role=option]")].find(o => o.textContent.startsWith("Plan")); plan.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true, ctrlKey: true })); return true;' })
+  await b.eventually({
+    condition: '!document.querySelector(".hydra-agent-pickers [role=listbox]") && document.querySelector(".hydra-agent-pickers [aria-label=Permissions]").textContent.includes("Ask permissions")',
+    label: 'Mod+click saves a default without changing this Hydra',
+  })
+  await b.click({ selector: '.hydra-agent-pickers [aria-label=Permissions]' })
+  await b.eventually({
+    condition: '!![...document.querySelectorAll(".hydra-agent-pickers [role=option]")].find(o => o.textContent.startsWith("Plan"))?.querySelector(".select-default") && !!document.querySelector(".hydra-agent-pickers .select-hint")',
+    label: 'the menu marks the default new Hydras start with',
+  })
+  await b.click({ selector: '.hydra-agent-pickers [aria-label=Permissions]' })
   assert.deepEqual(
     state().config?.hydra.agent,
     {

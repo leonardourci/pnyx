@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ComponentProps } from 'react'
 import type { ModelOption } from '../../../src/server/provider.ts'
 import type { Command } from './connection.ts'
 import { Button, Select, type Option } from '../components/ui/controls.tsx'
+
+type Look = Pick<ComponentProps<typeof Select>, 'icon' | 'display' | 'title' | 'defaultValue' | 'onDefault'>
 
 export function PickerField({
   label,
@@ -10,6 +12,7 @@ export function PickerField({
   disabled,
   reason,
   onChange,
+  ...look
 }: {
   label: string
   value: string
@@ -17,7 +20,7 @@ export function PickerField({
   disabled?: boolean
   reason?: string
   onChange({ value }: { value: string }): void
-}) {
+} & Look) {
   return (
     <div className="picker-field">
       <span>{label}</span>
@@ -26,8 +29,9 @@ export function PickerField({
         value={value}
         options={options}
         disabled={disabled || !!reason}
-        title={reason}
         onChange={onChange}
+        {...look}
+        title={reason ?? look.title}
       />
       {reason && <small>{reason}</small>}
     </div>
@@ -114,6 +118,7 @@ export function ModelPicker({
   disabled,
   connected,
   onChange,
+  ...look
 }: {
   models?: ModelOption[]
   error: string
@@ -123,7 +128,7 @@ export function ModelPicker({
   disabled: boolean
   connected: boolean
   onChange({ value }: { value: string }): void
-}) {
+} & Look) {
   if (error || (models && !value)) {
     return <div className="picker-field"><small role="alert">{error || 'No models available.'}</small><Button disabled={!connected} onClick={retry}>Retry models</Button></div>
   }
@@ -139,6 +144,7 @@ export function ModelPicker({
       options={options}
       disabled={disabled}
       onChange={onChange}
+      {...look}
     />
   )
 }

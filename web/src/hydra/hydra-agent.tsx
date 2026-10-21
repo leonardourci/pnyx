@@ -6,6 +6,17 @@ import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
 import { modelOptions } from './model-options.ts'
 import type { Command } from './connection.ts'
 
+const MODE_ICONS = [
+  'plan',
+  'untrusted',
+  'default',
+  'on-request',
+  'acceptEdits',
+  'auto',
+  'never',
+  'bypassPermissions',
+]
+
 export function HydraAgent({
   state,
   command,
@@ -17,7 +28,10 @@ export function HydraAgent({
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
-  const { effective } = useHeadsDispatch({ command })
+  const {
+    effective,
+    saveHydra,
+  } = useHeadsDispatch({ command })
   const [
     busy,
     setBusy,
@@ -87,6 +101,23 @@ export function HydraAgent({
     return null
   }
 
+  // The hydra rule is what every new Hydra starts with.
+  const startsWith = ({ field }: { field: 'harness' | 'model' | 'effort' | 'mode' | 'fast' }) => ({
+    defaultValue: field === 'harness' ? rule?.harness
+      : rule?.harness !== agent.harness ? undefined
+        : field === 'fast' ? rule.fast === undefined ? 'default' : rule.fast ? 'on' : 'off'
+          : rule[field],
+    onDefault: ({ value }: { value: string }) => void saveHydra({
+      patch: field === 'harness' ? { harness: value as AgentConfig['harness'] } : {
+        harness: agent.harness,
+        [field]: field === 'fast' ? value === 'default' ? undefined : value === 'on' : value,
+      },
+    }).then(
+      () => notify({ text: 'New Hydras will start with this.' }),
+      (error: Error) => notify({ text: error.message }),
+    ),
+  })
+
   return (
     <div className="hydra-agent-pickers" aria-label="Hydra agent settings">
       <PickerField
@@ -96,10 +127,12 @@ export function HydraAgent({
           {
             value: 'claude',
             label: 'Claude Code',
+            icon: 'claude-code',
           },
           {
             value: 'codex',
             label: 'Codex',
+            icon: 'codex',
           },
         ]}
         disabled={busy || !connected}
@@ -108,6 +141,7 @@ export function HydraAgent({
             save({ next: { harness: value } })
           }
         }}
+        {...startsWith({ field: 'harness' })}
       />
       <ModelPicker
         {...catalog}
@@ -121,6 +155,8 @@ export function HydraAgent({
             model: value,
           },
         })}
+        icon="model-choice"
+        {...startsWith({ field: 'model' })}
       />
       {([
         'effort',
@@ -131,6 +167,7 @@ export function HydraAgent({
         const options = choices.map(o => ({
           value: o.value,
           label: o.label,
+          ...(field === 'mode' && MODE_ICONS.includes(o.value) ? { icon: `mode-${o.value}` } : {}),
         }))
 
         if (value && !options.some(o => o.value === value)) {
@@ -154,6 +191,8 @@ export function HydraAgent({
                 [field]: value,
               },
             })}
+            icon={field === 'effort' ? 'effort-choice' : undefined}
+            {...startsWith({ field })}
           />
         )
       })}
@@ -164,14 +203,17 @@ export function HydraAgent({
           {
             value: 'default',
             label: 'Fast default',
+            icon: 'fast',
           },
           {
             value: 'off',
             label: 'Fast off',
+            icon: 'fast',
           },
           {
             value: 'on',
             label: 'Fast on',
+            icon: 'fast-on',
           },
         ]}
         disabled={busy || !connected}
@@ -181,6 +223,9 @@ export function HydraAgent({
             fast: value === 'default' ? undefined : value === 'on',
           },
         })}
+        display={<></>}
+        title={`Fast mode: ${agent.fast === undefined ? 'harness default' : agent.fast ? 'on' : 'off'}`}
+        {...startsWith({ field: 'fast' })}
       />
     </div>
   )
