@@ -182,7 +182,7 @@ const boundary = ({ node, filename, sourceCode }) => {
       return true // tinykeys consumes the KeyboardEvent method.
     }
 
-    if (filename.endsWith('/eslint/object-params.js') && (parent.key.name === 'create'
+    if (/\/eslint\/[^/]+\.js$/.test(filename) && (parent.key.name === 'create'
       || parent.key.value?.includes('FunctionDeclaration'))) {
       return true // ESLint calls rule factories and AST visitors.
     }
