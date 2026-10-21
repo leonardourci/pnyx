@@ -882,7 +882,7 @@ export function Messages({
   )
 }
 
-// A shell call copies as its command line; any other tool row copies as shown.
+// A tool row holds the call's JSON input; a shell call copies as its plain command line.
 const toolCommand = ({ text }: { text: string }) => {
   try {
     const input = JSON.parse(text) as { command?: unknown }
@@ -893,7 +893,6 @@ const toolCommand = ({ text }: { text: string }) => {
   }
 }
 
-// Older turns say how long they ran; the latest says when it stopped.
 function TurnFooter({ turn }: { turn: TurnTiming }) {
   const took = duration({ ms: Date.parse(turn.end) - Date.parse(turn.start) })
   const started = clock({

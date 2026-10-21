@@ -187,7 +187,7 @@ export function snapCaret({
   return chip ? backward ? chip.from : chip.to : offset
 }
 
-// Replaces a display range; a chip the range touches goes as a whole.
+// A chip the range touches goes as a whole, so its Markdown is never left half edited.
 export function replaceDisplay({
   text,
   from,
@@ -239,7 +239,7 @@ export function replaceDisplay({
   }
 }
 
-// Turns the textarea's new display text back into Markdown, using the caret to place the edit.
+// The caret places the edit when the same character repeats around it.
 export function editDraft({
   text,
   next,

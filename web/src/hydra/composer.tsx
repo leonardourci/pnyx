@@ -354,7 +354,7 @@ export function Composer({
     setPrefix(null); setActive(-1); input.current?.focus()
   }
 
-  // An image or file goes in at the caret as its own paragraph.
+  // Image lines and file blocks are only read as attachments when they stand as their own paragraph.
   const insertBlock = ({ block }: { block: string }) => {
     const text = current.current.draft, shown = draftView({ text }).display
     const cursor = Math.min(
@@ -394,7 +394,6 @@ export function Composer({
     }
   }
 
-  // The message leaves the composer at once; if it does not go through it comes back with the time it failed.
   const send = async ({ restore = false }: { restore?: boolean } = {}) => {
     const text = restore && attempt.current ? attempt.current.text : outgoing
 
