@@ -717,7 +717,11 @@ test(
       meta,
     })
     void starting.catch(() => {})
-    await until({ check: () => fixture.messages().some(m => m.method === 'initialize') })
+    await Promise.race([
+      fixture.initializing,
+      starting,
+    ])
+    assert.ok(fixture.messages().some(m => m.method === 'initialize'))
     await assert.rejects(
       startTask({
         hydraId: 'lab',

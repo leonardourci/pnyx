@@ -1,3 +1,4 @@
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { effectiveDispatch } from '../src/dispatch/config.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -8,6 +9,7 @@ import { startServer } from '../src/server/server.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import { smokeBrowser } from './browser.ts'
+import { fakeCodex } from './codex-fixture.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 const home = mkdtempSync(join(
@@ -15,8 +17,19 @@ const home = mkdtempSync(join(
   'pnyx-composer-smoke-',
 ))
 process.env.PNYX_HOME = home
+process.env.CLAUDE_CONFIG_DIR = join(
+  home,
+  'claude',
+)
+process.env.CODEX_HOME = join(
+  home,
+  'codex',
+)
 const fixture = seedWebFixture({ home })
+const codex = fakeCodex({ root: home })
 const server = await startServer({
+  query: hydraSdk().query,
+  spawnCodex: codex.spawnCodex,
   hydraId: 'default',
   homes: [fixture.nativeHome],
 })
@@ -134,9 +147,12 @@ try {
   await click({ selector: '.hydra-chat [aria-label=Harness]' })
   await click({ selector: '[role=listbox][aria-label=Harness] [role=option]:nth-child(2)' })
   await eventually({
-    condition: 'document.querySelector(".hydra-chat [aria-label=Harness]").textContent.includes("Codex") && !document.querySelector(".hydra-chat [aria-label=Harness]").disabled',
+    condition: 'document.querySelector(".hydra-chat [aria-label=Harness]").textContent.includes("Codex") && !!document.querySelector(".hydra-chat [aria-label=Model]:not(:disabled)")',
     label: 'harness selection saves for the next message',
   })
+  assert.ok(codex.messages().some(message => message.method === 'model/list'))
+  assert.ok(codex.messages().some(message => message.method === 'config/read'))
+  assert.ok(codex.environments.every(env => env.CODEX_HOME === process.env.CODEX_HOME))
   assert.equal(
     effectiveDispatch({
       hydraId: 'default',

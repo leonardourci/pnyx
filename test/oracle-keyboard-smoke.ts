@@ -7,6 +7,7 @@ import { loadHydra } from '../src/store/hydra-store.ts'
 import { viewFor } from '../src/core/view.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import { smokeBrowser } from './browser.ts'
+import { hydraSdk } from './hydra-host-fixture.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 const home = mkdtempSync(join(
@@ -14,8 +15,13 @@ const home = mkdtempSync(join(
   'pnyx-oracle-keyboard-',
 ))
 process.env.PNYX_HOME = home
+process.env.CLAUDE_CONFIG_DIR = join(
+  home,
+  'claude',
+)
 const fixture = seedWebFixture({ home })
 const server = await startServer({
+  query: hydraSdk().query,
   hydraId: 'default',
   port: 0,
   homes: [fixture.nativeHome],
@@ -35,8 +41,6 @@ const {
   session: 'pnyx-oracle-keyboard',
 })
 const state = () => loadHydra({ hydraId: 'default' }).state
-const initial = state()
-const view = viewFor({ state: initial })
 
 try {
   await browser({
@@ -52,9 +56,11 @@ try {
     ],
   })
   await eventually({
-    condition: 'document.querySelector(".app")?.dataset.connected === "true"',
-    label: 'Hydra connected',
+    condition: 'document.querySelector(".app")?.dataset.connected === "true" && !!document.querySelector(`[aria-label="Hydra agent settings"] [aria-label="Permissions"]:not(:disabled)`)',
+    label: 'Hydra connected and its initial agent defaults saved',
   })
+  const initial = state()
+  const view = viewFor({ state: initial })
   await focus({ selector: '[aria-label=Oracle]' })
   await screenshot({ name: 'oracle-search.png' })
   await press({ key: 'ArrowDown' })
@@ -99,7 +105,8 @@ try {
       if (document.activeElement !== row) throw new Error('Skipped row ' + row.dataset.resultId);
       if (!row.querySelector(':scope > [role=gridcell]')) throw new Error('Missing gridcell');
       const rect = row.getBoundingClientRect(), pane = grid.getBoundingClientRect();
-      if (rect.top < pane.top - 1 || rect.bottom > pane.bottom + 1) throw new Error('Active row scrolled out of view');
+      const visibleHeight = Math.min(rect.bottom, pane.bottom) - Math.max(rect.top, pane.top);
+      if (visibleHeight < Math.min(rect.height, grid.clientHeight) - 2) throw new Error('Active row scrolled out of view: ' + row.dataset.resultId);
       row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
       await new Promise(requestAnimationFrame);
       if (index === rows.length - 1 && document.activeElement !== row) throw new Error('Down passed the last result');
