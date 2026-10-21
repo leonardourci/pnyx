@@ -692,7 +692,7 @@ export function createHost({
       let catalog = modelCatalogs.get(key)
 
       if (!catalog) {
-        const provider = providerOf({ provider: harness === 'claude' ? 'claude-code' : 'codex' })
+        const provider = providerOf({ provider: providerName({ harness }) })
         const cwd = hydraDir({ hydraId })
         const stored = storedModels({ key })
 
@@ -783,7 +783,8 @@ export function createHost({
             : Object.keys(effective.accounts).find(name =>
               effective.accounts[name]?.provider === candidate.harness)
           const account = main ? effective.accounts[main] : undefined
-          const dispatch = previous?.agent?.provider !== (candidate.harness === 'codex' ? 'codex' : 'claude-code')
+          const provider = providerName({ harness: candidate.harness })
+          const dispatch = previous?.agent?.provider !== provider
             && account && main ? chooseCandidate({
               config: {
                 ...effective,
@@ -799,7 +800,6 @@ export function createHost({
             }) : undefined
           const settings: AgentSettings = Object.fromEntries(Object.entries(candidate).filter(([key, value]) => key !== 'harness' && value !== undefined)
             .map(([key, value]) => [key, String(value)]))
-          const provider = candidate.harness === 'codex' ? 'codex' : 'claude-code'
           const cwd = join(hydraDir({ hydraId }), 'agent')
           prepareHydraFolder({ folder: cwd })
           let card = previous
@@ -1281,6 +1281,9 @@ export function createHost({
   return host
 }
 
+// The hosted provider that runs a harness.
+const providerName = ({ harness }: { harness: Harness }) => harness === 'codex' ? 'codex' : 'claude-code'
+
 const modelsPath = () => join(pnyxHome(), 'harness-models.json')
 
 // "<harness>:<login folder>" -> the harness's model list, shared by every Hydra.
@@ -1379,7 +1382,10 @@ export async function hostRequest({ host, body: raw }: {
         })
 
       // A setting changed after the start would reach only the next turn.
-      const settings: Record<string, string> = { ...chosenSettings({ choice: dispatch }), provider: dispatch.provider === 'codex' ? 'codex' : 'claude-code' }
+      const settings: Record<string, string> = {
+        ...chosenSettings({ choice: dispatch }),
+        provider: providerName({ harness: dispatch.provider }),
+      }
       const running = current.cards[HYDRA_CARD]?.settings?.mode
       const chosen = hydraConfig({ state: current, id: host.hydraId }).hydra.agent
       // Only a mode the composer and the running Hydra agree on passes on, never one mid-switch.
