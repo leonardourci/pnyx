@@ -1281,7 +1281,6 @@ export function createHost({
   return host
 }
 
-// The hosted provider that runs a harness.
 const providerName = ({ harness }: { harness: Harness }) => harness === 'codex' ? 'codex' : 'claude-code'
 
 const modelsPath = () => join(pnyxHome(), 'harness-models.json')

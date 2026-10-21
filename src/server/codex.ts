@@ -17,7 +17,7 @@ type ObjectValue = Record<string, unknown>
 const object = ({ value }: { value: unknown }): ObjectValue =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ? value as ObjectValue : {}
 
-// Codex's approval policies Pnyx names: never with full access is Pnyx's bypass permissions.
+// Codex's never with full access is Pnyx's bypass permissions.
 const NEVER = 'never', ON_REQUEST = 'on-request', BYPASS = 'bypassPermissions'
 const FULL_ACCESS = 'danger-full-access', WORKSPACE_WRITE = 'workspace-write'
 
