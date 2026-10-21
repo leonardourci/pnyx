@@ -204,6 +204,31 @@ type HydraUpgrade = {
 const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
 const RETRY_MS = 60_000
 
+// Exact matches refuse other sites and rebound DNS names; *.localhost names (portless's
+// https://pnyx.localhost) pass because browsers resolve them to loopback (RFC 6761).
+const localName = String.raw`[a-z0-9.-]+\.localhost(:\d+)?`
+const localHost = new RegExp(
+  `^${localName}$`,
+  'i',
+)
+const localOrigin = new RegExp(
+  `^https?://${localName}$`,
+  'i',
+)
+
+export const allowedRequest = ({
+  host = '',
+  origin,
+  hosts,
+  origins,
+}: {
+  host?: string
+  origin?: string
+  hosts: Set<string>
+  origins: Set<string>
+}) => (hosts.has(host) || localHost.test(host))
+  && (origin === undefined || origins.has(origin) || localOrigin.test(origin))
+
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
 export async function startServer({
   hydraId = 'default',
@@ -250,12 +275,15 @@ export async function startServer({
     })
   }
 
-  // Exact matches only, so another site or a rebound DNS name is refused. Clients
-  // that send no Origin are local programs, not pages; writes still need the token.
+  // Clients that send no Origin are local programs, not pages; writes still need the token.
   const hosts = new Set<string>()
   const origins = new Set<string>()
-  const allowed = ({ req }: { req: IncomingMessage }) =>
-    hosts.has(req.headers.host ?? '') && (req.headers.origin === undefined || origins.has(req.headers.origin))
+  const allowed = ({ req }: { req: IncomingMessage }) => allowedRequest({
+    host: req.headers.host,
+    origin: req.headers.origin,
+    hosts,
+    origins,
+  })
 
   const http = createServer((
     req,
@@ -2733,14 +2761,18 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const values = serveFlags({ args })
   const hydraId = values.hydra ?? 'default'
 
+  // portless hands the app its port in PORT.
+  const source = values.port === undefined && process.env.PORT !== undefined ? 'PORT' : '--port'
+  values.port ??= process.env.PORT
+
   if (values.port !== undefined && !/^\d+$/.test(values.port)) {
     throw new AxiError(
-      '--port must be a number',
+      `${source} must be a number`,
       'VALIDATION_ERROR',
     )
   }
 
-  const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
+  const port = Number(values.port ?? DEFAULT_PORT)
   let server: RunningServer
 
   try {

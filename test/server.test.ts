@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { HydraError } from '../src/core/model.ts'
-import { startServer, type RunningServer, type ServerMessage } from '../src/server/server.ts'
+import { allowedRequest, startServer, type RunningServer, type ServerMessage } from '../src/server/server.ts'
 import { infoPath, localToken, readServer, socketPath } from '../src/server/state.ts'
 import { hydraDir, loadHydra, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
@@ -565,6 +565,76 @@ test(
 )
 
 test(
+  'serve takes its port from PORT when --port is not given',
+  async () => {
+    const holder = createServer().listen(
+      0,
+      '127.0.0.1',
+    )
+    await once(
+      holder,
+      'listening',
+    )
+    const { port } = holder.address() as { port: number }
+
+    try {
+      for (const [
+        value,
+        expected,
+      ] of [
+          [
+            String(port),
+            new RegExp(`port ${port} is in use`),
+          ],
+          [
+            'abc',
+            /PORT must be a number/,
+          ],
+        ] as const) {
+        const child = spawn(
+          process.execPath,
+          [
+            BIN,
+            'serve',
+          ],
+          {
+            env: {
+              ...process.env,
+              PORT: value,
+            },
+            stdio: [
+              'ignore',
+              'pipe',
+              'pipe',
+            ],
+          },
+        )
+        track({ child })
+        let out = ''
+        child.stdout.on(
+          'data',
+          chunk => (out += chunk),
+        )
+        const [code] = await once(
+          child,
+          'exit',
+        )
+        assert.notEqual(
+          code,
+          0,
+        )
+        assert.match(
+          out,
+          expected,
+        )
+      }
+    } finally {
+      holder.close()
+    }
+  },
+)
+
+test(
   'a second server for the same Hydra is refused',
   async () => {
     server = await startServer({ hydraId: 'default' })
@@ -938,6 +1008,82 @@ test(
       loadHydra({ hydraId: 'default' }).state.seq,
       0,
     )
+  },
+)
+
+test(
+  'a request needs an exact loopback host and origin or a *.localhost name',
+  () => {
+    const hosts = new Set(['127.0.0.1:4747'])
+    const origins = new Set(['http://127.0.0.1:4747'])
+    const check = ({
+      host,
+      origin,
+    }: {
+      host?: string
+      origin?: string
+    }) => allowedRequest({
+      host,
+      origin,
+      hosts,
+      origins,
+    })
+
+    for (const request of [
+      { host: '127.0.0.1:4747' },
+      {
+        host: '127.0.0.1:4747',
+        origin: 'http://127.0.0.1:4747',
+      },
+      { host: 'pnyx.localhost' },
+      {
+        host: 'cards.pnyx.localhost:1355',
+        origin: 'https://cards.pnyx.localhost',
+      },
+      {
+        host: 'pnyx.localhost',
+        origin: 'http://pnyx.localhost:1355',
+      },
+    ]) {
+      assert.ok(
+        check(request),
+        JSON.stringify(request),
+      )
+    }
+
+    for (const request of [
+      {},
+      { host: '127.0.0.1:4748' },
+      { host: 'evil.example' },
+      { host: 'pnyx.localhost.evil.com' },
+      { host: 'localhost.evil.com' },
+      { host: 'evil.com:4747.localhost' },
+      {
+        host: '127.0.0.1:4747',
+        origin: 'http://evil.example',
+      },
+      {
+        host: 'pnyx.localhost',
+        origin: 'https://pnyx.localhost.evil.com',
+      },
+      {
+        host: 'pnyx.localhost',
+        origin: 'https://localhost.evil.com',
+      },
+      {
+        host: 'pnyx.localhost',
+        origin: 'ftp://pnyx.localhost',
+      },
+      {
+        host: 'pnyx.localhost',
+        origin: 'null',
+      },
+    ]) {
+      assert.ok(
+        !check(request),
+        JSON.stringify(request),
+      )
+    }
   },
 )
 
