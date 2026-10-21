@@ -204,6 +204,32 @@ type HydraUpgrade = {
 const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
 const RETRY_MS = 60_000
 
+// Exact Host and Origin matches, so another site or a rebound DNS name is refused, plus
+// any *.localhost name: browsers resolve those to loopback themselves (RFC 6761), so they
+// cannot be rebound, and portless serves Pnyx at names like https://pnyx.localhost.
+const localName = String.raw`[a-z0-9.-]+\.localhost(:\d+)?`
+const localHost = new RegExp(
+  `^${localName}$`,
+  'i',
+)
+const localOrigin = new RegExp(
+  `^https?://${localName}$`,
+  'i',
+)
+
+export const allowedRequest = ({
+  host = '',
+  origin,
+  hosts,
+  origins,
+}: {
+  host?: string
+  origin?: string
+  hosts: Set<string>
+  origins: Set<string>
+}) => (hosts.has(host) || localHost.test(host))
+  && (origin === undefined || origins.has(origin) || localOrigin.test(origin))
+
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
 export async function startServer({
   hydraId = 'default',
@@ -250,12 +276,15 @@ export async function startServer({
     })
   }
 
-  // Exact matches only, so another site or a rebound DNS name is refused. Clients
-  // that send no Origin are local programs, not pages; writes still need the token.
+  // Clients that send no Origin are local programs, not pages; writes still need the token.
   const hosts = new Set<string>()
   const origins = new Set<string>()
-  const allowed = ({ req }: { req: IncomingMessage }) =>
-    hosts.has(req.headers.host ?? '') && (req.headers.origin === undefined || origins.has(req.headers.origin))
+  const allowed = ({ req }: { req: IncomingMessage }) => allowedRequest({
+    host: req.headers.host,
+    origin: req.headers.origin,
+    hosts,
+    origins,
+  })
 
   const http = createServer((
     req,
