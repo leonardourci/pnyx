@@ -238,14 +238,14 @@ try {
         `@${settings[1]}`,
       ],
     })
-    await evaluate({ code: 'window.restingTitleColor=getComputedStyle(document.querySelector(".card-open")).color;return true;' })
+    await evaluate({ code: 'const title=document.querySelector(".card-open");window.restingTitleColor=getComputedStyle(title).color;window.hoverTitleLabel=title.getAttribute("aria-label");title.setAttribute("aria-label","Title hover probe");return true;' })
     const snapshot = await browser({
       args: [
         'snapshot',
         '--full',
       ],
     })
-    const title = snapshot.match(/uid=(\S+) button "Open task /)
+    const title = snapshot.match(/uid=(\S+) button "Title hover probe"/)
     assert.ok(
       title,
       snapshot,
@@ -260,6 +260,7 @@ try {
       condition:'document.querySelector(".card-open").matches(":hover") && getComputedStyle(document.querySelector(".card-open")).color === window.restingTitleColor',
       label:`${theme} title keeps its foreground color on a real pointer hover`,
     })
+    await evaluate({code:'document.querySelector(".card-open").setAttribute("aria-label",window.hoverTitleLabel);return true;'})
   }
 
   await check({
