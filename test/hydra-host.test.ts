@@ -14,7 +14,7 @@ import { sendReply } from '../src/cli/reply.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { startServer } from '../src/server/server.ts'
-import { localToken } from '../src/server/state.ts'
+import { askHost, localToken } from '../src/server/state.ts'
 import { readThread } from '../src/thread/read.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 import { fakeCodex } from './codex-fixture.ts'
@@ -1746,7 +1746,7 @@ test(
       const after = state().seq
       const session = state().cards[HYDRA_CARD]!.agent!.sessionId
       first.control.hold = true
-      first.control.cut = true
+      first.control.leaveTurnUnfinishedOnClose = true
       await commands.hydra([
         'send',
         '--hydra',
@@ -1788,7 +1788,7 @@ test(
         'resume:unrelated:hosted',
       ])
       second.control.hold = true
-      second.control.cut = true
+      second.control.leaveTurnUnfinishedOnClose = true
       server = await startServer({
         hydraId: 'lab',
         query: second.query,
@@ -1823,7 +1823,7 @@ test(
         raw.match(/<pnyx-digest /g)?.length,
         1,
       )
-      assert.ok(!state().cards[HYDRA_CARD]!.attention.some(a => a.kind === 'interrupted'))
+      assert.ok(!state().cards[HYDRA_CARD]!.attention.some(attention => attention.kind === 'interrupted'))
       await server.close()
 
       const third = hydraSdk()
@@ -1832,7 +1832,7 @@ test(
         query: third.query,
         wakeDelay: 50,
       })
-      await until({ check: () => state().cards[HYDRA_CARD]?.attention.some(a => a.kind === 'interrupted') ?? false })
+      await until({ check: () => state().cards[HYDRA_CARD]?.attention.some(attention => attention.kind === 'interrupted') ?? false })
       await new Promise(resolve => setTimeout(
         resolve,
         200,
@@ -1853,7 +1853,7 @@ test(
         third.calls[0]!.messages,
         ['Continue after the second cut'],
       )
-      assert.ok(!state().cards[HYDRA_CARD]!.attention.some(a => a.kind === 'interrupted'))
+      assert.ok(!state().cards[HYDRA_CARD]!.attention.some(attention => attention.kind === 'interrupted'))
     } finally {
       await server.close()
       first.release()
@@ -1914,7 +1914,7 @@ test(
         '--event-id',
         'cut-codex',
       ])
-      await until({ check: () => codex.messages().some(m => m.method === 'turn/start') })
+      await until({ check: () => codex.messages().some(rpcMessage => rpcMessage.method === 'turn/start') })
       const session = state().cards[HYDRA_CARD]!.agent!.sessionId
       await server.close()
       commands.owner([
@@ -1940,8 +1940,8 @@ test(
         spawnCodex: codex.spawnCodex,
       })
       await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
-      assert.ok(codex.messages().some(m => m.method === 'thread/resume' && m.params?.threadId === session))
-      const turns = codex.messages().filter(m => m.method === 'turn/start')
+      assert.ok(codex.messages().some(rpcMessage => rpcMessage.method === 'thread/resume' && rpcMessage.params?.threadId === session))
+      const turns = codex.messages().filter(rpcMessage => rpcMessage.method === 'turn/start')
       assert.equal(
         turns.length,
         2,
@@ -1964,7 +1964,7 @@ test(
         /restart cut your last turn/,
       )
       assert.ok(prompt.includes(`messages seq ${state().eventIds['cut-codex']}`))
-      assert.ok(!state().cards[HYDRA_CARD]!.attention.some(a => a.kind === 'interrupted'))
+      assert.ok(!state().cards[HYDRA_CARD]!.attention.some(attention => attention.kind === 'interrupted'))
     } finally {
       await server.close()
       rmSync(
@@ -1978,12 +1978,12 @@ test(
   },
 )
 
-for (const fail of [
+for (const resumeFails of [
   false,
   true,
 ]) {
   test(
-    fail ? 'a failed wake resume waits for an owner message' : 'a cut wake resumes with the change cursor',
+    resumeFails ? 'a failed wake resume waits for an owner message' : 'a cut wake resumes with the change cursor',
     async () => {
       const home = mkdtempSync(join(
         tmpdir(),
@@ -2026,7 +2026,7 @@ for (const fail of [
         ])
         await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
         first.control.hold = true
-        first.control.cut = true
+        first.control.leaveTurnUnfinishedOnClose = true
         await commands.task([
           'status',
           'fix',
@@ -2035,19 +2035,19 @@ for (const fail of [
           'lab',
         ])
         await until({ check: () => first.calls[0]?.messages.length === 2 })
-        const wake = Object.keys(state().eventIds).findLast(id => /^wake:\d+:hosted$/.test(id))!
-        const through = wake.split(':')[1]!
+        const cutWakeTurnId = Object.keys(state().eventIds).findLast(turnId => /^wake:\d+:hosted$/.test(turnId))!
+        const wakeThroughSeq = cutWakeTurnId.split(':')[1]!
         await server.close()
         const second = hydraSdk()
-        second.control.fail = fail
+        second.control.fail = resumeFails
         server = await startServer({
           hydraId: 'lab',
           query: second.query,
         })
 
-        if (!fail) {
+        if (!resumeFails) {
           await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
-          assert.ok(second.calls[0]!.messages[0]!.includes(`a wake check through seq ${through}`))
+          assert.ok(second.calls[0]!.messages[0]!.includes(`a wake check through seq ${wakeThroughSeq}`))
           assert.equal(
             second.calls[0]!.messages.length,
             1,
@@ -2056,10 +2056,10 @@ for (const fail of [
           return
         }
 
-        await until({ check: () => state().cards[HYDRA_CARD]?.attention.some(a => a.text?.includes('Harness login is missing')) ?? false })
-        const resumed = Object.keys(state().eventIds).filter(id => /^resume:.*:hosted$/.test(id))
+        await until({ check: () => state().cards[HYDRA_CARD]?.attention.some(attention => attention.text?.includes('Harness login is missing')) ?? false })
+        const resumeTurnIds = Object.keys(state().eventIds).filter(turnId => /^resume:.*:hosted$/.test(turnId))
         assert.equal(
-          resumed.length,
+          resumeTurnIds.length,
           1,
         )
         await server.close()
@@ -2151,7 +2151,7 @@ test(
         '--text',
         'HOLD',
       ])
-      await until({ check: () => first.messages().some(m => m.method === 'turn/start') })
+      await until({ check: () => first.messages().some(rpcMessage => rpcMessage.method === 'turn/start') })
       await server.close()
       const second = fakeCodex({
         root: home,
@@ -2161,7 +2161,7 @@ test(
         hydraId: 'lab',
         spawnCodex: second.spawnCodex,
       })
-      await until({ check: () => state().hydraMessages?.some(m => m.text.includes('fixture refused thread')) ?? false })
+      await until({ check: () => state().hydraMessages?.some(message => message.text.includes('fixture refused thread')) ?? false })
       assert.equal(
         state().cards[HYDRA_CARD]!.sessionActivity,
         'interrupted',
@@ -2231,7 +2231,7 @@ test(
       const state = () => loadHydra({ hydraId: 'lab' }).state
       await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
       first.control.hold = true
-      first.control.cut = true
+      first.control.leaveTurnUnfinishedOnClose = true
       await commands.hydra([
         'send',
         '--hydra',
@@ -2290,6 +2290,83 @@ test(
       assert.equal(
         loadHydra({ hydraId: 'empty' }).state.config?.hydra.session,
         undefined,
+      )
+    } finally {
+      await server.close()
+      first.release()
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'a cut turn without unanswered messages or a wake or stall names the unrecorded work',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-unrecorded-resume-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const first = hydraSdk()
+    let server = await startServer({
+      hydraId: 'lab',
+      query: first.query,
+    })
+
+    try {
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Already answered',
+      ])
+      await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      const lastFinishedTurnSeq = state().seq
+      first.control.hold = true
+      first.control.leaveTurnUnfinishedOnClose = true
+      await askHost({
+        hydraId: 'lab',
+        body: {
+          action: 'hydra',
+          id: 'internal-check',
+          text: 'Check previous work',
+          actor: 'pnyx',
+        },
+      })
+      await until({ check: () => first.calls[0]?.messages.length === 2 })
+      await server.close()
+      const second = hydraSdk()
+      server = await startServer({
+        hydraId: 'lab',
+        query: second.query,
+      })
+      await until({ check: () => second.calls[0]?.messages.length === 1 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      const resumeMessage = second.calls[0]!.messages[0]!
+      assert.match(
+        resumeMessage,
+        /before you answered a turn\. Run/,
+      )
+      assert.ok(resumeMessage.includes(`hydra messages --after ${lastFinishedTurnSeq} --hydra lab`))
+      assert.doesNotMatch(
+        resumeMessage,
+        /messages seq|a wake check|a stall check/,
       )
     } finally {
       await server.close()

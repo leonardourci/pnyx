@@ -15,7 +15,7 @@ export function hydraSdk() {
     fail: false,
     ask: false,
     stream: false,
-    cut: false,
+    leaveTurnUnfinishedOnClose: false,
   }
   const permissions: PermissionResult[] = []
   const sets: string[] = []
@@ -181,7 +181,11 @@ export function hydraSdk() {
     return Object.assign(
       run(),
       {
-        close: () => control.cut || release(),
+        close: () => {
+          if (!control.leaveTurnUnfinishedOnClose) {
+            release()
+          }
+        },
         // eslint-disable-next-line pnyx/object-params -- The SDK owns this method signature.
         setModel: async (model: string) => {
           sets.push(`model ${model}`)
