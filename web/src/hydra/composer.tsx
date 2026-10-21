@@ -4,6 +4,7 @@ import { MentionPicker } from './mention-picker.tsx'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
 import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
+import { revealComment } from './comment-reveal.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import type { Catalog } from '../../../src/thread/catalog.ts'
@@ -13,11 +14,13 @@ import { Icon } from '../components/ui/icon.tsx'
 import { Popover } from '../components/ui/popover.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import { slashMatches, slashPrefix } from './view.ts'
-import { commentReply, type ChatComment } from './chat.ts'
+import { commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
 import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
-import { MAX_IMAGE_BYTES, imageExtension, imagePaths } from '../../../src/attachments/images.ts'
+import { imagePaths } from '../../../src/attachments/images.ts'
+import { pastedImages, uploadImages } from './image-upload.ts'
+import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { AttachedImage } from '../components/ui/attached-image.tsx'
 
 const DRAFT_MIN = 36, DRAFT_MAX = 128, COMPOSER_CONTROLS = 44
@@ -176,7 +179,7 @@ export function Composer({
           COMPOSER_CONTROLS,
           (controls?.offsetHeight ?? 0) + 12,
         )
-        const context = form.current?.querySelector<HTMLElement>('.pending-comments')
+        const context = form.current?.querySelector<HTMLElement>('.composer-comments')
         const error = form.current?.querySelector<HTMLElement>('.reply-failure')
         const references = form.current?.querySelector<HTMLElement>('.draft-mentions')
         const images = form.current?.querySelector<HTMLElement>('.draft-images')
@@ -250,7 +253,28 @@ export function Composer({
     comments,
     firstComment: !taught,
   })
-  const commented = comments.filter(c => c.text.trim()).length
+  const sendable = comments.filter(comment => sendableComment({ comment }))
+  const commented = sendable.length
+  const [
+    listing,
+    setListing,
+  ] = useState<string[] | null>(null)
+
+  const showComment = ({ id }: { id: string }) => {
+    setListing(null)
+    requestAnimationFrame(() => {
+      const host = form.current && conversationMessages({ from: form.current })
+      const comment = comments.find(item => item.id === id)
+
+      if (host && comment) {
+        revealComment({
+          host,
+          comment,
+        })
+      }
+    })
+  }
+
   const current = useRef({
     draft,
     comments,
@@ -325,40 +349,12 @@ export function Composer({
     ))
   }
 
-  // Each image is stored by the server and becomes its own paragraph in the draft.
+  // Each image becomes its own paragraph in the draft.
   const attach = async ({ files }: { files: File[] }) => {
-    const images = files.filter(file => imageExtension({ type: file.type }))
-    const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content ?? ''
-    const failures = images.length < files.length ? ['Only PNG, JPEG, GIF and WebP images can be added here.'] : []
-    const uploads = await Promise.allSettled(images.map(async file => {
-      if (file.size > MAX_IMAGE_BYTES) {
-        throw new Error(`${file.name || 'An image'} is over ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`)
-      }
-
-      const response = await fetch(
-        'attachments',
-        {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${token}`,
-            'content-type': file.type,
-          },
-          body: file,
-        },
-      )
-      const body = await response.json().catch(() => ({})) as {
-        line?: string
-        error?: string
-      }
-
-      if (!response.ok || !body.line) {
-        throw new Error(body.error ?? `Could not add ${file.name || 'an image'}.`)
-      }
-
-      return body.line
-    }))
-    const lines = uploads.flatMap(upload => upload.status === 'fulfilled' ? [upload.value] : [])
-    failures.push(...uploads.flatMap(upload => upload.status === 'rejected' ? [(upload.reason as Error).message] : []))
+    const {
+      lines,
+      failures,
+    } = await uploadImages({ files })
 
     if (failures.length) {
       notify({ text: failures.join(' ') })
@@ -449,8 +445,14 @@ export function Composer({
         }
 
         if (text === outgoing) {
-          const sent = new Set(comments.map(c => `${c.id}\n${c.text}`))
-          setComments({ items: current.current.comments.filter(c => !sent.has(`${c.id}\n${c.text}`)) })
+          const key = ({ comment }: { comment: ChatComment }) => JSON.stringify([
+            comment.id,
+            comment.text,
+            comment.images,
+          ])
+          const sent = new Set(comments.map(comment => key({ comment })))
+          const kept = current.current.comments.filter(comment => !sent.has(key({ comment })))
+          setComments({ items: kept })
         }
 
         attempt.current = null
@@ -551,21 +553,20 @@ export function Composer({
         })}
       />
       {commented > 0 && (
-        <div className="pending-comments small">
-          <p className="gold">{commented === 1 ? '1 comment goes' : `${commented} comments go`} with this reply</p>
-          <ul>
-            {comments.filter(c => c.text.trim()).map(c => (
-              <li key={c.id}>
-                <span>
-                  <q className="muted">{c.quote}</q>
-                  {' '}
-                  {c.text.trim()}
-                </span>
-                <Button aria-label="Remove comment" onClick={() => setComments({ items: comments.filter(x => x.id !== c.id) })}>Remove</Button>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <CommentsPill
+          count={commented}
+          open={() => setListing(sendable.map(c => c.id))}
+          remove={() => setComments({ items: [] })}
+        />
+      )}
+      {listing && (
+        <CommentsDialog
+          comments={comments}
+          shown={listing}
+          setComments={setComments}
+          show={showComment}
+          close={() => setListing(null)}
+        />
       )}
       {mentions.length > 0 && (
         <div className="draft-mentions" aria-label="Referenced tasks">
@@ -642,9 +643,10 @@ export function Composer({
           }}
           onBlur={() => setMention(null)}
           onPaste={event => {
-            // Office apps put a picture of copied text next to the text itself.
-            if (event.clipboardData.files.length && !event.clipboardData.types.includes('text/plain')) {
-              event.preventDefault(); void attach({ files: [...event.clipboardData.files] })
+            const files = pastedImages({ clipboardData: event.clipboardData })
+
+            if (files.length) {
+              event.preventDefault(); void attach({ files })
             }
           }}
           onChange={e => {

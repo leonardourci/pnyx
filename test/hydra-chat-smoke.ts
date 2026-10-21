@@ -188,7 +188,7 @@ try {
   }); await b.press({ key: 'Escape' })
   sdk.release()
   await b.eventually({
-    condition: '!document.querySelector(".hydra-chat [data-streaming]") && !document.querySelector(".hydra-chat .message-block[data-message-id^=\'live:\']") && document.querySelector(".hydra-chat .inline-comment")?.textContent.includes("Keep this streamed passage.")',
+    condition: '!document.querySelector(".hydra-chat [data-streaming]") && !document.querySelector(".hydra-chat .message-block[data-message-id^=\'live:\']") && document.querySelector(".hydra-chat .comment-card textarea")?.value.includes("Keep this streamed passage.")',
     label: 'a comment on a streamed reply stays with it once the transcript saves it',
   })
   sdk.control.stream = false
@@ -198,7 +198,7 @@ try {
   })
   await b.click({ selector: '.hydra-chat .composer-send' })
   await b.eventually({
-    condition: '!document.querySelector(".hydra-chat .inline-comment")',
+    condition: '!document.querySelector(".hydra-chat .comment-card")',
     label: 'the comment goes with the next message',
   })
   assert.match(

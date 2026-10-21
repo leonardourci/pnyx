@@ -36,7 +36,7 @@
   --text-code: 13px;
 }
 
-:root { color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+:root { --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
 
 :root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; }
 @media (prefers-color-scheme: dark) {
@@ -231,7 +231,7 @@ h3 { font-weight: 600; }
 
 .thread { flex: 1; min-width: 0; min-height: 45px; overflow: hidden auto; padding: 4px 16px 12px; }
 
-.messages { display: flex; flex-direction: column; gap: 12px; padding-top: 8px; }
+.messages { position: relative; display: flex; flex-direction: column; gap: 12px; padding-top: 8px; }
 
 .message { min-width: 0; animation: reply-appear 140ms ease-out; }
 
@@ -542,29 +542,79 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .message-block { position: relative; min-width: 0; border-radius: 3px; }
 
-.block-comment-action { position: relative; margin: 4px 0; color: var(--color-gold); background: var(--color-gold-wash); }
+.comment-pill { position: absolute; z-index: 5; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--color-gold-line); border-radius: 8px; background: var(--color-surface); box-shadow: 0 4px 14px var(--color-shadow); white-space: nowrap; }
 
-.block-comment-action .small { font-size: var(--text-ui); color: var(--color-muted); }
+.comment-pill .button { min-height: 26px; padding: 2px 8px; gap: 5px; font-size: var(--text-meta); }
+
+.comment-pill .button:first-child { color: var(--color-gold); }
+
+.comment-pill kbd { padding: 0 4px; }
+
+.comment-pill-divider { width: 1px; align-self: stretch; margin: 4px 1px; background: var(--color-line); }
 
 .messages[data-caret-host] { outline: none; caret-color: var(--color-gold); }
 
-.pending-comments ul { max-height: 72px; overflow: auto; }
+.comment-card { transition: background-color var(--comment-fade-duration) ease-out, border-color var(--comment-fade-duration) ease-out, box-shadow var(--comment-fade-duration) ease-out; position: relative; display: flex; flex-direction: column; gap: 3px; margin: 6px 0 10px; padding: 6px 6px 6px 10px; border: 1px solid var(--color-line); border-left: 2px solid var(--color-gold); border-radius: 8px; background: var(--color-raised); font-size: var(--text-ui); user-select: none; }
 
-.pending-comments li { display: flex; align-items: center; gap: 6px; }
+.comment-card[data-emphasis] { background: color-mix(in srgb, var(--color-gold) 20%, var(--color-raised)); border-color: var(--color-gold); box-shadow: 0 0 0 1px var(--color-gold-line); }
+.comment-card:focus-within { border-color: var(--color-gold-line); border-left-color: var(--color-gold); }
 
-.pending-comments li > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comment-quote { overflow: hidden; color: var(--color-muted); font-size: var(--text-meta); line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 
-.pending-comments .button { min-height: 22px; padding: 1px 6px; }
+.comment-quote mark { padding: 0 1px; border-radius: 2px; background: var(--comment-highlight); color: var(--color-ink); }
 
-.inline-comment { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; border-left: 2px solid var(--color-gold-line); background: var(--color-gold-wash); padding: 10px; margin: 8px 0; font-size: var(--text-ui); }
+.comment-heading { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.comment-heading .comment-quote { flex: 1; min-width: 0; }
+.comment-number { display: inline-flex; flex: none; align-items: center; justify-content: center; padding: 0 4px; border: 1px solid var(--color-gold-line); border-radius: 999px; background: var(--color-gold); color: var(--color-surface); font-size: var(--text-meta); line-height: 1; font-variant-numeric: tabular-nums; }
+.comment-annotations { position: absolute; inset: 0; pointer-events: none; user-select: none; }
+.comment-pile { position: absolute; z-index: 2; pointer-events: auto; }
+.comment-pile[data-spread] { z-index: 4; }
+.comment-marker.button { position: absolute; top: 0; display: block; padding: 0; border: 0; border-radius: 999px; background: transparent; transition: left var(--comment-marker-duration) ease; }
+.comment-marker .comment-number { transition: transform var(--comment-marker-duration) ease; }
+.comment-marker:hover .comment-number, .comment-marker:focus-visible .comment-number, .comment-marker[data-active] .comment-number { transform: translateY(-2px); border-color: var(--color-ink); box-shadow: 0 0 0 1px var(--color-surface); }
+.comment-card[data-jump]::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: var(--comment-jump-highlight); box-shadow: 0 0 0 1px var(--color-gold); animation: comment-jump var(--comment-jump-duration) ease-out both; }
+.comment-jump { position: absolute; z-index: 1; border-radius: 3px; background: var(--comment-jump-highlight); animation-name: comment-jump; animation-timing-function: ease-out; animation-fill-mode: both; }
+@keyframes comment-jump { 0% { opacity: .2; } 15% { opacity: 1; } 32% { opacity: .5; } 65% { opacity: .5; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .comment-jump, .comment-card[data-jump]::after { animation: none; opacity: .5; } .comment-card, .comment-marker.button, .comment-marker .comment-number { transition: none; } }
 
-.inline-comment blockquote { margin: 0; max-height: 100px; overflow: auto; white-space: pre-wrap; color: var(--color-muted); }
+.comment-row { display: flex; align-items: flex-start; gap: 6px; }
 
-.inline-comment > .markdown { width: 100%; font-size: inherit; }
+/* One line tall for a one-line note, growing as it wraps; elsewhere than Chromium it keeps one row and scrolls. */
+.comment-note.input { flex: 1; height: auto; min-height: 1lh; max-height: 12lh; padding: 2px 0; border: 0; outline: none; background: transparent; color: var(--color-ink); line-height: 1.45; field-sizing: content; user-select: text; }
 
-.inline-comment .textarea { height: 84px; }
+.icon-button { width: 24px; height: 24px; min-height: 24px; padding: 0; flex: none; color: var(--color-muted); }
 
-.inline-comment .button { min-height: 26px; padding: 3px 7px; }
+.composer-comments { align-self: flex-start; display: inline-flex; align-items: center; gap: 2px; padding: 1px 3px 1px 2px; border: 1px solid var(--color-gold-line); border-radius: 13px; background: var(--color-gold-wash); color: var(--color-gold); font-size: var(--text-meta); }
+
+.composer-comments > .button { min-height: 22px; padding: 0 6px; gap: 5px; color: inherit; font-size: inherit; border-radius: 11px; }
+
+.composer-comments > .icon-button { width: 20px; height: 20px; min-height: 20px; padding: 0; color: inherit; }
+
+.composer-comments > .remove-all { color: var(--color-red); }
+
+.dialog { margin: auto; width: min(600px, calc(100vw - 32px)); max-height: min(78vh, 760px); padding: 0; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 18px 50px var(--color-shadow); }
+
+.dialog[open] { display: flex; flex-direction: column; }
+
+.dialog::backdrop { background: var(--color-shadow); }
+
+.dialog-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; border-bottom: 1px solid var(--color-line); }
+
+.dialog-head h2 { flex: 1; font-family: var(--font-brand); }
+
+.dialog-body { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow: auto; padding: 8px 16px 14px; }
+
+.dialog-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--color-line); }
+
+.comment-group { display: flex; flex-direction: column; margin-top: 8px; }
+
+.comments-dialog .comment-card { margin: 4px 0; }
+
+.comments-dialog .comment-quote { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+
+.comment-images { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.comment-images .attached-image img { height: 44px; width: auto; }
 
 .running { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; font-size: var(--text-meta); color: var(--color-blue); }
 
@@ -968,8 +1018,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .composer-add .popover-panel { width: 180px; padding: 5px; }
 
 .composer-add .popover-panel > .button { display: flex; width: 100%; justify-content: flex-start; }
-
-.pending-comments { flex-shrink: 1; min-height: 0; overflow: auto; }
 
 .popover { position: relative; min-width: 0; }
 

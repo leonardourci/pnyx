@@ -58,10 +58,92 @@ export interface ChatComment {
   messageId: string
   block: number
   offset: number
+  start?: number
+  end?: {
+    offset: number
+    position: number
+  }
   quote: string
   text: string
   paragraph?: string
   at?: string
+  images?: string[]
+}
+
+const SHORT_QUOTE_WORDS = 3
+
+export const sendableComment = ({ comment }: { comment: ChatComment }) =>
+  !!comment.text.trim() || !!comment.images?.length
+
+// A quote of three words or fewer travels with its paragraph, so the agent can place it.
+export const commentContext = ({
+  comment: {
+    quote,
+    paragraph,
+  },
+}: { comment: Pick<ChatComment, 'quote' | 'paragraph'> }) =>
+  quote.trim().split(/\s+/).length <= SHORT_QUOTE_WORDS && paragraph && paragraph !== quote
+    ? paragraph : undefined
+
+export function quoteStart({
+  text,
+  quote,
+  start,
+  positions,
+}: {
+  text: string
+  quote: string
+  start?: number
+  positions?: number[]
+}) {
+  let at = quote ? text.indexOf(quote) : -1
+
+  if (at < 0 || start === undefined) {
+    return at
+  }
+
+  for (let next = text.indexOf(
+    quote,
+    at + 1,
+  ); next >= 0; next = text.indexOf(
+      quote,
+      next + 1,
+    )) {
+    if (Math.abs((positions?.[next] ?? next) - start) < Math.abs((positions?.[at] ?? at) - start)) {
+      at = next
+    }
+  }
+
+  return at
+}
+
+export function quoteSnippet({
+  quote,
+  context = '',
+  start,
+}: {
+  quote: string
+  context?: string
+  start?: number
+}) {
+  const at = quoteStart({
+    text: context,
+    quote,
+    start,
+  })
+
+  return at < 0 ? {
+    before: '',
+    match: quote,
+    after: '',
+  } : {
+    before: context.slice(
+      0,
+      at,
+    ),
+    match: quote,
+    after: context.slice(at + quote.length),
+  }
 }
 
 // Transport parts must rejoin before Markdown parsing, even across loaded pages.
@@ -82,7 +164,7 @@ export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): Threa
   return result
 }
 
-export const COMMENT_NOTE = '> Internal note — no reply needed: numbered comments refer to passages in your earlier reply. Short quotes include their paragraph for context. Address the comments together with the message below.'
+export const COMMENT_NOTE = '> Internal note: no reply needed: numbered comments refer to passages in your earlier reply. Short quotes include their paragraph for context. Address the comments together with the message below.'
 
 const markdownQuote = ({ text }: { text: string }) => text.split('\n')
   .map(line => `> ${line}`)
@@ -96,15 +178,70 @@ const numberedComment = ({
   number: number
 }) => {
   const parts = [`${number}. ${markdownQuote({ text: comment.quote })}`]
-  const shortQuote = comment.quote.trim().split(/\s+/).length <= 3
+  const paragraph = commentContext({ comment })
 
-  if (shortQuote && comment.paragraph && comment.paragraph !== comment.quote) {
-    parts.push(`Paragraph:\n\n${markdownQuote({ text: comment.paragraph })}`)
+  if (paragraph) {
+    parts.push(`Paragraph:\n\n${markdownQuote({ text: paragraph })}`)
   }
 
-  parts.push(comment.text.trim())
+  return [
+    ...parts,
+    comment.text.trim(),
+    ...comment.images ?? [],
+  ].filter(Boolean).join('\n\n')
+}
 
-  return parts.join('\n\n')
+export function orderedComments({ comments }: { comments: ChatComment[] }) {
+  const replies = [...new Set(comments.map(comment => comment.messageId))].map(id => ({
+    id,
+    at: comments.find(comment => comment.messageId === id && comment.at)?.at || '',
+  }))
+
+  if (replies.every(reply => reply.at)) {
+    replies.sort((
+      a,
+      b,
+    ) => a.at.localeCompare(b.at))
+  }
+
+  const positions = new Map(replies.map((
+    reply,
+    index,
+  ) => [
+    reply.id,
+    index,
+  ]))
+  const start = ({ comment }: { comment: ChatComment }) => comment.start
+    ?? Math.max(
+      0,
+      comment.paragraph?.indexOf(comment.quote) ?? 0,
+    )
+
+  return [...comments].sort((
+    a,
+    b,
+  ) => {
+    if (a.messageId !== b.messageId) {
+      return positions.get(a.messageId)! - positions.get(b.messageId)!
+    }
+
+    return a.offset - b.offset || start({ comment: a }) - start({ comment: b })
+  })
+}
+
+export function groupComments({ comments }: { comments: ChatComment[] }) {
+  const replies = new Map<string, ChatComment[]>()
+
+  for (const comment of orderedComments({ comments })) {
+    const reply = comment.at ?? comment.messageId
+    const group = replies.get(reply) ?? []
+    group.push(comment); replies.set(
+      reply,
+      group,
+    )
+  }
+
+  return replies
 }
 
 export function commentReply({
@@ -116,20 +253,17 @@ export function commentReply({
   comments: ChatComment[]
   firstComment?: boolean
 }): string {
-  const replies = new Map<string, ChatComment[]>()
-
-  for (const comment of comments) {
-    if (!comment.text.trim()) {
-      continue
-    }
-
-    const reply = comment.at ?? comment.messageId
-    const group = replies.get(reply) ?? []
-    group.push(comment); replies.set(
-      reply,
-      group,
-    )
-  }
+  const ordered = orderedComments({ comments })
+  const numbers = new Map(ordered.map((
+    comment,
+    index,
+  ) => [
+    comment.id,
+    index + 1,
+  ]))
+  const replies = groupComments({
+    comments: ordered.filter(comment => sendableComment({ comment })),
+  })
 
   if (!replies.size) {
     return draft
@@ -141,12 +275,9 @@ export function commentReply({
     time,
     items,
   ] of replies) {
-    const numbered = items.map((
+    const numbered = items.map(comment => numberedComment({
       comment,
-      index,
-    ) => numberedComment({
-      comment,
-      number: index + 1,
+      number: numbers.get(comment.id)!,
     }))
     sections.push(`## Comments on your reply from ${time}\n\n${numbered.join('\n\n')}`)
   }
