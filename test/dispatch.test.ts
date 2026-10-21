@@ -1,16 +1,17 @@
 import { hydraEvent } from '../src/core/hydra.ts'
-import { withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { emptyHydra } from '../src/core/reducer.ts'
-import { configPath, effectiveDispatch, parseAccounts, parseDispatch, readConfig, templatePath, writeConfig, type EffectiveDispatch } from '../src/dispatch/config.ts'
+import { configPath, effectiveDispatch, onTemplate, parseAccounts, parseDispatch, readConfig, templatePath, writeConfig, type EffectiveDispatch } from '../src/dispatch/config.ts'
 import { accountEnvironment, chooseCandidate, chosenSettings, hostedOverride, overrideOf, readQuota, validateChoice, type QuotaReading } from '../src/dispatch/select.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { commands } from '../src/cli/commands.ts'
+import { hydraDigest, TEMPLATE_NUDGE } from '../src/core/digest.ts'
 
 const STARTER_DISPATCH = parseDispatch({ value: readConfig({ path: templatePath({}) }) })
 const STARTER_ACCOUNTS = parseAccounts({
@@ -1269,6 +1270,39 @@ test(
         homedir(),
         '.claude',
       ),
+    )
+  },
+)
+
+test(
+  'with no dispatch file the template rules apply and the digest nudges rule init',
+  () => {
+    lab()
+    const { state } = loadHydra({ hydraId: 'lab' })
+    const nudged = () => hydraDigest({
+      hydraId: 'lab',
+      state,
+      owner: {},
+      dispatchTemplate: onTemplate({ hydraId: 'lab' }),
+    }).includes(TEMPLATE_NUDGE)
+
+    assert.deepEqual(
+      effectiveDispatch({
+        hydraId: 'lab',
+        state,
+      }).dispatch.rules,
+      STARTER_DISPATCH.rules,
+    )
+    assert.ok(nudged())
+    dispatchCommands.rule([
+      'init',
+      '--shared',
+      '--hydra',
+      'lab',
+    ])
+    assert.equal(
+      nudged(),
+      false,
     )
   },
 )

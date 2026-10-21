@@ -76,6 +76,14 @@ export function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
   }
 }
 
+// True when neither the shared nor this Hydra's dispatch file exists, so the rules come from the shipped template.
+export function onTemplate({ hydraId }: { hydraId: string }): boolean {
+  return !existsSync(configPath({
+    hydraId,
+    shared: true,
+  })) && !existsSync(configPath({ hydraId }))
+}
+
 export function invalid({ message }: { message: string }): never {
   throw new HydraError({
     message,

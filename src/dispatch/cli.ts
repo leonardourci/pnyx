@@ -1,9 +1,10 @@
 import { saveOrPropose, resolveProposal } from './proposals.ts'
 import { existsSync } from 'node:fs'
+import { TEMPLATE_NUDGE } from '../core/digest.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { WRITE, guard, parse, required, meta, type Output } from '../cli/commands.ts'
 import { loadHydra, requireHydra, withRegistryLock } from '../store/hydra-store.ts'
-import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, readConfig, templatePath, templateRules, writeConfig, type Candidate, type Harness } from './config.ts'
+import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, templatePath, templateRules, writeConfig, type Candidate, type Harness } from './config.ts'
 
 const OPTIONS = {
   ...WRITE,
@@ -66,7 +67,10 @@ function ruleCommand({ args }: { args: string[] }): Output {
         hydraId,
         state,
       }),
-      help: ['Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading'],
+      help: [
+        'Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
+        ...(onTemplate({ hydraId }) ? [TEMPLATE_NUDGE] : []),
+      ],
     }
   }
 

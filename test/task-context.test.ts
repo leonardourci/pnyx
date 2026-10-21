@@ -9,7 +9,7 @@ import { startTask } from '../src/cli/start.ts'
 import { hydraCheck, workerCommands } from '../src/cli/workers.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { DEFAULT_WIDTHS, viewFor } from '../src/core/view.ts'
-import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '../src/core/digest.ts'
+import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET, TEMPLATE_NUDGE } from '../src/core/digest.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
@@ -1027,8 +1027,9 @@ test(
       )
       assert.match(
         digest,
-        new RegExp(`Owner memory uses 10 of ${OWNER_MEMORY_BUDGET} characters\\.\n\nHydra memory \\(this Hydra only\\):\n- scope: API work\\.\nHydra memory uses 9 of ${HYDRA_MEMORY_BUDGET} characters\\.\n</pnyx-digest>$`),
+        new RegExp(`Owner memory uses 10 of ${OWNER_MEMORY_BUDGET} characters\\.\n\nHydra memory \\(this Hydra only\\):\n- scope: API work\\.\nHydra memory uses 9 of ${HYDRA_MEMORY_BUDGET} characters\\.\n`),
       )
+      assert.ok(digest.endsWith(`\n\n${TEMPLATE_NUDGE}\n</pnyx-digest>`))
       assert.throws(
         () => f.run({
           name: 'hydra',
