@@ -17,6 +17,36 @@ const decodeEntities = ({ text }: { text: string }) => text.replace(
   },
 )
 
+const inlineText = ({ tokens }: { tokens: Token[] }): string => tokens.map(token => {
+  if (token.type === 'codespan') {
+    return token.text
+  }
+
+  if (token.type === 'br') {
+    return ''
+  }
+
+  if ('tokens' in token && token.tokens) {
+    return inlineText({ tokens: token.tokens })
+  }
+
+  return 'text' in token ? decodeEntities({ text: String(token.text) }) : token.raw
+}).join('')
+
+export const markdownText = ({ text }: { text: string }) => markdown.lexer(text).filter(token => token.type !== 'space')
+  .map(token => {
+    if (token.type === 'code') {
+      return token.text
+    }
+
+    if ('tokens' in token && token.tokens) {
+      return inlineText({ tokens: token.tokens })
+    }
+
+    return token.raw.trim()
+  })
+  .join('\n\n')
+
 // Tokens become React elements, never HTML. Raw HTML remains visible text;
 // images remain links so transcripts cannot trigger remote tracking requests.
 export function markdownHref({ href }: { href: string }): string | undefined {

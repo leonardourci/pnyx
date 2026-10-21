@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { Button } from './controls.tsx'
 import { Icon } from './icon.tsx'
 
@@ -14,6 +14,7 @@ export function Dialog({
   children: ReactNode
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
+  const heading = useId()
   // A text selection dragged out of the panel ends on the backdrop; only a press there closes.
   const pressed = useRef<EventTarget | null>(null)
   useEffect(
@@ -29,6 +30,7 @@ export function Dialog({
   return (
     <dialog
       ref={dialog}
+      aria-labelledby={heading}
       className={`dialog ${className}`}
       data-key-scope="overlay"
       onKeyDown={e => {
@@ -49,7 +51,7 @@ export function Dialog({
       }}
     >
       <header className="dialog-head">
-        <h2>{title}</h2>
+        <h2 id={heading}>{title}</h2>
         <Button className="icon-button" aria-label="Close" onClick={close}>
           <Icon name="close" size={14} />
         </Button>
