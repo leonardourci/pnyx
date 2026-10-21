@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, realpathSync, statSync } from 'node:fs'
-import { dirname, isAbsolute, join } from 'node:path'
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
 import { decidePush, findCard, type Decision, type Meta } from '../core/decide.ts'
 import { hydraConfig, hydraEvent } from '../core/hydra.ts'
 import { HydraError, type Card, type HydraProject, type HydraState, type TaskCopy } from '../core/model.ts'
@@ -11,6 +11,10 @@ import { canonical } from '../store/paths.ts'
 import { hydraDir, hydraIds, loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
 
 const COPY_TIMEOUT_MS = 120_000
+// A claim older than the git steps it guards was left by a start that crashed.
+const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
+// ponytail: a fixed cap per project and Hydra; make it a project setting if one size stops fitting.
+export const POOL_IDLE = 2
 
 function git({
   cwd,
@@ -36,6 +40,7 @@ function git({
       env: {
         ...process.env,
         GIT_TERMINAL_PROMPT: '0',
+        GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o BatchMode=yes',
       },
     },
   )
@@ -113,15 +118,7 @@ function originHead({ cwd }: { cwd: string }): string | undefined {
   return head.ok && head.out ? head.out : undefined
 }
 
-function worktreeCopy({
-  hydraId,
-  card,
-  project,
-}: {
-  hydraId: string
-  card: Card
-  project: HydraProject
-}): TaskCopy {
+function gitProject({ project }: { project: HydraProject }): void {
   if (!git({
     cwd: project.path,
     args: [
@@ -135,13 +132,30 @@ function worktreeCopy({
       help: ['Set its copy command with `pnyx-axi project set <name> --copy <shell command>`, or start with --in-place'],
     })
   }
+}
 
-  const branch = `pnyx/${hydraId}-${card.id}`
+const taskBranch = ({
+  hydraId,
+  card,
+}: {
+  hydraId: string
+  card: Card
+}) => `pnyx/${hydraId}-${card.id}`
+
+const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'removed' ? undefined : card.copy)
+
+const quiet = ({ meta }: { meta: Meta }): Meta => ({
+  ...meta,
+  id: undefined,
+  ifRevision: undefined,
+})
+
+function branchStart({ project }: { project: HydraProject }): {
+  base?: string
+  start: string
+} {
   const remote = originHead({ cwd: project.path })
-  const base = remote?.replace(
-    /^origin\//,
-    '',
-  ) ?? git({
+  const local = git({
     cwd: project.path,
     args: [
       'rev-parse',
@@ -149,22 +163,313 @@ function worktreeCopy({
       'HEAD',
     ],
   }).out
-  const path = join(
-    hydraDir({ hydraId }),
-    'copies',
-    `${card.id}-${project.name}`,
-  )
-  const made = {
-    path,
-    project: project.path,
-    via: 'worktree' as const,
-    branch,
+  const base = remote?.replace(
+    /^origin\//,
+    '',
+  ) ?? local
+  const start = remote ?? git({
+    cwd: project.path,
+    args: [
+      'rev-parse',
+      'HEAD',
+    ],
+  }).out
+
+  return {
     ...(base && base !== 'HEAD' ? { base } : {}),
-    state: 'active' as const,
+    start,
+  }
+}
+
+// Best effort: a failed fetch still starts the branch from the last fetched base.
+function fetchBase({ project }: { project: HydraProject }): void {
+  const remote = originHead({ cwd: project.path })
+
+  if (remote) {
+    git({
+      cwd: project.path,
+      args: [
+        'fetch',
+        '--quiet',
+        'origin',
+        remote.replace(
+          /^origin\//,
+          '',
+        ),
+      ],
+    })
+  }
+}
+
+const commonDir = ({ cwd }: { cwd: string }) =>
+  git({
+    cwd,
+    args: [
+      'rev-parse',
+      '--path-format=absolute',
+      '--git-common-dir',
+    ],
+  }).out
+
+const branchExists = ({
+  cwd,
+  branch,
+}: {
+  cwd: string
+  branch: string
+}) =>
+  git({
+    cwd,
+    args: [
+      'rev-parse',
+      '--verify',
+      '--quiet',
+      `refs/heads/${branch}`,
+    ],
+  }).ok
+
+const onBranch = ({ cwd }: { cwd: string }) =>
+  Boolean(git({
+    cwd,
+    args: [
+      'for-each-ref',
+      '--contains',
+      'HEAD',
+      '--count=1',
+      'refs/heads',
+    ],
+  }).out)
+
+const copiesDir = ({ hydraId }: { hydraId: string }) => join(
+  hydraDir({ hydraId }),
+  'copies',
+)
+
+// Slots are named <project>-<n>, so one can pass from task to task.
+function slots({
+  hydraId,
+  project,
+}: {
+  hydraId: string
+  project: HydraProject
+}): string[] {
+  const dir = copiesDir({ hydraId })
+  const prefix = `${project.name}-`
+
+  if (!isFolder({ path: dir })) {
+    return []
   }
 
-  // A copy made before its record was written is picked up again.
-  if (isFolder({ path }) && git({
+  return readdirSync(dir)
+    .filter(name => name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length)))
+    .map(name => join(
+      dir,
+      name,
+    ))
+    .filter(path => isFolder({ path }))
+    .map(path => realpathSync(path))
+}
+
+const runsIn = ({
+  state,
+  path,
+}: {
+  state: HydraState
+  path: string
+}) =>
+  Object.values(state.cards).some(c => c.sessionIds?.length && c.agent?.cwd === path)
+
+const holds = ({
+  state,
+  path,
+  except,
+}: {
+  state: HydraState
+  path: string
+  except?: string
+}) =>
+  Object.values(state.cards).some(c => c.id !== except && liveCopy({ card: c })?.path === path)
+
+const idle = ({
+  state,
+  path,
+  except,
+}: {
+  state: HydraState
+  path: string
+  except?: string
+}) =>
+  !runsIn({
+    state,
+    path,
+  }) && !holds({
+    state,
+    path,
+    except,
+  })
+
+// A clean checkout of this project whose commit some branch keeps, so moving it to another branch loses nothing.
+function reusable({
+  path,
+  common,
+}: {
+  path: string
+  common: string
+}): boolean {
+  const status = git({
+    cwd: path,
+    args: [
+      'status',
+      '--porcelain',
+    ],
+  })
+
+  return status.ok && status.out === '' && commonDir({ cwd: path }) === common && onBranch({ cwd: path })
+}
+
+const checkout = ({
+  cwd,
+  branch,
+  start,
+}: {
+  cwd: string
+  branch: string
+  start: string
+}) =>
+  branchExists({
+    cwd,
+    branch,
+  })
+    ? git({
+      cwd,
+      args: [
+        'checkout',
+        '--quiet',
+        branch,
+      ],
+    })
+    : git({
+      cwd,
+      args: [
+        'checkout',
+        '--quiet',
+        '-b',
+        branch,
+        start,
+      ],
+    })
+
+// An O_EXCL file keeps two starts off one slot while git runs outside the writer lock.
+function claim({ path }: { path: string }): boolean {
+  const file = `${path}.claim`
+
+  if (existsSync(file) && Date.now() - statSync(file).mtimeMs > CLAIM_STALE_MS) {
+    rmSync(
+      file,
+      { force: true },
+    )
+  }
+
+  try {
+    closeSync(openSync(
+      file,
+      'wx',
+    ))
+
+    return true
+  } catch {
+    return false // Another start holds the slot.
+  }
+}
+
+const unclaim = ({ path }: { path: string }) => rmSync(
+  `${path}.claim`,
+  { force: true },
+)
+
+// Claiming first means the idle check sees every record a competing start wrote before letting go.
+function take({
+  hydraId,
+  card,
+  path,
+}: {
+  hydraId: string
+  card: Card
+  path: string
+}): boolean {
+  if (!claim({ path })) {
+    return false
+  }
+
+  if (idle({
+    state: loadHydra({ hydraId }).state,
+    path,
+    except: card.id,
+  })) {
+    return true
+  }
+
+  unclaim({ path })
+
+  return false
+}
+
+function freshSlot({
+  hydraId,
+  project,
+}: {
+  hydraId: string
+  project: HydraProject
+}): string {
+  for (let n = 1; ; n++) {
+    const path = join(
+      copiesDir({ hydraId }),
+      `${project.name}-${n}`,
+    )
+
+    if (!existsSync(path) && claim({ path })) {
+      return path
+    }
+  }
+}
+
+// The slot it returns stays claimed until the caller records it.
+function worktreeCopy({
+  hydraId,
+  card,
+  project,
+}: {
+  hydraId: string
+  card: Card
+  project: HydraProject
+}): TaskCopy {
+  gitProject({ project })
+  fetchBase({ project })
+  mkdirSync(
+    copiesDir({ hydraId }),
+    { recursive: true },
+  )
+  const branch = taskBranch({
+    hydraId,
+    card,
+  })
+  const {
+    base,
+    start,
+  } = branchStart({ project })
+  const made = ({ path }: { path: string }): TaskCopy => ({
+    path,
+    project: project.path,
+    via: 'worktree',
+    branch,
+    ...(base ? { base } : {}),
+    state: 'active',
+  })
+  const pooled = slots({
+    hydraId,
+    project,
+  })
+  const head = ({ path }: { path: string }) => git({
     cwd: path,
     args: [
       'symbolic-ref',
@@ -172,11 +477,17 @@ function worktreeCopy({
       '--short',
       'HEAD',
     ],
-  }).out === branch) {
-    return {
-      ...made,
-      path: realpathSync(path),
-    }
+  }).out
+
+  // A copy made before its record was written, or this task's own slot still in the pool, is picked up again.
+  const own = pooled.find(path => head({ path }) === branch && take({
+    hydraId,
+    card,
+    path,
+  }))
+
+  if (own) {
+    return made({ path: own })
   }
 
   // Only registrations whose folders are gone are pruned, so a deleted copy does not block its branch.
@@ -187,19 +498,38 @@ function worktreeCopy({
       'prune',
     ],
   })
-  const exists = git({
+  const common = commonDir({ cwd: project.path })
+
+  // Ignored files such as installed dependencies stay with the slot; the clean check leaves nothing else to reset.
+  for (const path of pooled) {
+    if (take({
+      hydraId,
+      card,
+      path,
+    })) {
+      if (reusable({
+        path,
+        common,
+      }) && checkout({
+        cwd: path,
+        branch,
+        start,
+      }).ok) {
+        return made({ path })
+      }
+
+      unclaim({ path })
+    }
+  }
+
+  const path = freshSlot({
+    hydraId,
+    project,
+  })
+  const exists = branchExists({
     cwd: project.path,
-    args: [
-      'rev-parse',
-      '--verify',
-      '--quiet',
-      `refs/heads/${branch}`,
-    ],
-  }).ok
-  mkdirSync(
-    dirname(path),
-    { recursive: true },
-  )
+    branch,
+  })
   const added = git({
     cwd: project.path,
     args: [
@@ -212,12 +542,13 @@ function worktreeCopy({
         '-b',
         branch,
         path,
-        remote ?? 'HEAD',
+        start,
       ]),
     ],
   })
 
   if (!added.ok) {
+    unclaim({ path })
     throw new HydraError({
       message: `git could not make the task's copy: ${added.err}`,
       code: 'COPY_FAILED',
@@ -225,10 +556,7 @@ function worktreeCopy({
     })
   }
 
-  return {
-    ...made,
-    path: realpathSync(path),
-  }
+  return made({ path: realpathSync(path) })
 }
 
 function commandCopy({
@@ -363,79 +691,107 @@ export function taskFolder({
     return project.path
   }
 
-  if (card.copy && card.copy.state !== 'removed' && card.copy.project !== project.path) {
+  const live = liveCopy({ card })
+
+  if (live && live.project !== project.path) {
     throw new HydraError({
-      message: `task ${card.id} still has a copy of ${card.copy.project} at ${card.copy.path}`,
+      message: `task ${card.id} still has a copy of ${live.project} at ${live.path}`,
       code: 'CONFLICT',
       help: [`Settle it first with \`pnyx-axi task copy ${card.id} remove --hydra ${hydraId}\``],
     })
   }
 
-  const current = card.copy && card.copy.state !== 'removed' && isFolder({ path: card.copy.path }) ? card.copy : undefined
-  const copy = current ?? (project.copy
-    ? commandCopy({
+  const current = live && isFolder({ path: live.path }) ? live : undefined
+  const ready = current
+    ?? (project.copy ? commandCopy({
       hydraId,
       card,
       project,
       command: project.copy,
-    })
-    : worktreeCopy({
-      hydraId,
-      card,
-      project,
-    }))
-
-  return withWriter({
+    }) : undefined)
+  const copy = ready ?? worktreeCopy({
     hydraId,
-    fn: ({ writer }) => {
-      drainSpool({ writer })
-      const now = findCard({
-        state: writer.state,
-        ref: card.id,
-      })
-      const id = meta.id && !(`${meta.id}:copy` in writer.state.eventIds) ? `${meta.id}:copy` : undefined
-
-      if (now.copy?.path !== copy.path) {
-        apply({
-          writer,
-          decision: hydraEvent({
-            state: writer.state,
-            meta: {
-              ...meta,
-              id,
-              ifRevision: undefined,
-            },
-            cardId: now.id,
-            change: {
-              type: 'task.copy',
-              data: {
-                before: now.copy ?? null,
-                after: copy,
-              },
-            },
-          }),
-        })
-      }
-
-      if (now.folder !== copy.path) {
-        apply({
-          writer,
-          decision: decidePush({
-            state: writer.state,
-            key: now.key,
-            input: { folder: copy.path },
-            meta: {
-              ...meta,
-              id: id && `${id}:folder`,
-              ifRevision: undefined,
-            },
-          }),
-        })
-      }
-
-      return copy.path
-    },
+    card,
+    project,
   })
+
+  try {
+    return withWriter({
+      hydraId,
+      fn: ({ writer }) => {
+        drainSpool({ writer })
+        const now = findCard({
+          state: writer.state,
+          ref: card.id,
+        })
+        const id = meta.id && !(`${meta.id}:copy` in writer.state.eventIds) ? `${meta.id}:copy` : undefined
+        const recorded = {
+          ...meta,
+          id,
+          ifRevision: undefined,
+        }
+
+        if (now.copy?.path !== copy.path) {
+          const change = {
+            type: 'task.copy' as const,
+            data: {
+              before: now.copy ?? null,
+              after: copy,
+            },
+          }
+          apply({
+            writer,
+            decision: hydraEvent({
+              state: writer.state,
+              meta: recorded,
+              cardId: now.id,
+              change,
+            }),
+          })
+        }
+
+        pushFolder({
+          writer,
+          card: now,
+          folder: copy.path,
+          meta: {
+            ...recorded,
+            id: id && `${id}:folder`,
+          },
+        })
+
+        return copy.path
+      },
+    })
+  } finally {
+    if (!ready) {
+      unclaim({ path: copy.path })
+    }
+  }
+}
+
+function pushFolder({
+  writer,
+  card,
+  folder,
+  meta,
+}: {
+  writer: Writer
+  card: Card
+  folder: string | null
+  meta: Meta
+}): void {
+  if ((card.folder ?? null) !== folder) {
+    apply({
+      writer,
+      decision: decidePush({
+        state: writer.state,
+        key: card.key,
+        input: { folder },
+        meta,
+      }),
+    })
+  }
 }
 
 export type CopyCheck = {
@@ -534,15 +890,8 @@ function removeCopy({
   copy: TaskCopy
   force: boolean
 }): string | undefined {
-  const common = git({
-    cwd: copy.path,
-    args: [
-      'rev-parse',
-      '--path-format=absolute',
-      '--git-common-dir',
-    ],
-  })
-  const own = git({
+  const common = commonDir({ cwd: copy.path })
+  const gitDir = git({
     cwd: copy.path,
     args: [
       'rev-parse',
@@ -551,27 +900,18 @@ function removeCopy({
     ],
   })
 
-  if (!common.ok || !own.ok || own.out === common.out) {
+  if (!common || !gitDir.ok || gitDir.out === common) {
     return 'it is not a git worktree Pnyx can remove'
   }
 
-  if (!force && !git({
-    cwd: copy.path,
-    args: [
-      'for-each-ref',
-      '--contains',
-      'HEAD',
-      '--count=1',
-      'refs/heads',
-    ],
-  }).out) {
+  if (!force && !onBranch({ cwd: copy.path })) {
     return 'its commit is on no branch'
   }
 
   const run = spawnSync(
     'git',
     [
-      `--git-dir=${common.out}`,
+      `--git-dir=${common}`,
       'worktree',
       'remove',
       ...(force ? ['--force'] : []),
@@ -584,6 +924,60 @@ function removeCopy({
   )
 
   return run.status === 0 ? undefined : `git could not remove it: ${(run.stderr ?? '').trim().slice(-300)}`
+}
+
+function staysInPool({
+  hydraId,
+  state,
+  copy,
+}: {
+  hydraId: string
+  state: HydraState
+  copy: TaskCopy
+}): boolean {
+  const project = projectsFor({ state }).find(p => !p.detached && p.path === copy.project)
+  const path = realpathSync(copy.path)
+  const common = project && commonDir({ cwd: project.path })
+  const pooled = project ? slots({
+    hydraId,
+    project,
+  }) : []
+
+  if (!common || !pooled.includes(path) || !reusable({
+    path,
+    common,
+  })) {
+    return false
+  }
+
+  const spare = pooled.filter(slot => slot !== path && idle({
+    state,
+    path: slot,
+  }) && reusable({
+    path: slot,
+    common,
+  }))
+
+  return runsIn({
+    state,
+    path,
+  }) || spare.length < POOL_IDLE
+}
+
+function releaseReason({
+  copy,
+  pooled,
+  why,
+}: {
+  copy: TaskCopy
+  pooled: boolean
+  why: string
+}): string {
+  if (copy.via === 'command') {
+    return `${why}; the folder stays for the project's copy tool`
+  }
+
+  return pooled ? `${why}; its folder went back to the pool` : why
 }
 
 export type Settle = 'check' | 'safe' | 'discard'
@@ -603,8 +997,9 @@ export function settleCopy({
   copy: TaskCopy | null
   check?: CopyCheck
 } {
+  const state = loadHydra({ hydraId }).state
   const card = findCard({
-    state: loadHydra({ hydraId }).state,
+    state,
     ref,
   })
   const copy = card.copy
@@ -627,6 +1022,7 @@ export function settleCopy({
   }
 
   let after: TaskCopy
+  let pooled = false
 
   if (check.gone) {
     after = {
@@ -636,20 +1032,30 @@ export function settleCopy({
     }
   } else if (mode === 'discard' || mode === 'safe' || !('reason' in check)) {
     const why = mode === 'discard' ? 'discarded with the owner’s confirmation' : mode === 'safe' ? 'confirmed safe' : 'its work landed'
+    pooled = mode !== 'discard' && copy.via === 'worktree' && staysInPool({
+      hydraId,
+      state,
+      copy,
+    })
     // The project's copy tool owns the folders it makes, so Pnyx only lets them go.
-    const failed = copy.via === 'command' ? undefined : removeCopy({
+    const failed = copy.via === 'command' || pooled ? undefined : removeCopy({
       copy,
       force: mode === 'discard',
     })
-    after = failed ? {
-      ...copy,
-      state: 'flagged',
-      reason: failed,
-    }
+    after = failed
+      ? {
+        ...copy,
+        state: 'flagged',
+        reason: failed,
+      }
       : {
         ...copy,
         state: 'removed',
-        reason: copy.via === 'command' ? `${why}; the folder stays for the project's copy tool` : why,
+        reason: releaseReason({
+          copy,
+          pooled,
+          why,
+        }),
       }
   } else {
     after = {
@@ -695,6 +1101,16 @@ export function settleCopy({
         }),
       })
 
+      // A hook session in a pooled slot must not find this task by its old folder.
+      if (pooled && now.folder === copy.path) {
+        pushFolder({
+          writer,
+          card: now,
+          folder: null,
+          meta: quiet({ meta }),
+        })
+      }
+
       if (after.state === 'flagged') {
         const text = `The copy of task ${now.id} "${now.title}" at ${copy.path} was kept: ${after.reason}. `
           + `Land its work, then run \`pnyx-axi task copy ${now.id} remove --hydra ${hydraId}\`; if it is already merged or empty, confirm with \`--safe\`. `
@@ -703,11 +1119,7 @@ export function settleCopy({
           writer,
           decision: hydraEvent({
             state: writer.state,
-            meta: {
-              ...meta,
-              id: undefined,
-              ifRevision: undefined,
-            },
+            meta: quiet({ meta }),
             cardId: now.id,
             change: {
               type: 'hydra.message',
@@ -763,4 +1175,179 @@ export function settleDone({
   }
 
   return due.length
+}
+
+function movable({
+  old,
+  copy,
+  project,
+}: {
+  old: Card
+  copy: TaskCopy
+  project: HydraProject
+}): boolean {
+  if (copy.state === 'removed') {
+    return reusable({
+      path: copy.path,
+      common: commonDir({ cwd: project.path }),
+    })
+  }
+
+  return !('reason' in checkCopy({
+    card: old,
+    copy,
+  }))
+}
+
+export function moveCopy({
+  hydraId,
+  from,
+  to,
+  meta,
+}: {
+  hydraId: string
+  from: string
+  to: string
+  meta: Meta
+}): TaskCopy | undefined {
+  const state = loadHydra({ hydraId }).state
+  const card = findCard({
+    state,
+    ref: to,
+  })
+  const cwd = card.agent?.cwd
+  const prior = state.cards[from]
+  // The worker may have passed through tasks without a copy since the one that holds its folder.
+  const holder = Object.values(state.cards)
+    .find(c => c.id !== card.id && liveCopy({ card: c })?.path === cwd)
+  const old = holder ?? (prior?.copy?.path === cwd ? prior : undefined)
+  const copy = old?.copy
+  const project = taskProject({
+    state,
+    card,
+  })
+  const fits = old && copy?.via === 'worktree' && project?.path === copy.project
+    && card.agent?.cwd === copy.path && !liveCopy({ card }) && isFolder({ path: copy.path })
+    && !holds({
+      state,
+      path: copy.path,
+      except: old.id,
+    })
+
+  if (!fits || !movable({
+    old,
+    copy,
+    project,
+  }) || !claim({ path: copy.path })) {
+    return undefined
+  }
+
+  try {
+    fetchBase({ project })
+    const {
+      base,
+      start,
+    } = branchStart({ project })
+    const branch = taskBranch({
+      hydraId,
+      card,
+    })
+
+    if (!checkout({
+      cwd: copy.path,
+      branch,
+      start,
+    }).ok) {
+      return undefined
+    }
+
+    const after: TaskCopy = {
+      path: copy.path,
+      project: copy.project,
+      via: 'worktree',
+      branch,
+      ...(base ? { base } : {}),
+      state: 'active',
+    }
+
+    return withWriter({
+      hydraId,
+      fn: ({ writer }) => {
+        drainSpool({ writer })
+        const now = findCard({
+          state: writer.state,
+          ref: card.id,
+        })
+        const was = writer.state.cards[old.id]
+        const left = was && liveCopy({ card: was })
+
+        if (!was || liveCopy({ card: now })) {
+          return undefined
+        }
+
+        if (left?.path === copy.path) {
+          const removed = {
+            ...left,
+            state: 'removed' as const,
+            reason: `its worker took it to task ${now.id}`,
+          }
+          const change = {
+            type: 'task.copy' as const,
+            data: {
+              before: left,
+              after: removed,
+            },
+          }
+          apply({
+            writer,
+            decision: hydraEvent({
+              state: writer.state,
+              meta: quiet({ meta }),
+              cardId: was.id,
+              change,
+            }),
+          })
+        }
+
+        if (was.folder === copy.path) {
+          pushFolder({
+            writer,
+            card: was,
+            folder: null,
+            meta: quiet({ meta }),
+          })
+        }
+
+        const change = {
+          type: 'task.copy' as const,
+          data: {
+            before: now.copy ?? null,
+            after,
+          },
+        }
+        apply({
+          writer,
+          decision: hydraEvent({
+            state: writer.state,
+            meta: quiet({ meta }),
+            cardId: now.id,
+            change,
+          }),
+        })
+        pushFolder({
+          writer,
+          card: findCard({
+            state: writer.state,
+            ref: now.id,
+          }),
+          folder: copy.path,
+          meta: quiet({ meta }),
+        })
+
+        return after
+      },
+    })
+  } finally {
+    unclaim({ path: copy.path })
+  }
 }

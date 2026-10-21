@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { startTask } from '../src/cli/start.ts'
 import { decidePush } from '../src/core/decide.ts'
-import { settleDone } from '../src/copies/copies.ts'
+import { POOL_IDLE, settleDone } from '../src/copies/copies.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { project } from '../src/projects/cli.ts'
 import { hydraDir, loadHydra, withWriter } from '../src/store/hydra-store.ts'
@@ -148,6 +148,86 @@ async function lab() {
   })
   const state = () => loadHydra({ hydraId: 'lab' }).state
   const task = state().keys.fix!
+  const cardOf = ({ id }: { id: string }) => state().cards[id]!
+
+  const create = ({ key }: { key: string }) => {
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        key,
+        '--key',
+        key,
+        '--project',
+        'app',
+      ],
+    })
+
+    return state().keys[key]!
+  }
+
+  const start = ({ id }: { id: string }) => startTask({
+    hydraId: 'lab',
+    task: id,
+    via: 'command',
+    meta,
+  })
+  const done = ({ id }: { id: string }) => run({
+    args: [
+      'move',
+      id,
+      'done',
+      '--actor',
+      'web',
+    ],
+  })
+  const worker = ({
+    session,
+    cwd,
+  }: {
+    session: string
+    cwd: string
+  }) => withWriter({
+    hydraId: 'lab',
+    fn: ({ writer }) => {
+      const input = {
+        agent: {
+          provider: 'claude-code',
+          sessionId: session,
+          cwd,
+        },
+        terminal: { tty: '/dev/ttys123' },
+      }
+      const pushed = decidePush({
+        state: writer.state,
+        newCardId: `c${writer.state.seq + 1}`,
+        key: session,
+        input,
+        meta,
+      })
+
+      if ('event' in pushed) {
+        writer.append({ event: pushed.event })
+      }
+    },
+  })
+  const attach = ({
+    id,
+    session,
+  }: {
+    id: string
+    session: string
+  }) =>
+    run({
+      args: [
+        'task',
+        'attach',
+        id,
+        '--session',
+        `claude-code:${session}`,
+      ],
+    })
 
   return {
     root,
@@ -155,9 +235,56 @@ async function lab() {
     run,
     state,
     task,
-    card: () => state().cards[task]!,
+    card: () => cardOf({ id: task }),
+    cardOf,
+    create,
+    start,
+    done,
+    worker,
+    attach,
   }
 }
+
+const commit = ({
+  cwd,
+  file,
+}: {
+  cwd: string
+  file: string
+}) => {
+  writeFileSync(
+    join(
+      cwd,
+      file,
+    ),
+    `${file}\n`,
+  )
+  git({
+    cwd,
+    args: [
+      'add',
+      '.',
+    ],
+  })
+  git({
+    cwd,
+    args: [
+      'commit',
+      '-q',
+      '-m',
+      file,
+    ],
+  })
+}
+
+const head = ({ cwd }: { cwd: string }) => git({
+  cwd,
+  args: [
+    'symbolic-ref',
+    '--short',
+    'HEAD',
+  ],
+})
 
 test(
   'a start makes the task its own git worktree and later starts reuse it',
@@ -183,7 +310,7 @@ test(
       realpathSync(join(
         hydraDir({ hydraId: 'lab' }),
         'copies',
-        `${task}-app`,
+        'app-1',
       )),
     )
     assert.deepEqual(
@@ -301,12 +428,12 @@ test(
     const old = join(
       home,
       'boards/lab/copies',
-      `${task}-app`,
+      'app-1',
     )
     const moved = join(
       home,
       'hydras/lab/copies',
-      `${task}-app`,
+      'app-1',
     )
     // Lay the Hydra out as an older version left it, then look from a new process's view.
     renameSync(
@@ -413,54 +540,51 @@ test(
         old,
       ],
     )
-    assert.equal(
-      existsSync(moved),
-      false,
-    )
+    assert.ok(existsSync(moved))
   },
 )
 
 test(
-  'Done removes a clean, landed copy and keeps its branch',
+  'Done returns a clean, landed copy to the pool, and the next start takes it on a fresh branch from the base',
   async () => {
     const {
       repo,
-      run,
+      state,
       task,
       card,
+      create,
+      start,
+      done,
     } = await lab()
-    await startTask({
-      hydraId: 'lab',
-      task,
-      via: 'command',
-      meta,
-    })
+    await start({ id: task })
     const {
       path,
       branch,
     } = card().copy!
+    appendFileSync(
+      join(
+        repo,
+        '.git',
+        'info',
+        'exclude',
+      ),
+      'deps/\n',
+    )
+    mkdirSync(join(
+      path,
+      'deps',
+    ))
     writeFileSync(
       join(
         path,
-        'fix.txt',
+        'deps',
+        'installed',
       ),
-      'fixed\n',
+      'x\n',
     )
-    git({
+    commit({
       cwd: path,
-      args: [
-        'add',
-        '.',
-      ],
-    })
-    git({
-      cwd: path,
-      args: [
-        'commit',
-        '-q',
-        '-m',
-        'fix',
-      ],
+      file: 'fix.txt',
     })
     git({
       cwd: repo,
@@ -476,15 +600,7 @@ test(
       settleDone({ hydraId: 'lab' }),
       0,
     )
-    run({
-      args: [
-        'move',
-        task,
-        'done',
-        '--actor',
-        'web',
-      ],
-    })
+    done({ id: task })
     assert.equal(
       settleDone({ hydraId: 'lab' }),
       1,
@@ -493,9 +609,10 @@ test(
       card().copy?.state,
       'removed',
     )
+    assert.ok(existsSync(path))
     assert.equal(
-      existsSync(path),
-      false,
+      card().folder,
+      undefined,
     )
     assert.ok(git({
       cwd: repo,
@@ -508,6 +625,448 @@ test(
     assert.equal(
       settleDone({ hydraId: 'lab' }),
       0,
+    )
+
+    commit({
+      cwd: repo,
+      file: 'later.txt',
+    })
+    const next = create({ key: 'next' })
+    await start({ id: next })
+    const copy = state().cards[next]!.copy!
+    assert.deepEqual(
+      [
+        copy.path,
+        copy.branch,
+        copy.state,
+      ],
+      [
+        path,
+        `pnyx/lab-${next}`,
+        'active',
+      ],
+    )
+    assert.equal(
+      head({ cwd: path }),
+      `pnyx/lab-${next}`,
+    )
+    assert.equal(
+      git({
+        cwd: path,
+        args: [
+          'rev-parse',
+          'HEAD',
+        ],
+      }),
+      git({
+        cwd: repo,
+        args: [
+          'rev-parse',
+          'main',
+        ],
+      }),
+    )
+    assert.ok(existsSync(join(
+      path,
+      'deps',
+      'installed',
+    )))
+  },
+)
+
+test(
+  'a pooled copy starts its next branch from the fetched remote default branch',
+  async () => {
+    const {
+      root,
+      repo,
+      task,
+      card,
+      cardOf,
+      create,
+      start,
+      done,
+    } = await lab()
+    const origin = join(
+      root,
+      'origin.git',
+    )
+    git({
+      cwd: root,
+      args: [
+        'init',
+        '-q',
+        '--bare',
+        '-b',
+        'main',
+        origin,
+      ],
+    })
+    git({
+      cwd: repo,
+      args: [
+        'remote',
+        'add',
+        'origin',
+        origin,
+      ],
+    })
+    git({
+      cwd: repo,
+      args: [
+        'push',
+        '-q',
+        '-u',
+        'origin',
+        'main',
+      ],
+    })
+    git({
+      cwd: repo,
+      args: [
+        'remote',
+        'set-head',
+        'origin',
+        'main',
+      ],
+    })
+    await start({ id: task })
+    const { path } = card().copy!
+    done({ id: task })
+    settleDone({ hydraId: 'lab' })
+
+    const elsewhere = join(
+      root,
+      'elsewhere',
+    )
+    git({
+      cwd: root,
+      args: [
+        'clone',
+        '-q',
+        origin,
+        elsewhere,
+      ],
+    })
+    commit({
+      cwd: elsewhere,
+      file: 'upstream.txt',
+    })
+    git({
+      cwd: elsewhere,
+      args: [
+        'push',
+        '-q',
+        'origin',
+        'main',
+      ],
+    })
+
+    const next = create({ key: 'next' })
+    await start({ id: next })
+    assert.equal(
+      cardOf({ id: next }).copy?.path,
+      path,
+    )
+    assert.equal(
+      git({
+        cwd: path,
+        args: [
+          'rev-parse',
+          'HEAD',
+        ],
+      }),
+      git({
+        cwd: elsewhere,
+        args: [
+          'rev-parse',
+          'HEAD',
+        ],
+      }),
+    )
+  },
+)
+
+test(
+  'a pooled copy that is dirty again is never taken',
+  async () => {
+    const {
+      task,
+      card,
+      cardOf,
+      create,
+      start,
+      done,
+    } = await lab()
+    await start({ id: task })
+    const {
+      path,
+      branch,
+    } = card().copy!
+    done({ id: task })
+    settleDone({ hydraId: 'lab' })
+    assert.ok(existsSync(path))
+    writeFileSync(
+      join(
+        path,
+        'stray.txt',
+      ),
+      'stray\n',
+    )
+
+    const next = create({ key: 'next' })
+    await start({ id: next })
+    assert.notEqual(
+      cardOf({ id: next }).copy?.path,
+      path,
+    )
+    assert.equal(
+      head({ cwd: path }),
+      branch,
+    )
+    assert.ok(existsSync(join(
+      path,
+      'stray.txt',
+    )))
+  },
+)
+
+test(
+  `the pool keeps at most ${POOL_IDLE} idle copies of a project and deletes the rest`,
+  async () => {
+    const {
+      task,
+      cardOf,
+      create,
+      start,
+      done,
+    } = await lab()
+    const tasks = [
+      task,
+      ...Array.from(
+        { length: POOL_IDLE },
+        (
+          _,
+          i,
+        ) => create({ key: `more-${i}` }),
+      ),
+    ]
+
+    for (const id of tasks) {
+      await start({ id })
+      done({ id })
+    }
+
+    assert.equal(
+      settleDone({ hydraId: 'lab' }),
+      POOL_IDLE + 1,
+    )
+    const copies = tasks.map(id => cardOf({ id }).copy!)
+    assert.ok(copies.every(c => c.state === 'removed'))
+    assert.equal(
+      copies.filter(c => existsSync(c.path)).length,
+      POOL_IDLE,
+    )
+  },
+)
+
+test(
+  'a slot an attached worker runs in is kept past the cap and never handed to another task',
+  async () => {
+    const {
+      task,
+      card,
+      cardOf,
+      create,
+      start,
+      done,
+      worker,
+      attach,
+    } = await lab()
+    const others = Array.from(
+      { length: POOL_IDLE },
+      (
+        _,
+        i,
+      ) => create({ key: `more-${i}` }),
+    )
+    await start({ id: task })
+    const { path } = card().copy!
+    worker({
+      session: 'w',
+      cwd: path,
+    })
+    await attach({
+      id: task,
+      session: 'w',
+    })
+
+    for (const id of others) {
+      await start({ id })
+      done({ id })
+    }
+
+    settleDone({ hydraId: 'lab' })
+    done({ id: task })
+    settleDone({ hydraId: 'lab' })
+    assert.equal(
+      card().copy?.state,
+      'removed',
+    )
+    assert.ok(existsSync(path))
+
+    const next = create({ key: 'next' })
+    await start({ id: next })
+    assert.notEqual(
+      cardOf({ id: next }).copy?.path,
+      path,
+    )
+  },
+)
+
+test(
+  'a worker moved to another task takes its copy along only once the old work landed',
+  async () => {
+    const {
+      repo,
+      task,
+      card,
+      cardOf,
+      create,
+      start,
+      done,
+      worker,
+      attach,
+    } = await lab()
+    await start({ id: task })
+    const {
+      path,
+      branch,
+    } = card().copy!
+    worker({
+      session: 'w',
+      cwd: path,
+    })
+    await attach({
+      id: task,
+      session: 'w',
+    })
+
+    writeFileSync(
+      join(
+        path,
+        'draft.txt',
+      ),
+      'draft\n',
+    )
+    const dirty = create({ key: 'dirty' })
+    await attach({
+      id: dirty,
+      session: 'w',
+    })
+    assert.equal(
+      cardOf({ id: dirty }).copy,
+      undefined,
+    )
+    assert.equal(
+      card().copy?.state,
+      'active',
+    )
+    assert.equal(
+      head({ cwd: path }),
+      branch,
+    )
+    rmSync(join(
+      path,
+      'draft.txt',
+    ))
+
+    commit({
+      cwd: path,
+      file: 'unlanded.txt',
+    })
+    const unlanded = create({ key: 'unlanded' })
+    await attach({
+      id: unlanded,
+      session: 'w',
+    })
+    assert.equal(
+      cardOf({ id: unlanded }).copy,
+      undefined,
+    )
+    assert.equal(
+      card().copy?.state,
+      'active',
+    )
+    assert.equal(
+      head({ cwd: path }),
+      branch,
+    )
+
+    git({
+      cwd: repo,
+      args: [
+        'merge',
+        '-q',
+        '--ff-only',
+        branch!,
+      ],
+    })
+    const landed = create({ key: 'landed' })
+    await attach({
+      id: landed,
+      session: 'w',
+    })
+    const moved = cardOf({ id: landed })
+    assert.equal(
+      card().copy?.state,
+      'removed',
+    )
+    assert.equal(
+      card().folder,
+      undefined,
+    )
+    assert.deepEqual(
+      [
+        moved.copy?.path,
+        moved.copy?.branch,
+        moved.folder,
+      ],
+      [
+        path,
+        `pnyx/lab-${landed}`,
+        path,
+      ],
+    )
+    assert.equal(
+      head({ cwd: path }),
+      `pnyx/lab-${landed}`,
+    )
+
+    done({ id: landed })
+    settleDone({ hydraId: 'lab' })
+    assert.equal(
+      cardOf({ id: landed }).copy?.state,
+      'removed',
+    )
+    const pooled = create({ key: 'pooled' })
+    await attach({
+      id: pooled,
+      session: 'w',
+    })
+    assert.deepEqual(
+      [
+        cardOf({ id: pooled }).copy?.path,
+        cardOf({ id: pooled }).copy?.state,
+      ],
+      [
+        path,
+        'active',
+      ],
+    )
+    assert.equal(
+      head({ cwd: path }),
+      `pnyx/lab-${pooled}`,
     )
   },
 )
@@ -700,10 +1259,7 @@ test(
       card().copy?.state,
       'removed',
     )
-    assert.equal(
-      existsSync(path),
-      false,
-    )
+    assert.ok(existsSync(path))
   },
 )
 
