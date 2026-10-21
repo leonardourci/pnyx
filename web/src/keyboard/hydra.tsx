@@ -249,7 +249,7 @@ export function useHydraKeyboard({
       'thread.reply',
       'reply',
     ].includes(id) && context.scope !== 'hydra') {
-      const input = context.target.closest('.detail, .hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea'); input?.focus()
+      const input = context.target.closest('.hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea'); input?.focus()
 
       return !!input
     }

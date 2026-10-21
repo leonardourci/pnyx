@@ -2,7 +2,6 @@ import type { Card } from '../../../src/core/model.ts'
 import { matchingTasks, mentionQuery, taskMention, taskMentions } from '../../../src/mentions/mentions.ts'
 import { MentionPicker } from './mention-picker.tsx'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
-import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ThreadPage } from '../../../src/thread/read.ts'
@@ -154,7 +153,7 @@ export function Composer({
   )
   useLayoutEffect(
     () => {
-      const pane = form.current?.closest('.hydra-chat, .card') ?? form.current?.parentElement
+      const pane = form.current?.closest('.hydra-chat') ?? form.current?.parentElement
       const element = input.current
 
       if (!pane || !element) {
@@ -547,7 +546,7 @@ export function Composer({
         )}
         onPreview={({ value }) => setPreview(value)}
         onCommit={({ value: n }) => save({
-          patch: card === HYDRA_CARD ? { composerHeight: n } : { taskComposerHeight: n },
+          patch: { composerHeight: n },
         })}
       />
       {commented > 0 && (
@@ -840,18 +839,13 @@ export function Composer({
                   firstComment: !taught,
                 })
                 const id = crypto.randomUUID()
-                const name = card === HYDRA_CARD ? 'hydra' : 'reply'
-                const args = card === HYDRA_CARD
-                  ? [
-                    'send',
-                    `--text=${text}`,
-                    '--event-id',
-                    id,
-                  ] : [
-                    card,
-                    text,
-                    id,
-                  ]
+                const name = 'hydra'
+                const args = [
+                  'send',
+                  `--text=${text}`,
+                  '--event-id',
+                  id,
+                ]
 
                 if (commandBytes({
                   name,
