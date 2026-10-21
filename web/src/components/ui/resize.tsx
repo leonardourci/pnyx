@@ -8,6 +8,7 @@ export function Resize({
   max,
   axis = 'x',
   reverse = false,
+  tabIndex = 0,
   onPreview,
   onCommit,
 }: {
@@ -17,6 +18,7 @@ export function Resize({
   max?: number
   axis?: 'x' | 'y'
   reverse?: boolean
+  tabIndex?: number
   onPreview({ value }: { value: number | null }): void
   onCommit({ value }: { value: number }): unknown
 }) {
@@ -69,7 +71,7 @@ export function Resize({
   return (
     <div
       role="separator"
-      tabIndex={0}
+      tabIndex={tabIndex}
       aria-label={label}
       aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'}
       aria-valuemin={min}
