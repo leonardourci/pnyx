@@ -6,7 +6,8 @@ import { transcriptPath, type QueryFn } from '../src/server/claude.ts'
 export function hydraSdk() {
   // messages leave out the digest Pnyx puts before a session's first message; raw keeps it.
   const calls: { options: Options; messages: string[]; raw: string[] }[] = []
-  const control = { hold: false, fail: false, ask: false, stream: false }
+  // cut leaves a held turn running on close, as a killed server does.
+  const control = { hold: false, fail: false, ask: false, stream: false, cut: false }
   const permissions: PermissionResult[] = []
   const sets: string[] = []
   let release = () => {}
@@ -70,7 +71,7 @@ export function hydraSdk() {
     }
 
     return Object.assign(run(), {
-      close: () => release(),
+      close: () => control.cut || release(),
       // eslint-disable-next-line pnyx/object-params -- The SDK owns this method signature.
       setModel: async (model: string) => {
         sets.push(`model ${model}`)

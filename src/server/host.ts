@@ -261,11 +261,12 @@ export function createHost({
 
   const at = () => new Date().toISOString()
 
-  const record = ({ writer, agent, input, actor }: {
+  const record = ({ writer, agent, input, actor, id }: {
     writer: Writer
     agent: AgentRef
     input: Record<string, unknown>
     actor: string
+    id?: string
   }) => {
     // Sessions may move between tasks while their process keeps running.
     const session = writer.state.sessions?.[sessionId({ agent })]
@@ -277,7 +278,7 @@ export function createHost({
         state: writer.state,
         key: card?.key ?? sessionKey({ agent }),
         input: { agent: session?.agent ?? agent, ...input, source: { adapter: 'pnyx', objectId: agent.sessionId, observedAt: at() } },
-        meta: { at: at(), actor },
+        meta: { at: at(), actor, ...(id ? { id } : {}) },
       }),
     })
   }
@@ -336,13 +337,14 @@ export function createHost({
     return card
   }
 
-  // Interrupted turns wait for a new message from the owner or Hydra.
-  const interrupt = ({ writer, agent, note }: {
+  // Interrupted turns wait for a new message from the owner or Hydra; id marks one that is resumed.
+  const interrupt = ({ writer, agent, note, id }: {
     writer: Writer
     agent: AgentRef
     note: string
+    id?: string
   }) => {
-    record({ writer, agent, input: { activity: 'interrupted' }, actor: 'pnyx' })
+    record({ writer, agent, input: { activity: 'interrupted' }, actor: 'pnyx', id })
     const session = writer.state.sessions?.[sessionId({ agent })]
     const task = session?.id === writer.state.config?.hydra.session
       ? writer.state.cards[HYDRA_CARD]
@@ -1232,6 +1234,8 @@ export function createHost({
     },
 
     recover: () => {
+      let resume: { id: string; text: string } | undefined
+
       write({
         fn: ({ writer }) => {
           for (const card of Object.values(writer.state.cards)) {
@@ -1244,11 +1248,20 @@ export function createHost({
 
           for (const session of Object.values(writer.state.sessions ?? {})) {
             if (session.agent.host === 'pnyx' && !live.has(session.id) && (session.sessionActivity ?? session.activity) === 'working') {
-              interrupt({ writer, agent: session.agent, note: 'Pnyx stopped during this turn. Send a message to continue it.' })
+              const hydra = session.id === writer.state.config?.hydra.session
+                && hostedHydra({ state: writer.state })
+              const cut = hydra
+                ? resumeTurn({ hydraId, state: writer.state, agent: session.agent }) : undefined
+              resume ??= cut
+              interrupt({ writer, agent: session.agent, note: 'Pnyx stopped during this turn. Send a message to continue it.', id: cut?.id })
             }
           }
         },
       })
+
+      if (resume) {
+        void host.hydra({ ...resume, actor: 'pnyx' })
+      }
 
       // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state
@@ -1279,6 +1292,33 @@ export function createHost({
   }
 
   return host
+}
+
+// Once per cut turn (its interruption records the resume id), and never a cut resume turn.
+function resumeTurn({ hydraId, state, agent }: {
+  hydraId: string
+  state: HydraState
+  agent: AgentRef
+}): { id: string; text: string } | undefined {
+  const events = readEvents({ hydraId })
+  const cut = events.findLast(event => event.id.endsWith(':hosted'))
+  const id = `resume:${cut?.seq}`
+
+  if (!cut || cut.id.startsWith('resume:') || id in state.eventIds) {
+    return undefined
+  }
+
+  const after = events.findLast(event => event.seq < cut.seq && event.type === 'card.pushed' && event.actor === 'pnyx'
+    && event.data.activity === 'finished' && event.data.agent?.sessionId === agent.sessionId)?.seq ?? 0
+  const messages = events.filter(event => event.seq > after && event.type === 'hydra.message' && event.actor !== HYDRA_ACTOR)
+    .map(event => event.seq)
+  const wake = /^(wake|stall):/.exec(cut.id)
+  const handled = [
+    ...(messages.length ? [`messages seq ${messages[0]}${messages.length > 1 ? ` to ${messages.at(-1)}` : ''}`] : []),
+    ...(wake ? [`a ${wake[1]} check`] : []),
+  ].join(' and ') || 'a turn'
+
+  return { id, text: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${handled}. Run \`pnyx-axi hydra messages --after ${after} --hydra ${hydraId}\` and \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`, then answer what is still open; tell the owner in one line that the restart cut your reply.</pnyx-wake>` }
 }
 
 const providerName = ({ harness }: { harness: Harness }) => harness === 'codex' ? 'codex' : 'claude-code'

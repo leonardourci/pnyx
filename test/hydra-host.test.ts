@@ -520,3 +520,38 @@ test('a stalled request or a quiet working worker wakes Hydra once, and hydra ch
     await server.close(); rmSync(home, { recursive: true, force: true })
   }
 })
+
+test('a Hydra turn cut by a restart is resumed once, naming the messages it had not answered', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'pnyx-hydra-resume-'))
+  process.env.PNYX_HOME = home
+  process.env.CLAUDE_CONFIG_DIR = join(home, 'claude')
+  process.env.PNYX_SEMANTIC = 'off'
+  commands.hydra(['create', 'lab'])
+  const state = () => loadHydra({ hydraId: 'lab' }).state
+  const resumes = ({ sdk }: { sdk: ReturnType<typeof hydraSdk> }) => sdk.calls.flatMap(c => c.messages).filter(m => m.includes('restart cut your last turn'))
+  const first = hydraSdk(); first.control.hold = true; first.control.cut = true
+  let server = await startServer({ hydraId: 'lab', query: first.query })
+
+  try {
+    await commands.hydra(['send', '--hydra', 'lab', '--text', 'I just merged the PR', '--event-id', 'merged'])
+    await until({ check: () => first.calls[0]?.messages.length === 1 })
+    await server.close()
+
+    const second = hydraSdk(); second.control.hold = true; second.control.cut = true
+    server = await startServer({ hydraId: 'lab', query: second.query })
+    await until({ check: () => resumes({ sdk: second }).length === 1 })
+    const merged = state().eventIds.merged!
+    assert.match(resumes({ sdk: second })[0]!, new RegExp(`messages seq ${merged}\\. Run \`pnyx-axi hydra messages --after \\d+ `))
+    assert.ok(!state().cards[HYDRA_CARD]!.attention.some(a => a.kind === 'interrupted'))
+    await server.close()
+
+    // The resumed turn is cut too: Hydra waits for the owner as before.
+    const third = hydraSdk()
+    server = await startServer({ hydraId: 'lab', query: third.query, wakeDelay: 50 })
+    await until({ check: () => state().cards[HYDRA_CARD]?.attention.some(a => a.kind === 'interrupted') ?? false })
+    await new Promise(resolve => setTimeout(resolve, 200))
+    assert.equal(third.calls.length, 0)
+  } finally {
+    await server.close(); rmSync(home, { recursive: true, force: true })
+  }
+})
