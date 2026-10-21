@@ -80,7 +80,6 @@ export const commentContext = ({
   quote.trim().split(/\s+/).length <= SHORT_QUOTE_WORDS && paragraph && paragraph !== quote
     ? paragraph : undefined
 
-// What a comment card shows: its context split around the quote, or the quote alone.
 export function quoteSnippet({
   quote,
   context = '',

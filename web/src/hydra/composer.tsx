@@ -259,7 +259,6 @@ export function Composer({
     setListing,
   ] = useState<string[] | null>(null)
 
-  // The list closes onto the comment under its passage, ready to edit.
   const showComment = ({ id }: { id: string }) => {
     setListing(null)
     requestAnimationFrame(() => {

@@ -5,7 +5,7 @@ import { Icon } from '../components/ui/icon.tsx'
 import { type ChatComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
 
-// Its ✕ removes every comment; with more than one it asks first, until it loses focus.
+// With more than one comment, the ✕ asks first until it loses focus.
 export function CommentsPill({
   count,
   open,

@@ -20,7 +20,6 @@ const readable = ({ text }: { text: string }) => new DOMParser()
     'text/html',
   ).body.textContent ?? text
 
-// The context sent to the agent with the quote marked; the title holds all of it.
 function CommentQuote({
   comment,
   clip,
@@ -46,7 +45,6 @@ function CommentQuote({
   )
 }
 
-// A comment under its passage, or in the composer's list. Its note is always editable.
 export function MessageComment({
   comment,
   change,

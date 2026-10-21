@@ -2,7 +2,6 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { Button } from './controls.tsx'
 import { Icon } from './icon.tsx'
 
-// A modal panel with a title bar; Escape, the ✕ and the backdrop close it.
 export function Dialog({
   title,
   className = '',

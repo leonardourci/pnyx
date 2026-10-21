@@ -34,7 +34,6 @@ type Restore = {
   scroll?: Record<string, [number, number]>
 }
 
-// Comment drafts outlive the tab: a reload or a new tab finds them where they were left.
 function readComments({ value }: { value: string | null }): Record<string, ChatComment[]> {
   try {
     const saved = JSON.parse(value ?? '{}') as Record<string, ChatComment[]>
