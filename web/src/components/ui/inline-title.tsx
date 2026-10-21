@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react'
 import { Button, Input } from './controls.tsx'
 
 export function InlineTitle({
-  value, label, save, doubleClick = false, startEditing = false, finished,
+  value,
+  label,
+  save,
+  doubleClick = false,
+  startEditing = false,
+  finished,
 }: {
   value: string
   label: string
@@ -11,16 +16,34 @@ export function InlineTitle({
   startEditing?: boolean
   finished?(): void
 }) {
-  const [editing, setEditing] = useState(startEditing)
-  const [draft, setDraft] = useState(value)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  useEffect(() => setDraft(value), [value])
-  useEffect(() => {
-    if (startEditing) {
-      setEditing(true)
-    }
-  }, [startEditing])
+  const [
+    editing,
+    setEditing,
+  ] = useState(startEditing)
+  const [
+    draft,
+    setDraft,
+  ] = useState(value)
+  const [
+    busy,
+    setBusy,
+  ] = useState(false)
+  const [
+    error,
+    setError,
+  ] = useState('')
+  useEffect(
+    () => setDraft(value),
+    [value],
+  )
+  useEffect(
+    () => {
+      if (startEditing) {
+        setEditing(true)
+      }
+    },
+    [startEditing],
+  )
 
   const submit = async ({ title }: { title: string }) => {
     if (busy || !title) {

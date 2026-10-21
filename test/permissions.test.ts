@@ -5,7 +5,10 @@ import { permissionDetails, permissionEvent } from '../src/core/permissions.ts'
 import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import type { HydraEvent, PermissionRequest } from '../src/core/model.ts'
 
-const meta = { at: '2026-10-15T12:00:00Z', actor: 'fixture' }
+const meta = {
+  at: '2026-10-15T12:00:00Z',
+  actor: 'fixture',
+}
 const created: HydraEvent = {
   v: 1,
   seq: 1,
@@ -13,7 +16,11 @@ const created: HydraEvent = {
   ...meta,
   cardId: 'task',
   type: 'task.created',
-  data: { key: 'task', title: 'Permission task', column: 'in_progress' },
+  data: {
+    key: 'task',
+    title: 'Permission task',
+    column: 'in_progress',
+  },
 }
 const request: PermissionRequest = {
   id: 'request',
@@ -23,48 +30,236 @@ const request: PermissionRequest = {
   status: 'pending',
 }
 
-test('permission replay keeps the first decision, its original input and the column', () => {
-  const initial = reduce({ state: emptyHydra(), event: created })
-  const pending = permissionEvent({ state: initial, card: initial.cards.task!, request, meta })
-  const waiting = reduce({ state: initial, event: pending })
-  const allowed = permissionEvent({ state: waiting, card: waiting.cards.task!, request: { ...request, status: 'allow' }, meta })
-  const after = reduce({ state: waiting, event: allowed })
-  const late = permissionEvent({ state: after, card: after.cards.task!, request: { ...request, status: 'deny', input: { command: 'other' } }, meta })
-  const events = [created, pending, allowed, late]
-  const state = replay({ state: emptyHydra(), events })
-  assert.deepEqual(state.cards.task!.permissions, [{ ...request, status: 'allow', at: meta.at }])
-  assert.equal(state.cards.task!.column, 'in_progress')
-  assert.equal(state.cards.task!.attention.length, 0)
-  assert.deepEqual(replay({ state: emptyHydra(), events }), state)
-  assert.equal(initial.cards.task!.permissions, undefined)
-})
+test(
+  'permission replay keeps the first decision, its original input and the column',
+  () => {
+    const initial = reduce({
+      state: emptyHydra(),
+      event: created,
+    })
+    const pending = permissionEvent({
+      state: initial,
+      card: initial.cards.task!,
+      request,
+      meta,
+    })
+    const waiting = reduce({
+      state: initial,
+      event: pending,
+    })
+    const allowed = permissionEvent({
+      state: waiting,
+      card: waiting.cards.task!,
+      request: {
+        ...request,
+        status: 'allow',
+      },
+      meta,
+    })
+    const after = reduce({
+      state: waiting,
+      event: allowed,
+    })
+    const late = permissionEvent({
+      state: after,
+      card: after.cards.task!,
+      request: {
+        ...request,
+        status: 'deny',
+        input: { command: 'other' },
+      },
+      meta,
+    })
+    const events = [
+      created,
+      pending,
+      allowed,
+      late,
+    ]
+    const state = replay({
+      state: emptyHydra(),
+      events,
+    })
+    assert.deepEqual(
+      state.cards.task!.permissions,
+      [
+        {
+          ...request,
+          status: 'allow',
+          at: meta.at,
+        },
+      ],
+    )
+    assert.equal(
+      state.cards.task!.column,
+      'in_progress',
+    )
+    assert.equal(
+      state.cards.task!.attention.length,
+      0,
+    )
+    assert.deepEqual(
+      replay({
+        state: emptyHydra(),
+        events,
+      }),
+      state,
+    )
+    assert.equal(
+      initial.cards.task!.permissions,
+      undefined,
+    )
+  },
+)
 
-test('permission attention survives a source clearing its own attention and cannot close another session request', () => {
-  let state = reduce({ state: emptyHydra(), event: created })
-  const pending = permissionEvent({ state, card: state.cards.task!, request, meta })
-  state = reduce({ state, event: pending })
-  const decision = decidePush({
-    state, newCardId: `c${state.seq + 1}`, key: 'task', input: { activity: 'working', attention: [] }, meta,
-  })
-  assert.ok('event' in decision)
-  state = reduce({ state, event: decision.event })
-  assert.equal(state.cards.task!.attention[0]!.key, 'pnyx:permission:request')
-  state = reduce({ state, event: permissionEvent({ state, card: state.cards.task!, request: { ...request, session: 'other', status: 'allow' }, meta }) })
-  assert.equal(state.cards.task!.permissions![0]!.status, 'pending')
-  assert.equal(state.cards.task!.attention[0]!.blocking, true)
-})
+test(
+  'permission attention survives a source clearing its own attention and cannot close another session request',
+  () => {
+    let state = reduce({
+      state: emptyHydra(),
+      event: created,
+    })
+    const pending = permissionEvent({
+      state,
+      card: state.cards.task!,
+      request,
+      meta,
+    })
+    state = reduce({
+      state,
+      event: pending,
+    })
+    const decision = decidePush({
+      state,
+      newCardId: `c${state.seq + 1}`,
+      key: 'task',
+      input: {
+        activity: 'working',
+        attention: [],
+      },
+      meta,
+    })
+    assert.ok('event' in decision)
+    state = reduce({
+      state,
+      event: decision.event,
+    })
+    assert.equal(
+      state.cards.task!.attention[0]!.key,
+      'pnyx:permission:request',
+    )
+    state = reduce({
+      state,
+      event: permissionEvent({
+        state,
+        card: state.cards.task!,
+        request: {
+          ...request,
+          session: 'other',
+          status: 'allow',
+        },
+        meta,
+      }),
+    })
+    assert.equal(
+      state.cards.task!.permissions![0]!.status,
+      'pending',
+    )
+    assert.equal(
+      state.cards.task!.attention[0]!.blocking,
+      true,
+    )
+  },
+)
 
-test('a permission request reads as its command, files, folder and reason', () => {
-  const base = { id: 'r', session: 's', status: 'pending' as const }
-  assert.deepEqual(permissionDetails({ request: { ...base, tool: 'Command', input: { command: 'touch a.txt', cwd: '/work', reason: 'Make a file', commandActions: [] } } }), [
-    { label: 'Command', text: 'touch a.txt' },
-    { label: 'Folder', text: '/work' },
-    { label: 'Reason', text: 'Make a file' },
-  ])
-  assert.equal(permissionDetails({ request: { ...base, tool: 'Command', input: { command: "/bin/zsh -lc 'ls -a'", commandActions: [{ type: 'unknown', command: 'ls -a' }] } } })[0]!.text, 'ls -a')
-  assert.deepEqual(permissionDetails({ request: { ...base, tool: 'File change', description: 'Write files', input: { changes: [{ path: 'a.txt' }, { path: 'b.txt' }] } } }), [
-    { label: 'Files', text: 'a.txt, b.txt' },
-    { label: 'Reason', text: 'Write files' },
-  ])
-  assert.deepEqual(permissionDetails({ request: { ...base, tool: 'Turn permissions', input: { permissions: {} } } }), [])
-})
+test(
+  'a permission request reads as its command, files, folder and reason',
+  () => {
+    const base = {
+      id: 'r',
+      session: 's',
+      status: 'pending' as const,
+    }
+    assert.deepEqual(
+      permissionDetails({
+        request: {
+          ...base,
+          tool: 'Command',
+          input: {
+            command: 'touch a.txt',
+            cwd: '/work',
+            reason: 'Make a file',
+            commandActions: [],
+          },
+        },
+      }),
+      [
+        {
+          label: 'Command',
+          text: 'touch a.txt',
+        },
+        {
+          label: 'Folder',
+          text: '/work',
+        },
+        {
+          label: 'Reason',
+          text: 'Make a file',
+        },
+      ],
+    )
+    assert.equal(
+      permissionDetails({
+        request: {
+          ...base,
+          tool: 'Command',
+          input: {
+            command: "/bin/zsh -lc 'ls -a'",
+            commandActions: [
+              {
+                type: 'unknown',
+                command: 'ls -a',
+              },
+            ],
+          },
+        },
+      })[0]!.text,
+      'ls -a',
+    )
+    assert.deepEqual(
+      permissionDetails({
+        request: {
+          ...base,
+          tool: 'File change',
+          description: 'Write files',
+          input: {
+            changes: [
+              { path: 'a.txt' },
+              { path: 'b.txt' },
+            ],
+          },
+        },
+      }),
+      [
+        {
+          label: 'Files',
+          text: 'a.txt, b.txt',
+        },
+        {
+          label: 'Reason',
+          text: 'Write files',
+        },
+      ],
+    )
+    assert.deepEqual(
+      permissionDetails({
+        request: {
+          ...base,
+          tool: 'Turn permissions',
+          input: { permissions: {} },
+        },
+      }),
+      [],
+    )
+  },
+)

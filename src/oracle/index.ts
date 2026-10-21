@@ -13,7 +13,11 @@ import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from '.
 
 // Bump when the tables change; the index rebuilds on mismatch.
 export const SCHEMA_VERSION = 8
-export const KINDS = ['event', 'note', 'transcript'] as const
+export const KINDS = [
+  'event',
+  'note',
+  'transcript',
+] as const
 export type Kind = (typeof KINDS)[number]
 
 const EVENTS = 'events'
@@ -77,15 +81,32 @@ export function sqlite(): typeof import('node:sqlite') {
   }
 }
 
-export const searchPath = ({ hydraId }: { hydraId: string }) => join(hydraDir({ hydraId }), 'search.db')
+export const searchPath = ({ hydraId }: { hydraId: string }) => join(
+  hydraDir({ hydraId }),
+  'search.db',
+)
 
 function removeIndex({ path }: { path: string }): void {
-  for (const suffix of ['', '-journal', '-wal', '-shm']) {
-    rmSync(`${path}${suffix}`, { force: true })
+  for (const suffix of [
+    '',
+    '-journal',
+    '-wal',
+    '-shm',
+  ]) {
+    rmSync(
+      `${path}${suffix}`,
+      { force: true },
+    )
   }
 }
 
-function metaValue({ db, key }: { db: DatabaseSync; key: string }): string | undefined {
+function metaValue({
+  db,
+  key,
+}: {
+  db: DatabaseSync
+  key: string
+}): string | undefined {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined
 
   return row?.value
@@ -93,7 +114,13 @@ function metaValue({ db, key }: { db: DatabaseSync; key: string }): string | und
 
 function isCurrent({ db }: { db: DatabaseSync }): boolean {
   try {
-    return metaValue({ db, key: 'index_schema_version' }) === String(SCHEMA_VERSION) && metaValue({ db, key: 'chunker_version' }) === String(CHUNKER_VERSION)
+    return metaValue({
+      db,
+      key: 'index_schema_version',
+    }) === String(SCHEMA_VERSION) && metaValue({
+      db,
+      key: 'chunker_version',
+    }) === String(CHUNKER_VERSION)
   } catch {
     return false
   }
@@ -104,7 +131,13 @@ function isCurrent({ db }: { db: DatabaseSync }): boolean {
 // card's transcript, so what a transcript holds as a note is a note before it is indexed.
 // ponytail: a rebuild deletes the file under any concurrent reader; it reopens on its next query.
 function openWriter(
-  { hydraId, fresh = false }: { hydraId: string; fresh?: boolean },
+  {
+    hydraId,
+    fresh = false,
+  }: {
+    hydraId: string
+    fresh?: boolean
+  },
 ): DatabaseSync {
   const { DatabaseSync } = sqlite()
   const path = searchPath({ hydraId })
@@ -137,7 +170,10 @@ function openWriter(
   })
   const db = new DatabaseSync(path)
   // Transcript text is as private as the transcripts.
-  chmodSync(path, 0o600)
+  chmodSync(
+    path,
+    0o600,
+  )
   db.exec('PRAGMA busy_timeout = 5000')
   // IF NOT EXISTS lets two first runs race to create the same file.
   db.exec(`BEGIN IMMEDIATE; ${SCHEMA}
@@ -156,7 +192,13 @@ interface Cursor {
   session: string
 }
 
-function transaction<T>({ db, fn }: { db: DatabaseSync; fn: () => T }): T {
+function transaction<T>({
+  db,
+  fn,
+}: {
+  db: DatabaseSync
+  fn: () => T
+}): T {
   db.exec('BEGIN IMMEDIATE')
 
   try {
@@ -178,7 +220,13 @@ export interface IndexResult {
 
 // Folds what the log and the recorded transcripts gained since the cursors into
 // the index, in one transaction. SQLite's write lock keeps two indexers apart.
-function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexResult {
+function catchUp({
+  db,
+  hydraId,
+}: {
+  db: DatabaseSync
+  hydraId: string
+}): IndexResult {
   const insert = db.prepare(
     'INSERT OR IGNORE INTO docs (card, kind, source, pos, part, at, body, content_hash, session, line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   )
@@ -205,7 +253,17 @@ function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexR
   let docs = 0
 
   const add = (
-    { card, kind, source, pos, at, text, firstPart = 0, session = '', line = -1 }: {
+    {
+      card,
+      kind,
+      source,
+      pos,
+      at,
+      text,
+      firstPart = 0,
+      session = '',
+      line = -1,
+    }: {
       card: string
       kind: Kind
       source: string
@@ -220,12 +278,23 @@ function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexR
     card = card === HYDRA_CARD ? '$board' : card
     let part = firstPart
 
-    if (session && source !== EVENTS && archived.get(session, line, EVENTS)) {
+    if (session && source !== EVENTS && archived.get(
+      session,
+      line,
+      EVENTS,
+    )) {
       return part
     }
 
     if (session && source === EVENTS) {
-      const copies = nativeCopies.all(session, line, EVENTS) as { id: number; card: string }[]
+      const copies = nativeCopies.all(
+        session,
+        line,
+        EVENTS,
+      ) as {
+        id: number
+        card: string
+      }[]
 
       for (const copy of copies) {
         dropDoc.run(copy.id)
@@ -236,7 +305,18 @@ function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexR
     for (const body of chunk({ text: redact({ text }) })) {
       const hash = createHash('sha256').update(body)
         .digest('hex')
-      const row = [card, kind, source, pos, part, at, body, hash, session, line] as const
+      const row = [
+        card,
+        kind,
+        source,
+        pos,
+        part,
+        at,
+        body,
+        hash,
+        session,
+        line,
+      ] as const
       const changes = Number(insert.run(...row).changes)
 
       if (changes) {
@@ -261,34 +341,82 @@ function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexR
   return transaction({
     db,
     fn: () => {
-      let cursor = (getCursor.get(EVENTS) as Cursor | undefined) ?? { source: EVENTS, card: '', identity: '', pos: 0, seq: 0, session: '' }
-      let read = readEventsFrom({ hydraId, offset: cursor.pos })
+      let cursor = (getCursor.get(EVENTS) as Cursor | undefined) ?? {
+        source: EVENTS,
+        card: '',
+        identity: '',
+        pos: 0,
+        seq: 0,
+        session: '',
+      }
+      let read = readEventsFrom({
+        hydraId,
+        offset: cursor.pos,
+      })
 
       // The log never shrinks or reorders, so a mismatch means the index is from another log: start over.
       if (!read || (read.events.length > 0 && read.events[0]!.seq !== cursor.seq + 1)) {
         db.exec('DELETE FROM docs; DELETE FROM cursors; DELETE FROM cards; DELETE FROM card_fts; DELETE FROM terms; DELETE FROM terms_tri;')
-        cursor = { ...cursor, pos: 0, seq: 0 }
-        read = readEventsFrom({ hydraId, offset: 0 })!
+        cursor = {
+          ...cursor,
+          pos: 0,
+          seq: 0,
+        }
+        read = readEventsFrom({
+          hydraId,
+          offset: 0,
+        })!
       }
 
       for (const event of read.events) {
         if (event.type === 'chat.message') {
-          add({ card: event.cardId, kind: 'transcript', source: EVENTS, pos: event.seq, at: event.at, text: event.data.text, session: event.data.session, line: Number.parseInt(event.data.nativeId) })
+          add({
+            card: event.cardId,
+            kind: 'transcript',
+            source: EVENTS,
+            pos: event.seq,
+            at: event.at,
+            text: event.data.text,
+            session: event.data.session,
+            line: Number.parseInt(event.data.nativeId),
+          })
         } else if (event.type === 'card.noted') {
-          add({ card: event.cardId, kind: 'note', source: EVENTS, pos: event.seq, at: event.data.at ?? event.at, text: eventText({ event }) })
+          add({
+            card: event.cardId,
+            kind: 'note',
+            source: EVENTS,
+            pos: event.seq,
+            at: event.data.at ?? event.at,
+            text: eventText({ event }),
+          })
         } else {
-          add({ card: event.cardId, kind: 'event', source: EVENTS, pos: event.seq, at: event.at, text: eventText({ event }) })
+          add({
+            card: event.cardId,
+            kind: 'event',
+            source: EVENTS,
+            pos: event.seq,
+            at: event.at,
+            text: eventText({ event }),
+          })
         }
 
         const agent = event.type === 'card.pushed' ? event.data.agent : undefined
         const path = agent?.transcriptPath
 
         if (agent && path && isAbsolute(path) && path.endsWith('.jsonl')) {
-          track.run(path, event.cardId, sessionId({ agent }))
+          track.run(
+            path,
+            event.cardId,
+            sessionId({ agent }),
+          )
         }
       }
 
-      putCursor.run({ ...cursor, pos: read.end, seq: read.events.at(-1)?.seq ?? cursor.seq })
+      putCursor.run({
+        ...cursor,
+        pos: read.end,
+        seq: read.events.at(-1)?.seq ?? cursor.seq,
+      })
 
       const state = loadHydra({ hydraId }).state
       const hydra = state.cards[HYDRA_CARD]
@@ -300,7 +428,10 @@ function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexR
         const target = t.card === HYDRA_CARD || (hydraSession && t.session === hydraSession) ? '$board' : t.card
 
         if (target !== t.card) {
-          db.prepare('UPDATE docs SET card = ? WHERE source = ?').run(target, t.source)
+          db.prepare('UPDATE docs SET card = ? WHERE source = ?').run(
+            target,
+            t.source,
+          )
           dirty.add(t.card); dirty.add(target)
         }
 
@@ -318,11 +449,26 @@ function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexR
           let part = 0
 
           for (const m of transcriptMessages({ record: line.record })) {
-            part = add({ card: target, kind: 'transcript', source: t.source, pos: line.pos, at: m.at ?? '', text: m.text, firstPart: part, session: t.session, line: line.pos })
+            part = add({
+              card: target,
+              kind: 'transcript',
+              source: t.source,
+              pos: line.pos,
+              at: m.at ?? '',
+              text: m.text,
+              firstPart: part,
+              session: t.session,
+              line: line.pos,
+            })
           }
         }
 
-        putCursor.run({ ...t, identity: tail.identity, pos: tail.end, seq: 0 })
+        putCursor.run({
+          ...t,
+          identity: tail.identity,
+          pos: tail.end,
+          seq: 0,
+        })
         transcripts += tail.lines.length > 0 ? 1 : 0
       }
 
@@ -334,12 +480,28 @@ function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexR
 
       const targets = [
         ...Object.values(state.cards).filter(card => card.id !== HYDRA_CARD)
-          .map(card => ({ ...card, live: liveTask({ card }) ? 1 : 0 })),
-        { id: '$board', title: 'Hydra', workspace: '', links: [], live: 1, project: undefined },
+          .map(card => ({
+            ...card,
+            live: liveTask({ card }) ? 1 : 0,
+          })),
+        {
+          id: '$board',
+          title: 'Hydra',
+          workspace: '',
+          links: [],
+          live: 1,
+          project: undefined,
+        },
       ]
 
       for (const card of targets) {
-        const context = card.id === '$board' ? '' : redact({ text: [card.title, card.project, ...card.links.map(l => l.title)].filter(Boolean).join('\n') })
+        const context = card.id === '$board' ? '' : redact({
+          text: [
+            card.title,
+            card.project,
+            ...card.links.map(l => l.title),
+          ].filter(Boolean).join('\n'),
+        })
 
         if ((getContext.get(card.id) as { context: string } | undefined)?.context !== context) {
           dirty.add(card.id)
@@ -347,7 +509,11 @@ function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexR
         }
 
         putCard.run({
-          id: card.id, title: card.title, workspace: card.workspace, context, live: card.live,
+          id: card.id,
+          title: card.title,
+          workspace: card.workspace,
+          context,
+          live: card.live,
         })
       }
 
@@ -359,7 +525,10 @@ function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexR
       const putCardText = db.prepare('INSERT INTO card_fts (rowid, context, notes, body) VALUES (?, ?, ?, ?)')
 
       for (const id of dirty) {
-        const card = getCard.get(id) as { n: number; context: string } | undefined
+        const card = getCard.get(id) as {
+          n: number
+          context: string
+        } | undefined
 
         if (!card) {
           continue
@@ -369,13 +538,25 @@ function catchUp({ db, hydraId }: { db: DatabaseSync; hydraId: string }): IndexR
         const text = ({ notes }: {
           notes: boolean
         }) =>
-          (cardBody.get(id, notes ? 1 : 0) as {
+          (cardBody.get(
+            id,
+            notes ? 1 : 0,
+          ) as {
             body: string
           }).body
-        putCardText.run(BigInt(card.n), card.context, text({ notes: true }), text({ notes: false }))
+        putCardText.run(
+          BigInt(card.n),
+          card.context,
+          text({ notes: true }),
+          text({ notes: false }),
+        )
       }
 
-      return { events: read.events.length, transcripts, docs }
+      return {
+        events: read.events.length,
+        transcripts,
+        docs,
+      }
     },
   })
 }
@@ -384,7 +565,10 @@ export interface TranscriptRead {
   identity: string
   // The cursor no longer fits the file: drop what was indexed from it and read it again.
   reset: boolean
-  lines: { pos: number; record: unknown }[]
+  lines: {
+    pos: number
+    record: unknown
+  }[]
   end: number
 }
 
@@ -396,7 +580,10 @@ export function readTranscript({ cursor }: { cursor: Pick<Cursor, 'source' | 'id
   let fd: number
 
   try {
-    fd = openSync(cursor.source, 'r')
+    fd = openSync(
+      cursor.source,
+      'r',
+    )
   } catch {
     return null
   }
@@ -407,15 +594,31 @@ export function readTranscript({ cursor }: { cursor: Pick<Cursor, 'source' | 'id
     const reset = (cursor.identity !== '' && cursor.identity !== identity) || stat.size < cursor.pos
     const from = reset ? 0 : cursor.pos
     const buf = Buffer.alloc(stat.size - from)
-    readSync(fd, buf, 0, buf.length, from)
+    readSync(
+      fd,
+      buf,
+      0,
+      buf.length,
+      from,
+    )
     const complete = buf.lastIndexOf(10) + 1
     const lines: TranscriptRead['lines'] = []
 
     for (let start = 0; start < complete; ) {
-      const end = buf.indexOf(10, start)
+      const end = buf.indexOf(
+        10,
+        start,
+      )
 
       try {
-        lines.push({ pos: from + start, record: JSON.parse(buf.toString('utf8', start, end)) })
+        lines.push({
+          pos: from + start,
+          record: JSON.parse(buf.toString(
+            'utf8',
+            start,
+            end,
+          )),
+        })
       } catch {
         // Not JSON: nothing to index on this line.
       }
@@ -423,7 +626,12 @@ export function readTranscript({ cursor }: { cursor: Pick<Cursor, 'source' | 'id
       start = end + 1
     }
 
-    return { identity, reset, lines, end: from + complete }
+    return {
+      identity,
+      reset,
+      lines,
+      end: from + complete,
+    }
   } finally {
     closeSync(fd)
   }
@@ -433,17 +641,26 @@ export function updateIndex({ hydraId }: { hydraId: string }): IndexResult {
   const db = openWriter({ hydraId })
 
   try {
-    return catchUp({ db, hydraId })
+    return catchUp({
+      db,
+      hydraId,
+    })
   } finally {
     db.close()
   }
 }
 
 export function rebuildIndex({ hydraId }: { hydraId: string }): IndexResult {
-  const db = openWriter({ hydraId, fresh: true })
+  const db = openWriter({
+    hydraId,
+    fresh: true,
+  })
 
   try {
-    return catchUp({ db, hydraId })
+    return catchUp({
+      db,
+      hydraId,
+    })
   } finally {
     db.close()
   }
@@ -483,7 +700,10 @@ export interface Hit {
 }
 
 const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
-  .replace(/\p{M}/gu, '')
+  .replace(
+    /\p{M}/gu,
+    '',
+  )
 
 // The distinct words of a text, folded, as typo matching looks them up. Words under
 // three letters have no trigram; longer than 32 are mostly hashes and ids.
@@ -491,9 +711,15 @@ function words({ text }: { text: string }): Set<string> {
   return new Set((fold({ text }).match(/[\p{L}\p{N}]+/gu) ?? []).filter(w => w.length >= 3 && w.length <= 32))
 }
 
-const quote = ({ phrase }: { phrase: string }) => `"${phrase.replace(/"/g, '""')}"`
+const quote = ({ phrase }: { phrase: string }) => `"${phrase.replace(
+  /"/g,
+  '""',
+)}"`
 
-const bare = ({ token }: { token: string }) => token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+const bare = ({ token }: { token: string }) => token.replace(
+  /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,
+  '',
+)
 
 // One query word, or a synonym phrase, and what it may match: its synonym group,
 // or the word itself. A trailing * matches the word as a prefix, and the indexed
@@ -512,7 +738,16 @@ function queryTerms({ text }: { text: string }): Term[] {
     const token = tokens[i]!
 
     if (token.endsWith('*')) {
-      terms.push({ alts: [token.slice(0, -1)], prefix: true, typo: false })
+      terms.push({
+        alts: [
+          token.slice(
+            0,
+            -1,
+          ),
+        ],
+        prefix: true,
+        typo: false,
+      })
       continue
     }
 
@@ -525,8 +760,16 @@ function queryTerms({ text }: { text: string }): Term[] {
     const group = pair ?? synonymGroup.get(bare({ token }).toLowerCase())
     terms.push(
       group
-        ? { alts: group, prefix: false, typo: false }
-        : { alts: [token], prefix: false, typo: true },
+        ? {
+          alts: group,
+          prefix: false,
+          typo: false,
+        }
+        : {
+          alts: [token],
+          prefix: false,
+          typo: true,
+        },
     )
   }
 
@@ -536,7 +779,10 @@ function queryTerms({ text }: { text: string }): Term[] {
 // A term as an FTS5 expression, each phrase quoted so punctuation is never read as
 // query syntax. A prefix term's first alternative is the prefix.
 function termExpr({ term }: { term: Term }): string {
-  const alts = term.alts.map((alt, i) => `${quote({ phrase: alt })}${term.prefix && i === 0 ? '*' : ''}`)
+  const alts = term.alts.map((
+    alt,
+    i,
+  ) => `${quote({ phrase: alt })}${term.prefix && i === 0 ? '*' : ''}`)
 
   return alts.length === 1 ? alts[0]! : `(${alts.join(' OR ')})`
 }
@@ -549,10 +795,30 @@ export const ftsQuery = ({ text }: {
   .join(' AND ')
 
 const trigrams = ({ word }: { word: string }) =>
-  Array.from({ length: Math.max(word.length - 2, 0) }, (_, i) => word.slice(i, i + 3))
+  Array.from(
+    {
+      length: Math.max(
+        word.length - 2,
+        0,
+      ),
+    },
+    (
+      _,
+      i,
+    ) => word.slice(
+      i,
+      i + 3,
+    ),
+  )
 
 // Trigram similarity of two words, padded so their first and last letters weigh in.
-function similarity({ a, b }: { a: string; b: string }): number {
+function similarity({
+  a,
+  b,
+}: {
+  a: string
+  b: string
+}): number {
   const x = new Set(trigrams({ word: ` ${a} ` }))
   const y = new Set(trigrams({ word: ` ${b} ` }))
   const shared = [...x].filter(t => y.has(t)).length
@@ -563,7 +829,13 @@ function similarity({ a, b }: { a: string; b: string }): number {
 const SIMILAR = 0.4
 const NEAREST = 5
 
-function nearest({ db, word }: { db: DatabaseSync; word: string }): string[] {
+function nearest({
+  db,
+  word,
+}: {
+  db: DatabaseSync
+  word: string
+}): string[] {
   const w = fold({ text: bare({ token: word }) })
 
   if (!/^[\p{L}\p{N}]{3,}$/u.test(w)) {
@@ -578,11 +850,20 @@ function nearest({ db, word }: { db: DatabaseSync; word: string }): string[] {
   return candidates
     .map(({ term }) => ({
       term,
-      score: term.includes(w) && w.length >= 4 ? 1 : similarity({ a: w, b: term }),
+      score: term.includes(w) && w.length >= 4 ? 1 : similarity({
+        a: w,
+        b: term,
+      }),
     }))
     .filter(c => c.term !== w && c.score >= SIMILAR)
-    .sort((a, b) => b.score - a.score || a.term.localeCompare(b.term))
-    .slice(0, NEAREST)
+    .sort((
+      a,
+      b,
+    ) => b.score - a.score || a.term.localeCompare(b.term))
+    .slice(
+      0,
+      NEAREST,
+    )
     .map(c => c.term)
 }
 
@@ -591,14 +872,24 @@ const PREFIXED = 50
 // The indexed words starting with a prefix. FTS5 stems a prefix query ("retry"* looks
 // for retri*), so a prefix also matches these words, each stemmed as the index stems it.
 // ponytail: the first PREFIXED words in order; a short prefix may miss later ones.
-function prefixed({ db, prefix }: { db: DatabaseSync; prefix: string }): string[] {
+function prefixed({
+  db,
+  prefix,
+}: {
+  db: DatabaseSync
+  prefix: string
+}): string[] {
   const p = fold({ text: bare({ token: prefix }) })
 
   if (!p) {
     return []
   }
 
-  const rows = db.prepare('SELECT term FROM terms WHERE term >= ? AND term < ? ORDER BY term LIMIT ?').all(p, `${p}\u{10FFFF}`, PREFIXED) as { term: string }[]
+  const rows = db.prepare('SELECT term FROM terms WHERE term >= ? AND term < ? ORDER BY term LIMIT ?').all(
+    p,
+    `${p}\u{10FFFF}`,
+    PREFIXED,
+  ) as { term: string }[]
 
   return rows.map(r => r.term).filter(term => term !== p)
 }
@@ -609,7 +900,10 @@ function prefixed({ db, prefix }: { db: DatabaseSync; prefix: string }): string[
 // chunks matching the most words. With --card or --kind every word must match in one chunk of that card or kind.
 // Words match stemmed, case and accent folded, and with their synonyms; when that
 // finds nothing, words also match the indexed words nearest them.
-export function search({ hydraId, query }: {
+export function search({
+  hydraId,
+  query,
+}: {
   hydraId: string
   query: Query
 }): {
@@ -620,61 +914,132 @@ export function search({ hydraId, query }: {
   const typed = queryTerms({ text: query.text })
 
   if (!typed.length) {
-    throw new HydraError({ message: 'query has no words to search for', code: 'VALIDATION_ERROR', help: ['Run `pnyx-axi oracle "<words>"`'] })
+    throw new HydraError({
+      message: 'query has no words to search for',
+      code: 'VALIDATION_ERROR',
+      help: ['Run `pnyx-axi oracle "<words>"`'],
+    })
   }
 
   const { DatabaseSync } = sqlite()
-  const db = new DatabaseSync(searchPath({ hydraId }), { readOnly: true })
+  const db = new DatabaseSync(
+    searchPath({ hydraId }),
+    { readOnly: true },
+  )
 
   try {
     db.exec('PRAGMA busy_timeout = 5000')
     const terms = typed.map(t => (
-      t.prefix ? { ...t, alts: [...t.alts, ...prefixed({ db, prefix: t.alts[0]! })] } : t
+      t.prefix ? {
+        ...t,
+        alts: [
+          ...t.alts,
+          ...prefixed({
+            db,
+            prefix: t.alts[0]!,
+          }),
+        ],
+      } : t
     ))
-    const lexical = run({ db, query, terms, mode: 'lexical' })
+    const lexical = run({
+      db,
+      query,
+      terms,
+      mode: 'lexical',
+    })
 
     if (lexical.hits.length) {
       return lexical
     }
 
     const fuzzy = terms.map(t => (
-      t.typo ? { ...t, alts: [...t.alts, ...nearest({ db, word: t.alts[0]! })] } : t
+      t.typo ? {
+        ...t,
+        alts: [
+          ...t.alts,
+          ...nearest({
+            db,
+            word: t.alts[0]!,
+          }),
+        ],
+      } : t
     ))
 
-    return fuzzy.some((t, i) => t.alts.length !== terms[i]!.alts.length) ? run({ db, query, terms: fuzzy, mode: 'fuzzy' }) : lexical
+    return fuzzy.some((
+      t,
+      i,
+    ) => t.alts.length !== terms[i]!.alts.length) ? run({
+        db,
+        query,
+        terms: fuzzy,
+        mode: 'fuzzy',
+      }) : lexical
   } finally {
     db.close()
   }
 }
 
 function run(
-  { db, query, terms, mode }: { db: DatabaseSync; query: Query; terms: Term[]; mode: Match },
-): { hits: Hit[]; total: number; match: Match } {
+  {
+    db,
+    query,
+    terms,
+    mode,
+  }: {
+    db: DatabaseSync
+    query: Query
+    terms: Term[]
+    mode: Match
+  },
+): {
+  hits: Hit[]
+  total: number
+  match: Match
+} {
   const exprs = terms.map(term => termExpr({ term }))
   const match = exprs.join(' AND ')
-  const filters = { match, workspace: query.workspace ?? null, live: query.live ? 1 : 0 }
+  const filters = {
+    match,
+    workspace: query.workspace ?? null,
+    live: query.live ? 1 : 0,
+  }
   const chunks = `SELECT d.id, d.card, ${RANK} AS rank FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid JOIN cards c ON c.id = d.card
     WHERE docs_fts MATCH :match AND (:kind IS NULL OR d.kind = :kind) AND (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1)`
-  type Row = { card: string; title: string; total: number }
+  type Row = {
+    card: string
+    title: string
+    total: number
+  }
   const cards = (
     query.card
       ? db
         .prepare(`WITH h AS MATERIALIZED (${chunks} AND d.card = :card) SELECT h.card, c.title, count(*) AS total FROM h JOIN cards c ON c.id = h.card GROUP BY h.card`)
-        .all({ ...filters, kind: query.kind ?? null, card: query.card })
+        .all({
+          ...filters,
+          kind: query.kind ?? null,
+          card: query.card,
+        })
       : query.kind
         ? db
           .prepare(
             `WITH h AS MATERIALIZED (${chunks}) SELECT h.card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.id = h.card
                GROUP BY h.card ORDER BY min(h.rank), min(h.id) LIMIT :limit`,
           )
-          .all({ ...filters, kind: query.kind, limit: query.limit })
+          .all({
+            ...filters,
+            kind: query.kind,
+            limit: query.limit,
+          })
         : db
           .prepare(
             `WITH h AS MATERIALIZED (SELECT rowid AS n, bm25(card_fts, 0.5, ${NOTE_WEIGHT}, 1.0) AS rank FROM card_fts WHERE card_fts MATCH :match)
                SELECT c.id AS card, c.title, count(*) OVER () AS total FROM h JOIN cards c ON c.n = h.n
                WHERE (:workspace IS NULL OR c.workspace = :workspace) AND (:live = 0 OR c.live = 1) ORDER BY h.rank, c.n LIMIT :limit`,
           )
-          .all({ ...filters, limit: query.limit })
+          .all({
+            ...filters,
+            limit: query.limit,
+          })
   ) as Row[]
   const top = db.prepare(
     `SELECT d.id, d.kind, d.at, snippet(docs_fts, 0, :startMark, :endMark, '…', 16) AS s FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid
@@ -694,17 +1059,37 @@ function run(
         card: r.card,
         kind: query.kind ?? null,
         n: query.card ? query.limit : SNIPPETS,
-      }) as { id: number; kind: Kind; at: string; s: string }[]
-    ).map(t => ({ kind: t.kind, at: t.at || 'unknown', snippet: query.highlight === false ? t.s : t.s.replace(/\s+/g, ' '), ...(query.withIds ? { id: t.id } : {}) })),
+      }) as {
+        id: number
+        kind: Kind
+        at: string
+        s: string
+      }[]
+    ).map(t => ({
+      kind: t.kind,
+      at: t.at || 'unknown',
+      snippet: query.highlight === false ? t.s : t.s.replace(
+        /\s+/g,
+        ' ',
+      ),
+      ...(query.withIds ? { id: t.id } : {}),
+    })),
   }))
 
-  return { hits, total: cards[0]?.total ?? 0, match: mode }
+  return {
+    hits,
+    total: cards[0]?.total ?? 0,
+    match: mode,
+  }
 }
 
 export interface IndexStatus {
   builtThrough: number
   docs: Record<Kind, number>
-  transcripts: { tracked: number; missing: number }
+  transcripts: {
+    tracked: number
+    missing: number
+  }
   bytes: number
   current: boolean
 }
@@ -718,7 +1103,10 @@ export function indexStatus({ hydraId }: { hydraId: string }): IndexStatus | nul
   }
 
   const { DatabaseSync } = sqlite()
-  const db = new DatabaseSync(path, { readOnly: true })
+  const db = new DatabaseSync(
+    path,
+    { readOnly: true },
+  )
 
   try {
     db.exec('PRAGMA busy_timeout = 5000')
@@ -727,8 +1115,15 @@ export function indexStatus({ hydraId }: { hydraId: string }): IndexStatus | nul
     if (!isCurrent({ db })) {
       return {
         builtThrough: 0,
-        docs: { event: 0, note: 0, transcript: 0 },
-        transcripts: { tracked: 0, missing: 0 },
+        docs: {
+          event: 0,
+          note: 0,
+          transcript: 0,
+        },
+        transcripts: {
+          tracked: 0,
+          missing: 0,
+        },
         bytes,
         current: false,
       }
@@ -740,7 +1135,11 @@ export function indexStatus({ hydraId }: { hydraId: string }): IndexStatus | nul
 
     return {
       builtThrough: cursors.find(c => c.source === EVENTS)?.seq ?? 0,
-      docs: { event: count({ kind: 'event' }), note: count({ kind: 'note' }), transcript: count({ kind: 'transcript' }) },
+      docs: {
+        event: count({ kind: 'event' }),
+        note: count({ kind: 'note' }),
+        transcript: count({ kind: 'transcript' }),
+      },
       transcripts: {
         tracked: transcripts.length,
         missing: transcripts.filter(c => !existsSync(c.source)).length,

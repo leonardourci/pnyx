@@ -3,7 +3,10 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 export function pnyxHome(): string {
-  return process.env.PNYX_HOME || join(homedir(), '.pnyx')
+  return process.env.PNYX_HOME || join(
+    homedir(),
+    '.pnyx',
+  )
 }
 
 export function canonical({ path }: { path: unknown }): string | undefined {

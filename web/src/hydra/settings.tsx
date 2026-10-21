@@ -15,7 +15,10 @@ import { AgentKinds } from './agent-kinds.tsx'
 import { IntegrationSettings } from './integrations.tsx'
 import { About } from './about.tsx'
 
-export function Settings({ connected, ...props }: ComponentProps<typeof ConnectedSettings>) {
+export function Settings({
+  connected,
+  ...props
+}: ComponentProps<typeof ConnectedSettings>) {
   return connected ? <ConnectedSettings connected={connected} {...props} /> : (
     <section className="settings" aria-label="Settings">
       <h1>Settings</h1>
@@ -24,7 +27,14 @@ export function Settings({ connected, ...props }: ComponentProps<typeof Connecte
   )
 }
 
-function ConnectedSettings({ state, connected, view, save, command, notify }: {
+function ConnectedSettings({
+  state,
+  connected,
+  view,
+  save,
+  command,
+  notify,
+}: {
   state: HydraState
   connected: boolean
   view: ViewPreferences
@@ -33,7 +43,11 @@ function ConnectedSettings({ state, connected, view, save, command, notify }: {
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const { effective, error, saveHydra } = useHeadsDispatch({ command })
+  const {
+    effective,
+    error,
+    saveHydra,
+  } = useHeadsDispatch({ command })
   const hydraAgent = effective?.dispatch.rules.hydra?.candidates[0]
   const config = hydraConfig({ state })
 
@@ -49,10 +63,39 @@ function ConnectedSettings({ state, connected, view, save, command, notify }: {
           <Select
             label="Theme"
             value={view.theme}
-            options={[{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
+            options={[
+              {
+                value: 'system',
+                label: 'System',
+              },
+              {
+                value: 'light',
+                label: 'Light',
+              },
+              {
+                value: 'dark',
+                label: 'Dark',
+              },
+            ]}
             onChange={({ value: theme }) => save({ patch: { theme } })}
           />
-          {([['fontSize', 'UI font size'], ['chatFontSize', 'Chat font size'], ['codeFontSize', 'Code font size']] as const).map(([key, label]) => (
+          {([
+            [
+              'fontSize',
+              'UI font size',
+            ],
+            [
+              'chatFontSize',
+              'Chat font size',
+            ],
+            [
+              'codeFontSize',
+              'Code font size',
+            ],
+          ] as const).map(([
+            key,
+            label,
+          ]) => (
             <NumberField
               key={key}
               label={label}
@@ -85,7 +128,17 @@ function ConnectedSettings({ state, connected, view, save, command, notify }: {
                 defaultValue={column.description ?? ''}
                 onBlur={e => {
                   if (e.target.value !== (column.description ?? '')) {
-                    void command({ name: 'column', args: ['describe', column.id, '--description', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+                    void command({
+                      name: 'column',
+                      args: [
+                        'describe',
+                        column.id,
+                        '--description',
+                        e.target.value,
+                        '--event-id',
+                        crypto.randomUUID(),
+                      ],
+                    }).catch(e => notify({ text: e.message }))
                   }
                 }}
               />
@@ -106,7 +159,16 @@ function ConnectedSettings({ state, connected, view, save, command, notify }: {
             defaultValue={config.doneAfterHours ?? DEFAULT_DONE_HOURS}
             onBlur={e => {
               if (e.target.value !== String(config.doneAfterHours ?? DEFAULT_DONE_HOURS)) {
-                void command({ name: 'hydra', args: ['set', '--done-after-hours', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+                void command({
+                  name: 'hydra',
+                  args: [
+                    'set',
+                    '--done-after-hours',
+                    e.target.value,
+                    '--event-id',
+                    crypto.randomUUID(),
+                  ],
+                }).catch(e => notify({ text: e.message }))
               }
             }}
           />
@@ -118,7 +180,16 @@ function ConnectedSettings({ state, connected, view, save, command, notify }: {
             defaultValue={config.hydra.id}
             onBlur={e => {
               if (e.target.value !== config.hydra.id) {
-                void command({ name: 'hydra', args: ['set', '--identity', e.target.value, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+                void command({
+                  name: 'hydra',
+                  args: [
+                    'set',
+                    '--identity',
+                    e.target.value,
+                    '--event-id',
+                    crypto.randomUUID(),
+                  ],
+                }).catch(e => notify({ text: e.message }))
               }
             }}
           />

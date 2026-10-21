@@ -9,20 +9,48 @@ import { loadHydra } from '../store/hydra-store.ts'
 import { COMMON, guard, parse, type Output } from './commands.ts'
 
 const onPath = ({ name }: { name: string }) =>
-  (process.env.PATH ?? '').split(delimiter).some(dir => dir && existsSync(join(dir, name)))
+  (process.env.PATH ?? '').split(delimiter).some(dir => dir && existsSync(join(
+    dir,
+    name,
+  )))
 
-export async function integrations({ hydraId, url, connect }: {
+export async function integrations({
+  hydraId,
+  url,
+  connect,
+}: {
   hydraId: string
   url?: string
   connect?: Connect
 }): Promise<Output> {
-  const config = hydraConfig({ state: loadHydra({ hydraId }).state, id: hydraId })
+  const config = hydraConfig({
+    state: loadHydra({ hydraId }).state,
+    id: hydraId,
+  })
   const hooks = hookStatus()
-  const paseo = await paseoStatus({ url, connect }).then(() => 'running', (error: Error) => `not running: ${error.message}`)
+  const paseo = await paseoStatus({
+    url,
+    connect,
+  }).then(
+    () => 'running',
+    (error: Error) => `not running: ${error.message}`,
+  )
   const home = config.hydra.kind === 'firstmate' ? config.hydra.home : undefined
-  const skills = home ? HYDRA_SKILLS.map(name => ({ name, path: join(home, '.agents', 'skills', name, 'SKILL.md') })) : []
+  const skills = home ? HYDRA_SKILLS.map(name => ({
+    name,
+    path: join(
+      home,
+      '.agents',
+      'skills',
+      name,
+      'SKILL.md',
+    ),
+  })) : []
   const skillState = !home || skills.some(({ path }) => !existsSync(path)) ? 'missing'
-    : skills.every(({ name, path }) => readFileSync(path).equals(readFileSync(skillSource({ name })))) ? 'current' : 'outdated'
+    : skills.every(({
+      name,
+      path,
+    }) => readFileSync(path).equals(readFileSync(skillSource({ name })))) ? 'current' : 'outdated'
 
   return {
     hydraId,
@@ -75,8 +103,21 @@ command that sets it up. It only reads; nothing is installed or started.
 
 export const integrationsCommand = guard({
   handler: ({ args }) => {
-    const { values, hydraId } = parse({ args, options: { ...COMMON, 'paseo-url': { type: 'string' } }, positionals: 0 })
+    const {
+      values,
+      hydraId,
+    } = parse({
+      args,
+      options: {
+        ...COMMON,
+        'paseo-url': { type: 'string' },
+      },
+      positionals: 0,
+    })
 
-    return integrations({ hydraId, url: values['paseo-url'] as string | undefined })
+    return integrations({
+      hydraId,
+      url: values['paseo-url'] as string | undefined,
+    })
   },
 })

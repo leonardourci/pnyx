@@ -1,7 +1,11 @@
 import { Icon } from './icon.tsx'
 import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 
-export function Button({ className = '', variant = 'quiet', ...props }: ComponentProps<'button'> & { variant?: 'quiet' | 'primary' | 'surface' }) {
+export function Button({
+  className = '',
+  variant = 'quiet',
+  ...props
+}: ComponentProps<'button'> & { variant?: 'quiet' | 'primary' | 'surface' }) {
   return <button type="button" className={`button ${variant} ${className}`} {...props} />
 }
 
@@ -14,18 +18,24 @@ export function Textarea({ ...props }: ComponentProps<'textarea'>) {
 }
 
 export function useBusy(): [boolean, ({ save }: { save: () => unknown }) => void] {
-  const [busy, setBusy] = useState(false), running = useRef(false)
+  const [
+      busy,
+      setBusy,
+    ] = useState(false), running = useRef(false)
 
-  return [busy, ({ save }) => {
-    if (running.current) {
-      return
-    }
+  return [
+    busy,
+    ({ save }) => {
+      if (running.current) {
+        return
+      }
 
-    running.current = true; setBusy(true)
-    void Promise.resolve(save()).finally(() => {
-      running.current = false; setBusy(false)
-    })
-  }]
+      running.current = true; setBusy(true)
+      void Promise.resolve(save()).finally(() => {
+        running.current = false; setBusy(false)
+      })
+    },
+  ]
 }
 
 export function Switch({
@@ -37,7 +47,10 @@ export function Switch({
   checked: boolean
   onChange({ value }: { value: boolean }): unknown
 }) {
-  const [busy, run] = useBusy()
+  const [
+    busy,
+    run,
+  ] = useBusy()
 
   return (
     <Button
@@ -56,7 +69,10 @@ export function Switch({
   )
 }
 
-export interface Option { value: string; label: string }
+export interface Option {
+  value: string
+  label: string
+}
 
 export function Select({
   label,
@@ -75,29 +91,51 @@ export function Select({
   display?: ReactNode
   title?: string
 }) {
-  const [open, setOpen] = useState(false), [active, setActive] = useState(0)
+  const [
+      open,
+      setOpen,
+    ] = useState(false), [
+      active,
+      setActive,
+    ] = useState(0)
   const root = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), id = useId()
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-
-    const close = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) {
-        setOpen(false)
+  useEffect(
+    () => {
+      if (!open) {
+        return
       }
-    }
 
-    document.addEventListener('pointerdown', close)
+      const close = (e: PointerEvent) => {
+        if (!root.current?.contains(e.target as Node)) {
+          setOpen(false)
+        }
+      }
 
-    return () => document.removeEventListener('pointerdown', close)
-  }, [open])
+      document.addEventListener(
+        'pointerdown',
+        close,
+      )
 
-  useEffect(() => {
-    if (open) {
-      document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: 'nearest' })
-    }
-  }, [open, active, id])
+      return () => document.removeEventListener(
+        'pointerdown',
+        close,
+      )
+    },
+    [open],
+  )
+
+  useEffect(
+    () => {
+      if (open) {
+        document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: 'nearest' })
+      }
+    },
+    [
+      open,
+      active,
+      id,
+    ],
+  )
 
   const choose = ({ position: n }: { position: number }) => {
     if (options[n]) {
@@ -120,13 +158,27 @@ export function Select({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => {
-          setActive(Math.max(0, options.findIndex(o => o.value === value))); setOpen(!open)
+          setActive(Math.max(
+            0,
+            options.findIndex(o => o.value === value),
+          )); setOpen(!open)
         }}
         onKeyDown={e => {
           if (e.key === 'Escape' && open) {
             e.preventDefault(); e.stopPropagation(); setOpen(false)
-          } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
-            e.preventDefault(); setOpen(true); setActive(n => e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1 : Math.max(0, Math.min(options.length - 1, n + (e.key === 'ArrowDown' ? 1 : -1))))
+          } else if ([
+            'ArrowDown',
+            'ArrowUp',
+            'Home',
+            'End',
+          ].includes(e.key)) {
+            e.preventDefault(); setOpen(true); setActive(n => e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1 : Math.max(
+              0,
+              Math.min(
+                options.length - 1,
+                n + (e.key === 'ArrowDown' ? 1 : -1),
+              ),
+            ))
           } else if (open && e.key === 'Enter') {
             e.preventDefault(); choose({ position: active })
           } else if (e.key === 'Tab') {
@@ -145,7 +197,10 @@ export function Select({
           aria-label={label}
           className="select-menu"
         >
-          {options.map((o, n) => (
+          {options.map((
+            o,
+            n,
+          ) => (
             <div
               key={o.value}
               id={`${id}-${n}`}
@@ -181,16 +236,35 @@ export function NumberField({
   step?: number
   onChange({ value }: { value: number }): unknown
 }) {
-  const id = useId(), [busy, run] = useBusy()
+  const id = useId(), [
+    busy,
+    run,
+  ] = useBusy()
   const onChange = ({ next: n }: { next: number }) => run({ save: () => save({ value: n }) })
-  const [draft, setDraft] = useState(String(value))
-  useEffect(() => setDraft(String(value)), [value])
+  const [
+    draft,
+    setDraft,
+  ] = useState(String(value))
+  useEffect(
+    () => setDraft(String(value)),
+    [value],
+  )
 
   return (
     <div className="number-field" aria-busy={busy}>
       <label htmlFor={id}>{label}</label>
       <span className="number-control">
-        <Button aria-label={`Decrease ${label}`} disabled={value <= min} onClick={() => onChange({ next: Math.max(min, value - step) })}><Icon name="minus" size={14} /></Button>
+        <Button
+          aria-label={`Decrease ${label}`}
+          disabled={value <= min}
+          onClick={() => onChange({
+            next: Math.max(
+              min,
+              value - step,
+            ),
+          })}
+        ><Icon name="minus" size={14} />
+        </Button>
         <Input
           id={id}
           aria-label={label}
@@ -211,7 +285,17 @@ export function NumberField({
           }}
         />
         <span>px</span>
-        <Button aria-label={`Increase ${label}`} disabled={value >= max} onClick={() => onChange({ next: Math.min(max, value + step) })}><Icon name="plus" size={14} /></Button>
+        <Button
+          aria-label={`Increase ${label}`}
+          disabled={value >= max}
+          onClick={() => onChange({
+            next: Math.min(
+              max,
+              value + step,
+            ),
+          })}
+        ><Icon name="plus" size={14} />
+        </Button>
       </span>
     </div>
   )

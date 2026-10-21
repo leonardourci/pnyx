@@ -6,8 +6,18 @@ import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
 
 export function Hydras({
-  command, connected, notify, hydras, current, project, resolveProject, selectProject,
-  showHydra, addProject, navigate, loading,
+  command,
+  connected,
+  notify,
+  hydras,
+  current,
+  project,
+  resolveProject,
+  selectProject,
+  showHydra,
+  addProject,
+  navigate,
+  loading,
 }: {
   loading: boolean
   navigate({ url }: { url: string }): Promise<void>
@@ -22,40 +32,81 @@ export function Hydras({
   addProject(): void
   notify({ text }: { text: string }): void
 }) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [busy, setBusy] = useState(false)
-  const [renaming, setRenaming] = useState(false)
-  useEffect(() => {
-    const chosen = hydras.find(h => h.id === current)?.projects.find(p => p.path === project)
-    resolveProject({ references: chosen?.references ?? [project] })
-  }, [hydras, current, project, resolveProject])
+  const [
+    expanded,
+    setExpanded,
+  ] = useState<Record<string, boolean>>({})
+  const [
+    busy,
+    setBusy,
+  ] = useState(false)
+  const [
+    renaming,
+    setRenaming,
+  ] = useState(false)
+  useEffect(
+    () => {
+      const chosen = hydras.find(h => h.id === current)?.projects.find(p => p.path === project)
+      resolveProject({ references: chosen?.references ?? [project] })
+    },
+    [
+      hydras,
+      current,
+      project,
+      resolveProject,
+    ],
+  )
 
-  useEffect(() => {
-    const target = new URLSearchParams(location.search).get('open-hydra')
+  useEffect(
+    () => {
+      const target = new URLSearchParams(location.search).get('open-hydra')
 
-    if (!connected || !target) {
-      return
-    }
+      if (!connected || !target) {
+        return
+      }
 
-    const clean = new URL(location.href)
-    clean.searchParams.delete('open-hydra'); history.replaceState(null, '', clean)
-    void navigate({ url: `/hydra/${encodeURIComponent(target)}/` }).catch((e: Error) => notify({ text: e.message }))
-  }, [connected, navigate, notify])
+      const clean = new URL(location.href)
+      clean.searchParams.delete('open-hydra'); history.replaceState(
+        null,
+        '',
+        clean,
+      )
+      void navigate({ url: `/hydra/${encodeURIComponent(target)}/` }).catch((e: Error) => notify({ text: e.message }))
+    },
+    [
+      connected,
+      navigate,
+      notify,
+    ],
+  )
 
-  const go = ({ args, path, projects = false }: {
+  const go = ({
+    args,
+    path,
+    projects = false,
+  }: {
     args: string[]
     path?: string
     projects?: boolean
   }) => {
     if (args[0] === 'open') {
-      const url = new URL(`/hydra/${encodeURIComponent(args[1]!)}/`, location.href)
+      const url = new URL(
+        `/hydra/${encodeURIComponent(args[1]!)}/`,
+        location.href,
+      )
 
       if (path) {
-        url.searchParams.set('open-project', path)
+        url.searchParams.set(
+          'open-project',
+          path,
+        )
       }
 
       if (projects) {
-        url.searchParams.set('projects', '1')
+        url.searchParams.set(
+          'projects',
+          '1',
+        )
       }
 
       void navigate({ url: url.href }).catch((e: Error) => notify({ text: e.message }))
@@ -64,25 +115,40 @@ export function Hydras({
     }
 
     setBusy(true)
-    void command({ name: 'hydras', args }).then(r => {
-      const url = new URL(r.url as string)
+    void command({
+      name: 'hydras',
+      args,
+    }).then(
+      r => {
+        const url = new URL(r.url as string)
 
-      if (path) {
-        url.searchParams.set('open-project', path)
-      }
+        if (path) {
+          url.searchParams.set(
+            'open-project',
+            path,
+          )
+        }
 
-      if (projects) {
-        url.searchParams.set('projects', '1')
-      }
+        if (projects) {
+          url.searchParams.set(
+            'projects',
+            '1',
+          )
+        }
 
-      if (args[0] === 'create') {
-        url.searchParams.set('new-chat', '1')
-      }
+        if (args[0] === 'create') {
+          url.searchParams.set(
+            'new-chat',
+            '1',
+          )
+        }
 
-      location.assign(url)
-    }, (e: Error) => {
-      setBusy(false); notify({ text: e.message })
-    })
+        location.assign(url)
+      },
+      (e: Error) => {
+        setBusy(false); notify({ text: e.message })
+      },
+    )
   }
 
   return (
@@ -101,7 +167,10 @@ export function Hydras({
                   aria-label={`${open ? 'Collapse' : 'Expand'} ${h.name}`}
                   aria-expanded={open}
                   aria-controls={`projects-${h.id}`}
-                  onClick={() => setExpanded(e => ({ ...e, [h.id]: !open }))}
+                  onClick={() => setExpanded(e => ({
+                    ...e,
+                    [h.id]: !open,
+                  }))}
                 ><Icon name={open ? 'chevron_down' : 'chevron_right'} />
                 </Button>
                 {active && renaming ? (
@@ -110,7 +179,16 @@ export function Hydras({
                     label={`Rename Hydra ${h.name}`}
                     startEditing
                     finished={() => setRenaming(false)}
-                    save={({ title }) => command({ name: 'hydra', args: ['set', '--name', title, '--event-id', crypto.randomUUID()] })}
+                    save={({ title }) => command({
+                      name: 'hydra',
+                      args: [
+                        'set',
+                        '--name',
+                        title,
+                        '--event-id',
+                        crypto.randomUUID(),
+                      ],
+                    })}
                   />
                 ) : (
                   <Button
@@ -119,7 +197,12 @@ export function Hydras({
                     aria-current={active ? 'page' : undefined}
                     disabled={busy}
                     onDoubleClick={() => active && setRenaming(true)}
-                    onClick={() => active && !loading ? showHydra() : go({ args: ['open', h.id] })}
+                    onClick={() => active && !loading ? showHydra() : go({
+                      args: [
+                        'open',
+                        h.id,
+                      ],
+                    })}
                   ><Icon name="hydra" size={20} />{h.name}
                   </Button>
                 )}
@@ -133,13 +216,30 @@ export function Hydras({
                       title={p.path}
                       aria-pressed={active && project === p.path}
                       disabled={!connected || busy}
-                      onClick={() => active ? selectProject({ path: p.path }) : go({ args: ['open', h.id], path: p.path })}
+                      onClick={() => active ? selectProject({ path: p.path }) : go({
+                        args: [
+                          'open',
+                          h.id,
+                        ],
+                        path: p.path,
+                      })}
                     >
                       <span>{p.name}</span>
                       <small aria-label={`${p.live} live, ${p.asks} asks`}><span>{p.live} live</span><span className={p.asks ? 'project-asks' : ''}>{p.asks} asks</span></small>
                     </Button>
                   ))}
-                  <Button className="add-project" disabled={!connected || busy} onClick={() => active ? addProject() : go({ args: ['open', h.id], projects: true })}><Icon name="plus" />Add project</Button>
+                  <Button
+                    className="add-project"
+                    disabled={!connected || busy}
+                    onClick={() => active ? addProject() : go({
+                      args: [
+                        'open',
+                        h.id,
+                      ],
+                      projects: true,
+                    })}
+                  ><Icon name="plus" />Add project
+                  </Button>
                 </div>
               )}
             </div>

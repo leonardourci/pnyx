@@ -2,7 +2,13 @@ import { useId, useState } from 'react'
 import type { Folder } from '../../../../src/projects/folders.ts'
 import { Button, Input } from './controls.tsx'
 
-export function FolderSearch({ label, value, folders, disabled, onChange }: {
+export function FolderSearch({
+  label,
+  value,
+  folders,
+  disabled,
+  onChange,
+}: {
   label: string
   value: string
   folders: Folder[]
@@ -10,7 +16,13 @@ export function FolderSearch({ label, value, folders, disabled, onChange }: {
   onChange({ path }: { path: string }): void
 }) {
   const id = useId()
-  const [open, setOpen] = useState(false), [active, setActive] = useState(-1)
+  const [
+      open,
+      setOpen,
+    ] = useState(false), [
+      active,
+      setActive,
+    ] = useState(-1)
 
   const choose = ({ path }: { path: string }) => {
     onChange({ path }); setOpen(false); setActive(-1)
@@ -47,8 +59,17 @@ export function FolderSearch({ label, value, folders, disabled, onChange }: {
         onKeyDown={e => {
           if (e.key === 'Escape' && open) {
             e.preventDefault(); e.stopPropagation(); setOpen(false)
-          } else if (['ArrowDown', 'ArrowUp'].includes(e.key)) {
-            e.preventDefault(); setOpen(true); setActive(n => Math.max(0, Math.min(folders.length - 1, n + (e.key === 'ArrowDown' ? 1 : -1))))
+          } else if ([
+            'ArrowDown',
+            'ArrowUp',
+          ].includes(e.key)) {
+            e.preventDefault(); setOpen(true); setActive(n => Math.max(
+              0,
+              Math.min(
+                folders.length - 1,
+                n + (e.key === 'ArrowDown' ? 1 : -1),
+              ),
+            ))
           } else if (e.key === 'Enter' && open && folders[active]) {
             e.preventDefault(); choose({ path: folders[active].path })
           }
@@ -61,7 +82,10 @@ export function FolderSearch({ label, value, folders, disabled, onChange }: {
           aria-label={`${label} suggestions`}
           className="folder-options"
         >
-          {folders.map((folder, n) => (
+          {folders.map((
+            folder,
+            n,
+          ) => (
             <Button
               key={folder.path}
               id={`${id}-${n}`}

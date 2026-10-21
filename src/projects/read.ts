@@ -6,23 +6,41 @@ import { hydraConfig } from '../core/hydra.ts'
 import { hydraIds, loadHydra } from '../store/hydra-store.ts'
 import { firstmateProjects } from '../integrations/firstmate/projects.ts'
 
-export function projectsFor({ state, aliases = false }: {
+export function projectsFor({
+  state,
+  aliases = false,
+}: {
   state: HydraState
   aliases?: boolean
 }): (HydraProject & { aliases?: string[] })[] {
   const hydra = state.config?.hydra
   const projects = hydra?.kind === 'firstmate' && hydra.home
-    ? firstmateProjects({ home: hydra.home, aliases }) : state.projects ?? []
+    ? firstmateProjects({
+      home: hydra.home,
+      aliases,
+    }) : state.projects ?? []
 
-  return [...projects].sort((a, b) => Number(a.detached) - Number(b.detached)
+  return [...projects].sort((
+    a,
+    b,
+  ) => Number(a.detached) - Number(b.detached)
     || a.name.localeCompare(b.name) || a.path.localeCompare(b.path))
 }
 
 export function projectRows({ state }: { state: HydraState }) {
-  return projectsFor({ state }).map(p => ({ name: p.name, path: p.path, state: p.detached ? 'detached' : 'attached', ...(p.startCommand ? { startCommand: p.startCommand } : {}) }))
+  return projectsFor({ state }).map(p => ({
+    name: p.name,
+    path: p.path,
+    state: p.detached ? 'detached' : 'attached',
+    ...(p.startCommand ? { startCommand: p.startCommand } : {}),
+  }))
 }
 
-export function findProject({ state, ref, attached = false }: {
+export function findProject({
+  state,
+  ref,
+  attached = false,
+}: {
   state: HydraState
   ref: string
   attached?: boolean
@@ -38,20 +56,35 @@ export function findProject({ state, ref, attached = false }: {
   const exact = projects.find(p => p.path === ref || (pathRef && p.path === path))
   const matches = exact ? [exact] : projects.filter(p => p.name === ref)
 
-  const [project, ...others] = matches
+  const [
+    project,
+    ...others
+  ] = matches
 
   if (!project || others.length) {
-    throw new HydraError({ message: matches.length ? `project name is ambiguous: ${ref}; use its full path` : `project not found: ${ref}`, code: matches.length ? 'CONFLICT' : 'NOT_FOUND' })
+    throw new HydraError({
+      message: matches.length ? `project name is ambiguous: ${ref}; use its full path` : `project not found: ${ref}`,
+      code: matches.length ? 'CONFLICT' : 'NOT_FOUND',
+    })
   }
 
   return project
 }
 
-export function taskProject({ state, ref }: { state: HydraState; ref: string }): string | null {
+export function taskProject({
+  state,
+  ref,
+}: {
+  state: HydraState
+  ref: string
+}): string | null {
   let selected: HydraProject | undefined
 
   try {
-    selected = findProject({ state, ref })
+    selected = findProject({
+      state,
+      ref,
+    })
   } catch (error) {
     if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
       throw error
@@ -59,7 +92,11 @@ export function taskProject({ state, ref }: { state: HydraState; ref: string }):
   }
 
   if (selected?.detached) {
-    throw new HydraError({ message: `project is detached: ${ref}`, code: 'NOT_FOUND', help: ['Re-attach the project before selecting it for new work'] })
+    throw new HydraError({
+      message: `project is detached: ${ref}`,
+      code: 'NOT_FOUND',
+      help: ['Re-attach the project before selecting it for new work'],
+    })
   }
 
   return selected?.path ?? projectLabel({ value: ref })
@@ -74,10 +111,19 @@ export function projectFolder({ path }: { path: string }): string {
     }
   } catch { /* Missing paths cannot be attached. */ }
 
-  throw new HydraError({ message: `project folder not found: ${path}`, code: 'NOT_FOUND' })
+  throw new HydraError({
+    message: `project folder not found: ${path}`,
+    code: 'NOT_FOUND',
+  })
 }
 
-export function sharingHydras({ hydraId, path }: { hydraId: string; path: string }) {
+export function sharingHydras({
+  hydraId,
+  path,
+}: {
+  hydraId: string
+  path: string
+}) {
   return hydraIds().filter(id => id !== hydraId)
     .flatMap(id => {
       const state = loadHydra({ hydraId: id }).state
@@ -86,7 +132,16 @@ export function sharingHydras({ hydraId, path }: { hydraId: string; path: string
         return []
       }
 
-      return [{ id, name: hydraConfig({ state, id }).name, url: `/hydra/${encodeURIComponent(id)}/` }]
+      return [
+        {
+          id,
+          name: hydraConfig({
+            state,
+            id,
+          }).name,
+          url: `/hydra/${encodeURIComponent(id)}/`,
+        },
+      ]
     })
 }
 

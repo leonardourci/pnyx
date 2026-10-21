@@ -2,13 +2,19 @@ import { readdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import type { HydraProject } from '../../core/model.ts'
 
-export function firstmateProjects({ home, aliases = false }: {
+export function firstmateProjects({
+  home,
+  aliases = false,
+}: {
   home: string
   aliases?: boolean
 }): (HydraProject & { aliases?: string[] })[] {
   const ownHome = process.env.FM_HOME && resolve(process.env.FM_HOME) === resolve(home)
   const root = ownHome && process.env.FM_PROJECTS_OVERRIDE
-    ? process.env.FM_PROJECTS_OVERRIDE : join(home, 'projects')
+    ? process.env.FM_PROJECTS_OVERRIDE : join(
+      home,
+      'projects',
+    )
   let names: string[]
 
   try {
@@ -25,18 +31,32 @@ export function firstmateProjects({ home, aliases = false }: {
 
   for (const name of names.sort()) {
     try {
-      const path = realpathSync(join(root, name))
+      const path = realpathSync(join(
+        root,
+        name,
+      ))
 
       if (statSync(path).isDirectory()) {
-        projects.set(path, {
+        projects.set(
           path,
-          name: basename(path),
-          detached: false,
-          ...(aliases ? { aliases: [...projects.get(path)?.aliases ?? [], name] } : {}),
-        })
+          {
+            path,
+            name: basename(path),
+            detached: false,
+            ...(aliases ? {
+              aliases: [
+                ...projects.get(path)?.aliases ?? [],
+                name,
+              ],
+            } : {}),
+          },
+        )
       }
     } catch (error) {
-      if (!['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+      if (![
+        'ENOENT',
+        'ENOTDIR',
+      ].includes((error as NodeJS.ErrnoException).code ?? '')) {
         throw error
       }
     }

@@ -35,7 +35,13 @@ export interface SyncResult {
   ignored?: string
 }
 
-const source = ({ home, objectId }: { home: string; objectId: string }): SourceRef => ({
+const source = ({
+  home,
+  objectId,
+}: {
+  home: string
+  objectId: string
+}): SourceRef => ({
   adapter: ADAPTER,
   instanceId: home,
   objectId,
@@ -83,12 +89,23 @@ function attention({ task }: { task: TaskObservation }): Attention[] {
   ]
 }
 
-function hookAttention({ state, key }: { state: HydraState; key: string }): Attention[] {
+function hookAttention({
+  state,
+  key,
+}: {
+  state: HydraState
+  key: string
+}): Attention[] {
   return state.cards[state.keys[key] ?? '']?.attention.filter(a => a.key.startsWith(HOOK)) ?? []
 }
 
 function taskCard(
-  { home, task, kept, current }: {
+  {
+    home,
+    task,
+    kept,
+    current,
+  }: {
     home: HomeObservation
     task: TaskObservation
     kept: Attention[]
@@ -111,15 +128,26 @@ function taskCard(
       && (!current?.agent || current.terminal?.paseoTerminal)
       ? { terminal: { paseoTerminal: task.paseoTerminal } }
       : {}),
-    attention: [...attention({ task }), ...kept],
-    source: source({ home: home.path, objectId: task.task }),
+    attention: [
+      ...attention({ task }),
+      ...kept,
+    ],
+    source: source({
+      home: home.path,
+      objectId: task.task,
+    }),
   }
 }
 
 // The link to record for the task's pull request, or null when the card already
 // has what Firstmate knows. Firstmate adds the link as open and later marks it
 // merged from the backlog; it never overwrites a state another source refreshed.
-function prLink({ state, key, task, at }: {
+function prLink({
+  state,
+  key,
+  task,
+  at,
+}: {
   state: HydraState
   key: string
   task: TaskObservation
@@ -135,26 +163,44 @@ function prLink({ state, key, task, at }: {
     return null
   }
 
-  return parseLink({ input: { url: task.pr, state: task.merged ? 'merged' : 'open', checkedAt: at } })
+  return parseLink({
+    input: {
+      url: task.pr,
+      state: task.merged ? 'merged' : 'open',
+      checkedAt: at,
+    },
+  })
 }
 
 // Firstmate's own aging rule: an undated captain hold this old no longer waits on the owner.
 const UNDATED_HOLD_DAYS = 14
 
 // Captain holds use Firstmate's own buckets: only a live one waits on the owner.
-function firstmatePlace({ task, today }: {
+function firstmatePlace({
+  task,
+  today,
+}: {
   task: TaskObservation
   today: string
-}): { role: (typeof COLUMNS)[number]; reason: string } {
+}): {
+  role: (typeof COLUMNS)[number]
+  reason: string
+} {
   const because = ({ fallback }: { fallback: string }) => task.activity ?? fallback
   const hold = task.hold
 
   if (task.done) {
-    return { role: 'done', reason: because({ fallback: 'Closed in Firstmate' }) }
+    return {
+      role: 'done',
+      reason: because({ fallback: 'Closed in Firstmate' }),
+    }
   }
 
   if (task.decisions.length || task.stalled) {
-    return { role: 'needs_you', reason: because({ fallback: 'Firstmate has an open decision' }) }
+    return {
+      role: 'needs_you',
+      reason: because({ fallback: 'Firstmate has an open decision' }),
+    }
   }
 
   if (hold && hold.kind === 'captain' && hold.reason) {
@@ -163,20 +209,41 @@ function firstmatePlace({ task, today }: {
       && !(!hold.until && age !== undefined && age >= UNDATED_HOLD_DAYS)
 
     return waiting
-      ? { role: 'needs_you', reason: because({ fallback: 'Held in the Firstmate backlog for the owner' }) }
-      : { role: 'parked', reason: because({ fallback: `Held in the Firstmate backlog${hold.until ? ` until ${hold.until}` : ''}` }) }
+      ? {
+        role: 'needs_you',
+        reason: because({ fallback: 'Held in the Firstmate backlog for the owner' }),
+      }
+      : {
+        role: 'parked',
+        reason: because({ fallback: `Held in the Firstmate backlog${hold.until ? ` until ${hold.until}` : ''}` }),
+      }
   }
 
   if (hold && !(hold.until && hold.until <= today)) {
-    return { role: 'parked', reason: because({ fallback: `Held in the Firstmate backlog${hold.until ? ` until ${hold.until}` : ''}` }) }
+    return {
+      role: 'parked',
+      reason: because({ fallback: `Held in the Firstmate backlog${hold.until ? ` until ${hold.until}` : ''}` }),
+    }
   }
 
   return task.section === 'queued'
-    ? { role: 'queued', reason: because({ fallback: 'Queued in the Firstmate backlog' }) }
-    : { role: 'in_progress', reason: because({ fallback: 'In flight in the Firstmate backlog' }) }
+    ? {
+      role: 'queued',
+      reason: because({ fallback: 'Queued in the Firstmate backlog' }),
+    }
+    : {
+      role: 'in_progress',
+      reason: because({ fallback: 'In flight in the Firstmate backlog' }),
+    }
 }
 
-function apply({ writer, decision }: { writer: Writer; decision: Decision }): number {
+function apply({
+  writer,
+  decision,
+}: {
+  writer: Writer
+  decision: Decision
+}): number {
   if (!('event' in decision)) {
     return 0
   }
@@ -193,12 +260,19 @@ function apply({ writer, decision }: { writer: Writer; decision: Decision }): nu
 // ponytail: an unchanged task skips its decisions, which clone the Hydra; a change to another card waits for this task's own next change.
 const synced = new Map<string, string>()
 
-export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
+export function syncHome({
+  hydraId,
+  home,
+  at = new Date().toISOString(),
+}: {
   hydraId: string
   home: string
   at?: string
 }): SyncResult {
-  const meta: Meta = { at, actor: ADAPTER }
+  const meta: Meta = {
+    at,
+    actor: ADAPTER,
+  }
 
   return withWriter({
     hydraId,
@@ -206,7 +280,11 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
       drainSpool({ writer })
 
       if (writer.state.configured && (writer.state.config!.hydra.kind !== 'firstmate' || writer.state.config!.hydra.home !== home)) {
-        return { tasks: 0, appended: 0, ignored: `Hydra ${hydraId} has Hydra ${writer.state.config!.hydra.id}, not this home` }
+        return {
+          tasks: 0,
+          appended: 0,
+          ignored: `Hydra ${hydraId} has Hydra ${writer.state.config!.hydra.id}, not this home`,
+        }
       }
 
       const mirroredTasks = Object.values(writer.state.cards)
@@ -214,23 +292,62 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
           const ref = firstmateRef({ card })
 
           return ref?.instanceId === home && ref.objectId !== HOME_OBJECT
-            ? [{ task: ref.objectId, status: card.mirror?.status ?? '' }] : []
+            ? [
+              {
+                task: ref.objectId,
+                status: card.mirror?.status ?? '',
+              },
+            ] : []
         })
-      const observed = readHome({ home, mirroredTasks })
+      const observed = readHome({
+        home,
+        mirroredTasks,
+      })
       let configured = 0
 
       if (!writer.state.configured) {
-        const config = hydraConfig({ state: writer.state, id: hydraId })
+        const config = hydraConfig({
+          state: writer.state,
+          id: hydraId,
+        })
 
         if (!writer.state.config && !Object.keys(writer.state.cards).length) {
-          config.columns = config.columns.map(c => ({ ...c, id: `custom:${randomUUID()}` }))
+          config.columns = config.columns.map(c => ({
+            ...c,
+            id: `custom:${randomUUID()}`,
+          }))
         }
 
-        configured = apply({ writer, decision: hydraEvent({ state: writer.state, meta, cardId: '$board', change: { type: 'board.configured', data: { ...config, hydra: { id: observed.key, name: 'Hydra', kind: 'firstmate', home } } } }) })
+        configured = apply({
+          writer,
+          decision: hydraEvent({
+            state: writer.state,
+            meta,
+            cardId: '$board',
+            change: {
+              type: 'board.configured',
+              data: {
+                ...config,
+                hydra: {
+                  id: observed.key,
+                  name: 'Hydra',
+                  kind: 'firstmate',
+                  home,
+                },
+              },
+            },
+          }),
+        })
       }
 
       // A Firstmate-linked Hydra always has every default role, so linking restores a missing one.
-      configured += apply({ writer, decision: migrateColumns({ state: writer.state, meta }) })
+      configured += apply({
+        writer,
+        decision: migrateColumns({
+          state: writer.state,
+          meta,
+        }),
+      })
 
       let appended = apply({
         writer,
@@ -241,7 +358,10 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
             input: {
               title: observed.title,
               tags: [ADAPTER],
-              source: source({ home, objectId: HOME_OBJECT }),
+              source: source({
+                home,
+                objectId: HOME_OBJECT,
+              }),
             },
             meta,
           },
@@ -253,7 +373,15 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         const key = `${observed.key}:${task.task}`
         const seen = `${hydraId}\n${home}\n${key}`
         const stamp = ({ card }: { card?: Card }) =>
-          JSON.stringify([task, card, writer.state.configRevision, at.slice(0, 10)])
+          JSON.stringify([
+            task,
+            card,
+            writer.state.configRevision,
+            at.slice(
+              0,
+              10,
+            ),
+          ])
 
         if (synced.get(seen) === stamp({ card: writer.state.cards[writer.state.keys[key] ?? ''] })) {
           continue
@@ -270,7 +398,12 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         })
         appended += apply({
           writer,
-          decision: decidePush({ state: writer.state, key, input: card, meta }),
+          decision: decidePush({
+            state: writer.state,
+            key,
+            input: card,
+            meta,
+          }),
         })
         const mirrored = writer.state.cards[writer.state.keys[key]!]!
 
@@ -282,20 +415,45 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
             ? task.record.status : mirrored.mirror?.status ?? task.record.status,
         }
 
-        const changed = !isDeepStrictEqual(mirrored.mirror, record)
+        const changed = !isDeepStrictEqual(
+          mirrored.mirror,
+          record,
+        )
         const columns = hydraConfig({ state: writer.state }).columns
         const reminded = !changed && Boolean(mirrored.reminder?.dueAt)
           && columns.some(c => c.id === mirrored.column && c.role === 'needs_you')
 
         if (changed) {
-          appended += apply({ writer, decision: hydraEvent({ state: writer.state, meta, cardId: mirrored.id, change: { type: 'task.mirrored', data: record } }) })
+          appended += apply({
+            writer,
+            decision: hydraEvent({
+              state: writer.state,
+              meta,
+              cardId: mirrored.id,
+              change: {
+                type: 'task.mirrored',
+                data: record,
+              },
+            }),
+          })
         }
 
-        const states: Record<string, string> = { working: 'working', 'needs-decision': 'needs_you', 'needs-you': 'needs_you', paused: 'paused', blocked: 'blocked', failed: 'blocked', done: 'done' }
+        const states: Record<string, string> = {
+          working: 'working',
+          'needs-decision': 'needs_you',
+          'needs-you': 'needs_you',
+          paused: 'paused',
+          blocked: 'blocked',
+          failed: 'blocked',
+          done: 'done',
+        }
 
         let declared: string | undefined
 
-        for (const [index, raw] of task.record.status.split('\n').entries()) {
+        for (const [
+          index,
+          raw,
+        ] of task.record.status.split('\n').entries()) {
           const line = parseStatusLine({ line: raw })
           const status = states[line.verb]
 
@@ -305,7 +463,10 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
 
           const stamp = /\[at=(\d+)\]/.exec(raw)?.[1]
           const timestamp = stamp ? new Date(Number(stamp) * 1000) : undefined
-          const id = noteId({ cardKey: key, ref: `declaration:${index}:${raw}` })
+          const id = noteId({
+            cardKey: key,
+            ref: `declaration:${index}:${raw}`,
+          })
           declared = status
           const validTime = timestamp && Number.isFinite(timestamp.getTime())
           const declarationMeta = {
@@ -347,7 +508,12 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
           })
         }
 
-        const link = prLink({ state: writer.state, key, task, at })
+        const link = prLink({
+          state: writer.state,
+          key,
+          task,
+          at,
+        })
 
         if (link) {
           appended += apply({
@@ -371,7 +537,11 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
           const outcome = !task.done
             ? null
             : task.stalled?.verb === 'failed'
-              ? { state: 'failed' as const, note: 'closed after failure', closed: true }
+              ? {
+                state: 'failed' as const,
+                note: 'closed after failure',
+                closed: true,
+              }
               : { state: 'done' as const }
           appended += apply({
             writer,
@@ -388,8 +558,17 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         // A card in the owner's own column stays until its Firstmate record changes.
         const placed = writer.state.cards[mirrored.id]!
         // UTC, the day Firstmate itself compares hold dates against.
-        const place = firstmatePlace({ task, today: at.slice(0, 10) })
-        const target = roleColumn({ columns, role: place.role })
+        const place = firstmatePlace({
+          task,
+          today: at.slice(
+            0,
+            10,
+          ),
+        })
+        const target = roleColumn({
+          columns,
+          role: place.role,
+        })
         const own = columns.some(c => c.id === placed.column && !c.role)
 
         if (target && target !== placed.column && (changed || (!own && !reminded))) {
@@ -399,12 +578,18 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
               state: writer.state,
               ref: placed.id,
               column: target,
-              meta: { ...meta, reason: place.reason },
+              meta: {
+                ...meta,
+                reason: place.reason,
+              },
             }),
           })
         }
 
-        for (const { ref, ...note } of task.notes) {
+        for (const {
+          ref,
+          ...note
+        } of task.notes) {
           appended += apply(
             {
               writer,
@@ -424,7 +609,10 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
           )
         }
 
-        synced.set(seen, stamp({ card: writer.state.cards[mirrored.id] }))
+        synced.set(
+          seen,
+          stamp({ card: writer.state.cards[mirrored.id] }),
+        )
       }
 
       const live = new Set(observed.tasks.map(t => t.task))
@@ -441,7 +629,10 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
           continue
         }
 
-        const kept = hookAttention({ state: writer.state, key: card.key })
+        const kept = hookAttention({
+          state: writer.state,
+          key: card.key,
+        })
 
         if (card.attention.length === kept.length && !card.folder) {
           continue
@@ -464,7 +655,10 @@ export function syncHome({ hydraId, home, at = new Date().toISOString() }: {
         )
       }
 
-      return { tasks: observed.tasks.length, appended }
+      return {
+        tasks: observed.tasks.length,
+        appended,
+      }
     },
   })
 }
@@ -480,7 +674,11 @@ const SETTLE_MS = 50
 const RETRY_MS = 1000
 
 export function watchHome(
-  { hydraId, home, onSync }: {
+  {
+    hydraId,
+    home,
+    onSync,
+  }: {
     hydraId: string
     home: string
     onSync: (
@@ -502,7 +700,12 @@ export function watchHome(
     }
 
     try {
-      onSync({ result: syncHome({ hydraId, home }) })
+      onSync({
+        result: syncHome({
+          hydraId,
+          home,
+        }),
+      })
     } catch (error) {
       onSync({ result: error as Error })
       // A locked Hydra or a half-written file clears on its own; try once more later.
@@ -512,7 +715,10 @@ export function watchHome(
 
   const schedule = ({ ms = SETTLE_MS }) => {
     if (!closed && !timer) {
-      timer = setTimeout(sync, ms)
+      timer = setTimeout(
+        sync,
+        ms,
+      )
     }
   }
 
@@ -523,21 +729,36 @@ export function watchHome(
 
     watchers = []
 
-    for (const dir of ['state', 'data']) {
+    for (const dir of [
+      'state',
+      'data',
+    ]) {
       try {
-        const w = watch(join(home, dir), (_type, file) => {
-          if (!file || RELEVANT.test(String(file))) {
-            schedule({})
-          }
-        })
-        w.on('error', () => {
-          if (closed) {
-            return
-          }
+        const w = watch(
+          join(
+            home,
+            dir,
+          ),
+          (
+            _type,
+            file,
+          ) => {
+            if (!file || RELEVANT.test(String(file))) {
+              schedule({})
+            }
+          },
+        )
+        w.on(
+          'error',
+          () => {
+            if (closed) {
+              return
+            }
 
-          start()
-          schedule({})
-        })
+            start()
+            schedule({})
+          },
+        )
         watchers.push(w)
       } catch {
         // data/ is optional; a home without a backlog still has tasks.

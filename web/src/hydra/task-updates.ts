@@ -37,26 +37,56 @@ const labels: Record<string, string> = {
   'card.pushed': 'Task changed',
 }
 
-export function taskTimeline({ card, events }: { card: Card; events: TaskEvent[] }): TaskUpdate[] {
+export function taskTimeline({
+  card,
+  events,
+}: {
+  card: Card
+  events: TaskEvent[]
+}): TaskUpdate[] {
   const updates = new Map<string, TaskUpdate>()
 
   for (const event of events) {
     if (event.type === 'task.declared' && typeof event.data?.state === 'string') {
-      updates.set(event.id, { id: event.id, at: event.at, seq: event.seq, state: event.data.state, note: String(event.data.note ?? '') })
+      updates.set(
+        event.id,
+        {
+          id: event.id,
+          at: event.at,
+          seq: event.seq,
+          state: event.data.state,
+          note: String(event.data.note ?? ''),
+        },
+      )
     } else if (labels[event.type]) {
-      updates.set(event.id, {
-        id: event.id, at: event.at, seq: event.seq, state: labels[event.type]!, note: event.summary,
-      })
+      updates.set(
+        event.id,
+        {
+          id: event.id,
+          at: event.at,
+          seq: event.seq,
+          state: labels[event.type]!,
+          note: event.summary,
+        },
+      )
     }
   }
 
   for (const declaration of card.statusLog ?? []) {
     const recorded = updates.get(declaration.id)
-    updates.set(declaration.id, {
-      ...recorded, ...declaration, note: declaration.note || recorded?.note || '',
-    })
+    updates.set(
+      declaration.id,
+      {
+        ...recorded,
+        ...declaration,
+        note: declaration.note || recorded?.note || '',
+      },
+    )
   }
 
-  return [...updates.values()].reverse().sort((a, b) =>
+  return [...updates.values()].reverse().sort((
+    a,
+    b,
+  ) =>
     b.at.localeCompare(a.at) || (b.seq ?? 0) - (a.seq ?? 0))
 }

@@ -1,6 +1,12 @@
 import { Button } from './controls.tsx'
 
-export function CopyId({ id, notify }: { id: string; notify({ text }: { text: string }): void }) {
+export function CopyId({
+  id,
+  notify,
+}: {
+  id: string
+  notify({ text }: { text: string }): void
+}) {
   return (
     <Button
       onClick={() => void navigator.clipboard.writeText(id).then(() => notify({ text: 'ID copied' }))

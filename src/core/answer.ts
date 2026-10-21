@@ -5,7 +5,14 @@ import { replyRoute } from './route.ts'
 // typed into the prompt's own "Type something" line (single-choice questions only).
 export type QuestionAnswer = { pick: number[] } | { text: string }
 
-export const CHOICES = ['allow', 'deny', 'approve', 'revise', 'accept', 'decline'] as const
+export const CHOICES = [
+  'allow',
+  'deny',
+  'approve',
+  'revise',
+  'accept',
+  'decline',
+] as const
 export type ChoiceName = (typeof CHOICES)[number]
 
 export type FieldValue = string | number | boolean
@@ -23,7 +30,10 @@ export interface Choice {
   text: 'none' | 'optional' | 'required'
 }
 
-export type Prompt = { kind: 'questions' } | { kind: 'form' } | { kind: 'choices'; choices: Choice[] }
+export type Prompt = { kind: 'questions' } | { kind: 'form' } | {
+  kind: 'choices'
+  choices: Choice[]
+}
 type Checked = { answer: Answer } | { error: string }
 
 // Free text goes into a one-line field of the agent's prompt.
@@ -32,16 +42,40 @@ const TOOL_REQUEST = 'hook:tool:'
 const ELICITATION = 'hook:elicitation'
 
 const CLAUDE_PERMISSION: Choice[] = [
-  { choice: 'allow', label: 'Yes', text: 'none' },
-  { choice: 'deny', label: 'No', text: 'optional' },
+  {
+    choice: 'allow',
+    label: 'Yes',
+    text: 'none',
+  },
+  {
+    choice: 'deny',
+    label: 'No',
+    text: 'optional',
+  },
 ]
 const CLAUDE_PLAN: Choice[] = [
-  { choice: 'approve', label: 'Approve, and approve edits manually', text: 'none' },
-  { choice: 'revise', label: 'Keep planning', text: 'required' },
+  {
+    choice: 'approve',
+    label: 'Approve, and approve edits manually',
+    text: 'none',
+  },
+  {
+    choice: 'revise',
+    label: 'Keep planning',
+    text: 'required',
+  },
 ]
 const CODEX_PERMISSION: Choice[] = [
-  { choice: 'allow', label: 'Yes, proceed', text: 'none' },
-  { choice: 'deny', label: 'No', text: 'optional' },
+  {
+    choice: 'allow',
+    label: 'Yes, proceed',
+    text: 'none',
+  },
+  {
+    choice: 'deny',
+    label: 'No',
+    text: 'optional',
+  },
 ]
 
 // A question's options are picked by digit, and a form's choices are each a Down key
@@ -53,21 +87,42 @@ export const MAX_OPTIONS = 8
 // questions or fields is a different prompt. FNV-1a over its fields, so the browser
 // and the CLI name it alike.
 export function requestId({ request }: { request: Attention }): string {
-  const { kind, key, text, questions, form } = request
-  const shown = JSON.stringify({ kind, key, text, questions, form })
+  const {
+    kind,
+    key,
+    text,
+    questions,
+    form,
+  } = request
+  const shown = JSON.stringify({
+    kind,
+    key,
+    text,
+    questions,
+    form,
+  })
   let hash = 0x811c9dc5
 
   for (let i = 0; i < shown.length; i++) {
-    hash = Math.imul(hash ^ shown.charCodeAt(i), 0x01000193)
+    hash = Math.imul(
+      hash ^ shown.charCodeAt(i),
+      0x01000193,
+    )
   }
 
-  return `${key}#${(hash >>> 0).toString(16).padStart(8, '0')}`
+  return `${key}#${(hash >>> 0).toString(16).padStart(
+    8,
+    '0',
+  )}`
 }
 
 // Whether the card's recorded route can press the keys: only a tmux pane, the one
 // host whose keys were checked by hand against each harness's prompt.
 function takesKeys({ card }: { card: Card }): boolean {
-  const found = replyRoute({ card, homes: [] })
+  const found = replyRoute({
+    card,
+    homes: [],
+  })
 
   return 'route' in found && found.route.kind === 'tmux'
 }
@@ -77,7 +132,13 @@ function takesKeys({ card }: { card: Card }): boolean {
 // does not say which prompt is showing, a harness whose keys were not verified, or
 // a card whose route cannot press keys.
 export function answerPrompt(
-  { card, request }: { card: Card; request: Attention },
+  {
+    card,
+    request,
+  }: {
+    card: Card
+    request: Attention
+  },
 ): Prompt | undefined {
   if (request.answered || !takesKeys({ card })) {
     return undefined
@@ -102,19 +163,31 @@ export function answerPrompt(
     }
 
     if (request.kind === 'plan') {
-      return { kind: 'choices', choices: CLAUDE_PLAN }
+      return {
+        kind: 'choices',
+        choices: CLAUDE_PLAN,
+      }
     }
 
-    return request.kind === 'permission' ? { kind: 'choices', choices: CLAUDE_PERMISSION } : undefined
+    return request.kind === 'permission' ? {
+      kind: 'choices',
+      choices: CLAUDE_PERMISSION,
+    } : undefined
   }
 
-  return provider === 'codex' && request.kind === 'permission' ? { kind: 'choices', choices: CODEX_PERMISSION } : undefined
+  return provider === 'codex' && request.kind === 'permission' ? {
+    kind: 'choices',
+    choices: CODEX_PERMISSION,
+  } : undefined
 }
 
 // One line of text to type into a prompt. A control character would be typed as a
 // key (Ctrl-C, Escape, an arrow), so text holding one is refused.
 function line({ value }: { value: unknown }): string | undefined {
-  const text = typeof value === 'string' ? value.replace(/[ \t\r\n]+/g, ' ').trim() : ''
+  const text = typeof value === 'string' ? value.replace(
+    /[ \t\r\n]+/g,
+    ' ',
+  ).trim() : ''
 
   // eslint-disable-next-line no-control-regex
   return text && !/[\u0000-\u001f\u007f-\u009f]/.test(text) ? text : undefined
@@ -124,7 +197,13 @@ function record({ value }: { value: unknown }): Record<string, unknown> | undefi
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 }
 
-function checkQuestions({ request, value }: { request: Attention; value: unknown }): Checked {
+function checkQuestions({
+  request,
+  value,
+}: {
+  request: Attention
+  value: unknown
+}): Checked {
   const questions = request.questions ?? []
 
   if (!Array.isArray(value) || value.length !== questions.length) {
@@ -133,7 +212,10 @@ function checkQuestions({ request, value }: { request: Attention; value: unknown
 
   const answers: QuestionAnswer[] = []
 
-  for (const [i, question] of questions.entries()) {
+  for (const [
+    i,
+    question,
+  ] of questions.entries()) {
     const item = record({ value: value[i] })
     const at = `answers[${i}]`
 
@@ -172,15 +254,26 @@ function checkQuestions({ request, value }: { request: Attention; value: unknown
       return { error: `${at}: "${question.question}" takes one option` }
     }
 
-    answers.push({ pick: [...pick].sort((a, b) => a - b) })
+    answers.push({
+      pick: [...pick].sort((
+        a,
+        b,
+      ) => a - b),
+    })
   }
 
   return { answer: { answers } }
 }
 
-type Field = { field: FormField; value: unknown }
+type Field = {
+  field: FormField
+  value: unknown
+}
 
-function fieldValue({ field, value }: Field): { value: FieldValue } | { error: string } {
+function fieldValue({
+  field,
+  value,
+}: Field): { value: FieldValue } | { error: string } {
   const name = field.title ?? field.name
 
   if (field.type === 'boolean') {
@@ -202,9 +295,15 @@ function fieldValue({ field, value }: Field): { value: FieldValue } | { error: s
   return !field.options || field.options.includes(text) ? { value: text } : { error: `${name} must be one of ${field.options.join(', ')}` }
 }
 
-type Form = { fields: FormField[]; value: Record<string, unknown> }
+type Form = {
+  fields: FormField[]
+  value: Record<string, unknown>
+}
 
-function checkForm({ fields, value }: Form): Checked {
+function checkForm({
+  fields,
+  value,
+}: Form): Checked {
   if (value.choice === 'decline') {
     return { answer: { choice: 'decline' } }
   }
@@ -232,7 +331,10 @@ function checkForm({ fields, value }: Form): Checked {
       continue
     }
 
-    const checked = fieldValue({ field, value: given[field.name] })
+    const checked = fieldValue({
+      field,
+      value: given[field.name],
+    })
 
     if ('error' in checked) {
       return checked
@@ -241,11 +343,24 @@ function checkForm({ fields, value }: Form): Checked {
     values[field.name] = checked.value
   }
 
-  return { answer: { choice: 'accept', values } }
+  return {
+    answer: {
+      choice: 'accept',
+      values,
+    },
+  }
 }
 
 export function checkAnswer(
-  { prompt, request, value: raw }: { prompt: Prompt; request: Attention; value: unknown },
+  {
+    prompt,
+    request,
+    value: raw,
+  }: {
+    prompt: Prompt
+    request: Attention
+    value: unknown
+  },
 ): Checked {
   const value = record({ value: raw })
 
@@ -254,11 +369,17 @@ export function checkAnswer(
   }
 
   if (prompt.kind === 'questions') {
-    return checkQuestions({ request, value: value.answers })
+    return checkQuestions({
+      request,
+      value: value.answers,
+    })
   }
 
   if (prompt.kind === 'form') {
-    return checkForm({ fields: request.form ?? [], value })
+    return checkForm({
+      fields: request.form ?? [],
+      value,
+    })
   }
 
   const choice = prompt.choices.find(c => c.choice === value.choice)
@@ -281,11 +402,24 @@ export function checkAnswer(
     return { error: `text must be at most ${TEXT_MAX} characters` }
   }
 
-  return { answer: { choice: choice.choice, ...(text ? { text } : {}) } }
+  return {
+    answer: {
+      choice: choice.choice,
+      ...(text ? { text } : {}),
+    },
+  }
 }
 
 export function answerText(
-  { prompt, request, answer }: { prompt: Prompt; request: Attention; answer: Answer },
+  {
+    prompt,
+    request,
+    answer,
+  }: {
+    prompt: Prompt
+    request: Attention
+    answer: Answer
+  },
 ): string {
   if (prompt.kind === 'form') {
     if (answer.choice === 'decline') {
@@ -298,11 +432,17 @@ export function answerText(
       return v === undefined ? [] : [`${f.title ?? f.name}: ${typeof v === 'boolean' ? (v ? 'yes' : 'no') : v}`]
     })
 
-    return ['Accept', ...said].join('\n')
+    return [
+      'Accept',
+      ...said,
+    ].join('\n')
   }
 
   if (prompt.kind === 'questions') {
-    return (request.questions ?? []).map((question, i) => {
+    return (request.questions ?? []).map((
+      question,
+      i,
+    ) => {
       const a = answer.answers?.[i]
       const said = !a ? '' : 'text' in a ? a.text : a.pick.map(n => question.options[n - 1]?.label).join(', ')
 

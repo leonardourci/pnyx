@@ -2,7 +2,10 @@ import type { Card, HydraState } from '../core/model.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
 import { liveTask } from '../core/tasks.ts'
 
-export interface TaskMention { id: string; title: string }
+export interface TaskMention {
+  id: string
+  title: string
+}
 
 export function mentionId({ href }: { href: string }): string | undefined {
   if (!/^pnyx-task:[\w%~.-]+$/.test(href)) {
@@ -16,8 +19,17 @@ export function mentionId({ href }: { href: string }): string | undefined {
   }
 }
 
-export function taskMention({ id, title }: TaskMention): string {
-  const label = title.replace(/\s/g, ' ').replace(/[\\[\]`*_<>]/g, '\\$&')
+export function taskMention({
+  id,
+  title,
+}: TaskMention): string {
+  const label = title.replace(
+    /\s/g,
+    ' ',
+  ).replace(
+    /[\\[\]`*_<>]/g,
+    '\\$&',
+  )
 
   return `[@${label}](pnyx-task:${encodeURIComponent(id)})`
 }
@@ -26,23 +38,49 @@ export function taskMentions({ text }: { text: string }): TaskMention[] {
   return [...text.matchAll(/\[@((?:\\.|[^\]\\\r\n])*)\]\((pnyx-task:[\w%~.-]+)\)/g)].flatMap(match => {
     const id = mentionId({ href: match[2]! })
 
-    return id ? [{ id, title: match[1]!.replace(/\\(.)/g, '$1') }] : []
+    return id ? [
+      {
+        id,
+        title: match[1]!.replace(
+          /\\(.)/g,
+          '$1',
+        ),
+      },
+    ] : []
   })
 }
 
-export function mentionQuery({ text, cursor }: {
+export function mentionQuery({
+  text,
+  cursor,
+}: {
   text: string
   cursor: number
-}): { start: number; query: string } | null {
-  const match = /(?:^|\s)@([^@\n\r[\]()]*)$/.exec(text.slice(0, cursor))
+}): {
+  start: number
+  query: string
+} | null {
+  const match = /(?:^|\s)@([^@\n\r[\]()]*)$/.exec(text.slice(
+    0,
+    cursor,
+  ))
 
-  return match ? { start: cursor - match[1]!.length - 1, query: match[1]! } : null
+  return match ? {
+    start: cursor - match[1]!.length - 1,
+    query: match[1]!,
+  } : null
 }
 
-export function matchingTasks({ cards, query }: {
+export function matchingTasks({
+  cards,
+  query,
+}: {
   cards: Card[]
   query: string
-}): { card: Card; excerpt: string }[] {
+}): {
+  card: Card
+  excerpt: string
+}[] {
   const search = query.trim().toLocaleLowerCase()
 
   return cards.filter(card => card.id !== HYDRA_CARD && liveTask({ card })).flatMap(card => {
@@ -55,14 +93,31 @@ export function matchingTasks({ cards, query }: {
     }
 
     const source = index >= 0 ? prompt : card.title
-    const start = Math.max(0, index - 48)
-    const excerpt = `${start ? '…' : ''}${source.slice(start, start + 180)}${source.length > start + 180 ? '…' : ''}`
+    const start = Math.max(
+      0,
+      index - 48,
+    )
+    const excerpt = `${start ? '…' : ''}${source.slice(
+      start,
+      start + 180,
+    )}${source.length > start + 180 ? '…' : ''}`
 
-    return [{ card, excerpt: excerpt || 'No initial prompt' }]
+    return [
+      {
+        card,
+        excerpt: excerpt || 'No initial prompt',
+      },
+    ]
   })
 }
 
-export function mentionContext({ state, text }: { state: HydraState; text: string }): string {
+export function mentionContext({
+  state,
+  text,
+}: {
+  state: HydraState
+  text: string
+}): string {
   const seen = new Set<string>()
   const mentions = taskMentions({ text }).filter(mention => {
     if (seen.has(mention.id)) {
@@ -78,15 +133,21 @@ export function mentionContext({ state, text }: { state: HydraState; text: strin
     return ''
   }
 
-  return ['Referenced tasks (context only):', ...mentions.map(mention => {
-    const card = Object.hasOwn(state.cards, mention.id) ? state.cards[mention.id] : undefined
+  return [
+    'Referenced tasks (context only):',
+    ...mentions.map(mention => {
+      const card = Object.hasOwn(
+        state.cards,
+        mention.id,
+      ) ? state.cards[mention.id] : undefined
 
-    if (!card || card.automaticTask || card.id === HYDRA_CARD) {
-      return `Task ${mention.id}: ${mention.title}\nUnavailable in this Hydra.`
-    }
+      if (!card || card.automaticTask || card.id === HYDRA_CARD) {
+        return `Task ${mention.id}: ${mention.title}\nUnavailable in this Hydra.`
+      }
 
-    const update = card.statusLog?.findLast(status => status.note.trim())?.note ?? 'No update yet.'
+      const update = card.statusLog?.findLast(status => status.note.trim())?.note ?? 'No update yet.'
 
-    return `Task ${card.id}: ${card.title}\nMentioned as: ${mention.title}\nInitial prompt: ${card.initialPrompt ?? card.brief ?? 'No initial prompt.'}\nLatest update: ${update}`
-  })].join('\n\n')
+      return `Task ${card.id}: ${card.title}\nMentioned as: ${mention.title}\nInitial prompt: ${card.initialPrompt ?? card.brief ?? 'No initial prompt.'}\nLatest update: ${update}`
+    }),
+  ].join('\n\n')
 }

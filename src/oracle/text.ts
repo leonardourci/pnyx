@@ -19,10 +19,22 @@ const SECRETS = [
 // Codex's context blocks and the AGENTS.md instructions Codex adds under a header line.
 const INJECTED = /(?:# AGENTS\.md instructions for [^\n]*\s*)?<(system-reminder|environment_context|user_instructions|INSTRUCTIONS|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|user-prompt-submit-hook|pnyx-wake|pnyx-digest|pnyx-worker)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g
 
-export const withoutInjected = ({ text }: { text: string }) => text.replace(INJECTED, '').trim()
+export const withoutInjected = ({ text }: { text: string }) => text.replace(
+  INJECTED,
+  '',
+).trim()
 
 export function redact({ text }: { text: string }): string {
-  return SECRETS.reduce((t, re) => t.replace(re, '[redacted]'), text)
+  return SECRETS.reduce(
+    (
+      t,
+      re,
+    ) => t.replace(
+      re,
+      '[redacted]',
+    ),
+    text,
+  )
 }
 
 // Paragraphs, keeping a fenced code block whole.
@@ -64,13 +76,22 @@ function pieces({ paragraph }: { paragraph: string }): string[] {
 
   for (let line of paragraph.split('\n')) {
     while (line.length > CHUNK_MAX) {
-      const cut = line.lastIndexOf(' ', CHUNK_MAX) > CHUNK_MAX / 2 ? line.lastIndexOf(' ', CHUNK_MAX) : CHUNK_MAX
+      const cut = line.lastIndexOf(
+        ' ',
+        CHUNK_MAX,
+      ) > CHUNK_MAX / 2 ? line.lastIndexOf(
+          ' ',
+          CHUNK_MAX,
+        ) : CHUNK_MAX
 
       if (current) {
         out.push(current)
       }
 
-      out.push(line.slice(0, cut))
+      out.push(line.slice(
+        0,
+        cut,
+      ))
       current = ''
       line = line.slice(cut).trimStart()
     }
@@ -143,7 +164,11 @@ export function eventText({ event }: { event: HydraEvent }): string {
       parts.push(event.data.title)
       break
     case 'task.declared':
-      parts.push(event.data.state, event.data.note, event.data.raw)
+      parts.push(
+        event.data.state,
+        event.data.note,
+        event.data.raw,
+      )
       break
     case 'task.mirrored':
       parts.push(
@@ -153,13 +178,19 @@ export function eventText({ event }: { event: HydraEvent }): string {
       )
       break
     case 'hydra.message':
-      parts.push(event.data.text, event.data.details)
+      parts.push(
+        event.data.text,
+        event.data.details,
+      )
       break
     case 'board.agents':
       parts.push(...Object.keys(event.data.agents))
       break
     case 'board.configured':
-      parts.push(event.data.name, event.data.hydra.name)
+      parts.push(
+        event.data.name,
+        event.data.hydra.name,
+      )
       break
     case 'board.columns':
       parts.push(...event.data.columns.map(c => c.title))
@@ -184,10 +215,17 @@ export function eventText({ event }: { event: HydraEvent }): string {
       break
     }
     case 'card.linked': {
-      const { before, after } = event.data
+      const {
+        before,
+        after,
+      } = event.data
 
       if (after && (!before || before.title !== after.title || before.url !== after.url)) {
-        parts.push([after.number === undefined ? '' : `#${after.number}`, after.title, after.url].filter(Boolean).join(' '))
+        parts.push([
+          after.number === undefined ? '' : `#${after.number}`,
+          after.title,
+          after.url,
+        ].filter(Boolean).join(' '))
       }
 
       break
@@ -213,7 +251,11 @@ export interface Message {
   text: string
 }
 
-const TEXT_BLOCKS = ['text', 'input_text', 'output_text']
+const TEXT_BLOCKS = [
+  'text',
+  'input_text',
+  'output_text',
+]
 
 // The typed user messages and assistant text blocks of one Claude Code or Codex
 // transcript record. Tool calls and results, thinking, images, meta records,
@@ -226,7 +268,11 @@ export function transcriptMessages({ record }: { record: unknown }): Message[] {
     isCompactSummary?: unknown
     timestamp?: unknown
     message?: { content?: unknown }
-    payload?: { type?: unknown; role?: unknown; content?: unknown }
+    payload?: {
+      type?: unknown
+      role?: unknown
+      content?: unknown
+    }
   }
   const r = record as Record | null
 
@@ -250,5 +296,8 @@ export function transcriptMessages({ record }: { record: unknown }): Message[] {
     .map(b => (typeof b === 'string' ? b : TEXT_BLOCKS.includes(b?.type) && typeof b.text === 'string' ? (b.text as string) : ''))
     .map(t => withoutInjected({ text: t }))
     .filter(Boolean)
-    .map(text => (at ? { at, text } : { text }))
+    .map(text => (at ? {
+      at,
+      text,
+    } : { text }))
 }

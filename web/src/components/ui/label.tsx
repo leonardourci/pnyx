@@ -1,6 +1,11 @@
 import type { SavedLabelColor } from '../../../../src/core/model.ts'
 
-export function Label({ label, text = label, colors, project = false }: {
+export function Label({
+  label,
+  text = label,
+  colors,
+  project = false,
+}: {
   label: string
   text?: string
   colors?: SavedLabelColor[]

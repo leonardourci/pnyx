@@ -1,5 +1,8 @@
 // Read-only editing support keeps native caret navigation from changing recorded messages.
-export const CARET_SUPPORTED = CSS.supports('-webkit-user-modify', 'read-only')
+export const CARET_SUPPORTED = CSS.supports(
+  '-webkit-user-modify',
+  'read-only',
+)
 export const CARET_HOST = 'data-caret-host'
 export const CARET_KEY = /^(Arrow(Up|Down|Left|Right)|Home|End|Page(Up|Down))$/
 const MESSAGE_CONTROLS = '.block-comment-action, .inline-comment, .receipt, .code-language, .trace summary'
@@ -9,8 +12,17 @@ export const CARET_CSS = `[${CARET_HOST}] :is(${NON_MESSAGE_TEXT}) { -webkit-use
 const selectableMessageText = ({ node }: { node: Text }) =>
   !!node.data.trim() && !node.parentElement?.closest(NON_MESSAGE_TEXT)
 
-function* messageText({ root, after }: { root: Element; after?: Node }) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+function* messageText({
+  root,
+  after,
+}: {
+  root: Element
+  after?: Node
+}) {
+  const walker = document.createTreeWalker(
+    root,
+    NodeFilter.SHOW_TEXT,
+  )
 
   if (after) {
     walker.currentNode = after
@@ -45,17 +57,35 @@ export function caretBounds(): DOMRect | null {
   if (node instanceof Text && offset < node.length) {
     next = node
   } else if (host && node instanceof Text) {
-    next = messageText({ root: host, after: node }).next().value ?? null
+    next = messageText({
+      root: host,
+      after: node,
+    }).next().value ?? null
   }
 
   // The next character reports the new line when the caret sits at a soft wrap.
   if (next) {
     const start = next === node ? offset : 0
-    range.setStart(next, start); range.setEnd(next, start + 1)
+    range.setStart(
+      next,
+      start,
+    ); range.setEnd(
+      next,
+      start + 1,
+    )
   } else if (node instanceof Text && offset > 0) {
-    range.setStart(node, offset - 1); range.setEnd(node, offset)
+    range.setStart(
+      node,
+      offset - 1,
+    ); range.setEnd(
+      node,
+      offset,
+    )
   } else {
-    range.setStart(node, offset)
+    range.setStart(
+      node,
+      offset,
+    )
   }
 
   const rects = range.getClientRects()
@@ -73,13 +103,25 @@ export function revealCaret({ host }: { host: HTMLElement }) {
   }
 
   const viewport = scroller.getBoundingClientRect()
-  const padding = Math.min(3 * caret.height, viewport.height / 3)
+  const padding = Math.min(
+    3 * caret.height,
+    viewport.height / 3,
+  )
   const above = caret.top - viewport.top - padding
   const below = caret.bottom - viewport.bottom + padding
-  scroller.scrollBy({ top: above < 0 ? above : Math.max(0, below) })
+  scroller.scrollBy({
+    top: above < 0 ? above : Math.max(
+      0,
+      below,
+    ),
+  })
 }
 
-export function placeMessageCaret({ host, target, edge }: {
+export function placeMessageCaret({
+  host,
+  target,
+  edge,
+}: {
   host: HTMLElement
   target: Element | null
   edge: 'start' | 'end'
@@ -103,7 +145,10 @@ export function placeMessageCaret({ host, target, edge }: {
   }
 
   host.focus({ preventScroll: true })
-  window.getSelection()?.collapse(node, edge === 'start' ? 0 : node.length)
+  window.getSelection()?.collapse(
+    node,
+    edge === 'start' ? 0 : node.length,
+  )
   revealCaret({ host })
 
   return true
@@ -111,7 +156,10 @@ export function placeMessageCaret({ host, target, edge }: {
 
 export function focusComposer({ host }: { host: HTMLElement }) {
   const input = host.closest('.detail, .hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
-  input?.focus(); input?.setSelectionRange(input.value.length, input.value.length)
+  input?.focus(); input?.setSelectionRange(
+    input.value.length,
+    input.value.length,
+  )
 
   return !!input
 }

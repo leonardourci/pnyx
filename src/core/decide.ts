@@ -48,18 +48,34 @@ export interface Meta {
 
 export type Decision = { event: HydraEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }
 
-export function findCard({ state, ref }: { state: HydraState; ref: string }): Card {
+export function findCard({
+  state,
+  ref,
+}: {
+  state: HydraState
+  ref: string
+}): Card {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
   if (!card) {
-    throw new HydraError({ message: `card not found: ${ref}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi` to list cards'] })
+    throw new HydraError({
+      message: `card not found: ${ref}`,
+      code: 'NOT_FOUND',
+      help: ['Run `pnyx-axi` to list cards'],
+    })
   }
 
   return card
 }
 
 // Generated ids share a namespace with caller-chosen ones, so skip any already used.
-function freeId({ state, seq }: { state: HydraState; seq: number }): string {
+function freeId({
+  state,
+  seq,
+}: {
+  state: HydraState
+  seq: number
+}): string {
   let id = `evt_${seq}`
 
   for (let n = 2; id in state.eventIds; n++) {
@@ -69,13 +85,24 @@ function freeId({ state, seq }: { state: HydraState; seq: number }): string {
   return id
 }
 
-function base({ state, meta, cardId }: { state: HydraState; meta: Meta; cardId: string }) {
+function base({
+  state,
+  meta,
+  cardId,
+}: {
+  state: HydraState
+  meta: Meta
+  cardId: string
+}) {
   const seq = state.seq + 1
 
   return {
     v: EVENT_VERSION,
     seq,
-    id: meta.id ?? freeId({ state, seq }),
+    id: meta.id ?? freeId({
+      state,
+      seq,
+    }),
     at: meta.at,
     actor: meta.actor,
     cardId,
@@ -96,7 +123,11 @@ function strip({ card }: { card: Card | undefined }) {
   return content
 }
 
-function decided({ state, meta, event }: {
+function decided({
+  state,
+  meta,
+  event,
+}: {
   state: HydraState
   meta: Meta
   event: HydraEvent
@@ -105,16 +136,34 @@ function decided({ state, meta, event }: {
     return { skipped: 'duplicate' }
   }
 
-  checkRevision({ card: state.cards[event.cardId], ifRevision: meta.ifRevision })
+  checkRevision({
+    card: state.cards[event.cardId],
+    ifRevision: meta.ifRevision,
+  })
   const before = strip({ card: state.cards[event.cardId] })
   // The reducer reads eventIds only for the duplicate check above; cloning them is half of each decision's cost.
-  const reduced = reduce({ state: { ...state, eventIds: {} }, event })
+  const reduced = reduce({
+    state: {
+      ...state,
+      eventIds: {},
+    },
+    event,
+  })
   const after = strip({ card: reduced.cards[event.cardId] })
 
-  return before && isDeepStrictEqual(before, after) && isDeepStrictEqual(state.sessions, reduced.sessions) ? { skipped: 'unchanged' } : { event }
+  return before && isDeepStrictEqual(
+    before,
+    after,
+  ) && isDeepStrictEqual(
+    state.sessions,
+    reduced.sessions,
+  ) ? { skipped: 'unchanged' } : { event }
 }
 
-function checkRevision({ card, ifRevision }: {
+function checkRevision({
+  card,
+  ifRevision,
+}: {
   card: Card | undefined
   ifRevision: number | undefined
 }): void {
@@ -124,19 +173,24 @@ function checkRevision({ card, ifRevision }: {
     throw new HydraError({
       message: `card ${card?.id ?? '(new)'} is at revision ${revision}, not ${ifRevision}`,
       code: 'REVISION_CONFLICT',
-      help: [
-        card ? `Run \`pnyx-axi card ${card.id}\` and retry with the current revision` : 'Use --if-revision 0 for a new card',
-      ],
+      help: [card ? `Run \`pnyx-axi card ${card.id}\` and retry with the current revision` : 'Use --if-revision 0 for a new card'],
     })
   }
 }
 
 function notUndoable({ message }: { message: string }): HydraError {
-  return new HydraError({ message, code: 'NOT_UNDOABLE', help: ['Run `pnyx-axi history` to find an undoable edit'] })
+  return new HydraError({
+    message,
+    code: 'NOT_UNDOABLE',
+    help: ['Run `pnyx-axi history` to find an undoable edit'],
+  })
 }
 
 function invalid({ message }: { message: string }): HydraError {
-  return new HydraError({ message, code: 'VALIDATION_ERROR' })
+  return new HydraError({
+    message,
+    code: 'VALIDATION_ERROR',
+  })
 }
 
 function asRecord({ value }: { value: unknown }): Record<string, unknown> | undefined {
@@ -145,7 +199,11 @@ function asRecord({ value }: { value: unknown }): Record<string, unknown> | unde
     : undefined
 }
 
-function onlyKeys({ value, allowed, what }: {
+function onlyKeys({
+  value,
+  allowed,
+  what,
+}: {
   value: Record<string, unknown>
   allowed: string[]
   what: string
@@ -157,7 +215,13 @@ function onlyKeys({ value, allowed, what }: {
   }
 }
 
-function text({ value, what }: { value: unknown; what: string }): string {
+function text({
+  value,
+  what,
+}: {
+  value: unknown
+  what: string
+}): string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw invalid({ message: `${what} must be a non-empty string` })
   }
@@ -170,7 +234,10 @@ export function projectLabel({ value }: { value: unknown }): string | null {
     return null
   }
 
-  const label = text({ value, what: 'project' }).trim()
+  const label = text({
+    value,
+    what: 'project',
+  }).trim()
 
   if (label.length > 100 || /[\r\n]/.test(label)) {
     throw invalid({ message: 'project must be a single line of up to 100 characters' })
@@ -179,8 +246,17 @@ export function projectLabel({ value }: { value: unknown }): string | null {
   return label
 }
 
-function optionalText({ value, what }: { value: unknown; what: string }): string | undefined {
-  return value === undefined ? undefined : text({ value, what })
+function optionalText({
+  value,
+  what,
+}: {
+  value: unknown
+  what: string
+}): string | undefined {
+  return value === undefined ? undefined : text({
+    value,
+    what,
+  })
 }
 
 function parseAttention({ value }: { value: unknown }): Attention[] {
@@ -188,40 +264,86 @@ function parseAttention({ value }: { value: unknown }): Attention[] {
     throw invalid({ message: 'attention must be a list' })
   }
 
-  return value.map((rawItem, i) => {
+  return value.map((
+    rawItem,
+    i,
+  ) => {
     const item = asRecord({ value: rawItem })
 
     if (!item) {
       throw invalid({ message: `attention[${i}] must be an object` })
     }
 
-    onlyKeys({ value: item, allowed: ['kind', 'key', 'blocking', 'text', 'questions', 'form', 'answered'], what: `attention[${i}]` })
+    onlyKeys({
+      value: item,
+      allowed: [
+        'kind',
+        'key',
+        'blocking',
+        'text',
+        'questions',
+        'form',
+        'answered',
+      ],
+      what: `attention[${i}]`,
+    })
 
     if (item.blocking !== undefined && typeof item.blocking !== 'boolean') {
       throw invalid({ message: `attention[${i}].blocking must be true or false` })
     }
 
-    const note = optionalText({ value: item.text, what: `attention[${i}].text` })
-    const answered = optionalText({ value: item.answered, what: `attention[${i}].answered` })
+    const note = optionalText({
+      value: item.text,
+      what: `attention[${i}].text`,
+    })
+    const answered = optionalText({
+      value: item.answered,
+      what: `attention[${i}].answered`,
+    })
 
     return {
-      kind: text({ value: item.kind, what: `attention[${i}].kind` }),
-      key: text({ value: item.key, what: `attention[${i}].key` }),
+      kind: text({
+        value: item.kind,
+        what: `attention[${i}].kind`,
+      }),
+      key: text({
+        value: item.key,
+        what: `attention[${i}].key`,
+      }),
       blocking: item.blocking === true,
       ...(note ? { text: note } : {}),
-      ...(item.questions !== undefined ? { questions: parseQuestions({ value: item.questions, what: `attention[${i}].questions` }) } : {}),
-      ...(item.form !== undefined ? { form: parseForm({ value: item.form, what: `attention[${i}].form` }) } : {}),
+      ...(item.questions !== undefined ? {
+        questions: parseQuestions({
+          value: item.questions,
+          what: `attention[${i}].questions`,
+        }),
+      } : {}),
+      ...(item.form !== undefined ? {
+        form: parseForm({
+          value: item.form,
+          what: `attention[${i}].form`,
+        }),
+      } : {}),
       ...(answered ? { answered } : {}),
     }
   })
 }
 
-function parseForm({ value, what }: { value: unknown; what: string }): FormField[] {
+function parseForm({
+  value,
+  what,
+}: {
+  value: unknown
+  what: string
+}): FormField[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw invalid({ message: `${what} must be a non-empty list` })
   }
 
-  return value.map((rawItem, i) => {
+  return value.map((
+    rawItem,
+    i,
+  ) => {
     const at = `${what}[${i}]`
     const item = asRecord({ value: rawItem })
 
@@ -229,7 +351,17 @@ function parseForm({ value, what }: { value: unknown; what: string }): FormField
       throw invalid({ message: `${at} must be an object` })
     }
 
-    onlyKeys({ value: item, allowed: ['name', 'title', 'type', 'options', 'required'], what: at })
+    onlyKeys({
+      value: item,
+      allowed: [
+        'name',
+        'title',
+        'type',
+        'options',
+        'required',
+      ],
+      what: at,
+    })
     const type = FORM_FIELD_TYPES.find(t => t === item.type)
 
     if (!type) {
@@ -240,10 +372,16 @@ function parseForm({ value, what }: { value: unknown; what: string }): FormField
       throw invalid({ message: `${at}.options must be a list of strings` })
     }
 
-    const title = optionalText({ value: item.title, what: `${at}.title` })
+    const title = optionalText({
+      value: item.title,
+      what: `${at}.title`,
+    })
 
     return {
-      name: text({ value: item.name, what: `${at}.name` }),
+      name: text({
+        value: item.name,
+        what: `${at}.name`,
+      }),
       ...(title ? { title } : {}),
       type,
       ...(item.options ? { options: item.options as string[] } : {}),
@@ -252,12 +390,21 @@ function parseForm({ value, what }: { value: unknown; what: string }): FormField
   })
 }
 
-function parseQuestions({ value, what }: { value: unknown; what: string }): Question[] {
+function parseQuestions({
+  value,
+  what,
+}: {
+  value: unknown
+  what: string
+}): Question[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw invalid({ message: `${what} must be a non-empty list` })
   }
 
-  return value.map((rawItem, i) => {
+  return value.map((
+    rawItem,
+    i,
+  ) => {
     const at = `${what}[${i}]`
     const item = asRecord({ value: rawItem })
 
@@ -265,28 +412,62 @@ function parseQuestions({ value, what }: { value: unknown; what: string }): Ques
       throw invalid({ message: `${at} must be an object` })
     }
 
-    onlyKeys({ value: item, allowed: ['question', 'header', 'options', 'multiSelect'], what: at })
+    onlyKeys({
+      value: item,
+      allowed: [
+        'question',
+        'header',
+        'options',
+        'multiSelect',
+      ],
+      what: at,
+    })
 
     if (!Array.isArray(item.options)) {
       throw invalid({ message: `${at}.options must be a list` })
     }
 
-    const header = optionalText({ value: item.header, what: `${at}.header` })
-    const options = item.options.map((rawOption, j) => {
+    const header = optionalText({
+      value: item.header,
+      what: `${at}.header`,
+    })
+    const options = item.options.map((
+      rawOption,
+      j,
+    ) => {
       const option = asRecord({ value: rawOption })
 
       if (!option) {
         throw invalid({ message: `${at}.options[${j}] must be an object` })
       }
 
-      onlyKeys({ value: option, allowed: ['label', 'description'], what: `${at}.options[${j}]` })
-      const description = optionalText({ value: option.description, what: `${at}.options[${j}].description` })
+      onlyKeys({
+        value: option,
+        allowed: [
+          'label',
+          'description',
+        ],
+        what: `${at}.options[${j}]`,
+      })
+      const description = optionalText({
+        value: option.description,
+        what: `${at}.options[${j}].description`,
+      })
 
-      return { label: text({ value: option.label, what: `${at}.options[${j}].label` }), ...(description ? { description } : {}) }
+      return {
+        label: text({
+          value: option.label,
+          what: `${at}.options[${j}].label`,
+        }),
+        ...(description ? { description } : {}),
+      }
     })
 
     return {
-      question: text({ value: item.question, what: `${at}.question` }),
+      question: text({
+        value: item.question,
+        what: `${at}.question`,
+      }),
       ...(header ? { header } : {}),
       options,
       ...(item.multiSelect === true ? { multiSelect: true } : {}),
@@ -301,17 +482,46 @@ function parseSource({ value: rawValue }: { value: unknown }): SourceRef {
     throw invalid({ message: 'source must be an object' })
   }
 
-  onlyKeys({ value, allowed: ['adapter', 'instanceId', 'objectId', 'generation', 'cursor', 'observedAt'], what: 'source' })
+  onlyKeys({
+    value,
+    allowed: [
+      'adapter',
+      'instanceId',
+      'objectId',
+      'generation',
+      'cursor',
+      'observedAt',
+    ],
+    what: 'source',
+  })
   const { generation } = value
 
   if (generation !== undefined && !(Number.isInteger(generation) && (generation as number) >= 0)) {
     throw invalid({ message: 'source.generation must be a non-negative integer' })
   }
 
-  const source: SourceRef = { adapter: text({ value: value.adapter, what: 'source.adapter' }), objectId: text({ value: value.objectId, what: 'source.objectId' }) }
-  const instanceId = optionalText({ value: value.instanceId, what: 'source.instanceId' })
-  const cursor = optionalText({ value: value.cursor, what: 'source.cursor' })
-  const observedAt = optionalText({ value: value.observedAt, what: 'source.observedAt' })
+  const source: SourceRef = {
+    adapter: text({
+      value: value.adapter,
+      what: 'source.adapter',
+    }),
+    objectId: text({
+      value: value.objectId,
+      what: 'source.objectId',
+    }),
+  }
+  const instanceId = optionalText({
+    value: value.instanceId,
+    what: 'source.instanceId',
+  })
+  const cursor = optionalText({
+    value: value.cursor,
+    what: 'source.cursor',
+  })
+  const observedAt = optionalText({
+    value: value.observedAt,
+    what: 'source.observedAt',
+  })
 
   if (instanceId) {
     source.instanceId = instanceId
@@ -339,13 +549,26 @@ function parseAutoTitle({ value: rawValue }: { value: unknown }): AutoTitle {
     throw invalid({ message: 'autoTitle must be an object' })
   }
 
-  onlyKeys({ value, allowed: ['from', 'text'], what: 'autoTitle' })
+  onlyKeys({
+    value,
+    allowed: [
+      'from',
+      'text',
+    ],
+    what: 'autoTitle',
+  })
 
   if (!(AUTO_TITLE_SOURCES as readonly unknown[]).includes(value.from)) {
     throw invalid({ message: `autoTitle.from must be one of ${AUTO_TITLE_SOURCES.join(', ')}` })
   }
 
-  return { from: value.from as AutoTitle['from'], text: text({ value: value.text, what: 'autoTitle.text' }) }
+  return {
+    from: value.from as AutoTitle['from'],
+    text: text({
+      value: value.text,
+      what: 'autoTitle.text',
+    }),
+  }
 }
 
 function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
@@ -355,12 +578,43 @@ function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
     throw invalid({ message: 'agent must be an object' })
   }
 
-  const fields = ['agentId', 'agentType', 'cwd', 'transcriptPath', 'paseoAgentId', 'paseoUrl', 'account', 'loginFolder'] as const
-  onlyKeys({ value, allowed: ['provider', 'sessionId', 'host', 'resume', ...fields], what: 'agent' })
-  const agent: AgentRef = { provider: text({ value: value.provider, what: 'agent.provider' }), sessionId: text({ value: value.sessionId, what: 'agent.sessionId' }) }
+  const fields = [
+    'agentId',
+    'agentType',
+    'cwd',
+    'transcriptPath',
+    'paseoAgentId',
+    'paseoUrl',
+    'account',
+    'loginFolder',
+  ] as const
+  onlyKeys({
+    value,
+    allowed: [
+      'provider',
+      'sessionId',
+      'host',
+      'resume',
+      ...fields,
+    ],
+    what: 'agent',
+  })
+  const agent: AgentRef = {
+    provider: text({
+      value: value.provider,
+      what: 'agent.provider',
+    }),
+    sessionId: text({
+      value: value.sessionId,
+      what: 'agent.sessionId',
+    }),
+  }
 
   for (const field of fields) {
-    const v = optionalText({ value: value[field], what: `agent.${field}` })
+    const v = optionalText({
+      value: value[field],
+      what: `agent.${field}`,
+    })
 
     if (v) {
       agent[field] = v
@@ -389,7 +643,10 @@ function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
 // Merges pushed settings into the card's current ones: a string sets a setting and
 // null removes it. Returns the card's whole settings after the push, so the event
 // replays and undoes on its own.
-function mergeSettings({ current, value: rawValue }: {
+function mergeSettings({
+  current,
+  value: rawValue,
+}: {
   current: AgentSettings | undefined
   value: unknown
 }): AgentSettings | null {
@@ -401,7 +658,10 @@ function mergeSettings({ current, value: rawValue }: {
 
   const merged = { ...current }
 
-  for (const [name, v] of Object.entries(value)) {
+  for (const [
+    name,
+    v,
+  ] of Object.entries(value)) {
     if (!/^[a-z][A-Za-z]{0,31}$/.test(name)) {
       throw invalid({ message: `settings.${name}: a setting name is a camelCase word` })
     }
@@ -425,9 +685,16 @@ function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
     throw invalid({ message: 'terminal must be an object' })
   }
 
-  onlyKeys({ value, allowed: Object.keys(TERMINAL_FIELDS), what: 'terminal' })
+  onlyKeys({
+    value,
+    allowed: Object.keys(TERMINAL_FIELDS),
+    what: 'terminal',
+  })
 
-  for (const [field, v] of Object.entries(value)) {
+  for (const [
+    field,
+    v,
+  ] of Object.entries(value)) {
     if (typeof v !== 'string' || !TERMINAL_FIELDS[field as keyof TerminalFacts].test(v)) {
       throw invalid({ message: `terminal.${field} has an unsupported value` })
     }
@@ -439,7 +706,14 @@ function parseTerminal({ value: rawValue }: { value: unknown }): TerminalFacts {
 // Explicit attachments survive folder changes; Firstmate joins also honor its recorded terminal.
 // task is the PNYX_TASK a session was started with: the task it works on, or
 // Hydra's own marker; it outranks the folder join for a session not seen yet.
-export function joinedKey({ state, key, folder, terminal, probed = false, task }: {
+export function joinedKey({
+  state,
+  key,
+  folder,
+  terminal,
+  probed = false,
+  task,
+}: {
   state: HydraState
   key: string
   folder: string | undefined
@@ -468,7 +742,10 @@ export function joinedKey({ state, key, folder, terminal, probed = false, task }
   const colon = key.indexOf(':')
   const sessionId = key.slice(colon + 1)
   const joined = Object.values(state.cards).find(c => c.sourceRefs.some(r =>
-    r.adapter === 'hooks' && r.instanceId === key.slice(0, colon) && r.objectId === sessionId))
+    r.adapter === 'hooks' && r.instanceId === key.slice(
+      0,
+      colon,
+    ) && r.objectId === sessionId))
 
   const session = terminal?.paseoTerminal
   const hinted = task ? state.cards[task] : undefined
@@ -506,7 +783,12 @@ export function joinedKey({ state, key, folder, terminal, probed = false, task }
   return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key
 }
 
-export function decideSession({ state, ref, task, meta }: {
+export function decideSession({
+  state,
+  ref,
+  task,
+  meta,
+}: {
   state: HydraState
   ref: string
   task: string | null
@@ -516,22 +798,40 @@ export function decideSession({ state, ref, task, meta }: {
     return { skipped: 'duplicate' }
   }
 
-  const session = findSession({ state, ref })
-  const target = task === null ? null : findCard({ state, ref: task })
+  const session = findSession({
+    state,
+    ref,
+  })
+  const target = task === null ? null : findCard({
+    state,
+    ref: task,
+  })
   const current = session.taskId ? state.cards[session.taskId] : state.cards[session.originCardId]
   const card = target ?? current!
-  checkRevision({ card, ifRevision: meta.ifRevision })
+  checkRevision({
+    card,
+    ifRevision: meta.ifRevision,
+  })
 
   if (target?.sessionIds?.some(id => id !== session.id)) {
-    throw new HydraError({ message: `task ${target.id} already has an attached agent; detach it first`, code: 'SESSION_CONFLICT' })
+    throw new HydraError({
+      message: `task ${target.id} already has an attached agent; detach it first`,
+      code: 'SESSION_CONFLICT',
+    })
   }
 
   if (target && state.config?.hydra.session === session.id) {
-    throw new HydraError({ message: 'Hydra cannot also be a task worker', code: 'CONFLICT' })
+    throw new HydraError({
+      message: 'Hydra cannot also be a task worker',
+      code: 'CONFLICT',
+    })
   }
 
   if (target && !interactive({ session })) {
-    throw new HydraError({ message: 'A background session has no interactive terminal and cannot be attached to a task', code: 'NO_TERMINAL' })
+    throw new HydraError({
+      message: 'A background session has no interactive terminal and cannot be attached to a task',
+      code: 'NO_TERMINAL',
+    })
   }
 
   if (session.taskId === (target?.id ?? null)) {
@@ -540,7 +840,11 @@ export function decideSession({ state, ref, task, meta }: {
 
   return {
     event: {
-      ...base({ state, meta, cardId: card.id }),
+      ...base({
+        state,
+        meta,
+        cardId: card.id,
+      }),
       type: 'task.session',
       data: {
         session: session.id,
@@ -552,14 +856,23 @@ export function decideSession({ state, ref, task, meta }: {
   }
 }
 
-export function decidePush({ state, key, input: rawInput, meta, newCardId = `task-${randomUUID()}` }: {
+export function decidePush({
+  state,
+  key,
+  input: rawInput,
+  meta,
+  newCardId = `task-${randomUUID()}`,
+}: {
   newCardId?: string
   state: HydraState
   key: string
   input: unknown
   meta: Meta
 }): Decision {
-  text({ value: key, what: 'key' })
+  text({
+    value: key,
+    what: 'key',
+  })
 
   const input = asRecord({ value: rawInput })
 
@@ -567,14 +880,44 @@ export function decidePush({ state, key, input: rawInput, meta, newCardId = `tas
     throw invalid({ message: 'card must be a JSON object' })
   }
 
-  onlyKeys({ value: input, allowed: ['title', 'autoTitle', 'project', 'workspace', 'tags', 'parent', 'activity', 'agent', 'settings', 'terminal', 'folder', 'attention', 'source'], what: 'card' })
+  onlyKeys({
+    value: input,
+    allowed: [
+      'title',
+      'autoTitle',
+      'project',
+      'workspace',
+      'tags',
+      'parent',
+      'activity',
+      'agent',
+      'settings',
+      'terminal',
+      'folder',
+      'attention',
+      'source',
+    ],
+    what: 'card',
+  })
 
   const cardId = state.keys[key] ?? newCardId
   const fields: PushFields = {}
-  const title = optionalText({ value: input.title, what: 'title' })
-  const workspace = optionalText({ value: input.workspace, what: 'workspace' })
-  const activity = optionalText({ value: input.activity, what: 'activity' })
-  const folder = input.folder === null ? null : optionalText({ value: input.folder, what: 'folder' })
+  const title = optionalText({
+    value: input.title,
+    what: 'title',
+  })
+  const workspace = optionalText({
+    value: input.workspace,
+    what: 'workspace',
+  })
+  const activity = optionalText({
+    value: input.activity,
+    what: 'activity',
+  })
+  const folder = input.folder === null ? null : optionalText({
+    value: input.folder,
+    what: 'folder',
+  })
 
   if (title) {
     fields.title = title
@@ -607,7 +950,15 @@ export function decidePush({ state, key, input: rawInput, meta, newCardId = `tas
       throw invalid({ message: 'tags must be a list of strings' })
     }
 
-    fields.tags = [...new Set(input.tags.map((t, i) => text({ value: t, what: `tags[${i}]` })))]
+    fields.tags = [
+      ...new Set(input.tags.map((
+        t,
+        i,
+      ) => text({
+        value: t,
+        what: `tags[${i}]`,
+      }))),
+    ]
   }
 
   if (input.autoTitle !== undefined) {
@@ -636,9 +987,19 @@ export function decidePush({ state, key, input: rawInput, meta, newCardId = `tas
   if (input.parent === null) {
     fields.parentId = null
   } else if (input.parent !== undefined) {
-    const parent = findCard({ state, ref: text({ value: input.parent, what: 'parent' }) })
+    const parent = findCard({
+      state,
+      ref: text({
+        value: input.parent,
+        what: 'parent',
+      }),
+    })
 
-    if (wouldCycle({ cards: state.cards, cardId, parentId: parent.id })) {
+    if (wouldCycle({
+      cards: state.cards,
+      cardId,
+      parentId: parent.id,
+    })) {
       throw invalid({ message: `parent ${parent.id} would make a cycle` })
     }
 
@@ -657,7 +1018,10 @@ export function decidePush({ state, key, input: rawInput, meta, newCardId = `tas
   const source = input.source === undefined ? undefined : parseSource({ value: input.source })
   const card = state.cards[cardId]
 
-  if (source && isStaleSource({ card, source })) {
+  if (source && isStaleSource({
+    card,
+    source,
+  })) {
     return { skipped: 'stale' }
   }
 
@@ -665,9 +1029,24 @@ export function decidePush({ state, key, input: rawInput, meta, newCardId = `tas
 
   if (card) {
     const changed = Object.entries(fields)
-      .filter(([field, value]) => !isDeepStrictEqual(pushedValue({ card, field }), value))
+      .filter(([
+        field,
+        value,
+      ]) => !isDeepStrictEqual(
+        pushedValue({
+          card,
+          field,
+        }),
+        value,
+      ))
     before = Object.fromEntries(
-      changed.map(([field]) => [field, pushedValue({ card, field })]),
+      changed.map(([field]) => [
+        field,
+        pushedValue({
+          card,
+          field,
+        }),
+      ]),
     ) as PushFields
   }
 
@@ -675,15 +1054,30 @@ export function decidePush({ state, key, input: rawInput, meta, newCardId = `tas
     state,
     meta,
     event: {
-      ...base({ state, meta, cardId }),
+      ...base({
+        state,
+        meta,
+        cardId,
+      }),
       type: 'card.pushed',
-      data: { key, ...fields, ...(source ? { source } : {}), ...(before ? { before } : {}) },
+      data: {
+        key,
+        ...fields,
+        ...(source ? { source } : {}),
+        ...(before ? { before } : {}),
+      },
     },
   })
 }
 
 // The card's value for a push field, null when absent. An auto title counts as absent.
-function pushedValue({ card, field }: { card: Card; field: string }): unknown {
+function pushedValue({
+  card,
+  field,
+}: {
+  card: Card
+  field: string
+}): unknown {
   if (field === 'title' && !card.titleSet) {
     return null
   }
@@ -691,14 +1085,26 @@ function pushedValue({ card, field }: { card: Card; field: string }): unknown {
   return (card as unknown as Record<string, unknown>)[field] ?? null
 }
 
-function checkColumn({ state, column }: { state: HydraState; column: Column | null }): void {
+function checkColumn({
+  state,
+  column,
+}: {
+  state: HydraState
+  column: Column | null
+}): void {
   if (column && !hydraConfig({ state }).columns.some(c => c.id === column)) {
     throw invalid({ message: `unknown Hydra column: ${column}` })
   }
 }
 
 export function decideMove(
-  { state, ref, column, before, meta }: {
+  {
+    state,
+    ref,
+    column,
+    before,
+    meta,
+  }: {
     state: HydraState
     ref: string
     column: Column
@@ -706,10 +1112,22 @@ export function decideMove(
     meta: Meta
   },
 ): Decision {
-  const card = findCard({ state, ref })
-  checkColumn({ state, column })
-  const others = columnCards({ state, column }).filter(c => c.id !== card.id)
-  const above = before === undefined ? undefined : findCard({ state, ref: before }).id
+  const card = findCard({
+    state,
+    ref,
+  })
+  checkColumn({
+    state,
+    column,
+  })
+  const others = columnCards({
+    state,
+    column,
+  }).filter(c => c.id !== card.id)
+  const above = before === undefined ? undefined : findCard({
+    state,
+    ref: before,
+  }).id
   const at = above === undefined ? others.length : others.findIndex(c => c.id === above)
 
   if (above === card.id) {
@@ -730,9 +1148,18 @@ export function decideMove(
     state,
     meta,
     event: {
-      ...base({ state, meta, cardId: card.id }),
+      ...base({
+        state,
+        meta,
+        cardId: card.id,
+      }),
       type: 'card.moved',
-      data: { before: card.column, after: column, rank, beforeRank: rankOf({ card }) },
+      data: {
+        before: card.column,
+        after: column,
+        rank,
+        beforeRank: rankOf({ card }),
+      },
     },
   })
 }
@@ -777,7 +1204,10 @@ export function parseLink({ input }: {
     throw invalid({ message: 'number must be a positive integer' })
   }
 
-  const link: Link = { kind: kind as Link['kind'], url: input.url }
+  const link: Link = {
+    kind: kind as Link['kind'],
+    url: input.url,
+  }
 
   if (number !== undefined) {
     link.number = Number(number)
@@ -799,7 +1229,13 @@ export function parseLink({ input }: {
 }
 
 export function decideLink(
-  { state, ref, url, link, meta }: {
+  {
+    state,
+    ref,
+    url,
+    link,
+    meta,
+  }: {
     state: HydraState
     ref: string
     url: string
@@ -807,16 +1243,25 @@ export function decideLink(
     meta: Meta
   },
 ): Decision {
-  const card = findCard({ state, ref })
+  const card = findCard({
+    state,
+    ref,
+  })
   const current = card.links.find(l => l.url === url)
 
   if (!link && !current) {
     return { skipped: 'unchanged' }
   }
 
-  const after = link ? { ...current, ...link } : null
+  const after = link ? {
+    ...current,
+    ...link,
+  } : null
 
-  if (after && isStaleLink({ current, next: after })) {
+  if (after && isStaleLink({
+    current,
+    next: after,
+  })) {
     return { skipped: 'stale' }
   }
 
@@ -824,9 +1269,17 @@ export function decideLink(
     state,
     meta,
     event: {
-      ...base({ state, meta, cardId: card.id }),
+      ...base({
+        state,
+        meta,
+        cardId: card.id,
+      }),
       type: 'card.linked',
-      data: { url, before: current ?? null, after },
+      data: {
+        url,
+        before: current ?? null,
+        after,
+      },
     },
   })
 }
@@ -834,7 +1287,13 @@ export function decideLink(
 // source: the adapter observing this outcome. An observed outcome changes or
 // clears only through the same source; a person may replace one hooks observed.
 export function decideOutcome(
-  { state, ref, outcome, meta, source }: {
+  {
+    state,
+    ref,
+    outcome,
+    meta,
+    source,
+  }: {
     state: HydraState
     ref: string
     outcome: Outcome | null
@@ -842,16 +1301,17 @@ export function decideOutcome(
     source?: string
   },
 ): Decision {
-  const card = findCard({ state, ref })
+  const card = findCard({
+    state,
+    ref,
+  })
   const observed = card.outcome?.source
 
   if (observed && source !== observed && !(source === undefined && observed === 'hooks')) {
     throw new HydraError({
       message: `card ${card.id}'s outcome comes from ${observed} and cannot be changed here`,
       code: 'SOURCE_OWNED',
-      help: [
-        `Run \`pnyx-axi move ${card.id} <column>\` to pin the card instead`,
-      ],
+      help: [`Run \`pnyx-axi move ${card.id} <column>\` to pin the card instead`],
     })
   }
 
@@ -859,33 +1319,84 @@ export function decideOutcome(
     state,
     meta,
     event: {
-      ...base({ state, meta, cardId: card.id }),
+      ...base({
+        state,
+        meta,
+        cardId: card.id,
+      }),
       type: 'card.outcome',
       data: {
         before: card.outcome ?? null,
-        after: outcome && source ? { ...outcome, source } : outcome,
-        card: { title: card.title, workspace: card.workspace, tags: card.tags, links: card.links },
+        after: outcome && source ? {
+          ...outcome,
+          source,
+        } : outcome,
+        card: {
+          title: card.title,
+          workspace: card.workspace,
+          tags: card.tags,
+          links: card.links,
+        },
       },
     },
   })
 }
 
-export function decideReply({ state, ref, data, meta }: { state: HydraState; ref: string; data: RepliedEvent['data']; meta: Meta }): Decision {
-  const card = findCard({ state, ref })
+export function decideReply({
+  state,
+  ref,
+  data,
+  meta,
+}: {
+  state: HydraState
+  ref: string
+  data: RepliedEvent['data']
+  meta: Meta
+}): Decision {
+  const card = findCard({
+    state,
+    ref,
+  })
 
-  return decided({ state, meta, event: { ...base({ state, meta, cardId: card.id }), type: 'card.replied', data } })
+  return decided({
+    state,
+    meta,
+    event: {
+      ...base({
+        state,
+        meta,
+        cardId: card.id,
+      }),
+      type: 'card.replied',
+      data,
+    },
+  })
 }
 
 // The event id of a harvested note: the same card and source record always give
 // the same id, so a note is appended once however often its source is read.
-export function noteId({ cardKey, ref }: { cardKey: string; ref: string }): string {
+export function noteId({
+  cardKey,
+  ref,
+}: {
+  cardKey: string
+  ref: string
+}): string {
   return `note_${createHash('sha256').update(`${cardKey}\n${ref}`)
     .digest('hex')
-    .slice(0, 20)}`
+    .slice(
+      0,
+      20,
+    )}`
 }
 
 export function decideNote(
-  { state, ref, note, meta }: {
+  {
+    state,
+    ref,
+    note,
+    meta,
+  }: {
     state: HydraState
     ref: string
     note: Note
@@ -894,30 +1405,70 @@ export function decideNote(
     }
   },
 ): Decision {
-  const card = findCard({ state, ref })
+  const card = findCard({
+    state,
+    ref,
+  })
 
   if (!(NOTE_KINDS as readonly string[]).includes(note.kind)) {
     throw invalid({ message: `note kind must be one of ${NOTE_KINDS.join(', ')}` })
   }
 
-  const data: Note = { kind: note.kind, source: text({ value: note.source, what: 'note source' }), text: text({ value: note.text, what: 'note text' }) }
+  const data: Note = {
+    kind: note.kind,
+    source: text({
+      value: note.source,
+      what: 'note source',
+    }),
+    text: text({
+      value: note.text,
+      what: 'note text',
+    }),
+  }
 
   if (note.at) {
     data.at = note.at
   }
 
-  return decided({ state, meta, event: { ...base({ state, meta, cardId: card.id }), type: 'card.noted', data } })
+  return decided({
+    state,
+    meta,
+    event: {
+      ...base({
+        state,
+        meta,
+        cardId: card.id,
+      }),
+      type: 'card.noted',
+      data,
+    },
+  })
 }
 
-function currentValue({ card, target }: { card: Card; target: Exclude<HydraEvent, { type: 'board.view' }> }): unknown {
+function currentValue({
+  card,
+  target,
+}: {
+  card: Card
+  target: Exclude<HydraEvent, { type: 'board.view' }>
+}): unknown {
   if (target.type === 'card.pushed') {
     return Object.fromEntries(
-      Object.keys(target.data.before ?? {}).map(field => [field, pushedValue({ card, field })]),
+      Object.keys(target.data.before ?? {}).map(field => [
+        field,
+        pushedValue({
+          card,
+          field,
+        }),
+      ]),
     )
   }
 
   if (target.type === 'card.moved') {
-    return { column: card.column, rank: rankOf({ card }) }
+    return {
+      column: card.column,
+      rank: rankOf({ card }),
+    }
   }
 
   if (target.type === 'card.linked') {
@@ -933,7 +1484,10 @@ function afterValue({ target }: { target: HydraEvent }): unknown {
   }
 
   if (target.type === 'card.moved') {
-    return { column: target.data.after, rank: target.data.rank }
+    return {
+      column: target.data.after,
+      rank: target.data.rank,
+    }
   }
 
   if (target.type !== 'card.pushed' && 'after' in target.data) {
@@ -947,7 +1501,10 @@ function afterValue({ target }: { target: HydraEvent }): unknown {
   const after = target.data as unknown as Record<string, unknown>
 
   return Object.fromEntries(
-    Object.keys(target.data.before ?? {}).map(field => [field, after[field] ?? null]),
+    Object.keys(target.data.before ?? {}).map(field => [
+      field,
+      after[field] ?? null,
+    ]),
   )
 }
 
@@ -957,7 +1514,11 @@ function afterValue({ target }: { target: HydraEvent }): unknown {
 // an observation: --actor is attribution, so a direct CLI or UI write stays undoable
 // whether a person or an agent made it. A sent reply cannot be unsent, and a
 // harvested note is a source observation.
-export function decideUndo({ state, target, meta }: {
+export function decideUndo({
+  state,
+  target,
+  meta,
+}: {
   state: HydraState
   target: HydraEvent
   meta: Meta
@@ -967,74 +1528,162 @@ export function decideUndo({ state, target, meta }: {
       throw notUndoable({ message: 'the move onto the default columns cannot be undone' })
     }
 
-    const unchanged = isDeepStrictEqual(hydraConfig({ state }).columns, target.data.columns)
+    const unchanged = isDeepStrictEqual(
+      hydraConfig({ state }).columns,
+      target.data.columns,
+    )
 
     if (!target.data.before || state.undone[target.id] || !unchanged) {
-      throw new HydraError({ message: 'columns changed since this event', code: 'CONFLICT' })
+      throw new HydraError({
+        message: 'columns changed since this event',
+        code: 'CONFLICT',
+      })
     }
 
     const pins = Object.entries(target.data.placements ?? {})
-    const placements = Object.fromEntries(pins.map(([id, pin]) => {
+    const placements = Object.fromEntries(pins.map(([
+      id,
+      pin,
+    ]) => {
       const card = state.cards[id]
 
       if (!card || card.column !== pin.after) {
-        throw new HydraError({ message: `task ${id} moved after the column edit`, code: 'CONFLICT' })
+        throw new HydraError({
+          message: `task ${id} moved after the column edit`,
+          code: 'CONFLICT',
+        })
       }
 
-      return [id, { before: pin.after, after: pin.before }]
+      return [
+        id,
+        {
+          before: pin.after,
+          after: pin.before,
+        },
+      ]
     }))
-    const decision = hydraEvent({ state, meta, cardId: '$board', change: { type: 'board.columns', data: { columns: target.data.before, before: target.data.columns, placements } } })
+    const decision = hydraEvent({
+      state,
+      meta,
+      cardId: '$board',
+      change: {
+        type: 'board.columns',
+        data: {
+          columns: target.data.before,
+          before: target.data.columns,
+          placements,
+        },
+      },
+    })
 
-    return 'event' in decision ? { event: { ...decision.event, undoes: target.id } } : decision
+    return 'event' in decision ? {
+      event: {
+        ...decision.event,
+        undoes: target.id,
+      },
+    } : decision
   }
 
-  if (['board.configured', 'task.created', 'task.declared', 'task.mirrored', 'task.permission', 'hydra.message', 'chat.message', 'board.agents'].includes(target.type)) {
+  if ([
+    'board.configured',
+    'task.created',
+    'task.declared',
+    'task.mirrored',
+    'task.permission',
+    'hydra.message',
+    'chat.message',
+    'board.agents',
+  ].includes(target.type)) {
     throw notUndoable({ message: `${target.id} records durable work history; append a correction instead` })
   }
 
   if (target.type === 'task.session') {
-    const session = findSession({ state, ref: target.data.session })
-
-    if (state.undone[target.id] || session.taskId !== target.data.after) {
-      throw new HydraError({ message: 'session attachment changed since this event', code: 'CONFLICT' })
-    }
-
-    checkRevision({ card: findCard({ state, ref: target.cardId }), ifRevision: meta.ifRevision })
-    const decision = decideSession({
-      state, ref: session.id, task: target.data.before, meta: { ...meta, ifRevision: undefined },
+    const session = findSession({
+      state,
+      ref: target.data.session,
     })
 
-    return 'event' in decision ? { event: { ...decision.event, undoes: target.id } } : decision
+    if (state.undone[target.id] || session.taskId !== target.data.after) {
+      throw new HydraError({
+        message: 'session attachment changed since this event',
+        code: 'CONFLICT',
+      })
+    }
+
+    checkRevision({
+      card: findCard({
+        state,
+        ref: target.cardId,
+      }),
+      ifRevision: meta.ifRevision,
+    })
+    const decision = decideSession({
+      state,
+      ref: session.id,
+      task: target.data.before,
+      meta: {
+        ...meta,
+        ifRevision: undefined,
+      },
+    })
+
+    return 'event' in decision ? {
+      event: {
+        ...decision.event,
+        undoes: target.id,
+      },
+    } : decision
   }
 
   if (target.type === 'board.view') {
     if (
       state.undone[target.id]
-      || !isDeepStrictEqual(viewFor({
-        state,
-      }), viewFor({
-        state: {
-          ...state,
-          view: target.data.after,
-        },
-      }))
+      || !isDeepStrictEqual(
+        viewFor({
+          state,
+        }),
+        viewFor({
+          state: {
+            ...state,
+            view: target.data.after,
+          },
+        }),
+      )
     ) {
-      throw new HydraError({ message: 'preferences changed since this event', code: 'CONFLICT' })
+      throw new HydraError({
+        message: 'preferences changed since this event',
+        code: 'CONFLICT',
+      })
     }
 
     if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) {
-      throw new HydraError({ message: 'view preferences changed', code: 'REVISION_CONFLICT' })
+      throw new HydraError({
+        message: 'view preferences changed',
+        code: 'REVISION_CONFLICT',
+      })
     }
 
-    const after = patchView({ state: { ...state, view: DEFAULT_VIEW }, input: target.data.before })
-    const placements = removedColumnPlacements({ state, after })
+    const after = patchView({
+      state: {
+        ...state,
+        view: DEFAULT_VIEW,
+      },
+      input: target.data.before,
+    })
+    const placements = removedColumnPlacements({
+      state,
+      after,
+    })
 
     // Undoing a column deletion puts its cards back, unless one was placed since.
     for (const p of target.data.placements ?? []) {
       const card = state.cards[p.cardId]
 
       if (!card || card.column !== p.after) {
-        throw new HydraError({ message: `card ${p.cardId} was moved since this event`, code: 'CONFLICT' })
+        throw new HydraError({
+          message: `card ${p.cardId} was moved since this event`,
+          code: 'CONFLICT',
+        })
       }
 
       if (placements.some(q => q.cardId === card.id)) {
@@ -1051,10 +1700,18 @@ export function decideUndo({ state, target, meta }: {
 
     return {
       event: {
-        ...base({ state, meta, cardId: '$board' }),
+        ...base({
+          state,
+          meta,
+          cardId: '$board',
+        }),
         type: 'board.view',
         undoes: target.id,
-        data: { before: viewFor({ state }), after, ...(placements.length ? { placements } : {}) },
+        data: {
+          before: viewFor({ state }),
+          after,
+          ...(placements.length ? { placements } : {}),
+        },
       },
     }
   }
@@ -1101,46 +1758,106 @@ export function decideUndo({ state, target, meta }: {
     throw new HydraError({
       message: `${target.id} was already ${redone ? 'redone' : 'undone'} by ${latest}`,
       code: 'CONFLICT',
-      help: [
-        `Run \`pnyx-axi undo ${latest}\` to ${redone ? 'undo it again' : 'redo it'}`,
-      ],
+      help: [`Run \`pnyx-axi undo ${latest}\` to ${redone ? 'undo it again' : 'redo it'}`],
     })
   }
 
-  const card = findCard({ state, ref: target.cardId })
-  checkRevision({ card, ifRevision: meta.ifRevision })
+  const card = findCard({
+    state,
+    ref: target.cardId,
+  })
+  checkRevision({
+    card,
+    ifRevision: meta.ifRevision,
+  })
 
-  if (!isDeepStrictEqual(currentValue({ card, target }), afterValue({ target }))) {
+  if (!isDeepStrictEqual(
+    currentValue({
+      card,
+      target,
+    }),
+    afterValue({ target }),
+  )) {
     throw new HydraError({
       message: `${target.id} no longer matches card ${card.id}: it changed since`,
       code: 'CONFLICT',
-      help: [
-        `Run \`pnyx-axi history --card ${card.id}\` to see the later change`,
-      ],
+      help: [`Run \`pnyx-axi history --card ${card.id}\` to see the later change`],
     })
   }
 
-  const head = { ...base({ state, meta, cardId: card.id }), undoes: target.id }
+  const head = {
+    ...base({
+      state,
+      meta,
+      cardId: card.id,
+    }),
+    undoes: target.id,
+  }
 
   if (target.type === 'card.pushed') {
     const before = target.data.before!
-    const data = { key: card.key, ...before, before: afterValue({ target }) as PushFields }
+    const data = {
+      key: card.key,
+      ...before,
+      before: afterValue({ target }) as PushFields,
+    }
 
-    return decided({ state, meta, event: { ...head, type: 'card.pushed', data } })
+    return decided({
+      state,
+      meta,
+      event: {
+        ...head,
+        type: 'card.pushed',
+        data,
+      },
+    })
   }
 
   if (target.type === 'card.moved') {
-    checkColumn({ state, column: target.data.before })
+    checkColumn({
+      state,
+      column: target.data.before,
+    })
 
-    const { before, after, rank, beforeRank } = target.data
+    const {
+      before,
+      after,
+      rank,
+      beforeRank,
+    } = target.data
 
-    return decided({ state, meta, event: { ...head, type: 'card.moved', data: { before: after, after: before, rank: beforeRank, beforeRank: rank } } })
+    return decided({
+      state,
+      meta,
+      event: {
+        ...head,
+        type: 'card.moved',
+        data: {
+          before: after,
+          after: before,
+          rank: beforeRank,
+          beforeRank: rank,
+        },
+      },
+    })
   }
 
   if (target.type === 'card.linked') {
-    const data = { url: target.data.url, before: target.data.after, after: target.data.before }
+    const data = {
+      url: target.data.url,
+      before: target.data.after,
+      after: target.data.before,
+    }
 
-    return decided({ state, meta, event: { ...head, type: 'card.linked', data } })
+    return decided({
+      state,
+      meta,
+      event: {
+        ...head,
+        type: 'card.linked',
+        data,
+      },
+    })
   }
 
   if (target.type !== 'card.outcome') {
@@ -1156,13 +1873,22 @@ export function decideUndo({ state, target, meta }: {
       data: {
         before: target.data.after,
         after: target.data.before,
-        card: { title: card.title, workspace: card.workspace, tags: card.tags, links: card.links },
+        card: {
+          title: card.title,
+          workspace: card.workspace,
+          tags: card.tags,
+          links: card.links,
+        },
       },
     },
   })
 }
 
-export function decideView({ state, patch, meta }: {
+export function decideView({
+  state,
+  patch,
+  meta,
+}: {
   state: HydraState
   patch: unknown
   meta: Meta
@@ -1172,28 +1898,51 @@ export function decideView({ state, patch, meta }: {
   }
 
   if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) {
-    throw new HydraError({ message: 'view preferences changed; reload and retry', code: 'REVISION_CONFLICT' })
+    throw new HydraError({
+      message: 'view preferences changed; reload and retry',
+      code: 'REVISION_CONFLICT',
+    })
   }
 
-  const before = viewFor({ state }), after = patchView({ state, input: patch })
+  const before = viewFor({ state }), after = patchView({
+    state,
+    input: patch,
+  })
 
-  if (isDeepStrictEqual(before, after)) {
+  if (isDeepStrictEqual(
+    before,
+    after,
+  )) {
     return { skipped: 'unchanged' }
   }
 
-  const placements = removedColumnPlacements({ state, after })
+  const placements = removedColumnPlacements({
+    state,
+    after,
+  })
 
   return {
     event: {
-      ...base({ state, meta, cardId: '$board' }),
+      ...base({
+        state,
+        meta,
+        cardId: '$board',
+      }),
       type: 'board.view',
-      data: { before, after, ...(placements.length ? { placements } : {}) },
+      data: {
+        before,
+        after,
+        ...(placements.length ? { placements } : {}),
+      },
     },
   }
 }
 
 // Cards in a deleted legacy view column move to the fallback column; Hydra columns stay.
-function removedColumnPlacements({ state, after }: {
+function removedColumnPlacements({
+  state,
+  after,
+}: {
   state: HydraState
   after: ViewPreferences
 }): NonNullable<ViewEvent['data']['placements']> {
@@ -1201,10 +1950,20 @@ function removedColumnPlacements({ state, after }: {
     ...after.customColumns.map(c => c.id),
     ...(state.config?.columns.map(c => c.id) ?? []),
   ])
-  const columns = hydraConfig({ state: { ...state, view: after } }).columns
+  const columns = hydraConfig({
+    state: {
+      ...state,
+      view: after,
+    },
+  }).columns
   const fallback = fallbackColumn({ columns })
 
   return Object.values(state.cards)
     .filter(c => c.column.startsWith('custom:') && !kept.has(c.column))
-    .map(c => ({ cardId: c.id, before: c.column, after: fallback, revision: c.revision }))
+    .map(c => ({
+      cardId: c.id,
+      before: c.column,
+      after: fallback,
+      revision: c.revision,
+    }))
 }

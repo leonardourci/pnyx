@@ -10,26 +10,57 @@ export function ReminderLabel({ card }: { card: Card }) {
   }
 
   const date = new Date(card.reminder.at)
-  const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+  const when = new Intl.DateTimeFormat(
+    undefined,
+    {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    },
+  ).format(date)
 
   return <span className="reminder-label" title={date.toISOString()}><Icon name="reminder" size={14} />reminds you {when}</span>
 }
 
-export function ReminderEditor({ card, command, connected, close }: {
+export function ReminderEditor({
+  card,
+  command,
+  connected,
+  close,
+}: {
   card: Card
   command: Command
   connected: boolean
   close(): void
 }) {
   const id = useId()
-  const [when, setWhen] = useState(card.reminder?.dueAt ? '' : card.reminder?.at ?? '')
-  const [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const [
+    when,
+    setWhen,
+  ] = useState(card.reminder?.dueAt ? '' : card.reminder?.at ?? '')
+  const [
+      busy,
+      setBusy,
+    ] = useState(false), [
+      error,
+      setError,
+    ] = useState('')
 
   const save = async ({ value }: { value: string }) => {
     setBusy(true); setError('')
 
     try {
-      await command({ name: 'task', args: ['remind', card.id, value, '--if-revision', String(card.revision), '--event-id', crypto.randomUUID()] })
+      await command({
+        name: 'task',
+        args: [
+          'remind',
+          card.id,
+          value,
+          '--if-revision',
+          String(card.revision),
+          '--event-id',
+          crypto.randomUUID(),
+        ],
+      })
       close()
     } catch (error) {
       setError((error as Error).message)

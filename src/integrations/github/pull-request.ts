@@ -6,8 +6,17 @@ const BODY_MAX = 8000
 const PR_URL = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\/?$/
 
 // One `  key: value` field of gh-axi's TOON output; a quoted value is a JSON string.
-function field({ out, key }: { out: string; key: string }): string | undefined {
-  const line = new RegExp(`^ {2}${key}: (.*)$`, 'm').exec(out)?.[1]
+function field({
+  out,
+  key,
+}: {
+  out: string
+  key: string
+}): string | undefined {
+  const line = new RegExp(
+    `^ {2}${key}: (.*)$`,
+    'm',
+  ).exec(out)?.[1]
 
   if (line === undefined) {
     return undefined
@@ -28,12 +37,24 @@ function field({ out, key }: { out: string; key: string }): string | undefined {
 // generated evidence and template markers rather than what the change is.
 function description({ body }: { body: string }): string {
   const text = body
-    .replace(/<details>[\s\S]*?<\/details>/g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\n{3,}/g, '\n\n')
+    .replace(
+      /<details>[\s\S]*?<\/details>/g,
+      '',
+    )
+    .replace(
+      /<!--[\s\S]*?-->/g,
+      '',
+    )
+    .replace(
+      /\n{3,}/g,
+      '\n\n',
+    )
     .trim()
 
-  return text.length > BODY_MAX ? `${text.slice(0, BODY_MAX)}…` : text
+  return text.length > BODY_MAX ? `${text.slice(
+    0,
+    BODY_MAX,
+  )}…` : text
 }
 
 // The pull request as a context note, or null when it is not a GitHub pull request
@@ -46,24 +67,52 @@ export function pullRequestNote({ url }: { url: string }): SourceNote | null {
     return null
   }
 
-  const [, owner, repo, number] = pr
-  const result = spawnSync(process.env.PNYX_GH_AXI || 'gh-axi', ['pr', 'view', number!, '--repo', `${owner}/${repo}`, '--full'], {
-    encoding: 'utf8',
-    timeout: VIEW_TIMEOUT_MS,
-  })
+  const [
+    , owner,
+    repo,
+    number,
+  ] = pr
+  const result = spawnSync(
+    process.env.PNYX_GH_AXI || 'gh-axi',
+    [
+      'pr',
+      'view',
+      number!,
+      '--repo',
+      `${owner}/${repo}`,
+      '--full',
+    ],
+    {
+      encoding: 'utf8',
+      timeout: VIEW_TIMEOUT_MS,
+    },
+  )
 
   if (result.status !== 0 || typeof result.stdout !== 'string') {
     return null
   }
 
-  const title = field({ out: result.stdout, key: 'title' })
+  const title = field({
+    out: result.stdout,
+    key: 'title',
+  })
 
   if (!title) {
     return null
   }
 
-  const body = description({ body: field({ out: result.stdout, key: 'body' }) ?? '' })
+  const body = description({
+    body: field({
+      out: result.stdout,
+      key: 'body',
+    }) ?? '',
+  })
   const text = `Pull request #${number}: ${title}${body ? `\n\n${body}` : ''}`
 
-  return { kind: 'context', source: 'github', text, ref: `pr:${url}:${text}` }
+  return {
+    kind: 'context',
+    source: 'github',
+    text,
+    ref: `pr:${url}:${text}`,
+  }
 }

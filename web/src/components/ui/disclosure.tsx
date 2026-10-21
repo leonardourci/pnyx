@@ -3,7 +3,11 @@ import { Markdown } from './markdown.tsx'
 import { Icon } from './icon.tsx'
 import { Button } from './controls.tsx'
 
-export function Disclosure({ title, children, className = '' }: {
+export function Disclosure({
+  title,
+  children,
+  className = '',
+}: {
   title: ReactNode
   children: ReactNode
   className?: string
@@ -20,7 +24,10 @@ export function Disclosure({ title, children, className = '' }: {
 }
 
 export function CollapsibleText({ text }: { text: string }) {
-  const [expanded, setExpanded] = useState(false), id = useId()
+  const [
+      expanded,
+      setExpanded,
+    ] = useState(false), id = useId()
   const long = text.length > 240 || text.split('\n').length > 4
 
   return (
