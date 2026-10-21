@@ -161,6 +161,22 @@ try {
     condition: '!!document.querySelector(".hydra-chat .turn-foot time") && !!document.querySelector(".hydra-chat .turn-foot [aria-label=\\"Copy reply\\"]") && !!document.querySelector(".hydra-chat .message-meta time") && !!document.querySelector(".hydra-chat .message-meta [aria-label=\\"Copy message\\"]")',
     label: 'the turn ends with its stop time and reply copy, and the owner message shows its time and copy',
   })
+  await b.evaluate({ code: 'const s = document.querySelector(".hydra-messages"); s.scrollTop = s.scrollHeight; await new Promise(r => setTimeout(r, 100)); const extra = document.createElement("div"); extra.className = "test-growth"; extra.style.height = "900px"; document.querySelector(".hydra-stream").append(extra); s.dispatchEvent(new Event("scroll")); return true;' })
+  await b.eventually({
+    condition: '(() => { const s = document.querySelector(".hydra-messages"); return s.scrollHeight - s.scrollTop - s.clientHeight < 2 && !document.querySelector(".hydra-chat .jump"); })()',
+    label: 'a scroll event that lands while the chat grows keeps it on the newest message',
+  })
+  await b.evaluate({ code: 'const s = document.querySelector(".hydra-messages"); s.scrollTop = 0; await new Promise(r => setTimeout(r, 100)); document.querySelector(".test-growth").style.height = "1200px"; await new Promise(r => setTimeout(r, 100)); return true;' })
+  await b.check({
+    condition: 'document.querySelector(".hydra-messages").scrollTop === 0 && !!document.querySelector(".hydra-chat .jump") && !!document.querySelector(".hydra-chat .chat-fade")',
+    label: 'scrolled up, the chat stays put and offers a jump to the newest message',
+  })
+  await b.click({ selector: '.hydra-chat .jump' })
+  await b.eventually({
+    condition: '(() => { const s = document.querySelector(".hydra-messages"); return s.scrollHeight - s.scrollTop - s.clientHeight < 2 && !document.querySelector(".hydra-chat .jump"); })()',
+    label: 'the jump button returns to the newest message',
+  })
+  await b.evaluate({ code: 'document.querySelector(".test-growth").remove(); return true;' })
   await b.fill({
     label: 'Reply to Hydra',
     value: 'Use the next model',

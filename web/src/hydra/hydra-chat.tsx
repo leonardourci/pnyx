@@ -84,7 +84,7 @@ export function HydraChat({
     setAway,
   ] = useState(false)
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
-  const follow = useRef(true)
+  const follow = useRef(true), lastTop = useRef(0)
   const hydra = hydraConfig({ state }).hydra, card = state.cards[HYDRA_CARD]
   const {
     tools,
@@ -187,7 +187,6 @@ export function HydraChat({
     }
   }
 
-  // Stays pinned to the newest message while it or the panel grows, unless the owner scrolled up.
   useLayoutEffect(
     () => {
       const element = content.current
@@ -290,7 +289,15 @@ export function HydraChat({
           tabIndex={0}
           onScroll={e => {
             const el = e.currentTarget
-            follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+
+            // Only scrolling up unpins: a pin's own scroll event can arrive after more text streamed in.
+            if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
+              follow.current = true
+            } else if (el.scrollTop < lastTop.current) {
+              follow.current = false
+            }
+
+            lastTop.current = el.scrollTop
             setAway(!follow.current)
           }}
         >
