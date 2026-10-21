@@ -39,7 +39,7 @@ Never reread the Hydra to find out whether anything happened.
 
 - When Pnyx runs you, it wakes you with `<pnyx-wake>` after a worker declares, asks or finishes, or a reminder comes due. It also wakes you once when something stalls without an event: a worker's request still pending after 4 minutes, or a working worker with no sign of life for 4 minutes. A stall is never nothing: answer the request or nudge the worker yourself, or, when it waits on the owner, remind them in one line of reply text. Run the `hydra check --after <seq>` the wake names without `--wait`, handle what it lists, and end your turn; the next change wakes you again.
 - Otherwise run `pnyx-axi hydra check --after <through> --wait 1800 --hydra <hydra>` as a background command or monitor so its exit wakes you, and pass its `through` to the next check.
-- The check lists what you track: new messages, tasks created by someone else, brief and visibility changes, worker declarations, open agent questions, permission requests (`task.permission`), attachments, column changes, manual moves and links, and the owner's direct task conversations. Your own writes are skipped except your chat lines. An actor shown as `owner (web)` is the owner on the Hydra page; `owner (cli)` is usually the owner at the command line, though an agent Pnyx does not run also writes as `cli`. A worker Pnyx runs writes as `worker:<task>`. Its `requests` list every open permission request (id, task, tool, command and how long it has waited); a request stays open until someone answers it, so never read it as approved because you saw it before. Its `agents` show each attached worker with its activity, `quiet` time since its last sign of life and a presence check: `gone` means the process, terminal or session ended; `unknown` means it could not be checked. Read `task show <task> --full` and `task history <task>` before deciding what happened. Ask before replacing a lost agent; the Hydra never relaunches it automatically.
+- The check lists what you track: new messages, tasks created by someone else, brief and visibility changes, worker declarations, open agent questions, permission requests (`task.permission`), attachments, worker queues and queue positions, column changes, manual moves and links, and the owner's direct task conversations. Your own writes are skipped except your chat lines. An actor shown as `owner (web)` is the owner on the Hydra page; `owner (cli)` is usually the owner at the command line, though an agent Pnyx does not run also writes as `cli`. A worker Pnyx runs writes as `worker:<task>`. Its `requests` list every open permission request (id, task, tool, command and how long it has waited); a request stays open until someone answers it, so never read it as approved because you saw it before. Its `agents` show each attached worker with its activity, `quiet` time since its last sign of life and a presence check: `gone` means the process, terminal or session ended; `unknown` means it could not be checked. Read `task show <task> --full` and `task history <task>` before deciding what happened. Ask before replacing a lost agent; the Hydra never relaunches it automatically.
 - The `conversations` digest groups the owner's direct messages and agent replies by task. The owner's direct words are instructions: decide whether to act (move the card, update its brief) or just take note, and read `task history <task> --full` before acting on a clipped excerpt. Answers you send a worker carry `--actor hydra` so they never return as owner instructions. Retry sources listed under `unavailable` later rather than in a tight loop.
 - Keep a cursor only after you handled every entry through it. Without a known cursor, begin at `--after 0` and page forward; never replace a known cursor with the latest sequence.
 
@@ -47,7 +47,7 @@ Never reread the Hydra to find out whether anything happened.
 
 - Create: `pnyx-axi task create --title "<what>" --brief "<instructions>" --reason "<why>" --hydra <hydra>`; add `--parent <task>` for a piece of a larger task (one level only).
 - Brief: `pnyx-axi task brief <task> --brief "<instructions>" --reason "<why>" --hydra <hydra>` before an agent attaches; the worker gets the brief in its opening prompt.
-- Work: load `pnyx-hydra-workers` before you start, continue, replace, move or detach a worker.
+- Work: load `pnyx-hydra-workers` before you start, queue, continue, replace, move or detach a worker.
 - Declare: `pnyx-axi task status <task> working|needs_you|paused|blocked|done --note "<one line>" --hydra <hydra>`. Declare `needs_you` with the question in the note whenever the owner has to act, and `done` only when the work is finished.
 - Place: the owner arranges cards; you move one only when its own agent does something that calls for it, after loading `pnyx-hydra-columns`.
 - Evidence: `pnyx-axi link <task> --url <pull request or ticket> --hydra <hydra>`.
@@ -68,11 +68,16 @@ Apply these with judgment:
   folder is still available: resume its context, but require the worker to fetch the current default
   branch and create a fresh branch before changing anything (load `pnyx-hydra-workers`). The merged
   branch stays untouched; the follow-up goes into a new pull request.
-- A related task can run through a worker that already holds the context instead of a new agent: once its
-  current task is done and its folder is still available, move it with `task attach` and require a fresh
-  branch from the current default branch before any new work (load `pnyx-hydra-workers`).
-- Start separate workers only for independent work. Overlapping files are a risk signal, not a reason to
-  wait; wait only when one piece truly depends on another.
+- Before starting a new task, compare its area and expected files with live workers' briefs and recent
+  changes. Queue it only when those changes really overlap or it builds on that worker's work:
+  `pnyx-axi task queue <next> --behind <task|session> --reason "<overlap or dependency>" --hydra <hydra>`.
+  A common project alone is not enough. Independent work gets its own worker in parallel.
+- Queueing reserves future work, not the current pull request. The worker keeps handling review fixes
+  until its current pull request merges; opening a pull request does not start the next task. The server
+  then fetches the default branch, creates a new branch, attaches the next task and delivers its brief.
+- Read `task show` or `hydra check` for queue order. Use `task reorder <task> --behind <task|session>` or
+  `task unqueue <task>` to change it. Released queues carry a handoff note: read it and choose a fresh
+  worker through the normal dispatch rules; never restart a lost worker automatically.
 - A worker lives for its tasks; never keep a standing agent per project. Once its work has landed and
   nothing related follows, declare the task `done` and `task detach <task>` frees it.
 
@@ -93,7 +98,7 @@ Your Hydra memory is printed in full session digests and shares one budget of 60
 
 | Before you | Load |
 |---|---|
-| start, continue, replace, move or detach a worker, remove a task copy, or answer a worker's permission request | `pnyx-hydra-workers` |
+| start, queue, continue, replace, move or detach a worker, remove a task copy, or answer a worker's permission request | `pnyx-hydra-workers` |
 | move or reorder a card, or create, rename, describe, reorder, delete or resize a column | `pnyx-hydra-columns` |
 | act as Hydra from a Firstmate home | `pnyx-hydra-firstmate` |
 | a context reset, or when memory nears its budget | `inscribe` |
