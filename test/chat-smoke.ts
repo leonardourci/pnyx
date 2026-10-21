@@ -220,6 +220,11 @@ try {
     condition: 'document.querySelectorAll(".hydra-chat .comment-card").length === 2 && document.querySelector(".hydra-chat .composer-comments").textContent.includes("Comments · 2") && document.querySelector(".hydra-chat .composer textarea") === window.input',
     label: 'nested selections keep independent comments and the mounted composer',
   })
+  const marked = '[...CSS.highlights.get(document.querySelector(".hydra-chat .messages").dataset.highlight)].map(range => range.toString())'
+  await check({
+    condition: `${marked}.sort().join("|") === "readable|readable paragraph" && [...document.querySelectorAll(".hydra-chat .comment-card .comment-quote mark")].map(m => m.textContent).join("|") === "readable paragraph|readable"`,
+    label: 'each comment\'s passage stays highlighted in the reply and its card',
+  })
   const cards = 'document.querySelectorAll(".hydra-chat .comment-card").length'
   const host = 'document.querySelector(".hydra-chat [data-caret-host]")'
   const paragraph = '[...document.querySelectorAll(".hydra-chat .message-block p")].find(p => p.textContent.startsWith("A readable paragraph"))'
@@ -303,7 +308,10 @@ try {
     condition: 'window.input.value.includes("> readable") && document.activeElement === window.input',
     label: 'Quote puts the selection in the draft',
   })
-  await evaluate({ code: 'window.input.value = ""; window.input.dispatchEvent(new Event("input", { bubbles: true })); return true;' })
+  await fill({
+    label: 'Reply to Hydra',
+    value: '',
+  })
   await select({
     start: 11,
     end: 19,
@@ -456,6 +464,10 @@ try {
   await check({
     condition: '!document.querySelector(".hydra-chat .comment-card") && !document.querySelector(".hydra-chat .composer-comments")',
     label: 'the composer pill removes every comment',
+  })
+  await check({
+    condition: `${marked}.length === 0`,
+    label: 'removing the comments removes their highlights',
   })
   assert.equal(
     (loadHydra({ hydraId: 'default' }).state.hydraMessages?.filter(message => message.actor === 'web').map(message => message.text)
