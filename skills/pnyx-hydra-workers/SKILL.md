@@ -76,10 +76,10 @@ Firstmate owns assignments on its linked Hydras; ask Firstmate to queue there.
 
 For manual reuse outside an automatic queue, a worker whose task is done can take a related task. First
 confirm the worker is idle, its work has landed, and the next task uses the same project. Declare the
-current task `done`, then inspect its copy and folder: Done cleanup can remove a managed copy. Reuse only
-after copy settlement is complete and the folder will remain. If the folder is gone or still due for
-automatic removal, start a new worker from the current default branch instead; `task attach` cannot
-restore or retain a managed copy.
+current task `done`, then inspect its copy and folder: Done cleanup returns a clean landed slot to the
+pool, reserving it while its worker remains attached.
+Reuse only after copy settlement is complete and the folder will remain. If the folder is gone, start a
+new worker from the current default branch instead; `task attach` cannot restore a missing copy.
 
 For a surviving folder, write the next task's brief with the branch preparation below as its first step,
 then
@@ -132,7 +132,7 @@ are separate from session attachment.
 
 ## Task copies
 
-A task with an attached project starts in its own copy (a git worktree on branch `pnyx/<hydra>-<task>`, or the project's copy command); `--in-place` works in the project folder itself and is refused while another Hydra's worker runs there. When the task reaches Done, Pnyx releases a clean copy whose work landed to the project's pool, where the next task's start takes it on a fresh branch; a copy a worker still runs in stays its own. Otherwise it keeps the copy, flags it and messages you: land the work and run `pnyx-axi task copy <task> remove --hydra <hydra>`, or, when it already landed another way or is empty, `pnyx-axi task copy <task> remove --safe --reason "<why>" --hydra <hydra>`. Never discard work that never landed; ask the owner, who runs `--discard`. When `task attach` moves a worker whose old copy is clean and landed, or already pooled, the copy goes with it onto the new task's branch.
+A task with an attached project starts in its own copy (a git worktree on branch `pnyx/<hydra>-<task>`, or the project's copy command); `--in-place` works in the project folder itself and is refused while another Hydra's worker runs there. When the task reaches Done, Pnyx releases a clean copy whose work landed to the project's pool, where the next task's start takes it on a fresh branch; a copy a worker still runs in stays its own. Otherwise it keeps the copy, flags it and messages you: land the work and run `pnyx-axi task copy <task> remove --hydra <hydra>`, or, when it already landed another way or is empty, `pnyx-axi task copy <task> remove --safe --reason "<why>" --hydra <hydra>`. Never discard work that never landed; ask the owner, who runs `--discard`. Automatic folder handoff belongs to the worker queue; manual `task attach` keeps the branch preparation contract above.
 
 ## Permission requests
 
