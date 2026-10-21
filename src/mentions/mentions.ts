@@ -19,11 +19,17 @@ export function mentionId({ href }: { href: string }): string | undefined {
   }
 }
 
-export function taskMention({
-  id,
-  title,
-}: TaskMention): string {
-  const label = title.replace(
+// Only task references add context for Hydra; the other kinds are plain pointers.
+export function reference({
+  kind,
+  value,
+  label,
+}: {
+  kind: 'task' | 'project' | 'image' | 'file'
+  value: string
+  label: string
+}): string {
+  const text = label.replace(
     /\s/g,
     ' ',
   ).replace(
@@ -31,8 +37,24 @@ export function taskMention({
     '\\$&',
   )
 
-  return `[@${label}](pnyx-task:${encodeURIComponent(id)})`
+  // Parentheses and the other marks encodeURIComponent keeps would end the link early.
+  const target = encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    mark => `%${mark.charCodeAt(0).toString(16)
+      .toUpperCase()}`,
+  )
+
+  return `[@${text}](pnyx-${kind}:${target})`
 }
+
+export const taskMention = ({
+  id,
+  title,
+}: TaskMention): string => reference({
+  kind: 'task',
+  value: id,
+  label: title,
+})
 
 export function taskMentions({ text }: { text: string }): TaskMention[] {
   return [...text.matchAll(/\[@((?:\\.|[^\]\\\r\n])*)\]\((pnyx-task:[\w%~.-]+)\)/g)].flatMap(match => {
