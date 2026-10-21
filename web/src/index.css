@@ -1105,7 +1105,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .message-task-label { color: var(--color-muted); font-size: var(--text-meta); }
 .button.task-reference { display: inline-flex; gap: 5px; max-width: 100%; align-items: center; text-align: left; vertical-align: baseline; padding: 2px 6px; }
 .task-reference > svg { flex-shrink: 0; }
-.task-reference-title { min-width: 0; overflow-wrap: anywhere; }
+.task-reference-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-reference-state { flex-shrink: 0; color: var(--color-muted); font-size: var(--text-meta); font-weight: 500; white-space: nowrap; }
 .task-reference[data-state=working] .task-reference-state, .task-reference[data-state=done] .task-reference-state { color: var(--color-green); }
 .task-reference[data-state=asks] .task-reference-state { color: var(--color-gold); }
