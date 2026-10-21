@@ -2035,7 +2035,12 @@ export function createHost({
                 meta: {
                   at: at(),
                   actor,
-                  details,
+                  details: request.questions ? [
+                    `Asked: ${request.questions.map(question => question.question).join(' · ')}`,
+                    request.description,
+                    `Answered: ${choice === 'deny' ? 'Skipped' : recorded.answers?.map(answer => answer.join(', ')).join(' · ')}`,
+                    details,
+                  ].filter(Boolean).join('\n\n') : details,
                 },
                 cardId: card.id,
                 action: `${request.questions || request.form ? (choice === 'allow' ? 'Answered' : 'Skipped') : choice === 'allow' ? ALLOWED : 'Denied'} ${request.tool} on ${card.title}`,
