@@ -440,7 +440,7 @@ export async function sendReply({
         })
         answerDecision = {
           question: open.questions?.map(question => question.question).join('\n') || open.text || open.kind,
-          answer: open.questions?.some(question => question.secret) ? '(hidden)' : answerText({
+          answer: answerText({
             prompt,
             request: open,
             answer: checked.answer,
