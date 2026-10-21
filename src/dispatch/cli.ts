@@ -1,41 +1,87 @@
+import { saveOrPropose, resolveProposal } from './proposals.ts'
 import { existsSync } from 'node:fs'
+import { TEMPLATE_NUDGE } from '../core/digest.ts'
 import { isDeepStrictEqual } from 'node:util'
-import { WRITE, guard, parse, required, type Output } from '../cli/commands.ts'
+import { WRITE, guard, parse, required, meta, type Output } from '../cli/commands.ts'
 import { loadHydra, requireHydra, withRegistryLock } from '../store/hydra-store.ts'
-import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, readConfig, writeConfig, type Candidate, type HeadsDispatch, type Harness } from './config.ts'
+import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateRules, writeConfig, type Candidate, type Harness } from './config.ts'
 
-const OPTIONS = { ...WRITE, shared: { type: 'boolean' }, when: { type: 'string' }, candidates: { type: 'string' }, harness: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, mode: { type: 'string' }, fast: { type: 'string' }, main: { type: 'string' }, provider: { type: 'string' }, order: { type: 'string' }, project: { type: 'string' }, folder: { type: 'string' } } as const
-
-export const STARTER_DISPATCH: HeadsDispatch = {
-  main: 'claude:personal',
-  workers: { claude: ['claude:work', 'claude:personal'], codex: ['codex:work', 'codex:personal'] },
-  projects: {},
-  rules: {
-    build: { when: 'Implementation and difficult debugging', candidates: [{ harness: 'claude', model: 'claude-opus-5-5', effort: 'high' }, { harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' }] },
-    review: { when: 'Independent code review', candidates: [{ harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' }, { harness: 'claude', model: 'claude-opus-5-5', effort: 'high' }] },
-  },
-  default: [{ harness: 'claude', model: 'claude-sonnet-5-5' }, { harness: 'codex', model: 'gpt-6-luna' }],
-}
-export const STARTER_ACCOUNTS = {
-  accounts: {
-    'claude:personal': { provider: 'claude', folder: '~/.claude' },
-    'claude:work': { provider: 'claude', folder: '~/.claude-work' },
-    'codex:personal': { provider: 'codex', folder: '~/.codex' },
-    'codex:work': { provider: 'codex', folder: '~/.codex-work' },
-  },
-}
+const OPTIONS = {
+  ...WRITE,
+  shared: { type: 'boolean' },
+  when: { type: 'string' },
+  candidates: { type: 'string' },
+  harness: { type: 'string' },
+  model: { type: 'string' },
+  effort: { type: 'string' },
+  mode: { type: 'string' },
+  fast: { type: 'string' },
+  main: { type: 'string' },
+  provider: { type: 'string' },
+  order: { type: 'string' },
+  project: { type: 'string' },
+  folder: { type: 'string' },
+} as const
 
 function ruleCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, hydraId } = parse({ args, options: OPTIONS, positionals: 2 })
+  const propose = args[0] === 'propose'
+  args = propose ? args.slice(1) : args
+  const {
+    values,
+    positionals,
+    hydraId,
+  } = parse({
+    args,
+    options: OPTIONS,
+    positionals: 2,
+  })
   const action = positionals[0] ?? 'list'
+
+  if (propose && ![
+    'set',
+    'remove',
+    'accounts',
+  ].includes(action)) {
+    return invalid({ message: 'Use rule propose set|remove|accounts with the change arguments' })
+  }
+
+  if (action === 'confirm' || action === 'dismiss') {
+    return resolveProposal({
+      hydraId,
+      action,
+      token: required({
+        value: positionals[1],
+        what: 'proposal token',
+      }),
+      confirm: values.confirm as string | undefined,
+      values,
+    })
+  }
+
   const state = loadHydra({ hydraId }).state
 
   if (action === 'list') {
-    return { hydraId, ...effectiveDispatch({ hydraId, state }), help: ['Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading'] }
+    return {
+      hydraId,
+      ...effectiveDispatch({
+        hydraId,
+        state,
+      }),
+      help: [
+        'Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
+        ...(onTemplate({
+          hydraId,
+          state,
+        }) ? [TEMPLATE_NUDGE] : []),
+      ],
+    }
   }
 
   const shared = Boolean(values.shared)
-  const path = configPath({ hydraId, shared })
+  const path = configPath({
+    hydraId,
+    shared,
+  })
 
   if (!shared) {
     requireHydra({ hydraId })
@@ -45,23 +91,55 @@ function ruleCommand({ args }: { args: string[] }): Output {
     fn: () => {
       const before = parseDispatch({ value: readConfig({ path }) })
       const next = structuredClone(!shared && !existsSync(path)
-        ? { ...legacyDispatch({ state }), ...before } : before)
+        ? {
+          ...legacyDispatch({ state }),
+          ...before,
+        } : before)
       const inherited = shared
-        ? { rules: {}, default: [{ harness: 'claude' as const }], workers: {}, projects: {}, ...before }
-        : effectiveDispatch({ hydraId, state }).dispatch
+        ? {
+          ...templateRules(),
+          workers: {},
+          projects: {},
+          ...before,
+        }
+        : effectiveDispatch({
+          hydraId,
+          state,
+        }).dispatch
+
+      if (action === 'migrate' || (action === 'init' && !shared)) {
+        if (propose || meta({ values }).actor === 'hydra') {
+          return invalid({ message: 'Propose a rule set, remove or accounts change instead' })
+        }
+      }
 
       if (action === 'init') {
-        const accountPath = configPath({ hydraId, accounts: true, shared })
+        const accountPath = configPath({
+          hydraId,
+          accounts: true,
+          shared,
+        })
 
         if (!existsSync(path)) {
-          writeConfig({ path, value: STARTER_DISPATCH })
+          writeConfig({
+            path,
+            value: readTemplate(),
+          })
         }
 
         if (!existsSync(accountPath)) {
-          writeConfig({ path: accountPath, value: STARTER_ACCOUNTS, accounts: true })
+          writeConfig({
+            path: accountPath,
+            value: readTemplate({ accounts: true }),
+            accounts: true,
+          })
         }
 
-        return { dispatch: path, accounts: accountPath, help: ['Edit login folders and remove accounts you do not use before starting workers; Pnyx stores no credentials'] }
+        return {
+          dispatch: path,
+          accounts: accountPath,
+          help: ['Edit login folders and remove accounts you do not use before starting workers; Pnyx stores no credentials'],
+        }
       }
 
       if (action === 'migrate') {
@@ -73,7 +151,10 @@ function ruleCommand({ args }: { args: string[] }): Output {
           return { event: 'none: heads dispatch file already exists' }
         }
 
-        writeConfig({ path, value: legacyDispatch({ state }) })
+        writeConfig({
+          path,
+          value: legacyDispatch({ state }),
+        })
 
         return { migrated: path }
       }
@@ -84,13 +165,19 @@ function ruleCommand({ args }: { args: string[] }): Output {
         }
 
         if (values.provider !== undefined || values.order !== undefined) {
-          const provider = required({ value: values.provider as string | undefined, what: '--provider' })
+          const provider = required({
+            value: values.provider as string | undefined,
+            what: '--provider',
+          })
 
           if (provider !== 'claude' && provider !== 'codex') {
             invalid({ message: '--provider must be claude or codex' })
           }
 
-          const list = required({ value: values.order as string | undefined, what: '--order (comma-separated account names)' }).split(',')
+          const list = required({
+            value: values.order as string | undefined,
+            what: '--order (comma-separated account names)',
+          }).split(',')
             .map(value => name({ value: value.trim() }))
 
           if (values.project) {
@@ -98,7 +185,10 @@ function ruleCommand({ args }: { args: string[] }): Output {
             next.projects = Object.keys(next.projects ?? {}).length
               ? next.projects ?? {} : structuredClone(projects)
             const project = String(values.project)
-            next.projects[project] = { ...next.projects[project], [provider]: list }
+            next.projects[project] = {
+              ...next.projects[project],
+              [provider]: list,
+            }
           } else {
             next.workers = Object.keys(next.workers ?? {}).length
               ? next.workers ?? {} : structuredClone(inherited.workers)
@@ -106,7 +196,12 @@ function ruleCommand({ args }: { args: string[] }): Output {
           }
         }
       } else if (action === 'set' || action === 'remove') {
-        const key = name({ value: required({ value: positionals[1], what: 'rule name' }) })
+        const key = name({
+          value: required({
+            value: positionals[1],
+            what: 'rule name',
+          }),
+        })
         const effective = inherited
         const rules = Object.keys(next.rules ?? {}).length
           ? next.rules ?? {} : structuredClone(effective.rules)
@@ -129,9 +224,16 @@ function ruleCommand({ args }: { args: string[] }): Output {
               return invalid({ message: '--candidates must be a JSON array of harness/model/effort candidates' })
             }
           } else {
-            const agent: Candidate = { ...existing?.[0], harness: (values.harness ?? existing?.[0]?.harness ?? 'claude') as Harness }
+            const agent: Candidate = {
+              ...existing?.[0],
+              harness: (values.harness ?? existing?.[0]?.harness ?? 'claude') as Harness,
+            }
 
-            for (const field of ['model', 'effort', 'mode'] as const) {
+            for (const field of [
+              'model',
+              'effort',
+              'mode',
+            ] as const) {
               if (values[field] === '') {
                 delete agent[field]
               } else if (values[field] !== undefined) {
@@ -159,7 +261,10 @@ function ruleCommand({ args }: { args: string[] }): Output {
           if (key === 'default') {
             next.default = list
           } else {
-            rules[key] = { when: String(values.when ?? rules[key]?.when ?? `Use for ${key} work`), candidates: list }
+            rules[key] = {
+              when: String(values.when ?? rules[key]?.when ?? `Use for ${key} work`),
+              candidates: list,
+            }
             next.rules = rules
           }
         }
@@ -167,27 +272,67 @@ function ruleCommand({ args }: { args: string[] }): Output {
         return invalid({ message: 'Use rule list, init, migrate, set, remove or accounts' })
       }
 
-      if (isDeepStrictEqual(before, next)) {
+      if (isDeepStrictEqual(
+        before,
+        next,
+      )) {
         return { event: 'none: unchanged' }
       }
 
-      writeConfig({ path, value: next })
+      const proposal = saveOrPropose({
+        hydraId,
+        shared,
+        value: next,
+        values,
+        propose,
+        summary: `Rule ${action}${positionals[1] ? ` ${positionals[1]}` : ''}${shared ? ' (shared)' : ''}`,
+      })
 
-      return { saved: path, ...effectiveDispatch({ hydraId, state }) }
+      if (proposal) {
+        return proposal
+      }
+
+      return {
+        saved: path,
+        ...effectiveDispatch({
+          hydraId,
+          state,
+        }),
+      }
     },
   })
 }
 
 function accountCommand({ args }: { args: string[] }): Output {
-  const { values, positionals, hydraId } = parse({ args, options: OPTIONS, positionals: 2 })
+  const propose = args[0] === 'propose'
+  args = propose ? args.slice(1) : args
+  const {
+    values,
+    positionals,
+    hydraId,
+  } = parse({
+    args,
+    options: OPTIONS,
+    positionals: 2,
+  })
   const action = positionals[0] ?? 'list'
   const state = loadHydra({ hydraId }).state
 
   if (action === 'list') {
-    return { hydraId, accounts: effectiveDispatch({ hydraId, state }).accounts }
+    return {
+      hydraId,
+      accounts: effectiveDispatch({
+        hydraId,
+        state,
+      }).accounts,
+    }
   }
 
-  const path = configPath({ hydraId, accounts: true, shared: Boolean(values.shared) })
+  const path = configPath({
+    hydraId,
+    accounts: true,
+    shared: Boolean(values.shared),
+  })
 
   if (!values.shared) {
     requireHydra({ hydraId })
@@ -198,23 +343,59 @@ function accountCommand({ args }: { args: string[] }): Output {
       const file = parseAccounts({ value: readConfig({ path }) })
 
       if (!Object.keys(file.accounts).length && !values.shared) {
-        const shared = configPath({ hydraId, accounts: true, shared: true })
+        const shared = configPath({
+          hydraId,
+          accounts: true,
+          shared: true,
+        })
         file.accounts = parseAccounts({ value: readConfig({ path: shared }) }).accounts
       }
 
-      const key = name({ value: required({ value: positionals[1], what: 'account name' }) })
+      const key = name({
+        value: required({
+          value: positionals[1],
+          what: 'account name',
+        }),
+      })
 
       if (action === 'remove') {
         delete file.accounts[key]
       } else if (action === 'set') {
-        file.accounts[key] = { provider: required({ value: values.provider as string | undefined, what: '--provider' }) as Harness, folder: required({ value: values.folder as string | undefined, what: '--folder' }) }
+        file.accounts[key] = {
+          provider: required({
+            value: values.provider as string | undefined,
+            what: '--provider',
+          }) as Harness,
+          folder: required({
+            value: values.folder as string | undefined,
+            what: '--folder',
+          }),
+        }
       } else {
         return invalid({ message: 'Use account list, set or remove' })
       }
 
-      writeConfig({ path, value: file, accounts: true })
+      const proposal = saveOrPropose({
+        hydraId,
+        shared: Boolean(values.shared),
+        accounts: true,
+        value: file,
+        values,
+        propose,
+        summary: `Account ${action} ${key}${values.shared ? ' (shared)' : ''}`,
+      })
 
-      return { saved: path, accounts: effectiveDispatch({ hydraId, state }).accounts }
+      if (proposal) {
+        return proposal
+      }
+
+      return {
+        saved: path,
+        accounts: effectiveDispatch({
+          hydraId,
+          state,
+        }).accounts,
+      }
     },
   })
 }
@@ -227,11 +408,14 @@ export const DISPATCH_HELP = {
   rule: `usage: pnyx-axi rule list|init|migrate [--shared]
 pnyx-axi rule set <name> --when "<work description>" --candidates '<JSON array>' [--shared]
 pnyx-axi rule set <name> [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off|default]
+pnyx-axi rule propose set|remove|accounts <same arguments>
+pnyx-axi rule confirm <token> --confirm <token> | dismiss <token>
 pnyx-axi rule remove <name> [--shared]
 pnyx-axi rule accounts [--main <account>] [--provider claude|codex --order <account,account>] [--project <absolute path>] [--shared]
 Empty sections inherit the shared file. Single-candidate flags replace a rule's candidate list. rule migrate preserves old agents as rules without changing the event log.`,
   account: `usage: pnyx-axi account list
 pnyx-axi account set <name> --provider claude|codex --folder <login folder> [--shared]
+pnyx-axi account propose set|remove <same arguments>
 pnyx-axi account remove <name> [--shared]
 Only login folders are stored. Account order is set through rule accounts.`,
 }

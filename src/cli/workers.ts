@@ -1,5 +1,9 @@
+import { setupCheck, setupDigest } from '../setup/check.ts'
+import { projectDigest } from '../projects/context.ts'
+import { queuePosition } from '../queue/state.ts'
 import { projectRows } from '../projects/read.ts'
 import { hydraDigest } from '../core/digest.ts'
+import { ownerMemory } from '../store/owner-memory.ts'
 import { checkAttachments } from '../integrations/presence/check.ts'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
@@ -14,24 +18,67 @@ import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { commandText } from '../integrations/hooks/observe.ts'
 import { COMMON, commands, guard, integer, parse, summarize, type Output } from './commands.ts'
 
-const TRACKED: readonly EventType[] = ['task.reminder', 'task.reminder-due', 'hydra.project', 'task.project', 'task.permission', 'hydra.message', 'task.created', 'task.brief', 'task.visibility', 'task.declared', 'task.session', 'board.columns', 'card.moved', 'card.linked', 'task.launched']
+const TRACKED: readonly EventType[] = [
+  'task.queue',
+  'task.reminder',
+  'task.reminder-due',
+  'hydra.project',
+  'task.project',
+  'task.permission',
+  'hydra.message',
+  'task.created',
+  'task.brief',
+  'task.visibility',
+  'task.declared',
+  'task.session',
+  'board.columns',
+  'card.moved',
+  'card.linked',
+  'task.launched',
+]
 const CHECK_LIMIT = 20
 const POLL_MS = 2000
 // The Hydra page and an unlabelled CLI are usually the owner; workers Pnyx runs write as `worker:<task>`.
-const OWNER_ACTORS = ['web', 'cli']
+const OWNER_ACTORS = [
+  'web',
+  'cli',
+]
 
-export async function hydraCheck({ args, connect }: {
+export async function hydraCheck({
+  args,
+  connect,
+}: {
   args: string[]
   connect?: Connect
 }): Promise<Output> {
-  const { values, hydraId } = parse({ args, options: { ...COMMON, after: { type: 'string' }, wait: { type: 'string' } }, positionals: 1 })
-  const wait = integer({ value: values.wait, flag: '--wait' }) ?? 0
+  const {
+    values,
+    hydraId,
+  } = parse({
+    args,
+    options: {
+      ...COMMON,
+      after: { type: 'string' },
+      wait: { type: 'string' },
+    },
+    positionals: 1,
+  })
+  const wait = integer({
+    value: values.wait,
+    flag: '--wait',
+  }) ?? 0
 
   if (wait > 3600) {
-    throw new AxiError('--wait is at most 3600 seconds', 'VALIDATION_ERROR')
+    throw new AxiError(
+      '--wait is at most 3600 seconds',
+      'VALIDATION_ERROR',
+    )
   }
 
-  const after = integer({ value: values.after, flag: '--after' }) ?? loadHydra({ hydraId }).state.seq
+  const after = integer({
+    value: values.after,
+    flag: '--after',
+  }) ?? loadHydra({ hydraId }).state.seq
   hydraDir({ hydraId })
   const deadline = Date.now() + wait * 1000
   const changes: HydraEvent[] = []
@@ -39,7 +86,10 @@ export async function hydraCheck({ args, connect }: {
   let offset = 0
   let last = after
   const sent = new Map<string, number>()
-  let unavailable: { task: string; error: string }[]
+  let unavailable: {
+    task: string
+    error: string
+  }[]
 
   for (;;) {
     withWriter({
@@ -69,21 +119,34 @@ export async function hydraCheck({ args, connect }: {
               writer,
               cardIds: [session.originCardId],
               at: new Date().toISOString(),
-              detached: { session, task, memberships },
+              detached: {
+                session,
+                task,
+                memberships,
+              },
             })
           }
         }
       },
     })
-    unavailable = await harvestPaseoChats({ hydraId, connect })
-    const read = readEventsFrom({ hydraId, offset })
+    unavailable = await harvestPaseoChats({
+      hydraId,
+      connect,
+    })
+    const read = readEventsFrom({
+      hydraId,
+      offset,
+    })
 
     if (read) {
       offset = read.end
       const current = loadHydra({ hydraId }).state
 
       for (const e of read.events) {
-        last = Math.max(last, e.seq)
+        last = Math.max(
+          last,
+          e.seq,
+        )
 
         const task = current.cards[e.cardId]
         const worker = task?.tracking === 'declared' && !task.automaticTask && e.cardId !== '$hydra'
@@ -92,11 +155,24 @@ export async function hydraCheck({ args, connect }: {
         const key = ({ text }: { text: string }) => `${e.sessionId ?? e.cardId}\n${redact({ text })}`
 
         if (e.type === 'card.replied' && e.data.state === 'queued' && e.data.text) {
-          const parts = splitEntry({ entry: { id: e.data.reply, role: 'user', kind: 'message', text: [e.data.text, e.data.context].filter(Boolean).join('\n\n') } })
+          const parts = splitEntry({
+            entry: {
+              id: e.data.reply,
+              role: 'user',
+              kind: 'message',
+              text: [
+                e.data.text,
+                e.data.context,
+              ].filter(Boolean).join('\n\n'),
+            },
+          })
 
           for (const part of parts) {
             const echo = key({ text: part.text })
-            sent.set(echo, (sent.get(echo) ?? 0) + 1)
+            sent.set(
+              echo,
+              (sent.get(echo) ?? 0) + 1,
+            )
           }
         }
 
@@ -107,7 +183,10 @@ export async function hydraCheck({ args, connect }: {
           const count = sent.get(echo) ?? 0
 
           if (count) {
-            sent.set(echo, count - 1)
+            sent.set(
+              echo,
+              count - 1,
+            )
             chat = false
           }
         }
@@ -128,26 +207,53 @@ export async function hydraCheck({ args, connect }: {
       break
     }
 
-    await sleep(Math.min(POLL_MS, deadline - Date.now()))
+    await sleep(Math.min(
+      POLL_MS,
+      deadline - Date.now(),
+    ))
   }
 
-  const page = changes.slice(0, CHECK_LIMIT)
+  const page = changes.slice(
+    0,
+    CHECK_LIMIT,
+  )
   const through = changes.length > CHECK_LIMIT ? page.at(-1)!.seq : last
-  type Conversation = { task: string; messages: { seq: number; role: string; text: string }[] }
+  type Conversation = {
+    task: string
+    messages: {
+      seq: number
+      role: string
+      text: string
+    }[]
+  }
   const digest = new Map<string, Conversation>()
 
   for (const event of page) {
     const message = event.type === 'chat.message'
-      ? { role: event.data.role, text: event.data.text }
+      ? {
+        role: event.data.role,
+        text: event.data.text,
+      }
       : event.type === 'card.replied' && event.data.text
-        ? { role: 'user', text: event.data.text } : undefined
+        ? {
+          role: 'user',
+          text: event.data.text,
+        } : undefined
 
     if (message) {
-      const task = digest.get(event.cardId) ?? { task: event.cardId, messages: [] }
+      const task = digest.get(event.cardId) ?? {
+        task: event.cardId,
+        messages: [],
+      }
       task.messages.push({
-        seq: event.seq, role: message.role, text: compact({ text: message.text }),
+        seq: event.seq,
+        role: message.role,
+        text: compact({ text: message.text }),
       })
-      digest.set(event.cardId, task)
+      digest.set(
+        event.cardId,
+        task,
+      )
     }
   }
 
@@ -173,9 +279,15 @@ export async function hydraCheck({ args, connect }: {
       task: card.id,
       tool: p.tool,
       command: compact({
-        text: commandText({ input: p.input }) ?? [p.input.file_path, p.input.path].find(v => typeof v === 'string') ?? p.description ?? JSON.stringify(p.input),
+        text: commandText({ input: p.input }) ?? [
+          p.input.file_path,
+          p.input.path,
+        ].find(v => typeof v === 'string') ?? p.description ?? JSON.stringify(p.input),
       }),
-      age: p.at ? `${Math.max(0, Math.round((Date.now() - Date.parse(p.at)) / 1000))}s` : 'unknown',
+      age: p.at ? `${Math.max(
+        0,
+        Math.round((Date.now() - Date.parse(p.at)) / 1000),
+      )}s` : 'unknown',
     })))
 
   return {
@@ -183,26 +295,51 @@ export async function hydraCheck({ args, connect }: {
     projects: projectRows({ state }),
     changes: page.length ? page.map(e => row({ e })) : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
+    queues: Object.values(state.cards).filter(card => card.queue)
+      .map(card => ({
+        task: card.id,
+        ...queuePosition({
+          state,
+          card,
+        }),
+      })),
     requests: requests.length ? requests : 'none: no open permission requests',
-    agents: await checkAttachments({ state, connect }),
+    agents: await checkAttachments({
+      state,
+      connect,
+    }),
     ...(digest.size ? { conversations: [...digest.values()] } : {}),
     ...(unavailable.length ? { unavailable } : {}),
-    help: [...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []), ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []), `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`],
+    help: [
+      ...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []),
+      ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []),
+      `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`,
+    ],
   }
 }
 
 function compact({ text }: { text: string }): string {
-  const clean = redact({ text }).replace(/\s+/g, ' ')
+  const clean = redact({ text }).replace(
+    /\s+/g,
+    ' ',
+  )
     .trim()
 
-  return clean.length > 280 ? `${clean.slice(0, 279)}…` : clean
+  return clean.length > 280 ? `${clean.slice(
+    0,
+    279,
+  )}…` : clean
 }
 
 // guard catches only synchronous errors; the check can wait.
 const hydraCheckHandler = guard({
   handler: ({ args }) => hydraCheck({ args }).catch((error: unknown) => {
     if (error instanceof HydraError) {
-      throw new AxiError(error.message, error.code, error.help)
+      throw new AxiError(
+        error.message,
+        error.code,
+        error.help,
+      )
     }
 
     throw error
@@ -211,9 +348,27 @@ const hydraCheckHandler = guard({
 
 const hydraDigestHandler = guard({
   handler: ({ args }) => {
-    const { hydraId } = parse({ args, options: COMMON, positionals: 1 })
+    const { hydraId } = parse({
+      args,
+      options: COMMON,
+      positionals: 1,
+    })
 
-    return hydraDigest({ hydraId, state: loadHydra({ hydraId }).state })
+    const owner = ownerMemory()
+    const state = loadHydra({ hydraId }).state
+
+    return hydraDigest({
+      hydraId,
+      owner,
+      state,
+      projects: projectDigest({ state }),
+      setup: setupDigest({
+        items: setupCheck({
+          hydraId,
+          state,
+        }),
+      }),
+    })
   },
 })
 

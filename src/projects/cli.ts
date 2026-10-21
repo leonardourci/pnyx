@@ -1,3 +1,5 @@
+import { PROJECT_MEMORY_BUDGET } from './memory.ts'
+import { projectMemoryCommand } from './memory-cli.ts'
 import { CLONE_TIMEOUT_MS } from './limits.ts'
 import { execFile } from 'node:child_process'
 import { isAbsolute, resolve } from 'node:path'
@@ -11,8 +13,31 @@ import { findProject, projectFolder, projectName, projectRows, sharingHydras } f
 const clone = promisify(execFile)
 
 async function projectCommand({ args }: { args: string[] }): Promise<Output> {
-  const { values, positionals, hydraId } = parse({ args, options: { ...WRITE, clone: { type: 'string' }, into: { type: 'string' }, 'command-name': { type: 'string' }, command: { type: 'string' }, 'brings-own-folder': { type: 'string' }, copy: { type: 'string' } }, positionals: 2 })
-  const [action, ref] = positionals
+  if (args[0] === 'memory') {
+    return projectMemoryCommand({ args: args.slice(1) })
+  }
+
+  const {
+    values,
+    positionals,
+    hydraId,
+  } = parse({
+    args,
+    options: {
+      ...WRITE,
+      clone: { type: 'string' },
+      into: { type: 'string' },
+      'command-name': { type: 'string' },
+      command: { type: 'string' },
+      'brings-own-folder': { type: 'string' },
+      copy: { type: 'string' },
+    },
+    positionals: 2,
+  })
+  const [
+    action,
+    ref,
+  ] = positionals
   const m = meta({ values })
   const current = loadHydra({ hydraId }).state
   const readonly = current.config?.hydra.kind === 'firstmate'
@@ -20,51 +45,107 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   const settings = values['command-name'] !== undefined || values.command !== undefined || values['brings-own-folder'] !== undefined
 
   if ((settings || values.copy !== undefined) && action !== 'set') {
-    throw new HydraError({ message: 'Command settings need project set <name|path>', code: 'VALIDATION_ERROR' })
+    throw new HydraError({
+      message: 'Command settings need project set <name|path>',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (action === 'show') {
+    return projectMemoryCommand({
+      args: [
+        'list',
+        '--project',
+        required({
+          value: ref,
+          what: 'project name or path',
+        }),
+        '--hydra',
+        hydraId,
+      ],
+    })
   }
 
   if (action === 'list' && !ref && !values.clone && !values.into) {
     const projects = projectRows({ state: current })
 
-    return { hydraId, readonly, revision: current.projectsRevision ?? 0, projects: projects.length ? projects : 'none: no projects attached' }
+    return {
+      hydraId,
+      readonly,
+      revision: current.projectsRevision ?? 0,
+      projects: projects.length ? projects : 'none: no projects attached',
+    }
   }
 
   if (action !== 'add' && action !== 'remove' && action !== 'set') {
-    throw new HydraError({ message: 'Use project add <path>, project add --clone <url> --into <folder>, project list, project set <name|path> or project remove <name|path>', code: 'VALIDATION_ERROR' })
+    throw new HydraError({
+      message: 'Use project add <path>, project add --clone <url> --into <folder>, project list, project show <name|path>, project set <name|path> or project remove <name|path>',
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   if (readonly) {
-    throw new HydraError({ message: 'This Hydra’s projects are managed by Firstmate', code: 'READ_ONLY' })
+    throw new HydraError({
+      message: 'This Hydra’s projects are managed by Firstmate',
+      code: 'READ_ONLY',
+    })
   }
 
   if ((values.clone && (action !== 'add' || ref || !values.into)) || (values.into && !values.clone)) {
-    throw new HydraError({ message: 'Use project add --clone <url> --into <folder>; the destination is required', code: 'VALIDATION_ERROR' })
+    throw new HydraError({
+      message: 'Use project add --clone <url> --into <folder>; the destination is required',
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   if (action === 'set') {
     if (values.clone || values.into || (!settings && values.copy === undefined)) {
-      throw new HydraError({ message: 'Use project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false]', code: 'VALIDATION_ERROR' })
+      throw new HydraError({
+        message: 'Use project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false]',
+        code: 'VALIDATION_ERROR',
+      })
     }
 
-    if (values['brings-own-folder'] !== undefined && !['true', 'false'].includes(String(values['brings-own-folder']))) {
-      throw new HydraError({ message: '--brings-own-folder must be true or false', code: 'VALIDATION_ERROR' })
+    if (values['brings-own-folder'] !== undefined && ![
+      'true',
+      'false',
+    ].includes(String(values['brings-own-folder']))) {
+      throw new HydraError({
+        message: '--brings-own-folder must be true or false',
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     return commit({
       hydraId,
       meta: m,
-      intent: { type: 'hydra.project', card: '$projects' },
+      intent: {
+        type: 'hydra.project',
+        card: '$projects',
+      },
       decide: ({ state }) => {
         if (state.config?.hydra.kind === 'firstmate') {
-          throw new HydraError({ message: 'This Hydra’s projects are managed by Firstmate', code: 'READ_ONLY' })
+          throw new HydraError({
+            message: 'This Hydra’s projects are managed by Firstmate',
+            code: 'READ_ONLY',
+          })
         }
 
-        const before = findProject({ state, ref: required({ value: ref, what: 'project name or path' }) })
+        const before = findProject({
+          state,
+          ref: required({
+            value: ref,
+            what: 'project name or path',
+          }),
+        })
         const command = String(values.command ?? before.startCommand?.command ?? '').trim()
         const name = String(values['command-name'] ?? before.startCommand?.name ?? '').trim()
 
         if (command && !name) {
-          throw new HydraError({ message: 'Give the project command a name with --command-name', code: 'VALIDATION_ERROR' })
+          throw new HydraError({
+            message: 'Give the project command a name with --command-name',
+            code: 'VALIDATION_ERROR',
+          })
         }
 
         const after = { ...before }
@@ -82,50 +163,119 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
           delete after.startCommand
 
           if (command) {
-            after.startCommand = { name, command, bringsOwnFolder: values['brings-own-folder'] === undefined ? before.startCommand?.bringsOwnFolder ?? false : values['brings-own-folder'] === 'true' }
+            after.startCommand = {
+              name,
+              command,
+              bringsOwnFolder: values['brings-own-folder'] === undefined ? before.startCommand?.bringsOwnFolder ?? false : values['brings-own-folder'] === 'true',
+            }
           }
         }
 
         return JSON.stringify(before) === JSON.stringify(after) ? { skipped: 'unchanged' }
-          : hydraEvent({ state, meta: m, cardId: '$projects', change: { type: 'hydra.project', data: { before, after, sharedWith: [] } } })
+          : hydraEvent({
+            state,
+            meta: m,
+            cardId: '$projects',
+            change: {
+              type: 'hydra.project',
+              data: {
+                before,
+                after,
+                sharedWith: [],
+              },
+            },
+          })
       },
     })
   }
 
   if (m.id && current.eventIds[m.id] !== undefined) {
-    return commit({ hydraId, meta: m, intent: { type: 'hydra.project', card: '$projects' }, decide: () => ({ skipped: 'duplicate' }) })
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: 'hydra.project',
+        card: '$projects',
+      },
+      decide: () => ({ skipped: 'duplicate' }),
+    })
   }
 
   if (m.actor === 'web' && action === 'add' && !isAbsolute(String(values.into ?? ref ?? ''))) {
-    throw new HydraError({ message: 'Enter an absolute laptop folder path in Settings', code: 'VALIDATION_ERROR' })
+    throw new HydraError({
+      message: 'Enter an absolute laptop folder path in Settings',
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   let path: string
 
   if (values.clone) {
-    const destination = resolve(required({ value: values.into as string | undefined, what: '--into <folder>' }))
+    const destination = resolve(required({
+      value: values.into as string | undefined,
+      what: '--into <folder>',
+    }))
 
     try {
-      await clone('git', ['clone', '--', String(values.clone), destination], { timeout: CLONE_TIMEOUT_MS, maxBuffer: 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+      await clone(
+        'git',
+        [
+          'clone',
+          '--',
+          String(values.clone),
+          destination,
+        ],
+        {
+          timeout: CLONE_TIMEOUT_MS,
+          maxBuffer: 1024 * 1024,
+          env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: '0',
+          },
+        },
+      )
     } catch {
-      throw new HydraError({ message: `git clone failed into ${destination}; check the URL, access and destination before retrying`, code: 'CLONE_FAILED' })
+      throw new HydraError({
+        message: `git clone failed into ${destination}; check the URL, access and destination before retrying`,
+        code: 'CLONE_FAILED',
+      })
     }
 
     path = projectFolder({ path: destination })
   } else {
-    path = action === 'add' ? projectFolder({ path: required({ value: ref, what: 'project path' }) })
-      : findProject({ state: current, ref: required({ value: ref, what: 'project name or path' }) }).path
+    path = action === 'add' ? projectFolder({
+      path: required({
+        value: ref,
+        what: 'project path',
+      }),
+    })
+      : findProject({
+        state: current,
+        ref: required({
+          value: ref,
+          what: 'project name or path',
+        }),
+      }).path
   }
 
   const result = withRegistryLock({
     fn: () => commit({
       hydraId,
       meta: m,
-      intent: { type: 'hydra.project', card: '$projects' },
-      confirmation: action === 'add' ? { token: values.confirm as string | undefined, when: ({ event }) => event.type === 'hydra.project' && event.data.sharedWith.length > 0 } : undefined,
+      intent: {
+        type: 'hydra.project',
+        card: '$projects',
+      },
+      confirmation: action === 'add' ? {
+        token: values.confirm as string | undefined,
+        when: ({ event }) => event.type === 'hydra.project' && event.data.sharedWith.length > 0,
+      } : undefined,
       decide: ({ state }) => {
         if (state.config?.hydra.kind === 'firstmate') {
-          throw new HydraError({ message: 'This Hydra’s projects are managed by Firstmate', code: 'READ_ONLY' })
+          throw new HydraError({
+            message: 'This Hydra’s projects are managed by Firstmate',
+            code: 'READ_ONLY',
+          })
         }
 
         const before = state.projects?.find(p => p.path === path) ?? null
@@ -136,9 +286,29 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
           return { skipped: 'unchanged' }
         }
 
-        const after = { ...before, path, name: before?.name ?? projectName({ path }), detached }
+        const after = {
+          ...before,
+          path,
+          name: before?.name ?? projectName({ path }),
+          detached,
+        }
 
-        return hydraEvent({ state, meta: m, cardId: '$projects', change: { type: 'hydra.project', data: { before, after, sharedWith: detached ? [] : sharingHydras({ hydraId, path }) } } })
+        return hydraEvent({
+          state,
+          meta: m,
+          cardId: '$projects',
+          change: {
+            type: 'hydra.project',
+            data: {
+              before,
+              after,
+              sharedWith: detached ? [] : sharingHydras({
+                hydraId,
+                path,
+              }),
+            },
+          },
+        })
       },
     }),
   })
@@ -151,9 +321,16 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 }
 
 export const project = guard({ handler: projectCommand })
-export const PROJECT_HELP = `pnyx-axi project add <path> [--hydra <id>]
+export const PROJECT_HELP = `pnyx-axi project memory list|set|forget --project <name|path> [--key profile|preferences|learnings] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
+
+Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
+List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
+Preferences and learnings persist independently of profile refreshes. Writes accept --reason, --event-id and --if-revision.
+
+pnyx-axi project add <path> [--hydra <id>]
 pnyx-axi project add --clone <url> --into <folder> [--hydra <id>]
 pnyx-axi project list [--hydra <id>]
+pnyx-axi project show <name|path> [--hydra <id>]
 pnyx-axi project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false] [--hydra <id>]
 pnyx-axi project remove <name|path> [--hydra <id>]
 pnyx-axi project set <name|path> --copy <shell command> [--hydra <id>]

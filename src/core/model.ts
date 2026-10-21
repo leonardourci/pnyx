@@ -1,34 +1,69 @@
 export const EVENT_VERSION = 1 as const
 export const HYDRA_ACTOR = 'hydra'
 
-export const COLUMNS = ['queued', 'in_progress', 'needs_you', 'parked', 'done'] as const
+export const COLUMNS = [
+  'queued',
+  'in_progress',
+  'needs_you',
+  'parked',
+  'done',
+] as const
 // Column ids earlier versions wrote; old logs still name them until the Hydra moves onto the defaults.
 export const LEGACY_IN_PROGRESS = 'workers_on_it'
-export const LEGACY_COLUMNS = [LEGACY_IN_PROGRESS, 'review'] as const
+export const LEGACY_COLUMNS = [
+  LEGACY_IN_PROGRESS,
+  'review',
+] as const
 export type Column = (typeof COLUMNS)[number] | (typeof LEGACY_COLUMNS)[number] | `custom:${string}`
 
-export const LINK_KINDS = ['github_pr', 'linear', 'url'] as const
+export const LINK_KINDS = [
+  'github_pr',
+  'linear',
+  'url',
+] as const
 export type LinkKind = (typeof LINK_KINDS)[number]
 
-export const LINK_STATES = ['open', 'merged', 'closed'] as const
+export const LINK_STATES = [
+  'open',
+  'merged',
+  'closed',
+] as const
 export type LinkState = (typeof LINK_STATES)[number]
 
 // The outcomes a person or agent records. "ended" is observed only: a harness
 // reporting its session closed.
-export const OUTCOME_STATES = ['done', 'failed', 'cancelled'] as const
+export const OUTCOME_STATES = [
+  'done',
+  'failed',
+  'cancelled',
+] as const
 export type OutcomeState = (typeof OUTCOME_STATES)[number] | 'ended'
 
 // queued: recorded before the send. delivery_unknown: the route could not confirm
 // the send either way, so it is never resent blindly.
-export const REPLY_STATES = ['queued', 'delivered', 'delivery_unknown', 'failed'] as const
+export const REPLY_STATES = [
+  'queued',
+  'delivered',
+  'delivery_unknown',
+  'failed',
+] as const
 export type ReplyState = (typeof REPLY_STATES)[number]
 
-export const NOTE_KINDS = ['summary', 'decision', 'context'] as const
+export const NOTE_KINDS = [
+  'summary',
+  'decision',
+  'context',
+] as const
 export type NoteKind = (typeof NOTE_KINDS)[number]
 
 export const SESSION_TITLE = 'Session title: '
 
-export const AUTO_TITLE_SOURCES = ['session', 'prompt', 'agent', 'folder'] as const
+export const AUTO_TITLE_SOURCES = [
+  'session',
+  'prompt',
+  'agent',
+  'folder',
+] as const
 
 export interface AutoTitle {
   from: (typeof AUTO_TITLE_SOURCES)[number]
@@ -89,13 +124,21 @@ export interface Link {
 export interface Question {
   question: string
   header?: string
-  options: { label: string; description?: string }[]
+  options: {
+    label: string
+    description?: string
+  }[]
   multiSelect?: boolean
   // Its answer reaches the agent but is never recorded.
   secret?: boolean
 }
 
-export const FORM_FIELD_TYPES = ['string', 'number', 'integer', 'boolean'] as const
+export const FORM_FIELD_TYPES = [
+  'string',
+  'number',
+  'integer',
+  'boolean',
+] as const
 
 export interface FormField {
   name: string
@@ -211,6 +254,8 @@ export interface Card {
   launch?: AgentLaunch
   // Task membership is a list for future compatibility; v1 permits at most one.
   sessionIds?: string[]
+  queue?: TaskQueue
+  queueNote?: string
   // Session-only records remain addressable in History, outside the live Hydra.
   hidden?: boolean
   automaticTask?: boolean
@@ -276,7 +321,13 @@ interface EventBase {
   messageId?: string
 }
 
-export const TASK_STATES = ['working', 'needs_you', 'paused', 'blocked', 'done'] as const
+export const TASK_STATES = [
+  'working',
+  'needs_you',
+  'paused',
+  'blocked',
+  'done',
+] as const
 export type TaskStatus = (typeof TASK_STATES)[number]
 export interface TaskDeclaration {
   id: string
@@ -293,7 +344,10 @@ export interface FirstmateRecord {
   backlog?: Record<string, unknown>
   meta: Record<string, string>
   status: string
-  present?: { meta: boolean; status: boolean }
+  present?: {
+    meta: boolean
+    status: boolean
+  }
 }
 export interface HydraIdentity {
   agent?: AgentConfig
@@ -311,8 +365,15 @@ export interface HydraColumn {
   // and a card whose column is deleted falls back to the parked one.
   role?: (typeof COLUMNS)[number] | typeof LEGACY_IN_PROGRESS
 }
-export const HARNESS_NAMES = ['claude', 'codex'] as const
-export const QUOTA_BUCKETS = ['high', 'medium', 'low'] as const
+export const HARNESS_NAMES = [
+  'claude',
+  'codex',
+] as const
+export const QUOTA_BUCKETS = [
+  'high',
+  'medium',
+  'low',
+] as const
 export interface AgentConfig {
   harness: (typeof HARNESS_NAMES)[number]
   model?: string
@@ -325,13 +386,22 @@ export interface HydraProject {
   path: string
   name: string
   detached: boolean
-  startCommand?: { name: string; command: string; bringsOwnFolder: boolean }
+  startCommand?: {
+    name: string
+    command: string
+    bringsOwnFolder: boolean
+  }
   // A shell command run in the project folder that makes a task's copy and prints its path.
   copy?: string
 }
 
 // A task's own copy of its project: a git worktree Pnyx made, or the folder the
 // project's copy command printed. It is removed only once its work has landed.
+export interface TaskQueue {
+  session: string
+  rank: number
+}
+
 export interface TaskCopy {
   path: string
   project: string
@@ -366,40 +436,187 @@ export interface HydraMessage {
   hydra: string
 }
 export type HydraChange = EventBase & (
-  | { type: 'board.configured'; data: HydraConfig }
-  | { type: 'board.columns'; data: { columns: HydraColumn[]; before?: HydraColumn[]; fallback?: Column; placements?: Record<string, { before: Column | null; after: Column | null }> } }
-  | { type: 'hydra.project'; data: { before: HydraProject | null; after: HydraProject; sharedWith: { id: string; name: string; url: string }[] } }
-  | { type: 'task.project'; data: { before: string | null; after: string | null } }
-  | { type: 'task.copy'; data: { before: TaskCopy | null; after: TaskCopy } }
-  | { type: 'task.created'; data: { key: string; title: string; brief?: string; parentId?: string; column?: Column; folder?: string; project?: string } }
-  | { type: 'task.reminder'; data: { before: string | null; after: string | null } }
-  | { type: 'task.reminder-due'; data: { reminder: string; column: Column; message: Omit<HydraMessage, 'id' | 'at' | 'actor'> } }
-  | { type: 'task.brief'; data: { before: string; after: string } }
-  | { type: 'task.retention'; data: { before: number | null; after: number | null } }
-  | { type: 'task.visibility'; data: { before: boolean; after: boolean; automatic?: boolean } }
-  | { type: 'hydra.memory'; data: { key: string; before: string | null; after: string | null } }
-  | { type: 'task.declared'; data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> }
-  | { type: 'task.mirrored'; data: FirstmateRecord }
-  | { type: 'task.launched'; data: AgentLaunch }
-  | { type: 'hydra.message'; data: Omit<HydraMessage, 'id' | 'at' | 'actor'> }
-  | { type: 'board.agents'; data: { agents: Record<string, AgentConfig>; before: Record<string, AgentConfig> } }
+  | {
+    type: 'task.queue'
+    data: {
+      before: TaskQueue | null
+      after: TaskQueue | null
+      order?: string[]
+      column: Column
+      note?: string
+    }
+  }
+  | {
+    type: 'board.configured'
+    data: HydraConfig
+  }
+  | {
+    type: 'board.columns'
+    data: {
+      columns: HydraColumn[]
+      before?: HydraColumn[]
+      fallback?: Column
+      placements?: Record<string, {
+        before: Column | null
+        after: Column | null
+      }>
+    }
+  }
+  | {
+    type: 'hydra.project'
+    data: {
+      before: HydraProject | null
+      after: HydraProject
+      sharedWith: {
+        id: string
+        name: string
+        url: string
+      }[]
+    }
+  }
+  | {
+    type: 'task.project'
+    data: {
+      before: string | null
+      after: string | null
+    }
+  }
+  | {
+    type: 'task.copy'
+    data: {
+      before: TaskCopy | null
+      after: TaskCopy
+    }
+  }
+  | {
+    type: 'task.created'
+    data: {
+      key: string
+      title: string
+      brief?: string
+      parentId?: string
+      column?: Column
+      folder?: string
+      project?: string
+    }
+  }
+  | {
+    type: 'task.reminder'
+    data: {
+      before: string | null
+      after: string | null
+    }
+  }
+  | {
+    type: 'task.reminder-due'
+    data: {
+      reminder: string
+      column: Column
+      message: Omit<HydraMessage, 'id' | 'at' | 'actor'>
+    }
+  }
+  | {
+    type: 'task.brief'
+    data: {
+      before: string
+      after: string
+    }
+  }
+  | {
+    type: 'task.retention'
+    data: {
+      before: number | null
+      after: number | null
+    }
+  }
+  | {
+    type: 'task.visibility'
+    data: {
+      before: boolean
+      after: boolean
+      automatic?: boolean
+    }
+  }
+  | {
+    type: 'hydra.memory'
+    data: {
+      key: string
+      before: string | null
+      after: string | null
+    }
+  }
+  | {
+    type: 'task.declared'
+    data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'>
+  }
+  | {
+    type: 'task.mirrored'
+    data: FirstmateRecord
+  }
+  | {
+    type: 'task.launched'
+    data: AgentLaunch
+  }
+  | {
+    type: 'hydra.message'
+    data: Omit<HydraMessage, 'id' | 'at' | 'actor'>
+  }
+  | {
+    type: 'hydra.dispatch-proposed'
+    data: DispatchProposal
+  }
+  | {
+    type: 'hydra.dispatch-progress'
+    data: {
+      token: string
+      status: 'applying' | 'failed'
+      error?: string
+    }
+  }
+  | {
+    type: 'hydra.dispatch-resolved'
+    data: {
+      token: string
+      action: 'confirmed' | 'dismissed'
+    }
+  }
+  | {
+    type: 'board.agents'
+    data: {
+      agents: Record<string, AgentConfig>
+      before: Record<string, AgentConfig>
+    }
+  }
 )
 
 // before holds the earlier value of each field the push changed (null when it was
 // absent), so a manual edit can be undone. A push that created the card has none.
 export type PushedEvent = EventBase & {
   type: 'card.pushed'
-  data: PushFields & { key: string; source?: SourceRef; before?: PushFields }
+  data: PushFields & {
+    key: string
+    source?: SourceRef
+    before?: PushFields
+  }
 }
 // rank places the card in its new column; beforeRank keeps the old one for undo.
 // A null column comes only from older logs and leaves the column as it is.
 export type MovedEvent = EventBase & {
   type: 'card.moved'
-  data: { before: Column | null; after: Column | null; rank?: number; beforeRank?: number }
+  data: {
+    before: Column | null
+    after: Column | null
+    rank?: number
+    beforeRank?: number
+  }
 }
 export type LinkedEvent = EventBase & {
   type: 'card.linked'
-  data: { url: string; before: Link | null; after: Link | null }
+  data: {
+    url: string
+    before: Link | null
+    after: Link | null
+  }
 }
 // Keeps the card's title, workspace, tags and links as they were when the outcome
 // was recorded, so history stays readable after later edits.
@@ -408,7 +625,12 @@ export type OutcomeEvent = EventBase & {
   data: {
     before: Outcome | null
     after: Outcome | null
-    card: { title: string; workspace: string; tags: string[]; links: Link[] }
+    card: {
+      title: string
+      workspace: string
+      tags: string[]
+      links: Link[]
+    }
   }
 }
 
@@ -451,8 +673,14 @@ export interface ViewPreferences {
   thinkingDetails: boolean
   columnWidths: Record<string, number>
   cardHeights: Record<string, number>
-  cardTraceOverrides: Record<string, { tools?: boolean; thinking?: boolean }>
-  customColumns: { id: `custom:${string}`; title: string }[]
+  cardTraceOverrides: Record<string, {
+    tools?: boolean
+    thinking?: boolean
+  }>
+  customColumns: {
+    id: `custom:${string}`
+    title: string
+  }[]
 }
 
 export type ViewEvent = EventBase & {
@@ -461,11 +689,19 @@ export type ViewEvent = EventBase & {
   data: {
     before: ViewPreferences
     after: ViewPreferences
-    placements?: { cardId: string; before: Column | null; after: Column | null; revision: number }[]
+    placements?: {
+      cardId: string
+      before: Column | null
+      after: Column | null
+      revision: number
+    }[]
   }
 }
 
-export type NotedEvent = EventBase & { type: 'card.noted'; data: Note }
+export type NotedEvent = EventBase & {
+  type: 'card.noted'
+  data: Note
+}
 
 // Settings a start asks for in place of its heads dispatch candidate's own.
 export type StartOverride = Partial<Pick<AgentConfig, 'model' | 'effort' | 'mode' | 'fast'>>
@@ -487,6 +723,7 @@ export interface AgentSession {
   launch?: AgentLaunch
   lastSeen?: string
   originCardId: string
+  queueCompleted?: number
   taskId: string | null
   terminal?: TerminalFacts
   settings?: AgentSettings
@@ -500,12 +737,27 @@ export interface AgentSession {
 
 export type SessionEvent = EventBase & {
   type: 'task.session'
-  data: { session: string; before: string | null; after: string | null; brief?: string }
+  data: {
+    session: string
+    before: string | null
+    after: string | null
+    brief?: string
+    handoff?: {
+      folder: string
+      copy?: TaskCopy
+      column: Column
+    }
+  }
 }
 
 export type ChatEvent = EventBase & {
   type: 'chat.message'
-  data: { session: string; nativeId: string; role: string; text: string }
+  data: {
+    session: string
+    nativeId: string
+    role: string
+    text: string
+  }
 }
 
 export type HydraEvent =
@@ -521,9 +773,53 @@ export type HydraEvent =
   | ChatEvent
   | PermissionEvent
 export type EventType = HydraEvent['type']
-export const EVENT_TYPES: readonly EventType[] = ['card.pushed', 'card.moved', 'card.linked', 'card.outcome', 'card.replied', 'card.noted', 'board.view', 'task.session', 'board.configured', 'board.columns', 'task.created', 'task.brief', 'task.visibility', 'task.retention', 'hydra.memory', 'task.declared', 'task.mirrored', 'hydra.message', 'chat.message', 'board.agents', 'task.launched', 'task.permission', 'hydra.project', 'task.project', 'task.reminder', 'task.reminder-due', 'task.copy']
+export const EVENT_TYPES: readonly EventType[] = [
+  'card.pushed',
+  'card.moved',
+  'card.linked',
+  'card.outcome',
+  'card.replied',
+  'card.noted',
+  'board.view',
+  'task.session',
+  'board.configured',
+  'board.columns',
+  'task.created',
+  'task.brief',
+  'task.visibility',
+  'task.retention',
+  'hydra.memory',
+  'task.declared',
+  'task.mirrored',
+  'hydra.message',
+  'hydra.dispatch-proposed',
+  'hydra.dispatch-resolved',
+  'hydra.dispatch-progress',
+  'chat.message',
+  'board.agents',
+  'task.launched',
+  'task.permission',
+  'hydra.project',
+  'task.project',
+  'task.reminder',
+  'task.reminder-due',
+  'task.copy',
+  'task.queue',
+]
+
+export interface DispatchProposal {
+  token: string
+  kind: 'rule' | 'account' | 'command'
+  shared: boolean
+  before: string
+  value: string
+  summary: string
+  status?: 'applying' | 'failed'
+  error?: string
+}
 
 export interface HydraState {
+  dispatchProposals?: DispatchProposal[]
   labelColors?: SavedLabelColor[]
   projects?: HydraProject[]
   projectsRevision?: number
@@ -532,7 +828,10 @@ export interface HydraState {
   configured?: boolean
   configRevision?: number
   hydraMessages?: HydraMessage[]
-  hydraMemory?: Record<string, { text: string; at: string }>
+  hydraMemory?: Record<string, {
+    text: string
+    at: string
+  }>
   view?: ViewPreferences
   viewRevision?: number
   v: typeof EVENT_VERSION
@@ -547,14 +846,34 @@ export interface HydraState {
   undone: Record<string, string>
 }
 
-export const LABEL_COLORS = ['slate', 'blue', 'gold', 'violet', 'green', 'rose', 'teal', 'coral'] as const
+export const LABEL_COLORS = [
+  'slate',
+  'blue',
+  'gold',
+  'violet',
+  'green',
+  'rose',
+  'teal',
+  'coral',
+] as const
 export type LabelColor = (typeof LABEL_COLORS)[number]
-export interface SavedLabelColor { label: string; color: LabelColor }
+export interface SavedLabelColor {
+  label: string
+  color: LabelColor
+}
 
 export class HydraError extends Error {
   code: string
   help: string[]
-  constructor({ message, code, help = [] }: { message: string; code: string; help?: string[] }) {
+  constructor({
+    message,
+    code,
+    help = [],
+  }: {
+    message: string
+    code: string
+    help?: string[]
+  }) {
     super(message)
     this.code = code
     this.help = help

@@ -30,7 +30,13 @@ function contentText({ content }: { content: unknown }): string {
   return content.map(b => (b?.type === 'text' && typeof b.text === 'string' ? b.text : '')).join('\n')
 }
 
-function answers({ r, at }: { r: Rec; at: string | undefined }): SourceNote[] {
+function answers({
+  r,
+  at,
+}: {
+  r: Rec
+  at: string | undefined
+}): SourceNote[] {
   const result = r.toolUseResult as {
     questions?: unknown
     answers?: unknown
@@ -58,7 +64,10 @@ function answers({ r, at }: { r: Rec; at: string | undefined }): SourceNote[] {
 
   const notes = (result.annotations ?? {}) as Record<string, { notes?: unknown } | undefined>
 
-  return result.questions.flatMap((q: { question?: unknown }, i: number) => {
+  return result.questions.flatMap((
+    q: { question?: unknown },
+    i: number,
+  ) => {
     const question = str({ value: q?.question })
     const answer = question && str({ value: (given as Record<string, unknown>)[question] })
 
@@ -67,9 +76,21 @@ function answers({ r, at }: { r: Rec; at: string | undefined }): SourceNote[] {
     }
 
     const note = str({ value: notes[question]?.notes })
-    const text = [question, `Answer: ${answer}`, ...(note ? [`Notes: ${note}`] : [])].join('\n')
+    const text = [
+      question,
+      `Answer: ${answer}`,
+      ...(note ? [`Notes: ${note}`] : []),
+    ].join('\n')
 
-    return [{ kind: 'decision' as const, source: 'claude-code', text, ref: `ask:${id}:${i}`, ...(at ? { at } : {}) }]
+    return [
+      {
+        kind: 'decision' as const,
+        source: 'claude-code',
+        text,
+        ref: `ask:${id}:${i}`,
+        ...(at ? { at } : {}),
+      },
+    ]
   })
 }
 
@@ -81,34 +102,80 @@ export function transcriptNotes({ record }: { record: unknown }): SourceNote[] {
   }
 
   const at = str({ value: r.timestamp })
-  const note = ({ kind, source, text, ref }: { kind: Note['kind']; source: string; text: string | undefined; ref: string }): SourceNote[] =>
-    text ? [{ kind, source, text, ref, ...(at ? { at } : {}) }] : []
+  const note = ({
+    kind,
+    source,
+    text,
+    ref,
+  }: {
+    kind: Note['kind']
+    source: string
+    text: string | undefined
+    ref: string
+  }): SourceNote[] =>
+    text ? [
+      {
+        kind,
+        source,
+        text,
+        ref,
+        ...(at ? { at } : {}),
+      },
+    ] : []
 
   switch (r.type) {
     case 'user':
       if (r.isCompactSummary === true) {
-        const text = str({ value: contentText({ content: r.message?.content }).replace(COMPACT_PREAMBLE, '') })
+        const text = str({
+          value: contentText({ content: r.message?.content }).replace(
+            COMPACT_PREAMBLE,
+            '',
+          ),
+        })
 
-        return note({ kind: 'summary', source: 'claude-code', text, ref: `compact:${str({ value: r.uuid }) ?? text}` })
+        return note({
+          kind: 'summary',
+          source: 'claude-code',
+          text,
+          ref: `compact:${str({ value: r.uuid }) ?? text}`,
+        })
       }
 
-      return answers({ r, at })
+      return answers({
+        r,
+        at,
+      })
     case 'summary': {
       const text = str({ value: r.summary })
 
-      return note({ kind: 'summary', source: 'claude-code', text, ref: `summary:${str({ value: r.leafUuid }) ?? ''}:${text}` })
+      return note({
+        kind: 'summary',
+        source: 'claude-code',
+        text,
+        ref: `summary:${str({ value: r.leafUuid }) ?? ''}:${text}`,
+      })
     }
     case 'custom-title':
     case 'ai-title': {
       const title = str({ value: r.customTitle }) ?? str({ value: r.aiTitle })
 
-      return note({ kind: 'context', source: 'claude-code', text: title && `${SESSION_TITLE}${title}`, ref: `title:${title}` })
+      return note({
+        kind: 'context',
+        source: 'claude-code',
+        text: title && `${SESSION_TITLE}${title}`,
+        ref: `title:${title}`,
+      })
     }
     case 'compacted': {
       // Codex's local compaction keeps its summary here; a remote one is encrypted and leaves it empty.
       const text = str({ value: r.payload?.message })
 
-      return note({ kind: 'summary', source: 'codex', text, ref: `compacted:${at ?? ''}:${text}` })
+      return note({
+        kind: 'summary',
+        source: 'codex',
+        text,
+        ref: `compacted:${at ?? ''}:${text}`,
+      })
     }
     default:
       return []
@@ -117,7 +184,10 @@ export function transcriptNotes({ record }: { record: unknown }): SourceNote[] {
 
 // The thread name Codex last recorded for this session in its session_index.jsonl,
 // one {id, thread_name, updated_at} record per line, later lines newer.
-export function codexThreadTitle({ index, sessionId }: {
+export function codexThreadTitle({
+  index,
+  sessionId,
+}: {
   index: string
   sessionId: string
 }): SourceNote[] {
@@ -126,7 +196,11 @@ export function codexThreadTitle({ index, sessionId }: {
 
   for (const line of index.split('\n')) {
     try {
-      const r = JSON.parse(line) as { id?: unknown; thread_name?: unknown; updated_at?: unknown }
+      const r = JSON.parse(line) as {
+        id?: unknown
+        thread_name?: unknown
+        updated_at?: unknown
+      }
 
       if (r.id === sessionId && str({ value: r.thread_name })) {
         title = str({ value: r.thread_name })
@@ -138,6 +212,14 @@ export function codexThreadTitle({ index, sessionId }: {
   }
 
   return title
-    ? [{ kind: 'context', source: 'codex', text: `${SESSION_TITLE}${title}`, ref: `title:${at ?? ''}:${title}`, ...(at ? { at } : {}) }]
+    ? [
+      {
+        kind: 'context',
+        source: 'codex',
+        text: `${SESSION_TITLE}${title}`,
+        ref: `title:${at ?? ''}:${title}`,
+        ...(at ? { at } : {}),
+      },
+    ]
     : []
 }

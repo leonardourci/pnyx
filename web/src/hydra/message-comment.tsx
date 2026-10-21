@@ -2,7 +2,14 @@ import { Markdown } from '../components/ui/markdown.tsx'
 import type { ChatComment } from './chat.ts'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 
-export function MessageComment({ comment, editing, edit, change, finish, remove }: {
+export function MessageComment({
+  comment,
+  editing,
+  edit,
+  change,
+  finish,
+  remove,
+}: {
   comment: ChatComment
   editing: boolean
   edit(): void
@@ -19,7 +26,10 @@ export function MessageComment({ comment, editing, edit, change, finish, remove 
           autoFocus
           onFocus={e => {
             const end = e.currentTarget.value.length
-            e.currentTarget.setSelectionRange(end, end)
+            e.currentTarget.setSelectionRange(
+              end,
+              end,
+            )
           }}
           aria-label="Comment on selected text"
           value={comment.text}

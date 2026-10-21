@@ -16,7 +16,10 @@ import { briefNotes, relativeTime } from '../web/src/hydra/brief.ts'
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
 
-const meta = { at: '2026-10-13T10:00:00Z', actor: 'test' }
+const meta = {
+  at: '2026-10-13T10:00:00Z',
+  actor: 'test',
+}
 
 const event = ({ d }: { d: Decision }): HydraEvent => {
   assert.ok('event' in d)
@@ -24,503 +27,2360 @@ const event = ({ d }: { d: Decision }): HydraEvent => {
   return d.event
 }
 
-const push = ({ state, key, fields }: { state: HydraState; key: string; fields: unknown }) =>
-  reduce({ state, event: event({ d: decidePush({ state, newCardId: `c${state.seq + 1}`, key, input: fields, meta }) }) })
+const push = ({
+  state,
+  key,
+  fields,
+}: {
+  state: HydraState
+  key: string
+  fields: unknown
+}) =>
+  reduce({
+    state,
+    event: event({
+      d: decidePush({
+        state,
+        newCardId: `c${state.seq + 1}`,
+        key,
+        input: fields,
+        meta,
+      }),
+    }),
+  })
 
-test('the task Hydra and its semantic matches exclude ad-hoc sessions', () => {
-  let state = push({ state: emptyHydra(), key: 'work', fields: { title: 'Shared work', attention: [{ key: 'task-question', kind: 'question', blocking: true }] } })
-
-  for (const key of ['interactive', 'background']) {
-    state = push({
-      state,
-      key,
+test(
+  'the task Hydra and its semantic matches exclude ad-hoc sessions',
+  () => {
+    let state = push({
+      state: emptyHydra(),
+      key: 'work',
       fields: {
-        title: 'Shared run',
-        agent: { provider: 'claude-code', sessionId: key },
-        ...(key === 'interactive' ? { terminal: { tty: '/dev/ttys123' } } : {}),
-        attention: [{ key: 'hook:question', kind: 'question', blocking: true }],
+        title: 'Shared work',
+        attention: [
+          {
+            key: 'task-question',
+            kind: 'question',
+            blocking: true,
+          },
+        ],
       },
     })
-  }
 
-  const visible = filterCards({ state, workspace: '', tag: '', query: 'Shared' })
-  assert.deepEqual(visible.map(c => c.key), ['work'])
-  assert.deepEqual(findBoxCards({
-    state,
-    workspace: '',
-    tag: '',
-    query: 'Shared',
-    meaning: [state.keys.interactive!, state.keys.background!],
-  }).map(c => c.key), ['work'])
-  assert.equal(pageTitle({ page: 'hydra', cards: state.cards }), 'Hydra · Pnyx', 'a request never moves a card to Needs you')
-  state = reduce({ state, event: event({ d: decideMove({ state, ref: 'work', column: 'needs_you', meta }) }) })
-  assert.equal(pageTitle({ page: 'hydra', cards: state.cards }), '(1) Hydra · Pnyx')
-  assert.ok(state.cards[state.keys.background!])
-})
-
-test('task labels retain legacy source status instead of claiming every tracked task is parked', () => {
-  const state = push({
-    state: emptyHydra(),
-    key: 'fm:legacy',
-    fields: {
-      title: 'Legacy work',
-      activity: 'working: step one',
-      source: { adapter: 'firstmate', instanceId: '/fixture', objectId: 'legacy' },
-    },
-  })
-  const card = state.cards.c1!
-  assert.equal(card.tracking, 'declared')
-  assert.equal(card.column, 'in_progress')
-  assert.equal(card.status, undefined)
-  assert.equal(taskLabel({ card }), 'working: step one')
-  const moved = reduce({ state, event: event({ d: decideMove({ state, ref: card.id, column: 'done', meta }) }) })
-  assert.equal(taskLabel({ card: moved.cards.c1! }), 'working: step one')
-  assert.equal(taskLabel({ card: { ...card, activity: undefined, sourceRefs: [] } }), 'No status')
-  assert.equal(taskLabel({
-    card: { ...card, status: { id: 'd1', at: meta.at, actor: 'test', state: 'needs_you', note: 'Review' } },
-  }), 'needs you: Review')
-})
-
-test('tab titles follow the view, selected card and current needs-you count', () => {
-  for (const [page, label] of [['hydra', 'Hydra'], ['history', 'History'], ['settings', 'Settings']] as const) {
-    assert.equal(pageTitle({ page, cards: {} }), `${label} · Pnyx`)
-  }
-
-  let state = push({ state: emptyHydra(), key: 'a', fields: { title: 'Review <literal> changes', attention: [{ kind: 'question', key: 'q', blocking: true }] } })
-  state = push({ state, key: 'b', fields: { title: 'Another decision', attention: [{ kind: 'question', key: 'q', blocking: true }] } })
-  state = push({ state, key: 'c', fields: { title: 'Still working', activity: 'working' } })
-
-  for (const ref of ['a', 'b']) {
-    state = reduce({ state, event: event({ d: decideMove({ state, ref, column: 'needs_you', meta }) }) })
-  }
-
-  assert.equal(pageTitle({ page: 'hydra', cards: state.cards }), '(2) Hydra · Pnyx')
-  assert.equal(pageTitle({ page: 'hydra', cards: state.cards, selected: 'c1' }), '(2) Review <literal> changes · Pnyx')
-  assert.equal(pageTitle({ page: 'hydra', cards: state.cards, selected: 'missing' }), '(2) Hydra · Pnyx')
-  assert.equal(pageTitle({ page: 'history', cards: state.cards, selected: 'c1' }), '(2) History · Pnyx')
-  assert.equal(pageTitle({ page: 'settings', cards: state.cards, selected: 'c1' }), '(2) Settings · Pnyx')
-  state = push({ state, key: 'a', fields: { title: 'Updated card title' } })
-  state = reduce({ state, event: event({ d: decideMove({ state, ref: 'b', column: 'done', meta }) }) })
-  assert.equal(pageTitle({ page: 'hydra', cards: state.cards, selected: 'c1' }), '(1) Updated card title · Pnyx')
-  state = reduce({ state, event: event({ d: decideMove({ state, ref: 'a', column: 'done', meta }) }) })
-  assert.equal(pageTitle({ page: 'hydra', cards: state.cards, selected: 'c1' }), 'Updated card title · Pnyx')
-})
-
-test('preferences replay deterministically, guard revisions, and undo removes map overrides', () => {
-  const initial = push({ state: emptyHydra(), key: 'a', fields: { title: 'A' } })
-  const edit = event({ d: decideView({ state: initial, patch: { columnWidths: { in_progress: 400 }, cardTraceOverrides: { c1: { tools: true } } }, meta: { ...meta, ifRevision: 0, id: 'view-1' } }) })
-  const state = reduce({ state: initial, event: edit })
-  assert.equal(initial.view, undefined)
-  assert.equal(state.viewRevision, 1)
-  assert.equal(viewFor({ state }).columnWidths.in_progress, 400)
-  assert.deepEqual(reduce({ state: initial, event: edit }), state)
-  assert.deepEqual(decideView({ state, patch: {}, meta: { ...meta, id: 'view-1', ifRevision: 0 } }), { skipped: 'duplicate' })
-  assert.throws(() => decideView({ state, patch: { fontSize: 18 }, meta: { ...meta, ifRevision: 0 } }), /changed/)
-  const undone = reduce({
-    state,
-    event: event({ d: decideUndo({ state, target: edit, meta: { ...meta, ifRevision: 1 } }) }),
-  })
-  assert.deepEqual(viewFor({ state: undone }), viewFor({ state: initial }))
-  assert.throws(() => patchView({ state, input: { fontSize: 100 } }), HydraError)
-  assert.throws(() => patchView({ state, input: { chatFontSize: 100 } }), HydraError)
-  assert.throws(() => patchView({ state, input: { codeFontSize: 5 } }), HydraError)
-  const sizes = patchView({
-    state,
-    input: { fontSize: 15, chatFontSize: 18, codeFontSize: 12 },
-  })
-  assert.deepEqual([sizes.fontSize, sizes.chatFontSize, sizes.codeFontSize], [15, 18, 12])
-  assert.throws(() => patchView({ state, input: JSON.parse('{"columnWidths":{"__proto__":300}}') }), HydraError)
-})
-
-test('saved resize preferences load within readable size limits', () => {
-  const initial = push({ state: emptyHydra(), key: 'a', fields: { title: 'A' } })
-  const view = viewFor({ state: initial })
-  const loaded = viewFor({
-    state: {
-      ...initial,
-      view: {
-        ...view,
-        panelWidth: 1,
-        composerHeight: 999,
-        taskComposerHeight: 1,
-        cardHeight: 1,
-        columnWidths: { needs_you: 1, review: 900 },
-        cardHeights: { c1: 1 },
-      },
-    },
-  })
-
-  assert.equal(loaded.panelWidth, VIEW_SIZE_LIMITS.panelWidth.min)
-  assert.equal(loaded.composerHeight, VIEW_SIZE_LIMITS.composerHeight.max)
-  assert.equal(loaded.taskComposerHeight, VIEW_SIZE_LIMITS.composerHeight.min)
-  assert.equal(loaded.cardHeight, VIEW_SIZE_LIMITS.cardHeight.min)
-  assert.equal(loaded.columnWidths.needs_you, VIEW_SIZE_LIMITS.columnWidth.min)
-  assert.equal(loaded.columnWidths.review, 900)
-  assert.equal(loaded.cardHeights.c1, VIEW_SIZE_LIMITS.cardHeight.min)
-  assert.equal(clampViewSize({ value: 100, min: 320, max: 720 }), 320)
-  assert.equal(clampViewSize({ value: 800, min: 320, max: 720 }), 720)
-  assert.equal(clampViewSize({ value: 320.5, min: 320, max: 720 }), 321)
-})
-
-test('Hydra and task composer heights replay independently', () => {
-  const initial = emptyHydra()
-  assert.equal(viewFor({ state: initial }).taskComposerHeight, 80)
-  const hydra = reduce({
-    state: initial,
-    event: event({ d: decideView({ state: initial, patch: { composerHeight: 180 }, meta }) }),
-  })
-  const edit = event({ d: decideView({ state: hydra, patch: { taskComposerHeight: 120 }, meta }) })
-  const state = reduce({ state: hydra, event: edit })
-  assert.equal(viewFor({ state }).composerHeight, 180)
-  assert.equal(viewFor({ state }).taskComposerHeight, 120)
-  assert.deepEqual(reduce({ state: hydra, event: edit }), state)
-
-  for (const taskComposerHeight of [79, 421, 100.5, null, '120']) {
-    assert.throws(() => patchView({ state, input: { taskComposerHeight } }), HydraError)
-  }
-})
-
-test('custom columns take moved cards and send them to the fallback column when deleted', () => {
-  let state = push({ state: emptyHydra(), key: 'a', fields: { attention: [{ kind: 'question', key: 'q', blocking: true }] } })
-  state = reduce({ state, event: event({ d: decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }] }, meta }) }) })
-  assert.equal(columnsFor({ state }).at(-1)?.title, 'Later')
-  assert.equal(patchView({ state: emptyHydra(), input: { columnWidths: { 'custom:one': 400 }, customColumns: [{ id: 'custom:one', title: 'One' }] } }).columnWidths['custom:one'], 400)
-  state = reduce({ state, event: event({ d: decideMove({ state, ref: 'a', column: 'custom:later', meta }) }) })
-  assert.equal(state.cards.c1!.column, 'custom:later')
-  assert.deepEqual(patchView({ state, input: { customColumns: [] } }).customColumns, [])
-  assert.throws(() => decideMove({ state, ref: 'a', column: 'custom:missing', meta }), /unknown/)
-  const back = event({ d: decideMove({ state, ref: 'a', column: 'needs_you', meta }) })
-  state = reduce({ state, event: back })
-  assert.equal(state.cards.c1!.column, 'needs_you')
-  assert.equal(state.cards.c1!.attention.length, 1)
-  state = reduce({ state, event: event({ d: decideMove({ state, ref: 'a', column: 'custom:later', meta }) }) })
-  state = reduce({
-    state,
-    event: event({ d: decideView({ state, patch: { customColumns: [] }, meta }) }),
-  })
-  assert.equal(state.cards.c1!.column, 'parked')
-  assert.throws(() => decideUndo({ state, target: back, meta }), /changed since/)
-})
-
-test('filters do not expose excluded parent details, and links/slashes stay literal', () => {
-  let state = push({ state: emptyHydra(), key: 'parent', fields: { title: 'Private parent', workspace: 'A' } })
-  state = push({ state, key: 'child', fields: { title: 'Searchable child', workspace: 'B', parent: 'parent', tags: ['ui'] } })
-  const visible = filterCards({ state, workspace: 'B', tag: 'ui', query: 'searchable' })
-  assert.equal(visible.length, 1)
-  assert.equal(visibleParent({ card: visible[0]!, visible }), undefined)
-  assert.equal(safeLink({ link: { kind: 'url', url: 'javascript:alert(1)' } }), undefined)
-  assert.equal(slashPrefix({ text: '/plan', cursor: 5 }), '/plan')
-  assert.equal(slashPrefix({ text: 'open /path', cursor: 10 }), null)
-  assert.equal(slashPrefix({ text: '/tmp/file', cursor: 9 }), null)
-
-  for (const typed of ['/d', '/D', '/dep']) {
-    assert.equal(slashMatches({ command: '/Deploy', prefix: slashPrefix({ text: typed, cursor: typed.length })! }), true)
-  }
-
-  assert.equal(slashMatches({ command: '$Review', prefix: '/rev' }), true)
-  assert.equal(slashMatches({ command: '/Deploy', prefix: '/r' }), false)
-})
-
-test('the Find box shows every card its filter matches, then the strong meaning-only cards', () => {
-  let state = emptyHydra()
-
-  for (let i = 0; i < 35; i += 1) {
-    state = push({ state, key: `deploy-${i}`, fields: { title: `Deploy step ${i}`, workspace: 'A' } })
-  }
-
-  state = push({ state, key: 'ops-rotation', fields: { title: 'Rotate keys', workspace: 'A', tags: ['infra'] } })
-  state = push({ state, key: 'cookie', fields: { title: 'Session cookie', workspace: 'B' } })
-  const id = ({ key }: { key: string }) => Object.values(state.cards).find(c => c.key === key)!.id
-  const ids = ({ cards }: { cards: { id: string }[] }) => cards.map(c => c.id)
-
-  for (const query of ['deploy', 'dep', 'infra', 'ops-rot', 'step 3', 'nothing like it', '']) {
-    assert.deepEqual(findBoxCards({ state, workspace: '', tag: '', query, meaning: [] }), filterCards({ state, workspace: '', tag: '', query }))
-  }
-
-  assert.equal(findBoxCards({ state, workspace: '', tag: '', query: 'dep', meaning: [] }).length, 35)
-  assert.deepEqual(ids({ cards: findBoxCards({ state, workspace: '', tag: '', query: 'infra', meaning: [] }) }), [id({ key: 'ops-rotation' })])
-  assert.deepEqual(ids({ cards: findBoxCards({ state, workspace: '', tag: '', query: 'ops-rot', meaning: [] }) }), [id({ key: 'ops-rotation' })])
-
-  const found = findBoxCards({ state, workspace: '', tag: '', query: 'deploy', meaning: [id({ key: 'cookie' }), id({ key: 'deploy-0' }), 'gone'] })
-  assert.deepEqual(ids({ cards: found }), [...ids({ cards: filterCards({ state, workspace: '', tag: '', query: 'deploy' }) }), id({ key: 'cookie' })])
-  assert.equal(findBoxCards({ state, workspace: 'A', tag: '', query: 'deploy', meaning: [id({ key: 'cookie' })] }).length, 35)
-  assert.deepEqual(ids({ cards: findBoxCards({ state, workspace: '', tag: 'infra', query: 'deploy', meaning: [id({ key: 'cookie' }), id({ key: 'ops-rotation' })] }) }), [id({ key: 'ops-rotation' })])
-})
-
-test('thread reader ignores partial records, pages old messages, separates traces and reports unavailable capabilities', () => {
-  const home = mkdtempSync(join(tmpdir(), 'pnyx-thread-')); process.env.PNYX_HOME = home
-  const path = join(home, 'session.jsonl')
-  const records = Array.from({ length: 90 }, (_, i) => JSON.stringify({ type: 'assistant', message: { content: `message ${i}` } }))
-  writeFileSync(path, records.join('\n') + '\n{"partial":')
-  const state = push({ state: emptyHydra(), key: 'a', fields: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
-  const page = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [] })
-  assert.equal(page.entries.length, 60); assert.equal(page.entries.at(-1)?.text, 'message 89'); assert.ok(page.older)
-  const older = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [], before: page.older })
-  assert.equal(older.entries.length, 30); assert.equal(older.entries[0]?.text, 'message 0'); assert.equal(older.older, undefined)
-  assert.equal(page.route, false); assert.equal(page.watching, 'unknown')
-  const entries = recordEntries({ record: { type: 'assistant', message: { content: [{ type: 'text', text: 'hello' }, { type: 'thinking', thinking: 'thinking' }, { type: 'tool_use', input: 'sk-abcdefghijklmnop123456789' }] } }, offset: 0 })
-  assert.deepEqual(entries.map(e => e.kind), ['message', 'thinking', 'tool']); assert.equal(entries[2]?.text, '[redacted]')
-  assert.deepEqual(recordEntries({ record: { type: 'user', isMeta: true, message: { content: 'injected' } }, offset: 0 }), [])
-})
-
-test('Focus hides traces before paging so tool-heavy output cannot push replies off the page', () => {
-  const home = mkdtempSync(join(tmpdir(), 'pnyx-focus-')); process.env.PNYX_HOME = home
-  const path = join(home, 'session.jsonl')
-  const replies = Array.from({ length: 3 }, (_, i) => ({ type: 'assistant', message: { content: `reply ${i}` } }))
-  const tools = Array.from({ length: 120 }, (_, i) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', input: `tool ${i}` }] } }))
-  writeFileSync(path, [...replies, ...tools].map(r => JSON.stringify(r)).join('\n') + '\n')
-  let state = push({ state: emptyHydra(), key: 'a', fields: { activity: 'working', agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
-  const focused = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [] })
-  assert.deepEqual(focused.entries.map(e => e.text), ['reply 0', 'reply 1', 'reply 2'])
-  assert.ok(traces({ view: viewFor({ state }), card: 'c1' }).focus)
-  const showTools = { focusMode: false }
-  state = reduce({ state, event: event({ d: decideView({ state, patch: showTools, meta }) }) })
-  const full = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [] })
-  assert.equal(full.entries.length, 60); assert.ok(full.entries.every(e => e.kind === 'tool'))
-  assert.equal(traces({ view: viewFor({ state }), card: 'c1' }).focus, false)
-})
-
-test('Focus pages messages from a tool-heavy tail larger than the first read window', () => {
-  const home = mkdtempSync(join(tmpdir(), 'pnyx-focus-window-')); process.env.PNYX_HOME = home
-  const path = join(home, 'session.jsonl'), padding = 'x'.repeat(4000)
-  const records = Array.from({ length: 90 }, (_, i) => [
-    { type: 'assistant', message: { content: `message ${i}` } },
-    { type: 'assistant', message: { content: [{ type: 'tool_use', input: `${padding} ${i}` }] } },
-  ]).flat()
-  writeFileSync(path, records.map(r => JSON.stringify(r)).join('\n') + '\n')
-  const state = push({ state: emptyHydra(), key: 'a', fields: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } } })
-  const page = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [] })
-  assert.deepEqual(page.entries.map(e => e.text), Array.from({ length: 60 }, (_, i) => `message ${i + 30}`))
-  const older = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [], before: page.older })
-  assert.deepEqual(older.entries.map(e => e.text), Array.from({ length: 30 }, (_, i) => `message ${i}`))
-  assert.equal(older.older, undefined)
-})
-
-test('long transcript messages and reply history page without losing text or duplicating entries', () => {
-  const home = mkdtempSync(join(tmpdir(), 'pnyx-thread-pages-')); process.env.PNYX_HOME = home
-  const path = join(home, 'session.jsonl'), longText = 'abcdefghij'.repeat(7000)
-  writeFileSync(path, JSON.stringify({ type: 'assistant', timestamp: '2026-10-12T10:00:00Z', message: { content: longText } }) + '\n')
-  const state = withWriter({
-    hydraId: 'default',
-    fn: ({ writer: w }) => {
-      w.append({ event: event({ d: decidePush({ state: w.state, newCardId: `c${w.state.seq + 1}`, key: 'a', input: { agent: { provider: 'claude', sessionId: 'fixture', transcriptPath: path } }, meta }) }) })
-
-      for (let i = 0; i < 90; i++) {
-        w.append({ event: event({ d: decideReply({ state: w.state, ref: 'a', data: { reply: `r${i}`, state: 'queued', route: 'fixture', text: `reply ${i}` }, meta }) }) })
-      }
-
-      return w.state
-    },
-  })
-  let cursor: string | undefined
-  const pages: ReturnType<typeof readThread>['entries'][] = []
-
-  do {
-    const page = readThread({ hydraId: 'default', state, card: state.cards.c1!, homes: [], before: cursor })
-    assert.ok(page.entries.length <= 60)
-    pages.unshift(page.entries); cursor = page.older
-    assert.ok(pages.length < 10, 'pagination terminates')
-  } while (cursor)
-
-  const entries = pages.flat()
-  assert.equal(new Set(entries.map(e => e.id)).size, entries.length)
-  assert.equal(entries.filter(e => e.role.startsWith('assistant')).map(e => e.text)
-    .join(''), longText)
-  assert.equal(entries.filter(e => e.role === 'You').length, 90)
-  const later = withWriter({
-    hydraId: 'default',
-    fn: ({ writer: w }) => {
-      w.append({ event: event({ d: decideReply({ state: w.state, ref: 'a', data: { reply: 'r90', state: 'queued', route: 'fixture', text: 'reply 90' }, meta }) }) })
-
-      return w.state
-    },
-  })
-  assert.equal(readThread({ hydraId: 'default', state: later, card: later.cards.c1!, homes: [] }).entries.at(-1)?.text, 'reply 90')
-})
-
-test('a tab reloads only when it reconnects to a server serving another build', () => {
-  assert.equal(shouldReload({ loaded: 'aaa111', server: 'bbb222' }), true)
-  assert.equal(shouldReload({ loaded: 'aaa111', server: 'aaa111' }), false)
-  // The Vite dev page has no build; hot module replacement updates it instead.
-  assert.equal(shouldReload({ loaded: undefined, server: 'bbb222' }), false)
-  assert.equal(shouldReload({ loaded: '', server: 'bbb222' }), false)
-  assert.equal(shouldReload({ loaded: 'aaa111', server: '' }), false)
-})
-
-test("a card's last message comes from the transcript tail, without tool calls, thinking, injected or torn text", () => {
-  const fixture = ({ name }: { name: string }) => join(import.meta.dirname, 'fixtures/transcripts', name)
-  const claude = latestMessage({ path: fixture({ name: 'claude-session.jsonl' }) }).message!
-  assert.equal(claude.role, 'assistant')
-  assert.equal(claude.at, '2026-10-11T09:02:00.000Z')
-  assert.match(claude.text, /^Paragraph 0 about the orders table backfill\. Rows are copied/)
-  assert.ok(claude.text.length <= 280 && claude.text.endsWith('…'))
-  assert.deepEqual(latestMessage({ path: fixture({ name: 'codex-session.jsonl' }) }).message, { role: 'assistant', text: 'The export query scans every invoice without an index.', at: '2026-10-12T10:00:07.000Z' })
-  const dir = mkdtempSync(join(tmpdir(), 'pnyx-latest-')), path = join(dir, 'codex.jsonl')
-  const line = ({ payload }: { payload: unknown }) => JSON.stringify({ timestamp: '2026-10-12T10:01:00.000Z', type: 'response_item', payload }) + '\n'
-  writeFileSync(path, readFileSync(fixture({ name: 'codex-session.jsonl' }), 'utf8') + line({ payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>\n<cwd>/work</cwd>\n</environment_context>Now add the index.' }] } }) + line({ payload: { type: 'function_call_output', call_id: 'c2', output: 'x'.repeat(200_000) } }))
-  assert.deepEqual(latestMessage({ path }).message, { role: 'assistant', text: 'The export query scans every invoice without an index.', at: '2026-10-12T10:00:07.000Z' })
-  assert.equal(latestMessage({ path: join(dir, 'missing.jsonl') }).message, null)
-  writeFileSync(path, line({ payload: { type: 'reasoning', summary: [] } }))
-  assert.equal(latestMessage({ path }).message, null)
-})
-
-test("a card's last message is read again from only what its transcript gained", () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pnyx-latest-')), path = join(dir, 'claude.jsonl')
-  const line = ({ type, text, at }: { type: string; text: string; at: string }) => JSON.stringify({ type, timestamp: at, message: { content: [{ type: 'text', text }] } }) + '\n'
-  const tool = JSON.stringify({ type: 'assistant', timestamp: '2026-10-12T10:02:00.000Z', message: { content: [{ type: 'tool_use', name: 'Bash', input: {} }] } }) + '\n'
-  writeFileSync(path, line({ type: 'assistant', text: 'First reply.', at: '2026-10-12T10:00:00.000Z' }))
-  const first = latestMessage({ path })
-  assert.equal(first.message?.text, 'First reply.')
-  // Appended tool calls and a torn line hold no message: the previous one stays, and the torn line is read once complete.
-  const torn = line({ type: 'user', text: 'Ship it.', at: '2026-10-12T10:03:00.000Z' })
-  appendFileSync(path, tool + torn.slice(0, 20))
-  const second = latestMessage({ path, prev: first })
-  assert.equal(second.message?.text, 'First reply.')
-  assert.equal(second.size, first.size + tool.length)
-  appendFileSync(path, torn.slice(20))
-  const fd = openSync(path, 'r+'); writeSync(fd, 'x', 0); closeSync(fd)
-  const third = latestMessage({ path, prev: second })
-  assert.equal(third.message?.text, 'First reply.')
-  writeFileSync(path, line({ type: 'assistant', text: 'Fresh.', at: '2026-10-12T11:00:00.000Z' }))
-  assert.equal(latestMessage({ path, prev: third }).message?.text, 'Fresh.')
-})
-
-test('deleting a populated column is atomic, replayable, undoable and guarded', () => {
-  const events: HydraEvent[] = []
-  let state = emptyHydra()
-
-  const apply = ({ d }: { d: Decision }) => {
-    const e = event({ d }); events.push(e); state = reduce({ state, event: e })
-
-    return e
-  }
-
-  apply({ d: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'question', input: { attention: [{ kind: 'question', key: 'q', blocking: true }] }, meta }) })
-  apply({ d: decidePush({ state, newCardId: `c${state.seq + 1}`, key: 'worker', input: {}, meta }) })
-  apply({ d: decideView({ state, patch: { customColumns: [{ id: 'custom:later', title: 'Later' }], columnWidths: { 'custom:later': 400 } }, meta }) })
-  apply({ d: decideMove({ state, ref: 'question', column: 'custom:later', meta }) })
-  apply({ d: decideMove({ state, ref: 'worker', column: 'custom:later', meta }) })
-  const before = structuredClone(state)
-  const deletion = apply({ d: decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }) })
-  assert.equal(state.cards.c1!.column, 'parked')
-  assert.equal(state.cards.c2!.column, 'parked')
-  assert.equal(viewFor({ state }).columnWidths['custom:later'], undefined)
-  assert.deepEqual(replay({ state: emptyHydra(), events }), state)
-  assert.deepEqual(decideView({ state, patch: { customColumns: [] }, meta: { ...meta, id: 'delete', ifRevision: 1 } }), { skipped: 'duplicate' })
-  const later = reduce({ state, event: event({ d: decideMove({ state, ref: 'worker', column: 'done', meta }) }) })
-  assert.throws(() => decideUndo({ state: later, target: deletion, meta }), /moved since/)
-  const undo = apply({
-    d: decideUndo({ state, target: deletion, meta: { ...meta, ifRevision: 2 } }),
-  })
-  assert.deepEqual(viewFor({ state }), viewFor({ state: before }))
-  assert.equal(state.cards.c1!.column, 'custom:later')
-  assert.equal(state.cards.c2!.column, 'custom:later')
-  assert.deepEqual(state.cards.c1!.attention, before.cards.c1!.attention)
-  const redo = apply({ d: decideUndo({ state, target: undo, meta }) })
-  assert.deepEqual(redo.type === 'board.view' && redo.data.placements?.map(p => p.cardId), ['c1', 'c2'])
-  assert.equal(state.cards.c1!.column, 'parked')
-  assert.deepEqual(replay({ state: emptyHydra(), events }), state)
-
-  for (const id of COLUMNS) {
-    assert.throws(() => patchView({ state, input: { customColumns: [{ id, title: 'Replacement' }] } }), /invalid/)
-  }
-})
-
-test('themes validate, default to System on older Hydras, and undo', () => {
-  assert.equal(viewFor({ state: emptyHydra() }).theme, 'system')
-
-  for (const theme of ['light', 'dark', 'system']) {
-    assert.equal(patchView({ state: emptyHydra(), input: { theme } }).theme, theme)
-  }
-
-  assert.throws(() => patchView({ state: emptyHydra(), input: { theme: 'sepia' } }), /invalid/)
-  const change = event({ d: decideView({ state: emptyHydra(), patch: { theme: 'light' }, meta }) })
-  const state = reduce({ state: emptyHydra(), event: change })
-  assert.equal(viewFor({ state }).theme, 'light')
-  assert.equal(viewFor({ state: reduce({ state, event: event({ d: decideUndo({ state, target: change, meta }) }) }) }).theme, 'system')
-})
-
-test('the notes header keeps the newest distinct notes and skips text already in the chat', () => {
-  const note = { at: '2026-10-13T10:00:00Z', source: 'firstmate', text: 'resolved: Keep the composer visible.' }
-  const newer = { ...note, at: '2026-10-13T11:00:00Z' }
-  assert.deepEqual(briefNotes({ notes: [note, newer, { ...note, text: 'Already in the chat.' }], conversation: ['Already in the chat.'] }), [newer])
-  assert.deepEqual(briefNotes({ notes: [note], conversation: ['Keep the composer visible.'] }), [])
-  assert.equal(relativeTime({ at: note.at, now: Date.parse('2026-10-13T10:02:00Z') }), '2m ago')
-  assert.equal(relativeTime({ at: undefined, now: 0 }), 'Time not recorded')
-})
-
-test('the turn indicator follows the joined session: working from a prompt or tool call until the turn ends', () => {
-  const firstmate = { activity: 'working: task status', source: { adapter: 'firstmate', objectId: 'task' } }
-  let state = push({ state: emptyHydra(), key: 'task', fields: { title: 'Joined task', ...firstmate } })
-  assert.equal(agentActivity({ card: state.cards.c1! }), undefined)
-
-  for (const [hook, expected] of [['UserPromptSubmit', 'working'], ['PreToolUse', 'working'], ['PostToolUseFailure', 'working'], ['Stop', 'finished']] as const) {
-    const [observed] = observe({ envelope: { v: 1, id: hook, at: meta.at, harness: 'claude', event: hook, payload: { session_id: 'fixture', tool_name: 'Read' } } })
-    assert.ok(observed)
-    state = push({ state, key: 'task', fields: observed.card })
-    assert.equal(agentActivity({ card: state.cards.c1! }), expected)
-    state = push({ state, key: 'task', fields: firstmate })
-    assert.equal(state.cards.c1!.activity, 'working: task status')
-    assert.equal(agentActivity({ card: state.cards.c1! }), expected)
-  }
-
-  const [ended] = observe({ envelope: { v: 1, id: 'end', at: meta.at, harness: 'claude', event: 'SessionEnd', payload: { session_id: 'fixture' } } })
-  assert.ok(ended)
-  state = push({ state, key: 'task', fields: ended.card })
-  assert.equal(shownActivity({ card: state.cards.c1! }), 'ended')
-  state = push({ state, key: 'task', fields: { ...firstmate, activity: 'working: new step' } })
-  assert.equal(shownActivity({ card: state.cards.c1! }), 'working: new step')
-  assert.equal(agentActivity({ card: state.cards.c1! }), 'stopped', 'a source status line never revives an ended worker')
-})
-
-test('a dropped card goes above the card it lands on, or below it on its lower half', () => {
-  let state = emptyHydra()
-
-  for (const key of ['a', 'b']) {
-    state = push({ state, key, fields: {} })
-  }
-
-  const cards = filterCards({ state, workspace: '', tag: '' })
-  assert.equal(dropBefore({ cards, over: 'c1', below: false }), 'c1')
-  assert.equal(dropBefore({ cards, over: 'c1', below: true }), 'c2')
-  assert.equal(dropBefore({ cards, over: 'c2', below: true }), undefined, 'below the last card is the end')
-  assert.equal(dropBefore({ cards, below: false }), undefined, 'empty column space is the end')
-})
-
-test('only a working turn shows as working, an ended session is stopped and unobserved activity stays unknown', () => {
-  const card = push({ state: emptyHydra(), key: 'k', fields: { agent: { provider: 'claude', sessionId: 's' } } }).cards.c1!
-
-  for (const [sessionActivity, expected] of [['working', 'working'], ['finished', 'finished'], ['ended', 'stopped'], [undefined, undefined], ['running Bash', undefined]] as const) {
-    const shown = agentActivity({ card: { ...card, sessionActivity } })
-    assert.equal(shown, expected, String(sessionActivity))
-  }
-})
-
-test('section widths keep their minimums without an upper cap', () => {
-  const state = emptyHydra()
-  const input = {
-    hydraWidth: 1800,
-    defaultHydraWidth: 1900,
-    panelWidth: 2000,
-    columnWidths: { needs_you: 2100 },
-    defaultColumnWidths: { needs_you: 2200 },
-  }
-  const view = patchView({ state, input })
-  const loaded = viewFor({ state: { ...state, view } })
-
-  for (const [key, value] of Object.entries(input)) {
-    const actual = loaded[key as keyof typeof loaded]
-
-    if (typeof value === 'object') {
-      for (const [id, width] of Object.entries(value)) {
-        assert.equal((actual as Record<string, number>)[id], width)
-      }
-    } else {
-      assert.equal(actual, value)
+    for (const key of [
+      'interactive',
+      'background',
+    ]) {
+      state = push({
+        state,
+        key,
+        fields: {
+          title: 'Shared run',
+          agent: {
+            provider: 'claude-code',
+            sessionId: key,
+          },
+          ...(key === 'interactive' ? { terminal: { tty: '/dev/ttys123' } } : {}),
+          attention: [
+            {
+              key: 'hook:question',
+              kind: 'question',
+              blocking: true,
+            },
+          ],
+        },
+      })
     }
-  }
 
-  assert.equal(clampViewSize({ value: 2500, min: 240 }), 2500)
-  assert.throws(() => patchView({ state, input: { hydraWidth: Infinity } }), HydraError)
-  assert.throws(() => patchView({ state, input: { hydraWidth: 239 } }), HydraError)
-})
+    const visible = filterCards({
+      state,
+      workspace: '',
+      tag: '',
+      query: 'Shared',
+    })
+    assert.deepEqual(
+      visible.map(c => c.key),
+      ['work'],
+    )
+    assert.deepEqual(
+      findBoxCards({
+        state,
+        workspace: '',
+        tag: '',
+        query: 'Shared',
+        meaning: [
+          state.keys.interactive!,
+          state.keys.background!,
+        ],
+      }).map(c => c.key),
+      ['work'],
+    )
+    assert.equal(
+      pageTitle({
+        page: 'hydra',
+        cards: state.cards,
+      }),
+      'Hydra · Pnyx',
+      'a request never moves a card to Needs you',
+    )
+    state = reduce({
+      state,
+      event: event({
+        d: decideMove({
+          state,
+          ref: 'work',
+          column: 'needs_you',
+          meta,
+        }),
+      }),
+    })
+    assert.equal(
+      pageTitle({
+        page: 'hydra',
+        cards: state.cards,
+      }),
+      '(1) Hydra · Pnyx',
+    )
+    assert.ok(state.cards[state.keys.background!])
+  },
+)
+
+test(
+  'task labels retain legacy source status instead of claiming every tracked task is parked',
+  () => {
+    const state = push({
+      state: emptyHydra(),
+      key: 'fm:legacy',
+      fields: {
+        title: 'Legacy work',
+        activity: 'working: step one',
+        source: {
+          adapter: 'firstmate',
+          instanceId: '/fixture',
+          objectId: 'legacy',
+        },
+      },
+    })
+    const card = state.cards.c1!
+    assert.equal(
+      card.tracking,
+      'declared',
+    )
+    assert.equal(
+      card.column,
+      'in_progress',
+    )
+    assert.equal(
+      card.status,
+      undefined,
+    )
+    assert.equal(
+      taskLabel({ card }),
+      'working: step one',
+    )
+    const moved = reduce({
+      state,
+      event: event({
+        d: decideMove({
+          state,
+          ref: card.id,
+          column: 'done',
+          meta,
+        }),
+      }),
+    })
+    assert.equal(
+      taskLabel({ card: moved.cards.c1! }),
+      'working: step one',
+    )
+    assert.equal(
+      taskLabel({
+        card: {
+          ...card,
+          activity: undefined,
+          sourceRefs: [],
+        },
+      }),
+      'No status',
+    )
+    assert.equal(
+      taskLabel({
+        card: {
+          ...card,
+          status: {
+            id: 'd1',
+            at: meta.at,
+            actor: 'test',
+            state: 'needs_you',
+            note: 'Review',
+          },
+        },
+      }),
+      'needs you: Review',
+    )
+  },
+)
+
+test(
+  'tab titles follow the view, selected card and current needs-you count',
+  () => {
+    for (const [
+      page,
+      label,
+    ] of [
+        [
+          'hydra',
+          'Hydra',
+        ],
+        [
+          'history',
+          'History',
+        ],
+        [
+          'settings',
+          'Settings',
+        ],
+      ] as const) {
+      assert.equal(
+        pageTitle({
+          page,
+          cards: {},
+        }),
+        `${label} · Pnyx`,
+      )
+    }
+
+    let state = push({
+      state: emptyHydra(),
+      key: 'a',
+      fields: {
+        title: 'Review <literal> changes',
+        attention: [
+          {
+            kind: 'question',
+            key: 'q',
+            blocking: true,
+          },
+        ],
+      },
+    })
+    state = push({
+      state,
+      key: 'b',
+      fields: {
+        title: 'Another decision',
+        attention: [
+          {
+            kind: 'question',
+            key: 'q',
+            blocking: true,
+          },
+        ],
+      },
+    })
+    state = push({
+      state,
+      key: 'c',
+      fields: {
+        title: 'Still working',
+        activity: 'working',
+      },
+    })
+
+    for (const ref of [
+      'a',
+      'b',
+    ]) {
+      state = reduce({
+        state,
+        event: event({
+          d: decideMove({
+            state,
+            ref,
+            column: 'needs_you',
+            meta,
+          }),
+        }),
+      })
+    }
+
+    assert.equal(
+      pageTitle({
+        page: 'hydra',
+        cards: state.cards,
+      }),
+      '(2) Hydra · Pnyx',
+    )
+    assert.equal(
+      pageTitle({
+        page: 'hydra',
+        cards: state.cards,
+        selected: 'c1',
+      }),
+      '(2) Review <literal> changes · Pnyx',
+    )
+    assert.equal(
+      pageTitle({
+        page: 'hydra',
+        cards: state.cards,
+        selected: 'missing',
+      }),
+      '(2) Hydra · Pnyx',
+    )
+    assert.equal(
+      pageTitle({
+        page: 'history',
+        cards: state.cards,
+        selected: 'c1',
+      }),
+      '(2) History · Pnyx',
+    )
+    assert.equal(
+      pageTitle({
+        page: 'settings',
+        cards: state.cards,
+        selected: 'c1',
+      }),
+      '(2) Settings · Pnyx',
+    )
+    state = push({
+      state,
+      key: 'a',
+      fields: { title: 'Updated card title' },
+    })
+    state = reduce({
+      state,
+      event: event({
+        d: decideMove({
+          state,
+          ref: 'b',
+          column: 'done',
+          meta,
+        }),
+      }),
+    })
+    assert.equal(
+      pageTitle({
+        page: 'hydra',
+        cards: state.cards,
+        selected: 'c1',
+      }),
+      '(1) Updated card title · Pnyx',
+    )
+    state = reduce({
+      state,
+      event: event({
+        d: decideMove({
+          state,
+          ref: 'a',
+          column: 'done',
+          meta,
+        }),
+      }),
+    })
+    assert.equal(
+      pageTitle({
+        page: 'hydra',
+        cards: state.cards,
+        selected: 'c1',
+      }),
+      'Updated card title · Pnyx',
+    )
+  },
+)
+
+test(
+  'preferences replay deterministically, guard revisions, and undo removes map overrides',
+  () => {
+    const initial = push({
+      state: emptyHydra(),
+      key: 'a',
+      fields: { title: 'A' },
+    })
+    const edit = event({
+      d: decideView({
+        state: initial,
+        patch: {
+          columnWidths: { in_progress: 400 },
+          cardTraceOverrides: { c1: { tools: true } },
+        },
+        meta: {
+          ...meta,
+          ifRevision: 0,
+          id: 'view-1',
+        },
+      }),
+    })
+    const state = reduce({
+      state: initial,
+      event: edit,
+    })
+    assert.equal(
+      initial.view,
+      undefined,
+    )
+    assert.equal(
+      state.viewRevision,
+      1,
+    )
+    assert.equal(
+      viewFor({ state }).columnWidths.in_progress,
+      400,
+    )
+    assert.deepEqual(
+      reduce({
+        state: initial,
+        event: edit,
+      }),
+      state,
+    )
+    assert.deepEqual(
+      decideView({
+        state,
+        patch: {},
+        meta: {
+          ...meta,
+          id: 'view-1',
+          ifRevision: 0,
+        },
+      }),
+      { skipped: 'duplicate' },
+    )
+    assert.throws(
+      () => decideView({
+        state,
+        patch: { fontSize: 18 },
+        meta: {
+          ...meta,
+          ifRevision: 0,
+        },
+      }),
+      /changed/,
+    )
+    const undone = reduce({
+      state,
+      event: event({
+        d: decideUndo({
+          state,
+          target: edit,
+          meta: {
+            ...meta,
+            ifRevision: 1,
+          },
+        }),
+      }),
+    })
+    assert.deepEqual(
+      viewFor({ state: undone }),
+      viewFor({ state: initial }),
+    )
+    assert.throws(
+      () => patchView({
+        state,
+        input: { fontSize: 100 },
+      }),
+      HydraError,
+    )
+    assert.throws(
+      () => patchView({
+        state,
+        input: { chatFontSize: 100 },
+      }),
+      HydraError,
+    )
+    assert.throws(
+      () => patchView({
+        state,
+        input: { codeFontSize: 5 },
+      }),
+      HydraError,
+    )
+    const sizes = patchView({
+      state,
+      input: {
+        fontSize: 15,
+        chatFontSize: 18,
+        codeFontSize: 12,
+      },
+    })
+    assert.deepEqual(
+      [
+        sizes.fontSize,
+        sizes.chatFontSize,
+        sizes.codeFontSize,
+      ],
+      [
+        15,
+        18,
+        12,
+      ],
+    )
+    assert.throws(
+      () => patchView({
+        state,
+        input: JSON.parse('{"columnWidths":{"__proto__":300}}'),
+      }),
+      HydraError,
+    )
+  },
+)
+
+test(
+  'saved resize preferences load within readable size limits',
+  () => {
+    const initial = push({
+      state: emptyHydra(),
+      key: 'a',
+      fields: { title: 'A' },
+    })
+    const view = viewFor({ state: initial })
+    const loaded = viewFor({
+      state: {
+        ...initial,
+        view: {
+          ...view,
+          panelWidth: 1,
+          composerHeight: 999,
+          taskComposerHeight: 1,
+          cardHeight: 1,
+          columnWidths: {
+            needs_you: 1,
+            review: 900,
+          },
+          cardHeights: { c1: 1 },
+        },
+      },
+    })
+
+    assert.equal(
+      loaded.panelWidth,
+      VIEW_SIZE_LIMITS.panelWidth.min,
+    )
+    assert.equal(
+      loaded.composerHeight,
+      VIEW_SIZE_LIMITS.composerHeight.max,
+    )
+    assert.equal(
+      loaded.taskComposerHeight,
+      VIEW_SIZE_LIMITS.composerHeight.min,
+    )
+    assert.equal(
+      loaded.cardHeight,
+      VIEW_SIZE_LIMITS.cardHeight.min,
+    )
+    assert.equal(
+      loaded.columnWidths.needs_you,
+      VIEW_SIZE_LIMITS.columnWidth.min,
+    )
+    assert.equal(
+      loaded.columnWidths.review,
+      900,
+    )
+    assert.equal(
+      loaded.cardHeights.c1,
+      VIEW_SIZE_LIMITS.cardHeight.min,
+    )
+    assert.equal(
+      clampViewSize({
+        value: 100,
+        min: 320,
+        max: 720,
+      }),
+      320,
+    )
+    assert.equal(
+      clampViewSize({
+        value: 800,
+        min: 320,
+        max: 720,
+      }),
+      720,
+    )
+    assert.equal(
+      clampViewSize({
+        value: 320.5,
+        min: 320,
+        max: 720,
+      }),
+      321,
+    )
+  },
+)
+
+test(
+  'Hydra and task composer heights replay independently',
+  () => {
+    const initial = emptyHydra()
+    assert.equal(
+      viewFor({ state: initial }).taskComposerHeight,
+      80,
+    )
+    const hydra = reduce({
+      state: initial,
+      event: event({
+        d: decideView({
+          state: initial,
+          patch: { composerHeight: 180 },
+          meta,
+        }),
+      }),
+    })
+    const edit = event({
+      d: decideView({
+        state: hydra,
+        patch: { taskComposerHeight: 120 },
+        meta,
+      }),
+    })
+    const state = reduce({
+      state: hydra,
+      event: edit,
+    })
+    assert.equal(
+      viewFor({ state }).composerHeight,
+      180,
+    )
+    assert.equal(
+      viewFor({ state }).taskComposerHeight,
+      120,
+    )
+    assert.deepEqual(
+      reduce({
+        state: hydra,
+        event: edit,
+      }),
+      state,
+    )
+
+    for (const taskComposerHeight of [
+      79,
+      421,
+      100.5,
+      null,
+      '120',
+    ]) {
+      assert.throws(
+        () => patchView({
+          state,
+          input: { taskComposerHeight },
+        }),
+        HydraError,
+      )
+    }
+  },
+)
+
+test(
+  'custom columns take moved cards and send them to the fallback column when deleted',
+  () => {
+    let state = push({
+      state: emptyHydra(),
+      key: 'a',
+      fields: {
+        attention: [
+          {
+            kind: 'question',
+            key: 'q',
+            blocking: true,
+          },
+        ],
+      },
+    })
+    state = reduce({
+      state,
+      event: event({
+        d: decideView({
+          state,
+          patch: {
+            customColumns: [
+              {
+                id: 'custom:later',
+                title: 'Later',
+              },
+            ],
+          },
+          meta,
+        }),
+      }),
+    })
+    assert.equal(
+      columnsFor({ state }).at(-1)?.title,
+      'Later',
+    )
+    assert.equal(
+      patchView({
+        state: emptyHydra(),
+        input: {
+          columnWidths: { 'custom:one': 400 },
+          customColumns: [
+            {
+              id: 'custom:one',
+              title: 'One',
+            },
+          ],
+        },
+      }).columnWidths['custom:one'],
+      400,
+    )
+    state = reduce({
+      state,
+      event: event({
+        d: decideMove({
+          state,
+          ref: 'a',
+          column: 'custom:later',
+          meta,
+        }),
+      }),
+    })
+    assert.equal(
+      state.cards.c1!.column,
+      'custom:later',
+    )
+    assert.deepEqual(
+      patchView({
+        state,
+        input: { customColumns: [] },
+      }).customColumns,
+      [],
+    )
+    assert.throws(
+      () => decideMove({
+        state,
+        ref: 'a',
+        column: 'custom:missing',
+        meta,
+      }),
+      /unknown/,
+    )
+    const back = event({
+      d: decideMove({
+        state,
+        ref: 'a',
+        column: 'needs_you',
+        meta,
+      }),
+    })
+    state = reduce({
+      state,
+      event: back,
+    })
+    assert.equal(
+      state.cards.c1!.column,
+      'needs_you',
+    )
+    assert.equal(
+      state.cards.c1!.attention.length,
+      1,
+    )
+    state = reduce({
+      state,
+      event: event({
+        d: decideMove({
+          state,
+          ref: 'a',
+          column: 'custom:later',
+          meta,
+        }),
+      }),
+    })
+    state = reduce({
+      state,
+      event: event({
+        d: decideView({
+          state,
+          patch: { customColumns: [] },
+          meta,
+        }),
+      }),
+    })
+    assert.equal(
+      state.cards.c1!.column,
+      'parked',
+    )
+    assert.throws(
+      () => decideUndo({
+        state,
+        target: back,
+        meta,
+      }),
+      /changed since/,
+    )
+  },
+)
+
+test(
+  'filters do not expose excluded parent details, and links/slashes stay literal',
+  () => {
+    let state = push({
+      state: emptyHydra(),
+      key: 'parent',
+      fields: {
+        title: 'Private parent',
+        workspace: 'A',
+      },
+    })
+    state = push({
+      state,
+      key: 'child',
+      fields: {
+        title: 'Searchable child',
+        workspace: 'B',
+        parent: 'parent',
+        tags: ['ui'],
+      },
+    })
+    const visible = filterCards({
+      state,
+      workspace: 'B',
+      tag: 'ui',
+      query: 'searchable',
+    })
+    assert.equal(
+      visible.length,
+      1,
+    )
+    assert.equal(
+      visibleParent({
+        card: visible[0]!,
+        visible,
+      }),
+      undefined,
+    )
+    assert.equal(
+      safeLink({
+        link: {
+          kind: 'url',
+          url: 'javascript:alert(1)',
+        },
+      }),
+      undefined,
+    )
+    assert.equal(
+      slashPrefix({
+        text: '/plan',
+        cursor: 5,
+      }),
+      '/plan',
+    )
+    assert.equal(
+      slashPrefix({
+        text: 'open /path',
+        cursor: 10,
+      }),
+      null,
+    )
+    assert.equal(
+      slashPrefix({
+        text: '/tmp/file',
+        cursor: 9,
+      }),
+      null,
+    )
+
+    for (const typed of [
+      '/d',
+      '/D',
+      '/dep',
+    ]) {
+      assert.equal(
+        slashMatches({
+          command: '/Deploy',
+          prefix: slashPrefix({
+            text: typed,
+            cursor: typed.length,
+          })!,
+        }),
+        true,
+      )
+    }
+
+    assert.equal(
+      slashMatches({
+        command: '$Review',
+        prefix: '/rev',
+      }),
+      true,
+    )
+    assert.equal(
+      slashMatches({
+        command: '/Deploy',
+        prefix: '/r',
+      }),
+      false,
+    )
+  },
+)
+
+test(
+  'the Find box shows every card its filter matches, then the strong meaning-only cards',
+  () => {
+    let state = emptyHydra()
+
+    for (let i = 0; i < 35; i += 1) {
+      state = push({
+        state,
+        key: `deploy-${i}`,
+        fields: {
+          title: `Deploy step ${i}`,
+          workspace: 'A',
+        },
+      })
+    }
+
+    state = push({
+      state,
+      key: 'ops-rotation',
+      fields: {
+        title: 'Rotate keys',
+        workspace: 'A',
+        tags: ['infra'],
+      },
+    })
+    state = push({
+      state,
+      key: 'cookie',
+      fields: {
+        title: 'Session cookie',
+        workspace: 'B',
+      },
+    })
+    const id = ({ key }: { key: string }) => Object.values(state.cards).find(c => c.key === key)!.id
+    const ids = ({ cards }: { cards: { id: string }[] }) => cards.map(c => c.id)
+
+    for (const query of [
+      'deploy',
+      'dep',
+      'infra',
+      'ops-rot',
+      'step 3',
+      'nothing like it',
+      '',
+    ]) {
+      assert.deepEqual(
+        findBoxCards({
+          state,
+          workspace: '',
+          tag: '',
+          query,
+          meaning: [],
+        }),
+        filterCards({
+          state,
+          workspace: '',
+          tag: '',
+          query,
+        }),
+      )
+    }
+
+    assert.equal(
+      findBoxCards({
+        state,
+        workspace: '',
+        tag: '',
+        query: 'dep',
+        meaning: [],
+      }).length,
+      35,
+    )
+    assert.deepEqual(
+      ids({
+        cards: findBoxCards({
+          state,
+          workspace: '',
+          tag: '',
+          query: 'infra',
+          meaning: [],
+        }),
+      }),
+      [id({ key: 'ops-rotation' })],
+    )
+    assert.deepEqual(
+      ids({
+        cards: findBoxCards({
+          state,
+          workspace: '',
+          tag: '',
+          query: 'ops-rot',
+          meaning: [],
+        }),
+      }),
+      [id({ key: 'ops-rotation' })],
+    )
+
+    const found = findBoxCards({
+      state,
+      workspace: '',
+      tag: '',
+      query: 'deploy',
+      meaning: [
+        id({ key: 'cookie' }),
+        id({ key: 'deploy-0' }),
+        'gone',
+      ],
+    })
+    assert.deepEqual(
+      ids({ cards: found }),
+      [
+        ...ids({
+          cards: filterCards({
+            state,
+            workspace: '',
+            tag: '',
+            query: 'deploy',
+          }),
+        }),
+        id({ key: 'cookie' }),
+      ],
+    )
+    assert.equal(
+      findBoxCards({
+        state,
+        workspace: 'A',
+        tag: '',
+        query: 'deploy',
+        meaning: [id({ key: 'cookie' })],
+      }).length,
+      35,
+    )
+    assert.deepEqual(
+      ids({
+        cards: findBoxCards({
+          state,
+          workspace: '',
+          tag: 'infra',
+          query: 'deploy',
+          meaning: [
+            id({ key: 'cookie' }),
+            id({ key: 'ops-rotation' }),
+          ],
+        }),
+      }),
+      [id({ key: 'ops-rotation' })],
+    )
+  },
+)
+
+test(
+  'thread reader ignores partial records, pages old messages, separates traces and reports unavailable capabilities',
+  () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-thread-',
+    )); process.env.PNYX_HOME = home
+    const path = join(
+      home,
+      'session.jsonl',
+    )
+    const records = Array.from(
+      { length: 90 },
+      (
+        _,
+        i,
+      ) => JSON.stringify({
+        type: 'assistant',
+        message: { content: `message ${i}` },
+      }),
+    )
+    writeFileSync(
+      path,
+      records.join('\n') + '\n{"partial":',
+    )
+    const state = push({
+      state: emptyHydra(),
+      key: 'a',
+      fields: {
+        agent: {
+          provider: 'claude',
+          sessionId: 'fixture',
+          transcriptPath: path,
+        },
+      },
+    })
+    const page = readThread({
+      hydraId: 'default',
+      state,
+      card: state.cards.c1!,
+      homes: [],
+    })
+    assert.equal(
+      page.entries.length,
+      60,
+    ); assert.equal(
+      page.entries.at(-1)?.text,
+      'message 89',
+    ); assert.ok(page.older)
+    const older = readThread({
+      hydraId: 'default',
+      state,
+      card: state.cards.c1!,
+      homes: [],
+      before: page.older,
+    })
+    assert.equal(
+      older.entries.length,
+      30,
+    ); assert.equal(
+      older.entries[0]?.text,
+      'message 0',
+    ); assert.equal(
+      older.older,
+      undefined,
+    )
+    assert.equal(
+      page.route,
+      false,
+    ); assert.equal(
+      page.watching,
+      'unknown',
+    )
+    const entries = recordEntries({
+      record: {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'text',
+              text: 'hello',
+            },
+            {
+              type: 'thinking',
+              thinking: 'thinking',
+            },
+            {
+              type: 'tool_use',
+              input: 'sk-abcdefghijklmnop123456789',
+            },
+          ],
+        },
+      },
+      offset: 0,
+    })
+    assert.deepEqual(
+      entries.map(e => e.kind),
+      [
+        'message',
+        'thinking',
+        'tool',
+      ],
+    ); assert.equal(
+      entries[2]?.text,
+      '[redacted]',
+    )
+    assert.deepEqual(
+      recordEntries({
+        record: {
+          type: 'user',
+          isMeta: true,
+          message: { content: 'injected' },
+        },
+        offset: 0,
+      }),
+      [],
+    )
+  },
+)
+
+test(
+  'Focus hides traces before paging so tool-heavy output cannot push replies off the page',
+  () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-focus-',
+    )); process.env.PNYX_HOME = home
+    const path = join(
+      home,
+      'session.jsonl',
+    )
+    const replies = Array.from(
+      { length: 3 },
+      (
+        _,
+        i,
+      ) => ({
+        type: 'assistant',
+        message: { content: `reply ${i}` },
+      }),
+    )
+    const tools = Array.from(
+      { length: 120 },
+      (
+        _,
+        i,
+      ) => ({
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              input: `tool ${i}`,
+            },
+          ],
+        },
+      }),
+    )
+    writeFileSync(
+      path,
+      [
+        ...replies,
+        ...tools,
+      ].map(r => JSON.stringify(r)).join('\n') + '\n',
+    )
+    let state = push({
+      state: emptyHydra(),
+      key: 'a',
+      fields: {
+        activity: 'working',
+        agent: {
+          provider: 'claude',
+          sessionId: 'fixture',
+          transcriptPath: path,
+        },
+      },
+    })
+    const focused = readThread({
+      hydraId: 'default',
+      state,
+      card: state.cards.c1!,
+      homes: [],
+    })
+    assert.deepEqual(
+      focused.entries.map(e => e.text),
+      [
+        'reply 0',
+        'reply 1',
+        'reply 2',
+      ],
+    )
+    assert.ok(traces({
+      view: viewFor({ state }),
+      card: 'c1',
+    }).focus)
+    const showTools = { focusMode: false }
+    state = reduce({
+      state,
+      event: event({
+        d: decideView({
+          state,
+          patch: showTools,
+          meta,
+        }),
+      }),
+    })
+    const full = readThread({
+      hydraId: 'default',
+      state,
+      card: state.cards.c1!,
+      homes: [],
+    })
+    assert.equal(
+      full.entries.length,
+      60,
+    ); assert.ok(full.entries.every(e => e.kind === 'tool'))
+    assert.equal(
+      traces({
+        view: viewFor({ state }),
+        card: 'c1',
+      }).focus,
+      false,
+    )
+  },
+)
+
+test(
+  'Focus pages messages from a tool-heavy tail larger than the first read window',
+  () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-focus-window-',
+    )); process.env.PNYX_HOME = home
+    const path = join(
+        home,
+        'session.jsonl',
+      ), padding = 'x'.repeat(4000)
+    const records = Array.from(
+      { length: 90 },
+      (
+        _,
+        i,
+      ) => [
+        {
+          type: 'assistant',
+          message: { content: `message ${i}` },
+        },
+        {
+          type: 'assistant',
+          message: {
+            content: [
+              {
+                type: 'tool_use',
+                input: `${padding} ${i}`,
+              },
+            ],
+          },
+        },
+      ],
+    ).flat()
+    writeFileSync(
+      path,
+      records.map(r => JSON.stringify(r)).join('\n') + '\n',
+    )
+    const state = push({
+      state: emptyHydra(),
+      key: 'a',
+      fields: {
+        agent: {
+          provider: 'claude',
+          sessionId: 'fixture',
+          transcriptPath: path,
+        },
+      },
+    })
+    const page = readThread({
+      hydraId: 'default',
+      state,
+      card: state.cards.c1!,
+      homes: [],
+    })
+    assert.deepEqual(
+      page.entries.map(e => e.text),
+      Array.from(
+        { length: 60 },
+        (
+          _,
+          i,
+        ) => `message ${i + 30}`,
+      ),
+    )
+    const older = readThread({
+      hydraId: 'default',
+      state,
+      card: state.cards.c1!,
+      homes: [],
+      before: page.older,
+    })
+    assert.deepEqual(
+      older.entries.map(e => e.text),
+      Array.from(
+        { length: 30 },
+        (
+          _,
+          i,
+        ) => `message ${i}`,
+      ),
+    )
+    assert.equal(
+      older.older,
+      undefined,
+    )
+  },
+)
+
+test(
+  'long transcript messages and reply history page without losing text or duplicating entries',
+  () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-thread-pages-',
+    )); process.env.PNYX_HOME = home
+    const path = join(
+        home,
+        'session.jsonl',
+      ), longText = 'abcdefghij'.repeat(7000)
+    writeFileSync(
+      path,
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: '2026-10-12T10:00:00Z',
+        message: { content: longText },
+      }) + '\n',
+    )
+    const state = withWriter({
+      hydraId: 'default',
+      fn: ({ writer: w }) => {
+        w.append({
+          event: event({
+            d: decidePush({
+              state: w.state,
+              newCardId: `c${w.state.seq + 1}`,
+              key: 'a',
+              input: {
+                agent: {
+                  provider: 'claude',
+                  sessionId: 'fixture',
+                  transcriptPath: path,
+                },
+              },
+              meta,
+            }),
+          }),
+        })
+
+        for (let i = 0; i < 90; i++) {
+          w.append({
+            event: event({
+              d: decideReply({
+                state: w.state,
+                ref: 'a',
+                data: {
+                  reply: `r${i}`,
+                  state: 'queued',
+                  route: 'fixture',
+                  text: `reply ${i}`,
+                },
+                meta,
+              }),
+            }),
+          })
+        }
+
+        return w.state
+      },
+    })
+    let cursor: string | undefined
+    const pages: ReturnType<typeof readThread>['entries'][] = []
+
+    do {
+      const page = readThread({
+        hydraId: 'default',
+        state,
+        card: state.cards.c1!,
+        homes: [],
+        before: cursor,
+      })
+      assert.ok(page.entries.length <= 60)
+      pages.unshift(page.entries); cursor = page.older
+      assert.ok(
+        pages.length < 10,
+        'pagination terminates',
+      )
+    } while (cursor)
+
+    const entries = pages.flat()
+    assert.equal(
+      new Set(entries.map(e => e.id)).size,
+      entries.length,
+    )
+    assert.equal(
+      entries.filter(e => e.role.startsWith('assistant')).map(e => e.text)
+        .join(''),
+      longText,
+    )
+    assert.equal(
+      entries.filter(e => e.role === 'You').length,
+      90,
+    )
+    const later = withWriter({
+      hydraId: 'default',
+      fn: ({ writer: w }) => {
+        w.append({
+          event: event({
+            d: decideReply({
+              state: w.state,
+              ref: 'a',
+              data: {
+                reply: 'r90',
+                state: 'queued',
+                route: 'fixture',
+                text: 'reply 90',
+              },
+              meta,
+            }),
+          }),
+        })
+
+        return w.state
+      },
+    })
+    assert.equal(
+      readThread({
+        hydraId: 'default',
+        state: later,
+        card: later.cards.c1!,
+        homes: [],
+      }).entries.at(-1)?.text,
+      'reply 90',
+    )
+  },
+)
+
+test(
+  'a tab reloads only when it reconnects to a server serving another build',
+  () => {
+    assert.equal(
+      shouldReload({
+        loaded: 'aaa111',
+        server: 'bbb222',
+      }),
+      true,
+    )
+    assert.equal(
+      shouldReload({
+        loaded: 'aaa111',
+        server: 'aaa111',
+      }),
+      false,
+    )
+    // The Vite dev page has no build; hot module replacement updates it instead.
+    assert.equal(
+      shouldReload({
+        loaded: undefined,
+        server: 'bbb222',
+      }),
+      false,
+    )
+    assert.equal(
+      shouldReload({
+        loaded: '',
+        server: 'bbb222',
+      }),
+      false,
+    )
+    assert.equal(
+      shouldReload({
+        loaded: 'aaa111',
+        server: '',
+      }),
+      false,
+    )
+  },
+)
+
+test(
+  "a card's last message comes from the transcript tail, without tool calls, thinking, injected or torn text",
+  () => {
+    const fixture = ({ name }: { name: string }) => join(
+      import.meta.dirname,
+      'fixtures/transcripts',
+      name,
+    )
+    const claude = latestMessage({ path: fixture({ name: 'claude-session.jsonl' }) }).message!
+    assert.equal(
+      claude.role,
+      'assistant',
+    )
+    assert.equal(
+      claude.at,
+      '2026-10-11T09:02:00.000Z',
+    )
+    assert.match(
+      claude.text,
+      /^Paragraph 0 about the orders table backfill\. Rows are copied/,
+    )
+    assert.ok(claude.text.length <= 280 && claude.text.endsWith('…'))
+    assert.deepEqual(
+      latestMessage({ path: fixture({ name: 'codex-session.jsonl' }) }).message,
+      {
+        role: 'assistant',
+        text: 'The export query scans every invoice without an index.',
+        at: '2026-10-12T10:00:07.000Z',
+      },
+    )
+    const dir = mkdtempSync(join(
+        tmpdir(),
+        'pnyx-latest-',
+      )), path = join(
+        dir,
+        'codex.jsonl',
+      )
+    const line = ({ payload }: { payload: unknown }) => JSON.stringify({
+      timestamp: '2026-10-12T10:01:00.000Z',
+      type: 'response_item',
+      payload,
+    }) + '\n'
+    writeFileSync(
+      path,
+      readFileSync(
+        fixture({ name: 'codex-session.jsonl' }),
+        'utf8',
+      ) + line({
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: '<environment_context>\n<cwd>/work</cwd>\n</environment_context>Now add the index.',
+            },
+          ],
+        },
+      }) + line({
+        payload: {
+          type: 'function_call_output',
+          call_id: 'c2',
+          output: 'x'.repeat(200_000),
+        },
+      }),
+    )
+    assert.deepEqual(
+      latestMessage({ path }).message,
+      {
+        role: 'assistant',
+        text: 'The export query scans every invoice without an index.',
+        at: '2026-10-12T10:00:07.000Z',
+      },
+    )
+    assert.equal(
+      latestMessage({
+        path: join(
+          dir,
+          'missing.jsonl',
+        ),
+      }).message,
+      null,
+    )
+    writeFileSync(
+      path,
+      line({
+        payload: {
+          type: 'reasoning',
+          summary: [],
+        },
+      }),
+    )
+    assert.equal(
+      latestMessage({ path }).message,
+      null,
+    )
+  },
+)
+
+test(
+  "a card's last message is read again from only what its transcript gained",
+  () => {
+    const dir = mkdtempSync(join(
+        tmpdir(),
+        'pnyx-latest-',
+      )), path = join(
+        dir,
+        'claude.jsonl',
+      )
+    const line = ({
+      type,
+      text,
+      at,
+    }: {
+      type: string
+      text: string
+      at: string
+    }) => JSON.stringify({
+      type,
+      timestamp: at,
+      message: {
+        content: [
+          {
+            type: 'text',
+            text,
+          },
+        ],
+      },
+    }) + '\n'
+    const tool = JSON.stringify({
+      type: 'assistant',
+      timestamp: '2026-10-12T10:02:00.000Z',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            name: 'Bash',
+            input: {},
+          },
+        ],
+      },
+    }) + '\n'
+    writeFileSync(
+      path,
+      line({
+        type: 'assistant',
+        text: 'First reply.',
+        at: '2026-10-12T10:00:00.000Z',
+      }),
+    )
+    const first = latestMessage({ path })
+    assert.equal(
+      first.message?.text,
+      'First reply.',
+    )
+    // Appended tool calls and a torn line hold no message: the previous one stays, and the torn line is read once complete.
+    const torn = line({
+      type: 'user',
+      text: 'Ship it.',
+      at: '2026-10-12T10:03:00.000Z',
+    })
+    appendFileSync(
+      path,
+      tool + torn.slice(
+        0,
+        20,
+      ),
+    )
+    const second = latestMessage({
+      path,
+      prev: first,
+    })
+    assert.equal(
+      second.message?.text,
+      'First reply.',
+    )
+    assert.equal(
+      second.size,
+      first.size + tool.length,
+    )
+    appendFileSync(
+      path,
+      torn.slice(20),
+    )
+    const fd = openSync(
+      path,
+      'r+',
+    ); writeSync(
+      fd,
+      'x',
+      0,
+    ); closeSync(fd)
+    const third = latestMessage({
+      path,
+      prev: second,
+    })
+    assert.equal(
+      third.message?.text,
+      'First reply.',
+    )
+    writeFileSync(
+      path,
+      line({
+        type: 'assistant',
+        text: 'Fresh.',
+        at: '2026-10-12T11:00:00.000Z',
+      }),
+    )
+    assert.equal(
+      latestMessage({
+        path,
+        prev: third,
+      }).message?.text,
+      'Fresh.',
+    )
+  },
+)
+
+test(
+  'deleting a populated column is atomic, replayable, undoable and guarded',
+  () => {
+    const events: HydraEvent[] = []
+    let state = emptyHydra()
+
+    const apply = ({ d }: { d: Decision }) => {
+      const e = event({ d }); events.push(e); state = reduce({
+        state,
+        event: e,
+      })
+
+      return e
+    }
+
+    apply({
+      d: decidePush({
+        state,
+        newCardId: `c${state.seq + 1}`,
+        key: 'question',
+        input: {
+          attention: [
+            {
+              kind: 'question',
+              key: 'q',
+              blocking: true,
+            },
+          ],
+        },
+        meta,
+      }),
+    })
+    apply({
+      d: decidePush({
+        state,
+        newCardId: `c${state.seq + 1}`,
+        key: 'worker',
+        input: {},
+        meta,
+      }),
+    })
+    apply({
+      d: decideView({
+        state,
+        patch: {
+          customColumns: [
+            {
+              id: 'custom:later',
+              title: 'Later',
+            },
+          ],
+          columnWidths: { 'custom:later': 400 },
+        },
+        meta,
+      }),
+    })
+    apply({
+      d: decideMove({
+        state,
+        ref: 'question',
+        column: 'custom:later',
+        meta,
+      }),
+    })
+    apply({
+      d: decideMove({
+        state,
+        ref: 'worker',
+        column: 'custom:later',
+        meta,
+      }),
+    })
+    const before = structuredClone(state)
+    const deletion = apply({
+      d: decideView({
+        state,
+        patch: { customColumns: [] },
+        meta: {
+          ...meta,
+          id: 'delete',
+          ifRevision: 1,
+        },
+      }),
+    })
+    assert.equal(
+      state.cards.c1!.column,
+      'parked',
+    )
+    assert.equal(
+      state.cards.c2!.column,
+      'parked',
+    )
+    assert.equal(
+      viewFor({ state }).columnWidths['custom:later'],
+      undefined,
+    )
+    assert.deepEqual(
+      replay({
+        state: emptyHydra(),
+        events,
+      }),
+      state,
+    )
+    assert.deepEqual(
+      decideView({
+        state,
+        patch: { customColumns: [] },
+        meta: {
+          ...meta,
+          id: 'delete',
+          ifRevision: 1,
+        },
+      }),
+      { skipped: 'duplicate' },
+    )
+    const later = reduce({
+      state,
+      event: event({
+        d: decideMove({
+          state,
+          ref: 'worker',
+          column: 'done',
+          meta,
+        }),
+      }),
+    })
+    assert.throws(
+      () => decideUndo({
+        state: later,
+        target: deletion,
+        meta,
+      }),
+      /moved since/,
+    )
+    const undo = apply({
+      d: decideUndo({
+        state,
+        target: deletion,
+        meta: {
+          ...meta,
+          ifRevision: 2,
+        },
+      }),
+    })
+    assert.deepEqual(
+      viewFor({ state }),
+      viewFor({ state: before }),
+    )
+    assert.equal(
+      state.cards.c1!.column,
+      'custom:later',
+    )
+    assert.equal(
+      state.cards.c2!.column,
+      'custom:later',
+    )
+    assert.deepEqual(
+      state.cards.c1!.attention,
+      before.cards.c1!.attention,
+    )
+    const redo = apply({
+      d: decideUndo({
+        state,
+        target: undo,
+        meta,
+      }),
+    })
+    assert.deepEqual(
+      redo.type === 'board.view' && redo.data.placements?.map(p => p.cardId),
+      [
+        'c1',
+        'c2',
+      ],
+    )
+    assert.equal(
+      state.cards.c1!.column,
+      'parked',
+    )
+    assert.deepEqual(
+      replay({
+        state: emptyHydra(),
+        events,
+      }),
+      state,
+    )
+
+    for (const id of COLUMNS) {
+      assert.throws(
+        () => patchView({
+          state,
+          input: {
+            customColumns: [
+              {
+                id,
+                title: 'Replacement',
+              },
+            ],
+          },
+        }),
+        /invalid/,
+      )
+    }
+  },
+)
+
+test(
+  'themes validate, default to System on older Hydras, and undo',
+  () => {
+    assert.equal(
+      viewFor({ state: emptyHydra() }).theme,
+      'system',
+    )
+
+    for (const theme of [
+      'light',
+      'dark',
+      'system',
+    ]) {
+      assert.equal(
+        patchView({
+          state: emptyHydra(),
+          input: { theme },
+        }).theme,
+        theme,
+      )
+    }
+
+    assert.throws(
+      () => patchView({
+        state: emptyHydra(),
+        input: { theme: 'sepia' },
+      }),
+      /invalid/,
+    )
+    const change = event({
+      d: decideView({
+        state: emptyHydra(),
+        patch: { theme: 'light' },
+        meta,
+      }),
+    })
+    const state = reduce({
+      state: emptyHydra(),
+      event: change,
+    })
+    assert.equal(
+      viewFor({ state }).theme,
+      'light',
+    )
+    assert.equal(
+      viewFor({
+        state: reduce({
+          state,
+          event: event({
+            d: decideUndo({
+              state,
+              target: change,
+              meta,
+            }),
+          }),
+        }),
+      }).theme,
+      'system',
+    )
+  },
+)
+
+test(
+  'the notes header keeps the newest distinct notes and skips text already in the chat',
+  () => {
+    const note = {
+      at: '2026-10-13T10:00:00Z',
+      source: 'firstmate',
+      text: 'resolved: Keep the composer visible.',
+    }
+    const newer = {
+      ...note,
+      at: '2026-10-13T11:00:00Z',
+    }
+    assert.deepEqual(
+      briefNotes({
+        notes: [
+          note,
+          newer,
+          {
+            ...note,
+            text: 'Already in the chat.',
+          },
+        ],
+        conversation: ['Already in the chat.'],
+      }),
+      [newer],
+    )
+    assert.deepEqual(
+      briefNotes({
+        notes: [note],
+        conversation: ['Keep the composer visible.'],
+      }),
+      [],
+    )
+    assert.equal(
+      relativeTime({
+        at: note.at,
+        now: Date.parse('2026-10-13T10:02:00Z'),
+      }),
+      '2m ago',
+    )
+    assert.equal(
+      relativeTime({
+        at: undefined,
+        now: 0,
+      }),
+      'Time not recorded',
+    )
+  },
+)
+
+test(
+  'the turn indicator follows the joined session: working from a prompt or tool call until the turn ends',
+  () => {
+    const firstmate = {
+      activity: 'working: task status',
+      source: {
+        adapter: 'firstmate',
+        objectId: 'task',
+      },
+    }
+    let state = push({
+      state: emptyHydra(),
+      key: 'task',
+      fields: {
+        title: 'Joined task',
+        ...firstmate,
+      },
+    })
+    assert.equal(
+      agentActivity({ card: state.cards.c1! }),
+      undefined,
+    )
+
+    for (const [
+      hook,
+      expected,
+    ] of [
+        [
+          'UserPromptSubmit',
+          'working',
+        ],
+        [
+          'PreToolUse',
+          'working',
+        ],
+        [
+          'PostToolUseFailure',
+          'working',
+        ],
+        [
+          'Stop',
+          'finished',
+        ],
+      ] as const) {
+      const [observed] = observe({
+        envelope: {
+          v: 1,
+          id: hook,
+          at: meta.at,
+          harness: 'claude',
+          event: hook,
+          payload: {
+            session_id: 'fixture',
+            tool_name: 'Read',
+          },
+        },
+      })
+      assert.ok(observed)
+      state = push({
+        state,
+        key: 'task',
+        fields: observed.card,
+      })
+      assert.equal(
+        agentActivity({ card: state.cards.c1! }),
+        expected,
+      )
+      state = push({
+        state,
+        key: 'task',
+        fields: firstmate,
+      })
+      assert.equal(
+        state.cards.c1!.activity,
+        'working: task status',
+      )
+      assert.equal(
+        agentActivity({ card: state.cards.c1! }),
+        expected,
+      )
+    }
+
+    const [ended] = observe({
+      envelope: {
+        v: 1,
+        id: 'end',
+        at: meta.at,
+        harness: 'claude',
+        event: 'SessionEnd',
+        payload: { session_id: 'fixture' },
+      },
+    })
+    assert.ok(ended)
+    state = push({
+      state,
+      key: 'task',
+      fields: ended.card,
+    })
+    assert.equal(
+      shownActivity({ card: state.cards.c1! }),
+      'ended',
+    )
+    state = push({
+      state,
+      key: 'task',
+      fields: {
+        ...firstmate,
+        activity: 'working: new step',
+      },
+    })
+    assert.equal(
+      shownActivity({ card: state.cards.c1! }),
+      'working: new step',
+    )
+    assert.equal(
+      agentActivity({ card: state.cards.c1! }),
+      'stopped',
+      'a source status line never revives an ended worker',
+    )
+  },
+)
+
+test(
+  'a dropped card goes above the card it lands on, or below it on its lower half',
+  () => {
+    let state = emptyHydra()
+
+    for (const key of [
+      'a',
+      'b',
+    ]) {
+      state = push({
+        state,
+        key,
+        fields: {},
+      })
+    }
+
+    const cards = filterCards({
+      state,
+      workspace: '',
+      tag: '',
+    })
+    assert.equal(
+      dropBefore({
+        cards,
+        over: 'c1',
+        below: false,
+      }),
+      'c1',
+    )
+    assert.equal(
+      dropBefore({
+        cards,
+        over: 'c1',
+        below: true,
+      }),
+      'c2',
+    )
+    assert.equal(
+      dropBefore({
+        cards,
+        over: 'c2',
+        below: true,
+      }),
+      undefined,
+      'below the last card is the end',
+    )
+    assert.equal(
+      dropBefore({
+        cards,
+        below: false,
+      }),
+      undefined,
+      'empty column space is the end',
+    )
+  },
+)
+
+test(
+  'only a working turn shows as working, an ended session is stopped and unobserved activity stays unknown',
+  () => {
+    const card = push({
+      state: emptyHydra(),
+      key: 'k',
+      fields: {
+        agent: {
+          provider: 'claude',
+          sessionId: 's',
+        },
+      },
+    }).cards.c1!
+
+    for (const [
+      sessionActivity,
+      expected,
+    ] of [
+        [
+          'working',
+          'working',
+        ],
+        [
+          'finished',
+          'finished',
+        ],
+        [
+          'ended',
+          'stopped',
+        ],
+        [
+          undefined,
+          undefined,
+        ],
+        [
+          'running Bash',
+          undefined,
+        ],
+      ] as const) {
+      const shown = agentActivity({
+        card: {
+          ...card,
+          sessionActivity,
+        },
+      })
+      assert.equal(
+        shown,
+        expected,
+        String(sessionActivity),
+      )
+    }
+  },
+)
+
+test(
+  'section widths keep their minimums without an upper cap',
+  () => {
+    const state = emptyHydra()
+    const input = {
+      hydraWidth: 1800,
+      defaultHydraWidth: 1900,
+      panelWidth: 2000,
+      columnWidths: { needs_you: 2100 },
+      defaultColumnWidths: { needs_you: 2200 },
+    }
+    const view = patchView({
+      state,
+      input,
+    })
+    const loaded = viewFor({
+      state: {
+        ...state,
+        view,
+      },
+    })
+
+    for (const [
+      key,
+      value,
+    ] of Object.entries(input)) {
+      const actual = loaded[key as keyof typeof loaded]
+
+      if (typeof value === 'object') {
+        for (const [
+          id,
+          width,
+        ] of Object.entries(value)) {
+          assert.equal(
+            (actual as Record<string, number>)[id],
+            width,
+          )
+        }
+      } else {
+        assert.equal(
+          actual,
+          value,
+        )
+      }
+    }
+
+    assert.equal(
+      clampViewSize({
+        value: 2500,
+        min: 240,
+      }),
+      2500,
+    )
+    assert.throws(
+      () => patchView({
+        state,
+        input: { hydraWidth: Infinity },
+      }),
+      HydraError,
+    )
+    assert.throws(
+      () => patchView({
+        state,
+        input: { hydraWidth: 239 },
+      }),
+      HydraError,
+    )
+  },
+)

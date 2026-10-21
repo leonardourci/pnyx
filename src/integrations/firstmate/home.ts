@@ -32,7 +32,10 @@ export interface TaskObservation {
   hold?: Hold
   decisions: OpenDecision[]
   // The latest status line, when it is failed: or blocked:.
-  stalled?: { verb: string; note: string }
+  stalled?: {
+    verb: string
+    note: string
+  }
   notes: SourceNote[]
   record: FirstmateRecord
 }
@@ -70,16 +73,23 @@ export function resolveHome({ path }: { path: string }): string {
   try {
     real = realpathSync(path)
   } catch {
-    throw new HydraError({ message: `Firstmate home not found: ${path}`, code: 'NOT_FOUND', help: ["Pass the home's root folder with --home"] })
+    throw new HydraError({
+      message: `Firstmate home not found: ${path}`,
+      code: 'NOT_FOUND',
+      help: ["Pass the home's root folder with --home"],
+    })
   }
 
-  if (!isDir({ path: join(real, 'state') })) {
+  if (!isDir({
+    path: join(
+      real,
+      'state',
+    ),
+  })) {
     throw new HydraError({
       message: `not a Firstmate home (no state/ folder): ${path}`,
       code: 'VALIDATION_ERROR',
-      help: [
-        "Pass the home's root folder with --home",
-      ],
+      help: ["Pass the home's root folder with --home"],
     })
   }
 
@@ -91,7 +101,10 @@ export function resolveHome({ path }: { path: string }): string {
 export function homeKey({ home }: { home: string }): string {
   return `${ADAPTER}:${createHash('sha256').update(home)
     .digest('hex')
-    .slice(0, 8)}`
+    .slice(
+      0,
+      8,
+    )}`
 }
 
 function isDir({ path }: { path: string }): boolean {
@@ -105,7 +118,10 @@ function isDir({ path }: { path: string }): boolean {
 // A regular file's text, or undefined when it is missing or a symlink.
 function readRegular({ path }: { path: string }): string | undefined {
   try {
-    return lstatSync(path).isFile() ? readFileSync(path, 'utf8') : undefined
+    return lstatSync(path).isFile() ? readFileSync(
+      path,
+      'utf8',
+    ) : undefined
   } catch {
     return undefined
   }
@@ -118,7 +134,10 @@ export function parseMeta({ text }: { text: string }): Record<string, string> {
     const eq = line.indexOf('=')
 
     if (eq > 0) {
-      meta[line.slice(0, eq).trim()] = line.slice(eq + 1).trim()
+      meta[line.slice(
+        0,
+        eq,
+      ).trim()] = line.slice(eq + 1).trim()
     }
   }
 
@@ -126,12 +145,26 @@ export function parseMeta({ text }: { text: string }): Record<string, string> {
 }
 
 // Trailing row facts the backlog writer appends; any other parenthetical stays in the title.
-const ROW_FACTS = new Set(['repo', 'kind', 'priority', 'since', 'merged', 'reported', 'done', 'hold', 'hold-kind', 'hold-until'])
+const ROW_FACTS = new Set([
+  'repo',
+  'kind',
+  'priority',
+  'since',
+  'merged',
+  'reported',
+  'done',
+  'hold',
+  'hold-kind',
+  'hold-until',
+])
 
 // Backlog rows: `- [ ] <id> - <title> (repo: x) (kind: y) (since d)`, grouped
 // under `## In flight`, `## Queued` and `## Done`; a done row ends `(merged d)`
 // when its pull request merged.
-export function parseBacklog({ text, archived = false }: {
+export function parseBacklog({
+  text,
+  archived = false,
+}: {
   text: string
   archived?: boolean
 }): Map<string, BacklogRow> {
@@ -162,7 +195,10 @@ export function parseBacklog({ text, archived = false }: {
 
     for (let m; (m = /\s*\(([a-z][a-z-]*):? ([^()]*)\)$/.exec(title)) && ROW_FACTS.has(m[1]!); ) {
       facts[m[1]!] = m[2]!.trim()
-      title = title.slice(0, m.index)
+      title = title.slice(
+        0,
+        m.index,
+      )
     }
 
     const held = facts.hold !== undefined || facts['hold-kind'] !== undefined
@@ -173,9 +209,20 @@ export function parseBacklog({ text, archived = false }: {
       merged: (archived || section === 'done') && facts.merged !== undefined,
       raw: line,
       section,
-      ...(held ? { hold: { ...(facts.hold ? { reason: facts.hold } : {}), ...(facts['hold-kind'] ? { kind: facts['hold-kind'] } : {}), ...(facts['hold-until'] ? { until: facts['hold-until'] } : {}), ...(facts.since ? { set: facts.since } : {}), blockers: [...title.matchAll(/blocked-by:\s+([^\s)]+)/g)].map(m => m[1]!) } } : {}),
+      ...(held ? {
+        hold: {
+          ...(facts.hold ? { reason: facts.hold } : {}),
+          ...(facts['hold-kind'] ? { kind: facts['hold-kind'] } : {}),
+          ...(facts['hold-until'] ? { until: facts['hold-until'] } : {}),
+          ...(facts.since ? { set: facts.since } : {}),
+          blockers: [...title.matchAll(/blocked-by:\s+([^\s)]+)/g)].map(m => m[1]!),
+        },
+      } : {}),
     }
-    rows.set(row[1]!, last)
+    rows.set(
+      row[1]!,
+      last,
+    )
   }
 
   for (const row of rows.values()) {
@@ -195,18 +242,53 @@ export function captainsIntent({ brief }: { brief: string }): string | undefined
     return undefined
   }
 
-  const end = lines.findIndex((l, i) => i > start && /^#{1,2}\s/.test(l))
+  const end = lines.findIndex((
+    l,
+    i,
+  ) => i > start && /^#{1,2}\s/.test(l))
 
-  return lines.slice(start + 1, end < 0 ? undefined : end).join('\n')
+  return lines.slice(
+    start + 1,
+    end < 0 ? undefined : end,
+  ).join('\n')
     .trim() || undefined
 }
 
-function taskNotes({ home, task, log }: { home: string; task: string; log: string }): SourceNote[] {
-  const notes: SourceNote[] = statusNotes({ log }).map(({ line, ...note }) => ({ ...note, source: ADAPTER, ref: `status:${line}` }))
-  const intent = captainsIntent({ brief: readRegular({ path: join(home, 'data', task, 'brief.md') }) ?? '' })
+function taskNotes({
+  home,
+  task,
+  log,
+}: {
+  home: string
+  task: string
+  log: string
+}): SourceNote[] {
+  const notes: SourceNote[] = statusNotes({ log }).map(({
+    line,
+    ...note
+  }) => ({
+    ...note,
+    source: ADAPTER,
+    ref: `status:${line}`,
+  }))
+  const intent = captainsIntent({
+    brief: readRegular({
+      path: join(
+        home,
+        'data',
+        task,
+        'brief.md',
+      ),
+    }) ?? '',
+  })
 
   if (intent) {
-    notes.push({ kind: 'context', source: ADAPTER, text: `Captain's intent:\n${intent}`, ref: `brief:${intent}` })
+    notes.push({
+      kind: 'context',
+      source: ADAPTER,
+      text: `Captain's intent:\n${intent}`,
+      ref: `brief:${intent}`,
+    })
   }
 
   return notes
@@ -214,27 +296,73 @@ function taskNotes({ home, task, log }: { home: string; task: string; log: strin
 
 // Every task with a meta record, in id order. The pull request comes only from the
 // meta's pr= field, which Firstmate records when the pull request is ready.
-export function readHome({ home, mirroredTasks = [] }: {
+export function readHome({
+  home,
+  mirroredTasks = [],
+}: {
   home: string
   mirroredTasks?: Pick<FirstmateRecord, 'task' | 'status'>[]
 }): HomeObservation {
-  const state = join(home, 'state')
-  const backlog = parseBacklog({ text: readRegular({ path: join(home, 'data', 'backlog.md') }) ?? '' })
-  const archive = parseBacklog({ text: readRegular({ path: join(home, 'data', 'done-archive.md') }) ?? '', archived: true })
-  const mirroredStatus = new Map(mirroredTasks.map(({ task, status }) => [task, status]))
+  const state = join(
+    home,
+    'state',
+  )
+  const backlog = parseBacklog({
+    text: readRegular({
+      path: join(
+        home,
+        'data',
+        'backlog.md',
+      ),
+    }) ?? '',
+  })
+  const archive = parseBacklog({
+    text: readRegular({
+      path: join(
+        home,
+        'data',
+        'done-archive.md',
+      ),
+    }) ?? '',
+    archived: true,
+  })
+  const mirroredStatus = new Map(mirroredTasks.map(({
+    task,
+    status,
+  }) => [
+    task,
+    status,
+  ]))
   const tasks: TaskObservation[] = []
 
   // Old archive entries only reconcile tasks this Hydra already knows.
-  const taskIds = new Set([...backlog.keys(), ...mirroredTasks.map(t => t.task).filter(task => archive.has(task)), ...readdirSync(state).filter(f => f.endsWith('.meta'))
-    .map(f => f.slice(0, -'.meta'.length))])
+  const taskIds = new Set([
+    ...backlog.keys(),
+    ...mirroredTasks.map(t => t.task).filter(task => archive.has(task)),
+    ...readdirSync(state).filter(f => f.endsWith('.meta'))
+      .map(f => f.slice(
+        0,
+        -'.meta'.length,
+      )),
+  ])
 
   for (const task of [...taskIds].sort()) {
     if (!TASK_ID.test(task)) {
       continue
     }
 
-    const metaText = readRegular({ path: join(state, `${task}.meta`) })
-    const statusText = readRegular({ path: join(state, `${task}.status`) })
+    const metaText = readRegular({
+      path: join(
+        state,
+        `${task}.meta`,
+      ),
+    })
+    const statusText = readRegular({
+      path: join(
+        state,
+        `${task}.status`,
+      ),
+    })
     const meta = parseMeta({ text: metaText ?? '' })
     const row = backlog.get(task) ?? archive.get(task)
     // Cleanup can remove the worker log after Firstmate has closed the task.
@@ -246,7 +374,10 @@ export function readHome({ home, mirroredTasks = [] }: {
     const activity = latestActivity({ log })
     const last = latestLine({ log })
     const worktree = canonical({ path: meta.worktree })
-    const present = { meta: metaText !== undefined, status: statusText !== undefined }
+    const present = {
+      meta: metaText !== undefined,
+      status: statusText !== undefined,
+    }
     const paseoTerminal = meta.paseo_terminal_id
     tasks.push({
       task,
@@ -260,14 +391,36 @@ export function readHome({ home, mirroredTasks = [] }: {
       ...(activity ? { activity } : {}),
       ...(worktree ? { worktree } : {}),
       ...(TERMINAL_FIELDS.paseoTerminal.test(paseoTerminal ?? '') ? { paseoTerminal } : {}),
-      decisions: openDecisions({ log, kind: meta.kind || 'ship' }),
-      ...(last && (last.verb === 'failed' || last.verb === 'blocked') ? { stalled: { verb: last.verb, note: last.note } } : {}),
-      notes: taskNotes({ home, task, log }),
+      decisions: openDecisions({
+        log,
+        kind: meta.kind || 'ship',
+      }),
+      ...(last && (last.verb === 'failed' || last.verb === 'blocked') ? {
+        stalled: {
+          verb: last.verb,
+          note: last.note,
+        },
+      } : {}),
+      notes: taskNotes({
+        home,
+        task,
+        log,
+      }),
       record: {
-        home, task, meta, status: log, present, ...(mirroredRow ? { backlog: mirroredRow } : {}),
+        home,
+        task,
+        meta,
+        status: log,
+        present,
+        ...(mirroredRow ? { backlog: mirroredRow } : {}),
       },
     })
   }
 
-  return { path: home, key: homeKey({ home }), title: basename(home), tasks }
+  return {
+    path: home,
+    key: homeKey({ home }),
+    title: basename(home),
+    tasks,
+  }
 }

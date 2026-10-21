@@ -16,7 +16,9 @@ function obj({ value }: { value: unknown }): Record<string, unknown> {
 function known({ settings }: {
   settings: Record<string, string | null | undefined>
 }): FoundSettings | undefined {
-  const entries = Object.entries(settings).filter(([, v]) => v !== undefined)
+  const entries = Object.entries(settings).filter(([
+    , v,
+  ]) => v !== undefined)
   const found = Object.fromEntries(entries) as FoundSettings
 
   return Object.keys(found).length ? found : undefined
@@ -24,7 +26,16 @@ function known({ settings }: {
 
 // Settings a harness's hooks report on nearly every event, so the latest hook holds
 // the live value: Claude Code sends its model only at session start and after a switch.
-export const LIVE_HOOK_SETTINGS: Record<string, string[]> = { 'claude-code': ['effort', 'mode'], 'codex': ['model', 'mode'] }
+export const LIVE_HOOK_SETTINGS: Record<string, string[]> = {
+  'claude-code': [
+    'effort',
+    'mode',
+  ],
+  'codex': [
+    'model',
+    'mode',
+  ],
+}
 
 const onOff = ({ fast }: { fast: boolean | undefined }) => (fast === undefined ? undefined : fast ? 'on' : 'off')
 
@@ -64,7 +75,13 @@ function approval({ value }: { value: unknown }): string | undefined {
 }
 
 function claudeSettings(
-  { record, subagent }: { record: Record<string, unknown>; subagent: boolean },
+  {
+    record,
+    subagent,
+  }: {
+    record: Record<string, unknown>
+    subagent: boolean
+  },
 ): FoundSettings | undefined {
   // In a session's transcript a sidechain record belongs to a subagent, whose settings
   // live on its own card; a subagent's own transcript holds only sidechain records.
@@ -151,16 +168,26 @@ function codexSettings({ record }: { record: Record<string, unknown> }): FoundSe
 // The settings one transcript record reports, or undefined for a record that holds
 // none, read from a subagent's own transcript when subagent is set. Claude Code and
 // Codex records are told apart by their shape.
-export function transcriptSettings({ record, subagent = false }: {
+export function transcriptSettings({
+  record,
+  subagent = false,
+}: {
   record: unknown
   subagent?: boolean
 }): FoundSettings | undefined {
   const r = obj({ value: record })
 
-  return 'payload' in r ? codexSettings({ record: r }) : claudeSettings({ record: r, subagent })
+  return 'payload' in r ? codexSettings({ record: r }) : claudeSettings({
+    record: r,
+    subagent,
+  })
 }
 
-export function observedSettings({ agent, held, observed }: {
+export function observedSettings({
+  agent,
+  held,
+  observed,
+}: {
   agent: AgentRef
   held?: AgentSettings
   observed?: FoundSettings
@@ -171,7 +198,15 @@ export function observedSettings({ agent, held, observed }: {
 
   // Native history may still describe the turn before a hosted picker change.
   const desired = Object.fromEntries(Object.entries(held).filter(([name]) =>
-    ['model', 'effort', 'mode'].includes(name)))
+    [
+      'model',
+      'effort',
+      'mode',
+    ].includes(name)))
 
-  return { ...held, ...observed, ...desired }
+  return {
+    ...held,
+    ...observed,
+    ...desired,
+  }
 }

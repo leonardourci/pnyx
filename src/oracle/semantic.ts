@@ -43,7 +43,10 @@ const RESPAWN_MS = 1_000
 
 const hash = ({ text }: { text: string }) => createHash('sha256').update(text)
   .digest('hex')
-  .slice(0, 16)
+  .slice(
+    0,
+    16,
+  )
 
 // One per Pnyx home, named after a hash of the home so a long home path cannot
 // push it past the 104-byte socket path limit. It sits in a folder in the temp
@@ -55,32 +58,83 @@ export function workerSocket(): string {
   }
 
   const uid = process.getuid!()
-  const dir = join(tmpdir(), `pnyx-${uid}`)
-  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  const dir = join(
+    tmpdir(),
+    `pnyx-${uid}`,
+  )
+  mkdirSync(
+    dir,
+    {
+      recursive: true,
+      mode: 0o700,
+    },
+  )
   const s = lstatSync(dir)
 
   if (!s.isDirectory() || s.uid !== uid || (s.mode & 0o077) !== 0) {
     throw new SemanticError({ message: `${dir} must be a folder only this user can use; remove it` })
   }
 
-  return join(dir, `semantic-${hash({ text: pnyxHome() })}.sock`)
+  return join(
+    dir,
+    `semantic-${hash({ text: pnyxHome() })}.sock`,
+  )
 }
 
-const workerPath = join(import.meta.dirname, import.meta.url.endsWith('.ts') ? 'worker.ts' : 'worker.js')
+const workerPath = join(
+  import.meta.dirname,
+  import.meta.url.endsWith('.ts') ? 'worker.ts' : 'worker.js',
+)
 
 // Starts a detached worker at utility QoS on macOS (efficiency cores, full GPU
 // speed) or below-normal priority elsewhere. Its output goes to semantic.log.
 function spawnWorker(): void {
-  mkdirSync(pnyxHome(), { recursive: true })
-  const log = openSync(join(pnyxHome(), 'semantic.log'), 'w')
-  const options = { detached: true, stdio: ['ignore', log, log] as ['ignore', number, number], env: process.env }
+  mkdirSync(
+    pnyxHome(),
+    { recursive: true },
+  )
+  const log = openSync(
+    join(
+      pnyxHome(),
+      'semantic.log',
+    ),
+    'w',
+  )
+  const options = {
+    detached: true,
+    stdio: [
+      'ignore',
+      log,
+      log,
+    ] as ['ignore', number, number],
+    env: process.env,
+  }
   const qos = process.platform === 'darwin' && existsSync('/usr/sbin/taskpolicy')
-  const child = qos ? spawn('/usr/sbin/taskpolicy', ['-c', 'utility', process.execPath, workerPath], options) : spawn(process.execPath, [workerPath], options)
-  child.on('error', () => {})
+  const child = qos ? spawn(
+    '/usr/sbin/taskpolicy',
+    [
+      '-c',
+      'utility',
+      process.execPath,
+      workerPath,
+    ],
+    options,
+  ) : spawn(
+    process.execPath,
+    [workerPath],
+    options,
+  )
+  child.on(
+    'error',
+    () => {},
+  )
 
   if (!qos && child.pid) {
     try {
-      setPriority(child.pid, constants.priority.PRIORITY_BELOW_NORMAL)
+      setPriority(
+        child.pid,
+        constants.priority.PRIORITY_BELOW_NORMAL,
+      )
     } catch {
       // Lowering priority is best effort.
     }
@@ -90,37 +144,73 @@ function spawnWorker(): void {
   closeSync(log)
 }
 
-type Reply = Record<string, unknown> & { error?: string; code?: string }
+type Reply = Record<string, unknown> & {
+  error?: string
+  code?: string
+}
 
-function once({ req, ms }: { req: Request; ms: number }): Promise<Reply> {
-  return new Promise((resolve, reject) => {
+function once({
+  req,
+  ms,
+}: {
+  req: Request
+  ms: number
+}): Promise<Reply> {
+  return new Promise((
+    resolve,
+    reject,
+  ) => {
     const socket = createConnection(workerSocket())
     let buf = ''
-    const timer = setTimeout(() => {
-      socket.destroy()
-      reject(new SemanticError({ message: 'the semantic worker did not answer in time' }))
-    }, ms)
+    const timer = setTimeout(
+      () => {
+        socket.destroy()
+        reject(new SemanticError({ message: 'the semantic worker did not answer in time' }))
+      },
+      ms,
+    )
     socket.setEncoding('utf8')
-    socket.on('connect', () => socket.write(`${JSON.stringify(req)}\n`))
-    socket.on('data', data => (buf += data))
-    socket.on('end', () => {
-      clearTimeout(timer)
+    socket.on(
+      'connect',
+      () => socket.write(`${JSON.stringify(req)}\n`),
+    )
+    socket.on(
+      'data',
+      data => (buf += data),
+    )
+    socket.on(
+      'end',
+      () => {
+        clearTimeout(timer)
 
-      try {
-        resolve(JSON.parse(buf) as Reply)
-      } catch {
+        try {
+          resolve(JSON.parse(buf) as Reply)
+        } catch {
         // A worker shutting down closes without answering; the caller retries.
-        reject(Object.assign(new Error('the semantic worker closed without an answer'), { code: 'ECONNRESET' }))
-      }
-    })
-    socket.on('error', error => {
-      clearTimeout(timer)
-      reject(error)
-    })
+          reject(Object.assign(
+            new Error('the semantic worker closed without an answer'),
+            { code: 'ECONNRESET' },
+          ))
+        }
+      },
+    )
+    socket.on(
+      'error',
+      error => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
   })
 }
 
-async function request({ req, timeoutMs }: { req: Request; timeoutMs: number }): Promise<Reply> {
+async function request({
+  req,
+  timeoutMs,
+}: {
+  req: Request
+  timeoutMs: number
+}): Promise<Reply> {
   const deadline = Date.now() + timeoutMs
   let spawned = 0
 
@@ -132,7 +222,10 @@ async function request({ req, timeoutMs }: { req: Request; timeoutMs: number }):
     }
 
     try {
-      const reply = await once({ req, ms: left })
+      const reply = await once({
+        req,
+        ms: left,
+      })
 
       if (reply.code !== 'RESTART') {
         return reply
@@ -151,12 +244,24 @@ async function request({ req, timeoutMs }: { req: Request; timeoutMs: number }):
       }
     }
 
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise(resolve => setTimeout(
+      resolve,
+      100,
+    ))
   }
 }
 
-async function ask({ req, timeoutMs }: { req: Request; timeoutMs: number }): Promise<Reply> {
-  const reply = await request({ req, timeoutMs })
+async function ask({
+  req,
+  timeoutMs,
+}: {
+  req: Request
+  timeoutMs: number
+}): Promise<Reply> {
+  const reply = await request({
+    req,
+    timeoutMs,
+  })
 
   if (reply.error) {
     throw new SemanticError({ message: reply.error })
@@ -180,11 +285,25 @@ export interface OracleResult {
   note?: string
 }
 
-type Phase = { phase: string; done?: number; total?: number; message?: string }
+type Phase = {
+  phase: string
+  done?: number
+  total?: number
+  message?: string
+}
 
-const describe = ({ key }: { key: string }) => key.replace(/@[^/]*\//, ' on ')
+const describe = ({ key }: { key: string }) => key.replace(
+  /@[^/]*\//,
+  ' on ',
+)
 
-function phaseText({ what, p }: { what: string; p: Phase }): string {
+function phaseText({
+  what,
+  p,
+}: {
+  what: string
+  p: Phase
+}): string {
   if (p.phase === 'downloading') {
     return `downloading the ${what}, ${Math.floor(((p.done ?? 0) / (p.total ?? 1)) * 100)}% of ${((p.total ?? 0) / 1e6).toFixed(0)} MB`
   }
@@ -193,22 +312,40 @@ function phaseText({ what, p }: { what: string; p: Phase }): string {
 }
 
 const excerpt = ({ text }: { text: string }) => {
-  const flat = text.replace(/\s+/g, ' ').trim()
+  const flat = text.replace(
+    /\s+/g,
+    ' ',
+  ).trim()
 
-  return flat.length > SNIPPET_MAX ? `${flat.slice(0, SNIPPET_MAX)}…` : flat
+  return flat.length > SNIPPET_MAX ? `${flat.slice(
+    0,
+    SNIPPET_MAX,
+  )}…` : flat
 }
 
-const strip = ({ snippet }: { snippet: string }) => snippet.replace(/[[\]]/g, '')
+const strip = ({ snippet }: { snippet: string }) => snippet.replace(
+  /[[\]]/g,
+  '',
+)
 
 // Reciprocal rank fusion of ranked lists of ids, best first, ties by id.
 function fuse<T extends string | number>({ lists }: { lists: T[][] }): T[] {
   const score = new Map<T, number>()
 
   for (const list of lists) {
-    list.forEach((id, rank) => score.set(id, (score.get(id) ?? 0) + 1 / (RRF_K + rank + 1)))
+    list.forEach((
+      id,
+      rank,
+    ) => score.set(
+      id,
+      (score.get(id) ?? 0) + 1 / (RRF_K + rank + 1),
+    ))
   }
 
-  return [...score].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([id]) => id)
+  return [...score].sort((
+    a,
+    b,
+  ) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([id]) => id)
 }
 
 interface Reranked<T> {
@@ -219,7 +356,11 @@ interface Reranked<T> {
 }
 
 // Re-scores the top results with the reranker; on failure keeps the fused order.
-async function rerank<T>({ order, text, query }: {
+async function rerank<T>({
+  order,
+  text,
+  query,
+}: {
   order: T[]
   text: (
     { id }: {
@@ -228,21 +369,52 @@ async function rerank<T>({ order, text, query }: {
   ) => string
   query: string
 }): Promise<Reranked<T>> {
-  const top = order.slice(0, RERANK_TOP)
+  const top = order.slice(
+    0,
+    RERANK_TOP,
+  )
 
   try {
-    const scores = (await ask({ req: { op: 'rerank', query, docs: top.map(id => text({ id })) }, timeoutMs: RERANK_TIMEOUT_MS })).scores as number[]
+    const scores = (await ask({
+      req: {
+        op: 'rerank',
+        query,
+        docs: top.map(id => text({ id })),
+      },
+      timeoutMs: RERANK_TIMEOUT_MS,
+    })).scores as number[]
     const ranked = top
-      .map((id, i) => ({ id, s: scores[i]!, i }))
-      .sort((a, b) => b.s - a.s || a.i - b.i)
+      .map((
+        id,
+        i,
+      ) => ({
+        id,
+        s: scores[i]!,
+        i,
+      }))
+      .sort((
+        a,
+        b,
+      ) => b.s - a.s || a.i - b.i)
     const weak = new Set(ranked.filter(r => r.s < WEAK).map(r => r.id))
     const note = ranked[0]!.s < STRONG ? 'no strong match: the results below are the nearest, but none clearly answers the query' : undefined
 
-    const reordered = [...ranked.map(r => r.id), ...order.slice(RERANK_TOP)]
+    const reordered = [
+      ...ranked.map(r => r.id),
+      ...order.slice(RERANK_TOP),
+    ]
 
-    return { order: reordered, weak, ...(note ? { note } : {}) }
+    return {
+      order: reordered,
+      weak,
+      ...(note ? { note } : {}),
+    }
   } catch (error) {
-    return { order, weak: new Set(), failed: (error as Error).message }
+    return {
+      order,
+      weak: new Set(),
+      failed: (error as Error).message,
+    }
   }
 }
 
@@ -251,7 +423,11 @@ async function rerank<T>({ order, text, query }: {
 // absent. When the worker cannot answer yet (models downloading or loading) or has
 // failed, full-text results come back with a line saying why.
 export async function queryOracle(
-  { hydraId, query, settings = readSettings({ }) }: {
+  {
+    hydraId,
+    query,
+    settings = readSettings({ }),
+  }: {
     hydraId: string
     query: Query
     settings?: OracleSettings
@@ -260,9 +436,17 @@ export async function queryOracle(
   updateIndex({ hydraId })
 
   const lexicalOnly = ({ semantic }: { semantic?: string } = {}): OracleResult => {
-    const r = search({ hydraId, query })
+    const r = search({
+      hydraId,
+      query,
+    })
 
-    return { hits: r.hits, total: r.total, mode: r.match, ...(semantic ? { semantic } : {}) }
+    return {
+      hits: r.hits,
+      total: r.total,
+      mode: r.match,
+      ...(semantic ? { semantic } : {}),
+    }
   }
 
   if (!settings.semantic || !(stubbed() || runtimeInstalled())) {
@@ -278,23 +462,49 @@ export async function queryOracle(
   let reply: Reply
 
   try {
-    await ask({ req: { op: 'index', hydraId }, timeoutMs: INDEX_TIMEOUT_MS })
-    reply = await ask({ req: { op: 'embed', text: query.text }, timeoutMs: EMBED_TIMEOUT_MS })
+    await ask({
+      req: {
+        op: 'index',
+        hydraId,
+      },
+      timeoutMs: INDEX_TIMEOUT_MS,
+    })
+    reply = await ask({
+      req: {
+        op: 'embed',
+        text: query.text,
+      },
+      timeoutMs: EMBED_TIMEOUT_MS,
+    })
   } catch (error) {
     return lexicalOnly({ semantic: `unavailable: ${(error as Error).message}` })
   }
 
   if (reply.code === 'NOT_READY') {
-    return lexicalOnly({ semantic: `${phaseText({ what: 'model', p: reply.embedder as Phase })}; full-text results until it is ready` })
+    return lexicalOnly({
+      semantic: `${phaseText({
+        what: 'model',
+        p: reply.embedder as Phase,
+      })}; full-text results until it is ready`,
+    })
   }
 
   const key = reply.key as string
   const vector = Float32Array.from(reply.vector as number[])
   const reranker = reply.reranker as Phase
-  const pendingReranker = reranker.phase === 'downloading' || reranker.phase === 'loading' ? `; ${phaseText({ what: 'reranker', p: reranker })}` : ''
+  const pendingReranker = reranker.phase === 'downloading' || reranker.phase === 'loading' ? `; ${phaseText({
+    what: 'reranker',
+    p: reranker,
+  })}` : ''
 
   const floor = reply.floor as number
-  const leg: Leg = { key, floor, vector, useReranker: reply.rerank === true, pendingReranker }
+  const leg: Leg = {
+    key,
+    floor,
+    vector,
+    useReranker: reply.rerank === true,
+    pendingReranker,
+  }
 
   return query.card ? await cardSearch({
     hydraId,
@@ -317,19 +527,47 @@ interface Leg {
   pendingReranker: string
 }
 
-function readiness({ key, v }: { key: string; v: { embedded: number; total: number } }): string {
+function readiness({
+  key,
+  v,
+}: {
+  key: string
+  v: {
+    embedded: number
+    total: number
+  }
+}): string {
   return v.embedded >= v.total
     ? `ready: ${describe({ key })}`
     : `indexing: ${v.embedded} of ${v.total} entries embedded with ${describe({ key })}; the rest match by words only`
 }
 
-async function hydraSearch({ hydraId, query, leg }: {
+async function hydraSearch({
+  hydraId,
+  query,
+  leg,
+}: {
   hydraId: string
   query: Query
   leg: Leg
 }): Promise<OracleResult> {
-  const { key, floor, vector, useReranker, pendingReranker } = leg
-  const lexical = search({ hydraId, query: { ...query, limit: Math.max(query.limit, CANDIDATES) } })
+  const {
+    key,
+    floor,
+    vector,
+    useReranker,
+    pendingReranker,
+  } = leg
+  const lexical = search({
+    hydraId,
+    query: {
+      ...query,
+      limit: Math.max(
+        query.limit,
+        CANDIDATES,
+      ),
+    },
+  })
   const filters = {
     ...(query.kind ? { kind: query.kind } : {}),
     ...(query.live ? { live: true } : {}),
@@ -342,15 +580,36 @@ async function hydraSearch({ hydraId, query, leg }: {
     filters,
     limit: CANDIDATES,
   })
-  const byWords = new Map(lexical.hits.map(h => [h.card, h]))
-  const byMeaning = new Map<string, Nearest>(vectors.nearest.map(n => [n.card, n]))
-  let order = fuse({ lists: [lexical.hits.map(h => h.card), vectors.nearest.map(n => n.card)] })
-  let semantic = readiness({ key, v: vectors }) + pendingReranker
-  let ranked: Reranked<string> = { order, weak: new Set() }
+  const byWords = new Map(lexical.hits.map(h => [
+    h.card,
+    h,
+  ]))
+  const byMeaning = new Map<string, Nearest>(vectors.nearest.map(n => [
+    n.card,
+    n,
+  ]))
+  let order = fuse({
+    lists: [
+      lexical.hits.map(h => h.card),
+      vectors.nearest.map(n => n.card),
+    ],
+  })
+  let semantic = readiness({
+    key,
+    v: vectors,
+  }) + pendingReranker
+  let ranked: Reranked<string> = {
+    order,
+    weak: new Set(),
+  }
   let mode = 'hybrid'
 
   if (useReranker && order.length) {
-    ranked = await rerank({ order, text: ({ id: c }) => byMeaning.get(c)?.body ?? byWords.get(c)!.snippets.map(s => strip({ snippet: s.snippet })).join('\n'), query: query.text })
+    ranked = await rerank({
+      order,
+      text: ({ id: c }) => byMeaning.get(c)?.body ?? byWords.get(c)!.snippets.map(s => strip({ snippet: s.snippet })).join('\n'),
+      query: query.text,
+    })
     order = ranked.order
 
     if (ranked.failed) {
@@ -361,36 +620,91 @@ async function hydraSearch({ hydraId, query, leg }: {
   }
 
   const reranked = useReranker && !ranked.failed
-  const top = new Set(order.slice(0, RERANK_TOP))
-  const hits = order.slice(0, query.limit).map((card): HybridHit => {
+  const top = new Set(order.slice(
+    0,
+    RERANK_TOP,
+  ))
+  const hits = order.slice(
+    0,
+    query.limit,
+  ).map((card): HybridHit => {
     const words = byWords.get(card)
     const near = byMeaning.get(card)
     const hit: HybridHit = words
-      ? { ...words, match: near ? 'both' : words.match }
-      : { card, title: near!.title, ...(card === '$board' ? { kind: 'hydra' as const } : {}), match: 'semantic', snippets: [{ kind: near!.kind, at: near!.at || 'unknown', snippet: excerpt({ text: near!.body }) }] }
+      ? {
+        ...words,
+        match: near ? 'both' : words.match,
+      }
+      : {
+        card,
+        title: near!.title,
+        ...(card === '$board' ? { kind: 'hydra' as const } : {}),
+        match: 'semantic',
+        snippets: [
+          {
+            kind: near!.kind,
+            at: near!.at || 'unknown',
+            snippet: excerpt({ text: near!.body }),
+          },
+        ],
+      }
     const weakMeaning = !words && (reranked ? !top.has(card) : near!.similarity < floor)
 
-    return ranked.weak.has(card) || weakMeaning ? { ...hit, weak: true } : hit
+    return ranked.weak.has(card) || weakMeaning ? {
+      ...hit,
+      weak: true,
+    } : hit
   })
 
   // Every card is somewhere in the vector order, so only word matches count toward more results.
-  const total = Math.max(lexical.total, hits.length)
+  const total = Math.max(
+    lexical.total,
+    hits.length,
+  )
 
-  return { hits, total, mode, semantic, ...(ranked.note ? { note: ranked.note } : {}) }
+  return {
+    hits,
+    total,
+    mode,
+    semantic,
+    ...(ranked.note ? { note: ranked.note } : {}),
+  }
 }
 
 // One card's entries (--card): its full-text matching entries fused with its
 // entries nearest the query, as one hit whose snippets are the best entries.
-async function cardSearch({ hydraId, query, leg }: {
+async function cardSearch({
+  hydraId,
+  query,
+  leg,
+}: {
   hydraId: string
   query: Query
   leg: Leg
 }): Promise<OracleResult> {
-  const { key, vector, useReranker, pendingReranker } = leg
+  const {
+    key,
+    vector,
+    useReranker,
+    pendingReranker,
+  } = leg
   const card = query.card!
-  const limit = Math.max(query.limit, CANDIDATES)
-  const lexical = search({ hydraId, query: { ...query, limit, withIds: true } }).hits[0]
-  const words = new Map((lexical?.snippets ?? []).map(s => [s.id!, s]))
+  const limit = Math.max(
+    query.limit,
+    CANDIDATES,
+  )
+  const lexical = search({
+    hydraId,
+    query: {
+      ...query,
+      limit,
+      withIds: true,
+    },
+  }).hits[0]
+  const words = new Map((lexical?.snippets ?? []).map(s => [
+    s.id!,
+    s,
+  ]))
   const near = nearestChunks({
     hydraId,
     key,
@@ -399,11 +713,31 @@ async function cardSearch({ hydraId, query, leg }: {
     kind: query.kind,
     limit: CANDIDATES,
   })
-  const meaning = new Map<number, NearChunk>(near.map(n => [n.id, n]))
-  let order = fuse({ lists: [[...words.keys()], near.map(n => n.id)] })
-  const counts = vectorCounts({ hydraId, key }) ?? { embedded: 0, total: 0 }
-  let semantic = readiness({ key, v: counts }) + pendingReranker
-  let ranked: Reranked<number> = { order, weak: new Set() }
+  const meaning = new Map<number, NearChunk>(near.map(n => [
+    n.id,
+    n,
+  ]))
+  let order = fuse({
+    lists: [
+      [...words.keys()],
+      near.map(n => n.id),
+    ],
+  })
+  const counts = vectorCounts({
+    hydraId,
+    key,
+  }) ?? {
+    embedded: 0,
+    total: 0,
+  }
+  let semantic = readiness({
+    key,
+    v: counts,
+  }) + pendingReranker
+  let ranked: Reranked<number> = {
+    order,
+    weak: new Set(),
+  }
   let mode = 'hybrid'
 
   if (useReranker && order.length) {
@@ -413,7 +747,11 @@ async function cardSearch({ hydraId, query, leg }: {
       meaning.get(id)?.body ?? strip({
         snippet: words.get(id)!.snippet,
       })
-    ranked = await rerank({ order, text, query: query.text })
+    ranked = await rerank({
+      order,
+      text,
+      query: query.text,
+    })
     order = ranked.order
 
     if (ranked.failed) {
@@ -424,28 +762,57 @@ async function cardSearch({ hydraId, query, leg }: {
   }
 
   if (!order.length) {
-    return { hits: [], total: 0, mode, semantic }
+    return {
+      hits: [],
+      total: 0,
+      mode,
+      semantic,
+    }
   }
 
-  const snippets = order.slice(0, query.limit).map(id => {
+  const snippets = order.slice(
+    0,
+    query.limit,
+  ).map(id => {
     const w = words.get(id)
 
     if (w) {
-      return { kind: w.kind, at: w.at, snippet: w.snippet }
+      return {
+        kind: w.kind,
+        at: w.at,
+        snippet: w.snippet,
+      }
     }
 
     const n = meaning.get(id)!
 
-    return { kind: n.kind, at: n.at || 'unknown', snippet: excerpt({ text: n.body }) }
+    return {
+      kind: n.kind,
+      at: n.at || 'unknown',
+      snippet: excerpt({ text: n.body }),
+    }
   })
   const match = words.size && near.length ? 'both' : words.size ? lexical!.match : 'semantic'
   const title = lexical?.title ?? loadHydra({ hydraId }).state.cards[card]?.title ?? card
 
-  const hits: HybridHit[] = [{ card, title, match, snippets }]
+  const hits: HybridHit[] = [
+    {
+      card,
+      title,
+      match,
+      snippets,
+    },
+  ]
 
   const total = order.length
 
-  return { hits, total, mode, semantic, ...(ranked.note ? { note: ranked.note } : {}) }
+  return {
+    hits,
+    total,
+    mode,
+    semantic,
+    ...(ranked.note ? { note: ranked.note } : {}),
+  }
 }
 
 export interface SemanticStatus {
@@ -472,17 +839,31 @@ export async function semanticStatus({ hydraId }: { hydraId: string }): Promise<
   }
 
   try {
-    const reply = await ask({ req: { op: 'status' }, timeoutMs: STATUS_TIMEOUT_MS })
+    const reply = await ask({
+      req: { op: 'status' },
+      timeoutMs: STATUS_TIMEOUT_MS,
+    })
     const embedder = reply.embedder as Phase
     const reranker = reply.reranker as Phase
-    const rerank = reranker.phase === 'ready' ? 'on' : reranker.phase === 'off' ? 'off' : phaseText({ what: 'reranker', p: reranker })
+    const rerank = reranker.phase === 'ready' ? 'on' : reranker.phase === 'off' ? 'off' : phaseText({
+      what: 'reranker',
+      p: reranker,
+    })
 
     if (embedder.phase !== 'ready') {
-      return { semantic: `preparing (${reply.mode as string || 'detecting'}): ${phaseText({ what: 'model', p: embedder })}; full-text results until it is ready` }
+      return {
+        semantic: `preparing (${reply.mode as string || 'detecting'}): ${phaseText({
+          what: 'model',
+          p: embedder,
+        })}; full-text results until it is ready`,
+      }
     }
 
     const key = reply.key as string
-    const v = vectorCounts({ hydraId, key })
+    const v = vectorCounts({
+      hydraId,
+      key,
+    })
 
     return {
       semantic: `on: ${describe({ key })}, ${reply.dims as number} dimensions`,
@@ -501,28 +882,49 @@ export interface SetupFile {
 }
 
 export async function setupSemantic(
-  { hydraId, progress }: { hydraId: string; progress: ({ line }: { line: string }) => void },
-): Promise<{ mode: string; choice: Choice; files: SetupFile[] }> {
+  {
+    hydraId,
+    progress,
+  }: {
+    hydraId: string
+    progress: ({ line }: { line: string }) => void
+  },
+): Promise<{
+  mode: string
+  choice: Choice
+  files: SetupFile[]
+}> {
   if (!stubbed() && !runtimeInstalled()) {
     throw new HydraError({
       message: 'semantic search needs the optional dependencies node-llama-cpp and sqlite-vec, which this install skipped',
       code: 'NOT_INSTALLED',
-      help: [
-        'Run `pnpm install` in the pnyx clone to add them back',
-      ],
+      help: ['Run `pnpm install` in the pnyx clone to add them back'],
     })
   }
 
   clearFailure()
-  const settings: OracleSettings = { ...readSettings({ applyEnv: false }), semantic: true }
+  const settings: OracleSettings = {
+    ...readSettings({ applyEnv: false }),
+    semantic: true,
+  }
   const mode = await detectMode()
-  const choice = resolveChoice({ settings, mode })
-  const wanted: ModelFile[] = [EMBEDDERS[choice.model], ...(choice.rerank ? [RERANKER] : [])]
+  const choice = resolveChoice({
+    settings,
+    mode,
+  })
+  const wanted: ModelFile[] = [
+    EMBEDDERS[choice.model],
+    ...(choice.rerank ? [RERANKER] : []),
+  ]
   const files: SetupFile[] = []
 
   for (const m of wanted) {
     if (stubbed()) {
-      files.push({ file: m.file, bytes: m.bytes, status: 'stub' })
+      files.push({
+        file: m.file,
+        bytes: m.bytes,
+        status: 'stub',
+      })
       continue
     }
 
@@ -538,7 +940,11 @@ export async function setupSemantic(
         }
       },
     })
-    files.push({ file: m.file, bytes: m.bytes, status })
+    files.push({
+      file: m.file,
+      bytes: m.bytes,
+      status,
+    })
   }
 
   try {
@@ -546,7 +952,10 @@ export async function setupSemantic(
 
     try {
       if (choice.rerank) {
-        await backend.rerank({ query: 'probe', docs: ['probe'] })
+        await backend.rerank({
+          query: 'probe',
+          docs: ['probe'],
+        })
       }
     } finally {
       await backend.close()
@@ -554,7 +963,10 @@ export async function setupSemantic(
   } catch (error) {
     // A file that fails its golden check is deleted, so running setup again downloads it afresh.
     if (error instanceof SemanticError && error.broken) {
-      rmSync(modelPath({ model: error.broken }), { force: true })
+      rmSync(
+        modelPath({ model: error.broken }),
+        { force: true },
+      )
     }
 
     throw error
@@ -562,14 +974,31 @@ export async function setupSemantic(
 
   saveSettings({ settings })
   updateIndex({ hydraId })
-  await ask({ req: { op: 'index', hydraId }, timeoutMs: INDEX_TIMEOUT_MS }).catch(() => undefined)
+  await ask({
+    req: {
+      op: 'index',
+      hydraId,
+    },
+    timeoutMs: INDEX_TIMEOUT_MS,
+  }).catch(() => undefined)
 
-  return { mode, choice, files }
+  return {
+    mode,
+    choice,
+    files,
+  }
 }
 
-export async function matchActions({ query, entries, settings = readSettings({}) }: {
+export async function matchActions({
+  query,
+  entries,
+  settings = readSettings({}),
+}: {
   query: string
-  entries: { id: string; text: string }[]
+  entries: {
+    id: string
+    text: string
+  }[]
   settings?: OracleSettings
 }): Promise<string[]> {
   if (!settings.semantic || !(stubbed() || runtimeInstalled()) || activeFailure({})) {
@@ -577,7 +1006,14 @@ export async function matchActions({ query, entries, settings = readSettings({})
   }
 
   try {
-    const result = await ask({ req: { op: 'commands', query, docs: entries.map(entry => entry.text) }, timeoutMs: EMBED_TIMEOUT_MS })
+    const result = await ask({
+      req: {
+        op: 'commands',
+        query,
+        docs: entries.map(entry => entry.text),
+      },
+      timeoutMs: EMBED_TIMEOUT_MS,
+    })
 
     if (result.code === 'NOT_READY') {
       return []
@@ -586,9 +1022,18 @@ export async function matchActions({ query, entries, settings = readSettings({})
     const scores = result.scores as number[]
     const floor = result.floor as number
 
-    return entries.map((entry, index) => ({ id: entry.id, score: scores[index] ?? 0 }))
+    return entries.map((
+      entry,
+      index,
+    ) => ({
+      id: entry.id,
+      score: scores[index] ?? 0,
+    }))
       .filter(entry => entry.score >= floor)
-      .sort((a, b) => b.score - a.score)
+      .sort((
+        a,
+        b,
+      ) => b.score - a.score)
       .map(entry => entry.id)
   } catch {
     return []

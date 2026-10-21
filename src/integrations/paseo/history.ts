@@ -5,7 +5,10 @@ import { PASEO_CURSOR, type PaseoConversation } from './thread.ts'
 
 export const PASEO_HISTORY_CURSOR = /^q[A-Za-z0-9_-]{1,550}$/
 
-interface Cursors { native: string | null; saved: string | null }
+interface Cursors {
+  native: string | null
+  saved: string | null
+}
 
 function cursors({ before }: { before?: string }): Cursors | undefined {
   if (before === undefined) {
@@ -17,13 +20,19 @@ function cursors({ before }: { before?: string }): Cursors | undefined {
       throw new Error('shape')
     }
 
-    const value: unknown = JSON.parse(Buffer.from(before.slice(1), 'base64url').toString())
+    const value: unknown = JSON.parse(Buffer.from(
+      before.slice(1),
+      'base64url',
+    ).toString())
 
     if (typeof value !== 'object' || value === null || !('native' in value) || !('saved' in value)) {
       throw new Error('fields')
     }
 
-    const { native, saved } = value
+    const {
+      native,
+      saved,
+    } = value
 
     if ((native !== null && (typeof native !== 'string' || !PASEO_CURSOR.test(native)))
       || (saved !== null && (typeof saved !== 'string' || !THREAD_CURSOR.test(saved)))
@@ -31,13 +40,24 @@ function cursors({ before }: { before?: string }): Cursors | undefined {
       throw new Error('sources')
     }
 
-    return { native, saved }
+    return {
+      native,
+      saved,
+    }
   } catch {
-    throw new HydraError({ message: 'invalid thread cursor', code: 'VALIDATION_ERROR' })
+    throw new HydraError({
+      message: 'invalid thread cursor',
+      code: 'VALIDATION_ERROR',
+    })
   }
 }
 
-export async function paseoHistory({ card, conversation, readSaved, before }: {
+export async function paseoHistory({
+  card,
+  conversation,
+  readSaved,
+  before,
+}: {
   card: string
   conversation: Pick<PaseoConversation, 'read'>
   readSaved({ before }: { before?: string }): ThreadPage
@@ -55,9 +75,23 @@ export async function paseoHistory({ card, conversation, readSaved, before }: {
     }
   }
 
-  const empty: ThreadPage = { ...(native ?? saved), card, entries: [], route: native?.route ?? saved?.route ?? false, watching: 'unknown', older: undefined, unavailable: undefined }
-  const merged = withTaskReceipts({ native: native ?? empty, saved: saved ?? empty })
-  const next = { native: native?.older ?? null, saved: saved?.older ?? null }
+  const empty: ThreadPage = {
+    ...(native ?? saved),
+    card,
+    entries: [],
+    route: native?.route ?? saved?.route ?? false,
+    watching: 'unknown',
+    older: undefined,
+    unavailable: undefined,
+  }
+  const merged = withTaskReceipts({
+    native: native ?? empty,
+    saved: saved ?? empty,
+  })
+  const next = {
+    native: native?.older ?? null,
+    saved: saved?.older ?? null,
+  }
 
   return {
     ...merged,

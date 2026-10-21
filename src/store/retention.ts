@@ -2,7 +2,10 @@ import { hydraEvent } from '../core/hydra.ts'
 import { cardDoneDeadline, doneDeadline } from '../core/retention.ts'
 import { loadHydra, withWriter } from './hydra-store.ts'
 
-export function hideDone({ hydraId, at = new Date().toISOString() }: {
+export function hideDone({
+  hydraId,
+  at = new Date().toISOString(),
+}: {
   hydraId: string
   at?: string
 }): number {
@@ -19,13 +22,31 @@ export function hideDone({ hydraId, at = new Date().toISOString() }: {
       let hidden = 0
 
       for (const card of Object.values(writer.state.cards)) {
-        const deadline = cardDoneDeadline({ card, hours: writer.state.config?.doneAfterHours })
+        const deadline = cardDoneDeadline({
+          card,
+          hours: writer.state.config?.doneAfterHours,
+        })
 
         if (deadline === undefined || deadline > now) {
           continue
         }
 
-        const decision = hydraEvent({ state: writer.state, meta: { actor: 'pnyx', at }, cardId: card.id, change: { type: 'task.visibility', data: { before: false, after: true, automatic: true } } })
+        const decision = hydraEvent({
+          state: writer.state,
+          meta: {
+            actor: 'pnyx',
+            at,
+          },
+          cardId: card.id,
+          change: {
+            type: 'task.visibility',
+            data: {
+              before: false,
+              after: true,
+              automatic: true,
+            },
+          },
+        })
 
         if ('event' in decision) {
           writer.append({ event: decision.event })

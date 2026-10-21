@@ -1,9 +1,24 @@
 import type { AgentRef, AgentSettings, PermissionRequest } from '../core/model.ts'
 
-export type PermissionDecision = ({ behavior: 'allow' } & Pick<PermissionRequest, 'answers' | 'values'>) | { behavior: 'deny'; message: string }
-export type HostedText = { type: 'text'; id: string; text: string; append?: boolean }
+export type PermissionDecision = ({ behavior: 'allow' } & Pick<PermissionRequest, 'answers' | 'values'>) | {
+  behavior: 'deny'
+  message: string
+}
+export type HostedText = {
+  type: 'text'
+  id: string
+  text: string
+  append?: boolean
+}
 export type HostedEvent = 'working' | 'finished' | HostedText
-export type AskPermission = ({ tool, input, signal, description, questions, form }: {
+export type AskPermission = ({
+  tool,
+  input,
+  signal,
+  description,
+  questions,
+  form,
+}: {
   tool: string
   input: Record<string, unknown>
   signal: AbortSignal
@@ -13,11 +28,20 @@ export type AskPermission = ({ tool, input, signal, description, questions, form
 export interface HostedSession {
   id: string
   path?: string
-  run({ input, permission }: {
+  run({
+    input,
+    permission,
+  }: {
     input: AsyncIterable<string>
     permission: AskPermission
   }): AsyncIterable<HostedEvent>
-  set({ setting, value }: { setting: string; value: string }): Promise<void>
+  set({
+    setting,
+    value,
+  }: {
+    setting: string
+    value: string
+  }): Promise<void>
   close(): void
 }
 
@@ -33,18 +57,40 @@ export interface ModelOption {
 
 // The model names a catalog answers to: each option and the model it resolves to.
 export const modelIds = ({ models }: { models: ModelOption[] }) =>
-  models.flatMap(model => [model.value, ...(model.resolvedModel ? [model.resolvedModel] : [])])
+  models.flatMap(model => [
+    model.value,
+    ...(model.resolvedModel ? [model.resolvedModel] : []),
+  ])
 
 export interface Provider {
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
-  models({ cwd, env }: { cwd: string; env: NodeJS.ProcessEnv }): Promise<ModelOption[]>
+  models({
+    cwd,
+    env,
+  }: {
+    cwd: string
+    env: NodeJS.ProcessEnv
+  }): Promise<ModelOption[]>
   // The list with the effort and permission mode the folder's settings start a session with.
-  defaults({ cwd, env, models }: {
+  defaults({
+    cwd,
+    env,
+    models,
+  }: {
     cwd: string
     env: NodeJS.ProcessEnv
     models: ModelOption[]
   }): Promise<ModelOption[]>
-  open({ cwd, agent, settings, env, signal, instructions, allow, context }: {
+  open({
+    cwd,
+    agent,
+    settings,
+    env,
+    signal,
+    instructions,
+    allow,
+    context,
+  }: {
     cwd: string
     instructions?: string
     // Live state the session gets when it starts or resumes and again after each compaction.

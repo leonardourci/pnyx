@@ -9,7 +9,10 @@ export function waitingReminders({ state }: { state: HydraState }) {
       at: card.reminder!.at,
       ...(card.project ? { project: card.project } : {}),
     }))
-    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.task.localeCompare(b.task))
+    .sort((
+      a,
+      b,
+    ) => Date.parse(a.at) - Date.parse(b.at) || a.task.localeCompare(b.task))
 }
 
 export function reminderDeadline({ state }: { state: HydraState }): number | undefined {
@@ -18,7 +21,13 @@ export function reminderDeadline({ state }: { state: HydraState }): number | und
   return at ? Date.parse(at) : undefined
 }
 
-export function applyReminder({ state, event }: { state: HydraState; event: HydraEvent }): boolean {
+export function applyReminder({
+  state,
+  event,
+}: {
+  state: HydraState
+  event: HydraEvent
+}): boolean {
   if (event.type !== 'task.reminder' && event.type !== 'task.reminder-due') {
     return false
   }
@@ -33,7 +42,10 @@ export function applyReminder({ state, event }: { state: HydraState; event: Hydr
     if (event.data.after === null) {
       delete card.reminder
     } else {
-      card.reminder = { id: event.id, at: event.data.after }
+      card.reminder = {
+        id: event.id,
+        at: event.data.after,
+      }
     }
   } else {
     if (card.reminder?.id !== event.data.reminder || card.reminder.dueAt) {
@@ -52,10 +64,18 @@ export function applyReminder({ state, event }: { state: HydraState; event: Hydr
       note: event.data.message.text,
     }
     card.status = declaration
-    card.statusLog = [...(card.statusLog ?? []), declaration]
+    card.statusLog = [
+      ...(card.statusLog ?? []),
+      declaration,
+    ]
     state.hydraMessages = [
       ...(state.hydraMessages ?? []),
-      { ...event.data.message, id: event.id, at: event.at, actor: HYDRA_ACTOR },
+      {
+        ...event.data.message,
+        id: event.id,
+        at: event.at,
+        actor: HYDRA_ACTOR,
+      },
     ]
   }
 

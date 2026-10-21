@@ -14,4 +14,4 @@ printf '{"parent":"<Hydra task>"}' | pnyx-axi push --key <mirrored key> --file -
 
 Keep both statuses honest: your Firstmate status feeds the mirrored task, and the Hydra task gets your own `task status` declarations.
 
-Pnyx moves cards between the five default columns from Firstmate's records, so leave those moves to it. Keep your own memory in Firstmate's files; the Hydra's `preferences` and `learnings` stay for what only the Hydra needs.
+Pnyx moves cards between the five default columns from Firstmate's records, so leave those moves to it. Keep your own memory in Firstmate's files; owner memory keeps the owner's Pnyx-wide preferences and learnings, and Hydra memory only what this Hydra needs.

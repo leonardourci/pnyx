@@ -1,7 +1,13 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Button } from './controls.tsx'
 
-export function ConfirmationDialog({ title, children, busy, confirm, cancel }: {
+export function ConfirmationDialog({
+  title,
+  children,
+  busy,
+  confirm,
+  cancel,
+}: {
   title: string
   children: ReactNode
   busy: boolean
@@ -9,12 +15,15 @@ export function ConfirmationDialog({ title, children, busy, confirm, cancel }: {
   cancel(): void
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
-  useEffect(() => {
-    const element = dialog.current
-    element?.showModal()
+  useEffect(
+    () => {
+      const element = dialog.current
+      element?.showModal()
 
-    return () => element?.close()
-  }, [])
+      return () => element?.close()
+    },
+    [],
+  )
 
   return (
     <dialog

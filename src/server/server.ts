@@ -1,3 +1,6 @@
+import { approval } from '../confirmations/commands.ts'
+import { advanceQueues } from '../queue/advance.ts'
+import { QUEUE_POLL_MS } from '../queue/state.ts'
 import { candidates } from '../dispatch/config.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
@@ -42,7 +45,12 @@ import { createHydra, listHydras, renameHydra, type HydraSummary } from './hydra
 import { createHost, hostRequest, type QueryFn } from './host.ts'
 import type { SpawnCodex } from './codex.ts'
 
-const commands = { ...cliCommands, project, ...dispatchCommands }
+const commands = {
+  ...cliCommands,
+  approval,
+  project,
+  ...dispatchCommands,
+}
 // Events kept in memory for cursor resume; an older cursor gets a snapshot instead.
 const RESUME_LIMIT = 1000
 // A tab with more than this unsent is dropped from the event stream and resynced with a snapshot.
@@ -51,16 +59,51 @@ const MAX_BODY = 1 << 20
 const STOP_TIMEOUT_MS = 5000
 const ORACLE_LIMIT = 100
 
-const shownTraces = ({ view, card }: { view: ViewPreferences; card: string }) => {
-  const { tools, thinking } = traces({ view: viewFor({ state: { view } }), card })
+const shownTraces = ({
+  view,
+  card,
+}: {
+  view: ViewPreferences
+  card: string
+}) => {
+  const {
+    tools,
+    thinking,
+  } = traces({
+    view: viewFor({ state: { view } }),
+    card,
+  })
 
   return `${tools}:${thinking}`
 }
 
 const LATEST_DELAY_MS = 200
 // CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
-const CLI_COMMANDS = ['project', 'task', 'column', 'hydra', 'layout', 'rule', 'account', 'move', 'link', 'outcome', 'undo', 'view', 'history', 'card', 'integrations'] as const
-const WEB_ROOT = join(import.meta.dirname, '..', '..', 'dist', 'web')
+const CLI_COMMANDS = [
+  'approval',
+  'project',
+  'task',
+  'column',
+  'hydra',
+  'layout',
+  'rule',
+  'account',
+  'move',
+  'link',
+  'outcome',
+  'undo',
+  'view',
+  'history',
+  'card',
+  'integrations',
+] as const
+const WEB_ROOT = join(
+  import.meta.dirname,
+  '..',
+  '..',
+  'dist',
+  'web',
+)
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript',
@@ -75,16 +118,47 @@ const MIME: Record<string, string> = {
 // Server to browser. A snapshot replaces whatever the tab held; events then follow in sequence.
 // Each command gets a receipt or an error carrying its id.
 export type ServerMessage =
-  | { type: 'hello'; build: string; hydraId: string }
+  | {
+    type: 'hello'
+    build: string
+    hydraId: string
+  }
   | { type: 'pong' }
-  | { type: 'thread'; thread: ThreadPage }
-  | { type: 'snapshot'; seq: number; state: HydraState }
-  | { type: 'event'; event: HydraEvent }
+  | {
+    type: 'thread'
+    thread: ThreadPage
+  }
+  | {
+    type: 'snapshot'
+    seq: number
+    state: HydraState
+  }
+  | {
+    type: 'event'
+    event: HydraEvent
+  }
   // Last conversation messages by card: all of them on connect, then the ones that changed (null when gone).
-  | { type: 'latest'; messages: Record<string, LatestMessage | null> }
-  | { type: 'hydras'; hydraId: string; hydras: HydraSummary[] }
-  | { type: 'receipt'; id: string; [field: string]: unknown }
-  | { type: 'error'; id: string | null; error: string; code: string; help?: string[] }
+  | {
+    type: 'latest'
+    messages: Record<string, LatestMessage | null>
+  }
+  | {
+    type: 'hydras'
+    hydraId: string
+    hydras: HydraSummary[]
+  }
+  | {
+    type: 'receipt'
+    id: string
+    [field: string]: unknown
+  }
+  | {
+    type: 'error'
+    id: string | null
+    error: string
+    code: string
+    help?: string[]
+  }
 
 export interface RunningServer {
   port: number
@@ -100,20 +174,43 @@ export interface RunningServer {
 interface MountedHydra {
   url: string
   socket: string | null
-  request({ req, res, path }: HydraRequest): void
-  upgrade({ req, socket, head, url }: HydraUpgrade): void
+  request({
+    req,
+    res,
+    path,
+  }: HydraRequest): void
+  upgrade({
+    req,
+    socket,
+    head,
+    url,
+  }: HydraUpgrade): void
   summaries({ hydras }: { hydras: HydraSummary[] }): void
   close(): Promise<void>
 }
 
-type HydraRequest = { req: IncomingMessage; res: ServerResponse; path: string }
-type HydraUpgrade = { req: IncomingMessage; socket: Duplex; head: Buffer; url: URL }
+type HydraRequest = {
+  req: IncomingMessage
+  res: ServerResponse
+  path: string
+}
+type HydraUpgrade = {
+  req: IncomingMessage
+  socket: Duplex
+  head: Buffer
+  url: URL
+}
 
 const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
 const RETRY_MS = 60_000
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
-export async function startServer({ hydraId = 'default', port = 0, homes, ...options }: {
+export async function startServer({
+  hydraId = 'default',
+  port = 0,
+  homes,
+  ...options
+}: {
   hydraId?: string
   port?: number
   homes?: string[]
@@ -160,68 +257,156 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
   const allowed = ({ req }: { req: IncomingMessage }) =>
     hosts.has(req.headers.host ?? '') && (req.headers.origin === undefined || origins.has(req.headers.origin))
 
-  const http = createServer((req, res) => {
+  const http = createServer((
+    req,
+    res,
+  ) => {
     if (!allowed({ req })) {
-      return reply({ res, status: 403, body: { error: 'origin or host not allowed', code: 'FORBIDDEN' } })
+      return reply({
+        res,
+        status: 403,
+        body: {
+          error: 'origin or host not allowed',
+          code: 'FORBIDDEN',
+        },
+      })
     }
 
-    const path = new URL(req.url ?? '/', 'http://localhost').pathname
-    const [, id, rest] = HYDRA_PATH.exec(path) ?? []
+    const path = new URL(
+      req.url ?? '/',
+      'http://localhost',
+    ).pathname
+    const [
+      , id,
+      rest,
+    ] = HYDRA_PATH.exec(path) ?? []
 
     if (id !== undefined) {
       const mount = served.get(id)
 
       if (!mount) {
-        return reply({ res, status: 404, body: { error: `Hydra not served: ${id}`, code: 'NOT_FOUND', ...(skipped[id] ? { reason: skipped[id] } : {}) } })
+        return reply({
+          res,
+          status: 404,
+          body: {
+            error: `Hydra not served: ${id}`,
+            code: 'NOT_FOUND',
+            ...(skipped[id] ? { reason: skipped[id] } : {}),
+          },
+        })
       }
 
       if (rest === undefined) {
-        return void res.writeHead(308, { location: `/hydra/${id}/` }).end()
+        return void res.writeHead(
+          308,
+          { location: `/hydra/${id}/` },
+        ).end()
       }
 
-      return mount.request({ req, res, path: rest })
+      return mount.request({
+        req,
+        res,
+        path: rest,
+      })
     }
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      return reply({ res, status: 405, body: { error: 'method not allowed', code: 'METHOD_NOT_ALLOWED' } })
+      return reply({
+        res,
+        status: 405,
+        body: {
+          error: 'method not allowed',
+          code: 'METHOD_NOT_ALLOWED',
+        },
+      })
     }
 
     if (path === '/health') {
       const hydras = [...served.keys()].sort()
-      const body = { pid: process.pid, build: buildId(), hydras, skipped }
+      const body = {
+        pid: process.pid,
+        build: buildId(),
+        hydras,
+        skipped,
+      }
 
-      return reply({ res, status: 200, body })
+      return reply({
+        res,
+        status: 200,
+        body,
+      })
     }
 
     if (path === '/') {
-      return void res.writeHead(302, { location: `/hydra/${hydraId}/` }).end()
+      return void res.writeHead(
+        302,
+        { location: `/hydra/${hydraId}/` },
+      ).end()
     }
 
-    serveStatic({ res, path })
+    serveStatic({
+      res,
+      path,
+    })
   })
 
-  http.on('upgrade', (req, socket, head) => {
-    const url = new URL(req.url ?? '/', 'http://localhost')
-    // ponytail: /ws, like /, is the named Hydra's, for tabs from before one server and the Vite dev page.
-    const [, id, rest] = url.pathname === '/ws' ? ['', hydraId, '/ws'] : HYDRA_PATH.exec(url.pathname) ?? []
-    const mount = id === undefined ? undefined : served.get(id)
+  http.on(
+    'upgrade',
+    (
+      req,
+      socket,
+      head,
+    ) => {
+      const url = new URL(
+        req.url ?? '/',
+        'http://localhost',
+      )
+      // ponytail: /ws, like /, is the named Hydra's, for tabs from before one server and the Vite dev page.
+      const [
+        , id,
+        rest,
+      ] = url.pathname === '/ws' ? [
+        '',
+        hydraId,
+        '/ws',
+      ] : HYDRA_PATH.exec(url.pathname) ?? []
+      const mount = id === undefined ? undefined : served.get(id)
 
-    if (!mount || rest !== '/ws' || !allowed({ req })) {
-      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+      if (!mount || rest !== '/ws' || !allowed({ req })) {
+        socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
 
-      return
-    }
+        return
+      }
 
-    mount.upgrade({ req, socket, head, url })
-  })
+      mount.upgrade({
+        req,
+        socket,
+        head,
+        url,
+      })
+    },
+  )
 
-  await new Promise<void>((resolve, reject) => {
-    http.once('error', reject)
-    http.listen(port, '127.0.0.1', () => resolve())
+  await new Promise<void>((
+    resolve,
+    reject,
+  ) => {
+    http.once(
+      'error',
+      reject,
+    )
+    http.listen(
+      port,
+      '127.0.0.1',
+      () => resolve(),
+    )
   })
   const bound = (http.address() as { port: number }).port
 
-  for (const host of [`127.0.0.1:${bound}`, `localhost:${bound}`]) {
+  for (const host of [
+    `127.0.0.1:${bound}`,
+    `localhost:${bound}`,
+  ]) {
     hosts.add(host)
     origins.add(`http://${host}`)
   }
@@ -234,30 +419,52 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
     }
 
     if (closed) {
-      return Promise.reject(new HydraError({ message: 'the server is stopping', code: 'NOT_RUNNING' }))
+      return Promise.reject(new HydraError({
+        message: 'the server is stopping',
+        code: 'NOT_RUNNING',
+      }))
     }
 
-    const started = mountHydra({ hydraId: id, url: `http://127.0.0.1:${bound}/hydra/${id}/`, homes: id === hydraId ? homes : undefined, open, hydrasChanged, ...options })
-    mounts.set(id, started)
-    started.then(m => {
-      if (closed) {
-        void m.close()
-      } else {
-        served.set(id, m)
-        delete skipped[id]
-        hydrasChanged()
-      }
-    }, (error: Error) => {
-      mounts.delete(id)
-      skipped[id] = error.message
+    const started = mountHydra({
+      hydraId: id,
+      url: `http://127.0.0.1:${bound}/hydra/${id}/`,
+      homes: id === hydraId ? homes : undefined,
+      open,
+      hydrasChanged,
+      ...options,
     })
+    mounts.set(
+      id,
+      started,
+    )
+    started.then(
+      m => {
+        if (closed) {
+          void m.close()
+        } else {
+          served.set(
+            id,
+            m,
+          )
+          delete skipped[id]
+          hydrasChanged()
+        }
+      },
+      (error: Error) => {
+        mounts.delete(id)
+        skipped[id] = error.message
+      },
+    )
 
     return started
   }
 
   async function open({ id }: { id: string }): Promise<string> {
     if (!hydraIds().includes(id)) {
-      throw new HydraError({ message: `Hydra not found: ${id}`, code: 'NOT_FOUND' })
+      throw new HydraError({
+        message: `Hydra not found: ${id}`,
+        code: 'NOT_FOUND',
+      })
     }
 
     return (await mount({ id })).url
@@ -277,9 +484,18 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
   }
 
   const hydras = hydrasDir()
-  mkdirSync(hydras, { recursive: true })
-  const watcher = watch(hydras, mountAll)
-  const retry = setInterval(mountAll, RETRY_MS).unref()
+  mkdirSync(
+    hydras,
+    { recursive: true },
+  )
+  const watcher = watch(
+    hydras,
+    mountAll,
+  )
+  const retry = setInterval(
+    mountAll,
+    RETRY_MS,
+  ).unref()
 
   const close = async () => {
     closed = true
@@ -301,7 +517,13 @@ export async function startServer({ hydraId = 'default', port = 0, homes, ...opt
 
   await Promise.allSettled(hydraIds().map(id => mount({ id })))
 
-  return { port: bound, url: named.url, socket: named.socket, skipped: { ...skipped }, close }
+  return {
+    port: bound,
+    url: named.url,
+    socket: named.socket,
+    skipped: { ...skipped },
+    close,
+  }
 }
 
 async function mountHydra({
@@ -309,7 +531,10 @@ async function mountHydra({
   url,
   homes,
   catalogLocations,
-  query, spawnCodex, wakeDelay, stallDelay,
+  query,
+  spawnCodex,
+  wakeDelay,
+  stallDelay,
   open,
   hydrasChanged,
 }: {
@@ -352,7 +577,10 @@ async function mountOwnedHydra({
   url,
   homes: given,
   catalogLocations,
-  query, spawnCodex, wakeDelay, stallDelay,
+  query,
+  spawnCodex,
+  wakeDelay,
+  stallDelay,
   open,
   release,
   hydrasChanged,
@@ -370,7 +598,11 @@ async function mountOwnedHydra({
   hydrasChanged(): void
 }): Promise<MountedHydra> {
   if (await readServer({ hydraId })) {
-    throw new HydraError({ message: `a server is already running for Hydra ${hydraId}`, code: 'ALREADY_RUNNING', help: ['Run `pnyx-axi` to see its address'] })
+    throw new HydraError({
+      message: `a server is already running for Hydra ${hydraId}`,
+      code: 'ALREADY_RUNNING',
+      help: ['Run `pnyx-axi` to see its address'],
+    })
   }
 
   let homes = (given ?? []).map(path => resolveHome({ path }))
@@ -383,7 +615,10 @@ async function mountOwnedHydra({
   }
   const subscriptions = new Map<WebSocket, Subscription>()
   const hydraSubscriptions = new Map<WebSocket, Subscription>()
-  const threadSubscriptions = [subscriptions, hydraSubscriptions]
+  const threadSubscriptions = [
+    subscriptions,
+    hydraSubscriptions,
+  ]
   const hydraSubscribers = new WeakSet<WebSocket>()
   const subscriptionMap = ({ card }: { card: string }) =>
     card === HYDRA_CARD ? hydraSubscriptions : subscriptions
@@ -396,47 +631,94 @@ async function mountOwnedHydra({
       return
     }
 
-    threadTimers.set(ws, setTimeout(() => {
-      threadTimers.delete(ws)
+    threadTimers.set(
+      ws,
+      setTimeout(
+        () => {
+          threadTimers.delete(ws)
 
-      if (ws.readyState !== ws.OPEN) {
-        return
-      }
+          if (ws.readyState !== ws.OPEN) {
+            return
+          }
 
-      for (const map of threadSubscriptions) {
-        const sub = map.get(ws), card = sub && state.cards[sub.card]
+          for (const map of threadSubscriptions) {
+            const sub = map.get(ws), card = sub && state.cards[sub.card]
 
-        if (!card) {
-          continue
-        }
-
-        const unavailable = () => send({ ws, message: { type: 'error', id: null, code: 'THREAD_UNAVAILABLE', error: 'Conversation could not be refreshed' } })
-
-        if (sub.native) {
-          const native = sub.native
-          void paseoHistory({
-            card: card.id,
-            conversation: { read: async ({ before }) => (await native).read({ before }) },
-            readSaved: ({ before }) => readThread({ hydraId, state, card, homes, before }),
-          }).then(thread => {
-            if (map.get(ws) === sub && ws.readyState === ws.OPEN) {
-              send({ ws, message: { type: 'thread', thread } })
+            if (!card) {
+              continue
             }
-          }, unavailable)
 
-          continue
-        }
+            const unavailable = () => send({
+              ws,
+              message: {
+                type: 'error',
+                id: null,
+                code: 'THREAD_UNAVAILABLE',
+                error: 'Conversation could not be refreshed',
+              },
+            })
 
-        try {
-          send({ ws, message: { type: 'thread', thread: agents.thread({ card, page: readThread({ hydraId, state, card, homes }) }) } })
-        } catch {
-          unavailable()
-        }
-      }
-    }, LATEST_DELAY_MS))
+            if (sub.native) {
+              const native = sub.native
+              void paseoHistory({
+                card: card.id,
+                conversation: { read: async ({ before }) => (await native).read({ before }) },
+                readSaved: ({ before }) => readThread({
+                  hydraId,
+                  state,
+                  card,
+                  homes,
+                  before,
+                }),
+              }).then(
+                thread => {
+                  if (map.get(ws) === sub && ws.readyState === ws.OPEN) {
+                    send({
+                      ws,
+                      message: {
+                        type: 'thread',
+                        thread,
+                      },
+                    })
+                  }
+                },
+                unavailable,
+              )
+
+              continue
+            }
+
+            try {
+              send({
+                ws,
+                message: {
+                  type: 'thread',
+                  thread: agents.thread({
+                    card,
+                    page: readThread({
+                      hydraId,
+                      state,
+                      card,
+                      homes,
+                    }),
+                  }),
+                },
+              })
+            } catch {
+              unavailable()
+            }
+          }
+        },
+        LATEST_DELAY_MS,
+      ),
+    )
   }
 
-  const threadPage = async ({ sub, card, before }: {
+  const threadPage = async ({
+    sub,
+    card,
+    before,
+  }: {
     sub: Subscription
     card: Card
     before?: string
@@ -444,49 +726,100 @@ async function mountOwnedHydra({
     const native = sub.native
 
     if (!native) {
-      const page = readThread({ hydraId, state, card, homes, before })
+      const page = readThread({
+        hydraId,
+        state,
+        card,
+        homes,
+        before,
+      })
 
-      return before ? page : agents.thread({ card, page })
+      return before ? page : agents.thread({
+        card,
+        page,
+      })
     }
 
     return paseoHistory({
       card: card.id,
       conversation: { read: async ({ before }) => (await native).read({ before }) },
-      readSaved: ({ before }) => readThread({ hydraId, state, card, homes, before }),
+      readSaved: ({ before }) => readThread({
+        hydraId,
+        state,
+        card,
+        homes,
+        before,
+      }),
       before,
     })
   }
 
-  const bindThread = ({ ws, card }: { ws: WebSocket; card: Card }) => {
+  const bindThread = ({
+    ws,
+    card,
+  }: {
+    ws: WebSocket
+    card: Card
+  }) => {
     const map = subscriptionMap({ card: card.id })
     map.get(ws)?.watcher?.close()
     const path = threadPath({ card })
-    const sub: Subscription = { card: card.id, path }
+    const sub: Subscription = {
+      card: card.id,
+      path,
+    }
     const paseo = card.agent?.paseoAgentId
 
     if (paseo) {
-      const native = paseoConversation({ card, changed: () => refreshThread({ ws }) })
+      const native = paseoConversation({
+        card,
+        changed: () => refreshThread({ ws }),
+      })
       native.catch(() => undefined)
-      const watcher = { close: () => void native.then(n => n.close(), () => undefined) }
-      Object.assign(sub, { paseo, native, watcher })
+      const watcher = {
+        close: () => void native.then(
+          n => n.close(),
+          () => undefined,
+        ),
+      }
+      Object.assign(
+        sub,
+        {
+          paseo,
+          native,
+          watcher,
+        },
+      )
     } else if (path) {
       try {
-        sub.watcher = watch(dirname(path), (_event, filename) => {
-          if (!filename || String(filename) === basename(path)) {
-            refreshThread({ ws })
-          }
-        })
+        sub.watcher = watch(
+          dirname(path),
+          (
+            _event,
+            filename,
+          ) => {
+            if (!filename || String(filename) === basename(path)) {
+              refreshThread({ ws })
+            }
+          },
+        )
       } catch { /* Missing transcript remains explicit. */ }
     }
 
-    map.set(ws, sub)
+    map.set(
+      ws,
+      sub,
+    )
   }
 
   const dir = hydraDir({ hydraId })
   privateDir({ dir: spoolDir({ dir }) })
   const token = Buffer.from(localToken())
   const identity = hydraIdentity({ hydraId })
-  let { state, offset } = loadHydra({ hydraId })
+  let {
+    state,
+    offset,
+  } = loadHydra({ hydraId })
   // The recorded Firstmate home is watched, and followed when it changes; given homes stay fixed.
   let firstmate: ReturnType<typeof watchHomes> | undefined
   let watchedHome: string | undefined
@@ -494,7 +827,10 @@ async function mountOwnedHydra({
   const followHome = () => {
     const hydra = state.config?.hydra
     // A recorded home that has since moved is skipped, so the Hydra still opens.
-    const home = hydra?.kind === 'firstmate' && hydra.home && existsSync(join(hydra.home, 'state')) ? hydra.home : undefined
+    const home = hydra?.kind === 'firstmate' && hydra.home && existsSync(join(
+      hydra.home,
+      'state',
+    )) ? hydra.home : undefined
 
     if (given || closed || home === watchedHome) {
       return
@@ -503,13 +839,22 @@ async function mountOwnedHydra({
     firstmate?.close()
     watchedHome = home
     homes = home ? [resolveHome({ path: home })] : []
-    firstmate = home ? watchHomes({ hydraId, list: homes }) : undefined
+    firstmate = home ? watchHomes({
+      hydraId,
+      list: homes,
+    }) : undefined
   }
 
   let recent: HydraEvent[] = []
   const resyncing = new WeakSet<WebSocket>()
 
-  const send = ({ ws, message }: { ws: WebSocket; message: ServerMessage }) => {
+  const send = ({
+    ws,
+    message,
+  }: {
+    ws: WebSocket
+    message: ServerMessage
+  }) => {
     if (ws.bufferedAmount > MAX_BUFFERED) {
       resyncing.add(ws)
 
@@ -523,11 +868,25 @@ async function mountOwnedHydra({
 
   const sendSnapshot = ({ ws }: { ws: WebSocket }) => {
     resyncing.delete(ws)
-    send({ ws, message: { type: 'snapshot', seq: state.seq, state } })
-    ws.send(JSON.stringify({ type: 'latest', messages: latest } satisfies ServerMessage))
+    send({
+      ws,
+      message: {
+        type: 'snapshot',
+        seq: state.seq,
+        state,
+      },
+    })
+    ws.send(JSON.stringify({
+      type: 'latest',
+      messages: latest,
+    } satisfies ServerMessage))
 
     if (hydraSubscribers.has(ws)) {
-      ws.send(JSON.stringify({ type: 'hydras', hydraId, hydras: listHydras() } satisfies ServerMessage))
+      ws.send(JSON.stringify({
+        type: 'hydras',
+        hydraId,
+        hydras: listHydras(),
+      } satisfies ServerMessage))
     }
   }
 
@@ -535,7 +894,13 @@ async function mountOwnedHydra({
   const broadcast = ({ event }: { event: HydraEvent }) => {
     for (const ws of wss.clients) {
       if (!resyncing.has(ws)) {
-        send({ ws, message: { type: 'event', event } })
+        send({
+          ws,
+          message: {
+            type: 'event',
+            event,
+          },
+        })
       } else if (ws.bufferedAmount <= MAX_BUFFERED) {
         sendSnapshot({ ws })
       }
@@ -547,13 +912,22 @@ async function mountOwnedHydra({
         if (sub && (sub.card === event.cardId
         || (event.type === 'task.session' && sub.card === event.data.before)
         || (event.type === 'board.view' &&
-          shownTraces({ view: event.data.before, card: sub.card })
-          !== shownTraces({ view: event.data.after, card: sub.card })))) {
+          shownTraces({
+            view: event.data.before,
+            card: sub.card,
+          })
+          !== shownTraces({
+            view: event.data.after,
+            card: sub.card,
+          })))) {
           const card = state.cards[sub.card]
 
           if (card && (sub.path !== threadPath({ card })
             || sub.paseo !== card.agent?.paseoAgentId)) {
-            bindThread({ ws, card })
+            bindThread({
+              ws,
+              card,
+            })
           }
 
           refreshThread({ ws })
@@ -563,7 +937,10 @@ async function mountOwnedHydra({
   }
 
   const reload = () => {
-    ({ state, offset } = loadHydra({ hydraId }))
+    ({
+      state,
+      offset,
+    } = loadHydra({ hydraId }))
     recent = []
     agents.reconcile({ state })
     followHome()
@@ -592,21 +969,36 @@ async function mountOwnedHydra({
     }
 
     try {
-      const watcher = watch(dir, (_event, filename) => {
-        const changed = filename ? join(dir, String(filename)) : undefined
-        touchLatest({
-          ids: Object.values(state.cards).filter(c => {
-            const path = threadPath({ card: c })
+      const watcher = watch(
+        dir,
+        (
+          _event,
+          filename,
+        ) => {
+          const changed = filename ? join(
+            dir,
+            String(filename),
+          ) : undefined
+          touchLatest({
+            ids: Object.values(state.cards).filter(c => {
+              const path = threadPath({ card: c })
 
-            return path && (changed ? path === changed : dirname(path) === dir)
+              return path && (changed ? path === changed : dirname(path) === dir)
+            })
+              .map(c => c.id),
           })
-            .map(c => c.id),
-        })
-      })
-      watcher.on('error', () => {
-        watcher.close(); folders.delete(dir)
-      })
-      folders.set(dir, watcher)
+        },
+      )
+      watcher.on(
+        'error',
+        () => {
+          watcher.close(); folders.delete(dir)
+        },
+      )
+      folders.set(
+        dir,
+        watcher,
+      )
     } catch {
       // A missing folder is watched once the card's next event reads it again.
     }
@@ -623,10 +1015,16 @@ async function mountOwnedHydra({
         watchFolder({ dir: dirname(path) })
       }
 
-      const read = path ? latestMessage({ path, prev: reads.get(id) }) : undefined
+      const read = path ? latestMessage({
+        path,
+        prev: reads.get(id),
+      }) : undefined
 
       if (read) {
-        reads.set(id, read)
+        reads.set(
+          id,
+          read,
+        )
       } else {
         reads.delete(id)
       }
@@ -650,7 +1048,13 @@ async function mountOwnedHydra({
 
     if (Object.keys(changed).length) {
       for (const ws of wss.clients) {
-        send({ ws, message: { type: 'latest', messages: changed } })
+        send({
+          ws,
+          message: {
+            type: 'latest',
+            messages: changed,
+          },
+        })
       }
     }
   }
@@ -665,12 +1069,18 @@ async function mountOwnedHydra({
     }
 
     if (unread.size) {
-      latestTimer ??= setTimeout(readLatest, LATEST_DELAY_MS)
+      latestTimer ??= setTimeout(
+        readLatest,
+        LATEST_DELAY_MS,
+      )
     }
   }
 
   const pump = () => {
-    const read = readEventsFrom({ hydraId, offset })
+    const read = readEventsFrom({
+      hydraId,
+      offset,
+    })
 
     if (!read) {
       return reload()
@@ -681,12 +1091,18 @@ async function mountOwnedHydra({
         return reload()
       }
 
-      state = reduce({ state, event })
+      state = reduce({
+        state,
+        event,
+      })
       recent.push(event)
       broadcast({ event })
       touchLatest({ ids: [event.cardId] })
 
-      if (wakesHydra({ state, event })) {
+      if (wakesHydra({
+        state,
+        event,
+      })) {
         agents.wake({ seq: event.seq })
       }
     }
@@ -702,6 +1118,9 @@ async function mountOwnedHydra({
   }
 
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
+  let queueRun: Promise<void> | undefined
+  let queueCheckedAt = 0
+  let queueNeedsRetry = false
   let scheduled = false
 
   const kick = () => {
@@ -724,6 +1143,24 @@ async function mountOwnedHydra({
 
         pump()
 
+        if (!queueRun && Date.now() - queueCheckedAt >= QUEUE_POLL_MS) {
+          queueCheckedAt = Date.now()
+          queueRun = (async () => {
+            try {
+              queueNeedsRetry = await advanceQueues({
+                hydraId,
+                active: () => !closed,
+              })
+            } catch (error) {
+              queueNeedsRetry = true
+              console.error(`pnyx-axi queue: ${(error as Error).message}`)
+            } finally {
+              queueRun = undefined
+              kick()
+            }
+          })()
+        }
+
         fireReminders({ hydraId })
         pump()
         const deadline = doneDeadline({ state })
@@ -743,12 +1180,26 @@ async function mountOwnedHydra({
         console.error(`pnyx-axi serve: ${(error as Error).message}`)
       } finally {
         clearTimeout(expiryTimer)
-        const deadlines = [doneDeadline({ state }), reminderDeadline({ state })]
+        const deadlines = [
+          doneDeadline({ state }),
+          reminderDeadline({ state }),
+          ...(!queueRun && (queueNeedsRetry || Object.values(state.cards).some(c => c.queue))
+            ? [queueCheckedAt + QUEUE_POLL_MS] : []),
+        ]
           .filter((at): at is number => at !== undefined)
         const deadline = deadlines.length ? Math.min(...deadlines) : undefined
 
         if (deadline !== undefined) {
-          expiryTimer = setTimeout(kick, Math.max(100, Math.min(60_000, deadline - Date.now())))
+          expiryTimer = setTimeout(
+            kick,
+            Math.max(
+              100,
+              Math.min(
+                60_000,
+                deadline - Date.now(),
+              ),
+            ),
+          )
         }
       }
     })
@@ -757,7 +1208,10 @@ async function mountOwnedHydra({
   const authorized = ({ given }: { given: string | null }) => {
     const bytes = Buffer.from(given ?? '')
 
-    return token.length > 0 && bytes.length === token.length && timingSafeEqual(bytes, token)
+    return token.length > 0 && bytes.length === token.length && timingSafeEqual(
+      bytes,
+      token,
+    )
   }
 
   const agents = createHost({
@@ -769,7 +1223,10 @@ async function mountOwnedHydra({
     changed: () => kick(),
     streamed: ({ session }) => {
       for (const map of threadSubscriptions) {
-        for (const [ws, sub] of map) {
+        for (const [
+          ws,
+          sub,
+        ] of map) {
           const agent = state.cards[sub.card]?.agent
 
           if (agent && `${agent.provider}:${agent.sessionId}` === session) {
@@ -781,57 +1238,163 @@ async function mountOwnedHydra({
   })
 
   // The server has already checked Host and Origin.
-  const request = ({ req, res, path }: HydraRequest) => {
+  const request = ({
+    req,
+    res,
+    path,
+  }: HydraRequest) => {
     // The CLI asks here to start or message an agent this server runs. A page cannot
     // send this header cross-origin without a preflight, which this server never answers.
     if (req.method === 'POST' && path === '/host') {
-      if (!authorized({ given: req.headers.authorization?.replace(/^Bearer /, '') ?? null })) {
-        return reply({ res, status: 401, body: { error: 'missing or wrong token', code: 'UNAUTHORIZED' } })
+      if (!authorized({
+        given: req.headers.authorization?.replace(
+          /^Bearer /,
+          '',
+        ) ?? null,
+      })) {
+        return reply({
+          res,
+          status: 401,
+          body: {
+            error: 'missing or wrong token',
+            code: 'UNAUTHORIZED',
+          },
+        })
       }
 
-      return void readBody({ req }).then(body => hostRequest({ host: agents, body }))
+      return void readBody({ req }).then(body => hostRequest({
+        host: agents,
+        body,
+      }))
         .then(
-          answer => reply({ res, status: 200, body: answer }),
-          (error: Error) => reply({ res, status: 400, body: { error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN', help: error instanceof HydraError ? error.help : [] } }),
+          answer => reply({
+            res,
+            status: 200,
+            body: answer,
+          }),
+          (error: Error) => reply({
+            res,
+            status: 400,
+            body: {
+              error: error.message,
+              code: error instanceof HydraError ? error.code : 'UNKNOWN',
+              help: error instanceof HydraError ? error.help : [],
+            },
+          }),
         )
     }
 
     // An image dropped or pasted into a composer; the message then carries its path.
     if (req.method === 'POST' && path === '/attachments') {
-      if (!authorized({ given: req.headers.authorization?.replace(/^Bearer /, '') ?? null })) {
-        return reply({ res, status: 401, body: { error: 'missing or wrong token', code: 'UNAUTHORIZED' } })
+      if (!authorized({
+        given: req.headers.authorization?.replace(
+          /^Bearer /,
+          '',
+        ) ?? null,
+      })) {
+        return reply({
+          res,
+          status: 401,
+          body: {
+            error: 'missing or wrong token',
+            code: 'UNAUTHORIZED',
+          },
+        })
       }
 
       const extension = imageExtension({ type: req.headers['content-type'] ?? '' })
 
       if (!extension) {
-        return reply({ res, status: 415, body: { error: `images only: ${Object.values(IMAGE_TYPES).join(', ')}`, code: 'VALIDATION_ERROR' } })
+        return reply({
+          res,
+          status: 415,
+          body: {
+            error: `images only: ${Object.values(IMAGE_TYPES).join(', ')}`,
+            code: 'VALIDATION_ERROR',
+          },
+        })
       }
 
-      return void readBytes({ req, limit: MAX_IMAGE_BYTES }).then(bytes => {
-        const folder = join(dir, 'attachments'), file = join(folder, `${randomUUID()}${extension}`)
+      return void readBytes({
+        req,
+        limit: MAX_IMAGE_BYTES,
+      }).then(
+        bytes => {
+          const folder = join(
+              dir,
+              'attachments',
+            ), file = join(
+              folder,
+              `${randomUUID()}${extension}`,
+            )
 
-        try {
-          privateDir({ dir: folder })
-          writeFileSync(file, bytes, { mode: 0o600 })
-        } catch (error) {
-          return reply({ res, status: 500, body: { error: `could not store the image: ${(error as Error).message}`, code: 'UNKNOWN' } })
-        }
+          try {
+            privateDir({ dir: folder })
+            writeFileSync(
+              file,
+              bytes,
+              { mode: 0o600 },
+            )
+          } catch (error) {
+            return reply({
+              res,
+              status: 500,
+              body: {
+                error: `could not store the image: ${(error as Error).message}`,
+                code: 'UNKNOWN',
+              },
+            })
+          }
 
-        reply({ res, status: 200, body: { path: file, line: imageLine({ path: file }) } })
-      }, (error: Error) => reply({ res, status: 413, body: { error: error.message, code: 'VALIDATION_ERROR' } }))
+          reply({
+            res,
+            status: 200,
+            body: {
+              path: file,
+              line: imageLine({ path: file }),
+            },
+          })
+        },
+        (error: Error) => reply({
+          res,
+          status: 413,
+          body: {
+            error: error.message,
+            code: 'VALIDATION_ERROR',
+          },
+        }),
+      )
     }
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      return reply({ res, status: 405, body: { error: 'method not allowed', code: 'METHOD_NOT_ALLOWED' } })
+      return reply({
+        res,
+        status: 405,
+        body: {
+          error: 'method not allowed',
+          code: 'METHOD_NOT_ALLOWED',
+        },
+      })
     }
 
     const attachment = /^\/attachments\/([^/]+)$/.exec(path)?.[1]
 
     // An <img> cannot send a header, so the page passes its token in the query, as for the WebSocket.
     if (attachment !== undefined) {
-      if (!authorized({ given: new URL(req.url ?? '/', 'http://localhost').searchParams.get('token') })) {
-        return reply({ res, status: 401, body: { error: 'missing or wrong token', code: 'UNAUTHORIZED' } })
+      if (!authorized({
+        given: new URL(
+          req.url ?? '/',
+          'http://localhost',
+        ).searchParams.get('token'),
+      })) {
+        return reply({
+          res,
+          status: 401,
+          body: {
+            error: 'missing or wrong token',
+            code: 'UNAUTHORIZED',
+          },
+        })
       }
 
       try {
@@ -839,53 +1402,160 @@ async function mountOwnedHydra({
           throw new Error('not an attachment')
         }
 
-        return void res.writeHead(200, { 'content-type': imageType({ path: attachment })!, 'x-content-type-options': 'nosniff', 'cache-control': 'private, max-age=31536000, immutable' })
-          .end(readFileSync(join(dir, 'attachments', attachment)))
+        return void res.writeHead(
+          200,
+          {
+            'content-type': imageType({ path: attachment })!,
+            'x-content-type-options': 'nosniff',
+            'cache-control': 'private, max-age=31536000, immutable',
+          },
+        )
+          .end(readFileSync(join(
+            dir,
+            'attachments',
+            attachment,
+          )))
       } catch {
-        return reply({ res, status: 404, body: { error: 'attachment not found', code: 'NOT_FOUND' } })
+        return reply({
+          res,
+          status: 404,
+          body: {
+            error: 'attachment not found',
+            code: 'NOT_FOUND',
+          },
+        })
       }
     }
 
     if (path === '/folders') {
-      const query = new URL(req.url ?? '/', 'http://localhost').searchParams
+      const query = new URL(
+        req.url ?? '/',
+        'http://localhost',
+      ).searchParams
 
-      return void listFolders({ path: query.get('path') ?? '', repository: query.get('repository') ?? '' }).then(
-        body => reply({ res, status: 200, body }),
-        (error: Error) => reply({ res, status: 400, body: { error: error.message, code: 'FOLDER_UNAVAILABLE' } }),
+      return void listFolders({
+        path: query.get('path') ?? '',
+        repository: query.get('repository') ?? '',
+      }).then(
+        body => reply({
+          res,
+          status: 200,
+          body,
+        }),
+        (error: Error) => reply({
+          res,
+          status: 400,
+          body: {
+            error: error.message,
+            code: 'FOLDER_UNAVAILABLE',
+          },
+        }),
       )
     }
 
     if (path === '/reminders') {
       const reminders = waitingReminders({ state })
 
-      return reply({ res, status: 200, body: { count: reminders.length, reminders } })
+      return reply({
+        res,
+        status: 200,
+        body: {
+          count: reminders.length,
+          reminders,
+        },
+      })
     }
 
     if (path === '/health') {
-      return reply({ res, status: 200, body: { hydraId, pid: process.pid, build: buildId() } })
+      return reply({
+        res,
+        status: 200,
+        body: {
+          hydraId,
+          pid: process.pid,
+          build: buildId(),
+        },
+      })
     }
 
-    const page = { token: token.toString(), identity, base: new URL(url).pathname }
-    serveStatic({ res, path, page })
+    const page = {
+      token: token.toString(),
+      identity,
+      base: new URL(url).pathname,
+    }
+    serveStatic({
+      res,
+      path,
+      page,
+    })
   }
 
-  const catalogReads = new WeakMap<WebSocket, { card: string; read: Promise<Catalog> }>()
+  const catalogReads = new WeakMap<WebSocket, {
+    card: string
+    read: Promise<Catalog>
+  }>()
 
-  const runCommand = ({ ws, message }: {
+  const runCommand = ({
+    ws,
+    message,
+  }: {
     ws: WebSocket
-    message: { id?: unknown; name?: unknown; args?: unknown }
+    message: {
+      id?: unknown
+      name?: unknown
+      args?: unknown
+    }
   }) => {
     const id = typeof message.id === 'string' ? message.id : null
-    const fail = ({ error, code, help }: { error: string; code: string; help?: string[] }) => send({ ws, message: { type: 'error', id, error, code, help } })
-    const { name, args } = message
+    const fail = ({
+      error,
+      code,
+      help,
+    }: {
+      error: string
+      code: string
+      help?: string[]
+    }) => send({
+      ws,
+      message: {
+        type: 'error',
+        id,
+        error,
+        code,
+        help,
+      },
+    })
+    const {
+      name,
+      args,
+    } = message
 
     if (id === null) {
-      return fail({ error: 'command needs a string id', code: 'VALIDATION_ERROR' })
+      return fail({
+        error: 'command needs a string id',
+        code: 'VALIDATION_ERROR',
+      })
     }
 
-    if (['thread', 'oracle', 'oracle-commands', 'reply', 'task-message', 'answer', 'agent', 'catalog', 'settings', 'hydras', 'hydra-agent', 'models'].includes(String(name))) {
+    if ([
+      'thread',
+      'oracle',
+      'oracle-commands',
+      'reply',
+      'task-message',
+      'answer',
+      'agent',
+      'catalog',
+      'settings',
+      'hydras',
+      'hydra-agent',
+      'models',
+    ].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
-        return fail({ error: 'args must be strings', code: 'VALIDATION_ERROR' })
+        return fail({
+          error: 'args must be strings',
+          code: 'VALIDATION_ERROR',
+        })
       }
 
       try {
@@ -893,18 +1563,37 @@ async function mountOwnedHydra({
           const harness = args[0]
 
           if (args.length !== 1 || (harness !== 'claude' && harness !== 'codex')) {
-            throw new HydraError({ message: 'models expects claude or codex', code: 'VALIDATION_ERROR' })
+            throw new HydraError({
+              message: 'models expects claude or codex',
+              code: 'VALIDATION_ERROR',
+            })
           }
 
           void agents.models({ harness })
-            .then(models => send({ ws, message: { type: 'receipt', id, models } }))
-            .catch(() => fail({ error: 'Harness model catalog unavailable. Reopen the picker to retry.', code: 'CATALOG_UNAVAILABLE' }))
+            .then(models => send({
+              ws,
+              message: {
+                type: 'receipt',
+                id,
+                models,
+              },
+            }))
+            .catch(() => fail({
+              error: 'Harness model catalog unavailable. Reopen the picker to retry.',
+              code: 'CATALOG_UNAVAILABLE',
+            }))
         } else if (name === 'catalog') {
           if (args.length !== 1) {
-            throw new HydraError({ message: 'catalog expects a card', code: 'VALIDATION_ERROR' })
+            throw new HydraError({
+              message: 'catalog expects a card',
+              code: 'VALIDATION_ERROR',
+            })
           }
 
-          const card = findCard({ state, ref: args[0] })
+          const card = findCard({
+            state,
+            ref: args[0],
+          })
           let entry = catalogReads.get(ws)
 
           if (entry?.card !== card.id) {
@@ -916,7 +1605,10 @@ async function mountOwnedHydra({
                 locations: catalogLocations,
               })),
             }
-            catalogReads.set(ws, entry = next)
+            catalogReads.set(
+              ws,
+              entry = next,
+            )
             void next.read.catch(() => undefined).finally(() => {
               if (catalogReads.get(ws) === next) {
                 catalogReads.delete(ws)
@@ -924,59 +1616,149 @@ async function mountOwnedHydra({
             })
           }
 
-          void entry.read.then(catalog => send({ ws, message: { type: 'receipt', id, catalog } })).catch(() => fail({ error: 'Local catalog unavailable', code: 'CATALOG_UNAVAILABLE' }))
+          void entry.read.then(catalog => send({
+            ws,
+            message: {
+              type: 'receipt',
+              id,
+              catalog,
+            },
+          })).catch(() => fail({
+            error: 'Local catalog unavailable',
+            code: 'CATALOG_UNAVAILABLE',
+          }))
         } else if (name === 'oracle') {
           if (args.length > 3 || (args[2] !== undefined && args[2] !== 'hydra')) {
-            throw new HydraError({ message: 'oracle expects text, optional workspace and optional Hydra scope', code: 'VALIDATION_ERROR' })
+            throw new HydraError({
+              message: 'oracle expects text, optional workspace and optional Hydra scope',
+              code: 'VALIDATION_ERROR',
+            })
           }
 
-          const query = { text: args[0] ?? '', ...(args[1] ? { workspace: args[1] } : {}), ...(args[2] === 'hydra' ? { live: true } : {}), limit: ORACLE_LIMIT, highlight: false }
+          const query = {
+            text: args[0] ?? '',
+            ...(args[1] ? { workspace: args[1] } : {}),
+            ...(args[2] === 'hydra' ? { live: true } : {}),
+            limit: ORACLE_LIMIT,
+            highlight: false,
+          }
 
-          void queryOracle({ hydraId, query })
-            .then(result => send({ ws, message: { type: 'receipt', id, ...result } }))
-            .catch((error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
+          void queryOracle({
+            hydraId,
+            query,
+          })
+            .then(result => send({
+              ws,
+              message: {
+                type: 'receipt',
+                id,
+                ...result,
+              },
+            }))
+            .catch((error: Error) => fail({
+              error: error.message,
+              code: error instanceof HydraError ? error.code : 'UNKNOWN',
+            }))
         } else if (name === 'oracle-commands') {
           let entries: unknown
 
           try {
             entries = JSON.parse(args[1] ?? '[]')
           } catch {
-            throw new HydraError({ message: 'oracle-commands expects a JSON list of named entries', code: 'VALIDATION_ERROR' })
+            throw new HydraError({
+              message: 'oracle-commands expects a JSON list of named entries',
+              code: 'VALIDATION_ERROR',
+            })
           }
 
           if (args.length !== 2 || !args[0]?.trim() || args[0].length > 500
             || !Array.isArray(entries) || entries.length > 256
-            || !entries.every((entry: unknown): entry is { id: string; text: string } => !!entry && typeof entry === 'object' && 'id' in entry && typeof entry.id === 'string' && entry.id.length <= 160 && 'text' in entry && typeof entry.text === 'string' && entry.text.length <= 500)) {
-            throw new HydraError({ message: 'oracle-commands expects a query and up to 256 named entries', code: 'VALIDATION_ERROR' })
+            || !entries.every((entry: unknown): entry is {
+              id: string
+              text: string
+            } => !!entry && typeof entry === 'object' && 'id' in entry && typeof entry.id === 'string' && entry.id.length <= 160 && 'text' in entry && typeof entry.text === 'string' && entry.text.length <= 500)) {
+            throw new HydraError({
+              message: 'oracle-commands expects a query and up to 256 named entries',
+              code: 'VALIDATION_ERROR',
+            })
           }
 
-          void matchActions({ query: args[0], entries }).then(matches => send({ ws, message: { type: 'receipt', id, matches } }))
+          void matchActions({
+            query: args[0],
+            entries,
+          }).then(matches => send({
+            ws,
+            message: {
+              type: 'receipt',
+              id,
+              matches,
+            },
+          }))
         } else if (name === 'settings') {
           if (args.length && (args.length !== 3 || args[0] !== 'set')) {
-            throw new HydraError({ message: 'settings expects nothing, or set, a key and a value', code: 'VALIDATION_ERROR' })
+            throw new HydraError({
+              message: 'settings expects nothing, or set, a key and a value',
+              code: 'VALIDATION_ERROR',
+            })
           }
 
           const settings = args.length ? writeSetting({
             key: args[1]!,
             value: args[2]!,
           }) : readSettings({ })
-          send({ ws, message: { type: 'receipt', id, settings: settingEntries({ settings }) } })
+          send({
+            ws,
+            message: {
+              type: 'receipt',
+              id,
+              settings: settingEntries({ settings }),
+            },
+          })
         } else if (name === 'hydra-agent') {
           if (args.length !== 1) {
-            throw new HydraError({ message: 'hydra-agent expects one agent configuration', code: 'VALIDATION_ERROR' })
+            throw new HydraError({
+              message: 'hydra-agent expects one agent configuration',
+              code: 'VALIDATION_ERROR',
+            })
           }
 
           const agent = candidates({ value: [JSON.parse(args[0]!)] })[0]!
-          const { previous, running } = withWriter({
+          const {
+            previous,
+            running,
+          } = withWriter({
             hydraId,
             fn: ({ writer }) => {
-              const config = hydraConfig({ state: writer.state, id: hydraId })
+              const config = hydraConfig({
+                state: writer.state,
+                id: hydraId,
+              })
 
               if (config.hydra.kind === 'firstmate') {
-                throw new HydraError({ message: 'Firstmate manages this Hydra’s agent', code: 'NO_ROUTE' })
+                throw new HydraError({
+                  message: 'Firstmate manages this Hydra’s agent',
+                  code: 'NO_ROUTE',
+                })
               }
 
-              const decision = hydraEvent({ state: writer.state, cardId: HYDRA_CARD, meta: { at: new Date().toISOString(), actor: 'web' }, change: { type: 'board.configured', data: { ...config, hydra: { ...config.hydra, agent } } } })
+              const decision = hydraEvent({
+                state: writer.state,
+                cardId: HYDRA_CARD,
+                meta: {
+                  at: new Date().toISOString(),
+                  actor: 'web',
+                },
+                change: {
+                  type: 'board.configured',
+                  data: {
+                    ...config,
+                    hydra: {
+                      ...config.hydra,
+                      agent,
+                    },
+                  },
+                },
+              })
 
               if ('event' in decision) {
                 writer.append({ event: decision.event })
@@ -984,7 +1766,10 @@ async function mountOwnedHydra({
 
               const running = writer.state.cards[HYDRA_CARD]?.agent
 
-              return { previous: config.hydra.agent, running }
+              return {
+                previous: config.hydra.agent,
+                running,
+              }
             },
           })
           kick()
@@ -992,54 +1777,139 @@ async function mountOwnedHydra({
           // A new permission mode reaches Hydra's running turn at once; other settings wait for the next message.
           if (agent.mode && agent.mode !== previous?.mode && running?.host === 'pnyx'
             && running.provider === (agent.harness === 'codex' ? 'codex' : 'claude-code')) {
-            void agents.set({ card: HYDRA_CARD, setting: 'mode', value: agent.mode, actor: 'web' })
+            void agents.set({
+              card: HYDRA_CARD,
+              setting: 'mode',
+              value: agent.mode,
+              actor: 'web',
+            })
               .catch((error: Error) => console.error(`pnyx-axi serve: Hydra kept its mode: ${error.message}`))
           }
 
-          send({ ws, message: { type: 'receipt', id, saved: true } })
+          send({
+            ws,
+            message: {
+              type: 'receipt',
+              id,
+              saved: true,
+            },
+          })
         } else if (name === 'hydras') {
           hydraSubscribers.add(ws)
-          const [action, first, second] = args
-          const reply = ({ open }: { open?: string } = {}) => send({ ws, message: { type: 'receipt', id, hydraId, hydras: listHydras(), ...(open ? { url: open } : {}) } })
+          const [
+            action,
+            first,
+            second,
+          ] = args
+          const reply = ({ open }: { open?: string } = {}) => send({
+            ws,
+            message: {
+              type: 'receipt',
+              id,
+              hydraId,
+              hydras: listHydras(),
+              ...(open ? { url: open } : {}),
+            },
+          })
 
           if (action === 'create') {
-            void open({ id: createHydra({ name: first?.trim().slice(0, 100) || 'New Hydra' }) }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
+            void open({
+              id: createHydra({
+                name: first?.trim().slice(
+                  0,
+                  100,
+                ) || 'New Hydra',
+              }),
+            }).then(
+              open => reply({ open }),
+              (error: Error) => fail({
+                error: error.message,
+                code: error instanceof HydraError ? error.code : 'UNKNOWN',
+              }),
+            )
           } else if (action === 'open' && first) {
-            void open({ id: first }).then(open => reply({ open }), (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
+            void open({ id: first }).then(
+              open => reply({ open }),
+              (error: Error) => fail({
+                error: error.message,
+                code: error instanceof HydraError ? error.code : 'UNKNOWN',
+              }),
+            )
           } else if (action === 'rename' && first && second?.trim() && listHydras().some(b => b.id === first)) {
-            renameHydra({ id: first, name: second.trim().slice(0, 100) })
+            renameHydra({
+              id: first,
+              name: second.trim().slice(
+                0,
+                100,
+              ),
+            })
             reply()
           } else if (action === undefined) {
             reply()
           } else {
-            throw new HydraError({ message: 'Hydras expects nothing, open <id>, create <name> or rename <id> <name>', code: 'VALIDATION_ERROR' })
+            throw new HydraError({
+              message: 'Hydras expects nothing, open <id>, create <name> or rename <id> <name>',
+              code: 'VALIDATION_ERROR',
+            })
           }
         } else if (name === 'thread') {
           const map = subscriptionMap({ card: args[0] ?? '' })
           const old = map.get(ws); old?.watcher?.close(); map.delete(ws)
 
           if (!args[0]) {
-            send({ ws, message: { type: 'receipt', id } })
+            send({
+              ws,
+              message: {
+                type: 'receipt',
+                id,
+              },
+            })
 
             return
           }
 
-          const card = findCard({ state, ref: args[0] })
+          const card = findCard({
+            state,
+            ref: args[0],
+          })
 
           const cursor = card.agent?.paseoAgentId ? PASEO_HISTORY_CURSOR : THREAD_CURSOR
           const cursorLimit = card.agent?.paseoAgentId ? 600 : 200
 
           if (args[1] !== undefined && (args[1].length > cursorLimit || !cursor.test(args[1]))) {
-            throw new HydraError({ message: 'invalid thread cursor', code: 'VALIDATION_ERROR' })
+            throw new HydraError({
+              message: 'invalid thread cursor',
+              code: 'VALIDATION_ERROR',
+            })
           }
 
-          bindThread({ ws, card })
+          bindThread({
+            ws,
+            card,
+          })
           const sub = map.get(ws)!
-          void threadPage({ sub, card, before: args[1] }).then(thread => {
-            if (ws.readyState === ws.OPEN) {
-              send({ ws, message: { type: 'receipt', id, thread } })
-            }
-          }, (error: Error) => fail({ error: error.message, code: error instanceof HydraError ? error.code : 'UNKNOWN' }))
+          void threadPage({
+            sub,
+            card,
+            before: args[1],
+          }).then(
+            thread => {
+              if (ws.readyState === ws.OPEN) {
+                send({
+                  ws,
+                  message: {
+                    type: 'receipt',
+                    id,
+                    thread,
+                  },
+                })
+              }
+            },
+            (error: Error) => fail({
+              error: error.message,
+              code: error instanceof HydraError ? error.code : 'UNKNOWN',
+            }),
+          )
         } else {
           const agent = name === 'agent'
           const answering = name === 'answer'
@@ -1059,134 +1929,319 @@ async function mountOwnedHydra({
             })
           }
 
-          const card = findCard({ state, ref: args[0] })
+          const card = findCard({
+            state,
+            ref: args[0],
+          })
 
-          const found = replyRoute({ card, homes })
+          const found = replyRoute({
+            card,
+            homes,
+          })
 
           if ('reason' in found && name !== 'task-message') {
-            throw new HydraError({ message: `${found.reason}${agent ? '' : ' Your draft stays here.'}`, code: 'NO_ROUTE' })
+            throw new HydraError({
+              message: `${found.reason}${agent ? '' : ' Your draft stays here.'}`,
+              code: 'NO_ROUTE',
+            })
           }
 
           // A setting change is sent like a reply: `pnyx-axi agent` picks the harness's command and reads
           // it back. Its setting and value come last, after --, so neither can read as a flag.
           // An answer's values are passed as --name=value, so none can read as a flag.
-          const [command, rest] = agent
-            ? [['agent', card.id, '--idempotency-key', args[3]!], ['--', args[1]!, args[2]!]]
+          const [
+            command,
+            rest,
+          ] = agent
+            ? [
+              [
+                'agent',
+                card.id,
+                '--idempotency-key',
+                args[3]!,
+              ],
+              [
+                '--',
+                args[1]!,
+                args[2]!,
+              ],
+            ]
             : answering
-              ? [['reply', card.id, `--answer=${args[1]}`, `--json=${args[2]}`, `--idempotency-key=${args[3]}`, `--seen=${args[4]}`], []]
-              : [['reply', card.id, '--text', args[1], '--idempotency-key', args[2], ...(name === 'task-message' ? ['--task-message'] : [])], []]
+              ? [
+                [
+                  'reply',
+                  card.id,
+                  `--answer=${args[1]}`,
+                  `--json=${args[2]}`,
+                  `--idempotency-key=${args[3]}`,
+                  `--seen=${args[4]}`,
+                ],
+                [],
+              ]
+              : [
+                [
+                  'reply',
+                  card.id,
+                  '--text',
+                  args[1],
+                  '--idempotency-key',
+                  args[2],
+                  ...(name === 'task-message' ? ['--task-message'] : []),
+                ],
+                [],
+              ]
 
           // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.
-          execFile(process.execPath, [join(import.meta.dirname, '..', 'cli', import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js'), ...command, '--hydra', hydraId, '--actor', 'web', ...homes.flatMap(h => ['--home', h]), ...rest], { timeout: 130000, maxBuffer: MAX_BODY }, (error, stdout) => {
-            kick()
+          execFile(
+            process.execPath,
+            [
+              join(
+                import.meta.dirname,
+                '..',
+                'cli',
+                import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js',
+              ),
+              ...command,
+              '--hydra',
+              hydraId,
+              '--actor',
+              'web',
+              ...homes.flatMap(h => [
+                '--home',
+                h,
+              ]),
+              ...rest,
+            ],
+            {
+              timeout: 130000,
+              maxBuffer: MAX_BODY,
+            },
+            (
+              error,
+              stdout,
+            ) => {
+              kick()
 
-            if (ws.readyState !== ws.OPEN) {
-              return
-            }
-
-            if (error) {
-              let known: { message?: unknown; code?: unknown; help?: string[] } | undefined
-
-              try {
-                known = JSON.parse(stdout).error
-              } catch {
-                known = undefined
+              if (ws.readyState !== ws.OPEN) {
+                return
               }
 
-              if (typeof known?.message === 'string' && typeof known.code === 'string') {
-                fail({ error: known.message, code: known.code, help: known.help })
+              if (error) {
+                let known: {
+                  message?: unknown
+                  code?: unknown
+                  help?: string[]
+                } | undefined
+
+                try {
+                  known = JSON.parse(stdout).error
+                } catch {
+                  known = undefined
+                }
+
+                if (typeof known?.message === 'string' && typeof known.code === 'string') {
+                  fail({
+                    error: known.message,
+                    code: known.code,
+                    help: known.help,
+                  })
+                } else {
+                  fail({
+                    error: 'Reply could not be confirmed; check receipts before sending again',
+                    code: 'DELIVERY_UNKNOWN',
+                  })
+                }
               } else {
-                fail({ error: 'Reply could not be confirmed; check receipts before sending again', code: 'DELIVERY_UNKNOWN' })
+                try {
+                  send({
+                    ws,
+                    message: {
+                      type: 'receipt',
+                      id,
+                      ...JSON.parse(stdout),
+                    },
+                  })
+                } catch {
+                  fail({
+                    error: 'Reply receipt unavailable; check history',
+                    code: 'DELIVERY_UNKNOWN',
+                  })
+                }
               }
-            } else {
-              try {
-                send({ ws, message: { type: 'receipt', id, ...JSON.parse(stdout) } })
-              } catch {
-                fail({ error: 'Reply receipt unavailable; check history', code: 'DELIVERY_UNKNOWN' })
-              }
-            }
-          })
+            },
+          )
         }
       } catch (error) {
-        fail({ error: (error as Error).message, code: error instanceof HydraError ? error.code : 'UNKNOWN' })
+        fail({
+          error: (error as Error).message,
+          code: error instanceof HydraError ? error.code : 'UNKNOWN',
+        })
       }
 
       return
     }
 
     if (typeof name !== 'string' || !(CLI_COMMANDS as readonly string[]).includes(name)) {
-      return fail({ error: `unknown command: ${String(name)}`, code: 'NOT_FOUND', help: [`Use one of ${CLI_COMMANDS.join(', ')}`] })
+      return fail({
+        error: `unknown command: ${String(name)}`,
+        code: 'NOT_FOUND',
+        help: [`Use one of ${CLI_COMMANDS.join(', ')}`],
+      })
     }
 
     if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
-      return fail({ error: 'args must be [string, ...]', code: 'VALIDATION_ERROR' })
+      return fail({
+        error: 'args must be [string, ...]',
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     if (args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
-      return fail({ error: `--hydra is not allowed; this server writes Hydra ${hydraId}`, code: 'VALIDATION_ERROR' })
+      return fail({
+        error: `--hydra is not allowed; this server writes Hydra ${hydraId}`,
+        code: 'VALIDATION_ERROR',
+      })
     }
 
-    const actor = name === 'history' || name === 'card' || name === 'integrations' || args.some(a => a === '--actor' || a.startsWith('--actor=')) ? [] : ['--actor', 'web']
+    const actor = name === 'history' || name === 'card' || name === 'integrations' || args.some(a => a === '--actor' || a.startsWith('--actor=')) ? [] : [
+      '--actor',
+      'web',
+    ]
 
     const failed = ({ error }: { error: unknown }) => error instanceof AxiError
-      ? fail({ error: error.message, code: error.code, help: error.suggestions })
-      : fail({ error: (error as Error).message, code: 'UNKNOWN' })
+      ? fail({
+        error: error.message,
+        code: error.code,
+        help: error.suggestions,
+      })
+      : fail({
+        error: (error as Error).message,
+        code: 'UNKNOWN',
+      })
 
     try {
       const handler = name === 'integrations' ? integrationsCommand : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
-      void Promise.resolve(handler([...args, ...actor, '--hydra', hydraId])).then(result => {
-        try {
-          pump()
-        } catch {
-          kick()
-        }
+      void Promise.resolve(handler([
+        ...args,
+        ...actor,
+        '--hydra',
+        hydraId,
+      ])).then(
+        result => {
+          try {
+            pump()
+          } catch {
+            kick()
+          }
 
-        send({ ws, message: { ...result, type: 'receipt', id } })
-      }, error => failed({ error }))
+          send({
+            ws,
+            message: {
+              ...result,
+              type: 'receipt',
+              id,
+            },
+          })
+        },
+        error => failed({ error }),
+      )
     } catch (error) {
       failed({ error })
     }
   }
 
-  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES })
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: MAX_MESSAGE_BYTES,
+  })
 
   // The server has already checked the path, Host and Origin.
-  const upgrade = ({ req, socket, head, url }: HydraUpgrade) => {
+  const upgrade = ({
+    req,
+    socket,
+    head,
+    url,
+  }: HydraUpgrade) => {
     if (!authorized({ given: url.searchParams.get('token') })) {
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
 
       return
     }
 
-    wss.handleUpgrade(req, socket, head, ws => {
-      ws.on('error', () => ws.close())
-      ws.on('close', () => {
-        for (const map of threadSubscriptions) {
-          map.get(ws)?.watcher?.close(); map.delete(ws)
-        }
-      })
-      ws.on('message', data => {
-        const message = parseMessage({ text: data.toString() })
+    wss.handleUpgrade(
+      req,
+      socket,
+      head,
+      ws => {
+        ws.on(
+          'error',
+          () => ws.close(),
+        )
+        ws.on(
+          'close',
+          () => {
+            for (const map of threadSubscriptions) {
+              map.get(ws)?.watcher?.close(); map.delete(ws)
+            }
+          },
+        )
+        ws.on(
+          'message',
+          data => {
+            const message = parseMessage({ text: data.toString() })
 
-        if (message?.type === 'ping') {
-          send({ ws, message: { type: 'pong' } })
-        } else if (message?.type === 'resync') {
-          sendSnapshot({ ws })
-        } else if (message?.type === 'command') {
-          runCommand({ ws, message })
-        } else {
-          send({ ws, message: { type: 'error', id: null, error: 'unknown message', code: 'VALIDATION_ERROR', help: ['Send a command or resync message'] } })
-        }
-      })
-      send({ ws, message: { type: 'hello', build: buildId(), hydraId: identity } })
-      resume({ ws, after: url.searchParams.get('after') })
-    })
+            if (message?.type === 'ping') {
+              send({
+                ws,
+                message: { type: 'pong' },
+              })
+            } else if (message?.type === 'resync') {
+              sendSnapshot({ ws })
+            } else if (message?.type === 'command') {
+              runCommand({
+                ws,
+                message,
+              })
+            } else {
+              send({
+                ws,
+                message: {
+                  type: 'error',
+                  id: null,
+                  error: 'unknown message',
+                  code: 'VALIDATION_ERROR',
+                  help: ['Send a command or resync message'],
+                },
+              })
+            }
+          },
+        )
+        send({
+          ws,
+          message: {
+            type: 'hello',
+            build: buildId(),
+            hydraId: identity,
+          },
+        })
+        resume({
+          ws,
+          after: url.searchParams.get('after'),
+        })
+      },
+    )
   }
 
   // A cursor this server can continue from gets only the events after it; any
   // other cursor (ahead of the Hydra, older than the kept events, or none) gets a snapshot.
   // Either way the tab then gets every card's last message.
-  const resume = ({ ws, after }: { ws: WebSocket; after: string | null }) => {
+  const resume = ({
+    ws,
+    after,
+  }: {
+    ws: WebSocket
+    after: string | null
+  }) => {
     const seq = after !== null && /^\d+$/.test(after) ? Number(after) : undefined
     const first = recent[0]?.seq ?? state.seq + 1
 
@@ -1196,11 +2251,23 @@ async function mountOwnedHydra({
 
     for (const event of recent) {
       if (event.seq > seq) {
-        send({ ws, message: { type: 'event', event } })
+        send({
+          ws,
+          message: {
+            type: 'event',
+            event,
+          },
+        })
       }
     }
 
-    send({ ws, message: { type: 'latest', messages: latest } })
+    send({
+      ws,
+      message: {
+        type: 'latest',
+        messages: latest,
+      },
+    })
   }
 
   const ingest = await listenIngest({
@@ -1210,7 +2277,10 @@ async function mountOwnedHydra({
         const entry = JSON.parse(line) as { id?: unknown }
 
         if (typeof entry === 'object' && entry !== null && typeof entry.id === 'string') {
-          spoolWrite({ hydraId, entry: entry as { id: string } })
+          spoolWrite({
+            hydraId,
+            entry: entry as { id: string },
+          })
         }
       } catch {
       // Not JSON: dropped, as a hook never waits for an answer.
@@ -1224,13 +2294,18 @@ async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+    await queueRun
     firstmate?.close()
     agents.close()
 
     const threads = threadSubscriptions.flatMap(map =>
       [...map.values()].flatMap(sub => sub.watcher ?? []))
 
-    for (const w of [...watchers, ...folders.values(), ...threads]) {
+    for (const w of [
+      ...watchers,
+      ...folders.values(),
+      ...threads,
+    ]) {
       w.close()
     }
 
@@ -1251,10 +2326,16 @@ async function mountOwnedHydra({
 
     wss.close()
     await (ingest && new Promise(r => ingest.close(r)))
-    rmSync(infoPath({ hydraId }), { force: true })
+    rmSync(
+      infoPath({ hydraId }),
+      { force: true },
+    )
 
     if (ingest) {
-      rmSync(socketPath({ hydraId }), { force: true })
+      rmSync(
+        socketPath({ hydraId }),
+        { force: true },
+      )
     }
   }
 
@@ -1267,11 +2348,26 @@ async function mountOwnedHydra({
 
   // A mount that fails partway stops what it started; the caller releases the claim.
   try {
-    watchers.push(watch(dir, kick), watch(spoolDir({ dir }), kick))
+    watchers.push(
+      watch(
+        dir,
+        kick,
+      ),
+      watch(
+        spoolDir({ dir }),
+        kick,
+      ),
+    )
     followHome()
     const tmp = `${infoPath({ hydraId })}.tmp-${process.pid}`
-    writeFileSync(tmp, JSON.stringify(info))
-    renameSync(tmp, infoPath({ hydraId }))
+    writeFileSync(
+      tmp,
+      JSON.stringify(info),
+    )
+    renameSync(
+      tmp,
+      infoPath({ hydraId }),
+    )
   } catch (error) {
     await stop()
     throw error
@@ -1294,7 +2390,14 @@ async function mountOwnedHydra({
     summaries({ hydras }) {
       for (const ws of wss.clients) {
         if (hydraSubscribers.has(ws)) {
-          send({ ws, message: { type: 'hydras', hydraId, hydras } })
+          send({
+            ws,
+            message: {
+              type: 'hydras',
+              hydraId,
+              hydras,
+            },
+          })
         }
       }
     },
@@ -1312,94 +2415,170 @@ async function mountOwnedHydra({
 // Hook events, one JSON object per line. Null when the socket cannot be bound
 // (a path too long for a Unix socket, say); hooks then spool and the watcher drains it.
 async function listenIngest(
-  { hydraId, onLine }: { hydraId: string; onLine: ({ line }: { line: string }) => void },
+  {
+    hydraId,
+    onLine,
+  }: {
+    hydraId: string
+    onLine: ({ line }: { line: string }) => void
+  },
 ): Promise<SocketServer | null> {
   const path = socketPath({ hydraId })
   // Left by a server that did not stop cleanly; startServer already checked none is running.
-  rmSync(path, { force: true })
+  rmSync(
+    path,
+    { force: true },
+  )
   const server = createSocketServer(conn => {
     let buffered = ''
     conn.setEncoding('utf8')
-    conn.on('data', (chunk: string) => {
-      buffered += chunk
+    conn.on(
+      'data',
+      (chunk: string) => {
+        buffered += chunk
 
-      if (buffered.length > MAX_BODY) {
-        return conn.destroy()
-      }
+        if (buffered.length > MAX_BODY) {
+          return conn.destroy()
+        }
 
-      for (let i = buffered.indexOf('\n'); i >= 0; i = buffered.indexOf('\n')) {
-        onLine({ line: buffered.slice(0, i) })
-        buffered = buffered.slice(i + 1)
-      }
-    })
-    conn.on('end', () => {
-      if (buffered.trim()) {
-        onLine({ line: buffered })
-      }
+        for (let i = buffered.indexOf('\n'); i >= 0; i = buffered.indexOf('\n')) {
+          onLine({
+            line: buffered.slice(
+              0,
+              i,
+            ),
+          })
+          buffered = buffered.slice(i + 1)
+        }
+      },
+    )
+    conn.on(
+      'end',
+      () => {
+        if (buffered.trim()) {
+          onLine({ line: buffered })
+        }
 
-      conn.end()
-    })
-    conn.on('error', () => {})
+        conn.end()
+      },
+    )
+    conn.on(
+      'error',
+      () => {},
+    )
   })
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject)
-      server.listen(path, () => resolve())
+    await new Promise<void>((
+      resolve,
+      reject,
+    ) => {
+      server.once(
+        'error',
+        reject,
+      )
+      server.listen(
+        path,
+        () => resolve(),
+      )
     })
   } catch {
     return null
   }
 
-  chmodSync(path, 0o600)
+  chmodSync(
+    path,
+    0o600,
+  )
 
   return server
 }
 
-function readBytes({ req, limit }: { req: IncomingMessage; limit: number }): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
+function readBytes({
+  req,
+  limit,
+}: {
+  req: IncomingMessage
+  limit: number
+}): Promise<Buffer> {
+  return new Promise((
+    resolve,
+    reject,
+  ) => {
     const chunks: Buffer[] = []
     let size = 0
     // Past the limit the rest is read and dropped, so the client still gets the answer.
-    req.on('data', (chunk: Buffer) => {
-      size += chunk.length
+    req.on(
+      'data',
+      (chunk: Buffer) => {
+        size += chunk.length
 
-      if (size > limit) {
-        chunks.length = 0
-        reject(new Error(`images up to ${limit / 1024 / 1024} MB`))
-      } else {
-        chunks.push(chunk)
-      }
-    })
-    req.on('end', () => resolve(Buffer.concat(chunks)))
-    req.on('error', reject)
+        if (size > limit) {
+          chunks.length = 0
+          reject(new Error(`images up to ${limit / 1024 / 1024} MB`))
+        } else {
+          chunks.push(chunk)
+        }
+      },
+    )
+    req.on(
+      'end',
+      () => resolve(Buffer.concat(chunks)),
+    )
+    req.on(
+      'error',
+      reject,
+    )
   })
 }
 
 function readBody({ req }: { req: IncomingMessage }): Promise<unknown> {
-  return new Promise((resolve, reject) => {
+  return new Promise((
+    resolve,
+    reject,
+  ) => {
     let text = ''
     req.setEncoding('utf8')
-    req.on('data', (chunk: string) => {
-      text += chunk
+    req.on(
+      'data',
+      (chunk: string) => {
+        text += chunk
 
-      if (text.length > MAX_BODY) {
-        reject(new HydraError({ message: 'request too large', code: 'VALIDATION_ERROR' }))
-        req.destroy()
-      }
-    })
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(text))
-      } catch {
-        reject(new HydraError({ message: 'request must be JSON', code: 'VALIDATION_ERROR' }))
-      }
-    })
-    req.on('error', reject)
+        if (text.length > MAX_BODY) {
+          reject(new HydraError({
+            message: 'request too large',
+            code: 'VALIDATION_ERROR',
+          }))
+          req.destroy()
+        }
+      },
+    )
+    req.on(
+      'end',
+      () => {
+        try {
+          resolve(JSON.parse(text))
+        } catch {
+          reject(new HydraError({
+            message: 'request must be JSON',
+            code: 'VALIDATION_ERROR',
+          }))
+        }
+      },
+    )
+    req.on(
+      'error',
+      reject,
+    )
   })
 }
 
-type ClientMessage = { type?: unknown; id?: unknown; name?: unknown; args?: unknown }
+type ClientMessage = {
+  type?: unknown
+  id?: unknown
+  name?: unknown
+  args?: unknown
+}
 
 function parseMessage({ text }: { text: string }): ClientMessage | undefined {
   try {
@@ -1415,46 +2594,96 @@ function parseMessage({ text }: { text: string }): ClientMessage | undefined {
 // hash changes with every rebuild. Empty when nothing is built (the Vite dev server).
 const buildOf = ({ html }: { html: string }) => createHash('sha256').update(html)
   .digest('hex')
-  .slice(0, 12)
+  .slice(
+    0,
+    12,
+  )
 
 function buildId(): string {
   try {
-    return buildOf({ html: readFileSync(join(WEB_ROOT, 'index.html'), 'utf8') })
+    return buildOf({
+      html: readFileSync(
+        join(
+          WEB_ROOT,
+          'index.html',
+        ),
+        'utf8',
+      ),
+    })
   } catch {
     return ''
   }
 }
 
-function reply({ res, status, body }: {
+function reply({
+  res,
+  status,
+  body,
+}: {
   res: ServerResponse
   status: number
   body: unknown
 }): void {
-  res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body))
+  res.writeHead(
+    status,
+    { 'content-type': 'application/json' },
+  ).end(JSON.stringify(body))
 }
 
 // Only a Hydra's page carries the token; its base points the page at its own Hydra's WebSocket.
-function serveStatic({ res, path, page }: {
+function serveStatic({
+  res,
+  path,
+  page,
+}: {
   res: ServerResponse
   path: string
-  page?: { token: string; identity: string; base: string }
+  page?: {
+    token: string
+    identity: string
+    base: string
+  }
 }): void {
-  const index = join(WEB_ROOT, 'index.html')
-  const file = normalize(join(WEB_ROOT, path === '/' ? 'index.html' : path))
-  const candidates = !file.startsWith(`${WEB_ROOT}/`) ? [] : page ? [file, index] : file === index ? [] : [file]
+  const index = join(
+    WEB_ROOT,
+    'index.html',
+  )
+  const file = normalize(join(
+    WEB_ROOT,
+    path === '/' ? 'index.html' : path,
+  ))
+  const candidates = !file.startsWith(`${WEB_ROOT}/`) ? [] : page ? [
+    file,
+    index,
+  ] : file === index ? [] : [file]
 
   for (const candidate of candidates) {
     try {
       if (candidate === index && page) {
-        const raw = readFileSync(index, 'utf8')
-        const html = raw.replace('</head>', `<base href="${page.base}" />\n<meta name="pnyx-token" content="${page.token}" />\n<meta name="pnyx-build" content="${buildOf({ html: raw })}" />\n<meta name="pnyx-hydra" content="${page.identity}" />\n</head>`)
-        res.writeHead(200, { 'content-type': MIME['.html'], 'cache-control': 'no-store' }).end(html)
+        const raw = readFileSync(
+          index,
+          'utf8',
+        )
+        const html = raw.replace(
+          '</head>',
+          `<base href="${page.base}" />\n<meta name="pnyx-token" content="${page.token}" />\n<meta name="pnyx-build" content="${buildOf({ html: raw })}" />\n<meta name="pnyx-hydra" content="${page.identity}" />\n</head>`,
+        )
+        res.writeHead(
+          200,
+          {
+            'content-type': MIME['.html'],
+            'cache-control': 'no-store',
+          },
+        ).end(html)
 
         return
       }
 
       const body = readFileSync(candidate)
-      res.writeHead(200, { 'content-type': MIME[extname(candidate)] ?? 'application/octet-stream' }).end(body)
+      res.writeHead(
+        200,
+        { 'content-type': MIME[extname(candidate)] ?? 'application/octet-stream' },
+      ).end(body)
 
       return
     } catch {
@@ -1462,16 +2691,38 @@ function serveStatic({ res, path, page }: {
     }
   }
 
-  reply({ res, status: 404, body: { error: 'not found; run `pnpm run build` for the web Hydra', code: 'NOT_FOUND' } })
+  reply({
+    res,
+    status: 404,
+    body: {
+      error: 'not found; run `pnpm run build` for the web Hydra',
+      code: 'NOT_FOUND',
+    },
+  })
 }
 
 function serveFlags({ args }: { args: string[] }) {
   try {
-    const { values } = parseArgs({ args, options: { hydra: { type: 'string' }, port: { type: 'string' }, home: { type: 'string', multiple: true } }, strict: true })
+    const { values } = parseArgs({
+      args,
+      options: {
+        hydra: { type: 'string' },
+        port: { type: 'string' },
+        home: {
+          type: 'string',
+          multiple: true,
+        },
+      },
+      strict: true,
+    })
 
     return values
   } catch (error) {
-    throw new AxiError((error as Error).message, 'VALIDATION_ERROR', ['Run the command with --help'])
+    throw new AxiError(
+      (error as Error).message,
+      'VALIDATION_ERROR',
+      ['Run the command with --help'],
+    )
   }
 }
 
@@ -1483,21 +2734,36 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const hydraId = values.hydra ?? 'default'
 
   if (values.port !== undefined && !/^\d+$/.test(values.port)) {
-    throw new AxiError('--port must be a number', 'VALIDATION_ERROR')
+    throw new AxiError(
+      '--port must be a number',
+      'VALIDATION_ERROR',
+    )
   }
 
   const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
   let server: RunningServer
 
   try {
-    server = await startServer({ hydraId, port, homes: values.home })
+    server = await startServer({
+      hydraId,
+      port,
+      homes: values.home,
+    })
   } catch (error) {
     if (error instanceof HydraError) {
-      throw new AxiError(error.message, error.code, error.help)
+      throw new AxiError(
+        error.message,
+        error.code,
+        error.help,
+      )
     }
 
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-      throw new AxiError(`port ${port} is in use`, 'PORT_IN_USE', [`Stop what holds port ${port}, or pick another --port`])
+      throw new AxiError(
+        `port ${port} is in use`,
+        'PORT_IN_USE',
+        [`Stop what holds port ${port}, or pick another --port`],
+      )
     }
 
     throw error
@@ -1505,24 +2771,43 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
 
   // Homes given here are watched for this Hydra; a Hydra's recorded home is watched by the server itself.
   const homes = (values.home ?? []).map(path => resolveHome({ path }))
-  const firstmate = homes.length > 0 ? watchHomes({ hydraId, list: homes }) : undefined
+  const firstmate = homes.length > 0 ? watchHomes({
+    hydraId,
+    list: homes,
+  }) : undefined
   const watching = homes.length > 0 ? `firstmate: ${JSON.stringify(`watching ${homes.length} home${homes.length === 1 ? '' : 's'}`)}\n` : ''
-  const skipped = Object.entries(server.skipped).map(([id, reason]) => `skipped: ${JSON.stringify(`Hydra ${id}: ${reason}`)}\n`)
+  const skipped = Object.entries(server.skipped).map(([
+    id,
+    reason,
+  ]) => `skipped: ${JSON.stringify(`Hydra ${id}: ${reason}`)}\n`)
     .join('')
   process.stdout.write(`server: running\nhydra: ${hydraId}\nurl: ${JSON.stringify(server.url)}\n${watching}${skipped}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
   await new Promise(resolve => {
-    process.once('SIGINT', resolve)
-    process.once('SIGTERM', resolve)
+    process.once(
+      'SIGINT',
+      resolve,
+    )
+    process.once(
+      'SIGTERM',
+      resolve,
+    )
   })
   const watched = firstmate?.close()
   await server.close()
 
-  return { server: 'stopped', ...(watched ? { firstmate: watched } : {}) }
+  return {
+    server: 'stopped',
+    ...(watched ? { firstmate: watched } : {}),
+  }
 }
 
 export async function stop(args: string[]): Promise<Record<string, unknown>> {
   if (args.length > 0) {
-    throw new AxiError(`unexpected argument: ${args[0]}`, 'VALIDATION_ERROR', ['Run `pnyx-axi stop`; it stops the one server of every Hydra'])
+    throw new AxiError(
+      `unexpected argument: ${args[0]}`,
+      'VALIDATION_ERROR',
+      ['Run `pnyx-axi stop`; it stops the one server of every Hydra'],
+    )
   }
 
   // Usually one process; a server an older version started for a single Hydra is stopped too.
@@ -1535,21 +2820,34 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
   const pids = await running()
 
   if (pids.length === 0) {
-    return { server: 'none: not running', help: ['Run `pnyx-axi serve` to start it'] }
+    return {
+      server: 'none: not running',
+      help: ['Run `pnyx-axi serve` to start it'],
+    }
   }
 
   for (const pid of pids) {
-    process.kill(pid, 'SIGTERM')
+    process.kill(
+      pid,
+      'SIGTERM',
+    )
   }
 
   const deadline = Date.now() + STOP_TIMEOUT_MS
 
   for (let left = pids; left.length > 0; left = await running()) {
     if (Date.now() > deadline) {
-      throw new AxiError(`server pid ${left.join(', ')} did not stop`, 'TIMEOUT', [`Check process ${left.join(', ')}`])
+      throw new AxiError(
+        `server pid ${left.join(', ')} did not stop`,
+        'TIMEOUT',
+        [`Check process ${left.join(', ')}`],
+      )
     }
 
-    await new Promise(r => setTimeout(r, 25))
+    await new Promise(r => setTimeout(
+      r,
+      25,
+    ))
   }
 
   return { server: 'stopped' }

@@ -12,12 +12,24 @@ import { canonical } from '../../store/paths.ts'
 import { pnyxHome, withWriter } from '../../store/hydra-store.ts'
 import { openPaseo, type Connect } from './client.ts'
 
-export const HARNESSES = { claude: 'claude-code', codex: 'codex' } as const
+export const HARNESSES = {
+  claude: 'claude-code',
+  codex: 'codex',
+} as const
 export type Harness = keyof typeof HARNESSES
 const MAX_PROMPT = 32000
 
 export async function startAgent({
-  hydraId, task, harness, agent: chosen, prompt, folder, url, meta, dispatch, connect = openPaseo,
+  hydraId,
+  task,
+  harness,
+  agent: chosen,
+  prompt,
+  folder,
+  url,
+  meta,
+  dispatch,
+  connect = openPaseo,
 }: {
   hydraId: string
   task: string
@@ -30,12 +42,22 @@ export async function startAgent({
   meta: Meta
   connect?: Connect
 }): Promise<Output> {
-  if (!Object.hasOwn(HARNESSES, harness)) {
-    throw new HydraError({ message: `unknown harness: ${harness}`, code: 'VALIDATION_ERROR', help: ['Use claude or codex'] })
+  if (!Object.hasOwn(
+    HARNESSES,
+    harness,
+  )) {
+    throw new HydraError({
+      message: `unknown harness: ${harness}`,
+      code: 'VALIDATION_ERROR',
+      help: ['Use claude or codex'],
+    })
   }
 
   if (!prompt.trim() || prompt.length > MAX_PROMPT) {
-    throw new HydraError({ message: `the opening message must be 1 to ${MAX_PROMPT} characters`, code: 'VALIDATION_ERROR' })
+    throw new HydraError({
+      message: `the opening message must be 1 to ${MAX_PROMPT} characters`,
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   const endpoint = paseoUrl({ url })
@@ -46,43 +68,81 @@ export async function startAgent({
     hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
-      const card = findCard({ state: writer.state, ref: task })
+      const card = findCard({
+        state: writer.state,
+        ref: task,
+      })
 
       if (attachId in writer.state.eventIds) {
-        return { card, cwd: '', duplicate: true }
+        return {
+          card,
+          cwd: '',
+          duplicate: true,
+        }
       }
 
       if (meta.ifRevision !== undefined && meta.ifRevision !== card.revision) {
-        throw new HydraError({ message: `card ${card.id} is at revision ${card.revision}, not ${meta.ifRevision}`, code: 'REVISION_CONFLICT', help: [`Run \`pnyx-axi card ${card.id}\` and retry`] })
+        throw new HydraError({
+          message: `card ${card.id} is at revision ${card.revision}, not ${meta.ifRevision}`,
+          code: 'REVISION_CONFLICT',
+          help: [`Run \`pnyx-axi card ${card.id}\` and retry`],
+        })
       }
 
       if (card.sessionIds?.length) {
-        throw new HydraError({ message: `task ${card.id} already has an attached agent; detach it first`, code: 'SESSION_CONFLICT' })
+        throw new HydraError({
+          message: `task ${card.id} already has an attached agent; detach it first`,
+          code: 'SESSION_CONFLICT',
+        })
       }
 
       const cwd = canonical({ path: folder }) ?? card.folder
 
       if (!cwd || !isFolder({ path: cwd })) {
-        throw new HydraError({ message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in', code: 'VALIDATION_ERROR', help: ['Pass --folder <absolute path>'] })
+        throw new HydraError({
+          message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in',
+          code: 'VALIDATION_ERROR',
+          help: ['Pass --folder <absolute path>'],
+        })
       }
 
       if (cwd !== card.folder) {
-        const decision = decidePush({ state: writer.state, key: card.key, input: { folder: cwd }, meta: { ...meta, id: `${id}:folder`, ifRevision: undefined } })
+        const decision = decidePush({
+          state: writer.state,
+          key: card.key,
+          input: { folder: cwd },
+          meta: {
+            ...meta,
+            id: `${id}:folder`,
+            ifRevision: undefined,
+          },
+        })
 
         if ('event' in decision) {
           writer.append({ event: decision.event })
         }
       }
 
-      return { card, cwd, duplicate: false }
+      return {
+        card,
+        cwd,
+        duplicate: false,
+      }
     },
   })
 
   if (claimed.duplicate) {
-    return { task: claimed.card.id, event: 'none: duplicate', help: ['This start was already recorded; nothing was started again'] }
+    return {
+      task: claimed.card.id,
+      event: 'none: duplicate',
+      help: ['This start was already recorded; nothing was started again'],
+    }
   }
 
-  const { agent, ref } = await createPaseoAgent({
+  const {
+    agent,
+    ref,
+  } = await createPaseoAgent({
     harness: harness as Harness,
     agent: chosen,
     prompt,
@@ -92,9 +152,18 @@ export async function startAgent({
     // No PNYX_TASK: the task attaches the Paseo session below, so the agent's own
     // hooks must not race it onto the task.
     env: dispatch ? accountEnvironment({
-      account: { provider: dispatch.provider, folder: dispatch.folder },
-      env: { PNYX_HOME: pnyxHome(), PNYX_HYDRA: hydraId },
-    }) as Record<string, string> : { PNYX_HOME: pnyxHome(), PNYX_HYDRA: hydraId },
+      account: {
+        provider: dispatch.provider,
+        folder: dispatch.folder,
+      },
+      env: {
+        PNYX_HOME: pnyxHome(),
+        PNYX_HYDRA: hydraId,
+      },
+    }) as Record<string, string> : {
+      PNYX_HOME: pnyxHome(),
+      PNYX_HYDRA: hydraId,
+    },
     labels: { 'pnyx.task': claimed.card.id },
     url: endpoint,
     connect,
@@ -112,12 +181,24 @@ export async function startAgent({
             title: claimed.card.title,
             agent: {
               ...ref,
-              ...(dispatch ? { account: dispatch.account, loginFolder: dispatch.folder } : {}),
+              ...(dispatch ? {
+                account: dispatch.account,
+                loginFolder: dispatch.folder,
+              } : {}),
             },
             activity: 'working',
-            source: { adapter: 'paseo', instanceId: endpoint, objectId: agent.id, observedAt: meta.at },
+            source: {
+              adapter: 'paseo',
+              instanceId: endpoint,
+              objectId: agent.id,
+              observedAt: meta.at,
+            },
           },
-          meta: { ...meta, id: `${id}:session`, ifRevision: undefined },
+          meta: {
+            ...meta,
+            id: `${id}:session`,
+            ifRevision: undefined,
+          },
         })
 
         if ('event' in pushed) {
@@ -128,7 +209,11 @@ export async function startAgent({
           state: writer.state,
           ref: sessionId({ agent: ref }),
           task: claimed.card.id,
-          meta: { ...meta, id: attachId, ifRevision: undefined },
+          meta: {
+            ...meta,
+            id: attachId,
+            ifRevision: undefined,
+          },
         })
 
         if ('event' in attached) {
@@ -136,7 +221,25 @@ export async function startAgent({
         }
 
         if (dispatch) {
-          const event = hydraEvent({ state: writer.state, meta: { ...meta, id: `${id}:dispatch` }, cardId: claimed.card.id, change: { type: 'task.launched', data: { via: 'paseo', at: meta.at, folder: claimed.cwd, harness, dispatch: dispatch.reason, ...(dispatch.override ? { override: dispatch.override } : {}) } } })
+          const event = hydraEvent({
+            state: writer.state,
+            meta: {
+              ...meta,
+              id: `${id}:dispatch`,
+            },
+            cardId: claimed.card.id,
+            change: {
+              type: 'task.launched',
+              data: {
+                via: 'paseo',
+                at: meta.at,
+                folder: claimed.cwd,
+                harness,
+                dispatch: dispatch.reason,
+                ...(dispatch.override ? { override: dispatch.override } : {}),
+              },
+            },
+          })
 
           if ('event' in event) {
             writer.append({ event: event.event })
@@ -145,7 +248,11 @@ export async function startAgent({
 
         return {
           task: claimed.card.id,
-          agent: { harness, paseo: agent.id, folder: claimed.cwd },
+          agent: {
+            harness,
+            paseo: agent.id,
+            folder: claimed.cwd,
+          },
           help: [`Run \`pnyx-axi reply ${claimed.card.id} --text <text>\` to continue, or open the agent in Paseo`],
         }
       },
@@ -161,7 +268,16 @@ export async function startAgent({
 }
 
 export async function createPaseoAgent({
-  harness, agent: chosen, prompt, cwd, title, id, env, labels, url, connect = openPaseo,
+  harness,
+  agent: chosen,
+  prompt,
+  cwd,
+  title,
+  id,
+  env,
+  labels,
+  url,
+  connect = openPaseo,
 }: {
   harness: Harness
   agent?: AgentConfig
@@ -173,12 +289,18 @@ export async function createPaseoAgent({
   labels: Record<string, string>
   url: string
   connect?: Connect
-}): Promise<{ agent: { id: string }; ref: AgentRef }> {
+}): Promise<{
+  agent: { id: string }
+  ref: AgentRef
+}> {
   const client = await connect({ url })
   let agent: { id: string }
 
   try {
-    const { models } = await client.providers.listModels(harness, { cwd })
+    const { models } = await client.providers.listModels(
+      harness,
+      { cwd },
+    )
     const kind = chosen?.harness === harness ? chosen : undefined
     const wanted = kind?.model ? models?.find(m => m.id === kind.model) : undefined
 
@@ -186,15 +308,24 @@ export async function createPaseoAgent({
       throw new HydraError({
         message: `Paseo has no ${harness} model ${kind.model}`,
         code: 'VALIDATION_ERROR',
-        help: [`Use one of: ${(models ?? []).map(m => m.id).slice(0, 12)
-          .join(', ')}`],
+        help: [
+          `Use one of: ${(models ?? []).map(m => m.id).slice(
+            0,
+            12,
+          )
+            .join(', ')}`,
+        ],
       })
     }
 
     const model = wanted ?? models?.find(m => m.isDefault) ?? models?.[0]
 
     if (!model) {
-      throw new HydraError({ message: `Paseo has no ${harness} model available`, code: 'PASEO_ERROR', help: [`Check \`paseo status\` for the ${harness} provider`] })
+      throw new HydraError({
+        message: `Paseo has no ${harness} model available`,
+        code: 'PASEO_ERROR',
+        help: [`Check \`paseo status\` for the ${harness} provider`],
+      })
     }
 
     const config = {
@@ -204,23 +335,43 @@ export async function createPaseoAgent({
       ...(kind?.fast === undefined ? {} : { featureValues: { fast_mode: kind.fast } }),
     }
     agent = await client.agents.create({
-      config, cwd, title, prompt, idempotencyKey: id, labels, env,
+      config,
+      cwd,
+      title,
+      prompt,
+      idempotencyKey: id,
+      labels,
+      env,
     })
   } catch (error) {
     if (error instanceof HydraError) {
       throw error
     }
 
-    throw new HydraError({ message: `Paseo did not start the agent: ${(error as Error).message}`.slice(0, 500), code: 'PASEO_ERROR', help: ['Check the Paseo app before retrying'] })
+    throw new HydraError({
+      message: `Paseo did not start the agent: ${(error as Error).message}`.slice(
+        0,
+        500,
+      ),
+      code: 'PASEO_ERROR',
+      help: ['Check the Paseo app before retrying'],
+    })
   } finally {
     await client.close().catch(() => undefined)
   }
 
   const ref = {
-    provider: HARNESSES[harness], sessionId: agent.id, paseoAgentId: agent.id, paseoUrl: url, cwd,
+    provider: HARNESSES[harness],
+    sessionId: agent.id,
+    paseoAgentId: agent.id,
+    paseoUrl: url,
+    cwd,
   }
 
-  return { agent, ref }
+  return {
+    agent,
+    ref,
+  }
 }
 
 function isFolder({ path }: { path: string }): boolean {
@@ -231,7 +382,10 @@ function isFolder({ path }: { path: string }): boolean {
   }
 }
 
-export async function paseoStatus({ url, connect = openPaseo }: {
+export async function paseoStatus({
+  url,
+  connect = openPaseo,
+}: {
   url?: string
   connect?: Connect
 }): Promise<Output> {
@@ -239,5 +393,8 @@ export async function paseoStatus({ url, connect = openPaseo }: {
   const client = await connect({ url: endpoint })
   await client.close().catch(() => undefined)
 
-  return { paseo: 'running', url: endpoint }
+  return {
+    paseo: 'running',
+    url: endpoint,
+  }
 }

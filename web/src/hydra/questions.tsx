@@ -5,11 +5,25 @@ import { Button, Input, Switch } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import type { Command } from './connection.ts'
 
-type Send = ({ request, value }: { request: Attention; value: unknown }) => Promise<void>
+type Send = ({
+  request,
+  value,
+}: {
+  request: Attention
+  value: unknown
+}) => Promise<void>
 
-type Draft = { pick: number[]; text: string }
+type Draft = {
+  pick: number[]
+  text: string
+}
 
-function QuestionField({ question, index, draft, change }: {
+function QuestionField({
+  question,
+  index,
+  draft,
+  change,
+}: {
   question: Question
   index: number
   draft: Draft
@@ -19,7 +33,10 @@ function QuestionField({ question, index, draft, change }: {
     next: {
       text: '',
       pick: question.multiSelect
-        ? (draft.pick.includes(n) ? draft.pick.filter(p => p !== n) : [...draft.pick, n])
+        ? (draft.pick.includes(n) ? draft.pick.filter(p => p !== n) : [
+          ...draft.pick,
+          n,
+        ])
         : [n],
     },
   })
@@ -32,7 +49,10 @@ function QuestionField({ question, index, draft, change }: {
         {question.multiSelect && <span className="small muted"> · pick any</span>}
       </legend>
       <div className="ask-options">
-        {question.options.map((option, i) => (
+        {question.options.map((
+          option,
+          i,
+        ) => (
           <Button
             key={option.label}
             className="ask-option"
@@ -52,7 +72,12 @@ function QuestionField({ question, index, draft, change }: {
           value={draft.text}
           onChange={e => {
             const text = e.target.value
-            change({ next: { pick: text ? [] : draft.pick, text } })
+            change({
+              next: {
+                pick: text ? [] : draft.pick,
+                text,
+              },
+            })
           }}
         />
       )}
@@ -60,13 +85,23 @@ function QuestionField({ question, index, draft, change }: {
   )
 }
 
-export function Questions({ request, busy, send }: {
+export function Questions({
+  request,
+  busy,
+  send,
+}: {
   request: Attention
   busy: boolean
   send: Send
 }) {
   const questions = request.questions ?? []
-  const [drafts, setDrafts] = useState<Draft[]>(() => questions.map(() => ({ pick: [], text: '' })))
+  const [
+    drafts,
+    setDrafts,
+  ] = useState<Draft[]>(() => questions.map(() => ({
+    pick: [],
+    text: '',
+  })))
   const answers: QuestionAnswer[] = drafts
     .map(d => (d.text.trim() ? { text: d.text } : { pick: d.pick }))
   const ready = drafts.every(d => d.text.trim() || d.pick.length)
@@ -77,17 +112,26 @@ export function Questions({ request, busy, send }: {
         e.preventDefault()
 
         if (ready) {
-          void send({ request, value: { answers } })
+          void send({
+            request,
+            value: { answers },
+          })
         }
       }}
     >
-      {questions.map((question, i) => (
+      {questions.map((
+        question,
+        i,
+      ) => (
         <QuestionField
           key={question.question}
           question={question}
           index={i}
           draft={drafts[i]!}
-          change={({ next }) => setDrafts(all => all.map((d, j) => (j === i ? next : d)))}
+          change={({ next }) => setDrafts(all => all.map((
+            d,
+            j,
+          ) => (j === i ? next : d)))}
         />
       ))}
       <Button type="submit" variant="primary" disabled={!ready || busy}>
@@ -99,7 +143,11 @@ export function Questions({ request, busy, send }: {
 
 type Values = Record<string, string | boolean>
 
-function FormInput({ field, value, change }: {
+function FormInput({
+  field,
+  value,
+  change,
+}: {
   field: FormField
   value: string | boolean | undefined
   change({ value }: { value: string | boolean }): void
@@ -143,9 +191,20 @@ function FormInput({ field, value, change }: {
   )
 }
 
-export function Form({ request, busy, send }: { request: Attention; busy: boolean; send: Send }) {
+export function Form({
+  request,
+  busy,
+  send,
+}: {
+  request: Attention
+  busy: boolean
+  send: Send
+}) {
   const fields = request.form ?? []
-  const [values, setValues] = useState<Values>({})
+  const [
+    values,
+    setValues,
+  ] = useState<Values>({})
   const filled = Object.fromEntries(fields.flatMap(f => {
     const v = values[f.name]
 
@@ -153,7 +212,12 @@ export function Form({ request, busy, send }: { request: Attention; busy: boolea
       return []
     }
 
-    return [[f.name, f.type === 'number' || f.type === 'integer' ? Number(v) : v]]
+    return [
+      [
+        f.name,
+        f.type === 'number' || f.type === 'integer' ? Number(v) : v,
+      ],
+    ]
   }))
   const ready = fields.every(f => !f.required || filled[f.name] !== undefined)
 
@@ -164,14 +228,34 @@ export function Form({ request, busy, send }: { request: Attention; busy: boolea
           key={field.name}
           field={field}
           value={values[field.name]}
-          change={({ value }) => setValues(all => ({ ...all, [field.name]: value }))}
+          change={({ value }) => setValues(all => ({
+            ...all,
+            [field.name]: value,
+          }))}
         />
       ))}
       <div className="row wrap">
-        <Button variant="primary" disabled={busy || !ready} onClick={() => void send({ request, value: { choice: 'accept', values: filled } })}>
+        <Button
+          variant="primary"
+          disabled={busy || !ready}
+          onClick={() => void send({
+            request,
+            value: {
+              choice: 'accept',
+              values: filled,
+            },
+          })}
+        >
           Accept
         </Button>
-        <Button variant="surface" disabled={busy} onClick={() => void send({ request, value: { choice: 'decline' } })}>
+        <Button
+          variant="surface"
+          disabled={busy}
+          onClick={() => void send({
+            request,
+            value: { choice: 'decline' },
+          })}
+        >
           Decline
         </Button>
       </div>
@@ -179,10 +263,23 @@ export function Form({ request, busy, send }: { request: Attention; busy: boolea
   )
 }
 
-type ChoicesProps = { request: Attention; choices: Choice[]; busy: boolean; send: Send }
+type ChoicesProps = {
+  request: Attention
+  choices: Choice[]
+  busy: boolean
+  send: Send
+}
 
-function Choices({ request, choices, busy, send }: ChoicesProps) {
-  const [text, setText] = useState('')
+function Choices({
+  request,
+  choices,
+  busy,
+  send,
+}: ChoicesProps) {
+  const [
+    text,
+    setText,
+  ] = useState('')
   const typed = choices.find(c => c.text !== 'none')
 
   return (
@@ -201,7 +298,13 @@ function Choices({ request, choices, busy, send }: ChoicesProps) {
             key={choice.choice}
             variant={choice.choice === 'allow' || choice.choice === 'approve' ? 'primary' : 'surface'}
             disabled={busy || (choice.text === 'required' && !text.trim())}
-            onClick={() => void send({ request, value: { choice: choice.choice, ...(choice.text !== 'none' && text.trim() ? { text } : {}) } })}
+            onClick={() => void send({
+              request,
+              value: {
+                choice: choice.choice,
+                ...(choice.text !== 'none' && text.trim() ? { text } : {}),
+              },
+            })}
           >
             {choice.label}
           </Button>
@@ -211,29 +314,59 @@ function Choices({ request, choices, busy, send }: ChoicesProps) {
   )
 }
 
-const TITLE: Record<string, string> = { question: 'Asking you', permission: 'Asking permission', plan: 'Plan to approve', input: 'Asking for input' }
+const TITLE: Record<string, string> = {
+  question: 'Asking you',
+  permission: 'Asking permission',
+  plan: 'Plan to approve',
+  input: 'Asking for input',
+}
 
-export function InlineQuestions({ card, command, notify }: {
+export function InlineQuestions({
+  card,
+  command,
+  notify,
+}: {
   card: Card
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const [busy, setBusy] = useState<string | null>(null)
+  const [
+    busy,
+    setBusy,
+  ] = useState<string | null>(null)
   const shown = card.attention
-    .filter(request => request.answered || answerPrompt({ card, request }))
+    .filter(request => request.answered || answerPrompt({
+      card,
+      request,
+    }))
 
   if (!shown.length) {
     return null
   }
 
-  const send: Send = async ({ request, value }) => {
+  const send: Send = async ({
+    request,
+    value,
+  }) => {
     setBusy(requestId({ request }))
 
     try {
       const id = requestId({ request })
-      const args = [card.id, request.key, JSON.stringify(value), crypto.randomUUID(), id]
-      const r = await command({ name: 'answer', args })
-      const receipt = r.reply as { state: string; detail?: string } | undefined
+      const args = [
+        card.id,
+        request.key,
+        JSON.stringify(value),
+        crypto.randomUUID(),
+        id,
+      ]
+      const r = await command({
+        name: 'answer',
+        args,
+      })
+      const receipt = r.reply as {
+        state: string
+        detail?: string
+      } | undefined
       const why = receipt?.detail ? ` (${receipt.detail})` : ''
       notify({
         text: receipt?.state === 'delivered'
@@ -252,7 +385,10 @@ export function InlineQuestions({ card, command, notify }: {
   return (
     <>
       {shown.map(request => {
-        const prompt = answerPrompt({ card, request })
+        const prompt = answerPrompt({
+          card,
+          request,
+        })
         const pending = busy === requestId({ request })
 
         return (

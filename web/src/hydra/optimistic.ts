@@ -3,28 +3,64 @@ import { hydraConfig } from '../../../src/core/hydra.ts'
 import { columnCards, rankOf } from '../../../src/core/tasks.ts'
 import { patchView } from '../../../src/core/view.ts'
 
-export interface Edit { name: string; args: string[] }
+export interface Edit {
+  name: string
+  args: string[]
+}
 
-export function argument({ args, flag }: { args: string[]; flag: string }): string | undefined {
+export function argument({
+  args,
+  flag,
+}: {
+  args: string[]
+  flag: string
+}): string | undefined {
   const inline = args.find(value => value.startsWith(`${flag}=`))
 
   return inline ? inline.slice(flag.length + 1)
     : args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined
 }
 
-export function optimisticState({ state, edit: { name, args } }: {
+export function optimisticState({
+  state,
+  edit: {
+    name,
+    args,
+  },
+}: {
   state: HydraState
   edit: Edit
 }): HydraState {
-  const option = ({ flag }: { flag: string }) => argument({ args, flag })
+  const option = ({ flag }: { flag: string }) => argument({
+    args,
+    flag,
+  })
   const config = hydraConfig({ state })
-  const [action, ref] = args
+  const [
+    action,
+    ref,
+  ] = args
   const card = state.cards[ref ?? ''] ?? state.cards[state.keys[ref ?? ''] ?? '']
   const update = ({ patch }: { patch: Partial<NonNullable<typeof card>> }) => card
-    ? { ...state, cards: { ...state.cards, [card.id]: { ...card, ...patch } } } : state
+    ? {
+      ...state,
+      cards: {
+        ...state.cards,
+        [card.id]: {
+          ...card,
+          ...patch,
+        },
+      },
+    } : state
 
   if (name === 'view' && action === 'set') {
-    return { ...state, view: patchView({ state, input: JSON.parse(option({ flag: '--json' }) ?? '{}') }) }
+    return {
+      ...state,
+      view: patchView({
+        state,
+        input: JSON.parse(option({ flag: '--json' }) ?? '{}'),
+      }),
+    }
   }
 
   if (name === 'move') {
@@ -36,7 +72,10 @@ export function optimisticState({ state, edit: { name, args } }: {
       return state
     }
 
-    const others = columnCards({ state, column: column.id }).filter(c => c.id !== moved.id)
+    const others = columnCards({
+      state,
+      column: column.id,
+    }).filter(c => c.id !== moved.id)
     const before = option({ flag: '--before' })
     const at = before === undefined ? others.length
       : others.findIndex(c => c.id === before || c.key === before)
@@ -51,7 +90,15 @@ export function optimisticState({ state, edit: { name, args } }: {
         : previous ? rankOf({ card: previous }) + 1 : rankOf({ card: moved })
 
     return {
-      ...state, cards: { ...state.cards, [moved.id]: { ...moved, column: column.id, rank } },
+      ...state,
+      cards: {
+        ...state.cards,
+        [moved.id]: {
+          ...moved,
+          column: column.id,
+          rank,
+        },
+      },
     }
   }
 
@@ -61,7 +108,10 @@ export function optimisticState({ state, edit: { name, args } }: {
 
       return update({
         patch: {
-          ...(title !== undefined ? { title, titleSet: true } : {}),
+          ...(title !== undefined ? {
+            title,
+            titleSet: true,
+          } : {}),
           ...(project !== undefined ? { project: project || undefined } : {}),
         },
       })
@@ -79,7 +129,8 @@ export function optimisticState({ state, edit: { name, args } }: {
       return update({
         patch: {
           reminder: args[2] === 'clear' ? undefined : {
-            id: option({ flag: '--event-id' }) ?? 'pending', at: args[2] ?? '',
+            id: option({ flag: '--event-id' }) ?? 'pending',
+            at: args[2] ?? '',
           },
         },
       })
@@ -100,12 +151,21 @@ export function optimisticState({ state, edit: { name, args } }: {
         ...config,
         ...(title ? { name: title } : {}),
         ...(hours !== undefined ? { doneAfterHours: Number(hours) } : {}),
-        hydra: { ...config.hydra, ...(identity ? { id: identity } : {}) },
+        hydra: {
+          ...config.hydra,
+          ...(identity ? { id: identity } : {}),
+        },
       },
     }
   }
 
-  if (name === 'column' && ['create', 'rename', 'describe', 'reorder', 'delete'].includes(action ?? '')) {
+  if (name === 'column' && [
+    'create',
+    'rename',
+    'describe',
+    'reorder',
+    'delete',
+  ].includes(action ?? '')) {
     let columns = config.columns.map(c => ({ ...c }))
     const selected = columns.find(c => c.id === ref || c.role === ref)
 
@@ -116,7 +176,13 @@ export function optimisticState({ state, edit: { name, args } }: {
         return state
       }
 
-      columns = [...columns.filter(c => c.id !== id), { id: `custom:${id.slice(7)}`, title }]
+      columns = [
+        ...columns.filter(c => c.id !== id),
+        {
+          id: `custom:${id.slice(7)}`,
+          title,
+        },
+      ]
     } else if (!selected) {
       return state
     } else if (action === 'rename') {
@@ -128,43 +194,94 @@ export function optimisticState({ state, edit: { name, args } }: {
 
       if (action === 'reorder') {
         const before = option({ flag: '--before' }), at = before ? columns.findIndex(c => c.id === before) : columns.length
-        columns.splice(at < 0 ? columns.length : at, 0, selected)
+        columns.splice(
+          at < 0 ? columns.length : at,
+          0,
+          selected,
+        )
       }
     }
 
     const fallback = columns.find(c => c.id === option({ flag: '--to' }))?.id ?? columns[0]?.id
-    const cards = action === 'delete' && selected && fallback ? Object.fromEntries(Object.entries(state.cards).map(([id, card]) => [id, card.column === selected.id ? { ...card, column: fallback } : card])) : state.cards
+    const cards = action === 'delete' && selected && fallback ? Object.fromEntries(Object.entries(state.cards).map(([
+      id,
+      card,
+    ]) => [
+      id,
+      card.column === selected.id ? {
+        ...card,
+        column: fallback,
+      } : card,
+    ])) : state.cards
 
-    return { ...state, cards, config: { ...config, columns } }
+    return {
+      ...state,
+      cards,
+      config: {
+        ...config,
+        columns,
+      },
+    }
   }
 
   return state
 }
 
-export function currentRevision({ state, edit }: { state: HydraState; edit: Edit }): string[] {
+export function currentRevision({
+  state,
+  edit,
+}: {
+  state: HydraState
+  edit: Edit
+}): string[] {
   const args = [...edit.args], index = args.indexOf('--if-revision')
 
   if (index >= 0) {
     const ref = args[edit.name === 'move' ? 0 : 1] ?? ''
     const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
-    args[index + 1] = String(edit.name === 'view' ? state.viewRevision ?? 0 : ['column', 'hydra'].includes(edit.name) ? state.configRevision ?? 0 : card?.revision ?? 0)
+    args[index + 1] = String(edit.name === 'view' ? state.viewRevision ?? 0 : [
+      'column',
+      'hydra',
+    ].includes(edit.name) ? state.configRevision ?? 0 : card?.revision ?? 0)
   }
 
   return args
 }
 
-export function projectEdits({ state, edits, invalid }: {
+export function projectEdits({
+  state,
+  edits,
+  invalid,
+}: {
   state: HydraState
   edits: Edit[]
-  invalid?({ edit, error }: { edit: Edit; error: Error }): void
+  invalid?({
+    edit,
+    error,
+  }: {
+    edit: Edit
+    error: Error
+  }): void
 }): HydraState {
-  return edits.reduce((state, edit) => {
-    try {
-      return optimisticState({ state, edit })
-    } catch (error) {
-      invalid?.({ edit, error: error instanceof Error ? error : new Error(String(error)) })
+  return edits.reduce(
+    (
+      state,
+      edit,
+    ) => {
+      try {
+        return optimisticState({
+          state,
+          edit,
+        })
+      } catch (error) {
+        invalid?.({
+          edit,
+          error: error instanceof Error ? error : new Error(String(error)),
+        })
 
-      return state
-    }
-  }, state)
+        return state
+      }
+    },
+    state,
+  )
 }

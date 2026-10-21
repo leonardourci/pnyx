@@ -17,7 +17,9 @@ const LINE = /^\[image: (\/[^\]\n]+)\]$/gm
 export const imageLine = ({ path }: { path: string }) => `[image: ${path}]`
 
 export const imageExtension = ({ type }: { type: string }) =>
-  Object.entries(IMAGE_TYPES).find(([, known]) => known === type)?.[0]
+  Object.entries(IMAGE_TYPES).find(([
+    , known,
+  ]) => known === type)?.[0]
 
 export const imageType = ({ path }: { path: string }): ImageType | undefined =>
   IMAGE_TYPES[(/\.\w+$/.exec(path)?.[0] ?? '') as keyof typeof IMAGE_TYPES]
@@ -26,7 +28,13 @@ export const imagePaths = ({ text }: { text: string }) =>
   [...text.matchAll(LINE)].map(match => match[1]!)
 
 // Only files Pnyx stored for a Hydra are sent as images; any other path stays text.
-export function attachedImages({ text, hydras }: { text: string; hydras: string }): string[] {
+export function attachedImages({
+  text,
+  hydras,
+}: {
+  text: string
+  hydras: string
+}): string[] {
   return imagePaths({ text }).filter(path => {
     const parts = path.slice(hydras.length + 1).split('/')
 

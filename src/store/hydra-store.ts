@@ -36,13 +36,31 @@ const STALE_EMPTY_LOCK_MS = 10_000
 
 // HydraSnapshot files hold copied transcript text, which is as private as the transcripts.
 export function privateDir({ dir }: { dir: string }): void {
-  mkdirSync(dir, { recursive: true, mode: 0o700 })
-  chmodSync(dir, 0o700)
+  mkdirSync(
+    dir,
+    {
+      recursive: true,
+      mode: 0o700,
+    },
+  )
+  chmodSync(
+    dir,
+    0o700,
+  )
 }
 
-const logPath = ({ dir }: { dir: string }) => join(dir, 'events.jsonl')
-const snapshotPath = ({ dir }: { dir: string }) => join(dir, 'snapshot.json')
-export const spoolDir = ({ dir }: { dir: string }) => join(dir, 'spool')
+const logPath = ({ dir }: { dir: string }) => join(
+  dir,
+  'events.jsonl',
+)
+const snapshotPath = ({ dir }: { dir: string }) => join(
+  dir,
+  'snapshot.json',
+)
+export const spoolDir = ({ dir }: { dir: string }) => join(
+  dir,
+  'spool',
+)
 
 interface LogRead {
   events: HydraEvent[]
@@ -57,7 +75,10 @@ interface RepairMarker {
   v: typeof EVENT_VERSION
   type: 'log.repaired'
   at: string
-  data: { offset: number; length: number }
+  data: {
+    offset: number
+    length: number
+  }
 }
 
 function parseLine({ line }: { line: string }): unknown {
@@ -80,13 +101,17 @@ function corrupt({ offset }: { offset: number }): HydraError {
   return new HydraError({
     message: `events.jsonl is corrupt at byte ${offset}`,
     code: 'LOG_CORRUPT',
-    help: [
-      'The log is never rewritten automatically; inspect that line by hand',
-    ],
+    help: ['The log is never rewritten automatically; inspect that line by hand'],
   })
 }
 
-function toEvent({ event, offset }: { event: unknown; offset: number }): HydraEvent {
+function toEvent({
+  event,
+  offset,
+}: {
+  event: unknown
+  offset: number
+}): HydraEvent {
   const e = event as Partial<HydraEvent> | undefined
 
   if (
@@ -101,7 +126,10 @@ function toEvent({ event, offset }: { event: unknown; offset: number }): HydraEv
   }
 
   if (e.v !== EVENT_VERSION) {
-    throw new HydraError({ message: `event at byte ${offset} has schema v${e.v}; this pnyx-axi reads v${EVENT_VERSION}`, code: 'UNSUPPORTED_VERSION' })
+    throw new HydraError({
+      message: `event at byte ${offset} has schema v${e.v}; this pnyx-axi reads v${EVENT_VERSION}`,
+      code: 'UNSUPPORTED_VERSION',
+    })
   }
 
   return e as HydraEvent
@@ -110,14 +138,27 @@ function toEvent({ event, offset }: { event: unknown; offset: number }): HydraEv
 // Reads complete lines from `from`. Bytes after the last newline are a torn tail
 // left by a crash mid-append: they are reported through `end` < `size`, never parsed.
 // A line named by the repair marker right after it is skipped, whatever it holds.
-function readLog({ dir, from = 0 }: { dir: string; from?: number }): LogRead | null {
+function readLog({
+  dir,
+  from = 0,
+}: {
+  dir: string
+  from?: number
+}): LogRead | null {
   const path = logPath({ dir })
 
   if (!existsSync(path)) {
-    return from === 0 ? { events: [], end: 0, size: 0 } : null
+    return from === 0 ? {
+      events: [],
+      end: 0,
+      size: 0,
+    } : null
   }
 
-  const fd = openSync(path, 'r')
+  const fd = openSync(
+    path,
+    'r',
+  )
 
   try {
     const size = fstatSync(fd).size
@@ -127,7 +168,13 @@ function readLog({ dir, from = 0 }: { dir: string; from?: number }): LogRead | n
     }
 
     const buf = Buffer.alloc(size - from)
-    readSync(fd, buf, 0, buf.length, from)
+    readSync(
+      fd,
+      buf,
+      0,
+      buf.length,
+      from,
+    )
     const complete = buf.lastIndexOf(10) + 1
     const events: HydraEvent[] = []
     let previous: {
@@ -138,9 +185,16 @@ function readLog({ dir, from = 0 }: { dir: string; from?: number }): LogRead | n
     } | undefined
 
     for (let start = 0; start < complete; ) {
-      const end = buf.indexOf(10, start)
+      const end = buf.indexOf(
+        10,
+        start,
+      )
       const offset = from + start
-      const line = buf.toString('utf8', start, end)
+      const line = buf.toString(
+        'utf8',
+        start,
+        end,
+      )
       const length = end - start
       start = end + 1
 
@@ -169,10 +223,16 @@ function readLog({ dir, from = 0 }: { dir: string; from?: number }): LogRead | n
         throw previous.error
       }
 
-      previous = { offset, length }
+      previous = {
+        offset,
+        length,
+      }
 
       try {
-        previous.event = toEvent({ event: value, offset })
+        previous.event = toEvent({
+          event: value,
+          offset,
+        })
         events.push(previous.event)
       } catch (error) {
         previous.error = error as HydraError
@@ -183,21 +243,33 @@ function readLog({ dir, from = 0 }: { dir: string; from?: number }): LogRead | n
       throw previous.error
     }
 
-    return { events, end: from + complete, size }
+    return {
+      events,
+      end: from + complete,
+      size,
+    }
   } finally {
     closeSync(fd)
   }
 }
 
 // ponytail: the log only grows, so the server keeps every parsed event (65 MB of heap for a 45 MB log); index offsets per card if that is too much.
-const parsed = new Map<string, { file: string; events: HydraEvent[]; end: number }>()
+const parsed = new Map<string, {
+  file: string
+  events: HydraEvent[]
+  end: number
+}>()
 
 export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
   const dir = hydraDir({ hydraId })
   let file: string
 
   try {
-    const { dev, ino, birthtimeMs } = statSync(logPath({ dir }))
+    const {
+      dev,
+      ino,
+      birthtimeMs,
+    } = statSync(logPath({ dir }))
     file = `${dev}:${ino}:${birthtimeMs}`
   } catch {
     parsed.delete(dir)
@@ -206,19 +278,37 @@ export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
   }
 
   const cached = parsed.get(dir)
-  let log: { events: HydraEvent[]; end: number } | null = null
+  let log: {
+    events: HydraEvent[]
+    end: number
+  } | null = null
 
   if (cached?.file === file) {
     try {
-      const next = readLog({ dir, from: cached.end })
-      log = next && { events: cached.events.concat(next.events), end: next.end }
+      const next = readLog({
+        dir,
+        from: cached.end,
+      })
+      log = next && {
+        events: cached.events.concat(next.events),
+        end: next.end,
+      }
     } catch {
       // A repair marker for a line before `end` needs the whole log.
     }
   }
 
-  log ??= readLog({ dir }) ?? { events: [], end: 0 }
-  parsed.set(dir, { file, ...log })
+  log ??= readLog({ dir }) ?? {
+    events: [],
+    end: 0,
+  }
+  parsed.set(
+    dir,
+    {
+      file,
+      ...log,
+    },
+  )
 
   return log.events.slice()
 }
@@ -226,11 +316,26 @@ export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
 // Complete events at or after byte `offset`, and the offset just past them.
 // Null when the log is now shorter than `offset`, so the reader must start over.
 export function readEventsFrom(
-  { hydraId, offset }: { hydraId: string; offset: number },
-): { events: HydraEvent[]; end: number } | null {
-  const log = readLog({ dir: hydraDir({ hydraId }), from: offset })
+  {
+    hydraId,
+    offset,
+  }: {
+    hydraId: string
+    offset: number
+  },
+): {
+  events: HydraEvent[]
+  end: number
+} | null {
+  const log = readLog({
+    dir: hydraDir({ hydraId }),
+    from: offset,
+  })
 
-  return log && { events: log.events, end: log.end }
+  return log && {
+    events: log.events,
+    end: log.end,
+  }
 }
 
 // Bumped when the reducer derives cards differently, so an older cache is replayed.
@@ -245,7 +350,10 @@ interface Snapshot {
 
 function readSnapshot({ dir }: { dir: string }): Snapshot | null {
   try {
-    const snap = JSON.parse(readFileSync(snapshotPath({ dir }), 'utf8')) as Snapshot
+    const snap = JSON.parse(readFileSync(
+      snapshotPath({ dir }),
+      'utf8',
+    )) as Snapshot
 
     return snap.v === EVENT_VERSION
       && snap.rules === RULES
@@ -258,26 +366,60 @@ function readSnapshot({ dir }: { dir: string }): Snapshot | null {
   }
 }
 
-function writeDurably({ path, data, flag }: { path: string; data: string | Buffer; flag: 'a' | 'w' }): void {
-  const fd = openSync(path, flag, 0o600)
+export function writeDurably({
+  path,
+  data,
+  flag,
+}: {
+  path: string
+  data: string | Buffer
+  flag: 'a' | 'w'
+}): void {
+  const fd = openSync(
+    path,
+    flag,
+    0o600,
+  )
 
   try {
-    fchmodSync(fd, 0o600)
-    writeSync(fd, typeof data === 'string' ? Buffer.from(data) : data)
+    fchmodSync(
+      fd,
+      0o600,
+    )
+    writeSync(
+      fd,
+      typeof data === 'string' ? Buffer.from(data) : data,
+    )
     fsyncSync(fd)
   } finally {
     closeSync(fd)
   }
 }
 
-function writeSnapshot({ dir, state, offset }: {
+function writeSnapshot({
+  dir,
+  state,
+  offset,
+}: {
   dir: string
   state: HydraState
   offset: number
 }): void {
   const tmp = `${snapshotPath({ dir })}.tmp-${process.pid}`
-  writeDurably({ path: tmp, data: JSON.stringify({ v: EVENT_VERSION, rules: RULES, offset, state } satisfies Snapshot), flag: 'w' })
-  renameSync(tmp, snapshotPath({ dir }))
+  writeDurably({
+    path: tmp,
+    data: JSON.stringify({
+      v: EVENT_VERSION,
+      rules: RULES,
+      offset,
+      state,
+    } satisfies Snapshot),
+    flag: 'w',
+  })
+  renameSync(
+    tmp,
+    snapshotPath({ dir }),
+  )
 }
 
 export interface HydraSnapshot {
@@ -290,7 +432,10 @@ export interface HydraSnapshot {
 export function loadHydra({ hydraId }: { hydraId: string }): HydraSnapshot {
   const dir = hydraDir({ hydraId })
   const snap = readSnapshot({ dir })
-  let log = snap ? readLog({ dir, from: snap.offset }) : null
+  let log = snap ? readLog({
+    dir,
+    from: snap.offset,
+  }) : null
   let start = snap?.state ?? emptyHydra()
 
   if (!log || (snap && log.events.length > 0 && log.events[0]!.seq !== snap.state.seq + 1)) {
@@ -311,13 +456,19 @@ export function loadHydra({ hydraId }: { hydraId: string }): HydraSnapshot {
 
 function lockIsStale({ path }: { path: string }): boolean {
   try {
-    const pid = Number(readFileSync(path, 'utf8'))
+    const pid = Number(readFileSync(
+      path,
+      'utf8',
+    ))
 
     if (!Number.isInteger(pid) || pid <= 0) {
       return Date.now() - statSync(path).mtimeMs > STALE_EMPTY_LOCK_MS
     }
 
-    process.kill(pid, 0)
+    process.kill(
+      pid,
+      0,
+    )
 
     return false
   } catch (error) {
@@ -327,9 +478,18 @@ function lockIsStale({ path }: { path: string }): boolean {
 
 // Re-checks staleness under an O_EXCL takeover file so only one writer can remove a dead lock.
 // ponytail: a writer killed inside the takeover leaves the takeover file behind, and every later dead lock then needs the manual removal the LOCKED help names.
-function takeOver({ path, takeover }: { path: string; takeover: string }): boolean {
+function takeOver({
+  path,
+  takeover,
+}: {
+  path: string
+  takeover: string
+}): boolean {
   try {
-    closeSync(openSync(takeover, 'wx'))
+    closeSync(openSync(
+      takeover,
+      'wx',
+    ))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
       return false
@@ -340,10 +500,16 @@ function takeOver({ path, takeover }: { path: string; takeover: string }): boole
 
   try {
     if (lockIsStale({ path })) {
-      rmSync(path, { force: true })
+      rmSync(
+        path,
+        { force: true },
+      )
     }
   } finally {
-    rmSync(takeover, { force: true })
+    rmSync(
+      takeover,
+      { force: true },
+    )
   }
 
   return true
@@ -351,24 +517,39 @@ function takeOver({ path, takeover }: { path: string; takeover: string }): boole
 
 // O_EXCL lock file holding the writer's pid; a lock whose process is gone is taken over.
 function acquireLock({ dir }: { dir: string }): () => void {
-  const path = join(dir, 'writer.lock')
+  const path = join(
+    dir,
+    'writer.lock',
+  )
   const takeover = `${path}.takeover`
   const deadline = Date.now() + LOCK_TIMEOUT_MS
 
   for (;;) {
     try {
-      const fd = openSync(path, 'wx')
-      writeSync(fd, String(process.pid))
+      const fd = openSync(
+        path,
+        'wx',
+      )
+      writeSync(
+        fd,
+        String(process.pid),
+      )
       closeSync(fd)
 
-      return () => rmSync(path, { force: true })
+      return () => rmSync(
+        path,
+        { force: true },
+      )
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
         throw error
       }
     }
 
-    if (lockIsStale({ path }) && takeOver({ path, takeover })) {
+    if (lockIsStale({ path }) && takeOver({
+      path,
+      takeover,
+    })) {
       continue
     }
 
@@ -376,13 +557,16 @@ function acquireLock({ dir }: { dir: string }): () => void {
       throw new HydraError({
         message: 'Hydra is locked by another pnyx-axi writer',
         code: 'LOCKED',
-        help: [
-          `Retry, or remove ${path} and ${takeover} if no pnyx-axi process is running`,
-        ],
+        help: [`Retry, or remove ${path} and ${takeover} if no pnyx-axi process is running`],
       })
     }
 
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)
+    Atomics.wait(
+      new Int32Array(new SharedArrayBuffer(4)),
+      0,
+      0,
+      25,
+    )
   }
 }
 
@@ -407,13 +591,21 @@ export interface Writer {
 // A Hydra exists once its log does; a bare folder, such as one a config write made, does not count.
 export function requireHydra({ hydraId }: { hydraId: string }): void {
   if (hydraId !== DEFAULT_HYDRA && !existsSync(logPath({ dir: hydraDir({ hydraId }) }))) {
-    throw new HydraError({ message: `unknown Hydra: ${hydraId}`, code: 'NOT_FOUND', help: ['Run `pnyx-axi hydra list` for the Hydras, or `pnyx-axi hydra create <id>` to add one'] })
+    throw new HydraError({
+      message: `unknown Hydra: ${hydraId}`,
+      code: 'NOT_FOUND',
+      help: ['Run `pnyx-axi hydra list` for the Hydras, or `pnyx-axi hydra create <id>` to add one'],
+    })
   }
 }
 
 // Runs `fn` as the Hydra's single writer. Each append is flushed to disk before
 // the state advances; the snapshot is replaced afterwards.
-export function withWriter<T>({ hydraId, fn, create = false }: {
+export function withWriter<T>({
+  hydraId,
+  fn,
+  create = false,
+}: {
   hydraId: string
   // Only `hydra create` makes a new Hydra; the default Hydra is made on first use.
   create?: boolean
@@ -433,7 +625,10 @@ export function withWriter<T>({ hydraId, fn, create = false }: {
   const release = acquireLock({ dir })
 
   try {
-    let { state, offset } = loadTail({ hydraId })
+    let {
+      state,
+      offset,
+    } = loadTail({ hydraId })
     let dirty = false
 
     try {
@@ -448,12 +643,21 @@ export function withWriter<T>({ hydraId, fn, create = false }: {
           }
 
           const knownLabels = new Set(state.labelColors?.map(entry => entry.label))
-          const labelColors = labelsForEvent({ state, event })
+          const labelColors = labelsForEvent({
+            state,
+            event,
+          })
             .filter(label => !knownLabels.has(label))
-            .map(label => ({ label, color: LABEL_COLORS[randomInt(LABEL_COLORS.length)] ?? 'slate' }))
+            .map(label => ({
+              label,
+              color: LABEL_COLORS[randomInt(LABEL_COLORS.length)] ?? 'slate',
+            }))
 
           if (labelColors.length) {
-            event = { ...event, labelColors }
+            event = {
+              ...event,
+              labelColors,
+            }
           }
 
           const card = state.cards[event.cardId]
@@ -474,14 +678,27 @@ export function withWriter<T>({ hydraId, fn, create = false }: {
             ...event,
           }
           const line = `${JSON.stringify(event)}\n`
-          writeDurably({ path: logPath({ dir }), data: line, flag: 'a' })
+          writeDurably({
+            path: logPath({ dir }),
+            data: line,
+            flag: 'a',
+          })
           offset += Buffer.byteLength(line)
-          state = reduce({ state, event })
+          state = reduce({
+            state,
+            event,
+          })
           dirty = true
         },
       }
       // A Hydra still on an older layout moves onto the default columns before its next write.
-      const migrated = migrateColumns({ state, meta: { at: new Date().toISOString(), actor: 'pnyx' } })
+      const migrated = migrateColumns({
+        state,
+        meta: {
+          at: new Date().toISOString(),
+          actor: 'pnyx',
+        },
+      })
 
       if ('event' in migrated) {
         writer.append({ event: migrated.event })
@@ -490,7 +707,11 @@ export function withWriter<T>({ hydraId, fn, create = false }: {
       return fn({ writer })
     } finally {
       if (dirty) {
-        writeSnapshot({ dir, state, offset })
+        writeSnapshot({
+          dir,
+          state,
+          offset,
+        })
       }
     }
   } finally {
@@ -505,9 +726,7 @@ function loadTail({ hydraId }: { hydraId: string }): HydraSnapshot {
     throw new HydraError({
       message: `events.jsonl ends with ${loaded.tornBytes} bytes of a torn append`,
       code: 'TORN_TAIL',
-      help: [
-        'Run `pnyx-axi repair` to set them aside and continue',
-      ],
+      help: ['Run `pnyx-axi repair` to set them aside and continue'],
     })
   }
 
@@ -537,21 +756,43 @@ export function repairHydra({ hydraId }: { hydraId: string }): Repair {
 
     if (tornBytes > 0) {
       preserved = `${logPath({ dir })}.torn-${log.end}`
-      writeDurably({ path: preserved, data: readFileSync(logPath({ dir })).subarray(log.end), flag: 'w' })
+      writeDurably({
+        path: preserved,
+        data: readFileSync(logPath({ dir })).subarray(log.end),
+        flag: 'w',
+      })
       const marker: RepairMarker = {
         v: EVENT_VERSION,
         type: 'log.repaired',
         at: new Date().toISOString(),
-        data: { offset: log.end, length: tornBytes },
+        data: {
+          offset: log.end,
+          length: tornBytes,
+        },
       }
-      writeDurably({ path: logPath({ dir }), data: `\n${JSON.stringify(marker)}\n`, flag: 'a' })
+      writeDurably({
+        path: logPath({ dir }),
+        data: `\n${JSON.stringify(marker)}\n`,
+        flag: 'a',
+      })
       log = readLog({ dir }) as LogRead
     }
 
-    const state = replay({ state: emptyHydra(), events: log.events })
-    writeSnapshot({ dir, state, offset: log.end })
+    const state = replay({
+      state: emptyHydra(),
+      events: log.events,
+    })
+    writeSnapshot({
+      dir,
+      state,
+      offset: log.end,
+    })
 
-    return { tornBytes, ...(preserved ? { preserved } : {}), seq: state.seq }
+    return {
+      tornBytes,
+      ...(preserved ? { preserved } : {}),
+      seq: state.seq,
+    }
   } finally {
     release()
   }
@@ -559,7 +800,10 @@ export function repairHydra({ hydraId }: { hydraId: string }): Repair {
 
 // Writes one hook event to the spool without taking the writer lock. The next
 // writer ingests it; the spool is a buffer, never a second writer of the log.
-export function spoolWrite({ hydraId, entry }: {
+export function spoolWrite({
+  hydraId,
+  entry,
+}: {
   hydraId: string
   entry: {
     id: string
@@ -568,12 +812,34 @@ export function spoolWrite({ hydraId, entry }: {
   const dir = spoolDir({ dir: hydraDir({ hydraId }) })
   privateDir({ dir })
   // Millisecond time orders files across processes; hrtime keeps same-millisecond writes apart.
-  const name = `${String(Date.now()).padStart(15, '0')}-${process.hrtime.bigint()}-${entry.id.replace(/[^A-Za-z0-9._-]/g, '_')}.json`
-  const tmp = join(dir, `.tmp-${process.pid}-${name}`)
-  writeFileSync(tmp, JSON.stringify(entry), { mode: 0o600 })
-  renameSync(tmp, join(dir, name))
+  const name = `${String(Date.now()).padStart(
+    15,
+    '0',
+  )}-${process.hrtime.bigint()}-${entry.id.replace(
+    /[^A-Za-z0-9._-]/g,
+    '_',
+  )}.json`
+  const tmp = join(
+    dir,
+    `.tmp-${process.pid}-${name}`,
+  )
+  writeFileSync(
+    tmp,
+    JSON.stringify(entry),
+    { mode: 0o600 },
+  )
+  renameSync(
+    tmp,
+    join(
+      dir,
+      name,
+    ),
+  )
 
-  return join(dir, name)
+  return join(
+    dir,
+    name,
+  )
 }
 
 export function spoolFiles({ dir }: { dir: string }): string[] {
@@ -586,13 +852,22 @@ export function spoolFiles({ dir }: { dir: string }): string[] {
   return readdirSync(spool)
     .filter(f => f.endsWith('.json') && !f.startsWith('.'))
     .sort()
-    .map(f => join(spool, f))
+    .map(f => join(
+      spool,
+      f,
+    ))
 }
 
 // Per Pnyx home, the Hydras an older server still runs in boards/.
 const held = new Map<string, Set<string>>()
 
-const conflict = ({ from, to }: { from: string; to: string }) => new HydraError({
+const conflict = ({
+  from,
+  to,
+}: {
+  from: string
+  to: string
+}) => new HydraError({
   message: `Hydra ${basename(to)} is in both ${from} and ${to}`,
   code: 'CONFLICT',
   help: [
@@ -604,24 +879,57 @@ const conflict = ({ from, to }: { from: string; to: string }) => new HydraError(
 const spoolOnly = ({ dir }: { dir: string }) => readdirSync(dir).every(entry => entry === 'spool')
 
 // Hooks spool into whichever folder their installed script names; false on a name clash.
-function foldSpool({ from, into }: { from: string; into: string }): boolean {
-  const spool = join(from, 'spool')
-  const target = join(into, 'spool')
-  mkdirSync(target, { recursive: true, mode: 0o700 })
+function foldSpool({
+  from,
+  into,
+}: {
+  from: string
+  into: string
+}): boolean {
+  const spool = join(
+    from,
+    'spool',
+  )
+  const target = join(
+    into,
+    'spool',
+  )
+  mkdirSync(
+    target,
+    {
+      recursive: true,
+      mode: 0o700,
+    },
+  )
 
   for (const name of existsSync(spool) ? readdirSync(spool) : []) {
     if (name.startsWith('.')) {
       continue
     }
 
-    if (existsSync(join(target, name))) {
+    if (existsSync(join(
+      target,
+      name,
+    ))) {
       return false
     }
 
-    renameSync(join(spool, name), join(target, name))
+    renameSync(
+      join(
+        spool,
+        name,
+      ),
+      join(
+        target,
+        name,
+      ),
+    )
   }
 
-  for (const dir of [spool, from]) {
+  for (const dir of [
+    spool,
+    from,
+  ]) {
     try {
       rmdirSync(dir)
     } catch { /* A spool file still being written keeps it for the next run. */ }
@@ -634,13 +942,22 @@ function foldSpool({ from, into }: { from: string; into: string }): boolean {
 // ponytail: pid-only liveness; a reused pid keeps the Hydra in boards/ until the lock goes.
 function liveServer({ dir }: { dir: string }): boolean {
   try {
-    const { pid } = JSON.parse(readFileSync(join(dir, 'server.lock'), 'utf8')) as { pid?: unknown }
+    const { pid } = JSON.parse(readFileSync(
+      join(
+        dir,
+        'server.lock',
+      ),
+      'utf8',
+    )) as { pid?: unknown }
 
     if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) {
       return false
     }
 
-    process.kill(pid, 0)
+    process.kill(
+      pid,
+      0,
+    )
 
     return true
   } catch (error) {
@@ -650,8 +967,14 @@ function liveServer({ dir }: { dir: string }): boolean {
 
 // Hydras lived in boards/<id>/ before; each moves to hydras/<id>/ without overwriting anything.
 function moveBoards({ home }: { home: string }): Set<string> {
-  const boards = join(home, 'boards')
-  const hydras = join(home, 'hydras')
+  const boards = join(
+    home,
+    'boards',
+  )
+  const hydras = join(
+    home,
+    'hydras',
+  )
   const kept = new Set<string>()
   const copies: string[] = []
 
@@ -673,13 +996,25 @@ function moveBoards({ home }: { home: string }): Set<string> {
   }
 
   try {
-    mkdirSync(hydras, { recursive: true })
+    mkdirSync(
+      hydras,
+      { recursive: true },
+    )
 
     // Symlinks are Hydras already moved.
-    for (const id of readdirSync(boards, { withFileTypes: true }).filter(d => d.isDirectory())
+    for (const id of readdirSync(
+      boards,
+      { withFileTypes: true },
+    ).filter(d => d.isDirectory())
       .map(d => d.name)) {
-      const from = join(boards, id)
-      const to = join(hydras, id)
+      const from = join(
+        boards,
+        id,
+      )
+      const to = join(
+        hydras,
+        id,
+      )
 
       if (liveServer({ dir: from })) {
         kept.add(id)
@@ -687,25 +1022,63 @@ function moveBoards({ home }: { home: string }): Set<string> {
       }
 
       if (!existsSync(to)) {
-        renameSync(from, to)
+        renameSync(
+          from,
+          to,
+        )
       } else if (spoolOnly({ dir: to }) || spoolOnly({ dir: from })) {
         for (const entry of readdirSync(from).filter(entry => entry !== 'spool')) {
-          renameSync(join(from, entry), join(to, entry))
+          renameSync(
+            join(
+              from,
+              entry,
+            ),
+            join(
+              to,
+              entry,
+            ),
+          )
         }
 
-        if (!foldSpool({ from, into: to })) {
-          throw conflict({ from, to })
+        if (!foldSpool({
+          from,
+          into: to,
+        })) {
+          throw conflict({
+            from,
+            to,
+          })
         }
       } else {
-        throw conflict({ from, to })
+        throw conflict({
+          from,
+          to,
+        })
       }
 
-      const made = existsSync(join(to, 'copies'))
-        ? readdirSync(join(to, 'copies')).map(name => join(to, 'copies', name)) : []
+      const made = existsSync(join(
+        to,
+        'copies',
+      ))
+        ? readdirSync(join(
+          to,
+          'copies',
+        )).map(name => join(
+          to,
+          'copies',
+          name,
+        )) : []
 
       // Task copies are worked in by agents and git through their old absolute paths, so those keep resolving.
       if (made.length > 0 && !existsSync(from)) {
-        symlinkSync(join('..', 'hydras', id), from)
+        symlinkSync(
+          join(
+            '..',
+            'hydras',
+            id,
+          ),
+          from,
+        )
         copies.push(...made)
       }
     }
@@ -718,7 +1091,19 @@ function moveBoards({ home }: { home: string }): Set<string> {
   } catch { /* Held Hydras, links to moved ones, or a stray file keep it. */ }
 
   for (const dir of copies) {
-    spawnSync('git', ['-C', dir, 'worktree', 'repair'], { stdio: 'ignore', timeout: 30_000 })
+    spawnSync(
+      'git',
+      [
+        '-C',
+        dir,
+        'worktree',
+        'repair',
+      ],
+      {
+        stdio: 'ignore',
+        timeout: 30_000,
+      },
+    )
   }
 
   return kept
@@ -731,7 +1116,10 @@ function heldInBoards(): Set<string> {
 
   if (!kept || kept.size > 0) {
     kept = moveBoards({ home })
-    held.set(home, kept)
+    held.set(
+      home,
+      kept,
+    )
   }
 
   return kept
@@ -740,14 +1128,20 @@ function heldInBoards(): Set<string> {
 export function hydrasDir(): string {
   heldInBoards()
 
-  return join(pnyxHome(), 'hydras')
+  return join(
+    pnyxHome(),
+    'hydras',
+  )
 }
 
 export function hydraIds(): string[] {
   let ids: string[] = []
 
   try {
-    ids = readdirSync(hydrasDir(), { withFileTypes: true }).filter(d => d.isDirectory())
+    ids = readdirSync(
+      hydrasDir(),
+      { withFileTypes: true },
+    ).filter(d => d.isDirectory())
       .map(d => d.name)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -755,7 +1149,12 @@ export function hydraIds(): string[] {
     }
   }
 
-  return [...new Set([...ids, ...heldInBoards()])].sort()
+  return [
+    ...new Set([
+      ...ids,
+      ...heldInBoards(),
+    ]),
+  ].sort()
 }
 
 export function hydraDir({ hydraId }: { hydraId: string }): string {
@@ -763,11 +1162,15 @@ export function hydraDir({ hydraId }: { hydraId: string }): string {
     throw new HydraError({
       message: `invalid Hydra name: ${hydraId}`,
       code: 'VALIDATION_ERROR',
-      help: [
-        'Use letters, digits, dot, dash or underscore',
-      ],
+      help: ['Use letters, digits, dot, dash or underscore'],
     })
   }
 
-  return join(heldInBoards().has(hydraId) ? join(pnyxHome(), 'boards') : hydrasDir(), hydraId)
+  return join(
+    heldInBoards().has(hydraId) ? join(
+      pnyxHome(),
+      'boards',
+    ) : hydrasDir(),
+    hydraId,
+  )
 }

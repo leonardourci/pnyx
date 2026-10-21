@@ -18,7 +18,13 @@ export interface Backend {
   // A unit vector.
   embed({ text }: { text: string }): Promise<Float32Array>
   // Relevance of each document to the query, 0 to 1; loads the reranker on first use.
-  rerank({ query, docs }: { query: string; docs: string[] }): Promise<number[]>
+  rerank({
+    query,
+    docs,
+  }: {
+    query: string
+    docs: string[]
+  }): Promise<number[]>
   close(): Promise<void>
 }
 
@@ -33,8 +39,18 @@ const RERANK_QUERY_MAX = 512
 // broken names the model file that failed its golden check, so setup can fetch it again.
 export class SemanticError extends HydraError {
   broken?: ModelFile
-  constructor({ message, broken }: { message: string; broken?: ModelFile }) {
-    super({ message, code: 'SEMANTIC_UNAVAILABLE', help: ['Run `pnyx-axi oracle setup --semantic` again, or `pnyx-axi settings set oracle.semantic off`'] })
+  constructor({
+    message,
+    broken,
+  }: {
+    message: string
+    broken?: ModelFile
+  }) {
+    super({
+      message,
+      code: 'SEMANTIC_UNAVAILABLE',
+      help: ['Run `pnyx-axi oracle setup --semantic` again, or `pnyx-axi settings set oracle.semantic off`'],
+    })
 
     if (broken) {
       this.broken = broken
@@ -54,16 +70,29 @@ function unit({ vector }: { vector: ArrayLike<number> }): Float32Array {
 }
 
 type Embedding = { getEmbeddingFor(tokens: number[]): Promise<{ vector: readonly number[] }> }
-type Ranking = { rankAll(query: string, docs: string[], options: { onOverflow: 'maxChunk' }): Promise<number[]> }
+type Ranking = {
+  rankAll(
+    query: string,
+    docs: string[],
+    options: { onOverflow: 'maxChunk' }
+  ): Promise<number[]>
+}
 
 // The part of node-llama-cpp this file uses; it is an optional dependency, so it is typed here rather than imported.
 interface LlamaCpp {
   LlamaLogLevel: { error: unknown }
-  getLlama(options: { gpu: 'auto'; build: 'never'; logLevel: unknown }): Promise<{
+  getLlama(options: {
+    gpu: 'auto'
+    build: 'never'
+    logLevel: unknown
+  }): Promise<{
     gpu: string | false
     loadModel(options: { modelPath: string }): Promise<{
       tokenize(text: string): number[]
-      createEmbeddingContext(o: { contextSize: number; batchSize: number }): Promise<Embedding>
+      createEmbeddingContext(o: {
+        contextSize: number
+        batchSize: number
+      }): Promise<Embedding>
       createRankingContext(options: { contextSize: number }): Promise<Ranking>
     }>
     dispose(): Promise<void>
@@ -78,8 +107,15 @@ export async function detectMode(): Promise<string> {
     return 'stub'
   }
 
-  const { getLlama, LlamaLogLevel } = await llamaCpp()
-  const llama = await getLlama({ gpu: 'auto', build: 'never', logLevel: LlamaLogLevel.error })
+  const {
+    getLlama,
+    LlamaLogLevel,
+  } = await llamaCpp()
+  const llama = await getLlama({
+    gpu: 'auto',
+    build: 'never',
+    logLevel: LlamaLogLevel.error,
+  })
   const mode = llama.gpu || 'cpu'
   await llama.dispose()
 
@@ -88,9 +124,15 @@ export async function detectMode(): Promise<string> {
 
 // What auto settings mean on a machine: with a GPU backend the 311m embedder and
 // the reranker; on CPU only the 97m embedder alone (the reranker takes seconds there).
-export type Choice = { model: EmbedderId; rerank: boolean }
+export type Choice = {
+  model: EmbedderId
+  rerank: boolean
+}
 
-export function resolveChoice({ settings, mode }: {
+export function resolveChoice({
+  settings,
+  mode,
+}: {
   settings: OracleSettings
   mode: string
 }): Choice {
@@ -105,9 +147,16 @@ export async function loadBackend({ model }: { model: EmbedderId }): Promise<Bac
 }
 
 async function realBackend({ id }: { id: EmbedderId }): Promise<Backend> {
-  const { getLlama, LlamaLogLevel } = await llamaCpp()
+  const {
+    getLlama,
+    LlamaLogLevel,
+  } = await llamaCpp()
   // build: never; a machine without a prebuilt binary has no semantic search rather than a compile.
-  const llama = await getLlama({ gpu: 'auto', build: 'never', logLevel: LlamaLogLevel.error })
+  const llama = await getLlama({
+    gpu: 'auto',
+    build: 'never',
+    logLevel: LlamaLogLevel.error,
+  })
   const mode = llama.gpu || 'cpu'
   const spec = EMBEDDERS[id]
   const model = await llama.loadModel({ modelPath: modelPath({ model: spec }) })
@@ -118,7 +167,10 @@ async function realBackend({ id }: { id: EmbedderId }): Promise<Backend> {
 
   // Leaves room for the start and end tokens the context adds; its input must stay under the context size.
   const embed = async ({ text }: { text: string }) => {
-    const tokens = model.tokenize(text).slice(0, EMBED_CONTEXT - 4)
+    const tokens = model.tokenize(text).slice(
+      0,
+      EMBED_CONTEXT - 4,
+    )
 
     return unit({ vector: (await context.getEmbeddingFor(tokens)).vector })
   }
@@ -129,11 +181,20 @@ async function realBackend({ id }: { id: EmbedderId }): Promise<Backend> {
     probes.push(await embed({ text: p }))
   }
 
-  const drift = Math.max(...spec.golden.flatMap((g, i) =>
-    g.map((x, d) => Math.abs(x - probes[i]![d]!))))
+  const drift = Math.max(...spec.golden.flatMap((
+    g,
+    i,
+  ) =>
+    g.map((
+      x,
+      d,
+    ) => Math.abs(x - probes[i]![d]!))))
 
   if (!(drift <= GOLDEN_TOLERANCE)) {
-    throw new SemanticError({ message: `${id} failed its golden check (drift ${drift.toFixed(4)}); the model file or runtime is broken`, broken: spec })
+    throw new SemanticError({
+      message: `${id} failed its golden check (drift ${drift.toFixed(4)}); the model file or runtime is broken`,
+      broken: spec,
+    })
   }
 
   let ranking: Promise<Ranking> | undefined
@@ -141,11 +202,21 @@ async function realBackend({ id }: { id: EmbedderId }): Promise<Backend> {
   const loadRanking = async () => {
     const reranker = await llama.loadModel({ modelPath: modelPath({ model: RERANKER }) })
     const ctx = await reranker.createRankingContext({ contextSize: RERANK_CONTEXT })
-    const scores = await ctx.rankAll(RERANK_PROBE, PROBES, { onOverflow: 'maxChunk' })
-    const off = Math.max(...scores.map((s, i) => Math.abs(s - RERANKER.golden[i]!)))
+    const scores = await ctx.rankAll(
+      RERANK_PROBE,
+      PROBES,
+      { onOverflow: 'maxChunk' },
+    )
+    const off = Math.max(...scores.map((
+      s,
+      i,
+    ) => Math.abs(s - RERANKER.golden[i]!)))
 
     if (!(off <= RERANK_TOLERANCE)) {
-      throw new SemanticError({ message: `the reranker failed its golden check (off by ${off.toFixed(3)})`, broken: RERANKER })
+      throw new SemanticError({
+        message: `the reranker failed its golden check (off by ${off.toFixed(3)})`,
+        broken: RERANKER,
+      })
     }
 
     return ctx
@@ -153,16 +224,29 @@ async function realBackend({ id }: { id: EmbedderId }): Promise<Backend> {
 
   return {
     mode,
-    key: `${id}@${spec.sha256.slice(0, 16)}/${mode}`,
+    key: `${id}@${spec.sha256.slice(
+      0,
+      16,
+    )}/${mode}`,
     dims: spec.dims,
     floor: spec.floor,
     probes,
     embed,
-    async rerank({ query, docs }) {
+    async rerank({
+      query,
+      docs,
+    }) {
       ranking ??= loadRanking()
       const ctx = await ranking
 
-      return ctx.rankAll(query.slice(0, RERANK_QUERY_MAX), docs, { onOverflow: 'maxChunk' })
+      return ctx.rankAll(
+        query.slice(
+          0,
+          RERANK_QUERY_MAX,
+        ),
+        docs,
+        { onOverflow: 'maxChunk' },
+      )
     },
     close: () => llama.dispose(),
   }
@@ -172,7 +256,10 @@ const STUB_DIMS = 64
 // A chunk holding most of the query's words passes; one sharing a word or none does not.
 const STUB_FLOOR = 0.5
 const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
-  .replace(/\p{M}/gu, '')
+  .replace(
+    /\p{M}/gu,
+    '',
+  )
 const stubWords = ({ text }: { text: string }) => fold({ text }).match(/[\p{L}\p{N}]+/gu) ?? []
 
 function stubVector({ text }: { text: string }): Float32Array {
@@ -196,7 +283,10 @@ function stubBackend({ id }: { id: EmbedderId }): Backend {
     floor: STUB_FLOOR,
     probes: PROBES.map(text => stubVector({ text })),
     embed: async ({ text }) => stubVector({ text }),
-    rerank: async ({ query, docs }) => {
+    rerank: async ({
+      query,
+      docs,
+    }) => {
       const q = new Set(stubWords({ text: query }))
 
       return docs.map(d => {

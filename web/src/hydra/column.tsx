@@ -43,12 +43,39 @@ export function Column({
   locked: boolean
   editingTitle: boolean
   titleFinished(): void
-  createTask({ column, parent }: { column: string; parent?: string }): void
+  createTask({
+    column,
+    parent,
+  }: {
+    column: string
+    parent?: string
+  }): void
 }) {
-  const [width, setWidth] = useState<number | null>(null)
-  const [rename, setRename] = useState(false)
-  const [describing, setDescribing] = useState(false), [draft, setDraft] = useState('')
-  const edit = ({ args }: { args: string[] }) => command({ name: 'column', args: [...args, '--if-revision', String(revision), '--event-id', crypto.randomUUID()] })
+  const [
+    width,
+    setWidth,
+  ] = useState<number | null>(null)
+  const [
+    rename,
+    setRename,
+  ] = useState(false)
+  const [
+      describing,
+      setDescribing,
+    ] = useState(false), [
+      draft,
+      setDraft,
+    ] = useState('')
+  const edit = ({ args }: { args: string[] }) => command({
+    name: 'column',
+    args: [
+      ...args,
+      '--if-revision',
+      String(revision),
+      '--event-id',
+      crypto.randomUUID(),
+    ],
+  })
   const report = ({ error }: { error: Error }) => notify({ text: error.message })
   const size = view.columnWidths[id] ?? view.defaultColumnWidths[id] ?? DEFAULT_COLUMN_WIDTH
 
@@ -66,7 +93,16 @@ export function Column({
         if (source && source !== id) {
           const target = columnIds.indexOf(id)
           const before = columnIds.indexOf(source as ColumnId) < target ? columnIds[target + 1] : id
-          void edit({ args: ['reorder', source, ...(before ? ['--before', before] : [])] }).catch(error => report({ error }))
+          void edit({
+            args: [
+              'reorder',
+              source,
+              ...(before ? [
+                '--before',
+                before,
+              ] : []),
+            ],
+          }).catch(error => report({ error }))
         } else if (task) {
           const over = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-task]') : null
           const rect = over?.getBoundingClientRect()
@@ -77,7 +113,19 @@ export function Column({
           })
 
           if (before !== task) {
-            void command({ name: 'move', args: [task, id, ...(before ? ['--before', before] : []), '--event-id', crypto.randomUUID()] }).catch(error => report({ error }))
+            void command({
+              name: 'move',
+              args: [
+                task,
+                id,
+                ...(before ? [
+                  '--before',
+                  before,
+                ] : []),
+                '--event-id',
+                crypto.randomUUID(),
+              ],
+            }).catch(error => report({ error }))
           }
         }
       }}
@@ -97,7 +145,10 @@ export function Column({
             return
           }
 
-          e.dataTransfer.setData('application/pnyx-column', id)
+          e.dataTransfer.setData(
+            'application/pnyx-column',
+            id,
+          )
         }}
       >
         <h2
@@ -115,7 +166,13 @@ export function Column({
             finished={() => {
               setRename(false); titleFinished()
             }}
-            save={({ title }) => edit({ args: ['rename', id, `--title=${title}`] }).then(() => {
+            save={({ title }) => edit({
+              args: [
+                'rename',
+                id,
+                `--title=${title}`,
+              ],
+            }).then(() => {
               setRename(false); titleFinished()
             })}
           />
@@ -142,7 +199,12 @@ export function Column({
             label="Delete column"
             disabled={!connected || columnIds.length === 1}
             {...(locked ? { refusal: LOCKED_DELETE } : {})}
-            confirm={() => edit({ args: ['delete', id] }).catch(error => report({ error }))}
+            confirm={() => edit({
+              args: [
+                'delete',
+                id,
+              ],
+            }).catch(error => report({ error }))}
           />
         </Menu>
       </header>
@@ -151,7 +213,14 @@ export function Column({
           className="column-description"
           onSubmit={e => {
             e.preventDefault()
-            void edit({ args: ['describe', id, '--description', draft] }).then(() => setDescribing(false))
+            void edit({
+              args: [
+                'describe',
+                id,
+                '--description',
+                draft,
+              ],
+            }).then(() => setDescribing(false))
               .catch(error => report({ error }))
           }}
         >

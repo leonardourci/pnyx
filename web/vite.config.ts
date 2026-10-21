@@ -11,15 +11,36 @@ const devToken: Plugin = {
   name: 'pnyx-dev-token',
   apply: 'serve',
   transformIndexHtml: () => [
-    { tag: 'meta', attrs: { name: 'pnyx-token', content: localToken() }, injectTo: 'head' },
-    { tag: 'meta', attrs: { name: 'pnyx-hydra', content: hydraIdentity({ hydraId: 'dev' }) }, injectTo: 'head' },
+    {
+      tag: 'meta',
+      attrs: {
+        name: 'pnyx-token',
+        content: localToken(),
+      },
+      injectTo: 'head',
+    },
+    {
+      tag: 'meta',
+      attrs: {
+        name: 'pnyx-hydra',
+        content: hydraIdentity({ hydraId: 'dev' }),
+      },
+      injectTo: 'head',
+    },
   ],
 }
 
 export default defineConfig({
   root: import.meta.dirname,
-  plugins: [react(), tailwindcss(), devToken],
-  build: { outDir: '../dist/web', emptyOutDir: true },
+  plugins: [
+    react(),
+    tailwindcss(),
+    devToken,
+  ],
+  build: {
+    outDir: '../dist/web',
+    emptyOutDir: true,
+  },
   server: {
     host: '127.0.0.1',
     strictPort: true,
@@ -36,11 +57,20 @@ export default defineConfig({
         changeOrigin: true,
         // The Hydra server accepts only its own origin. A page served by this dev
         // server is rewritten to it; any other origin passes through and is refused.
-        configure: proxy => proxy.on('proxyReqWs', (proxyReq, req) => {
-          if (req.headers.origin === `http://${req.headers.host}`) {
-            proxyReq.setHeader('origin', SERVER)
-          }
-        }),
+        configure: proxy => proxy.on(
+          'proxyReqWs',
+          (
+            proxyReq,
+            req,
+          ) => {
+            if (req.headers.origin === `http://${req.headers.host}`) {
+              proxyReq.setHeader(
+                'origin',
+                SERVER,
+              )
+            }
+          },
+        ),
       },
     },
   },

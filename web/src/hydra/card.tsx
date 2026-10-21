@@ -1,6 +1,7 @@
+import { QueueEditor, QueueLabel, WorkerQueue } from './queue.tsx'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ReminderEditor, ReminderLabel } from './reminder.tsx'
-import type { Card as CardData, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
+import type { Card as CardData, HydraState, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
 import { Label } from '../components/ui/label.tsx'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { Markdown } from '../components/ui/markdown.tsx'
@@ -28,6 +29,7 @@ function LastMessage({ message }: { message: LatestMessage }) {
 
 export function HydraCard({
   card,
+  state,
   firstmate,
   labelColors,
   latest,
@@ -43,6 +45,7 @@ export function HydraCard({
   notify,
 }: {
   card: CardData
+  state: HydraState
   firstmate: boolean
   labelColors?: SavedLabelColor[]
   doneAfterHours?: number
@@ -57,68 +60,132 @@ export function HydraCard({
   connected: boolean
   children?: ReactNode
 }) {
+  const [
+    queueing,
+    setQueueing,
+  ] = useState(false)
   const element = useRef<HTMLElement>(null)
-  const [preview, setPreview] = useState<number | null>(null)
-  const [minimum, setMinimum] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.min)
-  const [limit, setLimit] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.max)
-  const height = Math.max(minimum, Math.min(limit, view.cardHeights[card.id] ?? 480))
-  useLayoutEffect(() => {
-    const card = element.current
-    const pane = card?.closest('.column-cards')
+  const [
+    preview,
+    setPreview,
+  ] = useState<number | null>(null)
+  const [
+    minimum,
+    setMinimum,
+  ] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.min)
+  const [
+    limit,
+    setLimit,
+  ] = useState<number>(VIEW_SIZE_LIMITS.cardHeight.max)
+  const height = Math.max(
+    minimum,
+    Math.min(
+      limit,
+      view.cardHeights[card.id] ?? 480,
+    ),
+  )
+  useLayoutEffect(
+    () => {
+      const card = element.current
+      const pane = card?.closest('.column-cards')
 
-    if (!selected || !card || !pane) {
-      return
-    }
+      if (!selected || !card || !pane) {
+        return
+      }
 
-    const measure = () => {
-      const style = getComputedStyle(pane)
-      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
-      const available = Math.floor(pane.clientHeight - padding)
-      const updates = card.querySelector<HTMLElement>('.task-updates')
-      const cardStyle = getComputedStyle(card)
-      const frame = updates ? updates.getBoundingClientRect().top - card.getBoundingClientRect().top
-        + parseFloat(cardStyle.paddingBottom) + parseFloat(cardStyle.borderBottomWidth) : 0
-      const readable = Math.min(VIEW_SIZE_LIMITS.cardHeight.max, Math.max(
-        VIEW_SIZE_LIMITS.cardHeight.min,
-        Math.ceil(frame + MIN_UPDATES_HEIGHT),
-      ))
-      setMinimum(Math.min(readable, available))
-      setLimit(Math.max(
-        Math.min(readable, available),
-        Math.min(VIEW_SIZE_LIMITS.cardHeight.max, available),
-      ))
-    }
+      const measure = () => {
+        const style = getComputedStyle(pane)
+        const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+        const available = Math.floor(pane.clientHeight - padding)
+        const updates = card.querySelector<HTMLElement>('.task-updates')
+        const cardStyle = getComputedStyle(card)
+        const frame = updates
+          ? updates.getBoundingClientRect().top - card.getBoundingClientRect().top
+            + parseFloat(cardStyle.paddingBottom) + parseFloat(cardStyle.borderBottomWidth)
+          : 0
+        const readable = Math.min(
+          VIEW_SIZE_LIMITS.cardHeight.max,
+          Math.max(
+            VIEW_SIZE_LIMITS.cardHeight.min,
+            Math.ceil(frame + MIN_UPDATES_HEIGHT),
+          ),
+        )
+        setMinimum(Math.min(
+          readable,
+          available,
+        ))
+        setLimit(Math.max(
+          Math.min(
+            readable,
+            available,
+          ),
+          Math.min(
+            VIEW_SIZE_LIMITS.cardHeight.max,
+            available,
+          ),
+        ))
+      }
 
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(pane)
-    observer.observe(card)
-    const detail = card.querySelector('.detail')
+      measure()
+      const observer = new ResizeObserver(measure)
+      observer.observe(pane)
+      observer.observe(card)
+      const detail = card.querySelector('.detail')
 
-    if (detail) {
-      observer.observe(detail)
-    }
+      if (detail) {
+        observer.observe(detail)
+      }
 
-    return () => observer.disconnect()
-  }, [selected])
-  const [reminding, setReminding] = useState(false)
-  const [now, setNow] = useState(Date.now)
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000)
+      return () => observer.disconnect()
+    },
+    [selected],
+  )
+  const [
+    reminding,
+    setReminding,
+  ] = useState(false)
+  const [
+    now,
+    setNow,
+  ] = useState(Date.now)
+  useEffect(
+    () => {
+      const timer = setInterval(
+        () => setNow(Date.now()),
+        30_000,
+      )
 
-    return () => clearInterval(timer)
-  }, [])
-  const { resume, busy } = useStartRequest({ card, firstmate, command, notify })
-  const status = cardState({ card, hours: doneAfterHours, now })
+      return () => clearInterval(timer)
+    },
+    [],
+  )
+  const {
+    resume,
+    busy,
+  } = useStartRequest({
+    card,
+    firstmate,
+    command,
+    notify,
+  })
+  const status = cardState({
+    card,
+    hours: doneAfterHours,
+    now,
+  })
   const tint = labelColors?.find(entry => entry.label === card.project)
     ?? labelColors?.find(entry => card.tags.includes(entry.label))
   const update = taskUpdates({ card }).at(-1)
-  const factual = update ? { role: 'assistant' as const, text: update.text, at: update.at } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
+  const factual = update ? {
+    role: 'assistant' as const,
+    text: update.text,
+    at: update.at,
+  } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
 
   return (
     <article
       ref={element}
-      className={`card ${selected ? 'selected' : ''}`}
+      className={`card ${selected ? 'selected' : ''} ${queueing ? 'queueing' : ''}`}
       style={selected ? { height: `min(${preview ?? height}px, 100cqh)` } : undefined}
       data-task={card.id}
       data-label-color={tint?.color}
@@ -127,15 +194,21 @@ export function HydraCard({
           open({ id: card.id })
         }
       }}
-      draggable={connected && !selected && !reminding}
+      draggable={connected && !selected && !reminding && !queueing}
       onDragStart={e => {
-        e.stopPropagation(); e.dataTransfer.setData('application/pnyx-task', card.id)
+        e.stopPropagation(); e.dataTransfer.setData(
+          'application/pnyx-task',
+          card.id,
+        )
       }}
     >
       <div className="card-menu">
         <Menu label={`Card menu for ${card.title}`}>
           {!card.automaticTask && (
             <Button disabled={!connected} onClick={() => setReminding(true)}>Remind me…</Button>
+          )}
+          {!firstmate && !card.automaticTask && !card.sessionIds?.length && !card.doneAt && (
+            <Button disabled={!connected} onClick={() => setQueueing(true)}>{card.queue ? 'Edit worker queue…' : 'Queue behind a worker…'}</Button>
           )}
           <CopyId id={card.id} notify={notify} />
           <HideAfter
@@ -183,8 +256,19 @@ export function HydraCard({
         )}
       </div>
       {card.copy?.state === 'flagged' && <span className="copy-warning" title={card.copy.reason}>copy not cleaned</span>}
-      {(!selected || reminding) && (
+      <QueueLabel card={card} state={state} open={open} />
+      <WorkerQueue card={card} state={state} open={open} />
+      {(!selected || reminding || queueing) && (
         <div className="card-rest">
+          {queueing && (
+            <QueueEditor
+              card={card}
+              state={state}
+              command={command}
+              connected={connected}
+              close={() => setQueueing(false)}
+            />
+          )}
           {view.lastMessageOnCards && !selected && (
             factual ? <LastMessage message={factual} /> : <p className="last-message">No agent update yet.</p>
           )}

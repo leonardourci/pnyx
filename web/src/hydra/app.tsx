@@ -44,7 +44,10 @@ function restoreView({ key }: { key: string }): Restore {
 }
 
 const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [data-column] > .column-cards')]
-  .map(el => [el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban', el] as const)
+  .map(el => [
+    el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban',
+    el,
+  ] as const)
 
 const hydraViews = new Map<string, Restore>()
 
@@ -56,130 +59,289 @@ export function App() {
 
 function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const {
-    state, command, connected, thread, hydraThread, latest, navigation,
-    navigate, loading, loaded, error,
+    state,
+    command,
+    connected,
+    thread,
+    hydraThread,
+    latest,
+    navigation,
+    navigate,
+    loading,
+    loaded,
+    error,
   } = hydra
   const restoreKey = useRef(storageKey({ key: 'restore' })).current
   const [restored] = useState(() => hydraViews.get(navigation.hydraId)
     ?? restoreView({ key: restoreKey }))
-  const [page, setPage] = useState(new URLSearchParams(location.search).has('projects') || new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page ?? 'hydra'), [workspace, setWorkspace] = useState(''), [tag, setTag] = useState(''), [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [drafts, setDrafts] = useState<Record<string,string>>(restored.drafts ?? {}), [notice, setNotice] = useState<{ text: string } | null>(null), [newColumn, setNewColumn] = useState<string | null>(null)
-  const [comments, setComments] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
-  const [creatingTask, setCreatingTask] = useState<{ column: string; parent?: string } | null>(null)
-  const [historyQuery, setHistoryQuery] = useState('')
-  const [addingProject, setAddingProject] = useState(new URLSearchParams(location.search).has('projects'))
-  const [panel, setPanel] = useState(restored.panel ?? true)
-  const [project, setProject] = useState(new URLSearchParams(location.search).get('open-project') ?? new URLSearchParams(location.search).get('project') ?? '')
-  const [projectReferences, setProjectReferences] = useState<string[]>([])
-  const resolveProject = useCallback(({ references }: { references: string[] }) => {
-    setProjectReferences(references)
-  }, [])
-  useEffect(() => {
-    const url = new URL(location.href)
+  const [
+      page,
+      setPage,
+    ] = useState(new URLSearchParams(location.search).has('projects') || new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page ?? 'hydra'), [
+      workspace,
+      setWorkspace,
+    ] = useState(''), [
+      tag,
+      setTag,
+    ] = useState(''), [
+      query,
+      setQuery,
+    ] = useState('')
+  const [
+      selected,
+      setSelected,
+    ] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? null), [
+      drafts,
+      setDrafts,
+    ] = useState<Record<string,string>>(restored.drafts ?? {}), [
+      notice,
+      setNotice,
+    ] = useState<{ text: string } | null>(null), [
+      newColumn,
+      setNewColumn,
+    ] = useState<string | null>(null)
+  const [
+    comments,
+    setComments,
+  ] = useState<Record<string, ChatComment[]>>(restored.comments ?? {})
+  const [
+    creatingTask,
+    setCreatingTask,
+  ] = useState<{
+    column: string
+    parent?: string
+  } | null>(null)
+  const [
+    historyQuery,
+    setHistoryQuery,
+  ] = useState('')
+  const [
+    addingProject,
+    setAddingProject,
+  ] = useState(new URLSearchParams(location.search).has('projects'))
+  const [
+    panel,
+    setPanel,
+  ] = useState(restored.panel ?? true)
+  const [
+    project,
+    setProject,
+  ] = useState(new URLSearchParams(location.search).get('open-project') ?? new URLSearchParams(location.search).get('project') ?? '')
+  const [
+    projectReferences,
+    setProjectReferences,
+  ] = useState<string[]>([])
+  const resolveProject = useCallback(
+    ({ references }: { references: string[] }) => {
+      setProjectReferences(references)
+    },
+    [],
+  )
+  useEffect(
+    () => {
+      const url = new URL(location.href)
 
-    if (url.searchParams.has('projects')) {
-      url.searchParams.delete('projects')
-    }
+      if (url.searchParams.has('projects')) {
+        url.searchParams.delete('projects')
+      }
 
-    const project = url.searchParams.get('open-project')
+      const project = url.searchParams.get('open-project')
 
-    if (project !== null) {
-      url.searchParams.delete('open-project'); url.searchParams.set('project', project)
-    }
+      if (project !== null) {
+        url.searchParams.delete('open-project'); url.searchParams.set(
+          'project',
+          project,
+        )
+      }
 
-    history.replaceState(null, '', url)
-  }, [])
+      history.replaceState(
+        null,
+        '',
+        url,
+      )
+    },
+    [],
+  )
 
-  useEffect(() => {
-    if (addingProject && state.config?.hydra.kind === 'firstmate') {
-      setPage('settings'); setAddingProject(false)
-    }
-  }, [addingProject, state.config?.hydra.kind])
+  useEffect(
+    () => {
+      if (addingProject && state.config?.hydra.kind === 'firstmate') {
+        setPage('settings'); setAddingProject(false)
+      }
+    },
+    [
+      addingProject,
+      state.config?.hydra.kind,
+    ],
+  )
 
   const filterProject = ({ path }: { path: string }) => {
     setProject(path)
     const url = new URL(location.href)
 
     if (path) {
-      url.searchParams.set('project', path)
+      url.searchParams.set(
+        'project',
+        path,
+      )
     } else {
       url.searchParams.delete('project')
     }
 
-    history.replaceState(null, '', url)
+    history.replaceState(
+      null,
+      '',
+      url,
+    )
   }
 
-  useEffect(() => {
-    if (!notice) {
-      return
-    }
-
-    const timer = setTimeout(() => setNotice(null), 5000)
-
-    return () => clearTimeout(timer)
-  }, [notice])
-
-  const notify = useCallback(({ text }: { text: string }) => {
-    setNotice({ text })
-  }, [])
-  useEffect(() => {
-    if (connected) {
-      void command({ name: 'hydras', args: [] }).catch((error: Error) => notify({ text: error.message }))
-    }
-  }, [connected, command, notify])
-  useEffect(() => {
-    const timers = new Map<HTMLElement, ReturnType<typeof setTimeout>>()
-
-    const scroll = (event: Event) => {
-      const target = event.target
-
-      if (!(target instanceof HTMLElement)) {
+  useEffect(
+    () => {
+      if (!notice) {
         return
       }
 
-      clearTimeout(timers.get(target)); target.classList.add('scrolling')
-      timers.set(target, setTimeout(() => {
-        target.classList.remove('scrolling'); timers.delete(target)
-      }, 700))
-    }
+      const timer = setTimeout(
+        () => setNotice(null),
+        5000,
+      )
 
-    document.addEventListener('scroll', scroll, true)
+      return () => clearTimeout(timer)
+    },
+    [notice],
+  )
 
-    return () => {
-      document.removeEventListener('scroll', scroll, true); timers.forEach(timer => clearTimeout(timer))
-    }
-  }, [])
-  useLayoutEffect(() => () => {
-    const value: Restore = {
+  const notify = useCallback(
+    ({ text }: { text: string }) => {
+      setNotice({ text })
+    },
+    [],
+  )
+  useEffect(
+    () => {
+      if (connected) {
+        void command({
+          name: 'hydras',
+          args: [],
+        }).catch((error: Error) => notify({ text: error.message }))
+      }
+    },
+    [
+      connected,
+      command,
+      notify,
+    ],
+  )
+  useEffect(
+    () => {
+      const timers = new Map<HTMLElement, ReturnType<typeof setTimeout>>()
+
+      const scroll = (event: Event) => {
+        const target = event.target
+
+        if (!(target instanceof HTMLElement)) {
+          return
+        }
+
+        clearTimeout(timers.get(target)); target.classList.add('scrolling')
+        timers.set(
+          target,
+          setTimeout(
+            () => {
+              target.classList.remove('scrolling'); timers.delete(target)
+            },
+            700,
+          ),
+        )
+      }
+
+      document.addEventListener(
+        'scroll',
+        scroll,
+        true,
+      )
+
+      return () => {
+        document.removeEventListener(
+          'scroll',
+          scroll,
+          true,
+        ); timers.forEach(timer => clearTimeout(timer))
+      }
+    },
+    [],
+  )
+  useLayoutEffect(
+    () => () => {
+      const value: Restore = {
+        selected,
+        page,
+        panel,
+        drafts,
+        comments,
+        scroll: Object.fromEntries(scrollers()
+          .map(([
+            key,
+            el,
+          ]) => [
+            key,
+            [
+              el.scrollLeft,
+              el.scrollTop,
+            ],
+          ])),
+      }
+      hydraViews.set(
+        navigation.hydraId,
+        value,
+      )
+
+      try {
+        sessionStorage.setItem(
+          restoreKey,
+          JSON.stringify(value),
+        )
+      } catch { /* The in-memory view still preserves drafts when storage is full. */ }
+    },
+    [
+      navigation.hydraId,
       selected,
       page,
       panel,
       drafts,
       comments,
-      scroll: Object.fromEntries(scrollers()
-        .map(([key, el]) => [key, [el.scrollLeft, el.scrollTop]])),
-    }
-    hydraViews.set(navigation.hydraId, value)
-
-    try {
-      sessionStorage.setItem(restoreKey, JSON.stringify(value))
-    } catch { /* The in-memory view still preserves drafts when storage is full. */ }
-  }, [navigation.hydraId, selected, page, panel, drafts, comments, restoreKey])
+      restoreKey,
+    ],
+  )
   const pendingScroll = useRef(restored.scroll)
   const view = viewFor({ state })
-  useEffect(() => {
-    const root = document.documentElement, dark = matchMedia('(prefers-color-scheme: dark)')
+  useEffect(
+    () => {
+      const root = document.documentElement, dark = matchMedia('(prefers-color-scheme: dark)')
 
-    const apply = () => {
-      root.dataset.theme = view.theme === 'system' ? (dark.matches ? 'dark' : 'light') : view.theme
-    }
+      const apply = () => {
+        root.dataset.theme = view.theme === 'system' ? (dark.matches ? 'dark' : 'light') : view.theme
+      }
 
-    apply(); dark.addEventListener('change', apply)
+      apply(); dark.addEventListener(
+        'change',
+        apply,
+      )
 
-    return () => dark.removeEventListener('change', apply)
-  }, [view.theme])
+      return () => dark.removeEventListener(
+        'change',
+        apply,
+      )
+    },
+    [view.theme],
+  )
   const columns = columnsFor({ state })
-  const found = useFoundCards({ command, query: commandQuery({ query }) ? '' : query, workspace, revision: state.seq })
+  const found = useFoundCards({
+    command,
+    query: commandQuery({ query }) ? '' : query,
+    workspace,
+    revision: state.seq,
+  })
   const filteredCards = findBoxCards({
     state,
     workspace,
@@ -189,51 +351,134 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   }).filter(c => !project || c.project === project || projectReferences.includes(c.project ?? ''))
   const card = selected ? state.cards[selected] : undefined
   const cards = card && !filteredCards.some(item => item.id === card.id)
-    ? [...filteredCards, card] : filteredCards
-  const title = pageTitle({ page, cards: state.cards, selected, needsYou: columns.find(c => c.role === 'needs_you')?.id })
-  useEffect(() => {
-    document.title = title
-  }, [title])
-  const save = useCallback(({ patch }: { patch: unknown }) => command({ name: 'view', args: ['set', '--json', JSON.stringify(patch), '--if-revision', String(state.viewRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => {
-    return true
-  }, e => {
-    notify({ text: e.message })
+    ? [
+      ...filteredCards,
+      card,
+    ] : filteredCards
+  const title = pageTitle({
+    page,
+    cards: state.cards,
+    selected,
+    needsYou: columns.find(c => c.role === 'needs_you')?.id,
+  })
+  useEffect(
+    () => {
+      document.title = title
+    },
+    [title],
+  )
+  const save = useCallback(
+    ({ patch }: { patch: unknown }) => command({
+      name: 'view',
+      args: [
+        'set',
+        '--json',
+        JSON.stringify(patch),
+        '--if-revision',
+        String(state.viewRevision ?? 0),
+        '--event-id',
+        crypto.randomUUID(),
+      ],
+    }).then(
+      () => {
+        return true
+      },
+      e => {
+        notify({ text: e.message })
 
-    return false
-  }), [command, notify, state.viewRevision])
+        return false
+      },
+    ),
+    [
+      command,
+      notify,
+      state.viewRevision,
+    ],
+  )
 
-  useEffect(() => {
-    const keep = () => {
-      try {
-        const scroll = Object.fromEntries(scrollers()
-          .map(([key, el]) => [key, [el.scrollLeft, el.scrollTop]]))
-        sessionStorage.setItem(restoreKey, JSON.stringify({
-          selected, page, panel, drafts, comments, scroll,
+  useEffect(
+    () => {
+      const keep = () => {
+        try {
+          const scroll = Object.fromEntries(scrollers()
+            .map(([
+              key,
+              el,
+            ]) => [
+              key,
+              [
+                el.scrollLeft,
+                el.scrollTop,
+              ],
+            ]))
+          sessionStorage.setItem(
+            restoreKey,
+            JSON.stringify({
+              selected,
+              page,
+              panel,
+              drafts,
+              comments,
+              scroll,
+            }),
+          )
+        } catch { /* Storage full or blocked: the reload starts fresh. */ }
+      }
+
+      addEventListener(
+        'pagehide',
+        keep,
+      )
+
+      return () => removeEventListener(
+        'pagehide',
+        keep,
+      )
+    },
+    [
+      selected,
+      page,
+      panel,
+      drafts,
+      comments,
+      restoreKey,
+    ],
+  )
+  useEffect(
+    () => {
+      const scroll = pendingScroll.current
+
+      if (scroll && state.seq > 0) {
+        pendingScroll.current = undefined
+        requestAnimationFrame(() => {
+          for (const [
+            key,
+            el,
+          ] of scrollers()) {
+            el.scrollTo(...(scroll[key] ?? [
+              0,
+              0,
+            ]))
+          }
+        })
+      }
+    },
+    [state.seq],
+  )
+  useEffect(
+    () => {
+      if (page === 'hydra' && selected) {
+        requestAnimationFrame(() => document.querySelector('.card.selected')?.scrollIntoView({
+          block: 'nearest',
+          inline: 'nearest',
         }))
-      } catch { /* Storage full or blocked: the reload starts fresh. */ }
-    }
-
-    addEventListener('pagehide', keep)
-
-    return () => removeEventListener('pagehide', keep)
-  }, [selected, page, panel, drafts, comments, restoreKey])
-  useEffect(() => {
-    const scroll = pendingScroll.current
-
-    if (scroll && state.seq > 0) {
-      pendingScroll.current = undefined
-      requestAnimationFrame(() => {
-        for (const [key, el] of scrollers()) {
-          el.scrollTo(...(scroll[key] ?? [0, 0]))
-        }
-      })
-    }
-  }, [state.seq])
-  useEffect(() => {
-    if (page === 'hydra' && selected) {
-      requestAnimationFrame(() => document.querySelector('.card.selected')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }))
-    }
-  }, [page, selected])
+      }
+    },
+    [
+      page,
+      selected,
+    ],
+  )
 
   const openHydra = () => {
     setPage('hydra')
@@ -257,15 +502,37 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     const target = filteredCards.find(c => c.id === selected) ?? filteredCards.find(c => c.column === card?.column) ?? filteredCards[0]; setSelected(null); requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-column-heading="${CSS.escape(card?.column ?? 'needs_you')}"]` }))
   }
 
-  const createTask = ({ column, parent }: { column: string; parent?: string }) => {
+  const createTask = ({
+    column,
+    parent,
+  }: {
+    column: string
+    parent?: string
+  }) => {
     setPage('hydra'); setWorkspace(''); setTag(''); setQuery(''); filterProject({ path: '' }); setSelected(null)
-    setCreatingTask({ column, ...(parent ? { parent } : {}) })
+    setCreatingTask({
+      column,
+      ...(parent ? { parent } : {}),
+    })
     requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.task-create [aria-label="Task title"]' })))
   }
 
   const createColumn = () => {
     const id = `custom:${crypto.randomUUID()}`
-    void command({ name: 'column', args: ['create', '--id', id, '--title', 'New column', '--if-revision', String(state.configRevision ?? 0), '--event-id', crypto.randomUUID()] }).then(() => {
+    void command({
+      name: 'column',
+      args: [
+        'create',
+        '--id',
+        id,
+        '--title',
+        'New column',
+        '--if-revision',
+        String(state.configRevision ?? 0),
+        '--event-id',
+        crypto.randomUUID(),
+      ],
+    }).then(() => {
       setPage('hydra'); setNewColumn(id)
       requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: `[data-column="${CSS.escape(id)}"] input` })))
     })
@@ -309,9 +576,15 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           openTask={open}
           title={card.title}
           draft={drafts[card.id] ?? ''}
-          setDraft={({ text }) => setDrafts(d => ({ ...d, [card.id]: text }))}
+          setDraft={({ text }) => setDrafts(d => ({
+            ...d,
+            [card.id]: text,
+          }))}
           comments={comments[card.id] ?? []}
-          setComments={({ items }) => setComments(c => ({ ...c, [card.id]: items }))}
+          setComments={({ items }) => setComments(c => ({
+            ...c,
+            [card.id]: items,
+          }))}
           height={view.composerHeight}
           command={command}
           save={save}
@@ -438,9 +711,15 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                   view={view}
                   save={save}
                   draft={drafts[HYDRA_CARD] ?? ''}
-                  setDraft={({ text }) => setDrafts(d => ({ ...d, [HYDRA_CARD]: text }))}
+                  setDraft={({ text }) => setDrafts(d => ({
+                    ...d,
+                    [HYDRA_CARD]: text,
+                  }))}
                   comments={comments[HYDRA_CARD] ?? []}
-                  setComments={({ items }) => setComments(c => ({ ...c, [HYDRA_CARD]: items }))}
+                  setComments={({ items }) => setComments(c => ({
+                    ...c,
+                    [HYDRA_CARD]: items,
+                  }))}
                 />
                 <div className="hydra-main">
                   <div className="work-area inline">
@@ -461,7 +740,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                               revision={state.configRevision ?? 0}
                               connected={connected}
                               columnIds={columns.map(c => c.id)}
-                              locked={lockedColumn({ state, id: c.id })}
+                              locked={lockedColumn({
+                                state,
+                                id: c.id,
+                              })}
                               editingTitle={newColumn === c.id}
                               titleFinished={() => setNewColumn(null)}
                               createTask={createTask}
@@ -480,7 +762,17 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                     const first = items[0]
 
                                     if (first) {
-                                      void command({ name: 'move', args: [id, c.id, '--before', first.id, '--event-id', crypto.randomUUID()] }).catch(e => notify({ text: e.message }))
+                                      void command({
+                                        name: 'move',
+                                        args: [
+                                          id,
+                                          c.id,
+                                          '--before',
+                                          first.id,
+                                          '--event-id',
+                                          crypto.randomUUID(),
+                                        ],
+                                      }).catch(e => notify({ text: e.message }))
                                     }
                                   }}
                                 />
@@ -489,6 +781,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                 <HydraCard
                                   key={item.id}
                                   card={item}
+                                  state={state}
                                   firstmate={state.config?.hydra.kind === 'firstmate'}
                                   labelColors={state.labelColors}
                                   doneAfterHours={state.config?.doneAfterHours}

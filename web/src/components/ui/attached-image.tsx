@@ -3,7 +3,10 @@ import { ATTACHMENT_NAME, imageLine } from '../../../../src/attachments/images.t
 
 // Images another Hydra stored are not served here, so they stay their text line.
 export function AttachedImage({ path }: { path: string }) {
-  const [failed, setFailed] = useState(false)
+  const [
+    failed,
+    setFailed,
+  ] = useState(false)
   const name = path.split('/').at(-1) ?? ''
   const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
 
