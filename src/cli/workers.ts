@@ -353,7 +353,6 @@ const hydraDigestHandler = guard({
       positionals: 1,
     })
 
-    // Read first: moving owner preferences out of the Hydra changes its state.
     const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
 

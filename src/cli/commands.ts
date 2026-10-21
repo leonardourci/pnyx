@@ -11,7 +11,7 @@ import { setupService } from '../server/service.ts'
 import { setupSkills } from '../integrations/skills/install.ts'
 import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths, viewFor } from '../core/view.ts'
 import { checkBudget, HYDRA_MEMORY_BUDGET, memorySize, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
-import { ownerMemory, saveOwnerMemory } from '../store/owner-memory.ts'
+import { ownerMemory, ownerRevision, saveOwnerMemory } from '../store/owner-memory.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { sendReply } from './reply.ts'
 import { findSession, interactive, liveTask, rankOf, selfSession } from '../core/tasks.ts'
@@ -2847,8 +2847,12 @@ const owner = guard({
       positionals,
     } = parse({
       args,
+      // Owner memory has no events or cards, so it takes only the write flags it honours.
       options: {
-        ...WRITE,
+        ...COMMON,
+        actor: WRITE.actor!,
+        reason: WRITE.reason!,
+        'if-revision': WRITE['if-revision']!,
         key: { type: 'string' },
         text: { type: 'string' },
       },
@@ -2866,11 +2870,14 @@ const owner = guard({
     const action = positionals[1] ?? 'list'
 
     if (action === 'list') {
-      return memoryList({
-        memory: ownerMemory(),
-        budget: OWNER_MEMORY_BUDGET,
-        empty: 'none: no owner memory yet',
-      })
+      return {
+        ...memoryList({
+          memory: ownerMemory(),
+          budget: OWNER_MEMORY_BUDGET,
+          empty: 'none: no owner memory yet',
+        }),
+        revision: ownerRevision(),
+      }
     }
 
     const {
@@ -2890,6 +2897,7 @@ const owner = guard({
     return entry ? {
       memory: key,
       state: after === null ? 'forgotten' : 'saved',
+      revision: entry.seq,
       used: `${memorySize({ memory: ownerMemory() })} of ${OWNER_MEMORY_BUDGET} characters`,
     } : {
       memory: key,
@@ -3755,7 +3763,7 @@ export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Pnyx shows every agent and its work in Hydras
 commands:
   pnyx-axi                                   Show the Hydra summary
-  hydra create|list|homes|show|set|memory     Create, list or configure Hydras and their notes (owner memory: every Hydra's)
+  hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
   project add|list|set|remove                   Attach, list or detach projects
   column create|rename|describe|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
@@ -3825,10 +3833,11 @@ except its chat lines, which are listed but never end a wait; with --wait it blo
 and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
 for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
 `,
-  owner: `usage: pnyx-axi owner memory list|set|forget [--key <key>] [--text <text>] [--reason <why>]
+  owner: `usage: pnyx-axi owner memory list|set|forget [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
 Owner memory is Pnyx-wide: every Hydra's digest prints it. Keep the owner's preferences under the key preferences and general learnings under learnings,
 one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET} characters; a save over budget is refused.
-Every replacement and removal stays in ~/.pnyx/owner/memory.jsonl.
+Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
+Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/.pnyx).
 `,
   column: `usage: pnyx-axi column list
 pnyx-axi column create --title <title> [--id custom:<id>]

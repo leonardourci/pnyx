@@ -1043,6 +1043,20 @@ test(
         }),
         /Pnyx-wide owner memory/,
       )
+      assert.throws(
+        () => f.run({
+          name: 'hydra',
+          args: [
+            'memory',
+            'set',
+            '--key',
+            'learnings',
+            '--text',
+            'CI is slow.',
+          ],
+        }),
+        /Pnyx-wide owner memory/,
+      )
 
       await f.run({
         name: 'owner',
