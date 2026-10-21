@@ -1338,6 +1338,83 @@ const TMUX = {
 }
 
 test(
+  'a secret terminal answer reaches the prompt but stays hidden in decision receipts',
+  () => {
+    const {
+      root,
+      run,
+      calls,
+      session,
+    } = hosts()
+    const secret = 'synthetic-private-answer'
+    const request: Attention = {
+      kind: 'question',
+      key: 'hook:secret',
+      blocking: true,
+      questions: [
+        {
+          question: 'Enter the access phrase',
+          secret: true,
+          options: [{label: 'Use saved phrase'}],
+        },
+      ],
+    }
+    session({
+      key:'secret',
+      provider:'claude-code',
+      terminal:TMUX,
+      attention:[request],
+    })
+    assert.match(
+      run({
+        args:[
+          'reply',
+          'secret',
+          '--answer',
+          request.key,
+          '--json',
+          JSON.stringify({answers:[{text:secret}]}),
+          '--idempotency-key',
+          'secret-answer',
+        ],
+      }),
+      /state: delivered/,
+    )
+    assert.ok(
+      calls().some(call=>call.includes(secret)),
+      'the terminal receives the actual answer',
+    )
+    const events: HydraEvent[] = readFileSync(
+      join(
+        root,
+        'pnyx',
+        'hydras',
+        'default',
+        'events.jsonl',
+      ),
+      'utf8',
+    ).trim()
+      .split('\n')
+      .map(line=>JSON.parse(line))
+    const receipts = events.filter(event=>event.type === 'card.replied' && event.data.reply === 'secret-answer')
+    assert.ok(receipts.some(event=>event.type === 'card.replied' && event.data.state === 'queued'))
+    assert.ok(receipts.some(event=>event.type === 'card.replied' && event.data.state === 'delivered'))
+
+    for (const event of receipts) {
+      assert.ok(event.type === 'card.replied')
+      assert.deepEqual(
+        event.data.decision,
+        {
+          question:'Enter the access phrase',
+          answer:'(hidden)',
+        },
+      )
+      assert.ok(!JSON.stringify(event.data.decision).includes(secret))
+    }
+  },
+)
+
+test(
   'an answer is typed as keys into the tmux pane, once, and marks the request answered',
   () => {
     const {
