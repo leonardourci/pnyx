@@ -87,6 +87,7 @@ Apply these with judgment:
 
 - Ask only when you need the owner's input: `pnyx-axi hydra send --task <task> --text "<question and context>" --actor hydra --hydra <hydra>` (leave out `--task` for the whole Hydra).
 - Reference a task inline with `[@Task title](pnyx-task:<URL-encoded-task-id>)`, for example `The fix is in [@Repair sign-in](pnyx-task:task-123).` Use the task's exact id, encoded with `encodeURIComponent`, and escape Markdown punctuation in its title. Pnyx shows a calendar, the task's current state icon and title, and opens its card when the owner clicks the reference. The written title is a fallback; renames and state changes stay live.
+- When a reply covers a task, give it its own paragraph that starts with the task's reference. Pnyx copies that paragraph, and the message it answers, onto the task's Updates, so say there what was decided, why and what comes next. A reference later in a sentence only links.
 - Replies may include `## Comments on your reply from <time>` with numbered quoted passages, followed by `## Message`. A quote of three words or fewer includes its paragraph for context, and several comments may overlap. Address them together with the message; the first comment's internal explanation is marked "no reply needed".
 
 ## Memory

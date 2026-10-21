@@ -50,6 +50,30 @@ export function taskMentions({ text }: { text: string }): TaskMention[] {
   })
 }
 
+// Only a chip that opens a paragraph tags it; a chip later in a sentence only links.
+export function taggedParagraphs({ text }: { text: string }): (TaskMention & { text: string })[] {
+  return text.split(/\n[ \t]*\n/).flatMap(paragraph => {
+    const trimmed = paragraph.trim()
+    const lead = /^(?:[-*]\s+|\d+\.\s+)?(?:\*\*)?(\[@(?:\\.|[^\]\\\r\n])*\]\(pnyx-task:[\w%~.-]+\))/.exec(trimmed)
+    const mention = lead && taskMentions({ text: lead[1]! })[0]
+    const rest = lead ? trimmed.slice(lead[0].length).replace(
+      /^\*\*/,
+      '',
+    )
+      .replace(
+        /^[\s:.,\u2013\u2014-]+/,
+        '',
+      ) : ''
+
+    return mention && rest ? [
+      {
+        ...mention,
+        text: rest,
+      },
+    ] : []
+  })
+}
+
 export function mentionQuery({
   text,
   cursor,

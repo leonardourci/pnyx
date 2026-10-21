@@ -33,6 +33,9 @@ export function liveReplies() {
     finish() {
       working = false
     },
+    texts() {
+      return [...messages.values()].map(entry => entry.text)
+    },
     page({ page }: { page: ThreadPage }): ThreadPage {
       const saved = new Map<string, string>()
 

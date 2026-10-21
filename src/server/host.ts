@@ -9,6 +9,7 @@ import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
 import { modelIds, type HostedSession, type ModelOption, type PermissionDecision } from './provider.ts'
 import { liveReplies } from './streaming.ts'
+import { copyTagged } from './tagged-updates.ts'
 import type { ThreadPage } from '../thread/read.ts'
 import { seenAt, terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
@@ -176,14 +177,35 @@ function isFolder({ path }: { path: string }): boolean {
   }
 }
 
+// id names the owner's Hydra message an item carries, so a turn knows what it answered.
 function inbox() {
-  const items: string[] = []
+  const items: {
+    text: string
+    id?: string
+  }[] = []
+  let taken: string[] = []
   let wake: (() => void) | undefined, done = false
 
   return {
-    push({ text }: { text: string }) {
-      items.push(text)
+    push({
+      text,
+      id,
+    }: {
+      text: string
+      id?: string
+    }) {
+      items.push({
+        text,
+        ...(id ? { id } : {}),
+      })
       wake?.()
+    },
+    // Message ids handed to the agent since the last call.
+    taken() {
+      const ids = taken
+      taken = []
+
+      return ids
     },
     pending() {
       return items.length
@@ -195,7 +217,13 @@ function inbox() {
     async* [Symbol.asyncIterator](): AsyncGenerator<string> {
       for (;;) {
         if (items.length) {
-          yield items.shift()!
+          const item = items.shift()!
+
+          if (item.id) {
+            taken.push(item.id)
+          }
+
+          yield item.text
         } else if (done) {
           return
         } else {
@@ -866,6 +894,16 @@ export function createHost({
           if (activity === 'finished') {
             if (card.id === HYDRA_CARD) {
               armWake()
+              const texts = entry.replies.texts()
+              const asks = entry.input.taken()
+              note({
+                fn: ({ writer }) => copyTagged({
+                  writer,
+                  texts,
+                  asks,
+                  at: new Date().toISOString(),
+                }),
+              })
             }
 
             if (entry.stale) {
@@ -1470,7 +1508,10 @@ export function createHost({
           prepared = undefined
           const waking = /^(wake|stall):/.test(id) && !opened && Boolean(entry.session)
           entry.activity = 'working'
-          entry.input.push({ text: waking ? `${text}${memoryChangeNote()}` : text })
+          entry.input.push({
+            text: waking ? `${text}${memoryChangeNote()}` : text,
+            ...(/^(wake|stall):/.test(id) ? {} : { id }),
+          })
 
           return { state: 'queued' }
         } catch (error) {
