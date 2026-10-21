@@ -181,16 +181,28 @@ test('Hydra and task subscriptions show live replies, reconnect during a turn an
       }
 
       await waitFor({
-        check: () => sdk.calls.some(c => c.messages.length > 0) && !!state().cards[card]?.agent,
+        check: () => !!state().cards[card]?.agent,
       })
       const pages = await subscribe({ card })
       await waitFor({ check: () => pages.some(p => p.entries.some(e => e.streaming && e.text.startsWith('Hydra: ') && e.text.length === 8)) })
       assert.equal(state().cards[card]?.sessionActivity, 'working')
       const reconnected = await subscribe({ card })
       assert.ok(reconnected.at(-1)?.entries.some(e => e.streaming))
+      let overlap: ThreadPage[] | undefined
+
+      if (target === 'task') {
+        await commands.hydra(['send', '--text', 'Overlap the worker turn', '--hydra', 'stream'])
+        overlap = await subscribe({ card: HYDRA_CARD })
+        await waitFor({ check: () => overlap?.at(-1)?.entries.some(e => e.streaming && e.text === 'Hydra: O') ?? false })
+      }
+
       sdk.release()
       await waitFor({ check: () => pages.at(-1)?.entries.some(e => e.role === 'assistant' && !e.streaming && e.text.startsWith('Hydra: ')) ?? false })
       assert.equal(pages.at(-1)?.entries.filter(e => e.role === 'assistant' && e.text.startsWith('Hydra: ')).length, 1)
+
+      if (overlap) {
+        await waitFor({ check: () => overlap.at(-1)?.entries.some(e => !e.streaming && e.text === 'Hydra: Overlap the worker turn') ?? false })
+      }
     }
   } finally {
     sdk.release()
