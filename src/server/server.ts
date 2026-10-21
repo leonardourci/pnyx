@@ -2762,6 +2762,9 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const values = serveFlags({ args })
   const hydraId = values.hydra ?? 'default'
 
+  // portless hands the app its port in PORT.
+  values.port ??= process.env.PORT
+
   if (values.port !== undefined && !/^\d+$/.test(values.port)) {
     throw new AxiError(
       '--port must be a number',
@@ -2769,7 +2772,7 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     )
   }
 
-  const port = values.port === undefined ? DEFAULT_PORT : Number(values.port)
+  const port = Number(values.port ?? DEFAULT_PORT)
   let server: RunningServer
 
   try {
