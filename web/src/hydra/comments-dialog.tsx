@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button } from '../components/ui/controls.tsx'
 import { Dialog } from '../components/ui/dialog.tsx'
 import { Icon } from '../components/ui/icon.tsx'
-import { type ChatComment } from './chat.ts'
+import { groupComments, type ChatComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
 
 // With more than one comment, the ✕ asks first until it loses focus.
@@ -64,18 +64,7 @@ export function CommentsDialog({
 }) {
   // A note cleared while editing stays listed until the dialog closes.
   const listed = comments.filter(comment => shown.includes(comment.id))
-  const replies = new Map<string, ChatComment[]>()
-
-  for (const comment of listed) {
-    const reply = comment.at ?? comment.messageId
-    replies.set(
-      reply,
-      [
-        ...replies.get(reply) ?? [],
-        comment,
-      ],
-    )
-  }
+  const replies = groupComments({ comments: listed })
 
   return (
     <Dialog title={`Comments · ${listed.length}`} className="comments-dialog" close={close}>

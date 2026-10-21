@@ -148,6 +148,21 @@ const numberedComment = ({
   ].filter(Boolean).join('\n\n')
 }
 
+export function groupComments({ comments }: { comments: ChatComment[] }) {
+  const replies = new Map<string, ChatComment[]>()
+
+  for (const comment of comments) {
+    const reply = comment.at ?? comment.messageId
+    const group = replies.get(reply) ?? []
+    group.push(comment); replies.set(
+      reply,
+      group,
+    )
+  }
+
+  return replies
+}
+
 export function commentReply({
   draft,
   comments,
@@ -157,20 +172,9 @@ export function commentReply({
   comments: ChatComment[]
   firstComment?: boolean
 }): string {
-  const replies = new Map<string, ChatComment[]>()
-
-  for (const comment of comments) {
-    if (!sendableComment({ comment })) {
-      continue
-    }
-
-    const reply = comment.at ?? comment.messageId
-    const group = replies.get(reply) ?? []
-    group.push(comment); replies.set(
-      reply,
-      group,
-    )
-  }
+  const replies = groupComments({
+    comments: comments.filter(comment => sendableComment({ comment })),
+  })
 
   if (!replies.size) {
     return draft
