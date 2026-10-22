@@ -233,12 +233,6 @@ export const KEY_ACTIONS = [
     scopes: navigation,
   }),
   action({
-    id: 'settings',
-    label: 'Open settings',
-    keys: ['Mod+,'],
-    scopes: navigation,
-  }),
-  action({
     id: 'topbar',
     label: 'Show or hide the left panel',
     keys: ['Mod+b'],
