@@ -29,6 +29,8 @@ export interface ThreadEntry {
     }
   }
   task?: string
+  // Pairs a tool call with its result.
+  call?: string
   initial?: boolean
   replyId?: string
   messageId?: string
@@ -149,12 +151,14 @@ export function recordEntries({
     }
 
     const text = b.thinking ?? b.summary ?? b.content ?? b.output ?? b.arguments ?? b.input ?? 'Recorded details unavailable'
+    const call = b.tool_use_id ?? b.call_id ?? b.id
     entries.push({
       id: `${offset}:t${i}`,
       kind,
       role: typeof b.name === 'string' ? b.name : kind,
       at,
       text: typeof text === 'string' ? text : JSON.stringify(text),
+      ...(kind === 'tool' && typeof call === 'string' ? { call } : {}),
     })
   }
 

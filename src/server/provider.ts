@@ -10,7 +10,42 @@ export type HostedText = {
   text: string
   append?: boolean
 }
-export type HostedEvent = 'working' | 'finished' | HostedText
+export type PlanWindow = {
+  label: string
+  used: number
+  resetsAt?: string
+}
+// What the session knows about its own size and spend; any field may be unknown.
+export type HostedUsage = {
+  type: 'usage'
+  used?: number
+  window?: number
+  cost?: number
+  plan?: string
+  // Plan windows the agent reported itself, by label; a later report replaces the same label.
+  limits?: PlanWindow[]
+}
+// What `hydra usage` answers: the session's own numbers and its account's plan windows.
+export type HydraUsage = Omit<HostedUsage, 'type' | 'limits'> & {
+  harness: 'claude' | 'codex'
+  account?: string
+  windows?: PlanWindow[]
+}
+
+const named = ({ label }: PlanWindow) => label.toLowerCase()
+
+// A window in `over` takes the place of the same label in `base`, whatever its case; new labels go last.
+export const mergeWindows = ({
+  base,
+  over,
+}: {
+  base: PlanWindow[]
+  over: PlanWindow[]
+}): PlanWindow[] => [
+  ...base.map(window => over.find(limit => named(limit) === named(window)) ?? window),
+  ...over.filter(limit => !base.some(window => named(window) === named(limit))),
+]
+export type HostedEvent = 'working' | 'finished' | HostedText | HostedUsage
 export type AskPermission = ({
   tool,
   input,
@@ -42,6 +77,8 @@ export interface HostedSession {
     setting: string
     value: string
   }): Promise<void>
+  // Ends the running turn early; the session stays open for the next message.
+  interrupt(): Promise<void>
   close(): void
 }
 

@@ -1,7 +1,8 @@
-import { execFileSync } from 'node:child_process'
-import { isDeepStrictEqual } from 'node:util'
+import { execFile, execFileSync } from 'node:child_process'
+import { isDeepStrictEqual, promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from '../core/control.ts'
+import type { PlanWindow } from '../server/provider.ts'
 import { HydraError, type HydraState, type StartOverride } from '../core/model.ts'
 import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness, type HeadsDispatch } from './config.ts'
 
@@ -82,6 +83,11 @@ export function accountEnvironment({
   }
 }
 
+const QUOTA_RUN = {
+  timeout: 15000,
+  maxBuffer: 4 * 1024 * 1024,
+}
+
 export function readQuota({ account }: { account: Account }): QuotaReading {
   if (!existsSync(loginFolder({ account }))) {
     return { auth: 'signed-out' }
@@ -102,9 +108,8 @@ export function readQuota({ account }: { account: Account }): QuotaReading {
       '--json',
     ],
     {
+      ...QUOTA_RUN,
       encoding: 'utf8',
-      timeout: 15000,
-      maxBuffer: 4 * 1024 * 1024,
       stdio: [
         'ignore',
         'pipe',
@@ -140,6 +145,72 @@ export function readQuota({ account }: { account: Account }): QuotaReading {
   } catch { /* Harness defaults remain usable when quota-axi is unavailable. */ }
 
   return reading
+}
+
+interface PlanUsage {
+  plan?: string
+  windows: PlanWindow[]
+}
+
+// The account's plan windows for the composer's usage panel: a cached quota-axi read, so a hover never waits on the vendor.
+export async function readUsage({ account }: { account: Account }): Promise<PlanUsage | undefined> {
+  if (!existsSync(loginFolder({ account }))) {
+    return undefined
+  }
+
+  const env = accountEnvironment({ account })
+
+  try {
+    const { stdout } = await promisify(execFile)(
+      'quota-axi',
+      [
+        '--provider',
+        account.provider,
+        // A snapshot answers for every login, and quota-axi refuses a profile read against one.
+        ...(env[loginVariable({ provider: account.provider })] && !env.QUOTA_AXI_SNAPSHOT
+          ? ['--profile-only'] : []),
+        '--no-credential-refresh',
+        '--max-age',
+        '5m',
+        '--json',
+      ],
+      {
+        ...QUOTA_RUN,
+        env,
+      },
+    )
+    const row = (JSON.parse(stdout) as {
+      providers?: {
+        provider: string
+        plan?: string
+        notSetUp?: boolean
+        windows?: {
+          label?: string
+          percentRemaining?: number
+          percentUsed?: number
+          resetsAt?: string
+        }[]
+      }[]
+    }).providers?.find(p => p.provider === account.provider)
+
+    return row && !row.notSetUp ? {
+      ...(row.plan ? { plan: row.plan } : {}),
+      windows: (row.windows ?? []).flatMap(window => {
+        const used = window.percentUsed
+          ?? (window.percentRemaining === undefined ? undefined : 100 - window.percentRemaining)
+
+        return window.label && used !== undefined ? [
+          {
+            label: window.label,
+            used,
+            ...(window.resetsAt ? { resetsAt: window.resetsAt } : {}),
+          },
+        ] : []
+      }),
+    } : undefined
+  } catch {
+    return undefined
+  }
 }
 
 // Claude Code takes a 1M-context suffix on any model it lists, such as opus[1m].

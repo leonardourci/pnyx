@@ -1,10 +1,13 @@
 import {
-  useEffect, useLayoutEffect, useRef, useState,
+  Fragment, useEffect, useLayoutEffect, useRef, useState,
   type ClipboardEvent as PasteEvent, type KeyboardEvent as KeyEvent,
 } from 'react'
 import { flushSync } from 'react-dom'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
+import type { HydraColumn } from '../../../src/core/model.ts'
 import { Button } from '../components/ui/controls.tsx'
+import { CopyButton } from '../components/ui/copy-button.tsx'
+import { ColumnChip } from '../components/ui/column-chip.tsx'
 import { MessageText } from '../components/ui/streaming.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { TaskReference, TaskReferencesProvider, type TaskReferenceData } from '../components/ui/task-reference.tsx'
@@ -14,7 +17,7 @@ import {
   caretBounds, placeMessageCaret, focusComposer, latestAgentMessage, revealCaret,
   enterNote, leaveNote, noteBetween, selectionFocus,
 } from './caret.ts'
-import { orderedComments, sendableComment, type ChatComment } from './chat.ts'
+import { clock, duration, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageComment } from './message-comment.tsx'
@@ -22,10 +25,14 @@ import { HIGHLIGHT_SUPPORTED, clearHighlights, commentHighlightName, commentRang
 import {
   blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage,
 } from './message-selection.ts'
-import { receiptLabel } from './view.ts'
+import { columnLook, receiptLabel } from './view.ts'
+import { pnyxCalls, shellCommand, type PnyxCall, type PnyxLookup } from './pnyx-action.ts'
 
 const PILL_GAP = 6
 let highlights = 0
+
+// A message the owner just sent shows at once, faded until the server records it.
+export type ChatEntry = ThreadEntry & { sending?: boolean }
 
 const roleLabel = ({
   role,
@@ -36,7 +43,9 @@ const roleLabel = ({
 }) => role === 'assistant' ? assistantLabel : role === 'user' ? 'You' : role
 
 export function Messages({
-  entries,
+  entries: all,
+  working,
+  lookup,
   comments,
   setComments,
   quote,
@@ -53,7 +62,10 @@ export function Messages({
   toolDetails?: boolean
   thinkingDetails?: boolean
   assistantLabel?: string
-  entries: ThreadEntry[]
+  entries: ChatEntry[]
+  // Whether the latest turn is still running, so it has no footer yet.
+  working: boolean
+  lookup: PnyxLookup
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
   quote({ text }: { text: string }): void
@@ -79,6 +91,20 @@ export function Messages({
     index + 1,
   ]))
   const uploading = useRef(new Map<string, number>())
+  const {
+    entries,
+    calls,
+  } = pnyxCalls({
+    entries: all,
+    lookup,
+  })
+  const lookColumn = ({ id }: { id: string }) => columnLook({
+    column: lookup?.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
+  })
+  const turns = turnTimings({
+    entries,
+    working,
+  })
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
   const blockFor = ({ key }: { key: string | null }) =>
@@ -720,108 +746,131 @@ export function Messages({
         }}
       >
         {entries.map(entry => (
-          <article
-            key={entry.id}
-            className={`message ${entry.kind}${/^(user|You)( · continued)?$/.test(entry.role) ? ' mine' : ''}`}
-            aria-label={roleLabel({
-              role: entry.role,
-              assistantLabel,
-            })}
-            data-streaming={entry.streaming || undefined}
-            title={entry.at ? new Date(entry.at).toLocaleString() : undefined}
-          >
-            {entry.task && taskReferences && (
-              <div className="message-task">
-                <span className="message-task-label">About</span>
-                <TaskReference id={entry.task} />
+          <Fragment key={entry.id}>
+            <article
+              className={`message ${entry.kind}${ownMessage({ entry }) ? ' mine' : ''}`}
+              aria-label={roleLabel({
+                role: entry.role,
+                assistantLabel,
+              })}
+              data-streaming={entry.streaming || undefined}
+              data-sending={entry.sending || undefined}
+              title={entry.at && !ownMessage({ entry })
+                ? new Date(entry.at).toLocaleString() : undefined}
+            >
+              {entry.task && taskReferences && (
+                <div className="message-task">
+                  <span className="message-task-label">About</span>
+                  <TaskReference id={entry.task} />
+                </div>
+              )}
+              {entry.kind === 'message' ? (
+                <MessageText
+                  text={entry.text}
+                  streaming={entry.streaming}
+                  openTask={openTask}
+                  columnLook={lookColumn}
+                  block={({
+                    index,
+                    offset: local,
+                    quote,
+                    children,
+                  }) => {
+                    const messageId = entry.messageId ?? entry.id
+                    const offset = (entry.part ?? 0) + local
+                    const key = messageBlockKey({
+                      messageId,
+                      offset,
+                    })
+                    const own = ordered.filter(c =>
+                      c.messageId === messageId && c.offset === offset)
+
+                    return (
+                      <div
+                        className="message-block"
+                        data-message-block={key}
+                        data-message-id={messageId}
+                        data-message-at={entry.at}
+                        data-block-index={index}
+                        data-block-offset={offset}
+                        data-quote={quote}
+                        data-active={active === key}
+                        role="group"
+                        aria-label={`Message block ${index + 1}`}
+                      >
+                        {children}
+                        {own.map(comment => (
+                          <MessageComment
+                            key={comment.id}
+                            comment={comment}
+                            number={numbers.get(comment.id)!}
+                            inline
+                            change={({ text }) => update({
+                              items: latest.current.map(c => c.id === comment.id ? {
+                                ...c,
+                                text,
+                              } : c),
+                            })}
+                            remove={() => {
+                              remove({ id: comment.id })
+                              focusBlock({ element: blockFor({ key }) })
+                            }}
+                            leave={({
+                              note,
+                              direction,
+                            }) => root.current && leaveNote({
+                              passage: commentRange({
+                                host: root.current,
+                                comment,
+                              })?.getClientRects()[0],
+                              host: root.current,
+                              note,
+                              direction,
+                            })}
+                            release={() => release({ id: comment.id })}
+                            attach={({ files }) => void attach({
+                              id: comment.id,
+                              files,
+                            })}
+                          />
+                        ))}
+                      </div>
+                    )
+                  }}
+                />
+              ) : (
+                calls.has(entry.id)
+                  ? <PnyxCallRow call={calls.get(entry.id)!} />
+                  : <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
+              )}
+              {entry.delivery ? (
+                <span className="receipt" role="status">
+                  {Object.entries(entry.delivery).map(([
+                    route,
+                    delivery,
+                  ]) => (
+                    <span key={route} className={`receipt-${delivery.state}`} title={delivery.detail}>{route === 'hydra' ? 'Hydra' : 'Agent'}: {receiptLabel({ state: delivery.state })}{delivery.detail ? ` · ${delivery.detail}` : ''} </span>
+                  ))}
+                </span>
+              ) : entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
+            </article>
+            {ownMessage({ entry }) && !entry.role.endsWith('continued') && (
+              <div className="message-meta" contentEditable={false}>
+                {entry.at && (
+                  <time
+                    dateTime={entry.at}
+                    title={`Sent ${new Date(entry.at).toLocaleDateString()}, ${clock({
+                      at: entry.at,
+                      seconds: true,
+                    })}`}
+                  >{clock({ at: entry.at })}
+                  </time>
+                )}
+                <CopyButton label="Copy message" text={() => entry.text} />
               </div>
             )}
-            {entry.kind === 'message' ? (
-              <MessageText
-                text={entry.text}
-                streaming={entry.streaming}
-                openTask={openTask}
-                block={({
-                  index,
-                  offset: local,
-                  quote,
-                  children,
-                }) => {
-                  const messageId = entry.messageId ?? entry.id
-                  const offset = (entry.part ?? 0) + local
-                  const key = messageBlockKey({
-                    messageId,
-                    offset,
-                  })
-                  const own = ordered.filter(c => c.messageId === messageId && c.offset === offset)
-
-                  return (
-                    <div
-                      className="message-block"
-                      data-message-block={key}
-                      data-message-id={messageId}
-                      data-message-at={entry.at}
-                      data-block-index={index}
-                      data-block-offset={offset}
-                      data-quote={quote}
-                      data-active={active === key}
-                      role="group"
-                      aria-label={`Message block ${index + 1}`}
-                    >
-                      {children}
-                      {own.map(comment => (
-                        <MessageComment
-                          key={comment.id}
-                          comment={comment}
-                          number={numbers.get(comment.id)!}
-                          inline
-                          change={({ text }) => update({
-                            items: latest.current.map(c => c.id === comment.id ? {
-                              ...c,
-                              text,
-                            } : c),
-                          })}
-                          remove={() => {
-                            remove({ id: comment.id })
-                            focusBlock({ element: blockFor({ key }) })
-                          }}
-                          leave={({
-                            note,
-                            direction,
-                          }) => root.current && leaveNote({
-                            passage: commentRange({
-                              host: root.current,
-                              comment,
-                            })?.getClientRects()[0],
-                            host: root.current,
-                            note,
-                            direction,
-                          })}
-                          release={() => release({ id: comment.id })}
-                          attach={({ files }) => void attach({
-                            id: comment.id,
-                            files,
-                          })}
-                        />
-                      ))}
-                    </div>
-                  )
-                }}
-              />
-            ) : (
-              <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
-            )}
-            {entry.delivery ? (
-              <span className="receipt" role="status">
-                {Object.entries(entry.delivery).map(([
-                  route,
-                  delivery,
-                ]) => (
-                  <span key={route} className={`receipt-${delivery.state}`} title={delivery.detail}>{route === 'hydra' ? 'Hydra' : 'Agent'}: {receiptLabel({ state: delivery.state })}{delivery.detail ? ` · ${delivery.detail}` : ''} </span>
-                ))}
-              </span>
-            ) : entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
-          </article>
+            {turns.has(entry.id) && <TurnFooter turn={turns.get(entry.id)!} />}
+          </Fragment>
         ))}
         <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
         {selection && (
@@ -857,6 +906,68 @@ export function Messages({
   )
 }
 
+function TurnFooter({ turn }: { turn: TurnTiming }) {
+  const took = duration({ ms: Date.parse(turn.end) - Date.parse(turn.start) })
+  const started = clock({
+    at: turn.start,
+    seconds: true,
+  })
+
+  return (
+    <div className="turn-foot" contentEditable={false}>
+      {turn.reply && <CopyButton label="Copy reply" text={() => turn.reply} />}
+      {turn.latest
+        ? <time dateTime={turn.end} title={`Worked for ${took} · started ${started}`}>{clock({ at: turn.end })}</time>
+        : (
+          <span
+            title={`Started ${started} · stopped ${clock({
+              at: turn.end,
+              seconds: true,
+            })}`}
+          >Worked for {took}
+          </span>
+        )}
+    </div>
+  )
+}
+
+function SentencePart({ part }: { part: PnyxCall['sentence'][number] }) {
+  if (typeof part === 'string') {
+    return part
+  }
+
+  if ('column' in part) {
+    return <ColumnChip {...columnLook({ column: part.column })} label={part.label} />
+  }
+
+  return (
+    // A click on the chip opens the task without folding the row.
+    <span onClick={event => event.preventDefault()}>
+      <TaskReference id={part.task}>{part.label}</TaskReference>
+    </span>
+  )
+}
+
+// Pnyx's own commands read as what they did; the command itself is one click away.
+function PnyxCallRow({ call }: { call: PnyxCall }) {
+  return (
+    <details className="trace pnyx-call" data-expandable="true" data-failed={!!call.failed || undefined}>
+      <summary>
+        <Icon name="tool" size={14} />
+        <span className="pnyx-sentence">
+          {call.sentence.map((
+            part,
+            index,
+          ) => <SentencePart key={index} part={part} />)}
+          {call.failed && <span className="pnyx-failed"> · failed: {call.failed}</span>}
+        </span>
+        <CopyButton className="trace-copy" label="Copy command" text={() => call.command} />
+      </summary>
+      <pre className="trace-text">{call.output ? `${call.command}\n\n${call.output}` : call.command}</pre>
+    </details>
+  )
+}
+
 function Trace({
   entry,
   details,
@@ -880,6 +991,8 @@ function Trace({
     </>
   )
 
-  return details ? <details className="trace" data-expandable="true"><summary>{summary}</summary><pre className="trace-text">{entry.text}</pre></details>
-    : <div className="trace" data-expandable="false"><div className="trace-summary">{summary}</div></div>
+  const copy = entry.kind === 'tool' && <CopyButton className="trace-copy" label="Copy" text={() => shellCommand({ text: entry.text }) ?? entry.text} />
+
+  return details ? <details className="trace" data-expandable="true"><summary>{summary}{copy}</summary><pre className="trace-text">{entry.text}</pre></details>
+    : <div className="trace" data-expandable="false"><div className="trace-summary">{summary}{copy}</div></div>
 }

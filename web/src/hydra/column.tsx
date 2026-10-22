@@ -9,7 +9,7 @@ import { CopyId } from '../components/ui/copy-id.tsx'
 import { DeleteItem, Menu } from '../components/ui/menu.tsx'
 import { Resize } from '../components/ui/resize.tsx'
 import type { Command } from './connection.ts'
-import { dropBefore } from './view.ts'
+import { columnLook, dropBefore } from './view.ts'
 
 export function Column({
   id,
@@ -157,7 +157,14 @@ export function Column({
           data-key-scope="hydra"
           tabIndex={0}
         >
-          <Icon name={role ?? (id.startsWith('custom:') ? 'custom' : id)} />
+          <Icon
+            name={columnLook({
+              column: {
+                id,
+                role,
+              },
+            }).icon}
+          />
           <InlineTitle
             value={title}
             label={`Rename ${title} column`}

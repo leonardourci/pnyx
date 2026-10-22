@@ -1,5 +1,5 @@
 import { Icon } from './icon.tsx'
-import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 
 export function Button({
   className = '',
@@ -72,7 +72,13 @@ export function Switch({
 export interface Option {
   value: string
   label: string
+  icon?: string
+  // Consecutive options of one group sit under its heading.
+  group?: string
 }
+
+const HOLD_MS = 500
+const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'
 
 export function Select({
   label,
@@ -82,6 +88,8 @@ export function Select({
   disabled = false,
   display,
   title,
+  defaultValue,
+  onDefault,
 }: {
   label: string
   value: string
@@ -90,6 +98,9 @@ export function Select({
   disabled?: boolean
   display?: ReactNode
   title?: string
+  // Mod+click or a long press on an option picks it and makes it the default.
+  defaultValue?: string
+  onDefault?({ value }: { value: string }): void
 }) {
   const [
       open,
@@ -99,6 +110,11 @@ export function Select({
       setActive,
     ] = useState(0)
   const root = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), id = useId()
+  const hold = useRef<{
+    timer?: ReturnType<typeof setTimeout>
+    done: boolean
+  }>({ done: false })
+  const chosen = options.find(o => o.value === value)
   useEffect(
     () => {
       if (!open) {
@@ -145,6 +161,17 @@ export function Select({
     setOpen(false); trigger.current?.focus()
   }
 
+  const makeDefault = ({ position: n }: { position: number }) => {
+    if (options[n] && onDefault) {
+      onChange({ value: options[n].value })
+      onDefault({ value: options[n].value })
+    }
+
+    setOpen(false); trigger.current?.focus()
+  }
+
+  const release = () => clearTimeout(hold.current.timer)
+
   return (
     <div className="select" ref={root}>
       <Button
@@ -179,6 +206,8 @@ export function Select({
                 n + (e.key === 'ArrowDown' ? 1 : -1),
               ),
             ))
+          } else if (open && e.key === 'Enter' && onDefault && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault(); makeDefault({ position: active })
           } else if (open && e.key === 'Enter') {
             e.preventDefault(); choose({ position: active })
           } else if (e.key === 'Tab') {
@@ -187,7 +216,8 @@ export function Select({
         }}
         aria-activedescendant={open ? `${id}-${active}` : undefined}
       >
-        {display ?? options.find(o => o.value === value)?.label ?? label}
+        {chosen?.icon && <Icon name={chosen.icon} size={14} />}
+        {display ?? chosen?.label ?? label}
         <Icon name="chevron_down" size={14} />
       </Button>
       {open && (
@@ -201,20 +231,60 @@ export function Select({
             o,
             n,
           ) => (
-            <div
-              key={o.value}
-              id={`${id}-${n}`}
-              role="option"
-              tabIndex={-1}
-              aria-selected={o.value === value}
-              className={active === n ? 'active' : ''}
-              onPointerMove={() => setActive(n)}
-              onClick={() => choose({ position: n })}
-            >
-              {o.label}
-              <span aria-hidden="true">{o.value === value && <Icon name="check" size={14} />}</span>
-            </div>
+            <Fragment key={o.value}>
+              {o.group && o.group !== options[n - 1]?.group && <div className="select-group" role="presentation">{o.group}</div>}
+              <div
+                id={`${id}-${n}`}
+                role="option"
+                data-group={o.group}
+                tabIndex={-1}
+                aria-selected={o.value === value}
+                className={active === n ? 'active' : ''}
+                onPointerMove={() => setActive(n)}
+                onPointerDown={() => {
+                  hold.current.done = false
+                  release()
+
+                  if (onDefault) {
+                    hold.current.timer = setTimeout(
+                      () => {
+                        hold.current.done = true; makeDefault({ position: n })
+                      },
+                      HOLD_MS,
+                    )
+                  }
+                }}
+                onPointerUp={release}
+                onPointerLeave={release}
+                onClick={event => {
+                  if (hold.current.done) {
+                    hold.current.done = false
+                  } else if (onDefault && (event.metaKey || event.ctrlKey)) {
+                    makeDefault({ position: n })
+                  } else {
+                    choose({ position: n })
+                  }
+                }}
+              >
+                <span className="select-option">
+                  {o.icon && <Icon name={o.icon} size={14} />}
+                  {o.label}
+                  {onDefault && o.value === defaultValue && (
+                    <span
+                      className="select-default"
+                      role="img"
+                      aria-label="Default"
+                      title="The default"
+                    >
+                      <Icon name="pinned" size={12} />
+                    </span>
+                  )}
+                </span>
+                <span aria-hidden="true">{o.value === value && <Icon name="check" size={14} />}</span>
+              </div>
+            </Fragment>
           ))}
+          {onDefault && <p className="select-hint">{MOD}-click or hold to pick it and make it the default</p>}
         </div>
       )}
     </div>

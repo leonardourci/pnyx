@@ -52,6 +52,38 @@ const finish = ({
     return
   }
 
+  if (text === 'USAGE') {
+    for (const thread of [
+      'unrelated',
+      threadId,
+    ]) {
+      send({
+        method: 'thread/tokenUsage/updated',
+        params: {
+          threadId: thread,
+          turnId: id,
+          tokenUsage: {
+            last: { totalTokens: thread === threadId ? 5_000 : 1 },
+            total: { totalTokens: 90_000 },
+            modelContextWindow: 258_000,
+          },
+        },
+      })
+    }
+
+    send({
+      method: 'account/rateLimits/updated',
+      params: {
+        rateLimits: {
+          primary: {
+            usedPercent: 12,
+            windowDurationMins: 300,
+          },
+        },
+      },
+    })
+  }
+
   if (text === 'COMPACT') {
     send({
       method: 'item/completed',
@@ -365,6 +397,22 @@ createInterface({ input: process.stdin }).on(
       send({
         id,
         result: { turn: { id: turnId } },
+      })
+    } else if (method === 'turn/interrupt') {
+      send({
+        id,
+        result: {},
+      })
+      send({
+        method: 'turn/completed',
+        params: {
+          threadId,
+          turn: {
+            id: held,
+            status: 'interrupted',
+            error: null,
+          },
+        },
       })
     } else if (id === 'approval') {
       if (waiting.text === 'QUESTION' || waiting.text === 'ELICIT') {

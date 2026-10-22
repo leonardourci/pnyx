@@ -41,8 +41,6 @@ const {
   click,
   text,
   fill,
-  press,
-  focus,
   screenshot,
   close,
 } = smokeBrowser({
@@ -72,8 +70,8 @@ try {
     ],
   })
   await check({
-    condition: 'document.querySelector(".hydra-chat .composer").getBoundingClientRect().height >= 80 && document.querySelector(".hydra-chat textarea").clientHeight === 36 && getComputedStyle(document.querySelector(".hydra-chat .composer")).borderTopWidth === "0px"',
-    label: 'composer rests at 36 px plus controls without a frame',
+    condition: 'getComputedStyle(document.querySelector(".hydra-chat .composer")).borderTopWidth === "1px" && getComputedStyle(document.querySelector(".hydra-chat .composer")).borderTopLeftRadius === "16px" && document.querySelector(".hydra-chat textarea").clientHeight <= 30 && !document.querySelector(".hydra-chat [aria-label=\\"Resize composer\\"]")',
+    label: 'composer is a framed box resting at one line, with no drag handle',
   })
   await evaluate({ code: 'window.composerRest = document.querySelector(".hydra-chat .composer").clientHeight; return true;' })
   await screenshot({ name: 'composer-after.png' })
@@ -88,7 +86,7 @@ try {
   await fill({
     label: 'Reply to Hydra',
     value: Array.from(
-      { length: 30 },
+      { length: 60 },
       (
         _,
         i,
@@ -96,12 +94,12 @@ try {
     ).join('\n'),
   })
   await eventually({
-    condition: 'document.querySelector(".hydra-chat textarea").clientHeight === 128',
-    label: 'automatic draft growth stops at 128 px',
+    condition: 'Math.abs(document.querySelector(".hydra-chat .composer").offsetHeight - Math.min(480, document.querySelector(".hydra-chat").clientHeight / 2)) <= 1',
+    label: 'growth stops at half the panel, at most 480 px',
   })
   await check({
-    condition: 'document.querySelector(".hydra-chat textarea").scrollHeight > 128 && getComputedStyle(document.querySelector(".hydra-chat textarea")).overflowY === "auto"',
-    label: 'long draft scrolls internally',
+    condition: 'document.querySelector(".hydra-chat textarea").scrollHeight > document.querySelector(".hydra-chat textarea").clientHeight && getComputedStyle(document.querySelector(".hydra-chat textarea")).overflowY === "auto"',
+    label: 'long draft scrolls inside the composer',
   })
   await screenshot({ name: 'composer-long.png' })
   await fill({
@@ -112,43 +110,38 @@ try {
     condition: 'document.querySelector(".hydra-chat .composer").clientHeight === window.composerRest',
     label: 'empty draft shrinks again',
   })
-  await focus({ selector: '.hydra-chat [aria-label="Resize composer"]' })
-  await press({ key: 'End' })
-  await eventually({
-    condition: 'document.querySelector(".hydra-chat .composer").clientHeight > 172',
-    label: 'composer resize can exceed automatic growth',
-  })
-  await check({
-    condition: 'document.querySelector(".hydra-chat .composer").clientHeight <= Math.max(80, document.querySelector(".hydra-chat").clientHeight * .35)',
-    label: 'manual composer height is capped at 35 percent of the pane',
-  })
-  assert.ok((state().view?.composerHeight ?? 0) > 172)
-  await focus({ selector: '.hydra-chat [aria-label="Resize composer"]' })
-  await press({ key: 'Home' })
   await click({ selector: '.hydra-chat [aria-label="Add to message"]' })
-  await text({ label: 'Mention a task' })
+  await text({ label: 'Mention' })
   await check({
-    condition: 'document.querySelector(".hydra-chat textarea").value === "@" && document.activeElement.matches(".hydra-chat textarea")',
-    label: 'plus inserts the task mention hook at the caret',
+    condition: 'document.querySelector(".hydra-chat textarea").value === "@" && document.activeElement.matches(".hydra-chat textarea") && !!document.querySelector(".mention-menu")',
+    label: 'plus inserts the mention hook at the caret and opens the picker',
+  })
+  await fill({
+    label: 'Reply to Hydra',
+    value: '',
   })
   await evaluate({ code: 'const input = document.querySelector(".hydra-chat input[type=file]"); const files = new DataTransfer(); files.items.add(new File(["const result = 42"], "example.ts", { type: "text/plain" })); input.files = files.files; input.dispatchEvent(new Event("change", { bubbles: true })); return true;' })
   await eventually({
-    condition: 'document.querySelector(".hydra-chat textarea").value.includes("File: example.ts\\n\\nconst result = 42")',
-    label: 'file contents enter the draft as real context',
+    condition: 'document.querySelector(".hydra-chat textarea").value.startsWith("example.ts") && document.querySelector(".hydra-chat .draft-chip[data-kind=file]")?.textContent === "example.ts"',
+    label: 'an attached file shows as one chip',
   })
   await fill({
     label: 'Reply to Hydra',
     value: '',
   })
   await check({
-    condition: '[...document.querySelectorAll(".hydra-chat [role=combobox]")].map(x => x.getAttribute("aria-label")).join(",") === "Harness,Model,Effort,Permissions,Fast" && !document.querySelector(".hydra-chat [role=dialog]")',
-    label: 'Hydra settings are directly in the composer',
+    condition: '[...document.querySelectorAll(".hydra-chat [role=combobox]")].map(x => x.getAttribute("aria-label")).join(",") === "Model,Effort,Permissions" && document.querySelector(".hydra-chat [aria-label=\\"Fast mode\\"]")?.getAttribute("aria-pressed") === "false" && !document.querySelector(".hydra-chat [role=dialog]")',
+    label: 'Hydra settings are directly in the composer, with agent and model in one picker',
   })
-  await click({ selector: '.hydra-chat [aria-label=Harness]' })
-  await click({ selector: '[role=listbox][aria-label=Harness] [role=option]:nth-child(2)' })
+  await click({ selector: '.hydra-chat [aria-label=Model]' })
   await eventually({
-    condition: 'document.querySelector(".hydra-chat [aria-label=Harness]").textContent.includes("Codex") && !!document.querySelector(".hydra-chat [aria-label=Model]:not(:disabled)")',
-    label: 'harness selection saves for the next message',
+    condition: '[...document.querySelectorAll("[role=listbox][aria-label=Model] .select-group")].map(x => x.textContent).join(",") === "Claude Code,Codex" && !!document.querySelector("[role=listbox][aria-label=Model] [role=option][data-group=Codex]")',
+    label: 'the model picker lists each agent with its models',
+  })
+  await click({ selector: '[role=listbox][aria-label=Model] [role=option][data-group=Codex]' })
+  await eventually({
+    condition: '!!document.querySelector(".hydra-chat [aria-label=Model]:not(:disabled)") && !document.querySelector("[role=listbox][aria-label=Model]")',
+    label: 'a Codex model switches the agent for the next message',
   })
   assert.ok(codex.messages().some(message => message.method === 'model/list'))
   assert.ok(codex.messages().some(message => message.method === 'config/read'))
@@ -208,7 +201,7 @@ try {
     value: 'A long draft\n'.repeat(30),
   })
   await check({
-    condition: 'document.querySelector(".hydra-chat .composer").clientHeight <= Math.max(80, document.querySelector(".hydra-chat").clientHeight * .35)',
+    condition: 'document.querySelector(".hydra-chat .composer").offsetHeight <= document.querySelector(".hydra-chat").clientHeight / 2 + 1',
     label: 'short pane also caps automatic growth',
   })
   await screenshot({ name: 'composer-short.png' })
@@ -229,8 +222,8 @@ try {
   await evaluate({ code: 'const input = document.querySelector(".hydra-chat textarea"); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(input, "界".repeat(25 * 1024)); input.dispatchEvent(new Event("input", { bubbles: true })); return true;' })
   await click({ selector: '.hydra-chat .composer-send' })
   await eventually({
-    condition: 'document.querySelector(".hydra-chat .reply-failure")?.textContent.includes("64 KiB")',
-    label: 'oversized UTF-8 reply reports failure before transport',
+    condition: 'document.querySelector(".hydra-chat .send-error")?.textContent.includes("64 KiB")',
+    label: 'oversized UTF-8 reply reports failure before transport, with its time',
   })
   await check({
     condition: 'document.querySelector(".hydra-chat textarea").value.length === 25 * 1024 && document.querySelector(".app").dataset.connected === "true"',

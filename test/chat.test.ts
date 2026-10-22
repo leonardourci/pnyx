@@ -3,7 +3,7 @@ import type { ThreadEntry } from '../src/thread/read.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { recordEntries } from '../src/thread/read.ts'
-import { hydraMessages, commentReply, joinMessageParts, quoteInto, quoteSnippet } from '../web/src/hydra/chat.ts'
+import { hydraMessages, commentReply, duration, joinMessageParts, quoteInto, quoteSnippet, turnTimings } from '../web/src/hydra/chat.ts'
 import { DEFAULT_KEYBOARD, keyboardError, resolveKey } from '../src/core/keyboard.ts'
 
 test(
@@ -352,6 +352,44 @@ test(
 )
 
 test(
+  'an owner message that references a task shows once, without the context Hydra received',
+  () => {
+    const entries = hydraMessages({
+      messages: [
+        {
+          ...message({
+            id: 'ask',
+            text: 'Is [@Fix login](pnyx-task:t1) done?',
+          }),
+          context: 'Referenced tasks (context only):\n\nTask t1: Fix login',
+        },
+      ],
+      transcript: [
+        {
+          id: 'native',
+          kind: 'message',
+          role: 'user',
+          text: 'Is [@Fix login](pnyx-task:t1) done?\n\nReferenced tasks (context only):\n\nTask t1: Fix login',
+          at: '2026-10-20T10:00:01Z',
+        },
+      ],
+    })
+    assert.deepEqual(
+      entries.map(entry => [
+        entry.id,
+        entry.text,
+      ]),
+      [
+        [
+          'native',
+          'Is [@Fix login](pnyx-task:t1) done?',
+        ],
+      ],
+    )
+  },
+)
+
+test(
   'Codex Hydra chat hides injected instructions while retaining owner messages and replies',
   () => {
     const transcript: ThreadEntry[] = [
@@ -462,6 +500,114 @@ test(
       [
         'said',
         'owner',
+      ],
+    )
+  },
+)
+
+test(
+  'each finished turn ends with its timing and reply, and a running turn has none',
+  () => {
+    const entries: ThreadEntry[] = [
+      {
+        id: 'ask',
+        kind: 'message',
+        role: 'user',
+        text: 'Plan it',
+        at: '2026-10-21T10:00:00.000Z',
+      },
+      {
+        id: 'look',
+        kind: 'tool',
+        role: 'Shell',
+        text: 'ls',
+        at: '2026-10-21T10:00:20.000Z',
+      },
+      {
+        id: 'update',
+        kind: 'message',
+        role: 'Worker',
+        text: 'Pushed',
+        at: '2026-10-21T10:00:30.000Z',
+        task: 'task-1',
+      },
+      {
+        id: 'answer',
+        kind: 'message',
+        role: 'assistant',
+        text: 'Here is the plan.',
+        at: '2026-10-21T10:01:29.000Z',
+      },
+      {
+        id: 'again',
+        kind: 'message',
+        role: 'user',
+        text: 'Go',
+        at: '2026-10-21T10:05:00.000Z',
+      },
+      {
+        id: 'done',
+        kind: 'message',
+        role: 'assistant',
+        text: 'Done.',
+        at: '2026-10-21T10:06:00.000Z',
+      },
+      {
+        id: 'later',
+        kind: 'message',
+        role: 'Worker',
+        text: 'Merged',
+        at: '2026-10-21T10:07:00.000Z',
+        task: 'task-1',
+      },
+    ]
+    assert.deepEqual(
+      [
+        ...turnTimings({
+          entries,
+          working: false,
+        }),
+      ],
+      [
+        [
+          'answer',
+          {
+            start: '2026-10-21T10:00:00.000Z',
+            end: '2026-10-21T10:01:29.000Z',
+            reply: 'Here is the plan.',
+            latest: false,
+          },
+        ],
+        [
+          'done',
+          {
+            start: '2026-10-21T10:05:00.000Z',
+            end: '2026-10-21T10:06:00.000Z',
+            reply: 'Done.',
+            latest: true,
+          },
+        ],
+      ],
+    )
+    assert.deepEqual(
+      [
+        ...turnTimings({
+          entries,
+          working: true,
+        }).keys(),
+      ],
+      ['answer'],
+    )
+    assert.deepEqual(
+      [
+        59_000,
+        89_000,
+        3_725_000,
+      ].map(ms => duration({ ms })),
+      [
+        '59s',
+        '1m 29s',
+        '1h 2m',
       ],
     )
   },

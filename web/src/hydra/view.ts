@@ -1,4 +1,4 @@
-import type { HydraState, Card, Link } from '../../../src/core/model.ts'
+import type { HydraState, Card, HydraColumn, Link } from '../../../src/core/model.ts'
 import { cardDoneDeadline, HOUR_MS } from '../../../src/core/retention.ts'
 import { liveTask, rankOf } from '../../../src/core/tasks.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
@@ -9,6 +9,12 @@ const HARNESSES: Record<string, string> = {
 }
 
 export const harnessName = ({ provider }: { provider: string }) => HARNESSES[provider] ?? provider
+
+// A column's icon and color come from its role; a custom column has its own icon.
+export const columnLook = ({ column }: { column: Pick<HydraColumn, 'id' | 'role'> }) => ({
+  icon: column.role ?? (column.id.startsWith('custom:') ? 'custom' : column.id),
+  tone: `column-${column.role ?? column.id}`,
+})
 
 export const columnsFor = ({ state }: { state: HydraState }) => {
   return hydraConfig({ state }).columns

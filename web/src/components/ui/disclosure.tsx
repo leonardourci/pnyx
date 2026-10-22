@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Markdown } from './markdown.tsx'
 import { Icon } from './icon.tsx'
 import { Button } from './controls.tsx'
@@ -27,15 +27,44 @@ export function CollapsibleText({ text }: { text: string }) {
   const [
       expanded,
       setExpanded,
+    ] = useState(false), [
+      long,
+      setLong,
     ] = useState(false), id = useId()
-  const long = text.length > 240 || text.split('\n').length > 4
+  const preview = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(
+    () => {
+      const element = preview.current
+
+      if (!element || expanded) {
+        return
+      }
+
+      const measure = () => setLong(element.scrollHeight > element.clientHeight + 1)
+      measure()
+      const observer = new ResizeObserver(measure)
+      observer.observe(element)
+
+      return () => observer.disconnect()
+    },
+    [
+      text,
+      expanded,
+    ],
+  )
 
   return (
-    <div>
-      <div id={id} className={!expanded && long ? 'text-preview' : undefined}><Markdown text={text} /></div>
-      {long && (
-        <Button aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(!expanded)}>
-          {expanded ? 'Show less' : 'Read more'}
+    <div className="collapsible-text">
+      <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><Markdown text={text} /></div>
+      {(long || expanded) && (
+        <Button
+          className="show-more"
+          aria-expanded={expanded}
+          aria-controls={id}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? 'Show less' : 'Show more'}
         </Button>
       )}
     </div>

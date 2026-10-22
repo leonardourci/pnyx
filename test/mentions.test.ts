@@ -8,7 +8,7 @@ import { sendTaskMessage } from '../src/cli/task-message.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
-import { matchingTasks, mentionContext, mentionId, mentionQuery, taskMention, taskMentions } from '../src/mentions/mentions.ts'
+import { matchingTasks, mentionContext, mentionId, mentionQuery, taggedParagraphs, taskMention, taskMentions } from '../src/mentions/mentions.ts'
 
 function fixture() {
   const home = realpathSync(mkdtempSync(join(
@@ -442,5 +442,83 @@ test(
     } finally {
       f.close()
     }
+  },
+)
+
+test(
+  'only paragraphs that start with a task chip are tagged, without the chip',
+  () => {
+    const chip = ({ id }: { id: string }) => taskMention({
+      id,
+      title: `Task ${id}`,
+    })
+
+    assert.deepEqual(
+      taggedParagraphs({
+        text: [
+          'Captain, here is where things stand.',
+          `${chip({ id: 'a' })} A worker started.\nIt runs the tests next.`,
+          `- **${chip({ id: 'b' })}**: waiting for review.`,
+          `Next, ${chip({ id: 'c' })} only links.`,
+          chip({ id: 'd' }),
+        ].join('\n\n'),
+      }).map(({
+        id,
+        text,
+      }) => [
+        id,
+        text,
+      ]),
+      [
+        [
+          'a',
+          'A worker started.\nIt runs the tests next.',
+        ],
+        [
+          'b',
+          'waiting for review.',
+        ],
+      ],
+    )
+  },
+)
+
+test(
+  'each list item that starts with a chip is its own tagged paragraph, and code blocks never tag',
+  () => {
+    const chip = ({ id }: { id: string }) => taskMention({
+      id,
+      title: `Task ${id}`,
+    })
+
+    assert.deepEqual(
+      taggedParagraphs({
+        text: [
+          `- ${chip({ id: 'a' })} merged.\n- ${chip({ id: 'b' })} waits for review.`,
+          `**${chip({ id: 'c' })}:** shipped.`,
+          `\`\`\`\n- ${chip({ id: 'x' })} inside code\n\`\`\``,
+        ].join('\n\n'),
+      }).map(({
+        id,
+        text,
+      }) => [
+        id,
+        text,
+      ]),
+      [
+        [
+          'a',
+          'merged.',
+        ],
+        [
+          'b',
+          'waits for review.',
+        ],
+        [
+          'c',
+          'shipped.',
+        ],
+      ],
+    )
   },
 )

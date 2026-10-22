@@ -47,8 +47,17 @@ try {
   })
   await b.click({ selector: '.hydra-chat .composer-send' })
   await b.eventually({
-    condition: '!!document.querySelector(".notice")',
-    label: 'send shows a toast',
+    condition: '[...document.querySelectorAll(".hydra-chat .message.mine")].some(m => m.textContent.includes("Check the task"))',
+    label: 'the message shows in the chat',
+  })
+  await b.check({
+    condition: '!document.querySelector(".notice")',
+    label: 'a send shows no pop-up',
+  })
+  await b.evaluate({ code: 'const input = document.querySelector(".hydra-chat input[type=file]"); const files = new DataTransfer(); files.items.add(new File(["BM"], "scan.bmp", { type: "image/bmp" })); input.files = files.files; input.dispatchEvent(new Event("change", { bubbles: true })); return true;' })
+  await b.eventually({
+    condition: 'document.querySelector(".notice")?.textContent.includes("Only PNG")',
+    label: 'a rejected image shows a toast',
   })
   await b.evaluate({ code: 'await new Promise(resolve => setTimeout(resolve, 5500)); return true;' })
   await b.check({

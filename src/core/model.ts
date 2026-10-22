@@ -1,5 +1,11 @@
 export const EVENT_VERSION = 1 as const
 export const HYDRA_ACTOR = 'hydra'
+// The Hydra page and an unlabelled CLI are usually the owner; workers Pnyx runs write as `worker:<task>`.
+export const OWNER_ACTORS = [
+  'web',
+  'cli',
+]
+export const ownerActor = ({ actor }: { actor?: string }) => !actor || OWNER_ACTORS.includes(actor)
 
 export const COLUMNS = [
   'queued',
@@ -249,6 +255,8 @@ export interface Card {
   activity?: string
   // The hook session's own latest activity, which a task source's status line does not replace.
   sessionActivity?: string
+  // When the session's current turn began, while it is working.
+  workingSince?: string
   stoppedAt?: string
   agent?: AgentRef
   launch?: AgentLaunch
@@ -671,8 +679,6 @@ export interface ViewPreferences {
   panelPlacement: 'right' | 'inline'
   panelWidth: number
   hydraWidth: number
-  composerHeight: number
-  taskComposerHeight: number
   cardHeight: number
   cardColors: boolean
   toolDetails: boolean
@@ -736,6 +742,7 @@ export interface AgentSession {
   settings?: AgentSettings
   activity?: string
   sessionActivity?: string
+  workingSince?: string
   stoppedAt?: string
   attention: Attention[]
   outcome?: Outcome

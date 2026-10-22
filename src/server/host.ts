@@ -1,14 +1,15 @@
 import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
-import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, overrideOf, hostedOverride, readQuota, type DispatchChoice } from '../dispatch/select.ts'
-import { effectiveDispatch, type Harness } from '../dispatch/config.ts'
+import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, overrideOf, hostedOverride, readQuota, readUsage, type DispatchChoice } from '../dispatch/select.ts'
+import { defaultLogin, effectiveDispatch, type Harness } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
-import { modelIds, type HostedSession, type ModelOption, type PermissionDecision } from './provider.ts'
+import { mergeWindows, modelIds, type HostedSession, type HostedUsage, type HydraUsage, type ModelOption, type PermissionDecision } from './provider.ts'
 import { liveReplies } from './streaming.ts'
+import { copyTagged } from './tagged-updates.ts'
 import type { ThreadPage } from '../thread/read.ts'
 import { seenAt, terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
@@ -40,6 +41,8 @@ export interface Host {
     actor: string
     id: string
   }): Promise<Record<string, unknown>>
+  stop(): Promise<Record<string, unknown>>
+  usage(): Promise<HydraUsage | { usage: string }>
   start({
     task,
     prompt,
@@ -151,6 +154,25 @@ const WORKER_COMMANDS = [
 const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
 // A wake's turn id names the last change it covers; its turn is recorded as `<id>:hosted`.
+// The account a harness runs under: the one asked for, else the main one, else the first for that harness.
+const harnessAccount = ({
+  effective,
+  harness,
+  prefer,
+}: {
+  effective: ReturnType<typeof effectiveDispatch>
+  harness: Harness
+  prefer?: string
+}) => {
+  const ours = ({ name }: { name?: string }) =>
+    !!name && effective.accounts[name]?.provider === harness
+
+  return [
+    prefer,
+    effective.dispatch.main,
+  ].find(name => ours({ name })) ?? Object.keys(effective.accounts).find(name => ours({ name }))
+}
+
 const wakeId = ({ through }: { through: number }) => `wake:${through}`
 const WAKE_TURN = /^wake:(\d+):hosted$/
 
@@ -176,13 +198,26 @@ function isFolder({ path }: { path: string }): boolean {
   }
 }
 
+// id names the Hydra message or wake an item carries, so a turn knows what it answered.
 function inbox() {
-  const items: string[] = []
+  const items: {
+    text: string
+    id?: string
+  }[] = []
   let wake: (() => void) | undefined, done = false
 
   return {
-    push({ text }: { text: string }) {
-      items.push(text)
+    push({
+      text,
+      id,
+    }: {
+      text: string
+      id?: string
+    }) {
+      items.push({
+        text,
+        ...(id ? { id } : {}),
+      })
       wake?.()
     },
     pending() {
@@ -192,7 +227,10 @@ function inbox() {
       done = true
       wake?.()
     },
-    async* [Symbol.asyncIterator](): AsyncGenerator<string> {
+    async* [Symbol.asyncIterator](): AsyncGenerator<{
+      text: string
+      id?: string
+    }> {
       for (;;) {
         if (items.length) {
           yield items.shift()!
@@ -252,6 +290,8 @@ export function createHost({
   const controller = new AbortController()
   const starting = new Set<string>()
   const live = new Map<string, Live>()
+  // The latest size and spend each session reported, kept after its process idles out.
+  const usages = new Map<string, Omit<HostedUsage, 'type'>>()
   const pending = new Map<string, {
     card: string
     entry: Live
@@ -789,6 +829,9 @@ export function createHost({
       }
 
       const offsets: number[] = []
+      // The message each turn answers, taken in the order turns start, like offsets.
+      const asks: (string | undefined)[] = []
+      let answering: string | undefined
       let completedOffset = 0
 
       const transcriptSize = () => {
@@ -800,9 +843,10 @@ export function createHost({
       }
 
       const input = async function* () {
-        for await (const text of entry.input) {
+        for await (const item of entry.input) {
           offsets.push(transcriptSize())
-          yield text
+          asks.push(item.id)
+          yield item.text
         }
       }
 
@@ -826,6 +870,35 @@ export function createHost({
           form,
         }),
       })) {
+        if (typeof activity !== 'string' && activity.type === 'usage') {
+          const before = usages.get(key) ?? {}
+          usages.set(
+            key,
+            {
+              ...before,
+              ...Object.fromEntries(([
+                'used',
+                'window',
+                'cost',
+                'plan',
+              ] as const).flatMap(field => activity[field] === undefined ? [] : [
+                [
+                  field,
+                  activity[field],
+                ],
+              ])),
+              ...(activity.limits ? {
+                limits: mergeWindows({
+                  base: before.limits ?? [],
+                  over: activity.limits,
+                }),
+              } : {}),
+            },
+          )
+
+          continue
+        }
+
         if (typeof activity !== 'string') {
           entry.replies.update(activity)
           streamed({ session: key })
@@ -837,7 +910,21 @@ export function createHost({
           completedOffset = transcriptSize()
           entry.replies.finish()
           streamed({ session: key })
+
+          if (card.id === HYDRA_CARD) {
+            const texts = entry.replies.texts()
+            const ask = answering
+            note({
+              fn: ({ writer }) => copyTagged({
+                writer,
+                texts,
+                asks: ask ? [ask] : [],
+                at: new Date().toISOString(),
+              }),
+            })
+          }
         } else {
+          answering = asks.shift()
           entry.replies.start({
             offset: Math.max(
               offsets.shift() ?? 0,
@@ -1135,10 +1222,10 @@ export function createHost({
         hydraId,
         state,
       })
-      const main = effective.dispatch.main
-        && effective.accounts[effective.dispatch.main]?.provider === harness
-        ? effective.dispatch.main : Object.keys(effective.accounts).find(name =>
-          effective.accounts[name]?.provider === harness)
+      const main = harnessAccount({
+        effective,
+        harness,
+      })
       const account = main ? effective.accounts[main] : undefined
       const env = account ? accountEnvironment({
         account,
@@ -1276,11 +1363,10 @@ export function createHost({
             ?? effective.dispatch.rules.hydra?.candidates[0]
             ?? effective.dispatch.default[0]
             ?? { harness: 'claude' as const }
-          const main = effective.dispatch.main
-            && effective.accounts[effective.dispatch.main]?.provider === candidate.harness
-            ? effective.dispatch.main
-            : Object.keys(effective.accounts).find(name =>
-              effective.accounts[name]?.provider === candidate.harness)
+          const main = harnessAccount({
+            effective,
+            harness: candidate.harness,
+          })
           const account = main ? effective.accounts[main] : undefined
           const provider = providerName({ harness: candidate.harness })
           const dispatch = previous?.agent?.provider !== provider
@@ -1470,7 +1556,10 @@ export function createHost({
           prepared = undefined
           const waking = /^(wake|stall):/.test(id) && !opened && Boolean(entry.session)
           entry.activity = 'working'
-          entry.input.push({ text: waking ? `${text}${memoryChangeNote()}` : text })
+          entry.input.push({
+            text: waking ? `${text}${memoryChangeNote()}` : text,
+            id,
+          })
 
           return { state: 'queued' }
         } catch (error) {
@@ -1538,6 +1627,66 @@ export function createHost({
       ).finally(() => queuedHydra.delete(id))
 
       return Promise.resolve({ state: 'queued' })
+    },
+    // Stops only Hydra's running turn; workers keep going.
+    stop: async () => {
+      const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
+      const entry = card?.agent?.host === 'pnyx' ? live.get(sessionId({ agent: card.agent })) : undefined
+
+      if (!entry?.session || entry.activity !== 'working') {
+        return { stopped: 'none: Hydra is not working on a turn' }
+      }
+
+      await entry.session.interrupt()
+
+      return { stopped: 'hydra' }
+    },
+    // Hydra's context window and spend, and its account's plan windows; anything unknown is left out.
+    usage: async () => {
+      const state = loadHydra({ hydraId }).state
+      const agent = state.cards[HYDRA_CARD]?.agent
+
+      if (!agent) {
+        return { usage: 'none: Hydra has not started a session' }
+      }
+
+      const harness: Harness = agent.provider === 'codex' ? 'codex' : 'claude'
+      const effective = effectiveDispatch({
+        hydraId,
+        state,
+      })
+      const name = harnessAccount({
+        effective,
+        harness,
+        prefer: agent.account,
+      })
+      const account = name ? effective.accounts[name] : undefined
+      const plan = await readUsage({
+        account: account ?? {
+          provider: harness,
+          folder: agent.loginFolder ?? defaultLogin({ provider: harness }),
+        },
+      })
+
+      // What the agent reported wins until its window resets; quota-axi fills the rest.
+      const {
+        limits = [],
+        plan: reported,
+        ...session
+      } = usages.get(sessionId({ agent })) ?? {}
+      const windows = mergeWindows({
+        base: plan?.windows ?? [],
+        over: limits.filter(limit => !limit.resetsAt || Date.parse(limit.resetsAt) > Date.now()),
+      })
+      const planName = reported ?? plan?.plan
+
+      return {
+        harness,
+        ...(name ? { account: name } : {}),
+        ...session,
+        ...(planName ? { plan: planName } : {}),
+        ...(windows.length ? { windows } : {}),
+      }
     },
     start: async ({
       task,
@@ -2550,6 +2699,12 @@ export async function hostRequest({
         })!,
         actor,
       })
+
+    case 'stop':
+      return host.stop()
+
+    case 'usage':
+      return host.usage()
 
     case 'start': {
       const folder = field({

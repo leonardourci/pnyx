@@ -379,3 +379,72 @@ test(
     )
   },
 )
+
+test(
+  'a session keeps the time its turn started while it stays working',
+  () => {
+    let state = emptyHydra()
+
+    const push = ({
+      at,
+      activity,
+    }: {
+      at: string
+      activity: string
+    }) => {
+      const seq = state.seq + 1
+      state = reduce({
+        state,
+        event: {
+          v: 1,
+          seq,
+          id: `e${seq}`,
+          at,
+          actor: 'hooks',
+          cardId: 'c1',
+          type: 'card.pushed',
+          data: {
+            key: 'claude:s1',
+            activity,
+            source: {
+              adapter: 'hooks',
+              objectId: 's1',
+              observedAt: at,
+            },
+          },
+        } as HydraEvent,
+      })
+
+      return state.cards.c1!.workingSince
+    }
+
+    assert.equal(
+      push({
+        at: '2026-10-13T10:00:00Z',
+        activity: 'working',
+      }),
+      '2026-10-13T10:00:00Z',
+    )
+    assert.equal(
+      push({
+        at: '2026-10-13T10:01:00Z',
+        activity: 'working',
+      }),
+      '2026-10-13T10:00:00Z',
+    )
+    assert.equal(
+      push({
+        at: '2026-10-13T10:02:00Z',
+        activity: 'finished',
+      }),
+      undefined,
+    )
+    assert.equal(
+      push({
+        at: '2026-10-13T10:03:00Z',
+        activity: 'working',
+      }),
+      '2026-10-13T10:03:00Z',
+    )
+  },
+)

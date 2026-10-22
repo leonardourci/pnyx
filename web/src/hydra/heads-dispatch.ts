@@ -5,6 +5,27 @@ import type { Command } from './connection.ts'
 
 export const DISPATCH_CHANGED = 'pnyx-dispatch-changed'
 
+// A default for another agent drops the rule's settings that belonged to the old one.
+export const hydraDefault = ({
+  rule,
+  harness,
+  field,
+  value,
+}: {
+  rule?: AgentConfig
+  harness: AgentConfig['harness']
+  field: 'model' | 'effort' | 'mode'
+  value: string
+}): Partial<AgentConfig> => ({
+  harness,
+  ...(rule?.harness === harness ? {} : {
+    model: undefined,
+    effort: undefined,
+    mode: undefined,
+  }),
+  [field]: value,
+})
+
 export function useHeadsDispatch({ command }: { command: Command }) {
   const [
     confirmed,

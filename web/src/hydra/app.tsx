@@ -8,6 +8,7 @@ import { viewFor } from '../../../src/core/view.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { AddProject } from './add-project.tsx'
 import { HydraChat } from './hydra-chat.tsx'
+import { taskMention } from '../../../src/mentions/mentions.ts'
 import { useHydra } from './connection.ts'
 import { HydraCard } from './card.tsx'
 import { TaskCreate } from './task-create.tsx'
@@ -922,7 +923,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     setPanel(true)
     setDrafts(drafts => ({
       ...drafts,
-      [HYDRA_CARD]: `${drafts[HYDRA_CARD] || ''}\nFor @${card.id} (${card.title}): `.trimStart(),
+      [HYDRA_CARD]: `${drafts[HYDRA_CARD] || ''}\nFor ${taskMention({
+        id: card.id,
+        title: card.title,
+      })}: `.trimStart(),
     }))
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
   }

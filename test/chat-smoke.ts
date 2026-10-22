@@ -870,8 +870,19 @@ try {
     text:'caption-note',
   })
   const context=t.card({text:'caption-note'}).querySelector('.comment-quote')
+  // The full context shows in the shared tooltip above the card.
+  const tooltip=async ({card})=>{
+    const anchor=card.querySelector('.comment-quote').closest('.tooltip-anchor')
+    anchor.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}))
+    await new Promise(resolve=>setTimeout(resolve,50))
+    const text=anchor.querySelector('.tooltip')?.textContent
+    anchor.dispatchEvent(new PointerEvent('pointerout',{bubbles:true}))
+    await t.tick()
 
-  if(context.title!==t.source({prefix:'Image caption'}).textContent || !context.textContent.includes('linked alt') || !context.textContent.includes('<em>markup</em>')){
+    return text
+  }
+
+  if(await tooltip({card:t.card({text:'caption-note'})})!==t.source({prefix:'Image caption'}).textContent || !context.textContent.includes('linked alt') || !context.textContent.includes('<em>markup</em>')){
     throw new Error('Card context differs from rendered Markdown')
   }
 
@@ -884,7 +895,7 @@ try {
     text:'short-cross',
   })
 
-  if(t.card({text:'short-cross'}).querySelector('.comment-quote').title!==beginning.textContent+'\n\n'+ending.textContent){
+  if(await tooltip({card:t.card({text:'short-cross'})})!==beginning.textContent+'\n\n'+ending.textContent){
     throw new Error('Short cross-block context lost a paragraph')
   }
 
