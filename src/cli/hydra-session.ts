@@ -1,8 +1,8 @@
 import { proposeOwnerCommand } from '../confirmations/commands.ts'
 import { parseArgs } from 'node:util'
-import { DEFAULT_HYDRA } from '../store/hydra-store.ts'
+import { DEFAULT_HYDRA, loadHydra } from '../store/hydra-store.ts'
 import { AxiError } from 'axi-sdk-js'
-import { HYDRA_CARD } from '../core/hydra.ts'
+import { HYDRA_CARD, hydraBypasses } from '../core/hydra.ts'
 import { HYDRA_ACTOR } from '../core/model.ts'
 import { guard, WRITE } from './commands.ts'
 
@@ -110,6 +110,11 @@ export function ownerOnly<T extends Record<string, Command>>({
 
         // A Hydra Pnyx runs has PNYX_HYDRA, so a command copied without --hydra still lands in its own chat.
         const hydraId = typeof values.hydra === 'string' ? values.hydra : env.PNYX_HYDRA || DEFAULT_HYDRA
+
+        // Bypass skips the Confirm card; Hydra's own permission prompts, raised in Bypass only by the owner's ask rules, stay the owner's.
+        if (!(name === 'task' && positionals[0] === 'permission') && hydraBypasses({ state: loadHydra({ hydraId }).state })) {
+          return run(args)
+        }
 
         return proposeOwnerCommand({
           name,
