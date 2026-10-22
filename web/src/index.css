@@ -37,7 +37,7 @@
   --text-code: 13px;
 }
 
-:root { --chat-end: 64px; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+:root { --chat-end: 64px; --card-h: 1.5em; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
 
 :root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; --color-composer: #1d1e22; }
 @media (prefers-color-scheme: dark) {
@@ -1148,6 +1148,31 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .attached-image img { display: block; max-width: 100%; max-height: 240px; border: 1px solid var(--color-line); border-radius: 6px; }
 
 .button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
+
+/* One frame for every card in a draft or a message: Comments, images and files keep their own content in it. */
+.attachment-card { position: relative; top: -.0625em; display: inline-flex; align-items: stretch; height: var(--card-h); max-width: 100%; border: 1px solid var(--color-line); border-radius: .375em; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); line-height: 1; white-space: nowrap; vertical-align: middle; overflow: hidden; user-select: none; }
+
+.attachment-card > .button { min-height: 0; padding: 0; border: 0; border-radius: 0; color: inherit; font: inherit; }
+
+.attachment-card > .card-main { display: inline-flex; flex: 1; align-items: center; justify-content: flex-start; gap: .375em; min-width: 0; padding: 0 .4375em 0 .1875em; }
+
+.attachment-card > .button:hover:not(:disabled) { background: var(--color-raised); }
+
+.card-slot { display: grid; place-items: center; width: 1.625em; height: 1em; flex-shrink: 0; overflow: hidden; border-radius: .1875em; background: var(--color-raised); }
+
+.card-slot > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.card-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .75em; }
+
+.attachment-card > .card-x { width: 1.375em; flex-shrink: 0; border-left: 1px solid var(--color-line); color: var(--color-muted); }
+
+.attachment-card.comments { border-color: var(--color-gold-line); background: var(--color-gold-wash); color: var(--color-gold); }
+
+.attachment-card.comments .card-slot, .attachment-card.comments > .button:hover:not(:disabled) { background: color-mix(in srgb, var(--color-gold) 8%, transparent); }
+
+.attachment-card.comments > .card-x { border-color: var(--color-gold-line); color: var(--color-gold); }
+
+.attachment-card.reference { border-style: dashed; background: transparent; }
 
 .image-chip .image-thumb { width: 1.7em; height: 1.15em; object-fit: cover; border-radius: 3px; }
 
