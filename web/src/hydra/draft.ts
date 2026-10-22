@@ -1,6 +1,6 @@
 import { IMAGE_LINE } from '../../../src/attachments/images.ts'
 import { FILE_BLOCK } from '../../../src/attachments/files.ts'
-import { decodeValue, REFERENCE, type ReferenceKind } from '../../../src/mentions/mentions.ts'
+import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '../../../src/mentions/mentions.ts'
 
 // The draft stays the Markdown Hydra receives; the textarea shows each chip as its label.
 export type ChipKind = ReferenceKind
@@ -70,10 +70,7 @@ function draftChips({ text }: { text: string }): DraftChip[] {
         label: `${{
           column: ICON_SPACE,
           task: ICON_SPACE + ICON_SPACE,
-        }[match[2]!] ?? '@'}${match[1]!.replace(
-          /\\(.)/g,
-          '$1',
-        )}`,
+        }[match[2]!] ?? '@'}${referenceLabel({ label: match[1]! })}`,
         start: match.index,
         end: match.index + match[0].length,
       })

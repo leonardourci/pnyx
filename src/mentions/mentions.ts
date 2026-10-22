@@ -13,6 +13,11 @@ export type ReferenceKind = 'task' | 'project' | 'column' | 'image' | 'file'
 // A reference as Pnyx writes it: [@Label](pnyx-<kind>:<encoded value>).
 export const REFERENCE = /\[@((?:\\.|[^\]\\\r\n])*)\]\(pnyx-(task|project|column|image|file):([\w%~.-]+)\)/
 
+export const referenceLabel = ({ label }: { label: string }) => label.replace(
+  /\\(.)/g,
+  '$1',
+)
+
 // A hand-written link can carry broken percent-encoding, which decodes to nothing.
 export function decodeValue({ value }: { value: string }): string | undefined {
   try {
@@ -82,10 +87,7 @@ export function taskMentions({ text }: { text: string }): TaskMention[] {
     return id ? [
       {
         id,
-        title: match[1]!.replace(
-          /\\(.)/g,
-          '$1',
-        ),
+        title: referenceLabel({ label: match[1]! }),
       },
     ] : []
   })
