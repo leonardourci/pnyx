@@ -1,0 +1,395 @@
+import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
+import { decideReply, type Decision } from '../core/decide.ts'
+import type { Card, HydraEvent, HydraState, ReplyState } from '../core/model.ts'
+import { liveTask } from '../core/tasks.ts'
+import { HOOK } from '../integrations/hooks/observe.ts'
+import { drainSpool } from '../integrations/hooks/ingest.ts'
+import { transcriptMessages } from '../oracle/text.ts'
+import { loadHydra, readEvents, withWriter, type Writer } from '../store/hydra-store.ts'
+import { threadPath } from '../thread/read.ts'
+
+// A resend's reply id is the original's with this and its try number.
+const RETRY_MARK = '~retry'
+// Resends before Hydra is told the message never arrived.
+export const MAX_RESENDS = 2
+// A send gets this long to show up in the session before it counts as missing.
+const RESEND_GRACE_MS = 60_000
+// How far back from its end a transcript is read for the message.
+const TRANSCRIPT_WINDOW = 4 * 1024 * 1024
+// Only a reply sent this recently is followed up, so an old one is never resent out of the blue.
+const FOLLOW_UP_WINDOW_MS = 30 * 60 * 1000
+// A transcript stamps a message a little after Pnyx queued it, never long before.
+const CLOCK_SLACK_MS = 1000
+// How much of the message, whitespace folded, must appear in the transcript.
+const MATCH_CHARS = 200
+
+export type ReplyFollowUp =
+  | {
+    kind: 'confirm'
+    card: string
+    reply: string
+    route: string
+  }
+  | {
+    kind: 'resend'
+    card: string
+    reply: string
+    route: string
+    text: string
+    retry: string
+  }
+  | {
+    kind: 'unconfirmed'
+    card: string
+    reply: string
+    text: string
+  }
+
+// The first receipt carries the reply's text and route; the last says when it was last tried.
+type Sent = {
+  text?: string
+  route: string
+  control: boolean
+  firstAt: number
+  lastAt: number
+}
+
+const folded = ({ text }: { text: string }) => text.replace(
+  /\s+/g,
+  ' ',
+).trim()
+
+// Replies a route could not confirm, other than resends, answers to a request and setting changes.
+const unconfirmedOriginals = ({ card }: { card: Card }) => (card.replies ?? [])
+  .filter(reply => reply.state === 'delivery_unknown' && !reply.answers && !reply.id.includes(RETRY_MARK))
+
+// Whether any reply could need a follow-up, so the server knows to keep checking.
+export function repliesToFollow({
+  state,
+  now = Date.now(),
+}: {
+  state: HydraState
+  now?: number
+}): boolean {
+  return Object.values(state.cards).some(card => {
+    const recent = now - Date.parse(card.updatedAt) < FOLLOW_UP_WINDOW_MS
+
+    return liveTask({ card }) && recent && unconfirmedOriginals({ card }).length > 0
+  })
+}
+
+function sentReplies({ events }: { events: HydraEvent[] }): Map<string, Sent> {
+  const sent = new Map<string, Sent>()
+
+  for (const event of events) {
+    if (event.type !== 'card.replied') {
+      continue
+    }
+
+    const key = `${event.cardId}:${event.data.reply}`
+    const known = sent.get(key)
+    const at = Date.parse(event.at)
+
+    if (known) {
+      known.lastAt = at
+
+      continue
+    }
+
+    sent.set(
+      key,
+      {
+        text: event.data.text,
+        route: event.data.route,
+        control: event.data.control === true,
+        firstAt: at,
+        lastAt: at,
+      },
+    )
+  }
+
+  return sent
+}
+
+// Whether the session's transcript shows the message as a user turn after it was sent.
+export function transcriptHas({
+  path,
+  text,
+  after,
+}: {
+  path: string
+  text: string
+  after: number
+}): boolean {
+  const wanted = folded({ text }).slice(
+    0,
+    MATCH_CHARS,
+  )
+  let fd: number | undefined
+
+  try {
+    fd = openSync(
+      path,
+      'r',
+    )
+    const size = fstatSync(fd).size
+    const start = Math.max(
+      0,
+      size - TRANSCRIPT_WINDOW,
+    )
+    const buffer = Buffer.alloc(size - start)
+    readSync(
+      fd,
+      buffer,
+      0,
+      buffer.length,
+      start,
+    )
+    const lines = buffer.toString('utf8').split('\n')
+
+    return lines.some(line => {
+      let record: unknown
+
+      try {
+        record = JSON.parse(line)
+      } catch {
+        return false
+      }
+
+      const fields = record as {
+        type?: unknown
+        payload?: { role?: unknown }
+      }
+      const fromUser = fields.type === 'user' || fields.payload?.role === 'user'
+
+      if (!fromUser) {
+        return false
+      }
+
+      return transcriptMessages({ record }).some(message => {
+        const recordedAt = message.at ? Date.parse(message.at) : after
+
+        return recordedAt >= after && folded({ text: message.text }).includes(wanted)
+      })
+    })
+  } catch {
+    return false
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd)
+    }
+  }
+}
+
+// What each unconfirmed reply needs now; pure apart from reading the log and transcripts.
+export function replyFollowUps({
+  hydraId,
+  state,
+  now,
+}: {
+  hydraId: string
+  state: HydraState
+  now: number
+}): ReplyFollowUp[] {
+  if (!repliesToFollow({
+    state,
+    now,
+  })) {
+    return []
+  }
+
+  const sent = sentReplies({ events: readEvents({ hydraId }) })
+  const followUps: ReplyFollowUp[] = []
+
+  for (const card of Object.values(state.cards)) {
+    if (!liveTask({ card })) {
+      continue
+    }
+
+    const replies = card.replies ?? []
+    const activity = card.sessionActivity ?? card.activity
+    const waiting = card.attention.some(a => a.blocking && !a.answered && a.key.startsWith(HOOK))
+    const path = threadPath({ card })
+
+    // Only an idle session with a transcript can show whether a message arrived.
+    if (activity === 'working' || waiting || !path) {
+      continue
+    }
+
+    for (const reply of unconfirmedOriginals({ card })) {
+      const original = sent.get(`${card.id}:${reply.id}`)
+      const outside = !original?.text || original.control || original.route.startsWith('firstmate')
+
+      if (outside || now - original.firstAt >= FOLLOW_UP_WINDOW_MS) {
+        continue
+      }
+
+      const retries = replies.filter(retry => retry.id.startsWith(`${reply.id}${RETRY_MARK}`))
+      const inFlight = retries.some(retry => retry.state === 'queued' || retry.state === 'delivered')
+      const lastAt = Math.max(
+        original.lastAt,
+        ...retries.map(retry => sent.get(`${card.id}:${retry.id}`)?.lastAt ?? 0),
+      )
+
+      if (inFlight || now - lastAt < RESEND_GRACE_MS) {
+        continue
+      }
+
+      const text = original.text!
+
+      if (transcriptHas({
+        path,
+        text,
+        after: original.firstAt - CLOCK_SLACK_MS,
+      })) {
+        followUps.push({
+          kind: 'confirm',
+          card: card.id,
+          reply: reply.id,
+          route: original.route,
+        })
+      } else if (retries.length < MAX_RESENDS) {
+        followUps.push({
+          kind: 'resend',
+          card: card.id,
+          reply: reply.id,
+          route: original.route,
+          text,
+          retry: `${reply.id}${RETRY_MARK}${retries.length + 1}`,
+        })
+      } else {
+        followUps.push({
+          kind: 'unconfirmed',
+          card: card.id,
+          reply: reply.id,
+          text,
+        })
+      }
+    }
+  }
+
+  return followUps
+}
+
+function apply({
+  writer,
+  decision,
+}: {
+  writer: Writer
+  decision: Decision
+}) {
+  if ('event' in decision) {
+    writer.append({ event: decision.event })
+  }
+}
+
+function recordArrived({
+  writer,
+  card,
+  reply,
+  route,
+  detail,
+}: {
+  writer: Writer
+  card: string
+  reply: string
+  route: string
+  detail: string
+}) {
+  apply({
+    writer,
+    decision: decideReply({
+      state: writer.state,
+      ref: card,
+      data: {
+        reply,
+        route,
+        state: 'delivered',
+        detail,
+      },
+      meta: {
+        at: new Date().toISOString(),
+        actor: 'pnyx',
+      },
+    }),
+  })
+}
+
+// Confirms or resends each reply its route could not confirm, and hands one still missing
+// after its resends to unconfirmed. resend sends through the reply command and returns its receipt.
+export async function followUpReplies({
+  hydraId,
+  resend,
+  unconfirmed,
+  now = Date.now(),
+}: {
+  hydraId: string
+  resend({
+    card,
+    text,
+    retry,
+  }: {
+    card: string
+    text: string
+    retry: string
+  }): Promise<ReplyState>
+  unconfirmed({
+    card,
+    reply,
+    text,
+  }: {
+    card: string
+    reply: string
+    text: string
+  }): void
+  now?: number
+}): Promise<void> {
+  const followUps = replyFollowUps({
+    hydraId,
+    state: loadHydra({ hydraId }).state,
+    now,
+  })
+
+  for (const followUp of followUps) {
+    if (followUp.kind === 'confirm') {
+      withWriter({
+        hydraId,
+        fn: ({ writer }) => {
+          drainSpool({ writer })
+          recordArrived({
+            writer,
+            card: followUp.card,
+            reply: followUp.reply,
+            route: followUp.route,
+            detail: 'found in the session transcript',
+          })
+        },
+      })
+    } else if (followUp.kind === 'unconfirmed') {
+      unconfirmed({
+        card: followUp.card,
+        reply: followUp.reply,
+        text: followUp.text,
+      })
+    } else {
+      const state = await resend({
+        card: followUp.card,
+        text: followUp.text,
+        retry: followUp.retry,
+      })
+
+      if (state === 'delivered') {
+        withWriter({
+          hydraId,
+          fn: ({ writer }) => recordArrived({
+            writer,
+            card: followUp.card,
+            reply: followUp.reply,
+            route: followUp.route,
+            detail: `resent as ${followUp.retry}`,
+          }),
+        })
+      }
+    }
+  }
+}
