@@ -737,7 +737,7 @@ test(
     assert.ok(first >= before)
     assert.match(
       wakes()[0]!,
-      /<\/pnyx-wake>\n\nMemory changed; load owner memory/,
+      / Memory changed; load owner memory[^\n]*<\/pnyx-wake>$/,
     )
     assert.doesNotMatch(
       wakes()[0]!,

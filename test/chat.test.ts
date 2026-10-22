@@ -399,6 +399,91 @@ test(
 )
 
 test(
+  'a Codex owner message with images shows once, and a wake turn with a memory note never shows as the owner',
+  () => {
+    const image = '/home/hydras/default/attachments/4aa0f84b-1041-4a1f-9774-c00c0bf3642b.png'
+    const text = `Look at this\n\n[image: ${image}]\n\nand tell me`
+    const user = ({
+      content,
+      at,
+    }: {
+      content: object[]
+      at: string
+    }) => ({
+      timestamp: at,
+      type: 'response_item',
+      payload: {
+        type: 'message',
+        role: 'user',
+        content,
+      },
+    })
+    const transcript = [
+      user({
+        at: '2026-10-22T15:54:46.000Z',
+        content: [
+          {
+            type: 'input_text',
+            text,
+          },
+          {
+            type: 'input_text',
+            text: `<image name=[Image #1] path="${image}">`,
+          },
+          {
+            type: 'input_image',
+            image_url: 'data:image/png;base64,iVBORw0KGgo=',
+          },
+          {
+            type: 'input_text',
+            text: '</image>',
+          },
+        ],
+      }),
+      user({
+        at: '2026-10-22T16:02:00.000Z',
+        content: [
+          {
+            type: 'input_text',
+            text: '<pnyx-wake>A worker changed something.</pnyx-wake>\n\nMemory changed; load owner memory with owner memory list when needed.',
+          },
+        ],
+      }),
+    ].flatMap((
+      record,
+      offset,
+    ) => recordEntries({
+      record,
+      offset,
+    }))
+    const message: HydraMessage = {
+      id: 'sent',
+      action: 'send',
+      text,
+      at: '2026-10-22T15:54:40.000Z',
+      actor: 'web',
+      hydra: 'hydra',
+    }
+    assert.deepEqual(
+      hydraMessages({
+        messages: [message],
+        transcript,
+        provider: 'codex',
+      }).map(entry => [
+        entry.role,
+        entry.text,
+      ]),
+      [
+        [
+          'user',
+          text,
+        ],
+      ],
+    )
+  },
+)
+
+test(
   'Codex Hydra chat hides injected instructions while retaining owner messages and replies',
   () => {
     const transcript: ThreadEntry[] = [
