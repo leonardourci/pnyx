@@ -215,6 +215,48 @@ export function replaceDisplay({
   }
 }
 
+// The newlines that make a block its own paragraph, after the ones already there.
+const paragraphBreak = ({ newlines }: { newlines: string }) => '\n'.repeat(2 - newlines.length)
+
+// An attachment counts only as its own paragraph, so it goes after the caret's line and never splits a word.
+export function placeBlock({
+  text,
+  caret: at,
+  block,
+}: {
+  text: string
+  caret?: number
+  block: string
+}) {
+  const shown = draftView({ text }).display
+  const caret = Math.min(
+    at ?? shown.length,
+    shown.length,
+  )
+  const lineEnd = shown.indexOf(
+    '\n',
+    caret,
+  )
+  const cursor = lineEnd < 0 ? shown.length : lineEnd
+  const before = shown.slice(
+      0,
+      cursor,
+    ), after = shown.slice(cursor)
+  const lead = before.trim() ? paragraphBreak({ newlines: /\n{0,2}$/.exec(before)?.[0] ?? '' }) : ''
+  const tail = paragraphBreak({ newlines: /^\n{0,2}/.exec(after)?.[0] ?? '' })
+  const edit = replaceDisplay({
+    text,
+    from: cursor,
+    to: cursor,
+    insert: lead + block + tail,
+  })
+
+  return cursor === caret ? edit : {
+    text: edit.text,
+    caret,
+  }
+}
+
 // The caret places the edit when the same character repeats around it.
 export function editDraft({
   text,

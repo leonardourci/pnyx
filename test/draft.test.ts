@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { reference, taskMention } from '../src/mentions/mentions.ts'
 import { fileBlock } from '../src/attachments/files.ts'
-import { draftView, editDraft, ICON_SPACE, replaceDisplay, snapCaret } from '../web/src/hydra/draft.ts'
+import { draftView, editDraft, ICON_SPACE, placeBlock, replaceDisplay, snapCaret } from '../web/src/hydra/draft.ts'
 
 const task = taskMention({
   id: 'task-1',
@@ -162,6 +162,47 @@ test(
         backward: true,
       }),
       'See '.length,
+    )
+  },
+)
+
+test(
+  'an attachment goes after the caret line without splitting its words',
+  () => {
+    const text = 'Intro\n\nI think it could\nhave a preview'
+    const caret = 'Intro\n\nI thin'.length
+    const placed = placeBlock({
+      text,
+      caret,
+      block: image,
+    })
+    assert.deepEqual(
+      placed,
+      {
+        text: `Intro\n\nI think it could\n\n${image}\n\nhave a preview`,
+        caret,
+      },
+    )
+    const end = placeBlock({
+      text: 'Look',
+      caret: 4,
+      block: `${image}\n\n${image}`,
+    })
+    assert.equal(
+      end.text,
+      `Look\n\n${image}\n\n${image}\n\n`,
+    )
+    assert.equal(
+      end.caret,
+      draftView({ text: end.text }).display.length,
+    )
+    assert.equal(
+      placeBlock({
+        text: 'One\n\n\n\nTwo',
+        caret: 5,
+        block: image,
+      }).text,
+      `One\n\n${image}\n\nTwo`,
     )
   },
 )

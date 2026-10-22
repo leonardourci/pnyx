@@ -20,15 +20,12 @@ import { placeMessageCaret, conversationMessages, latestAgentMessage } from './c
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '../../../src/attachments/files.ts'
-import { draftView, editDraft, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
+import { draftView, editDraft, placeBlock, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
 
 const CHIP_TITLES: Partial<Record<PlacedChip['kind'], string>> = {
   task: 'Open task',
   image: 'Show image',
 }
-
-// The newlines that make a block its own paragraph, after the ones already there.
-const paragraphBreak = ({ newlines }: { newlines: string }) => '\n'.repeat(2 - newlines.length)
 
 export function Composer({
   card,
@@ -441,24 +438,11 @@ export function Composer({
     setPrefix(null); setActive(-1); input.current?.focus()
   }
 
-  // Image lines and file blocks are only read as attachments when they stand as their own paragraph.
   const insertBlock = ({ block }: { block: string }) => {
-    const text = current.current.draft, shown = draftView({ text }).display
-    const cursor = Math.min(
-      input.current?.selectionEnd ?? shown.length,
-      shown.length,
-    )
-    const before = shown.slice(
-        0,
-        cursor,
-      ), after = shown.slice(cursor)
-    const lead = before.trim() ? paragraphBreak({ newlines: /\n{0,2}$/.exec(before)?.[0] ?? '' }) : ''
-    const tail = paragraphBreak({ newlines: /^\n{0,2}/.exec(after)?.[0] ?? '' })
-    const edit = replaceDisplay({
-      text,
-      from: cursor,
-      to: cursor,
-      insert: lead + block + tail,
+    const edit = placeBlock({
+      text: current.current.draft,
+      caret: input.current?.selectionEnd,
+      block,
     })
     write(edit)
     input.current?.focus()
