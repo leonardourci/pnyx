@@ -15,6 +15,7 @@ import { Resize } from '../components/ui/resize.tsx'
 
 import { Tooltip } from '../components/ui/tooltip.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import { WorkingDots } from '../components/ui/streaming.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { HoverActions } from '../components/ui/hover-actions.tsx'
@@ -229,7 +230,12 @@ export function HydraCard({
       </HoverActions>
       <div className="card-content">
         <div className="card-state">
-          <span className={`agent-activity activity-${status.kind}`}><i aria-hidden="true" />{statusText}</span>
+          <span className={`agent-activity activity-${status.kind}`}>
+            {status.kind === 'working'
+              ? <WorkingDots />
+              : <i aria-hidden="true" />}
+            {statusText}
+          </span>
           <Tooltip content={created ? `Created ${new Date(created).toLocaleString()}` : 'Creation time not recorded'}>
             <time className="card-since" dateTime={status.at || card.updatedAt} tabIndex={0}>
               {relativeTime({

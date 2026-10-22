@@ -106,6 +106,36 @@ try {
     condition: '!document.querySelector(".hydra-agent-pickers [role=listbox]")',
     label: 'pickers closed',
   })
+  await b.check({
+    condition: '!!document.querySelector(".hydra-agent-pickers [aria-label=Model] svg") && !!document.querySelector(".hydra-agent-pickers [aria-label=Effort] svg") && !!document.querySelector(".hydra-agent-pickers [aria-label=Permissions] svg") && document.querySelector(".hydra-agent-pickers [aria-label=\\"Fast mode\\"]").getAttribute("aria-pressed") === "false"',
+    label: 'each picker shows its icon, and Fast is a toggle that starts off',
+  })
+  await b.click({ selector: '.hydra-agent-pickers [aria-label="Fast mode"]' })
+  await b.eventually({
+    condition: 'document.querySelector(".hydra-agent-pickers [aria-label=\\"Fast mode\\"]").getAttribute("aria-pressed") === "true"',
+    label: 'one click turns Fast mode on',
+  })
+  await b.click({ selector: '.hydra-agent-pickers [aria-label="Fast mode"]' })
+  await b.eventually({
+    condition: 'document.querySelector(".hydra-agent-pickers [aria-label=\\"Fast mode\\"]").getAttribute("aria-pressed") === "false"',
+    label: 'another click turns it off',
+  })
+  await b.click({ selector: '.hydra-agent-pickers [aria-label=Permissions]' })
+  await b.evaluate({ code: 'const plan = [...document.querySelectorAll(".hydra-agent-pickers [role=option]")].find(o => o.textContent.startsWith("Plan")); plan.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true, ctrlKey: true })); return true;' })
+  await b.eventually({
+    condition: '!document.querySelector(".hydra-agent-pickers [role=listbox]") && document.querySelector(".hydra-agent-pickers [aria-label=Permissions]").textContent.includes("Plan")',
+    label: 'Mod+click picks the option and saves it as the default',
+  })
+  await b.click({ selector: '.hydra-agent-pickers [aria-label=Permissions]' })
+  await b.eventually({
+    condition: '!![...document.querySelectorAll(".hydra-agent-pickers [role=option]")].find(o => o.textContent.startsWith("Plan"))?.querySelector(".select-default") && !!document.querySelector(".hydra-agent-pickers .select-hint")',
+    label: 'the menu marks the default new Hydras start with',
+  })
+  await b.evaluate({ code: '[...document.querySelectorAll(".hydra-agent-pickers [role=option]")].find(o => o.textContent.startsWith("Ask permissions")).click(); return true;' })
+  await b.eventually({
+    condition: 'document.querySelector(".hydra-agent-pickers [aria-label=Permissions]").textContent.includes("Ask permissions")',
+    label: 'a plain click picks without moving the default',
+  })
   assert.deepEqual(
     state().config?.hydra.agent,
     {
@@ -113,6 +143,7 @@ try {
       model: 'sonnet',
       effort: 'high',
       mode: 'default',
+      fast: false,
     },
   )
   await b.screenshot({ name: 'after-empty.png' })
@@ -121,9 +152,13 @@ try {
     value: 'Hello Hydra',
   })
   await b.click({ selector: '.hydra-chat .composer-send' })
+  await b.check({
+    condition: 'document.querySelector(".hydra-chat textarea").value === "" && [...document.querySelectorAll(".hydra-chat .message.mine")].some(m => m.textContent.includes("Hello Hydra")) && !!document.querySelector(".hydra-chat .chat-running")',
+    label: 'a send clears the composer, shows the message and starts the dots at once',
+  })
   await b.eventually({
-    condition: 'document.querySelector(".hydra-messages").textContent.includes("Hydra is working")',
-    label: 'hosted turn has a working indicator',
+    condition: 'document.querySelector(".hydra-chat .chat-running")?.getAttribute("aria-label") === "Hydra is working" && !document.querySelector(".hydra-messages .chat-running") && !!document.querySelector(".hydra-chat [aria-label=\\"Stop Hydra\\"]") && !document.querySelector(".app > [role=status]")',
+    label: 'hosted turn shows wordless dots above the composer, a Stop button and no queued pop-up',
   })
   assert.equal(
     sdk.calls[0]?.options.model,
@@ -139,7 +174,7 @@ try {
     condition: '[...document.querySelectorAll(".hydra-agent-pickers [role=listbox][aria-label=Model] [role=option]")].some(option => option.textContent.trim() === "opus")',
     label: 'SDK model catalog loads in the picker',
   })
-  await b.click({ selector: '.hydra-agent-pickers [role=listbox][aria-label=Model] [role=option]:nth-child(1)' })
+  await b.click({ selector: '.hydra-agent-pickers [role=listbox][aria-label=Model] [role=option][data-group="Claude Code"]' })
   await b.eventually({
     condition: 'document.querySelector(".hydra-agent-pickers [aria-label=Model]").textContent.includes("opus") && !document.querySelector(".hydra-agent-pickers [aria-label=Model]").disabled',
     label: 'model choice saves during a turn',
@@ -150,9 +185,29 @@ try {
   )
   sdk.release()
   await b.eventually({
-    condition: 'document.querySelector(".hydra-messages").textContent.includes("Hydra: Hello Hydra") && !document.querySelector(".hydra-messages").textContent.includes("Hydra is working")',
+    condition: 'document.querySelector(".hydra-messages").textContent.includes("Hydra: Hello Hydra") && !document.querySelector(".hydra-chat .chat-running") && !document.querySelector(".hydra-chat [aria-label=\\"Stop Hydra\\"]")',
     label: 'answer streams into Hydra chat and clears the indicator',
   })
+  await b.check({
+    condition: '!!document.querySelector(".hydra-chat .turn-foot time") && !!document.querySelector(".hydra-chat .turn-foot [aria-label=\\"Copy reply\\"]") && !!document.querySelector(".hydra-chat .message-meta time") && !!document.querySelector(".hydra-chat .message-meta [aria-label=\\"Copy message\\"]")',
+    label: 'the turn ends with its stop time and reply copy, and the owner message shows its time and copy',
+  })
+  await b.evaluate({ code: 'const s = document.querySelector(".hydra-messages"); s.scrollTop = s.scrollHeight; await new Promise(r => setTimeout(r, 100)); const extra = document.createElement("div"); extra.className = "test-growth"; extra.style.height = "900px"; document.querySelector(".hydra-stream").append(extra); s.dispatchEvent(new Event("scroll")); return true;' })
+  await b.eventually({
+    condition: '(() => { const s = document.querySelector(".hydra-messages"); return s.scrollHeight - s.scrollTop - s.clientHeight < 2 && !document.querySelector(".hydra-chat .jump"); })()',
+    label: 'a scroll event that lands while the chat grows keeps it on the newest message',
+  })
+  await b.evaluate({ code: 'const s = document.querySelector(".hydra-messages"); s.scrollTop = 0; await new Promise(r => setTimeout(r, 100)); document.querySelector(".test-growth").style.height = "1200px"; await new Promise(r => setTimeout(r, 100)); return true;' })
+  await b.check({
+    condition: 'document.querySelector(".hydra-messages").scrollTop === 0 && !!document.querySelector(".hydra-chat .jump") && !!document.querySelector(".hydra-chat .chat-fade")',
+    label: 'scrolled up, the chat stays put and offers a jump to the newest message',
+  })
+  await b.click({ selector: '.hydra-chat .jump' })
+  await b.eventually({
+    condition: '(() => { const s = document.querySelector(".hydra-messages"); return s.scrollHeight - s.scrollTop - s.clientHeight < 2 && !document.querySelector(".hydra-chat .jump"); })()',
+    label: 'the jump button returns to the newest message',
+  })
+  await b.evaluate({ code: 'document.querySelector(".test-growth").remove(); return true;' })
   await b.fill({
     label: 'Reply to Hydra',
     value: 'Use the next model',
@@ -177,8 +232,8 @@ try {
   })
   await b.click({ selector: '.hydra-chat .composer-send' })
   await b.eventually({
-    condition: '!!document.querySelector(".hydra-chat [data-streaming] .message-block")',
-    label: 'reply streams before its turn finishes',
+    condition: '!!document.querySelector(".hydra-chat [data-streaming] .message-block") && !!document.querySelector(".hydra-chat .chat-running")',
+    label: 'reply streams before its turn finishes, with the dots still on',
   })
   await b.evaluate({ code: 'document.querySelector(".hydra-chat .hydra-messages").focus(); return true;' })
   await b.press({ key: 'c' })
@@ -205,6 +260,26 @@ try {
     sdk.calls[1]?.messages.at(-1) ?? '',
     /## Comments on your reply from [\s\S]*Keep this streamed passage\.[\s\S]*## Message\n\nApply the comment/,
   )
+  sdk.control.hold = true
+  await b.fill({
+    label: 'Reply to Hydra',
+    value: 'Take your time',
+  })
+  await b.click({ selector: '.hydra-chat .composer-send' })
+  await b.eventually({
+    condition: '!!document.querySelector(".hydra-chat [aria-label=\\"Stop Hydra\\"]")',
+    label: 'Stop shows while Hydra works',
+  })
+  await b.click({ selector: '.hydra-chat [aria-label="Stop Hydra"]' })
+  await b.eventually({
+    condition: '!document.querySelector(".hydra-chat .chat-running") && !document.querySelector(".hydra-messages [role=alert]")',
+    label: 'Stop ends Hydra’s turn without an error',
+  })
+  assert.equal(
+    sdk.interrupts.length,
+    1,
+  )
+  sdk.control.hold = false
   const session = state().config?.hydra.session
   const port = server.port
   await server.close(); server = await startServer({

@@ -16,10 +16,24 @@ export function hydraSdk() {
     ask: false,
     stream: false,
     leaveTurnUnfinishedOnClose: false,
+    usage: undefined as {
+      context: number
+      window: number
+      cost: number
+      // A plan window the agent reports for its request, as Claude Code's rate limit event does.
+      limit?: {
+        rateLimitType: string
+        utilization: number
+        resetsAt: number
+      }
+    } | undefined,
     reply: undefined as string | undefined,
+    // Ends each turn with this error result, as the SDK does for a turn that fails.
+    turnError: undefined as string | undefined,
   }
   const permissions: PermissionResult[] = []
   const sets: string[] = []
+  const interrupts: unknown[] = []
   const releases = new Set<() => void>()
   const query = (({
     prompt,
@@ -44,7 +58,7 @@ export function hydraSdk() {
       }
     }
 
-    let release = () => {}
+    let release = () => {}, interrupted = false
     const call = {
       options,
       messages: [] as string[],
@@ -101,6 +115,35 @@ export function hydraSdk() {
         }
         const reply = control.reply ?? `Hydra: ${text.split('\n\n').at(-1)}`
 
+        if (control.usage?.limit) {
+          yield {
+            type: 'rate_limit_event',
+            rate_limit_info: {
+              status: 'allowed',
+              ...control.usage.limit,
+            },
+          }
+        }
+
+        if (control.usage) {
+          yield {
+            type: 'stream_event',
+            parent_tool_use_id: null,
+            event: {
+              type: 'message_start',
+              message: {
+                id: `usage-${call.messages.length}`,
+                usage: {
+                  input_tokens: 10,
+                  cache_creation_input_tokens: 0,
+                  cache_read_input_tokens: control.usage.context - 10,
+                  output_tokens: 1,
+                },
+              },
+            },
+          }
+        }
+
         if (control.stream) {
           yield {
             type: 'stream_event',
@@ -152,6 +195,30 @@ export function hydraSdk() {
           })
         }
 
+        // The SDK ends an interrupted turn with an error result.
+        if (interrupted) {
+          interrupted = false
+          yield {
+            type: 'result',
+            subtype: 'error_during_execution',
+            is_error: true,
+            errors: ['Request was aborted.'],
+          }
+
+          continue
+        }
+
+        if (control.turnError) {
+          yield {
+            type: 'result',
+            subtype: 'error_during_execution',
+            is_error: true,
+            errors: [control.turnError],
+          }
+
+          continue
+        }
+
         if (control.stream) {
           yield {
             type: 'stream_event',
@@ -171,6 +238,17 @@ export function hydraSdk() {
           role: 'assistant',
           text: reply,
         })
+
+        if (control.usage) {
+          yield {
+            type: 'result',
+            subtype: 'success',
+            is_error: false,
+            total_cost_usd: control.usage.cost,
+            modelUsage: { 'claude-sonnet': { contextWindow: control.usage.window } },
+          }
+        }
+
         yield {
           type: 'system',
           subtype: 'session_state_changed',
@@ -186,6 +264,11 @@ export function hydraSdk() {
           if (!control.leaveTurnUnfinishedOnClose) {
             release()
           }
+        },
+        interrupt: async () => {
+          interrupts.push(call)
+          interrupted = true
+          release()
         },
         // eslint-disable-next-line pnyx/object-params -- The SDK owns this method signature.
         setModel: async (model: string) => {
@@ -209,6 +292,7 @@ export function hydraSdk() {
     control,
     permissions,
     sets,
+    interrupts,
     release: () => {
       control.hold = false
 

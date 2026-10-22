@@ -248,6 +248,7 @@ export function refreshTasks({
           settings: session.settings && { ...session.settings },
           activity: session.activity,
           sessionActivity: session.sessionActivity ?? session.activity,
+          workingSince: session.workingSince,
         } : {}),
       },
     })

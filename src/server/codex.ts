@@ -6,7 +6,7 @@ import type { Question } from '../core/model.ts'
 import { form } from '../integrations/hooks/observe.ts'
 import { pnyxHome } from '../store/paths.ts'
 import { attachedImages } from '../attachments/images.ts'
-import type { AskPermission, HostedText, ModelOption, PermissionDecision, Provider } from './provider.ts'
+import type { AskPermission, HostedText, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({
   cwd,
@@ -280,6 +280,12 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
             items.clear()
             events.push(params)
             wake?.()
+          } else if (message.method === 'thread/tokenUsage/updated' || message.method === 'account/rateLimits/updated') {
+            events.push({
+              ...object({ value: message.params }),
+              method: message.method,
+            })
+            wake?.()
           } else if (message.method === 'item/agentMessage/delta' || message.method === 'item/completed') {
             const params = object({ value: message.params })
             const item = object({ value: params.item })
@@ -398,7 +404,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     }: {
       threadId: string
       turnId: string
-    }): AsyncGenerator<HostedText | { turn: ObjectValue }> {
+    }): AsyncGenerator<HostedText | HostedUsage | { turn: ObjectValue }> {
       for (;;) {
         if (failure) {
           throw failure
@@ -409,7 +415,26 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
         if (event) {
           const turn = object({ value: event.turn })
 
+          // The account's windows are not about one thread.
+          if (event.method === 'account/rateLimits/updated') {
+            yield codexLimits({ rateLimits: event.rateLimits })
+            continue
+          }
+
           if (event.threadId !== threadId) {
+            continue
+          }
+
+          // The last request's total is the context in use.
+          if (event.method === 'thread/tokenUsage/updated') {
+            const usage = object({ value: event.tokenUsage })
+            const used = object({ value: usage.last }).totalTokens
+            const window = usage.modelContextWindow
+            yield {
+              type: 'usage',
+              ...(typeof used === 'number' ? { used } : {}),
+              ...(typeof window === 'number' ? { window } : {}),
+            }
             continue
           }
 
@@ -508,6 +533,45 @@ const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fro
     `shell_environment_policy.set.${name}`,
     value,
   ]))
+
+// Codex reports its account's windows by length: the five-hour one is the session, the seven-day one the week.
+const windowLabel = ({ minutes }: { minutes: number }) => {
+  if (minutes <= 300) {
+    return 'session'
+  }
+
+  if (minutes >= 10_080) {
+    return 'week'
+  }
+
+  return `${Math.round(minutes / 60)}h`
+}
+
+export function codexLimits({ rateLimits }: { rateLimits: unknown }): HostedUsage {
+  const limits = object({ value: rateLimits })
+
+  return {
+    type: 'usage',
+    ...(typeof limits.planType === 'string' ? { plan: limits.planType } : {}),
+    limits: [
+      limits.primary,
+      limits.secondary,
+    ].flatMap(value => {
+      const window = object({ value })
+      const minutes = window.windowDurationMins
+      const label = typeof minutes === 'number' ? windowLabel({ minutes }) : undefined
+
+      return label && typeof window.usedPercent === 'number' ? [
+        {
+          label,
+          used: Math.round(window.usedPercent),
+          ...(typeof window.resetsAt === 'number'
+            ? { resetsAt: new Date(window.resetsAt * 1000).toISOString() } : {}),
+        },
+      ] : []
+    }),
+  }
+}
 
 export function codexProvider({
   spawnCodex = ({
@@ -677,6 +741,14 @@ export function codexProvider({
         }
 
         const id = thread.id
+        let turnId: string | undefined, interrupted = false
+        const stopTurn = () => rpc.request({
+          method: 'turn/interrupt',
+          params: {
+            threadId: id,
+            turnId,
+          },
+        })
 
         return {
           id,
@@ -750,6 +822,13 @@ export function codexProvider({
                 throw new Error('Codex returned no turn id')
               }
 
+              turnId = turn.id
+
+              // A stop that came before Codex named the turn applies now.
+              if (interrupted) {
+                await stopTurn()
+              }
+
               for await (const event of rpc.completed({
                 threadId: id,
                 turnId: turn.id,
@@ -760,11 +839,14 @@ export function codexProvider({
                   continue
                 }
 
-                if (event.turn.status !== 'completed') {
+                // A turn the owner stopped is a finished turn, not a failure.
+                if (event.turn.status !== 'completed' && !(interrupted && event.turn.status === 'interrupted')) {
                   throw new Error(String(object({ value: event.turn.error }).message ?? `Codex turn ${event.turn.status}`))
                 }
               }
 
+              turnId = undefined
+              interrupted = false
               yield 'finished'
             }
           },
@@ -773,6 +855,13 @@ export function codexProvider({
             value,
           }) {
             options[setting] = value
+          },
+          async interrupt() {
+            interrupted = true
+
+            if (turnId) {
+              await stopTurn()
+            }
           },
           close,
         }

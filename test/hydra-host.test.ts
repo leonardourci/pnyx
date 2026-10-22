@@ -2584,3 +2584,272 @@ test(
     }
   },
 )
+
+test(
+  'hydra stop ends only Hydra’s running turn and keeps its session for the next message',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-stop-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    fakeDispatch({ root: home })
+    const folder = join(
+      home,
+      'work',
+    )
+    mkdirSync(folder)
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    await commands.task([
+      'create',
+      '--title',
+      'Fix add',
+      '--key',
+      'fix',
+      '--folder',
+      folder,
+      '--hydra',
+      'lab',
+    ])
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const sdk = hydraSdk()
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+
+    try {
+      assert.deepEqual(
+        await commands.hydra([
+          'stop',
+          '--hydra',
+          'lab',
+        ]),
+        { stopped: 'none: Hydra is not working on a turn' },
+      )
+      sdk.control.hold = true
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Take a long look',
+      ])
+      await until({ check: () => sdk.calls[0]?.messages.length === 1 && state().cards[HYDRA_CARD]?.sessionActivity === 'working' })
+      await startTask({
+        hydraId: 'lab',
+        task: 'fix',
+        meta: {
+          at: new Date().toISOString(),
+          actor: 'hydra',
+          reason: 'start it',
+          id: 'start-fix',
+        },
+      })
+      const worker = () => state().cards[state().keys.fix!]
+      await until({ check: () => worker()?.sessionActivity === 'working' })
+      const since = state().cards[HYDRA_CARD]!.workingSince
+      assert.ok(since && Date.parse(since) <= Date.now())
+      assert.deepEqual(
+        await commands.hydra([
+          'stop',
+          '--hydra',
+          'lab',
+        ]),
+        { stopped: 'hydra' },
+      )
+      await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      // Only Hydra's own turn stops; its worker keeps going.
+      assert.deepEqual(
+        sdk.interrupts,
+        [sdk.calls[0]],
+      )
+      assert.equal(
+        worker()?.sessionActivity,
+        'working',
+      )
+      assert.equal(
+        state().cards[HYDRA_CARD]!.workingSince,
+        undefined,
+      )
+      assert.ok(!state().cards[HYDRA_CARD]!.attention.some(a => a.kind === 'interrupted'))
+      sdk.control.hold = false
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Carry on',
+      ])
+      await until({ check: () => sdk.calls[0]?.messages.length === 2 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      // The next message resumes Hydra's session; the other one is the worker's.
+      assert.equal(
+        sdk.calls.length,
+        2,
+      )
+      // A stop covers only its own turn: a later turn's failure still shows.
+      sdk.control.turnError = 'Overloaded'
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Once more',
+      ])
+      await until({ check: () => state().cards[HYDRA_CARD]?.attention.some(a => a.kind === 'interrupted') ?? false })
+      assert.match(
+        state().cards[HYDRA_CARD]!.attention.find(a => a.kind === 'interrupted')!.text ?? '',
+        /Overloaded/,
+      )
+    } finally {
+      await server.close()
+      sdk.release()
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'hydra usage reports the context in use, its window, the session cost and plan windows, the agent\'s own first',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-usage-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    const { claude } = fakeDispatch({ root: home })
+    writeFileSync(
+      join(
+        claude,
+        'quota.json',
+      ),
+      JSON.stringify({
+        provider: {
+          plan: 'max',
+          windows: [
+            {
+              label: 'Session',
+              percentUsed: 90,
+            },
+            {
+              label: 'week',
+              percentRemaining: 60,
+            },
+          ],
+        },
+      }),
+    )
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const sdk = hydraSdk()
+    sdk.control.usage = {
+      context: 581_000,
+      window: 1_000_000,
+      cost: 1.25,
+      limit: {
+        rateLimitType: 'five_hour',
+        utilization: 0.34,
+        resetsAt: 4_000_000_000,
+      },
+    }
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+
+    try {
+      assert.deepEqual(
+        await commands.hydra([
+          'usage',
+          '--hydra',
+          'lab',
+        ]),
+        { usage: 'none: Hydra has not started a session' },
+      )
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'How big is the context?',
+      ])
+      await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      const usage = await commands.hydra([
+        'usage',
+        '--hydra',
+        'lab',
+      ]) as Record<string, unknown>
+      assert.equal(
+        usage.harness,
+        'claude',
+      )
+      assert.equal(
+        usage.used,
+        581_000,
+      )
+      assert.equal(
+        usage.window,
+        1_000_000,
+      )
+      assert.equal(
+        usage.cost,
+        1.25,
+      )
+      assert.equal(
+        usage.account,
+        'claude:test',
+      )
+      assert.equal(
+        usage.plan,
+        'max',
+      )
+      // The agent's own session window takes quota-axi's place; quota-axi still fills the week.
+      assert.deepEqual(
+        usage.windows,
+        [
+          {
+            label: 'session',
+            used: 34,
+            resetsAt: new Date(4_000_000_000_000).toISOString(),
+          },
+          {
+            label: 'week',
+            used: 40,
+          },
+        ],
+      )
+    } finally {
+      await server.close()
+      sdk.release()
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)

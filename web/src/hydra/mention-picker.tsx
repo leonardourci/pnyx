@@ -1,6 +1,20 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
-import type { Card } from '../../../src/core/model.ts'
 import { Button } from '../components/ui/controls.tsx'
+import { Icon } from '../components/ui/icon.tsx'
+import type { ChipKind } from './draft.ts'
+
+// Something the @ picker can reference: an attachment of this message, a project or a task.
+export interface MentionItem {
+  key: string
+  kind: ChipKind
+  title: string
+  detail: string
+  excerpt?: string
+  insert: string
+  // A column or task shows its own icons in its column's color.
+  icons?: string[]
+  tone?: string
+}
 
 export function MentionPicker({
   id,
@@ -11,12 +25,9 @@ export function MentionPicker({
 }: {
   id: string
   anchor: RefObject<HTMLTextAreaElement | null>
-  matches: {
-    card: Card
-    excerpt: string
-  }[]
+  matches: MentionItem[]
   active: number
-  choose({ card }: { card: Card }): void
+  choose({ item }: { item: MentionItem }): void
 }) {
   const root = useRef<HTMLDivElement>(null)
   useLayoutEffect(
@@ -105,30 +116,33 @@ export function MentionPicker({
       className="mention-menu"
       onMouseDown={event => event.preventDefault()}
     >
-      <span className="eyebrow">Tasks in this Hydra</span>
-      <div id={id} role="listbox" aria-label="Mention a task">
+      <span className="eyebrow">Mention · Tab or Enter picks</span>
+      <div id={id} role="listbox" aria-label="Mention">
         {matches.map((
-          {
-            card,
-            excerpt,
-          },
+          item,
           index,
         ) => (
           <Button
-            key={card.id}
+            key={item.key}
             id={`${id}-${index}`}
             role="option"
             aria-selected={index === active}
             className={index === active ? 'active' : ''}
             tabIndex={-1}
-            onClick={() => choose({ card })}
+            onClick={() => choose({ item })}
           >
-            <span className="mention-heading"><strong>{card.title}</strong><small>{card.project || 'No project'}</small></span>
-            <span className="mention-excerpt">{excerpt}</span>
+            <span className="mention-heading">
+              <span className={`mention-icon ${item.tone ?? ''}`}>
+                {(item.icons ?? [item.kind]).map(icon => <Icon key={icon} name={icon} size={14} />)}
+              </span>
+              <strong>{item.title}</strong>
+              <small>{item.detail}</small>
+            </span>
+            {item.excerpt && <span className="mention-excerpt">{item.excerpt}</span>}
           </Button>
         ))}
       </div>
-      {!matches.length && <p role="status">No matching tasks in this Hydra.</p>}
+      {!matches.length && <p role="status">Nothing in this Hydra matches.</p>}
     </div>
   )
 }

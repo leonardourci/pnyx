@@ -12,7 +12,7 @@ export const MAX_IMAGE_BYTES = 5 * 1024 * 1024 * 3 / 4
 const EXTENSIONS = Object.keys(IMAGE_TYPES).map(extension => extension.slice(1))
   .join('|')
 export const ATTACHMENT_NAME = new RegExp(`^[\\da-f]{8}-[\\da-f]{4}-[\\da-f]{4}-[\\da-f]{4}-[\\da-f]{12}\\.(?:${EXTENSIONS})$`)
-const LINE = /^\[image: (\/[^\]\n]+)\]$/gm
+export const IMAGE_LINE = /^\[image: (\/[^\]\n]+)\]$/gm
 
 export const imageLine = ({ path }: { path: string }) => `[image: ${path}]`
 
@@ -25,7 +25,7 @@ export const imageType = ({ path }: { path: string }): ImageType | undefined =>
   IMAGE_TYPES[(/\.\w+$/.exec(path)?.[0] ?? '') as keyof typeof IMAGE_TYPES]
 
 export const imagePaths = ({ text }: { text: string }) =>
-  [...text.matchAll(LINE)].map(match => match[1]!)
+  [...text.matchAll(IMAGE_LINE)].map(match => match[1]!)
 
 // Only files Pnyx stored for a Hydra are sent as images; any other path stays text.
 export function attachedImages({

@@ -12,6 +12,8 @@ const stateIcons: Record<string, string> = {
   'not-started': 'queued',
 }
 
+export const taskStateIcon = ({ kind }: { kind?: string }) => stateIcons[kind ?? ''] ?? 'queued'
+
 export interface TaskReferenceData {
   title: string
   state: string
@@ -83,7 +85,7 @@ export function TaskReference({
         <Icon name="task-card" size={14} />
         {context && (
           <span className="task-reference-state" role="img" aria-label={state}>
-            <Icon name={stateIcons[reference?.kind ?? ''] ?? 'queued'} size={14} />
+            <Icon name={taskStateIcon({ kind: reference?.kind })} size={14} />
           </span>
         )}
         <span className="task-reference-title">{label}</span>

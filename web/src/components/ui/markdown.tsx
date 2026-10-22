@@ -1,9 +1,10 @@
 import { TaskReference } from './task-reference.tsx'
-import { mentionId } from '../../../../src/mentions/mentions.ts'
+import { decodeValue, mentionId } from '../../../../src/mentions/mentions.ts'
 import { Fragment, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
 import { imageLine, imagePaths } from '../../../../src/attachments/images.ts'
-import { AttachedImage } from './attached-image.tsx'
+import { ImageChip } from './attached-image.tsx'
+import { ColumnChip } from './column-chip.tsx'
 
 export const markdown = new Marked({ gfm: true })
 const decodeEntities = ({ text }: { text: string }) => text.replace(
@@ -63,11 +64,18 @@ export function markdownHref({ href }: { href: string }): string | undefined {
   }
 }
 
-type TaskLink = { openTask?({ id }: { id: string }): void }
+type TaskLink = {
+  openTask?({ id }: { id: string }): void
+  columnLook?({ id }: { id: string }): {
+    icon: string
+    tone: string
+  }
+}
 
 const inline = ({
   tokens,
   openTask,
+  columnLook,
 }: { tokens: Token[] } & TaskLink): ReactNode =>
   tokens.map((
     token,
@@ -76,6 +84,7 @@ const inline = ({
     const children = 'tokens' in token && token.tokens ? inline({
       tokens: token.tokens,
       openTask,
+      columnLook,
     })
       : 'text' in token ? decodeEntities({ text: String(token.text) }) : token.raw
 
@@ -87,6 +96,41 @@ const inline = ({
       case 'br': return <br key={i} />
       case 'link': case 'image': {
         const task = token.type === 'link' ? mentionId({ href: token.href }) : undefined
+        const pointer = token.type === 'link' ? /^pnyx-(project|column|image|file):([\w%~.-]+)$/.exec(token.href) : null
+        const value = pointer ? decodeValue({ value: pointer[2]! }) : undefined
+        const label = inlineText({ tokens: token.tokens ?? [] }).replace(
+          /^@/,
+          '',
+        )
+
+        if (pointer?.[1] === 'image' && value !== undefined) {
+          return (
+            <ImageChip
+              key={i}
+              path={value}
+              label={label}
+            />
+          )
+        }
+
+        if (pointer?.[1] === 'column' && value !== undefined) {
+          const look = columnLook?.({ id: value }) ?? {
+            icon: 'custom',
+            tone: '',
+          }
+
+          return (
+            <ColumnChip
+              key={i}
+              {...look}
+              label={label}
+            />
+          )
+        }
+
+        if (pointer) {
+          return <span key={i} className="chip reference-chip" contentEditable={false}>{children}</span>
+        }
 
         if (task) {
           return (
@@ -139,6 +183,7 @@ function Code({
 function Table({
   token,
   openTask,
+  columnLook,
 }: { token: Tokens.Table } & TaskLink) {
   const align = token.align.map(a => ({ textAlign: a ?? undefined }))
   const cells = ({
@@ -154,6 +199,7 @@ function Table({
     <Cell key={n} style={align[n]}>{inline({
       tokens: cell.tokens,
       openTask,
+      columnLook,
     })}
     </Cell>
   ))
@@ -200,6 +246,7 @@ export function Markdown({
   text,
   block,
   openTask,
+  columnLook,
 }: {
   text: string
   block?({
@@ -213,6 +260,7 @@ export function Markdown({
     () => markdown.lexer(text),
     [text],
   )
+  const images = imagePaths({ text })
   let index = 0
 
   const wrap = ({
@@ -273,6 +321,7 @@ export function Markdown({
             <Heading>{inline({
               tokens: token.tokens ?? [],
               openTask,
+              columnLook,
             })}
             </Heading>
           ); break
@@ -280,10 +329,11 @@ export function Markdown({
         case 'paragraph': case 'text': {
           const image = imagePaths({ text: token.text.trim() })[0]
           const content = image !== undefined && imageLine({ path: image }) === token.text.trim()
-            ? <AttachedImage path={image} />
+            ? <ImageChip path={image} label={`Image ${images.indexOf(image) + 1}`} />
             : token.tokens ? inline({
               tokens: token.tokens,
               openTask,
+              columnLook,
             }) : token.text
           const paragraph = <p>{content}</p>
 
@@ -294,7 +344,7 @@ export function Markdown({
           node = paragraph; break
         }
         case 'code': node = <Code text={token.text} language={token.lang} />; break
-        case 'table': node = <Table token={token as Tokens.Table} openTask={openTask} />; break
+        case 'table': node = <Table token={token as Tokens.Table} openTask={openTask} columnLook={columnLook} />; break
         default: node = <p>{token.raw}</p>
       }
 

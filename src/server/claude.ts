@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { EffortLevel, Options, PermissionMode, SDKMessage, Settings, query } from '@anthropic-ai/claude-agent-sdk'
+import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo, Settings, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from '../core/model.ts'
 import { questions } from '../integrations/hooks/observe.ts'
 import type { ModelOption, Provider } from './provider.ts'
@@ -109,6 +109,29 @@ function sdkOptions({ settings }: { settings: AgentSettings }): Partial<Options>
   }
 }
 
+const LIMIT_LABELS: Record<string, string> = {
+  five_hour: 'session',
+  seven_day: 'week',
+  seven_day_opus: 'Opus week',
+  seven_day_sonnet: 'Sonnet week',
+}
+
+// Each request reports the plan window it was checked against.
+export function claudeLimit({ info }: { info: SDKRateLimitInfo }) {
+  const label = LIMIT_LABELS[info.rateLimitType ?? '']
+
+  if (!label || typeof info.utilization !== 'number') {
+    return undefined
+  }
+
+  // ponytail: utilization is a 0-1 share in the events seen so far; a value past 1 is read as a percent.
+  return {
+    label,
+    used: Math.round(info.utilization <= 1 ? info.utilization * 100 : info.utilization),
+    ...(info.resetsAt ? { resetsAt: new Date(info.resetsAt * 1000).toISOString() } : {}),
+  }
+}
+
 function turnOf({ message }: { message: SDKMessage }): 'working' | 'finished' | undefined {
   if (message.type === 'system' && message.subtype === 'session_state_changed') {
     return message.state === 'idle' ? 'finished' : 'working'
@@ -209,7 +232,7 @@ export function claudeProvider({
         folder: env.CLAUDE_CONFIG_DIR,
       })
       let running: ReturnType<QueryFn> | undefined
-      let closed = false
+      let closed = false, interrupted = false
 
       return {
         id,
@@ -370,6 +393,16 @@ export function claudeProvider({
 
               if (event.type === 'message_start') {
                 messageId = event.message.id
+                // Each request carries the whole conversation, so its input is the context in use.
+                const usage = event.message.usage
+
+                if (usage) {
+                  yield {
+                    type: 'usage' as const,
+                    used: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+                      + (usage.cache_read_input_tokens ?? 0),
+                  }
+                }
               } else if (event.type === 'content_block_start' && event.content_block.type === 'text') {
                 textIndex = event.index
 
@@ -391,12 +424,40 @@ export function claudeProvider({
               }
             }
 
-            if (message.type === 'result' && message.is_error) {
+            if (message.type === 'rate_limit_event') {
+              const limit = claudeLimit({ info: message.rate_limit_info })
+
+              if (limit) {
+                yield {
+                  type: 'usage' as const,
+                  limits: [limit],
+                }
+              }
+            }
+
+            if (message.type === 'result') {
+              const windows = Object.values(message.modelUsage ?? {})
+                .map(model => model.contextWindow)
+                .filter(size => size > 0)
+              const cost = message.total_cost_usd
+
+              if (windows.length || typeof cost === 'number') {
+                yield {
+                  type: 'usage' as const,
+                  ...(windows.length ? { window: Math.max(...windows) } : {}),
+                  ...(typeof cost === 'number' ? { cost } : {}),
+                }
+              }
+            }
+
+            // A turn the owner stopped ends as an error result; it is a finished turn, not a failure.
+            if (message.type === 'result' && message.is_error && !interrupted) {
               throw new Error('errors' in message ? message.errors.join('; ') : 'Claude Code could not complete this turn')
             }
 
             if (activity === 'finished') {
               active = false
+              interrupted = false
               yield 'finished'
             }
           }
@@ -415,6 +476,12 @@ export function claudeProvider({
             await running.setPermissionMode(value as PermissionMode)
           } else if (setting === 'effort') {
             await running.applyFlagSettings({ effortLevel: value as EffortLevel })
+          }
+        },
+        async interrupt() {
+          if (running) {
+            interrupted = true
+            await running.interrupt()
           }
         },
         close() {

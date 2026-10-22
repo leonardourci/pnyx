@@ -282,3 +282,27 @@ test(
     }
   },
 )
+
+test(
+  'hydra stop and usage say so when no server runs the Hydra',
+  () => {
+    assert.match(
+      run({
+        args: [
+          'hydra',
+          'stop',
+        ],
+      }),
+      /^stopped: "none: no Pnyx server runs this Hydra"$/m,
+    )
+    assert.match(
+      run({
+        args: [
+          'hydra',
+          'usage',
+        ],
+      }),
+      /^usage: "none: no Pnyx server runs this Hydra"$/m,
+    )
+  },
+)

@@ -119,6 +119,11 @@ test(
         Messages,
         {
           entries: [entry],
+          working: false,
+          lookup: {
+            task: () => undefined,
+            column: () => undefined,
+          },
           comments: [],
           setComments: noop,
           quote: noop,
@@ -132,6 +137,15 @@ test(
       assert.match(
         worker,
         /<article[^>]*aria-label="Agent"/,
+      )
+      const { Markdown } = await server.ssrLoadModule('/web/src/components/ui/markdown.tsx')
+      // A hand-written reference with broken percent-encoding shows as text instead of throwing.
+      assert.match(
+        renderToStaticMarkup(createElement(
+          Markdown,
+          { text: 'See [@Later](pnyx-column:%zz) and [@Shot](pnyx-image:%E0%A4%A)' },
+        )),
+        /Later[\s\S]*Shot/,
       )
     } finally {
       await server.close()
