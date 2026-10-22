@@ -5,7 +5,7 @@ import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '../.
 // The draft stays the Markdown Hydra receives; the textarea shows each chip as its label.
 export type ChipKind = ReferenceKind
 
-// An em space holds an icon's room in the textarea (a task chip has two); the chip draws over them.
+// An em space holds an icon's room in the textarea (a task chip has two); the chip draws icons over them.
 export const ICON_SPACE = '\u2003'
 const QUARTER_SPACE = '\u2005'
 const NO_BREAK_SPACE = '\u00A0'
@@ -24,7 +24,6 @@ const WORDS = new Intl.Segmenter(
   { granularity: 'word' },
 )
 
-// An image, or a file attached to this message, is drawn as a card; a reference to a file stays a chip.
 export const cardChip = ({ chip }: { chip: Pick<DraftChip, 'kind' | 'attached'> }) =>
   chip.kind === 'image' || (chip.kind === 'file' && chip.attached)
 
@@ -296,7 +295,6 @@ const pointAt = ({
   at: number
 }) => at < text.length ? String.fromCodePoint(text.codePointAt(at)!) : ''
 
-// Images go in at the caret, or at the end of the word it is in, with a space only where a card would touch text.
 export function placeImages({
   text,
   caret: at,
@@ -347,7 +345,6 @@ export function placeImages({
   })
 }
 
-// A removed card takes one space beside it along, so the text around it reads as it did before.
 export function removeChip({
   text,
   chip,
@@ -447,7 +444,6 @@ export function editDraft({
     prefix,
     next.length - suffix,
   )
-  // Backspace or Delete on a card takes it out as × does, one space beside it included.
   const erased = insert || prefix === to ? undefined
     : view.chips.find(chip => cardChip({ chip }) && chip.from <= prefix && to <= chip.to)
 

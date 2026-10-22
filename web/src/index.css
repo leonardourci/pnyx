@@ -354,7 +354,6 @@ h3 { font-weight: 600; }
 
 .chip-icon > svg { vertical-align: -2px; }
 
-/* In the composer a card lies over its label's room in the textarea, at the line's middle, nudged up a little. */
 .draft-chip.draft-card { position: relative; cursor: default; margin: 0; padding: 0; color: transparent; background: none; box-shadow: none; }
 
 .draft-card > .attachment-card { position: absolute; left: 0; right: 0; top: calc(50% - var(--card-h) / 2 - .0625em); }
@@ -1144,7 +1143,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
 
-/* One frame for every card in a draft or a message: Comments, images and files keep their own content in it. */
 .attachment-card { position: relative; top: -.0625em; display: inline-flex; align-items: stretch; height: var(--card-h); max-width: 100%; border: 1px solid var(--color-line); border-radius: .375em; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); line-height: 1; white-space: nowrap; vertical-align: middle; overflow: hidden; user-select: none; }
 
 .attachment-card > .button { min-height: 0; padding: 0; border: 0; border-radius: 0; color: inherit; font: inherit; }

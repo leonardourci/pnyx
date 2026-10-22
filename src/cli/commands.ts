@@ -2205,7 +2205,6 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
 
 const HYDRA_NAME_MAX = 40
 
-// The first line of an owner's message that is text: attachments are skipped and mentions read as their labels.
 export function hydraName({ text }: { text: string }): string | undefined {
   const lines = text.replace(
     FILE_BLOCK,
@@ -2222,7 +2221,6 @@ export function hydraName({ text }: { text: string }): string | undefined {
   )
     .split('\n')
     .map(part => part.trim())
-  // A line of images alone is not text; an image inside a sentence reads as its label.
   const index = lines.findIndex(part => part.replace(
     IMAGE,
     '',
@@ -2267,7 +2265,6 @@ export function hydraName({ text }: { text: string }): string | undefined {
   return words ? `${words}…` : undefined
 }
 
-// A Hydra created without a name takes one from the owner's first message; a name it has is never replaced.
 function nameHydra({
   hydraId,
   meta,

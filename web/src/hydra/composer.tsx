@@ -23,7 +23,6 @@ import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '../../../src/attachments/files.ts'
 import { cardChip, draftView, editDraft, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
 
-// A card lies over its label's room in the textarea, so the text and the caret stay where they are.
 function DraftCard({
   chip,
   open,

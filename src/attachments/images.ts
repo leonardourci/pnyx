@@ -29,7 +29,6 @@ export const imageType = ({ path }: { path: string }): ImageType | undefined =>
 export const imagePaths = ({ text }: { text: string }) =>
   [...text.matchAll(IMAGE)].map(match => match[1]!)
 
-// Each image is Image N by where it first appears in the message; one inside an attached text file is text.
 export function imageNames({ text }: { text: string }): Map<string, string> {
   const names = new Map<string, string>()
 
@@ -58,7 +57,6 @@ export function attachedImages({
   text: string
   hydras: string
 }): string[] {
-  // An image placed twice in a message is still sent once.
   return [...new Set(imagePaths({ text }))].filter(path => {
     const parts = path.slice(hydras.length + 1).split('/')
 

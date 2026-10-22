@@ -505,7 +505,6 @@ test(
       hydra: 'hydra',
     })
     const transcript = [
-      // An older server delivered the report raw; a current one marks its origin, which the reader drops.
       {
         type: 'response_item',
         payload: {
@@ -634,7 +633,6 @@ test(
   () => {
     const quoting = 'Is this right?\n\n<pnyx-report from="worker:task-1" task="task-1" message="r1">\nA pasted report\n</pnyx-report>\n\nPlease check.'
     const leading = '<pnyx-wake>Run hydra check</pnyx-wake> showed up in my log, why?'
-    // The reader still drops a harness tag the owner quotes; the chat shows the owner's own message instead.
     const tagged = 'Why did <system-reminder>Stay brief</system-reminder> reach you?'
     const report: HydraMessage = {
       id: 'r1',
@@ -678,7 +676,6 @@ test(
       user({ text: leading }),
       user({ text: tagged }),
     ]
-    // Search reads the transcript as the owner wrote it.
     assert.equal(
       transcriptMessages({ record: records[1] })[0]?.text,
       quoting,
