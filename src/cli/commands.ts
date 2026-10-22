@@ -26,7 +26,7 @@ import { POOL_IDLE } from '../copies/copies.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { hydraConfig, declareTask, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, validateColumns } from '../core/hydra.ts'
+import { hydraConfig, declareTask, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, validateColumns } from '../core/hydra.ts'
 import type { HydraConfig, HydraIdentity } from '../core/model.ts'
 import { readThread } from '../thread/read.ts'
 import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
@@ -2937,11 +2937,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
   const message = loadHydra({ hydraId }).state.hydraMessages
     ?.find(message => message.id === result.message)
-  const text = message ? [
-    message.text,
-    message.details,
-    message.context,
-  ].filter(Boolean).join('\n\n') : String(values.text ?? '')
+  const text = message ? hydraDelivery({ message }) : String(values.text ?? '')
 
   return readServer({ hydraId }).then(server => server ? askHost({
     hydraId,
