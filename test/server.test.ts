@@ -219,6 +219,7 @@ function inbox<T>() {
 }
 
 type LatestMessages = Extract<ServerMessage, { type: 'latest' }>['messages']
+type LatestActions = Extract<ServerMessage, { type: 'latest' }>['actions']
 
 // Last-message pushes arrive on their own queue, so the other messages keep their order.
 async function tab({
@@ -234,6 +235,7 @@ async function tab({
   )}`)
   tabs.add(ws)
   const main = inbox<ServerMessage>(), latest = inbox<LatestMessages>()
+  const actions = inbox<LatestActions>()
   const summaries = inbox<Extract<ServerMessage, { type: 'hydras' }>>()
   const queue = main.queue
   ws.on(
@@ -243,6 +245,7 @@ async function tab({
 
       if (message.type === 'latest') {
         latest.put({ message: message.messages })
+        actions.put({ message: message.actions })
       } else if (message.type === 'hydras') {
         summaries.put({ message })
       } else {
@@ -271,6 +274,15 @@ async function tab({
 
         if (card in messages) {
           return messages[card]
+        }
+      }
+    },
+    async action({ card }: { card: string }) {
+      for (;;) {
+        const pushed = await actions.next()
+
+        if (card in pushed) {
+          return pushed[card]
         }
       }
     },
@@ -1825,6 +1837,94 @@ const assistantLine = ({
     ],
   },
 }) + '\n'
+
+const toolLine = ({
+  record,
+  at,
+}: {
+  record: Record<string, unknown>
+  at: string
+}) => JSON.stringify({
+  timestamp: at,
+  ...record,
+}) + '\n'
+
+test(
+  'each card gets what its agent is running, pushed on connect and again when the call returns',
+  async () => {
+    const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
+    const card = fixture.state.keys.layout!
+    appendFileSync(
+      fixture.transcript,
+      toolLine({
+        record: {
+          type: 'assistant',
+          message: {
+            content: [
+              {
+                type: 'tool_use',
+                id: 'toolu_run',
+                name: 'Bash',
+                input: { command: 'pnpm test' },
+              },
+            ],
+          },
+        },
+        at: '2026-10-13T11:00:00Z',
+      }),
+    )
+    server = await startServer({ hydraId: 'default' })
+    const t = await tab(); await t.next()
+    assert.deepEqual(
+      await t.action({ card }),
+      {
+        calls: [
+          {
+            id: 'toolu_run',
+            tool: 'Bash',
+            command: 'pnpm test',
+          },
+        ],
+        done: false,
+        at: '2026-10-13T11:00:00Z',
+      },
+    )
+    appendFileSync(
+      fixture.transcript,
+      toolLine({
+        record: {
+          type: 'user',
+          message: {
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'toolu_run',
+                content: 'ok',
+              },
+            ],
+          },
+        },
+        at: '2026-10-13T11:00:05Z',
+      }),
+    )
+    assert.equal(
+      (await t.action({ card }))?.done,
+      true,
+    )
+    writeFileSync(
+      fixture.transcript,
+      assistantLine({
+        text: 'Started over.',
+        at: '2026-10-13T11:01:00Z',
+      }),
+    )
+    assert.equal(
+      await t.action({ card }),
+      null,
+    )
+    t.ws.close()
+  },
+)
 
 test(
   'the Hydra search rebuilds a stale index and finds a card by a word only its transcript holds, including words a live session just wrote',
