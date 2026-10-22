@@ -1,3 +1,4 @@
+import { HYDRA_CARD, hydraEvent } from '../src/core/hydra.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, closeSync, mkdtempSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -8,7 +9,7 @@ import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { HydraError, COLUMNS, type HydraEvent, type HydraState } from '../src/core/model.ts'
 import { patchView, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
 import { agentActivity, columnsFor, dropBefore, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, taskLabel, visibleParent } from '../web/src/hydra/view.ts'
-import { withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 import { observe } from '../src/integrations/hooks/observe.ts'
 import { briefNotes, relativeTime } from '../web/src/hydra/brief.ts'
@@ -1775,5 +1776,125 @@ test(
       undefined,
       'empty column space is the end',
     )
+  },
+)
+
+test(
+  'Hydra actions between adjacent transcript pages remain in the older page',
+  () => {
+    const previous = process.env.PNYX_HOME
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-action-pages-',
+    ))
+    process.env.PNYX_HOME = home
+
+    try {
+      const transcript = join(
+        home,
+        'hydra.jsonl',
+      )
+      const start = Date.UTC(
+        2026,
+        9,
+        22,
+        10,
+      )
+      const records = Array.from(
+        { length: 121 },
+        (
+          _,
+          index,
+        ) => ({
+          type: index === 0 ? 'user' : 'assistant',
+          timestamp: new Date(start + index * 1000).toISOString(),
+          message: {
+            content: [
+              {
+                type: 'text',
+                text: `Message ${index}`,
+              },
+            ],
+          },
+        }),
+      )
+      writeFileSync(
+        transcript,
+        records.map(record => JSON.stringify(record)).join('\n') + '\n',
+      )
+      withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => {
+          const create = hydraEvent({
+            state: writer.state,
+            cardId: 'task',
+            meta: {
+              actor: 'web',
+              at: new Date(start).toISOString(),
+            },
+            change: {
+              type: 'task.created',
+              data: {
+                key: 'task',
+                title: 'Paged task',
+              },
+            },
+          })
+          assert.ok('event' in create)
+          writer.append({ event: create.event })
+          const change = hydraEvent({
+            state: writer.state,
+            cardId: 'task',
+            meta: {
+              actor: 'hydra',
+              at: new Date(start + 60_500).toISOString(),
+              reason: 'Keep this action in history',
+            },
+            change: {
+              type: 'task.brief',
+              data: {
+                before: '',
+                after: 'A revised brief',
+              },
+            },
+          })
+          assert.ok('event' in change)
+          writer.append({ event: change.event })
+        },
+      })
+      const { state } = loadHydra({ hydraId: 'default' })
+      const card = {
+        ...state.cards.task!,
+        id: HYDRA_CARD,
+        agent: {
+          provider: 'claude',
+          sessionId: 'fixture',
+          transcriptPath: transcript,
+        },
+      }
+      const latest = readThread({
+        hydraId: 'default',
+        state,
+        card,
+        homes: [],
+      })
+      assert.ok(latest.older)
+      const older = readThread({
+        hydraId: 'default',
+        state,
+        card,
+        homes: [],
+        before: latest.older,
+      })
+      const changed = older.actions?.find(action => action.type === 'task.brief')
+      assert.equal(
+        changed?.reason,
+        'Keep this action in history',
+      )
+      assert.ok(changed!.at > older.entries.at(-1)!.at!)
+      assert.ok(changed!.at < latest.entries[0]!.at!)
+    } finally {
+      process.env.PNYX_HOME = previous
+    }
   },
 )

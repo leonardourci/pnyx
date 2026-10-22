@@ -14,7 +14,7 @@ import type { ThreadPage } from '../thread/read.ts'
 import { seenAt, terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
-import { explained, postLine } from '../cli/commands.ts'
+import { explained } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
 import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraEvent, hydraMode, wakesHydra } from '../core/hydra.ts'
 import { freeTask } from '../cli/start.ts'
@@ -22,7 +22,7 @@ import { hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { HydraError, HYDRA_ACTOR, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
+import { HydraError, HYDRA_ACTOR, ownerActor, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
 import { findOption, harnessControls } from '../core/control.ts'
 import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
 import { hydraDir, loadHydra, pnyxHome, readEvents, withWriter, type Writer } from '../store/hydra-store.ts'
@@ -140,7 +140,6 @@ const IDLE_MS = 10 * 60 * 1000
 const WAKE_MS = 5000
 // A request left pending or a working worker quiet this long wakes Hydra again.
 const STALL_MS = 240_000
-const ALLOWED = 'Allowed'
 // A worker runs the pnyx-worker skill's own commands without asking; any other pnyx-axi command still asks.
 const WORKER_COMMANDS = [
   'task show',
@@ -925,7 +924,16 @@ export function createHost({
           }
         } else {
           answering = asks.shift()
+          let ownerStarted: boolean | undefined
+
+          if (card.id === HYDRA_CARD) {
+            const messages = loadHydra({ hydraId }).state.hydraMessages ?? []
+            const message = messages.find(message => message.id === answering)
+            ownerStarted = !!message && ownerActor({ actor: message.actor })
+          }
+
           entry.replies.start({
+            ownerStarted,
             offset: Math.max(
               offsets.shift() ?? 0,
               completedOffset,
@@ -2186,39 +2194,10 @@ export function createHost({
                 at: at(),
                 actor,
                 reason: why,
+                details,
               },
             }),
           })
-          let posted: string | undefined
-
-          const last = writer.state.hydraMessages?.at(-1)
-
-          // ponytail: folds a run of allows on one task into its first line; the reasons stay in the task's history.
-          if (actor === 'hydra' && choice === 'allow' && !request.questions && !request.form && last?.actor === HYDRA_ACTOR && last.task === card.id && last.text.startsWith(`${ALLOWED} `)) {
-            posted = `none: folded into the previous ${ALLOWED} line`
-          } else if (actor === 'hydra') {
-            try {
-              posted = postLine({
-                writer,
-                hydraId,
-                meta: {
-                  at: at(),
-                  actor,
-                  details: request.questions ? [
-                    `Asked: ${request.questions.map(question => question.question).join(' · ')}`,
-                    request.description,
-                    `Answered: ${choice === 'deny' ? 'Skipped' : recorded.answers?.map(answer => answer.join(', ')).join(' · ')}`,
-                    details,
-                  ].filter(Boolean).join('\n\n') : details,
-                },
-                cardId: card.id,
-                action: `${request.questions || request.form ? (choice === 'allow' ? 'Answered' : 'Skipped') : choice === 'allow' ? ALLOWED : 'Denied'} ${request.tool} on ${card.title}`,
-                reason: why,
-              })
-            } catch (error) {
-              posted = `none: ${(error as Error).message}`
-            }
-          }
 
           return {
             expired: false as const,
@@ -2228,7 +2207,6 @@ export function createHost({
               request: id,
               status: choice,
               ...recorded,
-              ...(posted ? { posted } : {}),
             },
           }
         },

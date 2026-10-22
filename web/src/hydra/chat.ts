@@ -11,12 +11,14 @@ export function hydraMessages({
   messages,
   transcript,
   provider,
+  boundaries = false,
 }: {
   messages: HydraMessage[]
   transcript: ThreadEntry[]
   provider?: string
+  boundaries?: boolean
 }): ThreadEntry[] {
-  transcript = transcript.filter(entry => !quiet({ entry }) && !(provider === 'codex' && ownMessage({ entry })
+  transcript = transcript.filter(entry => (boundaries || !quiet({ entry })) && !(provider === 'codex' && ownMessage({ entry })
     && /^# AGENTS\.md instructions(?: for [^\n]*)?\s*<INSTRUCTIONS>[\s\S]*<\/INSTRUCTIONS>\s*$/.test(entry.text.trim())))
   const remaining = [...transcript]
   const normalized = ({ text }: { text: string }) => text.trim().replace(
@@ -64,6 +66,14 @@ export function hydraMessages({
 
       if (report) {
         replaced.add(entry!)
+
+        if (boundaries) {
+          recorded.push({
+            ...entry!,
+            text: '',
+            hidden: true,
+          })
+        }
       } else if (normalized(entry!) !== normalized({ text })) {
         replaced.add(entry!)
         recorded.push({
@@ -78,6 +88,7 @@ export function hydraMessages({
         role,
         text,
         at: message.at,
+        hidden: boundaries && (message.actor === 'pnyx' || !!message.fromMessage || message.id.endsWith(':line')),
         ...(message.task ? { task: message.task } : {}),
       })
     }

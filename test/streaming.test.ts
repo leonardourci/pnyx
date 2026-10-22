@@ -1,3 +1,4 @@
+import { hydraConversation } from '../web/src/hydra/conversation.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { mkdtempSync } from 'node:fs'
@@ -556,6 +557,45 @@ test(
           pages.at(-1)?.entries.filter(e => e.role === 'assistant' && e.text.startsWith('Hydra: ')).length,
           1,
         )
+
+        if (target === 'hydra') {
+          assert.equal(
+            reconnected.at(-1)?.currentTurn?.owner,
+            true,
+          )
+          sdk.control.delayInputRecord = true
+          sdk.control.reply = 'Internal progress before saving the wake input'
+          sdk.control.hold = true
+          await commands.hydra([
+            'send',
+            '--text',
+            'A worker report',
+            '--actor',
+            'worker:test',
+            '--hydra',
+            'stream',
+          ])
+          await waitFor({
+            check: () => pages.at(-1)?.currentTurn?.owner === false
+            && pages.at(-1)?.entries.some(entry => entry.streaming) === true,
+          })
+          const internal = pages.at(-1)!
+          assert.ok(!internal.entries.some(entry => entry.role === 'user' && entry.text.includes('A worker report')))
+          const shown = hydraConversation({
+            messages: state().hydraMessages ?? [],
+            transcript: internal.entries,
+            actions: internal.actions ?? [],
+            currentTurn: internal.currentTurn,
+            columns: [],
+            working: true,
+            thinking: false,
+          })
+          assert.ok(!shown.entries.some(entry => entry.text.includes('Internal')))
+          sdk.release()
+          await waitFor({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+          sdk.control.delayInputRecord = false
+          sdk.control.reply = undefined
+        }
 
         if (overlap) {
           await waitFor({

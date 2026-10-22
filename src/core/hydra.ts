@@ -303,6 +303,10 @@ export function hydraEvent({
     ...change,
   } as HydraChange
 
+  if (meta.details) {
+    event.details = meta.details
+  }
+
   return { event }
 }
 

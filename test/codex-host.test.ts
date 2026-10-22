@@ -898,13 +898,13 @@ test(
         'Same file',
       ],
     }) as { posted?: string }
-    assert.match(
-      second.posted ?? '',
-      /^none: folded/,
+    assert.equal(
+      second.posted,
+      undefined,
     )
     assert.equal(
-      loadHydra({ hydraId: 'lab' }).state.hydraMessages?.filter(m => m.text.startsWith('Allowed ')).length,
-      1,
+      loadHydra({ hydraId: 'lab' }).state.hydraMessages?.filter(m => m.text.startsWith('Allowed ')).length ?? 0,
+      0,
     )
     await until({ check: () => task().sessionActivity === 'finished' })
     assert.deepEqual(

@@ -444,6 +444,8 @@ function apply({
           card.asks = card.asks.map(a => (a.id === answers ? {
             ...a,
             answered: reply.id,
+            answeredAt: event.at,
+            fromMessage: event.data.decision?.fromMessage,
           } : a))
         }
 

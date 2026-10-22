@@ -12,10 +12,11 @@ export interface TaskEvent {
   data?: Record<string, unknown>
   actor?: string
   reason?: string
+  details?: string
 }
 
 // hydra: a chat paragraph that starts with the task's chip; told: Hydra to the worker.
-export type UpdateKind = 'ask' | 'hydra' | 'told' | 'decision' | 'status' | 'worker' | 'link' | 'created' | 'moved' | 'renamed' | 'done' | 'plain'
+export type UpdateKind = 'ask' | 'hydra' | 'told' | 'decision' | 'status' | 'worker' | 'link' | 'created' | 'moved' | 'renamed' | 'done' | 'report' | 'plain'
 
 export interface UpdateDecision {
   questionId?: string
@@ -264,7 +265,7 @@ const noted = ({ data }: { data: Record<string, unknown> }): Row | undefined => 
 }
 
 // Receipts, worker attachments, reminders and project changes stay in recorded history.
-export function relevantUpdate({
+function updateRow({
   event,
   columns,
 }: {
@@ -283,7 +284,7 @@ export function relevantUpdate({
         note: '',
         decision: {
           ...reply.decision,
-          actor: decisionActor({ actor: event.actor }),
+          actor: reply.decision.fromMessage ? 'You' : decisionActor({ actor: event.actor }),
           reason: event.reason,
         },
       } : replied({
@@ -353,24 +354,52 @@ export function relevantUpdate({
       }
     }
     // A message to the task also queues its reply, which already shows as the ask.
-    case 'hydra.message': return typeof data.answers === 'string' ? {
-      kind: 'decision',
-      state: 'Decision',
-      note: '',
-      decision: {
-        questionId: data.answers,
-        question: '',
-        answer: String(data.text ?? ''),
-        actor: decisionActor({ actor: event.actor }),
-        ...(typeof data.choice === 'string' ? { choice: data.choice } : {}),
-        ...(event.reason ? { reason: event.reason } : {}),
-      },
-    } : !event.id.startsWith('task-context:') && ownerActor({ actor: event.actor })
-      && data.action === 'send' && typeof data.text === 'string' && data.text.trim() ? {
-        kind: 'ask',
-        state: 'You asked',
-        note: data.text,
-      } : undefined
+    case 'hydra.message': {
+      if (reportActor({ actor: event.actor ?? '' }) && typeof data.text === 'string' && data.text.trim()) {
+        return {
+          kind: 'report',
+          state: 'Reported to Hydra',
+          note: data.text,
+        }
+      }
+
+      if (typeof data.answers === 'string') {
+        const decision: UpdateDecision = {
+          questionId: data.answers,
+          question: '',
+          answer: String(data.text ?? ''),
+          actor: data.fromMessage ? 'You' : decisionActor({ actor: event.actor }),
+        }
+
+        if (typeof data.choice === 'string') {
+          decision.choice = data.choice
+        }
+
+        if (event.reason) {
+          decision.reason = event.reason
+        }
+
+        return {
+          kind: 'decision',
+          state: 'Decision',
+          note: '',
+          decision,
+        }
+      }
+
+      const ownerMessage = ownerActor({ actor: event.actor }) && data.action === 'send'
+      const meaningful = typeof data.text === 'string' && data.text.trim()
+
+      if (!event.id.startsWith('task-context:') && ownerMessage && meaningful) {
+        return {
+          kind: 'ask',
+          state: 'You asked',
+          note: String(data.text),
+        }
+      }
+
+      return undefined
+    }
     case 'task.declared': return typeof data.state === 'string' ? {
       kind: data.state === 'done' ? 'done' : 'status',
       state: data.state,
@@ -379,7 +408,7 @@ export function relevantUpdate({
     case 'task.created': return {
       kind: 'created',
       state: 'Created',
-      note: '',
+      note: event.reason ?? '',
     }
     case 'task.launched': return {
       kind: 'worker',
@@ -392,7 +421,7 @@ export function relevantUpdate({
     case 'task.brief': return {
       kind: 'plain',
       state: 'Brief updated',
-      note: '',
+      note: event.reason ?? '',
     }
     case 'task.reminder-due': return {
       kind: 'plain',
@@ -402,7 +431,7 @@ export function relevantUpdate({
     case 'task.visibility': return data.automatic ? undefined : {
       kind: 'plain',
       state: data.after ? 'Hidden from Hydra' : 'Back on the Hydra',
-      note: '',
+      note: event.reason ?? '',
     }
     case 'card.moved': {
       if (data.before === data.after) {
@@ -425,6 +454,31 @@ export function relevantUpdate({
     case 'card.pushed': return renamed({ data })
     case 'card.noted': return noted({ data })
     default: return undefined
+  }
+}
+
+export function relevantUpdate({
+  event,
+  columns,
+}: {
+  event: TaskEvent
+  columns: Columns
+}): Row | undefined {
+  const row = updateRow({
+    event,
+    columns,
+  })
+
+  if (!row || !event.details?.trim()) {
+    return row
+  }
+
+  return {
+    ...row,
+    note: [
+      row.note,
+      event.details,
+    ].filter(Boolean).join('\n\n'),
   }
 }
 
@@ -683,7 +737,7 @@ export interface UpdateGroup {
 
 const EXCHANGE_MS = 10 * 60_000
 
-const spoken = ({ update }: { update?: TaskUpdate }) => update?.kind === 'ask' || update?.kind === 'hydra' || update?.kind === 'told'
+const spoken = ({ update }: { update?: TaskUpdate }) => update?.kind === 'ask' || update?.kind === 'hydra' || update?.kind === 'told' || update?.kind === 'report'
 
 const bookkeeping = ({ update }: { update?: TaskUpdate }) => update?.kind === 'renamed'
   || (update?.kind === 'moved' && !update.note)

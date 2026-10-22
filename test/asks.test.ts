@@ -1409,3 +1409,245 @@ test(
     )
   },
 )
+
+test(
+  'Hydra records a newer owner message as an answer without delivering or showing it twice',
+  async () => {
+    const f = await lab({ worker: false })
+    const send = async ({
+      id,
+      actor,
+    }: {
+      id: string
+      actor: string
+    }) => workerCommands.hydra([
+      'send',
+      '--text',
+      'Go ahead with the small change.',
+      '--actor',
+      actor,
+      '--event-id',
+      id,
+      '--hydra',
+      'lab',
+    ])
+    await send({
+      id: 'old-message',
+      actor: 'web',
+    })
+    const question = await f.run({
+      args: [
+        'ask',
+        'ship',
+        '--question',
+        'May I change this?',
+        '--actor',
+        'hydra',
+      ],
+    })
+    const id = String(question.ask)
+    await send({
+      id: 'report-message',
+      actor: `worker:${f.task().id}`,
+    })
+    await send({
+      id: 'owner-message',
+      actor: 'web',
+    })
+    const answer = ({ source }: { source: string }) => f.run({
+      args: [
+        'answer',
+        'ship',
+        id,
+        '--from-message',
+        source,
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner answered in conversation',
+        '--event-id',
+        'record-answer',
+      ],
+    })
+
+    for (const source of [
+      'missing',
+      'old-message',
+      'report-message',
+    ]) {
+      await refused({
+        run: () => answer({ source }),
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    for (const flags of [
+      [
+        '--actor',
+        'web',
+      ],
+      [
+        '--actor',
+        'hydra',
+        '--text',
+        'A replacement quote',
+        '--reason',
+        'Not the owner’s words',
+      ],
+      [
+        '--actor',
+        'hydra',
+        '--choice',
+        '1',
+        '--reason',
+        'Not the owner’s words',
+      ],
+    ]) {
+      await refused({
+        run: () => f.run({
+          args: [
+            'answer',
+            'ship',
+            id,
+            '--from-message',
+            'owner-message',
+            ...flags,
+          ],
+        }),
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    const count = f.hydraSaid().length
+    await answer({ source: 'owner-message' })
+    const ask = f.task().asks?.find(ask => ask.id === id)
+    assert.equal(
+      ask?.answered,
+      'record-answer',
+    )
+    assert.equal(
+      f.timeline().find(update => update.decision?.questionId === id)?.decision?.actor,
+      'You',
+    )
+    assert.deepEqual(
+      ask?.fromMessage,
+      {
+        id: 'owner-message',
+        text: 'Go ahead with the small change.',
+        at: f.state().hydraMessages?.find(message => message.id === 'owner-message')?.at,
+      },
+    )
+    assert.equal(
+      f.hydraSaid().length,
+      count,
+    )
+    assert.deepEqual(
+      replay({
+        state: emptyHydra(),
+        events: f.events(),
+      }).cards[f.task().id]?.asks,
+      f.task().asks,
+    )
+    await answer({ source: 'owner-message' })
+    assert.equal(
+      f.events().filter(event => event.id === 'record-answer').length,
+      1,
+    )
+  },
+)
+
+test(
+  'Hydra forwards an owner message answer to an escalated worker question with its quote intact',
+  async () => {
+    const f = await lab()
+    const question = await f.run({
+      args: [
+        'ask',
+        'ship',
+        '--question',
+        'May I extend the cleanup?',
+        '--actor',
+        `worker:${f.task().id}`,
+      ],
+    })
+    const id = String(question.ask)
+    await workerCommands.hydra([
+      'send',
+      '--text',
+      'A prior answer.',
+      '--actor',
+      'web',
+      '--event-id',
+      'before-escalation',
+      '--hydra',
+      'lab',
+    ])
+    await f.run({
+      args: [
+        'escalate',
+        'ship',
+        id,
+        '--actor',
+        'hydra',
+        '--reason',
+        'Scope belongs to the owner',
+      ],
+    })
+    await refused({
+      run: () => f.run({
+        args: [
+          'answer',
+          'ship',
+          id,
+          '--from-message',
+          'before-escalation',
+          '--actor',
+          'hydra',
+          '--reason',
+          'Too early',
+        ],
+      }),
+      code: 'VALIDATION_ERROR',
+    })
+    await workerCommands.hydra([
+      'send',
+      '--text',
+      'Yes, include the related cleanup.',
+      '--actor',
+      'web',
+      '--event-id',
+      'scope-answer',
+      '--hydra',
+      'lab',
+    ])
+    await f.run({
+      args: [
+        'answer',
+        'ship',
+        id,
+        '--from-message',
+        'scope-answer',
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner agreed in chat',
+      ],
+    })
+    const ask = f.task().asks?.find(ask => ask.id === id)
+    assert.equal(
+      ask?.fromMessage?.id,
+      'scope-answer',
+    )
+    assert.equal(
+      f.timeline().find(update => update.decision?.questionId === id)?.decision?.actor,
+      'You',
+    )
+    assert.equal(
+      ask?.fromMessage?.text,
+      'Yes, include the related cleanup.',
+    )
+    assert.ok(ask?.answeredAt)
+    assert.ok(f.workerCall()?.messages.some(text => text.includes('Answer from the owner')
+    && text.includes('Yes, include the related cleanup.')))
+  },
+)

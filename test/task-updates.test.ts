@@ -1268,3 +1268,54 @@ test(
     )
   },
 )
+
+test(
+  'worker reports stay as their own Reported to Hydra rows in Updates',
+  () => {
+    const report: TaskEvent = {
+      id: 'report',
+      seq: 3,
+      at: '2026-10-22T10:00:00Z',
+      type: 'hydra.message',
+      actor: 'worker:task-1',
+      summary: '',
+      data: {
+        text: 'Ready for review.',
+        action: 'send',
+      },
+    }
+    const row = relevantUpdate({
+      event: report,
+      columns: [],
+    })
+    assert.deepEqual(
+      row,
+      {
+        kind: 'report',
+        state: 'Reported to Hydra',
+        note: 'Ready for review.',
+      },
+    )
+    const rows: TaskUpdate[] = [
+      {
+        id: 'created',
+        kind: 'created',
+        state: 'Created',
+        note: '',
+        at: report.at,
+      },
+      {
+        id: report.id,
+        at: report.at,
+        ...row!,
+      },
+    ]
+    assert.deepEqual(
+      groupUpdates({ updates: rows }).map(group => group.type),
+      [
+        'single',
+        'single',
+      ],
+    )
+  },
+)

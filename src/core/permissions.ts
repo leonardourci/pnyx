@@ -154,7 +154,7 @@ export function permissionEvent({
   request: PermissionRequest
   meta: Meta
 }): Extract<HydraEvent, { type: 'task.permission' }> {
-  return {
+  const event: Extract<HydraEvent, { type: 'task.permission' }> = {
     v: EVENT_VERSION,
     seq: state.seq + 1,
     id: meta.id ?? `permission:${request.id}:${request.status}`,
@@ -165,6 +165,12 @@ export function permissionEvent({
     type: 'task.permission',
     data: request,
   }
+
+  if (meta.details) {
+    event.details = meta.details
+  }
+
+  return event
 }
 
 export function applyPermission({

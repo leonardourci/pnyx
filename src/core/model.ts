@@ -228,6 +228,12 @@ export type PermissionEvent = EventBase & {
   data: PermissionRequest
 }
 
+export interface AnswerMessage {
+  id: string
+  text: string
+  at: string
+}
+
 export type AskAudience = 'hydra' | 'owner'
 
 // The asking event's wording and asker never change; an escalation is its own event.
@@ -250,8 +256,9 @@ export interface Ask {
     question?: string
     context?: string
   }
-  // The delivered reply, or the owner's message, that answered it.
   answered?: string
+  answeredAt?: string
+  fromMessage?: AnswerMessage
 }
 
 export interface TaskReminder {
@@ -347,6 +354,7 @@ interface EventBase {
   actor: string
   cardId: string
   reason?: string
+  details?: string
   undoes?: string
   boardId?: string
   taskId?: string
@@ -470,6 +478,7 @@ export interface HydraMessage {
   // ask: the worker question this message delivers; answers: Hydra's question this owner message answers.
   ask?: string
   answers?: string
+  fromMessage?: AnswerMessage
   choice?: string
   at: string
   actor: string
@@ -591,7 +600,7 @@ export type HydraChange = EventBase & (
   }
   | {
     type: 'task.asked'
-    data: Omit<Ask, 'at' | 'actor' | 'escalated' | 'answered'>
+    data: Omit<Ask, 'at' | 'actor' | 'escalated' | 'answered' | 'answeredAt' | 'fromMessage'>
   }
   | {
     type: 'task.ask.escalated'
@@ -699,6 +708,7 @@ export type RepliedEvent = EventBase & {
     resolveKey?: string
     decision?: {
       questionId?: string
+      fromMessage?: AnswerMessage
       question: string
       answer: string
       choice?: string

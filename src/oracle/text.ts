@@ -260,6 +260,7 @@ export function eventText({ event }: { event: HydraEvent }): string {
 }
 
 export interface Message {
+  internal?: boolean
   at?: string
   text: string
 }
@@ -294,7 +295,13 @@ function internalBlock({
 // transcript record. Tool calls and results, thinking, images, meta records,
 // developer messages and injected text are left out, and so is a compaction
 // summary, which is harvested as a note instead.
-export function transcriptMessages({ record }: { record: unknown }): Message[] {
+export function transcriptMessages({
+  record,
+  includeInternal = false,
+}: {
+  record: unknown
+  includeInternal?: boolean
+}): Message[] {
   type Record = {
     type?: unknown
     isMeta?: unknown
@@ -325,7 +332,7 @@ export function transcriptMessages({ record }: { record: unknown }): Message[] {
   const blocks = typeof content === 'string' ? [content] : Array.isArray(content) ? content : []
   const at = typeof r.timestamp === 'string' ? r.timestamp : undefined
 
-  return blocks
+  const messages = blocks
     .map(b => (typeof b === 'string' ? b : TEXT_BLOCKS.includes(b?.type) && typeof b.text === 'string' ? (b.text as string) : ''))
     .map((
       t,
@@ -340,4 +347,22 @@ export function transcriptMessages({ record }: { record: unknown }): Message[] {
       at,
       text,
     } : { text }))
+
+  const internalInput = blocks.some(block => {
+    const words = typeof block === 'string' ? block : block?.text
+
+    return typeof words === 'string' && /^\s*<pnyx-wake>[\s\S]*<\/pnyx-wake>/.test(words)
+  })
+
+  if (includeInternal && internalInput && messages.length === 0) {
+    return [
+      {
+        text: '',
+        at,
+        internal: true,
+      },
+    ]
+  }
+
+  return messages
 }
