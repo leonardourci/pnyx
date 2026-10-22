@@ -11,6 +11,7 @@ import { emptyHydra, reduce } from '../../../src/core/reducer.ts'
 import type { ServerMessage } from '../../../src/server/server.ts'
 import type { HydraSummary } from '../../../src/server/hydras.ts'
 import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
+import type { CurrentAction } from '../../../src/thread/calls.ts'
 import { shouldReload } from './view.ts'
 
 export type Receipt = Record<string, unknown>
@@ -74,6 +75,30 @@ function restoredHydra(): HydraState {
   }
 }
 
+// A push carries only the cards that changed; null drops a card's value.
+function withChanges<Value>({
+  current,
+  changes,
+}: {
+  current: Record<string, Value>
+  changes: Record<string, Value | null>
+}): Record<string, Value> {
+  const next = { ...current }
+
+  for (const [
+    card,
+    value,
+  ] of Object.entries(changes)) {
+    if (value) {
+      next[card] = value
+    } else {
+      delete next[card]
+    }
+  }
+
+  return next
+}
+
 export function useHydra() {
   const [
     endpoint,
@@ -124,6 +149,11 @@ export function useHydra() {
     latest,
     setLatest,
   ] = useState<Record<string, LatestMessage>>({})
+  // What each card's agent is running now; live only, so it is not kept when switching Hydras.
+  const [
+    actions,
+    setActions,
+  ] = useState<Record<string, CurrentAction>>({})
   const identity = useRef(document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? '')
   const initial = useRef({
     endpoint: location.href,
@@ -438,18 +468,10 @@ export function useHydra() {
               }
 
               const entry = cache.current.get(pathname)
-              const next = { ...entry?.latest }
-
-              for (const [
-                card,
-                message,
-              ] of Object.entries(m.messages)) {
-                if (message) {
-                  next[card] = message
-                } else {
-                  delete next[card]
-                }
-              }
+              const next = withChanges({
+                current: entry?.latest ?? {},
+                changes: m.messages,
+              })
 
               if (entry) {
                 entry.latest = next
@@ -457,6 +479,10 @@ export function useHydra() {
 
               if (active) {
                 setLatest(next)
+                setActions(current => withChanges({
+                  current,
+                  changes: m.actions,
+                }))
               }
             } else if (m.type === 'hydras') {
               setNavigation(old => ({
@@ -698,6 +724,8 @@ export function useHydra() {
           setLatest(previousView.latest)
         }
 
+        setActions({})
+
         setNavigation(old => ({
           ...old,
           hydraId: previous.split('/')[2] ?? old.hydraId,
@@ -722,7 +750,7 @@ export function useHydra() {
             saved.identity,
           )
         setState(saved.state)
-        setHydraThread(saved.hydraThread); setLatest(saved.latest)
+        setHydraThread(saved.hydraThread); setLatest(saved.latest); setActions({})
         setNavigation(old => ({
           ...old,
           hydraId: next.pathname.split('/')[2]!,
@@ -756,7 +784,7 @@ export function useHydra() {
       )
 
       if (!saved) {
-        setHydraThread(null); setLatest({})
+        setHydraThread(null); setLatest({}); setActions({})
       }
 
       setConnected(false)
@@ -797,6 +825,7 @@ export function useHydra() {
     command,
     hydraThread,
     latest,
+    actions,
     navigation: {
       ...navigation,
       hydras: navigation.hydras.map(h => h.id === state.config?.id

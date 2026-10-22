@@ -20,6 +20,9 @@ import { askWording, openAsks } from '../../../src/core/asks.ts'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { HoverActions } from '../components/ui/hover-actions.tsx'
+import { ActionBubble } from './action-bubble.tsx'
+import type { PnyxLookup } from './pnyx-action.ts'
+import type { CurrentAction } from '../../../src/thread/calls.ts'
 
 const OPEN_SHARE = 0.5
 
@@ -47,8 +50,13 @@ export function HydraCard({
   answer,
   doneAfterHours,
   notify,
+  action,
+  lookup,
 }: {
   card: CardData
+  // What the card's agent is running now, named in its working pill.
+  action?: CurrentAction
+  lookup: PnyxLookup
   labelColors?: SavedLabelColor[]
   doneAfterHours?: number
   notify({ text }: { text: string }): void
@@ -240,7 +248,16 @@ export function HydraCard({
             {status.kind === 'working'
               ? <WorkingDots />
               : <i aria-hidden="true" />}
-            {statusText}
+            {status.kind === 'working'
+              ? (
+                <ActionBubble
+                  action={action}
+                  since={card.workingSince}
+                  lookup={lookup}
+                  idle={statusText}
+                />
+              )
+              : statusText}
           </span>
           <Tooltip content={created ? `Created ${new Date(created).toLocaleString()}` : 'Creation time not recorded'}>
             <time className="card-since" dateTime={status.at || card.updatedAt} tabIndex={0}>

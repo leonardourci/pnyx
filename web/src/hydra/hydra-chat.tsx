@@ -16,6 +16,8 @@ import { InlineQuestions } from './questions.tsx'
 import { InlinePermissions } from './permissions.tsx'
 import { Messages, type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
+import { ActionBubble } from './action-bubble.tsx'
+import type { CurrentAction } from '../../../src/thread/calls.ts'
 import { UsageRing } from './usage-ring.tsx'
 import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
@@ -48,8 +50,11 @@ export function HydraChat({
   liveThread,
   projectSetup,
   openTask,
+  action,
 }: {
   projectSetup?: ReactNode
+  // What Hydra's agent is running now, shown after the running dots.
+  action?: CurrentAction
   liveThread: ThreadPage | null
   state: HydraState
   command: Command
@@ -549,7 +554,11 @@ export function HydraChat({
             )}
           </div>
         </div>
-        {running && <Running since={since} label={card?.agent ? 'Hydra is working' : 'Starting Hydra'} />}
+        {running && (
+          <Running since={since} label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}>
+            <ActionBubble action={action} since={since} lookup={pnyxLookup({ state })} />
+          </Running>
+        )}
         {away && (
           <>
             <div className="chat-fade" aria-hidden="true" />
@@ -626,9 +635,11 @@ export function HydraChat({
 function Running({
   since,
   label,
+  children,
 }: {
   since: string | null
   label: string
+  children?: ReactNode
 }) {
   const [
     now,
@@ -658,6 +669,7 @@ function Running({
     >
       <WorkingDots />
       {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
+      {children}
     </p>
   )
 }
