@@ -36,6 +36,7 @@ import { WebSocketServer, type WebSocket } from 'ws'
 import { ingestSpool } from '../integrations/hooks/ingest.ts'
 import { commands as cliCommands } from '../cli/commands.ts'
 import { integrationsCommand } from '../cli/integrations.ts'
+import { browserCommand } from './browser.ts'
 import { HydraError, type HydraEvent, type HydraState, type Card, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
@@ -2150,12 +2151,15 @@ async function mountOwnedHydra({
 
     try {
       const handler = name === 'integrations' ? integrationsCommand : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
-      void Promise.resolve(handler([
-        ...args,
-        ...actor,
-        '--hydra',
-        hydraId,
-      ])).then(
+      void Promise.resolve(browserCommand.run(
+        true,
+        () => handler([
+          ...args,
+          ...actor,
+          '--hydra',
+          hydraId,
+        ]),
+      )).then(
         result => {
           try {
             pump()

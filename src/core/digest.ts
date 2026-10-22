@@ -1,6 +1,7 @@
 import { queuePosition, workerQueue } from '../queue/state.ts'
 import { HYDRA_CARD, hydraConfig } from './hydra.ts'
 import { liveTask, rankOf } from './tasks.ts'
+import { askWording, openAsks } from './asks.ts'
 import { HydraError, type Card, type HydraState } from './model.ts'
 
 // Owner memory is Pnyx-wide: the owner's preferences and general learnings, printed in every Hydra's digest.
@@ -118,6 +119,10 @@ function taskLine({
       size: 100,
     })}"` : ''}`),
     ...(card.permissions ?? []).filter(p => p.status === 'pending').map(p => `permission ${p.tool}`),
+    ...openAsks({ card }).map(ask => `question ${ask.id} to ${ask.audience === 'owner' ? 'the owner' : 'you'} "${clip({
+      text: askWording({ ask }).question,
+      size: 100,
+    })}"`),
   ]
 
   return [

@@ -17,6 +17,7 @@ import { askHost } from '../server/state.ts'
 import { loadHydra, withWriter } from '../store/hydra-store.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { COMMON, guard, meta, parse, required, type Options, type Output } from './commands.ts'
+import { askAnswer } from '../core/asks.ts'
 
 export interface ReplyRequest {
   card: string
@@ -48,6 +49,14 @@ export interface ReplyRequest {
     value: string
   }
   taskMessage?: boolean
+  // An answer to the task's structured question with this id; its text is built from the choice and note.
+  ask?: {
+    id: string
+    choice?: string
+    text?: string
+    undelivered?: boolean
+  }
+  reason?: string
 }
 
 export interface ReplyReceipt {
@@ -281,17 +290,24 @@ export async function sendReply({
     answer,
   } = request
 
-  if (!answer && request.text.trim() === '') {
+  if (!answer && !request.ask && request.text.trim() === '') {
     throw invalid({ message: 'reply text is empty' })
   }
 
-  if (answer && (resolveKey !== undefined || request.key || request.control)) {
+  const keyed = resolveKey !== undefined || request.key || request.control
+
+  if (answer && keyed) {
     throw invalid({ message: '--answer cannot be combined with a key, setting or --resolve-key' })
+  }
+
+  if (request.ask && (keyed || answer)) {
+    throw invalid({ message: 'a question\'s answer cannot be combined with --answer, a key, a setting or --resolve-key' })
   }
 
   const meta = (): Meta => ({
     at: new Date().toISOString(),
     actor: request.actor ?? 'cli',
+    ...(request.reason ? { reason: request.reason } : {}),
   })
   const homes = request.homes.map(path => resolveHome({ path }))
 
@@ -388,6 +404,20 @@ export async function sendReply({
       let keys: KeyStep[] | undefined
       let answers: string | undefined
       let answerDecision: RepliedEvent['data']['decision']
+
+      if (request.ask) {
+        const built = askAnswer({
+          card,
+          id: request.ask.id,
+          actor: request.actor ?? 'cli',
+          choice: request.ask.choice,
+          text: request.ask.text,
+          undelivered: request.ask.undelivered,
+        })
+        text = built.text
+        answers = request.ask.id
+        answerDecision = built.decision
+      }
 
       if (answer) {
         const open = card.attention.find(a => a.key === answer.request)
@@ -528,7 +558,7 @@ export async function sendReply({
         answers,
         decision: answerDecision,
         text: [
-          request.text,
+          request.ask ? text : request.text,
           context,
         ].filter(Boolean).join('\n\n'),
       }
