@@ -7,7 +7,7 @@ import { DEFAULT_VIEW, patchView, viewFor } from '../src/core/view.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { navigate, restoreAnchor } from '../web/src/keyboard/navigation.ts'
 import { hintLabels } from '../web/src/keyboard/hints.ts'
-import { matchesCommand, SHORTCUT_QUERY } from '../web/src/hydra/oracle-catalog.ts'
+import { matchesCommand, SHORTCUT_QUERY, shortcutLabel } from '../web/src/hydra/oracle-catalog.ts'
 
 const context: KeyContext = {
   scope: 'hydra',
@@ -994,7 +994,7 @@ test(
       assert.ok(
         matchesCommand({
           query: SHORTCUT_QUERY,
-          text: `${action.label} shortcut`,
+          text: shortcutLabel({ label: action.label }),
         }),
         action.id,
       )

@@ -15,7 +15,7 @@ import type { Command } from './connection.ts'
 import { hydraConfig, LOCKED_DELETE, lockedColumn } from '../../../src/core/hydra.ts'
 import { AgentKinds } from './agent-kinds.tsx'
 import { columnsFor } from './view.ts'
-import { commandQuery, matchesCommand, resetWidths, oracleSettings, queryWords, SHORTCUT_QUERY } from './oracle-catalog.ts'
+import { commandQuery, matchesCommand, resetWidths, oracleSettings, queryWords, SHORTCUT_QUERY, shortcutLabel } from './oracle-catalog.ts'
 
 export function Oracle({
   state,
@@ -408,19 +408,21 @@ export function Oracle({
   }
 
   for (const entry of KEY_ACTIONS) {
+    const label = shortcutLabel({ label: entry.label })
+
     add({
       id: `binding:${entry.id}`,
-      label: `${entry.label} shortcut`,
+      label,
       words: 'keyboard binding keys',
       content: (
         <>
-          <span>{entry.label} shortcut</span>
+          <span>{label}</span>
           <Input
             key={bindingsFor({
               prefs: view.keyboard,
               id: entry.id,
             }).join(';')}
-            aria-label={`${entry.label} shortcut`}
+            aria-label={label}
             defaultValue={bindingsFor({
               prefs: view.keyboard,
               id: entry.id,
