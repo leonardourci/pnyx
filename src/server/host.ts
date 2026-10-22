@@ -154,6 +154,25 @@ const WORKER_COMMANDS = [
 const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
 // A wake's turn id names the last change it covers; its turn is recorded as `<id>:hosted`.
+// The account a harness runs under: the one asked for, else the main one, else the first for that harness.
+const harnessAccount = ({
+  effective,
+  harness,
+  prefer,
+}: {
+  effective: ReturnType<typeof effectiveDispatch>
+  harness: Harness
+  prefer?: string
+}) => {
+  const ours = ({ name }: { name?: string }) =>
+    !!name && effective.accounts[name]?.provider === harness
+
+  return [
+    prefer,
+    effective.dispatch.main,
+  ].find(name => ours({ name })) ?? Object.keys(effective.accounts).find(name => ours({ name }))
+}
+
 const wakeId = ({ through }: { through: number }) => `wake:${through}`
 const WAKE_TURN = /^wake:(\d+):hosted$/
 
@@ -1203,10 +1222,10 @@ export function createHost({
         hydraId,
         state,
       })
-      const main = effective.dispatch.main
-        && effective.accounts[effective.dispatch.main]?.provider === harness
-        ? effective.dispatch.main : Object.keys(effective.accounts).find(name =>
-          effective.accounts[name]?.provider === harness)
+      const main = harnessAccount({
+        effective,
+        harness,
+      })
       const account = main ? effective.accounts[main] : undefined
       const env = account ? accountEnvironment({
         account,
@@ -1344,11 +1363,10 @@ export function createHost({
             ?? effective.dispatch.rules.hydra?.candidates[0]
             ?? effective.dispatch.default[0]
             ?? { harness: 'claude' as const }
-          const main = effective.dispatch.main
-            && effective.accounts[effective.dispatch.main]?.provider === candidate.harness
-            ? effective.dispatch.main
-            : Object.keys(effective.accounts).find(name =>
-              effective.accounts[name]?.provider === candidate.harness)
+          const main = harnessAccount({
+            effective,
+            harness: candidate.harness,
+          })
           const account = main ? effective.accounts[main] : undefined
           const provider = providerName({ harness: candidate.harness })
           const dispatch = previous?.agent?.provider !== provider
@@ -1637,12 +1655,11 @@ export function createHost({
         hydraId,
         state,
       })
-      const ours = ({ name }: { name?: string }) =>
-        !!name && effective.accounts[name]?.provider === harness
-      const name = [
-        agent.account,
-        effective.dispatch.main,
-      ].find(name => ours({ name })) ?? Object.keys(effective.accounts).find(name => ours({ name }))
+      const name = harnessAccount({
+        effective,
+        harness,
+        prefer: agent.account,
+      })
       const account = name ? effective.accounts[name] : undefined
       const plan = await readUsage({
         account: account ?? {
