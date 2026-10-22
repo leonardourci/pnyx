@@ -285,6 +285,11 @@ test(
       'mode',
       'default',
     ])
+    hydra.setup([
+      'service',
+      '--hydra',
+      'lab',
+    ])
     hydra.rule([
       'set',
       'default',
@@ -297,9 +302,17 @@ test(
       '--hydra',
       'lab',
     ])
-    assert.equal(
-      ran.length,
-      2,
+    assert.deepEqual(
+      ran,
+      [
+        ['hooks'],
+        [
+          '$hydra',
+          'mode',
+          'default',
+        ],
+        ['service'],
+      ],
     )
     hydra.rule([
       'init',
@@ -404,7 +417,7 @@ test(
 
     assert.equal(
       ran.length,
-      2,
+      3,
     )
     assert.equal(
       asked(),
@@ -420,7 +433,7 @@ test(
     hydra.setup(['hooks'])
     assert.equal(
       ran.length,
-      3,
+      4,
     )
     assert.equal(
       (hydra.task([
@@ -463,7 +476,7 @@ test(
 
     assert.equal(
       ran.length,
-      3,
+      4,
     )
     assert.equal(
       asked(),

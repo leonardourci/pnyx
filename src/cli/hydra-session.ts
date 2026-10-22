@@ -129,7 +129,14 @@ export function ownerOnly<T extends Record<string, Command>>({
           hydraId,
           env,
         })) {
-          return run(args)
+          // setup service serves every Hydra and refuses --hydra, which only routed the question; Confirm drops it too.
+          const service = name === 'setup' && positionals[0] === 'service'
+          const serviceArgs = args.filter((
+            arg,
+            index,
+          ) => arg !== '--hydra' && args[index - 1] !== '--hydra' && !arg.startsWith('--hydra='))
+
+          return run(service ? serviceArgs : args)
         }
 
         return proposeOwnerCommand({
