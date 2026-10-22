@@ -52,7 +52,9 @@ export function copyCommand({
     })
   }
 
-  if (values.discard && meta.actor === HYDRA_ACTOR && !runsInBypass({ hydraId })) {
+  const hydraDiscards = values.discard && meta.actor === HYDRA_ACTOR
+
+  if (hydraDiscards && !runsInBypass({ hydraId })) {
     return proposeOwnerCommand({
       hydraId,
       name: 'task',
