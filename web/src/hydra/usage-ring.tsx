@@ -1,20 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Tooltip } from '../components/ui/tooltip.tsx'
+import type { HydraUsage } from '../../../src/server/provider.ts'
 import type { Command } from './connection.ts'
-
-interface Usage {
-  harness?: 'claude' | 'codex'
-  account?: string
-  used?: number
-  window?: number
-  cost?: number
-  plan?: string
-  windows?: {
-    label: string
-    used: number
-    resetsAt?: string
-  }[]
-}
 
 const REFRESH_MS = 60_000
 
@@ -65,13 +52,14 @@ export function UsageRing({
   const [
     usage,
     setUsage,
-  ] = useState<Usage | null>(null)
+  ] = useState<HydraUsage | null>(null)
   const load = useCallback(
     () => command({
       name: 'hydra',
       args: ['usage'],
     }).then(
-      result => setUsage(typeof result.usage === 'string' ? null : result as Usage),
+      result => setUsage(typeof result.usage === 'string' ? null : result as HydraUsage),
+      // A missed refresh keeps the last reading; the next poll tries again.
       () => {},
     ),
     [command],
