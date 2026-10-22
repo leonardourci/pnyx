@@ -59,7 +59,6 @@ export function ImageViewer({
   )
 }
 
-// A thumbnail stands in for the image icon; an image this Hydra does not serve keeps the icon.
 export function ImageThumb({ path }: { path: string }) {
   const [
     failed,
@@ -78,7 +77,6 @@ export function ImageThumb({ path }: { path: string }) {
     : <Icon name="image" size={13} />
 }
 
-// An image in a message is a compact card where the owner placed it; a reference to one is dashed.
 export function ImageChip({
   path,
   label,

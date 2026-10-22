@@ -70,11 +70,9 @@ type TaskLink = {
     icon: string
     tone: string
   }
-  // Each of the message's images by its Image N name.
   images?: Map<string, string>
 }
 
-// An image stays where the owner placed it, as its compact card.
 const withImages = ({
   text,
   images,

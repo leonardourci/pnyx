@@ -2,7 +2,6 @@ import type { MouseEvent, ReactNode } from 'react'
 import { Button } from './controls.tsx'
 import { Icon } from './icon.tsx'
 
-// One frame for every card in a draft or a message: Comments, images and files keep their own content in it.
 export function AttachmentCard({
   slot,
   label,
