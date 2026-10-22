@@ -203,7 +203,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
   if (m.actor === 'web' && action === 'add' && !isAbsolute(String(values.into ?? ref ?? ''))) {
     throw new HydraError({
-      message: 'Enter an absolute laptop folder path in Settings',
+      message: 'Enter an absolute laptop folder path',
       code: 'VALIDATION_ERROR',
     })
   }
