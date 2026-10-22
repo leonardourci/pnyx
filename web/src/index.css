@@ -37,7 +37,7 @@
   --text-code: 13px;
 }
 
-:root { --chat-end: 64px; --card-h: 1.5em; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+:root { --chat-end: 64px; --chat-line: 1.75; --card-h: 1.5em; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
 
 :root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; --color-composer: #1d1e22; }
 @media (prefers-color-scheme: dark) {
@@ -329,11 +329,11 @@ h3 { font-weight: 600; }
 
 .composer:focus-within { border-color: var(--color-gold-line); box-shadow: 0 0 0 3px var(--color-gold-wash); }
 
-.composer-input { flex: 0 1 auto; min-height: 24px; position: relative; display: flex; overflow: hidden; }
+.composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--chat-line)); position: relative; display: flex; overflow: hidden; }
 
-.composer .textarea, .draft-mirror { margin: 0; padding: 0 4px 0 0; border: 0; font: var(--text-chat)/1.5 var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
+.composer .textarea, .draft-mirror { margin: 0; padding: 0 4px 0 0; border: 0; font: var(--text-chat)/var(--chat-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
 
-.composer .textarea { height: auto; min-height: 24px; max-height: 100%; overflow-y: auto; background: transparent; outline: none; }
+.composer .textarea { height: auto; min-height: calc(var(--text-chat) * var(--chat-line)); max-height: 100%; overflow-y: auto; background: transparent; outline: none; }
 
 .composer-input[data-chips] .textarea { color: transparent; caret-color: var(--color-ink); }
 
@@ -351,10 +351,10 @@ h3 { font-weight: 600; }
 
 .chip-icon > svg { vertical-align: -2px; }
 
-/* Two em spaces hold the thumbnail's room in the textarea, so it stays inside the line. */
-.chip-thumb { display: inline-block; width: 2em; height: 1.1em; vertical-align: -.2em; text-align: center; }
+/* In the composer a card lies over its label's room in the textarea, at the line's middle, nudged up a little. */
+.draft-chip.draft-card { position: relative; cursor: default; margin: 0; padding: 0; color: transparent; background: none; box-shadow: none; }
 
-.chip-thumb > .image-thumb { display: block; width: calc(100% - 4px); height: 100%; object-fit: cover; border-radius: 3px; }
+.draft-card > .attachment-card { position: absolute; left: 0; right: 0; top: calc(50% - var(--card-h) / 2 - .0625em); }
 
 .chip.column-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 6px; font-size: .92em; vertical-align: baseline; }
 

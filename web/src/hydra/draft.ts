@@ -1,18 +1,65 @@
-import { IMAGE } from '../../../src/attachments/images.ts'
+import { IMAGE, imageNames } from '../../../src/attachments/images.ts'
 import { FILE_BLOCK } from '../../../src/attachments/files.ts'
 import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '../../../src/mentions/mentions.ts'
 
 // The draft stays the Markdown Hydra receives; the textarea shows each chip as its label.
 export type ChipKind = ReferenceKind
 
-// An em space holds an icon's room in the textarea (a task chip has two, an image chip's thumbnail two); the chip draws over them.
+// An em space holds an icon's room in the textarea (a task chip has two); the chip draws over them.
 export const ICON_SPACE = '\u2003'
+const QUARTER_SPACE = '\u2005'
+const NO_BREAK_SPACE = '\u00A0'
+const WORD_JOINER = '\u2060'
+const REFERENCE_ROOM: Partial<Record<ChipKind, string>> = {
+  column: ICON_SPACE,
+  task: ICON_SPACE + ICON_SPACE,
+}
+const CARD_NAME_MAX = 20
+const LETTERS = new Intl.Segmenter(
+  undefined,
+  { granularity: 'grapheme' },
+)
+const WORDS = new Intl.Segmenter(
+  undefined,
+  { granularity: 'word' },
+)
+
+// An image, or a file attached to this message, is drawn as a card; a reference to a file stays a chip.
+export const cardChip = ({ chip }: { chip: Pick<DraftChip, 'kind' | 'attached'> }) =>
+  chip.kind === 'image' || (chip.kind === 'file' && chip.attached)
+
+// A card's label holds the room its preview takes before the name and its remove button after, in em like the
+// card itself. Word joiners keep the room on one line, and a long name is cut, since the card is drawn as one box.
+export function cardLabel({ name }: { name: string }) {
+  const letters = Array.from(
+    LETTERS.segment(name),
+    letter => letter.segment === ' ' ? NO_BREAK_SPACE : letter.segment,
+  )
+  const shown = letters.length > CARD_NAME_MAX ? [
+    ...letters.slice(
+      0,
+      CARD_NAME_MAX - 1,
+    ),
+    '…',
+  ] : letters
+
+  return [
+    ICON_SPACE,
+    ICON_SPACE,
+    QUARTER_SPACE,
+    ...shown,
+    ICON_SPACE,
+    ICON_SPACE,
+  ].join(WORD_JOINER)
+}
 
 interface DraftChip {
   kind: ChipKind
   // An attachment carries the image or file itself; a reference only points at something.
   attached: boolean
   value: string
+  // What the chip is called; its label adds the room the chip draws its icons and controls over.
+  name: string
   label: string
   start: number
   end: number
@@ -30,14 +77,15 @@ interface DraftView {
 
 function draftChips({ text }: { text: string }): DraftChip[] {
   const chips: DraftChip[] = []
-  let images = 0
+  const names = imageNames({ text })
 
   for (const match of text.matchAll(FILE_BLOCK)) {
     chips.push({
       kind: 'file',
       attached: true,
       value: match[1]!,
-      label: match[1]!,
+      name: match[1]!,
+      label: cardLabel({ name: match[1]! }),
       start: match.index,
       end: match.index + match[0].length,
     })
@@ -47,11 +95,13 @@ function draftChips({ text }: { text: string }): DraftChip[] {
 
   for (const match of text.matchAll(IMAGE)) {
     if (!inside({ at: match.index })) {
+      const name = names.get(match[1]!) ?? 'Image'
       chips.push({
         kind: 'image',
         attached: true,
         value: match[1]!,
-        label: `${ICON_SPACE}${ICON_SPACE}Image ${++images}`,
+        name,
+        label: cardLabel({ name }),
         start: match.index,
         end: match.index + match[0].length,
       })
@@ -63,14 +113,20 @@ function draftChips({ text }: { text: string }): DraftChip[] {
     'g',
   ))) {
     if (!inside({ at: match.index })) {
+      const kind = match[2] as ChipKind
+      const name = referenceLabel({ label: match[1]! })
+      const prefix = REFERENCE_ROOM[kind] ?? '@'
       chips.push({
-        kind: match[2] as ChipKind,
+        kind,
         attached: false,
         value: decodeValue({ value: match[3]! }) ?? match[3]!,
-        label: `${{
-          column: ICON_SPACE,
-          task: ICON_SPACE + ICON_SPACE,
-        }[match[2]!] ?? '@'}${referenceLabel({ label: match[1]! })}`,
+        name,
+        label: cardChip({
+          chip: {
+            kind,
+            attached: false,
+          },
+        }) ? cardLabel({ name }) : `${prefix}${name}`,
         start: match.index,
         end: match.index + match[0].length,
       })
@@ -215,10 +271,114 @@ export function replaceDisplay({
   }
 }
 
+const OPENING = /[\p{Ps}\p{Pi}]/u
+const CLOSING = /[\p{Pe}\p{Pf}\p{Po}]/u
+
+// Whole code points, so a boundary is never found inside a surrogate pair.
+const pointBefore = ({
+  text,
+  at,
+}: {
+  text: string
+  at: number
+}) => Array.from(text.slice(
+  Math.max(
+    0,
+    at - 2,
+  ),
+  at,
+)).at(-1) ?? ''
+
+const pointAt = ({
+  text,
+  at,
+}: {
+  text: string
+  at: number
+}) => at < text.length ? String.fromCodePoint(text.codePointAt(at)!) : ''
+
+// Images go in at the caret, or at the end of the word it is in, with a space only where a card would touch text.
+export function placeImages({
+  text,
+  caret: at,
+  lines,
+}: {
+  text: string
+  caret?: number
+  lines: string[]
+}) {
+  const view = draftView({ text }), shown = view.display
+  let caret = Math.min(
+    at ?? shown.length,
+    shown.length,
+  )
+
+  const word = caret > 0 ? WORDS.segment(shown).containing(caret - 1) : undefined
+
+  if (word?.isWordLike) {
+    caret = Math.max(
+      caret,
+      word.index + word.segment.length,
+    )
+  }
+
+  caret = snapCaret({
+    view,
+    offset: caret,
+    backward: false,
+  })
+  const before = pointBefore({
+    text: shown,
+    at: caret,
+  })
+  const after = pointAt({
+    text: shown,
+    at: caret,
+  })
+  const chipBefore = view.chips.some(chip => chip.to === caret)
+  const chipAfter = view.chips.some(chip => chip.from === caret)
+  const lead = chipBefore || (/\S/u.test(before) && !OPENING.test(before)) ? ' ' : ''
+  const tail = !after || chipAfter || (/\S/u.test(after) && !CLOSING.test(after)) ? ' ' : ''
+
+  return replaceDisplay({
+    text,
+    from: caret,
+    to: caret,
+    insert: `${lead}${lines.join(' ')}${tail}`,
+  })
+}
+
+// A removed card takes one space beside it along, so the text around it reads as it did before.
+export function removeChip({
+  text,
+  chip,
+}: {
+  text: string
+  chip: PlacedChip
+}) {
+  const shown = draftView({ text }).display
+  const after = pointAt({
+    text: shown,
+    at: chip.to,
+  })
+  const spaceAfter = after === ' ', spaceBefore = shown[chip.from - 1] === ' '
+  // The space before goes only when nothing would then run into the previous word.
+  const freeAfter = !after || /\s/u.test(after) || CLOSING.test(after)
+  const from = !spaceAfter && spaceBefore && freeAfter ? chip.from - 1 : chip.from
+  const to = spaceAfter ? chip.to + 1 : chip.to
+
+  return replaceDisplay({
+    text,
+    from,
+    to,
+    insert: '',
+  })
+}
+
 // The newlines that make a block its own paragraph, after the ones already there.
 const paragraphBreak = ({ newlines }: { newlines: string }) => '\n'.repeat(2 - newlines.length)
 
-// An attachment counts only as its own paragraph, so it goes after the caret's line and never splits a word.
+// A text file counts only as its own paragraph, so it goes after the caret's line and never splits a word.
 export function placeBlock({
   text,
   caret: at,
@@ -267,7 +427,7 @@ export function editDraft({
   next: string
   caret: number
 }) {
-  const before = draftView({ text }).display
+  const view = draftView({ text }), before = view.display
   const typed = Math.max(
     0,
     next.length - before.length,
@@ -283,13 +443,22 @@ export function editDraft({
     suffix++
   }
 
-  return replaceDisplay({
+  const to = before.length - suffix
+  const insert = next.slice(
+    prefix,
+    next.length - suffix,
+  )
+  // Backspace or Delete on a card takes it out as × does, one space beside it included.
+  const erased = insert || prefix === to ? undefined
+    : view.chips.find(chip => cardChip({ chip }) && chip.from <= prefix && to <= chip.to)
+
+  return erased ? removeChip({
+    text,
+    chip: erased,
+  }) : replaceDisplay({
     text,
     from: prefix,
-    to: before.length - suffix,
-    insert: next.slice(
-      prefix,
-      next.length - suffix,
-    ),
+    to,
+    insert,
   })
 }
