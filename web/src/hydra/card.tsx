@@ -19,6 +19,7 @@ import { WorkingDots } from '../components/ui/streaming.tsx'
 import { askWording, openAsks } from '../../../src/core/asks.ts'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
+import { TaskReport } from './task-report.tsx'
 import { HoverActions } from '../components/ui/hover-actions.tsx'
 import { ActionBubble } from './action-bubble.tsx'
 import type { PnyxLookup } from './pnyx-action.ts'
@@ -338,6 +339,13 @@ export function HydraCard({
             {card.copy?.state === 'flagged' && <p className="copy-warning">{card.copy.reason}</p>}
             {card.launch?.dispatch && <p className="muted small" aria-label="Heads dispatch choice">{card.launch.dispatch}</p>}
           </div>
+        )}
+        {selected && (
+          <TaskReport
+            card={card}
+            command={command}
+            connected={connected}
+          />
         )}
         {!selected && card.copy?.state === 'flagged' && (
           <Tooltip content={card.copy.reason}><span className="copy-warning" tabIndex={0}>copy not cleaned</span></Tooltip>

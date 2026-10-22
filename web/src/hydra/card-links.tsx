@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Link } from '../../../src/core/model.ts'
+import { failedChecks, type Link } from '../../../src/core/model.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Tooltip, LINK_TOOLTIP_DELAY } from '../components/ui/tooltip.tsx'
@@ -11,6 +11,10 @@ export const LINK_ICONS: Record<string, string> = {
   linear: 'linear',
   url: 'paperclip',
 }
+
+// An open pull request with a failed check shows coral, so it reads apart from a green one.
+const linkState = ({ link }: { link: Link }) =>
+  link.state === 'open' && failedChecks({ checks: link.checks }) > 0 ? 'failing' : link.state
 
 // A link without a number or title shows the end of its path; the tooltip keeps the full URL.
 const shortUrl = ({ url }: { url: string }) => {
@@ -36,7 +40,9 @@ export function LinkChip({
     : link.number && `#${link.number}` || ''
   const title = link.title || number || shortUrl({ url: link.url })
   const label = expanded && number && link.title ? `${number} · ${title}` : number || title
-  const tooltip = <><strong>{title}</strong><span>{link.url}</span></>
+  const state = linkState({ link })
+  const checks = link.checks && <span>Checks: {link.checks}</span>
+  const tooltip = <><strong>{title}</strong><span>{link.url}</span>{checks}</>
   const icon = LINK_ICONS[link.kind]
 
   return (
@@ -48,7 +54,7 @@ export function LinkChip({
         rel="noreferrer"
       >
         <Icon name={icon} size={13} />
-        {link.state && <i className={`link-state link-${link.state}`} aria-label={link.state} />}
+        {state && <i className={`link-state link-${state}`} aria-label={state === 'failing' ? 'checks failed' : state} />}
         <span>{label}</span>
       </a>
     </Tooltip>
