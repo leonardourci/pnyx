@@ -1,4 +1,4 @@
-import { IMAGE_LINE } from '../../../src/attachments/images.ts'
+import { IMAGE } from '../../../src/attachments/images.ts'
 import { FILE_BLOCK } from '../../../src/attachments/files.ts'
 import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '../../../src/mentions/mentions.ts'
 
@@ -45,7 +45,7 @@ function draftChips({ text }: { text: string }): DraftChip[] {
 
   const inside = ({ at }: { at: number }) => chips.some(chip => chip.start <= at && at < chip.end)
 
-  for (const match of text.matchAll(IMAGE_LINE)) {
+  for (const match of text.matchAll(IMAGE)) {
     if (!inside({ at: match.index })) {
       chips.push({
         kind: 'image',
