@@ -165,6 +165,7 @@ const BUSY_MS = 60 * 60 * 1000
 const PAUSE_MS = 4 * 60 * 60 * 1000
 // A stall still there after Hydra's turn wakes it again, each time after twice the last wait, up to this.
 const STALL_REPEAT_MAX_MS = 60 * 60 * 1000
+const WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
 // A worker runs the pnyx-worker skill's own commands without asking; any other pnyx-axi command still asks.
 const WORKER_COMMANDS = [
   'task show',
@@ -1202,14 +1203,17 @@ export function createHost({
     return entry
   }
 
+  // eventId names the turn's working record, as a resumed turn's does.
   const send = ({
     card: ref,
     text,
     actor,
+    eventId,
   }: {
     card: string
     text: string
     actor: string
+    eventId?: string
   }) => {
     const card = write({
       fn: ({ writer }) => {
@@ -1246,6 +1250,7 @@ export function createHost({
           agent: card.agent,
           input: { activity: 'working' },
           actor,
+          eventId,
         })
 
         return writer.state.cards[card.id] as Card & { agent: AgentRef }
@@ -2755,6 +2760,10 @@ export function createHost({
         resumeAttemptId: string
         resumeMessage: string
       } | undefined
+      const cutWorkerTurns: {
+        task: string
+        resumeAttemptId: string
+      }[] = []
 
       write({
         fn: ({ writer }) => {
@@ -2799,6 +2808,19 @@ export function createHost({
               if (cutHydraTurn) {
                 resumeAttemptId = cutHydraTurn.resumeAttemptId
               }
+            } else if (session.taskId && session.id !== writer.state.config?.hydra.session) {
+              resumeAttemptId = findWorkerTurnToResume({
+                hydraId,
+                state: writer.state,
+                agent: session.agent,
+              })
+
+              if (resumeAttemptId) {
+                cutWorkerTurns.push({
+                  task: session.taskId,
+                  resumeAttemptId,
+                })
+              }
             }
 
             interrupt({
@@ -2817,6 +2839,20 @@ export function createHost({
           text: cutHydraTurn.resumeMessage,
           actor: 'pnyx',
         })
+      }
+
+      // A worker the restart cut continues once; one that cannot stays interrupted for Hydra or the owner.
+      for (const cut of cutWorkerTurns) {
+        try {
+          send({
+            card: cut.task,
+            text: WORKER_RESUME,
+            actor: 'pnyx',
+            eventId: `${cut.resumeAttemptId}:turn`,
+          })
+        } catch (error) {
+          console.error(`pnyx-axi serve: ${cut.task} could not resume: ${(error as Error).message}`)
+        }
       }
 
       // Changes made while the server was stopped wake Hydra once it is back.
@@ -2875,6 +2911,40 @@ export function createHost({
   }
 
   return host
+}
+
+// A worker's cut turn is resumed once: not when that turn was itself a resume, nor twice for one cut.
+function findWorkerTurnToResume({
+  hydraId,
+  state,
+  agent,
+}: {
+  hydraId: string
+  state: HydraState
+  agent: AgentRef
+}): string | undefined {
+  const lastTurn = readEvents({ hydraId }).findLast(event => {
+    if (event.type !== 'card.pushed' || event.data.activity !== 'working') {
+      return false
+    }
+
+    const matchesSession = event.data.agent?.sessionId === agent.sessionId
+      && event.data.agent.provider === agent.provider
+
+    return matchesSession
+  })
+
+  if (!lastTurn || lastTurn.id.startsWith('resume:')) {
+    return undefined
+  }
+
+  const resumeAttemptId = `resume:${lastTurn.seq}`
+
+  if (resumeAttemptId in state.eventIds) {
+    return undefined
+  }
+
+  return resumeAttemptId
 }
 
 function findHydraTurnToResume({

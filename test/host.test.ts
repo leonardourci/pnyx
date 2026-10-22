@@ -831,7 +831,7 @@ test(
 )
 
 test(
-  'after a server restart the task keeps its agent, marks an interrupted turn and resumes the session',
+  'after a server restart the task keeps its agent and its cut turn continues once by itself',
   async () => {
     const {
       folder,
@@ -885,43 +885,57 @@ test(
       undefined,
     )
 
+    // The cut turn continues once, in the same session and mode.
     const second = fakeSdk()
+    second.control.hold = true
     server = await startServer({
       hydraId: 'lab',
       query: second.query,
     })
+    await until({ check: () => second.calls[0]?.messages.length === 1 })
     assert.deepEqual(
       [
         task().agent?.sessionId,
-        task().activity,
-        task().attention[0]?.key,
-        second.calls.length,
+        second.calls[0]!.messages[0],
+        second.calls[0]!.options.resume,
+        second.calls[0]!.options.sessionId,
+        second.calls[0]!.options.permissionMode,
+        task().attention.some(a => a.key === 'pnyx:interrupted'),
       ],
       [
         agentRef.sessionId,
+        'Pnyx restarted during your turn; continue from where you stopped.',
+        agentRef.sessionId,
+        undefined,
+        'bypassPermissions',
+        false,
+      ],
+    )
+
+    // A restart that cuts the resumed turn too leaves it interrupted until someone writes.
+    await server.close()
+    const third = fakeSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: third.query,
+    })
+    assert.deepEqual(
+      [
+        task().activity,
+        task().attention[0]?.key,
+        third.calls.length,
+      ],
+      [
         'interrupted',
         'pnyx:interrupted',
         0,
       ],
     )
-
     assert.equal(
       (await reply({ text: 'Carry on' })).state,
       'delivered',
     )
-    await until({ check: () => second.calls[0]?.messages.length === 1 })
-    assert.deepEqual(
-      [
-        second.calls[0]!.options.resume,
-        second.calls[0]!.options.sessionId,
-        second.calls[0]!.options.permissionMode,
-      ],
-      [
-        agentRef.sessionId,
-        undefined,
-        'bypassPermissions',
-      ],
-    )
+    await until({ check: () => third.calls[0]?.messages.length === 1 })
     assert.equal(
       task().attention.some(a => a.key === 'pnyx:interrupted'),
       false,
@@ -1115,6 +1129,13 @@ test(
     await start({ id: 'start-1' })
     await until({ check: () => sdk.calls[0]?.messages.length === 1 })
     await server.close()
+    // The first restart continues the cut turn once; the second leaves it interrupted.
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    await until({ check: () => sdk.calls[1]?.messages.length === 1 })
+    await server.close()
     server = await startServer({
       hydraId: 'lab',
       query: sdk.query,
@@ -1144,7 +1165,7 @@ test(
         id: 'start-2',
       },
     })
-    await until({ check: () => sdk.calls.length === 2 && task().sessionActivity === 'finished' })
+    await until({ check: () => sdk.calls.length === 3 && task().sessionActivity === 'finished' })
     assert.equal(
       task().attention.some(a => a.key === 'pnyx:interrupted'),
       false,
@@ -2248,6 +2269,10 @@ test(
     assert.match(
       sdk.calls[0]!.messages[0]!,
       /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nRelease the canary\./,
+    )
+    assert.match(
+      sdk.calls[0]!.messages[0]!,
+      /replaces the lost session claude-code:native-session; your folder keeps its work/,
     )
     assert.equal(
       sdk.calls[0]!.options.resume,

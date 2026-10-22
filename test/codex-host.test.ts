@@ -757,21 +757,12 @@ test(
       desired,
     )
 
-    // The server closes the held turn; the next message lazily resumes the same thread.
+    // The server closes the held turn; the restart continues it once in the same thread.
     await server!.close()
     server = await startServer({
       hydraId: 'lab',
       spawnCodex: fixture.spawnCodex,
     })
-    assert.equal(
-      fixture.children.length,
-      1,
-    )
-    assert.equal(
-      task().attention[0]?.key,
-      'pnyx:interrupted',
-    )
-    await send({ text: 'Continue with selected settings' })
     await until({ check: () => fixture.children.length === 2 && task().sessionActivity === 'finished' })
     assert.equal(
       fixture.messages().find(m => m.method === 'thread/resume')?.params?.threadId,
