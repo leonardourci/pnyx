@@ -762,15 +762,18 @@ export function codexProvider({
               thread: id,
             })
             const messages = input[Symbol.asyncIterator]()
-            const ended = rpc.ended.then(error => {
-              throw error
-            })
+
+            // Raced only while waiting for a message, so a closed app-server never goes unhandled.
+            const appServerClosed = async (): Promise<never> => {
+              throw await rpc.ended
+            }
+
             // ponytail: Codex has no session hooks here, so the context leads the first turn and the turn after a compaction; a compaction mid-turn waits for the next turn.
             let fresh = true
             // One read of the next message is always open, so a message that arrives mid-turn joins the running turn.
             let incoming = messages.next()
             let inputDone = false
-            // Messages Codex refused to steer in because their turn had just ended; each opens a turn of its own.
+            // Messages that could not join the running turn, because it was ending or being stopped; each opens a turn of its own.
             const carried: string[] = []
             // text may lead with the context; the images come only from what was said.
             const turnInput = ({
@@ -809,7 +812,7 @@ export function codexProvider({
               if (said === undefined) {
                 const next = await Promise.race([
                   incoming,
-                  ended,
+                  appServerClosed(),
                 ])
 
                 if (next.done) {
@@ -879,12 +882,15 @@ export function codexProvider({
                 kind: 'message',
                 result: await incoming,
               })
+              // One wrapper per pending read, so a turn's many events do not pile up waiters on the message read.
+              let eventArrival = eventArrives()
+              let messageArrival = messageArrives()
 
               for (;;) {
-                const arrivals = [eventArrives()]
+                const arrivals = [eventArrival]
 
                 if (!inputDone) {
-                  arrivals.push(messageArrives())
+                  arrivals.push(messageArrival)
                 }
 
                 const settled = await Promise.race(arrivals)
@@ -897,8 +903,15 @@ export function codexProvider({
                   }
 
                   incoming = messages.next()
+                  messageArrival = messageArrives()
                   const message = settled.result.value
-                  let steered = true
+
+                  // A turn being stopped answers nothing more, so the message waits for a turn of its own.
+                  if (interrupted) {
+                    carried.push(message)
+
+                    continue
+                  }
 
                   try {
                     await rpc.request({
@@ -912,11 +925,8 @@ export function codexProvider({
                         }),
                       },
                     })
-                  } catch {
-                    steered = false
-                  }
-
-                  if (!steered) {
+                  } catch (error) {
+                    console.error(`pnyx-axi serve: Codex did not take a message into its running turn, so it starts the next turn: ${(error as Error).message}`)
                     carried.push(message)
                   }
 
@@ -928,6 +938,7 @@ export function codexProvider({
                 }
 
                 pendingEvent = events.next()
+                eventArrival = eventArrives()
                 const event = settled.result.value
 
                 if (!('turn' in event)) {

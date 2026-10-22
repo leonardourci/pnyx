@@ -189,7 +189,7 @@ test(
       settings: {},
       signal: new AbortController().signal,
     })
-    // The second message comes after the stopped turn, or it would join that turn.
+    // The second message arrives while the turn is being stopped, so it must open a turn of its own.
     let stopped = () => {}
     const turnStopped = new Promise<void>(resolve => {
       stopped = resolve
@@ -212,11 +212,11 @@ test(
         'working',
       )
       await session.interrupt()
+      stopped()
       assert.equal(
         (await events.next()).value,
         'finished',
       )
-      stopped()
       assert.deepEqual(
         fixture.messages().find(message => message.method === 'turn/interrupt')?.params,
         {
@@ -224,6 +224,7 @@ test(
           turnId: 'turn-1',
         },
       )
+      assert.ok(!fixture.messages().some(message => message.method === 'turn/steer'))
       const next: unknown[] = []
 
       for (let event = await events.next(); event.value !== 'finished'; event = await events.next()) {
