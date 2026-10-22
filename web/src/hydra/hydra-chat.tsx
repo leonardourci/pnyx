@@ -334,7 +334,6 @@ export function HydraChat({
           aria-label="Hydra conversation"
           data-away={away || undefined}
           tabIndex={0}
-          // The owner's own scrolling: a wheel, a touch, a key, the scrollbar or a selection dragged past the edge.
           onWheel={ownerScroll}
           onTouchMove={ownerScroll}
           onKeyDown={ownerScroll}

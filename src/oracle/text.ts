@@ -260,8 +260,7 @@ const TEXT_BLOCKS = [
 const blockType = ({ block }: { block: unknown }) =>
   typeof block === 'object' && block !== null && 'type' in block ? block.type : undefined
 
-// A block that opens with a wake is Pnyx's turn, text after the wake included. Codex wraps each
-// attached image block in `<image …>` and `</image>` text blocks of its own.
+// Pnyx's own wake turns and the text blocks Codex wraps around each attached image are not anyone's words.
 function internalBlock({
   text,
   before,
