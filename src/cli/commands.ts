@@ -3,7 +3,7 @@ import { projectWorkerContext } from '../projects/context.ts'
 import { decideQueue } from '../queue/decide.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
 import { mentionContext, REFERENCE, referenceLabel, taskMentions } from '../mentions/mentions.ts'
-import { IMAGE_LINE } from '../attachments/images.ts'
+import { IMAGE, imageNames } from '../attachments/images.ts'
 import { FILE_BLOCK } from '../attachments/files.ts'
 import { reminderTime } from '../reminders/time.ts'
 import { waitingReminders } from '../reminders/state.ts'
@@ -2207,28 +2207,41 @@ const HYDRA_NAME_MAX = 40
 
 // The first line of an owner's message that is text: attachments are skipped and mentions read as their labels.
 export function hydraName({ text }: { text: string }): string | undefined {
-  const line = text.replace(
+  const lines = text.replace(
     FILE_BLOCK,
     '',
   ).replace(
-    IMAGE_LINE,
-    '',
+    new RegExp(
+      REFERENCE.source,
+      'g',
+    ),
+    (
+      _,
+      label: string,
+    ) => referenceLabel({ label }),
   )
-    .replace(
-      new RegExp(
-        REFERENCE.source,
-        'g',
-      ),
-      (
-        _,
-        label: string,
-      ) => referenceLabel({ label }),
-    )
     .split('\n')
     .map(part => part.trim())
-    .find(Boolean)
+  // A line of images alone is not text; an image inside a sentence reads as its label.
+  const index = lines.findIndex(part => part.replace(
+    IMAGE,
+    '',
+  ).trim())
 
-  if (!line || line.length <= HYDRA_NAME_MAX) {
+  if (index < 0) {
+    return undefined
+  }
+
+  const names = imageNames({ text })
+  const line = lines[index]!.replace(
+    IMAGE,
+    (
+      _,
+      path: string,
+    ) => names.get(path) ?? 'Image',
+  )
+
+  if (line.length <= HYDRA_NAME_MAX) {
     return line
   }
 

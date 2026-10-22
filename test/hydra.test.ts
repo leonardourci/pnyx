@@ -305,6 +305,11 @@ test(
       hydraName({ text: '!'.repeat(50) }),
       undefined,
     )
+    // An image in the sentence reads as its label; a line of images alone is not text.
+    assert.equal(
+      hydraName({ text: '[image: /h/a.png]\nIn [image: /h/b.png], it is big' }),
+      'In Image 2, it is big',
+    )
   },
 )
 

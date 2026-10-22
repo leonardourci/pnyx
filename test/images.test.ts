@@ -9,10 +9,14 @@ import { claudeProvider, type QueryFn } from '../src/server/claude.ts'
 const NAME = '0199f00d-1111-7000-8000-000000000001.png'
 
 test(
-  'only images stored in a Hydra attachments folder are attached',
+  'only images stored in a Hydra attachments folder are attached, wherever the owner placed them, once each',
   () => {
     const hydras = '/home/pnyx/hydras'
     const stored = `${hydras}/lab/attachments/${NAME}`
+    const inline = `${hydras}/lab/attachments/${NAME.replace(
+      '1.png',
+      '2.png',
+    )}`
     const text = [
       'Look at these',
       imageLine({ path: stored }),
@@ -20,14 +24,17 @@ test(
       imageLine({ path: `${hydras}/lab/copies/${NAME}` }),
       imageLine({ path: `${hydras}/lab/attachments/notes.png` }),
       imageLine({ path: '/etc/passwd' }),
-      `inline [image: ${stored}] stays text`,
+      `In ${imageLine({ path: inline })}, the first one ${imageLine({ path: stored })} again`,
     ].join('\n\n')
     assert.deepEqual(
       attachedImages({
         text,
         hydras,
       }),
-      [stored],
+      [
+        stored,
+        inline,
+      ],
     )
   },
 )

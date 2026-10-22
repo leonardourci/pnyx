@@ -12,6 +12,7 @@ import { Icon } from '../components/ui/icon.tsx'
 import { taskStateIcon, type TaskReferenceData } from '../components/ui/task-reference.tsx'
 import { Popover } from '../components/ui/popover.tsx'
 import { ImageThumb, ImageViewer } from '../components/ui/attached-image.tsx'
+import { AttachmentCard } from '../components/ui/attachment-card.tsx'
 import { columnLook, projectTitle, slashMatches, slashPrefix } from './view.ts'
 import { clock, commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
@@ -20,11 +21,35 @@ import { placeMessageCaret, conversationMessages, latestAgentMessage } from './c
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '../../../src/attachments/files.ts'
-import { draftView, editDraft, placeBlock, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
+import { cardChip, draftView, editDraft, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
 
-const CHIP_TITLES: Partial<Record<PlacedChip['kind'], string>> = {
-  task: 'Open task',
-  image: 'Show image',
+// A card lies over its label's room in the textarea, so the text and the caret stay where they are.
+function DraftCard({
+  chip,
+  open,
+  remove,
+}: {
+  chip: PlacedChip
+  open(): void
+  remove(): void
+}) {
+  const image = chip.kind === 'image'
+
+  return (
+    <span className="draft-chip draft-card" data-kind={chip.kind}>
+      {chip.label}
+      <AttachmentCard
+        keepsInputFocus
+        slot={image ? <ImageThumb path={chip.value} /> : <Icon name="file" size={13} />}
+        label={chip.name}
+        title={image ? 'Show image' : chip.name}
+        tone={chip.attached ? undefined : 'reference'}
+        open={image ? open : undefined}
+        remove={remove}
+        removeLabel={`Remove ${chip.name}`}
+      />
+    </span>
+  )
 }
 
 export function Composer({
@@ -109,15 +134,15 @@ export function Composer({
   const query = (mention?.query ?? '').trim().toLocaleLowerCase()
   const matches: MentionItem[] = [
     ...view.chips.filter(chip => chip.attached
-      && chip.label.toLocaleLowerCase().includes(query)).map(chip => ({
+      && chip.name.toLocaleLowerCase().includes(query)).map(chip => ({
       key: `${chip.kind}:${chip.value}`,
       kind: chip.kind,
-      title: chip.label.trimStart(),
+      title: chip.name,
       detail: chip.kind === 'image' ? 'Attached image' : 'Attached file',
       insert: reference({
         kind: chip.kind,
         value: chip.value,
-        label: chip.label.trimStart(),
+        label: chip.name,
       }),
     })),
     ...projects.filter(project => !project.detached
@@ -469,8 +494,21 @@ export function Composer({
     }
 
     if (lines.length) {
-      insertBlock({ block: lines.join('\n\n') })
+      write(placeImages({
+        text: current.current.draft,
+        caret: input.current?.selectionEnd,
+        lines,
+      }))
+      input.current?.focus()
     }
+  }
+
+  const removeCard = ({ chip }: { chip: PlacedChip }) => {
+    write(removeChip({
+      text: draft,
+      chip,
+    }))
+    input.current?.focus()
   }
 
   const send = async ({ restore = false }: { restore?: boolean } = {}) => {
@@ -889,29 +927,35 @@ export function Composer({
                 index,
               ) => {
                 const look = chip.kind === 'task' || chip.kind === 'column' ? chipLook({ chip }) : undefined
+                const title = chip.kind === 'project' ? chip.value : chip.kind === 'task' ? 'Open task' : undefined
+                const before = display.slice(
+                  view.chips[index - 1]?.to ?? 0,
+                  chip.from,
+                )
 
-                return (
+                return cardChip({ chip }) ? (
                   <Fragment key={chip.start}>
-                    {display.slice(
-                      view.chips[index - 1]?.to ?? 0,
-                      chip.from,
-                    )}
+                    {before}
+                    <DraftCard
+                      chip={chip}
+                      open={() => openChip({ chip })}
+                      remove={() => removeCard({ chip })}
+                    />
+                  </Fragment>
+                ) : (
+                  <Fragment key={chip.start}>
+                    {before}
                     <span
                       className={`draft-chip ${chip.attached ? 'attached' : 'reference'} ${look?.tone ?? ''}`}
                       data-kind={chip.kind}
-                      title={chip.kind === 'project' ? chip.value : CHIP_TITLES[chip.kind]}
+                      title={title}
                       onMouseDown={event => event.preventDefault()}
                       onClick={() => openChip({ chip })}
                     >
                       {look ? (
                         <>
                           {look.icons.map(icon => <span key={icon} className="chip-icon"><Icon name={icon} size={14} /></span>)}
-                          {chip.label.trimStart()}
-                        </>
-                      ) : chip.kind === 'image' && chip.attached ? (
-                        <>
-                          <span className="chip-thumb"><ImageThumb path={chip.value} /></span>
-                          {chip.label.trimStart()}
+                          {chip.name}
                         </>
                       ) : chip.label}
                     </span>
@@ -1063,7 +1107,7 @@ export function Composer({
       {viewing && (
         <ImageViewer
           path={viewing.value}
-          label={viewing.label.trimStart()}
+          label={viewing.name}
           close={() => setViewing(null)}
         />
       )}

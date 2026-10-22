@@ -1,5 +1,7 @@
-// An image attached to a message travels as an `[image: <path>]` line, so every route
-// carries it as text and hosted sessions also receive the file itself.
+import { FILE_BLOCK } from './files.ts'
+
+// An image attached to a message travels as an `[image: <path>]` token where the owner placed it,
+// so every route carries it as text and hosted sessions also receive the file itself.
 export const IMAGE_TYPES = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -12,7 +14,7 @@ export const MAX_IMAGE_BYTES = 5 * 1024 * 1024 * 3 / 4
 const EXTENSIONS = Object.keys(IMAGE_TYPES).map(extension => extension.slice(1))
   .join('|')
 export const ATTACHMENT_NAME = new RegExp(`^[\\da-f]{8}-[\\da-f]{4}-[\\da-f]{4}-[\\da-f]{4}-[\\da-f]{12}\\.(?:${EXTENSIONS})$`)
-export const IMAGE_LINE = /^\[image: (\/[^\]\n]+)\]$/gm
+export const IMAGE = /\[image: (\/[^\]\n]+)\]/g
 
 export const imageLine = ({ path }: { path: string }) => `[image: ${path}]`
 
@@ -25,7 +27,28 @@ export const imageType = ({ path }: { path: string }): ImageType | undefined =>
   IMAGE_TYPES[(/\.\w+$/.exec(path)?.[0] ?? '') as keyof typeof IMAGE_TYPES]
 
 export const imagePaths = ({ text }: { text: string }) =>
-  [...text.matchAll(IMAGE_LINE)].map(match => match[1]!)
+  [...text.matchAll(IMAGE)].map(match => match[1]!)
+
+// Each image is Image N by where it first appears in the message; one inside an attached text file is text.
+export function imageNames({ text }: { text: string }): Map<string, string> {
+  const names = new Map<string, string>()
+
+  for (const path of imagePaths({
+    text: text.replace(
+      FILE_BLOCK,
+      '',
+    ),
+  })) {
+    if (!names.has(path)) {
+      names.set(
+        path,
+        `Image ${names.size + 1}`,
+      )
+    }
+  }
+
+  return names
+}
 
 // Only files Pnyx stored for a Hydra are sent as images; any other path stays text.
 export function attachedImages({
@@ -35,7 +58,8 @@ export function attachedImages({
   text: string
   hydras: string
 }): string[] {
-  return imagePaths({ text }).filter(path => {
+  // An image placed twice in a message is still sent once.
+  return [...new Set(imagePaths({ text }))].filter(path => {
     const parts = path.slice(hydras.length + 1).split('/')
 
     return path.startsWith(`${hydras}/`) && parts.length === 3 && parts[1] === 'attachments'

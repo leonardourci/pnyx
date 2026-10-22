@@ -14,10 +14,16 @@ export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
 type UserMessage = Parameters<QueryFn>[0]['prompt'] extends string | AsyncIterable<infer M> ? M : never
 type Content = Exclude<UserMessage['message']['content'], string>
 
-// A stored image that can no longer be read stays a path in the text.
-function content({ text }: { text: string }): string | Content {
+// Only the message's own images are sent, never one named in the context before it; an unreadable one stays a path.
+function content({
+  text,
+  said,
+}: {
+  text: string
+  said: string
+}): string | Content {
   const images = attachedImages({
-    text,
+    text: said,
     hydras: join(
       pnyxHome(),
       'hydras',
@@ -258,7 +264,10 @@ export function claudeProvider({
                 type: 'user',
                 message: {
                   role: 'user',
-                  content: content({ text: message }),
+                  content: content({
+                    text: message,
+                    said: text,
+                  }),
                 },
                 parent_tool_use_id: null,
               }

@@ -4,6 +4,7 @@ import { Dialog } from '../components/ui/dialog.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { groupComments, orderedComments, sendableComment, type ChatComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
+import { AttachmentCard } from '../components/ui/attachment-card.tsx'
 
 export function CommentsPill({
   count,
@@ -20,19 +21,18 @@ export function CommentsPill({
   ] = useState(false)
 
   return (
-    <div className="composer-comments">
-      <Button aria-label="Show comments" onClick={open}>
-        <Icon name="comments" size={14} />
-        Comments · {count}
-      </Button>
-      <Button
-        className={armed ? 'remove-all' : 'icon-button'}
-        aria-label={armed ? `Remove all ${count} comments` : 'Remove all comments'}
-        onBlur={() => setArmed(false)}
-        onClick={() => count > 1 && !armed ? setArmed(true) : remove()}
-      >
-        {armed ? `Remove ${count}?` : <Icon name="close" size={14} />}
-      </Button>
+    <div className="composer-comments" data-armed={armed || undefined}>
+      <AttachmentCard
+        tone="comments"
+        slot={<Icon name="comments" size={13} />}
+        label={`Comments · ${count}`}
+        title="Show comments"
+        open={open}
+        remove={() => count > 1 && !armed ? setArmed(true) : remove()}
+        removeLabel={armed ? `Remove all ${count} comments` : 'Remove all comments'}
+        removeText={armed ? `Remove ${count}?` : undefined}
+        leaveRemove={() => setArmed(false)}
+      />
     </div>
   )
 }
