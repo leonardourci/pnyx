@@ -1087,6 +1087,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card:not(.selected) > .resize-y { opacity: 0; }
 .card:hover > .resize-y, .card:focus-within > .resize-y { opacity: 1; }
 .activity-asks { color: var(--color-gold); }
+.activity-asks-hydra { color: var(--color-slate); }
 .activity-done { color: var(--color-green); }
 .copy-warning { color: var(--color-gold); font-size: var(--text-meta); }
 @media (hover: none) {
@@ -1211,11 +1212,19 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .update-decision .update-title { color: var(--color-gold); }
 .decision-list { list-style: none; margin: 6px 0 0 30px; padding: 0; display: grid; gap: 8px; }
 .decision-list > li { display: grid; gap: 4px; padding: 2px 0 2px 10px; border-left: 2px solid var(--color-gold-line); }
-.decision-question { display: flex; gap: 6px; align-items: baseline; min-width: 0; font-weight: 600; }
+.decision-question { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
 .decision-question > .collapsible-text { min-width: 0; }
 .decision-number { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: 18px; height: 18px; border-radius: 9px; background: var(--color-gold-wash); color: var(--color-gold); font-size: var(--text-meta); }
-.decision-answer { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; align-items: start; font-weight: 600; }
+.decision-answer { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; align-items: start; }
 .decision-why { color: var(--color-muted); font-size: var(--text-meta); }
+.decision-headline, .ask-headline { margin: 0; color: var(--color-ink); font-weight: 600; overflow-wrap: anywhere; }
+.decision-from { margin: 0; color: var(--color-muted); font-size: var(--text-meta); }
+.decision-choices { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.decision-choices > li[aria-current] { color: var(--color-gold); font-weight: 600; }
+.decision-recommended { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--color-gold-wash); color: var(--color-gold); font-size: var(--text-meta); font-weight: 600; }
+.decision-escalation { display: grid; gap: 4px; padding-left: 8px; border-left: 2px solid var(--color-line); }
+.decision-answer-text { display: grid; gap: 2px; min-width: 0; }
+.decision-details > summary { color: var(--color-muted); font-size: var(--text-meta); }
 .update-fold > summary { padding-right: 0; }
 .update-fold > summary > .disclosure-chevron { display: none; }
 .update-fold-chevron { display: inline-flex; height: 14px; margin-left: 4px; vertical-align: -2px; color: var(--color-muted); transition: transform 140ms ease; }

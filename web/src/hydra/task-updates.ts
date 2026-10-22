@@ -1,5 +1,6 @@
-import type { Card, HydraColumn, Link, PermissionRequest, RepliedEvent } from '../../../src/core/model.ts'
-import { ownerActor } from '../../../src/core/model.ts'
+import type { Ask, Card, HydraColumn, Link, PermissionRequest, RepliedEvent } from '../../../src/core/model.ts'
+import { HYDRA_ACTOR, ownerActor } from '../../../src/core/model.ts'
+import { reportActor } from '../../../src/core/hydra.ts'
 import { mentionId, TASK_MENTION } from '../../../src/mentions/mentions.ts'
 
 export interface TaskEvent {
@@ -22,6 +23,21 @@ export interface UpdateDecision {
   answer: string
   actor: string
   reason?: string
+  choice?: string
+  // A structured question's own parts, from its asking and any escalation.
+  ask?: {
+    from?: string
+    to?: Ask['audience']
+    context?: string
+    details?: string
+    options?: Ask['options']
+    recommended?: number
+    escalation?: {
+      reason?: string
+      question?: string
+      context?: string
+    }
+  }
 }
 
 export interface TaskUpdate {
@@ -142,6 +158,14 @@ const decisionActor = ({ actor }: { actor?: string }) => {
   }
 
   return ownerActor({ actor }) ? 'You' : actor!
+}
+
+const asker = ({ actor = '' }: { actor?: string }) => {
+  if (actor === HYDRA_ACTOR) {
+    return 'Hydra'
+  }
+
+  return reportActor({ actor }) ? 'The worker' : 'You'
 }
 
 const renamed = ({ data }: { data: Record<string, unknown> }): Row | undefined => {
@@ -268,6 +292,48 @@ export function relevantUpdate({
         actor: event.actor,
       })
     }
+    case 'task.asked': {
+      const ask = data as unknown as Ask
+
+      return {
+        kind: 'decision',
+        state: 'Decision',
+        note: '',
+        decision: {
+          questionId: ask.id,
+          question: ask.question,
+          answer: '',
+          actor: '',
+          ask: {
+            from: asker({ actor: event.actor }),
+            to: ask.audience,
+            ...(ask.context ? { context: ask.context } : {}),
+            ...(ask.details ? { details: ask.details } : {}),
+            ...(ask.options ? { options: ask.options } : {}),
+            ...(ask.recommended ? { recommended: ask.recommended } : {}),
+          },
+        },
+      }
+    }
+    case 'task.ask.escalated': return {
+      kind: 'decision',
+      state: 'Decision',
+      note: '',
+      decision: {
+        questionId: String(data.ask),
+        question: '',
+        answer: '',
+        actor: '',
+        ask: {
+          to: 'owner',
+          escalation: {
+            ...(event.reason ? { reason: event.reason } : {}),
+            ...(typeof data.question === 'string' ? { question: data.question } : {}),
+            ...(typeof data.context === 'string' ? { context: data.context } : {}),
+          },
+        },
+      },
+    }
     case 'task.permission': {
       const request = data as unknown as PermissionRequest
 
@@ -288,7 +354,19 @@ export function relevantUpdate({
       }
     }
     // A message to the task also queues its reply, which already shows as the ask.
-    case 'hydra.message': return !event.id.startsWith('task-context:') && ownerActor({ actor: event.actor })
+    case 'hydra.message': return typeof data.answers === 'string' ? {
+      kind: 'decision',
+      state: 'Decision',
+      note: '',
+      decision: {
+        questionId: data.answers,
+        question: '',
+        answer: String(data.text ?? ''),
+        actor: decisionActor({ actor: event.actor }),
+        ...(typeof data.choice === 'string' ? { choice: data.choice } : {}),
+        ...(event.reason ? { reason: event.reason } : {}),
+      },
+    } : !event.id.startsWith('task-context:') && ownerActor({ actor: event.actor })
       && data.action === 'send' && typeof data.text === 'string' && data.text.trim() ? {
         kind: 'ask',
         state: 'You asked',
@@ -422,6 +500,13 @@ const mergeDecisions = ({
   answer: prior.answer || next.answer,
   actor: prior.answer ? prior.actor : next.actor,
   reason: prior.reason ?? next.reason,
+  ...(!prior.answer && next.choice ? { choice: next.choice } : {}),
+  ...(prior.ask || next.ask ? {
+    ask: {
+      ...prior.ask,
+      ...next.ask,
+    },
+  } : {}),
 })
 
 export function taskTimeline({
