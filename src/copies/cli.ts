@@ -2,7 +2,7 @@ import { proposeOwnerCommand } from '../confirmations/commands.ts'
 import { createHash } from 'node:crypto'
 import type { Output } from '../cli/commands.ts'
 import { findCard, type Meta } from '../core/decide.ts'
-import { hydraBypasses } from '../core/hydra.ts'
+import { runsInBypass } from '../cli/hydra-session.ts'
 import { HydraError, HYDRA_ACTOR } from '../core/model.ts'
 import { loadHydra } from '../store/hydra-store.ts'
 import { checkCopy, settleCopy } from './copies.ts'
@@ -20,9 +20,8 @@ export function copyCommand({
   values: Record<string, string | boolean | undefined>
   meta: Meta
 }): Output {
-  const state = loadHydra({ hydraId }).state
   const card = findCard({
-    state,
+    state: loadHydra({ hydraId }).state,
     ref,
   })
 
@@ -53,7 +52,7 @@ export function copyCommand({
     })
   }
 
-  if (values.discard && meta.actor === HYDRA_ACTOR && !hydraBypasses({ state })) {
+  if (values.discard && meta.actor === HYDRA_ACTOR && !runsInBypass({ hydraId })) {
     return proposeOwnerCommand({
       hydraId,
       name: 'task',
