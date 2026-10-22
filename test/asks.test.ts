@@ -280,7 +280,6 @@ test(
       })
     }
 
-    // Answering Hydra's question about a task no worker has yet returns it to the queue, not to work.
     const scope = String((await f.run({
       args: [
         'ask',
@@ -326,7 +325,6 @@ test(
       code: 'NOT_ALLOWED',
     })
 
-    // The move Hydra's own declaration causes is not news to Hydra.
     const through = f.state().seq
     await f.run({
       args: [
@@ -401,7 +399,6 @@ test(
         undefined,
       ],
     )
-    // Waiting on Hydra is not waiting on the owner.
     assert.equal(
       lifecycleStage({ card: f.task() }),
       undefined,
@@ -418,7 +415,6 @@ test(
       'asks-hydra',
     )
 
-    // Hydra hears it as the worker's report: exactly what Pnyx delivers for the message that carries it.
     const message = f.state().hydraMessages!.find(m => m.ask === id)!
     assert.equal(
       message.actor,
@@ -480,7 +476,6 @@ test(
       new RegExp(`waiting: question ${id} to you "Which scope\\?"`),
     )
 
-    // Agents never answer, so a worker cannot answer its own question.
     await refused({
       run: () => f.run({
         args: [
@@ -527,7 +522,6 @@ test(
       'answer-1',
     )
 
-    // The same idempotency key returns what happened; a new answer finds the question closed.
     assert.equal(
       (await f.run({ args: answer })).state,
       'delivered',
@@ -579,7 +573,6 @@ test(
       ],
     )
 
-    // Repeating an ask with the same key returns the same question and tells Hydra once.
     const retry = [
       'ask',
       'ship',
@@ -612,7 +605,6 @@ test(
       1,
     )
 
-    // An answer still being sent or of unknown delivery holds the question until someone checks the session.
     const stuck = ({
       reply,
       state,
@@ -679,7 +671,6 @@ test(
       })
     }
 
-    // A failed send frees it; one that may have landed needs --undelivered once the session shows it never did.
     stuck({
       reply: 'stuck-queued',
       state: 'failed',
@@ -740,7 +731,6 @@ test(
       f.role({ name: 'in_progress' }),
     )
 
-    // Only Hydra escalates, and a reason says why the owner must decide.
     await refused({
       run: () => f.run({
         args: [
@@ -845,7 +835,6 @@ test(
       })
     }
 
-    // A session's own actor wins over --actor, so a worker cannot answer as the owner.
     process.env.PNYX_ACTOR = worker
 
     try {
@@ -954,7 +943,6 @@ test(
     const f = await lab()
     const worker = `worker:${f.task().id}`
 
-    // A worker never bypasses Hydra to ask the owner, even claiming to be Hydra.
     await refused({
       run: () => f.run({
         args: [
@@ -1026,7 +1014,6 @@ test(
       ],
     })
 
-    // A worker's report, its own question and the owner quoting a report all leave the question open.
     await workerCommands.hydra([
       'send',
       '--task',
@@ -1082,7 +1069,6 @@ test(
       new RegExp(`question ${id} to the owner "Deslop only web, or core too\\?"`),
     )
 
-    // Hydra cannot answer its own question to the owner.
     await refused({
       run: () => f.run({
         args: [
@@ -1100,7 +1086,6 @@ test(
       code: 'OWNER_ONLY',
     })
 
-    // The question survives a restart and replays to the same state.
     await server!.close()
     server = await startServer({
       hydraId: 'lab',
@@ -1119,7 +1104,6 @@ test(
       undefined,
     )
 
-    // The owner's answer is the owner's own message to Hydra, tied to the question.
     await f.run({
       args: [
         'answer',
@@ -1171,7 +1155,6 @@ test(
       }),
       code: 'ASK_CLOSED',
     })
-    // The owner paused it, so the answer leaves it where it waits.
     assert.equal(
       f.task().status?.state,
       'paused',
@@ -1277,7 +1260,6 @@ test(
   async () => {
     const f = await lab()
     const worker = `worker:${f.task().id}`
-    // Only a worker asks Hydra, so every question Hydra hears is a report.
     await refused({
       run: () => f.run({
         args: [
@@ -1381,7 +1363,6 @@ test(
       })
     }
 
-    // Hydra's transcript holds every copy, the real question's included; the chat decides by identity.
     const copies = transcript().filter(entry => entry.kind === 'message' && entry.role === 'user')
       .map(entry => entry.kind === 'message' ? entry.text.trim() : '')
     assert.equal(
@@ -1410,7 +1391,6 @@ test(
       owner,
     )
 
-    // The same chat after a restart, and the log replays to the same messages.
     await server!.close()
     server = await startServer({
       hydraId: 'lab',

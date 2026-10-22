@@ -413,14 +413,12 @@ test(
           },
         },
       })
-      // A finished turn or an ended session is not a lifecycle change.
       hook({ input: { activity: 'finished' } })
       hook({ input: { activity: 'ended' } })
       assert.equal(
         placed(),
         column({ role: 'in_progress' }),
       )
-      // A manual move holds until the next explicit change.
       f.run({
         args: [
           'move',
@@ -586,7 +584,6 @@ test(
           'custom:research',
         ],
       })
-      // A column the owner made has no role, so lifecycle changes leave the card there.
       f.run({
         args: [
           'task',
