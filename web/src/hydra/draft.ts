@@ -5,7 +5,7 @@ import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '../.
 // The draft stays the Markdown Hydra receives; the textarea shows each chip as its label.
 export type ChipKind = ReferenceKind
 
-// An em space holds an icon's room in the textarea (a task chip has two); the chip draws icons over them.
+// An em space holds an icon's room in the textarea (a task chip has two, an image chip's thumbnail two); the chip draws over them.
 export const ICON_SPACE = '\u2003'
 
 interface DraftChip {
@@ -51,7 +51,7 @@ function draftChips({ text }: { text: string }): DraftChip[] {
         kind: 'image',
         attached: true,
         value: match[1]!,
-        label: `Image ${++images}`,
+        label: `${ICON_SPACE}${ICON_SPACE}Image ${++images}`,
         start: match.index,
         end: match.index + match[0].length,
       })

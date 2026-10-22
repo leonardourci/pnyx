@@ -329,7 +329,7 @@ export function Markdown({
         case 'paragraph': case 'text': {
           const image = imagePaths({ text: token.text.trim() })[0]
           const content = image !== undefined && imageLine({ path: image }) === token.text.trim()
-            ? <ImageChip path={image} label={`Image ${images.indexOf(image) + 1}`} />
+            ? <ImageChip path={image} label={`Image ${images.indexOf(image) + 1}`} preview />
             : token.tokens ? inline({
               tokens: token.tokens,
               openTask,

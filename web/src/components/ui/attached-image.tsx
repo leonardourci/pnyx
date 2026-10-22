@@ -59,12 +59,35 @@ export function ImageViewer({
   )
 }
 
+// A thumbnail stands in for the image icon; an image this Hydra does not serve keeps the icon.
+export function ImageThumb({ path }: { path: string }) {
+  const [
+    failed,
+    setFailed,
+  ] = useState(false)
+  const src = attachmentSource({ path })
+
+  return src && !failed
+    ? (
+      <img
+        className="image-thumb"
+        src={src}
+        alt=""
+        onError={() => setFailed(true)}
+      />
+    )
+    : <Icon name="image" size={13} />
+}
+
+// An image standing as its own paragraph shows as a preview; one inside text stays a chip.
 export function ImageChip({
   path,
   label,
+  preview = false,
 }: {
   path: string
   label: string
+  preview?: boolean
 }) {
   const [
     open,
@@ -74,12 +97,12 @@ export function ImageChip({
   return (
     <>
       <Button
-        className="chip image-chip"
+        className={`chip image-chip${preview ? ' preview' : ''}`}
         contentEditable={false}
         title="Show image"
         onClick={() => setOpen(true)}
       >
-        <Icon name="image" size={13} />
+        <ImageThumb path={path} />
         {label}
       </Button>
       {open && <ImageViewer path={path} label={label} close={() => setOpen(false)} />}

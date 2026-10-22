@@ -27,7 +27,7 @@ test(
     const view = draftView({ text })
     assert.equal(
       view.display,
-      `Look at ${label} and\n\nImage 1\n\nnotes.txt\n\nin @app`,
+      `Look at ${label} and\n\n${ICON_SPACE}${ICON_SPACE}Image 1\n\nnotes.txt\n\nin @app`,
     )
     assert.deepEqual(
       view.chips.map(chip => [

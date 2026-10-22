@@ -11,7 +11,7 @@ import { Button, Input, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { taskStateIcon, type TaskReferenceData } from '../components/ui/task-reference.tsx'
 import { Popover } from '../components/ui/popover.tsx'
-import { ImageViewer } from '../components/ui/attached-image.tsx'
+import { ImageThumb, ImageViewer } from '../components/ui/attached-image.tsx'
 import { columnLook, projectTitle, slashMatches, slashPrefix } from './view.ts'
 import { clock, commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from './connection.ts'
@@ -112,12 +112,12 @@ export function Composer({
       && chip.label.toLocaleLowerCase().includes(query)).map(chip => ({
       key: `${chip.kind}:${chip.value}`,
       kind: chip.kind,
-      title: chip.label,
+      title: chip.label.trimStart(),
       detail: chip.kind === 'image' ? 'Attached image' : 'Attached file',
       insert: reference({
         kind: chip.kind,
         value: chip.value,
-        label: chip.label,
+        label: chip.label.trimStart(),
       }),
     })),
     ...projects.filter(project => !project.detached
@@ -900,6 +900,11 @@ export function Composer({
                           {look.icons.map(icon => <span key={icon} className="chip-icon"><Icon name={icon} size={14} /></span>)}
                           {chip.label.trimStart()}
                         </>
+                      ) : chip.kind === 'image' && chip.attached ? (
+                        <>
+                          <span className="chip-thumb"><ImageThumb path={chip.value} /></span>
+                          {chip.label.trimStart()}
+                        </>
                       ) : chip.label}
                     </span>
                   </Fragment>
@@ -1050,7 +1055,7 @@ export function Composer({
       {viewing && (
         <ImageViewer
           path={viewing.value}
-          label={viewing.label}
+          label={viewing.label.trimStart()}
           close={() => setViewing(null)}
         />
       )}
