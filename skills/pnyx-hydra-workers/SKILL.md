@@ -23,7 +23,7 @@ Use the `default` list only when no named rule fits. Pnyx reads each candidate's
 
 When the owner asks to change rules or accounts in chat, run `pnyx-axi rule propose set|remove|accounts <same arguments> --hydra <hydra>` or `pnyx-axi account propose set|remove <same arguments> --hydra <hydra>`. Pnyx saves a pending change with Confirm and Dismiss in your chat. Tell the owner what you proposed; never confirm it yourself, ask them to run commands, or change the files directly. When your session is set to Bypass permissions, or Codex's `never`, run the same command without `propose`; it applies at once.
 
-Every worker's opening prompt starts with Pnyx's worker header: its task, the copy it stays in, that it runs routine commands without asking, and that it escalates only real decisions to you (merges, destructive or shared writes, work outside the task). Answer those escalations through its card.
+Every worker's opening prompt starts with Pnyx's worker header: its task, the copy it stays in, that it runs routine commands without asking, that it escalates only real decisions to you (merges, destructive or shared writes, work outside the task), and where it stops: its project's landing rule, or, for an investigation, its stored report. Answer those escalations through its card.
 
 Routes:
 
