@@ -1,3 +1,4 @@
+import { HYDRA_CARD } from '../core/hydra.ts'
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import type { HydraEvent, HydraState, Card, ReplyState } from '../core/model.ts'
@@ -11,6 +12,7 @@ import { cardSessionId } from '../core/tasks.ts'
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
   id: string
+  hidden?: boolean
   role: string
   kind: 'message' | 'tool' | 'thinking'
   text: string
@@ -41,6 +43,11 @@ export interface ThreadPage {
   session?: string
   entries: ThreadEntry[]
   unavailable?: string
+  currentTurn?: {
+    at: string
+    owner: boolean
+  }
+  actions?: HydraEvent[]
   older?: string
   route: boolean
   via?: string
@@ -104,11 +111,13 @@ export function recordEntries({
   offset,
   tools = true,
   thinking = true,
+  boundaries = false,
 }: {
   record: unknown
   offset: number
   tools?: boolean
   thinking?: boolean
+  boundaries?: boolean
 }): ThreadEntry[] {
   const r = obj({ v: record })
 
@@ -119,7 +128,10 @@ export function recordEntries({
   const payload = obj({ v: r.payload }), message = obj({ v: r.message })
   const role = typeof payload.role === 'string' ? payload.role : String(r.type)
   const at = typeof r.timestamp === 'string' ? r.timestamp : undefined
-  const entries: ThreadEntry[] = transcriptMessages({ record }).map((
+  const entries: ThreadEntry[] = transcriptMessages({
+    record,
+    includeInternal: boundaries,
+  }).map((
     m,
     i,
   ) => ({
@@ -128,6 +140,7 @@ export function recordEntries({
     role,
     text: m.text,
     at: m.at,
+    hidden: m.internal,
   }))
   const blocks = Array.isArray(message.content) ? message.content : r.type === 'response_item' ? [payload] : []
 
@@ -354,9 +367,7 @@ export function latestMessage({
 // chunks when reply receipts also fill the latest page.
 export const THREAD_CURSOR = /^n(\d+:\d+)?;r(\d+:\d+)?$/
 const PAGE = 60
-type RepliedEvent = Extract<HydraEvent, { type: 'card.replied' }>
-type ChatEvent = Extract<HydraEvent, { type: 'chat.message' }>
-type LoggedMessage = RepliedEvent | ChatEvent
+type LoggedMessage = HydraEvent
 const replyLogs = new Map<string, {
   end: number
   events: LoggedMessage[]
@@ -384,7 +395,8 @@ function repliedEvents({ hydraId }: { hydraId: string }): LoggedMessage[] {
   }
 
   const added = (read?.events ?? []).filter((e): e is LoggedMessage =>
-    (e.type === 'card.replied' && !!e.data.text) || e.type === 'chat.message')
+    (e.type === 'card.replied' && !!e.data.text) || e.type === 'chat.message'
+    || (e.actor === 'hydra' && e.type !== 'hydra.message'))
   log = {
     end: read?.end ?? 0,
     events: added.length ? [
@@ -433,6 +445,7 @@ export function readThread(
   }
   const match = before === undefined ? null : THREAD_CURSOR.exec(before)
   const nativeCursor = match?.[1], replyCursor = match?.[2]
+  const excludedAt: string[] = []
   let candidates: {
     item: ThreadEntry
     native?: string
@@ -440,13 +453,12 @@ export function readThread(
   }[] = []
   let earlierNative = false, emptyNativeCursor: string | undefined
   const path = threadPath({ card })
-  const {
-    tools,
-    thinking,
-  } = traces({
+  const selected = traces({
     view: viewFor({ state }),
     card: card.id,
   })
+  const tools = card.id !== HYDRA_CARD && selected.tools
+  const thinking = selected.thinking
 
   if (path) {
     let fd: number | undefined
@@ -530,12 +542,18 @@ export function readThread(
               cursor,
               newline,
             ).toString())
+
+            if (beforeItem !== undefined && offset === beforeOffset && typeof record.timestamp === 'string') {
+              excludedAt.push(record.timestamp)
+            }
+
             // Hidden traces must not use up the conversation page.
             recordEntries({
               record,
               offset,
               tools,
               thinking,
+              boundaries: card.id === HYDRA_CARD,
             }).forEach((
               item,
               index,
@@ -598,6 +616,10 @@ export function readThread(
   const seenReplies = new Set<string>()
 
   for (const e of repliedEvents({ hydraId })) {
+    if (e.seq === replySeq) {
+      excludedAt.push(e.at)
+    }
+
     if (e.type === 'chat.message') {
       const session = cardSessionId({ card })
 
@@ -629,6 +651,10 @@ export function readThread(
           archived = true
         }
       })
+      continue
+    }
+
+    if (e.type !== 'card.replied') {
       continue
     }
 
@@ -677,6 +703,20 @@ export function readThread(
   ) => (a.item.at ?? '').localeCompare(b.item.at ?? ''))
   const page = candidates.slice(-PAGE)
   result.entries = page.map(e => e.item)
+
+  if (card.id === HYDRA_CARD) {
+    const firstAt = result.entries[0]?.at
+    const beforeAt = excludedAt.toSorted()[0]
+    result.actions = repliedEvents({ hydraId }).filter(event => {
+      const task = state.cards[event.cardId]
+      const afterStart = firstAt !== undefined && event.at >= firstAt
+      const beforeEnd = beforeAt === undefined || event.at <= beforeAt
+      const inPage = afterStart && beforeEnd
+
+      return inPage && event.actor === 'hydra' && event.type !== 'chat.message'
+        && task !== undefined && !task.automaticTask && task.id !== HYDRA_CARD
+    })
+  }
 
   if (candidates.length > page.length || earlierNative) {
     result.older = `n${page.find(e => e.native)?.native ?? emptyNativeCursor ?? nativeCursor ?? ''};r${page.find(e => e.reply)?.reply ?? replyCursor ?? ''}`
