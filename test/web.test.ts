@@ -1160,6 +1160,36 @@ test(
       })[0]?.call,
       'toolu_1',
     )
+    // A Codex call carries its item id too; its output names only the call id.
+    assert.deepEqual(
+      [
+        {
+          type: 'function_call',
+          id: 'fc_1',
+          call_id: 'call_1',
+          name: 'shell',
+          arguments: '{}',
+        },
+        {
+          type: 'function_call_output',
+          call_id: 'call_1',
+          output: 'done',
+        },
+      ].map((
+        payload,
+        offset,
+      ) => recordEntries({
+        record: {
+          type: 'response_item',
+          payload,
+        },
+        offset,
+      })[0]?.call),
+      [
+        'call_1',
+        'call_1',
+      ],
+    )
     assert.deepEqual(
       recordEntries({
         record: {
