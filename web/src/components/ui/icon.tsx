@@ -1,14 +1,15 @@
 import {
   IconAdjustments, IconAlertCircle, IconAlertTriangle, IconArrowDown, IconArrowFork,
-  IconArrowRight, IconArrowUpRight, IconBolt, IconBoltFilled, IconBrandGithub, IconBulb,
-  IconCalendar, IconCheck, IconChevronDown, IconChevronRight, IconCircleCheck, IconClipboardList,
-  IconClock, IconCode, IconCopy, IconCpu, IconCube, IconDeviceDesktop, IconDots,
-  IconExclamationCircle, IconEye, IconEyeCheck, IconFileText, IconFolder, IconGauge, IconGitFork,
-  IconGitPullRequest, IconLink, IconList, IconLock, IconLockOpen, IconMap, IconMaximize,
-  IconMessage, IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil,
-  IconPencilCheck, IconPhoto, IconPinnedFilled, IconPlayerPause, IconPlayerPlay,
-  IconPlayerStopFilled, IconPlus, IconQuote, IconRobot, IconSearch, IconSend, IconSettings,
-  IconShield, IconTag, IconUser, IconX,
+  IconArrowRight, IconArrowUpRight, IconBolt, IconBoltFilled, IconBook, IconBrandGit,
+  IconBrandGithub, IconBulb, IconCalendar, IconCheck, IconChevronDown, IconChevronRight,
+  IconCircleCheck, IconClipboardList, IconClock, IconCode, IconCopy, IconCpu, IconCube,
+  IconDeviceDesktop, IconDots, IconExclamationCircle, IconEye, IconEyeCheck, IconFileText,
+  IconFolder, IconGauge, IconGitFork, IconGitPullRequest, IconHammer, IconHourglass, IconLink,
+  IconList, IconListCheck, IconLock, IconLockOpen, IconMap, IconMaximize, IconMessage,
+  IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil, IconPencilCheck,
+  IconPhoto, IconPinnedFilled, IconPlayerPause, IconPlayerPlay, IconPlayerStopFilled, IconPlug,
+  IconPlus, IconQuote, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag,
+  IconTerminal2, IconTestPipe, IconUser, IconWorld, IconX,
 } from '@tabler/icons-react'
 
 const icons: Record<string, typeof IconRobot> = {
@@ -78,6 +79,17 @@ const icons: Record<string, typeof IconRobot> = {
   decision: IconExclamationCircle,
   moved: IconArrowRight,
   renamed: IconPencil,
+  // What an agent is running, on the running line and a working card.
+  edit: IconPencil,
+  test: IconTestPipe,
+  lint: IconListCheck,
+  build: IconHammer,
+  git: IconBrandGit,
+  world: IconWorld,
+  wait: IconHourglass,
+  plug: IconPlug,
+  skill: IconBook,
+  terminal: IconTerminal2,
 
 }
 

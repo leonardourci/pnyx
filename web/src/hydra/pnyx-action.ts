@@ -1,9 +1,10 @@
 import type { HydraColumn, HydraState } from '../../../src/core/model.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
+import { commandOf } from '../../../src/thread/calls.ts'
 
 // A sentence about a Pnyx command, with the tasks and columns it touched kept apart so they show as chips.
-type Segment = string | {
+export type Segment = string | {
   task: string
   label: string
 } | {
@@ -43,29 +44,18 @@ export function pnyxLookup({ state }: { state: HydraState }): PnyxLookup {
   }
 }
 
-// Claude's Bash input is {command}; Codex's shell calls carry {cmd} or an argv list.
 export function shellCommand({ text }: { text: string }): string | undefined {
   try {
-    const input = JSON.parse(text) as {
-      command?: unknown
-      cmd?: unknown
-    }
-    const value = input.command ?? input.cmd
+    const input = JSON.parse(text) as unknown
 
-    if (typeof value === 'string') {
-      return value
-    }
-
-    if (Array.isArray(value) && value.every(part => typeof part === 'string')) {
-      return value.length === 3 && /(^|\/)(ba|z)?sh$/.test(value[0]) && value[1].startsWith('-') ? value[2] : value.join(' ')
-    }
+    return typeof input === 'object' && input !== null ? commandOf({ input: input as Record<string, unknown> }) : undefined
   } catch { /* Not a shell call. */ }
 
   return undefined
 }
 
 // Splits the first command of a shell line into words, following quotes and backslashes.
-function shellWords({ command }: { command: string }): string[] {
+export function shellWords({ command }: { command: string }): string[] {
   const words: string[] = []
   let word = '', quote = '', open = false
 
