@@ -17,13 +17,14 @@ import { Detail } from './detail.tsx'
 import { sendableComment, type ChatComment } from './chat.ts'
 import { Hydras } from './hydras.tsx'
 import { Panel } from './panel.tsx'
-import { columnsFor, findBoxCards, hydraTitle, pageTitle } from './view.ts'
+import { columnsFor, expandedByColumn, findBoxCards, hydraTitle, pageTitle, releaseHold, type ColumnHold } from './view.ts'
 import { Oracle } from './oracle.tsx'
 import { commandQuery } from './oracle-catalog.ts'
 import { useFoundCards } from './card-oracle.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { useHydraKeyboard } from '../keyboard/hydra.tsx'
-import { afterTaskLayout, scrollTask } from './scroll-task.ts'
+import { afterDelay, afterTaskLayout, openTaskCard, scrollTask } from './scroll-task.ts'
+import { DOUBLE_CLICK_MS } from '../components/ui/editable-title.tsx'
 
 // Keep each tab's view across reloads and newly served builds.
 type Restore = {
@@ -72,28 +73,6 @@ const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [da
   ] as const)
 
 const hydraViews = new Map<string, Restore>()
-
-function expandedByColumn({
-  ids,
-  cards,
-  pending,
-}: {
-  ids: string[]
-  cards: Record<string, Card>
-  pending: Record<string, string>
-}) {
-  const columns = new Set<string>(), kept: string[] = []
-
-  for (const id of [...ids].reverse()) {
-    const column = cards[id]?.column ?? pending[id] ?? id
-
-    if (!columns.has(column)) {
-      columns.add(column); kept.push(id)
-    }
-  }
-
-  return kept.reverse()
-}
 
 export function App() {
   const hydra = useHydra()
@@ -167,6 +146,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const pendingColumns = useRef<Record<string, string>>({})
   const pendingFocus = useRef<string | null>(null)
   const pendingOpen = useRef<AbortController | null>(null)
+  const holding = useRef<ColumnHold>(null)
   const highlight = useRef<Animation | null>(null)
   const [
     revealing,
@@ -203,6 +183,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     ids: expanded,
     cards: state.cards,
     pending: pendingColumns.current,
+    hold: holding.current,
   })
   useEffect(
     () => {
@@ -211,6 +192,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           ids,
           cards: state.cards,
           pending: pendingColumns.current,
+          hold: holding.current,
         })
 
         return ids.length === next.length && ids.every((
@@ -753,11 +735,65 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       ],
       cards: currentCards.current,
       pending: pendingColumns.current,
+      hold: holding.current,
     }))
     setActive(id); setPage('hydra')
   }
 
-  const open = async ({ id }: { id: string }): Promise<boolean> => {
+  const openFromTitle = ({
+    id,
+    signal,
+  }: {
+    id: string
+    signal: AbortSignal
+  }) => openTaskCard({
+    find: () => (currentCards.current[id]
+      ? document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"]`) : null),
+    expand: () => {
+      holding.current = {
+        id,
+        owner: signal,
+      }
+      expand({
+        id,
+        focus: false,
+      })
+    },
+    settle: () => afterTaskLayout({ signal }),
+    hold: async ({ element }) => await afterDelay({
+      ms: DOUBLE_CLICK_MS,
+      signal,
+    }) && !element.querySelector('[contenteditable="plaintext-only"]'),
+    release: () => {
+      const next = releaseHold({
+        hold: holding.current,
+        owner: signal,
+      })
+
+      if (next !== holding.current) {
+        holding.current = next
+        setExpanded(ids => expandedByColumn({
+          ids,
+          cards: currentCards.current,
+          pending: pendingColumns.current,
+        }))
+      }
+    },
+    opened: ({ element }) => element.querySelector<HTMLElement>('.task-updates')?.focus({ preventScroll: true }),
+    align: ({ element }) => scrollTask({
+      element,
+      signal,
+    }),
+    signal,
+  })
+
+  const open = async ({
+    id,
+    fromTitle = false,
+  }: {
+    id: string
+    fromTitle?: boolean
+  }): Promise<boolean> => {
     cancelOpen(); pendingFocus.current = null
 
     if (id === '$board') {
@@ -776,6 +812,15 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     setPage('hydra'); setRevealing(id)
 
     try {
+      if (fromTitle) {
+        const card = await openFromTitle({
+          id,
+          signal,
+        })
+
+        return !!card?.querySelector('.task-updates')
+      }
+
       if (!await afterTaskLayout({ signal })) {
         return false
       }
@@ -1100,14 +1145,20 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                   selected={expandedIds.includes(item.id)}
                                   view={view}
                                   save={save}
-                                  open={({ id }) => {
+                                  open={({
+                                    id,
+                                    fromTitle,
+                                  }) => {
                                     if (expandedIds.includes(id)) {
                                       close({ id })
 
                                       return Promise.resolve(false)
                                     }
 
-                                    return open({ id })
+                                    return open({
+                                      id,
+                                      fromTitle,
+                                    })
                                   }}
                                   command={command}
                                   connected={connected}

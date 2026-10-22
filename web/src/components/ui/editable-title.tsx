@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type HTMLAttributes } from 'react'
 
+export const DOUBLE_CLICK_MS = 500
+
 export function EditableTitle({
   value,
   label,
@@ -14,7 +16,7 @@ export function EditableTitle({
   value: string
   label: string
   editingLabel: string
-  activate(): void
+  activate({ pointer }: { pointer: boolean }): void
   save({ title }: { title: string }): Promise<unknown>
   notify({ text }: { text: string }): void
   disabled?: boolean
@@ -115,12 +117,14 @@ export function EditableTitle({
           clearClick()
 
           if (event.detail === 0) {
-            activate()
+            activate({ pointer: false })
+          } else if (event.detail === 1 && props['aria-expanded'] !== true) {
+            activate({ pointer: true })
           } else if (event.detail === 1) {
-            // Defer a pointer click so a double-click edits without toggling the card.
+            // Only closing waits, so a double-click on an open card edits without closing it.
             click.current = setTimeout(
-              activate,
-              500,
+              () => activate({ pointer: true }),
+              DOUBLE_CLICK_MS,
             )
           }
         }
@@ -148,7 +152,7 @@ export function EditableTitle({
           clearClick()
           event.preventDefault()
           event.stopPropagation()
-          activate()
+          activate({ pointer: false })
         }
       }}
     >{initial.current}

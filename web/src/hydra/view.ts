@@ -308,3 +308,47 @@ export function cardState({
     text: activity === 'working' ? 'working' : activity === 'finished' ? 'finished its turn' : card.agent ? 'activity unknown' : 'not started',
   }
 }
+
+export type ColumnHold = {
+  id: string
+  owner: AbortSignal
+} | null
+
+export const releaseHold = ({
+  hold,
+  owner,
+}: {
+  hold: ColumnHold
+  owner: AbortSignal
+}): ColumnHold => (hold?.owner === owner ? null : hold)
+
+export function expandedByColumn({
+  ids,
+  cards,
+  pending,
+  hold = null,
+}: {
+  ids: string[]
+  cards: Record<string, Card>
+  pending: Record<string, string>
+  hold?: ColumnHold
+}): string[] {
+  const columnOf = ({ id }: { id: string }) => cards[id]?.column ?? pending[id] ?? id
+  const held = hold && columnOf({ id: hold.id })
+  const open = new Map<string, number>(), kept: string[] = []
+
+  for (const id of [...ids].reverse()) {
+    const column = columnOf({ id })
+    const count = open.get(column) ?? 0
+
+    if (count < (column === held ? 2 : 1)) {
+      open.set(
+        column,
+        count + 1,
+      )
+      kept.push(id)
+    }
+  }
+
+  return kept.reverse()
+}
