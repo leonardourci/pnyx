@@ -5,7 +5,6 @@ import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import type { Catalog } from '../../../src/thread/catalog.ts'
 import { Button, Input, Textarea } from '../components/ui/controls.tsx'
@@ -1032,9 +1031,12 @@ export function Composer({
           </Button>
         </div>
       </form>
-      {viewing && createPortal(
-        <ImageViewer path={viewing.value} label={viewing.label} close={() => setViewing(null)} />,
-        document.body,
+      {viewing && (
+        <ImageViewer
+          path={viewing.value}
+          label={viewing.label}
+          close={() => setViewing(null)}
+        />
       )}
     </>
   )

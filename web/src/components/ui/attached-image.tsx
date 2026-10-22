@@ -39,6 +39,7 @@ export function AttachedImage({ path }: { path: string }) {
   )
 }
 
+// The viewer is portaled out so the conversation's caret host never edits it.
 export function ImageViewer({
   path,
   label,
@@ -50,14 +51,14 @@ export function ImageViewer({
 }) {
   const src = attachmentSource({ path })
 
-  return (
+  return createPortal(
     <Dialog title={label} className="image-viewer" close={close}>
       {src ? <img src={src} alt={label} /> : <p className="muted">{imageLine({ path })}</p>}
-    </Dialog>
+    </Dialog>,
+    document.body,
   )
 }
 
-// The viewer is portaled out so the conversation's caret host never edits it.
 export function ImageChip({
   path,
   label,
@@ -81,10 +82,7 @@ export function ImageChip({
         <Icon name="image" size={13} />
         {label}
       </Button>
-      {open && createPortal(
-        <ImageViewer path={path} label={label} close={() => setOpen(false)} />,
-        document.body,
-      )}
+      {open && <ImageViewer path={path} label={label} close={() => setOpen(false)} />}
     </>
   )
 }
