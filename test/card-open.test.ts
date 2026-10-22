@@ -66,7 +66,6 @@ const steps = () => {
   }
 }
 
-// Mirrors how app.tsx wires a title opening into its expansion state.
 const hydra = ({ open }: { open: string[] }) => {
   const cards = Object.fromEntries([
     'prior',
