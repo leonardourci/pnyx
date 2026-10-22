@@ -1209,6 +1209,126 @@ test(
 )
 
 test(
+  'a worker inside a tool call is busy, not stalled; a stall comes back counted; an ended wait wakes Hydra once',
+  async () => {
+    fakeDispatch({ root: home })
+    const folder = join(
+      home,
+      'work',
+    )
+    mkdirSync(folder)
+    await commands.task([
+      'create',
+      '--title',
+      'Run the suite',
+      '--key',
+      'suite',
+      '--folder',
+      folder,
+      '--hydra',
+      'lab',
+    ])
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 50,
+      stallDelay: 200,
+      busyDelay: 1200,
+    })
+    const wakes = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
+    const stalls = () => wakes().filter(m => m.startsWith('<pnyx-wake>Stalled'))
+    const waits = () => wakes().filter(m => m.includes('Wait ended:'))
+
+    await send({ text: 'Watch the suite' })
+    await until({ check: finished })
+    sdk.control.hold = true
+    sdk.control.tool = true
+    await startTask({
+      hydraId: 'lab',
+      task: 'suite',
+      meta: {
+        at: new Date().toISOString(),
+        actor: 'hydra',
+        reason: 'start it',
+        id: 'start-suite',
+      },
+    })
+    sdk.control.hold = false
+    sdk.control.tool = false
+
+    // Quiet well past the stall delay, but inside its tool call.
+    await sleep({ ms: 800 })
+    assert.equal(
+      stalls().length,
+      0,
+      'a running tool call is not a stall',
+    )
+
+    for (let i = 0; i < 200 && stalls().length < 2; i++) {
+      await sleep({ ms: 10 })
+    }
+
+    assert.match(
+      stalls()[0] ?? '',
+      /inside one tool call for \d+ s/,
+    )
+    assert.match(
+      stalls()[1] ?? '',
+      /\(alarm 2\)/,
+      'a stall still there after Hydra\'s turn comes back',
+    )
+
+    // A declared wait silences the stall until it ends, then wakes Hydra once.
+    const until1 = new Date(Date.now() + 1500).toISOString()
+    await commands.task([
+      'status',
+      'suite',
+      'paused',
+      '--until',
+      until1,
+      '--note',
+      'waiting on CI',
+      '--hydra',
+      'lab',
+    ])
+    assert.match(
+      String((await commands.task([
+        'show',
+        'suite',
+        '--hydra',
+        'lab',
+      ]) as { task: { status: string } }).task.status),
+      new RegExp(`^paused until ${until1}: waiting on CI`),
+    )
+    await sleep({ ms: 200 })
+    const stallsWhilePaused = stalls().length
+    await sleep({ ms: 900 })
+    assert.equal(
+      stalls().length,
+      stallsWhilePaused,
+      'no stall during a declared wait',
+    )
+
+    for (let i = 0; i < 200 && !waits().length; i++) {
+      await sleep({ ms: 10 })
+    }
+
+    assert.match(
+      waits()[0] ?? '',
+      /the worker on .* paused until .*: waiting on CI/,
+    )
+    await sleep({ ms: 600 })
+    assert.equal(
+      waits().length,
+      1,
+      'an ended wait wakes Hydra once',
+    )
+    sdk.release()
+  },
+)
+
+test(
   'a cut Hydra turn resumes once with fresh memory and the unanswered message range',
   async () => {
     const first = hydraSdk()

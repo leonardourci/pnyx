@@ -159,6 +159,12 @@ const IDLE_MS = 10 * 60 * 1000
 const WAKE_MS = 5000
 // A request left pending or a working worker quiet this long wakes Hydra again.
 const STALL_MS = 240_000
+// A worker inside one tool call, such as a long test run, is busy rather than quiet for up to this long.
+const BUSY_MS = 60 * 60 * 1000
+// A paused worker that named no end for its wait is checked on after this long.
+const PAUSE_MS = 4 * 60 * 60 * 1000
+// A stall still there after Hydra's turn wakes it again, each time after twice the last wait, up to this.
+const STALL_REPEAT_MAX_MS = 60 * 60 * 1000
 // A worker runs the pnyx-worker skill's own commands without asking; any other pnyx-axi command still asks.
 const WORKER_COMMANDS = [
   'task show',
@@ -331,6 +337,8 @@ interface Live {
   // The owner stopped the running turn, so a new message waits for it to end.
   stopping?: boolean
   idle?: ReturnType<typeof setTimeout>
+  // The tool calls running now, by id, with when each started.
+  tools: Map<string, number>
 }
 
 export function createHost({
@@ -342,6 +350,7 @@ export function createHost({
   queued = () => {},
   wakeDelay = WAKE_MS,
   stallDelay = STALL_MS,
+  busyDelay = BUSY_MS,
   presence = ({ session }) => terminalPresence({
     session,
     verifyProcess: true,
@@ -357,6 +366,7 @@ export function createHost({
   queued?(): void
   wakeDelay?: number
   stallDelay?: number
+  busyDelay?: number
 }): Host {
   const providers = {
     'claude-code': claudeProvider({ query }),
@@ -1001,6 +1011,19 @@ export function createHost({
           continue
         }
 
+        if (typeof activity !== 'string' && activity.type === 'tool') {
+          if (activity.running) {
+            entry.tools.set(
+              activity.id,
+              Date.now(),
+            )
+          } else {
+            entry.tools.delete(activity.id)
+          }
+
+          continue
+        }
+
         if (typeof activity !== 'string') {
           entry.replies.update(activity)
           streamed({ session: key })
@@ -1022,6 +1045,7 @@ export function createHost({
         if (activity === 'finished') {
           turnRunning = false
           entry.stopping = false
+          entry.tools.clear()
           completedOffset = transcriptSize()
           entry.replies.finish()
           streamed({ session: key })
@@ -1163,6 +1187,7 @@ export function createHost({
       replies: liveReplies(),
       activity: 'finished',
       session,
+      tools: new Map(),
     }
     live.set(
       key,
@@ -1292,7 +1317,7 @@ export function createHost({
     }
   }
 
-  // A stall makes no event, so it is polled; each one wakes Hydra once.
+  // A stall or an ended wait makes no event, so it is polled.
   const checkStalls = () => {
     try {
       wakeOnStall()
@@ -1301,11 +1326,167 @@ export function createHost({
     }
   }
 
-  const wakeOnStall = () => {
-    if (!pending.size && ![...live.values()].some(entry => entry.activity === 'working')) {
-      return
+  // When a paused task's wait ends: its --until, or PAUSE_MS after a worker paused without one.
+  const waitEnd = ({ card }: { card: Card }): number | undefined => {
+    const declaration = card.status
+
+    if (declaration?.state !== 'paused') {
+      return undefined
     }
 
+    if (declaration.until) {
+      return Date.parse(declaration.until)
+    }
+
+    // Hydra or the owner parking a task, or a task with no worker, is not a wait.
+    const parked = declaration.actor === HYDRA_ACTOR || declaration.actor === 'web' || !card.sessionIds?.length
+
+    if (parked) {
+      return undefined
+    }
+
+    return Date.parse(declaration.at) + PAUSE_MS
+  }
+
+  // A stall fired before is due again once twice its last wait has passed, up to STALL_REPEAT_MAX_MS.
+  const stallDue = ({
+    id,
+    now,
+  }: {
+    id: string
+    now: number
+  }) => {
+    const fired = stalled.get(id)
+
+    if (!fired) {
+      return true
+    }
+
+    const repeatAfter = Math.min(
+      stallDelay * 2 ** fired.count,
+      STALL_REPEAT_MAX_MS,
+    )
+
+    return now - fired.at >= repeatAfter
+  }
+
+  const workerStalls = ({
+    state,
+    card,
+    now,
+  }: {
+    state: HydraState
+    card: Card & { agent: AgentRef }
+    now: number
+  }): {
+    id: string
+    text: string
+  }[] => {
+    const requests = (card.permissions ?? []).filter(p => p.status === 'pending')
+
+    if (requests.length) {
+      return requests.flatMap(p => {
+        const waited = p.at ? now - Date.parse(p.at) : 0
+
+        if (waited < stallDelay) {
+          return []
+        }
+
+        return [
+          {
+            id: `stall:${p.id}`,
+            text: `${p.tool} on ${card.id} has waited ${Math.round(waited / 1000)} s for an answer`,
+          },
+        ]
+      })
+    }
+
+    const key = sessionId({ agent: card.agent })
+    const entry = live.get(key)
+
+    if (entry?.activity !== 'working') {
+      return []
+    }
+
+    const declaredWaitEnd = waitEnd({ card })
+
+    if (declaredWaitEnd !== undefined && now < declaredWaitEnd) {
+      return []
+    }
+
+    const toolStarts = [...entry.tools.values()]
+
+    if (toolStarts.length) {
+      const busySince = Math.min(...toolStarts)
+      const busyFor = now - busySince
+
+      if (busyFor < busyDelay) {
+        return []
+      }
+
+      return [
+        {
+          id: `stall:${card.id}:tool:${busySince}`,
+          text: `the worker on ${card.id} has been inside one tool call for ${Math.round(busyFor / 1000)} s`,
+        },
+      ]
+    }
+
+    const agent = state.sessions?.[key]
+    const seen = Math.max(
+      agent ? seenAt({ session: agent }) : 0,
+      entry.sentAt ?? 0,
+    )
+
+    if (!seen || now - seen < stallDelay) {
+      return []
+    }
+
+    return [
+      {
+        id: `stall:${card.id}:${seen}`,
+        text: `the worker on ${card.id} has been working with no sign of life for ${Math.round((now - seen) / 1000)} s`,
+      },
+    ]
+  }
+
+  // A paused worker's wait that ended wakes Hydra once, whoever runs the worker.
+  const endedWaits = ({
+    state,
+    now,
+  }: {
+    state: HydraState
+    now: number
+  }): {
+    id: string
+    text: string
+  }[] => Object.values(state.cards).flatMap(card => {
+    const declaredWaitEnd = waitEnd({ card })
+    const declaration = card.status
+
+    const waiting = declaredWaitEnd === undefined || now < declaredWaitEnd
+
+    if (card.id === HYDRA_CARD || !liveTask({ card }) || waiting || !declaration) {
+      return []
+    }
+
+    const id = `wait:${declaration.id}`
+
+    if (`${id}:hosted` in state.eventIds) {
+      return []
+    }
+
+    const named = declaration.until ? `until ${declaration.until}` : `since ${declaration.at}`
+
+    return [
+      {
+        id,
+        text: `the worker on ${card.id} paused ${named}: ${declaration.note || '(no note)'}`,
+      },
+    ]
+  })
+
+  const wakeOnStall = () => {
     const state = loadHydra({ hydraId }).state
     const hydraCard = state.cards[HYDRA_CARD]
     const session = state.config?.hydra.session
@@ -1323,53 +1504,89 @@ export function createHost({
         return []
       }
 
-      const requests = (card.permissions ?? []).filter(p => p.status === 'pending')
-      const agent = state.sessions?.[sessionId({ agent: card.agent })]
-      const entry = live.get(sessionId({ agent: card.agent }))
-      const seen = Math.max(
-        agent ? seenAt({ session: agent }) : 0,
-        entry?.sentAt ?? 0,
-      )
-
-      return requests.length
-        ? requests.flatMap(p => {
-          const waited = p.at ? now - Date.parse(p.at) : 0
-
-          return waited >= stallDelay ? [
-            {
-              id: `stall:${p.id}`,
-              text: `${p.tool} on ${card.id} has waited ${Math.round(waited / 1000)} s for an answer`,
-            },
-          ] : []
-        })
-        : entry?.activity === 'working' && seen && now - seen >= stallDelay
-          ? [
-            {
-              id: `stall:${card.id}:${seen}`,
-              text: `the worker on ${card.id} has been working with no sign of life for ${Math.round((now - seen) / 1000)} s`,
-            },
-          ]
-          : []
-    })
-      .filter(stall => !stalled.has(stall.id))
-
-    const [first] = stalls
-
-    if (first) {
-      stalls.forEach(stall => stalled.add(stall.id))
-      const after = wakeCursor({
+      return workerStalls({
         state,
-        fallback: wakeStart ?? 0,
+        card: card as Card & { agent: AgentRef },
+        now,
       })
-      void host.hydra({
-        id: first.id,
-        actor: 'pnyx',
-        text: `<pnyx-wake>Stalled: ${stalls.map(s => s.text).join('; ')}. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text; otherwise answer it or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.</pnyx-wake>`,
-      })
+    })
+      .filter(stall => stallDue({
+        id: stall.id,
+        now,
+      }))
+    const waits = endedWaits({
+      state,
+      now,
+    }).filter(wait => !stalled.has(wait.id))
+    const [first] = [
+      ...stalls,
+      ...waits,
+    ]
+
+    if (!first) {
+      return
     }
+
+    const alarm = ({
+      stall,
+    }: {
+      stall: {
+        id: string
+        text: string
+      }
+    }) => {
+      const count = stalled.get(stall.id)?.count ?? 0
+
+      if (count === 0) {
+        return stall.text
+      }
+
+      return `${stall.text} (alarm ${count + 1})`
+    }
+
+    const found: string[] = []
+
+    if (stalls.length) {
+      found.push(`Stalled: ${stalls.map(stall => alarm({ stall })).join('; ')}.`)
+    }
+
+    if (waits.length) {
+      found.push(`Wait ended: ${waits.map(wait => wait.text).join('; ')}.`)
+    }
+
+    const firstCount = stalled.get(first.id)?.count ?? 0
+    const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
+
+    for (const item of [
+      ...stalls,
+      ...waits,
+    ]) {
+      const count = stalled.get(item.id)?.count ?? 0
+      stalled.set(
+        item.id,
+        {
+          count: count + 1,
+          at: now,
+        },
+      )
+    }
+
+    const after = wakeCursor({
+      state,
+      fallback: wakeStart ?? 0,
+    })
+    void host.hydra({
+      id: wakeTurnId,
+      actor: 'pnyx',
+      text: `<pnyx-wake>${found.join(' ')} Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text; otherwise answer it or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.</pnyx-wake>`,
+    })
   }
 
-  const stalled = new Set<string>()
+  // Each stall or wait fired so far: how many times, and when last.
+  const stalled = new Map<string, {
+    count: number
+    at: number
+  }>()
   const stallTimer = setInterval(
     checkStalls,
     Math.min(
