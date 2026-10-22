@@ -19,14 +19,14 @@ Your state changes only when you say so:
 pnyx-axi task status <task> working --note "<what you are doing>" --hydra <hydra>
 pnyx-axi task status <task> needs_you --note "<the question>" --hydra <hydra>
 pnyx-axi task status <task> blocked --note "<what stops you>" --hydra <hydra>
-pnyx-axi task status <task> paused --note "<why, and what resumes it>" --hydra <hydra>
+pnyx-axi task status <task> paused --note "<why, and what resumes it>" [--until <time>] --hydra <hydra>
 pnyx-axi task status <task> done --note "<the result, with links>" --hydra <hydra>
 ```
 
 - Declare `working` when you start.
 - Ask a question or for a decision with `pnyx-axi task ask <task> --question "<one short question>" [--context "<a few lines>"] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details-file <path>] --hydra <hydra>`. It goes to Hydra, which answers it or hands it to the owner, and the answer arrives as a message that names the question. Keep working on what does not depend on it and wait for the answer before what does. Choices are optional; evidence goes in `--details` or `--details-file`, not in the question. A worker started without `PNYX_ACTOR` set passes `--actor worker:<task>`.
 - Keep each `--note` to one line; a question belongs in `task ask`, not in a status note.
-- Declare `blocked` for a real obstacle, `paused` for a deliberate wait, `done` only when the work is finished.
+- Declare `blocked` for a real obstacle, `paused` for a deliberate wait, `done` only when the work is finished. A long command such as a test suite is not a wait; a wait with a known end, such as checks due by 15:00, takes `--until <time>` (an ISO time, `"in 2 hours"` or `"tomorrow 9:00"`), and Hydra checks on it then.
 - For code work, finished means landed by the project's rule, which your worker header's Landing line states. With a pull request: push, open it ready, link it, and declare `needs_you` with its URL; never merge it yourself. Do not wait on it: Pnyx follows it, sends you its failed checks and new review comments to fix on your branch (fix them there and push; do not reply on the pull request, since your replies would come back as new comments), and declares the task done when it merges. With branch-only landing: commit on your branch, then declare `done`. Pnyx refuses `done` while files are uncommitted or the work has not landed, and says what is missing.
 - An investigation answers with a report that stands alone. Store it with `pnyx-axi task report <task> --file <path> --hydra <hydra>`, then declare `done`; `done` is refused until it is stored. A report does not authorize building. If the owner turns it into the build, a message tells you so: start a fresh branch from the up-to-date default branch and carry over only the changes the build needs.
 - Your declarations place your card: `working` moves it to In progress, `needs_you` or `blocked` to Needs you, and `done` to Done; `paused` leaves it where it is.
