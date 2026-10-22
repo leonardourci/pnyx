@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { ownerOnly } from '../src/cli/hydra-session.ts'
 import { commands as cli } from '../src/cli/commands.ts'
 import { decidePush } from '../src/core/decide.ts'
-import { HYDRA_CARD, hydraConfig, hydraEvent } from '../src/core/hydra.ts'
+import { HYDRA_CARD, hydraConfig, hydraEvent, hydraMode } from '../src/core/hydra.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { configPath } from '../src/dispatch/config.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
@@ -424,6 +424,20 @@ test(
       5,
     )
 
+    // Settings written straight to the log reach the reducer unchecked, so a Claude Hydra can carry a never that grants nothing.
+    hydraIn({
+      running: 'never',
+      chosen: 'never',
+    })
+    assert.equal(
+      hydraMode({ state: loadHydra({ hydraId: 'lab' }).state }),
+      'never',
+    )
+    assert.equal(
+      (hydra.setup(['hooks']) as { confirmation: string }).confirmation,
+      'needed',
+    )
+
     // Codex's never runs with full access, so it counts once the session runs the never the composer names.
     hydraIn({
       harness: 'codex',
@@ -480,7 +494,7 @@ test(
     )
     assert.equal(
       asked(),
-      9,
+      10,
     )
   },
 )

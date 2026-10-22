@@ -404,8 +404,9 @@ export function hydraMode({ state }: { state: HydraState }): string | undefined 
 // Codex's never runs with the same full access as Bypass permissions.
 export function hydraBypasses({ state }: { state: HydraState }): boolean {
   const mode = hydraMode({ state })
+  const codexNever = mode === 'never' && state.cards[HYDRA_CARD]?.agent?.provider === 'codex'
 
-  return mode === 'bypassPermissions' || mode === 'never'
+  return mode === 'bypassPermissions' || codexNever
 }
 
 // Changes that wake a hosted Hydra for a check turn; never Hydra's own writes or card.
