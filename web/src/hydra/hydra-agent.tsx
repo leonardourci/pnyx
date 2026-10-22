@@ -1,4 +1,4 @@
-import { useHeadsDispatch } from './heads-dispatch.ts'
+import { hydraDefault, useHeadsDispatch } from './heads-dispatch.ts'
 import { useEffect, useRef, useState } from 'react'
 import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
@@ -141,10 +141,12 @@ export function HydraAgent({
       value: string
       harness?: AgentConfig['harness']
     }) => void saveHydra({
-      patch: {
+      patch: hydraDefault({
+        rule,
         harness,
-        [field]: value,
-      },
+        field,
+        value,
+      }),
     }).then(
       () => notify({ text: 'New Hydras will start with this.' }),
       (error: Error) => notify({ text: error.message }),
