@@ -36,15 +36,18 @@ const shell = ({
 }: {
   command: string
   description?: string
-}) => label({
-  calls: [
-    {
-      tool: 'Bash',
-      command,
-      ...(description ? { description } : {}),
-    },
-  ],
-})
+}) => {
+  const call: Omit<ToolCall, 'id'> = {
+    tool: 'Bash',
+    command,
+  }
+
+  if (description) {
+    call.description = description
+  }
+
+  return label({ calls: [call] })
+}
 
 const says = ({ command }: { command: string }) => shell({ command })?.sentence.join('')
 

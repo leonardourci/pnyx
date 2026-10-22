@@ -187,15 +187,37 @@ const searching = ({ query }: { query?: string }) => query && PLAIN_WORD.test(qu
 const host = ({ text }: { text: string }) => /https?:\/\/([^/\s"']+)/.exec(text)?.[1]
 const reviewing = ({ name }: { name?: string }) => !!name && /review|inspect/i.test(name)
 
+const SKILL_FILE = '/SKILL.md'
+const SEARCH_TOOLS = /^(rg|grep|egrep|ag|ack)$/
+
+// A skill read as a file, the way Codex loads one: .../skills/<name>/SKILL.md.
 const skillFile = ({ shell }: { shell?: Shell }) => {
   const file = shell && lastPath({ args: shell.args })
 
-  return file?.endsWith('SKILL.md') ? base({
+  if (!file?.endsWith(SKILL_FILE)) {
+    return undefined
+  }
+
+  return base({
     path: file.slice(
       0,
-      -'/SKILL.md'.length,
+      -SKILL_FILE.length,
     ),
-  }) : undefined
+  })
+}
+
+const searchTerm = ({
+  call,
+  shell,
+}: {
+  call: ToolCall
+  shell?: Shell
+}) => {
+  if (call.query || !shell || !SEARCH_TOOLS.test(shell.program)) {
+    return call.query
+  }
+
+  return positional({ args: shell.args })[0]
 }
 
 // Unwraps `sh -c '…'`, leading `cd … &&`, environment assignments and runners, then reads the first command.
@@ -336,7 +358,12 @@ const RULES: Rule[] = [
         return 'Looking at files'
       }
 
-      return searching({ query: call.query ?? (shell && /^(rg|grep|egrep|ag|ack)$/.test(shell.program) ? positional({ args: shell.args })[0] : undefined) })
+      return searching({
+        query: searchTerm({
+          call,
+          shell,
+        }),
+      })
     },
   },
   {
@@ -416,11 +443,14 @@ function fallback({
     return 'Running a command'
   }
 
-  const script = INTERPRETERS.test(shell.program)
-    ? positional({ args: shell.args }).find(arg => SCRIPT_EXTENSION.test(arg))
-    : undefined
+  const script = INTERPRETERS.test(shell.program) && positional({ args: shell.args })
+    .find(arg => SCRIPT_EXTENSION.test(arg))
 
-  return `Running ${script ? base({ path: script }) : shell.program.replace(
+  if (script) {
+    return `Running ${base({ path: script })}`
+  }
+
+  return `Running ${shell.program.replace(
     SCRIPT_EXTENSION,
     '',
   )}`
@@ -454,6 +484,14 @@ function pnyxNow({ sentence }: { sentence: Segment[] }): Segment[] {
   return kept
 }
 
+const shellCall = ({ call }: { call: ToolCall }) => {
+  if (!SHELL_TOOLS.test(call.tool) || !call.command) {
+    return undefined
+  }
+
+  return shellOf({ command: call.command })
+}
+
 function callLabel({
   call,
   lookup,
@@ -465,9 +503,7 @@ function callLabel({
     return undefined
   }
 
-  const shell = SHELL_TOOLS.test(call.tool) && call.command
-    ? shellOf({ command: call.command })
-    : undefined
+  const shell = shellCall({ call })
   const words = shell && pnyxWords({ command: shell.line })
 
   if (words) {

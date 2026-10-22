@@ -9,6 +9,20 @@ import type { PnyxLookup } from './pnyx-action.ts'
 // start and a transcript line stamped by different processes.
 const TURN_SLACK_MS = 5000
 
+const fromEarlierTurn = ({
+  action,
+  since,
+}: {
+  action: CurrentAction
+  since?: string | null
+}) => {
+  if (!since || !action.at) {
+    return false
+  }
+
+  return Date.parse(action.at) < Date.parse(since) - TURN_SLACK_MS
+}
+
 const labelKey = ({ value }: { value: ActionLabel }) => `${value.icon}:${value.sentence.map(part => typeof part === 'string' ? part : part.label).join('')}`
 
 // What the agent is running now, after the running dots or in a working card's pill.
@@ -24,9 +38,10 @@ export function ActionBubble({
   lookup: PnyxLookup
   idle?: string
 }) {
-  const turnStart = since ? Date.parse(since) - TURN_SLACK_MS : undefined
-  const earlier = turnStart !== undefined && !!action?.at && Date.parse(action.at) < turnStart
-  const stale = !action || earlier
+  const stale = !action || fromEarlierTurn({
+    action,
+    since,
+  })
   // Bookkeeping calls give no label (undefined), which keeps the one shown.
   const label = stale ? null : actionLabel({
     action,
