@@ -3,7 +3,7 @@ import type { ModelOption } from '../../../src/server/provider.ts'
 import type { Command } from './connection.ts'
 import { Button, Select, type Option } from '../components/ui/controls.tsx'
 
-type Look = Pick<ComponentProps<typeof Select>, 'icon' | 'display' | 'title' | 'defaultValue' | 'onDefault'>
+type Look = Pick<ComponentProps<typeof Select>, 'defaultValue' | 'onDefault'>
 
 export function PickerField({
   label,
@@ -31,7 +31,7 @@ export function PickerField({
         disabled={disabled || !!reason}
         onChange={onChange}
         {...look}
-        title={reason ?? look.title}
+        title={reason}
       />
       {reason && <small>{reason}</small>}
     </div>
@@ -47,14 +47,10 @@ export function useModels({
   command: Command
   connected: boolean
 }) {
-  // Kept with its harness, so a switch never shows the previous harness's models.
   const [
-    catalog,
-    setCatalog,
-  ] = useState<{
-    harness: string
-    models: ModelOption[]
-  }>()
+    models,
+    setModels,
+  ] = useState<ModelOption[]>()
   const [
     error,
     setError,
@@ -78,10 +74,7 @@ export function useModels({
       })
         .then(receipt => {
           if (active) {
-            setCatalog({
-              harness,
-              models: receipt.models as ModelOption[],
-            })
+            setModels(receipt.models as ModelOption[])
           }
         })
         .catch((error: Error) => {
@@ -103,7 +96,7 @@ export function useModels({
   )
 
   return {
-    models: catalog?.harness === harness ? catalog.models : undefined,
+    models,
     error,
     retry: () => setRetry(value => value + 1),
   }
