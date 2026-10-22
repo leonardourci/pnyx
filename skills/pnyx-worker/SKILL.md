@@ -33,7 +33,17 @@ pnyx-axi task status <task> done --note "<the result, with links>" --hydra <hydr
 
 Send a report that needs no answer with `pnyx-axi hydra send --task <task> --text "<what changed>" --hydra <hydra>`; Hydra reads it as yours, never as the owner's words, and it never answers a question.
 
-Replies reach you as ordinary messages in your session. Link pull requests or tickets with `pnyx-axi link <task> --url <url> --hydra <hydra>`.
+Replies reach you as ordinary messages in your session, even in the middle of a turn. Link pull requests or tickets with `pnyx-axi link <task> --url <url> --hydra <hydra>`.
+
+## Review pages
+
+When the owner should review something on a page, you own that page end to end; Hydra only relays its link.
+
+- Build it with Lavish in your copy and keep it out of your commits. Open it with `lavish-axi <page>`, which prints the page's link.
+- Arm its listener so each round of the owner's comments comes straight to you, never to Hydra. After opening the page, and again after every round, run in the background:
+  `lavish-axi poll <page> [--agent-reply "<what you changed>"] | pnyx-axi reply <task> --file - --actor hook:lavish --hydra <hydra>`
+- Apply each round, reply on the page itself (the `--agent-reply` above), then send Hydra one short line: `pnyx-axi hydra send --task <task> --text "<round N: what changed>" --hydra <hydra>`. The first line carries the page's link so Hydra can hand it to the owner.
+- A round that needs a decision only the owner can make goes through `task ask`, not the page line.
 
 Pnyx usually starts you in your task's own copy of the project, on its own branch. Commit your work there and link its pull request: once the task is done, Pnyx removes the copy only if nothing is left uncommitted and the work has landed.
 
