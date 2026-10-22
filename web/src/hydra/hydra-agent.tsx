@@ -4,7 +4,7 @@ import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
 import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
 import { Button } from '../components/ui/controls.tsx'
-import { Icon } from '../components/ui/icon.tsx'
+import { hasIcon, Icon } from '../components/ui/icon.tsx'
 import { Tooltip } from '../components/ui/tooltip.tsx'
 import { modelOptions } from './model-options.ts'
 import type { Command } from './connection.ts'
@@ -34,17 +34,6 @@ const splitChoice = ({ value }: { value: string }) => {
     value.slice(at + 1),
   ] as const
 }
-
-const MODE_ICONS = [
-  'plan',
-  'untrusted',
-  'default',
-  'on-request',
-  'acceptEdits',
-  'auto',
-  'never',
-  'bypassPermissions',
-]
 
 export function HydraAgent({
   state,
@@ -218,7 +207,7 @@ export function HydraAgent({
         const options = choices.map(o => ({
           value: o.value,
           label: o.label,
-          ...(field === 'mode' && MODE_ICONS.includes(o.value) ? { icon: `mode-${o.value}` } : {}),
+          ...(hasIcon({ name: `${field}-${o.value}` }) ? { icon: `${field}-${o.value}` } : {}),
         }))
 
         if (value && !options.some(o => o.value === value)) {
@@ -242,7 +231,6 @@ export function HydraAgent({
                 [field]: value,
               },
             })}
-            icon={field === 'effort' ? 'effort' : undefined}
             {...startsWith({ field })}
           />
         )
