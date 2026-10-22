@@ -1161,6 +1161,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-agent-pickers .select { min-width: 0; }
 
+.hydra-agent-pickers .fast-toggle { min-height: 26px; padding: 2px 6px; color: var(--color-muted); }
+
+.hydra-agent-pickers .fast-toggle[aria-pressed=true] { color: var(--color-gold); }
+
 .task-updates { flex: 1; min-height: 0; overflow: auto; overflow-wrap: anywhere; padding: 8px 2px; }
 .task-updates-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .updates-order { font-size: var(--text-meta); color: var(--color-muted); padding: 2px 6px; }

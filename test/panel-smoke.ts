@@ -241,7 +241,7 @@ try {
     undefined,
   )
   await check({
-    condition: '!!document.querySelector(`.hydra-chat [aria-label="Fast"]`)',
+    condition: '!!document.querySelector(`.hydra-chat [aria-label="Fast mode"]`)',
     label: 'Fast is available in the composer',
   })
   const {
@@ -254,6 +254,7 @@ try {
       harness: 'codex',
       model: 'gpt-6.1-sol',
       effort: 'high',
+      fast: false,
     },
   )
   assert.ok(

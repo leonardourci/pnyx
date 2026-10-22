@@ -130,7 +130,7 @@ try {
     value: '',
   })
   await check({
-    condition: '[...document.querySelectorAll(".hydra-chat [role=combobox]")].map(x => x.getAttribute("aria-label")).join(",") === "Model,Effort,Permissions,Fast" && !document.querySelector(".hydra-chat [role=dialog]")',
+    condition: '[...document.querySelectorAll(".hydra-chat [role=combobox]")].map(x => x.getAttribute("aria-label")).join(",") === "Model,Effort,Permissions" && document.querySelector(".hydra-chat [aria-label=\\"Fast mode\\"]")?.getAttribute("aria-pressed") === "false" && !document.querySelector(".hydra-chat [role=dialog]")',
     label: 'Hydra settings are directly in the composer, with agent and model in one picker',
   })
   await click({ selector: '.hydra-chat [aria-label=Model]' })

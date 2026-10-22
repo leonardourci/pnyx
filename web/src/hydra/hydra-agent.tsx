@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
 import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
+import { Button } from '../components/ui/controls.tsx'
+import { Icon } from '../components/ui/icon.tsx'
+import { Tooltip } from '../components/ui/tooltip.tsx'
 import { modelOptions } from './model-options.ts'
 import type { Command } from './connection.ts'
 
@@ -115,11 +118,14 @@ export function HydraAgent({
     ...(named.model ? { model: named.model } : {}),
     ...(named.effort ? { effort: named.effort } : {}),
     ...(named.mode ? { mode: named.mode } : {}),
+    // Fast mode starts off; only the toggle turns it on.
+    fast: agent.fast ?? false,
   }
   const fields = [
     'model',
     'effort',
     'mode',
+    'fast',
   ] as const
   const missing = !firstmate && !!effective && !!catalog.models
     && fields.some(field => next[field] !== agent[field])
@@ -137,10 +143,8 @@ export function HydraAgent({
   }
 
   // The hydra rule is what every new Hydra starts with.
-  const startsWith = ({ field }: { field: 'model' | 'effort' | 'mode' | 'fast' }) => ({
-    defaultValue: rule?.harness !== agent.harness ? undefined
-      : field === 'fast' ? rule.fast === undefined ? 'default' : rule.fast ? 'on' : 'off'
-        : rule[field],
+  const startsWith = ({ field }: { field: 'model' | 'effort' | 'mode' }) => ({
+    defaultValue: rule?.harness !== agent.harness ? undefined : rule[field],
     onDefault: ({
       value,
       harness = agent.harness,
@@ -150,7 +154,7 @@ export function HydraAgent({
     }) => void saveHydra({
       patch: {
         harness,
-        [field]: field === 'fast' ? value === 'default' ? undefined : value === 'on' : value,
+        [field]: value,
       },
     }).then(
       () => notify({ text: 'New Hydras will start with this.' }),
@@ -243,37 +247,22 @@ export function HydraAgent({
           />
         )
       })}
-      <PickerField
-        label="Fast"
-        value={agent.fast === undefined ? 'default' : agent.fast ? 'on' : 'off'}
-        options={[
-          {
-            value: 'default',
-            label: 'Fast default',
-            icon: 'fast',
-          },
-          {
-            value: 'off',
-            label: 'Fast off',
-            icon: 'fast',
-          },
-          {
-            value: 'on',
-            label: 'Fast on',
-            icon: 'fast-on',
-          },
-        ]}
-        disabled={busy || !connected}
-        onChange={({ value }) => save({
-          next: {
-            ...agent,
-            fast: value === 'default' ? undefined : value === 'on',
-          },
-        })}
-        display={<></>}
-        title={`Fast mode: ${agent.fast === undefined ? 'harness default' : agent.fast ? 'on' : 'off'}`}
-        {...startsWith({ field: 'fast' })}
-      />
+      <Tooltip content={agent.fast ? 'Fast mode on' : 'Fast mode off'}>
+        <Button
+          className="fast-toggle"
+          aria-label="Fast mode"
+          aria-pressed={agent.fast === true}
+          disabled={busy || !connected}
+          onClick={() => save({
+            next: {
+              ...agent,
+              fast: !agent.fast,
+            },
+          })}
+        >
+          <Icon name={agent.fast ? 'fast-on' : 'fast'} size={15} />
+        </Button>
+      </Tooltip>
     </div>
   )
 }
