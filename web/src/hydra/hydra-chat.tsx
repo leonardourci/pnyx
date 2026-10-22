@@ -11,12 +11,15 @@ import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Resize } from '../components/ui/resize.tsx'
+import { TaskReference, TaskReferencesProvider } from '../components/ui/task-reference.tsx'
+import type { HydraQueue, QueuedUpdate } from '../../../src/server/host.ts'
 import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
 import { InlinePermissions } from './permissions.tsx'
 import { Messages, type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
 import { ActionBubble } from './action-bubble.tsx'
+import { LiveLabel } from '../components/ui/live-label.tsx'
 import type { CurrentAction } from '../../../src/thread/calls.ts'
 import { UsageRing } from './usage-ring.tsx'
 import { Composer } from './composer.tsx'
@@ -48,6 +51,7 @@ export function HydraChat({
   comments,
   setComments,
   liveThread,
+  queue,
   projectSetup,
   openTask,
   action,
@@ -55,6 +59,7 @@ export function HydraChat({
   projectSetup?: ReactNode
   action?: CurrentAction
   liveThread: ThreadPage | null
+  queue: HydraQueue
   state: HydraState
   command: Command
   connected: boolean
@@ -294,6 +299,7 @@ export function HydraChat({
   const hosted = hydra.kind !== 'firstmate'
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const running = working || (hosted && pending.length > 0)
+  const queueShown = queue.waiting.length > 0 || (running && queue.reading.length > 0)
   // A send counts from the owner's message until the server says the turn began.
   const lookup = pnyxLookup({ state })
   const since = (working ? card?.workingSince : undefined)
@@ -552,12 +558,23 @@ export function HydraChat({
                 notify={notify}
               />
             )}
+            {/* ponytail: room for one wrapped row of task chips; more rows overlap the last message. */}
+            {queueShown && <div className="chat-queue-room" aria-hidden="true" />}
           </div>
         </div>
-        {running && (
-          <Running since={since} label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}>
-            <ActionBubble action={action} since={since} lookup={lookup} />
-          </Running>
+        {(running || queueShown) && (
+          <TaskReferencesProvider references={references} openTask={openTask}>
+            <Running
+              since={running ? since : null}
+              running={running}
+              label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}
+              reading={running ? queue.reading : []}
+              waiting={queue.waiting}
+              tasks={Object.keys(references)}
+            >
+              <ActionBubble action={action} since={since} lookup={lookup} />
+            </Running>
+          </TaskReferencesProvider>
         )}
         {away && (
           <>
@@ -632,13 +649,40 @@ export function HydraChat({
   )
 }
 
+const updateCount = ({ count }: { count: number }) => `${count} ${count === 1 ? 'update' : 'updates'}`
+
+// The tasks a group of updates is about, each once with its number of updates, leaving out any this Hydra does not show.
+const updatedTasks = ({
+  updates,
+  tasks,
+}: {
+  updates: QueuedUpdate[]
+  tasks: string[]
+}) => {
+  const shown = updates.map(update => update.card).filter(card => tasks.includes(card))
+
+  return [...new Set(shown)].map(card => ({
+    card,
+    count: shown.filter(other => other === card).length,
+  }))
+}
+
+// The running dots and timer, and Hydra's queue built from Pnyx's own state: what it is reading and what waits for it.
 function Running({
   since,
+  running,
   label,
+  reading,
+  waiting,
+  tasks,
   children,
 }: {
   since: string | null
+  running: boolean
   label: string
+  reading: QueuedUpdate[]
+  waiting: QueuedUpdate[]
+  tasks: string[]
   children?: ReactNode
 }) {
   const [
@@ -657,19 +701,79 @@ function Running({
     [],
   )
 
+  const queueShown = reading.length > 0 || waiting.length > 0
+  const cards = updatedTasks({
+    updates: [
+      ...reading,
+      ...waiting,
+    ],
+    tasks,
+  })
+  // The chips rise in again whenever the queue moves on.
+  const queueKey = `${reading.length}:${waiting.length}`
+
   return (
     <p
       className="chat-running"
       role="status"
-      aria-label={label}
+      aria-label={queueShown ? undefined : label}
       title={since ? `Started ${clock({
         at: since,
         seconds: true,
       })}` : undefined}
     >
-      <WorkingDots />
+      {running && <WorkingDots />}
       {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
       {children}
+      <LiveLabel
+        value={queueWords({
+          reading: reading.length,
+          waiting: waiting.length,
+          cards: cards.length,
+        })}
+        keyOf={({ value }) => value}
+        render={({ value }) => value}
+      />
+      {cards.length > 0 && (
+        <span key={queueKey} className="chat-queue-tasks">
+          {cards.map(({
+            card,
+            count,
+          }) => (
+            <span key={card} className="chat-queue-task">
+              <TaskReference id={card} />
+              {count > 1 && <span className="chat-queue-count" aria-label={`${count} updates`}>{`×${count}`}</span>}
+            </span>
+          ))}
+        </span>
+      )}
     </p>
   )
+}
+
+// What the running line says about Hydra's queue; null once it is empty.
+function queueWords({
+  reading,
+  waiting,
+  cards,
+}: {
+  reading: number
+  waiting: number
+  cards: number
+}): string | null {
+  const colon = cards > 0 ? ':' : ''
+
+  if (reading > 0 && waiting > 0) {
+    return `Hydra is reading ${updateCount({ count: reading })}, ${waiting} more waiting${colon}`
+  }
+
+  if (reading > 0) {
+    return `Hydra is reading ${updateCount({ count: reading })}${colon}`
+  }
+
+  if (waiting > 0) {
+    return `${updateCount({ count: waiting })} waiting for Hydra${colon}`
+  }
+
+  return null
 }

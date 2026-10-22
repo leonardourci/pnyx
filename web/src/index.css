@@ -320,9 +320,19 @@ h3 { font-weight: 600; }
 
 .chat-fade { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; height: var(--chat-end); pointer-events: none; background: linear-gradient(to bottom, transparent, var(--color-surface)); animation: chat-fade-in 200ms ease-out; }
 
-.chat-running { position: absolute; left: 16px; bottom: 6px; z-index: 3; display: flex; align-items: center; gap: 8px; padding: 2px 8px 2px 0; border-radius: 10px; background: var(--color-surface); color: var(--color-muted); font-size: var(--text-meta); font-variant-numeric: tabular-nums; }
+.chat-running { position: absolute; left: 16px; bottom: 6px; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 2px 8px 2px 0; border-radius: 10px; background: var(--color-surface); color: var(--color-muted); font-size: var(--text-meta); font-variant-numeric: tabular-nums; }
 
 .chat-running .working-dots i { width: 5px; height: 5px; }
+.chat-queue-room { height: 40px; }
+
+/* The words share the dots' row; the task chips take a row of their own, so their titles have room. */
+.chat-queue-tasks { animation: reply-appear 140ms ease-out; display: flex; flex: 0 0 100%; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+
+.chat-queue-task { display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%; }
+
+.chat-queue-count { flex: none; font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) { .chat-queue-tasks { animation: none; } }
 
 .chat-running { max-width: calc(100% - 32px); }
 
