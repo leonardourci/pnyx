@@ -228,6 +228,35 @@ export type PermissionEvent = EventBase & {
   data: PermissionRequest
 }
 
+// hydra: a worker's question, answered by Hydra or escalated; owner: waits for the owner's answer.
+export type AskAudience = 'hydra' | 'owner'
+
+// A structured question on a task. The event that asked it keeps its wording and origin;
+// an escalation readdresses it to the owner without replacing either.
+export interface Ask {
+  id: string
+  at: string
+  actor: string
+  audience: AskAudience
+  question: string
+  context?: string
+  details?: string
+  // Choices are optional; a typed answer is always accepted.
+  options?: Question['options']
+  // 1-based, into options.
+  recommended?: number
+  escalated?: {
+    id: string
+    at: string
+    actor: string
+    reason?: string
+    question?: string
+    context?: string
+  }
+  // The reply that delivered its answer.
+  answered?: string
+}
+
 export interface TaskReminder {
   id: string
   at: string
@@ -279,6 +308,7 @@ export interface Card {
   folder?: string
   attention: Attention[]
   permissions?: PermissionRequest[]
+  asks?: Ask[]
   links: Link[]
   sourceRefs: SourceRef[]
   outcome?: Outcome
@@ -440,6 +470,11 @@ export interface HydraMessage {
   text: string
   details?: string
   context?: string
+  // ask: the worker's question this message delivers to Hydra. answers: Hydra's own question to the
+  // owner that this owner message answers, with the choice it picked.
+  ask?: string
+  answers?: string
+  choice?: string
   at: string
   actor: string
   hydra: string
@@ -559,6 +594,18 @@ export type HydraChange = EventBase & (
     data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'>
   }
   | {
+    type: 'task.asked'
+    data: Omit<Ask, 'at' | 'actor' | 'escalated' | 'answered'>
+  }
+  | {
+    type: 'task.ask.escalated'
+    data: {
+      ask: string
+      question?: string
+      context?: string
+    }
+  }
+  | {
     type: 'task.mirrored'
     data: FirstmateRecord
   }
@@ -658,6 +705,8 @@ export type RepliedEvent = EventBase & {
       questionId?: string
       question: string
       answer: string
+      // The picked choice of a structured question, when one was picked.
+      choice?: string
     }
     answers?: string
     detail?: string
@@ -804,6 +853,8 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.retention',
   'hydra.memory',
   'task.declared',
+  'task.asked',
+  'task.ask.escalated',
   'task.mirrored',
   'hydra.message',
   'hydra.dispatch-proposed',

@@ -14,6 +14,7 @@ import {
 import { applyAttachment, cardSessionId, observeSession, sessionId } from './tasks.ts'
 import { applyHydra, fallbackColumn, hydraConfig, refreshTasks, roleColumn } from './hydra.ts'
 import { applyPermission } from './permissions.ts'
+import { applyAsk } from './asks.ts'
 import { refreshDone } from './retention.ts'
 import { applyReminder } from '../reminders/state.ts'
 import { applyQueue } from '../queue/state.ts'
@@ -166,6 +167,10 @@ function apply({
     event,
   })
     || applyPermission({
+      state,
+      event,
+    })
+    || applyAsk({
       state,
       event,
     })
@@ -435,6 +440,13 @@ function apply({
       // A task shows its session's requests, which hooks read back from the
       // session's own card, so the answer is marked on all of them.
       if (answers && event.data.state === 'delivered') {
+        if (card.asks) {
+          card.asks = card.asks.map(a => (a.id === answers ? {
+            ...a,
+            answered: reply.id,
+          } : a))
+        }
+
         const id = cardSessionId({ card })
         const session = id ? state.sessions?.[id] : undefined
         const origin = session && state.cards[session.originCardId]
