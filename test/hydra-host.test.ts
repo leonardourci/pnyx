@@ -2598,8 +2598,25 @@ test(
       'claude',
     )
     process.env.PNYX_SEMANTIC = 'off'
+    fakeDispatch({ root: home })
+    const folder = join(
+      home,
+      'work',
+    )
+    mkdirSync(folder)
     commands.hydra([
       'create',
+      'lab',
+    ])
+    await commands.task([
+      'create',
+      '--title',
+      'Fix add',
+      '--key',
+      'fix',
+      '--folder',
+      folder,
+      '--hydra',
       'lab',
     ])
     const state = () => loadHydra({ hydraId: 'lab' }).state
@@ -2627,6 +2644,18 @@ test(
         'Take a long look',
       ])
       await until({ check: () => sdk.calls[0]?.messages.length === 1 && state().cards[HYDRA_CARD]?.sessionActivity === 'working' })
+      await startTask({
+        hydraId: 'lab',
+        task: 'fix',
+        meta: {
+          at: new Date().toISOString(),
+          actor: 'hydra',
+          reason: 'start it',
+          id: 'start-fix',
+        },
+      })
+      const worker = () => state().cards[state().keys.fix!]
+      await until({ check: () => worker()?.sessionActivity === 'working' })
       const since = state().cards[HYDRA_CARD]!.workingSince
       assert.ok(since && Date.parse(since) <= Date.now())
       assert.deepEqual(
@@ -2638,9 +2667,14 @@ test(
         { stopped: 'hydra' },
       )
       await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      // Only Hydra's own turn stops; its worker keeps going.
+      assert.deepEqual(
+        sdk.interrupts,
+        [sdk.calls[0]],
+      )
       assert.equal(
-        sdk.interrupts.length,
-        1,
+        worker()?.sessionActivity,
+        'working',
       )
       assert.equal(
         state().cards[HYDRA_CARD]!.workingSince,
@@ -2656,9 +2690,10 @@ test(
         'Carry on',
       ])
       await until({ check: () => sdk.calls[0]?.messages.length === 2 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      // The next message resumes Hydra's session; the other one is the worker's.
       assert.equal(
         sdk.calls.length,
-        1,
+        2,
       )
     } finally {
       await server.close()
