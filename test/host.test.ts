@@ -765,6 +765,14 @@ test(
       agentRef.transcriptPath!,
       '',
     )
+    // A mode picked mid-session is kept for the session that resumes it.
+    await agent([
+      'ship',
+      'mode',
+      'bypassPermissions',
+      '--hydra',
+      'lab',
+    ])
 
     await server.close()
     assert.equal(
@@ -816,10 +824,12 @@ test(
       [
         second.calls[0]!.options.resume,
         second.calls[0]!.options.sessionId,
+        second.calls[0]!.options.permissionMode,
       ],
       [
         agentRef.sessionId,
         undefined,
+        'bypassPermissions',
       ],
     )
     assert.equal(
