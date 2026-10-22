@@ -189,9 +189,15 @@ test(
       settings: {},
       signal: new AbortController().signal,
     })
+    // The second message comes after the stopped turn, or it would join that turn.
+    let stopped = () => {}
+    const turnStopped = new Promise<void>(resolve => {
+      stopped = resolve
+    })
     const events = session.run({
       input: (async function* () {
         yield 'HOLD'
+        await turnStopped
         yield 'USAGE'
       })(),
       permission: async () => ({
@@ -210,6 +216,7 @@ test(
         (await events.next()).value,
         'finished',
       )
+      stopped()
       assert.deepEqual(
         fixture.messages().find(message => message.method === 'turn/interrupt')?.params,
         {

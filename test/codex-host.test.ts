@@ -796,7 +796,7 @@ test(
 )
 
 test(
-  'Codex queues replies during a turn, and its command and file approvals wait for the answer and apply only to that call',
+  'Codex steers a reply into its running turn, and its command and file approvals wait for the answer and apply only to that call',
   async () => {
     const {
       fixture,
@@ -806,6 +806,7 @@ test(
       approvals,
       answer,
     } = await lab()
+    const steers = () => fixture.messages().filter(m => m.method === 'turn/steer')
     await startTask({
       hydraId: 'lab',
       task: 'ship',
@@ -814,12 +815,25 @@ test(
     await until({ check: () => task().sessionActivity === 'finished' })
     await send({ text: 'HOLD' })
     await until({ check: () => turns().length === 2 })
-    await send({ text: 'DENY' })
-    assert.equal(
-      task().sessionActivity,
-      'working',
+    await send({ text: 'Also check the docs' })
+    await until({ check: () => steers().length === 1 })
+    assert.deepEqual(
+      [
+        steers()[0]?.params?.expectedTurnId,
+        (steers()[0]?.params?.input as { text: string }[])[0]?.text,
+        turns().length,
+        task().sessionActivity,
+      ],
+      [
+        'turn-2',
+        'Also check the docs',
+        2,
+        'working',
+      ],
     )
     fixture.children[0]!.kill('SIGUSR1')
+    await until({ check: () => task().sessionActivity === 'finished' })
+    await send({ text: 'DENY' })
     await until({ check: () => task().permissions?.[0]?.status === 'pending' })
     assert.equal(
       approvals().length,
