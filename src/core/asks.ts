@@ -1,4 +1,4 @@
-import { HydraError, HYDRA_ACTOR, ownerActor, type Ask, type AskAudience, type Card, type HydraEvent, type HydraState, type Question } from './model.ts'
+import { HydraError, HYDRA_ACTOR, ownerActor, type AnswerMessage, type Ask, type AskAudience, type Card, type HydraEvent, type HydraState, type Question } from './model.ts'
 import { findCard, type Decision, type Meta } from './decide.ts'
 import { HYDRA_CARD, hydraEvent, reportActor } from './hydra.ts'
 
@@ -350,6 +350,8 @@ export function askAnswer({
   choice,
   text: typed,
   undelivered,
+  state,
+  fromMessage,
 }: {
   card: Card
   id: string
@@ -357,10 +359,13 @@ export function askAnswer({
   choice?: string
   text?: string
   undelivered?: boolean
+  state?: HydraState
+  fromMessage?: string
 }): {
   text: string
   decision: {
     questionId: string
+    fromMessage?: AnswerMessage
     question: string
     answer: string
     choice?: string
@@ -378,11 +383,38 @@ export function askAnswer({
     })
   }
 
-  if (ask.audience === 'owner' && actor === HYDRA_ACTOR) {
+  let source: AnswerMessage | undefined
+
+  if (fromMessage !== undefined) {
+    const message = state?.hydraMessages?.find(message => message.id === fromMessage)
+    const ownerMessage = message && ownerActor({ actor: message.actor }) && message.action === 'send'
+    const askedAt = ask.escalated?.at ?? ask.at
+    const newer = message && Date.parse(message.at) > Date.parse(askedAt)
+
+    if (actor !== HYDRA_ACTOR || ask.audience !== 'owner') {
+      throw invalid({ message: '--from-message is for Hydra recording an owner answer to an owner question' })
+    }
+
+    if (!ownerMessage || !newer) {
+      throw invalid({ message: '--from-message must name the owner’s own message sent after the question' })
+    }
+
+    if (choice !== undefined || typed !== undefined) {
+      throw invalid({ message: '--from-message quotes the owner’s message; do not combine it with --choice or --text' })
+    }
+
+    source = {
+      id: message.id,
+      text: message.text,
+      at: message.at,
+    }
+  }
+
+  if (ask.audience === 'owner' && actor === HYDRA_ACTOR && !source) {
     throw new HydraError({
       message: `question ${ask.id} waits for the owner's own answer`,
       code: 'OWNER_ONLY',
-      help: ['Tell the owner it waits in the task; do not answer it for them'],
+      help: ['Use --from-message <id> only when the owner’s own newer message answers this question'],
     })
   }
 
@@ -402,7 +434,7 @@ export function askAnswer({
   }
 
   const note = text({
-    value: typed,
+    value: source?.text ?? typed,
     what: '--text',
     max: ANSWER_MAX,
   })
@@ -412,7 +444,13 @@ export function askAnswer({
     throw invalid({ message: 'answer with --choice, --text or both' })
   }
 
-  const by = actor === HYDRA_ACTOR ? 'Hydra' : ownerActor({ actor }) ? 'the owner' : actor
+  let by = actor
+
+  if (source || ownerActor({ actor })) {
+    by = 'the owner'
+  } else if (actor === HYDRA_ACTOR) {
+    by = 'Hydra'
+  }
 
   return {
     text: [
@@ -425,6 +463,7 @@ export function askAnswer({
       question: askWording({ ask }).question,
       answer: note ?? label!,
       ...(label ? { choice: label } : {}),
+      fromMessage: source,
     },
   }
 }
@@ -444,6 +483,8 @@ export function applyAsk({
       card.asks = card.asks.map(a => (a.id === event.data.answers ? {
         ...a,
         answered: event.id,
+        answeredAt: event.at,
+        fromMessage: event.data.fromMessage,
       } : a))
     }
 

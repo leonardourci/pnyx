@@ -42,7 +42,6 @@ export interface Meta {
   // Expected card revision; 0 for a card that does not exist yet.
   ifRevision?: number
   reason?: string
-  // Longer context under the chat line a Hydra change posts.
   details?: string
 }
 
@@ -96,7 +95,7 @@ function base({
 }) {
   const seq = state.seq + 1
 
-  return {
+  const event: Pick<HydraEvent, 'v' | 'seq' | 'id' | 'at' | 'actor' | 'cardId' | 'reason' | 'details'> = {
     v: EVENT_VERSION,
     seq,
     id: meta.id ?? freeId({
@@ -108,6 +107,12 @@ function base({
     cardId,
     ...(meta.reason ? { reason: meta.reason } : {}),
   }
+
+  if (meta.details) {
+    event.details = meta.details
+  }
+
+  return event
 }
 
 function strip({ card }: { card: Card | undefined }) {
