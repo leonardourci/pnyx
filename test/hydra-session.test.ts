@@ -190,10 +190,12 @@ test(
     // The session runs one mode while the owner's composer may already name another.
     const hydraIn = ({
       harness = 'claude',
+      kind = 'agent',
       running,
       chosen,
     }: {
       harness?: 'claude' | 'codex'
+      kind?: 'agent' | 'firstmate'
       running: string
       chosen: string
     }) => withWriter({
@@ -236,6 +238,7 @@ test(
               ...config,
               hydra: {
                 ...config.hydra,
+                kind,
                 session: `${provider}:hydra-session`,
                 agent: {
                   harness,
@@ -438,6 +441,21 @@ test(
       'needed',
     )
 
+    // A Firstmate Hydra is not one Pnyx runs, so the Bypass its settings name grants nothing.
+    hydraIn({
+      kind: 'firstmate',
+      running: 'bypassPermissions',
+      chosen: 'bypassPermissions',
+    })
+    assert.equal(
+      loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.settings?.mode,
+      'bypassPermissions',
+    )
+    assert.equal(
+      (hydra.setup(['hooks']) as { confirmation: string }).confirmation,
+      'needed',
+    )
+
     // Codex's never runs with full access, so it counts once the session runs the never the composer names.
     hydraIn({
       harness: 'codex',
@@ -494,7 +512,7 @@ test(
     )
     assert.equal(
       asked(),
-      10,
+      11,
     )
   },
 )
