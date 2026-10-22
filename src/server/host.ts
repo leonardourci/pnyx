@@ -7,7 +7,7 @@ import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:
 import { isAbsolute, join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
-import { modelIds, type HostedSession, type HostedUsage, type ModelOption, type PermissionDecision } from './provider.ts'
+import { mergeWindows, modelIds, type HostedSession, type HostedUsage, type HydraUsage, type ModelOption, type PermissionDecision } from './provider.ts'
 import { liveReplies } from './streaming.ts'
 import { copyTagged } from './tagged-updates.ts'
 import type { ThreadPage } from '../thread/read.ts'
@@ -42,7 +42,7 @@ export interface Host {
     id: string
   }): Promise<Record<string, unknown>>
   stop(): Promise<Record<string, unknown>>
-  usage(): Promise<Record<string, unknown>>
+  usage(): Promise<HydraUsage | { usage: string }>
   start({
     task,
     prompt,
@@ -853,26 +853,26 @@ export function createHost({
       })) {
         if (typeof activity !== 'string' && activity.type === 'usage') {
           const before = usages.get(key) ?? {}
-          const {
-            type: _type,
-            limits,
-            ...known
-          } = activity
-          void _type
           usages.set(
             key,
             {
               ...before,
-              ...Object.fromEntries(Object.entries(known).filter(([
-                ,
-                value,
-              ]) => value !== undefined)),
-              ...(limits ? {
-                limits: [
-                  ...(before.limits ?? []).filter(old =>
-                    !limits.some(limit => limit.label === old.label)),
-                  ...limits,
+              ...Object.fromEntries(([
+                'used',
+                'window',
+                'cost',
+                'plan',
+              ] as const).flatMap(field => activity[field] === undefined ? [] : [
+                [
+                  field,
+                  activity[field],
                 ],
+              ])),
+              ...(activity.limits ? {
+                limits: mergeWindows({
+                  base: before.limits ?? [],
+                  over: activity.limits,
+                }),
               } : {}),
             },
           )
@@ -1651,24 +1651,23 @@ export function createHost({
         },
       })
 
-      // What the agent reported wins; quota-axi fills the windows it did not report.
+      // What the agent reported wins until its window resets; quota-axi fills the rest.
       const {
         limits = [],
         plan: reported,
         ...session
       } = usages.get(sessionId({ agent })) ?? {}
-      const named = ({ label }: { label: string }) => label.toLowerCase()
-      const windows = [
-        ...(plan?.windows ?? []).filter(window =>
-          !limits.some(limit => named(limit) === named(window))),
-        ...limits,
-      ]
+      const windows = mergeWindows({
+        base: plan?.windows ?? [],
+        over: limits.filter(limit => !limit.resetsAt || Date.parse(limit.resetsAt) > Date.now()),
+      })
+      const planName = reported ?? plan?.plan
 
       return {
         harness,
         ...(name ? { account: name } : {}),
         ...session,
-        ...(plan?.plan ?? reported ? { plan: plan?.plan ?? reported } : {}),
+        ...(planName ? { plan: planName } : {}),
         ...(windows.length ? { windows } : {}),
       }
     },
