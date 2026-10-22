@@ -198,6 +198,11 @@ export function Composer({
     caretNext.current = caret; setDraft({ text })
   }
 
+  const fit = ({ element }: { element: HTMLTextAreaElement }) => {
+    element.style.height = 'auto'
+    element.style.height = `${element.scrollHeight}px`
+  }
+
   useLayoutEffect(
     () => {
       const element = input.current
@@ -206,8 +211,7 @@ export function Composer({
         return
       }
 
-      element.style.height = 'auto'
-      element.style.height = `${element.scrollHeight}px`
+      fit({ element })
 
       if (caretNext.current !== null) {
         element.setSelectionRange(
@@ -223,6 +227,33 @@ export function Composer({
       }
     },
     [display],
+  )
+
+  // A wider or narrower panel re-wraps the draft; only a width change refits, so the refit's own height change does not loop.
+  useEffect(
+    () => {
+      const element = input.current
+
+      if (!element) {
+        return
+      }
+
+      let width = element.clientWidth
+      const observer = new ResizeObserver(() => {
+        if (element.clientWidth !== width) {
+          width = element.clientWidth
+          fit({ element })
+
+          if (mirror.current) {
+            mirror.current.scrollTop = element.scrollTop
+          }
+        }
+      })
+      observer.observe(element)
+
+      return () => observer.disconnect()
+    },
+    [],
   )
 
   const chooseMention = ({ item }: { item: MentionItem }) => {
