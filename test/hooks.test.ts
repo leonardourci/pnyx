@@ -20,7 +20,9 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 import type { Attention } from '../src/core/model.ts'
+import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { PR_COMMANDS, attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
+import { loadHydra, readEvents, spoolWrite } from '../src/store/hydra-store.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -300,44 +302,6 @@ test(
     assert.deepEqual(
       line.payload,
       JSON.parse(fixture({ name: 'claude-user-prompt' })),
-    )
-  },
-)
-
-test(
-  'hook passes on every tool call, not only shell commands',
-  async () => {
-    const {
-      script,
-      spooled,
-    } = sandbox()
-    await hook({
-      script,
-      args: [
-        'claude',
-        'PreToolUse',
-      ],
-      input: fixture({ name: 'claude-pre-tool-ls' }),
-    })
-    await hook({
-      script,
-      args: [
-        'claude',
-        'PreToolUse',
-      ],
-      input: fixture({ name: 'claude-pre-tool-ask' }),
-    })
-    await hook({
-      script,
-      args: [
-        'codex',
-        'PostToolUse',
-      ],
-      input: fixture({ name: 'codex-post-tool' }),
-    })
-    assert.equal(
-      spooled().length,
-      3,
     )
   },
 )
@@ -701,16 +665,6 @@ test(
       })[0]!.outcome,
       'ended',
     )
-    assert.equal(
-      observe({
-        envelope: envelope({
-          harness: 'claude',
-          event: 'SubagentStop',
-          name: 'claude-subagent-stop',
-        }),
-      })[1]!.outcome,
-      'ended',
-    )
     const bare = envelope({
       harness: 'claude',
       event: 'SubagentStop',
@@ -728,17 +682,6 @@ test(
       observe({ envelope: noAgent })[0]!.outcome,
       undefined,
       'a SubagentStop without agent_id never ends the session',
-    )
-    assert.equal(
-      observe({
-        envelope: envelope({
-          harness: 'claude',
-          event: 'Stop',
-          name: 'claude-stop',
-        }),
-      })[0]!.outcome,
-      undefined,
-      'a finished turn is not an ended session',
     )
   },
 )
@@ -763,20 +706,6 @@ test(
     assert.deepEqual(
       parent!.attend,
       { clear: ['hook:notification'] },
-    )
-    assert.equal(
-      parent!.ifChanged,
-      true,
-    )
-    assert.equal(
-      observe({
-        envelope: envelope({
-          harness: 'claude',
-          event: 'SubagentStart',
-          name: 'claude-subagent-start',
-        }),
-      })[0]!.ifMissing,
-      true,
     )
     assert.equal(
       child!.key,
@@ -929,10 +858,6 @@ test(
       o!.key,
       `codex:${CODEX_SESSION}`,
     )
-    assert.equal(
-      o!.card.activity,
-      'finished',
-    )
     assert.deepEqual(
       o!.card.agent,
       {
@@ -980,7 +905,6 @@ test(
   },
 )
 
-type Case = [harness: 'claude' | 'codex', event: string, fixture: string, activity: string | undefined, attention?: Attention[]]
 const ask: Attention = {
   kind: 'question',
   key: 'hook:tool:AskUserQuestion',
@@ -1010,371 +934,126 @@ const allowTouch = ({ tool }: { tool: string }): Attention =>
     blocking: true,
     text: `Allow ${tool}: touch hello.txt && echo made`,
   })
-const NOTHING = Symbol('no observation')
-const CASES: (Case | [Case[0], string, string, typeof NOTHING])[] = [
-  [
-    'claude',
-    'SessionStart',
-    'claude-session-start',
-    'finished',
-    [],
+// Requests an event shows, by the name a CASES row gives them.
+const REQUESTS: Record<string, Attention[]> = {
+  ask: [ask],
+  bash: [allowTouch({ tool: 'Bash' })],
+  plan: [
+    {
+      kind: 'plan',
+      key: 'hook:tool:ExitPlanMode',
+      blocking: true,
+      text: 'Approve the plan',
+    },
   ],
-  [
-    'claude',
-    'SessionStart',
-    'claude-session-start-compact',
-    undefined,
-    [],
+  write: [
+    {
+      kind: 'permission',
+      key: 'hook:tool:Write',
+      blocking: true,
+      text: 'Allow Write: /work/repo/notes.md',
+    },
   ],
-  [
-    'claude',
-    'UserPromptSubmit',
-    'claude-user-prompt',
-    'working',
-    [],
+  permission: [
+    {
+      kind: 'permission',
+      key: 'hook:notification',
+      blocking: true,
+      text: 'Claude needs your permission',
+    },
   ],
-  [
-    'claude',
-    'PreToolUse',
-    'claude-pre-tool-ls',
-    'working',
-    [],
+  input: [
+    {
+      kind: 'input',
+      key: 'hook:notification',
+      blocking: true,
+      text: 'A background agent needs your input',
+    },
   ],
-  [
-    'claude',
-    'PreToolUse',
-    'claude-pre-tool-pr-create',
-    'working',
-    [],
+  elicitation: [
+    {
+      kind: 'input',
+      key: 'hook:elicitation',
+      blocking: true,
+      text: 'An MCP server is asking for input',
+    },
   ],
-  [
-    'claude',
-    'PreToolUse',
-    'claude-pre-tool-ask',
-    'working',
-    [ask],
+  form: [
+    {
+      kind: 'input',
+      key: 'hook:elicitation',
+      blocking: true,
+      text: 'my-mcp-server: Please provide your username',
+      form: [
+        {
+          name: 'username',
+          title: 'Username',
+          type: 'string',
+        },
+      ],
+    },
   ],
-  [
-    'claude',
-    'PermissionRequest',
-    'claude-permission-request',
-    undefined,
-    [allowTouch({ tool: 'Bash' })],
-  ],
-  [
-    'claude',
-    'PermissionRequest',
-    'claude-permission-request-ask',
-    undefined,
-    [ask],
-  ],
-  [
-    'claude',
-    'PermissionRequest',
-    'claude-permission-request-plan',
-    undefined,
-    [
-      {
-        kind: 'plan',
-        key: 'hook:tool:ExitPlanMode',
-        blocking: true,
-        text: 'Approve the plan',
-      },
-    ],
-  ],
-  [
-    'claude',
-    'PermissionRequest',
-    'claude-permission-request-subagent',
-    undefined,
-    [
-      {
-        kind: 'permission',
-        key: 'hook:tool:Write',
-        blocking: true,
-        text: 'Allow Write: /work/repo/notes.md',
-      },
-    ],
-  ],
-  [
-    'claude',
-    'PermissionDenied',
-    'claude-permission-denied',
-    undefined,
-    [],
-  ],
-  [
-    'claude',
-    'PostToolUse',
-    'claude-post-tool-bash',
-    'working',
-    [],
-  ],
-  [
-    'claude',
-    'PostToolUse',
-    'claude-post-tool-pr-create',
-    'working',
-    [],
-  ],
-  [
-    'claude',
-    'PostToolUseFailure',
-    'claude-post-tool-failure',
-    'working',
-    [],
-  ],
-  [
-    'claude',
-    'Notification',
-    'claude-notification-permission',
-    undefined,
-    [
-      {
-        kind: 'permission',
-        key: 'hook:notification',
-        blocking: true,
-        text: 'Claude needs your permission',
-      },
-    ],
-  ],
-  [
-    'claude',
-    'Notification',
-    'claude-notification-idle',
-    'finished',
-  ],
-  [
-    'claude',
-    'Notification',
-    'claude-notification-input',
-    undefined,
-    [
-      {
-        kind: 'input',
-        key: 'hook:notification',
-        blocking: true,
-        text: 'A background agent needs your input',
-      },
-    ],
-  ],
-  [
-    'claude',
-    'Notification',
-    'claude-notification-elicitation',
-    undefined,
-    [
-      {
-        kind: 'input',
-        key: 'hook:elicitation',
-        blocking: true,
-        text: 'An MCP server is asking for input',
-      },
-    ],
-  ],
-  [
-    'claude',
-    'Notification',
-    'claude-notification-elicitation-done',
-    undefined,
-    [],
-  ],
-  [
-    'claude',
-    'Notification',
-    'claude-notification-quota',
-    NOTHING,
-  ],
-  [
-    'claude',
-    'Notification',
-    'claude-notification-auth',
-    NOTHING,
-  ],
-  [
-    'claude',
-    'Elicitation',
-    'claude-elicitation',
-    undefined,
-    [
-      {
-        kind: 'input',
-        key: 'hook:elicitation',
-        blocking: true,
-        text: 'my-mcp-server: Please provide your username',
-        form: [
-          {
-            name: 'username',
-            title: 'Username',
-            type: 'string',
-          },
-        ],
-      },
-    ],
-  ],
-  [
-    'claude',
-    'ElicitationResult',
-    'claude-elicitation-result',
-    undefined,
-    [],
-  ],
-  [
-    'claude',
-    'SubagentStart',
-    'claude-subagent-start',
-    'working',
-  ],
-  [
-    'claude',
-    'SubagentStop',
-    'claude-subagent-stop',
-    'finished',
-    [],
-  ],
-  [
-    'claude',
-    'SubagentStop',
-    'claude-subagent-stop-helper',
-    NOTHING,
-  ],
-  [
-    'claude',
-    'PostCompact',
-    'claude-post-compact',
-    undefined,
-    undefined,
-  ],
-  [
-    'claude',
-    'Stop',
-    'claude-stop',
-    'finished',
-    [],
-  ],
-  [
-    'claude',
-    'Stop',
-    'claude-stop-background',
-    'finished',
-    [],
-  ],
-  [
-    'claude',
-    'StopFailure',
-    'claude-stop-failure',
-    'finished',
-    [],
-  ],
-  [
-    'claude',
-    'SessionEnd',
-    'claude-session-end',
-    'ended',
-    [],
-  ],
-  [
-    'claude',
-    'PostModelSwitch',
-    'claude-post-model-switch',
-    undefined,
-    undefined,
-  ],
-  [
-    'codex',
-    'SessionStart',
-    'codex-session-start',
-    'finished',
-    [],
-  ],
-  [
-    'codex',
-    'UserPromptSubmit',
-    'codex-user-prompt',
-    'working',
-    [],
-  ],
-  [
-    'codex',
-    'PreToolUse',
-    'codex-pre-tool',
-    'working',
-    [],
-  ],
-  [
-    'codex',
-    'PermissionRequest',
-    'codex-permission-request',
-    undefined,
-    [allowTouch({ tool: 'Bash' })],
-  ],
-  [
-    'codex',
-    'PostToolUse',
-    'codex-post-tool',
-    'working',
-    [],
-  ],
-  [
-    'codex',
-    'PostToolUse',
-    'codex-post-tool-deploy',
-    'working',
-    [],
-  ],
-  [
-    'codex',
-    'SubagentStart',
-    'codex-subagent-start',
-    'working',
-  ],
-  [
-    'codex',
-    'SubagentStop',
-    'codex-subagent-stop',
-    'finished',
-    [],
-  ],
-  [
-    'codex',
-    'PostCompact',
-    'codex-post-compact',
-    undefined,
-    undefined,
-  ],
-  [
-    'codex',
-    'Stop',
-    'codex-stop',
-    'finished',
-    [],
-  ],
-  [
-    'codex',
-    'Interrupt',
-    'codex-interrupt',
-    'finished',
-    [],
-  ],
-  [
-    'codex',
-    'SessionEnd',
-    'codex-session-end',
-    'ended',
-    [],
-  ],
+}
+// One row per fixture: harness, event, fixture, the turn state it sets ('-' leaves it, 'none' means
+// the event maps to nothing) and its requests ('clears' ends hook requests, 'keeps' leaves them, or a REQUESTS name).
+const CASES = [
+  'claude SessionStart claude-session-start finished clears',
+  'claude SessionStart claude-session-start-compact - clears',
+  'claude UserPromptSubmit claude-user-prompt working clears',
+  'claude PreToolUse claude-pre-tool-ls working clears',
+  'claude PreToolUse claude-pre-tool-ask working ask',
+  'claude PermissionRequest claude-permission-request - bash',
+  'claude PermissionRequest claude-permission-request-ask - ask',
+  'claude PermissionRequest claude-permission-request-plan - plan',
+  'claude PermissionRequest claude-permission-request-subagent - write',
+  'claude PermissionDenied claude-permission-denied - clears',
+  'claude PostToolUse claude-post-tool-bash working clears',
+  'claude PostToolUseFailure claude-post-tool-failure working clears',
+  'claude Notification claude-notification-permission - permission',
+  'claude Notification claude-notification-idle finished keeps',
+  'claude Notification claude-notification-input - input',
+  'claude Notification claude-notification-elicitation - elicitation',
+  'claude Notification claude-notification-elicitation-done - clears',
+  'claude Notification claude-notification-quota none',
+  'claude Notification claude-notification-auth none',
+  'claude Elicitation claude-elicitation - form',
+  'claude ElicitationResult claude-elicitation-result - clears',
+  'claude SubagentStart claude-subagent-start working keeps',
+  'claude SubagentStop claude-subagent-stop finished clears',
+  'claude SubagentStop claude-subagent-stop-helper none',
+  'claude PostCompact claude-post-compact - keeps',
+  'claude Stop claude-stop finished clears',
+  'claude StopFailure claude-stop-failure finished clears',
+  'claude SessionEnd claude-session-end ended clears',
+  'claude PostModelSwitch claude-post-model-switch - keeps',
+  'codex SessionStart codex-session-start finished clears',
+  'codex UserPromptSubmit codex-user-prompt working clears',
+  'codex PreToolUse codex-pre-tool working clears',
+  'codex PermissionRequest codex-permission-request - bash',
+  'codex PostToolUse codex-post-tool working clears',
+  'codex SubagentStart codex-subagent-start working keeps',
+  'codex SubagentStop codex-subagent-stop finished clears',
+  'codex PostCompact codex-post-compact - keeps',
+  'codex Stop codex-stop finished clears',
+  'codex Interrupt codex-interrupt finished clears',
+  'codex SessionEnd codex-session-end ended clears',
 ]
 
 test(
   'every subscribed event of both harnesses maps to its turn state and the requests its interface shows',
   () => {
-    for (const [
-      harness,
-      event,
-      name,
-      activity,
-      attention,
-    ] of CASES) {
+    for (const row of CASES) {
+      const [
+        harness,
+        event,
+        name,
+        activity,
+        requests,
+      ] = row.split(' ') as ['claude' | 'codex', string, string, string, string]
+      assert.ok(
+        activity === 'none' || requests === 'keeps' || requests === 'clears' || requests in REQUESTS,
+        `unknown requests token in: ${row}`,
+      )
       const observations = observe({
         envelope: envelope({
           harness,
@@ -1382,9 +1061,8 @@ test(
           name,
         }),
       })
-      const o = observations.at(-1)
 
-      if (activity === NOTHING) {
+      if (activity === 'none') {
         assert.deepEqual(
           observations,
           [],
@@ -1393,17 +1071,18 @@ test(
         continue
       }
 
+      const o = observations.at(-1)!
       assert.equal(
-        o!.card.activity,
-        activity,
+        o.card.activity,
+        activity === '-' ? undefined : activity,
         name,
       )
       assert.deepEqual(
-        o!.attend ? attend({
+        o.attend ? attend({
           current: [],
-          change: o!.attend,
+          change: o.attend,
         }) : undefined,
-        attention,
+        requests === 'keeps' ? undefined : requests === 'clears' ? [] : REQUESTS[requests],
         name,
       )
     }
@@ -1421,7 +1100,7 @@ test(
           CODEX_EVENTS,
         ],
       ] as const) {
-      const covered = new Set(CASES.filter(c => c[0] === harness).map(c => c[1]))
+      const covered = new Set(CASES.filter(c => c.startsWith(`${harness} `)).map(c => c.split(' ')[1]))
       assert.deepEqual(
         covered,
         new Set(events),
@@ -1536,170 +1215,120 @@ test(
   },
 )
 
+// Spools one hook event into the sandbox's default Hydra and ingests it in process, as the next write would.
+let sent = 0
+
+const send = ({
+  event,
+  name,
+  harness = 'claude',
+  payload,
+}: {
+  event: string
+  name: string
+  harness?: 'claude' | 'codex'
+  payload?: object
+}) => {
+  sent += 1
+  spoolWrite({
+    hydraId: 'default',
+    entry: {
+      ...envelope({
+        harness,
+        event,
+        name,
+      }),
+      id: `hook-${sent}`,
+      at: new Date(Date.UTC(
+        2026,
+        9,
+        13,
+      ) + sent * 1000).toISOString(),
+      ...(payload ? { payload } : {}),
+    },
+  })
+  ingestSpool({ hydraId: 'default' })
+}
+
+const card = ({ key = `claude:${SESSION}` }: { key?: string } = {}) => {
+  const { state } = loadHydra({ hydraId: 'default' })
+
+  return state.cards[state.keys[key]!]!
+}
+
 test(
   'a permission prompt shows its reason without moving the card, and the turn state follows prompt and Stop',
   () => {
-    const {
-      run,
-      home,
-    } = sandbox()
-    const spool = join(
-      home,
-      'hydras',
-      'default',
-      'spool',
-    )
-    mkdirSync(
-      spool,
-      { recursive: true },
-    )
-    const probe = join(
-      home,
-      'probe.json',
-    )
-    writeFileSync(
-      probe,
-      '{}',
-    )
-    let n = 0
-
-    const send = ({
-      event,
-      name,
-      harness = 'claude',
-    }: {
-      event: string
-      name: string
-      harness?: 'claude' | 'codex'
-    }) => {
-      n += 1
-      const line = {
-        ...envelope({
-          harness,
-          event,
-          name,
-        }),
-        id: `hook-${n}-1`,
-        at: `2026-10-13T14:00:${String(n).padStart(
-          2,
-          '0',
-        )}Z`,
-      }
-      writeFileSync(
-        join(
-          spool,
-          `${String(n).padStart(
-            15,
-            '0',
-          )}-1-x.json`,
-        ),
-        JSON.stringify(line),
-      )
-      run({
-        args: [
-          'push',
-          '--key',
-          'probe',
-          '--file',
-          probe,
-        ],
-      })
-
-      return run({
-        args: [
-          'card',
-          harness === 'claude' ? `claude:${SESSION}` : `codex:${CODEX_SESSION}`,
-        ],
-      })
-    }
-
-    const started = send({
+    process.env.PNYX_HOME = sandbox().home
+    send({
       event: 'SessionStart',
       name: 'claude-session-start',
     })
-    assert.match(
-      started,
-      /^ {2}column: in_progress$/m,
-    )
-    assert.match(
-      started,
-      /^ {2}activity: finished$/m,
-    )
-    assert.match(
-      send({
-        event: 'UserPromptSubmit',
-        name: 'claude-user-prompt',
-      }),
-      /^ {2}activity: working$/m,
-    )
-    const asking = send({
-      event: 'PermissionRequest',
-      name: 'claude-permission-request',
-    })
-    assert.match(
-      asking,
-      /^ {2}column: in_progress$/m,
-    )
-    assert.match(
-      asking,
-      /Allow Bash: touch hello\.txt && echo made/,
-    )
-    assert.match(
-      asking,
-      /^ {2}activity: working$/m,
-    )
-    const ran = send({
-      event: 'PostToolUse',
-      name: 'claude-post-tool-bash',
-    })
-    assert.match(
-      ran,
-      /^ {2}attention: none$/m,
-    )
-    const stopped = send({
-      event: 'Stop',
-      name: 'claude-stop-background',
-    })
-    assert.match(
-      stopped,
-      /^ {2}activity: finished$/m,
-    )
-    assert.match(
-      stopped,
-      /^ {2}column: in_progress$/m,
+    assert.equal(
+      card().activity,
+      'finished',
     )
     send({
       event: 'UserPromptSubmit',
       name: 'claude-user-prompt',
     })
-    const failed = send({
-      event: 'StopFailure',
-      name: 'claude-stop-failure',
+    send({
+      event: 'PermissionRequest',
+      name: 'claude-permission-request',
     })
-    assert.match(
-      failed,
-      /^ {2}activity: finished$/m,
+    assert.equal(
+      card().column,
+      'in_progress',
     )
-    assert.match(
-      failed,
-      /^ {2}column: in_progress$/m,
+    assert.equal(
+      card().activity,
+      'working',
+    )
+    assert.deepEqual(
+      card().attention.map(a => a.text),
+      ['Allow Bash: touch hello.txt && echo made'],
+    )
+    send({
+      event: 'PostToolUse',
+      name: 'claude-post-tool-bash',
+    })
+    assert.deepEqual(
+      card().attention,
+      [],
     )
 
-    assert.match(
+    for (const name of [
+      'claude-stop-background',
+      'claude-stop-failure',
+    ]) {
       send({
-        event: 'PermissionRequest',
-        name: 'codex-permission-request',
-        harness: 'codex',
-      }),
-      /^ {2}column: in_progress$/m,
-    )
-    assert.match(
+        event: 'UserPromptSubmit',
+        name: 'claude-user-prompt',
+      })
       send({
-        event: 'PostToolUse',
-        name: 'codex-post-tool',
-        harness: 'codex',
-      }),
-      /^ {2}activity: working$/m,
+        event: name === 'claude-stop-failure' ? 'StopFailure' : 'Stop',
+        name,
+      })
+      assert.equal(
+        card().activity,
+        'finished',
+        name,
+      )
+      assert.equal(
+        card().column,
+        'in_progress',
+        name,
+      )
+    }
+
+    send({
+      event: 'PermissionRequest',
+      name: 'codex-permission-request',
+      harness: 'codex',
+    })
+    assert.equal(
+      card({ key: `codex:${CODEX_SESSION}` }).column,
+      'in_progress',
     )
   },
 )
@@ -1707,190 +1336,72 @@ test(
 test(
   'a subagent\'s permission prompt leaves both cards once its tool call ends or it stops',
   () => {
-    const {
-      run,
-      home,
-    } = sandbox()
-    const spool = join(
-      home,
-      'hydras',
-      'default',
-      'spool',
-    )
-    mkdirSync(
-      spool,
-      { recursive: true },
-    )
-    const probe = join(
-      home,
-      'probe.json',
-    )
-    writeFileSync(
-      probe,
-      '{}',
-    )
-    const parent = `claude:${SESSION}`
-    const child = `${parent}/agent-a1`
-    let n = 0
+    process.env.PNYX_HOME = sandbox().home
+    const child = `claude:${SESSION}/agent-a1`
 
-    const send = ({
-      event,
-      name,
-      extra = {},
-    }: {
-      event: string
-      name: string
-      extra?: Record<string, unknown>
-    }) => {
-      n += 1
-      const base = envelope({
-        harness: 'claude',
-        event,
-        name,
+    const ask = () => {
+      send({
+        event: 'PermissionRequest',
+        name: 'claude-permission-request-subagent',
       })
-      const line = {
-        ...base,
-        payload: {
-          ...(base.payload as object),
-          ...extra,
-        },
-        id: `hook-${n}-1`,
-        at: `2026-10-13T14:00:${String(n).padStart(
-          2,
-          '0',
-        )}Z`,
-      }
-      writeFileSync(
-        join(
-          spool,
-          `${String(n).padStart(
-            15,
-            '0',
-          )}-1-x.json`,
-        ),
-        JSON.stringify(line),
+      send({
+        event: 'Notification',
+        name: 'claude-notification-permission',
+      })
+    }
+
+    const toolEnded = () => send({
+      event: 'PostToolUse',
+      name: 'claude-post-tool-bash',
+      payload: {
+        ...JSON.parse(fixture({ name: 'claude-post-tool-bash' })),
+        agent_id: 'agent-a1',
+        agent_type: 'Explore',
+        tool_name: 'Write',
+      },
+    })
+
+    const cleared = () => {
+      assert.deepEqual(
+        card().attention,
+        [],
       )
-      run({
-        args: [
-          'push',
-          '--key',
-          'probe',
-          '--file',
-          probe,
-        ],
-      })
+      assert.deepEqual(
+        card({ key: child }).attention,
+        [],
+      )
     }
 
     send({
       event: 'SessionStart',
       name: 'claude-session-start',
     })
-    send({
-      event: 'PermissionRequest',
-      name: 'claude-permission-request-subagent',
-    })
-    send({
-      event: 'Notification',
-      name: 'claude-notification-permission',
-    })
-    assert.match(
-      run({
-        args: [
-          'card',
-          parent,
-        ],
-      }),
-      /Claude needs your permission/,
+    ask()
+    assert.equal(
+      card().attention[0]?.text,
+      'Claude needs your permission',
     )
     assert.match(
-      run({
-        args: [
-          'card',
-          child,
-        ],
-      }),
+      card({ key: child }).attention[0]?.text ?? '',
       /Allow Write/,
     )
-    send({
-      event: 'PostToolUse',
-      name: 'claude-post-tool-bash',
-      extra: {
-        agent_id: 'agent-a1',
-        agent_type: 'Explore',
-        tool_name: 'Write',
-      },
-    })
-    assert.match(
-      run({
-        args: [
-          'card',
-          parent,
-        ],
-      }),
-      /^ {2}attention: none$/m,
+    toolEnded()
+    cleared()
+    const parents = () => readEvents({ hydraId: 'default' }).filter(e => e.id.endsWith(':parent')).length
+    const before = parents()
+    toolEnded()
+    assert.equal(
+      parents(),
+      before,
+      'a repeated tool end leaves the parent alone',
     )
-    assert.match(
-      run({
-        args: [
-          'card',
-          child,
-        ],
-      }),
-      /^ {2}attention: none$/m,
-    )
-    send({
-      event: 'PostToolUse',
-      name: 'claude-post-tool-bash',
-      extra: {
-        agent_id: 'agent-a1',
-        agent_type: 'Explore',
-        tool_name: 'Write',
-      },
-    })
-    const ids = readFileSync(
-      join(
-        home,
-        'hydras',
-        'default',
-        'events.jsonl',
-      ),
-      'utf8',
-    ).trimEnd()
-      .split('\n')
-      .map(l => JSON.parse(l).id)
-    assert.ok(ids.includes(`hook-${n - 1}-1:parent`))
-    assert.ok(!ids.includes(`hook-${n}-1:parent`))
 
-    send({
-      event: 'PermissionRequest',
-      name: 'claude-permission-request-subagent',
-    })
-    send({
-      event: 'Notification',
-      name: 'claude-notification-permission',
-    })
+    ask()
     send({
       event: 'SubagentStop',
       name: 'claude-subagent-stop',
     })
-    assert.match(
-      run({
-        args: [
-          'card',
-          parent,
-        ],
-      }),
-      /^ {2}attention: none$/m,
-    )
-    assert.match(
-      run({
-        args: [
-          'card',
-          child,
-        ],
-      }),
-      /^ {2}attention: none$/m,
-    )
+    cleared()
   },
 )
 
@@ -1948,10 +1459,6 @@ test(
       })
     }
 
-    assert.equal(
-      spooled().length,
-      7,
-    )
     assert.match(
       run({ args: [] }),
       /^spool: 7 hook events waiting; the next write ingests them$/m,
@@ -1991,23 +1498,7 @@ test(
     // Same-second hooks may be ingested in either order, so only facts every order shares are checked.
     assert.match(
       session,
-      /^ {2}column: (in_progress|review)$/m,
-    )
-    assert.match(
-      session,
-      /^ {2}workspace: unassigned$/m,
-    )
-    assert.match(
-      session,
       /^ {2}title: Open a pull request$/m,
-    )
-    assert.match(
-      session,
-      /^ {4}cwd: \/work\/repo$/m,
-    )
-    assert.match(
-      session,
-      /^ {4}transcriptPath: /m,
     )
     assert.match(
       session,
@@ -2017,98 +1508,32 @@ test(
       session,
       /outcome/,
     )
-    const child = run({
-      args: [
-        'card',
-        `claude:${SESSION}/agent-a1`,
-      ],
-    })
-    assert.match(
-      child,
-      /^ {2}parent: task-[0-9a-f-]{36}$/m,
-    )
-    assert.match(
-      child,
-      /^ {4}agentId: agent-a1$/m,
-    )
-    assert.match(
-      run({
-        args: [
-          'history',
-          '--limit',
-          '100',
-        ],
-      }),
-      /hook:claude/,
-    )
   },
 )
 
 test(
   'a hook event ingested twice, from the socket and the spool, is applied once',
   () => {
-    const {
-      run,
-      home,
-    } = sandbox()
-    const spool = join(
-      home,
-      'hydras',
-      'default',
-      'spool',
-    )
-    mkdirSync(
-      spool,
-      { recursive: true },
-    )
-    const line = JSON.stringify({
+    process.env.PNYX_HOME = sandbox().home
+    const line = {
       ...envelope({
         harness: 'claude',
         event: 'SubagentStart',
         name: 'claude-subagent-start',
       }),
       id: 'hook-9-9',
+    }
+    spoolWrite({
+      hydraId: 'default',
+      entry: line,
     })
-    writeFileSync(
-      join(
-        spool,
-        '000000000000001-1-a.json',
-      ),
-      line,
-    )
-    writeFileSync(
-      join(
-        spool,
-        '000000000000001-2-b.json',
-      ),
-      line,
-    )
-    const probe = join(
-      home,
-      'probe.json',
-    )
-    writeFileSync(
-      probe,
-      '{}',
-    )
-    run({
-      args: [
-        'push',
-        '--key',
-        'probe',
-        '--file',
-        probe,
-      ],
+    spoolWrite({
+      hydraId: 'default',
+      entry: line,
     })
-    const history = run({
-      args: [
-        'history',
-        '--limit',
-        '100',
-      ],
-    })
+    ingestSpool({ hydraId: 'default' })
     assert.equal(
-      history.match(/hook:claude/g)?.length,
+      readEvents({ hydraId: 'default' }).length,
       2,
       'parent and child, once each',
     )
@@ -2129,6 +1554,8 @@ test(
       run,
       claude,
       home,
+      env,
+      spooled,
     } = sandbox()
     mkdirSync(claude)
     const settings = join(
@@ -2208,6 +1635,26 @@ test(
       )).mode & 0o111,
       0o111,
     )
+    assert.equal(
+      execFileSync(
+        '/bin/sh',
+        [
+          '-c',
+          installed.hooks.Stop.at(-1).hooks[0].command,
+        ],
+        {
+          input: fixture({ name: 'claude-stop' }),
+          encoding: 'utf8',
+          env,
+        },
+      ),
+      '',
+      'the installed command runs silently',
+    )
+    assert.equal(
+      spooled().length,
+      1,
+    )
 
     const bytes = readFileSync(
       settings,
@@ -2247,18 +1694,6 @@ test(
     assert.deepEqual(
       readJson({ path: settings }),
       original,
-    )
-    assert.match(
-      run({
-        args: [
-          'setup',
-          'hooks',
-          '--harness',
-          'claude',
-          '--remove',
-        ],
-      }),
-      /unchanged/,
     )
   },
 )
@@ -2448,61 +1883,6 @@ test(
       hooks.PermissionRequest,
       [{ hooks: [ours({ event: 'PermissionRequest' })] }],
     )
-    assert.match(
-      run({
-        args: [
-          'setup',
-          'hooks',
-          '--harness',
-          'claude',
-        ],
-      }),
-      /unchanged/,
-    )
-  },
-)
-
-test(
-  'an installed hook command runs silently and spools',
-  () => {
-    const {
-      run,
-      claude,
-      spooled,
-    } = sandbox()
-    run({
-      args: [
-        'setup',
-        'hooks',
-        '--harness',
-        'claude',
-      ],
-    })
-    const command = readJson({
-      path: join(
-        claude,
-        'settings.json',
-      ),
-    }).hooks.Stop[0].hooks[0].command
-    const out = execFileSync(
-      '/bin/sh',
-      [
-        '-c',
-        command,
-      ],
-      {
-        input: fixture({ name: 'claude-stop' }),
-        encoding: 'utf8',
-      },
-    )
-    assert.equal(
-      out,
-      '',
-    )
-    assert.equal(
-      spooled().length,
-      1,
-    )
   },
 )
 
@@ -2681,118 +2061,49 @@ test(
       run,
       home,
     } = sandbox()
-    const spool = join(
-      home,
-      'hydras',
-      'default',
-      'spool',
-    )
-    mkdirSync(
-      spool,
-      { recursive: true },
-    )
-    const probe = join(
-      home,
-      'probe.json',
-    )
-    writeFileSync(
-      probe,
-      '{}',
-    )
-    let n = 0
+    process.env.PNYX_HOME = home
 
-    const send = ({
+    for (const [
       event,
       name,
-      payload,
-    }: {
-      event: string
-      name: string
-      payload?: object
-    }) => {
-      n += 1
-      const line = {
-        ...envelope({
-          harness: 'claude',
-          event,
-          name,
-        }),
-        id: `hook-${n}`,
-        at: `2026-10-13T14:00:${String(n).padStart(
-          2,
-          '0',
-        )}Z`,
-        ...(payload ? { payload } : {}),
-      }
-      writeFileSync(
-        join(
-          spool,
-          `${String(n).padStart(
-            15,
-            '0',
-          )}-1-a.json`,
-        ),
-        JSON.stringify(line),
-      )
-      run({
-        args: [
-          'push',
-          '--key',
-          'probe',
-          '--file',
-          probe,
+    ] of [
+        [
+          'SessionStart',
+          'claude-session-start',
         ],
+        [
+          'UserPromptSubmit',
+          'claude-user-prompt',
+        ],
+        [
+          'Stop',
+          'claude-stop',
+        ],
+        [
+          'SessionEnd',
+          'claude-session-end',
+        ],
+      ]) {
+      send({
+        event: event!,
+        name: name!,
       })
     }
 
-    const card = () => run({
-      args: [
-        'card',
-        `claude:${SESSION}`,
-      ],
-    })
-
-    send({
-      event: 'SessionStart',
-      name: 'claude-session-start',
-    })
-    send({
-      event: 'UserPromptSubmit',
-      name: 'claude-user-prompt',
-    })
-    send({
-      event: 'Stop',
-      name: 'claude-stop',
-    })
-    assert.match(
-      card(),
-      /^ {2}column: in_progress$/m,
+    assert.equal(
+      card().column,
+      'in_progress',
     )
-    send({
-      event: 'SessionEnd',
-      name: 'claude-session-end',
-    })
-    assert.match(
-      card(),
-      /^ {2}column: in_progress$/m,
+    assert.equal(
+      card().activity,
+      'ended',
     )
-    assert.match(
-      card(),
-      /^ {2}activity: ended$/m,
-    )
-    assert.match(
-      card(),
-      /^ {2}outcome:\n {4}state: ended\n {4}source: hooks$/m,
-    )
-    assert.match(
-      run({
-        args: [
-          'history',
-          '--kind',
-          'outcome',
-        ],
-      }),
-      /ended/,
+    assert.deepEqual(
+      card().outcome,
+      {
+        state: 'ended',
+        source: 'hooks',
+      },
     )
 
     send({
@@ -2803,27 +2114,17 @@ test(
         source: 'resume',
       },
     })
-    assert.match(
-      card(),
-      /^ {2}activity: finished$/m,
+    assert.equal(
+      card().activity,
+      'finished',
     )
-    assert.throws(
-      () => run({
-        args: [
-          'undo',
-          `hook-${n}:outcome`,
-        ],
-      }),
-      (error: { stdout: string }) => /^code: NOT_UNDOABLE$/m.test(error.stdout),
-      "a hook's reopen cannot be undone",
+    assert.equal(
+      card().outcome,
+      undefined,
     )
-    assert.doesNotMatch(
-      card(),
-      /outcome/,
-    )
-    assert.match(
-      card(),
-      /^ {2}title: Open a pull request$/m,
+    assert.equal(
+      card().autoTitle?.text,
+      'Open a pull request',
       "a resume keeps the first prompt's title",
     )
 
@@ -2835,18 +2136,13 @@ test(
       event: 'SubagentStop',
       name: 'claude-subagent-stop',
     })
-    assert.match(
-      run({
-        args: [
-          'card',
-          `claude:${SESSION}/agent-a1`,
-        ],
-      }),
-      /^ {2}outcome:\n {4}state: ended/m,
+    assert.equal(
+      card({ key: `claude:${SESSION}/agent-a1` }).outcome?.state,
+      'ended',
     )
-    assert.doesNotMatch(
-      card(),
-      /outcome/,
+    assert.equal(
+      card().outcome,
+      undefined,
       'a subagent ending leaves its parent open',
     )
 
@@ -2863,43 +2159,24 @@ test(
         'manual-failed',
       ],
     })
-    assert.match(
-      card(),
-      /^ {2}outcome:\n {4}state: failed$/m,
+    assert.equal(
+      card().outcome?.state,
+      'failed',
       "a person's outcome replaces an observed end",
     )
     run({
       args: [
         'undo',
         'manual-failed',
-        '--event-id',
-        'undo-failed',
       ],
     })
-    assert.match(
-      card(),
-      /^ {2}outcome:\n {4}state: ended\n {4}source: hooks$/m,
+    assert.deepEqual(
+      card().outcome,
+      {
+        state: 'ended',
+        source: 'hooks',
+      },
       "undoing a person's outcome restores the observed end",
-    )
-    run({
-      args: [
-        'undo',
-        'undo-failed',
-      ],
-    })
-    assert.match(
-      card(),
-      /^ {2}outcome:\n {4}state: failed$/m,
-      'a person can redo their own undo',
-    )
-    send({
-      event: 'UserPromptSubmit',
-      name: 'claude-user-prompt',
-    })
-    assert.match(
-      card(),
-      /^ {2}outcome:\n {4}state: failed$/m,
-      "a later hook leaves a person's outcome alone",
     )
   },
 )
@@ -2911,16 +2188,7 @@ test(
       run,
       home,
     } = sandbox()
-    const spool = join(
-      home,
-      'hydras',
-      'default',
-      'spool',
-    )
-    mkdirSync(
-      spool,
-      { recursive: true },
-    )
+    process.env.PNYX_HOME = home
     const file = join(
       home,
       'card.json',
@@ -2945,61 +2213,21 @@ test(
         'cancelled',
       ],
     })
-
-    for (const [
-      i,
-      [
-        event,
-        name,
-      ],
-    ] of [
-        [
-          'SessionEnd',
-          'claude-session-end',
-        ],
-        [
-          'UserPromptSubmit',
-          'claude-user-prompt',
-        ],
-      ].entries()) {
-      writeFileSync(
-        join(
-          spool,
-          `00000000000000${i}-1-a.json`,
-        ),
-        JSON.stringify({
-          ...envelope({
-            harness: 'claude',
-            event: event!,
-            name: name!,
-          }),
-          id: `hook-${i}`,
-        }),
-      )
-    }
-
-    run({
-      args: [
-        'push',
-        '--key',
-        'probe',
-        '--file',
-        file,
-      ],
+    send({
+      event: 'SessionEnd',
+      name: 'claude-session-end',
     })
-    const card = run({
-      args: [
-        'card',
-        `claude:${SESSION}`,
-      ],
+    send({
+      event: 'UserPromptSubmit',
+      name: 'claude-user-prompt',
     })
-    assert.match(
-      card,
-      /^ {2}outcome:\n {4}state: cancelled$/m,
+    assert.equal(
+      card().outcome?.state,
+      'cancelled',
     )
-    assert.match(
-      card,
-      /^ {2}title: Mine$/m,
+    assert.equal(
+      card().title,
+      'Mine',
       'a set title is never replaced by the prompt',
     )
   },

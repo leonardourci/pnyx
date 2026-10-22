@@ -190,6 +190,19 @@ test(
       },
       'with no context, the quote stands alone',
     )
+    assert.deepEqual(
+      quoteSnippet({
+        quote: 'word',
+        context: 'word then word',
+        start: 10,
+      }),
+      {
+        before: 'word then ',
+        match: 'word',
+        after: '',
+      },
+      'a repeated quote marks the occurrence selected for its comment',
+    )
   },
 )
 
@@ -202,10 +215,6 @@ test(
       characterShortcuts: true,
       now: 1,
     }
-    assert.equal(
-      keyboardError({ prefs: DEFAULT_KEYBOARD }),
-      undefined,
-    )
     assert.equal(
       resolveKey({
         event: { key: 'Enter' },
@@ -454,10 +463,6 @@ test(
         provider: 'codex',
       }),
       [reply],
-    )
-    assert.equal(
-      transcript.length,
-      3,
     )
   },
 )

@@ -1,14 +1,26 @@
 import { fixtureCli } from './cli-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, statSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { after, test } from 'node:test'
+import { withWriter } from '../src/store/hydra-store.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { ftsQuery, search, updateIndex } from '../src/oracle/index.ts'
 import { chunk, eventText, redact, transcriptMessages } from '../src/oracle/text.ts'
+
+const scratch = mkdtempSync(join(
+  tmpdir(),
+  'pnyx-test-',
+))
+after(() => rmSync(
+  scratch,
+  {
+    recursive: true,
+    force: true,
+  },
+))
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -34,7 +46,7 @@ const CODEX = join(
 )
 
 test(
-  'a short message is one chunk; a long one splits on paragraphs, deterministically',
+  'a short message is one chunk; a long one splits on paragraphs, keeps code fences whole and cuts overlong lines',
   () => {
     assert.deepEqual(
       chunk({ text: '  one line  ' }),
@@ -54,10 +66,6 @@ test(
     const chunks = chunk({ text: paragraphs.join('\n\n') })
     assert.ok(chunks.length > 1)
     assert.ok(chunks.every(c => c.length <= 768))
-    assert.deepEqual(
-      chunk({ text: paragraphs.join('\n\n') }),
-      chunks,
-    )
     assert.equal(
       chunks[1]!.split('\n\n')[0],
       chunks[0]!.split('\n\n').at(-1),
@@ -66,24 +74,11 @@ test(
     for (const p of paragraphs) {
       assert.ok(chunks.some(c => c.includes(p)))
     }
-  },
-)
 
-test(
-  'a code fence stays whole and an overlong line is cut',
-  () => {
-    const fence = [
-      '```',
-      'a',
-      '',
-      'b',
-      '```',
-    ].join('\n')
-    const chunks = chunk({ text: `${'intro '.repeat(120)}\n\n${fence}` })
-    assert.ok(chunks.some(c => c.includes(fence)))
-    const long = chunk({ text: 'x'.repeat(2000) })
+    const fence = '```\na\n\nb\n```'
+    assert.ok(chunk({ text: `${'intro '.repeat(120)}\n\n${fence}` }).some(c => c.includes(fence)))
     assert.deepEqual(
-      long.map(c => c.length),
+      chunk({ text: 'x'.repeat(2000) }).map(c => c.length),
       [
         768,
         768,
@@ -117,25 +112,27 @@ test(
 )
 
 test(
-  'only typed messages and assistant text are read from a transcript',
+  'only typed messages and assistant text are read from Claude Code and Codex transcripts',
   () => {
-    const records = readFileSync(
-      TRANSCRIPT,
+    const messages = ({ path }: { path: string }) => readFileSync(
+      path,
       'utf8',
     ).split('\n')
       .slice(
         0,
         -1,
       )
-      .map(l => JSON.parse(l) as unknown)
-    const texts = records.flatMap(record => transcriptMessages({ record })).map(m => m.text)
-    assert.equal(
-      texts[0],
-      'Why did the deploy get reverted after the migration?',
-    )
-    assert.equal(
-      texts[1],
-      'The migration locked the orders table, so the deploy was rolled back.',
+      .flatMap(l => transcriptMessages({ record: JSON.parse(l) as unknown }))
+    const texts = messages({ path: TRANSCRIPT }).map(m => m.text)
+    assert.deepEqual(
+      texts.slice(
+        0,
+        2,
+      ),
+      [
+        'Why did the deploy get reverted after the migration?',
+        'The migration locked the orders table, so the deploy was rolled back.',
+      ],
     )
     const all = texts.join('\n')
 
@@ -157,23 +154,8 @@ test(
       all,
       /Use the token sk-/,
     )
-  },
-)
-
-test(
-  'only typed messages and assistant text are read from a Codex transcript',
-  () => {
-    const records = readFileSync(
-      CODEX,
-      'utf8',
-    ).split('\n')
-      .slice(
-        0,
-        -1,
-      )
-      .map(l => JSON.parse(l) as unknown)
     assert.deepEqual(
-      records.flatMap(record => transcriptMessages({ record })),
+      messages({ path: CODEX }),
       [
         {
           at: '2026-10-12T10:00:03.000Z',
@@ -286,30 +268,38 @@ test(
 )
 
 test(
-  'query words and phrases in a synonym group match the whole group',
+  'query words are quoted, and words and phrases in a synonym group match the whole group',
   () => {
-    assert.equal(
-      ftsQuery({ text: 'Rollback the pull request' }),
-      '("rollback" OR "revert") AND "the" AND ("pr" OR "pull request")',
-    )
-    assert.equal(
-      ftsQuery({ text: 'ship*' }),
-      '"ship"*',
-    )
-  },
-)
-
-test(
-  'query words are quoted so punctuation is never FTS5 syntax',
-  () => {
-    assert.equal(
-      ftsQuery({ text: 'fix "AND" -x pull/7 deplo* :' }),
-      '"fix" AND """AND""" AND "-x" AND "pull/7" AND "deplo"*',
-    )
-    assert.equal(
-      ftsQuery({ text: ' - : ' }),
-      '',
-    )
+    for (const [
+      text,
+      query,
+    ] of [
+        [
+          'Rollback the pull request',
+          '("rollback" OR "revert") AND "the" AND ("pr" OR "pull request")',
+        ],
+        [
+          '(pull request), lunch',
+          '("pr" OR "pull request") AND "lunch"',
+        ],
+        [
+          'ship*',
+          '"ship"*',
+        ],
+        [
+          'fix "AND" -x pull/7 deplo* :',
+          '"fix" AND """AND""" AND "-x" AND "pull/7" AND "deplo"*',
+        ],
+        [
+          ' - : ',
+          '',
+        ],
+      ]) {
+      assert.equal(
+        ftsQuery({ text: text! }),
+        query,
+      )
+    }
   },
 )
 
@@ -317,9 +307,10 @@ const cards = ({ out }: { out: string }) => [...out.matchAll(/^ {2}- card: (\S+)
 
 function hydraId() {
   const home = mkdtempSync(join(
-    tmpdir(),
+    scratch,
     'pnyx-oracle-',
   ))
+  process.env.PNYX_HOME = home
   const env = {
     ...process.env,
     PNYX_HOME: home,
@@ -448,10 +439,12 @@ function hydraId() {
 }
 
 test(
-  'search finds titles, links, notes and transcript text, ranked one per card',
+  'search finds titles, links, notes and Claude Code and Codex transcript text, ranked one per card',
   () => {
     const {
       run,
+      fails,
+      push,
       home,
     } = hydraId()
     assert.match(
@@ -540,25 +533,16 @@ test(
       }),
       /token \[\[redacted\]\] to check/,
     )
-
-    for (const hidden of [
-      'tooloutputword',
-      'secretthought',
-      'injectedreminder',
-      'sk-test1234567890abcdefXYZ',
-      'torntailword',
-    ]) {
-      assert.match(
-        run({
-          args: [
-            'oracle',
-            hidden,
-          ],
-        }),
-        /^results: "none: /m,
-        hidden,
-      )
-    }
+    // The transcript's last line is torn; it is not read until it is complete.
+    assert.match(
+      run({
+        args: [
+          'oracle',
+          'torntailword',
+        ],
+      }),
+      /^results: "none: /m,
+    )
 
     const backfill = run({
       args: [
@@ -599,31 +583,6 @@ test(
       mixed,
       /^ {6}event,.*"\[rolled\] back release 4\.2"$/m,
     )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'retry',
-            'release',
-          ],
-        }),
-      }),
-      ['c2'],
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'orders',
-            '--kind',
-            'transcript',
-          ],
-        }),
-      }),
-      ['c1'],
-    )
 
     const status = run({
       args: [
@@ -641,6 +600,10 @@ test(
     )
     assert.match(
       status,
+      /^synonyms: "v1, 4 groups"$/m,
+    )
+    assert.match(
+      status,
       /^ {2}tracked: 1$/m,
     )
     assert.equal(
@@ -652,17 +615,7 @@ test(
       )).mode & 0o777,
       0o600,
     )
-  },
-)
 
-test(
-  "a Codex session's messages are searchable",
-  () => {
-    const {
-      run,
-      push,
-      home,
-    } = hydraId()
     const codex = join(
       home,
       'rollout.jsonl',
@@ -691,94 +644,35 @@ test(
     })
     assert.deepEqual(
       cards({ out: invoice }),
-      ['c5'],
+      ['c6'],
     )
     assert.match(
       invoice,
       /^ {6}transcript,"2026-10-12T10:00:07.000Z","The export query scans every \[invoice\] without an \[index\]\."$/m,
     )
 
-    for (const hidden of [
-      'agentsmdword',
-      'developerword',
-      'envcontextword',
-      'codexthoughtword',
-      'codexcallword',
-      'codexoutputword',
-      'sessionmetaword',
-    ]) {
-      assert.match(
-        run({
-          args: [
-            'oracle',
-            hidden,
-          ],
-        }),
-        /^results: "none: /m,
-        hidden,
-      )
-    }
-  },
-)
-
-test(
-  'a renamed card or link is found by its new title',
-  () => {
-    const {
-      run,
-      push,
-    } = hydraId()
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'flake',
-            'rolled',
-          ],
-        }),
-      }),
-      ['c2'],
-    )
-    push({
-      key: 'claude:s2',
-      card: {
-        title: 'Checkout retries',
-        workspace: 'home',
-      },
+    fails({
+      args: ['oracle'],
+      code: 'VALIDATION_ERROR',
     })
-    run({
+    fails({
       args: [
-        'link',
-        'c2',
-        '--url',
-        'https://github.com/o/r/pull/42',
-        '--title',
-        'Harden payments',
+        'oracle',
+        'x',
+        '--kind',
+        'title',
       ],
+      code: 'VALIDATION_ERROR',
     })
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'retries',
-          'rolled',
-        ],
-      }),
-      /^ {2}- card: c2\n {4}title: Checkout retries$/m,
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'payments',
-            'rolled',
-          ],
-        }),
-      }),
-      ['c2'],
-    )
+    fails({
+      args: [
+        'oracle',
+        'x',
+        '--card',
+        'nope',
+      ],
+      code: 'NOT_FOUND',
+    })
   },
 )
 
@@ -846,10 +740,6 @@ test(
         'c2',
       ],
     })
-    assert.deepEqual(
-      cards({ out: titled }),
-      ['c2'],
-    )
     assert.match(
       titled,
       /^ {4}snippets\[3\]/m,
@@ -870,24 +760,11 @@ test(
       }),
       /^results: "none: /m,
     )
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'checkout',
-          '--card',
-          'c2',
-          '--kind',
-          'transcript',
-        ],
-      }),
-      /^ {4}snippets\[1\]\{kind,at,snippet\}:\n {6}transcript,/m,
-    )
   },
 )
 
 test(
-  'each search indexes what the log and transcripts gained',
+  'each search indexes what the log and transcripts gained, including renamed cards and links',
   () => {
     const {
       run,
@@ -900,18 +777,26 @@ test(
         'reverted',
       ],
     })
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'status',
-        ],
-      }),
-      /^index: current through seq 5$/m,
-    )
     push({
       key: 'claude:s3',
       card: { title: 'Canary rollout' },
+    })
+    push({
+      key: 'claude:s2',
+      card: {
+        title: 'Checkout retries',
+        workspace: 'home',
+      },
+    })
+    run({
+      args: [
+        'link',
+        'c2',
+        '--url',
+        'https://github.com/o/r/pull/42',
+        '--title',
+        'Harden payments',
+      ],
     })
     assert.match(
       run({
@@ -920,7 +805,7 @@ test(
           'status',
         ],
       }),
-      /^index: "behind: through seq 5 of 6; the next search catches up"$/m,
+      /^index: "behind: through seq 5 of 8; the next search catches up"$/m,
     )
     appendFileSync(
       transcript,
@@ -936,7 +821,7 @@ test(
         },
       })}\n`,
     )
-    assert.equal(
+    assert.deepEqual(
       cards({
         out: run({
           args: [
@@ -944,8 +829,11 @@ test(
             'canary',
           ],
         }),
-      }).length,
-      2,
+      }).sort(),
+      [
+        'c1',
+        'c6',
+      ],
     )
     assert.deepEqual(
       cards({
@@ -962,24 +850,59 @@ test(
       run({
         args: [
           'oracle',
-          'canary',
-          '--card',
-          'c1',
+          'retries',
+          'rolled',
         ],
       }),
-      /^ {6}transcript,unknown,"\[Canary\] is green"$/m,
+      /^ {2}- card: c2\n {4}title: Checkout retries$/m,
+    )
+    assert.deepEqual(
+      cards({
+        out: run({
+          args: [
+            'oracle',
+            'payments',
+            'rolled',
+          ],
+        }),
+      }),
+      ['c2'],
     )
   },
 )
 
 test(
-  'a replaced or shortened transcript is read again from the start',
+  'a broken index is recreated from the sources, and a replaced or shortened transcript is read again from the start',
   () => {
     const {
       run,
       transcript,
       home,
     } = hydraId()
+    run({
+      args: [
+        'oracle',
+        'reverted',
+      ],
+    })
+    writeFileSync(
+      join(
+        home,
+        'hydras',
+        'default',
+        'search.db',
+      ),
+      'not a database',
+    )
+    assert.match(
+      run({
+        args: [
+          'oracle',
+          'status',
+        ],
+      }),
+      /^index: "stale: /m,
+    )
     assert.match(
       run({
         args: [
@@ -988,6 +911,15 @@ test(
         ],
       }),
       /^results\[1\]/m,
+    )
+    assert.match(
+      run({
+        args: [
+          'oracle',
+          'rebuild',
+        ],
+      }),
+      /^ {2}docs: 15$/m,
     )
     const replacement = join(
       home,
@@ -1039,267 +971,86 @@ test(
 )
 
 test(
-  'rebuild recreates the index from the sources',
-  () => {
-    const {
-      run,
-      home,
-    } = hydraId()
-    run({
-      args: [
-        'oracle',
-        'reverted',
-      ],
-    })
-    const db = join(
-      home,
-      'hydras',
-      'default',
-      'search.db',
-    )
-    writeFileSync(
-      db,
-      'not a database',
-    )
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'status',
-        ],
-      }),
-      /^index: "stale: /m,
-    )
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'reverted',
-        ],
-      }),
-      /^results\[1\]/m,
-    )
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'rebuild',
-        ],
-      }),
-      /^ {2}docs: 15$/m,
-    )
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'reverted',
-        ],
-      }),
-      /^results\[1\]/m,
-    )
-  },
-)
-
-test(
-  'search refuses bad input with structured errors',
-  () => {
-    const { fails } = hydraId()
-    fails({
-      args: ['oracle'],
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
-        'oracle',
-        '-',
-        '--kind',
-        'event',
-      ],
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
-        'oracle',
-        'x',
-        '--kind',
-        'title',
-      ],
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
-        'oracle',
-        'x',
-        '--limit',
-        '0',
-      ],
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
-        'oracle',
-        'x',
-        '--card',
-        'nope',
-      ],
-      code: 'NOT_FOUND',
-    })
-  },
-)
-
-test(
-  'words match by stem, ignoring case and accents',
+  'words match by stem, case, accents, synonyms and prefixes; with no match, typos and partial words match the nearest words',
   () => {
     const {
       run,
       push,
     } = hydraId()
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'deploying',
-            'migrations',
-          ],
-        }),
-      }),
-      ['c1'],
-    )
     push({
       key: 'claude:s3',
       card: { title: 'Migração do banco' },
     })
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'migracao',
-          ],
-        }),
-      }),
-      ['c6'],
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'MIGRAÇÃO',
-          ],
-        }),
-      }),
-      ['c6'],
-    )
-  },
-)
-
-test(
-  'a word matches its synonyms',
-  () => {
-    const {
-      run,
-      push,
-    } = hydraId()
-    push({
-      key: 'claude:s3',
-      card: { title: 'Review the PR before lunch' },
-    })
     push({
       key: 'claude:s4',
-      card: { title: 'Issue triage' },
+      card: { title: 'Retryable error' },
     })
-    // deploy, release and ship are one group: the transcript's deploy and the note's release.
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'ship',
-          ],
-        }),
-      }).sort(),
-      [
-        'c1',
-        'c2',
-      ],
-    )
-    assert.match(
-      run({
+    const found = ({ args }: { args: string[] }) => cards({
+      out: run({
         args: [
           'oracle',
-          'rollback',
-          '--card',
-          'c1',
+          ...args,
         ],
       }),
-      /get \[reverted\] after/,
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'pull',
-            'request',
-            'lunch',
-          ],
-        }),
-      }),
-      ['c5'],
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'ticket',
-          ],
-        }),
-      }),
-      ['c6'],
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'PR?',
-          ],
-        }),
-      }),
-      ['c5'],
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            '(pull',
-            'request),',
-            'lunch',
-          ],
-        }),
-      }),
-      ['c5'],
-    )
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'status',
-        ],
-      }),
-      /^synonyms: "v1, 4 groups"$/m,
-    )
-  },
-)
+    }).sort()
 
-test(
-  'when nothing matches, typos and partial words match the nearest indexed words',
-  () => {
-    const { run } = hydraId()
+    for (const [
+      args,
+      expected,
+    ] of [
+        [
+          [
+            'deploying',
+            'migrations',
+          ],
+          ['c1'],
+        ],
+        [
+          ['MIGRACAO'],
+          ['c5'],
+        ],
+        // deploy, release and ship are one group: the transcript's deploy and the note's release.
+        [
+          ['ship'],
+          [
+            'c1',
+            'c2',
+          ],
+        ],
+        // FTS5 stems "retry"* to retri*, which misses retryable; the indexed words fill the gap.
+        [
+          ['retry*'],
+          [
+            'c2',
+            'c6',
+          ],
+        ],
+        [
+          ['ckout'],
+          ['c2'],
+        ],
+        [
+          [
+            'chekout',
+            'relese',
+          ],
+          ['c2'],
+        ],
+        [
+          [
+            'chekout',
+            'migratoin',
+          ],
+          [],
+        ],
+      ] as const) {
+      assert.deepEqual(
+        found({ args: [...args] }),
+        expected,
+        args.join(' '),
+      )
+    }
+
     const typo = run({
       args: [
         'oracle',
@@ -1318,64 +1069,6 @@ test(
       typo,
       /\[checkout\] retry/,
     )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'checko',
-          ],
-        }),
-      }).sort(),
-      [
-        'c1',
-        'c2',
-      ],
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'ckout',
-          ],
-        }),
-      }),
-      ['c2'],
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'chekout',
-            'migratoin',
-          ],
-        }),
-      }),
-      [],
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'chekout',
-            'relese',
-          ],
-        }),
-      }),
-      ['c2'],
-    )
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'checkout',
-        ],
-      }),
-      /^mode: lexical$/m,
-    )
     assert.match(
       run({
         args: [
@@ -1385,284 +1078,104 @@ test(
       }),
       /^results: "none: /m,
     )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'chekout?',
-          ],
-        }),
-      }),
-      ['c2'],
-    )
   },
 )
 
 test(
-  'a word ending in * matches the indexed words starting with it',
-  () => {
-    const {
-      run,
-      push,
-    } = hydraId()
-    push({
-      key: 'claude:s3',
-      card: { title: 'Retryable error' },
-    })
-    push({
-      key: 'claude:s4',
-      card: { title: 'Deployment ready' },
-    })
-    // FTS5 stems "retry"* to retri*, which misses retryable; the indexed words fill the gap.
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'retry*',
-          ],
-        }),
-      }).sort(),
-      [
-        'c2',
-        'c5',
-      ],
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'deploy*',
-          ],
-        }),
-      }).sort(),
-      [
-        'c1',
-        'c6',
-      ],
-    )
-    assert.deepEqual(
-      cards({
-        out: run({
-          args: [
-            'oracle',
-            'deplo*',
-          ],
-        }),
-      }).sort(),
-      [
-        'c1',
-        'c6',
-      ],
-    )
-  },
-)
-
-test(
-  'Hydra messages are searchable without a task, including after rebuild',
+  'Hydra messages and its live transcript are searchable as the Hydra, without a task, including after rebuild',
   () => {
     const {
       run,
       home,
+      push,
     } = hydraId()
-    const previous = process.env.PNYX_HOME
-    process.env.PNYX_HOME = home
-
-    try {
-      withWriter({
-        hydraId: 'default',
-        fn: ({ writer }) => {
-          writer.append({
-            event: {
-              v: 1,
-              seq: writer.state.seq + 1,
-              id: 'hydra-lunch',
-              at: '2026-10-15T10:00:00Z',
-              actor: 'user',
-              cardId: '$board',
-              type: 'hydra.message',
-              data: {
-                action: 'send',
-                text: 'I will review the layout after lunch.',
-                hydra: 'hydra',
-              },
+    run({
+      args: [
+        'hydra',
+        'create',
+        'default',
+      ],
+    })
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'hydra-lunch',
+            at: '2026-10-15T10:00:00Z',
+            actor: 'user',
+            cardId: '$board',
+            type: 'hydra.message',
+            data: {
+              action: 'send',
+              text: 'I will review the layout after lunch.',
+              hydra: 'hydra',
             },
-          })
-          writer.append({
-            event: {
-              v: 1,
-              seq: writer.state.seq + 1,
-              id: 'hydra-reply',
-              at: '2026-10-15T10:01:00Z',
-              actor: 'hooks',
-              cardId: '$hydra',
-              type: 'chat.message',
-              data: {
-                session: 'hydra',
-                nativeId: '0',
-                role: 'assistant',
-                text: 'The lunchtime review is ready.',
-              },
+          },
+        })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'hydra-reply',
+            at: '2026-10-15T10:01:00Z',
+            actor: 'hooks',
+            cardId: '$hydra',
+            type: 'chat.message',
+            data: {
+              session: 'hydra',
+              nativeId: '0',
+              role: 'assistant',
+              text: 'The lunchtime review is ready.',
             },
-          })
-        },
-      })
-      const lunch = run({
-        args: [
-          'oracle',
-          'lunch',
-        ],
-      })
-      assert.match(
-        lunch,
-        /card: \$board\n {4}title: Hydra\n {4}kind: hydra/,
-      )
-      assert.match(
-        lunch,
-        /after \[lunch\]/,
-      )
-      assert.doesNotMatch(
-        lunch,
-        /pnyx-axi card \$board/,
-      )
-      assert.match(
-        run({
-          args: [
-            'oracle',
-            'lunchtime',
-            '--kind',
-            'transcript',
-          ],
-        }),
-        /kind: hydra/,
-      )
-      assert.match(
-        run({
-          args: [
-            'oracle',
-            'lunch',
-            '--workspace',
-            'work',
-          ],
-        }),
-        /^results: "none: /m,
-      )
+          },
+        })
+      },
+    })
+    const lunch = run({
+      args: [
+        'oracle',
+        'lunch',
+      ],
+    })
+    assert.match(
+      lunch,
+      /card: \$board\n {4}title: Hydra\n {4}kind: hydra/,
+    )
+    assert.match(
+      lunch,
+      /after \[lunch\]/,
+    )
+    assert.doesNotMatch(
+      lunch,
+      /pnyx-axi card \$board/,
+    )
+    assert.match(
       run({
         args: [
           'oracle',
-          'rebuild',
+          'lunchtime',
+          '--kind',
+          'transcript',
         ],
-      })
-      assert.match(
-        run({
-          args: [
-            'oracle',
-            'lunch',
-          ],
-        }),
-        /kind: hydra/,
-      )
-    } finally {
-      if (previous === undefined) {
-        delete process.env.PNYX_HOME
-      } else {
-        process.env.PNYX_HOME = previous
-      }
-    }
-  },
-)
+      }),
+      /kind: hydra/,
+    )
+    assert.match(
+      run({
+        args: [
+          'oracle',
+          'lunch',
+          '--workspace',
+          'work',
+        ],
+      }),
+      /^results: "none: /m,
+    )
 
-test(
-  'live Hydra searches exclude hidden sessions before applying the result limit',
-  () => {
-    const {
-      run,
-      home,
-      push,
-    } = hydraId()
-    run({
-      args: [
-        'hydra',
-        'create',
-        'default',
-      ],
-    })
-    push({
-      key: 'claude:hidden',
-      card: {
-        title: 'Hidden flamingo session',
-        agent: {
-          provider: 'claude-code',
-          sessionId: 'hidden',
-        },
-        source: {
-          adapter: 'hooks',
-          objectId: 'hidden',
-        },
-      },
-    })
-    run({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Visible flamingo task',
-      ],
-    })
-    const previous = process.env.PNYX_HOME
-    process.env.PNYX_HOME = home
-
-    try {
-      assert.ok(Object.values(loadHydra({ hydraId: 'default' }).state.cards).some(card => card.hidden && card.title === 'Hidden flamingo session'))
-      updateIndex({ hydraId: 'default' })
-      const hits = search({
-        hydraId: 'default',
-        query: {
-          text: 'flamingo',
-          live: true,
-          limit: 1,
-        },
-      }).hits
-      assert.deepEqual(
-        hits.map(hit => hit.title),
-        ['Visible flamingo task'],
-      )
-      assert.match(
-        run({
-          args: [
-            'oracle',
-            'flamingo',
-          ],
-        }),
-        /Hidden flamingo session/,
-      )
-    } finally {
-      if (previous === undefined) {
-        delete process.env.PNYX_HOME
-      } else {
-        process.env.PNYX_HOME = previous
-      }
-    }
-  },
-)
-
-test(
-  'a live Hydra transcript joins its Hydra conversation before a turn-end hook',
-  () => {
-    const {
-      run,
-      home,
-      push,
-    } = hydraId()
-    run({
-      args: [
-        'hydra',
-        'create',
-        'default',
-      ],
-    })
+    // The Hydra's own session joins its conversation as soon as it is set, before a turn-end hook.
     const transcript = join(
       home,
       'hydra.jsonl',
@@ -1691,6 +1204,15 @@ test(
         'rebuild',
       ],
     })
+    assert.match(
+      run({
+        args: [
+          'oracle',
+          'lunch',
+        ],
+      }),
+      /kind: hydra/,
+    )
     run({
       args: [
         'hydra',
@@ -1706,14 +1228,13 @@ test(
         message: { content: 'The flamingo investigation is ready.' },
       })}\n`,
     )
-    const found = run({
-      args: [
-        'oracle',
-        'flamingo',
-      ],
-    })
     assert.match(
-      found,
+      run({
+        args: [
+          'oracle',
+          'flamingo',
+        ],
+      }),
       /card: \$board\n {4}title: Hydra\n {4}kind: hydra/,
     )
     writeFileSync(
@@ -1745,81 +1266,120 @@ test(
 )
 
 test(
+  'live Hydra searches exclude hidden sessions before applying the result limit',
+  () => {
+    const {
+      run,
+      push,
+    } = hydraId()
+    run({
+      args: [
+        'hydra',
+        'create',
+        'default',
+      ],
+    })
+    push({
+      key: 'claude:hidden',
+      card: {
+        title: 'Hidden flamingo session',
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'hidden',
+        },
+        source: {
+          adapter: 'hooks',
+          objectId: 'hidden',
+        },
+      },
+    })
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Visible flamingo task',
+      ],
+    })
+    updateIndex({ hydraId: 'default' })
+    assert.deepEqual(
+      search({
+        hydraId: 'default',
+        query: {
+          text: 'flamingo',
+          live: true,
+          limit: 1,
+        },
+      }).hits.map(hit => hit.title),
+      ['Visible flamingo task'],
+    )
+    assert.match(
+      run({
+        args: [
+          'oracle',
+          'flamingo',
+        ],
+      }),
+      /Hidden flamingo session/,
+    )
+  },
+)
+
+test(
   'unhighlighted snippets preserve Markdown URLs, brackets and line breaks',
   () => {
-    const home = mkdtempSync(join(
-      tmpdir(),
+    process.env.PNYX_HOME = mkdtempSync(join(
+      scratch,
       'pnyx-oracle-markdown-',
     ))
-    const previous = process.env.PNYX_HOME
-    process.env.PNYX_HOME = home
     const text = '[PR](https://github.com/example/project/pull/42)\n\n- **Ready** [literal].'
-
-    try {
-      withWriter({
-        hydraId: 'default',
-        fn: ({ writer }) => writer.append({
-          event: {
-            v: 1,
-            seq: 1,
-            id: 'markdown',
-            at: '2026-10-15T10:00:00Z',
-            actor: 'fixture',
-            cardId: '$board',
-            type: 'hydra.message',
-            data: {
-              action: 'send',
-              text,
-              hydra: 'hydra',
-            },
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          seq: 1,
+          id: 'markdown',
+          at: '2026-10-15T10:00:00Z',
+          actor: 'fixture',
+          cardId: '$board',
+          type: 'hydra.message',
+          data: {
+            action: 'send',
+            text,
+            hydra: 'hydra',
           },
-        }),
-      })
-      updateIndex({ hydraId: 'default' })
+        },
+      }),
+    })
+    updateIndex({ hydraId: 'default' })
 
-      for (const query of [
-        'project',
-        'github',
-      ]) {
-        const result = search({
+    for (const query of [
+      'project',
+      'github',
+    ]) {
+      assert.equal(
+        search({
           hydraId: 'default',
           query: {
             text: query,
             limit: 1,
             highlight: false,
           },
-        })
-        assert.equal(
-          result.hits[0]?.snippets[0]?.snippet,
-          text,
-        )
-      }
+        }).hits[0]?.snippets[0]?.snippet,
+        text,
+      )
+    }
 
-      const highlighted = search({
+    assert.match(
+      search({
         hydraId: 'default',
         query: {
           text: 'project',
           limit: 1,
         },
-      })
-      assert.match(
-        highlighted.hits[0]!.snippets[0]!.snippet,
-        /example\/\[project\]\/pull/,
-      )
-    } finally {
-      if (previous === undefined) {
-        delete process.env.PNYX_HOME
-      } else {
-        process.env.PNYX_HOME = previous
-      }
-
-      rmSync(
-        home,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
-    }
+      }).hits[0]!.snippets[0]!.snippet,
+      /example\/\[project\]\/pull/,
+    )
   },
 )

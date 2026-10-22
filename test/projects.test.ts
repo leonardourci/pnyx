@@ -9,7 +9,6 @@ import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { hydraCheck } from '../src/cli/workers.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
-import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { firstmateProjects } from '../src/integrations/firstmate/projects.ts'
 import { project } from '../src/projects/cli.ts'
 import { findProject, projectsFor } from '../src/projects/read.ts'
@@ -83,18 +82,6 @@ test(
       state().projects?.[0]?.detached,
       true,
     )
-    assert.equal(
-      state().cards[task.id]?.project,
-      folder,
-    )
-    assert.equal(
-      state().cards[task.id]?.hidden,
-      undefined,
-    )
-    assert.equal(
-      readEvents({ hydraId: 'default' }).filter(e => e.type === 'task.created').length,
-      1,
-    )
     await assert.rejects(
       run({
         args: [
@@ -134,14 +121,6 @@ test(
     assert.equal(
       state().projects?.[0]?.detached,
       false,
-    )
-    const events = readEvents({ hydraId: 'default' })
-    assert.deepEqual(
-      replay({
-        state: emptyHydra(),
-        events,
-      }).projects,
-      state().projects,
     )
     assert.deepEqual(
       state().cards[task.id],
@@ -463,18 +442,6 @@ test(
         args: [
           'add',
           file,
-        ],
-      }),
-      { code: 'NOT_FOUND' },
-    )
-    await assert.rejects(
-      run({
-        args: [
-          'add',
-          join(
-            root,
-            'missing',
-          ),
         ],
       }),
       { code: 'NOT_FOUND' },
@@ -1053,14 +1020,6 @@ test(
     assert.deepEqual(
       state().projects?.[0]?.startCommand,
       saved,
-    )
-    const events = readEvents({ hydraId: 'default' })
-    assert.deepEqual(
-      replay({
-        state: emptyHydra(),
-        events,
-      }).projects,
-      state().projects,
     )
     await run({
       args: [

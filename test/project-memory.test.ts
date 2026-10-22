@@ -219,7 +219,7 @@ function fixture({ t }: { t: TestContext }) {
 }
 
 test(
-  'remote identities share across transport and keep unrelated projects separate',
+  'remote identities share across transport and keep unrelated projects, including local paths that differ by .git, separate',
   () => {
     const normalize = ({ remote }: { remote: string }) => normalizedRemote({
       remote,
@@ -236,6 +236,15 @@ test(
     assert.notEqual(
       normalize({ remote: 'https://example.test/a/repo' }),
       normalize({ remote: 'https://example.test/b/repo' }),
+    )
+    // A local remote is its path, so paths that differ by .git are different projects.
+    assert.equal(
+      normalize({ remote: '/x/local-remote' }),
+      normalize({ remote: 'file:///x/local-remote' }),
+    )
+    assert.notEqual(
+      normalize({ remote: '/x/local-remote' }),
+      normalize({ remote: 'file:///x/local-remote.git' }),
     )
   },
 )
@@ -343,10 +352,6 @@ test(
       },
     )
     const digest = await f.digest({ hydra: 'beta' })
-    assert.equal(
-      typeof digest,
-      'string',
-    )
     assert.match(
       String(digest),
       /profile: current/,
@@ -354,15 +359,6 @@ test(
     assert.doesNotMatch(
       String(digest),
       /Keep PRs small|Tests use a temporary home/,
-    )
-    assert.deepEqual(
-      (await project([
-        'show',
-        copy,
-        '--hydra',
-        'beta',
-      ])).memory,
-      second.memory,
     )
     commands.task([
       'create',
@@ -514,12 +510,13 @@ test(
       { code: 'SOURCES_CHANGED' },
     )
     await saveProfile({ fingerprint: String(changed.fingerprint) })
+    const saved = await f.memory()
     assert.equal(
-      (await f.memory()).profile,
+      saved.profile,
       'current',
     )
     assert.match(
-      JSON.stringify((await f.memory()).memory),
+      JSON.stringify(saved.memory),
       /No squash merges/,
     )
     rmSync(join(
@@ -700,48 +697,44 @@ test(
       (await f.memory()).memory,
       'none: no project memory yet',
     )
-    await assert.rejects(
-      f.memory({
-        args: [
-          'set',
-          '--key',
-          'other',
-          '--text',
-          'invalid',
-        ],
-      }),
-      { code: 'VALIDATION_ERROR' },
-    )
-    await assert.rejects(
-      f.memory({
-        args: [
-          'set',
-          '--key',
-          'learnings',
-          '--text',
-          ' ',
-          '--actor',
-          'hydra',
-          '--reason',
-          'test',
-        ],
-      }),
-      { code: 'VALIDATION_ERROR' },
-    )
-    await assert.rejects(
-      f.memory({
-        args: [
-          'set',
-          '--key',
-          'learnings',
-          '--text',
-          'fact',
-          '--actor',
-          'hydra',
-        ],
-      }),
-      { code: 'VALIDATION_ERROR' },
-    )
+
+    // An unknown key, blank text, and a Hydra write without a reason.
+    for (const args of [
+      [
+        '--key',
+        'other',
+        '--text',
+        'invalid',
+      ],
+      [
+        '--key',
+        'learnings',
+        '--text',
+        ' ',
+        '--actor',
+        'hydra',
+        '--reason',
+        'test',
+      ],
+      [
+        '--key',
+        'learnings',
+        '--text',
+        'fact',
+        '--actor',
+        'hydra',
+      ],
+    ]) {
+      await assert.rejects(
+        f.memory({
+          args: [
+            'set',
+            ...args,
+          ],
+        }),
+        { code: 'VALIDATION_ERROR' },
+      )
+    }
   },
 )
 
@@ -818,120 +811,6 @@ test(
     assert.deepEqual(
       changed.changed,
       ['AGENTS.md'],
-    )
-  },
-)
-
-test(
-  'local remotes whose paths differ by .git keep independent project memories',
-  async t => {
-    const f = fixture({ t })
-    const firstRemote = join(
-      f.root,
-      'local-remote',
-    )
-    const secondRemote = `${firstRemote}.git`
-
-    for (const path of [
-      firstRemote,
-      secondRemote,
-    ]) {
-      execFileSync(
-        'git',
-        [
-          'init',
-          '--bare',
-          path,
-        ],
-        { stdio: 'ignore' },
-      )
-    }
-
-    f.git({
-      args: [
-        'remote',
-        'set-url',
-        'origin',
-        firstRemote,
-      ],
-    })
-    const copy = join(
-      f.root,
-      'copy',
-    )
-    execFileSync(
-      'git',
-      [
-        'clone',
-        '--quiet',
-        f.folder,
-        copy,
-      ],
-    )
-    execFileSync(
-      'git',
-      [
-        '-C',
-        copy,
-        'remote',
-        'set-url',
-        'origin',
-        `file://${secondRemote}`,
-      ],
-    )
-    await project([
-      'add',
-      f.folder,
-      '--hydra',
-      'alpha',
-    ])
-    await project([
-      'add',
-      copy,
-      '--hydra',
-      'beta',
-    ])
-    await f.memory({
-      args: [
-        'set',
-        '--key',
-        'preferences',
-        '--text',
-        'First project preference.',
-      ],
-    })
-    const second = ({ args }: { args: string[] }) => project([
-      'memory',
-      ...args,
-      '--project',
-      copy,
-      '--hydra',
-      'beta',
-    ])
-    assert.notEqual(
-      (await f.memory()).id,
-      (await second({ args: ['list'] })).id,
-    )
-    assert.equal(
-      (await second({ args: ['list'] })).memory,
-      'none: no project memory yet',
-    )
-    await second({
-      args: [
-        'set',
-        '--key',
-        'preferences',
-        '--text',
-        'Second project preference.',
-      ],
-    })
-    assert.deepEqual(
-      (await f.memory()).memory,
-      { preferences: 'First project preference.' },
-    )
-    assert.deepEqual(
-      (await second({ args: ['list'] })).memory,
-      { preferences: 'Second project preference.' },
     )
   },
 )

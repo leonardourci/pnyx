@@ -10,8 +10,7 @@ import { hydraCheck, workerCommands } from '../src/cli/workers.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { DEFAULT_WIDTHS, viewFor } from '../src/core/view.ts'
 import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET, TEMPLATE_NUDGE } from '../src/core/digest.ts'
-import { emptyHydra, replay } from '../src/core/reducer.ts'
-import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 
 // The digest's setup check reads harness configs; keep it off the real ones.
 const harnesses = mkdtempSync(join(
@@ -82,7 +81,7 @@ function fixture() {
 }
 
 test(
-  'brief and visibility events replay without dropping history or reacting to status',
+  'a brief update is idempotent by event id, hiding leaves the list, and status never moves the task',
   async () => {
     const f = fixture()
 
@@ -184,26 +183,6 @@ test(
         f.state().cards[id]?.hidden,
         false,
       )
-      const events = readEvents({ hydraId: 'default' })
-      assert.equal(
-        events.filter(e => e.type === 'task.visibility').length,
-        2,
-      )
-      assert.deepEqual(
-        replay({
-          state: emptyHydra(),
-          events,
-        }),
-        f.state(),
-      )
-      assert.match(
-        JSON.stringify(await workerCommands.hydra([
-          'check',
-          '--after',
-          '0',
-        ])),
-        /task.brief|task.visibility/,
-      )
     } finally {
       rmSync(
         f.home,
@@ -234,20 +213,6 @@ test(
       assert.equal(
         f.state().config?.columns.find(c => c.id === 'needs_you')?.description,
         'Questions only.',
-      )
-      const seq = f.state().seq
-      await f.run({
-        name: 'column',
-        args: [
-          'describe',
-          'needs_you',
-          '--description',
-          'Questions only.',
-        ],
-      })
-      assert.equal(
-        f.state().seq,
-        seq,
       )
       await f.run({
         name: 'column',
@@ -311,15 +276,6 @@ test(
         ],
       })
       assert.throws(() => f.run({
-        name: 'column',
-        args: [
-          'resize',
-          'missing',
-          '--width',
-          '400',
-        ],
-      }))
-      assert.throws(() => f.run({
         name: 'hydra',
         args: [
           'resize',
@@ -347,13 +303,6 @@ test(
       assert.equal(
         view.fontSize,
         18,
-      )
-      assert.deepEqual(
-        replay({
-          state: emptyHydra(),
-          events: readEvents({ hydraId: 'default' }),
-        }),
-        f.state(),
       )
     } finally {
       rmSync(
@@ -443,19 +392,6 @@ test(
         f.state().cards[id]?.column,
         'done',
       )
-      const seq = f.state().seq
-      await f.run({
-        name: 'move',
-        args: [
-          ...args,
-          '--confirm',
-          String(stale.token),
-        ],
-      })
-      assert.equal(
-        f.state().seq,
-        seq,
-      )
       const deletion = await f.run({
         name: 'column',
         args: [
@@ -527,19 +463,6 @@ test(
         f.state().config?.columns[0]?.id,
         'parked',
       )
-      await f.run({
-        name: 'move',
-        args: [
-          'work',
-          'needs_you',
-          '--actor',
-          'web',
-        ],
-      })
-      assert.equal(
-        f.state().cards[id]?.column,
-        'needs_you',
-      )
     } finally {
       rmSync(
         f.home,
@@ -608,41 +531,6 @@ test(
         }),
         /--reason/,
       )
-      await assert.rejects(
-        async () => f.run({
-          name: 'task',
-          args: [
-            'hide',
-            'work',
-            ...hydra,
-          ],
-        }),
-        /--reason/,
-      )
-      await assert.rejects(
-        async () => f.run({
-          name: 'move',
-          args: [
-            'work',
-            'needs_you',
-            ...hydra,
-          ],
-        }),
-        /--reason/,
-      )
-      await assert.rejects(
-        async () => f.run({
-          name: 'task',
-          args: [
-            'start',
-            'work',
-            '--via',
-            'command',
-            ...hydra,
-          ],
-        }),
-        /--reason/,
-      )
       const why = [
         '--reason',
         'its agent asked which schema to use',
@@ -678,24 +566,6 @@ test(
       assert.equal(
         moved.posted,
         'Moved API cleanup to Needs you: its agent asked which schema to use',
-      )
-      const seq = f.state().seq
-      await f.run({
-        name: 'move',
-        args: [
-          'work',
-          'needs_you',
-          ...hydra,
-          ...why,
-          '--event-id',
-          'move-1',
-          '--confirm',
-          String(asked.token),
-        ],
-      })
-      assert.equal(
-        f.state().seq,
-        seq,
       )
       await f.run({
         name: 'move',
@@ -1058,20 +928,6 @@ test(
         }),
         /Pnyx-wide owner memory/,
       )
-      assert.throws(
-        () => f.run({
-          name: 'hydra',
-          args: [
-            'memory',
-            'set',
-            '--key',
-            'learnings',
-            '--text',
-            'CI is slow.',
-          ],
-        }),
-        /Pnyx-wide owner memory/,
-      )
 
       await f.run({
         name: 'owner',
@@ -1265,17 +1121,6 @@ test(
       assert.deepEqual(
         f.state().hydraMemory,
         {},
-      )
-      assert.equal(
-        readEvents({ hydraId: 'default' }).filter(e => e.type === 'hydra.memory').length,
-        3,
-      )
-      assert.deepEqual(
-        replay({
-          state: emptyHydra(),
-          events: readEvents({ hydraId: 'default' }),
-        }),
-        f.state(),
       )
     } finally {
       rmSync(

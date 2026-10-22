@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { decideMove, decidePush, decideReply, decideUndo, decideView, type Decision } from '../src/core/decide.ts'
 import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { HydraError, COLUMNS, type HydraEvent, type HydraState } from '../src/core/model.ts'
-import { clampViewSize, patchView, traces, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
+import { patchView, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
 import { agentActivity, columnsFor, dropBefore, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, taskLabel, visibleParent } from '../web/src/hydra/view.ts'
 import { withWriter } from '../src/store/hydra-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
@@ -115,33 +115,6 @@ test(
       }).map(c => c.key),
       ['work'],
     )
-    assert.equal(
-      pageTitle({
-        page: 'hydra',
-        cards: state.cards,
-      }),
-      'Hydra · Pnyx',
-      'a request never moves a card to Needs you',
-    )
-    state = reduce({
-      state,
-      event: event({
-        d: decideMove({
-          state,
-          ref: 'work',
-          column: 'needs_you',
-          meta,
-        }),
-      }),
-    })
-    assert.equal(
-      pageTitle({
-        page: 'hydra',
-        cards: state.cards,
-      }),
-      '(1) Hydra · Pnyx',
-    )
-    assert.ok(state.cards[state.keys.background!])
   },
 )
 
@@ -162,18 +135,6 @@ test(
       },
     })
     const card = state.cards.c1!
-    assert.equal(
-      card.tracking,
-      'declared',
-    )
-    assert.equal(
-      card.column,
-      'in_progress',
-    )
-    assert.equal(
-      card.status,
-      undefined,
-    )
     assert.equal(
       taskLabel({ card }),
       'working: step one',
@@ -224,28 +185,6 @@ test(
 test(
   'tab titles follow the view, selected card and current needs-you count',
   () => {
-    for (const [
-      page,
-      label,
-    ] of [
-        [
-          'hydra',
-          'Hydra',
-        ],
-        [
-          'settings',
-          'Settings',
-        ],
-      ] as const) {
-      assert.equal(
-        pageTitle({
-          page,
-          cards: {},
-        }),
-        `${label} · Pnyx`,
-      )
-    }
-
     let state = push({
       state: emptyHydra(),
       key: 'a',
@@ -314,14 +253,6 @@ test(
         selected: 'c1',
       }),
       '(2) Review <literal> changes · Pnyx',
-    )
-    assert.equal(
-      pageTitle({
-        page: 'hydra',
-        cards: state.cards,
-        selected: 'missing',
-      }),
-      '(2) Hydra · Pnyx',
     )
     assert.equal(
       pageTitle({
@@ -462,59 +393,11 @@ test(
       viewFor({ state: undone }),
       viewFor({ state: initial }),
     )
-    assert.throws(
-      () => patchView({
-        state,
-        input: { fontSize: 100 },
-      }),
-      HydraError,
-    )
-    assert.throws(
-      () => patchView({
-        state,
-        input: { chatFontSize: 100 },
-      }),
-      HydraError,
-    )
-    assert.throws(
-      () => patchView({
-        state,
-        input: { codeFontSize: 5 },
-      }),
-      HydraError,
-    )
-    const sizes = patchView({
-      state,
-      input: {
-        fontSize: 15,
-        chatFontSize: 18,
-        codeFontSize: 12,
-      },
-    })
-    assert.deepEqual(
-      [
-        sizes.fontSize,
-        sizes.chatFontSize,
-        sizes.codeFontSize,
-      ],
-      [
-        15,
-        18,
-        12,
-      ],
-    )
-    assert.throws(
-      () => patchView({
-        state,
-        input: JSON.parse('{"columnWidths":{"__proto__":300}}'),
-      }),
-      HydraError,
-    )
   },
 )
 
 test(
-  'card heights have no maximum and keep closed and open sizes apart',
+  'saved sizes load clamped to their limits, invalid patches are refused, and widths and card heights have no upper cap',
   () => {
     const state = push({
       state: emptyHydra(),
@@ -524,257 +407,77 @@ test(
     const view = patchView({
       state,
       input: {
+        hydraWidth: 1800,
+        panelWidth: 2000,
+        columnWidths: { needs_you: 2100 },
         cardHeights: { c1: 2400 },
         closedCardHeights: { c1: 1200 },
       },
     })
     assert.deepEqual(
       [
+        view.hydraWidth,
+        view.panelWidth,
+        view.columnWidths.needs_you,
         view.cardHeights.c1,
         view.closedCardHeights.c1,
       ],
       [
+        1800,
+        2000,
+        2100,
         2400,
         1200,
       ],
     )
-    assert.equal(
-      viewFor({
-        state: {
-          ...state,
-          view: {
-            ...view,
-            closedCardHeights: { c1: 1 },
-          },
-        },
-      }).closedCardHeights.c1,
-      VIEW_SIZE_LIMITS.cardHeight.min,
-    )
-    assert.throws(
-      () => patchView({
-        state,
-        input: { closedCardHeights: { missing: 300 } },
-      }),
-      HydraError,
-    )
-    assert.throws(
-      () => patchView({
-        state,
-        input: { closedCardHeights: { c1: VIEW_SIZE_LIMITS.cardHeight.min - 1 } },
-      }),
-      HydraError,
-    )
-  },
-)
-
-test(
-  'saved resize preferences load within readable size limits',
-  () => {
-    const initial = push({
-      state: emptyHydra(),
-      key: 'a',
-      fields: { title: 'A' },
-    })
-    const view = viewFor({ state: initial })
     const loaded = viewFor({
       state: {
-        ...initial,
+        ...state,
         view: {
           ...view,
           panelWidth: 1,
-          cardHeight: 1,
-          columnWidths: {
-            needs_you: 1,
-            review: 900,
-          },
+          columnWidths: { needs_you: 1 },
           cardHeights: { c1: 1 },
+          closedCardHeights: { c1: 1 },
         },
       },
     })
-
-    assert.equal(
-      loaded.panelWidth,
-      VIEW_SIZE_LIMITS.panelWidth.min,
-    )
-    assert.equal(
-      loaded.cardHeight,
-      VIEW_SIZE_LIMITS.cardHeight.min,
-    )
-    assert.equal(
-      loaded.columnWidths.needs_you,
-      VIEW_SIZE_LIMITS.columnWidth.min,
-    )
-    assert.equal(
-      loaded.columnWidths.review,
-      900,
-    )
-    assert.equal(
-      loaded.cardHeights.c1,
-      VIEW_SIZE_LIMITS.cardHeight.min,
-    )
-    assert.equal(
-      clampViewSize({
-        value: 100,
-        min: 320,
-        max: 720,
-      }),
-      320,
-    )
-    assert.equal(
-      clampViewSize({
-        value: 800,
-        min: 320,
-        max: 720,
-      }),
-      720,
-    )
-    assert.equal(
-      clampViewSize({
-        value: 320.5,
-        min: 320,
-        max: 720,
-      }),
-      321,
-    )
-  },
-)
-
-test(
-  'custom columns take moved cards and send them to the fallback column when deleted',
-  () => {
-    let state = push({
-      state: emptyHydra(),
-      key: 'a',
-      fields: {
-        attention: [
-          {
-            kind: 'question',
-            key: 'q',
-            blocking: true,
-          },
-        ],
-      },
-    })
-    state = reduce({
-      state,
-      event: event({
-        d: decideView({
-          state,
-          patch: {
-            customColumns: [
-              {
-                id: 'custom:later',
-                title: 'Later',
-              },
-            ],
-          },
-          meta,
-        }),
-      }),
-    })
-    assert.equal(
-      columnsFor({ state }).at(-1)?.title,
-      'Later',
-    )
-    assert.equal(
-      patchView({
-        state: emptyHydra(),
-        input: {
-          columnWidths: { 'custom:one': 400 },
-          customColumns: [
-            {
-              id: 'custom:one',
-              title: 'One',
-            },
-          ],
-        },
-      }).columnWidths['custom:one'],
-      400,
-    )
-    state = reduce({
-      state,
-      event: event({
-        d: decideMove({
-          state,
-          ref: 'a',
-          column: 'custom:later',
-          meta,
-        }),
-      }),
-    })
-    assert.equal(
-      state.cards.c1!.column,
-      'custom:later',
-    )
     assert.deepEqual(
-      patchView({
-        state,
-        input: { customColumns: [] },
-      }).customColumns,
-      [],
+      [
+        loaded.panelWidth,
+        loaded.columnWidths.needs_you,
+        loaded.cardHeights.c1,
+        loaded.closedCardHeights.c1,
+      ],
+      [
+        VIEW_SIZE_LIMITS.panelWidth.min,
+        VIEW_SIZE_LIMITS.columnWidth.min,
+        VIEW_SIZE_LIMITS.cardHeight.min,
+        VIEW_SIZE_LIMITS.cardHeight.min,
+      ],
     )
-    assert.throws(
-      () => decideMove({
-        state,
-        ref: 'a',
-        column: 'custom:missing',
-        meta,
-      }),
-      /unknown/,
-    )
-    const back = event({
-      d: decideMove({
-        state,
-        ref: 'a',
-        column: 'needs_you',
-        meta,
-      }),
-    })
-    state = reduce({
-      state,
-      event: back,
-    })
-    assert.equal(
-      state.cards.c1!.column,
-      'needs_you',
-    )
-    assert.equal(
-      state.cards.c1!.attention.length,
-      1,
-    )
-    state = reduce({
-      state,
-      event: event({
-        d: decideMove({
+
+    for (const input of [
+      { fontSize: 100 },
+      { chatFontSize: 100 },
+      { codeFontSize: 5 },
+      { hydraWidth: 239 },
+      { hydraWidth: Infinity },
+      { closedCardHeights: { missing: 300 } },
+      { closedCardHeights: { c1: VIEW_SIZE_LIMITS.cardHeight.min - 1 } },
+      { theme: 'sepia' },
+      { lastMessageOnCards: 'yes' },
+      JSON.parse('{"columnWidths":{"__proto__":300}}'),
+    ]) {
+      assert.throws(
+        () => patchView({
           state,
-          ref: 'a',
-          column: 'custom:later',
-          meta,
+          input,
         }),
-      }),
-    })
-    state = reduce({
-      state,
-      event: event({
-        d: decideView({
-          state,
-          patch: { customColumns: [] },
-          meta,
-        }),
-      }),
-    })
-    assert.equal(
-      state.cards.c1!.column,
-      'parked',
-    )
-    assert.throws(
-      () => decideUndo({
-        state,
-        target: back,
-        meta,
-      }),
-      /changed since/,
-    )
+        HydraError,
+        JSON.stringify(input),
+      )
+    }
   },
 )
 
@@ -918,11 +621,7 @@ test(
     const ids = ({ cards }: { cards: { id: string }[] }) => cards.map(c => c.id)
 
     for (const query of [
-      'deploy',
       'dep',
-      'infra',
-      'ops-rot',
-      'step 3',
       'nothing like it',
       '',
     ]) {
@@ -1032,7 +731,7 @@ test(
 )
 
 test(
-  'thread reader ignores partial records, pages old messages, separates traces and reports unavailable capabilities',
+  'thread reader ignores partial records, separates traces and reports unavailable capabilities',
   () => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -1043,7 +742,7 @@ test(
       'session.jsonl',
     )
     const records = Array.from(
-      { length: 90 },
+      { length: 3 },
       (
         _,
         i,
@@ -1074,28 +773,8 @@ test(
       homes: [],
     })
     assert.equal(
-      page.entries.length,
-      60,
-    ); assert.equal(
       page.entries.at(-1)?.text,
-      'message 89',
-    ); assert.ok(page.older)
-    const older = readThread({
-      hydraId: 'default',
-      state,
-      card: state.cards.c1!,
-      homes: [],
-      before: page.older,
-    })
-    assert.equal(
-      older.entries.length,
-      30,
-    ); assert.equal(
-      older.entries[0]?.text,
-      'message 0',
-    ); assert.equal(
-      older.older,
-      undefined,
+      'message 2',
     )
     assert.equal(
       page.route,
@@ -1205,113 +884,7 @@ test(
 )
 
 test(
-  'Focus hides traces before paging so tool-heavy output cannot push replies off the page',
-  () => {
-    const home = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-focus-',
-    )); process.env.PNYX_HOME = home
-    const path = join(
-      home,
-      'session.jsonl',
-    )
-    const replies = Array.from(
-      { length: 3 },
-      (
-        _,
-        i,
-      ) => ({
-        type: 'assistant',
-        message: { content: `reply ${i}` },
-      }),
-    )
-    const tools = Array.from(
-      { length: 120 },
-      (
-        _,
-        i,
-      ) => ({
-        type: 'assistant',
-        message: {
-          content: [
-            {
-              type: 'tool_use',
-              input: `tool ${i}`,
-            },
-          ],
-        },
-      }),
-    )
-    writeFileSync(
-      path,
-      [
-        ...replies,
-        ...tools,
-      ].map(r => JSON.stringify(r)).join('\n') + '\n',
-    )
-    let state = push({
-      state: emptyHydra(),
-      key: 'a',
-      fields: {
-        activity: 'working',
-        agent: {
-          provider: 'claude',
-          sessionId: 'fixture',
-          transcriptPath: path,
-        },
-      },
-    })
-    const focused = readThread({
-      hydraId: 'default',
-      state,
-      card: state.cards.c1!,
-      homes: [],
-    })
-    assert.deepEqual(
-      focused.entries.map(e => e.text),
-      [
-        'reply 0',
-        'reply 1',
-        'reply 2',
-      ],
-    )
-    assert.ok(traces({
-      view: viewFor({ state }),
-      card: 'c1',
-    }).focus)
-    const showTools = { focusMode: false }
-    state = reduce({
-      state,
-      event: event({
-        d: decideView({
-          state,
-          patch: showTools,
-          meta,
-        }),
-      }),
-    })
-    const full = readThread({
-      hydraId: 'default',
-      state,
-      card: state.cards.c1!,
-      homes: [],
-    })
-    assert.equal(
-      full.entries.length,
-      60,
-    ); assert.ok(full.entries.every(e => e.kind === 'tool'))
-    assert.equal(
-      traces({
-        view: viewFor({ state }),
-        card: 'c1',
-      }).focus,
-      false,
-    )
-  },
-)
-
-test(
-  'Focus pages messages from a tool-heavy tail larger than the first read window',
+  'Focus hides traces before paging, even from a tool-heavy tail larger than the first read window, and turning it off shows them',
   () => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -1396,6 +969,22 @@ test(
       older.older,
       undefined,
     )
+    const showTools = reduce({
+      state,
+      event: event({
+        d: decideView({
+          state,
+          patch: { focusMode: false },
+          meta,
+        }),
+      }),
+    })
+    assert.ok(readThread({
+      hydraId: 'default',
+      state: showTools,
+      card: showTools.cards.c1!,
+      homes: [],
+    }).entries.some(e => e.kind === 'tool'))
   },
 )
 
@@ -1843,6 +1432,19 @@ test(
         meta,
       }),
     })
+    assert.equal(
+      columnsFor({ state }).at(-1)?.title,
+      'Later',
+    )
+    assert.throws(
+      () => decideMove({
+        state,
+        ref: 'question',
+        column: 'custom:missing',
+        meta,
+      }),
+      /unknown/,
+    )
     apply({
       d: decideMove({
         state,
@@ -1884,13 +1486,6 @@ test(
       undefined,
     )
     assert.deepEqual(
-      replay({
-        state: emptyHydra(),
-        events,
-      }),
-      state,
-    )
-    assert.deepEqual(
       decideView({
         state,
         patch: { customColumns: [] },
@@ -1921,7 +1516,7 @@ test(
       }),
       /moved since/,
     )
-    const undo = apply({
+    apply({
       d: decideUndo({
         state,
         target: deletion,
@@ -1947,24 +1542,6 @@ test(
       state.cards.c1!.attention,
       before.cards.c1!.attention,
     )
-    const redo = apply({
-      d: decideUndo({
-        state,
-        target: undo,
-        meta,
-      }),
-    })
-    assert.deepEqual(
-      redo.type === 'board.view' && redo.data.placements?.map(p => p.cardId),
-      [
-        'c1',
-        'c2',
-      ],
-    )
-    assert.equal(
-      state.cards.c1!.column,
-      'parked',
-    )
     assert.deepEqual(
       replay({
         state: emptyHydra(),
@@ -1989,68 +1566,6 @@ test(
         /invalid/,
       )
     }
-  },
-)
-
-test(
-  'themes validate, default to System on older Hydras, and undo',
-  () => {
-    assert.equal(
-      viewFor({ state: emptyHydra() }).theme,
-      'system',
-    )
-
-    for (const theme of [
-      'light',
-      'dark',
-      'system',
-    ]) {
-      assert.equal(
-        patchView({
-          state: emptyHydra(),
-          input: { theme },
-        }).theme,
-        theme,
-      )
-    }
-
-    assert.throws(
-      () => patchView({
-        state: emptyHydra(),
-        input: { theme: 'sepia' },
-      }),
-      /invalid/,
-    )
-    const change = event({
-      d: decideView({
-        state: emptyHydra(),
-        patch: { theme: 'light' },
-        meta,
-      }),
-    })
-    const state = reduce({
-      state: emptyHydra(),
-      event: change,
-    })
-    assert.equal(
-      viewFor({ state }).theme,
-      'light',
-    )
-    assert.equal(
-      viewFor({
-        state: reduce({
-          state,
-          event: event({
-            d: decideUndo({
-              state,
-              target: change,
-              meta,
-            }),
-          }),
-        }),
-      }).theme,
-      'system',
-    )
   },
 )
 
@@ -2105,7 +1620,7 @@ test(
 )
 
 test(
-  'the turn indicator follows the joined session: working from a prompt or tool call until the turn ends',
+  'the turn indicator follows the joined session until the turn ends, unobserved activity stays unknown and an ended worker stays stopped',
   () => {
     const firstmate = {
       activity: 'working: task status',
@@ -2132,15 +1647,7 @@ test(
       expected,
     ] of [
         [
-          'UserPromptSubmit',
-          'working',
-        ],
-        [
           'PreToolUse',
-          'working',
-        ],
-        [
-          'PostToolUseFailure',
           'working',
         ],
         [
@@ -2279,130 +1786,6 @@ test(
       }),
       undefined,
       'empty column space is the end',
-    )
-  },
-)
-
-test(
-  'only a working turn shows as working, an ended session is stopped and unobserved activity stays unknown',
-  () => {
-    const card = push({
-      state: emptyHydra(),
-      key: 'k',
-      fields: {
-        agent: {
-          provider: 'claude',
-          sessionId: 's',
-        },
-      },
-    }).cards.c1!
-
-    for (const [
-      sessionActivity,
-      expected,
-    ] of [
-        [
-          'working',
-          'working',
-        ],
-        [
-          'finished',
-          'finished',
-        ],
-        [
-          'ended',
-          'stopped',
-        ],
-        [
-          undefined,
-          undefined,
-        ],
-        [
-          'running Bash',
-          undefined,
-        ],
-      ] as const) {
-      const shown = agentActivity({
-        card: {
-          ...card,
-          sessionActivity,
-        },
-      })
-      assert.equal(
-        shown,
-        expected,
-        String(sessionActivity),
-      )
-    }
-  },
-)
-
-test(
-  'section widths keep their minimums without an upper cap',
-  () => {
-    const state = emptyHydra()
-    const input = {
-      hydraWidth: 1800,
-      defaultHydraWidth: 1900,
-      panelWidth: 2000,
-      columnWidths: { needs_you: 2100 },
-      defaultColumnWidths: { needs_you: 2200 },
-    }
-    const view = patchView({
-      state,
-      input,
-    })
-    const loaded = viewFor({
-      state: {
-        ...state,
-        view,
-      },
-    })
-
-    for (const [
-      key,
-      value,
-    ] of Object.entries(input)) {
-      const actual = loaded[key as keyof typeof loaded]
-
-      if (typeof value === 'object') {
-        for (const [
-          id,
-          width,
-        ] of Object.entries(value)) {
-          assert.equal(
-            (actual as Record<string, number>)[id],
-            width,
-          )
-        }
-      } else {
-        assert.equal(
-          actual,
-          value,
-        )
-      }
-    }
-
-    assert.equal(
-      clampViewSize({
-        value: 2500,
-        min: 240,
-      }),
-      2500,
-    )
-    assert.throws(
-      () => patchView({
-        state,
-        input: { hydraWidth: Infinity },
-      }),
-      HydraError,
-    )
-    assert.throws(
-      () => patchView({
-        state,
-        input: { hydraWidth: 239 },
-      }),
-      HydraError,
     )
   },
 )

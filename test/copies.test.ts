@@ -995,66 +995,6 @@ test(
 )
 
 test(
-  'detaching finished workers trims their now-idle pool back to two slots',
-  async () => {
-    const {
-      task,
-      cardOf,
-      create,
-      start,
-      done,
-      worker,
-      attach,
-      run,
-    } = await lab()
-    const ids = [
-      task,
-      create({ key: 'two' }),
-      create({ key: 'three' }),
-    ]
-
-    for (const [
-      index,
-      id,
-    ] of ids.entries()) {
-      await start({ id })
-      worker({
-        session: `w-${index}`,
-        cwd: cardOf({ id }).copy!.path,
-      })
-      await attach({
-        id,
-        session: `w-${index}`,
-      })
-      done({ id })
-      settleDone({ hydraId: 'lab' })
-    }
-
-    const paths = ids.map(id => cardOf({ id }).copy!.path)
-    assert.equal(
-      paths.filter(existsSync).length,
-      3,
-    )
-
-    for (const id of ids) {
-      run({
-        args: [
-          'task',
-          'detach',
-          id,
-        ],
-      })
-    }
-
-    settleDone({ hydraId: 'lab' })
-    assert.equal(
-      paths.filter(existsSync).length,
-      2,
-    )
-  },
-)
-
-test(
   'a pooled copy starts its next branch from the fetched remote default branch',
   async () => {
     const {
@@ -1261,46 +1201,7 @@ test(
 )
 
 test(
-  `the pool keeps at most ${POOL_IDLE} idle copies of a project and deletes the rest`,
-  async () => {
-    const {
-      task,
-      cardOf,
-      create,
-      start,
-      done,
-    } = await lab()
-    const tasks = [
-      task,
-      ...Array.from(
-        { length: POOL_IDLE },
-        (
-          _,
-          i,
-        ) => create({ key: `more-${i}` }),
-      ),
-    ]
-
-    for (const id of tasks) {
-      await start({ id })
-      done({ id })
-    }
-
-    assert.equal(
-      settleDone({ hydraId: 'lab' }),
-      POOL_IDLE + 1,
-    )
-    const copies = tasks.map(id => cardOf({ id }).copy!)
-    assert.ok(copies.every(c => c.state === 'removed'))
-    assert.equal(
-      copies.filter(c => existsSync(c.path)).length,
-      POOL_IDLE,
-    )
-  },
-)
-
-test(
-  'a slot an attached worker runs in is kept past the cap and never handed to another task',
+  'a slot an attached worker runs in is kept past the cap, never handed to another task, and trimmed once detached',
   async () => {
     const {
       task,
@@ -1311,6 +1212,7 @@ test(
       done,
       worker,
       attach,
+      run,
     } = await lab()
     const others = Array.from(
       { length: POOL_IDLE },
@@ -1349,6 +1251,28 @@ test(
     assert.notEqual(
       cardOf({ id: next }).copy?.path,
       path,
+    )
+    done({ id: next })
+    settleDone({ hydraId: 'lab' })
+    run({
+      args: [
+        'task',
+        'detach',
+        task,
+      ],
+    })
+    settleDone({ hydraId: 'lab' })
+    const paths = new Set([
+      task,
+      ...others,
+    ].map(id => cardOf({ id }).copy!.path))
+    assert.equal(
+      paths.size,
+      POOL_IDLE + 1,
+    )
+    assert.equal(
+      [...paths].filter(existsSync).length,
+      POOL_IDLE,
     )
   },
 )

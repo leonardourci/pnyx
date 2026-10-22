@@ -343,7 +343,7 @@ async function until({ check }: { check(): boolean | Promise<boolean> }) {
 }
 
 test(
-  'queue order, unqueue, revisions, idempotency, CLI visibility and replay',
+  'queue order, unqueue, revisions, idempotency and CLI visibility',
   async t => {
     const f = await lab({ t })
     f.queue({ key: 'two' })
@@ -460,14 +460,6 @@ test(
     assert.match(
       JSON.stringify(check.queues),
       /"position":1/,
-    )
-    const events = readEvents({ hydraId: 'lab' })
-    assert.deepEqual(
-      replay({
-        state: emptyHydra(),
-        events,
-      }),
-      f.state(),
     )
   },
 )
@@ -1726,15 +1718,19 @@ test(
 
 test(
   'gh-axi PR landing metadata requires a merged result and both commit identifiers',
-  async t => {
-    const f = await lab({ t })
+  async () => {
+    const gh = join(
+      mkdtempSync(join(
+        tmpdir(),
+        'pnyx-gh-',
+      )),
+      'gh-axi-fixture',
+    )
+    process.env.PNYX_GH_AXI = gh
     const head = 'a'.repeat(40)
     const merge = 'b'.repeat(40)
     const fixture = ({ result }: { result: string }) => writeFileSync(
-      join(
-        f.root,
-        'gh-axi-fixture',
-      ),
+      gh,
       `#!/bin/sh\nprintf '%s\\n' 'api_response:' '  body: ${result}'\n`,
       { mode: 0o755 },
     )

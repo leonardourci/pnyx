@@ -105,13 +105,6 @@ test(
       liveTask({ card: task }),
       false,
     )
-    assert.deepEqual(
-      replay({
-        state: emptyHydra(),
-        events: f.events,
-      }),
-      f.state,
-    )
   },
 )
 

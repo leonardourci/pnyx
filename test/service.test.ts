@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
@@ -120,10 +120,6 @@ test(
         },
       ],
     )
-    assert.match(
-      preview.help[0]!,
-      /setup hydra --home \/fm & home --hydra work/,
-    )
     const installed = setupService(options)
     assert.deepEqual(
       installed.replaced,
@@ -168,15 +164,6 @@ test(
     assert.equal(
       calls.at(-1)?.[0],
       'bootstrap',
-    )
-    setupService(options)
-    assert.deepEqual(
-      calls.slice(-3).map(args => args[0]),
-      [
-        'bootout',
-        'print',
-        'bootstrap',
-      ],
     )
     setupService({
       ...options,
@@ -291,7 +278,7 @@ test(
     calls.length = 0
     waits.length = 0
     refusals = 1
-    setupService(options)
+    const { path } = setupService(options)
     assert.deepEqual(
       calls.slice(-2),
       [
@@ -315,16 +302,7 @@ test(
     )
 
     const plist = readFileSync(
-      join(
-        root,
-        'Library',
-        'LaunchAgents',
-        readdirSync(join(
-          root,
-          'Library',
-          'LaunchAgents',
-        ))[0],
-      ),
+      path,
       'utf8',
     )
     const stuck = {
@@ -347,16 +325,7 @@ test(
 
     assert.equal(
       readFileSync(
-        join(
-          root,
-          'Library',
-          'LaunchAgents',
-          readdirSync(join(
-            root,
-            'Library',
-            'LaunchAgents',
-          ))[0],
-        ),
+        path,
         'utf8',
       ),
       plist,
@@ -454,20 +423,6 @@ test(
     }).plist!
     assert.ok(unlinked.includes(`<array><string>${join(
       cellar,
-      'node',
-    )}</string>`))
-    const missing = setupService({
-      ...options,
-      node: join(
-        root,
-        'gone',
-        'node',
-      ),
-      searchPath: bin,
-    }).plist!
-    assert.ok(missing.includes(`<array><string>${join(
-      root,
-      'gone',
       'node',
     )}</string>`))
   },

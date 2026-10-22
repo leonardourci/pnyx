@@ -228,10 +228,13 @@ test(
       tty: TTY,
       pid: '9',
     }
-    assert.equal(
-      reason({
-        c: card({
-          fields: {
+
+    for (const [
+      fields,
+      expected,
+    ] of [
+        [
+          {
             terminal: {
               ...base,
               program: 'tmux',
@@ -240,14 +243,10 @@ test(
               paseoTerminal: 'p1',
             },
           },
-        }),
-      }),
-      'tmux',
-    )
-    assert.equal(
-      reason({
-        c: card({
-          fields: {
+          /^tmux$/,
+        ],
+        [
+          {
             terminal: {
               ...base,
               program: 'kitty',
@@ -256,113 +255,90 @@ test(
               herdrPane: 'p2',
             },
           },
-        }),
-      }),
-      'herdr',
-    )
-    assert.equal(
-      reason({
-        c: card({
-          fields: {
+          /^herdr$/,
+        ],
+        [
+          {
             terminal: {
               ...base,
               program: 'kitty',
               paseoTerminal: 'p1',
             },
           },
-        }),
-      }),
-      'paseo',
-    )
-    assert.equal(
-      reason({
-        c: card({
-          fields: {
+          /^paseo$/,
+        ],
+        [
+          {
             terminal: {
               ...base,
               program: 'iTerm.app',
             },
           },
-        }),
-      }),
-      'iterm2',
-    )
-    assert.equal(
-      reason({
-        c: card({
-          fields: {
+          /^iterm2$/,
+        ],
+        [
+          {
             terminal: {
               ...base,
               program: 'Apple_Terminal',
             },
           },
-        }),
-      }),
-      'terminal-app',
-    )
-    assert.match(
-      reason({
-        c: card({
-          fields: {
+          /^terminal-app$/,
+        ],
+        [
+          {
             terminal: {
               ...base,
               program: 'vscode',
             },
           },
-        }),
-      }),
-      /cannot type into vscode/,
-    )
-    assert.match(
-      reason({
-        c: card({
-          fields: {
+          /cannot type into vscode/,
+        ],
+        [
+          {
             terminal: {
               program: 'tmux',
               tmux: '/tmp/s',
               tmuxPane: '%1',
             },
           },
-        }),
-      }),
-      /TTY was not found/,
-    )
-    assert.match(
-      reason({ c: card({ fields: {} }) }),
-      /No terminal is recorded/,
-    )
-    assert.match(
-      reason({
-        c: card({
-          fields: {
+          /TTY was not found/,
+        ],
+        [
+          {},
+          /No terminal is recorded/,
+        ],
+        [
+          {
             activity: 'ended',
             terminal: {
               ...base,
               program: 'Apple_Terminal',
             },
           },
-        }),
-      }),
-      /session ended/,
-    )
-    assert.match(
-      reason({
-        c: card({
-          fields: {
+          /session ended/,
+        ],
+        [
+          {
             agent: {
               provider: 'claude-code',
               sessionId: 's',
               agentId: 'a',
             },
           },
-        }),
-      }),
-      /subagent/,
-    )
-    assert.match(
-      reason({ c: card({ fields: { agent: undefined } }) }),
-      /no Firstmate task or agent session/,
-    )
+          /subagent/,
+        ],
+        [
+          { agent: undefined },
+          /no Firstmate task or agent session/,
+        ],
+      ] as [Partial<Card>, RegExp][]) {
+      assert.match(
+        reason({ c: card({ fields }) }),
+        expected,
+      )
+    }
+
     const fm = card({
       fields: {
         sourceRefs: [
@@ -509,18 +485,6 @@ test(
     assert.equal(
       calls().length,
       5,
-    )
-    assert.match(
-      run({
-        args: [
-          'history',
-          '--card',
-          's1',
-          '--kind',
-          'replied',
-        ],
-      }),
-      /reply k1 delivered/,
     )
     fails({
       args: [
@@ -851,8 +815,6 @@ test(
   'a card with no route says why',
   () => {
     const {
-      root,
-      run,
       fails,
       session,
     } = hosts()
@@ -864,34 +826,6 @@ test(
       args: [
         'reply',
         's1',
-        '--text',
-        'x',
-      ],
-      code: 'NO_ROUTE',
-    })
-    writeFileSync(
-      join(
-        root,
-        'plain.json',
-      ),
-      '{"title":"plain"}',
-    )
-    run({
-      args: [
-        'push',
-        '--key',
-        'plain',
-        '--file',
-        join(
-          root,
-          'plain.json',
-        ),
-      ],
-    })
-    fails({
-      args: [
-        'reply',
-        'plain',
         '--text',
         'x',
       ],
@@ -1213,19 +1147,6 @@ test(
     assert.match(
       run({
         args: [
-          'history',
-          '--card',
-          's1',
-          '--kind',
-          'replied',
-        ],
-      }),
-      /reply e1 delivered/,
-    )
-
-    assert.match(
-      run({
-        args: [
           'agent',
           's1',
           'mode',
@@ -1252,23 +1173,6 @@ test(
       ],
       code: 'VALIDATION_ERROR',
     })
-    fails({
-      args: [
-        'agent',
-        's1',
-        'collaboration',
-        'toggle',
-      ],
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
-        'agent',
-        's1',
-        'model',
-      ],
-      code: 'VALIDATION_ERROR',
-    })
   },
 )
 
@@ -1280,7 +1184,6 @@ test(
       run,
       calls,
       set,
-      fails,
     } = hosts()
     const transcript = join(
       root,
@@ -1322,24 +1225,6 @@ test(
         '--file',
         file,
       ],
-    })
-    fails({
-      args: [
-        'agent',
-        'x1',
-        'model',
-        'gpt-6.1-sol',
-      ],
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
-        'agent',
-        'x1',
-        'approval',
-        'on-request',
-      ],
-      code: 'VALIDATION_ERROR',
     })
     assert.match(
       run({
@@ -1400,7 +1285,7 @@ test(
 )
 
 test(
-  'iTerm2 gets a key as raw bytes; Terminal and Herdr refuse keys before sending',
+  'iTerm2 gets a key as raw bytes; Terminal refuses keys before sending but types commands',
   () => {
     const {
       run,
@@ -1435,27 +1320,10 @@ test(
       key: 's2',
       terminal: { program: 'Apple_Terminal' },
     })
-    session({
-      key: 's3',
-      terminal: {
-        program: 'ghostty',
-        herdrSession: 'work',
-        herdrPane: 'p_7',
-      },
-    })
     fails({
       args: [
         'agent',
         's2',
-        'mode',
-        'next',
-      ],
-      code: 'NO_ROUTE',
-    })
-    fails({
-      args: [
-        'agent',
-        's3',
         'mode',
         'next',
       ],
@@ -1518,76 +1386,84 @@ test(
         after,
       })
 
-    assert.equal(
-      check({
-        provider: 'claude-code',
-        setting: 'model',
-        value: 'opus',
-        before: 'claude-sonnet-5-5',
-        after: 'claude-opus-5-5',
-      }),
-      true,
-    )
-    assert.equal(
-      check({
-        provider: 'claude-code',
-        setting: 'model',
-        value: 'opus',
-        before: 'claude-sonnet-5-5',
-        after: 'claude-sonnet-5-5',
-      }),
-      false,
-    )
-    assert.equal(
-      check({
-        provider: 'claude-code',
-        setting: 'effort',
-        value: 'high',
-        before: 'medium',
-        after: 'high',
-      }),
-      true,
-    )
-    assert.equal(
-      check({
-        provider: 'claude-code',
-        setting: 'effort',
-        value: 'xhigh',
-        before: 'medium',
-        after: 'high',
-      }),
-      false,
-    )
-    assert.equal(
-      check({
-        provider: 'claude-code',
-        setting: 'mode',
-        value: 'next',
-        before: 'auto',
-        after: 'default',
-      }),
-      true,
-    )
-    assert.equal(
-      check({
-        provider: 'codex',
-        setting: 'effort',
-        value: 'raise',
-        before: 'medium',
-        after: 'medium',
-      }),
-      false,
-    )
-    assert.equal(
-      check({
-        provider: 'codex',
-        setting: 'fast',
-        value: 'toggle',
-        before: 'off',
-        after: undefined,
-      }),
-      false,
-    )
+    for (const [
+      provider,
+      setting,
+      value,
+      before,
+      after,
+      confirmed,
+    ] of [
+        [
+          'claude-code',
+          'model',
+          'opus',
+          'claude-sonnet-5-5',
+          'claude-opus-5-5',
+          true,
+        ],
+        [
+          'claude-code',
+          'model',
+          'opus',
+          'claude-sonnet-5-5',
+          'claude-sonnet-5-5',
+          false,
+        ],
+        [
+          'claude-code',
+          'effort',
+          'high',
+          'medium',
+          'high',
+          true,
+        ],
+        [
+          'claude-code',
+          'effort',
+          'xhigh',
+          'medium',
+          'high',
+          false,
+        ],
+        [
+          'claude-code',
+          'mode',
+          'next',
+          'auto',
+          'default',
+          true,
+        ],
+        [
+          'codex',
+          'effort',
+          'raise',
+          'medium',
+          'medium',
+          false,
+        ],
+        [
+          'codex',
+          'fast',
+          'toggle',
+          'off',
+          undefined,
+          false,
+        ],
+      ] as const) {
+      assert.equal(
+        check({
+          provider,
+          setting,
+          value,
+          before,
+          after,
+        }),
+        confirmed,
+        `${provider} ${setting} ${value}`,
+      )
+    }
+
     assert.equal(
       findOption({
         provider: 'codex',

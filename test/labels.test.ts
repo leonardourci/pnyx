@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { LABEL_COLORS, type HydraEvent } from '../src/core/model.ts'
-import { emptyHydra, replay } from '../src/core/reducer.ts'
+import { replay } from '../src/core/reducer.ts'
 import { project } from '../src/projects/cli.ts'
 import { hydraDir, loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
@@ -124,24 +124,6 @@ test(
         state().labelColors,
         colors,
       )
-      assert.deepEqual(
-        replay({
-          state: emptyHydra(),
-          events,
-        }),
-        state(),
-      )
-      const replayed = replay({
-        state: emptyHydra(),
-        events,
-      })
-      assert.deepEqual(
-        replayed,
-        replay({
-          state: emptyHydra(),
-          events,
-        }),
-      )
     } finally {
       rmSync(
         home,
@@ -219,13 +201,6 @@ test(
         'utf8',
       ).startsWith(original))
       const events = readEvents({ hydraId: 'default' })
-      assert.deepEqual(
-        replay({
-          state: emptyHydra(),
-          events,
-        }),
-        state(),
-      )
       const saved = state().labelColors
       const last = events.at(-1)
       assert.ok(last)

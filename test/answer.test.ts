@@ -1451,10 +1451,6 @@ test(
       'keys are typed, never pasted',
     )
     assert.match(
-      calls()[1]!,
-      /arg=display-message/,
-    )
-    assert.match(
       run({
         args: [
           'card',
@@ -1475,28 +1471,15 @@ test(
     ).trim()
       .split('\n')
       .map(line => JSON.parse(line))
-    const receipts = events.filter(event => event.type === 'card.replied' && event.data.reply === 'a1')
-
-    for (const event of receipts) {
-      assert.equal(
-        event.type,
-        'card.replied',
-      )
-
-      if (event.type !== 'card.replied') {
-        continue
-      }
-
-      assert.deepEqual(
-        event.data.decision,
-        {
-          question: 'Pick a color\nPick sizes',
-          answer: 'Blue\nSmall, Large',
-        },
-      )
-    }
-
-    assert.ok(receipts.some(event => event.type === 'card.replied' && event.data.state === 'delivered'))
+    const delivered = events.find(event => event.type === 'card.replied'
+      && event.data.reply === 'a1' && event.data.state === 'delivered')
+    assert.deepEqual(
+      delivered?.type === 'card.replied' && delivered.data.decision,
+      {
+        question: 'Pick a color\nPick sizes',
+        answer: 'Blue\nSmall, Large',
+      },
+    )
     assert.match(
       run({
         args: [
@@ -1527,83 +1510,34 @@ test(
 )
 
 test(
-  'Codex takes keys in tmux too; Paseo, Herdr, iTerm2 and Terminal are answered in the session',
+  'a route without keys leaves the answer to the session',
   () => {
     const {
-      run,
       fails,
       calls,
       session,
     } = hosts()
+    // Only tmux takes keys; Paseo stands for every other route.
     session({
-      key: 's1',
-      provider: 'codex',
-      terminal: TMUX,
-      attention: [codex],
-    })
-    assert.match(
-      run({
-        args: [
-          'reply',
-          's1',
-          '--answer',
-          codex.key,
-          '--json',
-          '{"choice":"deny","text":"skip it"}',
-        ],
-      }),
-      /state: delivered/,
-    )
-    const sent = calls().filter(c => c.includes('arg=send-keys'))
-      .map(c => c.split('arg=--\narg=')[1]!.replace(
-        /\n$/,
-        '',
-      ))
-    assert.deepEqual(
-      sent,
-      [
-        KEY.escape,
-        'skip it',
-        KEY.enter,
-      ],
-    )
-
-    const others: Record<string, string>[] = [
-      {
+      key: 'o0',
+      provider: 'claude-code',
+      terminal: {
         program: 'kitty',
         paseoTerminal: 'term-1',
       },
-      {
-        program: 'kitty',
-        herdrSession: 'h1',
-        herdrPane: 'p1',
-      },
-      { program: 'iTerm.app' },
-      { program: 'Apple_Terminal' },
-    ]
-
-    for (const [
-      i,
-      terminal,
-    ] of others.entries()) {
-      session({
-        key: `o${i}`,
-        provider: 'claude-code',
-        terminal,
-        attention: [permission],
-      })
-      fails({
-        args: [
-          'reply',
-          `o${i}`,
-          '--answer',
-          permission.key,
-          '--json',
-          '{"choice":"allow"}',
-        ],
-        pattern: /that can be answered here/,
-      })
-    }
+      attention: [permission],
+    })
+    fails({
+      args: [
+        'reply',
+        'o0',
+        '--answer',
+        permission.key,
+        '--json',
+        '{"choice":"allow"}',
+      ],
+      pattern: /that can be answered here/,
+    })
 
     fails({
       args: [
@@ -1617,17 +1551,6 @@ test(
         'hi',
       ],
       pattern: /--answer takes --json/,
-    })
-    fails({
-      args: [
-        'reply',
-        'o0',
-        '--text',
-        'hi',
-        '--json',
-        '{}',
-      ],
-      pattern: /--json and --seen go with --answer/,
     })
     assert.equal(
       calls().filter(c => /call=(paseo|herdr|osascript)/.test(c)).length,

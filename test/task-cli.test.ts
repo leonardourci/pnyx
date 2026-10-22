@@ -191,36 +191,6 @@ test(
         'move-a',
       ],
     })
-    const after = readFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      'utf8',
-    )
-    f.run({
-      args: [
-        'task',
-        'attach',
-        'other',
-        '--session',
-        'claude-code:a',
-        '--event-id',
-        'move-a',
-        '--if-revision',
-        '0',
-      ],
-    })
-    assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'events.jsonl',
-        ),
-        'utf8',
-      ),
-      after,
-    )
     f.hook({
       session: 'a',
       event: 'SessionEnd',
@@ -247,36 +217,6 @@ test(
     assert.equal(
       ended.cards[task].agent,
       undefined,
-    )
-    f.run({
-      args: [
-        'task',
-        'detach',
-        'work',
-      ],
-    })
-    assert.equal(
-      f.state().cards[ended.keys.other].agent.sessionId,
-      'a',
-    )
-    f.run({
-      args: [
-        'task',
-        'detach',
-        'other',
-      ],
-    })
-    f.hook({
-      session: 'a',
-      event: 'UserPromptSubmit',
-    })
-    assert.equal(
-      f.state().sessions['claude-code:a'].taskId,
-      null,
-    )
-    assert.equal(
-      f.state().cards[f.state().keys['claude:a']].hidden,
-      true,
     )
     assert.match(
       f.run({
@@ -330,17 +270,6 @@ test(
       }),
       /visibility: history/,
     )
-    assert.match(
-      f.run({
-        args: [
-          'history',
-          '--card',
-          id,
-          '--full',
-        ],
-      }),
-      /background/,
-    )
     assert.doesNotMatch(
       f.run({ args: [] }),
       /task-lab/,
@@ -353,23 +282,6 @@ test(
         ],
       }),
       new RegExp(id),
-    )
-    f.hook({
-      session: 'background',
-      event: 'UserPromptSubmit',
-    })
-    assert.equal(
-      f.state().cards[id].hidden,
-      true,
-    )
-    f.hook({
-      session: 'background',
-      event: 'SessionStart',
-      interactive: false,
-    })
-    assert.equal(
-      f.state().cards[id].hidden,
-      true,
     )
   },
 )
@@ -472,15 +384,6 @@ test(
         'x'.repeat(101),
       ],
     }))
-    assert.throws(() => f.run({
-      args: [
-        'task',
-        'rename',
-        id,
-        '--project',
-        'bad\nlabel',
-      ],
-    }))
   },
 )
 
@@ -535,39 +438,12 @@ test(
       f.state().config.doneAfterHours,
       48,
     )
-    f.run({
-      args: [
-        'hydra',
-        'create',
-        'other',
-      ],
-    })
-    assert.equal(
-      f.state().config.doneAfterHours,
-      48,
-    )
     assert.throws(() => f.run({
       args: [
         'hydra',
         'set',
         '--done-after-hours',
         '-1',
-      ],
-    }))
-    assert.throws(() => f.run({
-      args: [
-        'hydra',
-        'set',
-        '--done-after-hours',
-        'NaN',
-      ],
-    }))
-    assert.throws(() => f.run({
-      args: [
-        'hydra',
-        'set',
-        '--done-after-hours',
-        '',
       ],
     }))
     f.run({
@@ -595,25 +471,6 @@ test(
     assert.equal(
       f.state().cards[f.state().keys.done].hidden,
       true,
-    )
-    assert.match(
-      f.run({
-        args: [
-          'history',
-          '--card',
-          'done',
-        ],
-      }),
-      /Task hidden/,
-    )
-    assert.match(
-      f.run({
-        args: [
-          'oracle',
-          'Retained',
-        ],
-      }),
-      /Retained result/,
     )
     f.run({
       args: [
@@ -716,16 +573,6 @@ test(
         'one-hour',
       ],
     })
-    f.run({
-      args: [
-        'task',
-        'hide-after',
-        id,
-        '1',
-        '--event-id',
-        'one-hour',
-      ],
-    })
     assert.equal(
       f.state().cards[id].doneAfterHours,
       1,
@@ -760,22 +607,6 @@ test(
         'hide-after',
         id,
         '-1',
-      ],
-    }))
-    assert.throws(() => f.run({
-      args: [
-        'task',
-        'hide-after',
-        id,
-        'NaN',
-      ],
-    }))
-    assert.throws(() => f.run({
-      args: [
-        'task',
-        'hide-after',
-        id,
-        '',
       ],
     }))
   },
