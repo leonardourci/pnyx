@@ -1,6 +1,7 @@
 import { saveOrPropose, resolveProposal } from './proposals.ts'
 import { existsSync } from 'node:fs'
 import { TEMPLATE_NUDGE } from '../core/digest.ts'
+import { hydraBypasses } from '../core/hydra.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { WRITE, guard, parse, required, meta, type Output } from '../cli/commands.ts'
 import { loadHydra, requireHydra, withRegistryLock } from '../store/hydra-store.ts'
@@ -108,7 +109,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
         }).dispatch
 
       if (action === 'migrate' || (action === 'init' && !shared)) {
-        if (propose || meta({ values }).actor === 'hydra') {
+        if (propose || (meta({ values }).actor === 'hydra' && !hydraBypasses({ state }))) {
           return invalid({ message: 'Propose a rule set, remove or accounts change instead' })
         }
       }
