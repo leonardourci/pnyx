@@ -2,6 +2,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import { isDeepStrictEqual, promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from '../core/control.ts'
+import type { PlanWindow } from '../server/provider.ts'
 import { HydraError, type HydraState, type StartOverride } from '../core/model.ts'
 import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness, type HeadsDispatch } from './config.ts'
 
@@ -82,6 +83,11 @@ export function accountEnvironment({
   }
 }
 
+const QUOTA_RUN = {
+  timeout: 15000,
+  maxBuffer: 4 * 1024 * 1024,
+}
+
 export function readQuota({ account }: { account: Account }): QuotaReading {
   if (!existsSync(loginFolder({ account }))) {
     return { auth: 'signed-out' }
@@ -102,9 +108,8 @@ export function readQuota({ account }: { account: Account }): QuotaReading {
       '--json',
     ],
     {
+      ...QUOTA_RUN,
       encoding: 'utf8',
-      timeout: 15000,
-      maxBuffer: 4 * 1024 * 1024,
       stdio: [
         'ignore',
         'pipe',
@@ -142,14 +147,9 @@ export function readQuota({ account }: { account: Account }): QuotaReading {
   return reading
 }
 
-export interface PlanUsage {
+interface PlanUsage {
   plan?: string
-  windows: {
-    label: string
-    kind?: string
-    used: number
-    resetsAt?: string
-  }[]
+  windows: PlanWindow[]
 }
 
 // The account's plan windows for the composer's usage panel: a cached quota-axi read, so a hover never waits on the vendor.
@@ -175,8 +175,7 @@ export async function readUsage({ account }: { account: Account }): Promise<Plan
         '--json',
       ],
       {
-        timeout: 15000,
-        maxBuffer: 4 * 1024 * 1024,
+        ...QUOTA_RUN,
         env,
       },
     )
@@ -187,7 +186,6 @@ export async function readUsage({ account }: { account: Account }): Promise<Plan
         notSetUp?: boolean
         windows?: {
           label?: string
-          kind?: string
           percentRemaining?: number
           percentUsed?: number
           resetsAt?: string
@@ -204,7 +202,6 @@ export async function readUsage({ account }: { account: Account }): Promise<Plan
         return window.label && used !== undefined ? [
           {
             label: window.label,
-            ...(window.kind ? { kind: window.kind } : {}),
             used,
             ...(window.resetsAt ? { resetsAt: window.resetsAt } : {}),
           },
