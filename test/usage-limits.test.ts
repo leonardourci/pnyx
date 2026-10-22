@@ -32,6 +32,39 @@ test(
       undefined,
     )
     assert.deepEqual(
+      claudeLimit({
+        info: {
+          status: 'allowed',
+          rateLimitType: 'five_hour',
+          utilization: 35,
+        },
+      }),
+      {
+        label: 'session',
+        used: 35,
+      },
+    )
+    assert.deepEqual(
+      codexLimits({
+        rateLimits: {
+          primary: {
+            usedPercent: 40,
+            windowDurationMins: 1_440,
+          },
+          secondary: { windowDurationMins: 10_080 },
+        },
+      }),
+      {
+        type: 'usage',
+        limits: [
+          {
+            label: '24h',
+            used: 40,
+          },
+        ],
+      },
+    )
+    assert.deepEqual(
       codexLimits({
         rateLimits: {
           planType: 'pro',
