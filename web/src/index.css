@@ -37,7 +37,7 @@
   --text-code: 13px;
 }
 
-:root { --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+:root { --chat-end: 64px; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
 
 :root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; --color-composer: #1d1e22; }
 @media (prefers-color-scheme: dark) {
@@ -315,7 +315,7 @@ h3 { font-weight: 600; }
 
 .button.jump:hover:not(:disabled) { background: var(--color-raised); }
 
-.chat-fade { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; height: 64px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--color-surface)); animation: chat-fade-in 200ms ease-out; }
+.chat-fade { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; height: var(--chat-end); pointer-events: none; background: linear-gradient(to bottom, transparent, var(--color-surface)); animation: chat-fade-in 200ms ease-out; }
 
 .chat-running { position: absolute; left: 16px; bottom: 6px; z-index: 3; display: flex; align-items: center; gap: 8px; padding: 2px 8px 2px 0; border-radius: 10px; background: var(--color-surface); color: var(--color-muted); font-size: var(--text-meta); font-variant-numeric: tabular-nums; }
 
@@ -888,7 +888,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-.hydra-messages { padding: 10px 16px 40px; display: block; flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; }
+/* The bottom gap matches the fade, and stays clear of the running line while a reply streams. */
+.hydra-messages { padding: 10px 16px var(--chat-end); display: block; flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; }
+
+/* Away from the bottom, the browser keeps what the owner reads in place as images and replies above it grow. */
+.hydra-messages[data-away] { overflow-anchor: auto; }
 
 .hydra-empty { margin-top: 12px; color: var(--color-muted); font-size: var(--text-ui); }
 

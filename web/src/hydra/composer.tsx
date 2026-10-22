@@ -196,9 +196,17 @@ export function Composer({
     caretNext.current = caret; setDraft({ text })
   }
 
+  // Holding the box height while measuring stops the browser from scrolling a pinned chat up.
   const fit = ({ element }: { element: HTMLTextAreaElement }) => {
-    element.style.height = 'auto'
+    const box = element.parentElement
+
+    if (box) {
+      box.style.minHeight = `${box.offsetHeight}px`
+    }
+
+    element.style.height = '0'
     element.style.height = `${element.scrollHeight}px`
+    box?.style.removeProperty('min-height')
   }
 
   useLayoutEffect(
