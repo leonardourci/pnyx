@@ -45,8 +45,14 @@ export const mergeWindows = ({
   ...base.map(window => over.find(limit => named(limit) === named(window)) ?? window),
   ...over.filter(limit => !base.some(window => named(window) === named(limit))),
 ]
+// A tool call the agent started, or its result arriving; while one runs the agent is busy, not quiet.
+export type HostedTool = {
+  type: 'tool'
+  id: string
+  running: boolean
+}
 // carried: the message the agent took last, mid-turn, opens its next turn instead of joining this one.
-export type HostedEvent = 'working' | 'finished' | 'carried' | HostedText | HostedUsage
+export type HostedEvent = 'working' | 'finished' | 'carried' | HostedText | HostedUsage | HostedTool
 export type AskPermission = ({
   tool,
   input,

@@ -6,7 +6,7 @@ import type { Question } from '../core/model.ts'
 import { form } from '../integrations/hooks/observe.ts'
 import { pnyxHome } from '../store/paths.ts'
 import { attachedImages } from '../attachments/images.ts'
-import type { AskPermission, HostedText, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
+import type { AskPermission, HostedText, HostedTool, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({
   cwd,
@@ -33,6 +33,14 @@ const TOOLS: Record<string, string> = {
   'mcpServer/elicitation/request': 'MCP input',
 }
 const ASKS = Object.keys(TOOLS)
+// Items that run while the turn waits on them, such as a shell command or a subagent.
+const TOOL_ITEMS = [
+  'commandExecution',
+  'mcpToolCall',
+  'dynamicToolCall',
+  'collabAgentToolCall',
+  'webSearch',
+]
 // Protocol ids a person never needs to judge a request.
 const HIDDEN = [
   'threadId',
@@ -290,7 +298,9 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
             const params = object({ value: message.params })
             const item = object({ value: params.item })
 
-            if (message.method === 'item/agentMessage/delta' || item.type === 'agentMessage') {
+            const toolDone = message.method === 'item/completed' && TOOL_ITEMS.includes(String(item.type))
+
+            if (message.method === 'item/agentMessage/delta' || item.type === 'agentMessage' || toolDone) {
               events.push({
                 ...params,
                 method: message.method,
@@ -300,13 +310,22 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
               compacted = true
             }
           } else if (message.method === 'item/started') {
-            const item = object({ value: object({ value: message.params }).item })
+            const params = object({ value: message.params })
+            const item = object({ value: params.item })
 
             if (item.type === 'fileChange' && typeof item.id === 'string') {
               items.set(
                 item.id,
                 item,
               )
+            }
+
+            if (TOOL_ITEMS.includes(String(item.type))) {
+              events.push({
+                ...params,
+                method: message.method,
+              })
+              wake?.()
             }
           }
         } else if (typeof message.id === 'number') {
@@ -404,7 +423,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     }: {
       threadId: string
       turnId: string
-    }): AsyncGenerator<HostedText | HostedUsage | { turn: ObjectValue }> {
+    }): AsyncGenerator<HostedText | HostedTool | HostedUsage | { turn: ObjectValue }> {
       for (;;) {
         if (failure) {
           throw failure
@@ -446,6 +465,17 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
 
           if (event.turnId === turnId) {
             const item = object({ value: event.item })
+            const toolEvent = event.method === 'item/started' || event.method === 'item/completed'
+
+            if (toolEvent && TOOL_ITEMS.includes(String(item.type)) && typeof item.id === 'string') {
+              yield {
+                type: 'tool',
+                id: item.id,
+                running: event.method === 'item/started',
+              }
+              continue
+            }
+
             const id = event.method === 'item/agentMessage/delta' ? event.itemId : item.id
             const text = event.method === 'item/agentMessage/delta' ? event.delta : item.text
 

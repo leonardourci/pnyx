@@ -394,6 +394,26 @@ export function claudeProvider({
                     text: block.text,
                   }
                 }
+
+                if (block.type === 'tool_use') {
+                  yield {
+                    type: 'tool' as const,
+                    id: block.id,
+                    running: true,
+                  }
+                }
+              }
+            }
+
+            if (message.type === 'user' && !message.parent_tool_use_id && Array.isArray(message.message.content)) {
+              for (const block of message.message.content) {
+                if (block.type === 'tool_result') {
+                  yield {
+                    type: 'tool' as const,
+                    id: block.tool_use_id,
+                    running: false,
+                  }
+                }
               }
             }
 

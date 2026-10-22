@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
@@ -16,6 +16,8 @@ import { loadHydra, readEvents, spoolWrite, withWriter } from '../src/store/hydr
 import { fakeCodex } from './codex-fixture.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 import { MAX_IMAGE_BYTES } from '../src/attachments/images.ts'
+import { codexProvider } from '../src/server/codex.ts'
+import type { HostedEvent } from '../src/server/provider.ts'
 
 const meta = {
   at: '2026-10-15T00:00:00Z',
@@ -1163,6 +1165,66 @@ test(
         ],
       }),
       /takes allow or deny without an answer/,
+    )
+  },
+)
+
+test(
+  'a Codex command item reports its tool call running, then done, inside the turn',
+  async () => {
+    const root = realpathSync(mkdtempSync(join(
+      tmpdir(),
+      'pnyx-codex-tool-',
+    )))
+    const codex = fakeCodex({ root })
+    const session = await codexProvider({ spawnCodex: codex.spawnCodex }).open({
+      cwd: root,
+      settings: {},
+      env: {
+        ...process.env,
+        CODEX_HOME: root,
+      },
+      signal: new AbortController().signal,
+    })
+
+    const input = async function* () {
+      yield 'COMMAND'
+    }
+
+    const events: HostedEvent[] = []
+
+    for await (const event of session.run({
+      input: input(),
+      permission: async () => ({
+        behavior: 'deny',
+        message: 'no',
+      }),
+    })) {
+      events.push(event)
+    }
+
+    session.close()
+    rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    )
+    assert.deepEqual(
+      events.filter(event => typeof event !== 'string' && event.type === 'tool'),
+      [
+        {
+          type: 'tool',
+          id: 'command-run',
+          running: true,
+        },
+        {
+          type: 'tool',
+          id: 'command-run',
+          running: false,
+        },
+      ],
     )
   },
 )
