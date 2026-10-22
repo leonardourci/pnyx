@@ -16,13 +16,13 @@ import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
-import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraEvent, hydraMode, wakesHydra } from '../core/hydra.ts'
+import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor, wakesHydra } from '../core/hydra.ts'
 import { freeTask } from '../cli/start.ts'
 import { hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { HydraError, HYDRA_ACTOR, ownerActor, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
+import { HydraError, HYDRA_ACTOR, ownerActor, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraMessage, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
 import { findOption, harnessControls } from '../core/control.ts'
 import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
 import { hydraDir, loadHydra, pnyxHome, readEvents, withWriter, type Writer } from '../store/hydra-store.ts'
@@ -115,8 +115,16 @@ export interface Host {
     details?: string
   }): Record<string, unknown>
   reconcile({ state }: { state: HydraState }): void
-  // Queues a check turn for a hosted Hydra once a change it tracks lands at seq.
-  wake({ seq }: { seq: number }): void
+  // Queues a check turn for a hosted Hydra once a change it tracks lands at seq on that card.
+  wake({
+    seq,
+    card,
+  }: {
+    seq: number
+    card: string
+  }): void
+  // The changes waiting for Hydra's next check turn and the ones its running turn is reading.
+  queue(): HydraQueue
   // Recovers hosted sessions and resumes a cut Hydra turn once.
   recover(): Promise<void>
   thread({
@@ -127,6 +135,17 @@ export interface Host {
     page: ThreadPage
   }): ThreadPage
   close(): void
+}
+
+// One change Hydra has not read yet: its event and the card it is about.
+export interface QueuedUpdate {
+  seq: number
+  card: string
+}
+
+export interface HydraQueue {
+  waiting: QueuedUpdate[]
+  reading: QueuedUpdate[]
 }
 
 export const SETTINGS = [
@@ -173,7 +192,45 @@ const harnessAccount = ({
 }
 
 const wakeId = ({ through }: { through: number }) => `wake:${through}`
+const WAKE_ID = /^wake:(\d+)$/
 const WAKE_TURN = /^wake:(\d+):hosted$/
+
+// One check turn: the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
+function wakeText({
+  hydraId,
+  after,
+  reports,
+  check,
+}: {
+  hydraId: string
+  after: number
+  reports: HydraMessage[]
+  check: boolean
+}): string {
+  const lines: string[] = []
+
+  if (reports.length) {
+    const count = reports.length === 1 ? 'A worker report' : `${reports.length} worker reports`
+    lines.push(`${count} arrived while you were busy. Handle them together and answer once.`)
+
+    for (const message of reports) {
+      // A report cannot close the wake either.
+      const envelope = hydraDelivery({ message }).replace(
+        /<\/pnyx-wake/gi,
+        '<\\/pnyx-wake',
+      )
+      lines.push(envelope)
+    }
+  }
+
+  if (check) {
+    lines.push(`A worker or reminder changed something you track. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` and handle what it lists.`)
+  }
+
+  lines.push(`If nothing needs the owner, write no other text and reply only ${QUIET_REPLY}.`)
+
+  return `<pnyx-wake>${lines.join('\n')}</pnyx-wake>`
+}
 
 // A wake counts once its turn starts, as its prompt is then in Hydra's session.
 function wakeCursor({
@@ -265,6 +322,7 @@ export function createHost({
   spawnCodex,
   changed,
   streamed = () => {},
+  queued = () => {},
   wakeDelay = WAKE_MS,
   stallDelay = STALL_MS,
   presence = ({ session }) => terminalPresence({
@@ -278,6 +336,8 @@ export function createHost({
   presence?({ session }: { session: AgentSession }): Presence
   changed(): void
   streamed?({ session }: { session: string }): void
+  // Hydra's queue of unread changes grew, or its check turn took or finished them.
+  queued?(): void
   wakeDelay?: number
   stallDelay?: number
 }): Host {
@@ -302,6 +362,9 @@ export function createHost({
   // Recorded wakes, or wakeStart before the first, say how far Hydra has checked.
   let wakeThrough = 0, wakeStart: number | undefined
   let wakeTimer: ReturnType<typeof setTimeout> | undefined
+  // Changes since Hydra's last finished check turn; the ones through readThrough are in its running turn.
+  let updates: QueuedUpdate[] = []
+  let readThrough = 0
 
   const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
     const result = withWriter({
@@ -827,10 +890,14 @@ export function createHost({
         return
       }
 
-      const offsets: number[] = []
-      // The message each turn answers, taken in the order turns start, like offsets.
-      const asks: (string | undefined)[] = []
-      let answering: string | undefined
+      // A message taken between turns opens the next turn, in order; one taken mid-turn joins the running turn.
+      const opening: {
+        id: string | undefined
+        offset: number
+      }[] = []
+      // The messages the running turn answers.
+      let answering: string[] = []
+      let turnRunning = false
       let completedOffset = 0
 
       const transcriptSize = () => {
@@ -843,8 +910,15 @@ export function createHost({
 
       const input = async function* () {
         for await (const item of entry.input) {
-          offsets.push(transcriptSize())
-          asks.push(item.id)
+          if (!turnRunning) {
+            opening.push({
+              id: item.id,
+              offset: transcriptSize(),
+            })
+          } else if (item.id) {
+            answering.push(item.id)
+          }
+
           yield item.text
         }
       }
@@ -906,36 +980,41 @@ export function createHost({
         }
 
         if (activity === 'finished') {
+          turnRunning = false
           completedOffset = transcriptSize()
           entry.replies.finish()
           streamed({ session: key })
 
           if (card.id === HYDRA_CARD) {
             const texts = entry.replies.texts()
-            const ask = answering
+            const asks = answering
             note({
               fn: ({ writer }) => copyTagged({
                 writer,
                 texts,
-                asks: ask ? [ask] : [],
+                asks,
                 at: new Date().toISOString(),
               }),
             })
+            finishReading()
           }
         } else {
-          answering = asks.shift()
+          const next = opening.shift()
+          const answers = next?.id ? [next.id] : []
+          const startOffset = next ? next.offset : 0
+          answering = answers
+          turnRunning = true
           let ownerStarted: boolean | undefined
 
           if (card.id === HYDRA_CARD) {
             const messages = loadHydra({ hydraId }).state.hydraMessages ?? []
-            const message = messages.find(message => message.id === answering)
-            ownerStarted = !!message && ownerActor({ actor: message.actor })
+            ownerStarted = messages.some(message => answers.includes(message.id) && ownerActor({ actor: message.actor }))
           }
 
           entry.replies.start({
             ownerStarted,
             offset: Math.max(
-              offsets.shift() ?? 0,
+              startOffset,
               completedOffset,
             ),
           })
@@ -1122,18 +1201,44 @@ export function createHost({
     })
 
     // An interrupted Hydra waits for the owner; the next change after that wakes it.
-    if (closing || !hostedHydra({ state }) || wakeThrough <= after
+    if (closing || !pnyxRunsHydra({ state }) || wakeThrough <= after
       || (card?.sessionActivity ?? card?.activity) === 'interrupted'
       || card?.attention.some(a => a.key === INTERRUPTED)
       || queuedHydra.size || (session && live.get(session)?.activity === 'working')) {
       return
     }
 
-    void host.hydra({
-      id: wakeId({ through: wakeThrough }),
-      actor: 'pnyx',
-      text: `<pnyx-wake>A worker or reminder changed something you track. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` and handle what it lists. If nothing needs the owner, write no other text and reply only ${QUIET_REPLY}.</pnyx-wake>`,
+    const through = wakeThrough
+    const reports = (state.hydraMessages ?? []).filter(message => {
+      const seq = state.eventIds[message.id]
+
+      const unread = seq !== undefined && seq > after && seq <= through
+
+      return unread && reportActor({ actor: message.actor })
     })
+    const reportSeqs = new Set(reports.map(message => state.eventIds[message.id]))
+    const otherChanges = updates.some(update => update.seq > after && update.seq <= through
+      && !reportSeqs.has(update.seq))
+    void host.hydra({
+      id: wakeId({ through }),
+      actor: 'pnyx',
+      text: wakeText({
+        hydraId,
+        after,
+        reports,
+        check: otherChanges || !reports.length,
+      }),
+    })
+  }
+
+  // Hydra's turn ended, so the changes it was handed are read.
+  const finishReading = () => {
+    const unread = updates.filter(update => update.seq > readThrough)
+
+    if (unread.length !== updates.length) {
+      updates = unread
+      queued()
+    }
   }
 
   // A stall makes no event, so it is polled; each one wakes Hydra once.
@@ -1305,6 +1410,11 @@ export function createHost({
         return Promise.resolve({ state: 'queued' })
       }
 
+      // A worker's report waits for Hydra's next check turn, which the server queues once it reads the report's event.
+      if (reportActor({ actor })) {
+        return Promise.resolve({ state: 'queued' })
+      }
+
       const requestedAgent = loadHydra({ hydraId }).state.config?.hydra.agent
       queuedHydra.add(id)
       const turn = hydraTurn.then(async () => {
@@ -1413,8 +1523,12 @@ export function createHost({
           let card = previous
           const previousAgent = card?.agent
           const running = previousAgent && live.get(sessionId({ agent: previousAgent }))
+          // A person's message joins Hydra's running turn when the same session takes it; Pnyx's own wakes wait for the turn to end.
+          const sameSession = previousAgent?.provider === provider
+            && JSON.stringify(card?.settings ?? {}) === JSON.stringify(settings)
+          const joinsTurn = actor !== 'pnyx' && sameSession
 
-          while (previousAgent && running?.activity === 'working'
+          while (!joinsTurn && previousAgent && running?.activity === 'working'
             && live.get(sessionId({ agent: previousAgent })) === running && !closing) {
             await new Promise(resolve => setTimeout(
               resolve,
@@ -1572,6 +1686,12 @@ export function createHost({
             ) : text,
             id,
           })
+          const wakeThroughSeq = WAKE_ID.exec(id)?.[1]
+
+          if (wakeThroughSeq) {
+            readThrough = Number(wakeThroughSeq)
+            queued()
+          }
 
           return { state: 'queued' }
         } catch (error) {
@@ -2302,14 +2422,31 @@ export function createHost({
       }
     },
 
-    wake: ({ seq }) => {
+    wake: ({
+      seq,
+      card,
+    }) => {
       wakeStart ??= seq - 1
       wakeThrough = Math.max(
         wakeThrough,
         seq,
       )
+
+      if (!updates.some(update => update.seq === seq)) {
+        updates.push({
+          seq,
+          card,
+        })
+        queued()
+      }
+
       armWake()
     },
+
+    queue: () => ({
+      waiting: updates.filter(update => update.seq > readThrough),
+      reading: updates.filter(update => update.seq <= readThrough),
+    }),
 
     thread: ({
       card,
@@ -2419,14 +2556,18 @@ export function createHost({
           ),
         })
         wakeStart = after
+        readThrough = after
         const missed = readEvents({ hydraId })
-          .findLast(event => event.seq > after && wakesHydra({
+          .filter(event => event.seq > after && wakesHydra({
             state,
             event,
           }))
 
-        if (missed) {
-          host.wake({ seq: missed.seq })
+        for (const event of missed) {
+          host.wake({
+            seq: event.seq,
+            card: event.cardId,
+          })
         }
       }
     },

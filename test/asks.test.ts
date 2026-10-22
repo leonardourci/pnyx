@@ -89,6 +89,7 @@ async function lab({ worker = true }: { worker?: boolean } = {}) {
   server = await startServer({
     hydraId: 'lab',
     query: sdk.query,
+    wakeDelay: 50,
   })
   const state = () => loadHydra({ hydraId: 'lab' }).state
   const task = () => state().cards[state().keys.ship!]! as Card
@@ -116,6 +117,9 @@ async function lab({ worker = true }: { worker?: boolean } = {}) {
   const workerCall = () => sdk.calls.find(call => call.options.cwd === folder)
   const hydraSaid = () => sdk.calls.filter(call => call.options.cwd !== folder)
     .flatMap(call => call.messages)
+  // A report reaches Hydra inside the wake that carries its batch.
+  const hydraHeard = ({ report }: { report: string }) => hydraSaid()
+    .some(text => text.startsWith('<pnyx-wake>') && text.includes(report))
   const events = () => readEvents({ hydraId: 'lab' })
   const timeline = () => taskTimeline({
     card: task(),
@@ -137,6 +141,7 @@ async function lab({ worker = true }: { worker?: boolean } = {}) {
     run,
     workerCall,
     hydraSaid,
+    hydraHeard,
     events,
     timeline,
   }
@@ -420,7 +425,7 @@ test(
       message.actor,
       worker,
     )
-    await until({ check: () => f.hydraSaid().includes(hydraDelivery({ message })) })
+    await until({ check: () => f.hydraHeard({ report: hydraDelivery({ message }) }) })
     const report = hydraDelivery({ message })
     assert.match(
       report,
@@ -1288,7 +1293,7 @@ test(
       ],
     })).ask)
     const delivered = hydraDelivery({ message: f.state().hydraMessages!.find(m => m.ask === id)! })
-    await until({ check: () => f.hydraSaid().includes(delivered) })
+    await until({ check: () => f.hydraHeard({ report: delivered }) })
 
     const quoted = `Did you mean this?\n\n${delivered.split('\n').map(line => `> ${line}`)
       .join('\n')}`
@@ -1309,7 +1314,7 @@ test(
     }
 
     await until({
-      check: () => f.hydraSaid().filter(m => m === delivered).length === 2
+      check: () => f.hydraSaid().filter(m => m === delivered).length === 1
         && f.hydraSaid().includes(quoted),
     })
 
@@ -1365,9 +1370,10 @@ test(
 
     const copies = transcript().filter(entry => entry.kind === 'message' && entry.role === 'user')
       .map(entry => entry.kind === 'message' ? entry.text.trim() : '')
+    // The worker's own copy rode in a wake, which the transcript never shows; the owner's paste stays.
     assert.equal(
       copies.filter(text => text === delivered).length,
-      2,
+      1,
     )
     assert.ok(copies.includes(quoted) && copies.includes(raw))
 

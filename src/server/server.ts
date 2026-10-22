@@ -44,7 +44,7 @@ import { traces, viewFor } from '../core/view.ts'
 import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, withWriter, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
 import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 import { createHydra, listHydras, renameHydra, type HydraSummary } from './hydras.ts'
-import { createHost, hostRequest, type QueryFn } from './host.ts'
+import { createHost, hostRequest, type HydraQueue, type QueryFn } from './host.ts'
 import type { SpawnCodex } from './codex.ts'
 
 const commands = {
@@ -149,6 +149,11 @@ export type ServerMessage =
     type: 'hydras'
     hydraId: string
     hydras: HydraSummary[]
+  }
+  // Hydra's unread changes: after a snapshot when there are any, then again whenever they change.
+  | {
+    type: 'hydraQueue'
+    queue: HydraQueue
   }
   | {
     type: 'receipt'
@@ -897,6 +902,14 @@ async function mountOwnedHydra({
     }
   }
 
+  const sendQueue = ({ ws }: { ws: WebSocket }) => send({
+    ws,
+    message: {
+      type: 'hydraQueue',
+      queue: agents.queue(),
+    },
+  })
+
   const sendSnapshot = ({ ws }: { ws: WebSocket }) => {
     resyncing.delete(ws)
     send({
@@ -912,6 +925,13 @@ async function mountOwnedHydra({
       messages: latest,
       actions,
     } satisfies ServerMessage))
+
+    // A tab starts every snapshot with an empty queue.
+    const queue = agents.queue()
+
+    if (queue.waiting.length || queue.reading.length) {
+      sendQueue({ ws })
+    }
 
     if (hydraSubscribers.has(ws)) {
       ws.send(JSON.stringify({
@@ -1162,7 +1182,10 @@ async function mountOwnedHydra({
         state,
         event,
       })) {
-        agents.wake({ seq: event.seq })
+        agents.wake({
+          seq: event.seq,
+          card: event.cardId,
+        })
       }
     }
 
@@ -1280,6 +1303,11 @@ async function mountOwnedHydra({
     wakeDelay,
     stallDelay,
     changed: () => kick(),
+    queued: () => {
+      for (const ws of wss.clients) {
+        sendQueue({ ws })
+      }
+    },
     streamed: ({ session }) => {
       for (const map of threadSubscriptions) {
         for (const [
