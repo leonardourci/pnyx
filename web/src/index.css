@@ -74,7 +74,7 @@ h1, h2 { font-weight: 700; }
 
 .settings > h1, .settings-box > h2, .keyboard-settings h2, .hydra-head { font-family: var(--font-brand); font-weight: 700; }
 
-.hydra-head strong { font-weight: inherit; }
+.hydra-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: inherit; }
 
 h3 { font-weight: 600; }
 
@@ -1054,7 +1054,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydras-tree { min-height: 0; overflow-y: auto; }
 .hydra-row { display: flex; align-items: center; min-width: 0; }
 .hydra-row > .button:first-child { flex: 0 0 25px; padding: 6px 2px; color: var(--color-muted); }
-.hydra-row .hydra-name { flex: 1; min-width: 0; justify-content: flex-start; overflow: hidden; text-overflow: ellipsis; padding: 7px 8px; font-size: var(--text-ui); }
+.hydra-row .hydra-name { flex: 1; min-width: 0; justify-content: flex-start; overflow: hidden; padding: 7px 8px; font-size: var(--text-ui); }
+.hydra-row .hydra-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hydra-row > form { min-width: 0; }
 .hydra-row > form .input { width: 100%; }
 .hydra-projects { margin: 4px 0 12px 12px; padding-left: 10px; border-left: 1px solid var(--color-line); }

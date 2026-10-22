@@ -305,7 +305,7 @@ export function HydraChat({
         flexBasis: width ?? view.hydraWidth,
       }}
     >
-      <header className="hydra-head"><Icon name="hydra" size={24} /><strong>Hydra</strong></header>
+      <header className="hydra-head"><Icon name="hydra" size={24} /><strong>{config.name}</strong></header>
       <div className="hydra-body">
         <div
           className="hydra-messages thread"

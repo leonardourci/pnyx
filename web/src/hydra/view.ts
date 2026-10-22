@@ -8,6 +8,9 @@ const HARNESSES: Record<string, string> = {
   codex: 'Codex',
 }
 
+// A Hydra made from the web has no name until the owner's first message gives it one.
+export const hydraTitle = ({ name }: { name: string }) => name || 'Untitled'
+
 export const harnessName = ({ provider }: { provider: string }) => HARNESSES[provider] ?? provider
 
 // A column's icon and color come from its role; a custom column has its own icon.
