@@ -1,7 +1,6 @@
-import type { CurrentAction, ToolCall } from '../../../src/thread/calls.ts'
-import { pnyxSentence, pnyxWords, shellWords, type PnyxLookup, type Segment } from './pnyx-action.ts'
+import { SHELL_WRAPPER, type CurrentAction, type ToolCall } from '../../../src/thread/calls.ts'
+import { pnyxSentence, pnyxWords, shellWords, UNKNOWN_COMMAND, type PnyxLookup, type Segment } from './pnyx-action.ts'
 
-// What the running line and a working card say an agent is doing, and its icon.
 export interface ActionLabel {
   icon: string
   sentence: Segment[]
@@ -14,6 +13,13 @@ interface Shell {
   line: string
 }
 
+// args is the shell line's words after the program, empty for a tool call.
+interface RuleInput {
+  call: ToolCall
+  shell?: Shell
+  args: string[]
+}
+
 interface Rule {
   icon: string
   tool?: RegExp
@@ -22,24 +28,20 @@ interface Rule {
   when?({
     call,
     shell,
-  }: {
-    call: ToolCall
-    shell?: Shell
-  }): boolean
+    args,
+  }: RuleInput): boolean
   say({
     call,
     shell,
-  }: {
-    call: ToolCall
-    shell?: Shell
-  }): string
+    args,
+  }: RuleInput): string
 }
 
 const SHELL_TOOLS = /^(Bash|exec_command|shell|local_shell|container\.exec)$/
 // Bookkeeping, not work: these leave the label as it was.
 const HIDDEN_TOOLS = /^(ToolSearch|TodoWrite|Task(Create|Update|List|Get)|AskUserQuestion|EnterPlanMode|ExitPlanMode|update_plan|request_user_input\w*)$/
-const SH_WRAPPER = /^(\/bin\/)?(ba|z)?sh$/
 const LEADING_CD = /^\s*cd\s+("[^"]*"|'[^']*'|\S+)\s*(&&|;)\s*/
+// Words that only run the real command: `rtk proxy git …`, `npx -y vitest`.
 const RUNNERS = new Set([
   'rtk',
   'proxy',
@@ -53,8 +55,16 @@ const RUNNERS = new Set([
   'bunx',
   '-y',
 ])
+// timeout's options that take a value, as in `timeout -s KILL 30 …`.
+const TIMEOUT_VALUE_OPTIONS = new Set([
+  '-s',
+  '-k',
+  '--signal',
+  '--kill-after',
+])
 const PACKAGE_RUNNERS = /^(pnpm|yarn|npm|bun)$/
 const INTERPRETERS = /^(python3?|node|bash|sh|zsh|tsx|ts-node|deno|ruby|perl|bun)$/
+const SEARCH_PROGRAMS = /^(rg|grep|egrep|ag|ack)$/
 // Shell keywords and file chores say nothing about the work, so they read as a plain command.
 const PLAIN = new Set([
   'for',
@@ -97,6 +107,8 @@ const PLAIN = new Set([
 const PLAIN_WORD = /^[\w.-]{2,24}$/
 const PATH_LIKE = /\/|\.[A-Za-z]{1,5}$/
 const SCRIPT_EXTENSION = /\.(sh|py|js|mjs|cjs|ts)$/
+const SKILL_FILE = '/SKILL.md'
+const A_FILE = 'a file'
 const PR_VERBS: Record<string, string> = {
   view: 'Reading PR',
   diff: 'Reading PR',
@@ -113,6 +125,15 @@ const ISSUE_VERBS: Record<string, string> = {
   comment: 'Commenting on issue',
   list: 'Listing issues',
 }
+// Verbs whose next word, when it is a number, names one PR or issue.
+const NUMBERED_VERBS = new Set([
+  'view',
+  'diff',
+  'checks',
+  'merge',
+  'comment',
+  'review',
+])
 const GIT_VERBS: Record<string, string> = {
   commit: 'Committing',
   push: 'Pushing',
@@ -127,6 +148,11 @@ const GIT_VERBS: Record<string, string> = {
   checkout: 'Switching branch',
   switch: 'Switching branch',
   add: 'Staging changes',
+}
+// Calls of one of these kinds made together read as a count: "Reading 3 files".
+const COUNTED_VERBS: Record<string, string> = {
+  file: 'Reading',
+  edit: 'Editing',
 }
 // Pnyx's own sentences are past tense ("Moved"); while it runs the label says "Moving".
 const NOW: Record<string, string> = {
@@ -159,46 +185,89 @@ const NOW: Record<string, string> = {
   Stopped: 'Stopping',
   Asked: 'Asking',
 }
+// A call made before the turn began belongs to the last turn; the slack covers clocks of different processes.
+const TURN_SLACK_MS = 5000
 
-const base = ({ path }: { path: string }) => path.replace(
-  /\/+$/,
-  '',
-).split('/')
-  .at(-1) || path
-const fileName = ({ call }: { call: ToolCall }) => call.file ? base({ path: call.file }) : 'a file'
+const lastSegment = ({ path }: { path: string }) => {
+  const trimmed = path.replace(
+    /\/+$/,
+    '',
+  )
+
+  return trimmed.slice(trimmed.lastIndexOf('/') + 1)
+}
+
 const positional = ({ args }: { args: string[] }) => args.filter(arg => !arg.startsWith('-'))
 const lastPath = ({ args }: { args: string[] }) => positional({ args })
   .findLast(arg => PATH_LIKE.test(arg))
-const number = ({ args }: { args: string[] }) => args.find(arg => /^\d+$/.test(arg))
 
-const numbered = ({
-  words,
+const fileOf = ({
+  call,
+  shell,
   args,
-}: {
-  words: string
-  args: string[]
-}) => {
-  const found = number({ args })
+}: RuleInput) => {
+  const path = shell ? lastPath({ args }) : call.file
 
-  return found && !words.endsWith('PRs') && !words.startsWith('Opening') ? `${words} #${found}` : words
+  if (!path) {
+    return A_FILE
+  }
+
+  return lastSegment({ path })
 }
 
-const searching = ({ query }: { query?: string }) => query && PLAIN_WORD.test(query) ? `Searching for ${query}` : 'Searching the code'
-const host = ({ text }: { text: string }) => /https?:\/\/([^/\s"']+)/.exec(text)?.[1]
-const reviewing = ({ name }: { name?: string }) => !!name && /review|inspect/i.test(name)
+// `gh pr view 4728` → "Reading PR #4728"; the number counts only right after the verb.
+const githubWords = ({
+  args,
+  verbs,
+  otherwise,
+}: {
+  args: string[]
+  verbs: Record<string, string>
+  otherwise: string
+}) => {
+  const verb = args[1] ?? ''
+  const words = verbs[verb] ?? otherwise
+  const target = args[2] ?? ''
 
-const SKILL_FILE = '/SKILL.md'
-const SEARCH_TOOLS = /^(rg|grep|egrep|ag|ack)$/
+  if (!NUMBERED_VERBS.has(verb) || !/^\d+$/.test(target)) {
+    return words
+  }
+
+  return `${words} #${target}`
+}
+
+const searching = ({ query }: { query?: string }) => {
+  if (!query || !PLAIN_WORD.test(query)) {
+    return 'Searching the code'
+  }
+
+  return `Searching for ${query}`
+}
+
+const searchTerm = ({
+  call,
+  shell,
+  args,
+}: RuleInput) => {
+  if (!shell || !SEARCH_PROGRAMS.test(shell.program)) {
+    return call.query
+  }
+
+  return positional({ args })[0]
+}
+
+const hostOf = ({ text }: { text: string }) => /https?:\/\/([^/\s"']+)/.exec(text)?.[1]
+const namesReview = ({ name }: { name?: string }) => !!name && /review|inspect/i.test(name)
 
 // A skill read as a file, the way Codex loads one: .../skills/<name>/SKILL.md.
-const skillFile = ({ shell }: { shell?: Shell }) => {
-  const file = shell && lastPath({ args: shell.args })
+const skillFile = ({ args }: { args: string[] }) => {
+  const file = lastPath({ args })
 
   if (!file?.endsWith(SKILL_FILE)) {
     return undefined
   }
 
-  return base({
+  return lastSegment({
     path: file.slice(
       0,
       -SKILL_FILE.length,
@@ -206,21 +275,37 @@ const skillFile = ({ shell }: { shell?: Shell }) => {
   })
 }
 
-const searchTerm = ({
-  call,
-  shell,
-}: {
-  call: ToolCall
-  shell?: Shell
-}) => {
-  if (call.query || !shell || !SEARCH_TOOLS.test(shell.program)) {
-    return call.query
+function withoutRunners({ words }: { words: string[] }): string[] {
+  let rest = words
+
+  while (rest.length) {
+    const [
+      first = '',
+      second = '',
+    ] = rest
+
+    if (RUNNERS.has(first) || /^\w+=/.test(first)) {
+      rest = rest.slice(1)
+    } else if (first === 'timeout') {
+      rest = rest.slice(1)
+
+      while (rest[0]?.startsWith('-')) {
+        rest = rest.slice(TIMEOUT_VALUE_OPTIONS.has(rest[0]) ? 2 : 1)
+      }
+
+      // The duration.
+      rest = rest.slice(1)
+    } else if (PACKAGE_RUNNERS.test(first) && (second === 'exec' || second === 'dlx')) {
+      rest = rest.slice(2)
+    } else {
+      return rest
+    }
   }
 
-  return positional({ args: shell.args })[0]
+  return rest
 }
 
-// Unwraps `sh -c '…'`, leading `cd … &&`, environment assignments and runners, then reads the first command.
+// Only the first command names the work: `cd x && pnpm test | tail` is "Running tests".
 export function shellOf({ command }: { command: string }): Shell | undefined {
   let line = command.split('\n')[0]!
 
@@ -231,34 +316,41 @@ export function shellOf({ command }: { command: string }): Shell | undefined {
     )
   }
 
-  let words = shellWords({ command: line })
+  const words = withoutRunners({ words: shellWords({ command: line }) })
+  const [
+    program,
+    flag = '',
+    script,
+  ] = words
 
-  for (;;) {
-    const first = words[0] ?? ''
-
-    if (RUNNERS.has(first) || /^\w+=/.test(first)) {
-      words = words.slice(1)
-    } else if (first === 'timeout') {
-      words = words.slice(2)
-    } else if (PACKAGE_RUNNERS.test(first) && (words[1] === 'exec' || words[1] === 'dlx')) {
-      words = words.slice(2)
-    } else {
-      break
-    }
+  if (!program) {
+    return undefined
   }
 
-  if (SH_WRAPPER.test(words[0] ?? '') && /^-l?c$/.test(words[1] ?? '') && words[2]) {
-    return shellOf({ command: words[2] })
+  if (SHELL_WRAPPER.test(program) && /^-l?c$/.test(flag) && script) {
+    return shellOf({ command: script })
   }
 
-  return words.length ? {
-    program: base({ path: words[0]! }),
-    args: words.slice(1),
-    line: words.join(' '),
-  } : undefined
+  let args = words.slice(1)
+
+  // `git -C <dir>` and `pnpm -C <dir>` name a folder, not the work.
+  while (args[0] === '-C' && args.length > 1) {
+    args = args.slice(2)
+  }
+
+  const name = lastSegment({ path: program })
+
+  return {
+    program: name,
+    args,
+    line: [
+      name,
+      ...args,
+    ].join(' '),
+  }
 }
 
-// The first matching rule names a call. Add a kind with one more line here and its icon in icon.tsx.
+// The first matching rule names a call. A new kind is one more entry here and its icon in icon.tsx.
 const RULES: Rule[] = [
   {
     icon: 'wait',
@@ -269,24 +361,31 @@ const RULES: Rule[] = [
   {
     icon: 'github',
     shell: /^(gh|gh-axi) pr\b/,
-    say: ({ shell }) => numbered({
-      words: PR_VERBS[positional({ args: shell!.args })[1] ?? ''] ?? 'Working on PR',
-      args: shell!.args,
+    say: ({ args }) => githubWords({
+      args,
+      verbs: PR_VERBS,
+      otherwise: 'Working on PR',
     }),
   },
   {
     icon: 'github',
     shell: /^(gh|gh-axi) issue\b/,
-    say: ({ shell }) => numbered({
-      words: ISSUE_VERBS[positional({ args: shell!.args })[1] ?? ''] ?? 'Working on issue',
-      args: shell!.args,
+    say: ({ args }) => githubWords({
+      args,
+      verbs: ISSUE_VERBS,
+      otherwise: 'Working on issue',
     }),
+  },
+  {
+    icon: 'github',
+    shell: /^(gh|gh-axi) run\b/,
+    say: () => 'Checking CI',
   },
   {
     icon: 'github',
     tool: /^mcp__\w*github\w*__/i,
     shell: /^(gh|gh-axi)\b/,
-    say: ({ shell }) => shell && /^(gh|gh-axi) run\b/.test(shell.line) ? 'Checking CI' : 'Using GitHub',
+    say: () => 'Using GitHub',
   },
   {
     icon: 'search',
@@ -296,7 +395,7 @@ const RULES: Rule[] = [
   {
     icon: 'git',
     shell: /^git\b/,
-    say: ({ shell }) => GIT_VERBS[positional({ args: shell!.args })[0] ?? ''] ?? 'Using git',
+    say: ({ args }) => GIT_VERBS[positional({ args })[0] ?? ''] ?? 'Using git',
   },
   {
     icon: 'review',
@@ -305,10 +404,15 @@ const RULES: Rule[] = [
     when: ({
       call,
       shell,
+      args,
     }) => {
-      const name = shell ? skillFile({ shell }) : call.skill
+      if (!shell) {
+        return namesReview({ name: call.skill })
+      }
 
-      return shell && !name ? true : reviewing({ name })
+      const skill = skillFile({ args })
+
+      return skill === undefined || namesReview({ name: skill })
     },
     say: () => 'Running review',
   },
@@ -318,8 +422,8 @@ const RULES: Rule[] = [
     shell: /SKILL\.md$/,
     say: ({
       call,
-      shell,
-    }) => `Using ${call.skill ?? skillFile({ shell }) ?? 'a skill'}`,
+      args,
+    }) => `Using ${call.skill ?? skillFile({ args }) ?? 'a skill'}`,
   },
   {
     icon: 'agent',
@@ -348,23 +452,25 @@ const RULES: Rule[] = [
   },
   {
     icon: 'search',
-    tool: /^(Grep|Glob)$/,
-    shell: /^(rg|grep|egrep|ag|ack|fd|find|ls|tree)\b/,
+    tool: /^Glob$/,
+    shell: /^(ls|tree)\b/,
+    say: () => 'Looking at files',
+  },
+  {
+    icon: 'search',
+    tool: /^Grep$/,
+    shell: /^(rg|grep|egrep|ag|ack|fd|find)\b/,
     say: ({
       call,
       shell,
-    }) => {
-      if (call.tool === 'Glob' || (shell && /^(ls|tree)$/.test(shell.program))) {
-        return 'Looking at files'
-      }
-
-      return searching({
-        query: searchTerm({
-          call,
-          shell,
-        }),
-      })
-    },
+      args,
+    }) => searching({
+      query: searchTerm({
+        call,
+        shell,
+        args,
+      }),
+    }),
   },
   {
     icon: 'edit',
@@ -373,12 +479,25 @@ const RULES: Rule[] = [
     say: ({
       call,
       shell,
-    }) => `Editing ${shell ? base({ path: lastPath({ args: shell.args }) ?? 'a file' }) : fileName({ call })}`,
+      args,
+    }) => `Editing ${fileOf({
+      call,
+      shell,
+      args,
+    })}`,
   },
   {
     icon: 'edit',
     tool: /^Write$/,
-    say: ({ call }) => `Writing ${fileName({ call })}`,
+    say: ({
+      call,
+      shell,
+      args,
+    }) => `Writing ${fileOf({
+      call,
+      shell,
+      args,
+    })}`,
   },
   {
     icon: 'file',
@@ -387,16 +506,21 @@ const RULES: Rule[] = [
     say: ({
       call,
       shell,
-    }) => `Reading ${shell ? base({ path: lastPath({ args: shell.args }) ?? 'a file' }) : fileName({ call })}`,
+      args,
+    }) => `Reading ${fileOf({
+      call,
+      shell,
+      args,
+    })}`,
   },
   {
     icon: 'world',
-    tool: /^(WebFetch)$/,
+    tool: /^WebFetch$/,
     shell: /^(curl|wget|http|open https?:)/,
     say: ({
       call,
       shell,
-    }) => `Opening ${host({ text: call.url ?? shell?.line ?? '' }) ?? 'a link'}`,
+    }) => `Opening ${hostOf({ text: call.url ?? shell?.line ?? '' }) ?? 'a link'}`,
   },
   {
     icon: 'world',
@@ -423,14 +547,29 @@ const RULES: Rule[] = [
   },
 ]
 
+function ruleFor({ input }: { input: RuleInput }): Rule | undefined {
+  for (const rule of RULES) {
+    const pattern = input.shell ? rule.shell : rule.tool
+    const named = pattern?.test(input.shell ? input.shell.line : input.call.tool)
+
+    if (!named) {
+      continue
+    }
+
+    if (!rule.when || rule.when(input)) {
+      return rule
+    }
+  }
+
+  return undefined
+}
+
 // A command with no rule: the agent's own words for it, else the program's name.
 function fallback({
   call,
   shell,
-}: {
-  call: ToolCall
-  shell?: Shell
-}): string {
+  args,
+}: RuleInput): string {
   if (call.description) {
     return call.description
   }
@@ -443,11 +582,12 @@ function fallback({
     return 'Running a command'
   }
 
-  const script = INTERPRETERS.test(shell.program) && positional({ args: shell.args })
-    .find(arg => SCRIPT_EXTENSION.test(arg))
+  if (INTERPRETERS.test(shell.program)) {
+    const script = positional({ args }).find(arg => SCRIPT_EXTENSION.test(arg))
 
-  if (script) {
-    return `Running ${base({ path: script })}`
+    if (script) {
+      return `Running ${lastSegment({ path: script })}`
+    }
   }
 
   return `Running ${shell.program.replace(
@@ -456,7 +596,7 @@ function fallback({
   )}`
 }
 
-// Pnyx's past-tense sentence in the present, without the reason or message after a colon.
+// Pnyx's sentence without the reason or message after a colon.
 function pnyxNow({ sentence }: { sentence: Segment[] }): Segment[] {
   const kept: Segment[] = []
 
@@ -498,7 +638,7 @@ function callLabel({
 }: {
   call: ToolCall
   lookup: PnyxLookup
-}): (ActionLabel & { kind: string }) | undefined {
+}): ActionLabel | undefined {
   if (HIDDEN_TOOLS.test(call.tool)) {
     return undefined
   }
@@ -511,45 +651,31 @@ function callLabel({
       words,
       lookup,
     })
+    const known = !(typeof sentence[0] === 'string' && sentence[0].startsWith(UNKNOWN_COMMAND))
 
     return {
-      kind: 'pnyx',
       icon: 'pnyx',
-      sentence: typeof sentence[0] === 'string' && sentence[0].startsWith('Pnyx:') ? ['Using Pnyx'] : pnyxNow({ sentence }),
+      sentence: known ? pnyxNow({ sentence }) : ['Using Pnyx'],
     }
   }
 
-  const named = ({ rule }: { rule: Rule }) => shell
-    ? rule.shell?.test(shell.line)
-    : rule.tool?.test(call.tool)
-  const rule = RULES.find(candidate => named({ rule: candidate })
-    && (candidate.when?.({
-      call,
-      shell,
-    }) ?? true))
+  const input: RuleInput = {
+    call,
+    shell,
+    args: shell?.args ?? [],
+  }
+  const rule = ruleFor({ input })
 
   if (!rule) {
     return {
-      kind: 'other',
       icon: 'terminal',
-      sentence: [
-        fallback({
-          call,
-          shell,
-        }),
-      ],
+      sentence: [fallback(input)],
     }
   }
 
   return {
-    kind: rule.icon,
     icon: rule.icon,
-    sentence: [
-      rule.say({
-        call,
-        shell,
-      }),
-    ],
+    sentence: [rule.say(input)],
   }
 }
 
@@ -561,34 +687,64 @@ export function actionLabel({
   action: CurrentAction
   lookup: PnyxLookup
 }): ActionLabel | undefined {
-  const labels = action.calls.flatMap(call => callLabel({
-    call,
-    lookup,
-  }) ?? [])
+  const labels = action.calls
+    .map(call => callLabel({
+      call,
+      lookup,
+    }))
+    .filter(label => label !== undefined)
   const first = labels[0]
 
   if (!first) {
     return undefined
   }
 
-  const together = labels.length > 1 && labels.every(label => label.kind === first.kind)
+  const verb = COUNTED_VERBS[first.icon]
+  const together = labels.length > 1 && labels.every(label => label.icon === first.icon)
 
-  if (together && first.kind === 'file') {
+  if (verb && together) {
     return {
-      icon: 'file',
-      sentence: [`Reading ${labels.length} files`],
+      icon: first.icon,
+      sentence: [`${verb} ${labels.length} files`],
     }
   }
 
-  if (together && first.kind === 'edit') {
-    return {
-      icon: 'edit',
-      sentence: [`Editing ${labels.length} files`],
-    }
+  return first
+}
+
+const fromEarlierTurn = ({
+  action,
+  since,
+}: {
+  action: CurrentAction
+  since?: string | null
+}) => {
+  if (!since || !action.at) {
+    return false
   }
 
-  return {
-    icon: first.icon,
-    sentence: first.sentence,
+  return Date.parse(action.at) < Date.parse(since) - TURN_SLACK_MS
+}
+
+// null when nothing is running this turn; undefined when only bookkeeping calls are, which keeps the label shown.
+export function currentLabel({
+  action,
+  since,
+  lookup,
+}: {
+  action?: CurrentAction
+  since?: string | null
+  lookup: PnyxLookup
+}): ActionLabel | null | undefined {
+  if (!action || fromEarlierTurn({
+    action,
+    since,
+  })) {
+    return null
   }
+
+  return actionLabel({
+    action,
+    lookup,
+  })
 }
