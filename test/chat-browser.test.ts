@@ -1,0 +1,351 @@
+import { promisify } from 'node:util'
+import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
+import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:net'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { test } from 'node:test'
+import { commands } from '../src/cli/commands.ts'
+import { decidePush } from '../src/core/decide.ts'
+import { hydraConfig, hydraEvent } from '../src/core/hydra.ts'
+import { startServer } from '../src/server/server.ts'
+import { withWriter } from '../src/store/hydra-store.ts'
+
+const COMMAND_TIMEOUT = 30_000
+const BROWSER_TIMEOUT = 120_000
+
+async function freePort(): Promise<number> {
+  const listener = createServer()
+  await new Promise<void>(resolve => listener.listen(
+    0,
+    '127.0.0.1',
+    resolve,
+  ))
+  const address = listener.address()
+  assert.ok(address && typeof address === 'object')
+  await promisify(listener.close.bind(listener))()
+
+  return address.port
+}
+
+test(
+  'chat decisions load history, resolve inline, and retain native history through updates and reconnect',
+  {
+    skip: process.env.PNYX_BROWSER_TESTS !== '1',
+    timeout: BROWSER_TIMEOUT,
+  },
+  async () => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-chat-browser-',
+    ))
+    process.env.PNYX_HOME = join(
+      root,
+      'home',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    const transcript = join(
+      root,
+      'thread.jsonl',
+    )
+    const start = Date.UTC(
+      2026,
+      9,
+      22,
+      10,
+    )
+    const record = ({ index }: { index: number }) => JSON.stringify({
+      type: index === 0 ? 'user' : 'assistant',
+      timestamp: new Date(start + index * 1000).toISOString(),
+      message: {
+        content: [
+          {
+            type: 'text',
+            text: `Checkpoint ${index}.`,
+          },
+        ],
+      },
+    }) + '\n'
+    writeFileSync(
+      transcript,
+      Array.from(
+        { length: 121 },
+        (
+          _,
+          index,
+        ) => record({ index }),
+      ).join(''),
+    )
+    await commands.hydra([
+      'create',
+      'default',
+    ])
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        const native = decidePush({
+          state: writer.state,
+          key: 'native',
+          newCardId: 'native',
+          input: {
+            title: 'Fixture agent',
+            activity: 'finished',
+            agent: {
+              provider: 'claude',
+              sessionId: 'chat-fixture',
+              transcriptPath: transcript,
+              cwd: root,
+            },
+          },
+          meta: {
+            actor: 'fixture',
+            at: new Date(start - 3000).toISOString(),
+          },
+        })
+        assert.ok('event' in native)
+        writer.append({ event: native.event })
+        const config = structuredClone(hydraConfig({ state: writer.state }))
+        config.hydra.session = 'claude:chat-fixture'
+        const configure = hydraEvent({
+          state: writer.state,
+          cardId: '$board',
+          meta: {
+            actor: 'web',
+            at: new Date(start - 2500).toISOString(),
+          },
+          change: {
+            type: 'board.configured',
+            data: config,
+          },
+        })
+        assert.ok('event' in configure)
+        writer.append({ event: configure.event })
+        const task = hydraEvent({
+          state: writer.state,
+          cardId: 'chat-ui-task',
+          meta: {
+            actor: 'hydra',
+            at: new Date(start - 2000).toISOString(),
+          },
+          change: {
+            type: 'task.created',
+            data: {
+              key: 'review',
+              title: 'UI decision',
+            },
+          },
+        })
+        assert.ok('event' in task)
+        writer.append({ event: task.event })
+        const question = hydraEvent({
+          state: writer.state,
+          cardId: 'chat-ui-task',
+          meta: {
+            actor: 'hydra',
+            at: new Date(start - 1000).toISOString(),
+          },
+          change: {
+            type: 'task.asked',
+            data: {
+              id: 'old-question',
+              audience: 'owner',
+              question: 'Which scope?',
+              options: [
+                { label: 'Small scope' },
+                { label: 'Full scope' },
+              ],
+            },
+          },
+        })
+        assert.ok('event' in question)
+        writer.append({ event: question.event })
+        const report = hydraEvent({
+          state: writer.state,
+          cardId: 'chat-ui-task',
+          meta: {
+            actor: 'worker:chat-ui-task',
+            at: new Date(start + 30_000).toISOString(),
+          },
+          change: {
+            type: 'hydra.message',
+            data: {
+              task: 'chat-ui-task',
+              hydra: 'hydra',
+              action: 'send',
+              text: 'Report body stays behind the closed row.',
+            },
+          },
+        })
+        assert.ok('event' in report)
+        writer.append({ event: report.event })
+      },
+    })
+    let server = await startServer({
+      hydraId: 'default',
+      port: 0,
+      homes: [],
+    })
+    const bridgePort = await freePort()
+    const browserEnv = {
+      ...process.env,
+      CHROME_DEVTOOLS_AXI_SESSION: `pnyx-chat-test-${bridgePort}`,
+      CHROME_DEVTOOLS_AXI_PORT: String(bridgePort),
+      CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '',
+      CHROME_DEVTOOLS_AXI_HEADED: '0',
+      CHROME_DEVTOOLS_AXI_USER_DATA_DIR: join(
+        root,
+        'chrome',
+      ),
+    }
+    const browser = async ({
+      args,
+      script,
+    }: {
+      args: string[]
+      script?: string
+    }): Promise<string> =>
+      new Promise((
+        resolve,
+        reject,
+      ) => {
+        const child = execFile(
+          'chrome-devtools-axi',
+          args,
+          {
+            env: browserEnv,
+            timeout: COMMAND_TIMEOUT,
+            maxBuffer: 2 * 1024 * 1024,
+          },
+          (
+            error,
+            stdout,
+            stderr,
+          ) => {
+            if (error) {
+              reject(new Error(`${error.message}\n${stderr}`))
+
+              return
+            }
+
+            resolve(stdout)
+          },
+        )
+
+        if (script) {
+          assert.ok(child.stdin)
+          child.stdin.end(script)
+        }
+      })
+
+    try {
+      const url = `http://127.0.0.1:${server.port}/hydra/default/`
+      const opened = await browser({
+        args: ['run'],
+        script: `
+      await page.open(${JSON.stringify(url)});
+      await page.wait('.waiting-decisions button');
+      console.log(await page.eval(() => !document.querySelector('[data-entry-id="ask:chat-ui-task:old-question"]')));
+      await page.click('.waiting-decisions button');
+      await page.wait('[data-entry-id="ask:chat-ui-task:old-question"] .ask');
+      await page.wait(500);
+      console.log(await page.eval(() => {
+        const question=document.querySelector('[data-entry-id="ask:chat-ui-task:old-question"]');
+        const scroller=document.querySelector('.hydra-messages');
+        const card=question.getBoundingClientRect(), view=scroller.getBoundingClientRect();
+        return card.top >= view.top && card.bottom <= view.bottom;
+      }));
+    `,
+      })
+      assert.deepEqual(
+        opened.trim().split('\n'),
+        [
+          'true',
+          'true',
+        ],
+      )
+      const report = await browser({
+        args: ['run'],
+        script: `
+      await page.click('.hydra-chat [data-task-ref="chat-ui-task"]');
+      await page.wait('details.report-fold');
+      console.log(await page.eval(() => {
+        const report=document.querySelector('details.report-fold');
+        return !report.open && !report.innerText.includes('Report body stays');
+      }));
+      await page.click('details.report-fold > summary');
+      console.log(await page.eval(() => document.querySelector('details.report-fold').innerText.includes('Report body stays')));
+      await page.click('.hydra-chat .ask-option');
+      await page.click('.hydra-chat .pending-decision-actions .button');
+      await page.wait('.hydra-chat .chat-decision .decided');
+      console.log(await page.eval(() => !document.querySelector('.waiting-decisions') && document.querySelector('.chat-decision .decided').textContent.includes('Decided')));
+    `,
+      })
+      assert.deepEqual(
+        report.trim().split('\n'),
+        [
+          'true',
+          'true',
+          'true',
+        ],
+      )
+      appendFileSync(
+        transcript,
+        Array.from(
+          { length: 20 },
+          (
+            _,
+            offset,
+          ) => record({ index: 121 + offset }),
+        ).join(''),
+      )
+      const advanced = await browser({
+        args: ['run'],
+        script: `
+      for (let attempt=0; attempt<100; attempt++) {
+        const reached=await page.eval(() => document.querySelector('.hydra-chat .messages').textContent.includes('Checkpoint 140.'));
+        if (reached) break;
+        await page.wait(50);
+      }
+      console.log(await page.eval(() => document.querySelector('.hydra-chat .messages').textContent.includes('Checkpoint 80.')));
+    `,
+      })
+      assert.equal(
+        advanced.trim(),
+        'true',
+      )
+      const port = server.port
+      await server.close()
+      server = await startServer({
+        hydraId: 'default',
+        port,
+        homes: [],
+      })
+      appendFileSync(
+        transcript,
+        record({ index: 141 }),
+      )
+      const reconnected = await browser({
+        args: ['run'],
+        script: `
+      for (let attempt=0; attempt<200; attempt++) {
+        const reached=await page.eval(() => document.querySelector('.hydra-chat .messages').textContent.includes('Checkpoint 141.'));
+        if (reached) break;
+        await page.wait(50);
+      }
+      console.log(await page.eval(() => {
+        const text=document.querySelector('.hydra-chat .messages').textContent;
+        return text.includes('Checkpoint 141.') && text.includes('Checkpoint 80.');
+      }));
+    `,
+      })
+      assert.equal(
+        reconnected.trim(),
+        'true',
+      )
+    } finally {
+      await browser({ args: ['stop'] })
+      await server.close()
+    }
+  },
+)

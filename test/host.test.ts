@@ -1324,16 +1324,22 @@ test(
         sdk.permissions[0],
         { behavior: 'allow' },
       )
-      assert.match(
-        loadHydra({ hydraId: 'lab' }).state.hydraMessages!.at(-1)!.text,
-        /Allowed Bash on Ship it: The command is scoped/,
+      const recorded = readEvents({ hydraId: 'lab' }).findLast(event =>
+        event.type === 'task.permission' && event.data.status === 'allow')
+      assert.equal(
+        recorded?.reason,
+        'The command is scoped to this worktree',
+      )
+      assert.equal(
+        loadHydra({ hydraId: 'lab' }).state.hydraMessages?.length ?? 0,
+        0,
       )
     }
   },
 )
 
 test(
-  'an AskUserQuestion request is answered with the picks as Claude Code reads them, and Hydra explains it in task-linked chat',
+  'an AskUserQuestion request keeps the answer and Hydra’s reason on the task event',
   async () => {
     const { task } = await lab()
     const sdk = fakeSdk()
@@ -1453,18 +1459,25 @@ test(
       task().permissions![0]!.answers,
       picked,
     )
-    const message = loadHydra({ hydraId: 'lab' }).state.hydraMessages!.at(-1)!
+    const answered = readEvents({ hydraId: 'lab' }).findLast(event =>
+      event.type === 'task.permission' && event.data.status === 'allow')
+    assert.ok(answered?.type === 'task.permission')
     assert.equal(
-      message.task,
+      answered.cardId,
       task().id,
     )
+    assert.ok(answered.reason)
     assert.match(
-      message.text,
+      answered.reason,
       /The owner already chose/,
     )
-    assert.match(
-      message.details!,
-      /Asked: Cover http links\?[\s\S]*Answered: Only for the README/,
+    assert.deepEqual(
+      answered.data.answers,
+      picked,
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'lab' }).state.hydraMessages?.length ?? 0,
+      0,
     )
   },
 )
@@ -1548,9 +1561,15 @@ test(
         },
       ],
     )
-    assert.match(
-      loadHydra({ hydraId: 'lab' }).state.hydraMessages!.at(-1)!.text,
-      /Denied Bash.*Do not write that file/,
+    const denied = readEvents({ hydraId: 'lab' }).findLast(event =>
+      event.type === 'task.permission' && event.data.status === 'deny')
+    assert.equal(
+      denied?.reason,
+      'Do not write that file',
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'lab' }).state.hydraMessages?.length ?? 0,
+      0,
     )
     await assert.rejects(
       async () => permission({

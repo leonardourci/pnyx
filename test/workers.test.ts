@@ -276,9 +276,9 @@ test(
       out,
       /task\.created,task-[0-9a-f-]{36},none,hydra|card\.pushed/,
     )
-    assert.match(
+    assert.doesNotMatch(
       out,
-      /hydra\.message,task-[0-9a-f-]{36},send,hydra,"Hydra: Created By Hydra: split out the docs"/,
+      /Hydra: Created By Hydra: split out the docs/,
     )
     const through = Number(/through: (\d+)/.exec(out)![1])
     assert.equal(
@@ -401,11 +401,11 @@ test(
     })
     assert.ok(
       Date.now() - started >= 900,
-      'Hydra\'s own line must not end the wait',
+      'Hydra\'s own action must not end the wait',
     )
     assert.match(
       own,
-      /"Hydra: Hid By Hydra: the owner closed it"/,
+      /none: nothing Hydra tracks changed/,
     )
   },
 )

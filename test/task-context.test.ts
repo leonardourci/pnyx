@@ -476,7 +476,7 @@ test(
 )
 
 test(
-  'Hydra changes need one reason, which Pnyx posts as its chat line, and the owner needs none',
+  'Hydra changes keep their reasons on events without posting chat lines',
   async () => {
     const f = fixture()
 
@@ -514,7 +514,7 @@ test(
       })
       assert.equal(
         created.posted,
-        'Created API cleanup: the owner asked for it',
+        undefined,
       )
       await assert.rejects(
         async () => f.run({
@@ -565,7 +565,7 @@ test(
       })
       assert.equal(
         moved.posted,
-        'Moved API cleanup to Needs you: its agent asked which schema to use',
+        undefined,
       )
       await f.run({
         name: 'move',
@@ -597,40 +597,33 @@ test(
         [
           'Task brief updated',
           'needs_you -> done',
-          'Hydra: Moved API cleanup to Needs you: its agent asked which schema to use (It found two schemas: v1 in the API and v2 in the migration.)',
           'queued -> needs_you (why: its agent asked which schema to use)',
-          'Hydra: Created API cleanup: the owner asked for it',
           'Created task: API cleanup (why: the owner asked for it)',
         ],
       )
 
-      // A fresh Hydra session starts from cursor 0 and rereads its own lines with their reasons.
-      const lines = [
-        'Created API cleanup: the owner asked for it',
-        'Moved API cleanup to Needs you: its agent asked which schema to use',
-      ]
-      const messages = await f.run({
-        name: 'hydra',
+      const history = await f.run({
+        name: 'task',
         args: [
-          'messages',
-          '--after',
-          '0',
+          'history',
+          'work',
+          '--full',
         ],
       }) as {
-        messages: {
-          actor: string
-          text: string
+        events: {
+          type: string
+          reason?: string
+          details?: string
         }[]
       }
-      assert.deepEqual(
-        messages.messages.map(m => [
-          m.actor,
-          m.text,
-        ]),
-        lines.map(text => [
-          'hydra',
-          text,
-        ]),
+      const move = history.events.find(event => event.type === 'card.moved' && event.reason)
+      assert.equal(
+        move?.details,
+        'It found two schemas: v1 in the API and v2 in the migration.',
+      )
+      assert.equal(
+        f.state().hydraMessages?.length ?? 0,
+        0,
       )
       const check = await hydraCheck({
         args: [
@@ -650,10 +643,7 @@ test(
       const own = check.changes.filter(c => c.type === 'hydra.message').map(c => c.summary)
       assert.deepEqual(
         own,
-        [
-          `Hydra: ${lines[0]}`,
-          `Hydra: ${lines[1]} (It found two schemas: v1 in the API and v2 in the migration.)`,
-        ],
+        [],
       )
       assert.ok(check.changes.some(c => c.actor === 'owner (web)'))
       assert.ok(!check.changes.some(c => c.actor === 'hydra' && c.type !== 'hydra.message'))
@@ -670,7 +660,7 @@ test(
 )
 
 test(
-  'Hydra lines name starts, undos and returns, and the receipt carries the current revision',
+  'Hydra starts, undos and returns stay out of chat and receipts carry the current revision',
   async () => {
     const f = fixture()
 
@@ -714,7 +704,7 @@ test(
       })
       assert.equal(
         started.posted,
-        'Started a worker on Docs: the brief is ready',
+        undefined,
       )
       const hidden = await f.run({
         name: 'task',
@@ -744,7 +734,7 @@ test(
       })
       assert.equal(
         shown.posted,
-        'Returned Docs to the Hydra: the owner resumed it',
+        undefined,
       )
       const moved = await f.run({
         name: 'move',
@@ -766,28 +756,11 @@ test(
       })
       assert.equal(
         undone.posted,
-        'Moved Docs back to Queued: the work is not finished',
+        undefined,
       )
-      const rows = (await f.run({
-        name: 'hydra',
-        args: [
-          'messages',
-          '--after',
-          '0',
-        ],
-      }) as {
-        messages: {
-          text: string
-          details?: string
-        }[]
-      }).messages
-      assert.deepEqual(
-        rows.find(r => r.details),
-        {
-          ...rows.find(r => r.details),
-          text: 'Returned Docs to the Hydra: the owner resumed it',
-          details: 'Resume after the release.',
-        },
+      assert.equal(
+        f.state().hydraMessages?.length ?? 0,
+        0,
       )
     } finally {
       rmSync(

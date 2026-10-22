@@ -15,6 +15,7 @@ export function hydraSdk() {
     fail: false,
     ask: false,
     stream: false,
+    delayInputRecord: false,
     leaveTurnUnfinishedOnClose: false,
     usage: undefined as {
       context: number
@@ -104,10 +105,15 @@ export function hydraSdk() {
           /^<pnyx-digest[\s\S]*?<\/pnyx-digest>\n\n/,
           '',
         ))
-        record({
-          role: 'user',
-          text,
-        })
+        const delayInputRecord = control.delayInputRecord
+
+        if (!delayInputRecord) {
+          record({
+            role: 'user',
+            text,
+          })
+        }
+
         yield {
           type: 'system',
           subtype: 'session_state_changed',
@@ -192,6 +198,13 @@ export function hydraSdk() {
             }
 
             releases.add(release)
+          })
+        }
+
+        if (delayInputRecord) {
+          record({
+            role: 'user',
+            text,
           })
         }
 
