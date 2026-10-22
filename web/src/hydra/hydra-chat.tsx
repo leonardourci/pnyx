@@ -1,5 +1,6 @@
 import { DispatchProposals } from './dispatch-proposals.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import { WorkingDots } from '../components/ui/streaming.tsx'
 import { Button } from '../components/ui/controls.tsx'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
@@ -477,7 +478,7 @@ function Running({
         seconds: true,
       })}` : undefined}
     >
-      <span className="working-dots" aria-hidden="true"><i /><i /><i /></span>
+      <WorkingDots />
       {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
     </p>
   )

@@ -15,6 +15,7 @@ import { Resize } from '../components/ui/resize.tsx'
 
 import { Tooltip } from '../components/ui/tooltip.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import { WorkingDots } from '../components/ui/streaming.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { HoverActions } from '../components/ui/hover-actions.tsx'
@@ -231,7 +232,7 @@ export function HydraCard({
         <div className="card-state">
           <span className={`agent-activity activity-${status.kind}`}>
             {status.kind === 'working'
-              ? <span className="working-dots" aria-hidden="true"><i /><i /><i /></span>
+              ? <WorkingDots />
               : <i aria-hidden="true" />}
             {statusText}
           </span>
