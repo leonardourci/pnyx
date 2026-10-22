@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { EffortLevel, Options, PermissionMode, SDKMessage, Settings, query } from '@anthropic-ai/claude-agent-sdk'
+import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo, Settings, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from '../core/model.ts'
 import { questions } from '../integrations/hooks/observe.ts'
 import type { ModelOption, Provider } from './provider.ts'
@@ -106,6 +106,29 @@ function sdkOptions({ settings }: { settings: AgentSettings }): Partial<Options>
     ...(mode && MODES.includes(mode) ? { permissionMode: mode as PermissionMode } : {}),
     // A running session can only switch to bypass permissions if it started allowed to.
     allowDangerouslySkipPermissions: true,
+  }
+}
+
+const LIMIT_LABELS: Record<string, string> = {
+  five_hour: 'session',
+  seven_day: 'week',
+  seven_day_opus: 'Opus week',
+  seven_day_sonnet: 'Sonnet week',
+}
+
+// Each request reports the plan window it was checked against.
+export function claudeLimit({ info }: { info: SDKRateLimitInfo }) {
+  const label = LIMIT_LABELS[info.rateLimitType ?? '']
+
+  if (!label || typeof info.utilization !== 'number') {
+    return undefined
+  }
+
+  // ponytail: utilization is a 0-1 share in the events seen so far; a value past 1 is read as a percent.
+  return {
+    label,
+    used: Math.round(info.utilization <= 1 ? info.utilization * 100 : info.utilization),
+    ...(info.resetsAt ? { resetsAt: new Date(info.resetsAt * 1000).toISOString() } : {}),
   }
 }
 
@@ -397,6 +420,17 @@ export function claudeProvider({
                   id: `${messageId}:${event.index}`,
                   text: event.delta.text,
                   append: true,
+                }
+              }
+            }
+
+            if (message.type === 'rate_limit_event') {
+              const limit = claudeLimit({ info: message.rate_limit_info })
+
+              if (limit) {
+                yield {
+                  type: 'usage' as const,
+                  limits: [limit],
                 }
               }
             }

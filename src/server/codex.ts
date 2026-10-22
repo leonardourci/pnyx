@@ -280,7 +280,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
             items.clear()
             events.push(params)
             wake?.()
-          } else if (message.method === 'thread/tokenUsage/updated') {
+          } else if (message.method === 'thread/tokenUsage/updated' || message.method === 'account/rateLimits/updated') {
             events.push({
               ...object({ value: message.params }),
               method: message.method,
@@ -415,6 +415,12 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
         if (event) {
           const turn = object({ value: event.turn })
 
+          // The account's windows are not about one thread.
+          if (event.method === 'account/rateLimits/updated') {
+            yield codexLimits({ rateLimits: event.rateLimits })
+            continue
+          }
+
           if (event.threadId !== threadId) {
             continue
           }
@@ -527,6 +533,34 @@ const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fro
     `shell_environment_policy.set.${name}`,
     value,
   ]))
+
+// Codex reports its account's windows by length: the five-hour one is the session, the seven-day one the week.
+export function codexLimits({ rateLimits }: { rateLimits: unknown }): HostedUsage {
+  const limits = object({ value: rateLimits })
+
+  return {
+    type: 'usage',
+    ...(typeof limits.planType === 'string' ? { plan: limits.planType } : {}),
+    limits: [
+      limits.primary,
+      limits.secondary,
+    ].flatMap(value => {
+      const window = object({ value })
+      const minutes = window.windowDurationMins
+      const label = typeof minutes !== 'number' ? undefined
+        : minutes <= 300 ? 'session' : minutes >= 10_080 ? 'week' : `${Math.round(minutes / 60)}h`
+
+      return label && typeof window.usedPercent === 'number' ? [
+        {
+          label,
+          used: Math.round(window.usedPercent),
+          ...(typeof window.resetsAt === 'number'
+            ? { resetsAt: new Date(window.resetsAt * 1000).toISOString() } : {}),
+        },
+      ] : []
+    }),
+  }
+}
 
 export function codexProvider({
   spawnCodex = ({

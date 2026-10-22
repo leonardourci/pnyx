@@ -16,6 +16,13 @@ export type HostedUsage = {
   used?: number
   window?: number
   cost?: number
+  plan?: string
+  // Plan windows the agent reported itself, by label; a later report replaces the same label.
+  limits?: {
+    label: string
+    used: number
+    resetsAt?: string
+  }[]
 }
 export type HostedEvent = 'working' | 'finished' | HostedText | HostedUsage
 export type AskPermission = ({

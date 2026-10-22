@@ -831,14 +831,28 @@ export function createHost({
         }),
       })) {
         if (typeof activity !== 'string' && activity.type === 'usage') {
+          const before = usages.get(key) ?? {}
+          const {
+            type: _type,
+            limits,
+            ...known
+          } = activity
+          void _type
           usages.set(
             key,
             {
-              ...usages.get(key),
-              ...Object.fromEntries(Object.entries(activity).filter(([
-                field,
+              ...before,
+              ...Object.fromEntries(Object.entries(known).filter(([
+                ,
                 value,
-              ]) => field !== 'type' && value !== undefined)),
+              ]) => value !== undefined)),
+              ...(limits ? {
+                limits: [
+                  ...(before.limits ?? []).filter(old =>
+                    !limits.some(limit => limit.label === old.label)),
+                  ...limits,
+                ],
+              } : {}),
             },
           )
 
@@ -1599,11 +1613,25 @@ export function createHost({
         },
       })
 
+      // What the agent reported wins; quota-axi fills the windows it did not report.
+      const {
+        limits = [],
+        plan: reported,
+        ...session
+      } = usages.get(sessionId({ agent })) ?? {}
+      const named = ({ label }: { label: string }) => label.toLowerCase()
+      const windows = [
+        ...(plan?.windows ?? []).filter(window =>
+          !limits.some(limit => named(limit) === named(window))),
+        ...limits,
+      ]
+
       return {
         harness,
         ...(name ? { account: name } : {}),
-        ...usages.get(sessionId({ agent })),
-        ...plan,
+        ...session,
+        ...(plan?.plan ?? reported ? { plan: plan?.plan ?? reported } : {}),
+        ...(windows.length ? { windows } : {}),
       }
     },
     start: async ({

@@ -20,6 +20,12 @@ export function hydraSdk() {
       context: number
       window: number
       cost: number
+      // A plan window the agent reports for its request, as Claude Code's rate limit event does.
+      limit?: {
+        rateLimitType: string
+        utilization: number
+        resetsAt: number
+      }
     } | undefined,
   }
   const permissions: PermissionResult[] = []
@@ -105,6 +111,16 @@ export function hydraSdk() {
           state: 'running',
         }
         const reply = `Hydra: ${text.split('\n\n').at(-1)}`
+
+        if (control.usage?.limit) {
+          yield {
+            type: 'rate_limit_event',
+            rate_limit_info: {
+              status: 'allowed',
+              ...control.usage.limit,
+            },
+          }
+        }
 
         if (control.usage) {
           yield {

@@ -2472,7 +2472,7 @@ test(
 )
 
 test(
-  'hydra usage reports the context in use, its window and the session cost',
+  'hydra usage reports the context in use, its window, the session cost and the plan windows the agent reported',
   async () => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -2494,6 +2494,11 @@ test(
       context: 581_000,
       window: 1_000_000,
       cost: 1.25,
+      limit: {
+        rateLimitType: 'five_hour',
+        utilization: 0.34,
+        resetsAt: 1_800_000_000,
+      },
     }
     const server = await startServer({
       hydraId: 'lab',
@@ -2537,6 +2542,16 @@ test(
       assert.equal(
         usage.cost,
         1.25,
+      )
+      assert.deepEqual(
+        usage.windows,
+        [
+          {
+            label: 'session',
+            used: 34,
+            resetsAt: new Date(1_800_000_000_000).toISOString(),
+          },
+        ],
       )
     } finally {
       await server.close()
