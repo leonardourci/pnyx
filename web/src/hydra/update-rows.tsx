@@ -53,6 +53,10 @@ const KINDS: Record<UpdateKind, {
     icon: 'done',
     label: 'Done',
   },
+  report: {
+    icon: 'send',
+    label: 'Reported to Hydra',
+  },
   plain: {
     icon: 'summary',
     label: 'Update',
@@ -145,7 +149,32 @@ function UpdateText({ update }: { update: TaskUpdate }) {
   return update.note ? <CollapsibleText text={update.note} /> : null
 }
 
-function UpdateEntry({ update }: { update: TaskUpdate }) {
+export function UpdateEntry({ update }: { update: TaskUpdate }) {
+  if (update.kind === 'report') {
+    return (
+      <Disclosure
+        className="update-fold report-fold"
+        title={(
+          <UpdateLine
+            kind="report"
+            at={update.at}
+            plain
+            title={(
+              <>
+                <span>Reported to Hydra</span>
+                <span className="update-fold-chevron" aria-hidden="true">
+                  <Icon name="chevron_right" size={14} />
+                </span>
+              </>
+            )}
+          />
+        )}
+      >
+        <UpdateText update={update} />
+      </Disclosure>
+    )
+  }
+
   return (
     <UpdateLine
       kind={update.kind}

@@ -1,3 +1,6 @@
+import { loadEarlierMessages, mergeThreadPages } from './conversation-history.ts'
+import { hydraConversation } from './conversation.ts'
+import { chatDecisions, ChatDecisionCard, WaitingDecisions, type ChatDecision } from './chat-decisions.tsx'
 import { DispatchProposals } from './dispatch-proposals.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { WorkingDots } from '../components/ui/streaming.tsx'
@@ -5,7 +8,6 @@ import { Button } from '../components/ui/controls.tsx'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
 import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
-import { taskUpdates } from '../../../src/thread/task.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Resize } from '../components/ui/resize.tsx'
@@ -19,7 +21,7 @@ import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
 import { cardState } from './view.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
-import { clock, duration, hydraMessages, joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
+import { clock, duration, joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
 
 // How long after the owner's own input a scroll up still counts as theirs.
 const OWNER_SCROLL_MS = 1000
@@ -95,7 +97,6 @@ export function HydraChat({
   const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0)
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const {
-    tools,
     thinking,
   } = traces({
     view,
@@ -113,12 +114,15 @@ export function HydraChat({
         args: [HYDRA_CARD],
       }).then(result => {
         if (!cancelled) {
-          setPage(result.thread as ThreadPage)
+          setPage(before => mergeThreadPages({
+            before,
+            latest: result.thread as ThreadPage,
+          }))
         }
       })
         .catch(() => {
           if (!cancelled) {
-            setPage(null)
+            notify({ text: 'Could not load the conversation. Reconnect to try again.' })
           }
         })
 
@@ -136,7 +140,10 @@ export function HydraChat({
   useEffect(
     () => {
       if (liveThread) {
-        setPage(liveThread)
+        setPage(before => mergeThreadPages({
+          before,
+          latest: liveThread,
+        }))
       }
     },
     [liveThread],
@@ -154,17 +161,55 @@ export function HydraChat({
       sending.length,
     ],
   )
+  const [
+    loadingEarlier,
+    setLoadingEarlier,
+  ] = useState(false)
   const transcript = joinMessageParts({ entries: page?.entries ?? [] })
-  const updates = Object.values(state.cards).filter(c => !c.automaticTask && c.id !== HYDRA_CARD)
-    .flatMap(card => taskUpdates({ card }))
-  const chat = hydraMessages({
+  const actions = page?.actions ?? []
+  const olderCursor = page?.older
+  const firstAt = transcript[0]?.at
+  const working = hydra.kind !== 'firstmate' && (card?.sessionActivity ?? card?.activity) === 'working'
+  const chat = hydraConversation({
     messages,
     transcript,
+    oldest: olderCursor ? firstAt : undefined,
+    currentTurn: page?.currentTurn,
     provider: card?.agent?.provider,
+    actions,
+    titles: Object.fromEntries(Object.values(state.cards).map(card => [
+      card.id,
+      card.title,
+    ])),
+    columns: config.columns,
+    working,
+    thinking,
   })
+  const decisions = chatDecisions({ cards: Object.values(state.cards) })
+  const shownDecisions = decisions.filter(decision => {
+    const loaded = firstAt !== undefined && decision.at >= firstAt
+
+    return !olderCursor || loaded
+  })
+  const inline = new Map(shownDecisions.map(decision => [
+    decision.id,
+    <ChatDecisionCard
+      key={decision.id}
+      decision={decision}
+      command={command}
+      notify={notify}
+    />,
+  ]))
   const entries: ChatEntry[] = [
-    ...updates,
-    ...chat,
+    ...chat.entries,
+    ...shownDecisions.map(decision => ({
+      id: decision.id,
+      kind: 'message' as const,
+      role: 'Hydra question',
+      task: decision.card.id,
+      text: '',
+      at: decision.at,
+    })),
     ...pending.map(s => ({
       id: s.id,
       kind: 'message' as const,
@@ -173,14 +218,76 @@ export function HydraChat({
       at: s.at,
       sending: !s.confirmed,
     })),
-  ]
-    .filter(e => e.kind === 'message' || (e.kind === 'tool' ? tools : thinking))
-    .sort((
-      a,
-      b,
-    ) => (a.at ?? '').localeCompare(b.at ?? ''))
+  ].sort((
+    a,
+    b,
+  ) => (a.at ?? '').localeCompare(b.at ?? ''))
+
+  const threadSession = useRef(card?.agent?.sessionId)
+  threadSession.current = card?.agent?.sessionId
+
+  const loadEarlier = async ({ until }: { until?: string }) => {
+    const session = threadSession.current
+    const earlier = await loadEarlierMessages({
+      past: page,
+      cursor: olderCursor,
+      until,
+      load: async ({ before }) => {
+        const result = await command({
+          name: 'thread',
+          args: [
+            HYDRA_CARD,
+            before,
+          ],
+        })
+
+        return result.thread as ThreadPage
+      },
+    })
+
+    if (threadSession.current === session) {
+      if (earlier) {
+        setPage(latest => {
+          if (!latest) {
+            return earlier
+          }
+
+          return mergeThreadPages({
+            before: earlier,
+            latest,
+          })
+        })
+      }
+    }
+  }
+
+  const jumpDecision = async ({ decision }: { decision: ChatDecision }) => {
+    follow.current = false
+    setAway(true)
+    setLoadingEarlier(true)
+
+    try {
+      const selector = `[data-entry-id="${CSS.escape(decision.id)}"]`
+      const target = () => stream.current?.querySelector<HTMLElement>(selector)
+
+      if (!target()) {
+        await loadEarlier({ until: decision.at })
+      }
+
+      requestAnimationFrame(() => {
+        target()?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        })
+      })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    } finally {
+      setLoadingEarlier(false)
+    }
+  }
+
   const hosted = hydra.kind !== 'firstmate'
-  const working = hosted && (card?.sessionActivity ?? card?.activity) === 'working'
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const running = working || (hosted && pending.length > 0)
   // A send counts from the owner's message until the server says the turn began.
@@ -336,8 +443,19 @@ export function HydraChat({
           tabIndex={0}
           onWheel={ownerScroll}
           onTouchMove={ownerScroll}
-          onKeyDown={ownerScroll}
+          onKeyDown={event => {
+            ownerScroll()
+
+            if (event.target instanceof Element && event.target.closest('summary')) {
+              follow.current = false
+            }
+          }}
           onPointerDown={event => {
+            if (event.target instanceof Element && event.target.closest('summary')) {
+              follow.current = false
+              ownerScroll()
+            }
+
             if (event.target === event.currentTarget) {
               ownerScroll()
             }
@@ -365,7 +483,27 @@ export function HydraChat({
         >
           <div className="hydra-stream" ref={content}>
             {projectSetup && <div className="hydra-project-setup">{projectSetup}</div>}
+            {olderCursor && (
+              <Button
+                disabled={loadingEarlier || !connected}
+                onClick={async () => {
+                  setLoadingEarlier(true)
+
+                  try {
+                    await loadEarlier({})
+                  } catch (error) {
+                    notify({ text: (error as Error).message })
+                  } finally {
+                    setLoadingEarlier(false)
+                  }
+                }}
+              >Older messages
+              </Button>
+            )}
             <Messages
+              folds={chat.folds}
+              timings={chat.timings}
+              inline={inline}
               entries={entries}
               working={running}
               lookup={pnyxLookup({ state })}
@@ -432,6 +570,11 @@ export function HydraChat({
           </>
         )}
       </div>
+      <WaitingDecisions
+        decisions={decisions.filter(decision => !decision.ask.answered)}
+        jump={jumpDecision}
+        loading={loadingEarlier}
+      />
       <Composer
         card={HYDRA_CARD}
         cards={Object.values(state.cards)}

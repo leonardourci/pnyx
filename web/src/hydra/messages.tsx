@@ -1,3 +1,5 @@
+import { TurnActionsFold } from './turn-actions.tsx'
+import type { TurnActions } from './conversation.ts'
 import {
   Fragment, useEffect, useLayoutEffect, useRef, useState,
   type ClipboardEvent as PasteEvent, type KeyboardEvent as KeyEvent,
@@ -55,7 +57,13 @@ export function Messages({
   openTask,
   assistantLabel,
   notify,
+  folds,
+  inline,
+  timings,
 }: {
+  timings?: Map<string, TurnTiming>
+  folds?: Map<string, TurnActions>
+  inline?: Map<string, React.ReactNode>
   notify({ text }: { text: string }): void
   openTask?({ id }: { id: string }): void
   taskReferences?: Record<string, TaskReferenceData>
@@ -101,7 +109,7 @@ export function Messages({
   const lookColumn = ({ id }: { id: string }) => columnLook({
     column: lookup?.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
   })
-  const turns = turnTimings({
+  const turns = timings ?? turnTimings({
     entries,
     working,
   })
@@ -748,6 +756,7 @@ export function Messages({
         {entries.map(entry => (
           <Fragment key={entry.id}>
             <article
+              data-entry-id={entry.id}
               className={`message ${entry.kind}${ownMessage({ entry }) ? ' mine' : ''}`}
               aria-label={roleLabel({
                 role: entry.role,
@@ -758,13 +767,13 @@ export function Messages({
               title={entry.at && !ownMessage({ entry })
                 ? new Date(entry.at).toLocaleString() : undefined}
             >
-              {entry.task && taskReferences && (
+              {entry.task && taskReferences && !inline?.has(entry.id) && (
                 <div className="message-task">
                   <span className="message-task-label">About</span>
                   <TaskReference id={entry.task} />
                 </div>
               )}
-              {entry.kind === 'message' ? (
+              {inline?.get(entry.id) ?? (entry.kind === 'message' ? (
                 <MessageText
                   text={entry.text}
                   streaming={entry.streaming}
@@ -842,7 +851,7 @@ export function Messages({
                 calls.has(entry.id)
                   ? <PnyxCallRow call={calls.get(entry.id)!} />
                   : <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
-              )}
+              ))}
               {entry.delivery ? (
                 <span className="receipt" role="status">
                   {Object.entries(entry.delivery).map(([
@@ -869,6 +878,7 @@ export function Messages({
                 <CopyButton label="Copy message" text={() => entry.text} />
               </div>
             )}
+            {folds?.has(entry.id) && <TurnActionsFold fold={folds.get(entry.id)!} />}
             {turns.has(entry.id) && <TurnFooter turn={turns.get(entry.id)!} />}
           </Fragment>
         ))}
