@@ -287,9 +287,11 @@ h3 { font-weight: 600; }
 
 @media (hover: none) { .trace-copy { opacity: 1; } }
 
-.chat-error { display: flex; align-items: flex-start; gap: 8px; max-width: 100%; margin-top: 18px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--color-red) 35%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--color-red) 8%, transparent); color: var(--color-red); font-size: var(--text-ui); overflow-wrap: anywhere; }
+.chat-error, .send-error { display: flex; align-items: flex-start; gap: 8px; border: 1px solid color-mix(in srgb, var(--color-red) 35%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--color-red) 8%, transparent); color: var(--color-red); font-size: var(--text-ui); overflow-wrap: anywhere; }
 
-.chat-error > svg { margin-top: 2px; }
+.chat-error { max-width: 100%; margin-top: 18px; padding: 10px 12px; }
+
+:is(.chat-error, .send-error) > svg { margin-top: 2px; }
 
 .trace { color: var(--color-muted); font-size: var(--text-ui); }
 
@@ -353,9 +355,7 @@ h3 { font-weight: 600; }
 
 .mention-icon { display: inline-flex; color: var(--column-color, currentColor); }
 
-.send-error { display: flex; align-items: flex-start; gap: 8px; flex-shrink: 0; max-height: 96px; overflow: auto; margin: 0 0 8px; padding: 8px 6px 8px 10px; border: 1px solid color-mix(in srgb, var(--color-red) 35%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--color-red) 8%, transparent); color: var(--color-red); font-size: var(--text-ui); overflow-wrap: anywhere; }
-
-.send-error > svg { margin-top: 2px; }
+.send-error { flex-shrink: 0; max-height: 96px; overflow: auto; margin: 0 0 8px; padding: 8px 6px 8px 10px; }
 
 .send-error > p { flex: 1; min-width: 0; }
 
