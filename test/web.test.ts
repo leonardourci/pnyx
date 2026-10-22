@@ -241,26 +241,16 @@ test(
 
     assert.equal(
       pageTitle({
-        page: 'hydra',
         cards: state.cards,
       }),
       '(2) Hydra · Pnyx',
     )
     assert.equal(
       pageTitle({
-        page: 'hydra',
         cards: state.cards,
         selected: 'c1',
       }),
       '(2) Review <literal> changes · Pnyx',
-    )
-    assert.equal(
-      pageTitle({
-        page: 'settings',
-        cards: state.cards,
-        selected: 'c1',
-      }),
-      '(2) Settings · Pnyx',
     )
     state = push({
       state,
@@ -280,7 +270,6 @@ test(
     })
     assert.equal(
       pageTitle({
-        page: 'hydra',
         cards: state.cards,
         selected: 'c1',
       }),
@@ -299,7 +288,6 @@ test(
     })
     assert.equal(
       pageTitle({
-        page: 'hydra',
         cards: state.cards,
         selected: 'c1',
       }),

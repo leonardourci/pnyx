@@ -15,7 +15,6 @@ import { TaskCreate } from './task-create.tsx'
 import { Column } from './column.tsx'
 import { Detail } from './detail.tsx'
 import { sendableComment, type ChatComment } from './chat.ts'
-import { Settings } from './settings.tsx'
 import { Hydras } from './hydras.tsx'
 import { Panel } from './panel.tsx'
 import { columnsFor, findBoxCards, hydraTitle, pageTitle } from './view.ts'
@@ -125,7 +124,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const [
       page,
       setPage,
-    ] = useState(new URLSearchParams(location.search).has('projects') || new URLSearchParams(location.search).has('open-project') ? 'hydra' : restored.page === 'settings' ? 'settings' : 'hydra'), [
+    ] = useState('hydra'), [
       workspace,
       setWorkspace,
     ] = useState(''), [
@@ -366,18 +365,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     [],
   )
 
-  useEffect(
-    () => {
-      if (addingProject && state.config?.hydra.kind === 'firstmate') {
-        setPage('settings'); setAddingProject(false)
-      }
-    },
-    [
-      addingProject,
-      state.config?.hydra.kind,
-    ],
-  )
-
   const filterProject = ({ path }: { path: string }) => {
     setProject(path)
     const url = new URL(location.href)
@@ -419,6 +406,18 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       setNotice({ text })
     },
     [],
+  )
+  useEffect(
+    () => {
+      if (addingProject && state.config?.hydra.kind === 'firstmate') {
+        notify({ text: 'Firstmate manages this Hydra’s projects.' }); setAddingProject(false)
+      }
+    },
+    [
+      addingProject,
+      state.config?.hydra.kind,
+      notify,
+    ],
   )
   useEffect(
     () => {
@@ -592,7 +591,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         !!item && !filteredCards.some(card => card.id === item.id)),
   ]
   const title = pageTitle({
-    page,
     cards: state.cards,
     selected,
     needsYou: columns.find(c => c.role === 'needs_you')?.id,
@@ -954,12 +952,9 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         <Panel
           shown={panel}
           connected={connected}
-          page={page}
-          navigate={({ page }) => setPage(page)}
           oracle={(
             <Oracle
               selected={selected}
-              page={page}
               state={state}
               view={view}
               command={command}
@@ -995,24 +990,14 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               setPage('hydra'); filterProject({ path: '' })
             }}
             addProject={() => {
-              setPage(state.config?.hydra.kind === 'firstmate' ? 'settings' : 'hydra'); setAddingProject(true)
+              setPage('hydra'); setAddingProject(true)
             }}
           />
         </Panel>
         <main className="shell" aria-busy={!!loading || !loaded}>
           {(loading || !loaded) && <p className="loading-status" role="status">Loading {opening ? hydraTitle(opening) : 'Hydra'}…</p>}
           {error && <p className="error-banner" role="alert">{error}</p>}
-          {page === 'settings' ? (
-            <Settings
-              state={state}
-              connected={connected}
-              view={view}
-              save={save}
-              close={() => setPage('hydra')}
-              command={command}
-              notify={notify}
-            />
-          ) : (
+          {page === 'hydra' && (
             <>
               <div className="hydra-page">
                 <HydraChat

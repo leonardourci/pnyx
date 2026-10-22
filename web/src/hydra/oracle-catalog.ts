@@ -198,6 +198,8 @@ const CONCEPTS = [
   ],
 ]
 
+export const SHORTCUT_QUERY = '> shortcut'
+export const shortcutLabel = ({ label }: { label: string }) => `${label} shortcut`
 export const commandQuery = ({ query }: { query: string }) => query.trimStart().startsWith('>')
 export const queryWords = ({ query }: { query: string }) => query.replace(
   /^\s*>/,
