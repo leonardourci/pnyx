@@ -191,7 +191,7 @@ const harnessAccount = ({
   ].find(name => ours({ name })) ?? Object.keys(effective.accounts).find(name => ours({ name }))
 }
 
-// Hooks add facts of their own, such as the client version, to a session's settings; only the ones Pnyx chooses call for a new session.
+// Hooks report settings of their own, such as the client version or the effort in use; only what Pnyx chooses calls for a new session.
 function sameChosenSettings({
   current,
   chosen,
@@ -199,13 +199,11 @@ function sameChosenSettings({
   current: AgentSettings | undefined
   chosen: AgentSettings
 }): boolean {
-  const keys = new Set([
-    ...SETTINGS,
-    'fast',
-    ...Object.keys(chosen),
-  ])
-
-  return [...keys].every(key => current?.[key] === chosen[key])
+  // ponytail: a choice the owner cleared keeps the running session until it idles out.
+  return Object.entries(chosen).every(([
+    key,
+    value,
+  ]) => current?.[key] === value)
 }
 
 const wakeId = ({ through }: { through: number }) => `wake:${through}`
@@ -907,7 +905,8 @@ export function createHost({
         return
       }
 
-      // A message taken between turns opens the next turn, in order; one taken mid-turn joins the running turn.
+      // Messages taken between turns open the next turn together; one taken mid-turn joins the running turn.
+      // ponytail: the agent may split or merge what it read ahead, so a turn's answers can be credited one turn off; the agent naming what each turn took would make it exact.
       const opening: {
         id: string | undefined
         offset: number
@@ -1016,9 +1015,9 @@ export function createHost({
             finishReading()
           }
         } else {
-          const next = opening.shift()
-          const answers = next?.id ? [next.id] : []
-          const startOffset = next ? next.offset : 0
+          const opened = opening.splice(0)
+          const answers = opened.flatMap(item => item.id ? [item.id] : [])
+          const startOffset = opened.length ? opened[0]!.offset : 0
           answering = answers
           turnRunning = true
           let ownerStarted: boolean | undefined
@@ -1084,6 +1083,11 @@ export function createHost({
       key,
       entry,
     })
+
+    // A check turn that failed read nothing; its updates wait for the next one.
+    if (card.id === HYDRA_CARD) {
+      finishReading()
+    }
 
     if (!closing && entry.activity === 'working') {
       const name = card.agent.provider === 'codex' ? 'Codex' : 'Claude Code'
@@ -2569,7 +2573,7 @@ export function createHost({
       // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state
 
-      if (hostedHydra({ state })) {
+      if (pnyxRunsHydra({ state })) {
         const turns = Object.entries(state.eventIds).flatMap(([
           id,
           seq,
@@ -2581,8 +2585,13 @@ export function createHost({
             ...turns,
           ),
         })
-        wakeStart = after
-        readThrough = after
+
+        // A Hydra that never ran has no cursor yet; its first missed report sets one.
+        if (hostedHydra({ state })) {
+          wakeStart = after
+          readThrough = after
+        }
+
         const missed = readEvents({ hydraId })
           .filter(event => event.seq > after && wakesHydra({
             state,

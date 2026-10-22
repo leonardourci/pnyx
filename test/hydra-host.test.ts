@@ -1605,7 +1605,19 @@ test(
         ])
       }
 
-      await until({ check: () => queues.at(-1)?.waiting.length === 3 })
+      // A worker's status change waits in the same batch, which then also asks for a check.
+      commands.task([
+        'status',
+        fix,
+        'working',
+        '--note',
+        'Reports sent',
+        '--actor',
+        `worker:${fix}`,
+        '--hydra',
+        'lab',
+      ])
+      await until({ check: () => queues.at(-1)?.waiting.length === 4 })
       await sleep({ ms: 200 })
       assert.deepEqual(
         [
@@ -1617,6 +1629,7 @@ test(
           1,
           1,
           [
+            fix,
             fix,
             fix,
             fix,
@@ -1643,7 +1656,11 @@ test(
           true,
         ],
       )
-      assert.ok(queues.some(queue => queue.reading.length === 3 && queue.waiting.length === 0))
+      assert.match(
+        batch,
+        /hydra check --after \d+ --hydra lab/,
+      )
+      assert.ok(queues.some(queue => queue.reading.length === 4 && queue.waiting.length === 0))
       assert.deepEqual(
         queues.at(-1),
         {
