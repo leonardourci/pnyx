@@ -153,7 +153,7 @@ test(
 
 test(
   'a hosted Hydra in Bypass permissions or Codex never runs owner-only commands at once; other modes and a mid-switch still ask',
-  () => {
+  async t => {
     const root = mkdtempSync(join(
       tmpdir(),
       'pnyx-owner-bypass-',
@@ -167,6 +167,21 @@ test(
       'create',
       'lab',
     ])
+    await cli.task([
+      'create',
+      '--title',
+      'Ship',
+      '--key',
+      'ship',
+      '--hydra',
+      'lab',
+    ])
+    // The inner Hydra guards read the running Hydra from the process environment.
+    const previous = process.env.PNYX_HYDRA
+    process.env.PNYX_HYDRA = 'lab'
+    t.after(() => {
+      process.env.PNYX_HYDRA = previous
+    })
     const meta = {
       at: '2026-10-22T00:00:00Z',
       actor: 'test',
@@ -286,6 +301,33 @@ test(
       ran.length,
       2,
     )
+    hydra.rule([
+      'init',
+      '--actor',
+      'hydra',
+      '--hydra',
+      'lab',
+    ])
+    const discarded = await ownerOnly({
+      commands: { task: cli.task },
+      env: {
+        PNYX_ACTOR: 'hydra',
+        PNYX_HYDRA: 'lab',
+      },
+    }).task([
+      'copy',
+      'ship',
+      'remove',
+      '--discard',
+      '--actor',
+      'hydra',
+      '--hydra',
+      'lab',
+    ]) as Record<string, unknown>
+    assert.equal(
+      discarded.confirmation,
+      undefined,
+    )
     assert.equal(
       JSON.parse(readFileSync(
         configPath({ hydraId: 'lab' }),
@@ -296,6 +338,22 @@ test(
     assert.equal(
       asked(),
       0,
+    )
+
+    // Another Hydra naming this one with --hydra does not borrow its Bypass.
+    assert.equal(
+      (ownerOnly({
+        commands: { setup: record },
+        env: {
+          PNYX_ACTOR: 'hydra',
+          PNYX_HYDRA: 'other',
+        },
+      }).setup([
+        'hooks',
+        '--hydra',
+        'lab',
+      ]) as { confirmation: string }).confirmation,
+      'needed',
     )
 
     // Its own permission prompts and the owner's approval questions stay the owner's.
@@ -350,7 +408,7 @@ test(
     )
     assert.equal(
       asked(),
-      4,
+      5,
     )
 
     // Codex's never runs with full access, so it counts once the session runs the never the composer names.
@@ -409,7 +467,7 @@ test(
     )
     assert.equal(
       asked(),
-      8,
+      9,
     )
   },
 )
