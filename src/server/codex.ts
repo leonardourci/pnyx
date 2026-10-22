@@ -790,8 +790,9 @@ export function codexProvider({
                       text,
                       text_elements: [],
                     },
+                    // Only the message's own images, never one named in the context before it.
                     ...attachedImages({
-                      text,
+                      text: next.value,
                       hydras: join(
                         pnyxHome(),
                         'hydras',
