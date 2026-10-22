@@ -238,7 +238,7 @@ export function HydraAgent({
                 [field]: value,
               },
             })}
-            icon={field === 'effort' ? 'effort-choice' : undefined}
+            icon={field === 'effort' ? 'effort' : undefined}
             {...startsWith({ field })}
           />
         )
