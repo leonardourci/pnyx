@@ -228,11 +228,9 @@ export type PermissionEvent = EventBase & {
   data: PermissionRequest
 }
 
-// hydra: a worker's question, answered by Hydra or escalated; owner: waits for the owner's answer.
 export type AskAudience = 'hydra' | 'owner'
 
-// A structured question on a task. The event that asked it keeps its wording and origin;
-// an escalation readdresses it to the owner without replacing either.
+// The asking event's wording and asker never change; an escalation is its own event.
 export interface Ask {
   id: string
   at: string
@@ -241,7 +239,6 @@ export interface Ask {
   question: string
   context?: string
   details?: string
-  // Choices are optional; a typed answer is always accepted.
   options?: Question['options']
   // 1-based, into options.
   recommended?: number
@@ -253,7 +250,7 @@ export interface Ask {
     question?: string
     context?: string
   }
-  // The reply that delivered its answer.
+  // The delivered reply, or the owner's message, that answered it.
   answered?: string
 }
 
@@ -470,8 +467,7 @@ export interface HydraMessage {
   text: string
   details?: string
   context?: string
-  // ask: the worker's question this message delivers to Hydra. answers: Hydra's own question to the
-  // owner that this owner message answers, with the choice it picked.
+  // ask: the worker question this message delivers; answers: Hydra's question this owner message answers.
   ask?: string
   answers?: string
   choice?: string
@@ -705,7 +701,6 @@ export type RepliedEvent = EventBase & {
       questionId?: string
       question: string
       answer: string
-      // The picked choice of a structured question, when one was picked.
       choice?: string
     }
     answers?: string

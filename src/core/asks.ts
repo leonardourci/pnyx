@@ -126,7 +126,6 @@ export const openAsks = ({
   audience?: AskAudience
 }) => (card.asks ?? []).filter(a => !a.answered && (!audience || a.audience === audience))
 
-// A worker asks Hydra; only Hydra asks the owner directly, so a worker never bypasses it.
 export function decideAsk({
   state,
   ref,
@@ -246,7 +245,6 @@ export function decideAsk({
   })
 }
 
-// Hydra hands a worker's question to the owner; the worker's wording and origin stay as asked.
 export function decideEscalation({
   state,
   ref,
@@ -321,8 +319,6 @@ export function decideEscalation({
   })
 }
 
-// What Hydra reads for a worker's question, built from its asking alone; Pnyx delivers it as the
-// worker's report, with the commands that answer or hand it on.
 export const askReport = ({
   task,
   ask,
@@ -342,14 +338,11 @@ export const askReport = ({
   `Answer: \`pnyx-axi task answer ${task} ${ask.id} --choice <n> | --text "<answer>" --reason "<why>" --hydra ${hydraId}\`; hand on only an owner decision: \`pnyx-axi task escalate ${task} ${ask.id} --reason "<why>" --hydra ${hydraId}\``,
 ].join('\n')
 
-// The wording the current audience reads: the owner sees Hydra's escalation, when it has one.
 export const askWording = ({ ask }: { ask: Ask }) => ({
   question: ask.escalated?.question ?? ask.question,
   context: ask.escalated?.context ?? ask.context,
 })
 
-// Checks one answer and builds the message the asker receives. Hydra answers only what was asked
-// of it; agents never answer, so a worker cannot answer its own question.
 export function askAnswer({
   card,
   id,
@@ -443,8 +436,7 @@ export function applyAsk({
   state: HydraState
   event: HydraEvent
 }): boolean {
-  // The owner's answer to Hydra's own question is a message to Hydra; it resolves the question, and
-  // applyHydra still records the message.
+  // Returns false so applyHydra still records the owner's answering message.
   if (event.type === 'hydra.message') {
     const card = event.data.answers && event.data.task ? state.cards[event.data.task] : undefined
 

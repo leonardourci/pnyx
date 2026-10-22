@@ -6,7 +6,7 @@ type Stage = 'in_progress' | 'needs_you' | 'done'
 
 const MOVE = ':lifecycle'
 
-// A lifecycle move is known by its id; hydra check leaves it out, since it lists the change that caused it.
+// hydra check skips these moves by id; it already lists their cause.
 export const lifecycleMoveId = ({
   event,
   cardId,
@@ -16,8 +16,7 @@ export const lifecycleMoveId = ({
 }) => `${event}:${cardId}${MOVE}`
 export const lifecycleMove = ({ id }: { id: string }) => id.endsWith(MOVE)
 
-// An open request or question the owner has to answer, or a worker's own needs_you or blocked
-// declaration. A question still waiting on Hydra is not one.
+// A question still waiting on Hydra does not count as waiting on the owner.
 export function asksOwner({ card }: { card: Card }): boolean {
   return card.attention.some(a => a.blocking && !a.answered)
     || !!card.permissions?.some(p => p.status === 'pending')
@@ -43,8 +42,7 @@ const waitsOnOwner = ({ card }: { card: Card }) => asksOwner({
   },
 })
 
-// The column role a task's explicit signals call for. Agent activity, a finished turn,
-// silence or an ended session never count; paused and undeclared tasks call for none.
+// Only explicit signals count: activity, a finished turn, silence or an ended session never do.
 export function lifecycleStage({ card }: { card: Card }): Stage | undefined {
   if (waitsOnOwner({ card })) {
     return 'needs_you'
@@ -73,9 +71,7 @@ const moveReason = ({
   return stage === 'done' ? 'Declared done' : 'Declared working'
 }
 
-// The moves one event's stage changes call for. Only a change moves a card, so a manual move
-// holds until the next one. A task in a column without a role stays where the owner put it, and
-// a Firstmate-linked Hydra leaves placement to its sync.
+// Only a stage change moves a card, so a manual move holds until the next one.
 export function lifecycleMoves({
   before,
   state,
@@ -103,7 +99,6 @@ export function lifecycleMoves({
     }
 
     const was = lifecycleStage({ card: previous })
-    // An answered ask on a task that never declared returns it to its worker, or to the queue without one.
     const answered = was === 'needs_you' && !waitsOnOwner({ card }) && previous.status?.id === card.status?.id
     const back = card.sessionIds?.length ? 'in_progress' : 'queued'
     const stage = lifecycleStage({ card }) ?? (answered && !card.status ? back : undefined)
