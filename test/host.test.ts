@@ -741,6 +741,96 @@ test(
 )
 
 test(
+  'a start that overrides only settings keeps quota picking the candidate and runs it with those settings',
+  async () => {
+    const {
+      folder,
+      task,
+    } = await lab()
+    // Claude's only account is spent but still ranks by a known priority above Codex's unknown quota.
+    writeFileSync(
+      join(
+        dirname(folder),
+        'claude',
+        'quota.json',
+      ),
+      JSON.stringify({
+        provider: {
+          quotaSemantics: {
+            effectiveAvailability: [
+              {
+                scope: 'all_models',
+                status: 'known',
+                effectivePercentRemaining: 0,
+                runway: { status: 'exhausted_now' },
+                selection: {
+                  status: 'known',
+                  spendPriority: -100,
+                },
+              },
+            ],
+          },
+        },
+      }),
+    )
+    await dispatchCommands.rule([
+      'set',
+      'default',
+      '--candidates',
+      JSON.stringify([
+        {
+          harness: 'claude',
+          model: 'opus',
+        },
+        {
+          harness: 'codex',
+          model: 'gpt-catalog-one',
+        },
+      ]),
+      '--hydra',
+      'lab',
+    ])
+    const sdk = fakeSdk()
+    const codex = fakeCodex({ root: dirname(folder) })
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      spawnCodex: codex.spawnCodex,
+    })
+    await startTask({
+      hydraId: 'lab',
+      task: 'ship',
+      override: {
+        effort: 'low',
+        mode: 'never',
+      },
+      meta,
+    })
+    await until({ check: () => codex.messages().some(m => m.method === 'turn/start') })
+    const thread = codex.messages().find(m => m.method === 'thread/start')!.params!
+    const turn = codex.messages().find(m => m.method === 'turn/start')!.params!
+    assert.deepEqual(
+      [
+        sdk.calls.length,
+        thread.approvalPolicy,
+        turn.effort,
+        task().settings?.mode,
+      ],
+      [
+        0,
+        'never',
+        'low',
+        'never',
+      ],
+    )
+    assert.doesNotMatch(
+      task().launch?.dispatch ?? '',
+      /owner override/,
+    )
+  },
+)
+
+test(
   'after a server restart the task keeps its agent, marks an interrupted turn and resumes the session',
   async () => {
     const {
