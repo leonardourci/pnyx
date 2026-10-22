@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import { Button } from './controls.tsx'
 import { Icon } from './icon.tsx'
 
+const RESULTS = {
+  copied: 'Copied',
+  failed: 'Could not copy',
+}
+
 export function CopyButton({
   label,
   text,
@@ -30,7 +35,7 @@ export function CopyButton({
     },
     [result],
   )
-  const title = result === 'copied' ? 'Copied' : result === 'failed' ? 'Could not copy' : label
+  const title = (result && RESULTS[result]) || label
 
   return (
     <Button
