@@ -33,9 +33,7 @@ export function Oracle({
   action,
   notify,
   connected,
-  page,
 }: {
-  page: string
   selected: string | null
   state: HydraState
   view: ViewPreferences
@@ -105,7 +103,15 @@ export function Oracle({
   })
   useKeyAction({
     id: 'find',
-    handler: () => page === 'settings' ? false : focus(),
+    handler: focus,
+  })
+  useKeyAction({
+    id: 'help',
+    handler: () => {
+      setQuery({ query: '> shortcut' })
+
+      return focus()
+    },
   })
   const persist = ({
     key,

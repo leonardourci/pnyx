@@ -271,15 +271,6 @@ export function useHydraKeyboard({
       return true
     }
 
-    if ([
-      'settings',
-      'help',
-    ].includes(id)) {
-      setPage({ page: 'settings' }); requestAnimationFrame(() => focusElement({ selector: '[data-settings-heading]' }))
-
-      return true
-    }
-
     return false
   }
 

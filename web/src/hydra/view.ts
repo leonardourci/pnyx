@@ -21,20 +21,17 @@ export const columnsFor = ({ state }: { state: HydraState }) => {
 }
 
 export function pageTitle({
-  page,
   cards,
   selected = null,
   needsYou = 'needs_you',
 }: {
-  page: string
   cards: HydraState['cards']
   selected?: string | null
   needsYou?: string
 }): string {
   const count = Object.values(cards)
     .filter(c => liveTask({ card: c }) && c.column === needsYou).length
-  const label = page === 'settings' ? 'Settings'
-    : (selected && cards[selected]?.title) || 'Hydra'
+  const label = (selected && cards[selected]?.title) || 'Hydra'
 
   return `${count > 0 ? `(${count}) ` : ''}${label} · Pnyx`
 }
