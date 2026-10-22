@@ -4,6 +4,7 @@ import { hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
 import { HydraError, type DispatchProposal } from '../core/model.ts'
 import { withRegistryLock, withWriter } from '../store/hydra-store.ts'
 import { meta, type Output } from '../cli/commands.ts'
+import { runsInBypass } from '../cli/hydra-session.ts'
 import { configPath, effectiveDispatch, parseAccounts, parseDispatch, readConfig, writeConfig } from './config.ts'
 
 function configuration({
@@ -55,7 +56,9 @@ export function saveOrPropose({
   const actor = meta({ values })
 
   if (!propose) {
-    if (actor.actor === 'hydra' || process.env.PNYX_ACTOR === 'hydra') {
+    const hydra = actor.actor === 'hydra' || process.env.PNYX_ACTOR === 'hydra'
+
+    if (hydra && !runsInBypass({ hydraId })) {
       throw new HydraError({
         message: 'Hydra must propose rule and account changes for the owner to confirm',
         code: 'OWNER_ONLY',

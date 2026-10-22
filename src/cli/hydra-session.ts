@@ -1,8 +1,8 @@
 import { proposeOwnerCommand } from '../confirmations/commands.ts'
 import { parseArgs } from 'node:util'
-import { DEFAULT_HYDRA } from '../store/hydra-store.ts'
+import { DEFAULT_HYDRA, loadHydra } from '../store/hydra-store.ts'
 import { AxiError } from 'axi-sdk-js'
-import { HYDRA_CARD } from '../core/hydra.ts'
+import { HYDRA_CARD, hydraBypasses } from '../core/hydra.ts'
 import { HYDRA_ACTOR } from '../core/model.ts'
 import { guard, WRITE } from './commands.ts'
 
@@ -43,6 +43,17 @@ const OWNER_ONLY: Record<string, ({ args }: { args: string[] }) => boolean> = {
       name: '--discard',
     })),
   approval: () => true,
+}
+
+// Bypass counts only for the Hydra the command runs in, never one it names with --hydra.
+export function runsInBypass({
+  hydraId,
+  env = process.env,
+}: {
+  hydraId: string
+  env?: NodeJS.ProcessEnv
+}): boolean {
+  return env.PNYX_HYDRA === hydraId && hydraBypasses({ state: loadHydra({ hydraId }).state })
 }
 
 // Hydra may propose owner-only actions, but only the owner can confirm them.
@@ -110,6 +121,23 @@ export function ownerOnly<T extends Record<string, Command>>({
 
         // A Hydra Pnyx runs has PNYX_HYDRA, so a command copied without --hydra still lands in its own chat.
         const hydraId = typeof values.hydra === 'string' ? values.hydra : env.PNYX_HYDRA || DEFAULT_HYDRA
+
+        // Hydra's own permission prompts, raised in Bypass only by the owner's ask rules, stay the owner's.
+        const ownPrompt = name === 'task' && positionals[0] === 'permission'
+
+        if (!ownPrompt && runsInBypass({
+          hydraId,
+          env,
+        })) {
+          // setup service serves every Hydra and refuses --hydra, which only routed the question; Confirm drops it too.
+          const service = name === 'setup' && positionals[0] === 'service'
+          const serviceArgs = args.filter((
+            arg,
+            index,
+          ) => arg !== '--hydra' && args[index - 1] !== '--hydra' && !arg.startsWith('--hydra='))
+
+          return run(service ? serviceArgs : args)
+        }
 
         return proposeOwnerCommand({
           name,
