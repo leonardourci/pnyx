@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative } from 'node:path'
 import { decideNote, decidePush, findCard, type Decision, type Meta } from '../core/decide.ts'
-import { hydraConfig, hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
+import { declaredState, hydraConfig, hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
 import { HydraError, type HydraConfig, type HydraState, type Card } from '../core/model.ts'
 import { paseoUrl } from '../core/paseo.ts'
 import { liveTask, sessionId } from '../core/tasks.ts'
@@ -155,14 +155,33 @@ export function workerHeader({
   ].join('\n')
 }
 
+// A worker that replaces a lost session picks up its work from the same folder.
+function replacingNote({
+  card,
+  replacing,
+}: {
+  card: Card
+  replacing: string
+}): string {
+  const lines = [`This start replaces the lost session ${replacing}; your folder keeps its work, so continue from where it stopped instead of starting over.`]
+
+  if (card.status) {
+    lines.push(`Its last declaration was ${declaredState({ declaration: card.status })}: ${card.status.note || '(no note)'}.`)
+  }
+
+  return lines.join(' ')
+}
+
 export function taskPrompt({
   hydraId,
   card,
   prompt,
+  replacing,
 }: {
   hydraId: string
   card: Card
   prompt?: string
+  replacing?: string
 }): string {
   const instructions = prompt ?? workerPrompt({
     hydraId,
@@ -186,11 +205,21 @@ export function taskPrompt({
     project: card.project,
   })
 
+  let progress: string | undefined
+
+  if (replacing) {
+    progress = replacingNote({
+      card,
+      replacing,
+    })
+  }
+
   return [
     header,
     project,
     card.brief?.trim(),
     instructions,
+    progress,
   ].filter(Boolean).join('\n\n')
 }
 
@@ -463,6 +492,7 @@ export async function startTask({
           hydraId,
           card,
           prompt,
+          replacing: replacement,
         }),
         ...(canonical({ path: folder }) ? { folder: canonical({ path: folder }) } : {}),
         id: meta.id ?? randomUUID(),
