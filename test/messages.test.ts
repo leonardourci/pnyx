@@ -119,6 +119,11 @@ test(
         Messages,
         {
           entries: [entry],
+          working: false,
+          lookup: {
+            task: () => undefined,
+            column: () => undefined,
+          },
           comments: [],
           setComments: noop,
           quote: noop,

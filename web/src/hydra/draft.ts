@@ -7,7 +7,7 @@ export type ChipKind = ReferenceKind
 // An em space holds an icon's room in the textarea (a task chip has two); the chip draws icons over them.
 export const ICON_SPACE = '\u2003'
 
-export interface DraftChip {
+interface DraftChip {
   kind: ChipKind
   // An attachment carries the image or file itself; a reference only points at something.
   attached: boolean
@@ -22,8 +22,7 @@ export interface PlacedChip extends DraftChip {
   to: number
 }
 
-export interface DraftView {
-  text: string
+interface DraftView {
   display: string
   chips: PlacedChip[]
 }
@@ -50,7 +49,7 @@ export function fileBlock({
   )}\n${fence}`
 }
 
-export function draftChips({ text }: { text: string }): DraftChip[] {
+function draftChips({ text }: { text: string }): DraftChip[] {
   const chips: DraftChip[] = []
   let images = 0
 
@@ -127,14 +126,13 @@ export function draftView({ text }: { text: string }): DraftView {
   })
 
   return {
-    text,
     display: display + text.slice(cursor),
     chips,
   }
 }
 
 // A display offset inside a chip maps to the chip's end.
-export function sourceOffset({
+function sourceOffset({
   view,
   offset,
 }: {
@@ -154,7 +152,7 @@ export function sourceOffset({
   return offset + shift
 }
 
-export function displayOffset({
+function displayOffset({
   view,
   offset,
 }: {

@@ -44,7 +44,7 @@ const roleLabel = ({
 
 export function Messages({
   entries: all,
-  working = false,
+  working,
   lookup,
   comments,
   setComments,
@@ -64,8 +64,8 @@ export function Messages({
   assistantLabel?: string
   entries: ChatEntry[]
   // Whether the latest turn is still running, so it has no footer yet.
-  working?: boolean
-  lookup?: PnyxLookup
+  working: boolean
+  lookup: PnyxLookup
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
   quote({ text }: { text: string }): void

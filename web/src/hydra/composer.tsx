@@ -33,9 +33,9 @@ const paragraphBreak = ({ newlines }: { newlines: string }) => '\n'.repeat(2 - n
 export function Composer({
   card,
   cards,
-  projects = [],
-  columns = [],
-  taskReferences = {},
+  projects,
+  columns,
+  taskReferences,
   openTask,
   title,
   draft,
@@ -52,9 +52,9 @@ export function Composer({
 }: {
   card: string
   cards: Card[]
-  projects?: HydraProject[]
-  columns?: HydraColumn[]
-  taskReferences?: Record<string, TaskReferenceData>
+  projects: HydraProject[]
+  columns: HydraColumn[]
+  taskReferences: Record<string, TaskReferenceData>
   openTask({ id }: { id: string }): void
   title: string
   draft: string

@@ -3,7 +3,7 @@ import { hydraConfig } from '../../../src/core/hydra.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 
 // A sentence about a Pnyx command, with the tasks and columns it touched kept apart so they show as chips.
-export type Segment = string | {
+type Segment = string | {
   task: string
   label: string
 } | {
@@ -65,7 +65,7 @@ export function shellCommand({ text }: { text: string }): string | undefined {
 }
 
 // Splits the first command of a shell line into words, following quotes and backslashes.
-export function shellWords({ command }: { command: string }): string[] {
+function shellWords({ command }: { command: string }): string[] {
   const words: string[] = []
   let word = '', quote = '', open = false
 
@@ -170,7 +170,7 @@ const STATES: Record<string, string> = {
 }
 
 // Tool output is plain text, or Claude's list of text blocks.
-export function toolOutput({ text }: { text: string }): string {
+function toolOutput({ text }: { text: string }): string {
   try {
     const blocks = JSON.parse(text) as unknown
 
@@ -189,7 +189,7 @@ export function pnyxSentence({
 }: {
   words: string[]
   output?: string
-  lookup?: PnyxLookup
+  lookup: PnyxLookup
 }): Segment[] {
   const {
     positionals,
@@ -201,7 +201,7 @@ export function pnyxSentence({
   ] = positionals
 
   const task = ({ ref = '' }: { ref?: string }): Segment => {
-    const found = lookup?.task({ ref })
+    const found = lookup.task({ ref })
 
     return {
       task: found?.id ?? ref,
@@ -215,7 +215,7 @@ export function pnyxSentence({
 
   switch (area) {
     case 'move': {
-      const found = lookup?.column({ ref: positionals[2] ?? '' })
+      const found = lookup.column({ ref: positionals[2] ?? '' })
       const column: Segment = found ? {
         column: {
           id: found.id,
@@ -255,8 +255,8 @@ export function pnyxSentence({
           return [
             'Created ',
             created ? {
-              task: lookup?.task({ ref: created })?.id ?? created,
-              label: lookup?.task({ ref: created })?.title ?? flags.title ?? created,
+              task: lookup.task({ ref: created })?.id ?? created,
+              label: lookup.task({ ref: created })?.title ?? flags.title ?? created,
             } : `“${flags.title ?? 'a task'}”`,
             because,
           ]
@@ -440,7 +440,7 @@ export function pnyxCalls<Entry extends ThreadEntry>({
   lookup,
 }: {
   entries: Entry[]
-  lookup?: PnyxLookup
+  lookup: PnyxLookup
 }): {
   entries: Entry[]
   calls: Map<string, PnyxCall>
