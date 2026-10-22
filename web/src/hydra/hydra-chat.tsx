@@ -649,23 +649,14 @@ export function HydraChat({
   )
 }
 
-const updateCount = ({ count }: { count: number }) => `${count} ${count === 1 ? 'update' : 'updates'}`
-
-// The tasks a group of updates is about, each once with its number of updates, leaving out any this Hydra does not show.
+// The tasks a group of updates is about, each once, leaving out any this Hydra does not show.
 const updatedTasks = ({
   updates,
   tasks,
 }: {
   updates: QueuedUpdate[]
   tasks: string[]
-}) => {
-  const shown = updates.map(update => update.card).filter(card => tasks.includes(card))
-
-  return [...new Set(shown)].map(card => ({
-    card,
-    count: shown.filter(other => other === card).length,
-  }))
-}
+}) => [...new Set(updates.map(update => update.card))].filter(card => tasks.includes(card))
 
 // The running dots and timer, and Hydra's queue built from Pnyx's own state: what it is reading and what waits for it.
 function Running({
@@ -736,15 +727,7 @@ function Running({
       />
       {cards.length > 0 && (
         <span key={queueKey} className="chat-queue-tasks">
-          {cards.map(({
-            card,
-            count,
-          }) => (
-            <span key={card} className="chat-queue-task">
-              <TaskReference id={card} />
-              {count > 1 && <span className="chat-queue-count" aria-label={`${count} updates`}>{`×${count}`}</span>}
-            </span>
-          ))}
+          {cards.map(card => <TaskReference key={card} id={card} />)}
         </span>
       )}
     </p>
@@ -764,15 +747,15 @@ function queueWords({
   const colon = cards > 0 ? ':' : ''
 
   if (reading > 0 && waiting > 0) {
-    return `Hydra is reading ${updateCount({ count: reading })}, ${waiting} more waiting${colon}`
+    return `Hydra is reading, more waiting${colon}`
   }
 
   if (reading > 0) {
-    return `Hydra is reading ${updateCount({ count: reading })}${colon}`
+    return `Hydra is reading${colon}`
   }
 
   if (waiting > 0) {
-    return `${updateCount({ count: waiting })} waiting for Hydra${colon}`
+    return `Waiting for Hydra${colon}`
   }
 
   return null

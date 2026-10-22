@@ -328,10 +328,6 @@ h3 { font-weight: 600; }
 /* The words share the dots' row; the task chips take a row of their own, so their titles have room. */
 .chat-queue-tasks { animation: reply-appear 140ms ease-out; display: flex; flex: 0 0 100%; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
 
-.chat-queue-task { display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%; }
-
-.chat-queue-count { flex: none; font-variant-numeric: tabular-nums; }
-
 @media (prefers-reduced-motion: reduce) { .chat-queue-tasks { animation: none; } }
 
 .chat-running { max-width: calc(100% - 32px); }
