@@ -109,7 +109,9 @@ function ruleCommand({ args }: { args: string[] }): Output {
         }).dispatch
 
       if (action === 'migrate' || (action === 'init' && !shared)) {
-        if (propose || (meta({ values }).actor === 'hydra' && !runsInBypass({ hydraId }))) {
+        const hydraMustPropose = meta({ values }).actor === 'hydra' && !runsInBypass({ hydraId })
+
+        if (propose || hydraMustPropose) {
           return invalid({ message: 'Propose a rule set, remove or accounts change instead' })
         }
       }
