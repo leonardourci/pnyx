@@ -10,7 +10,14 @@ export type HostedText = {
   text: string
   append?: boolean
 }
-export type HostedEvent = 'working' | 'finished' | HostedText
+// What the session knows about its own size and spend; any field may be unknown.
+export type HostedUsage = {
+  type: 'usage'
+  used?: number
+  window?: number
+  cost?: number
+}
+export type HostedEvent = 'working' | 'finished' | HostedText | HostedUsage
 export type AskPermission = ({
   tool,
   input,

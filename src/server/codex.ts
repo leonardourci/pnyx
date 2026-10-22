@@ -6,7 +6,7 @@ import type { Question } from '../core/model.ts'
 import { form } from '../integrations/hooks/observe.ts'
 import { pnyxHome } from '../store/paths.ts'
 import { attachedImages } from '../attachments/images.ts'
-import type { AskPermission, HostedText, ModelOption, PermissionDecision, Provider } from './provider.ts'
+import type { AskPermission, HostedText, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({
   cwd,
@@ -280,6 +280,12 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
             items.clear()
             events.push(params)
             wake?.()
+          } else if (message.method === 'thread/tokenUsage/updated') {
+            events.push({
+              ...object({ value: message.params }),
+              method: message.method,
+            })
+            wake?.()
           } else if (message.method === 'item/agentMessage/delta' || message.method === 'item/completed') {
             const params = object({ value: message.params })
             const item = object({ value: params.item })
@@ -398,7 +404,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     }: {
       threadId: string
       turnId: string
-    }): AsyncGenerator<HostedText | { turn: ObjectValue }> {
+    }): AsyncGenerator<HostedText | HostedUsage | { turn: ObjectValue }> {
       for (;;) {
         if (failure) {
           throw failure
@@ -410,6 +416,19 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
           const turn = object({ value: event.turn })
 
           if (event.threadId !== threadId) {
+            continue
+          }
+
+          // The last request's total is the context in use.
+          if (event.method === 'thread/tokenUsage/updated') {
+            const usage = object({ value: event.tokenUsage })
+            const used = object({ value: usage.last }).totalTokens
+            const window = usage.modelContextWindow
+            yield {
+              type: 'usage',
+              ...(typeof used === 'number' ? { used } : {}),
+              ...(typeof window === 'number' ? { window } : {}),
+            }
             continue
           }
 

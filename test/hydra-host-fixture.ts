@@ -16,6 +16,11 @@ export function hydraSdk() {
     ask: false,
     stream: false,
     leaveTurnUnfinishedOnClose: false,
+    usage: undefined as {
+      context: number
+      window: number
+      cost: number
+    } | undefined,
   }
   const permissions: PermissionResult[] = []
   const sets: string[] = []
@@ -101,6 +106,25 @@ export function hydraSdk() {
         }
         const reply = `Hydra: ${text.split('\n\n').at(-1)}`
 
+        if (control.usage) {
+          yield {
+            type: 'stream_event',
+            parent_tool_use_id: null,
+            event: {
+              type: 'message_start',
+              message: {
+                id: `usage-${call.messages.length}`,
+                usage: {
+                  input_tokens: 10,
+                  cache_creation_input_tokens: 0,
+                  cache_read_input_tokens: control.usage.context - 10,
+                  output_tokens: 1,
+                },
+              },
+            },
+          }
+        }
+
         if (control.stream) {
           yield {
             type: 'stream_event',
@@ -184,6 +208,17 @@ export function hydraSdk() {
           role: 'assistant',
           text: reply,
         })
+
+        if (control.usage) {
+          yield {
+            type: 'result',
+            subtype: 'success',
+            is_error: false,
+            total_cost_usd: control.usage.cost,
+            modelUsage: { 'claude-sonnet': { contextWindow: control.usage.window } },
+          }
+        }
+
         yield {
           type: 'system',
           subtype: 'session_state_changed',

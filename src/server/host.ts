@@ -1,13 +1,13 @@
 import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
-import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, overrideOf, hostedOverride, readQuota, type DispatchChoice } from '../dispatch/select.ts'
-import { effectiveDispatch, type Harness } from '../dispatch/config.ts'
+import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, overrideOf, hostedOverride, readQuota, readUsage, type DispatchChoice } from '../dispatch/select.ts'
+import { defaultLogin, effectiveDispatch, type Harness } from '../dispatch/config.ts'
 import { randomUUID } from 'node:crypto'
 import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
-import { modelIds, type HostedSession, type ModelOption, type PermissionDecision } from './provider.ts'
+import { modelIds, type HostedSession, type HostedUsage, type ModelOption, type PermissionDecision } from './provider.ts'
 import { liveReplies } from './streaming.ts'
 import type { ThreadPage } from '../thread/read.ts'
 import { seenAt, terminalPresence, type Presence } from '../integrations/presence/check.ts'
@@ -41,6 +41,7 @@ export interface Host {
     id: string
   }): Promise<Record<string, unknown>>
   stop(): Promise<Record<string, unknown>>
+  usage(): Promise<Record<string, unknown>>
   start({
     task,
     prompt,
@@ -253,6 +254,8 @@ export function createHost({
   const controller = new AbortController()
   const starting = new Set<string>()
   const live = new Map<string, Live>()
+  // The latest size and spend each session reported, kept after its process idles out.
+  const usages = new Map<string, Omit<HostedUsage, 'type'>>()
   const pending = new Map<string, {
     card: string
     entry: Live
@@ -827,6 +830,21 @@ export function createHost({
           form,
         }),
       })) {
+        if (typeof activity !== 'string' && activity.type === 'usage') {
+          usages.set(
+            key,
+            {
+              ...usages.get(key),
+              ...Object.fromEntries(Object.entries(activity).filter(([
+                field,
+                value,
+              ]) => field !== 'type' && value !== undefined)),
+            },
+          )
+
+          continue
+        }
+
         if (typeof activity !== 'string') {
           entry.replies.update(activity)
           streamed({ session: key })
@@ -1552,6 +1570,41 @@ export function createHost({
       await entry.session.interrupt()
 
       return { stopped: 'hydra' }
+    },
+    // Hydra's context window and spend, and its account's plan windows; anything unknown is left out.
+    usage: async () => {
+      const state = loadHydra({ hydraId }).state
+      const agent = state.cards[HYDRA_CARD]?.agent
+
+      if (!agent) {
+        return { usage: 'none: Hydra has not started a session' }
+      }
+
+      const harness: Harness = agent.provider === 'codex' ? 'codex' : 'claude'
+      const effective = effectiveDispatch({
+        hydraId,
+        state,
+      })
+      const ours = ({ name }: { name?: string }) =>
+        !!name && effective.accounts[name]?.provider === harness
+      const name = [
+        agent.account,
+        effective.dispatch.main,
+      ].find(name => ours({ name })) ?? Object.keys(effective.accounts).find(name => ours({ name }))
+      const account = name ? effective.accounts[name] : undefined
+      const plan = await readUsage({
+        account: account ?? {
+          provider: harness,
+          folder: agent.loginFolder ?? defaultLogin({ provider: harness }),
+        },
+      })
+
+      return {
+        harness,
+        ...(name ? { account: name } : {}),
+        ...usages.get(sessionId({ agent })),
+        ...plan,
+      }
     },
     start: async ({
       task,
@@ -2567,6 +2620,9 @@ export async function hostRequest({
 
     case 'stop':
       return host.stop()
+
+    case 'usage':
+      return host.usage()
 
     case 'start': {
       const folder = field({

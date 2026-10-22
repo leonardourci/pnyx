@@ -2684,19 +2684,21 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     }
   }
 
-  if (positionals[0] === 'stop') {
+  if (positionals[0] === 'stop' || positionals[0] === 'usage') {
+    const action = positionals[0]
+
     return readServer({ hydraId }).then(server => server ? askHost({
       hydraId,
       body: {
-        action: 'stop',
+        action,
         actor: meta({ values }).actor,
       },
-    }) : { stopped: 'none: no Pnyx server runs this Hydra' })
+    }) : { [action === 'stop' ? 'stopped' : 'usage']: 'none: no Pnyx server runs this Hydra' })
   }
 
   if (positionals[0] !== 'send') {
     throw new HydraError({
-      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra stop or hydra messages',
+      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra stop, hydra usage or hydra messages',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -3870,6 +3872,8 @@ pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--det
 pnyx-axi hydra send --text <message> [--details <text>]
 pnyx-axi hydra stop
 hydra stop ends the turn Pnyx's hosted Hydra is running; its workers keep going.
+pnyx-axi hydra usage
+hydra usage prints the hosted Hydra's context window use and session cost when known, and its account's plan windows from quota-axi.
 pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
 Hydra memory holds only what this Hydra needs (its scope, where it left off, its check cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.

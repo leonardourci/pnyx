@@ -370,6 +370,16 @@ export function claudeProvider({
 
               if (event.type === 'message_start') {
                 messageId = event.message.id
+                // Each request carries the whole conversation, so its input is the context in use.
+                const usage = event.message.usage
+
+                if (usage) {
+                  yield {
+                    type: 'usage' as const,
+                    used: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+                      + (usage.cache_read_input_tokens ?? 0),
+                  }
+                }
               } else if (event.type === 'content_block_start' && event.content_block.type === 'text') {
                 textIndex = event.index
 
@@ -387,6 +397,21 @@ export function claudeProvider({
                   id: `${messageId}:${event.index}`,
                   text: event.delta.text,
                   append: true,
+                }
+              }
+            }
+
+            if (message.type === 'result') {
+              const windows = Object.values(message.modelUsage ?? {})
+                .map(model => model.contextWindow)
+                .filter(size => size > 0)
+              const cost = message.total_cost_usd
+
+              if (windows.length || typeof cost === 'number') {
+                yield {
+                  type: 'usage' as const,
+                  ...(windows.length ? { window: Math.max(...windows) } : {}),
+                  ...(typeof cost === 'number' ? { cost } : {}),
                 }
               }
             }

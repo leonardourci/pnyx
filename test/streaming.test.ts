@@ -229,7 +229,7 @@ test(
         message: 'unused',
       }),
     })) {
-      if (typeof event !== 'string') {
+      if (typeof event !== 'string' && event.type === 'text') {
         assert.equal(
           event.id,
           'reply:1',

@@ -2470,3 +2470,84 @@ test(
     }
   },
 )
+
+test(
+  'hydra usage reports the context in use, its window and the session cost',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-usage-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const sdk = hydraSdk()
+    sdk.control.usage = {
+      context: 581_000,
+      window: 1_000_000,
+      cost: 1.25,
+    }
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+
+    try {
+      assert.deepEqual(
+        await commands.hydra([
+          'usage',
+          '--hydra',
+          'lab',
+        ]),
+        { usage: 'none: Hydra has not started a session' },
+      )
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'How big is the context?',
+      ])
+      await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      const usage = await commands.hydra([
+        'usage',
+        '--hydra',
+        'lab',
+      ]) as Record<string, unknown>
+      assert.equal(
+        usage.harness,
+        'claude',
+      )
+      assert.equal(
+        usage.used,
+        581_000,
+      )
+      assert.equal(
+        usage.window,
+        1_000_000,
+      )
+      assert.equal(
+        usage.cost,
+        1.25,
+      )
+    } finally {
+      await server.close()
+      sdk.release()
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
