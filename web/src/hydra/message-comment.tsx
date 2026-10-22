@@ -2,6 +2,7 @@ import { imagePaths } from '../../../src/attachments/images.ts'
 import { AttachedImage } from '../components/ui/attached-image.tsx'
 import { Button, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
+import { Tooltip } from '../components/ui/tooltip.tsx'
 import { markdownText } from '../components/ui/markdown.tsx'
 import { onNoteEdgeLine, type CaretDirection } from './caret.ts'
 import { commentContext, quoteSnippet, type ChatComment } from './chat.ts'
@@ -32,12 +33,15 @@ function CommentQuote({
     context: markdownText({ text: commentContext({ comment }) ?? '' }),
   })
 
+  // The whole context shows above the card, so the card itself never changes size.
   return (
-    <div className="comment-quote" title={before + match + after}>
-      {clip && before.length > CLIP ? `…${before.slice(-CLIP)}` : before}
-      <mark>{match}</mark>
-      {after}
-    </div>
+    <Tooltip content={<>{before}<mark>{match}</mark>{after}</>}>
+      <div className="comment-quote">
+        {clip && before.length > CLIP ? `…${before.slice(-CLIP)}` : before}
+        <mark>{match}</mark>
+        {after}
+      </div>
+    </Tooltip>
   )
 }
 

@@ -2,7 +2,7 @@ import { setupCheckOutput } from '../setup/check.ts'
 import { projectWorkerContext } from '../projects/context.ts'
 import { decideQueue } from '../queue/decide.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
-import { mentionContext } from '../mentions/mentions.ts'
+import { mentionContext, taskMentions } from '../mentions/mentions.ts'
 import { reminderTime } from '../reminders/time.ts'
 import { waitingReminders } from '../reminders/state.ts'
 import { findProject, projectRows, taskProject } from '../projects/read.ts'
@@ -1850,6 +1850,18 @@ function sessionRef({
     : ref
 }
 
+// A Hydra chat message belongs to its task and to every task it names with a chip.
+function tagsTask({
+  event,
+  ids,
+}: {
+  event: HydraEvent
+  ids: Set<string>
+}): boolean {
+  return event.type === 'hydra.message'
+    && (ids.has(event.data.task ?? '') || taskMentions({ text: event.data.text }).some(mention => ids.has(mention.id)))
+}
+
 function taskHistory({
   hydraId,
   ref,
@@ -1885,7 +1897,10 @@ function taskHistory({
     hydraId,
     ids,
   })
-  const matches = events.filter(e => (before === undefined || e.seq < before) && (ids.has(e.cardId) || (e.type === 'task.session' && (ids.has(e.data.before ?? '') || ids.has(e.data.after ?? ''))) || (e.type === 'hydra.message' && ids.has(e.data.task ?? ''))))
+  const matches = events.filter(e => (before === undefined || e.seq < before) && (ids.has(e.cardId) || (e.type === 'task.session' && (ids.has(e.data.before ?? '') || ids.has(e.data.after ?? ''))) || tagsTask({
+    event: e,
+    ids,
+  })))
     .reverse()
   const page = matches.slice(
     0,
@@ -2684,9 +2699,21 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     }
   }
 
+  if (positionals[0] === 'stop' || positionals[0] === 'usage') {
+    const action = positionals[0]
+
+    return readServer({ hydraId }).then(server => server ? askHost({
+      hydraId,
+      body: {
+        action,
+        actor: meta({ values }).actor,
+      },
+    }) : { [action === 'stop' ? 'stopped' : 'usage']: 'none: no Pnyx server runs this Hydra' })
+  }
+
   if (positionals[0] !== 'send') {
     throw new HydraError({
-      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker] or hydra messages',
+      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra stop, hydra usage or hydra messages',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -3424,8 +3451,13 @@ const history = guard({
     const inWorkspace = ({ e }: { e: HydraEvent }) =>
       (e.type === 'card.outcome' ? e.data.card.workspace : state.cards[e.cardId]?.workspace) === workspace
 
+    const tagged = new Set(cardId ? [cardId] : [])
     const matches = readEvents({ hydraId })
-      .filter(e => (before === undefined || e.seq < before) && (!cardId || e.cardId === cardId))
+      .filter(e => (before === undefined || e.seq < before)
+        && (!cardId || e.cardId === cardId || tagsTask({
+          event: e,
+          ids: tagged,
+        })))
       .filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e })))
       .reverse()
     const page = matches.slice(
@@ -3858,6 +3890,10 @@ in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workfl
 --command-folder own says the command makes its own folder, so it runs in the project folder and Pnyx makes no task copy; copy (the default) runs it in the task's copy.
 pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--details <text>]
 pnyx-axi hydra send --text <message> [--details <text>]
+pnyx-axi hydra stop
+hydra stop ends the turn Pnyx's hosted Hydra is running; its workers keep going.
+pnyx-axi hydra usage
+hydra usage prints the hosted Hydra's context window use and session cost when known, and its account's plan windows from quota-axi.
 pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
 Hydra memory holds only what this Hydra needs (its scope, where it left off, its check cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.

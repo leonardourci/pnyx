@@ -7,7 +7,7 @@ import { ownerMemory } from '../store/owner-memory.ts'
 import { checkAttachments } from '../integrations/presence/check.ts'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
-import { HydraError, HYDRA_ACTOR, type HydraEvent, type EventType, type SessionEvent } from '../core/model.ts'
+import { HydraError, HYDRA_ACTOR, OWNER_ACTORS, type HydraEvent, type EventType, type SessionEvent } from '../core/model.ts'
 import { hydraDir, loadHydra, readEvents, readEventsFrom, withWriter } from '../store/hydra-store.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { harvestPaseoChats } from '../integrations/paseo/harvest.ts'
@@ -38,11 +38,6 @@ const TRACKED: readonly EventType[] = [
 ]
 const CHECK_LIMIT = 20
 const POLL_MS = 2000
-// The Hydra page and an unlabelled CLI are usually the owner; workers Pnyx runs write as `worker:<task>`.
-const OWNER_ACTORS = [
-  'web',
-  'cli',
-]
 
 export async function hydraCheck({
   args,

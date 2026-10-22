@@ -82,6 +82,6 @@ export function MessageText({
   return <Markdown {...props} text={!streaming || reduced ? text : shown} />
 }
 
-export function Working({ label = 'Working' }: { label?: string }) {
-  return <p className="reply-working" role="status"><span className="working-dots" aria-hidden="true"><i /><i /><i /></span>{label}</p>
+export function WorkingDots() {
+  return <span className="working-dots" aria-hidden="true"><i /><i /><i /></span>
 }

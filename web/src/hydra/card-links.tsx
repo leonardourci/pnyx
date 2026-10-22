@@ -6,13 +6,25 @@ import { Tooltip, LINK_TOOLTIP_DELAY } from '../components/ui/tooltip.tsx'
 
 const CLOSED_LINKS = 2
 const OPEN_LINKS = 3
-const LINK_ICONS = {
+export const LINK_ICONS: Record<string, string> = {
   github_pr: 'github',
   linear: 'linear',
   url: 'paperclip',
 }
 
-function LinkChip({
+// A link without a number or title shows the end of its path; the tooltip keeps the full URL.
+const shortUrl = ({ url }: { url: string }) => {
+  try {
+    const parsed = new URL(url)
+
+    return parsed.pathname.split('/').filter(Boolean)
+      .at(-1) ?? parsed.host
+  } catch {
+    return url
+  }
+}
+
+export function LinkChip({
   link,
   expanded,
 }: {
@@ -22,7 +34,7 @@ function LinkChip({
   const number = link.kind === 'linear'
     ? /\/issue\/([a-z]+-\d+)/i.exec(link.url)?.[1] || ''
     : link.number && `#${link.number}` || ''
-  const title = link.title || number || link.url
+  const title = link.title || number || shortUrl({ url: link.url })
   const label = expanded && number && link.title ? `${number} · ${title}` : number || title
   const tooltip = <><strong>{title}</strong><span>{link.url}</span></>
   const icon = LINK_ICONS[link.kind]

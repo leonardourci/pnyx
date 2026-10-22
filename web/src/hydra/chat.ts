@@ -15,27 +15,39 @@ export function hydraMessages({
   transcript: ThreadEntry[]
   provider?: string
 }): ThreadEntry[] {
-  transcript = transcript.filter(entry => !quiet({ entry }) && !(provider === 'codex' && entry.kind === 'message'
-    && /^(user|You)( · continued)?$/.test(entry.role)
+  transcript = transcript.filter(entry => !quiet({ entry }) && !(provider === 'codex' && ownMessage({ entry })
     && /^# AGENTS\.md instructions(?: for [^\n]*)?\s*<INSTRUCTIONS>[\s\S]*<\/INSTRUCTIONS>\s*$/.test(entry.text.trim())))
   const remaining = [...transcript]
   const normalized = ({ text }: { text: string }) => text.trim().replace(
     /\s+/g,
     ' ',
   )
-  const recorded: ThreadEntry[] = []
+  const recorded: ThreadEntry[] = [], replaced = new Set<ThreadEntry>()
 
   for (const message of messages) {
     const role = message.actor === HYDRA_ACTOR ? 'assistant' : message.actor === 'pnyx' ? 'Pnyx' : 'user'
     const text = message.details ? `${message.text}\n\n${message.details}` : message.text
-    const match = role === 'user' ? remaining.findIndex(entry => entry.kind === 'message'
-      && /^(user|You)( · continued)?$/.test(entry.role) && normalized(entry) === normalized({ text })) : -1
+    // Hydra's copy also carries the context Pnyx adds for referenced tasks; the chat shows the owner's words.
+    const sent = message.context ? `${text}\n\n${message.context}` : text
+    const match = role === 'user' ? remaining.findIndex(entry => ownMessage({ entry })
+      && [
+        text,
+        sent,
+      ].some(copy => normalized(entry) === normalized({ text: copy }))) : -1
 
     if (match >= 0) {
-      remaining.splice(
+      const [entry] = remaining.splice(
         match,
         1,
       )
+
+      if (sent !== text && normalized(entry!) === normalized({ text: sent })) {
+        replaced.add(entry!)
+        recorded.push({
+          ...entry!,
+          text,
+        })
+      }
     } else {
       recorded.push({
         id: message.id,
@@ -50,7 +62,7 @@ export function hydraMessages({
 
   return [
     ...recorded,
-    ...transcript,
+    ...transcript.filter(entry => !replaced.has(entry)),
   ]
 }
 
@@ -301,3 +313,96 @@ export function quoteInto({
   ]
     .filter(Boolean).join('\n\n') + '\n\n'
 }
+
+export const ownMessage = ({ entry }: { entry: ThreadEntry }) =>
+  entry.kind === 'message' && /^(user|You)( · continued)?$/.test(entry.role)
+
+export interface TurnTiming {
+  start: string
+  end: string
+  reply: string
+  latest: boolean
+}
+
+// A turn runs from the owner's message to its last entry; task updates belong to no turn.
+export function turnTimings({
+  entries,
+  working,
+}: {
+  entries: ThreadEntry[]
+  working: boolean
+}): Map<string, TurnTiming> {
+  const turns: {
+    start?: string
+    last?: ThreadEntry
+    reply: string[]
+  }[] = []
+
+  for (const entry of entries) {
+    if (ownMessage({ entry })) {
+      if (!entry.role.endsWith('continued')) {
+        turns.push({
+          start: entry.at,
+          reply: [],
+        })
+      }
+    } else if (!entry.task && turns.length) {
+      const turn = turns.at(-1)!
+      turn.last = entry
+
+      if (entry.kind === 'message' && entry.role.startsWith('assistant')) {
+        turn.reply.push(entry.text)
+      }
+    }
+  }
+
+  const finished = (working ? turns.slice(
+    0,
+    -1,
+  ) : turns).filter(turn => turn.start && turn.last?.at)
+
+  return new Map(finished.map((
+    turn,
+    index,
+  ) => [
+    turn.last!.id,
+    {
+      start: turn.start!,
+      end: turn.last!.at!,
+      reply: turn.reply.join('\n\n'),
+      latest: index === finished.length - 1,
+    },
+  ]))
+}
+
+export function duration({ ms }: { ms: number }) {
+  const seconds = Math.max(
+    0,
+    Math.round(ms / 1000),
+  )
+
+  if (seconds < 60) {
+    return `${seconds}s`
+  }
+
+  if (seconds < 3600) {
+    return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+  }
+
+  return `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m`
+}
+
+export const clock = ({
+  at,
+  seconds = false,
+}: {
+  at: string
+  seconds?: boolean
+}) => new Date(at).toLocaleTimeString(
+  [],
+  {
+    hour: 'numeric',
+    minute: '2-digit',
+    ...(seconds ? { second: '2-digit' } : {}),
+  },
+)

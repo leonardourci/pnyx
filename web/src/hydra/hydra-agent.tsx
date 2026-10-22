@@ -1,10 +1,39 @@
-import { useHeadsDispatch } from './heads-dispatch.ts'
+import { hydraDefault, useHeadsDispatch } from './heads-dispatch.ts'
 import { useEffect, useRef, useState } from 'react'
 import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
 import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
+import { Button } from '../components/ui/controls.tsx'
+import { hasIcon, Icon } from '../components/ui/icon.tsx'
+import { Tooltip } from '../components/ui/tooltip.tsx'
 import { modelOptions } from './model-options.ts'
 import type { Command } from './connection.ts'
+
+const HARNESSES = [
+  {
+    harness: 'claude',
+    label: 'Claude Code',
+    icon: 'claude-code',
+  },
+  {
+    harness: 'codex',
+    label: 'Codex',
+    icon: 'codex',
+  },
+] as const
+
+// A combined choice is the agent and its model, as harness:model.
+const splitChoice = ({ value }: { value: string }) => {
+  const at = value.indexOf(':')
+
+  return [
+    value.slice(
+      0,
+      at,
+    ) as AgentConfig['harness'],
+    value.slice(at + 1),
+  ] as const
+}
 
 export function HydraAgent({
   state,
@@ -17,7 +46,10 @@ export function HydraAgent({
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
-  const { effective } = useHeadsDispatch({ command })
+  const {
+    effective,
+    saveHydra,
+  } = useHeadsDispatch({ command })
   const [
     busy,
     setBusy,
@@ -30,11 +62,20 @@ export function HydraAgent({
     hosted: true,
   })
   const firstmate = state.config?.hydra.kind === 'firstmate'
-  const catalog = useModels({
-    harness: agent.harness,
-    command,
-    connected: connected && !firstmate,
-  })
+  // Both catalogs load, so the one picker can switch agent and model together.
+  const catalogs = {
+    claude: useModels({
+      harness: 'claude',
+      command,
+      connected: connected && !firstmate,
+    }),
+    codex: useModels({
+      harness: 'codex',
+      command,
+      connected: connected && !firstmate,
+    }),
+  }
+  const catalog = catalogs[agent.harness]
   const selected = agent.model ?? inherited?.model
   const picker = modelOptions({
     models: catalog.models ?? [],
@@ -66,11 +107,14 @@ export function HydraAgent({
     ...(named.model ? { model: named.model } : {}),
     ...(named.effort ? { effort: named.effort } : {}),
     ...(named.mode ? { mode: named.mode } : {}),
+    // Fast mode starts off; only the toggle turns it on.
+    fast: agent.fast ?? false,
   }
   const fields = [
     'model',
     'effort',
     'mode',
+    'fast',
   ] as const
   const missing = !firstmate && !!effective && !!catalog.models
     && fields.some(field => next[field] !== agent[field])
@@ -87,40 +131,74 @@ export function HydraAgent({
     return null
   }
 
+  // The hydra rule is what every new Hydra starts with.
+  const startsWith = ({ field }: { field: 'model' | 'effort' | 'mode' }) => ({
+    defaultValue: rule?.harness !== agent.harness ? undefined : rule[field],
+    onDefault: ({
+      value,
+      harness = agent.harness,
+    }: {
+      value: string
+      harness?: AgentConfig['harness']
+    }) => void saveHydra({
+      patch: hydraDefault({
+        rule,
+        harness,
+        field,
+        value,
+      }),
+    }).then(
+      () => notify({ text: 'New Hydras will start with this.' }),
+      (error: Error) => notify({ text: error.message }),
+    ),
+  })
+
   return (
     <div className="hydra-agent-pickers" aria-label="Hydra agent settings">
-      <PickerField
-        label="Harness"
-        value={agent.harness}
-        options={[
-          {
-            value: 'claude',
-            label: 'Claude Code',
-          },
-          {
-            value: 'codex',
-            label: 'Codex',
-          },
-        ]}
-        disabled={busy || !connected}
-        onChange={({ value }) => {
-          if (value === 'claude' || value === 'codex') {
-            save({ next: { harness: value } })
-          }
-        }}
-      />
       <ModelPicker
         {...catalog}
-        value={picker.value}
-        options={picker.options}
+        value={picker.value && `${agent.harness}:${picker.value}`}
+        options={HARNESSES.flatMap(({
+          harness,
+          label,
+          icon,
+        }) => (harness === agent.harness ? picker
+          : modelOptions({ models: catalogs[harness].models ?? [] })).options
+          .map(option => ({
+            value: `${harness}:${option.value}`,
+            label: option.label,
+            icon,
+            group: label,
+          })))}
         disabled={busy || !connected}
         connected={connected}
-        onChange={({ value }) => save({
-          next: {
-            ...agent,
-            model: value,
-          },
-        })}
+        onChange={({ value }) => {
+          const [
+            harness,
+            model,
+          ] = splitChoice({ value })
+
+          save({
+            next: harness === agent.harness ? {
+              ...agent,
+              model,
+            } : {
+              harness,
+              model,
+            },
+          })
+        }}
+        defaultValue={rule?.model ? `${rule.harness}:${rule.model}` : undefined}
+        onDefault={({ value }) => {
+          const [
+            harness,
+            model,
+          ] = splitChoice({ value })
+          startsWith({ field: 'model' }).onDefault({
+            value: model,
+            harness,
+          })
+        }}
       />
       {([
         'effort',
@@ -131,6 +209,7 @@ export function HydraAgent({
         const options = choices.map(o => ({
           value: o.value,
           label: o.label,
+          ...(hasIcon({ name: `${field}-${o.value}` }) ? { icon: `${field}-${o.value}` } : {}),
         }))
 
         if (value && !options.some(o => o.value === value)) {
@@ -154,34 +233,26 @@ export function HydraAgent({
                 [field]: value,
               },
             })}
+            {...startsWith({ field })}
           />
         )
       })}
-      <PickerField
-        label="Fast"
-        value={agent.fast === undefined ? 'default' : agent.fast ? 'on' : 'off'}
-        options={[
-          {
-            value: 'default',
-            label: 'Fast default',
-          },
-          {
-            value: 'off',
-            label: 'Fast off',
-          },
-          {
-            value: 'on',
-            label: 'Fast on',
-          },
-        ]}
-        disabled={busy || !connected}
-        onChange={({ value }) => save({
-          next: {
-            ...agent,
-            fast: value === 'default' ? undefined : value === 'on',
-          },
-        })}
-      />
+      <Tooltip content={agent.fast ? 'Fast mode on' : 'Fast mode off'}>
+        <Button
+          className="fast-toggle"
+          aria-label="Fast mode"
+          aria-pressed={agent.fast === true}
+          disabled={busy || !connected}
+          onClick={() => save({
+            next: {
+              ...agent,
+              fast: !agent.fast,
+            },
+          })}
+        >
+          <Icon name={agent.fast ? 'fast-on' : 'fast'} size={15} />
+        </Button>
+      </Tooltip>
     </div>
   )
 }

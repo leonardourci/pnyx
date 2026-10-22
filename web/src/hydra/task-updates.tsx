@@ -1,31 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Card, HydraColumn } from '../../../src/core/model.ts'
 import { Button } from '../components/ui/controls.tsx'
-import { Markdown } from '../components/ui/markdown.tsx'
 import type { Command } from './connection.ts'
-import { loadRelevant, taskTimeline, type TaskEvent } from './task-updates.ts'
-
-import { Disclosure } from '../components/ui/disclosure.tsx'
-import { Tooltip } from '../components/ui/tooltip.tsx'
+import { groupUpdates, loadRelevant, taskTimeline, type TaskEvent } from './task-updates.ts'
 import { hasTaskQuestion, TaskQuestion } from './task-question.tsx'
+import { UpdateGroupRow } from './update-rows.tsx'
 
 const PAGE_SIZE = 50
-
-const stateLabel = ({ state }: { state: string }) =>
-  state === 'needs_you' ? 'Needs you' : state.replace(
-    /^./,
-    c => c.toUpperCase(),
-  )
-
-const shortTime = ({ at }: { at: string }) => new Date(at).toLocaleString(
-  [],
-  {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  },
-)
 
 export function TaskUpdates({
   card,
@@ -113,7 +94,6 @@ export function TaskUpdates({
               more: undefined,
             }
             : await loadRelevant({
-              cardId: card.id,
               pageSize: PAGE_SIZE,
               load,
             })
@@ -167,7 +147,6 @@ export function TaskUpdates({
 
     try {
       const result = await loadRelevant({
-        cardId: card.id,
         before: Math.min(...events.map(event => event.seq)),
         pageSize: PAGE_SIZE,
         load,
@@ -204,7 +183,8 @@ export function TaskUpdates({
   })
   const history = timeline.filter(update => !questionPending || update.id !== card.status?.id
     || update.state !== 'needs_you' || !!update.decision)
-  const updates = oldestFirst ? history.toReversed() : history
+  const groups = groupUpdates({ updates: history.toReversed() })
+  const shown = oldestFirst ? groups : groups.toReversed()
   const pending = questionPending ? (
     <li key="pending-question" className="pending-question">
       <div className="pending-question-panel">
@@ -235,39 +215,15 @@ export function TaskUpdates({
         >{oldestFirst ? 'Oldest first ↑' : 'Newest first ↓'}
         </Button>
       </div>
-      {(updates.length > 0 || pending) && (
+      {(shown.length > 0 || pending) && (
         <ol>
           {!oldestFirst && pending}
-          {updates.map(update => (
-            <li key={update.id} className={update.decision ? 'decision-update' : undefined}>
-              <div className="update-heading">
-                <strong>{stateLabel({ state: update.state })}</strong>
-                <Tooltip content={new Date(update.at).toLocaleString()}>
-                  <time dateTime={update.at} tabIndex={0}>{shortTime({ at: update.at })}</time>
-                </Tooltip>
-              </div>
-              {update.decision ? (
-                <Disclosure
-                  className="decision"
-                  title={(
-                    <>
-                      <span className="decision-line"><b>Asked</b> · {update.decision.question}</span>
-                      <span className="decision-line"><b>Answered</b> · {update.decision.answer} · by {update.decision.actor}</span>
-                    </>
-                  )}
-                >
-                  <p><b>Question.</b> {update.decision.question}</p>
-                  <p><b>Answer.</b> {update.decision.answer} · by {update.decision.actor}</p>
-                  {update.decision.reason && <p><b>Why.</b> {update.decision.reason}</p>}
-                </Disclosure>
-              ) : update.note && <Markdown text={update.note} />}
-            </li>
-          ))}
+          {shown.map(group => <UpdateGroupRow key={group.updates[0]!.id} group={group} />)}
           {oldestFirst && pending}
         </ol>
       )}
       {loading && <p className="muted" role="status">Loading updates…</p>}
-      {!updates.length && !pending && !loading && !error && <p className="empty">No updates yet.</p>}
+      {!shown.length && !pending && !loading && !error && <p className="empty">No updates yet.</p>}
       {error && <p role="alert">{error} <Button disabled={!connected} onClick={() => setRetry(n => n + 1)}>Try again</Button></p>}
       {more && (
         <Button disabled={!connected || loading} onClick={() => void older()}>Older updates</Button>

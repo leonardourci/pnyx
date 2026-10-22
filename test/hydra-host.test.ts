@@ -11,7 +11,8 @@ import { startTask } from '../src/cli/start.ts'
 import { hydraCheck } from '../src/cli/workers.ts'
 import { sendReply } from '../src/cli/reply.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
+import { taskMention } from '../src/mentions/mentions.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
 import { askHost, localToken } from '../src/server/state.ts'
 import { readThread } from '../src/thread/read.ts'
@@ -424,6 +425,208 @@ test(
       sdk.calls.find(c => c.messages.includes('Third'))?.options.model,
       'opus',
     )
+  },
+)
+
+test(
+  'a Hydra reply paragraph that starts with a task chip lands on that task with the message it answered',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-tag-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+
+    for (const key of [
+      'quick',
+      'other',
+    ]) {
+      commands.task([
+        'create',
+        '--key',
+        key,
+        '--title',
+        `Task ${key}`,
+        '--hydra',
+        'lab',
+      ])
+    }
+
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const quick = state().keys.quick!
+    const sdk = hydraSdk()
+    sdk.control.stream = true
+    sdk.control.reply = [
+      'Here is where things stand.',
+      `${taskMention({
+        id: quick,
+        title: 'Task quick',
+      })} Quick Add gets its own feature folder.`,
+      `Later, ${taskMention({
+        id: state().keys.other!,
+        title: 'Task other',
+      })} only links.`,
+    ].join('\n\n')
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    const notes = ({ card }: { card: string }) => readEvents({ hydraId: 'lab' })
+      .flatMap(event => event.type === 'card.noted' && event.cardId === card ? [
+        [
+          event.data.source,
+          event.data.text,
+        ],
+      ] : [])
+
+    try {
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Is quick add its own page?',
+        '--event-id',
+        'ask-1',
+      ])
+      await until({ check: () => notes({ card: quick }).length === 2 })
+      assert.deepEqual(
+        notes({ card: quick }),
+        [
+          [
+            'hydra',
+            'Quick Add gets its own feature folder.',
+          ],
+          [
+            'owner',
+            'Is quick add its own page?',
+          ],
+        ],
+      )
+      assert.deepEqual(
+        notes({ card: state().keys.other! }),
+        [],
+      )
+    } finally {
+      await server.close(); rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'each tagged reply pairs with the message its turn answered, and only the owner’s chat becomes an ask',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-tag-turns-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    commands.task([
+      'create',
+      '--key',
+      'quick',
+      '--title',
+      'Task quick',
+      '--hydra',
+      'lab',
+    ])
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const quick = state().keys.quick!
+    const sdk = hydraSdk()
+    sdk.control.stream = true
+    sdk.control.hold = true
+    sdk.control.reply = `${taskMention({
+      id: quick,
+      title: 'Task quick',
+    })} Noted.`
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    const notes = ({ source }: { source: string }) => readEvents({ hydraId: 'lab' })
+      .flatMap(event => event.type === 'card.noted' && event.cardId === quick && event.data.source === source ? [event.data.text] : [])
+    const send = ({ args }: { args: string[] }) => commands.hydra([
+      'send',
+      '--hydra',
+      'lab',
+      ...args,
+    ])
+
+    try {
+      await send({
+        args: [
+          '--text',
+          'First',
+        ],
+      })
+      await until({ check: () => sdk.calls[0]?.messages.length === 1 })
+
+      for (const args of [
+        [
+          '--text',
+          'Second',
+        ],
+        [
+          '--task',
+          quick,
+          '--text',
+          'A worker question',
+          '--actor',
+          `worker:${quick}`,
+        ],
+        [
+          '--task',
+          quick,
+          '--text',
+          'Already on the task',
+        ],
+      ]) {
+        await send({ args })
+      }
+
+      sdk.control.hold = false
+      sdk.release()
+      await until({ check: () => notes({ source: 'hydra' }).length === 4 })
+      assert.deepEqual(
+        notes({ source: 'owner' }),
+        [
+          'First',
+          'Second',
+        ],
+      )
+    } finally {
+      sdk.release(); await server.close(); rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
   },
 )
 
@@ -1365,5 +1568,274 @@ test(
       resumeMessage,
       /messages seq|a wake check|a stall check/,
     )
+  },
+)
+
+test(
+  'hydra stop ends only Hydra’s running turn and keeps its session for the next message',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-stop-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    fakeDispatch({ root: home })
+    const folder = join(
+      home,
+      'work',
+    )
+    mkdirSync(folder)
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    await commands.task([
+      'create',
+      '--title',
+      'Fix add',
+      '--key',
+      'fix',
+      '--folder',
+      folder,
+      '--hydra',
+      'lab',
+    ])
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const sdk = hydraSdk()
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+
+    try {
+      assert.deepEqual(
+        await commands.hydra([
+          'stop',
+          '--hydra',
+          'lab',
+        ]),
+        { stopped: 'none: Hydra is not working on a turn' },
+      )
+      sdk.control.hold = true
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Take a long look',
+      ])
+      await until({ check: () => sdk.calls[0]?.messages.length === 1 && state().cards[HYDRA_CARD]?.sessionActivity === 'working' })
+      await startTask({
+        hydraId: 'lab',
+        task: 'fix',
+        meta: {
+          at: new Date().toISOString(),
+          actor: 'hydra',
+          reason: 'start it',
+          id: 'start-fix',
+        },
+      })
+      const worker = () => state().cards[state().keys.fix!]
+      await until({ check: () => worker()?.sessionActivity === 'working' })
+      const since = state().cards[HYDRA_CARD]!.workingSince
+      assert.ok(since && Date.parse(since) <= Date.now())
+      assert.deepEqual(
+        await commands.hydra([
+          'stop',
+          '--hydra',
+          'lab',
+        ]),
+        { stopped: 'hydra' },
+      )
+      await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      // Only Hydra's own turn stops; its worker keeps going.
+      assert.deepEqual(
+        sdk.interrupts,
+        [sdk.calls[0]],
+      )
+      assert.equal(
+        worker()?.sessionActivity,
+        'working',
+      )
+      assert.equal(
+        state().cards[HYDRA_CARD]!.workingSince,
+        undefined,
+      )
+      assert.ok(!state().cards[HYDRA_CARD]!.attention.some(a => a.kind === 'interrupted'))
+      sdk.control.hold = false
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Carry on',
+      ])
+      await until({ check: () => sdk.calls[0]?.messages.length === 2 && state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      // The next message resumes Hydra's session; the other one is the worker's.
+      assert.equal(
+        sdk.calls.length,
+        2,
+      )
+      // A stop covers only its own turn: a later turn's failure still shows.
+      sdk.control.turnError = 'Overloaded'
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Once more',
+      ])
+      await until({ check: () => state().cards[HYDRA_CARD]?.attention.some(a => a.kind === 'interrupted') ?? false })
+      assert.match(
+        state().cards[HYDRA_CARD]!.attention.find(a => a.kind === 'interrupted')!.text ?? '',
+        /Overloaded/,
+      )
+    } finally {
+      await server.close()
+      sdk.release()
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'hydra usage reports the context in use, its window, the session cost and plan windows, the agent\'s own first',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-usage-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    const { claude } = fakeDispatch({ root: home })
+    writeFileSync(
+      join(
+        claude,
+        'quota.json',
+      ),
+      JSON.stringify({
+        provider: {
+          plan: 'max',
+          windows: [
+            {
+              label: 'Session',
+              percentUsed: 90,
+            },
+            {
+              label: 'week',
+              percentRemaining: 60,
+            },
+          ],
+        },
+      }),
+    )
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const sdk = hydraSdk()
+    sdk.control.usage = {
+      context: 581_000,
+      window: 1_000_000,
+      cost: 1.25,
+      limit: {
+        rateLimitType: 'five_hour',
+        utilization: 0.34,
+        resetsAt: 4_000_000_000,
+      },
+    }
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+
+    try {
+      assert.deepEqual(
+        await commands.hydra([
+          'usage',
+          '--hydra',
+          'lab',
+        ]),
+        { usage: 'none: Hydra has not started a session' },
+      )
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'How big is the context?',
+      ])
+      await until({ check: () => state().cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+      const usage = await commands.hydra([
+        'usage',
+        '--hydra',
+        'lab',
+      ]) as Record<string, unknown>
+      assert.equal(
+        usage.harness,
+        'claude',
+      )
+      assert.equal(
+        usage.used,
+        581_000,
+      )
+      assert.equal(
+        usage.window,
+        1_000_000,
+      )
+      assert.equal(
+        usage.cost,
+        1.25,
+      )
+      assert.equal(
+        usage.account,
+        'claude:test',
+      )
+      assert.equal(
+        usage.plan,
+        'max',
+      )
+      // The agent's own session window takes quota-axi's place; quota-axi still fills the week.
+      assert.deepEqual(
+        usage.windows,
+        [
+          {
+            label: 'session',
+            used: 34,
+            resetsAt: new Date(4_000_000_000_000).toISOString(),
+          },
+          {
+            label: 'week',
+            used: 40,
+          },
+        ],
+      )
+    } finally {
+      await server.close()
+      sdk.release()
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
   },
 )

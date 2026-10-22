@@ -129,7 +129,7 @@ test(
     })) {
       events.push(event)
 
-      if (typeof event !== 'string') {
+      if (typeof event !== 'string' && event.type === 'text') {
         live.update(event)
       }
     }
@@ -171,6 +171,80 @@ test(
       }).entries.map(e => e.text),
       ['Hello world'],
     )
+  },
+)
+
+test(
+  'a stopped Codex turn finishes cleanly and the next turn reports its own context use',
+  async () => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-stream-',
+    ))
+    const fixture = fakeCodex({ root })
+    const session = await codexProvider({ spawnCodex: fixture.spawnCodex }).open({
+      cwd: root,
+      env: {},
+      settings: {},
+      signal: new AbortController().signal,
+    })
+    const events = session.run({
+      input: (async function* () {
+        yield 'HOLD'
+        yield 'USAGE'
+      })(),
+      permission: async () => ({
+        behavior: 'deny',
+        message: 'unused',
+      }),
+    })[Symbol.asyncIterator]()
+
+    try {
+      assert.equal(
+        (await events.next()).value,
+        'working',
+      )
+      await session.interrupt()
+      assert.equal(
+        (await events.next()).value,
+        'finished',
+      )
+      assert.deepEqual(
+        fixture.messages().find(message => message.method === 'turn/interrupt')?.params,
+        {
+          threadId: session.id,
+          turnId: 'turn-1',
+        },
+      )
+      const next: unknown[] = []
+
+      for (let event = await events.next(); event.value !== 'finished'; event = await events.next()) {
+        next.push(event.value)
+      }
+
+      assert.deepEqual(
+        next,
+        [
+          'working',
+          {
+            type: 'usage',
+            used: 5_000,
+            window: 258_000,
+          },
+          {
+            type: 'usage',
+            limits: [
+              {
+                label: 'session',
+                used: 12,
+              },
+            ],
+          },
+        ],
+      )
+    } finally {
+      session.close()
+    }
   },
 )
 

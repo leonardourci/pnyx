@@ -1196,6 +1196,47 @@ test(
 )
 
 test(
+  'a task with no pr in its meta takes the pull request URL ending its backlog title',
+  () => {
+    const { home } = copyFixture()
+    writeFileSync(
+      join(
+        home,
+        'state',
+        'release-1.meta',
+      ),
+      'task=release-1\nkind=ship\n',
+    )
+    syncHome({
+      hydraId: 'default',
+      home,
+    })
+    assert.deepEqual(
+      cardOf({
+        home,
+        task: 'release-1',
+      }).links.map(link => [
+        link.url,
+        link.state,
+      ]),
+      [
+        [
+          'https://github.com/example/app/pull/40',
+          'merged',
+        ],
+      ],
+    )
+    assert.deepEqual(
+      cardOf({
+        home,
+        task: 'api-v2',
+      }).links,
+      [],
+    )
+  },
+)
+
+test(
   'a task whose records are gone drops its open decisions and its folder',
   () => {
     const { home } = copyFixture()

@@ -412,8 +412,6 @@ test(
         columnWidths: { needs_you: 2100 },
         cardHeights: { c1: 2400 },
         closedCardHeights: { c1: 1200 },
-        composerHeight: 180,
-        taskComposerHeight: 120,
       },
     })
     assert.deepEqual(
@@ -423,8 +421,6 @@ test(
         view.columnWidths.needs_you,
         view.cardHeights.c1,
         view.closedCardHeights.c1,
-        view.composerHeight,
-        view.taskComposerHeight,
       ],
       [
         1800,
@@ -432,8 +428,6 @@ test(
         2100,
         2400,
         1200,
-        180,
-        120,
       ],
     )
     const loaded = viewFor({
@@ -442,8 +436,6 @@ test(
         view: {
           ...view,
           panelWidth: 1,
-          composerHeight: 999,
-          taskComposerHeight: 1,
           columnWidths: { needs_you: 1 },
           cardHeights: { c1: 1 },
           closedCardHeights: { c1: 1 },
@@ -453,16 +445,12 @@ test(
     assert.deepEqual(
       [
         loaded.panelWidth,
-        loaded.composerHeight,
-        loaded.taskComposerHeight,
         loaded.columnWidths.needs_you,
         loaded.cardHeights.c1,
         loaded.closedCardHeights.c1,
       ],
       [
         VIEW_SIZE_LIMITS.panelWidth.min,
-        VIEW_SIZE_LIMITS.composerHeight.max,
-        VIEW_SIZE_LIMITS.composerHeight.min,
         VIEW_SIZE_LIMITS.columnWidth.min,
         VIEW_SIZE_LIMITS.cardHeight.min,
         VIEW_SIZE_LIMITS.cardHeight.min,
@@ -473,9 +461,6 @@ test(
       { fontSize: 100 },
       { chatFontSize: 100 },
       { codeFontSize: 5 },
-      { taskComposerHeight: 79 },
-      { taskComposerHeight: 100.5 },
-      { taskComposerHeight: '120' },
       { hydraWidth: 239 },
       { hydraWidth: Infinity },
       { closedCardHeights: { missing: 300 } },
@@ -813,6 +798,7 @@ test(
             },
             {
               type: 'tool_use',
+              id: 'toolu_1',
               input: 'sk-abcdefghijklmnop123456789',
             },
           ],
@@ -830,6 +816,58 @@ test(
     ); assert.equal(
       entries[2]?.text,
       '[redacted]',
+    )
+    assert.equal(
+      entries[2]?.call,
+      'toolu_1',
+    )
+    assert.equal(
+      recordEntries({
+        record: {
+          type: 'user',
+          message: {
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'toolu_1',
+                content: 'done',
+              },
+            ],
+          },
+        },
+        offset: 1,
+      })[0]?.call,
+      'toolu_1',
+    )
+    // A Codex call carries its item id too; its output names only the call id.
+    assert.deepEqual(
+      [
+        {
+          type: 'function_call',
+          id: 'fc_1',
+          call_id: 'call_1',
+          name: 'shell',
+          arguments: '{}',
+        },
+        {
+          type: 'function_call_output',
+          call_id: 'call_1',
+          output: 'done',
+        },
+      ].map((
+        payload,
+        offset,
+      ) => recordEntries({
+        record: {
+          type: 'response_item',
+          payload,
+        },
+        offset,
+      })[0]?.call),
+      [
+        'call_1',
+        'call_1',
+      ],
     )
     assert.deepEqual(
       recordEntries({

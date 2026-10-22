@@ -77,7 +77,7 @@ test(
         args: [
           'set',
           '--json',
-          '{"composerHeight":160,"columnWidths":{"parked":360}}',
+          '{"cardHeight":320,"columnWidths":{"parked":360}}',
         ],
       },
     })
@@ -90,8 +90,8 @@ test(
       360,
     )
     assert.equal(
-      second.view?.composerHeight,
-      160,
+      second.view?.cardHeight,
+      320,
     )
     assert.equal(
       second.seq,
@@ -351,7 +351,7 @@ test(
         args: [
           'set',
           '--json',
-          '{"composerHeight":-1}',
+          '{"cardHeight":-1}',
         ],
       },
     }))
