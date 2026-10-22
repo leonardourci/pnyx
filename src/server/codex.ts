@@ -731,6 +731,13 @@ export function codexProvider({
 
         const id = thread.id
         let turnId: string | undefined, interrupted = false
+        const stopTurn = () => rpc.request({
+          method: 'turn/interrupt',
+          params: {
+            threadId: id,
+            turnId,
+          },
+        })
 
         return {
           id,
@@ -806,6 +813,11 @@ export function codexProvider({
 
               turnId = turn.id
 
+              // A stop that came before Codex named the turn applies now.
+              if (interrupted) {
+                await stopTurn()
+              }
+
               for await (const event of rpc.completed({
                 threadId: id,
                 turnId: turn.id,
@@ -834,15 +846,10 @@ export function codexProvider({
             options[setting] = value
           },
           async interrupt() {
+            interrupted = true
+
             if (turnId) {
-              interrupted = true
-              await rpc.request({
-                method: 'turn/interrupt',
-                params: {
-                  threadId: id,
-                  turnId,
-                },
-              })
+              await stopTurn()
             }
           },
           close,
