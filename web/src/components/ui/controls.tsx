@@ -101,7 +101,7 @@ export function Select({
   title?: string
   // Shown before the label; otherwise the chosen option's own icon.
   icon?: string
-  // Mod+click or a long press on an option makes it the default.
+  // Mod+click or a long press on an option picks it and makes it the default.
   defaultValue?: string
   onDefault?({ value }: { value: string }): void
 }) {
@@ -165,8 +165,10 @@ export function Select({
     setOpen(false); trigger.current?.focus()
   }
 
+  // Making an option the default also picks it.
   const makeDefault = ({ position: n }: { position: number }) => {
     if (options[n] && onDefault) {
+      onChange({ value: options[n].value })
       onDefault({ value: options[n].value })
     }
 
@@ -287,7 +289,7 @@ export function Select({
               </div>
             </Fragment>
           ))}
-          {onDefault && <p className="select-hint">{MOD}-click or hold to make it the default</p>}
+          {onDefault && <p className="select-hint">{MOD}-click or hold to pick it and make it the default</p>}
         </div>
       )}
     </div>
