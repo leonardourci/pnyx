@@ -16,6 +16,7 @@ import { Resize } from '../components/ui/resize.tsx'
 import { Tooltip } from '../components/ui/tooltip.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { WorkingDots } from '../components/ui/streaming.tsx'
+import { askWording, openAsks } from '../../../src/core/asks.ts'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { HoverActions } from '../components/ui/hover-actions.tsx'
@@ -139,8 +140,13 @@ export function HydraCard({
     card,
     request: attention,
   })
+  const asked = openAsks({
+    card,
+    audience: 'owner',
+  })[0]
   const question = request?.questions?.map(question => question.question).join(' ')
-    || attention?.text || (card.status?.state === 'needs_you' ? card.status.note : '')
+    || attention?.text || (asked && askWording({ ask: asked }).question)
+    || (card.status?.state === 'needs_you' ? card.status.note : '')
 
   const labels = (card.project || card.tags.length > 0) && (
     <div className="card-labels">
@@ -316,9 +322,9 @@ export function HydraCard({
             <Button
               variant="primary"
               onClick={async () => {
-                if (request || canAnswer) {
+                if (request || canAnswer || asked) {
                   if (await open({ id: card.id })) {
-                    element.current?.querySelector<HTMLElement>('.ask button')?.focus()
+                    element.current?.querySelector<HTMLElement>('.ask button, .ask textarea')?.focus()
                   }
 
                   return

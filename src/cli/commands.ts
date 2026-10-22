@@ -17,6 +17,7 @@ import { checkBudget, HYDRA_MEMORY_BUDGET, memorySize, OWNER_DOCUMENTS, OWNER_ME
 import { ownerMemory, ownerRevision, saveOwnerMemory } from '../store/owner-memory.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { sendReply } from './reply.ts'
+import { askCommand, askRows } from './asks.ts'
 import { findSession, interactive, liveTask, rankOf, selfSession } from '../core/tasks.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import { setupHydra, startHydra, startTask } from './start.ts'
@@ -935,6 +936,17 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       'in-place': { type: 'boolean' },
       safe: { type: 'boolean' },
       discard: { type: 'boolean' },
+      question: { type: 'string' },
+      context: { type: 'string' },
+      choice: {
+        type: 'string',
+        multiple: true,
+      },
+      recommend: { type: 'string' },
+      'details-file': { type: 'string' },
+      text: { type: 'string' },
+      to: { type: 'string' },
+      undelivered: { type: 'boolean' },
     },
     positionals: 4,
   })
@@ -1394,6 +1406,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           }),
         })) : [],
         declarations: task.statusLog?.length ?? 0,
+        ...(task.asks?.length ? { questions: askRows({ card: task }) } : {}),
         firstmate: task.mirror ? 'mirrored' : 'none',
       },
       help: [`Run \`pnyx-axi task show ${task.id} --full --hydra ${hydraId}\` for the full record, or \`pnyx-axi task history ${task.id} --hydra ${hydraId}\` for its events`],
@@ -1678,9 +1691,19 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     })
   }
 
+  if (action === 'ask' || action === 'answer' || action === 'escalate') {
+    return askCommand({
+      action,
+      positionals,
+      values,
+      hydraId,
+      meta: m,
+    })
+  }
+
   if (action !== 'attach' && action !== 'detach') {
     throw new AxiError(
-      'Use task create, list, show, status, history, rename, start, copy, permission, paseo, sessions, attach or detach',
+      'Use task create, list, show, status, ask, answer, escalate, history, rename, start, copy, permission, paseo, sessions, attach or detach',
       'VALIDATION_ERROR',
     )
   }
@@ -3503,6 +3526,8 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
     case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Hydra memory: ${event.data.key}`
     case 'task.declared': return `${event.data.state}: ${event.data.note}`
+    case 'task.asked': return `Asked ${event.data.audience === 'owner' ? 'the owner' : 'Hydra'} (${event.data.id}): ${event.data.question}`
+    case 'task.ask.escalated': return `Escalated ${event.data.ask} to the owner${event.data.question ? `: ${event.data.question}` : ''}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
     case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
     case 'hydra.dispatch-proposed': return `Proposed dispatch change: ${event.data.summary}`
@@ -4072,6 +4097,13 @@ pnyx-axi task list | show <id> [--full]
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
+pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner]
+A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. Choices are optional: a typed answer is always accepted.
+pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--reason <text>] [--undelivered]
+Sends the answer to the task's worker and resolves the question once it is delivered. Hydra answers only questions asked of it; agents never answer.
+An answer still being sent or of unknown delivery holds the question; after checking that it never arrived, --undelivered answers (or escalates) again.
+pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--context <text>] [--undelivered] --reason <text>
+Hydra hands a worker's question to the owner under the same id; the worker's wording stays in its history.
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
 pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
 pnyx-axi task permission <task> <request> allow|deny [--answer <json>] [--reason <text>]

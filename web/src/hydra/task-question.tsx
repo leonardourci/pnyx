@@ -3,6 +3,8 @@ import { answerPrompt } from '../../../src/core/answer.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { InlinePermissions } from './permissions.tsx'
 import { InlineQuestions } from './questions.tsx'
+import { AskPanel } from './ask.tsx'
+import { openAsks } from '../../../src/core/asks.ts'
 import type { Command } from './connection.ts'
 
 export const hasTaskQuestion = ({
@@ -14,6 +16,10 @@ export const hasTaskQuestion = ({
 }) =>
   card.permissions?.some(request => request.status === 'pending')
   || card.attention.some(request => request.blocking && !request.answered)
+  || openAsks({
+    card,
+    audience: 'owner',
+  }).length > 0
   || (!answered && card.status?.state === 'needs_you')
 
 export function TaskQuestion({
@@ -34,6 +40,10 @@ export function TaskQuestion({
     request,
   }))
   const text = attention?.text || card.status?.note
+  const asks = openAsks({
+    card,
+    audience: 'owner',
+  })
 
   return (
     <div className="task-requests">
@@ -52,7 +62,16 @@ export function TaskQuestion({
         notify={notify}
         pendingOnly
       />
-      {!permissions.length && !structured && text && (
+      {asks.map(ask => (
+        <AskPanel
+          key={ask.id}
+          card={card}
+          ask={ask}
+          command={command}
+          notify={notify}
+        />
+      ))}
+      {!permissions.length && !structured && !asks.length && text && (
         <div className="pending-decision">
           <p>{text}</p>
           <div className="pending-decision-actions">

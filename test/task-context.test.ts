@@ -81,7 +81,7 @@ function fixture() {
 }
 
 test(
-  'a brief update is idempotent by event id, hiding leaves the list, and status never moves the task',
+  'a brief update is idempotent by event id, hiding leaves the list, and declaring done moves the task to Done',
   async () => {
     const f = fixture()
 
@@ -166,7 +166,7 @@ test(
       })
       assert.equal(
         f.state().cards[id]?.column,
-        'in_progress',
+        'done',
       )
       assert.equal(
         f.state().cards[id]?.hidden,
@@ -887,11 +887,11 @@ test(
       )
       assert.match(
         digest,
-        /- in_progress · In progress · 1 · Work a live worker/,
+        /- needs_you · Needs you · 1 · Work that needs the owner/,
       )
       assert.match(
         digest,
-        /· API cleanup · In progress · needs_you: Which schema\? · no worker\n {2}waiting: question "Use v2 or v3\?"/,
+        /· API cleanup · Needs you · needs_you: Which schema\? · no worker\n {2}waiting: question "Use v2 or v3\?"/,
       )
       assert.doesNotMatch(
         digest,

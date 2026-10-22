@@ -1215,7 +1215,7 @@ test(
 )
 
 test(
-  'hosted permissions survive hooks and accept exactly one answer without moving the task',
+  'hosted permissions survive hooks, accept exactly one answer and hold the task in Needs you until answered',
   async () => {
     const {
       folder,
@@ -1230,7 +1230,11 @@ test(
     await start({ id: 'permission-start' })
     await until({ check: () => task().permissions?.[0]?.status === 'pending' })
     const request = task().permissions![0]!
-    const column = task().column
+    const column = ({ role }: { role: string }) => loadHydra({ hydraId: 'lab' }).state.config?.columns.find(c => c.role === role)?.id
+    assert.equal(
+      task().column,
+      column({ role: 'needs_you' }),
+    )
     assert.deepEqual(
       [
         request.tool,
@@ -1304,7 +1308,7 @@ test(
     )
     assert.equal(
       task().column,
-      column,
+      column({ role: 'in_progress' }),
     )
     assert.equal(
       task().attention.some(a => a.key.endsWith(request.id)),

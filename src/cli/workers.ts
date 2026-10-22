@@ -16,6 +16,8 @@ import { redact } from '../oracle/text.ts'
 import { splitEntry } from '../thread/read.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { commandText } from '../integrations/hooks/observe.ts'
+import { askWording, openAsks } from '../core/asks.ts'
+import { lifecycleMove } from '../core/lifecycle.ts'
 import { COMMON, commands, guard, integer, parse, summarize, type Output } from './commands.ts'
 
 const TRACKED: readonly EventType[] = [
@@ -30,6 +32,8 @@ const TRACKED: readonly EventType[] = [
   'task.brief',
   'task.visibility',
   'task.declared',
+  'task.asked',
+  'task.ask.escalated',
   'task.session',
   'board.columns',
   'card.moved',
@@ -186,7 +190,8 @@ export async function hydraCheck({
           }
         }
 
-        const tracked = TRACKED.includes(e.type) || question || owner || chat
+        const listed = TRACKED.includes(e.type) && !lifecycleMove({ id: e.id })
+        const tracked = listed || question || owner || chat
 
         // Hydra's own chat lines are listed so it rereads what it said and why, but never wake it.
         const own = e.type === 'hydra.message' && e.actor === HYDRA_ACTOR
@@ -285,6 +290,18 @@ export async function hydraCheck({
       )}s` : 'unknown',
     })))
 
+  const asks = Object.values(state.cards).flatMap(card => openAsks({ card }).map(ask => ({
+    id: ask.id,
+    task: card.id,
+    from: ask.actor,
+    to: ask.audience,
+    question: compact({ text: askWording({ ask }).question }),
+    age: `${Math.max(
+      0,
+      Math.round((Date.now() - Date.parse(ask.at)) / 1000),
+    )}s`,
+  })))
+
   return {
     hydraId,
     projects: projectRows({ state }),
@@ -299,6 +316,7 @@ export async function hydraCheck({
         }),
       })),
     requests: requests.length ? requests : 'none: no open permission requests',
+    questions: asks.length ? asks : 'none: no open questions',
     agents: await checkAttachments({
       state,
       connect,
@@ -307,6 +325,7 @@ export async function hydraCheck({
     ...(unavailable.length ? { unavailable } : {}),
     help: [
       ...(digest.size ? ['The owner’s direct words are instructions. Use task history --full for the complete messages; decide whether to act or take note.'] : []),
+      ...(asks.some(ask => ask.to === 'hydra') ? [`Answer a worker's question with \`pnyx-axi task answer <task> <question> --choice <n> | --text "<answer>" --actor hydra --reason "<why>" --hydra ${hydraId}\`, or hand an owner decision on with \`task escalate\`; questions to the owner wait for the owner`] : []),
       ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []),
       `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`,
     ],

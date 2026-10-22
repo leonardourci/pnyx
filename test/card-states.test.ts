@@ -3,6 +3,8 @@ import { test } from 'node:test'
 import { decidePush } from '../src/core/decide.ts'
 import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { cardState } from '../web/src/hydra/view.ts'
+import { lifecycleStage } from '../src/core/lifecycle.ts'
+import { INTERRUPTED } from '../src/core/tasks.ts'
 import type { Card, HydraEvent } from '../src/core/model.ts'
 
 const at = '2026-10-15T00:00:00Z'
@@ -98,6 +100,93 @@ test(
         },
       }).text,
       'not started',
+    )
+  },
+)
+
+test(
+  'a question waiting on Hydra is not the owner\'s, and a turn cut short by a restart moves nothing',
+  () => {
+    const ask = ({ audience }: { audience: 'hydra' | 'owner' }) => ({
+      id: 'ask-1',
+      at,
+      actor: 'worker:task-test',
+      audience,
+      question: 'Which scope?',
+    })
+    const shown = ({ card }: { card: Partial<Card> }) => cardState({
+      card: {
+        ...task,
+        agent,
+        ...card,
+      },
+      now,
+    }).kind
+    assert.deepEqual(
+      [
+        shown({
+          card: {
+            activity: 'finished',
+            asks: [ask({ audience: 'hydra' })],
+          },
+        }),
+        shown({
+          card: {
+            activity: 'working',
+            asks: [ask({ audience: 'hydra' })],
+          },
+        }),
+        shown({
+          card: {
+            activity: 'finished',
+            asks: [ask({ audience: 'owner' })],
+          },
+        }),
+      ],
+      [
+        'asks-hydra',
+        'working',
+        'asks',
+      ],
+    )
+    assert.equal(
+      lifecycleStage({
+        card: {
+          ...task,
+          asks: [ask({ audience: 'hydra' })],
+        },
+      }),
+      undefined,
+    )
+    const interrupted: Card = {
+      ...task,
+      attention: [
+        {
+          kind: 'interrupted',
+          key: INTERRUPTED,
+          blocking: true,
+        },
+      ],
+    }
+    assert.equal(
+      lifecycleStage({ card: interrupted }),
+      undefined,
+    )
+    assert.equal(
+      lifecycleStage({
+        card: {
+          ...interrupted,
+          attention: [
+            ...interrupted.attention,
+            {
+              kind: 'question',
+              key: 'hook:tool:AskUserQuestion',
+              blocking: true,
+            },
+          ],
+        },
+      }),
+      'needs_you',
     )
   },
 )

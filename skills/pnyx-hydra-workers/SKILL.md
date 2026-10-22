@@ -142,6 +142,6 @@ Hosted workers' tool permission requests appear in `hydra check` as `task.permis
 pnyx-axi task permission <task> <request> allow|deny --actor hydra --reason "<why>" --hydra <hydra>
 ```
 
-The reason is posted in your chat; further allows on the same task fold into that line, and their reasons stay in the task's history. The first answer wins, expired requests cannot be answered, and answering leaves the card in its column. Command and file approvals apply to that call; Codex turn permissions last only for the named turn.
+The reason is posted in your chat; further allows on the same task fold into that line, and their reasons stay in the task's history. The first answer wins, expired requests cannot be answered, and once nothing else on the task waits for the owner, answering returns its card from Needs you to In progress. Command and file approvals apply to that call; Codex turn permissions last only for the named turn.
 
 A request with `questions` is a worker asking: allow it with `--answer '{"answers":[{"pick":[1]},{"text":"..."}]}'`, one entry per question (options numbered from 1, `text` for your own answer); one with `form` takes `--answer '{"values":{"<field>":"<value>"}}'`. Deny skips it. Answer only what the brief or the owner already settled; otherwise leave it for the owner.

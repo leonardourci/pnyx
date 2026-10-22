@@ -1,7 +1,7 @@
 import type { Attention, HydraEvent } from '../core/model.ts'
 
 // Bump when chunk() or the filters change what is indexed; the index rebuilds on mismatch.
-export const CHUNKER_VERSION = 5
+export const CHUNKER_VERSION = 6
 
 // About 256 tokens at 3 characters a token.
 const CHUNK_MAX = 768
@@ -168,6 +168,19 @@ export function eventText({ event }: { event: HydraEvent }): string {
         event.data.state,
         event.data.note,
         event.data.raw,
+      )
+      break
+    case 'task.asked':
+      parts.push(
+        event.data.question,
+        event.data.context,
+        ...(event.data.options ?? []).map(option => option.label),
+      )
+      break
+    case 'task.ask.escalated':
+      parts.push(
+        event.data.question,
+        event.data.context,
       )
       break
     case 'task.mirrored':
