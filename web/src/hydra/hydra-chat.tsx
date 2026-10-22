@@ -13,6 +13,7 @@ import { InlineQuestions } from './questions.tsx'
 import { InlinePermissions } from './permissions.tsx'
 import { Messages, type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
+import { UsageRing } from './usage-ring.tsx'
 import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
 import { cardState } from './view.ts'
@@ -418,6 +419,7 @@ export function HydraChat({
           () => {},
           (error: Error) => notify({ text: error.message }),
         ) : undefined}
+        meter={card?.agent?.host === 'pnyx' && <UsageRing command={command} connected={connected} turn={running} />}
         settings={(
           <HydraAgent
             state={state}

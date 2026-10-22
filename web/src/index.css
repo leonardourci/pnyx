@@ -362,6 +362,24 @@ h3 { font-weight: 600; }
 
 .send-error > .icon-button { width: 24px; height: 24px; min-height: 24px; padding: 0; color: inherit; }
 
+.usage-ring { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 30px; margin-left: auto; color: var(--color-muted); }
+
+.usage-ring circle { fill: none; stroke: var(--color-line); stroke-width: 2.5; }
+
+.usage-ring .usage-fill { stroke: var(--color-gold); stroke-linecap: round; transform: rotate(-90deg); transform-origin: center; }
+
+.usage-ring + .composer-stop, .usage-ring + .composer-send { margin-left: 0; }
+
+.tooltip .usage-panel { display: flex; flex-direction: column; gap: 10px; min-width: 240px; padding: 4px 2px; }
+
+.tooltip .usage-row, .tooltip .usage-window { display: flex; flex-direction: column; gap: 4px; }
+
+.tooltip .usage-bar { display: block; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--color-surface) 25%, transparent); overflow: hidden; }
+
+.usage-bar > i { display: block; height: 100%; border-radius: 2px; background: var(--color-surface); }
+
+.usage-account { opacity: .75; }
+
 .composer-stop { width: 30px; height: 30px; padding: 0; justify-content: center; border: 1px solid var(--color-line); border-radius: 50%; color: var(--color-ink); }
 
 .composer-stop + .composer-send { margin-left: 0; }

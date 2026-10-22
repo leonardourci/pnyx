@@ -39,6 +39,7 @@ export function Composer({
   connected,
   notify,
   settings,
+  meter,
   stop,
 }: {
   card: string
@@ -57,6 +58,7 @@ export function Composer({
   connected: boolean
   notify({ text }: { text: string }): void
   settings?: ReactNode
+  meter?: ReactNode
   // Shown while Hydra runs a turn: it stops that turn, never the workers.
   stop?(): Promise<void>
 }) {
@@ -997,6 +999,7 @@ export function Composer({
             }}
           />
           {settings}
+          {meter}
           {stop && (
             <Button
               className="composer-stop"
