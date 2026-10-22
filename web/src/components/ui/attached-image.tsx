@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ATTACHMENT_NAME, imageLine } from '../../../../src/attachments/images.ts'
-import { Button } from './controls.tsx'
+import { AttachmentCard } from './attachment-card.tsx'
 import { Dialog } from './dialog.tsx'
 import { Icon } from './icon.tsx'
 
@@ -59,12 +59,32 @@ export function ImageViewer({
   )
 }
 
+export function ImageThumb({ path }: { path: string }) {
+  const [
+    failed,
+    setFailed,
+  ] = useState(false)
+  const src = attachmentSource({ path })
+
+  return src && !failed
+    ? (
+      <img
+        src={src}
+        alt=""
+        onError={() => setFailed(true)}
+      />
+    )
+    : <Icon name="image" size={13} />
+}
+
 export function ImageChip({
   path,
   label,
+  reference = false,
 }: {
   path: string
   label: string
+  reference?: boolean
 }) {
   const [
     open,
@@ -73,15 +93,13 @@ export function ImageChip({
 
   return (
     <>
-      <Button
-        className="chip image-chip"
-        contentEditable={false}
+      <AttachmentCard
+        slot={<ImageThumb path={path} />}
+        label={label}
         title="Show image"
-        onClick={() => setOpen(true)}
-      >
-        <Icon name="image" size={13} />
-        {label}
-      </Button>
+        tone={reference ? 'reference' : undefined}
+        open={() => setOpen(true)}
+      />
       {open && <ImageViewer path={path} label={label} close={() => setOpen(false)} />}
     </>
   )

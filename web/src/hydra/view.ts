@@ -8,6 +8,8 @@ const HARNESSES: Record<string, string> = {
   codex: 'Codex',
 }
 
+export const hydraTitle = ({ name }: { name: string }) => name || 'Untitled'
+
 export const harnessName = ({ provider }: { provider: string }) => HARNESSES[provider] ?? provider
 
 // A column's icon and color come from its role; a custom column has its own icon.

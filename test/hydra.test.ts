@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import type { HydraState, HydraEvent } from '../src/core/model.ts'
 import { liveTask } from '../src/core/tasks.ts'
+import { hydraName } from '../src/cli/commands.ts'
 
 const bin = join(
   import.meta.dirname,
@@ -199,6 +200,114 @@ test(
         },
       )
     }
+  },
+)
+
+test(
+  'an unnamed Hydra takes its name from the first message line of text and keeps any name it has',
+  () => {
+    const f = fixture()
+    const send = ({ text }: { text: string }) => f.run({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        text,
+      ],
+    })
+
+    try {
+      f.run({
+        args: [
+          'hydra',
+          'create',
+          'default',
+          '--name',
+          '',
+        ],
+      })
+      send({ text: '[image: /tmp/hydras/default/attachments/a.png]' })
+      f.run({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          'Worker report: tests pass',
+          '--actor',
+          'worker:task-1',
+        ],
+      })
+      assert.equal(
+        f.state().config?.name,
+        '',
+      )
+      send({ text: 'File: notes.txt\n\n```\nfirst file line\n```\n\n[image: /tmp/a.png]\n\n  Ask [@pnyx](pnyx-project:%2Fwork%2Fpnyx) about updates to the UI, please and thanks\nsecond line' })
+      assert.equal(
+        f.state().config?.name,
+        'Ask pnyx about updates to the UI, please…',
+      )
+      send({ text: 'Rename yourself' })
+      f.run({
+        args: [
+          'hydra',
+          'set',
+          '--name',
+          'Manual',
+        ],
+      })
+      send({ text: 'Another message' })
+      assert.equal(
+        f.state().config?.name,
+        'Manual',
+      )
+      assert.deepEqual(
+        f.events().filter(event => event.type === 'board.configured')
+          .map(event => event.type === 'board.configured' && event.data.name),
+        [
+          '',
+          'Ask pnyx about updates to the UI, please…',
+          'Manual',
+        ],
+      )
+    } finally {
+      rmSync(
+        f.root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'a Hydra name keeps whole words near 40 characters, never splits a character and needs real text',
+  () => {
+    assert.equal(
+      hydraName({ text: '[image: /tmp/a.png]' }),
+      undefined,
+    )
+    assert.equal(
+      hydraName({ text: 'Short title\nmore' }),
+      'Short title',
+    )
+    assert.equal(
+      hydraName({ text: 'I supercalifragilisticexpialidocious-and-more-words-here' }),
+      'I supercalifragilisticexpialidocious-and…',
+    )
+    assert.equal(
+      hydraName({ text: `${'a'.repeat(39)}😀 more words` }),
+      `${'a'.repeat(39)}…`,
+    )
+    assert.equal(
+      hydraName({ text: '!'.repeat(50) }),
+      undefined,
+    )
+    assert.equal(
+      hydraName({ text: '[image: /h/a.png]\nIn [image: /h/b.png], it is big' }),
+      'In Image 2, it is big',
+    )
   },
 )
 

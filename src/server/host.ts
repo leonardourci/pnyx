@@ -673,7 +673,7 @@ export function createHost({
     const changed = memoryStamp !== undefined && memoryStamp !== stamp
     memoryStamp = stamp
 
-    return changed ? '\n\nMemory changed; load owner memory with owner memory list, Hydra memory with hydra memory list or project memory with project show <name|path> when needed.' : ''
+    return changed ? ' Memory changed; load owner memory with owner memory list, Hydra memory with hydra memory list or project memory with project show <name|path> when needed.' : ''
   }
 
   // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.
@@ -1557,7 +1557,11 @@ export function createHost({
           const waking = /^(wake|stall):/.test(id) && !opened && Boolean(entry.session)
           entry.activity = 'working'
           entry.input.push({
-            text: waking ? `${text}${memoryChangeNote()}` : text,
+            // The note stays inside the wake, so the chat never shows it as the owner's.
+            text: waking ? text.replace(
+              /<\/pnyx-wake>$/,
+              `${memoryChangeNote()}</pnyx-wake>`,
+            ) : text,
             id,
           })
 

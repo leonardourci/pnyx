@@ -1,5 +1,7 @@
 export const COMMENT_FOCUS = 'pnyx-comment-focus'
 export const COMMENT_REVEAL = 'pnyx-comment-reveal'
+// The owner asked for the passage, so a chat that follows new messages counts this scroll as theirs.
+export const MESSAGE_SCROLL = 'pnyx-message-scroll'
 const pending = new WeakMap<Element, () => void>()
 
 export function scrollMessage({
@@ -22,6 +24,7 @@ export function scrollMessage({
   }
 
   pending.get(scroller)?.()
+  scroller.dispatchEvent(new Event(MESSAGE_SCROLL))
   const viewport = scroller.getBoundingClientRect()
   const padding = Math.min(
     3 * bounds.height,

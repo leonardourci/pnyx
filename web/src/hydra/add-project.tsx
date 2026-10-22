@@ -4,6 +4,7 @@ import type { FolderListing } from '../../../src/projects/folders.ts'
 import { Button, Input } from '../components/ui/controls.tsx'
 import { FolderSearch } from '../components/ui/folder-search.tsx'
 import type { Command } from './connection.ts'
+import { hydraTitle } from './view.ts'
 
 type Confirmation = {
   token: string
@@ -306,7 +307,7 @@ export function ProjectSharing({
       <span><strong>{confirmation.name}</strong> · also in {confirmation.hydras.map((
         hydra,
         n,
-      ) => <span key={hydra.id}>{n > 0 ? ', ' : ''}<a href={hydra.url} target="_blank" rel="noreferrer">{hydra.name} <Icon name="external" size={12} /></a></span>)}
+      ) => <span key={hydra.id}>{n > 0 ? ', ' : ''}<a href={hydra.url} target="_blank" rel="noreferrer">{hydraTitle(hydra)} <Icon name="external" size={12} /></a></span>)}
       </span>
       <p className="small muted">Each worker normally gets its own copy. Only one Hydra at a time may have a worker editing the folder itself.</p>
       <div className="project-actions"><Button disabled={disabled} variant="surface" onClick={confirm}>Add anyway</Button><Button disabled={disabled} onClick={cancel}>Cancel</Button></div>

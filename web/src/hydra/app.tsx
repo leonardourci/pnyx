@@ -18,7 +18,7 @@ import { sendableComment, type ChatComment } from './chat.ts'
 import { Settings } from './settings.tsx'
 import { Hydras } from './hydras.tsx'
 import { Panel } from './panel.tsx'
-import { columnsFor, findBoxCards, pageTitle } from './view.ts'
+import { columnsFor, findBoxCards, hydraTitle, pageTitle } from './view.ts'
 import { Oracle } from './oracle.tsx'
 import { commandQuery } from './oracle-catalog.ts'
 import { useFoundCards } from './card-oracle.ts'
@@ -931,6 +931,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
   }
 
+  const opening = navigation.hydras.find(h => h.id === loading)
+
   return (
     <KeyboardProvider
       prefs={view.keyboard}
@@ -998,7 +1000,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           />
         </Panel>
         <main className="shell" aria-busy={!!loading || !loaded}>
-          {(loading || !loaded) && <p className="loading-status" role="status">Loading {loading ? navigation.hydras.find(h => h.id === loading)?.name ?? 'Hydra' : 'Hydra'}…</p>}
+          {(loading || !loaded) && <p className="loading-status" role="status">Loading {opening ? hydraTitle(opening) : 'Hydra'}…</p>}
           {error && <p className="error-banner" role="alert">{error}</p>}
           {page === 'settings' ? (
             <Settings

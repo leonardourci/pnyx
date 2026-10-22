@@ -4,6 +4,7 @@ import type { HydraSummary } from '../../../src/server/hydras.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
+import { hydraTitle } from './view.ts'
 
 export function Hydras({
   command,
@@ -164,7 +165,7 @@ export function Hydras({
             <div key={h.id} className="hydra-branch">
               <div className="hydra-row">
                 <Button
-                  aria-label={`${open ? 'Collapse' : 'Expand'} ${h.name}`}
+                  aria-label={`${open ? 'Collapse' : 'Expand'} ${hydraTitle(h)}`}
                   aria-expanded={open}
                   aria-controls={`projects-${h.id}`}
                   onClick={() => setExpanded(e => ({
@@ -176,7 +177,7 @@ export function Hydras({
                 {active && renaming ? (
                   <InlineTitle
                     value={h.name}
-                    label={`Rename Hydra ${h.name}`}
+                    label={`Rename Hydra ${hydraTitle(h)}`}
                     startEditing
                     finished={() => setRenaming(false)}
                     save={({ title }) => command({
@@ -203,7 +204,7 @@ export function Hydras({
                         h.id,
                       ],
                     })}
-                  ><Icon name="hydra" size={20} />{h.name}
+                  ><Icon name="hydra" size={20} /><span className={h.name ? undefined : 'muted'}>{hydraTitle(h)}</span>
                   </Button>
                 )}
               </div>

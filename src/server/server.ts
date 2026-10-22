@@ -1846,7 +1846,7 @@ async function mountOwnedHydra({
                 name: first?.trim().slice(
                   0,
                   100,
-                ) || 'New Hydra',
+                ) ?? '',
               }),
             }).then(
               open => reply({ open }),

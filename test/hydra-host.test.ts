@@ -522,6 +522,15 @@ test(
           'Second',
         ],
       )
+      const received = sdk.calls.flatMap(call => call.messages)
+      assert.deepEqual(
+        received.filter(text => text.includes('A worker question')).map(text => text.replace(
+          / message="[^"]+"/,
+          '',
+        )),
+        [`<pnyx-report from="worker:${quick}" task="${quick}">\nA worker question\n</pnyx-report>`],
+      )
+      assert.ok(received.includes('Second'))
     } finally {
       sdk.release(); await server.close(); rmSync(
         home,
@@ -737,7 +746,7 @@ test(
     assert.ok(first >= before)
     assert.match(
       wakes()[0]!,
-      /<\/pnyx-wake>\n\nMemory changed; load owner memory/,
+      / Memory changed; load owner memory[^\n]*<\/pnyx-wake>$/,
     )
     assert.doesNotMatch(
       wakes()[0]!,

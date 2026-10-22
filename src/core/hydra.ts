@@ -1,4 +1,4 @@
-import { HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraState, type Column, type HydraChange, type TaskStatus } from './model.ts'
+import { HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type TaskStatus } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { permissionAttention } from './permissions.ts'
 import { assignDefined } from './tasks.ts'
@@ -386,6 +386,35 @@ export function declareTask({
 export const QUIET_REPLY = 'NO_REPLY'
 
 const AGENT_ACTOR = /^(pnyx$|hook:|session:|worker:)/
+
+// A worker's or session's message to Hydra is its report, never the owner's words.
+export const reportActor = ({ actor }: { actor: string }) => actor !== 'pnyx' && AGENT_ACTOR.test(actor)
+
+// The exact text Hydra receives, so its transcript copy of a report is known by identity, never by markup.
+export function hydraDelivery({ message }: { message: Pick<HydraMessage, 'id' | 'actor' | 'task' | 'text' | 'details' | 'context'> }) {
+  const said = [
+    message.text,
+    message.details,
+    message.context,
+  ].filter(Boolean).join('\n\n')
+
+  if (!reportActor({ actor: message.actor })) {
+    return said
+  }
+
+  // A report cannot close its own envelope, or what follows it would reach Hydra outside it.
+  const body = said.replace(
+    /<\/pnyx-report/gi,
+    '<\\/pnyx-report',
+  )
+  const quoted = ({ value }: { value: string }) => `"${value.replaceAll(
+    '"',
+    '&quot;',
+  )}"`
+  const task = message.task ? ` task=${quoted({ value: message.task })}` : ''
+
+  return `<pnyx-report from=${quoted({ value: message.actor })}${task} message=${quoted({ value: message.id })}>\n${body}\n</pnyx-report>`
+}
 
 // Hydra is a session the Pnyx server runs, not a Firstmate home or an outside agent.
 export function hostedHydra({ state }: { state: HydraState }): boolean {
