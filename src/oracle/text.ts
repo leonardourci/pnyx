@@ -38,7 +38,7 @@ export function redact({ text }: { text: string }): string {
 }
 
 // Paragraphs, keeping a fenced code block whole.
-function paragraphs({ text }: { text: string }): string[] {
+export function paragraphs({ text }: { text: string }): string[] {
   const out: string[] = []
   let current: string[] = []
   let fenced = false

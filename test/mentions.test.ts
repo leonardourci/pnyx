@@ -482,3 +482,43 @@ test(
     )
   },
 )
+
+test(
+  'each list item that starts with a chip is its own tagged paragraph, and code blocks never tag',
+  () => {
+    const chip = ({ id }: { id: string }) => taskMention({
+      id,
+      title: `Task ${id}`,
+    })
+
+    assert.deepEqual(
+      taggedParagraphs({
+        text: [
+          `- ${chip({ id: 'a' })} merged.\n- ${chip({ id: 'b' })} waits for review.`,
+          `**${chip({ id: 'c' })}:** shipped.`,
+          `\`\`\`\n- ${chip({ id: 'x' })} inside code\n\`\`\``,
+        ].join('\n\n'),
+      }).map(({
+        id,
+        text,
+      }) => [
+        id,
+        text,
+      ]),
+      [
+        [
+          'a',
+          'merged.',
+        ],
+        [
+          'b',
+          'waits for review.',
+        ],
+        [
+          'c',
+          'shipped.',
+        ],
+      ],
+    )
+  },
+)
