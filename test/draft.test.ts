@@ -90,13 +90,13 @@ test(
     const typed = editDraft({
       text,
       next: `Hi ${label}! there`,
-      caret: 17,
+      caret: `Hi ${label}!`.length,
     })
     assert.deepEqual(
       typed,
       {
         text: `Hi ${task}! there`,
-        caret: 17,
+        caret: `Hi ${label}!`.length,
       },
     )
     const erased = editDraft({
@@ -105,7 +105,7 @@ test(
         0,
         -1,
       )} there`,
-      caret: 15,
+      caret: `Hi ${label}`.length - 1,
     })
     assert.deepEqual(
       erased,
@@ -151,7 +151,7 @@ test(
         offset: 6,
         backward: false,
       }),
-      17,
+      `See ${label}`.length,
     )
     assert.equal(
       snapCaret({
@@ -159,7 +159,22 @@ test(
         offset: 6,
         backward: true,
       }),
-      4,
+      'See '.length,
+    )
+  },
+)
+
+test(
+  'a reference inside an attached file stays part of the file chip',
+  () => {
+    assert.deepEqual(
+      draftView({
+        text: fileBlock({
+          name: 'notes.md',
+          text: `see ${task}\n`,
+        }),
+      }).chips.map(chip => chip.kind),
+      ['file'],
     )
   },
 )

@@ -552,6 +552,14 @@ test(
         text: 'Done.',
         at: '2026-10-21T10:06:00.000Z',
       },
+      {
+        id: 'later',
+        kind: 'message',
+        role: 'Worker',
+        text: 'Merged',
+        at: '2026-10-21T10:07:00.000Z',
+        task: 'task-1',
+      },
     ]
     assert.deepEqual(
       [
