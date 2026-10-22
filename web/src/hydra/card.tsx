@@ -54,7 +54,6 @@ export function HydraCard({
   lookup,
 }: {
   card: CardData
-  // What the card's agent is running now, named in its working pill.
   action?: CurrentAction
   lookup: PnyxLookup
   labelColors?: SavedLabelColor[]

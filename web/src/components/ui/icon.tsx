@@ -79,7 +79,6 @@ const icons: Record<string, typeof IconRobot> = {
   decision: IconExclamationCircle,
   moved: IconArrowRight,
   renamed: IconPencil,
-  // What an agent is running, on the running line and a working card.
   edit: IconPencil,
   test: IconTestPipe,
   lint: IconListCheck,

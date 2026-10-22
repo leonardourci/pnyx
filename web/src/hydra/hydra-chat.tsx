@@ -53,7 +53,6 @@ export function HydraChat({
   action,
 }: {
   projectSetup?: ReactNode
-  // What Hydra's agent is running now, shown after the running dots.
   action?: CurrentAction
   liveThread: ThreadPage | null
   state: HydraState
