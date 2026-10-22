@@ -14,8 +14,7 @@ export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
 type UserMessage = Parameters<QueryFn>[0]['prompt'] extends string | AsyncIterable<infer M> ? M : never
 type Content = Exclude<UserMessage['message']['content'], string>
 
-// A stored image that can no longer be read stays a path in the text. Only the message's own images are
-// sent, never one named in the context Pnyx puts before it.
+// Only the message's own images are sent, never one named in the context before it; an unreadable one stays a path.
 function content({
   text,
   said,

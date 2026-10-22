@@ -28,8 +28,7 @@ const WORDS = new Intl.Segmenter(
 export const cardChip = ({ chip }: { chip: Pick<DraftChip, 'kind' | 'attached'> }) =>
   chip.kind === 'image' || (chip.kind === 'file' && chip.attached)
 
-// A card's label holds the room its preview takes before the name and its remove button after, in em like the
-// card itself. Word joiners keep the room on one line, and a long name is cut, since the card is drawn as one box.
+// A card is drawn as one box over this room, so word joiners keep it on one line and a long name is cut.
 export function cardLabel({ name }: { name: string }) {
   const letters = Array.from(
     LETTERS.segment(name),

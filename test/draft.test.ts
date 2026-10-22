@@ -240,7 +240,7 @@ test(
       caret: text.indexOf(at) + at.length,
       lines,
     })
-    // The owner's report: a caret mid-word once split "think" around the image.
+    // A caret mid-word must not split the word around the image.
     const midWord = place({
       text: 'I think it could have a preview',
       at: 'I thi',
