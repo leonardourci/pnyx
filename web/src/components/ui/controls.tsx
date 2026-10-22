@@ -88,7 +88,6 @@ export function Select({
   disabled = false,
   display,
   title,
-  icon,
   defaultValue,
   onDefault,
 }: {
@@ -99,8 +98,6 @@ export function Select({
   disabled?: boolean
   display?: ReactNode
   title?: string
-  // Shown before the label; otherwise the chosen option's own icon.
-  icon?: string
   // Mod+click or a long press on an option picks it and makes it the default.
   defaultValue?: string
   onDefault?({ value }: { value: string }): void
@@ -118,7 +115,6 @@ export function Select({
     done: boolean
   }>({ done: false })
   const chosen = options.find(o => o.value === value)
-  const shown = icon ?? chosen?.icon
   useEffect(
     () => {
       if (!open) {
@@ -165,7 +161,6 @@ export function Select({
     setOpen(false); trigger.current?.focus()
   }
 
-  // Making an option the default also picks it.
   const makeDefault = ({ position: n }: { position: number }) => {
     if (options[n] && onDefault) {
       onChange({ value: options[n].value })
@@ -221,7 +216,7 @@ export function Select({
         }}
         aria-activedescendant={open ? `${id}-${active}` : undefined}
       >
-        {shown && <Icon name={shown} size={14} />}
+        {chosen?.icon && <Icon name={chosen.icon} size={14} />}
         {display ?? chosen?.label ?? label}
         <Icon name="chevron_down" size={14} />
       </Button>
