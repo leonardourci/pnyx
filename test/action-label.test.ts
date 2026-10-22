@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ToolCall } from '../src/thread/calls.ts'
-import { actionLabel, shellOf } from '../web/src/hydra/action-label.ts'
+import { actionLabel, currentLabel, shellOf } from '../web/src/hydra/action-label.ts'
 import type { PnyxLookup } from '../web/src/hydra/pnyx-action.ts'
+import { withChanges } from '../web/src/hydra/connection.ts'
 
 const lookup: PnyxLookup = {
   task: ({ ref }) => ref === 'login' ? {
@@ -175,6 +176,91 @@ test(
         'Waiting',
         'wait',
       ],
+      [
+        'lavish-axi poll .lavish/board/index.html',
+        'Waiting',
+        'wait',
+      ],
+      [
+        'gh run watch 123',
+        'Waiting',
+        'wait',
+      ],
+      [
+        'gh pr merge 4728 --merge',
+        'Merging PR #4728',
+        'github',
+      ],
+      [
+        'gh pr list --limit 3',
+        'Listing PRs',
+        'github',
+      ],
+      [
+        'gh issue list --limit 50',
+        'Listing issues',
+        'github',
+      ],
+      [
+        'gh pr checks --watch --interval 30',
+        'Checking CI on PR',
+        'github',
+      ],
+      [
+        'gh pr ready 12',
+        'Working on PR',
+        'github',
+      ],
+      [
+        'git -C /repo status --short',
+        'Checking changes',
+        'git',
+      ],
+      [
+        'git commit -m "fix"',
+        'Committing',
+        'git',
+      ],
+      [
+        'git grep -n postLine',
+        'Searching the code',
+        'search',
+      ],
+      [
+        'git worktree list',
+        'Using git',
+        'git',
+      ],
+      [
+        'pnpm -C web test',
+        'Running tests',
+        'test',
+      ],
+      [
+        'timeout -s KILL 30 pnpm test',
+        'Running tests',
+        'test',
+      ],
+      [
+        'sudo env FOO=1 rtk git status',
+        'Checking changes',
+        'git',
+      ],
+      [
+        'cd "my dir" && pnpm lint',
+        'Running lint',
+        'lint',
+      ],
+      [
+        '/usr/bin/zsh -lc "pnpm test"',
+        'Running tests',
+        'test',
+      ],
+      [
+        'pytest -q',
+        'Running tests',
+        'test',
+      ],
     ]
 
     for (const [
@@ -310,6 +396,24 @@ test(
         { tool: 'write_stdin' },
         'Waiting',
         'wait',
+      ],
+      [
+        { tool: 'Monitor' },
+        'Waiting',
+        'wait',
+      ],
+      [
+        {
+          tool: 'NotebookEdit',
+          file: 'notes.ipynb',
+        },
+        'Editing notes.ipynb',
+        'edit',
+      ],
+      [
+        { tool: 'Task' },
+        'Running a helper',
+        'agent',
       ],
     ]
 
@@ -481,6 +585,169 @@ test(
     assert.equal(
       shellOf({ command: '   ' }),
       undefined,
+    )
+  },
+)
+
+test(
+  'Files edited together count up, bookkeeping calls drop out, and an unknown Pnyx command still says Pnyx',
+  () => {
+    assert.deepEqual(
+      label({
+        calls: [
+          {
+            tool: 'Edit',
+            file: 'a.ts',
+          },
+          {
+            tool: 'Edit',
+            file: 'b.ts',
+          },
+        ],
+      }),
+      {
+        icon: 'edit',
+        sentence: ['Editing 2 files'],
+      },
+    )
+    assert.deepEqual(
+      label({
+        calls: [
+          { tool: 'ToolSearch' },
+          {
+            tool: 'Read',
+            file: 'a.ts',
+          },
+        ],
+      })?.sentence,
+      ['Reading a.ts'],
+    )
+
+    for (const tool of [
+      'update_plan',
+      'request_user_input',
+      'AskUserQuestion',
+      'ExitPlanMode',
+      'TaskCreate',
+    ]) {
+      assert.equal(
+        label({ calls: [{ tool }] }),
+        undefined,
+        tool,
+      )
+    }
+
+    assert.deepEqual(
+      shell({ command: 'pnyx-axi frobnicate now' }),
+      {
+        icon: 'pnyx',
+        sentence: ['Using Pnyx'],
+      },
+    )
+  },
+)
+
+test(
+  'The current label hides a call from an earlier turn and keeps the shown label for bookkeeping calls',
+  () => {
+    const action = ({
+      tool,
+      at,
+    }: {
+      tool: string
+      at: string
+    }) => ({
+      calls: [
+        {
+          id: 'call_1',
+          tool,
+          file: 'a.ts',
+        },
+      ],
+      at,
+      done: false,
+    })
+    const since = '2026-10-22T10:00:00.000Z'
+
+    assert.equal(
+      currentLabel({
+        action: action({
+          tool: 'Read',
+          at: '2026-10-22T09:59:00.000Z',
+        }),
+        since,
+        lookup,
+      }),
+      null,
+    )
+    assert.deepEqual(
+      currentLabel({
+        action: action({
+          tool: 'Read',
+          at: '2026-10-22T09:59:58.000Z',
+        }),
+        since,
+        lookup,
+      })?.sentence,
+      ['Reading a.ts'],
+    )
+    assert.deepEqual(
+      currentLabel({
+        action: action({
+          tool: 'Read',
+          at: '2026-10-22T09:00:00.000Z',
+        }),
+        lookup,
+      })?.sentence,
+      ['Reading a.ts'],
+    )
+    assert.equal(
+      currentLabel({
+        action: action({
+          tool: 'ToolSearch',
+          at: '2026-10-22T10:00:01.000Z',
+        }),
+        since,
+        lookup,
+      }),
+      undefined,
+    )
+    assert.equal(
+      currentLabel({ lookup }),
+      null,
+    )
+  },
+)
+
+test(
+  'A push sets the cards it names, drops the ones sent as null and leaves the rest alone',
+  () => {
+    const current = {
+      a: 'old a',
+      b: 'old b',
+      c: 'old c',
+    }
+
+    assert.deepEqual(
+      withChanges({
+        current,
+        changes: {
+          a: 'new a',
+          b: null,
+        },
+      }),
+      {
+        a: 'new a',
+        c: 'old c',
+      },
+    )
+    assert.deepEqual(
+      current,
+      {
+        a: 'old a',
+        b: 'old b',
+        c: 'old c',
+      },
     )
   },
 )

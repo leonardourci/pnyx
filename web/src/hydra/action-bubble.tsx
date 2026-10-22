@@ -1,74 +1,78 @@
 import type { CurrentAction } from '../../../src/thread/calls.ts'
 import { Icon } from '../components/ui/icon.tsx'
 import { LiveLabel } from '../components/ui/live-label.tsx'
-import { actionLabel, type ActionLabel } from './action-label.ts'
+import { currentLabel } from './action-label.ts'
 import { SentencePart } from './messages.tsx'
-import type { PnyxLookup } from './pnyx-action.ts'
+import type { PnyxLookup, Segment } from './pnyx-action.ts'
 
-// A call made before the turn began belongs to the last turn. The slack covers a turn
-// start and a transcript line stamped by different processes.
-const TURN_SLACK_MS = 5000
-
-const fromEarlierTurn = ({
-  action,
-  since,
-}: {
-  action: CurrentAction
-  since?: string | null
-}) => {
-  if (!since || !action.at) {
-    return false
-  }
-
-  return Date.parse(action.at) < Date.parse(since) - TURN_SLACK_MS
+interface Shown {
+  icon?: string
+  sentence: Segment[]
+  done: boolean
 }
 
-const labelKey = ({ value }: { value: ActionLabel }) => `${value.icon}:${value.sentence.map(part => typeof part === 'string' ? part : part.label).join('')}`
+const shownKey = ({ value }: { value: Shown }) => {
+  const words = value.sentence.map(part => typeof part === 'string' ? part : part.label)
 
-// What the agent is running now, after the running dots or in a working card's pill.
-// idle is what shows while no call is known yet; without it the bubble stays empty.
+  return `${value.icon}:${words.join('')}`
+}
+
+const ShownLabel = ({ value }: { value: Shown }) => (
+  <>
+    {value.icon && <Icon name={value.icon} size={13} />}
+    <span className="action-text">
+      {value.sentence.map((
+        part,
+        index,
+      ) => <SentencePart key={index} part={part} />)}
+    </span>
+  </>
+)
+
+const idleLabel = ({ idle }: { idle?: string }): Shown | undefined => {
+  if (idle === undefined) {
+    return undefined
+  }
+
+  return {
+    sentence: [idle],
+    done: false,
+  }
+}
+
+// A bubble after the running dots, or inline words inside a working card's pill, where idle shows until a call is known.
 export function ActionBubble({
   action,
   since,
   lookup,
+  look = 'bubble',
   idle,
 }: {
   action?: CurrentAction
   since?: string | null
   lookup: PnyxLookup
+  look?: 'bubble' | 'inline'
   idle?: string
 }) {
-  const stale = !action || fromEarlierTurn({
+  const label = currentLabel({
     action,
     since,
-  })
-  // Bookkeeping calls give no label (undefined), which keeps the one shown.
-  const label = stale ? null : actionLabel({
-    action,
     lookup,
   })
-  const value = label === null && idle ? {
-    icon: '',
-    sentence: [idle],
+  const done = !!action?.done
+  const value = label ? {
+    ...label,
+    done,
   } : label
 
   return (
-    <span className={idle ? 'action-label' : 'action-bubble'}>
-      <LiveLabel
+    <span className={look === 'inline' ? 'action-label' : 'action-bubble'}>
+      <LiveLabel<Shown>
         value={value}
-        keyOf={labelKey}
-        done={!stale && action.done}
-        render={({ value: shown }) => (
-          <>
-            {shown.icon && <Icon name={shown.icon} size={13} />}
-            <span className="action-text">
-              {shown.sentence.map((
-                part,
-                index,
-              ) => <SentencePart key={index} part={part} />)}
-            </span>
-          </>
-        )}
+        fallback={idleLabel({ idle })}
+        keyOf={shownKey}
+        render={ShownLabel}
+        dimmed={({ value: shown }) => shown.done}
       />
     </span>
   )

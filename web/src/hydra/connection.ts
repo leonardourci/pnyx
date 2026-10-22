@@ -76,7 +76,7 @@ function restoredHydra(): HydraState {
 }
 
 // A push carries only the cards that changed; null drops a card's value.
-function withChanges<Value>({
+export function withChanges<Value>({
   current,
   changes,
 }: {
@@ -122,6 +122,7 @@ export function useHydra() {
     state: HydraState
     hydraThread: ThreadPage | null
     latest: Record<string, LatestMessage>
+    actions: Record<string, CurrentAction>
   }>())
   const [
     state,
@@ -149,7 +150,6 @@ export function useHydra() {
     latest,
     setLatest,
   ] = useState<Record<string, LatestMessage>>({})
-  // What each card's agent is running now; live only, so it is not kept when switching Hydras.
   const [
     actions,
     setActions,
@@ -403,6 +403,7 @@ export function useHydra() {
                   state: m.state,
                   hydraThread: previous?.hydraThread ?? null,
                   latest: previous?.latest ?? {},
+                  actions: previous?.actions ?? {},
                 },
               )
               publish(); setLoaded(true)
@@ -472,17 +473,19 @@ export function useHydra() {
                 current: entry?.latest ?? {},
                 changes: m.messages,
               })
+              const nextActions = withChanges({
+                current: entry?.actions ?? {},
+                changes: m.actions,
+              })
 
               if (entry) {
                 entry.latest = next
+                entry.actions = nextActions
               }
 
               if (active) {
                 setLatest(next)
-                setActions(current => withChanges({
-                  current,
-                  changes: m.actions,
-                }))
+                setActions(nextActions)
               }
             } else if (m.type === 'hydras') {
               setNavigation(old => ({
@@ -722,9 +725,8 @@ export function useHydra() {
         if (previousView) {
           setHydraThread(previousView.hydraThread)
           setLatest(previousView.latest)
+          setActions(previousView.actions)
         }
-
-        setActions({})
 
         setNavigation(old => ({
           ...old,
@@ -750,7 +752,7 @@ export function useHydra() {
             saved.identity,
           )
         setState(saved.state)
-        setHydraThread(saved.hydraThread); setLatest(saved.latest); setActions({})
+        setHydraThread(saved.hydraThread); setLatest(saved.latest); setActions(saved.actions)
         setNavigation(old => ({
           ...old,
           hydraId: next.pathname.split('/')[2]!,

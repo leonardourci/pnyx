@@ -126,6 +126,7 @@ export function HydraCard({
     hours: doneAfterHours,
     now,
   })
+  const working = status.kind === 'working'
   const statusText = status.kind === 'asks' ? 'Needs you' : status.text.replace(
     /^./,
     c => c.toUpperCase(),
@@ -245,15 +246,16 @@ export function HydraCard({
       <div className="card-content">
         <div className="card-state">
           <span className={`agent-activity activity-${status.kind}`}>
-            {status.kind === 'working'
+            {working
               ? <WorkingDots />
               : <i aria-hidden="true" />}
-            {status.kind === 'working'
+            {working
               ? (
                 <ActionBubble
                   action={action}
                   since={card.workingSince}
                   lookup={lookup}
+                  look="inline"
                   idle={statusText}
                 />
               )

@@ -296,6 +296,7 @@ export function HydraChat({
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const running = working || (hosted && pending.length > 0)
   // A send counts from the owner's message until the server says the turn began.
+  const lookup = pnyxLookup({ state })
   const since = (working ? card?.workingSince : undefined)
     ?? pending.at(-1)?.at ?? null
 
@@ -511,7 +512,7 @@ export function HydraChat({
               inline={inline}
               entries={entries}
               working={running}
-              lookup={pnyxLookup({ state })}
+              lookup={lookup}
               assistantLabel="Hydra"
               notify={notify}
               openTask={openTask}
@@ -556,7 +557,7 @@ export function HydraChat({
         </div>
         {running && (
           <Running since={since} label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}>
-            <ActionBubble action={action} since={since} lookup={pnyxLookup({ state })} />
+            <ActionBubble action={action} since={since} lookup={lookup} />
           </Running>
         )}
         {away && (

@@ -2,28 +2,40 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 
 // Each label stays at least this long, so a burst of quick changes never flashes.
 const MIN_SHOWN_MS = 1000
-// Matches the leave animation in index.css; the old label is dropped after it.
-const LEAVE_MS = 180
 
-// Shows the latest value and swaps to the next with a short rise: the old label fades
-// up, the new one rises in and the width eases to fit. A null value empties it, and an
-// undefined one keeps what is shown.
+// Swaps labels with a short rise and eases its width to the new one.
 export function LiveLabel<Value>({
   value,
+  fallback,
   keyOf,
   render,
-  done,
+  dimmed,
 }: {
+  // null shows the fallback, or nothing; undefined keeps the label already on its way.
   value: Value | null | undefined
+  fallback?: Value
   keyOf({ value }: { value: Value }): string
   render({ value }: { value: Value }): ReactNode
-  // The labelled work has finished; the label stays, dimmed, until the next one.
-  done?: boolean
+  dimmed?({ value }: { value: Value }): boolean
 }) {
+  const resolved = ({ next }: { next: Value | null }) => next ?? fallback ?? null
+
+  const keyOrNull = ({ next }: { next: Value | null }) => {
+    if (next === null) {
+      return null
+    }
+
+    return keyOf({ value: next })
+  }
+
+  const [
+    wanted,
+    setWanted,
+  ] = useState<Value | null>(() => resolved({ next: value ?? null }))
   const [
     shown,
     setShown,
-  ] = useState(value ?? null)
+  ] = useState<Value | null>(wanted)
   const [
     leaving,
     setLeaving,
@@ -34,56 +46,45 @@ export function LiveLabel<Value>({
   ] = useState<number>()
   const shownAt = useRef(performance.now())
   const item = useRef<HTMLSpanElement>(null)
-  const target = value === undefined ? shown : value
-  const key = target === null ? null : keyOf({ value: target })
-  const shownKey = shown === null ? null : keyOf({ value: shown })
-  // The same label may still change in place, such as a renamed task chip.
-  const current = key === shownKey ? target : shown
+  const wantedKey = keyOrNull({ next: wanted })
+  const shownKey = keyOrNull({ next: shown })
+  const target = value === undefined ? wanted : resolved({ next: value })
+  const targetKey = keyOrNull({ next: target })
+
+  // A new label replaces the wanted one only when its key changes, not on every render.
+  useEffect(
+    () => setWanted(target),
+    [targetKey],
+  )
 
   useEffect(
     () => {
-      if (key === shownKey) {
+      if (wantedKey === shownKey) {
         return
       }
 
+      const hold = shown === null ? 0 : shownAt.current + MIN_SHOWN_MS - performance.now()
       const timer = setTimeout(
         () => {
           setLeaving(shown)
-          setShown(target)
+          setShown(wanted)
           shownAt.current = performance.now()
         },
         Math.max(
           0,
-          shownAt.current + MIN_SHOWN_MS - performance.now(),
+          hold,
         ),
       )
 
       return () => clearTimeout(timer)
     },
-    // A swap waits on the label's key, not on each new render of the same label.
     [
-      key,
+      wantedKey,
       shownKey,
     ],
   )
 
-  useEffect(
-    () => {
-      if (leaving === null) {
-        return
-      }
-
-      const timer = setTimeout(
-        () => setLeaving(null),
-        LEAVE_MS,
-      )
-
-      return () => clearTimeout(timer)
-    },
-    [leaving],
-  )
-
-  // The new label's natural width, measured unconstrained before paint; the bubble eases to it.
+  // The new label's natural width, measured unconstrained before paint.
   useLayoutEffect(
     () => {
       const element = item.current
@@ -96,7 +97,7 @@ export function LiveLabel<Value>({
 
       element.style.maxWidth = 'none'
       element.style.width = 'max-content'
-      // Rounded up: a width cut by a fraction of a pixel would end the label in an ellipsis.
+      // Rounded up: a width short by a fraction of a pixel would end the label in an ellipsis.
       setWidth(Math.ceil(element.getBoundingClientRect().width))
       element.style.maxWidth = ''
       element.style.width = ''
@@ -104,18 +105,23 @@ export function LiveLabel<Value>({
     [shownKey],
   )
 
+  const current = targetKey === shownKey ? target : shown
+
   if (current === null && leaving === null) {
     return null
   }
 
+  const dim = current !== null && !!dimmed?.({ value: current })
+
   return (
-    <span className="live-label" data-done={done || undefined} style={{ width }}>
+    <span className="live-label" data-done={dim || undefined} style={{ width }}>
       {leaving !== null && (
         <span
           key={`leaving:${keyOf({ value: leaving })}`}
           className="live-label-item"
           data-leaving=""
           aria-hidden="true"
+          onAnimationEnd={() => setLeaving(null)}
         >
           {render({ value: leaving })}
         </span>
