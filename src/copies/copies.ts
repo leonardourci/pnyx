@@ -16,7 +16,7 @@ const COPY_TIMEOUT_MS = 120_000
 const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
 export const POOL_IDLE = 2
 
-function git({
+export function git({
   cwd,
   args,
 }: {
@@ -52,7 +52,7 @@ function git({
   }
 }
 
-function isFolder({ path }: { path: string }): boolean {
+export function isFolder({ path }: { path: string }): boolean {
   try {
     return statSync(path).isDirectory()
   } catch {
@@ -893,7 +893,47 @@ export type CopyCheck = {
     reason: string
   }
 
-// Landed: on the default branch, or its linked pull request merged.
+// Landed: the commit is on the default branch, or the task's linked pull request merged.
+export function landedWork({
+  card,
+  copy,
+  head,
+}: {
+  card: Card
+  copy: TaskCopy
+  head: string
+}): {
+  landed: boolean
+  refs: string[]
+} {
+  const remote = originHead({ cwd: copy.path })
+  const refs = [
+    ...new Set([
+      remote,
+      remote?.replace(
+        /^origin\//,
+        '',
+      ),
+      copy.base,
+    ].filter((r): r is string => Boolean(r))),
+  ]
+  const merged = refs.some(ref => git({
+    cwd: copy.path,
+    args: [
+      'merge-base',
+      '--is-ancestor',
+      head,
+      ref,
+    ],
+  }).ok)
+  const pr = card.links.some(l => l.kind === 'github_pr' && l.state === 'merged')
+
+  return {
+    landed: merged || pr,
+    refs,
+  }
+}
+
 export function checkCopy({
   card,
   copy,
@@ -932,29 +972,15 @@ export function checkCopy({
     }
   }
 
-  const remote = originHead({ cwd: copy.path })
-  const refs = [
-    ...new Set([
-      remote,
-      remote?.replace(
-        /^origin\//,
-        '',
-      ),
-      copy.base,
-    ].filter((r): r is string => Boolean(r))),
-  ]
-  const merged = refs.some(ref => git({
-    cwd: copy.path,
-    args: [
-      'merge-base',
-      '--is-ancestor',
-      head.out,
-      ref,
-    ],
-  }).ok)
-  const pr = card.links.some(l => l.kind === 'github_pr' && l.state === 'merged')
+  const {
+    landed,
+    refs,
+  } = landedWork({
+    card,
+    copy,
+    head: head.out,
+  })
   const clean = status.out === ''
-  const landed = merged || pr
 
   if (clean && landed) {
     return {
