@@ -136,7 +136,6 @@ test(
 test(
   'a character typed next to the same character keeps the caret right after it',
   () => {
-    // A space typed before an existing space must not move the caret past both.
     assert.deepEqual(
       editDraft({
         text: 'a b',
@@ -240,7 +239,6 @@ test(
       caret: text.indexOf(at) + at.length,
       lines,
     })
-    // A caret mid-word must not split the word around the image.
     const midWord = place({
       text: 'I think it could have a preview',
       at: 'I thi',
@@ -253,7 +251,6 @@ test(
       shown({ text: midWord.text }).slice(midWord.caret),
       ' it could have a preview',
     )
-    // Between a word and punctuation, the card sits before the comma with no space after it.
     assert.equal(
       place({
         text: 'In, the attachment is too large',
@@ -261,7 +258,6 @@ test(
       }).text,
       `In ${image}, the attachment is too large`,
     )
-    // At the end, a space after the cards gives the caret somewhere to go; several images are one space apart.
     const end = place({
       text: 'Keep it small like',
       at: 'like',
@@ -278,7 +274,6 @@ test(
       end.caret,
       shown({ text: end.text }).length,
     )
-    // Line breaks stay, and a card before a word keeps a space from it.
     assert.equal(
       place({
         text: 'First line\nsecond',
@@ -286,7 +281,6 @@ test(
       }).text,
       `First line\n${image} second`,
     )
-    // A word in letters outside the Basic Multilingual Plane is never cut inside a surrogate pair.
     assert.equal(
       place({
         text: 'café 𝒜𝒷𝒸 done',
@@ -294,7 +288,6 @@ test(
       }).text,
       `café 𝒜𝒷𝒸 ${image} done`,
     )
-    // Words that hold an apostrophe, an underscore or a decimal point stay whole.
     assert.equal(
       place({
         text: "I don't use snake_case or 3.14 here",
@@ -316,14 +309,12 @@ test(
       }).text,
       `pi is 3.14 ${image} today`,
     )
-    // Text without spaces between words moves only to the end of the word the caret is in.
     const japanese = place({
       text: 'これは画像です。',
       at: 'これは画',
     }).text
     assert.ok(japanese.startsWith('これは画像'))
     assert.ok(!japanese.endsWith(`${image} 。`))
-    // An emoji is not part of a word, so the card goes at the caret with a space on both sides.
     assert.equal(
       place({
         text: 'ok 👍👍 go',
@@ -361,7 +352,6 @@ test(
       }).text,
       `I think ${image} it could, and, too`,
     )
-    // Backspace on a card takes it out as × does.
     const plain = `I think ${image} it could`
     const view = draftView({ text: plain })
     const at = view.chips[0]!.to
@@ -376,7 +366,6 @@ test(
       }).text,
       'I think it could',
     )
-    // Text typed straight after a card keeps the space before it, so the words never run together.
     const glued = `I think ${image}here the attachment`
     assert.equal(
       removeChip({

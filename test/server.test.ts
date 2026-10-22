@@ -2557,7 +2557,6 @@ test(
       /Hydra not found/,
     )
 
-    // A Hydra created without a name stays unnamed until the owner's first message names it.
     t.command({
       id: 'b6',
       name: 'hydras',

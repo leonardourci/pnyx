@@ -522,7 +522,6 @@ test(
           'Second',
         ],
       )
-      // A worker's report reaches Hydra once, marked with its origin; the owner's words stay as they are.
       const received = sdk.calls.flatMap(call => call.messages)
       assert.deepEqual(
         received.filter(text => text.includes('A worker question')).map(text => text.replace(

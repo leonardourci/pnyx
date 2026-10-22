@@ -227,7 +227,6 @@ test(
         ],
       })
       send({ text: '[image: /tmp/hydras/default/attachments/a.png]' })
-      // A worker's message to the whole Hydra is a report, not the owner's first message.
       f.run({
         args: [
           'hydra',
@@ -305,7 +304,6 @@ test(
       hydraName({ text: '!'.repeat(50) }),
       undefined,
     )
-    // An image in the sentence reads as its label; a line of images alone is not text.
     assert.equal(
       hydraName({ text: '[image: /h/a.png]\nIn [image: /h/b.png], it is big' }),
       'In Image 2, it is big',
