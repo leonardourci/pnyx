@@ -392,6 +392,14 @@ export function hostedHydra({ state }: { state: HydraState }): boolean {
   return hydraConfig({ state }).hydra.kind !== 'firstmate' && state.cards[HYDRA_CARD]?.agent?.host === 'pnyx'
 }
 
+// The mode a hosted Hydra's session runs in, once it matches the composer's; none mid-switch.
+export function hydraMode({ state }: { state: HydraState }): string | undefined {
+  const running = state.cards[HYDRA_CARD]?.settings?.mode
+  const chosen = hydraConfig({ state }).hydra.agent
+
+  return hostedHydra({ state }) && (!chosen || chosen.mode === running) ? running : undefined
+}
+
 // Changes that wake a hosted Hydra for a check turn; never Hydra's own writes or card.
 export function wakesHydra({
   state,
