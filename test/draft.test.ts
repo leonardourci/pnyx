@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { reference, taskMention } from '../src/mentions/mentions.ts'
-import { draftView, editDraft, fileBlock, ICON_SPACE, replaceDisplay, snapCaret } from '../web/src/hydra/draft.ts'
+import { fileBlock } from '../src/attachments/files.ts'
+import { draftView, editDraft, ICON_SPACE, replaceDisplay, snapCaret } from '../web/src/hydra/draft.ts'
 
 const task = taskMention({
   id: 'task-1',

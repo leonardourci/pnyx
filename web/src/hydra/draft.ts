@@ -1,4 +1,5 @@
 import { IMAGE_LINE } from '../../../src/attachments/images.ts'
+import { FILE_BLOCK } from '../../../src/attachments/files.ts'
 import { decodeValue, REFERENCE, type ReferenceKind } from '../../../src/mentions/mentions.ts'
 
 // The draft stays the Markdown Hydra receives; the textarea shows each chip as its label.
@@ -27,33 +28,11 @@ interface DraftView {
   chips: PlacedChip[]
 }
 
-const FILE = /^File: ([^\n]+)\n\n(`{3,})\n[\s\S]*?\n\2$/gm
-
-// A fence longer than any backtick run inside keeps the file one block.
-export function fileBlock({
-  name,
-  text,
-}: {
-  name: string
-  text: string
-}) {
-  const longest = Math.max(
-    2,
-    ...[...text.matchAll(/`+/g)].map(match => match[0].length),
-  )
-  const fence = '`'.repeat(longest + 1)
-
-  return `File: ${name}\n\n${fence}\n${text.replace(
-    /\n$/,
-    '',
-  )}\n${fence}`
-}
-
 function draftChips({ text }: { text: string }): DraftChip[] {
   const chips: DraftChip[] = []
   let images = 0
 
-  for (const match of text.matchAll(FILE)) {
+  for (const match of text.matchAll(FILE_BLOCK)) {
     chips.push({
       kind: 'file',
       attached: true,

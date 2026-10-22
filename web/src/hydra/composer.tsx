@@ -19,7 +19,8 @@ import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
-import { draftView, editDraft, fileBlock, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
+import { fileBlock } from '../../../src/attachments/files.ts'
+import { draftView, editDraft, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
 
 const CHIP_TITLES: Partial<Record<PlacedChip['kind'], string>> = {
   task: 'Open task',
