@@ -28,6 +28,8 @@ export function hydraSdk() {
       }
     } | undefined,
     reply: undefined as string | undefined,
+    // Ends each turn with this error result, as the SDK does for a turn that fails.
+    turnError: undefined as string | undefined,
   }
   const permissions: PermissionResult[] = []
   const sets: string[] = []
@@ -201,6 +203,17 @@ export function hydraSdk() {
             subtype: 'error_during_execution',
             is_error: true,
             errors: ['Request was aborted.'],
+          }
+
+          continue
+        }
+
+        if (control.turnError) {
+          yield {
+            type: 'result',
+            subtype: 'error_during_execution',
+            is_error: true,
+            errors: [control.turnError],
           }
 
           continue

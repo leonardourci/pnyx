@@ -2695,6 +2695,20 @@ test(
         sdk.calls.length,
         2,
       )
+      // A stop covers only its own turn: a later turn's failure still shows.
+      sdk.control.turnError = 'Overloaded'
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Once more',
+      ])
+      await until({ check: () => state().cards[HYDRA_CARD]?.attention.some(a => a.kind === 'interrupted') ?? false })
+      assert.match(
+        state().cards[HYDRA_CARD]!.attention.find(a => a.kind === 'interrupted')!.text ?? '',
+        /Overloaded/,
+      )
     } finally {
       await server.close()
       sdk.release()
