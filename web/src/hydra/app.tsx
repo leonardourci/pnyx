@@ -121,7 +121,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   })
   const [restored] = useState(() => hydraViews.get(navigation.hydraId)
     ?? restoreView({ key: restoreKey }))
-  // Settings is hidden for now: a restored page still opens the Hydra, and page stays so Settings can return.
   const [
       page,
       setPage,
