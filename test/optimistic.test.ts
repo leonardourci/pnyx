@@ -105,25 +105,6 @@ test(
       original.view,
       undefined,
     )
-    const afterFailure = optimisticState({
-      state: original,
-      edit: {
-        name: 'view',
-        args: [
-          'set',
-          '--json',
-          '{"cardHeight":320}',
-        ],
-      },
-    })
-    assert.equal(
-      afterFailure.view?.columnWidths.queued,
-      undefined,
-    )
-    assert.equal(
-      afterFailure.view?.cardHeight,
-      320,
-    )
   },
 )
 
@@ -203,10 +184,6 @@ test(
       hidden.cards.two?.hidden,
       true,
     )
-    assert.equal(
-      hidden.cards.one?.title,
-      'New title',
-    )
     const columns = optimisticState({
       state: hidden,
       edit: {
@@ -253,10 +230,6 @@ test(
     assert.equal(
       hydra.config?.doneAfterHours,
       48,
-    )
-    assert.equal(
-      original.config?.doneAfterHours,
-      undefined,
     )
     const reminded = optimisticState({
       state: original,

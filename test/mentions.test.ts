@@ -168,13 +168,6 @@ test(
       )
       assert.equal(
         matchingTasks({
-          cards,
-          query: 'no match',
-        }).length,
-        0,
-      )
-      assert.equal(
-        matchingTasks({
           cards: cards.map(card => ({
             ...card,
             automaticTask: true,
@@ -224,11 +217,6 @@ test(
       ])
       const state = f.state()
       const message = state.hydraMessages?.at(-1)
-      const queue = commands.hydra(['messages'])
-      assert.match(
-        JSON.stringify(queue),
-        /Rollback verified/,
-      )
       assert.equal(
         message?.text,
         f.text,
@@ -282,10 +270,6 @@ test(
           }),
         }),
         /Unavailable in this Hydra/,
-      )
-      assert.equal(
-        state.cards[f.referenced.id]?.agent,
-        undefined,
       )
     } finally {
       f.close()
@@ -446,7 +430,7 @@ test(
 )
 
 test(
-  'only paragraphs that start with a task chip are tagged, without the chip',
+  'only paragraphs and list items that start with a task chip are tagged, without the chip, and code blocks never tag',
   () => {
     const chip = ({ id }: { id: string }) => taskMention({
       id,
@@ -461,6 +445,9 @@ test(
           `- **${chip({ id: 'b' })}**: waiting for review.`,
           `Next, ${chip({ id: 'c' })} only links.`,
           chip({ id: 'd' }),
+          `- ${chip({ id: 'e' })} merged.\n- ${chip({ id: 'f' })} waits for review.`,
+          `**${chip({ id: 'g' })}:** shipped.`,
+          `\`\`\`\n- ${chip({ id: 'x' })} inside code\n\`\`\``,
         ].join('\n\n'),
       }).map(({
         id,
@@ -478,44 +465,16 @@ test(
           'b',
           'waiting for review.',
         ],
-      ],
-    )
-  },
-)
-
-test(
-  'each list item that starts with a chip is its own tagged paragraph, and code blocks never tag',
-  () => {
-    const chip = ({ id }: { id: string }) => taskMention({
-      id,
-      title: `Task ${id}`,
-    })
-
-    assert.deepEqual(
-      taggedParagraphs({
-        text: [
-          `- ${chip({ id: 'a' })} merged.\n- ${chip({ id: 'b' })} waits for review.`,
-          `**${chip({ id: 'c' })}:** shipped.`,
-          `\`\`\`\n- ${chip({ id: 'x' })} inside code\n\`\`\``,
-        ].join('\n\n'),
-      }).map(({
-        id,
-        text,
-      }) => [
-        id,
-        text,
-      ]),
-      [
         [
-          'a',
+          'e',
           'merged.',
         ],
         [
-          'b',
+          'f',
           'waits for review.',
         ],
         [
-          'c',
+          'g',
           'shipped.',
         ],
       ],

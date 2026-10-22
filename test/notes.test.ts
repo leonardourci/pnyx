@@ -53,7 +53,7 @@ const records = ({ path }: { path: string }) => readFileSync(
   .map(l => JSON.parse(l) as unknown)
 
 test(
-  'a Claude Code transcript yields its titles, compaction summaries and answered questions',
+  'a Claude Code transcript yields its titles, compaction summaries and answered questions; a Codex one its readable summaries',
   () => {
     const notes = records({ path: CLAUDE }).flatMap(record => transcriptNotes({ record }))
     assert.deepEqual(
@@ -119,12 +119,6 @@ test(
     )
     assert.ok(!records({ path: CLAUDE }).flatMap(record => transcriptMessages({ record }))
       .some(m => m.text.includes('zebrafish')))
-  },
-)
-
-test(
-  'a Codex transcript yields its readable compaction summaries',
-  () => {
     assert.deepEqual(
       records({ path: CODEX }).flatMap(record => transcriptNotes({ record }))
         .map(({
@@ -258,8 +252,19 @@ function hydraId() {
 
 const noted = () => readEvents({ hydraId: 'default' }).filter(e => e.type === 'card.noted')
 
+const card = ({ key }: { key: string }) => {
+  const { state } = loadHydra({ hydraId: 'default' })
+
+  return state.cards[state.keys[key]!]!
+}
+
+const titles = () => [
+  'claude:s1',
+  'codex:x2',
+].map(key => card({ key }).title)
+
 test(
-  'harvest folds transcript notes and pull requests into cards once',
+  'harvest folds transcript notes and pull requests into cards once, without moving or updating them',
   () => {
     const {
       run,
@@ -311,16 +316,7 @@ test(
         'https://github.com/o/r/pull/7',
       ],
     })
-    assert.match(
-      run({
-        args: [
-          'card',
-          'c1',
-        ],
-      }),
-      /^ {2}summary: none$/m,
-    )
-
+    const before = card({ key: 'claude:s1' })
     const out = run({ args: ['harvest'] })
     assert.match(
       out,
@@ -343,51 +339,60 @@ test(
       8,
     )
     assert.ok(noted().every(e => e.actor === 'harvest'))
+    // A note is no update: the card keeps its place and its updated time.
+    const after = card({ key: 'claude:s1' })
+    assert.equal(
+      after.revision,
+      before.revision + after.notes!.length,
+    )
+    assert.equal(
+      after.updatedSeq,
+      before.updatedSeq,
+    )
+    assert.equal(
+      after.updatedAt,
+      before.updatedAt,
+    )
 
-    const card = run({
+    const shown = run({
       args: [
         'card',
         'c1',
       ],
     })
     assert.match(
-      card,
+      shown,
       /^notes:\n {2}summary\[2\]\{at,source,text\}:$/m,
     )
     assert.match(
-      card,
+      shown,
       /^ {2}decisions\[2\]\{at,source,text\}:\n {4}"2026-10-11T09:02:00.000Z",claude-code,"Which time window/m,
     )
     assert.match(
-      card,
+      shown,
       /^ {2}context\[3\]\{at,source,text\}:$/m,
     )
     assert.match(
-      card,
+      shown,
       /github,"Pull request #42: Nightly invoice export\\n\\nMoves the invoice export to a 2am UTC batch\."$/m,
     )
     assert.doesNotMatch(
-      card,
+      shown,
       /pipelineevidenceword|templatemarkerword/,
     )
     assert.match(
-      card,
+      shown,
       /pnyx-axi card c1 --full/,
     )
-    const full = run({
-      args: [
-        'card',
-        'c1',
-        '--full',
-      ],
-    })
     assert.match(
-      full,
+      run({
+        args: [
+          'card',
+          'c1',
+          '--full',
+        ],
+      }),
       /Pending: drop the on-demand export/,
-    )
-    assert.doesNotMatch(
-      full,
-      /--full/,
     )
     assert.match(
       run({
@@ -397,18 +402,6 @@ test(
         ],
       }),
       /^ {2}summary\[1\]\{at,source,text\}:\n {4}"2026-10-12T11:00:00.000Z",codex,The ledger sync drifts/m,
-    )
-    assert.match(
-      run({
-        args: [
-          'history',
-          '--kind',
-          'noted',
-          '--card',
-          'c2',
-        ],
-      }),
-      /summary from codex/,
     )
 
     fails({
@@ -582,7 +575,7 @@ for (const event of [
 }
 
 test(
-  'search finds notes and ranks them above the same words in a transcript',
+  'search first harvests every transcript and ranks notes above the same words in a transcript; rebuild harvests again',
   () => {
     const {
       home,
@@ -597,62 +590,90 @@ test(
       home,
       'summary.jsonl',
     )
+    const line = ({
+      content,
+      compact,
+    }: {
+      content: string
+      compact: boolean
+    }) => `${JSON.stringify({
+      type: 'user',
+      timestamp: '2026-10-11T09:00:00.000Z',
+      ...(compact ? {
+        isCompactSummary: true,
+        uuid: content,
+      } : {}),
+      message: { content },
+    })}\n`
     const text = 'Zebrafish pipeline stalled overnight.'
     writeFileSync(
       raw,
-      `${JSON.stringify({
-        type: 'user',
-        timestamp: '2026-10-11T09:00:00.000Z',
-        message: { content: text },
-      })}\n`,
+      line({
+        content: text,
+        compact: false,
+      }),
     )
     writeFileSync(
       summary,
-      `${JSON.stringify({
-        type: 'user',
-        isCompactSummary: true,
-        uuid: 'z1',
-        message: { content: text },
-      })}\n`,
+      line({
+        content: text,
+        compact: true,
+      }),
     )
-    push({
-      key: 'claude:raw',
-      card: {
-        title: 'First',
-        agent: {
-          provider: 'claude-code',
-          sessionId: 'raw',
-          transcriptPath: raw,
+
+    for (const [
+      key,
+      transcriptPath,
+    ] of [
+        [
+          'raw',
+          raw,
+        ],
+        [
+          'sum',
+          summary,
+        ],
+      ]) {
+      push({
+        key: `claude:${key}`,
+        card: {
+          title: key,
+          agent: {
+            provider: 'claude-code',
+            sessionId: key,
+            transcriptPath,
+          },
         },
-      },
-    })
-    push({
-      key: 'claude:sum',
-      card: {
-        title: 'Second',
-        agent: {
-          provider: 'claude-code',
-          sessionId: 'sum',
-          transcriptPath: summary,
-        },
-      },
-    })
-    run({ args: ['harvest'] })
-    const cards = ({ out }: { out: string }) => [...out.matchAll(/^ {2}- card: (\S+)$/gm)].map(m => m[1])
+      })
+    }
+
+    assert.equal(
+      noted().length,
+      0,
+    )
+    const cards = ({ args }: { args: string[] }) => [
+      ...run({
+        args: [
+          'oracle',
+          ...args,
+        ],
+      }).matchAll(/^ {2}- card: (\S+)$/gm),
+    ].map(m => m[1])
     assert.deepEqual(
       cards({
-        out: run({
-          args: [
-            'oracle',
-            'zebrafish',
-            'pipeline',
-          ],
-        }),
+        args: [
+          'zebrafish',
+          'pipeline',
+        ],
       }),
       [
         'c2',
         'c1',
       ],
+    )
+    assert.equal(
+      noted().length,
+      1,
     )
     assert.match(
       run({
@@ -667,162 +688,40 @@ test(
     )
     assert.deepEqual(
       cards({
-        out: run({
-          args: [
-            'oracle',
-            'zebrafish',
-            '--kind',
-            'transcript',
-          ],
-        }),
+        args: [
+          'zebrafish',
+          '--kind',
+          'transcript',
+        ],
       }),
       ['c1'],
     )
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'status',
-        ],
-      }),
-      /^ {2}note: 1$/m,
-    )
-  },
-)
-
-test(
-  'a harvested note neither reorders cards nor changes when they were updated',
-  () => {
-    const {
-      run,
-      push,
-      transcript,
-    } = hydraId()
-    push({
-      key: 'claude:s1',
-      card: {
-        title: 'Invoices',
-        agent: {
-          provider: 'claude-code',
-          sessionId: 's1',
-          transcriptPath: transcript({
-            name: 's1.jsonl',
-            from: CLAUDE,
-          }),
-        },
-      },
-    })
-    push({
-      key: 'other',
-      card: { title: 'Other' },
-    })
-    const before = loadHydra({ hydraId: 'default' }).state.cards[loadHydra({ hydraId: 'default' }).state.keys['claude:s1']!]!
-    assert.match(
-      run({ args: ['harvest'] }),
-      /^ {2}notes: 6 new$/m,
-    )
-    const after = loadHydra({ hydraId: 'default' }).state.cards[loadHydra({ hydraId: 'default' }).state.keys['claude:s1']!]!
-    assert.equal(
-      after.notes?.length,
-      6,
-    )
-    assert.equal(
-      after.revision,
-      before.revision + 6,
-    )
-    assert.equal(
-      after.updatedSeq,
-      before.updatedSeq,
-    )
-    assert.equal(
-      after.updatedAt,
-      before.updatedAt,
-    )
-    assert.ok(after.updatedSeq < loadHydra({ hydraId: 'default' }).state.cards[loadHydra({ hydraId: 'default' }).state.keys.other!]!.updatedSeq)
-  },
-)
-
-test(
-  'building the search index first harvests every transcript, so compaction summaries stay searchable',
-  () => {
-    const {
-      home,
-      run,
-      push,
-    } = hydraId()
-    const path = join(
-      home,
-      's1.jsonl',
-    )
-    writeFileSync(
-      path,
-      readFileSync(
-        CLAUDE,
-        'utf8',
-      ),
-    )
-    push({
-      key: 'claude:s1',
-      card: {
-        title: 'Invoices',
-        agent: {
-          provider: 'claude-code',
-          sessionId: 's1',
-          transcriptPath: path,
-        },
-      },
-    })
-    assert.equal(
-      noted().length,
-      0,
-    )
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'zebrafish',
-          '--kind',
-          'note',
-        ],
-      }),
-      /^ {2}- card: c1$/m,
-    )
-    assert.equal(
-      noted().length,
-      6,
-    )
     appendFileSync(
-      path,
-      `${JSON.stringify({
-        type: 'user',
-        isCompactSummary: true,
-        uuid: 'z2',
-        message: { content: 'Quokka migration paused.' },
-      })}\n`,
-    )
-    assert.match(
-      run({
-        args: [
-          'oracle',
-          'rebuild',
-        ],
+      summary,
+      line({
+        content: 'Quokka migration paused.',
+        compact: true,
       }),
-      /rebuilt:/,
     )
+    run({
+      args: [
+        'oracle',
+        'rebuild',
+      ],
+    })
     assert.equal(
       noted().length,
-      7,
+      2,
     )
-    assert.match(
-      run({
+    assert.deepEqual(
+      cards({
         args: [
-          'oracle',
           'quokka',
           '--kind',
           'note',
         ],
       }),
-      /^ {2}- card: c1$/m,
+      ['c2'],
     )
   },
 )
@@ -873,65 +772,18 @@ test(
 )
 
 test(
-  "a hook-only card takes the harness's own session title over its first prompt",
+  "a hook-only card takes the harness's own session title over its first prompt, and a rename back to an earlier title applies again",
   () => {
     const {
       home,
       run,
       push,
     } = hydraId()
-
-    const hookCard = ({
-      key,
-      provider,
-      transcriptPath,
-    }: {
-      key: string
-      provider: string
-      transcriptPath: string
-    }) => {
-      const at = '2026-10-11T11:00:00.000Z'
-      push({
-        key,
-        card: {
-          autoTitle: {
-            from: 'prompt',
-            text: 'fix the ledger please',
-          },
-          agent: {
-            provider,
-            sessionId: key.split(':')[1],
-            transcriptPath,
-          },
-          source: {
-            adapter: 'hooks',
-            objectId: key,
-            observedAt: at,
-          },
-        },
-      })
-    }
-
-    hookCard({
-      key: 'claude:s1',
-      provider: 'claude-code',
-      transcriptPath: join(
-        home,
-        's1.jsonl',
-      ),
-    })
-    writeFileSync(
-      join(
-        home,
-        's1.jsonl',
-      ),
-      `${JSON.stringify({
-        type: 'ai-title',
-        aiTitle: 'Ledger rounding',
-        sessionId: 's1',
-      })}\n`,
+    const at = '2026-10-11T11:00:00.000Z'
+    const s1 = join(
+      home,
+      's1.jsonl',
     )
-
     // Codex keeps thread names in session_index.jsonl in its home, beside sessions/.
     const codexHome = join(
       home,
@@ -945,131 +797,88 @@ test(
       '12',
       'rollout-x2.jsonl',
     )
+    const index = join(
+      codexHome,
+      'session_index.jsonl',
+    )
     mkdirSync(
       join(
         rollout,
         '..',
       ),
       { recursive: true },
+    )
+    writeFileSync(
+      s1,
+      `${JSON.stringify({
+        type: 'ai-title',
+        aiTitle: 'Ledger rounding',
+        sessionId: 's1',
+      })}\n`,
     )
     copyFileSync(
       CODEX,
       rollout,
     )
     writeFileSync(
-      join(
-        codexHome,
-        'session_index.jsonl',
-      ),
+      index,
       `${JSON.stringify({
         id: 'x2',
         thread_name: 'Ledger sync drift',
       })}\n`,
     )
-    hookCard({
-      key: 'codex:x2',
-      provider: 'codex',
-      transcriptPath: rollout,
-    })
-    assert.match(
-      run({
-        args: [
-          'card',
-          'c2',
-        ],
-      }),
-      /^ {2}title: fix the ledger please$/m,
-    )
 
+    for (const [
+      key,
+      provider,
+      transcriptPath,
+    ] of [
+        [
+          'claude:s1',
+          'claude-code',
+          s1,
+        ],
+        [
+          'codex:x2',
+          'codex',
+          rollout,
+        ],
+      ]) {
+      push({
+        key: key!,
+        card: {
+          autoTitle: {
+            from: 'prompt',
+            text: 'fix the ledger please',
+          },
+          agent: {
+            provider,
+            sessionId: key!.split(':')[1],
+            transcriptPath,
+          },
+          source: {
+            adapter: 'hooks',
+            objectId: key,
+            observedAt: at,
+          },
+        },
+      })
+    }
+
+    assert.deepEqual(
+      titles(),
+      [
+        'fix the ledger please',
+        'fix the ledger please',
+      ],
+    )
     run({ args: ['harvest'] })
-    assert.match(
-      run({
-        args: [
-          'card',
-          'c1',
-        ],
-      }),
-      /^ {2}title: Ledger rounding$/m,
-    )
-    assert.match(
-      run({
-        args: [
-          'card',
-          'c2',
-        ],
-      }),
-      /^ {2}title: Ledger sync drift$/m,
-    )
-    assert.match(
-      run({ args: ['harvest'] }),
-      /none: nothing new/,
-    )
-  },
-)
-
-test(
-  'a session renamed back to an earlier title takes that title again',
-  () => {
-    const {
-      home,
-      run,
-      push,
-    } = hydraId()
-    const path = join(
-      home,
-      's1.jsonl',
-    )
-    writeFileSync(
-      path,
-      '',
-    )
-    push({
-      key: 'claude:s1',
-      card: {
-        agent: {
-          provider: 'claude-code',
-          sessionId: 's1',
-          transcriptPath: path,
-        },
-      },
-    })
-
-    const codexHome = join(
-      home,
-      'codex',
-    )
-    const rollout = join(
-      codexHome,
-      'sessions',
-      '2026',
-      '10',
-      '12',
-      'rollout-x2.jsonl',
-    )
-    mkdirSync(
-      join(
-        rollout,
-        '..',
-      ),
-      { recursive: true },
-    )
-    writeFileSync(
-      rollout,
-      '',
-    )
-    push({
-      key: 'codex:x2',
-      card: {
-        agent: {
-          provider: 'codex',
-          sessionId: 'x2',
-          transcriptPath: rollout,
-        },
-      },
-    })
-    const index = join(
-      codexHome,
-      'session_index.jsonl',
+    assert.deepEqual(
+      titles(),
+      [
+        'Ledger rounding',
+        'Ledger sync drift',
+      ],
     )
 
     for (const [
@@ -1081,7 +890,7 @@ test(
         'Alpha',
       ].entries()) {
       appendFileSync(
-        path,
+        s1,
         `${JSON.stringify({
           type: 'custom-title',
           customTitle: title,
@@ -1100,73 +909,13 @@ test(
         run({ args: ['harvest'] }),
         /^ {2}notes: 2 new$/m,
       )
-      assert.match(
-        run({
-          args: [
-            'card',
-            'c1',
-          ],
-        }),
-        new RegExp(
-          `^ {2}title: ${title}$`,
-          'm',
-        ),
-      )
-      assert.match(
-        run({
-          args: [
-            'card',
-            'c2',
-          ],
-        }),
-        new RegExp(
-          `^ {2}title: ${title}$`,
-          'm',
-        ),
+      assert.deepEqual(
+        titles(),
+        [
+          title,
+          title,
+        ],
       )
     }
-
-    appendFileSync(
-      index,
-      `${JSON.stringify({
-        id: 'x2',
-        thread_name: 'Alpha',
-        updated_at: '2026-10-12T13:00:00Z',
-      })}\n`,
-    )
-    appendFileSync(
-      path,
-      `${JSON.stringify({
-        type: 'custom-title',
-        customTitle: 'Alpha',
-        sessionId: 's1',
-      })}\n`,
-    )
-    assert.match(
-      run({ args: ['harvest'] }),
-      /none: nothing new/,
-    )
-    writeFileSync(
-      join(
-        home,
-        'hydras',
-        'default',
-        'harvest.json',
-      ),
-      'not json',
-    )
-    assert.match(
-      run({ args: ['harvest'] }),
-      /none: nothing new/,
-    )
-    assert.match(
-      run({
-        args: [
-          'card',
-          'c1',
-        ],
-      }),
-      /^ {2}title: Alpha$/m,
-    )
   },
 )

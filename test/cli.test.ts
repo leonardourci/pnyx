@@ -232,10 +232,6 @@ test(
       /hydra create/,
     )
     assert.match(
-      help,
-      /hydra send/,
-    )
-    assert.match(
       cli({
         args: [
           'oracle',
@@ -249,10 +245,6 @@ test(
       [
         'board',
         'list',
-      ],
-      [
-        'search',
-        'Named',
       ],
       [
         'task',

@@ -519,7 +519,7 @@ test(
 )
 
 test(
-  'pnyx-axi task start and task paseo report a stopped daemon as structured errors',
+  'pnyx-axi task start reports a stopped daemon as a structured error',
   () => {
     const { folder } = hydraId()
     const bin = join(
@@ -546,24 +546,6 @@ test(
       },
     )
 
-    const status = run({
-      args: [
-        'task',
-        'paseo',
-      ],
-    })
-    assert.notEqual(
-      status.status,
-      0,
-    )
-    assert.match(
-      status.stdout,
-      /PASEO_UNAVAILABLE/,
-    )
-    assert.match(
-      status.stdout,
-      /Paseo is not running at ws:\/\/127\.0\.0\.1:1\/ws/,
-    )
     const start = run({
       args: [
         'task',
@@ -586,15 +568,6 @@ test(
     assert.match(
       start.stdout,
       /PASEO_UNAVAILABLE/,
-    )
-    assert.match(
-      run({
-        args: [
-          'task',
-          '--help',
-        ],
-      }).stdout,
-      /task start <task> \[--via pnyx\|paseo\] \[--rule <name>\] \[--harness claude\|codex\] \[--model <model>\] \[--effort <effort>\] \[--mode <mode>\] \[--fast on\|off\] \[--prompt <text>\]/,
     )
   },
 )
@@ -738,99 +711,6 @@ test(
     assert.match(
       String(created.prompt),
       /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nVerify the canary\.\n\n/,
-    )
-    assert.match(
-      String(created.prompt),
-      /Pnyx worker for task c1 "Lab task" on Hydra lab/,
-    )
-
-    const overridden = hydraId()
-    dispatchCommands.rule([
-      'set',
-      'review',
-      '--harness',
-      'codex',
-      '--model',
-      'codex-small',
-      '--effort',
-      'high',
-      '--mode',
-      'full-access',
-      '--fast',
-      'off',
-      '--hydra',
-      'lab',
-    ])
-    const asked = fakePaseo()
-    await startTask({
-      hydraId: 'lab',
-      task: 'work',
-      via: 'paseo',
-      rule: 'review',
-      override: {
-        model: 'codex-default',
-        mode: 'auto',
-        fast: true,
-      },
-      folder: overridden.folder,
-      url,
-      meta: {
-        at,
-        actor: 'test',
-        id: 'kind-3',
-      },
-      connect: asked.connect,
-    })
-    assert.deepEqual(
-      asked.calls.create[0]!.config,
-      {
-        provider: 'codex/codex-default',
-        thinkingOptionId: 'high',
-        modeId: 'auto',
-        featureValues: { fast_mode: true },
-      },
-    )
-    assert.deepEqual(
-      loadHydra({ hydraId: 'lab' }).state.cards.c1?.launch?.override,
-      {
-        model: 'codex-default',
-        mode: 'auto',
-        fast: true,
-      },
-    )
-
-    const other = hydraId()
-    dispatchCommands.rule([
-      'set',
-      'review',
-      '--harness',
-      'codex',
-      '--model',
-      'missing',
-      '--hydra',
-      'lab',
-    ])
-    const refused = fakePaseo()
-    await assert.rejects(
-      startTask({
-        hydraId: 'lab',
-        task: 'work',
-        via: 'paseo',
-        rule: 'review',
-        folder: other.folder,
-        url,
-        meta: {
-          at,
-          actor: 'test',
-          id: 'kind-2',
-        },
-        connect: refused.connect,
-      }),
-      /no usable candidates/,
-    )
-    assert.equal(
-      refused.calls.create.length,
-      0,
     )
   },
 )

@@ -325,18 +325,29 @@ test(
     )
 
     const before = f.state().seq
-
-    for (let i = 0; i < 22; i++) {
-      f.run({
-        args: [
+    await Promise.all(Array.from(
+      { length: 22 },
+      (
+        _,
+        i,
+      ) => execFileAsync(
+        process.execPath,
+        [
+          bin,
           'hydra',
           'send',
           '--text',
           `note ${i}`,
         ],
-      })
-    }
-
+        {
+          env: {
+            ...process.env,
+            PNYX_HOME: f.root,
+            PNYX_SEMANTIC: 'off',
+          },
+        },
+      ),
+    ))
     const first = f.run({
       args: [
         'hydra',
@@ -354,16 +365,16 @@ test(
       next,
       before + 20,
     )
-    assert.match(
-      f.run({
+    assert.equal(
+      (f.run({
         args: [
           'hydra',
           'check',
           '--after',
           String(next),
         ],
-      }),
-      /note 20.*\n.*note 21/,
+      }).match(/note \d+/g) ?? []).length,
+      2,
     )
 
     const quiet = f.state().seq

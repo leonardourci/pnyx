@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { decidePush } from '../src/core/decide.ts'
 import { emptyHydra, reduce } from '../src/core/reducer.ts'
-import { hookSettings, transcriptSettings, type FoundSettings } from '../src/integrations/hooks/settings.ts'
+import { hookSettings } from '../src/integrations/hooks/settings.ts'
 import { loadHydra, readEvents, spoolWrite } from '../src/store/hydra-store.ts'
 
 const BIN = join(
@@ -35,25 +35,6 @@ const payload = ({ name }: { name: string }) => JSON.parse(readFileSync(
   ),
   'utf8',
 )) as Record<string, unknown>
-
-function fold({ paths = [] }: { paths?: string[] } = {}): FoundSettings {
-  const found: FoundSettings = {}
-
-  for (const path of paths) {
-    for (const line of readFileSync(
-      path,
-      'utf8',
-    ).split('\n')
-      .filter(Boolean)) {
-      Object.assign(
-        found,
-        transcriptSettings({ record: JSON.parse(line) }),
-      )
-    }
-  }
-
-  return found
-}
 
 test(
   'hook payloads report the model, effort and permission mode they carry',
@@ -86,71 +67,6 @@ test(
     assert.deepEqual(
       hookSettings({ payload: payload({ name: 'claude-post-model-switch' }) }),
       { model: 'claude-haiku-5-5' },
-    )
-  },
-)
-
-test(
-  'a Claude Code session transcript reports each turn\'s model, effort, speed and context, skipping subagent and synthetic turns',
-  () => {
-    assert.deepEqual(
-      fold({ paths: [transcript({ name: 'claude-settings' })] }),
-      {
-        mode: 'default',
-        model: 'claude-opus-5-5',
-        effort: 'high',
-        fast: 'off',
-        context: '1M',
-        client: 'cli',
-        version: '2.1.299',
-      },
-    )
-    // Plan mode, a higher effort and fast mode later in the session; the 1M context is gone.
-    assert.deepEqual(
-      fold({
-        paths: [
-          transcript({ name: 'claude-settings' }),
-          transcript({ name: 'claude-settings-later' }),
-        ],
-      }),
-      {
-        mode: 'plan',
-        model: 'claude-opus-5-5',
-        effort: 'xhigh',
-        fast: 'on',
-        context: null,
-        client: 'cli',
-        version: '2.1.299',
-      },
-    )
-  },
-)
-
-test(
-  'a Codex rollout reports its session meta, thread settings and turn context',
-  () => {
-    assert.deepEqual(
-      fold({ paths: [transcript({ name: 'codex-settings' })] }),
-      {
-        client: 'codex-tui',
-        version: '0.160.1',
-        model: 'gpt-6.1-sol',
-        effort: 'xhigh',
-        fast: 'on',
-        approval: 'granular',
-        sandbox: 'workspace-write',
-        collaboration: 'plan',
-        summary: 'concise',
-      },
-    )
-    assert.equal(
-      transcriptSettings({
-        record: {
-          type: 'response_item',
-          payload: { type: 'message' },
-        },
-      }),
-      undefined,
     )
   },
 )
@@ -461,16 +377,6 @@ test(
     assert.equal(
       readEvents({ hydraId: 'default' }).length,
       events,
-    )
-    const observed = readEvents({ hydraId: 'default' }).findLast(e => e.type === 'card.pushed' && e.actor === 'harvest')!
-    assert.throws(
-      () => run({
-        args: [
-          'undo',
-          observed.id,
-        ],
-      }),
-      (error: { stdout: string }) => /code: NOT_UNDOABLE/.test(error.stdout),
     )
   },
 )

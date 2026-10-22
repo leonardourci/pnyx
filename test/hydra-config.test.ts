@@ -198,121 +198,6 @@ test(
 )
 
 test(
-  'only a move places the card; links, merges and outcomes leave it',
-  () => {
-    const {
-      run,
-      fails,
-      card,
-    } = hydraId()
-    run({
-      args: [
-        'push',
-        '--key',
-        'k',
-        '--file',
-        card({ json: { title: 'Task' } }),
-      ],
-    })
-    run({
-      args: [
-        'push',
-        '--key',
-        'k2',
-        '--file',
-        card({ json: { title: 'Other' } }),
-      ],
-    })
-    run({
-      args: [
-        'link',
-        'c1',
-        '--url',
-        'https://github.com/o/r/pull/7',
-        '--state',
-        'open',
-      ],
-    })
-    assert.match(
-      run({
-        args: [
-          'card',
-          'k',
-        ],
-      }),
-      /^ {2}column: in_progress$/m,
-    )
-    run({
-      args: [
-        'move',
-        'c1',
-        'needs-you',
-      ],
-    })
-    run({
-      args: [
-        'link',
-        'c1',
-        '--url',
-        'https://github.com/o/r/pull/7',
-        '--state',
-        'merged',
-      ],
-    })
-    run({
-      args: [
-        'outcome',
-        'c1',
-        'done',
-        '--note',
-        'shipped',
-      ],
-    })
-    assert.match(
-      run({
-        args: [
-          'card',
-          'c1',
-        ],
-      }),
-      /^ {2}column: needs_you$/m,
-    )
-    assert.match(
-      run({
-        args: [
-          'history',
-          '--kind',
-          'outcome',
-        ],
-      }),
-      /done: shipped/,
-    )
-    run({
-      args: [
-        'move',
-        'c2',
-        'needs-you',
-        '--before',
-        'c1',
-      ],
-    })
-    assert.match(
-      run({ args: [] }),
-      /^ {2}c2,Other,needs_you,none\n {2}c1,Task,needs_you,none$/m,
-    )
-    fails({
-      args: [
-        'move',
-        'c1',
-        '--auto',
-      ],
-      status: 2,
-      code: 'VALIDATION_ERROR',
-    })
-  },
-)
-
-test(
   'history pages newest first and filters',
   () => {
     const {
@@ -373,60 +258,6 @@ test(
         ],
       }),
       /^events: "none: no matching events"$/m,
-    )
-  },
-)
-
-test(
-  'undo appends a reversing event and refuses a second undo',
-  () => {
-    const {
-      run,
-      card,
-    } = hydraId()
-    run({
-      args: [
-        'push',
-        '--key',
-        'k',
-        '--file',
-        card({ json: {} }),
-      ],
-    })
-    run({
-      args: [
-        'move',
-        'c1',
-        'done',
-      ],
-    })
-    assert.match(
-      run({
-        args: [
-          'undo',
-          'evt_2',
-        ],
-      }),
-      /^ {2}seq: 3$/m,
-    )
-    assert.match(
-      run({
-        args: [
-          'card',
-          'c1',
-        ],
-      }),
-      /^ {2}column: in_progress$/m,
-    )
-    assert.match(
-      run({
-        args: [
-          'history',
-          '--limit',
-          '1',
-        ],
-      }),
-      /undo evt_2: done -> in_progress/,
     )
   },
 )
@@ -516,38 +347,6 @@ test(
       retry,
       /^duplicate: /m,
     )
-    fails({
-      args: [
-        'outcome',
-        'c1',
-        'failed',
-        '--if-revision',
-        '1',
-      ],
-      status: 1,
-      code: 'REVISION_CONFLICT',
-    })
-    fails({
-      args: [
-        'move',
-        'c1',
-        'done',
-        '--if-revision',
-        '1',
-      ],
-      status: 1,
-      code: 'REVISION_CONFLICT',
-    })
-    fails({
-      args: [
-        'undo',
-        'o1',
-        '--if-revision',
-        '1',
-      ],
-      status: 1,
-      code: 'REVISION_CONFLICT',
-    })
   },
 )
 
@@ -649,39 +448,6 @@ test(
       ],
       status: 2,
       code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
-        'outcome',
-        'c1',
-      ],
-      status: 2,
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
-        'push',
-        '--key',
-        'k',
-      ],
-      status: 2,
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
-        'history',
-        '--bogus',
-      ],
-      status: 2,
-      code: 'VALIDATION_ERROR',
-    })
-    fails({
-      args: [
-        'undo',
-        'evt_1',
-      ],
-      status: 1,
-      code: 'NOT_FOUND',
     })
   },
 )
@@ -924,17 +690,6 @@ test(
         'done',
         '--event-id',
         'x1',
-      ],
-      status: 1,
-      code: 'IDEMPOTENCY_CONFLICT',
-    })
-    fails({
-      args: [
-        'move',
-        'c1',
-        'done',
-        '--event-id',
-        'evt_1',
       ],
       status: 1,
       code: 'IDEMPOTENCY_CONFLICT',

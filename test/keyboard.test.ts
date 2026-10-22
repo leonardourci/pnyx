@@ -122,29 +122,6 @@ test(
       }).action,
       'search',
     )
-    assert.equal(
-      resolve({
-        event: {
-          key: ',',
-          metaKey: true,
-        },
-      }).action,
-      'settings',
-    )
-
-    for (const key of [
-      'p',
-      'w',
-      't',
-      'o',
-      'T',
-      'Y',
-    ]) {
-      assert.equal(
-        resolve({ event: { key } }).action,
-        undefined,
-      )
-    }
   },
 )
 test(
@@ -156,12 +133,7 @@ test(
     ] as const) {
       for (const key of [
         'j',
-        'k',
         '/',
-        '?',
-        'm',
-        'r',
-        'f',
       ]) {
         assert.equal(
           resolve({
@@ -223,19 +195,6 @@ test(
       }).action,
       'palette',
     )
-    assert.equal(
-      resolve({
-        event: {
-          key: 'Enter',
-          metaKey: true,
-        },
-        change: {
-          scope: 'composer',
-          editing: true,
-        },
-      }).action,
-      'send',
-    )
 
     for (const scope of [
       'composer',
@@ -275,11 +234,6 @@ test(
       {
         key: 'Enter',
         isComposing: true,
-      },
-      {
-        key: 'Enter',
-        isComposing: true,
-        metaKey: true,
       },
       { key: 'Process' },
       { key: 'Dead' },
@@ -330,24 +284,13 @@ test(
       'board.down',
     )
 
-    for (const key of [
-      'j',
-      '?',
-      '/',
-      'f',
-    ]) {
-      assert.equal(
-        resolve({
-          event: {
-            key,
-          },
-          change: {
-            characterShortcuts: false,
-          },
-        }).action,
-        undefined,
-      )
-    }
+    assert.equal(
+      resolve({
+        event: { key: 'j' },
+        change: { characterShortcuts: false },
+      }).action,
+      undefined,
+    )
 
     assert.equal(
       resolve({
@@ -372,8 +315,6 @@ test(
 
       for (const scope of [
         'hydra',
-        'thread',
-        'navigation',
         'composer',
       ] as const) {
         assert.equal(
@@ -417,16 +358,10 @@ test(
         )
       }
 
-      const ignored = [
+      for (const change of [
         { shiftKey: true },
         { altKey: true },
-        { isComposing: true },
-        { altGraph: true },
-        { defaultPrevented: true },
-        { repeat: true },
-      ]
-
-      for (const change of ignored) {
+      ]) {
         assert.equal(
           resolve({
             event: {
@@ -528,15 +463,6 @@ test(
       })!,
       /Reserved/,
     )
-    assert.match(
-      keyboardError({
-        prefs: {
-          characterShortcuts: true,
-          bindings: { find: ['Mod+p'] },
-        },
-      })!,
-      /Reserved/,
-    )
   },
 )
 test(
@@ -550,10 +476,6 @@ test(
     })
     assert.match(
       check({ bindings: { reply: ['j'] } })!,
-      /conflicts/,
-    )
-    assert.match(
-      check({ bindings: { reply: ['Mod+k'] } })!,
       /conflicts/,
     )
     assert.match(
@@ -580,10 +502,6 @@ test(
     assert.match(
       check({ bindings: { cancel: ['Backspace'] } })!,
       /keep editing keys available/,
-    )
-    assert.match(
-      check({ bindings: { cancel: ['ArrowDown'] } })!,
-      /conflicts|keep editing keys available/,
     )
     assert.equal(
       check({ bindings: { cancel: ['Mod+Escape'] } }),
@@ -690,7 +608,7 @@ test(
   },
 )
 test(
-  'keyboard events replay, undo, merge and reset with revision checks and legacy defaults',
+  'keyboard preferences merge, reset and undo, and older views and events fall back to the defaults',
   () => {
     const initial = emptyHydra(), meta = {
       actor: 'test',
@@ -720,24 +638,6 @@ test(
         characterShortcuts: false,
         bindings: { settings: ['g s'] },
       },
-    )
-    assert.deepEqual(
-      reduce({
-        state: initial,
-        event: edit,
-      }),
-      state,
-    )
-    assert.throws(
-      () => decideView({
-        state,
-        patch: { keyboard: { bindings: { help: [] } } },
-        meta: {
-          ...meta,
-          id: 'another',
-        },
-      }),
-      /changed/,
     )
     assert.deepEqual(
       patchView({

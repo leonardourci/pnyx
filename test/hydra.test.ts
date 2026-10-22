@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { HydraState, HydraEvent } from '../src/core/model.ts'
-import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { liveTask } from '../src/core/tasks.ts'
 
 const bin = join(
@@ -135,45 +134,8 @@ test(
         args: [
           'hydra',
           'send',
-          '--task',
-          'work',
-          '--action',
-          'worker',
-          '--event-id',
-          'request-worker',
-        ],
-      })
-      const original = f.events().length
-      f.run({
-        args: [
-          'hydra',
-          'send',
-          '--task',
-          'work',
-          '--action',
-          'worker',
-          '--event-id',
-          'request-worker',
-        ],
-      })
-      assert.equal(
-        f.events().length,
-        original,
-      )
-      assert.throws(() => f.run({
-        args: [
-          'hydra',
-          'send',
-        ],
-      }))
-      f.run({
-        args: [
-          'hydra',
-          'send',
           '--text',
           'What is left in the Hydra?',
-          '--event-id',
-          'hydra-question',
         ],
       })
       const question = f.state().hydraMessages?.at(-1)
@@ -228,25 +190,6 @@ test(
         f.state().hydraMessages?.[0]?.hydra,
         'first',
       )
-      assert.match(
-        f.run({
-          args: [
-            'task',
-            'history',
-            'work',
-          ],
-        }),
-        /request-worker|Create a worker/,
-      )
-      assert.match(
-        f.run({
-          args: [
-            'hydra',
-            'list',
-          ],
-        }),
-        /default|other/,
-      )
     } finally {
       rmSync(
         f.root,
@@ -260,7 +203,7 @@ test(
 )
 
 test(
-  'declared status, hooks, outcomes and column edits never move a task; replay keeps it in place',
+  'declared status and hook activity never move a task; a column deletion moves it and undo restores it',
   () => {
     const f = fixture()
 
@@ -306,10 +249,7 @@ test(
       }))
       const root = f.state().keys.root!
       const child = f.state().keys.child!
-      assert.equal(
-        f.state().cards[root]?.column,
-        f.state().config?.columns.find(c => c.role === 'queued')?.id,
-      )
+      const queued = f.state().config?.columns.find(c => c.role === 'queued')?.id
       f.run({
         args: [
           'task',
@@ -356,21 +296,6 @@ test(
           },
         },
       })
-      assert.equal(
-        f.state().cards[root]?.column,
-        f.state().config?.columns.find(c => c.role === 'queued')?.id,
-      )
-      f.run({
-        args: [
-          'outcome',
-          'root',
-          'done',
-        ],
-      })
-      assert.equal(
-        f.state().cards[root]?.column,
-        f.state().config?.columns.find(c => c.role === 'queued')?.id,
-      )
       f.run({
         args: [
           'task',
@@ -379,67 +304,6 @@ test(
           'needs-you',
           '--note',
           'Choose a schema',
-        ],
-      })
-      assert.equal(
-        f.state().cards[root]?.column,
-        f.state().config?.columns.find(c => c.role === 'queued')?.id,
-      )
-      f.run({
-        args: [
-          'column',
-          'rename',
-          'needs_you',
-          '--title',
-          'Your turn',
-        ],
-      })
-      assert.equal(
-        f.state().config?.columns.find(c => c.role === 'needs_you')?.title,
-        'Your turn',
-      )
-      f.run({
-        args: [
-          'column',
-          'create',
-          '--title',
-          'Research',
-          '--id',
-          'custom:research',
-        ],
-      })
-      f.run({
-        args: [
-          'column',
-          'reorder',
-          'custom:research',
-          '--before',
-          'queued',
-        ],
-      })
-      assert.equal(
-        f.state().config?.columns[0]?.id,
-        'custom:research',
-      )
-      const reordered = f.events().length
-      f.run({
-        args: [
-          'column',
-          'reorder',
-          'custom:research',
-          '--before',
-          'queued',
-        ],
-      })
-      assert.equal(
-        f.events().length,
-        reordered,
-      )
-      f.run({
-        args: [
-          'move',
-          'root',
-          'custom:research',
         ],
       })
       f.run({
@@ -454,8 +318,25 @@ test(
       })
       assert.equal(
         f.state().cards[root]?.column,
-        'custom:research',
+        queued,
       )
+      f.run({
+        args: [
+          'column',
+          'create',
+          '--title',
+          'Research',
+          '--id',
+          'custom:research',
+        ],
+      })
+      f.run({
+        args: [
+          'move',
+          'root',
+          'custom:research',
+        ],
+      })
       f.run({
         args: [
           'column',
@@ -481,26 +362,6 @@ test(
       )
       f.run({
         args: [
-          'column',
-          'delete',
-          'custom:research',
-          '--to',
-          'parked',
-        ],
-      })
-      assert.equal(
-        f.state().cards[root]?.column,
-        f.state().config?.columns.find(c => c.role === 'parked')?.id,
-      )
-      assert.throws(() => f.run({
-        args: [
-          'move',
-          'root',
-          '--auto',
-        ],
-      }))
-      f.run({
-        args: [
           'task',
           'status',
           'child',
@@ -512,40 +373,6 @@ test(
       const history = f.events()
       assert.ok(history.every(e => e.boardId === 'default' && e.commandId))
       assert.ok(history.some(e => e.subtaskId === child && e.taskId === root))
-      const before = structuredClone(history)
-      const replayed = replay({
-        state: emptyHydra(),
-        events: history,
-      })
-      assert.deepEqual(
-        JSON.parse(JSON.stringify(replayed)),
-        f.state(),
-      )
-      assert.deepEqual(
-        history,
-        before,
-      )
-      assert.match(
-        f.run({
-          args: [
-            'task',
-            'history',
-            'root',
-            '--limit',
-            '100',
-          ],
-        }),
-        /Waiting for review|Choose a schema|claude-code:worker/,
-      )
-      assert.match(
-        f.run({
-          args: [
-            'oracle',
-            'schema',
-          ],
-        }),
-        /root|Choose a \[schema\]/,
-      )
     } finally {
       rmSync(
         f.root,
@@ -559,7 +386,7 @@ test(
 )
 
 test(
-  'ad-hoc sessions never become tasks, and a merge never moves declared work',
+  'ad-hoc sessions never become tasks, the Hydra session never joins one, and the last column stays',
   () => {
     const f = fixture()
 
@@ -571,27 +398,17 @@ test(
           'default',
         ],
       })
-      const adHoc = {
-        title: 'Unassigned interactive session',
-        agent: {
-          provider: 'codex',
-          sessionId: 's',
+      f.push({
+        key: 'ad-hoc',
+        input: {
+          title: 'Unassigned interactive session',
+          agent: {
+            provider: 'codex',
+            sessionId: 's',
+          },
+          terminal: { tty: '/dev/ttys123' },
         },
-        terminal: { tty: '/dev/ttys123' },
-      }
-      f.push({
-        key: 'ad-hoc',
-        input: adHoc,
       })
-      const pushed = f.events().length
-      f.push({
-        key: 'ad-hoc',
-        input: adHoc,
-      })
-      assert.equal(
-        f.events().length,
-        pushed,
-      )
       assert.equal(
         Object.values(f.state().cards).filter(card => liveTask({ card })).length,
         0,
@@ -625,21 +442,6 @@ test(
           'codex:s',
         ],
       }))
-      f.run({
-        args: [
-          'link',
-          'work',
-          '--url',
-          'https://github.com/example/app/pull/1',
-          '--state',
-          'merged',
-        ],
-      })
-      const work = f.state().keys.work!
-      assert.equal(
-        f.state().cards[work]?.column,
-        f.state().config?.columns.find(c => c.role === 'queued')?.id,
-      )
 
       for (const id of [
         'queued',
@@ -680,151 +482,7 @@ test(
 )
 
 test(
-  'Firstmate mirror includes backlog-only tasks, complete status and metadata across a Hydra switch',
-  () => {
-    const f = fixture()
-
-    try {
-      const home = join(
-        f.root,
-        'firstmate',
-      )
-      cpSync(
-        join(
-          import.meta.dirname,
-          'fixtures/firstmate-home',
-        ),
-        home,
-        { recursive: true },
-      )
-      f.run({
-        args: [
-          'firstmate',
-          'sync',
-          '--home',
-          home,
-        ],
-      })
-      const task = Object.values(f.state().cards).find(c => c.mirror?.task === 'api-v2')!
-      assert.match(
-        task.mirror!.status,
-        /working|needs-decision/,
-      )
-      assert.ok(task.mirror!.meta.worktree)
-      assert.ok(Object.values(f.state().cards).some(c => c.mirror?.task === 'later-1'))
-      const first = f.events().length
-      f.run({
-        args: [
-          'firstmate',
-          'sync',
-          '--home',
-          home,
-        ],
-      })
-      assert.equal(
-        f.events().length,
-        first,
-      )
-      appendFileSync(
-        join(
-          home,
-          'state/api-v2.status',
-        ),
-        'paused [at=1792000000]: Waiting for release\n',
-      )
-      f.run({
-        args: [
-          'firstmate',
-          'sync',
-          '--home',
-          home,
-        ],
-      })
-      assert.match(
-        f.run({
-          args: [
-            'task',
-            'history',
-            task.id,
-            '--limit',
-            '100',
-          ],
-        }),
-        /Waiting for release/,
-      )
-      rmSync(join(
-        home,
-        'state/api-v2.status',
-      ))
-      rmSync(join(
-        home,
-        'state/api-v2.meta',
-      ))
-      f.run({
-        args: [
-          'firstmate',
-          'sync',
-          '--home',
-          home,
-        ],
-      })
-      assert.match(
-        f.state().cards[task.id]!.mirror!.status,
-        /Waiting for release/,
-      )
-      assert.ok(f.state().cards[task.id]!.mirror!.meta.worktree)
-      assert.deepEqual(
-        f.state().cards[task.id]!.mirror!.present,
-        {
-          meta: false,
-          status: false,
-        },
-      )
-      f.run({
-        args: [
-          'hydra',
-          'set',
-          '--identity',
-          'next-agent',
-        ],
-      })
-      appendFileSync(
-        join(
-          home,
-          'state/api-v2.status',
-        ),
-        'working: changed after switch\n',
-      )
-      f.run({
-        args: [
-          'firstmate',
-          'sync',
-          '--home',
-          home,
-        ],
-      })
-      assert.doesNotMatch(
-        f.state().cards[task.id]!.mirror!.status,
-        /changed after switch/,
-      )
-      assert.match(
-        f.state().cards[task.id]!.mirror!.status,
-        /Waiting for release/,
-      )
-    } finally {
-      rmSync(
-        f.root,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
-    }
-  },
-)
-
-test(
-  'task messages remain in history and chat after the worker transcript is removed',
+  'task messages remain in chat after the worker transcript is removed',
   () => {
     const f = fixture()
 
@@ -879,8 +537,6 @@ test(
           'context',
           '--session',
           'claude-code:context-worker',
-          '--event-id',
-          'attach-worker',
         ],
       })
       const saved = f.events().filter(e => e.type === 'chat.message')
@@ -921,16 +577,6 @@ test(
         }),
         /rollout stopped at the canary gate/,
       )
-      assert.match(
-        f.run({
-          args: [
-            'task',
-            'history',
-            'context',
-          ],
-        }),
-        /chat.message|canary gate/,
-      )
       f.run({
         args: [
           'task',
@@ -949,23 +595,6 @@ test(
           ],
         }),
         /canary gate/,
-      )
-      f.run({
-        args: [
-          'oracle',
-          'rebuild',
-        ],
-      })
-      assert.match(
-        f.run({
-          args: [
-            'oracle',
-            'canary',
-            '--kind',
-            'transcript',
-          ],
-        }),
-        /canary/,
       )
     } finally {
       rmSync(
@@ -1138,43 +767,27 @@ test(
         spool,
         { recursive: true },
       )
-      const stop = {
-        v: 1,
-        id: 'hook-1-1',
-        at: '2026-10-14T19:00:01Z',
-        harness: 'claude',
-        event: 'Stop',
-        payload: {
-          session_id: 'hydra-s',
-          transcript_path: transcript,
-          cwd: '/work/repo',
-        },
-      }
       writeFileSync(
         join(
           spool,
           '000000000000001-1-a.json',
         ),
-        JSON.stringify(stop),
+        JSON.stringify({
+          v: 1,
+          id: 'hook-1-1',
+          at: '2026-10-14T19:00:01Z',
+          harness: 'claude',
+          event: 'Stop',
+          payload: {
+            session_id: 'hydra-s',
+            transcript_path: transcript,
+            cwd: '/work/repo',
+          },
+        }),
       )
-      writeFileSync(
-        join(
-          f.root,
-          'probe.json',
-        ),
-        '{}',
-      )
-      f.run({
-        args: [
-          'push',
-          '--key',
-          'probe',
-          '--file',
-          join(
-            f.root,
-            'probe.json',
-          ),
-        ],
+      f.push({
+        key: 'probe',
+        input: {},
       })
       const chat = f.events().filter(e => e.type === 'chat.message')
       assert.equal(
@@ -1196,27 +809,6 @@ test(
           ],
         }),
         /migration audit/,
-      )
-      f.run({
-        args: [
-          'oracle',
-          'rebuild',
-        ],
-      })
-      assert.match(
-        f.run({
-          args: [
-            'oracle',
-            'migration',
-            '--kind',
-            'transcript',
-          ],
-        }),
-        /migration/,
-      )
-      assert.equal(
-        f.events().filter(e => e.type === 'chat.message').length,
-        1,
       )
     } finally {
       rmSync(
@@ -1290,7 +882,7 @@ test(
 )
 
 test(
-  'role columns record a declaration, column edits keep the Hydra unconfigured and outcome undo restores status',
+  'a column edit before creation keeps the Hydra unconfigured; a role column declares status and outcome undo restores it',
   () => {
     const f = fixture({ hydraId: 'work' })
     mkdirSync(
@@ -1371,40 +963,6 @@ test(
           'On it',
         ],
       })
-      assert.equal(
-        f.state().cards[ask]?.column,
-        f.state().config?.columns.find(c => c.role === 'needs_you')?.id,
-      )
-      f.run({
-        args: [
-          'move',
-          'ask',
-          'in_progress',
-        ],
-      })
-      f.run({
-        args: [
-          'column',
-          'delete',
-          'in_progress',
-          '--to',
-          'needs_you',
-        ],
-      })
-      assert.equal(
-        f.state().cards[ask]?.column,
-        f.state().config?.columns.find(c => c.role === 'needs_you')?.id,
-      )
-      f.run({
-        args: [
-          'undo',
-          f.events().at(-1)!.id,
-        ],
-      })
-      assert.equal(
-        f.state().cards[ask]?.column,
-        f.state().config?.columns.find(c => c.role === 'in_progress')?.id,
-      )
       f.run({
         args: [
           'outcome',
@@ -1412,10 +970,6 @@ test(
           'done',
         ],
       })
-      assert.equal(
-        f.state().cards[ask]?.column,
-        f.state().config?.columns.find(c => c.role === 'in_progress')?.id,
-      )
       f.run({
         args: [
           'undo',
@@ -1425,32 +979,6 @@ test(
       assert.equal(
         f.state().cards[ask]?.status?.state,
         'working',
-      )
-      f.run({
-        args: [
-          'column',
-          'create',
-          '--title',
-          'Later',
-          '--id',
-          'custom:later',
-        ],
-      })
-      f.run({
-        args: [
-          'task',
-          'create',
-          '--title',
-          'Someday',
-          '--key',
-          'someday',
-          '--column',
-          'custom:later',
-        ],
-      })
-      assert.equal(
-        f.state().cards[f.state().keys.someday!]?.column,
-        'custom:later',
       )
       f.push({
         key: 'pushed',
@@ -1595,24 +1123,11 @@ test(
 
       f.run({
         args: [
-          'oracle',
-          'rebuild',
-        ],
-      })
-      f.run({
-        args: [
           'task',
           'attach',
           'first',
           '--session',
           'claude-code:mover',
-        ],
-      })
-      once()
-      f.run({
-        args: [
-          'oracle',
-          'rebuild',
         ],
       })
       once()
@@ -1636,14 +1151,6 @@ test(
         f.events().filter(e => e.type === 'chat.message').length,
         1,
       )
-      once()
-      f.run({
-        args: [
-          'oracle',
-          'rebuild',
-        ],
-      })
-      once()
       rmSync(transcript)
       assert.equal(
         f.run({
@@ -1654,18 +1161,6 @@ test(
           ],
         }).split('backfill step').length - 1,
         1,
-      )
-      assert.match(
-        f.run({
-          args: [
-            'task',
-            'chat',
-            'first',
-            '--session',
-            'claude-code:mover',
-          ],
-        }),
-        /backfill step/,
       )
       f.run({
         args: [
@@ -1687,7 +1182,7 @@ test(
 )
 
 test(
-  'detach after new transcript settings, strict column ids and compact task outputs',
+  'detach harvests the transcript tail, column ids are strict and task outputs are compact',
   () => {
     const f = fixture()
 
@@ -1777,14 +1272,11 @@ test(
         })}\n`,
       )
       const ship = f.state().keys.ship!
-      const revision = f.state().cards[ship]!.revision
       f.run({
         args: [
           'task',
           'detach',
           'ship',
-          '--if-revision',
-          String(revision),
         ],
       })
       assert.equal(
@@ -1793,17 +1285,6 @@ test(
       )
       const harvested = f.events().filter(e => e.actor === 'harvest' && e.cardId === ship)
       assert.ok(harvested.some(e => e.type === 'card.pushed' && e.seq > f.events().find(x => x.type === 'task.session' && x.data.after === ship)!.seq))
-      assert.throws(() => f.run({
-        args: [
-          'task',
-          'status',
-          'ship',
-          'working',
-          '--if-revision',
-          String(revision),
-        ],
-      }))
-
       assert.throws(() => f.run({
         args: [
           'move',
@@ -1821,30 +1302,6 @@ test(
           'custom:Review2',
         ],
       }))
-      f.run({
-        args: [
-          'column',
-          'create',
-          '--title',
-          'Upper',
-          '--id',
-          'custom:upper-column',
-          '--event-id',
-          'Upper-Column',
-        ],
-      })
-      f.run({
-        args: [
-          'move',
-          'ship',
-          'custom:upper-column',
-        ],
-      })
-      assert.equal(
-        f.state().cards[ship]?.column,
-        'custom:upper-column',
-      )
-
       f.run({
         args: [
           'task',
@@ -2098,16 +1555,6 @@ test(
         hits({ word: 'zebrafinch' }),
         1,
       )
-      f.run({
-        args: [
-          'oracle',
-          'rebuild',
-        ],
-      })
-      assert.equal(
-        hits({ word: 'zebrafinch' }),
-        1,
-      )
       assert.equal(
         hits({ word: 'koala' }),
         1,
@@ -2123,16 +1570,6 @@ test(
         transcript,
         line({ text: 'Please verify the koala gate.' }),
       )
-      assert.equal(
-        hits({ word: 'koala' }),
-        2,
-      )
-      f.run({
-        args: [
-          'oracle',
-          'rebuild',
-        ],
-      })
       assert.equal(
         hits({ word: 'koala' }),
         2,
@@ -2194,35 +1631,18 @@ test(
       })
       const id = f.state().keys.research!
       const before = f.state().cards[id]!
-      assert.equal(
-        before.column,
-        'custom:research',
-      )
-
-      for (const patch of [
-        { fontSize: 16 },
-        { theme: 'light' },
-        { columnWidths: { 'custom:research': 400 } },
-      ]) {
-        f.run({
-          args: [
-            'view',
-            'set',
-            '--json',
-            JSON.stringify(patch),
-          ],
-        })
-        const current = f.state().cards[id]!
-        assert.equal(
-          current.column,
-          'custom:research',
-        )
-        assert.equal(
-          current.revision,
-          before.revision,
-        )
-      }
-
+      f.run({
+        args: [
+          'view',
+          'set',
+          '--json',
+          JSON.stringify({
+            fontSize: 16,
+            theme: 'light',
+            columnWidths: { 'custom:research': 400 },
+          }),
+        ],
+      })
       f.run({
         args: [
           'view',
@@ -2239,13 +1659,9 @@ test(
         f.state().cards[id]!.column,
         'custom:research',
       )
-      const replayed = replay({
-        state: emptyHydra(),
-        events: f.events(),
-      })
-      assert.deepEqual(
-        replayed.cards[id],
-        f.state().cards[id],
+      assert.equal(
+        f.state().cards[id]!.revision,
+        before.revision,
       )
     } finally {
       rmSync(

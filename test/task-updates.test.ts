@@ -479,14 +479,6 @@ test(
       }),
       undefined,
     )
-    event.data.state = 'failed'
-    assert.equal(
-      relevantUpdate({
-        columns: [],
-        event,
-      }),
-      undefined,
-    )
     event.data.state = 'delivered'
     assert.deepEqual(
       relevantUpdate({

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { claudeProvider, type QueryFn } from '../src/server/claude.ts'
 import { codexProvider } from '../src/server/codex.ts'
+import type { HostedSession } from '../src/server/provider.ts'
 import { fakeCodex } from './codex-fixture.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { commands } from '../src/cli/commands.ts'
@@ -13,11 +14,49 @@ import { hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 
+const scratch = mkdtempSync(join(
+  tmpdir(),
+  'pnyx-test-',
+))
+after(() => rmSync(
+  scratch,
+  {
+    recursive: true,
+    force: true,
+  },
+))
+
+async function turn({ session }: { session: HostedSession }) {
+  const states: string[] = []
+
+  for await (const event of session.run({
+    input: (async function* () {
+      yield 'Use the selected model'
+    })(),
+    permission: async () => ({
+      behavior: 'deny',
+      message: 'Test',
+    }),
+  })) {
+    if (typeof event === 'string') {
+      states.push(event)
+    }
+  }
+
+  assert.deepEqual(
+    states,
+    [
+      'working',
+      'finished',
+    ],
+  )
+}
+
 test(
   'Claude discovers and runs models through the installed CLI',
   async () => {
     const root = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-installed-claude-',
     ))
     const sdk = hydraSdk()
@@ -49,83 +88,49 @@ test(
       query,
       readSettings: async () => ({}),
     })
+    const env = {
+      CLAUDE_CONFIG_DIR: join(
+        root,
+        'claude',
+      ),
+    }
+    const models = await provider.models({
+      cwd: root,
+      env,
+    })
+    assert.equal(
+      catalogExecutable,
+      'claude',
+    )
+    const session = await provider.open({
+      cwd: root,
+      env,
+      settings: { model: models[0]!.value },
+      signal: new AbortController().signal,
+    })
 
     try {
-      const env = {
-        CLAUDE_CONFIG_DIR: join(
-          root,
-          'claude',
-        ),
-      }
-      const models = await provider.models({
-        cwd: root,
-        env,
-      })
-      assert.equal(
-        catalogExecutable,
-        'claude',
-      )
-      const session = await provider.open({
-        cwd: root,
-        env,
-        settings: { model: models[0]!.value },
-        signal: new AbortController().signal,
-      })
-
-      try {
-        async function* input() {
-          yield 'Use the selected model'
-        }
-
-        const states: string[] = []
-
-        for await (const event of session.run({
-          input: input(),
-          permission: async () => ({
-            behavior: 'deny',
-            message: 'Test',
-          }),
-        })) {
-          if (typeof event === 'string') {
-            states.push(event)
-          }
-        }
-
-        assert.deepEqual(
-          states,
-          [
-            'working',
-            'finished',
-          ],
-        )
-
-        assert.equal(
+      await turn({ session })
+      assert.deepEqual(
+        [
           sdk.calls[0]?.options.pathToClaudeCodeExecutable,
-          catalogExecutable,
-        )
-        assert.equal(
           sdk.calls[0]?.options.model,
+        ],
+        [
+          catalogExecutable,
           'haiku',
-        )
-      } finally {
-        session.close()
-      }
-    } finally {
-      rmSync(
-        root,
-        {
-          recursive: true,
-          force: true,
-        },
+        ],
       )
+    } finally {
+      session.close()
     }
   },
 )
 
 test(
-  'Claude lists SDK display names and closes its catalog without running a turn',
+  'Claude lists SDK display names with settings defaults and closes its catalog, even a failed one',
   async () => {
-    let closed = false
+    let closed = 0
     const query = (({ options }: Parameters<QueryFn>[0]) => {
       assert.equal(
         options?.persistSession,
@@ -146,29 +151,22 @@ test(
           },
         ],
         close: () => {
-          closed = true
+          closed++
         },
       }
     }) as unknown as QueryFn
-    const readSettings = async () => ({
-      effortLevel: 'medium' as const,
-      modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' as const } },
-      permissions: { defaultMode: 'acceptEdits' as const },
-    })
     const provider = claudeProvider({
       query,
-      readSettings,
+      readSettings: async () => ({
+        effortLevel: 'medium' as const,
+        modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' as const } },
+        permissions: { defaultMode: 'acceptEdits' as const },
+      }),
     })
     const listed = await provider.models({
       cwd: tmpdir(),
       env: {},
     })
-    const models = await provider.defaults({
-      cwd: tmpdir(),
-      env: {},
-      models: listed,
-    })
-
     assert.deepEqual(
       listed,
       [
@@ -185,7 +183,11 @@ test(
       ],
     )
     assert.deepEqual(
-      models,
+      await provider.defaults({
+        cwd: tmpdir(),
+        env: {},
+        models: listed,
+      }),
       [
         {
           value: 'opus',
@@ -214,27 +216,20 @@ test(
     )
     assert.equal(
       closed,
-      true,
+      1,
     )
-  },
-)
 
-test(
-  'Claude closes a failed catalog so reopening the picker can retry',
-  async () => {
-    let closed = false
-    const query = (() => ({
-      supportedModels: async () => {
-        throw new Error('Catalog unavailable')
-      },
-      close: () => {
-        closed = true
-      },
-    })) as unknown as QueryFn
-
+    // A failed catalog is closed too, so reopening the picker can retry.
     await assert.rejects(
       claudeProvider({
-        query,
+        query: (() => ({
+          supportedModels: async () => {
+            throw new Error('Catalog unavailable')
+          },
+          close: () => {
+            closed++
+          },
+        })) as unknown as QueryFn,
         readSettings: async () => ({}),
       }).models({
         cwd: tmpdir(),
@@ -244,7 +239,7 @@ test(
     )
     assert.equal(
       closed,
-      true,
+      2,
     )
   },
 )
@@ -253,106 +248,72 @@ test(
   'Codex lists every page and starts the selected wire model',
   async () => {
     const root = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-models-',
     ))
     const fixture = fakeCodex({ root })
     const provider = codexProvider({ spawnCodex: fixture.spawnCodex })
+    const listed = await provider.models({
+      cwd: root,
+      env: process.env,
+    })
+    const models = await provider.defaults({
+      cwd: root,
+      env: process.env,
+      models: listed,
+    })
+    assert.deepEqual(
+      models,
+      [
+        {
+          value: 'gpt-catalog-one',
+          label: 'Catalog One',
+          isDefault: true,
+          defaultEffort: 'low',
+          defaultMode: 'bypassPermissions',
+        },
+        {
+          value: 'gpt-catalog-two',
+          label: 'Catalog Two',
+          defaultEffort: 'medium',
+          defaultMode: 'bypassPermissions',
+        },
+      ],
+    )
+    assert.deepEqual(
+      fixture.messages().filter(m => m.method === 'model/list')
+        .map(m => m.params),
+      [
+        {},
+        { cursor: 'second-page' },
+      ],
+    )
+    assert.equal(
+      fixture.messages().some(m => m.method === 'thread/start'),
+      false,
+    )
+
+    const session = await provider.open({
+      cwd: root,
+      env: process.env,
+      signal: new AbortController().signal,
+      settings: { model: models[1]!.value },
+    })
 
     try {
-      const listed = await provider.models({
-        cwd: root,
-        env: process.env,
-      })
-      const models = await provider.defaults({
-        cwd: root,
-        env: process.env,
-        models: listed,
-      })
+      await turn({ session })
       assert.deepEqual(
-        models,
         [
-          {
-            value: 'gpt-catalog-one',
-            label: 'Catalog One',
-            isDefault: true,
-            defaultEffort: 'low',
-            defaultMode: 'bypassPermissions',
-          },
-          {
-            value: 'gpt-catalog-two',
-            label: 'Catalog Two',
-            defaultEffort: 'medium',
-            defaultMode: 'bypassPermissions',
-          },
+          'thread/start',
+          'turn/start',
+        ].map(method => fixture.messages().find(m => m.method === method)?.params?.model),
+        [
+          'gpt-catalog-two',
+          'gpt-catalog-two',
         ],
       )
-      assert.deepEqual(
-        fixture.messages().filter(m => m.method === 'model/list')
-          .map(m => m.params),
-        [
-          {},
-          { cursor: 'second-page' },
-        ],
-      )
-      assert.equal(
-        fixture.messages().some(m => m.method === 'thread/start'),
-        false,
-      )
-
-      const session = await provider.open({
-        cwd: root,
-        env: process.env,
-        signal: new AbortController().signal,
-        settings: { model: models[1]!.value },
-      })
-
-      try {
-        async function* input() {
-          yield 'Use the selected model'
-        }
-
-        const states: string[] = []
-
-        for await (const event of session.run({
-          input: input(),
-          permission: async () => ({
-            behavior: 'deny',
-            message: 'Test',
-          }),
-        })) {
-          if (typeof event === 'string') {
-            states.push(event)
-          }
-        }
-
-        assert.deepEqual(
-          states,
-          [
-            'working',
-            'finished',
-          ],
-        )
-
-        assert.equal(
-          fixture.messages().find(m => m.method === 'thread/start')?.params?.model,
-          'gpt-catalog-two',
-        )
-        assert.equal(
-          fixture.messages().find(m => m.method === 'turn/start')?.params?.model,
-          'gpt-catalog-two',
-        )
-      } finally {
-        session.close()
-      }
     } finally {
-      rmSync(
-        root,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
+      session.close()
     }
   },
 )
@@ -361,10 +322,9 @@ test(
   'Hydra dispatch accepts a catalog model beyond its legacy shortlist from saved configuration',
   async () => {
     const root = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-catalog-dispatch-',
     ))
-    const previousPath = process.env.PATH
     process.env.PNYX_HOME = root
     commands.hydra([
       'create',
@@ -414,11 +374,7 @@ test(
         id: 'catalog-model',
       })
 
-      for (let attempt = 0; attempt < 200; attempt++) {
-        if (loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished') {
-          break
-        }
-
+      for (let attempt = 0; attempt < 200 && loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.sessionActivity !== 'finished'; attempt++) {
         await new Promise(resolve => setTimeout(
           resolve,
           10,
@@ -435,14 +391,6 @@ test(
       )
     } finally {
       host.close()
-      process.env.PATH = previousPath
-      rmSync(
-        root,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
     }
   },
 )
@@ -451,13 +399,9 @@ test(
   'The model list is stored for every Hydra, answers before the harness and is rewritten only when it changes',
   async () => {
     const root = mkdtempSync(join(
-      tmpdir(),
+      scratch,
       'pnyx-stored-models-',
     ))
-    const previous = {
-      PATH: process.env.PATH,
-      CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
-    }
     process.env.PNYX_HOME = root
     commands.hydra([
       'create',
@@ -472,15 +416,15 @@ test(
       ),
       JSON.stringify({ permissions: { defaultMode: 'acceptEdits' } }),
     )
-    const file = join(
-      root,
-      'harness-models.json',
-    )
     const entry = () => (JSON.parse(readFileSync(
-      file,
+      join(
+        root,
+        'harness-models.json',
+      ),
       'utf8',
     )) as Record<string, Record<string, string>[]>)[`claude:${claude}`]
     const stored = () => entry()?.map(m => m.label)
+    const labels = async ({ host }: { host: ReturnType<typeof createHost> }) => (await host.models({ harness: 'claude' })).map(m => m.label)
     let reads = 0
 
     let answer = async (): Promise<{
@@ -517,9 +461,8 @@ test(
           displayName: 'Opus 5.5',
         },
       ]
-      const models = await cold.models({ harness: 'claude' })
       assert.deepEqual(
-        models.map(m => [
+        (await cold.models({ harness: 'claude' })).map(m => [
           m.label,
           m.defaultMode,
         ]),
@@ -543,6 +486,7 @@ test(
       cold.close()
     }
 
+    // A new host answers from the stored list at once and refreshes it in the background.
     let release = () => {}
     answer = () => new Promise(resolve => {
       release = () => resolve([
@@ -556,7 +500,7 @@ test(
 
     try {
       assert.deepEqual(
-        (await warm.models({ harness: 'claude' })).map(m => m.label),
+        await labels({ host: warm }),
         ['Opus 5.5'],
       )
       assert.equal(
@@ -577,7 +521,7 @@ test(
         ['Opus 6'],
       )
       assert.deepEqual(
-        (await warm.models({ harness: 'claude' })).map(m => m.label),
+        await labels({ host: warm }),
         ['Opus 6'],
       )
       assert.equal(
@@ -588,6 +532,7 @@ test(
       warm.close()
     }
 
+    // An unavailable harness keeps the stored list.
     answer = async () => {
       throw new Error('Catalog unavailable')
     }
@@ -596,7 +541,7 @@ test(
 
     try {
       assert.deepEqual(
-        (await offline.models({ harness: 'claude' })).map(m => m.label),
+        await labels({ host: offline }),
         ['Opus 6'],
       )
       await new Promise(resolve => setTimeout(
@@ -608,7 +553,7 @@ test(
         4,
       )
       assert.deepEqual(
-        (await offline.models({ harness: 'claude' })).map(m => m.label),
+        await labels({ host: offline }),
         ['Opus 6'],
       )
       assert.deepEqual(
@@ -617,15 +562,6 @@ test(
       )
     } finally {
       offline.close()
-      process.env.PATH = previous.PATH
-      process.env.CLAUDE_CONFIG_DIR = previous.CLAUDE_CONFIG_DIR
-      rmSync(
-        root,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
     }
   },
 )
