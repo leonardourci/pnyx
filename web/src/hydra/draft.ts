@@ -1,5 +1,8 @@
+import { IMAGE_LINE } from '../../../src/attachments/images.ts'
+import { decodeValue, REFERENCE, type ReferenceKind } from '../../../src/mentions/mentions.ts'
+
 // The draft stays the Markdown Hydra receives; the textarea shows each chip as its label.
-export type ChipKind = 'task' | 'project' | 'column' | 'image' | 'file'
+export type ChipKind = ReferenceKind
 
 // An em space holds an icon's room in the textarea (a task chip has two); the chip draws icons over them.
 export const ICON_SPACE = '\u2003'
@@ -25,17 +28,7 @@ export interface DraftView {
   chips: PlacedChip[]
 }
 
-const REFERENCE = /\[@((?:\\.|[^\]\\\r\n])*)\]\(pnyx-(task|project|column|image|file):([\w%~.-]+)\)/g
-const IMAGE = /^\[image: (\/[^\]\n]+)\]$/gm
 const FILE = /^File: ([^\n]+)\n\n(`{3,})\n[\s\S]*?\n\2$/gm
-
-const decode = ({ value }: { value: string }) => {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
-}
 
 // A fence longer than any backtick run inside keeps the file one block.
 export function fileBlock({
@@ -74,7 +67,7 @@ export function draftChips({ text }: { text: string }): DraftChip[] {
 
   const inside = ({ at }: { at: number }) => chips.some(chip => chip.start <= at && at < chip.end)
 
-  for (const match of text.matchAll(IMAGE)) {
+  for (const match of text.matchAll(IMAGE_LINE)) {
     if (!inside({ at: match.index })) {
       chips.push({
         kind: 'image',
@@ -87,12 +80,15 @@ export function draftChips({ text }: { text: string }): DraftChip[] {
     }
   }
 
-  for (const match of text.matchAll(REFERENCE)) {
+  for (const match of text.matchAll(new RegExp(
+    REFERENCE.source,
+    'g',
+  ))) {
     if (!inside({ at: match.index })) {
       chips.push({
         kind: match[2] as ChipKind,
         attached: false,
-        value: decode({ value: match[3]! }),
+        value: decodeValue({ value: match[3]! }) ?? match[3]!,
         label: `${{
           column: ICON_SPACE,
           task: ICON_SPACE + ICON_SPACE,
