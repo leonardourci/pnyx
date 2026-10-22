@@ -24,11 +24,14 @@ pnyx-axi task status <task> done --note "<the result, with links>" --hydra <hydr
 ```
 
 - Declare `working` when you start.
-- Declare `needs_you` when you need a decision or an answer, and put the question in the note; it also goes in your conversation, where the user can answer inline.
+- Ask a question or for a decision with `pnyx-axi task ask <task> --question "<one short question>" [--context "<a few lines>"] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details-file <path>] --hydra <hydra>`. It goes to Hydra, which answers it or hands it to the owner, and the answer arrives as a message that names the question. Keep working on what does not depend on it and wait for the answer before what does. Choices are optional; evidence goes in `--details` or `--details-file`, not in the question. A worker started without `PNYX_ACTOR` set passes `--actor worker:<task>`.
+- Keep each `--note` to one line; a question belongs in `task ask`, not in a status note.
 - Declare `blocked` for a real obstacle, `paused` for a deliberate wait, `done` only when the work is finished.
+- For code work, finished means landed and verified. Passing tests locally or opening a pull request is not done: stay `working` through review fixes, and declare `needs_you` when the pull request waits on the owner's review or merge. Work with nothing to land, such as an investigation, is done once its checked report is in.
+- Your declarations place your card: `working` moves it to In progress, `needs_you` or `blocked` to Needs you, and `done` to Done; `paused` leaves it where it is.
 - Silence changes nothing: idling, finishing a turn or exiting never moves the task. Declare a phase change once, not every step.
 
-To escalate a question or decision to Hydra, use `pnyx-axi hydra send --task <task> --text "<what you need and why>" --hydra <hydra>`. Hydra receives it through the light check and decides whether to answer, update the brief or ask the owner.
+Send a report that needs no answer with `pnyx-axi hydra send --task <task> --text "<what changed>" --hydra <hydra>`; Hydra reads it as yours, never as the owner's words, and it never answers a question.
 
 Replies reach you as ordinary messages in your session. Link pull requests or tickets with `pnyx-axi link <task> --url <url> --hydra <hydra>`.
 

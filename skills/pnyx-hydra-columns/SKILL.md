@@ -9,7 +9,7 @@ Each column's description says when and why work goes there; the digest prints t
 
 ## Move a card
 
-The owner arranges cards. Move one only when its own agent does something that calls for it, using the column descriptions; a declared status alone never calls for a move. For an agent's question, answer it through the card when you can, otherwise move it to the column for owner decisions. On a Firstmate-linked Hydra, Pnyx moves cards between the five default columns (Queued, In progress, Needs you, Parked, Done) from Firstmate's records, so leave those moves to it.
+Pnyx moves a task's card when its lifecycle changes explicitly: a `working` declaration to In progress, an open permission request or question, or a `needs_you` or `blocked` declaration, to Needs you, and a `done` declaration or outcome to Done. Once the ask is answered the card returns to In progress. A finished turn, silence or an exit moves nothing, `paused` leaves the card where it is, and a card in a column without a role (one the owner made) stays put. Each such move appears in the task's history with its reason, so do not repeat it. Move a card yourself only when its own agent does something else that calls for it, using the column descriptions; the owner's manual placement holds until the next lifecycle change. For an agent's question, answer it through the card when you can. On a Firstmate-linked Hydra, Pnyx moves cards between the five default columns (Queued, In progress, Needs you, Parked, Done) from Firstmate's records, so leave those moves to it.
 
 ```sh
 pnyx-axi move <task> <column> --reason "<why>" --hydra <hydra>
