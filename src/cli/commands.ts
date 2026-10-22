@@ -1,4 +1,6 @@
 import { mergeCommand } from '../landing/merge.ts'
+import { buildCommand, reportCommand } from '../investigation/cli.ts'
+import { parseKind } from '../investigation/report.ts'
 import { refuseEarlyDone } from '../landing/done.ts'
 import { setupCheckOutput } from '../setup/check.ts'
 import { projectWorkerContext } from '../projects/context.ts'
@@ -856,6 +858,8 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       to: { type: 'string' },
       undelivered: { type: 'boolean' },
       'from-message': { type: 'string' },
+      kind: { type: 'string' },
+      file: { type: 'string' },
       url: { type: 'string' },
     },
     positionals: 4,
@@ -863,6 +867,23 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   const action = positionals[0]
   const m = meta({ values })
   const url = values['paseo-url'] as string | undefined
+
+  if (action === 'report') {
+    return reportCommand({
+      hydraId,
+      ref: positionals[1],
+      file: values.file as string | undefined,
+      meta: m,
+    })
+  }
+
+  if (action === 'build') {
+    return buildCommand({
+      hydraId,
+      ref: positionals[1],
+      meta: m,
+    })
+  }
 
   if (action === 'merge') {
     return mergeCommand({
@@ -1081,6 +1102,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
     const folder = canonical({ path: values.folder })
     const brief = taskBrief({ value: values.brief })
+    const kind = values.kind === undefined ? 'build' : parseKind({ value: String(values.kind) })
 
     return commit({
       hydraId,
@@ -1130,6 +1152,20 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         }
 
         const cardId = `task-${randomUUID()}`
+        const created: TaskCreated['data'] = {
+          key,
+          title,
+          ...(project ? { project } : {}),
+          ...(brief !== undefined ? { brief } : {}),
+          ...(folder ? { folder } : {}),
+          ...(parent ? { parentId: parent.id } : {}),
+          ...(selected ? { column: selected.id } : {}),
+        }
+
+        // A build task, the default, records no kind.
+        if (kind === 'investigation') {
+          created.kind = kind
+        }
 
         return hydraEvent({
           state,
@@ -1137,15 +1173,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           cardId,
           change: {
             type: 'task.created',
-            data: {
-              key,
-              title,
-              ...(project ? { project } : {}),
-              ...(brief !== undefined ? { brief } : {}),
-              ...(folder ? { folder } : {}),
-              ...(parent ? { parentId: parent.id } : {}),
-              ...(selected ? { column: selected.id } : {}),
-            },
+            data: created,
           },
         })
       },
@@ -1674,6 +1702,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
 }
 
 type Attachment = Extract<HydraEvent, { type: 'task.session' }>
+type TaskCreated = Extract<HydraEvent, { type: 'task.created' }>
 
 // Attachment is durable even when delivery fails.
 async function afterAttach({
@@ -4000,7 +4029,7 @@ repeat the same command with --confirm <token>. Browser actions already carry th
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
-pnyx-axi task create --title <title> [--project <name>] [--brief <text>] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task create --title <title> [--project <name>] [--brief <text>] [--kind build|investigation] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
 pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list | show <id> [--full]
@@ -4009,6 +4038,10 @@ pnyx-axi task rename <id> [--title <title>] [--project <name>]
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
 or, for an investigation, before its report is stored. The owner can still move the card to Done.
+pnyx-axi task report <id> [--file <path>]
+Stores an investigation's report with the task (every version stays in the log), or prints the latest one.
+pnyx-axi task build <id>
+Turns an investigation with a stored report into its build; its worker keeps the context and starts a fresh branch. Owner, or Hydra on the owner's word.
 pnyx-axi task merge <id> [--url <pull request>]
 Merges the task's linked pull request with a merge commit and records it. Hydra may merge only where the project's rule is --merge hydra,
 and never while a check is red or still running.
