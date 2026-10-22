@@ -1,4 +1,4 @@
-import { failedChecks, HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus } from './model.ts'
+import { failedChecks, HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus, type TaskDeclaration } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { permissionAttention } from './permissions.ts'
 import { assignDefined } from './tasks.ts'
@@ -335,6 +335,15 @@ export function validateColumns({ columns }: { columns: HydraColumn[] }): void {
   }
 }
 
+// A declared state as shown to people and Hydra: a paused wait names its end.
+export function declaredState({ declaration }: { declaration: Pick<TaskDeclaration, 'state' | 'until'> }): string {
+  if (declaration.until) {
+    return `${declaration.state} until ${declaration.until}`
+  }
+
+  return declaration.state
+}
+
 export function declareTask({
   state,
   ref,
@@ -343,6 +352,7 @@ export function declareTask({
   meta,
   source,
   raw,
+  until,
 }: {
   state: HydraState
   ref: string
@@ -351,6 +361,7 @@ export function declareTask({
   meta: Meta
   source?: string
   raw?: string
+  until?: string
 }): Decision {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
@@ -370,18 +381,37 @@ export function declareTask({
     })
   }
 
+  if (until !== undefined && normalized !== 'paused') {
+    throw new HydraError({
+      message: '--until goes only with paused',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  const data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> = {
+    state: normalized as TaskStatus,
+    note,
+  }
+
+  if (source) {
+    data.source = source
+  }
+
+  if (raw) {
+    data.raw = raw
+  }
+
+  if (until) {
+    data.until = until
+  }
+
   return hydraEvent({
     state,
     meta,
     cardId: card.id,
     change: {
       type: 'task.declared',
-      data: {
-        state: normalized as TaskStatus,
-        note,
-        ...(source ? { source } : {}),
-        ...(raw ? { raw } : {}),
-      },
+      data,
     },
   })
 }

@@ -32,7 +32,7 @@ import { POOL_IDLE } from '../copies/copies.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { hydraConfig, declareTask, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, validateColumns } from '../core/hydra.ts'
+import { hydraConfig, declareTask, declaredState, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, validateColumns } from '../core/hydra.ts'
 import type { HydraConfig, HydraIdentity } from '../core/model.ts'
 import { readThread } from '../thread/read.ts'
 import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
@@ -809,6 +809,24 @@ function startOverride({ values }: { values: Record<string, unknown> }): Overrid
   })
 }
 
+// A paused worker's --until takes the same times as a reminder.
+function waitEnd({
+  until,
+  now,
+}: {
+  until?: string
+  now: string
+}): string | undefined {
+  if (until === undefined) {
+    return undefined
+  }
+
+  return reminderTime({
+    when: until,
+    now,
+  })
+}
+
 function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   const {
     values,
@@ -865,6 +883,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       landing: { type: 'string' },
       merge: { type: 'string' },
       clear: { type: 'boolean' },
+      until: { type: 'string' },
     },
     positionals: 4,
   })
@@ -1307,7 +1326,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         ...(task.copy ? { copy: `${task.copy.path} (${task.copy.state}${task.copy.reason ? `: ${task.copy.reason}` : ''})` } : {}),
         brief: task.brief ?? 'none',
         parent: task.parentId ?? 'none',
-        status: task.status ? `${task.status.state}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
+        status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
         worker: task.sessionIds?.[0] ?? 'none',
         ...(task.queue ? {
           queue: queuePosition({
@@ -1455,6 +1474,10 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         }),
         note: String(values.note ?? ''),
         meta: m,
+        until: waitEnd({
+          until: values.until as string | undefined,
+          now: m.at,
+        }),
       }),
     })
   }
@@ -3474,7 +3497,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.retention': return event.data.after === null ? 'Using the Hydra hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
     case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
     case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Hydra memory: ${event.data.key}`
-    case 'task.declared': return `${event.data.state}: ${event.data.note}`
+    case 'task.declared': return `${declaredState({ declaration: event.data })}: ${event.data.note}`
     case 'task.asked': return `Asked ${event.data.audience === 'owner' ? 'the owner' : 'Hydra'} (${event.data.id}): ${event.data.question}`
     case 'task.ask.escalated': return `Escalated ${event.data.ask} to the owner${event.data.question ? `: ${event.data.question}` : ''}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
@@ -4050,7 +4073,8 @@ pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list | show <id> [--full]
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
-pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
+pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time>]
+A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
 or, for an investigation, before its report is stored. The owner can still move the card to Done.
 pnyx-axi task report <id> [--file <path>]

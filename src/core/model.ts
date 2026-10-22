@@ -401,6 +401,8 @@ export interface TaskDeclaration {
   actor: string
   state: TaskStatus
   note: string
+  // A paused worker's declared end of its wait, as an ISO time.
+  until?: string
   source?: string
   raw?: string
 }

@@ -1,5 +1,5 @@
 import { queuePosition, workerQueue } from '../queue/state.ts'
-import { HYDRA_CARD, hydraConfig, unwatchedPullRequests } from './hydra.ts'
+import { HYDRA_CARD, declaredState, hydraConfig, unwatchedPullRequests } from './hydra.ts'
 import { liveTask, rankOf } from './tasks.ts'
 import { askWording, openAsks } from './asks.ts'
 import { HydraError, type Card, type HydraState } from './model.ts'
@@ -104,7 +104,7 @@ function taskLine({
   card: Card
   column: string
 }): string {
-  const status = card.status ? `${card.status.state}${card.status.note ? `: ${clip({
+  const status = card.status ? `${declaredState({ declaration: card.status })}${card.status.note ? `: ${clip({
     text: card.status.note,
     size: 100,
   })}` : ''}` : 'no declaration'
