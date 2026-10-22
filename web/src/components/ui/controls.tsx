@@ -1,5 +1,5 @@
 import { Icon } from './icon.tsx'
-import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 
 export function Button({
   className = '',
@@ -73,6 +73,8 @@ export interface Option {
   value: string
   label: string
   icon?: string
+  // Consecutive options of one group sit under its heading.
+  group?: string
 }
 
 const HOLD_MS = 500
@@ -232,55 +234,58 @@ export function Select({
             o,
             n,
           ) => (
-            <div
-              key={o.value}
-              id={`${id}-${n}`}
-              role="option"
-              tabIndex={-1}
-              aria-selected={o.value === value}
-              className={active === n ? 'active' : ''}
-              onPointerMove={() => setActive(n)}
-              onPointerDown={() => {
-                hold.current.done = false
-                release()
-
-                if (onDefault) {
-                  hold.current.timer = setTimeout(
-                    () => {
-                      hold.current.done = true; makeDefault({ position: n })
-                    },
-                    HOLD_MS,
-                  )
-                }
-              }}
-              onPointerUp={release}
-              onPointerLeave={release}
-              onClick={event => {
-                if (hold.current.done) {
+            <Fragment key={o.value}>
+              {o.group && o.group !== options[n - 1]?.group && <div className="select-group" role="presentation">{o.group}</div>}
+              <div
+                id={`${id}-${n}`}
+                role="option"
+                data-group={o.group}
+                tabIndex={-1}
+                aria-selected={o.value === value}
+                className={active === n ? 'active' : ''}
+                onPointerMove={() => setActive(n)}
+                onPointerDown={() => {
                   hold.current.done = false
-                } else if (onDefault && (event.metaKey || event.ctrlKey)) {
-                  makeDefault({ position: n })
-                } else {
-                  choose({ position: n })
-                }
-              }}
-            >
-              <span className="select-option">
-                {o.icon && <Icon name={o.icon} size={14} />}
-                {o.label}
-                {onDefault && o.value === defaultValue && (
-                  <span
-                    className="select-default"
-                    role="img"
-                    aria-label="Default"
-                    title="The default"
-                  >
-                    <Icon name="pinned" size={12} />
-                  </span>
-                )}
-              </span>
-              <span aria-hidden="true">{o.value === value && <Icon name="check" size={14} />}</span>
-            </div>
+                  release()
+
+                  if (onDefault) {
+                    hold.current.timer = setTimeout(
+                      () => {
+                        hold.current.done = true; makeDefault({ position: n })
+                      },
+                      HOLD_MS,
+                    )
+                  }
+                }}
+                onPointerUp={release}
+                onPointerLeave={release}
+                onClick={event => {
+                  if (hold.current.done) {
+                    hold.current.done = false
+                  } else if (onDefault && (event.metaKey || event.ctrlKey)) {
+                    makeDefault({ position: n })
+                  } else {
+                    choose({ position: n })
+                  }
+                }}
+              >
+                <span className="select-option">
+                  {o.icon && <Icon name={o.icon} size={14} />}
+                  {o.label}
+                  {onDefault && o.value === defaultValue && (
+                    <span
+                      className="select-default"
+                      role="img"
+                      aria-label="Default"
+                      title="The default"
+                    >
+                      <Icon name="pinned" size={12} />
+                    </span>
+                  )}
+                </span>
+                <span aria-hidden="true">{o.value === value && <Icon name="check" size={14} />}</span>
+              </div>
+            </Fragment>
           ))}
           {onDefault && <p className="select-hint">{MOD}-click or hold to make it the default</p>}
         </div>
