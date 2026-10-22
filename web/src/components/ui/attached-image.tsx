@@ -6,7 +6,7 @@ import { Dialog } from './dialog.tsx'
 import { Icon } from './icon.tsx'
 
 // Only images this Hydra stored are served here.
-export function attachmentSource({ path }: { path: string }) {
+function attachmentSource({ path }: { path: string }) {
   const name = path.split('/').at(-1) ?? ''
   const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
 
