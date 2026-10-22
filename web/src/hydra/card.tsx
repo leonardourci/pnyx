@@ -63,7 +63,13 @@ export function HydraCard({
   selected: boolean
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
-  open({ id }: { id: string }): Promise<boolean>
+  open({
+    id,
+    fromTitle,
+  }: {
+    id: string
+    fromTitle?: boolean
+  }): Promise<boolean>
   tabIndex: number
   command: Command
   connected: boolean
@@ -290,7 +296,10 @@ export function HydraCard({
             editingLabel="Task title"
             aria-expanded={selected}
             disabled={!connected}
-            activate={() => open({ id: card.id })}
+            activate={({ pointer }) => open({
+              id: card.id,
+              fromTitle: pointer,
+            })}
             notify={notify}
             save={({ title }) => command({
               name: 'task',

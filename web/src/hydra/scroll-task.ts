@@ -1,3 +1,38 @@
+export function afterDelay({
+  ms,
+  signal,
+}: {
+  ms: number
+  signal: AbortSignal
+}): Promise<boolean> {
+  if (signal.aborted) {
+    return Promise.resolve(false)
+  }
+
+  return new Promise(resolve => {
+    const abort = () => {
+      clearTimeout(timer)
+      resolve(false)
+    }
+
+    const timer = setTimeout(
+      () => {
+        signal.removeEventListener(
+          'abort',
+          abort,
+        )
+        resolve(!signal.aborted)
+      },
+      ms,
+    )
+    signal.addEventListener(
+      'abort',
+      abort,
+      { once: true },
+    )
+  })
+}
+
 export function afterTaskLayout({ signal }: { signal: AbortSignal }): Promise<boolean> {
   if (signal.aborted) {
     return Promise.resolve(false)
@@ -25,6 +60,33 @@ export function afterTaskLayout({ signal }: { signal: AbortSignal }): Promise<bo
       frame = requestAnimationFrame(() => finish({ ready: !signal.aborted }))
     })
   })
+}
+
+// A closing card shrinks over several frames, so a scroll measured sooner lands short.
+export async function afterSteadyLayout({
+  element,
+  signal,
+}: {
+  element: HTMLElement
+  signal: AbortSignal
+}): Promise<boolean> {
+  let top = element.getBoundingClientRect().top
+
+  for (let checks = 0; checks < 15; checks++) {
+    if (!await afterTaskLayout({ signal })) {
+      return false
+    }
+
+    const next = element.getBoundingClientRect().top
+
+    if (next === top) {
+      return true
+    }
+
+    top = next
+  }
+
+  return !signal.aborted
 }
 
 function scrollAxis({
@@ -164,4 +226,62 @@ export async function scrollTask({
   ])
 
   return results.every(Boolean) && element.isConnected && !signal.aborted
+}
+
+// Focus, alignment and closing the replaced card wait for hold, so a rename keeps its target.
+export async function openTaskCard({
+  find,
+  expand,
+  settle,
+  hold,
+  release,
+  opened,
+  align,
+  signal,
+}: {
+  find(): HTMLElement | null
+  expand(): void
+  settle(): Promise<boolean>
+  hold({ element }: { element: HTMLElement }): Promise<boolean>
+  release(): void
+  opened({ element }: { element: HTMLElement }): void
+  align({ element }: { element: HTMLElement }): Promise<boolean>
+  signal: AbortSignal
+}): Promise<HTMLElement | null> {
+  if (!find() && !await settle()) {
+    return null
+  }
+
+  if (!find() || signal.aborted) {
+    return null
+  }
+
+  expand()
+
+  try {
+    const held = await settle() && find()
+
+    if (!held) {
+      return null
+    }
+
+    const kept = await hold({ element: held })
+    release()
+
+    if (!kept || !await settle()) {
+      return null
+    }
+
+    const element = find()
+
+    if (!element) {
+      return null
+    }
+
+    opened({ element })
+
+    return await align({ element }) && element.isConnected && !signal.aborted ? element : null
+  } finally {
+    release()
+  }
 }
