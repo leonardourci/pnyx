@@ -6,12 +6,26 @@ import type { HostedText } from './provider.ts'
 export function liveReplies() {
   const messages = new Map<string, ThreadEntry>()
   let offset = 0, working = false
+  let currentTurn: ThreadPage['currentTurn']
 
   return {
-    start({ offset: start }: { offset: number }) {
+    start({
+      offset: start,
+      ownerStarted,
+    }: {
+      offset: number
+      ownerStarted?: boolean
+    }) {
       messages.clear()
       offset = start
       working = true
+
+      if (ownerStarted !== undefined) {
+        currentTurn = {
+          at: new Date().toISOString(),
+          owner: ownerStarted,
+        }
+      }
     },
     update({
       id,
@@ -71,13 +85,19 @@ export function liveReplies() {
         }
       }
 
-      return {
+      const result: ThreadPage = {
         ...page,
         entries: [
           ...page.entries,
           ...entries,
         ].slice(-60),
       }
+
+      if (currentTurn) {
+        result.currentTurn = currentTurn
+      }
+
+      return result
     },
   }
 }
