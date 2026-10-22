@@ -1842,7 +1842,6 @@ async function mountOwnedHydra({
 
           if (action === 'create') {
             void open({
-              // An unnamed Hydra takes its name from the owner's first message.
               id: createHydra({
                 name: first?.trim().slice(
                   0,
