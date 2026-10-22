@@ -23,7 +23,7 @@ import { commandQuery } from './oracle-catalog.ts'
 import { useFoundCards } from './card-oracle.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { useHydraKeyboard } from '../keyboard/hydra.tsx'
-import { afterDelay, afterTaskLayout, openTaskCard, scrollTask } from './scroll-task.ts'
+import { afterDelay, afterSteadyLayout, afterTaskLayout, openTaskCard, scrollTask } from './scroll-task.ts'
 import { DOUBLE_CLICK_MS } from '../components/ui/editable-title.tsx'
 
 // Keep each tab's view across reloads and newly served builds.
@@ -780,7 +780,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       }
     },
     opened: ({ element }) => element.querySelector<HTMLElement>('.task-updates')?.focus({ preventScroll: true }),
-    align: ({ element }) => scrollTask({
+    align: async ({ element }) => await afterSteadyLayout({
+      element,
+      signal,
+    }) && scrollTask({
       element,
       signal,
     }),

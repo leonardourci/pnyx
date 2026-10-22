@@ -62,6 +62,33 @@ export function afterTaskLayout({ signal }: { signal: AbortSignal }): Promise<bo
   })
 }
 
+// A closing card shrinks over several frames, so a scroll measured sooner lands short.
+export async function afterSteadyLayout({
+  element,
+  signal,
+}: {
+  element: HTMLElement
+  signal: AbortSignal
+}): Promise<boolean> {
+  let top = element.getBoundingClientRect().top
+
+  for (let checks = 0; checks < 15; checks++) {
+    if (!await afterTaskLayout({ signal })) {
+      return false
+    }
+
+    const next = element.getBoundingClientRect().top
+
+    if (next === top) {
+      return true
+    }
+
+    top = next
+  }
+
+  return !signal.aborted
+}
+
 function scrollAxis({
   element,
   left,
