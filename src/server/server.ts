@@ -985,8 +985,8 @@ async function mountOwnedHydra({
     hydrasChanged()
   }
 
-  // Each card's last conversation message and current action, read from its transcript
-  // tail and pushed to every tab. A card is read again when it gets an event or its transcript
+  // Each card's last conversation message, read from its transcript tail and pushed
+  // to every tab. A card is read again when it gets an event or its transcript
   // changes: transcript folders are watched, as a live session writes between hook events.
   // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
   const latest: Record<string, LatestMessage> = {}
@@ -1037,6 +1037,31 @@ async function mountOwnedHydra({
     }
   }
 
+  // Keeps a card's value and notes it in changes when it differs from the one last sent.
+  const track = <Value>({
+    store,
+    changes,
+    id,
+    value,
+  }: {
+    store: Record<string, Value>
+    changes: Record<string, Value | null>
+    id: string
+    value: Value | null
+  }) => {
+    if (JSON.stringify(value) === JSON.stringify(store[id] ?? null)) {
+      return
+    }
+
+    if (value) {
+      store[id] = value
+    } else {
+      delete store[id]
+    }
+
+    changes[id] = value
+  }
+
   const readLatest = () => {
     latestTimer = undefined
     const changed: Record<string, LatestMessage | null> = {}
@@ -1063,28 +1088,18 @@ async function mountOwnedHydra({
         reads.delete(id)
       }
 
-      const message = read?.message ?? null
-      const action = read?.action ?? null
-
-      if (JSON.stringify(message) !== JSON.stringify(latest[id] ?? null)) {
-        if (message) {
-          latest[id] = message
-        } else {
-          delete latest[id]
-        }
-
-        changed[id] = message
-      }
-
-      if (JSON.stringify(action) !== JSON.stringify(actions[id] ?? null)) {
-        if (action) {
-          actions[id] = action
-        } else {
-          delete actions[id]
-        }
-
-        changedActions[id] = action
-      }
+      track({
+        store: latest,
+        changes: changed,
+        id,
+        value: read?.message ?? null,
+      })
+      track({
+        store: actions,
+        changes: changedActions,
+        id,
+        value: read?.action ?? null,
+      })
     }
 
     unread.clear()
