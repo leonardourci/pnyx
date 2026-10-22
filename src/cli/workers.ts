@@ -16,6 +16,7 @@ import { redact } from '../oracle/text.ts'
 import { splitEntry } from '../thread/read.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { commandText } from '../integrations/hooks/observe.ts'
+import { lifecycleMove } from '../core/lifecycle.ts'
 import { COMMON, commands, guard, integer, parse, summarize, type Output } from './commands.ts'
 
 const TRACKED: readonly EventType[] = [
@@ -186,7 +187,8 @@ export async function hydraCheck({
           }
         }
 
-        const tracked = TRACKED.includes(e.type) || question || owner || chat
+        const listed = TRACKED.includes(e.type) && !lifecycleMove({ id: e.id })
+        const tracked = listed || question || owner || chat
 
         // Hydra's own chat lines are listed so it rereads what it said and why, but never wake it.
         const own = e.type === 'hydra.message' && e.actor === HYDRA_ACTOR

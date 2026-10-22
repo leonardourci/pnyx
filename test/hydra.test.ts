@@ -309,7 +309,7 @@ test(
 )
 
 test(
-  'declared status and hook activity never move a task; a column deletion moves it and undo restores it',
+  'explicit lifecycle changes move a task, activity never does; a column deletion moves it and undo restores it',
   () => {
     const f = fixture()
 
@@ -355,7 +355,9 @@ test(
       }))
       const root = f.state().keys.root!
       const child = f.state().keys.child!
-      const queued = f.state().config?.columns.find(c => c.role === 'queued')?.id
+      const column = ({ role }: { role: string }) =>
+        f.state().config?.columns.find(c => c.role === role)?.id
+      const placed = () => f.state().cards[root]?.column
       f.run({
         args: [
           'task',
@@ -366,6 +368,10 @@ test(
           'Building it',
         ],
       })
+      assert.equal(
+        placed(),
+        column({ role: 'in_progress' }),
+      )
       f.push({
         key: 'session',
         input: {
@@ -392,16 +398,97 @@ test(
           'claude-code:worker',
         ],
       })
-      f.push({
+      const hook = ({ input }: { input: object }) => f.push({
         key: 'root',
         input: {
-          activity: 'finished',
+          ...input,
           source: {
             adapter: 'hooks',
             objectId: 'worker',
           },
         },
       })
+      // A finished turn or an ended session is not a lifecycle change.
+      hook({ input: { activity: 'finished' } })
+      hook({ input: { activity: 'ended' } })
+      assert.equal(
+        placed(),
+        column({ role: 'in_progress' }),
+      )
+      // A manual move holds until the next explicit change.
+      f.run({
+        args: [
+          'move',
+          'root',
+          column({ role: 'queued' })!,
+        ],
+      })
+      hook({ input: { activity: 'working' } })
+      f.run({
+        args: [
+          'task',
+          'status',
+          'root',
+          'working',
+          '--note',
+          'Still building',
+        ],
+      })
+      assert.equal(
+        placed(),
+        column({ role: 'queued' }),
+      )
+      hook({
+        input: {
+          attention: [
+            {
+              kind: 'question',
+              key: 'hook:tool:AskUserQuestion',
+              blocking: true,
+              text: 'Pick a schema',
+            },
+          ],
+        },
+      })
+      assert.equal(
+        placed(),
+        column({ role: 'needs_you' }),
+      )
+      hook({ input: { attention: [] } })
+      assert.equal(
+        placed(),
+        column({ role: 'in_progress' }),
+      )
+
+      for (const [
+        state,
+        role,
+      ] of [
+          [
+            'blocked',
+            'needs_you',
+          ],
+          [
+            'working',
+            'in_progress',
+          ],
+        ] as const) {
+        f.run({
+          args: [
+            'task',
+            'status',
+            'root',
+            state,
+            '--note',
+            `Now ${state}`,
+          ],
+        })
+        assert.equal(
+          placed(),
+          column({ role }),
+        )
+      }
+
       f.run({
         args: [
           'task',
@@ -417,14 +504,65 @@ test(
           'task',
           'status',
           'root',
+          'paused',
+          '--note',
+          'Waiting on CI',
+        ],
+      })
+      assert.equal(
+        placed(),
+        column({ role: 'needs_you' }),
+      )
+      f.run({
+        args: [
+          'task',
+          'status',
+          'root',
           'done',
           '--note',
           'Finished',
         ],
       })
       assert.equal(
-        f.state().cards[root]?.column,
-        queued,
+        placed(),
+        column({ role: 'done' }),
+      )
+      assert.deepEqual(
+        f.events().filter(e => e.type === 'card.moved' && e.actor === 'pnyx')
+          .map(e => [
+            e.type === 'card.moved' && e.data.after,
+            e.reason,
+          ]),
+        [
+          [
+            column({ role: 'in_progress' }),
+            'Declared working',
+          ],
+          [
+            column({ role: 'needs_you' }),
+            'Waiting for the owner',
+          ],
+          [
+            column({ role: 'in_progress' }),
+            'Answered',
+          ],
+          [
+            column({ role: 'needs_you' }),
+            'Declared blocked',
+          ],
+          [
+            column({ role: 'in_progress' }),
+            'Declared working',
+          ],
+          [
+            column({ role: 'needs_you' }),
+            'Declared needs you',
+          ],
+          [
+            column({ role: 'done' }),
+            'Declared done',
+          ],
+        ],
       )
       f.run({
         args: [
@@ -443,6 +581,21 @@ test(
           'custom:research',
         ],
       })
+      // A column the owner made has no role, so lifecycle changes leave the card there.
+      f.run({
+        args: [
+          'task',
+          'status',
+          'root',
+          'needs-you',
+          '--note',
+          'Review the research',
+        ],
+      })
+      assert.equal(
+        placed(),
+        'custom:research',
+      )
       f.run({
         args: [
           'column',
@@ -1076,15 +1229,23 @@ test(
           'done',
         ],
       })
+      assert.equal(
+        f.state().cards[ask]?.column,
+        f.state().config?.columns.find(c => c.role === 'done')?.id,
+      )
       f.run({
         args: [
           'undo',
-          f.events().at(-1)!.id,
+          f.events().findLast(e => e.type === 'card.outcome')!.id,
         ],
       })
       assert.equal(
         f.state().cards[ask]?.status?.state,
         'working',
+      )
+      assert.equal(
+        f.state().cards[ask]?.column,
+        f.state().config?.columns.find(c => c.role === 'in_progress')?.id,
       )
       f.push({
         key: 'pushed',

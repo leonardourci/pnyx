@@ -26,6 +26,8 @@ import { basename, dirname, join } from 'node:path'
 import { HydraError, EVENT_TYPES, EVENT_VERSION, type HydraEvent, type HydraState } from '../core/model.ts'
 import { emptyHydra, reduce, replay } from '../core/reducer.ts'
 import { migrateColumns } from '../core/hydra.ts'
+import { decideMove } from '../core/decide.ts'
+import { lifecycleMoveId, lifecycleMoves } from '../core/lifecycle.ts'
 import { pnyxHome } from './paths.ts'
 
 export { pnyxHome } from './paths.ts'
@@ -684,11 +686,38 @@ export function withWriter<T>({
             flag: 'a',
           })
           offset += Buffer.byteLength(line)
+          const before = state
           state = reduce({
             state,
             event,
           })
           dirty = true
+
+          // A task's explicit lifecycle change moves its card, as its own event in the same write.
+          // ponytail: compares every card on each append, as cheap as the state clone reduce already does; narrow it to the event's cards if appends get hot.
+          for (const move of lifecycleMoves({
+            before,
+            state,
+          })) {
+            const moved = decideMove({
+              state,
+              ref: move.cardId,
+              column: move.column,
+              meta: {
+                id: lifecycleMoveId({
+                  event: event.id,
+                  cardId: move.cardId,
+                }),
+                at: event.at,
+                actor: 'pnyx',
+                reason: move.reason,
+              },
+            })
+
+            if ('event' in moved) {
+              writer.append({ event: moved.event })
+            }
+          }
         },
       }
       // A Hydra still on an older layout moves onto the default columns before its next write.

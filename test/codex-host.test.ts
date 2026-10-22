@@ -812,7 +812,6 @@ test(
       meta,
     })
     await until({ check: () => task().sessionActivity === 'finished' })
-    const column = task().column
     await send({ text: 'HOLD' })
     await until({ check: () => turns().length === 2 })
     await send({ text: 'DENY' })
@@ -918,7 +917,7 @@ test(
     )
     assert.equal(
       task().column,
-      column,
+      loadHydra({ hydraId: 'lab' }).state.config?.columns.find(c => c.role === 'in_progress')?.id,
     )
   },
 )
