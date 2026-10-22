@@ -442,6 +442,8 @@ test(
     const server = await startServer({
       hydraId: 'stream',
       query: sdk.query,
+      // A worker report reaches Hydra through the wake queue.
+      wakeDelay: 50,
     })
     const tabs: WebSocket[] = []
     const state = () => loadHydra({ hydraId: 'stream' }).state

@@ -1024,7 +1024,9 @@ export function createHost({
 
           if (card.id === HYDRA_CARD) {
             const messages = loadHydra({ hydraId }).state.hydraMessages ?? []
-            ownerStarted = messages.some(message => answers.includes(message.id) && ownerActor({ actor: message.actor }))
+            const opener = ({ message }: { message: HydraMessage }) => answers.includes(message.id)
+            const ownerMessage = ({ message }: { message: HydraMessage }) => ownerActor({ actor: message.actor })
+            ownerStarted = messages.some(message => opener({ message }) && ownerMessage({ message }))
           }
 
           entry.replies.start({
