@@ -1048,13 +1048,16 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-agent-pickers .select { min-width: 0; }
 
-.task-updates { flex: 1; min-height: 0; overflow: auto; overflow-wrap: anywhere; padding: 8px 2px; }
-.task-updates-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.task-updates { flex: 1; min-height: 0; overflow: auto; overflow-wrap: anywhere; padding: 8px 0; }
+.task-updates-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-inline: 4px; }
 .updates-order { font-size: var(--text-meta); color: var(--color-muted); padding: 2px 6px; }
 .task-updates > ol { list-style: none; margin: 0; padding: 0; }
-.task-updates > ol > li { padding: 8px 0; border-bottom: 1px solid var(--color-subtle); }
+.task-updates > ol > li { padding: 8px 4px; border-bottom: 1px solid var(--color-subtle); transition: background-color 110ms ease; }
 .task-updates > ol > li:last-child { border-bottom: 0; }
-.task-updates > ol > li:first-child { padding-top: 2px; }
+.task-updates > ol > li:first-child { padding-top: 6px; }
+.task-updates > ol > li:is(.update-decision, :has(.update-fold, .show-more)):hover { border-radius: 6px; background: color-mix(in srgb, var(--color-hover) 55%, transparent); }
+.task-updates > ol > li:hover .update-fold-chevron { color: var(--color-ink); }
+@media (prefers-reduced-motion: reduce) { .task-updates > ol > li { transition: none; } }
 .update-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; margin-bottom: 4px; }
 .update-line { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; }
 .update-line + .update-line { margin-top: 6px; }
@@ -1176,7 +1179,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .pending-question-panel { padding: 12px; border: 1px solid var(--color-gold-line); border-radius: 8px; background: var(--color-gold-wash); }
 .pending-question-panel > .update-heading { color: var(--color-gold); margin-bottom: 8px; }
 .pending-question .task-requests { margin-top: 0; }
-.task-updates > ol > li.pending-question { padding-left: 0; }
 .pending-question .ask { margin: 0; padding: 0; border: 0; background: transparent; }
 .pending-question .ask-title { display: none; }
 @media (prefers-reduced-motion: reduce) { .disclosure-chevron { transition: none; } }
