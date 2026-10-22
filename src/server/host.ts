@@ -1429,6 +1429,9 @@ export function createHost({
 
       // A worker's report waits for Hydra's next check turn, which the server queues once it reads the report's event.
       if (reportActor({ actor })) {
+        // The report is already in the log; reading it now beats waiting on a file watch that can miss a write.
+        changed()
+
         return Promise.resolve({ state: 'queued' })
       }
 
