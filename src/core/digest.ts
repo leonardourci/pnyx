@@ -1,5 +1,5 @@
 import { queuePosition, workerQueue } from '../queue/state.ts'
-import { HYDRA_CARD, hydraConfig } from './hydra.ts'
+import { HYDRA_CARD, hydraConfig, unwatchedPullRequests } from './hydra.ts'
 import { liveTask, rankOf } from './tasks.ts'
 import { askWording, openAsks } from './asks.ts'
 import { HydraError, type Card, type HydraState } from './model.ts'
@@ -113,6 +113,7 @@ function taskLine({
   const worker = card.agent
     ? `${card.agent.provider} ${activity ?? 'idle'}${session?.lastSeen ? `, seen ${session.lastSeen}` : ''}`
     : 'no worker'
+  const unwatched = unwatchedPullRequests({ card })
   const waiting = [
     ...card.attention.filter(a => a.blocking && !a.answered).map(a => `${a.kind}${a.text ? ` "${clip({
       text: a.text,
@@ -125,7 +126,7 @@ function taskLine({
     })}"`),
   ]
 
-  return [
+  const lines = [
     `- ${card.id} · ${clip({
       text: card.title,
       size: 80,
@@ -145,7 +146,13 @@ function taskLine({
     ] : []),
     ...(card.queueNote ? [`  handoff: ${card.queueNote}`] : []),
     ...(waiting.length ? [`  waiting: ${waiting.join('; ')}`] : []),
-  ].join('\n')
+  ]
+
+  if (unwatched.length) {
+    lines.push(`  unwatched pull request: ${unwatched.map(l => l.url).join(', ')} (no worker to wake with its news)`)
+  }
+
+  return lines.join('\n')
 }
 
 export function hydraDigest({

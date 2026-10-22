@@ -52,6 +52,7 @@ import {
   OUTCOME_STATES,
   ownerActor,
   type HydraEvent,
+  type LandingRule,
   type HydraState,
   type Card,
   type EventType,
@@ -3374,6 +3375,14 @@ export function summarize({ event }: { event: HydraEvent }): string {
   return event.reason ? `${text} (why: ${event.reason})` : text
 }
 
+function landingWording({ rule }: { rule: LandingRule }): string {
+  if (rule.landing === 'branch') {
+    return 'a branch'
+  }
+
+  return `a pull request merged by ${rule.merge}`
+}
+
 function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
@@ -3383,6 +3392,11 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
     case 'hydra.project': return `${event.data.before && event.data.before.detached === event.data.after.detached ? 'Updated' : event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Hydra ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
     case 'task.project': return `Task project: ${event.data.after ?? 'none'}`
+    case 'task.kind': return event.data.after === 'build' ? 'Investigation turned into the build' : `Task kind: ${event.data.after}`
+    case 'task.report': return `Report stored (${event.data.text.length} characters)`
+    case 'task.landing': return event.data.after
+      ? `For this task only: lands as ${landingWording({ rule: event.data.after })}`
+      : 'Follows its project\'s landing rule again'
     case 'task.copy': return `Task copy ${event.data.after.state}: ${event.data.after.path}${event.data.after.reason ? ` (${event.data.after.reason})` : ''}`
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
     case 'task.permission': return `${event.data.tool} permission ${event.data.id}: ${event.data.status}`
@@ -3413,8 +3427,12 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'card.linked': {
       const l = event.data.after ?? event.data.before
       const label = l ? `${l.kind}${l.number ? ` #${l.number}` : ''}` : event.data.url
+      const facts = [
+        event.data.after?.checks === undefined ? '' : ` · checks ${event.data.after.checks}`,
+        event.data.after?.comments === undefined ? '' : ` · ${event.data.after.comments} comments`,
+      ].join('')
 
-      return `${undo}${event.data.after ? `${label} ${event.data.after.state ?? 'unknown'}` : `removed ${label}`}`
+      return `${undo}${event.data.after ? `${label} ${event.data.after.state ?? 'unknown'}${facts}` : `removed ${label}`}`
     }
     case 'card.outcome':
       return `${undo}${event.data.after ? `${event.data.after.state}${event.data.after.note ? `: ${event.data.after.note}` : ''}` : 'cleared'}`
