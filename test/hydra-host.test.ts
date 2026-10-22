@@ -737,6 +737,108 @@ test(
 )
 
 test(
+  'each tagged reply pairs with the message its turn answered, and only the owner’s chat becomes an ask',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-tag-turns-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    commands.task([
+      'create',
+      '--key',
+      'quick',
+      '--title',
+      'Task quick',
+      '--hydra',
+      'lab',
+    ])
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const quick = state().keys.quick!
+    const sdk = hydraSdk()
+    sdk.control.stream = true
+    sdk.control.hold = true
+    sdk.control.reply = `${taskMention({
+      id: quick,
+      title: 'Task quick',
+    })} Noted.`
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    const notes = ({ source }: { source: string }) => readEvents({ hydraId: 'lab' })
+      .flatMap(event => event.type === 'card.noted' && event.cardId === quick && event.data.source === source ? [event.data.text] : [])
+    const send = ({ args }: { args: string[] }) => commands.hydra([
+      'send',
+      '--hydra',
+      'lab',
+      ...args,
+    ])
+
+    try {
+      await send({
+        args: [
+          '--text',
+          'First',
+        ],
+      })
+      await until({ check: () => sdk.calls[0]?.messages.length === 1 })
+
+      for (const args of [
+        [
+          '--text',
+          'Second',
+        ],
+        [
+          '--task',
+          quick,
+          '--text',
+          'A worker question',
+          '--actor',
+          `worker:${quick}`,
+        ],
+        [
+          '--task',
+          quick,
+          '--text',
+          'Already on the task',
+        ],
+      ]) {
+        await send({ args })
+      }
+
+      sdk.control.hold = false
+      sdk.release()
+      await until({ check: () => notes({ source: 'hydra' }).length === 4 })
+      assert.deepEqual(
+        notes({ source: 'owner' }),
+        [
+          'First',
+          'Second',
+        ],
+      )
+    } finally {
+      sdk.release(); await server.close(); rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
   'changing Hydra harness preserves the earlier conversation',
   async () => {
     const home = mkdtempSync(join(
