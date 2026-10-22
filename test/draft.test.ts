@@ -16,7 +16,8 @@ test(
   () => {
     const text = `Look at ${task} and\n\n${image}\n\n${fileBlock({
       name: 'notes.txt',
-      text: 'one ``` two\n',
+      // A reference inside an attached file stays part of the file chip.
+      text: `one \`\`\` two ${task}\n`,
     })}\n\nin ${reference({
       kind: 'project',
       value: '/work/app (main)',
@@ -58,7 +59,7 @@ test(
     )
     assert.match(
       text,
-      /File: notes.txt\n\n````\none ``` two\n````/,
+      /File: notes.txt\n\n````\none ``` two .*\n````/,
     )
     assert.deepEqual(
       draftView({
@@ -160,21 +161,6 @@ test(
         backward: true,
       }),
       'See '.length,
-    )
-  },
-)
-
-test(
-  'a reference inside an attached file stays part of the file chip',
-  () => {
-    assert.deepEqual(
-      draftView({
-        text: fileBlock({
-          name: 'notes.md',
-          text: `see ${task}\n`,
-        }),
-      }).chips.map(chip => chip.kind),
-      ['file'],
     )
   },
 )
