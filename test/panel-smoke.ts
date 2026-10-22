@@ -221,12 +221,6 @@ try {
     label: 'Mod+K restores the panel and focuses Oracle',
   })
   await press({ key: 'Escape' })
-  await click({ selector: '.hydra-chat [aria-label="Harness"]' })
-  await click({ selector: '[role=listbox][aria-label="Harness"] [role=option]:nth-child(2)' })
-  await eventually({
-    condition: 'document.querySelector(`.hydra-chat [aria-label="Harness"]`).textContent.includes("Codex") && !document.querySelector(`.hydra-chat [aria-label="Model"]`).disabled',
-    label: 'Hydra harness saves in the composer',
-  })
   await click({ selector: '.hydra-chat [aria-label="Model"]' })
   await evaluate({ code: 'const option = [...document.querySelectorAll(`[role=listbox][aria-label="Model"] [role=option]`)].find(el => el.textContent.trim() === "gpt-6.1-sol"); if (!option) throw new Error("Fixture model is missing"); option.click(); return true;' })
   await eventually({

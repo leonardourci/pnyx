@@ -130,14 +130,18 @@ try {
     value: '',
   })
   await check({
-    condition: '[...document.querySelectorAll(".hydra-chat [role=combobox]")].map(x => x.getAttribute("aria-label")).join(",") === "Harness,Model,Effort,Permissions,Fast" && !document.querySelector(".hydra-chat [role=dialog]")',
-    label: 'Hydra settings are directly in the composer',
+    condition: '[...document.querySelectorAll(".hydra-chat [role=combobox]")].map(x => x.getAttribute("aria-label")).join(",") === "Model,Effort,Permissions,Fast" && !document.querySelector(".hydra-chat [role=dialog]")',
+    label: 'Hydra settings are directly in the composer, with agent and model in one picker',
   })
-  await click({ selector: '.hydra-chat [aria-label=Harness]' })
-  await click({ selector: '[role=listbox][aria-label=Harness] [role=option]:nth-child(2)' })
+  await click({ selector: '.hydra-chat [aria-label=Model]' })
   await eventually({
-    condition: 'document.querySelector(".hydra-chat [aria-label=Harness]").textContent.includes("Codex") && !!document.querySelector(".hydra-chat [aria-label=Model]:not(:disabled)")',
-    label: 'harness selection saves for the next message',
+    condition: '[...document.querySelectorAll("[role=listbox][aria-label=Model] .select-group")].map(x => x.textContent).join(",") === "Claude Code,Codex" && !!document.querySelector("[role=listbox][aria-label=Model] [role=option][data-group=Codex]")',
+    label: 'the model picker lists each agent with its models',
+  })
+  await click({ selector: '[role=listbox][aria-label=Model] [role=option][data-group=Codex]' })
+  await eventually({
+    condition: '!!document.querySelector(".hydra-chat [aria-label=Model]:not(:disabled)") && !document.querySelector("[role=listbox][aria-label=Model]")',
+    label: 'a Codex model switches the agent for the next message',
   })
   assert.ok(codex.messages().some(message => message.method === 'model/list'))
   assert.ok(codex.messages().some(message => message.method === 'config/read'))

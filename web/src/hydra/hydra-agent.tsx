@@ -6,6 +6,32 @@ import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
 import { modelOptions } from './model-options.ts'
 import type { Command } from './connection.ts'
 
+const HARNESSES = [
+  {
+    harness: 'claude',
+    label: 'Claude Code',
+    icon: 'claude-code',
+  },
+  {
+    harness: 'codex',
+    label: 'Codex',
+    icon: 'codex',
+  },
+] as const
+
+// A combined choice is the agent and its model, as harness:model.
+const splitChoice = ({ value }: { value: string }) => {
+  const at = value.indexOf(':')
+
+  return [
+    value.slice(
+      0,
+      at,
+    ) as AgentConfig['harness'],
+    value.slice(at + 1),
+  ] as const
+}
+
 const MODE_ICONS = [
   'plan',
   'untrusted',
@@ -44,11 +70,20 @@ export function HydraAgent({
     hosted: true,
   })
   const firstmate = state.config?.hydra.kind === 'firstmate'
-  const catalog = useModels({
-    harness: agent.harness,
-    command,
-    connected: connected && !firstmate,
-  })
+  // Both catalogs load, so the one picker can switch agent and model together.
+  const catalogs = {
+    claude: useModels({
+      harness: 'claude',
+      command,
+      connected: connected && !firstmate,
+    }),
+    codex: useModels({
+      harness: 'codex',
+      command,
+      connected: connected && !firstmate,
+    }),
+  }
+  const catalog = catalogs[agent.harness]
   const selected = agent.model ?? inherited?.model
   const picker = modelOptions({
     models: catalog.models ?? [],
@@ -102,14 +137,19 @@ export function HydraAgent({
   }
 
   // The hydra rule is what every new Hydra starts with.
-  const startsWith = ({ field }: { field: 'harness' | 'model' | 'effort' | 'mode' | 'fast' }) => ({
-    defaultValue: field === 'harness' ? rule?.harness
-      : rule?.harness !== agent.harness ? undefined
-        : field === 'fast' ? rule.fast === undefined ? 'default' : rule.fast ? 'on' : 'off'
-          : rule[field],
-    onDefault: ({ value }: { value: string }) => void saveHydra({
-      patch: field === 'harness' ? { harness: value as AgentConfig['harness'] } : {
-        harness: agent.harness,
+  const startsWith = ({ field }: { field: 'model' | 'effort' | 'mode' | 'fast' }) => ({
+    defaultValue: rule?.harness !== agent.harness ? undefined
+      : field === 'fast' ? rule.fast === undefined ? 'default' : rule.fast ? 'on' : 'off'
+        : rule[field],
+    onDefault: ({
+      value,
+      harness = agent.harness,
+    }: {
+      value: string
+      harness?: AgentConfig['harness']
+    }) => void saveHydra({
+      patch: {
+        harness,
         [field]: field === 'fast' ? value === 'default' ? undefined : value === 'on' : value,
       },
     }).then(
@@ -120,43 +160,50 @@ export function HydraAgent({
 
   return (
     <div className="hydra-agent-pickers" aria-label="Hydra agent settings">
-      <PickerField
-        label="Harness"
-        value={agent.harness}
-        options={[
-          {
-            value: 'claude',
-            label: 'Claude Code',
-            icon: 'claude-code',
-          },
-          {
-            value: 'codex',
-            label: 'Codex',
-            icon: 'codex',
-          },
-        ]}
-        disabled={busy || !connected}
-        onChange={({ value }) => {
-          if (value === 'claude' || value === 'codex') {
-            save({ next: { harness: value } })
-          }
-        }}
-        {...startsWith({ field: 'harness' })}
-      />
       <ModelPicker
         {...catalog}
-        value={picker.value}
-        options={picker.options}
+        value={picker.value && `${agent.harness}:${picker.value}`}
+        options={HARNESSES.flatMap(({
+          harness,
+          label,
+          icon,
+        }) => (harness === agent.harness ? picker
+          : modelOptions({ models: catalogs[harness].models ?? [] })).options
+          .map(option => ({
+            value: `${harness}:${option.value}`,
+            label: option.label,
+            icon,
+            group: label,
+          })))}
         disabled={busy || !connected}
         connected={connected}
-        onChange={({ value }) => save({
-          next: {
-            ...agent,
-            model: value,
-          },
-        })}
-        icon="model-choice"
-        {...startsWith({ field: 'model' })}
+        onChange={({ value }) => {
+          const [
+            harness,
+            model,
+          ] = splitChoice({ value })
+
+          save({
+            next: harness === agent.harness ? {
+              ...agent,
+              model,
+            } : {
+              harness,
+              model,
+            },
+          })
+        }}
+        defaultValue={rule?.model ? `${rule.harness}:${rule.model}` : undefined}
+        onDefault={({ value }) => {
+          const [
+            harness,
+            model,
+          ] = splitChoice({ value })
+          startsWith({ field: 'model' }).onDefault({
+            value: model,
+            harness,
+          })
+        }}
       />
       {([
         'effort',

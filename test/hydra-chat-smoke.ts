@@ -107,7 +107,7 @@ try {
     label: 'pickers closed',
   })
   await b.check({
-    condition: '!!document.querySelector(".hydra-agent-pickers [aria-label=Harness] svg") && !!document.querySelector(".hydra-agent-pickers [aria-label=Effort] svg") && !!document.querySelector(".hydra-agent-pickers [aria-label=Permissions] svg") && document.querySelector(".hydra-agent-pickers [aria-label=Fast]").textContent.trim() === ""',
+    condition: '!!document.querySelector(".hydra-agent-pickers [aria-label=Model] svg") && !!document.querySelector(".hydra-agent-pickers [aria-label=Effort] svg") && !!document.querySelector(".hydra-agent-pickers [aria-label=Permissions] svg") && document.querySelector(".hydra-agent-pickers [aria-label=Fast]").textContent.trim() === ""',
     label: 'each picker shows its icon, and Fast is an icon alone',
   })
   await b.click({ selector: '.hydra-agent-pickers [aria-label=Permissions]' })
@@ -159,7 +159,7 @@ try {
     condition: '[...document.querySelectorAll(".hydra-agent-pickers [role=listbox][aria-label=Model] [role=option]")].some(option => option.textContent.trim() === "opus")',
     label: 'SDK model catalog loads in the picker',
   })
-  await b.click({ selector: '.hydra-agent-pickers [role=listbox][aria-label=Model] [role=option]:nth-child(1)' })
+  await b.click({ selector: '.hydra-agent-pickers [role=listbox][aria-label=Model] [role=option][data-group="Claude Code"]' })
   await b.eventually({
     condition: 'document.querySelector(".hydra-agent-pickers [aria-label=Model]").textContent.includes("opus") && !document.querySelector(".hydra-agent-pickers [aria-label=Model]").disabled',
     label: 'model choice saves during a turn',
