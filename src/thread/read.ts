@@ -8,6 +8,7 @@ import { HOST_LABEL, replyRoute, type ReplyRoute } from '../core/route.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { taskReceipt } from './task.ts'
 import { cardSessionId } from '../core/tasks.ts'
+import { obj, readAction, recordBlocks, shortened, type ActionRead } from './calls.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
@@ -104,8 +105,6 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
   return parts
 }
 
-const obj = ({ v }: { v: unknown }): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string, unknown> : {}
-
 export function recordEntries({
   record,
   offset,
@@ -125,7 +124,7 @@ export function recordEntries({
     return []
   }
 
-  const payload = obj({ v: r.payload }), message = obj({ v: r.message })
+  const payload = obj({ v: r.payload })
   const role = typeof payload.role === 'string' ? payload.role : String(r.type)
   const at = typeof r.timestamp === 'string' ? r.timestamp : undefined
   const entries: ThreadEntry[] = transcriptMessages({
@@ -142,7 +141,7 @@ export function recordEntries({
     at: m.at,
     hidden: m.internal,
   }))
-  const blocks = Array.isArray(message.content) ? message.content : r.type === 'response_item' ? [payload] : []
+  const blocks = recordBlocks({ record })
 
   for (const [
     i,
@@ -154,6 +153,8 @@ export function recordEntries({
       'tool_result',
       'function_call',
       'function_call_output',
+      'custom_tool_call',
+      'custom_tool_call_output',
     ].includes(String(b.type)) ? 'tool' : [
         'thinking',
         'reasoning',
@@ -196,23 +197,6 @@ export interface LatestMessage {
 const LATEST_TEXT = 280
 const LATEST_WINDOW = 64 * 1024
 
-// Cut to LATEST_TEXT, never inside a surrogate pair.
-function clip({ text }: { text: string }): string {
-  if (text.length <= LATEST_TEXT) {
-    return text
-  }
-
-  const cut = text.slice(
-    0,
-    LATEST_TEXT - 1,
-  ).replace(
-    /[\uD800-\uDBFF]$/,
-    '',
-  )
-
-  return `${cut.trimEnd()}…`
-}
-
 // Only agent-authored text can become a card update.
 function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -243,7 +227,10 @@ function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
 
     return {
       role: 'assistant',
-      text: clip({ text }),
+      text: shortened({
+        text,
+        max: LATEST_TEXT,
+      }),
       ...(messages[0]!.at ? { at: messages[0]!.at } : {}),
     }
   }
@@ -253,7 +240,7 @@ function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
 
 // A transcript's last message and how far it was read: size is the end of its last
 // complete line, so a later read of the same file parses only what was appended.
-export interface LatestRead {
+export interface LatestRead extends ActionRead {
   message: LatestMessage | null
   path: string
   ino: number
@@ -319,6 +306,10 @@ export function latestMessage({
 
       return {
         message: lastMessage({ lines }) ?? prev.message,
+        ...readAction({
+          lines,
+          prev,
+        }),
         path,
         ino,
         size: end,
@@ -338,11 +329,13 @@ export function latestMessage({
         size: end,
       } = read({ start })
       // The first line may be cut by the window.
-      const message = lastMessage({ lines: lines.slice(start ? 1 : 0) })
+      const whole = lines.slice(start ? 1 : 0)
+      const message = lastMessage({ lines: whole })
 
       if (message || !start || window >= MAX_BYTES) {
         return {
           message,
+          ...readAction({ lines: whole }),
           path,
           ino,
           size: end,
@@ -352,6 +345,9 @@ export function latestMessage({
   } catch {
     return {
       message: null,
+      action: null,
+      answered: [],
+      open: false,
       path,
       ino: 0,
       size: 0,

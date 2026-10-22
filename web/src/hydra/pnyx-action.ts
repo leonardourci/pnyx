@@ -1,15 +1,19 @@
 import type { HydraColumn, HydraState } from '../../../src/core/model.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
+import { commandOf, firstLine, obj } from '../../../src/thread/calls.ts'
 
 // A sentence about a Pnyx command, with the tasks and columns it touched kept apart so they show as chips.
-type Segment = string | {
+export type Segment = string | {
   task: string
   label: string
 } | {
   column: Pick<HydraColumn, 'id' | 'role'>
   label: string
 }
+
+// Starts the sentence for a Pnyx command this file has no words for.
+export const UNKNOWN_COMMAND = 'Pnyx: '
 
 export interface PnyxCall {
   command: string
@@ -43,29 +47,16 @@ export function pnyxLookup({ state }: { state: HydraState }): PnyxLookup {
   }
 }
 
-// Claude's Bash input is {command}; Codex's shell calls carry {cmd} or an argv list.
 export function shellCommand({ text }: { text: string }): string | undefined {
   try {
-    const input = JSON.parse(text) as {
-      command?: unknown
-      cmd?: unknown
-    }
-    const value = input.command ?? input.cmd
-
-    if (typeof value === 'string') {
-      return value
-    }
-
-    if (Array.isArray(value) && value.every(part => typeof part === 'string')) {
-      return value.length === 3 && /(^|\/)(ba|z)?sh$/.test(value[0]) && value[1].startsWith('-') ? value[2] : value.join(' ')
-    }
+    return commandOf({ input: obj({ v: JSON.parse(text) }) })
   } catch { /* Not a shell call. */ }
 
   return undefined
 }
 
 // Splits the first command of a shell line into words, following quotes and backslashes.
-function shellWords({ command }: { command: string }): string[] {
+export function shellWords({ command }: { command: string }): string[] {
   const words: string[] = []
   let word = '', quote = '', open = false
 
@@ -150,15 +141,6 @@ function parse({ words }: { words: string[] }) {
     positionals,
     flags,
   }
-}
-
-const firstLine = ({ text }: { text: string }) => {
-  const line = text.trim().split('\n')[0] ?? ''
-
-  return line.length > 120 ? `${line.slice(
-    0,
-    119,
-  )}…` : line
 }
 
 const STATES: Record<string, string> = {
@@ -397,7 +379,7 @@ export function pnyxSentence({
   }
 
   return [
-    `Pnyx: ${positionals.slice(
+    `${UNKNOWN_COMMAND}${positionals.slice(
       0,
       2,
     ).join(' ') || 'help'}`,

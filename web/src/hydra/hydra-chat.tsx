@@ -16,6 +16,8 @@ import { InlineQuestions } from './questions.tsx'
 import { InlinePermissions } from './permissions.tsx'
 import { Messages, type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
+import { ActionBubble } from './action-bubble.tsx'
+import type { CurrentAction } from '../../../src/thread/calls.ts'
 import { UsageRing } from './usage-ring.tsx'
 import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
@@ -48,8 +50,10 @@ export function HydraChat({
   liveThread,
   projectSetup,
   openTask,
+  action,
 }: {
   projectSetup?: ReactNode
+  action?: CurrentAction
   liveThread: ThreadPage | null
   state: HydraState
   command: Command
@@ -291,6 +295,7 @@ export function HydraChat({
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const running = working || (hosted && pending.length > 0)
   // A send counts from the owner's message until the server says the turn began.
+  const lookup = pnyxLookup({ state })
   const since = (working ? card?.workingSince : undefined)
     ?? pending.at(-1)?.at ?? null
 
@@ -506,7 +511,7 @@ export function HydraChat({
               inline={inline}
               entries={entries}
               working={running}
-              lookup={pnyxLookup({ state })}
+              lookup={lookup}
               assistantLabel="Hydra"
               notify={notify}
               openTask={openTask}
@@ -549,7 +554,11 @@ export function HydraChat({
             )}
           </div>
         </div>
-        {running && <Running since={since} label={card?.agent ? 'Hydra is working' : 'Starting Hydra'} />}
+        {running && (
+          <Running since={since} label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}>
+            <ActionBubble action={action} since={since} lookup={lookup} />
+          </Running>
+        )}
         {away && (
           <>
             <div className="chat-fade" aria-hidden="true" />
@@ -626,9 +635,11 @@ export function HydraChat({
 function Running({
   since,
   label,
+  children,
 }: {
   since: string | null
   label: string
+  children?: ReactNode
 }) {
   const [
     now,
@@ -658,6 +669,7 @@ function Running({
     >
       <WorkingDots />
       {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
+      {children}
     </p>
   )
 }

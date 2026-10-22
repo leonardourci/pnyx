@@ -24,6 +24,7 @@ import { useFoundCards } from './card-oracle.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { useHydraKeyboard } from '../keyboard/hydra.tsx'
 import { afterTaskLayout, scrollTask } from './scroll-task.ts'
+import { pnyxLookup } from './pnyx-action.ts'
 
 // Keep each tab's view across reloads and newly served builds.
 type Restore = {
@@ -108,6 +109,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     connected,
     hydraThread,
     latest,
+    actions,
     navigation,
     navigate,
     loading,
@@ -519,6 +521,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   )
   const pendingScroll = useRef(restored.scroll)
   const view = viewFor({ state })
+  const lookup = pnyxLookup({ state })
   useEffect(
     () => {
       const root = document.documentElement, dark = matchMedia('(prefers-color-scheme: dark)')
@@ -1013,6 +1016,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                   ) : undefined}
                   state={state}
                   liveThread={hydraThread}
+                  action={actions[HYDRA_CARD]}
                   command={command}
                   connected={connected}
                   openTask={revealTask}
@@ -1096,6 +1100,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                   doneAfterHours={state.config?.doneAfterHours}
                                   notify={notify}
                                   latest={latest[item.id]}
+                                  action={actions[item.id]}
+                                  lookup={lookup}
                                   answer={answerTask}
                                   selected={expandedIds.includes(item.id)}
                                   view={view}

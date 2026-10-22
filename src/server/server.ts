@@ -14,6 +14,7 @@ import { hideDone } from '../store/retention.ts'
 import { settleDone, settles } from '../copies/copies.ts'
 import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
+import type { CurrentAction } from '../thread/calls.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
 import { HYDRA_CARD, hydraConfig, hydraEvent, wakesHydra } from '../core/hydra.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '../integrations/paseo/history.ts'
@@ -138,10 +139,11 @@ export type ServerMessage =
     type: 'event'
     event: HydraEvent
   }
-  // Last conversation messages by card: all of them on connect, then the ones that changed (null when gone).
+  // Last conversation messages and current actions by card: all of them on connect, then the ones that changed (null when gone).
   | {
     type: 'latest'
     messages: Record<string, LatestMessage | null>
+    actions: Record<string, CurrentAction | null>
   }
   | {
     type: 'hydras'
@@ -908,6 +910,7 @@ async function mountOwnedHydra({
     ws.send(JSON.stringify({
       type: 'latest',
       messages: latest,
+      actions,
     } satisfies ServerMessage))
 
     if (hydraSubscribers.has(ws)) {
@@ -987,6 +990,7 @@ async function mountOwnedHydra({
   // changes: transcript folders are watched, as a live session writes between hook events.
   // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
   const latest: Record<string, LatestMessage> = {}
+  const actions: Record<string, CurrentAction> = {}
   const reads = new Map<string, LatestRead>()
   const folders = new Map<string, FSWatcher>()
   const unread = new Set<string>()
@@ -1033,9 +1037,35 @@ async function mountOwnedHydra({
     }
   }
 
+  // Keeps a card's value and notes it in changes when it differs from the one last sent.
+  const track = <Value>({
+    store,
+    changes,
+    id,
+    value,
+  }: {
+    store: Record<string, Value>
+    changes: Record<string, Value | null>
+    id: string
+    value: Value | null
+  }) => {
+    if (JSON.stringify(value) === JSON.stringify(store[id] ?? null)) {
+      return
+    }
+
+    if (value) {
+      store[id] = value
+    } else {
+      delete store[id]
+    }
+
+    changes[id] = value
+  }
+
   const readLatest = () => {
     latestTimer = undefined
     const changed: Record<string, LatestMessage | null> = {}
+    const changedActions: Record<string, CurrentAction | null> = {}
 
     for (const id of unread) {
       const card = state.cards[id], path = card && threadPath({ card })
@@ -1058,30 +1088,30 @@ async function mountOwnedHydra({
         reads.delete(id)
       }
 
-      const message = read?.message ?? null
-
-      if (JSON.stringify(message) === JSON.stringify(latest[id] ?? null)) {
-        continue
-      }
-
-      if (message) {
-        latest[id] = message
-      } else {
-        delete latest[id]
-      }
-
-      changed[id] = message
+      track({
+        store: latest,
+        changes: changed,
+        id,
+        value: read?.message ?? null,
+      })
+      track({
+        store: actions,
+        changes: changedActions,
+        id,
+        value: read?.action ?? null,
+      })
     }
 
     unread.clear()
 
-    if (Object.keys(changed).length) {
+    if (Object.keys(changed).length || Object.keys(changedActions).length) {
       for (const ws of wss.clients) {
         send({
           ws,
           message: {
             type: 'latest',
             messages: changed,
+            actions: changedActions,
           },
         })
       }
@@ -2298,6 +2328,7 @@ async function mountOwnedHydra({
       message: {
         type: 'latest',
         messages: latest,
+        actions,
       },
     })
   }
