@@ -343,6 +343,44 @@ test(
 )
 
 test(
+  'dispatch balances by live quota, not rotation: unchanged readings keep one choice, a shifted overdraw flips it',
+  () => {
+    // Both accounts overdrawn against their reset clocks, Claude less so.
+    const priorities: Record<string, number> = {
+      claude: -0.2092,
+      codex: -0.9649,
+    }
+    const quota = ({ account }: { account: { provider: string } }) => reading({
+      remaining: account.provider === 'claude' ? 55 : 48,
+      priority: priorities[account.provider],
+    })
+    const pick = () => chooseCandidate({
+      config: config(),
+      rule: 'build',
+      quota,
+    }).provider
+
+    assert.deepEqual(
+      [
+        pick(),
+        pick(),
+        pick(),
+      ],
+      [
+        'claude',
+        'claude',
+        'claude',
+      ],
+    )
+    priorities.claude = -1.2
+    assert.equal(
+      pick(),
+      'codex',
+    )
+  },
+)
+
+test(
   'a genuine spendPriority tie stops the start and names every tied candidate',
   () => {
     const current = config(), quota = () => reading({
