@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { commands } from '../src/cli/commands.ts'
+import { decidePush } from '../src/core/decide.ts'
 import { HYDRA_CARD, hydraEvent, wakesHydra } from '../src/core/hydra.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { startTask } from '../src/cli/start.ts'
@@ -1486,6 +1487,44 @@ test(
     assert.doesNotMatch(
       resumeMessage,
       /messages seq|a wake check|a stall check/,
+    )
+  },
+)
+
+test(
+  'a setting a hook adds to Hydra’s session, such as its client version, keeps the session running',
+  async () => {
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    await send({ text: 'First' })
+    await until({ check: finished })
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const decision = decidePush({
+          state: writer.state,
+          key: writer.state.cards[HYDRA_CARD]!.key,
+          input: { settings: { version: '2.1.308' } },
+          meta: {
+            at: new Date().toISOString(),
+            actor: 'hook:claude',
+          },
+        })
+        assert.ok('event' in decision); writer.append({ event: decision.event })
+      },
+    })
+    assert.equal(
+      hydra()!.settings?.version,
+      '2.1.308',
+    )
+    await send({ text: 'Second' })
+    await until({ check: () => sdk.calls[0]?.messages.includes('Second') ?? false })
+    assert.equal(
+      sdk.calls.length,
+      1,
     )
   },
 )

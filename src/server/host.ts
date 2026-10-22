@@ -191,6 +191,23 @@ const harnessAccount = ({
   ].find(name => ours({ name })) ?? Object.keys(effective.accounts).find(name => ours({ name }))
 }
 
+// Hooks add facts of their own, such as the client version, to a session's settings; only the ones Pnyx chooses call for a new session.
+function sameChosenSettings({
+  current,
+  chosen,
+}: {
+  current: AgentSettings | undefined
+  chosen: AgentSettings
+}): boolean {
+  const keys = new Set([
+    ...SETTINGS,
+    'fast',
+    ...Object.keys(chosen),
+  ])
+
+  return [...keys].every(key => current?.[key] === chosen[key])
+}
+
 const wakeId = ({ through }: { through: number }) => `wake:${through}`
 const WAKE_ID = /^wake:(\d+)$/
 const WAKE_TURN = /^wake:(\d+):hosted$/
@@ -1525,7 +1542,10 @@ export function createHost({
           const running = previousAgent && live.get(sessionId({ agent: previousAgent }))
           // A person's message joins Hydra's running turn when the same session takes it; Pnyx's own wakes wait for the turn to end.
           const sameSession = previousAgent?.provider === provider
-            && JSON.stringify(card?.settings ?? {}) === JSON.stringify(settings)
+            && sameChosenSettings({
+              current: card?.settings,
+              chosen: settings,
+            })
           const joinsTurn = actor !== 'pnyx' && sameSession
 
           while (!joinsTurn && previousAgent && running?.activity === 'working'
@@ -1543,7 +1563,10 @@ export function createHost({
           state = loadHydra({ hydraId }).state
           card = state.cards[HYDRA_CARD]
           const agent = card?.agent?.provider === provider ? card.agent : undefined
-          const changedSettings = JSON.stringify(card?.settings ?? {}) !== JSON.stringify(settings)
+          const changedSettings = !sameChosenSettings({
+            current: card?.settings,
+            chosen: settings,
+          })
 
           if (running && previousAgent && (!agent || changedSettings)) {
             retire({
