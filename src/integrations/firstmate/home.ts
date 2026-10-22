@@ -375,7 +375,7 @@ export function readHome({
     // The mirrored row keeps its shape: an extra field would read as a changed Firstmate record.
     const mirroredRow = row && { ...row }
     delete mirroredRow?.hold
-    const pr = meta.pr ?? titlePull({ title: row?.title })
+    const pr = meta.pr || titlePull({ title: row?.title })
     const activity = latestActivity({ log })
     const last = latestLine({ log })
     const worktree = canonical({ path: meta.worktree })
