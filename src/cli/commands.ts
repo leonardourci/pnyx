@@ -2,7 +2,9 @@ import { setupCheckOutput } from '../setup/check.ts'
 import { projectWorkerContext } from '../projects/context.ts'
 import { decideQueue } from '../queue/decide.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
-import { mentionContext, taskMentions } from '../mentions/mentions.ts'
+import { mentionContext, REFERENCE, referenceLabel, taskMentions } from '../mentions/mentions.ts'
+import { IMAGE_LINE } from '../attachments/images.ts'
+import { FILE_BLOCK } from '../attachments/files.ts'
 import { reminderTime } from '../reminders/time.ts'
 import { waitingReminders } from '../reminders/state.ts'
 import { findProject, projectRows, taskProject } from '../projects/read.ts'
@@ -47,6 +49,7 @@ import {
   EVENT_TYPES,
   HYDRA_ACTOR,
   OUTCOME_STATES,
+  ownerActor,
   type HydraEvent,
   type HydraState,
   type Card,
@@ -2177,6 +2180,122 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
   })
 }
 
+const HYDRA_NAME_MAX = 40
+
+// The first line of an owner's message that is text: attachments are skipped and mentions read as their labels.
+export function hydraName({ text }: { text: string }): string | undefined {
+  const line = text.replace(
+    FILE_BLOCK,
+    '',
+  ).replace(
+    IMAGE_LINE,
+    '',
+  )
+    .replace(
+      new RegExp(
+        REFERENCE.source,
+        'g',
+      ),
+      (
+        _,
+        label: string,
+      ) => referenceLabel({ label }),
+    )
+    .split('\n')
+    .map(part => part.trim())
+    .find(Boolean)
+
+  if (!line || line.length <= HYDRA_NAME_MAX) {
+    return line
+  }
+
+  // An early space would leave a word or two, so the cut falls mid-word, never inside a surrogate pair.
+  const cut = line.slice(
+    0,
+    HYDRA_NAME_MAX + 1,
+  )
+  const space = cut.lastIndexOf(' ')
+  const end = space >= HYDRA_NAME_MAX / 2 ? space : HYDRA_NAME_MAX
+  const words = cut.slice(
+    0,
+    end,
+  ).replace(
+    /[\uD800-\uDBFF]$/,
+    '',
+  )
+    .replace(
+      /[\s,.;:!?-]+$/,
+      '',
+    )
+
+  return words ? `${words}…` : undefined
+}
+
+// A Hydra created without a name takes one from the owner's first message; a name it has is never replaced.
+function nameHydra({
+  hydraId,
+  meta,
+  text,
+}: {
+  hydraId: string
+  meta: Meta
+  text: string
+}): void {
+  const name = hydraName({ text })
+
+  if (!name) {
+    return
+  }
+
+  // A retried message retries its naming under the same derived id.
+  const naming: Meta = {
+    at: meta.at,
+    actor: meta.actor,
+  }
+
+  if (meta.id) {
+    naming.id = `${meta.id}:name`
+  }
+
+  try {
+    commit({
+      hydraId,
+      meta: naming,
+      intent: {
+        type: 'board.configured',
+        card: '$board',
+      },
+      decide: ({
+        state,
+        meta,
+      }) => {
+        const config = hydraConfig({
+          state,
+          id: hydraId,
+        })
+
+        return config.name ? { skipped: 'unchanged' } : hydraEvent({
+          state,
+          meta,
+          cardId: '$board',
+          change: {
+            type: 'board.configured',
+            data: {
+              ...config,
+              name,
+            },
+          },
+        })
+      },
+    })
+  } catch (error) {
+    // The message has landed; a busy log only delays the name to the owner's next message.
+    if (!(error instanceof HydraError && error.code === 'LOCKED')) {
+      throw error
+    }
+  }
+}
+
 function homeHydraId({ home }: { home: string }): string {
   return basename(home).toLowerCase()
     .replace(
@@ -2798,6 +2917,14 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       return decision
     },
   })
+
+  if (!ref && ownerActor({ actor: m.actor })) {
+    nameHydra({
+      hydraId,
+      meta: m,
+      text: String(values.text),
+    })
+  }
 
   const config = hydraConfig({
     state: loadHydra({ hydraId }).state,

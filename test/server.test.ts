@@ -2556,6 +2556,17 @@ test(
       (await receipt({ id: 'b5' })).error ?? '',
       /Hydra not found/,
     )
+
+    // A Hydra created without a name stays unnamed until the owner's first message names it.
+    t.command({
+      id: 'b6',
+      name: 'hydras',
+      args: ['create'],
+    })
+    assert.equal(
+      (await receipt({ id: 'b6' })).hydras?.find(b => b.id === 'hydra-3')?.name,
+      '',
+    )
   },
 )
 
