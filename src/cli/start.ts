@@ -1,4 +1,5 @@
 import { projectWorkerContext } from '../projects/context.ts'
+import { taskStops } from '../landing/rule.ts'
 import { chooseCandidate, accountEnvironment, dispatchTask, hostedOverride, ruleCandidates, startCandidates, type DispatchChoice, type Override } from '../dispatch/select.ts'
 import { modelIds, type ModelOption } from '../server/provider.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
@@ -132,13 +133,15 @@ export function workerPrompt({
   ].join(' ')
 }
 
-// Every worker Pnyx starts opens with the same scope and authority.
+// Every worker Pnyx starts opens with the same scope and authority, then where its job stops.
 export function workerHeader({
   hydraId,
   id,
+  stops = [],
 }: {
   hydraId: string
   id: string
+  stops?: string[]
 }): string {
   return [
     `<pnyx-worker task="${id}" hydra="${hydraId}">`,
@@ -147,6 +150,7 @@ export function workerHeader({
     'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking.',
     `Escalate only real decisions, with \`pnyx-axi task status ${id} needs_you --note "<question and options>" --hydra ${hydraId}\`: merges, destructive actions, writes to shared or production systems, and work outside this task. Then wait for the answer.`,
+    ...stops,
     '</pnyx-worker>',
   ].join('\n')
 }
@@ -165,14 +169,20 @@ export function taskPrompt({
     id: card.id,
     title: card.title,
   })
+  const state = loadHydra({ hydraId }).state
   const header = workerHeader({
     hydraId,
     id: card.id,
+    stops: taskStops({
+      state,
+      hydraId,
+      card,
+    }),
   })
 
   const project = projectWorkerContext({
     hydraId,
-    state: loadHydra({ hydraId }).state,
+    state,
     project: card.project,
   })
 
