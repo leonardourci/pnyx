@@ -381,8 +381,15 @@ export function duration({ ms }: { ms: number }) {
     Math.round(ms / 1000),
   )
 
-  return seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s`
-    : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m`
+  if (seconds < 60) {
+    return `${seconds}s`
+  }
+
+  if (seconds < 3600) {
+    return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+  }
+
+  return `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m`
 }
 
 export const clock = ({

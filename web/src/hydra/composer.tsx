@@ -20,7 +20,15 @@ import { useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
-import { draftView, editDraft, fileBlock, ICON_SPACE, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
+import { draftView, editDraft, fileBlock, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
+
+const CHIP_TITLES: Partial<Record<PlacedChip['kind'], string>> = {
+  task: 'Open task',
+  image: 'Show image',
+}
+
+// The newlines that make a block its own paragraph, after the ones already there.
+const paragraphBreak = ({ newlines }: { newlines: string }) => '\n'.repeat(2 - newlines.length)
 
 export function Composer({
   card,
@@ -413,8 +421,8 @@ export function Composer({
         0,
         cursor,
       ), after = shown.slice(cursor)
-    const lead = !before.trim() || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n'
-    const tail = after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n'
+    const lead = before.trim() ? paragraphBreak({ newlines: /\n{0,2}$/.exec(before)?.[0] ?? '' }) : ''
+    const tail = paragraphBreak({ newlines: /^\n{0,2}/.exec(after)?.[0] ?? '' })
     const edit = replaceDisplay({
       text,
       from: cursor,
@@ -532,7 +540,7 @@ export function Composer({
         text: problem,
       })
       const later = current.current
-      const back = taken ? taken.draft : later.draft.trim() ? '' : text
+      const back = taken?.draft ?? (later.draft.trim() ? '' : text)
       const restored = [
         back,
         later.draft,
@@ -856,33 +864,35 @@ export function Composer({
               {view.chips.map((
                 chip,
                 index,
-              ) => (
-                <Fragment key={chip.start}>
-                  {display.slice(
-                    view.chips[index - 1]?.to ?? 0,
-                    chip.from,
-                  )}
-                  <span
-                    className={`draft-chip ${chip.attached ? 'attached' : 'reference'} ${chip.label.startsWith(ICON_SPACE) ? chipLook({ chip }).tone : ''}`}
-                    data-kind={chip.kind}
-                    title={chip.kind === 'task' ? 'Open task' : chip.kind === 'image' ? 'Show image' : chip.kind === 'project' ? chip.value : undefined}
-                    onMouseDown={event => event.preventDefault()}
-                    onClick={() => openChip({ chip })}
-                  >
-                    {chip.label.startsWith(ICON_SPACE) ? (
-                      <>
-                        {chipLook({ chip }).icons.map(icon => <span key={icon} className="chip-icon"><Icon name={icon} size={14} /></span>)}
-                        {chip.label.replace(
-                          /^\u2003+/,
-                          '',
-                        )}
-                      </>
-                    ) : chip.label}
-                  </span>
-                </Fragment>
-              ))}
+              ) => {
+                const look = chip.kind === 'task' || chip.kind === 'column' ? chipLook({ chip }) : undefined
+
+                return (
+                  <Fragment key={chip.start}>
+                    {display.slice(
+                      view.chips[index - 1]?.to ?? 0,
+                      chip.from,
+                    )}
+                    <span
+                      className={`draft-chip ${chip.attached ? 'attached' : 'reference'} ${look?.tone ?? ''}`}
+                      data-kind={chip.kind}
+                      title={chip.kind === 'project' ? chip.value : CHIP_TITLES[chip.kind]}
+                      onMouseDown={event => event.preventDefault()}
+                      onClick={() => openChip({ chip })}
+                    >
+                      {look ? (
+                        <>
+                          {look.icons.map(icon => <span key={icon} className="chip-icon"><Icon name={icon} size={14} /></span>)}
+                          {chip.label.trimStart()}
+                        </>
+                      ) : chip.label}
+                    </span>
+                  </Fragment>
+                )
+              })}
               {display.slice(view.chips.at(-1)!.to)}
-              {'​'}
+              {/* A trailing newline still gets a line box, as it does in the textarea. */}
+              {'\u200B'}
             </div>
           )}
         </div>

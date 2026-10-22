@@ -404,6 +404,11 @@ export function pnyxSentence({
   ]
 }
 
+const MEMORY_VERBS: Record<string, string> = {
+  set: 'Saved',
+  forget: 'Forgot',
+}
+
 const memory = ({
   layer,
   action = 'list',
@@ -412,7 +417,7 @@ const memory = ({
   layer: string
   action?: string
   key?: string
-}) => action === 'set' ? `Saved ${layer} memory “${key ?? ''}”` : action === 'forget' ? `Forgot ${layer} memory “${key ?? ''}”` : `Read ${layer} memory`
+}) => MEMORY_VERBS[action] ? `${MEMORY_VERBS[action]} ${layer} memory “${key ?? ''}”` : `Read ${layer} memory`
 
 // TOON quotes a value only when it has to.
 const unquote = ({ text }: { text: string }) => {

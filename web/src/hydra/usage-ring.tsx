@@ -18,10 +18,15 @@ interface Usage {
 
 const REFRESH_MS = 60_000
 
-export const tokens = ({ count }: { count: number }) => count >= 1_000_000 ? `${Number((count / 1_000_000).toFixed(1))}m`
-  : count >= 1_000 ? `${Math.round(count / 1_000)}k` : String(count)
+function tokens({ count }: { count: number }) {
+  if (count >= 1_000_000) {
+    return `${Number((count / 1_000_000).toFixed(1))}m`
+  }
 
-export function resetsIn({
+  return count >= 1_000 ? `${Math.round(count / 1_000)}k` : String(count)
+}
+
+function resetsIn({
   at,
   now,
 }: {
@@ -33,8 +38,15 @@ export function resetsIn({
     Math.round((Date.parse(at) - now) / 60_000),
   )
 
-  return minutes < 60 ? `${minutes}m` : minutes < 24 * 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
-    : `${Math.floor(minutes / (24 * 60))}d ${Math.floor(minutes % (24 * 60) / 60)}h`
+  if (minutes < 60) {
+    return `${minutes}m`
+  }
+
+  if (minutes < 24 * 60) {
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+  }
+
+  return `${Math.floor(minutes / (24 * 60))}d ${Math.floor(minutes % (24 * 60) / 60)}h`
 }
 
 const capital = ({ text }: { text: string }) => text.charAt(0).toUpperCase() + text.slice(1)

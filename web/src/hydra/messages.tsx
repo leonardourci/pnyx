@@ -942,6 +942,23 @@ function TurnFooter({ turn }: { turn: TurnTiming }) {
   )
 }
 
+function SentencePart({ part }: { part: PnyxCall['sentence'][number] }) {
+  if (typeof part === 'string') {
+    return part
+  }
+
+  if ('column' in part) {
+    return <ColumnChip {...columnLook({ column: part.column })} label={part.label} />
+  }
+
+  return (
+    // A click on the chip opens the task without folding the row.
+    <span onClick={event => event.preventDefault()}>
+      <TaskReference id={part.task}>{part.label}</TaskReference>
+    </span>
+  )
+}
+
 // Pnyx's own commands read as what they did; the command itself is one click away.
 function PnyxCallRow({ call }: { call: PnyxCall }) {
   return (
@@ -952,14 +969,7 @@ function PnyxCallRow({ call }: { call: PnyxCall }) {
           {call.sentence.map((
             part,
             index,
-          ) => typeof part === 'string' ? <Fragment key={index}>{part}</Fragment> : 'column' in part ? (
-            <ColumnChip key={index} {...columnLook({ column: part.column })} label={part.label} />
-          ) : (
-            // A click on the chip opens the task without folding the row.
-            <span key={index} onClick={event => event.preventDefault()}>
-              <TaskReference id={part.task}>{part.label}</TaskReference>
-            </span>
-          ))}
+          ) => <SentencePart key={index} part={part} />)}
           {call.failed && <span className="pnyx-failed"> · failed: {call.failed}</span>}
         </span>
         <CopyButton className="trace-copy" label="Copy command" text={() => call.command} />
