@@ -1,5 +1,6 @@
 import { HYDRA_ACTOR, type HydraMessage } from '../../../src/core/model.ts'
-import { QUIET_REPLY } from '../../../src/core/hydra.ts'
+import { hydraDelivery, QUIET_REPLY, reportActor } from '../../../src/core/hydra.ts'
+import { withoutInjected } from '../../../src/oracle/text.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 
 // A streamed start of Hydra's quiet reply hides too.
@@ -23,17 +24,37 @@ export function hydraMessages({
     ' ',
   )
   const recorded: ThreadEntry[] = [], replaced = new Set<ThreadEntry>()
+  const ownCopies = new Map(transcript.filter(entry => ownMessage({ entry })).map(entry => [
+    entry,
+    normalized(entry),
+  ]))
 
+  // A copy is known by what Pnyx delivered: reports never show, the owner's own words always do.
   for (const message of messages) {
+    const report = reportActor({ actor: message.actor })
     const role = message.actor === HYDRA_ACTOR ? 'assistant' : message.actor === 'pnyx' ? 'Pnyx' : 'user'
     const text = message.details ? `${message.text}\n\n${message.details}` : message.text
-    // Hydra's copy also carries the context Pnyx adds for referenced tasks; the chat shows the owner's words.
     const sent = message.context ? `${text}\n\n${message.context}` : text
-    const match = role === 'user' ? remaining.findIndex(entry => ownMessage({ entry })
-      && [
-        text,
-        sent,
-      ].some(copy => normalized(entry) === normalized({ text: copy }))) : -1
+    // An older server delivered a report as its bare words.
+    const reportCopies = [
+      hydraDelivery({ message }),
+      text,
+      sent,
+    ]
+    // The transcript reader drops harness markup the owner quoted.
+    const ownerCopies = [
+      text,
+      sent,
+      withoutInjected({ text }),
+      withoutInjected({ text: sent }),
+    ]
+    const delivered = report ? reportCopies : ownerCopies
+    const copies = new Set(delivered.map(copy => normalized({ text: copy })))
+    const match = role === 'user' ? remaining.findIndex(entry => {
+      const copy = ownCopies.get(entry)
+
+      return copy !== undefined && copies.has(copy)
+    }) : -1
 
     if (match >= 0) {
       const [entry] = remaining.splice(
@@ -41,14 +62,16 @@ export function hydraMessages({
         1,
       )
 
-      if (sent !== text && normalized(entry!) === normalized({ text: sent })) {
+      if (report) {
+        replaced.add(entry!)
+      } else if (normalized(entry!) !== normalized({ text })) {
         replaced.add(entry!)
         recorded.push({
           ...entry!,
           text,
         })
       }
-    } else {
+    } else if (!report) {
       recorded.push({
         id: message.id,
         kind: 'message',
