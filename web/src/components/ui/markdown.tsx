@@ -2,7 +2,7 @@ import { TaskReference } from './task-reference.tsx'
 import { decodeValue, mentionId } from '../../../../src/mentions/mentions.ts'
 import { Fragment, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
-import { imageLine, imagePaths } from '../../../../src/attachments/images.ts'
+import { IMAGE, imageNames } from '../../../../src/attachments/images.ts'
 import { ImageChip } from './attached-image.tsx'
 import { ColumnChip } from './column-chip.tsx'
 
@@ -70,12 +70,33 @@ type TaskLink = {
     icon: string
     tone: string
   }
+  // Each of the message's images by its Image N name.
+  images?: Map<string, string>
 }
+
+// An image stays where the owner placed it, as its compact card.
+const withImages = ({
+  text,
+  images,
+}: {
+  text: string
+  images?: Map<string, string>
+}): ReactNode => text.split(IMAGE).map((
+  part,
+  n,
+) => n % 2 ? (
+  <ImageChip
+    key={n}
+    path={part}
+    label={images?.get(part) ?? 'Image'}
+  />
+) : part)
 
 const inline = ({
   tokens,
   openTask,
   columnLook,
+  images,
 }: { tokens: Token[] } & TaskLink): ReactNode =>
   tokens.map((
     token,
@@ -85,6 +106,7 @@ const inline = ({
       tokens: token.tokens,
       openTask,
       columnLook,
+      images,
     })
       : 'text' in token ? decodeEntities({ text: String(token.text) }) : token.raw
 
@@ -109,6 +131,7 @@ const inline = ({
               key={i}
               path={value}
               label={label}
+              reference
             />
           )
         }
@@ -157,6 +180,13 @@ const inline = ({
           </a>
         ) : <Fragment key={i}>{children}</Fragment>
       }
+      case 'text': return (
+        <Fragment key={i}>{typeof children === 'string' ? withImages({
+          text: children,
+          images,
+        }) : children}
+        </Fragment>
+      )
       default: return <Fragment key={i}>{children}</Fragment>
     }
   })
@@ -184,6 +214,7 @@ function Table({
   token,
   openTask,
   columnLook,
+  images,
 }: { token: Tokens.Table } & TaskLink) {
   const align = token.align.map(a => ({ textAlign: a ?? undefined }))
   const cells = ({
@@ -200,6 +231,7 @@ function Table({
       tokens: cell.tokens,
       openTask,
       columnLook,
+      images,
     })}
     </Cell>
   ))
@@ -260,7 +292,10 @@ export function Markdown({
     () => markdown.lexer(text),
     [text],
   )
-  const images = imagePaths({ text })
+  const images = useMemo(
+    () => imageNames({ text }),
+    [text],
+  )
   let index = 0
 
   const wrap = ({
@@ -322,19 +357,21 @@ export function Markdown({
               tokens: token.tokens ?? [],
               openTask,
               columnLook,
+              images,
             })}
             </Heading>
           ); break
         }
         case 'paragraph': case 'text': {
-          const image = imagePaths({ text: token.text.trim() })[0]
-          const content = image !== undefined && imageLine({ path: image }) === token.text.trim()
-            ? <ImageChip path={image} label={`Image ${images.indexOf(image) + 1}`} preview />
-            : token.tokens ? inline({
-              tokens: token.tokens,
-              openTask,
-              columnLook,
-            }) : token.text
+          const content = token.tokens ? inline({
+            tokens: token.tokens,
+            openTask,
+            columnLook,
+            images,
+          }) : withImages({
+            text: token.text,
+            images,
+          })
           const paragraph = <p>{content}</p>
 
           if (inItem) {
@@ -344,7 +381,14 @@ export function Markdown({
           node = paragraph; break
         }
         case 'code': node = <Code text={token.text} language={token.lang} />; break
-        case 'table': node = <Table token={token as Tokens.Table} openTask={openTask} columnLook={columnLook} />; break
+        case 'table': node = (
+          <Table
+            token={token as Tokens.Table}
+            openTask={openTask}
+            columnLook={columnLook}
+            images={images}
+          />
+        ); break
         default: node = <p>{token.raw}</p>
       }
 

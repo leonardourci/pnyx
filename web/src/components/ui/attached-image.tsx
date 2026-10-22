@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ATTACHMENT_NAME, imageLine } from '../../../../src/attachments/images.ts'
-import { Button } from './controls.tsx'
+import { AttachmentCard } from './attachment-card.tsx'
 import { Dialog } from './dialog.tsx'
 import { Icon } from './icon.tsx'
 
@@ -70,7 +70,6 @@ export function ImageThumb({ path }: { path: string }) {
   return src && !failed
     ? (
       <img
-        className="image-thumb"
         src={src}
         alt=""
         onError={() => setFailed(true)}
@@ -79,15 +78,15 @@ export function ImageThumb({ path }: { path: string }) {
     : <Icon name="image" size={13} />
 }
 
-// An image standing as its own paragraph shows as a preview; one inside text stays a chip.
+// An image in a message is a compact card where the owner placed it; a reference to one is dashed.
 export function ImageChip({
   path,
   label,
-  preview = false,
+  reference = false,
 }: {
   path: string
   label: string
-  preview?: boolean
+  reference?: boolean
 }) {
   const [
     open,
@@ -96,15 +95,13 @@ export function ImageChip({
 
   return (
     <>
-      <Button
-        className={`chip image-chip${preview ? ' preview' : ''}`}
-        contentEditable={false}
+      <AttachmentCard
+        slot={<ImageThumb path={path} />}
+        label={label}
         title="Show image"
-        onClick={() => setOpen(true)}
-      >
-        <ImageThumb path={path} />
-        {label}
-      </Button>
+        tone={reference ? 'reference' : undefined}
+        open={() => setOpen(true)}
+      />
       {open && <ImageViewer path={path} label={label} close={() => setOpen(false)} />}
     </>
   )

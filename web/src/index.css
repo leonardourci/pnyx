@@ -1174,11 +1174,12 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .attachment-card.reference { border-style: dashed; background: transparent; }
 
-.image-chip .image-thumb { width: 1.7em; height: 1.15em; object-fit: cover; border-radius: 3px; }
+.message .attachment-card { margin: 0 1px; }
 
-.button.image-chip.preview { flex-direction: column; align-items: flex-start; padding: 4px 4px 2px; }
+.message.mine .attachment-card:not(.reference) { background: var(--color-background); }
 
-.image-chip.preview .image-thumb { width: auto; height: auto; max-width: min(240px, 100%); max-height: 120px; object-fit: contain; }
+/* Sent text keeps the draft's line height, so a card never changes the spacing. */
+.message.mine .markdown { line-height: var(--chat-line); }
 
 .chip.reference-chip { display: inline-flex; padding: 1px 6px; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); }
 
