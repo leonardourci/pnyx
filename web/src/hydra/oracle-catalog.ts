@@ -198,6 +198,8 @@ const CONCEPTS = [
   ],
 ]
 
+// Keyboard help opens the Oracle on this query, which lists every action's shortcut row.
+export const SHORTCUT_QUERY = '> shortcut'
 export const commandQuery = ({ query }: { query: string }) => query.trimStart().startsWith('>')
 export const queryWords = ({ query }: { query: string }) => query.replace(
   /^\s*>/,

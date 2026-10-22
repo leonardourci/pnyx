@@ -15,7 +15,7 @@ import type { Command } from './connection.ts'
 import { hydraConfig, LOCKED_DELETE, lockedColumn } from '../../../src/core/hydra.ts'
 import { AgentKinds } from './agent-kinds.tsx'
 import { columnsFor } from './view.ts'
-import { commandQuery, matchesCommand, resetWidths, oracleSettings, queryWords } from './oracle-catalog.ts'
+import { commandQuery, matchesCommand, resetWidths, oracleSettings, queryWords, SHORTCUT_QUERY } from './oracle-catalog.ts'
 
 export function Oracle({
   state,
@@ -108,7 +108,7 @@ export function Oracle({
   useKeyAction({
     id: 'help',
     handler: () => {
-      setQuery({ query: '> shortcut' })
+      setQuery({ query: SHORTCUT_QUERY })
 
       return focus()
     },
