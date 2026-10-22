@@ -27,6 +27,8 @@ const COMMAND_TEXT = 400
 const WORDS_TEXT = 120
 const MAX_CALLS = 8
 
+const firstLine = ({ value }: { value: unknown }) => typeof value === 'string' ? value.trim().split('\n')[0] : value
+
 const clipped = ({
   value,
   max,
@@ -70,7 +72,6 @@ function callOf({
   tool: string
   input: Record<string, unknown>
 }): ToolCall {
-  const description = typeof input.description === 'string' ? input.description.trim().split('\n')[0] : undefined
   const fields = {
     command: clipped({
       value: commandOf({ input }),
@@ -93,7 +94,7 @@ function callOf({
       max: WORDS_TEXT,
     }),
     description: clipped({
-      value: description,
+      value: firstLine({ value: input.description }),
       max: WORDS_TEXT,
     }),
   }
@@ -123,8 +124,12 @@ const scriptString = ({
 }): string | undefined => {
   const literal = pattern.exec(text)?.[1]
 
+  if (literal === undefined) {
+    return undefined
+  }
+
   try {
-    return literal === undefined ? undefined : String(JSON.parse(literal))
+    return String(JSON.parse(literal))
   } catch {
     return undefined
   }
@@ -209,17 +214,17 @@ export function recordCalls({ record }: { record: unknown }): {
         tool,
         input: parsedArguments({ text: b.arguments }),
       }))
-    } else if (b.type === 'custom_tool_call' && typeof b.input === 'string') {
-      calls.push(...(tool === 'exec' ? scriptCalls({
+    } else if (b.type === 'custom_tool_call' && typeof b.input === 'string' && tool === 'exec') {
+      calls.push(...scriptCalls({
         id: String(b.call_id),
         script: b.input,
-      }) : [
-        callOf({
-          id: String(b.call_id),
-          tool,
-          input: { path: PATCHED_FILE.exec(b.input)?.[1] },
-        }),
-      ]))
+      }))
+    } else if (b.type === 'custom_tool_call' && typeof b.input === 'string') {
+      calls.push(callOf({
+        id: String(b.call_id),
+        tool,
+        input: { path: PATCHED_FILE.exec(b.input)?.[1] },
+      }))
     } else if (b.type === 'tool_result') {
       results.push(String(b.tool_use_id))
     } else if (b.type === 'function_call_output' || b.type === 'custom_tool_call_output') {
@@ -227,11 +232,20 @@ export function recordCalls({ record }: { record: unknown }): {
     }
   }
 
-  return {
+  const found: {
+    calls: ToolCall[]
+    results: string[]
+    at?: string
+  } = {
     calls,
     results,
-    ...(typeof r.timestamp === 'string' ? { at: r.timestamp } : {}),
   }
+
+  if (typeof r.timestamp === 'string') {
+    found.at = r.timestamp
+  }
+
+  return found
 }
 
 // Reads back from the end to the agent's latest run of calls, and collects the call
@@ -278,13 +292,17 @@ export function lastAction({ lines }: { lines: string[] }): {
   }
 
   const latest = calls.slice(-MAX_CALLS)
+  const action: CurrentAction = {
+    calls: latest,
+    done: latest.every(call => results.has(call.id)),
+  }
+
+  if (at) {
+    action.at = at
+  }
 
   return {
-    action: {
-      calls: latest,
-      ...(at ? { at } : {}),
-      done: latest.every(call => results.has(call.id)),
-    },
+    action,
     results,
   }
 }
