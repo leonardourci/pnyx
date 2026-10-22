@@ -26,7 +26,7 @@ import {
   blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage,
 } from './message-selection.ts'
 import { columnLook, receiptLabel } from './view.ts'
-import { pnyxCalls, type PnyxCall, type PnyxLookup } from './pnyx-action.ts'
+import { pnyxCalls, shellCommand, type PnyxCall, type PnyxLookup } from './pnyx-action.ts'
 
 const PILL_GAP = 6
 let highlights = 0
@@ -906,17 +906,6 @@ export function Messages({
   )
 }
 
-// A tool row holds the call's JSON input; a shell call copies as its plain command line.
-const toolCommand = ({ text }: { text: string }) => {
-  try {
-    const input = JSON.parse(text) as { command?: unknown }
-
-    return typeof input.command === 'string' ? input.command : text
-  } catch {
-    return text
-  }
-}
-
 function TurnFooter({ turn }: { turn: TurnTiming }) {
   const took = duration({ ms: Date.parse(turn.end) - Date.parse(turn.start) })
   const started = clock({
@@ -1002,7 +991,7 @@ function Trace({
     </>
   )
 
-  const copy = entry.kind === 'tool' && <CopyButton className="trace-copy" label="Copy" text={() => toolCommand({ text: entry.text })} />
+  const copy = entry.kind === 'tool' && <CopyButton className="trace-copy" label="Copy" text={() => shellCommand({ text: entry.text }) ?? entry.text} />
 
   return details ? <details className="trace" data-expandable="true"><summary>{summary}{copy}</summary><pre className="trace-text">{entry.text}</pre></details>
     : <div className="trace" data-expandable="false"><div className="trace-summary">{summary}{copy}</div></div>
