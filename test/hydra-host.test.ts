@@ -2675,7 +2675,7 @@ test(
 )
 
 test(
-  'hydra usage reports the context in use, its window, the session cost and the plan windows the agent reported',
+  'hydra usage reports the context in use, its window, the session cost and plan windows, the agent\'s own first',
   async () => {
     const home = mkdtempSync(join(
       tmpdir(),
@@ -2687,6 +2687,28 @@ test(
       'claude',
     )
     process.env.PNYX_SEMANTIC = 'off'
+    const { claude } = fakeDispatch({ root: home })
+    writeFileSync(
+      join(
+        claude,
+        'quota.json',
+      ),
+      JSON.stringify({
+        provider: {
+          plan: 'max',
+          windows: [
+            {
+              label: 'Session',
+              percentUsed: 90,
+            },
+            {
+              label: 'week',
+              percentRemaining: 60,
+            },
+          ],
+        },
+      }),
+    )
     commands.hydra([
       'create',
       'lab',
@@ -2700,7 +2722,7 @@ test(
       limit: {
         rateLimitType: 'five_hour',
         utilization: 0.34,
-        resetsAt: 1_800_000_000,
+        resetsAt: 4_000_000_000,
       },
     }
     const server = await startServer({
@@ -2746,13 +2768,26 @@ test(
         usage.cost,
         1.25,
       )
+      assert.equal(
+        usage.account,
+        'claude:test',
+      )
+      assert.equal(
+        usage.plan,
+        'max',
+      )
+      // The agent's own session window takes quota-axi's place; quota-axi still fills the week.
       assert.deepEqual(
         usage.windows,
         [
           {
             label: 'session',
             used: 34,
-            resetsAt: new Date(1_800_000_000_000).toISOString(),
+            resetsAt: new Date(4_000_000_000_000).toISOString(),
+          },
+          {
+            label: 'week',
+            used: 40,
           },
         ],
       )
