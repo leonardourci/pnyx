@@ -132,6 +132,38 @@ test(
 )
 
 test(
+  'a character typed next to the same character keeps the caret right after it',
+  () => {
+    // A space typed before an existing space must not move the caret past both.
+    assert.deepEqual(
+      editDraft({
+        text: 'a b',
+        next: 'a  b',
+        caret: 2,
+      }),
+      {
+        text: 'a  b',
+        caret: 2,
+      },
+    )
+    const text = `I think ${image} the end`
+    const at = draftView({ text }).chips[0]!.to
+    const typed = draftView({ text }).display
+    assert.equal(
+      editDraft({
+        text,
+        next: `${typed.slice(
+          0,
+          at,
+        )} ${typed.slice(at)}`,
+        caret: at + 1,
+      }).caret,
+      at + 1,
+    )
+  },
+)
+
+test(
   'pasted reference Markdown becomes a chip and the caret skips over chips',
   () => {
     const pasted = editDraft({

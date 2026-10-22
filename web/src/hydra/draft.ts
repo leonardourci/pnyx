@@ -257,7 +257,7 @@ export function placeBlock({
   }
 }
 
-// The caret places the edit when the same character repeats around it.
+// The caret places the edit when the same character repeats around it: typed text ends at the caret.
 export function editDraft({
   text,
   next,
@@ -268,9 +268,13 @@ export function editDraft({
   caret: number
 }) {
   const before = draftView({ text }).display
+  const typed = Math.max(
+    0,
+    next.length - before.length,
+  )
   let prefix = 0, suffix = 0
 
-  while (prefix < caret && prefix < before.length && before[prefix] === next[prefix]) {
+  while (prefix < caret - typed && prefix < before.length && before[prefix] === next[prefix]) {
     prefix++
   }
 
