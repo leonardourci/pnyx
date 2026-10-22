@@ -235,6 +235,34 @@ try {
     condition: '(() => { const list = document.querySelector(".task-updates .markdown ol"); return getComputedStyle(list).listStyleType === "decimal" && parseFloat(getComputedStyle(list).paddingLeft) > 0 && getComputedStyle(list.querySelector("li")).borderBottomWidth === "0px"; })()',
     label: 'numbered steps keep their markers and are not styled as timeline rows',
   })
+  commands.task([
+    'status',
+    'migration',
+    'working',
+    '--note',
+    'Canary chosen; rolling out.',
+    '--actor',
+    'worker',
+  ])
+  await b.eventually({
+    condition: '(() => { const fold = document.querySelector(".task-updates > ol > li details.update-fold"); return !!fold && !fold.open && fold.querySelector("summary").textContent.includes("2 worker updates"); })()',
+    label: 'back-to-back worker declarations fold into one closed row',
+  })
+  await b.evaluate({ code: 'document.querySelector(".task-updates > ol > li:has(details.update-fold)").dispatchEvent(new MouseEvent("click", { bubbles: true })); return true;' })
+  await b.eventually({
+    condition: 'document.querySelector(".task-updates details.update-fold")?.open && document.querySelector(".task-updates details.update-fold .show-more")?.getAttribute("aria-expanded") === "false"',
+    label: 'a click anywhere in a folded row opens it, and long text offers Show more',
+  })
+  await b.click({ selector: '.task-updates details.update-fold .show-more' })
+  await b.eventually({
+    condition: 'document.querySelector(".task-updates details.update-fold .show-more").getAttribute("aria-expanded") === "true"',
+    label: 'Show more expands the clamped text',
+  })
+  await b.evaluate({ code: 'document.querySelector(".task-updates > ol > li:has(details.update-fold)").dispatchEvent(new MouseEvent("click", { bubbles: true })); return true;' })
+  await b.eventually({
+    condition: '!document.querySelector(".task-updates details.update-fold").open && document.querySelector(".task-updates details.update-fold .show-more")?.getAttribute("aria-expanded") !== "true" && !!document.querySelector(".task-updates")',
+    label: 'a second click closes the whole row and leaves the card open',
+  })
 
   for (const [
     width,

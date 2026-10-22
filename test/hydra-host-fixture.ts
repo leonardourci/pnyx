@@ -27,6 +27,7 @@ export function hydraSdk() {
         resetsAt: number
       }
     } | undefined,
+    reply: undefined as string | undefined,
   }
   const permissions: PermissionResult[] = []
   const sets: string[] = []
@@ -110,7 +111,7 @@ export function hydraSdk() {
           subtype: 'session_state_changed',
           state: 'running',
         }
-        const reply = `Hydra: ${text.split('\n\n').at(-1)}`
+        const reply = control.reply ?? `Hydra: ${text.split('\n\n').at(-1)}`
 
         if (control.usage?.limit) {
           yield {

@@ -1,14 +1,14 @@
 import {
-  IconBrandGithub, IconPaperclip, IconBoltFilled, IconPinnedFilled,
-  IconEyeCheck, IconLock, IconLockOpen, IconMap, IconMessageQuestion, IconPencilCheck,
-  IconAdjustments, IconAlertCircle, IconAlertTriangle, IconArrowDown, IconArrowUpRight,
-  IconArrowFork, IconBolt, IconBulb, IconCheck, IconChevronDown, IconChevronRight, IconCircleCheck,
-  IconCalendar, IconClipboardList, IconClock, IconCode, IconCopy, IconCpu,
-  IconCube, IconDeviceDesktop,
-  IconDots, IconEye, IconFileText, IconFolder, IconGauge, IconGitPullRequest, IconGitFork,
-  IconLink, IconList, IconMaximize, IconMessage, IconMessagePlus, IconMinus, IconPhoto, IconQuote,
-  IconPlayerPause, IconPlayerPlay, IconPlayerStopFilled,
-  IconPlus, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag, IconX,
+  IconAdjustments, IconAlertCircle, IconAlertTriangle, IconArrowDown, IconArrowFork,
+  IconArrowRight, IconArrowUpRight, IconBolt, IconBoltFilled, IconBrandGithub, IconBulb,
+  IconCalendar, IconCheck, IconChevronDown, IconChevronRight, IconCircleCheck, IconClipboardList,
+  IconClock, IconCode, IconCopy, IconCpu, IconCube, IconDeviceDesktop, IconDots,
+  IconExclamationCircle, IconEye, IconEyeCheck, IconFileText, IconFolder, IconGauge, IconGitFork,
+  IconGitPullRequest, IconLink, IconList, IconLock, IconLockOpen, IconMap, IconMaximize,
+  IconMessage, IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil,
+  IconPencilCheck, IconPhoto, IconPinnedFilled, IconPlayerPause, IconPlayerPlay,
+  IconPlayerStopFilled, IconPlus, IconQuote, IconRobot, IconSearch, IconSend, IconSettings,
+  IconShield, IconTag, IconUser, IconX,
 } from '@tabler/icons-react'
 
 const icons: Record<string, typeof IconRobot> = {
@@ -74,6 +74,10 @@ const icons: Record<string, typeof IconRobot> = {
   project: IconFolder,
   task: IconClipboardList,
   error: IconAlertCircle,
+  you: IconUser,
+  decision: IconExclamationCircle,
+  moved: IconArrowRight,
+  renamed: IconPencil,
 
 }
 
