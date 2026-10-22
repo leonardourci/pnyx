@@ -941,7 +941,7 @@ function TurnFooter({ turn }: { turn: TurnTiming }) {
   )
 }
 
-function SentencePart({ part }: { part: PnyxCall['sentence'][number] }) {
+export function SentencePart({ part }: { part: PnyxCall['sentence'][number] }) {
   if (typeof part === 'string') {
     return part
   }
