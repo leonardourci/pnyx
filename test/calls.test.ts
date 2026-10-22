@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { lastAction, recordCalls } from '../src/thread/calls.ts'
+import { readAction, recordCalls } from '../src/thread/calls.ts'
 import { latestMessage, recordEntries } from '../src/thread/read.ts'
 
 const claudeCall = ({
@@ -261,7 +261,7 @@ test(
         input: { file_path: 'b.ts' },
       }),
     ]
-    const open = lastAction({ lines: lines({ records: parallel }) }).action
+    const open = readAction({ lines: lines({ records: parallel }) }).action
 
     assert.deepEqual(
       open?.calls.map(call => call.id),
@@ -275,7 +275,7 @@ test(
       false,
     )
     assert.equal(
-      lastAction({
+      readAction({
         lines: lines({
           records: [
             ...parallel,
@@ -299,7 +299,7 @@ test(
     )
     // An earlier call answered before the latest one does not join it.
     assert.deepEqual(
-      lastAction({
+      readAction({
         lines: lines({
           records: [
             claudeCall({
@@ -449,6 +449,264 @@ test(
         offset: 1,
       })[0]?.call,
       'call_1',
+    )
+  },
+)
+
+test(
+  'When only one of two calls made together is answered, the action is still running',
+  () => {
+    assert.equal(
+      readAction({
+        lines: lines({
+          records: [
+            claudeCall({
+              id: 'a',
+              name: 'Bash',
+              input: { command: 'pnpm test' },
+            }),
+            claudeCall({
+              id: 'b',
+              name: 'Bash',
+              input: { command: 'pnpm lint' },
+            }),
+            claudeResult({ id: 'a' }),
+          ],
+        }),
+      }).action?.done,
+      false,
+    )
+  },
+)
+
+test(
+  'Calls and results split across reads of a growing transcript still make one action, done once both answered',
+  () => {
+    const path = join(
+      mkdtempSync(join(
+        tmpdir(),
+        'pnyx-calls-split-',
+      )),
+      'session.jsonl',
+    )
+    const append = ({ records }: { records: unknown[] }) => appendFileSync(
+      path,
+      `${lines({ records }).join('\n')}\n`,
+    )
+    writeFileSync(
+      path,
+      '',
+    )
+    append({
+      records: [
+        claudeCall({
+          id: 'a',
+          name: 'Read',
+          input: { file_path: 'a.ts' },
+        }),
+      ],
+    })
+    let read = latestMessage({ path })
+    append({
+      records: [
+        claudeCall({
+          id: 'b',
+          name: 'Read',
+          input: { file_path: 'b.ts' },
+        }),
+      ],
+    })
+    read = latestMessage({
+      path,
+      prev: read,
+    })
+
+    assert.deepEqual(
+      read.action?.calls.map(call => call.id),
+      [
+        'a',
+        'b',
+      ],
+    )
+
+    for (const id of [
+      'a',
+      'b',
+    ]) {
+      assert.equal(
+        read.action?.done,
+        false,
+      )
+      append({ records: [claudeResult({ id })] })
+      read = latestMessage({
+        path,
+        prev: read,
+      })
+    }
+
+    assert.equal(
+      read.action?.done,
+      true,
+    )
+  },
+)
+
+test(
+  'A Codex custom tool outside a script names the file its patch touches',
+  () => {
+    assert.deepEqual(
+      recordCalls({
+        record: {
+          type: 'response_item',
+          payload: {
+            type: 'custom_tool_call',
+            call_id: 'call_9',
+            name: 'apply_patch',
+            input: '*** Begin Patch\n*** Add File: src/x.ts\n+export {}\n*** End Patch',
+          },
+        },
+      }).calls,
+      [
+        {
+          id: 'call_9',
+          tool: 'apply_patch',
+          file: 'src/x.ts',
+        },
+      ],
+    )
+  },
+)
+
+test(
+  'An action keeps at most its last eight calls, and long commands and descriptions are cut',
+  () => {
+    const calls = Array.from(
+      { length: 10 },
+      (
+        _,
+        index,
+      ) => claudeCall({
+        id: `c${index}`,
+        name: 'Read',
+        input: { file_path: `${index}.ts` },
+      }),
+    )
+
+    assert.deepEqual(
+      readAction({ lines: lines({ records: calls }) }).action?.calls.map(call => call.id),
+      [
+        'c2',
+        'c3',
+        'c4',
+        'c5',
+        'c6',
+        'c7',
+        'c8',
+        'c9',
+      ],
+    )
+
+    const [call] = recordCalls({
+      record: claudeCall({
+        id: 'long',
+        name: 'Bash',
+        input: {
+          command: 'x'.repeat(1000),
+          description: 'y'.repeat(1000),
+        },
+      }),
+    }).calls
+
+    assert.equal(
+      call?.command?.length,
+      400,
+    )
+    assert.equal(
+      call?.description?.length,
+      120,
+    )
+  },
+)
+
+test(
+  'Broken or partial records give no calls instead of failing the read',
+  () => {
+    assert.deepEqual(
+      recordCalls({
+        record: {
+          ...claudeCall({
+            id: 'meta',
+            name: 'Bash',
+            input: { command: 'ls' },
+          }),
+          isMeta: true,
+        },
+      }).calls,
+      [],
+    )
+    assert.deepEqual(
+      recordCalls({
+        record: {
+          type: 'assistant',
+          message: {
+            content: [
+              {
+                type: 'tool_use',
+                name: 'Bash',
+                input: { command: 'ls' },
+              },
+            ],
+          },
+        },
+      }).calls,
+      [],
+    )
+    assert.deepEqual(
+      recordCalls({
+        record: {
+          type: 'response_item',
+          payload: {
+            type: 'function_call',
+            call_id: 'call_bad',
+            name: 'shell',
+            arguments: '{not json',
+          },
+        },
+      }).calls,
+      [
+        {
+          id: 'call_bad',
+          tool: 'shell',
+        },
+      ],
+    )
+    assert.deepEqual(
+      readAction({
+        lines: [
+          '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","na',
+          ...lines({
+            records: [
+              claudeCall({
+                id: 't2',
+                name: 'Bash',
+                input: { command: 'pnpm test' },
+              }),
+            ],
+          }),
+        ],
+      }).action?.calls.map(call => call.id),
+      ['t2'],
+    )
+    assert.deepEqual(
+      recordEntries({
+        record: codexScript({
+          id: 'call_1',
+          script: 'text(await tools.exec_command({cmd:"git status"}))',
+        }),
+        offset: 0,
+        tools: false,
+      }),
+      [],
     )
   },
 )

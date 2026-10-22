@@ -8,7 +8,7 @@ import { HOST_LABEL, replyRoute, type ReplyRoute } from '../core/route.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { taskReceipt } from './task.ts'
 import { cardSessionId } from '../core/tasks.ts'
-import { lastAction, obj, type CurrentAction } from './calls.ts'
+import { obj, readAction, recordBlocks, shortened, type ActionRead } from './calls.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
@@ -124,7 +124,7 @@ export function recordEntries({
     return []
   }
 
-  const payload = obj({ v: r.payload }), message = obj({ v: r.message })
+  const payload = obj({ v: r.payload })
   const role = typeof payload.role === 'string' ? payload.role : String(r.type)
   const at = typeof r.timestamp === 'string' ? r.timestamp : undefined
   const entries: ThreadEntry[] = transcriptMessages({
@@ -141,7 +141,7 @@ export function recordEntries({
     at: m.at,
     hidden: m.internal,
   }))
-  const blocks = Array.isArray(message.content) ? message.content : r.type === 'response_item' ? [payload] : []
+  const blocks = recordBlocks({ record })
 
   for (const [
     i,
@@ -197,23 +197,6 @@ export interface LatestMessage {
 const LATEST_TEXT = 280
 const LATEST_WINDOW = 64 * 1024
 
-// Cut to LATEST_TEXT, never inside a surrogate pair.
-function clip({ text }: { text: string }): string {
-  if (text.length <= LATEST_TEXT) {
-    return text
-  }
-
-  const cut = text.slice(
-    0,
-    LATEST_TEXT - 1,
-  ).replace(
-    /[\uD800-\uDBFF]$/,
-    '',
-  )
-
-  return `${cut.trimEnd()}…`
-}
-
 // Only agent-authored text can become a card update.
 function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -244,7 +227,10 @@ function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
 
     return {
       role: 'assistant',
-      text: clip({ text }),
+      text: shortened({
+        text,
+        max: LATEST_TEXT,
+      }),
       ...(messages[0]!.at ? { at: messages[0]!.at } : {}),
     }
   }
@@ -254,19 +240,17 @@ function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
 
 // A transcript's last message and how far it was read: size is the end of its last
 // complete line, so a later read of the same file parses only what was appended.
-export interface LatestRead {
+export interface LatestRead extends ActionRead {
   message: LatestMessage | null
-  action: CurrentAction | null
   path: string
   ino: number
   size: number
 }
 
 // Given the previous read of the same, grown file, parses only the complete lines
-// appended since and keeps the previous message and action when they hold none, marking
-// that action done once its results arrive. Otherwise reads back from the end: a window
-// of tool output doubles until a message turns up or MAX_BYTES is read. message and
-// action are null when the file holds none or is unreadable.
+// appended since and keeps the previous message when they hold none. Otherwise reads
+// back from the end: a window of tool output doubles until a message turns up or
+// MAX_BYTES is read. message is null when the file holds no message or is unreadable.
 export function latestMessage({
   path,
   prev,
@@ -320,19 +304,12 @@ export function latestMessage({
         size: end,
       } = read({ start: prev.size })
 
-      const {
-        action,
-        results,
-      } = lastAction({ lines })
-      const answered = prev.action?.calls.every(call => results.has(call.id))
-      const settled = prev.action && !prev.action.done && answered ? {
-        ...prev.action,
-        done: true,
-      } : prev.action
-
       return {
         message: lastMessage({ lines }) ?? prev.message,
-        action: action ?? settled,
+        ...readAction({
+          lines,
+          prev,
+        }),
         path,
         ino,
         size: end,
@@ -358,7 +335,7 @@ export function latestMessage({
       if (message || !start || window >= MAX_BYTES) {
         return {
           message,
-          action: lastAction({ lines: whole }).action,
+          ...readAction({ lines: whole }),
           path,
           ino,
           size: end,
@@ -369,6 +346,8 @@ export function latestMessage({
     return {
       message: null,
       action: null,
+      answered: [],
+      open: false,
       path,
       ino: 0,
       size: 0,
