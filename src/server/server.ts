@@ -2,6 +2,7 @@ import { FOLLOW_POLL_MS, followPullRequests, followedLinks } from '../landing/fo
 import { approval } from '../confirmations/commands.ts'
 import { advanceQueues } from '../queue/advance.ts'
 import { QUEUE_POLL_MS } from '../queue/state.ts'
+import { followUpReplies, repliesToFollow } from '../cli/reply-retry.ts'
 import { candidates } from '../dispatch/config.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
@@ -32,14 +33,14 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
 import type { Duplex } from 'node:stream'
 import { basename, dirname, extname, join, normalize } from 'node:path'
-import { parseArgs } from 'node:util'
+import { parseArgs, promisify } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { ingestSpool } from '../integrations/hooks/ingest.ts'
 import { commands as cliCommands } from '../cli/commands.ts'
 import { integrationsCommand } from '../cli/integrations.ts'
 import { browserCommand } from './browser.ts'
-import { HydraError, type HydraEvent, type HydraState, type Card, type ViewPreferences } from '../core/model.ts'
+import { HydraError, type HydraEvent, type HydraState, type Card, type ReplyState, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, withWriter, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
@@ -212,6 +213,9 @@ type HydraUpgrade = {
 
 const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
 const RETRY_MS = 60_000
+// How often replies a route could not confirm are checked for a resend.
+const REPLY_POLL_MS = 30_000
+const runFile = promisify(execFile)
 
 // Exact matches refuse other sites and rebound DNS names; *.localhost names (portless's
 // https://pnyx.localhost) pass because browsers resolve them to loopback (RFC 6761).
@@ -1212,7 +1216,55 @@ async function mountOwnedHydra({
   let queueNeedsRetry = false
   let followRun: Promise<void> | undefined
   let followCheckedAt = 0
+  let replyRun: Promise<void> | undefined
+  let replyCheckedAt = 0
   let scheduled = false
+
+  // A resend goes through the reply command in a child, like a send from the page.
+  const resendReply = async ({
+    card,
+    text,
+    retry,
+  }: {
+    card: string
+    text: string
+    retry: string
+  }): Promise<ReplyState> => {
+    const worker = join(
+      import.meta.dirname,
+      '..',
+      'cli',
+      import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js',
+    )
+
+    try {
+      const { stdout } = await runFile(
+        process.execPath,
+        [
+          worker,
+          'reply',
+          card,
+          '--text',
+          text,
+          '--idempotency-key',
+          retry,
+          '--hydra',
+          hydraId,
+          '--actor',
+          'pnyx',
+        ],
+        {
+          timeout: 130000,
+          maxBuffer: MAX_BODY,
+        },
+      )
+      const receipt = JSON.parse(stdout) as { reply?: { state?: ReplyState } }
+
+      return receipt.reply?.state ?? 'delivery_unknown'
+    } catch {
+      return 'delivery_unknown'
+    }
+  }
 
   const kick = () => {
     if (closed || scheduled) {
@@ -1271,6 +1323,26 @@ async function mountOwnedHydra({
           })()
         }
 
+        const replyCheckDue = Date.now() - replyCheckedAt >= REPLY_POLL_MS
+
+        if (!replyRun && repliesToFollow({ state }) && replyCheckDue) {
+          replyCheckedAt = Date.now()
+          replyRun = (async () => {
+            try {
+              await followUpReplies({
+                hydraId,
+                resend: resendReply,
+                unconfirmed: agents.unconfirmed,
+              })
+            } catch (error) {
+              console.error(`pnyx-axi replies: ${(error as Error).message}`)
+            } finally {
+              replyRun = undefined
+              kick()
+            }
+          })()
+        }
+
         fireReminders({ hydraId })
         pump()
         const deadline = doneDeadline({ state })
@@ -1300,6 +1372,12 @@ async function mountOwnedHydra({
 
         if (!followRun && followedLinks({ state }).length > 0) {
           deadlines.push(followCheckedAt + FOLLOW_POLL_MS)
+        }
+
+        const replyFollowUpDue = !replyRun && repliesToFollow({ state })
+
+        if (replyFollowUpDue) {
+          deadlines.push(replyCheckedAt + REPLY_POLL_MS)
         }
 
         const deadline = deadlines.length ? Math.min(...deadlines) : undefined

@@ -755,7 +755,7 @@ export const reply = guard({
     } else if (receipt.state === 'failed') {
       out.help = [`Fix the cause, then retry with --idempotency-key ${receipt.reply}`]
     } else if (receipt.state === 'delivery_unknown') {
-      out.help = ["The message may have landed; confirm in the task's inbox or the session before sending again, a retry with the same key does not resend"]
+      out.help = ['The message may have landed; a retry with the same key does not resend. When its session has a transcript, Pnyx checks it once the session is idle and resends a missing message up to twice itself']
     } else if (receipt.state === 'queued') {
       out.help = ["Check the task's inbox or the session before sending again; a retry with the same key does not resend"]
     } else {

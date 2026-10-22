@@ -13,6 +13,7 @@ import { copyTagged } from './tagged-updates.ts'
 import type { ThreadPage } from '../thread/read.ts'
 import { seenAt, terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
+import { MAX_RESENDS } from '../cli/reply-retry.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
@@ -127,6 +128,16 @@ export interface Host {
   queue(): HydraQueue
   // Recovers hosted sessions and resumes a cut Hydra turn once.
   recover(): Promise<void>
+  // A reply that never showed up in its session after its resends; Hydra hears of it once.
+  unconfirmed({
+    card,
+    reply,
+    text,
+  }: {
+    card: string
+    reply: string
+    text: string
+  }): void
   thread({
     card,
     page,
@@ -1491,6 +1502,28 @@ export function createHost({
     ]
   })
 
+  // A message the worker never confirmed after its resends wakes Hydra once; the server reports it each check.
+  const unconfirmedReplies = new Map<string, string>()
+
+  const missingReplies = ({ state }: { state: HydraState }): {
+    id: string
+    text: string
+  }[] => [...unconfirmedReplies].flatMap(([
+    id,
+    text,
+  ]) => {
+    if (`${id}:hosted` in state.eventIds) {
+      return []
+    }
+
+    return [
+      {
+        id,
+        text,
+      },
+    ]
+  })
+
   const wakeOnStall = () => {
     const state = loadHydra({ hydraId }).state
     const hydraCard = state.cards[HYDRA_CARD]
@@ -1523,9 +1556,11 @@ export function createHost({
       state,
       now,
     }).filter(wait => !stalled.has(wait.id))
+    const unconfirmed = missingReplies({ state }).filter(reply => !stalled.has(reply.id))
     const [first] = [
       ...stalls,
       ...waits,
+      ...unconfirmed,
     ]
 
     if (!first) {
@@ -1559,12 +1594,17 @@ export function createHost({
       found.push(`Wait ended: ${waits.map(wait => wait.text).join('; ')}.`)
     }
 
+    if (unconfirmed.length) {
+      found.push(`Not confirmed: ${unconfirmed.map(reply => reply.text).join('; ')}.`)
+    }
+
     const firstCount = stalled.get(first.id)?.count ?? 0
     const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
 
     for (const item of [
       ...stalls,
       ...waits,
+      ...unconfirmed,
     ]) {
       const count = stalled.get(item.id)?.count ?? 0
       stalled.set(
@@ -2704,6 +2744,23 @@ export function createHost({
           })
         }
       }
+    },
+
+    unconfirmed: ({
+      card,
+      reply,
+      text,
+    }) => {
+      unconfirmedReplies.set(
+        `unconfirmed:${card}:${reply}`,
+        `on ${card}, the message "${text.replace(
+          /\s+/g,
+          ' ',
+        ).slice(
+          0,
+          80,
+        )}" never showed up in the worker's session after ${MAX_RESENDS} resends`,
+      )
     },
 
     wake: ({
