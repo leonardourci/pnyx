@@ -16,7 +16,7 @@ import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained, postLine } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
-import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraEvent, wakesHydra } from '../core/hydra.ts'
+import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraEvent, hydraMode, wakesHydra } from '../core/hydra.ts'
 import { freeTask } from '../cli/start.ts'
 import { hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
@@ -2810,24 +2810,17 @@ export async function hostRequest({
         ...chosenSettings({ choice: dispatch }),
         provider: providerName({ harness: dispatch.provider }),
       }
-      const running = current.cards[HYDRA_CARD]?.settings?.mode
-      const chosen = hydraConfig({
-        state: current,
-        id: host.hydraId,
-      }).hydra.agent
-      // Only a mode the composer and the running Hydra agree on passes on, never one mid-switch.
-      const hydraMode = hostedHydra({ state: current }) && (!chosen || chosen.mode === running)
-        ? running : undefined
+      const inherited = hydraMode({ state: current })
 
       // A rule without a mode inherits Hydra's; never plan, which would stall a worker.
-      if (!settings.mode && hydraMode && hydraMode !== 'plan'
+      if (!settings.mode && inherited && inherited !== 'plan'
         && findOption({
           provider: settings.provider,
           setting: 'mode',
-          value: hydraMode,
+          value: inherited,
           hosted: true,
         })) {
-        settings.mode = hydraMode
+        settings.mode = inherited
       }
 
       return host.start({
