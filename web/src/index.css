@@ -252,9 +252,12 @@ h3 { font-weight: 600; }
 .working-dots i:nth-child(3) { animation-delay: 240ms; }
 .message[data-streaming] > .markdown::after { content: ''; display: inline-block; width: 5px; height: 12px; margin-left: 3px; background: var(--color-muted); border-radius: 2px; }
 @keyframes reply-appear { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes reply-dot { 0%, 80%, 100% { opacity: .35; } 40% { opacity: 1; } }
+@keyframes reply-dot { 0%, 80%, 100% { opacity: .35; transform: none; } 40% { opacity: 1; transform: translateY(-2px); } }
+@keyframes reply-dot-fade { 0%, 80%, 100% { opacity: .35; } 40% { opacity: 1; } }
+/* Reduced motion drops the lift but keeps the fade: frozen dots would read as a stalled agent. */
 @media (prefers-reduced-motion: reduce) {
-  .message, .working-dots i { animation: none; }
+  .message { animation: none; }
+  .working-dots i { animation-name: reply-dot-fade; animation-duration: 1.6s; }
 }
 
 .message.mine { align-self: flex-end; max-width: 85%; padding: 10px 14px; border-radius: 16px 2px 16px 16px; background: var(--color-hover); }
@@ -568,19 +571,14 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .card { cursor: pointer; }
 
-.agent-activity i { width: 7px; height: 7px; border-radius: 50%; border: 1px solid currentColor; flex-shrink: 0; }
+/* Only the single state dot: a working card shows the shared working dots instead. */
+.agent-activity > i { width: 7px; height: 7px; border-radius: 50%; border: 1px solid currentColor; flex-shrink: 0; }
 
 .agent-activity.activity-working { color: var(--color-green); }
 
-.activity-working i { background: currentColor; animation: activity-pulse 1.8s ease-in-out infinite; }
-
 .agent-activity.activity-stopped { color: var(--color-red); }
 
-.activity-stopped i { border-radius: 1px; background: currentColor; }
-@keyframes activity-pulse { 50% { box-shadow: 0 0 0 3px var(--color-subtle); } }
-@media (prefers-reduced-motion: reduce) {
-
-.activity-working i { animation: none; } }
+.activity-stopped > i { border-radius: 1px; background: currentColor; }
 
 .disclosure > summary { list-style: none; cursor: pointer; position: relative; padding-right: 20px; font-size: var(--text-ui); }
 
