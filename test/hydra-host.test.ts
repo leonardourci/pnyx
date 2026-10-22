@@ -12,7 +12,8 @@ import { startTask } from '../src/cli/start.ts'
 import { hydraCheck } from '../src/cli/workers.ts'
 import { sendReply } from '../src/cli/reply.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
+import { taskMention } from '../src/mentions/mentions.ts'
 import { startServer } from '../src/server/server.ts'
 import { askHost, localToken } from '../src/server/state.ts'
 import { readThread } from '../src/thread/read.ts'
@@ -618,6 +619,208 @@ test(
       await until({ check: () => sdk.calls[0]?.messages.length === 2 })
       assert.deepEqual(
         sdk.calls[0]?.messages,
+        [
+          'First',
+          'Second',
+        ],
+      )
+    } finally {
+      sdk.release(); await server.close(); rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'a Hydra reply paragraph that starts with a task chip lands on that task with the message it answered',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-tag-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+
+    for (const key of [
+      'quick',
+      'other',
+    ]) {
+      commands.task([
+        'create',
+        '--key',
+        key,
+        '--title',
+        `Task ${key}`,
+        '--hydra',
+        'lab',
+      ])
+    }
+
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const quick = state().keys.quick!
+    const sdk = hydraSdk()
+    sdk.control.stream = true
+    sdk.control.reply = [
+      'Here is where things stand.',
+      `${taskMention({
+        id: quick,
+        title: 'Task quick',
+      })} Quick Add gets its own feature folder.`,
+      `Later, ${taskMention({
+        id: state().keys.other!,
+        title: 'Task other',
+      })} only links.`,
+    ].join('\n\n')
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    const notes = ({ card }: { card: string }) => readEvents({ hydraId: 'lab' })
+      .flatMap(event => event.type === 'card.noted' && event.cardId === card ? [
+        [
+          event.data.source,
+          event.data.text,
+        ],
+      ] : [])
+
+    try {
+      await commands.hydra([
+        'send',
+        '--hydra',
+        'lab',
+        '--text',
+        'Is quick add its own page?',
+        '--event-id',
+        'ask-1',
+      ])
+      await until({ check: () => notes({ card: quick }).length === 2 })
+      assert.deepEqual(
+        notes({ card: quick }),
+        [
+          [
+            'hydra',
+            'Quick Add gets its own feature folder.',
+          ],
+          [
+            'owner',
+            'Is quick add its own page?',
+          ],
+        ],
+      )
+      assert.deepEqual(
+        notes({ card: state().keys.other! }),
+        [],
+      )
+    } finally {
+      await server.close(); rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'each tagged reply pairs with the message its turn answered, and only the owner’s chat becomes an ask',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-tag-turns-',
+    ))
+    process.env.PNYX_HOME = home
+    process.env.CLAUDE_CONFIG_DIR = join(
+      home,
+      'claude',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    commands.task([
+      'create',
+      '--key',
+      'quick',
+      '--title',
+      'Task quick',
+      '--hydra',
+      'lab',
+    ])
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const quick = state().keys.quick!
+    const sdk = hydraSdk()
+    sdk.control.stream = true
+    sdk.control.hold = true
+    sdk.control.reply = `${taskMention({
+      id: quick,
+      title: 'Task quick',
+    })} Noted.`
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    const notes = ({ source }: { source: string }) => readEvents({ hydraId: 'lab' })
+      .flatMap(event => event.type === 'card.noted' && event.cardId === quick && event.data.source === source ? [event.data.text] : [])
+    const send = ({ args }: { args: string[] }) => commands.hydra([
+      'send',
+      '--hydra',
+      'lab',
+      ...args,
+    ])
+
+    try {
+      await send({
+        args: [
+          '--text',
+          'First',
+        ],
+      })
+      await until({ check: () => sdk.calls[0]?.messages.length === 1 })
+
+      for (const args of [
+        [
+          '--text',
+          'Second',
+        ],
+        [
+          '--task',
+          quick,
+          '--text',
+          'A worker question',
+          '--actor',
+          `worker:${quick}`,
+        ],
+        [
+          '--task',
+          quick,
+          '--text',
+          'Already on the task',
+        ],
+      ]) {
+        await send({ args })
+      }
+
+      sdk.control.hold = false
+      sdk.release()
+      await until({ check: () => notes({ source: 'hydra' }).length === 4 })
+      assert.deepEqual(
+        notes({ source: 'owner' }),
         [
           'First',
           'Second',

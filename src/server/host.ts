@@ -9,6 +9,7 @@ import { claudeProvider, transcriptPath, type QueryFn } from './claude.ts'
 import { codexProvider, type SpawnCodex } from './codex.ts'
 import { modelIds, type HostedSession, type ModelOption, type PermissionDecision } from './provider.ts'
 import { liveReplies } from './streaming.ts'
+import { copyTagged } from './tagged-updates.ts'
 import type { ThreadPage } from '../thread/read.ts'
 import { seenAt, terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
@@ -176,13 +177,26 @@ function isFolder({ path }: { path: string }): boolean {
   }
 }
 
+// id names the Hydra message or wake an item carries, so a turn knows what it answered.
 function inbox() {
-  const items: string[] = []
+  const items: {
+    text: string
+    id?: string
+  }[] = []
   let wake: (() => void) | undefined, done = false
 
   return {
-    push({ text }: { text: string }) {
-      items.push(text)
+    push({
+      text,
+      id,
+    }: {
+      text: string
+      id?: string
+    }) {
+      items.push({
+        text,
+        ...(id ? { id } : {}),
+      })
       wake?.()
     },
     pending() {
@@ -192,7 +206,10 @@ function inbox() {
       done = true
       wake?.()
     },
-    async* [Symbol.asyncIterator](): AsyncGenerator<string> {
+    async* [Symbol.asyncIterator](): AsyncGenerator<{
+      text: string
+      id?: string
+    }> {
       for (;;) {
         if (items.length) {
           yield items.shift()!
@@ -789,6 +806,9 @@ export function createHost({
       }
 
       const offsets: number[] = []
+      // The message each turn answers, taken in the order turns start, like offsets.
+      const asks: (string | undefined)[] = []
+      let answering: string | undefined
       let completedOffset = 0
 
       const transcriptSize = () => {
@@ -800,9 +820,10 @@ export function createHost({
       }
 
       const input = async function* () {
-        for await (const text of entry.input) {
+        for await (const item of entry.input) {
           offsets.push(transcriptSize())
-          yield text
+          asks.push(item.id)
+          yield item.text
         }
       }
 
@@ -837,7 +858,21 @@ export function createHost({
           completedOffset = transcriptSize()
           entry.replies.finish()
           streamed({ session: key })
+
+          if (card.id === HYDRA_CARD) {
+            const texts = entry.replies.texts()
+            const ask = answering
+            note({
+              fn: ({ writer }) => copyTagged({
+                writer,
+                texts,
+                asks: ask ? [ask] : [],
+                at: new Date().toISOString(),
+              }),
+            })
+          }
         } else {
+          answering = asks.shift()
           entry.replies.start({
             offset: Math.max(
               offsets.shift() ?? 0,
@@ -1470,7 +1505,10 @@ export function createHost({
           prepared = undefined
           const waking = /^(wake|stall):/.test(id) && !opened && Boolean(entry.session)
           entry.activity = 'working'
-          entry.input.push({ text: waking ? `${text}${memoryChangeNote()}` : text })
+          entry.input.push({
+            text: waking ? `${text}${memoryChangeNote()}` : text,
+            id,
+          })
 
           return { state: 'queued' }
         } catch (error) {

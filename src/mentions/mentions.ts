@@ -1,6 +1,7 @@
 import type { Card, HydraState } from '../core/model.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
 import { liveTask } from '../core/tasks.ts'
+import { paragraphs } from '../oracle/text.ts'
 
 export interface TaskMention {
   id: string
@@ -34,8 +35,16 @@ export function taskMention({
   return `[@${label}](pnyx-task:${encodeURIComponent(id)})`
 }
 
+// A task chip as Pnyx writes it: [@Title](pnyx-task:<encoded id>).
+export const TASK_MENTION = /\[@((?:\\.|[^\]\\\r\n])*)\]\((pnyx-task:[\w%~.-]+)\)/
+
 export function taskMentions({ text }: { text: string }): TaskMention[] {
-  return [...text.matchAll(/\[@((?:\\.|[^\]\\\r\n])*)\]\((pnyx-task:[\w%~.-]+)\)/g)].flatMap(match => {
+  return [
+    ...text.matchAll(new RegExp(
+      TASK_MENTION.source,
+      'g',
+    )),
+  ].flatMap(match => {
     const id = mentionId({ href: match[2]! })
 
     return id ? [
@@ -48,6 +57,39 @@ export function taskMentions({ text }: { text: string }): TaskMention[] {
       },
     ] : []
   })
+}
+
+const TAGGED = new RegExp(`^(?:[-*]\\s+|\\d+\\.\\s+)?(\\*\\*)?(${TASK_MENTION.source})`)
+
+// Only a chip that opens a paragraph or list item tags it; a chip later in a sentence only links.
+export function taggedParagraphs({ text }: { text: string }): (TaskMention & { text: string })[] {
+  return paragraphs({ text })
+    .flatMap(paragraph => paragraph.trimStart().startsWith('```') ? [paragraph] : paragraph.split(/\n(?=[ \t]*(?:[-*]|\d+\.)\s)/))
+    .flatMap(block => {
+      const trimmed = block.trim()
+      const lead = TAGGED.exec(trimmed)
+      const mention = lead && taskMentions({ text: lead[2]! })[0]
+
+      if (!mention) {
+        return []
+      }
+
+      const after = trimmed.slice(lead[0].length)
+      const rest = (lead[1] ? after.replace(
+        /^[\s:.,\u2013\u2014-]*\*\*/,
+        '',
+      ) : after).replace(
+        /^[\s:.,\u2013\u2014-]+/,
+        '',
+      )
+
+      return rest ? [
+        {
+          ...mention,
+          text: rest,
+        },
+      ] : []
+    })
 }
 
 export function mentionQuery({
