@@ -2556,6 +2556,16 @@ test(
       (await receipt({ id: 'b5' })).error ?? '',
       /Hydra not found/,
     )
+
+    t.command({
+      id: 'b6',
+      name: 'hydras',
+      args: ['create'],
+    })
+    assert.equal(
+      (await receipt({ id: 'b6' })).hydras?.find(b => b.id === 'hydra-3')?.name,
+      '',
+    )
   },
 )
 

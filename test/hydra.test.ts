@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import type { HydraState, HydraEvent } from '../src/core/model.ts'
 import { liveTask } from '../src/core/tasks.ts'
+import { hydraName } from '../src/cli/commands.ts'
 
 const bin = join(
   import.meta.dirname,
@@ -203,7 +204,115 @@ test(
 )
 
 test(
-  'declared status and hook activity never move a task; a column deletion moves it and undo restores it',
+  'an unnamed Hydra takes its name from the first message line of text and keeps any name it has',
+  () => {
+    const f = fixture()
+    const send = ({ text }: { text: string }) => f.run({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        text,
+      ],
+    })
+
+    try {
+      f.run({
+        args: [
+          'hydra',
+          'create',
+          'default',
+          '--name',
+          '',
+        ],
+      })
+      send({ text: '[image: /tmp/hydras/default/attachments/a.png]' })
+      f.run({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          'Worker report: tests pass',
+          '--actor',
+          'worker:task-1',
+        ],
+      })
+      assert.equal(
+        f.state().config?.name,
+        '',
+      )
+      send({ text: 'File: notes.txt\n\n```\nfirst file line\n```\n\n[image: /tmp/a.png]\n\n  Ask [@pnyx](pnyx-project:%2Fwork%2Fpnyx) about updates to the UI, please and thanks\nsecond line' })
+      assert.equal(
+        f.state().config?.name,
+        'Ask pnyx about updates to the UI, please…',
+      )
+      send({ text: 'Rename yourself' })
+      f.run({
+        args: [
+          'hydra',
+          'set',
+          '--name',
+          'Manual',
+        ],
+      })
+      send({ text: 'Another message' })
+      assert.equal(
+        f.state().config?.name,
+        'Manual',
+      )
+      assert.deepEqual(
+        f.events().filter(event => event.type === 'board.configured')
+          .map(event => event.type === 'board.configured' && event.data.name),
+        [
+          '',
+          'Ask pnyx about updates to the UI, please…',
+          'Manual',
+        ],
+      )
+    } finally {
+      rmSync(
+        f.root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'a Hydra name keeps whole words near 40 characters, never splits a character and needs real text',
+  () => {
+    assert.equal(
+      hydraName({ text: '[image: /tmp/a.png]' }),
+      undefined,
+    )
+    assert.equal(
+      hydraName({ text: 'Short title\nmore' }),
+      'Short title',
+    )
+    assert.equal(
+      hydraName({ text: 'I supercalifragilisticexpialidocious-and-more-words-here' }),
+      'I supercalifragilisticexpialidocious-and…',
+    )
+    assert.equal(
+      hydraName({ text: `${'a'.repeat(39)}😀 more words` }),
+      `${'a'.repeat(39)}…`,
+    )
+    assert.equal(
+      hydraName({ text: '!'.repeat(50) }),
+      undefined,
+    )
+    assert.equal(
+      hydraName({ text: '[image: /h/a.png]\nIn [image: /h/b.png], it is big' }),
+      'In Image 2, it is big',
+    )
+  },
+)
+
+test(
+  'explicit lifecycle changes move a task, activity never does; a column deletion moves it and undo restores it',
   () => {
     const f = fixture()
 
@@ -249,7 +358,9 @@ test(
       }))
       const root = f.state().keys.root!
       const child = f.state().keys.child!
-      const queued = f.state().config?.columns.find(c => c.role === 'queued')?.id
+      const column = ({ role }: { role: string }) =>
+        f.state().config?.columns.find(c => c.role === role)?.id
+      const placed = () => f.state().cards[root]?.column
       f.run({
         args: [
           'task',
@@ -260,6 +371,10 @@ test(
           'Building it',
         ],
       })
+      assert.equal(
+        placed(),
+        column({ role: 'in_progress' }),
+      )
       f.push({
         key: 'session',
         input: {
@@ -286,16 +401,95 @@ test(
           'claude-code:worker',
         ],
       })
-      f.push({
+      const hook = ({ input }: { input: object }) => f.push({
         key: 'root',
         input: {
-          activity: 'finished',
+          ...input,
           source: {
             adapter: 'hooks',
             objectId: 'worker',
           },
         },
       })
+      hook({ input: { activity: 'finished' } })
+      hook({ input: { activity: 'ended' } })
+      assert.equal(
+        placed(),
+        column({ role: 'in_progress' }),
+      )
+      f.run({
+        args: [
+          'move',
+          'root',
+          column({ role: 'queued' })!,
+        ],
+      })
+      hook({ input: { activity: 'working' } })
+      f.run({
+        args: [
+          'task',
+          'status',
+          'root',
+          'working',
+          '--note',
+          'Still building',
+        ],
+      })
+      assert.equal(
+        placed(),
+        column({ role: 'queued' }),
+      )
+      hook({
+        input: {
+          attention: [
+            {
+              kind: 'question',
+              key: 'hook:tool:AskUserQuestion',
+              blocking: true,
+              text: 'Pick a schema',
+            },
+          ],
+        },
+      })
+      assert.equal(
+        placed(),
+        column({ role: 'needs_you' }),
+      )
+      hook({ input: { attention: [] } })
+      assert.equal(
+        placed(),
+        column({ role: 'in_progress' }),
+      )
+
+      for (const [
+        state,
+        role,
+      ] of [
+          [
+            'blocked',
+            'needs_you',
+          ],
+          [
+            'working',
+            'in_progress',
+          ],
+        ] as const) {
+        f.run({
+          args: [
+            'task',
+            'status',
+            'root',
+            state,
+            '--note',
+            `Now ${state}`,
+          ],
+        })
+        assert.equal(
+          placed(),
+          column({ role }),
+        )
+      }
+
       f.run({
         args: [
           'task',
@@ -311,14 +505,65 @@ test(
           'task',
           'status',
           'root',
+          'paused',
+          '--note',
+          'Waiting on CI',
+        ],
+      })
+      assert.equal(
+        placed(),
+        column({ role: 'needs_you' }),
+      )
+      f.run({
+        args: [
+          'task',
+          'status',
+          'root',
           'done',
           '--note',
           'Finished',
         ],
       })
       assert.equal(
-        f.state().cards[root]?.column,
-        queued,
+        placed(),
+        column({ role: 'done' }),
+      )
+      assert.deepEqual(
+        f.events().filter(e => e.type === 'card.moved' && e.actor === 'pnyx')
+          .map(e => [
+            e.type === 'card.moved' && e.data.after,
+            e.reason,
+          ]),
+        [
+          [
+            column({ role: 'in_progress' }),
+            'Declared working',
+          ],
+          [
+            column({ role: 'needs_you' }),
+            'Waiting for the owner',
+          ],
+          [
+            column({ role: 'in_progress' }),
+            'Answered',
+          ],
+          [
+            column({ role: 'needs_you' }),
+            'Declared blocked',
+          ],
+          [
+            column({ role: 'in_progress' }),
+            'Declared working',
+          ],
+          [
+            column({ role: 'needs_you' }),
+            'Declared needs you',
+          ],
+          [
+            column({ role: 'done' }),
+            'Declared done',
+          ],
+        ],
       )
       f.run({
         args: [
@@ -337,6 +582,20 @@ test(
           'custom:research',
         ],
       })
+      f.run({
+        args: [
+          'task',
+          'status',
+          'root',
+          'needs-you',
+          '--note',
+          'Review the research',
+        ],
+      })
+      assert.equal(
+        placed(),
+        'custom:research',
+      )
       f.run({
         args: [
           'column',
@@ -970,15 +1229,23 @@ test(
           'done',
         ],
       })
+      assert.equal(
+        f.state().cards[ask]?.column,
+        f.state().config?.columns.find(c => c.role === 'done')?.id,
+      )
       f.run({
         args: [
           'undo',
-          f.events().at(-1)!.id,
+          f.events().findLast(e => e.type === 'card.outcome')!.id,
         ],
       })
       assert.equal(
         f.state().cards[ask]?.status?.state,
         'working',
+      )
+      assert.equal(
+        f.state().cards[ask]?.column,
+        f.state().config?.columns.find(c => c.role === 'in_progress')?.id,
       )
       f.push({
         key: 'pushed',

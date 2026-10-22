@@ -2,11 +2,15 @@ import type { HydraState, Card, HydraColumn, Link } from '../../../src/core/mode
 import { cardDoneDeadline, HOUR_MS } from '../../../src/core/retention.ts'
 import { liveTask, rankOf } from '../../../src/core/tasks.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
+import { asksOwner } from '../../../src/core/lifecycle.ts'
+import { openAsks } from '../../../src/core/asks.ts'
 
 const HARNESSES: Record<string, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
 }
+
+export const hydraTitle = ({ name }: { name: string }) => name || 'Untitled'
 
 export const harnessName = ({ provider }: { provider: string }) => HARNESSES[provider] ?? provider
 
@@ -267,8 +271,7 @@ export function cardState({
     }
   }
 
-  if (card.attention.some(a => a.blocking && !a.answered) || card.permissions?.some(p => p.status === 'pending')
-    || card.status?.state === 'needs_you' || card.status?.state === 'blocked') {
+  if (asksOwner({ card })) {
     return {
       kind: 'asks',
       text: 'asks',
@@ -287,6 +290,16 @@ export function cardState({
         now,
       })}`,
       at,
+    }
+  }
+
+  if (activity !== 'working' && openAsks({
+    card,
+    audience: 'hydra',
+  }).length) {
+    return {
+      kind: 'asks-hydra',
+      text: 'asks Hydra',
     }
   }
 

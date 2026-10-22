@@ -1,7 +1,7 @@
 import type { Attention, HydraEvent } from '../core/model.ts'
 
 // Bump when chunk() or the filters change what is indexed; the index rebuilds on mismatch.
-export const CHUNKER_VERSION = 4
+export const CHUNKER_VERSION = 6
 
 // About 256 tokens at 3 characters a token.
 const CHUNK_MAX = 768
@@ -170,6 +170,19 @@ export function eventText({ event }: { event: HydraEvent }): string {
         event.data.raw,
       )
       break
+    case 'task.asked':
+      parts.push(
+        event.data.question,
+        event.data.context,
+        ...(event.data.options ?? []).map(option => option.label),
+      )
+      break
+    case 'task.ask.escalated':
+      parts.push(
+        event.data.question,
+        event.data.context,
+      )
+      break
     case 'task.mirrored':
       parts.push(
         event.data.status,
@@ -257,6 +270,26 @@ const TEXT_BLOCKS = [
   'output_text',
 ]
 
+const blockType = ({ block }: { block: unknown }) =>
+  typeof block === 'object' && block !== null && 'type' in block ? block.type : undefined
+
+// Pnyx's own wake turns and the text blocks Codex wraps around each attached image are not anyone's words.
+function internalBlock({
+  text,
+  before,
+  after,
+}: {
+  text: string
+  before: unknown
+  after: unknown
+}): boolean {
+  const wake = /^\s*<pnyx-wake>[\s\S]*<\/pnyx-wake>/.test(text)
+  const opensImage = blockType({ block: after }) === 'input_image' && /^<image\b[^>]*>$/.test(text.trim())
+  const closesImage = blockType({ block: before }) === 'input_image' && text.trim() === '</image>'
+
+  return wake || opensImage || closesImage
+}
+
 // The typed user messages and assistant text blocks of one Claude Code or Codex
 // transcript record. Tool calls and results, thinking, images, meta records,
 // developer messages and injected text are left out, and so is a compaction
@@ -294,7 +327,14 @@ export function transcriptMessages({ record }: { record: unknown }): Message[] {
 
   return blocks
     .map(b => (typeof b === 'string' ? b : TEXT_BLOCKS.includes(b?.type) && typeof b.text === 'string' ? (b.text as string) : ''))
-    .map(t => withoutInjected({ text: t }))
+    .map((
+      t,
+      i,
+    ) => internalBlock({
+      text: t,
+      before: blocks[i - 1],
+      after: blocks[i + 1],
+    }) ? '' : withoutInjected({ text: t }))
     .filter(Boolean)
     .map(text => (at ? {
       at,

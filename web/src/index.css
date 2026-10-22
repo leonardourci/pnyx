@@ -37,7 +37,7 @@
   --text-code: 13px;
 }
 
-:root { --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+:root { --chat-end: 64px; --chat-line: 1.75; --card-h: 1.5em; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
 
 :root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; --color-composer: #1d1e22; }
 @media (prefers-color-scheme: dark) {
@@ -74,7 +74,7 @@ h1, h2 { font-weight: 700; }
 
 .settings > h1, .settings-box > h2, .keyboard-settings h2, .hydra-head { font-family: var(--font-brand); font-weight: 700; }
 
-.hydra-head strong { font-weight: inherit; }
+.hydra-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: inherit; }
 
 h3 { font-weight: 600; }
 
@@ -252,9 +252,12 @@ h3 { font-weight: 600; }
 .working-dots i:nth-child(3) { animation-delay: 240ms; }
 .message[data-streaming] > .markdown::after { content: ''; display: inline-block; width: 5px; height: 12px; margin-left: 3px; background: var(--color-muted); border-radius: 2px; }
 @keyframes reply-appear { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes reply-dot { 0%, 80%, 100% { opacity: .35; } 40% { opacity: 1; } }
+@keyframes reply-dot { 0%, 80%, 100% { opacity: .35; transform: none; } 40% { opacity: 1; transform: translateY(-2px); } }
+@keyframes reply-dot-fade { 0%, 80%, 100% { opacity: .35; } 40% { opacity: 1; } }
+/* Reduced motion drops the lift but keeps the fade: frozen dots would read as a stalled agent. */
 @media (prefers-reduced-motion: reduce) {
-  .message, .working-dots i { animation: none; }
+  .message { animation: none; }
+  .working-dots i { animation-name: reply-dot-fade; animation-duration: 1.6s; }
 }
 
 .message.mine { align-self: flex-end; max-width: 85%; padding: 10px 14px; border-radius: 16px 2px 16px 16px; background: var(--color-hover); }
@@ -315,7 +318,7 @@ h3 { font-weight: 600; }
 
 .button.jump:hover:not(:disabled) { background: var(--color-raised); }
 
-.chat-fade { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; height: 64px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--color-surface)); animation: chat-fade-in 200ms ease-out; }
+.chat-fade { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; height: var(--chat-end); pointer-events: none; background: linear-gradient(to bottom, transparent, var(--color-surface)); animation: chat-fade-in 200ms ease-out; }
 
 .chat-running { position: absolute; left: 16px; bottom: 6px; z-index: 3; display: flex; align-items: center; gap: 8px; padding: 2px 8px 2px 0; border-radius: 10px; background: var(--color-surface); color: var(--color-muted); font-size: var(--text-meta); font-variant-numeric: tabular-nums; }
 
@@ -329,11 +332,11 @@ h3 { font-weight: 600; }
 
 .composer:focus-within { border-color: var(--color-gold-line); box-shadow: 0 0 0 3px var(--color-gold-wash); }
 
-.composer-input { flex: 0 1 auto; min-height: 24px; position: relative; display: flex; overflow: hidden; }
+.composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--chat-line)); position: relative; display: flex; overflow: hidden; }
 
-.composer .textarea, .draft-mirror { margin: 0; padding: 0 4px 0 0; border: 0; font: var(--text-chat)/1.5 var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
+.composer .textarea, .draft-mirror { margin: 0; padding: 0 4px 0 0; border: 0; font: var(--text-chat)/var(--chat-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
 
-.composer .textarea { height: auto; min-height: 24px; max-height: 100%; overflow-y: auto; background: transparent; outline: none; }
+.composer .textarea { height: auto; min-height: calc(var(--text-chat) * var(--chat-line)); max-height: 100%; overflow-y: auto; background: transparent; outline: none; }
 
 .composer-input[data-chips] .textarea { color: transparent; caret-color: var(--color-ink); }
 
@@ -350,6 +353,10 @@ h3 { font-weight: 600; }
 .chip-icon { display: inline-block; width: 1em; text-align: center; }
 
 .chip-icon > svg { vertical-align: -2px; }
+
+.draft-chip.draft-card { position: relative; cursor: default; margin: 0; padding: 0; color: transparent; background: none; box-shadow: none; }
+
+.draft-card > .attachment-card { position: absolute; left: 0; right: 0; top: calc(50% - var(--card-h) / 2 - .0625em); }
 
 .chip.column-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 6px; font-size: .92em; vertical-align: baseline; }
 
@@ -563,19 +570,14 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .card { cursor: pointer; }
 
-.agent-activity i { width: 7px; height: 7px; border-radius: 50%; border: 1px solid currentColor; flex-shrink: 0; }
+/* Only the single state dot: a working card shows the shared working dots instead. */
+.agent-activity > i { width: 7px; height: 7px; border-radius: 50%; border: 1px solid currentColor; flex-shrink: 0; }
 
 .agent-activity.activity-working { color: var(--color-green); }
 
-.activity-working i { background: currentColor; animation: activity-pulse 1.8s ease-in-out infinite; }
-
 .agent-activity.activity-stopped { color: var(--color-red); }
 
-.activity-stopped i { border-radius: 1px; background: currentColor; }
-@keyframes activity-pulse { 50% { box-shadow: 0 0 0 3px var(--color-subtle); } }
-@media (prefers-reduced-motion: reduce) {
-
-.activity-working i { animation: none; } }
+.activity-stopped > i { border-radius: 1px; background: currentColor; }
 
 .disclosure > summary { list-style: none; cursor: pointer; position: relative; padding-right: 20px; font-size: var(--text-ui); }
 
@@ -689,13 +691,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .icon-button { width: 24px; height: 24px; min-height: 24px; padding: 0; flex: none; color: var(--color-muted); }
 
-.composer-comments { align-self: flex-start; display: inline-flex; align-items: center; gap: 2px; padding: 1px 3px 1px 2px; border: 1px solid var(--color-gold-line); border-radius: 13px; background: var(--color-gold-wash); color: var(--color-gold); font-size: var(--text-meta); }
+.composer-comments { align-self: flex-start; display: inline-flex; font-size: var(--text-chat); }
 
-.composer-comments > .button { min-height: 22px; padding: 0 6px; gap: 5px; color: inherit; font-size: inherit; border-radius: 11px; }
-
-.composer-comments > .icon-button { width: 20px; height: 20px; min-height: 20px; padding: 0; color: inherit; }
-
-.composer-comments > .remove-all { color: var(--color-red); }
+.composer-comments[data-armed] .card-x { width: auto; padding: 0 7px; color: var(--color-red); }
 
 .dialog { margin: auto; width: min(600px, calc(100vw - 32px)); max-height: min(78vh, 760px); padding: 0; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 18px 50px var(--color-shadow); }
 
@@ -883,7 +881,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-.hydra-messages { padding: 10px 16px 40px; display: block; flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; }
+/* The bottom gap matches the fade, and stays clear of the running line while a reply streams. */
+.hydra-messages { padding: 10px 16px var(--chat-end); display: block; flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; }
+
+/* Away from the bottom, the browser keeps what the owner reads in place as images and replies above it grow. */
+.hydra-messages[data-away] { overflow-anchor: auto; }
 
 .hydra-empty { margin-top: 12px; color: var(--color-muted); font-size: var(--text-ui); }
 
@@ -1054,7 +1056,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydras-tree { min-height: 0; overflow-y: auto; }
 .hydra-row { display: flex; align-items: center; min-width: 0; }
 .hydra-row > .button:first-child { flex: 0 0 25px; padding: 6px 2px; color: var(--color-muted); }
-.hydra-row .hydra-name { flex: 1; min-width: 0; justify-content: flex-start; overflow: hidden; text-overflow: ellipsis; padding: 7px 8px; font-size: var(--text-ui); }
+.hydra-row .hydra-name { flex: 1; min-width: 0; justify-content: flex-start; overflow: hidden; padding: 7px 8px; font-size: var(--text-ui); }
+.hydra-row .hydra-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hydra-row > form { min-width: 0; }
 .hydra-row > form .input { width: 100%; }
 .hydra-projects { margin: 4px 0 12px 12px; padding-left: 10px; border-left: 1px solid var(--color-line); }
@@ -1079,6 +1082,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card:not(.selected) > .resize-y { opacity: 0; }
 .card:hover > .resize-y, .card:focus-within > .resize-y { opacity: 1; }
 .activity-asks { color: var(--color-gold); }
+.activity-asks-hydra { color: var(--color-slate); }
 .activity-done { color: var(--color-green); }
 .copy-warning { color: var(--color-gold); font-size: var(--text-meta); }
 @media (hover: none) {
@@ -1139,6 +1143,37 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
 
+.attachment-card { position: relative; top: -.0625em; display: inline-flex; align-items: stretch; height: var(--card-h); max-width: 100%; border: 1px solid var(--color-line); border-radius: .375em; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); line-height: 1; white-space: nowrap; vertical-align: middle; overflow: hidden; user-select: none; }
+
+.attachment-card > .button { min-height: 0; padding: 0; border: 0; border-radius: 0; color: inherit; font: inherit; }
+
+.attachment-card > .card-main { display: inline-flex; flex: 1; align-items: center; justify-content: flex-start; gap: .375em; min-width: 0; padding: 0 .4375em 0 .1875em; }
+
+.attachment-card > .button:hover:not(:disabled) { background: var(--color-raised); }
+
+.card-slot { display: grid; place-items: center; width: 1.625em; height: 1em; flex-shrink: 0; overflow: hidden; border-radius: .1875em; background: var(--color-raised); }
+
+.card-slot > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.card-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .75em; }
+
+.attachment-card > .card-x { width: 1.375em; flex-shrink: 0; border-left: 1px solid var(--color-line); color: var(--color-muted); }
+
+.attachment-card.comments { border-color: var(--color-gold-line); background: var(--color-gold-wash); color: var(--color-gold); }
+
+.attachment-card.comments .card-slot, .attachment-card.comments > .button:hover:not(:disabled) { background: color-mix(in srgb, var(--color-gold) 8%, transparent); }
+
+.attachment-card.comments > .card-x { border-color: var(--color-gold-line); color: var(--color-gold); }
+
+.attachment-card.reference { border-style: dashed; background: transparent; }
+
+.message .attachment-card { margin: 0 1px; }
+
+.message.mine .attachment-card:not(.reference) { background: var(--color-background); }
+
+/* Sent text keeps the draft's line height, so a card never changes the spacing. */
+.message.mine .markdown { line-height: var(--chat-line); }
+
 .chip.reference-chip { display: inline-flex; padding: 1px 6px; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); }
 
 .image-viewer { width: min(960px, calc(100vw - 32px)); max-width: none; }
@@ -1197,11 +1232,19 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .update-decision .update-title { color: var(--color-gold); }
 .decision-list { list-style: none; margin: 6px 0 0 30px; padding: 0; display: grid; gap: 8px; }
 .decision-list > li { display: grid; gap: 4px; padding: 2px 0 2px 10px; border-left: 2px solid var(--color-gold-line); }
-.decision-question { display: flex; gap: 6px; align-items: baseline; min-width: 0; font-weight: 600; }
+.decision-question { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
 .decision-question > .collapsible-text { min-width: 0; }
 .decision-number { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: 18px; height: 18px; border-radius: 9px; background: var(--color-gold-wash); color: var(--color-gold); font-size: var(--text-meta); }
-.decision-answer { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; align-items: start; font-weight: 600; }
+.decision-answer { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; align-items: start; }
 .decision-why { color: var(--color-muted); font-size: var(--text-meta); }
+.decision-headline, .ask-headline { margin: 0; color: var(--color-ink); font-weight: 600; overflow-wrap: anywhere; }
+.decision-from { margin: 0; color: var(--color-muted); font-size: var(--text-meta); }
+.decision-choices { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.decision-choices > li[aria-current] { color: var(--color-gold); font-weight: 600; }
+.decision-recommended { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--color-gold-wash); color: var(--color-gold); font-size: var(--text-meta); font-weight: 600; }
+.decision-escalation { display: grid; gap: 4px; padding-left: 8px; border-left: 2px solid var(--color-line); }
+.decision-answer-text { display: grid; gap: 2px; min-width: 0; }
+.decision-details > summary { color: var(--color-muted); font-size: var(--text-meta); }
 .update-fold > summary { padding-right: 0; }
 .update-fold > summary > .disclosure-chevron { display: none; }
 .update-fold-chevron { display: inline-flex; height: 14px; margin-left: 4px; vertical-align: -2px; color: var(--color-muted); transition: transform 140ms ease; }

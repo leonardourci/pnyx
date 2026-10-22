@@ -228,6 +228,32 @@ export type PermissionEvent = EventBase & {
   data: PermissionRequest
 }
 
+export type AskAudience = 'hydra' | 'owner'
+
+// The asking event's wording and asker never change; an escalation is its own event.
+export interface Ask {
+  id: string
+  at: string
+  actor: string
+  audience: AskAudience
+  question: string
+  context?: string
+  details?: string
+  options?: Question['options']
+  // 1-based, into options.
+  recommended?: number
+  escalated?: {
+    id: string
+    at: string
+    actor: string
+    reason?: string
+    question?: string
+    context?: string
+  }
+  // The delivered reply, or the owner's message, that answered it.
+  answered?: string
+}
+
 export interface TaskReminder {
   id: string
   at: string
@@ -279,6 +305,7 @@ export interface Card {
   folder?: string
   attention: Attention[]
   permissions?: PermissionRequest[]
+  asks?: Ask[]
   links: Link[]
   sourceRefs: SourceRef[]
   outcome?: Outcome
@@ -440,6 +467,10 @@ export interface HydraMessage {
   text: string
   details?: string
   context?: string
+  // ask: the worker question this message delivers; answers: Hydra's question this owner message answers.
+  ask?: string
+  answers?: string
+  choice?: string
   at: string
   actor: string
   hydra: string
@@ -559,6 +590,18 @@ export type HydraChange = EventBase & (
     data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'>
   }
   | {
+    type: 'task.asked'
+    data: Omit<Ask, 'at' | 'actor' | 'escalated' | 'answered'>
+  }
+  | {
+    type: 'task.ask.escalated'
+    data: {
+      ask: string
+      question?: string
+      context?: string
+    }
+  }
+  | {
     type: 'task.mirrored'
     data: FirstmateRecord
   }
@@ -658,6 +701,7 @@ export type RepliedEvent = EventBase & {
       questionId?: string
       question: string
       answer: string
+      choice?: string
     }
     answers?: string
     detail?: string
@@ -804,6 +848,8 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.retention',
   'hydra.memory',
   'task.declared',
+  'task.asked',
+  'task.ask.escalated',
   'task.mirrored',
   'hydra.message',
   'hydra.dispatch-proposed',

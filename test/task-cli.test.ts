@@ -212,7 +212,7 @@ test(
     })
     assert.equal(
       f.state().cards[ended.keys.other].column,
-      'queued',
+      'done',
     )
     assert.equal(
       ended.cards[task].agent,

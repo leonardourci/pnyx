@@ -18,7 +18,11 @@ import { UsageRing } from './usage-ring.tsx'
 import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
 import { cardState } from './view.ts'
+import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { clock, duration, hydraMessages, joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
+
+// How long after the owner's own input a scroll up still counts as theirs.
+const OWNER_SCROLL_MS = 1000
 
 // Sends the server has not recorded yet; a confirmed one waits for its message to arrive.
 interface Sending {
@@ -88,7 +92,7 @@ export function HydraChat({
     setAway,
   ] = useState(false)
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
-  const follow = useRef(true), lastTop = useRef(0)
+  const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0)
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const {
     tools,
@@ -191,6 +195,10 @@ export function HydraChat({
     }
   }
 
+  const ownerScroll = () => {
+    scrolledAt.current = performance.now()
+  }
+
   useLayoutEffect(
     () => {
       const element = content.current
@@ -199,15 +207,26 @@ export function HydraChat({
         return
       }
 
+      const scroller = stream.current
       const observer = new ResizeObserver(() => {
         if (follow.current) {
           bottom()
         }
       })
       observer.observe(element)
-      observer.observe(stream.current)
+      observer.observe(scroller)
+      scroller.addEventListener(
+        MESSAGE_SCROLL,
+        ownerScroll,
+      )
 
-      return () => observer.disconnect()
+      return () => {
+        observer.disconnect()
+        scroller.removeEventListener(
+          MESSAGE_SCROLL,
+          ownerScroll,
+        )
+      }
     },
     [],
   )
@@ -305,7 +324,7 @@ export function HydraChat({
         flexBasis: width ?? view.hydraWidth,
       }}
     >
-      <header className="hydra-head"><Icon name="hydra" size={24} /><strong>Hydra</strong></header>
+      <header className="hydra-head"><Icon name="hydra" size={24} /><strong>{config.name}</strong></header>
       <div className="hydra-body">
         <div
           className="hydra-messages thread"
@@ -313,14 +332,30 @@ export function HydraChat({
           data-key-scope="thread"
           role="region"
           aria-label="Hydra conversation"
+          data-away={away || undefined}
           tabIndex={0}
+          onWheel={ownerScroll}
+          onTouchMove={ownerScroll}
+          onKeyDown={ownerScroll}
+          onPointerDown={event => {
+            if (event.target === event.currentTarget) {
+              ownerScroll()
+            }
+          }}
+          onPointerMove={event => {
+            if (event.buttons) {
+              ownerScroll()
+            }
+          }}
           onScroll={e => {
             const el = e.currentTarget
 
-            // Only scrolling up unpins: a pin's own scroll event can arrive after more text streamed in.
+            // Any way to the bottom pins; only the owner's own upward scroll unpins, never one the browser makes.
+            const owner = performance.now() - scrolledAt.current < OWNER_SCROLL_MS
+
             if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
               follow.current = true
-            } else if (el.scrollTop < lastTop.current) {
+            } else if (owner && el.scrollTop < lastTop.current) {
               follow.current = false
             }
 
