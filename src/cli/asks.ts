@@ -36,7 +36,6 @@ const one = ({
 
 const text = ({ value }: { value: Values[string] }) => typeof value === 'string' ? value : undefined
 
-// "<label>: <description>" splits at the first ": "; a label alone has no description.
 const choice = ({ raw }: { raw: string }) => {
   const at = raw.indexOf(': ')
 
@@ -90,7 +89,6 @@ export const askRows = ({ card }: { card: Card }) => (card.asks ?? []).map((ask:
   }),
 }))
 
-// A recorded message reaches a running hosted Hydra exactly as Pnyx delivers every message to it.
 async function handToHydra({
   hydraId,
   id,
@@ -122,9 +120,7 @@ async function handToHydra({
   })
 }
 
-// The owner's answer to Hydra's own question is the owner's message to Hydra: their words, with
-// the question it answers as context. Recorded first, so it resolves the question even while Hydra
-// is not running, then handed to a running Hydra.
+// Recorded before Hydra hears it, so the answer resolves the question even while Hydra is down.
 async function answerHydra({
   hydraId,
   ref,
@@ -174,7 +170,7 @@ async function answerHydra({
           data: {
             task: card.id,
             action: 'send',
-            // The owner's words, or their pick when they typed none; Pnyx adds what it answers.
+            // Only the owner's words go in text, which the chat shows as theirs; Pnyx's framing is context.
             text: answer,
             context: [
               `Answers question ${id}: ${question}`,
@@ -210,8 +206,7 @@ async function answerHydra({
   }
 }
 
-// A Hydra or worker session's own actor wins over --actor, so no agent answers as the owner
-// or asks the owner in Hydra's name. The server's own page keeps the actor the server gave it.
+// An agent session's own actor beats --actor; commands the server runs for its page keep the server's.
 const sessionActor = ({ meta }: { meta: Meta }): Meta => {
   const session = process.env.PNYX_ACTOR
   const agentSession = !!session && (session === HYDRA_ACTOR || reportActor({ actor: session }))
@@ -260,8 +255,7 @@ async function answerCommand({
   const repeat = m.id !== undefined
     && (m.id in state.eventIds || !!card.replies?.some(r => r.id === m.id))
 
-  // Checked here first so a missing route never hides a closed question or a refused answerer;
-  // the write checks again under the lock, and a repeated key returns what it did before.
+  // Checked before routing so a missing route can't hide a refusal; the write checks again under the lock.
   if (!repeat) {
     askAnswer({
       card,
@@ -358,7 +352,7 @@ async function askOne({
     })
   }
 
-  // The question and, for Hydra, the message that delivers it are written together.
+  // One lock, so Hydra never hears a question that was not recorded.
   const written = withWriter({
     hydraId,
     fn: ({ writer }) => {

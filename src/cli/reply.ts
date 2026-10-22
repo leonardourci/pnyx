@@ -49,7 +49,6 @@ export interface ReplyRequest {
     value: string
   }
   taskMessage?: boolean
-  // An answer to the task's structured question with this id; its text is built from the choice and note.
   ask?: {
     id: string
     choice?: string
